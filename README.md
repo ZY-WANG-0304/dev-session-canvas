@@ -10,13 +10,31 @@
 
 ## 当前状态
 
-项目仍处于前期定义阶段，当前已完成最小文档骨架迁移，尚未开始正式功能实现。
+项目已完成第一轮研究与设计收口，并具备最小可构建的 VSCode 扩展原型骨架。
 
 下一阶段重点：
 
-- 明确第一版产品规格
-- 明确画布与对象模型设计
-- 建立第一份可执行的 `ExecPlan`
+- 在当前 `WebviewPanel` 原型上继续打通真实对象模型与终端主路径
+- 引入下一阶段画布实现与交互原型
+- 继续验证 Remote / Restricted Mode / 恢复链路
+
+当前已落地的内容：
+
+- 顶层架构与技术路线研究文档
+- 第一份 MVP 产品规格
+- 一个可构建的 VSCode 扩展原型，包含：
+  - `opencove.openCanvas` 命令
+  - `WebviewPanel` 主画布入口
+  - typed message bridge
+  - `WebviewPanelSerializer`
+  - 最小宿主状态投影与 Webview 本地 UI 状态
+
+## 本地运行
+
+1. 运行 `npm install`
+2. 运行 `npm run build`
+3. 在 VSCode 中使用仓库自带的 `Run OpenCove Extension` 启动配置启动扩展开发宿主
+4. 在扩展开发宿主中执行命令 `OpenCove: 打开画布`
 
 ## 对开发者的说明
 
@@ -31,3 +49,5 @@
 - [AGENTS.md](./AGENTS.md)
 - [docs/PRODUCT_SENSE.md](./docs/PRODUCT_SENSE.md)
 - [docs/PLANS.md](./docs/PLANS.md)
+- [docs/product-specs/canvas-core-collaboration-mvp.md](./docs/product-specs/canvas-core-collaboration-mvp.md)
+- [docs/design-docs/vscode-canvas-runtime-architecture.md](./docs/design-docs/vscode-canvas-runtime-architecture.md)
