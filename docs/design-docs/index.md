@@ -21,10 +21,9 @@
 
 ## 设计方案注册表
 
-当前暂无已登记的具体设计文档。
-
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/vscode-canvas-runtime-architecture.md` | VSCode 内无限画布的运行时边界、技术路线与初步选型 | VSCode 集成域、画布交互域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 未验证 | `docs/exec-plans/active/canvas-architecture-research.md` | 2026-03-28 |
 
 ## 维护约定
 
