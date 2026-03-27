@@ -8,14 +8,13 @@
 
 ## 产品规格列表
 
-当前暂无已登记的具体产品规格文档。
-
 | 文档 | 主题 | 状态 | 依据 | 最后更新 |
 | --- | --- | --- | --- | --- |
+| `docs/product-specs/canvas-core-collaboration-mvp.md` | 画布核心协作 MVP 主路径与验收口径 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/vscode-canvas-runtime-architecture.md` | 2026-03-28 |
 
 ## 当前状态
 
-当前仓库只迁移了产品规格机制，尚未登记具体规格文档。
+当前仓库已登记首份具体产品规格文档，后续规格应继续按主题拆分，而不是把所有需求堆入单一文档。
 
 ## 维护约定
 
