@@ -1,7 +1,7 @@
 ---
 title: Agent 节点最小 backend 原型设计
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 协作对象域
@@ -153,7 +153,12 @@ updated_at: 2026-03-28
 5. 命令不存在、PATH 不一致或 CLI 异常退出时，用户能收到明确失败原因。
 6. reload 后，不会把原本已丢失的运行继续显示为 `running`。
 
-## 9. 参考资料
+## 9. 当前验证结果
+
+- 用户已在当前环境下完成手动验证，并确认 Agent 节点主路径可用。
+- 当前已验证的结论是：CLI Agent 代理节点这条路线成立，至少在当前 workspace 与本机 CLI 环境下可闭合最小主路径。
+
+## 10. 参考资料
 
 以下资料于 2026-03-28 检索：
 
