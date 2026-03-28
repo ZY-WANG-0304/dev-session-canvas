@@ -29,12 +29,54 @@
   - `WebviewPanelSerializer`
   - 最小宿主状态投影与 Webview 本地 UI 状态
 
-## 本地运行
+## 本地运行与调试
 
-1. 运行 `npm install`
-2. 运行 `npm run build`
-3. 在 VSCode 中使用仓库自带的 `Run OpenCove Extension` 启动配置启动扩展开发宿主
-4. 在扩展开发宿主中执行命令 `OpenCove: 打开画布`
+### 1. 准备依赖
+
+在仓库根目录执行：
+
+```bash
+npm install
+npm run build
+```
+
+如果只想做静态检查，可以额外运行：
+
+```bash
+npm run typecheck
+```
+
+### 2. 启动扩展开发宿主
+
+`Run OpenCove Extension` 是仓库自带的 VSCode 调试配置，不是命令面板里的普通命令。
+
+推荐启动方式：
+
+1. 打开 VSCode 的 `Run and Debug` 视图
+2. 在顶部调试配置下拉框中选择 `Run OpenCove Extension`
+3. 点击启动按钮，或直接按 `F5`
+
+也可以通过命令面板执行：
+
+1. `Debug: Select and Start Debugging`
+2. 选择 `Run OpenCove Extension`
+
+启动后，VSCode 会打开一个新的 `Extension Development Host` 窗口。后续所有插件交互都在这个新窗口中进行，不是在当前仓库窗口里完成。
+
+### 3. 打开画布
+
+在新的 `Extension Development Host` 窗口中：
+
+1. 打开命令面板
+2. 执行命令 `OpenCove: 打开画布`
+
+这条命令会打开当前原型里的主画布 `WebviewPanel`。
+
+### 4. 常见误区
+
+- `Run OpenCove Extension` 不是命令面板命令，而是调试配置名称。
+- `OpenCove: 打开画布` 才是插件注册到命令面板里的命令。
+- 如果你只在当前仓库窗口里搜索 `Run OpenCove Extension`，通常找不到正确入口，因为它应从调试配置启动。
 
 ## 对开发者的说明
 

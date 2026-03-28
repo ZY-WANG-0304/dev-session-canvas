@@ -112,9 +112,16 @@
 - `npm run build`
 - `npm run typecheck`
 
-本轮未完成的验证：
+本轮已完成的手动验证：
 
-- 未在当前终端环境中启动 VSCode GUI 进行手动交互验证，因此命令打开、消息回传与 serializer 恢复的最终体验仍需在扩展开发宿主中手动确认
+- 在 `Extension Development Host` 中成功打开 `OpenCove Canvas`
+- Webview 能正常显示宿主初始状态
+- 原型按钮可触发宿主更新并回传到 Webview
+- 面板交互未出现明显异常
+
+本轮仍待继续补齐的验证：
+
+- 需要把 `Reload Window`、面板关闭后重新打开、Remote / Restricted Mode 等专项验证补成显式清单
 
 本轮未覆盖的能力：
 
