@@ -22,7 +22,7 @@ updated_at: 2026-03-28
 
 ## 1. 背景
 
-当前仓库已经完成了 `WebviewPanel` 主画布、React Flow 原型和终端代理节点原型，但 `Agent` 节点仍只是静态占位卡片。这样虽然可以验证对象布局，却无法验证画布与真实 AI 执行能力之间的关键边界。
+当前仓库已经完成了 `WebviewPanel` 主画布、React Flow 原型和终端代理节点原型，但 `Agent` 节点仍只是静态占位卡片。这样虽然可以验证对象布局，却无法验证画布与真实外部 Agent 会话之间的关键边界。
 
 如果继续让 `Agent` 节点保持纯占位，我们会同时失去三项最重要的验证：
 
@@ -36,13 +36,13 @@ updated_at: 2026-03-28
 
 本轮需要回答的问题不是“长期应该绑定哪家 AI provider”，而是：
 
-1. 画布中的 `Agent` 节点，第一版应该通过什么宿主能力接入真实模型请求。
-2. 这条路线是否既能保留画布自定义 UI，又不把系统过早绑定到 chat 面板、工具生态或外部独立服务。
+1. 画布中的 `Agent` 节点，第一版应该通过什么宿主能力接入真实 `Codex` / `Claude Code` 会话。
+2. 这条路线是否既能保留画布自定义 UI，又不把系统过早绑定到某个本机绝对路径或某个 shell 环境细节。
 3. 在不引入复杂任务编排的前提下，最小验证闭环应包含哪些状态和动作。
 
 ## 3. 目标
 
-- 让 `Agent` 节点具备一次真实模型调用能力。
+- 让 `Agent` 节点具备一次真实 CLI Agent 调用能力。
 - 保持“宿主权威状态 + Webview 投影”的当前运行时主线不变。
 - 让用户能在画布里看到 `Agent` 的运行中、完成、失败和停止状态。
 - 为后续 `AgentAdapter` 抽象补上第一条真实垂直验证链路。
@@ -56,48 +56,38 @@ updated_at: 2026-03-28
 
 ## 5. 候选方案
 
-### 5.1 直接使用 Language Model API
+### 5.1 直接代理外部 CLI Agent
 
 特点：
 
-- 扩展可直接在宿主内选择可用模型并发起请求。
-- 适合 chat 之外的自定义 UI 功能。
-- 保留对请求、流式输出、停止和错误处理的直接控制。
+- 扩展在宿主内启动 `codex` 或 `claude` 子进程。
+- 保留对 stdout / stderr、停止和错误处理的直接控制。
+- 更符合“画布节点代理一个外部 Agent 会话”的产品语义。
 
 优点：
 
 - 与画布内 `Agent` 节点的交互形态最匹配。
-- 不需要先把体验套进 chat 参与者或工具调用框架。
-- 运行在 Extension Host 内，可继续访问 VSCode API。
+- 与真实目标对象 `Codex` / `Claude Code` 一致，不会在语义上跑偏到内置模型调用。
+- 运行在 Extension Host 内，可继续访问 VSCode API 和 workspace。
 
 风险：
 
-- 需要自行管理模型选择、状态回流、取消和错误提示。
-- 具体模型集合会变化，必须采用防御式处理。
+- 需要自行管理命令解析、状态回流、停止和错误提示。
+- Extension Host 的 PATH 与用户日常 shell 可能不一致。
 
-### 5.2 使用 Chat Participant
-
-特点：
-
-- 适合扩展 chat ask 模式中的专职助手。
-- 可以完整控制 chat 中的交互流程。
+### 5.2 使用 VSCode Language Model API
 
 不选原因：
 
-- 当前主界面是画布，不是 chat 面板。
-- 若先把 `Agent` 节点代理成 chat participant，会把产品主路径反向绑到 chat UI。
+- 用户已经明确 `Agent` 节点要代理 `Codex` 或 `Claude Code`，而不是 GitHub Copilot 或其他 VSCode 内置 provider。
+- 如果继续走内置 Language Model API，会把产品语义改成“向某个编辑器 provider 发请求”，与目标能力不一致。
 
-### 5.3 使用 Language Model Tool 或 MCP Tool
-
-特点：
-
-- 更适合作为其他 agent/chat 的可调用工具。
-- `Language Model Tool` 运行在扩展内，`MCP Tool` 运行在 VSCode 外部。
+### 5.3 使用 Chat Participant / Language Model Tool / MCP Tool
 
 不选原因：
 
-- 当前要验证的是画布里的 `Agent` 节点本身，而不是给别的 agent 提供工具能力。
-- `MCP Tool` 没有 VSCode API 访问能力，还会额外引入分发和部署负担。
+- 当前要验证的是画布里的 `Agent` 节点本身，而不是把它变成 chat 生态中的一个参与者或工具。
+- 这些入口都不能直接表达“启动本机 `codex` / `claude` CLI 会话”的产品语义。
 
 ### 5.4 直接接外部 CLI Agent 或自建 orchestrator
 
@@ -115,9 +105,9 @@ updated_at: 2026-03-28
 
 当前原型阶段选择：
 
-- 使用 VSCode `Language Model API` 作为 `Agent` 节点的第一条真实 backend 路线。
-- 保持 `Agent` 节点运行在画布自定义 UI 中，不依赖 chat participant。
-- 第一版只支持“输入目标 -> 发起一次请求 -> 流式接收文本 -> 更新节点摘要/状态 -> 支持停止”的最小闭环。
+- 使用外部 CLI Agent 作为 `Agent` 节点的第一条真实 backend 路线。
+- 默认 provider 为 `codex`，同时支持 `claude`，并通过插件设置项覆盖命令路径。
+- 第一版只支持“选择 provider -> 输入目标 -> 启动 CLI 会话 -> 回流输出 -> 支持停止”的最小闭环。
 
 建议的最小节点状态包括：
 
@@ -131,7 +121,7 @@ updated_at: 2026-03-28
 
 - 最近一次输入目标
 - 最近一次输出全文或最小可读结果
-- 最近一次使用的模型标识
+- 最近一次使用的 backend 标识
 - 当前是否存在活动运行
 - 最近一次运行 ID
 
@@ -143,11 +133,11 @@ updated_at: 2026-03-28
 - 取舍：第一版不做工具调用。
   原因：工具调用会立刻把 Agent backend 与终端、文件系统、安全策略绑在一起，超出当前验证边界。
 
-- 风险：用户本机可能没有可用模型，或未授予权限。
-  当前缓解：必须把“无模型可用”“未授权”“额度受限”等情况显式回流给节点和 toast，而不是静默失败。
+- 风险：Extension Host 未必能从 PATH 中找到 `codex` 或 `claude`。
+  当前缓解：默认用命令名解析，同时提供插件设置项覆盖命令路径；命令缺失时给出明确错误。
 
-- 风险：模型请求具有非确定性，难以做端到端自动化测试。
-  当前缓解：把可测部分限制在状态归一化、消息协议和宿主状态机；真实模型请求以手动验证为主。
+- 风险：CLI Agent 会话具有非确定性，难以做端到端自动化测试。
+  当前缓解：把可测部分限制在状态归一化、消息协议和宿主状态机；真实 CLI 会话以手动验证为主。
 
 - 风险：扩展 reload 后，运行中的请求无法继续。
   当前缓解：把旧运行态显式收敛为 `interrupted`，不制造虚假恢复。
@@ -156,20 +146,16 @@ updated_at: 2026-03-28
 
 至少需要完成以下验证：
 
-1. 选中 `Agent` 节点后输入目标并启动运行，节点进入运行态。
+1. 选中 `Agent` 节点后选择 provider、输入目标并启动运行，节点进入运行态。
 2. 运行中可看到摘要逐步更新或至少看到明确的运行反馈。
-3. 请求成功后，节点保留结果摘要与最近模型信息。
+3. 请求成功后，节点保留结果摘要与最近 backend 信息。
 4. 用户主动停止时，节点从运行态回到可解释的终止态。
-5. 无模型、未授权或额度受限时，用户能收到明确失败原因。
+5. 命令不存在、PATH 不一致或 CLI 异常退出时，用户能收到明确失败原因。
 6. reload 后，不会把原本已丢失的运行继续显示为 `running`。
 
 ## 9. 参考资料
 
 以下资料于 2026-03-28 检索：
 
-- AI extensibility in VS Code
-  https://code.visualstudio.com/api/extension-guides/ai/ai-extensibility-overview
-- Language Model API
-  https://code.visualstudio.com/api/extension-guides/ai/language-model
-- VSCode 2024 年 6 月（1.91）更新说明
-  https://code.visualstudio.com/updates/v1_91
+- Claude Code CLI help
+- Codex CLI help

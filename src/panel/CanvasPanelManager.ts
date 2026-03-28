@@ -1,7 +1,9 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import * as vscode from 'vscode';
 
 import {
   type AgentNodeMetadata,
+  type AgentProviderKind,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
@@ -18,7 +20,24 @@ const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
 
 interface AgentRunSession {
   runId: string;
-  cancellationSource: vscode.CancellationTokenSource;
+  provider: AgentProviderKind;
+  process: ChildProcessWithoutNullStreams;
+  stopRequested: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+interface AgentCliConfig {
+  defaultProvider: AgentProviderKind;
+  codexCommand: string;
+  claudeCommand: string;
+}
+
+interface AgentCliSpec {
+  provider: AgentProviderKind;
+  label: string;
+  command: string;
+  args: string[];
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
@@ -103,7 +122,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.postState('host/bootstrap');
             break;
           case 'webview/createDemoNode':
-            this.state = createNextState(this.state, parsedMessage.payload.kind);
+            this.state = createNextState(
+              this.state,
+              parsedMessage.payload.kind,
+              this.getAgentCliConfig().defaultProvider
+            );
             this.persistState();
             this.postState('host/stateUpdated');
             break;
@@ -113,7 +136,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.postState('host/stateUpdated');
             break;
           case 'webview/startAgentRun':
-            void this.startAgentRun(parsedMessage.payload.nodeId, parsedMessage.payload.prompt);
+            void this.startAgentRun(
+              parsedMessage.payload.nodeId,
+              parsedMessage.payload.prompt,
+              parsedMessage.payload.provider
+            );
             break;
           case 'webview/stopAgentRun':
             void this.stopAgentRun(parsedMessage.payload.nodeId);
@@ -129,7 +156,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             break;
           case 'webview/resetDemoState':
             this.cancelAllAgentRuns();
-            this.state = createDefaultState();
+            this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
             this.persistState();
             this.postState('host/stateUpdated');
             break;
@@ -149,7 +176,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
   private loadState(): CanvasPrototypeState {
     const rawState = this.context.workspaceState.get<unknown>(CANVAS_STATE_STORAGE_KEY);
-    return normalizeState(rawState);
+    return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
   }
 
   private persistState(): void {
@@ -180,7 +207,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     this.postState('host/stateUpdated');
   }
 
-  private async startAgentRun(nodeId: string, prompt: string): Promise<void> {
+  private async startAgentRun(
+    nodeId: string,
+    prompt: string,
+    provider: AgentProviderKind
+  ): Promise<void> {
     const agentNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
     if (!agentNode) {
       this.postMessage({
@@ -224,133 +255,176 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    const previousMetadata = ensureAgentMetadata(agentNode);
     const runId = createAgentRunId(nodeId);
-    const cancellationSource = new vscode.CancellationTokenSource();
-    this.agentRuns.set(nodeId, { runId, cancellationSource });
-
-    let lastModelName = previousMetadata.lastModelName;
+    const cliSpec = this.resolveAgentCli(provider);
     let aggregatedResponse = '';
+    let aggregatedError = '';
 
     this.state = updateAgentNode(this.state, nodeId, {
       status: 'running',
-      summary: '正在准备 Agent 运行...',
-      metadata: {
-        ...agentNode.metadata,
-        agent: {
-          ...previousMetadata,
-          liveRun: true,
-          lastPrompt: trimmedPrompt,
-          lastResponse: undefined,
-          lastRunId: runId
-        }
-      }
+      summary: `正在准备 ${cliSpec.label} 会话...`,
+      metadata: buildAgentMetadataPatch(this.state, nodeId, {
+        provider,
+        liveRun: true,
+        lastPrompt: trimmedPrompt,
+        lastResponse: undefined,
+        lastRunId: runId,
+        lastBackendLabel: cliSpec.label
+      })
     });
     this.persistState();
     this.postState('host/stateUpdated');
 
     try {
-      const model = await this.resolveAgentModel();
-      if (!model) {
-        throw new Error('当前 VSCode 中没有可用的语言模型。');
-      }
-
-      lastModelName = formatModelLabel(model);
-      this.state = updateAgentNode(this.state, nodeId, {
-        status: 'running',
-        summary: `正在通过 ${lastModelName} 运行 Agent...`,
-        metadata: buildAgentMetadataPatch(this.state, nodeId, {
-          liveRun: true,
-          lastPrompt: trimmedPrompt,
-          lastRunId: runId,
-          lastModelName,
-          lastResponse: undefined
-        })
+      const respawnedChild = spawn(cliSpec.command, [...cliSpec.args, trimmedPrompt], {
+        cwd: this.getWorkspaceRoot(),
+        env: process.env
       });
-      this.postState('host/stateUpdated');
 
-      const response = await model.sendRequest(
-        [
-          vscode.LanguageModelChatMessage.User(buildAgentPrompt(trimmedPrompt))
-        ],
-        {
-          justification: '需要让画布中的 Agent 节点根据用户目标生成下一步建议。'
-        },
-        cancellationSource.token
-      );
+      const session: AgentRunSession = {
+        runId,
+        provider,
+        process: respawnedChild,
+        stopRequested: false,
+        stdout: '',
+        stderr: ''
+      };
+      this.agentRuns.set(nodeId, session);
 
-      for await (const chunk of response.text) {
+      let settled = false;
+      const finalize = (status: 'idle' | 'error' | 'cancelled', message?: string): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        if (this.isActiveAgentRun(nodeId, runId)) {
+          this.agentRuns.delete(nodeId);
+        }
+
+        const finalOutput = trimStoredAgentText(stripAnsi(session.stdout).trim());
+        const finalError = trimStoredAgentText(stripAnsi(session.stderr).trim());
+        const summary =
+          status === 'idle'
+            ? summarizeAgentResponse(finalOutput, false)
+            : message ?? summarizeAgentFailure(finalError || finalOutput);
+
+        this.state = updateAgentNode(this.state, nodeId, {
+          status,
+          summary,
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            provider,
+            liveRun: false,
+            lastPrompt: trimmedPrompt,
+            lastRunId: runId,
+            lastBackendLabel: cliSpec.label,
+            lastResponse: finalOutput || undefined
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+
+        if (status === 'error') {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: summary
+            }
+          });
+        }
+      };
+
+      respawnedChild.stdout.on('data', (chunk: Buffer | string) => {
         if (!this.isActiveAgentRun(nodeId, runId)) {
           return;
         }
 
-        aggregatedResponse = trimStoredAgentText(`${aggregatedResponse}${chunk}`);
+        const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        session.stdout = trimStoredAgentText(`${session.stdout}${text}`);
+        aggregatedResponse = trimStoredAgentText(stripAnsi(session.stdout).trim());
+
         this.state = updateAgentNode(this.state, nodeId, {
           status: 'running',
           summary: summarizeAgentResponse(aggregatedResponse, true),
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            provider,
             liveRun: true,
             lastPrompt: trimmedPrompt,
             lastRunId: runId,
-            lastModelName,
-            lastResponse: aggregatedResponse
+            lastBackendLabel: cliSpec.label,
+            lastResponse: aggregatedResponse || undefined
           })
         });
         this.postState('host/stateUpdated');
-      }
-
-      if (!this.isActiveAgentRun(nodeId, runId)) {
-        return;
-      }
-
-      this.state = updateAgentNode(this.state, nodeId, {
-        status: 'idle',
-        summary: summarizeAgentResponse(aggregatedResponse, false),
-        metadata: buildAgentMetadataPatch(this.state, nodeId, {
-          liveRun: false,
-          lastPrompt: trimmedPrompt,
-          lastRunId: runId,
-          lastModelName,
-          lastResponse: aggregatedResponse || undefined
-        })
       });
-      this.persistState();
-      this.postState('host/stateUpdated');
-    } catch (error) {
-      if (!this.isActiveAgentRun(nodeId, runId)) {
-        return;
-      }
 
-      const cancelled = cancellationSource.token.isCancellationRequested;
-      const errorMessage = cancelled ? '已停止 Agent 运行。' : describeAgentRunError(error);
+      respawnedChild.stderr.on('data', (chunk: Buffer | string) => {
+        if (!this.isActiveAgentRun(nodeId, runId)) {
+          return;
+        }
+
+        const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        session.stderr = trimStoredAgentText(`${session.stderr}${text}`);
+        aggregatedError = trimStoredAgentText(stripAnsi(session.stderr).trim());
+
+        if (!aggregatedResponse) {
+          this.state = updateAgentNode(this.state, nodeId, {
+            status: 'running',
+            summary: summarizeAgentFailure(aggregatedError, true),
+            metadata: buildAgentMetadataPatch(this.state, nodeId, {
+              provider,
+              liveRun: true,
+              lastPrompt: trimmedPrompt,
+              lastRunId: runId,
+              lastBackendLabel: cliSpec.label
+            })
+          });
+          this.postState('host/stateUpdated');
+        }
+      });
+
+      respawnedChild.once('error', (error) => {
+        finalize('error', describeAgentCliSpawnError(cliSpec, error));
+      });
+
+      respawnedChild.once('close', (code, signal) => {
+        if (session.stopRequested) {
+          finalize('cancelled', `已停止 ${cliSpec.label} 会话。`);
+          return;
+        }
+
+        if (code === 0) {
+          finalize('idle');
+          return;
+        }
+
+        finalize(
+          'error',
+          describeAgentCliExit(cliSpec, code, signal, aggregatedError || aggregatedResponse)
+        );
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Agent CLI 会话启动失败。';
       this.state = updateAgentNode(this.state, nodeId, {
-        status: cancelled ? 'cancelled' : 'error',
+        status: 'error',
         summary: errorMessage,
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          provider,
           liveRun: false,
           lastPrompt: trimmedPrompt,
           lastRunId: runId,
-          lastModelName,
-          lastResponse: aggregatedResponse || undefined
+          lastBackendLabel: cliSpec.label
         })
       });
       this.persistState();
       this.postState('host/stateUpdated');
-
-      if (!cancelled) {
-        this.postMessage({
-          type: 'host/error',
-          payload: {
-            message: errorMessage
-          }
-        });
-      }
-    } finally {
-      const activeRun = this.agentRuns.get(nodeId);
-      if (activeRun?.runId === runId) {
-        this.agentRuns.delete(nodeId);
-      }
-      cancellationSource.dispose();
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: errorMessage
+        }
+      });
     }
   }
 
@@ -366,12 +440,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    activeRun.cancellationSource.cancel();
+    activeRun.stopRequested = true;
+    activeRun.process.kill('SIGTERM');
   }
 
   private cancelAllAgentRuns(): void {
     for (const run of this.agentRuns.values()) {
-      run.cancellationSource.cancel();
+      run.stopRequested = true;
+      run.process.kill('SIGTERM');
     }
     this.agentRuns.clear();
   }
@@ -380,18 +456,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     return this.agentRuns.get(nodeId)?.runId === runId;
   }
 
-  private async resolveAgentModel(): Promise<vscode.LanguageModelChat | undefined> {
-    if (!hasLanguageModelApi()) {
-      return undefined;
+  private getAgentCliConfig(): AgentCliConfig {
+    const configuration = vscode.workspace.getConfiguration('opencove.agent');
+    const defaultProvider = configuration.get<AgentProviderKind>('defaultProvider', 'codex');
+
+    return {
+      defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
+      codexCommand: configuration.get<string>('codexCommand', 'codex').trim() || 'codex',
+      claudeCommand: configuration.get<string>('claudeCommand', 'claude').trim() || 'claude'
+    };
+  }
+
+  private resolveAgentCli(provider: AgentProviderKind): AgentCliSpec {
+    const configuration = this.getAgentCliConfig();
+    if (provider === 'claude') {
+      return {
+        provider,
+        label: 'Claude Code',
+        command: configuration.claudeCommand,
+        args: ['--print']
+      };
     }
 
-    const preferredModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-    if (preferredModels.length > 0) {
-      return preferredModels[0];
-    }
+    return {
+      provider: 'codex',
+      label: 'Codex',
+      command: configuration.codexCommand,
+      args: ['exec', '--color', 'never']
+    };
+  }
 
-    const fallbackModels = await vscode.lm.selectChatModels();
-    return fallbackModels[0];
+  private getWorkspaceRoot(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
   private async ensureTerminalSession(nodeId: string, reveal: boolean): Promise<void> {
@@ -526,23 +622,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 }
 
-function createDefaultState(): CanvasPrototypeState {
+function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): CanvasPrototypeState {
   return {
     version: 1,
     updatedAt: new Date().toISOString(),
     nodes: [
-      createNode('note', 1),
-      createNode('task', 2)
+      createNode('note', 1, defaultAgentProvider),
+      createNode('task', 2, defaultAgentProvider)
     ]
   };
 }
 
 function createNextState(
   previousState: CanvasPrototypeState,
-  kind: CanvasNodeKind
+  kind: CanvasNodeKind,
+  defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasPrototypeState {
   const nextIndex = previousState.nodes.length + 1;
-  const nextNode = createNode(kind, nextIndex);
+  const nextNode = createNode(kind, nextIndex, defaultAgentProvider);
 
   return {
     ...previousState,
@@ -554,7 +651,7 @@ function createNextState(
 function defaultSummaryForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return '等待输入目标并启动一次真实运行。';
+      return '等待输入目标并通过 CLI 启动真实 Agent。';
     case 'terminal':
       return '尚未创建宿主终端，选中后可创建并显示。';
     case 'task':
@@ -564,7 +661,11 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
   }
 }
 
-function createNode(kind: CanvasNodeKind, sequence: number): CanvasNodeSummary {
+function createNode(
+  kind: CanvasNodeKind,
+  sequence: number,
+  defaultAgentProvider: AgentProviderKind = 'codex'
+): CanvasNodeSummary {
   const titlePrefix = {
     agent: 'Agent',
     terminal: 'Terminal',
@@ -587,7 +688,7 @@ function createNode(kind: CanvasNodeKind, sequence: number): CanvasNodeSummary {
             : 'idle',
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
-    metadata: createNodeMetadata(kind, id)
+    metadata: createNodeMetadata(kind, id, defaultAgentProvider)
   };
 }
 
@@ -623,24 +724,33 @@ function moveNode(
   };
 }
 
-function normalizeState(value: unknown): CanvasPrototypeState {
+function normalizeState(
+  value: unknown,
+  defaultAgentProvider: AgentProviderKind = 'codex'
+): CanvasPrototypeState {
   if (!isRecord(value)) {
-    return createDefaultState();
+    return createDefaultState(defaultAgentProvider);
   }
 
   const rawNodes = Array.isArray(value.nodes) ? value.nodes : [];
   const nodes = rawNodes
-    .map((node, index) => normalizeNode(node, index))
+    .map((node, index) => normalizeNode(node, index, defaultAgentProvider))
     .filter((node): node is CanvasNodeSummary => node !== null);
 
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: reconcileRuntimeNodesInArray(nodes.length > 0 ? nodes : createDefaultState().nodes)
+    nodes: reconcileRuntimeNodesInArray(
+      nodes.length > 0 ? nodes : createDefaultState(defaultAgentProvider).nodes
+    )
   };
 }
 
-function normalizeNode(value: unknown, index: number): CanvasNodeSummary | null {
+function normalizeNode(
+  value: unknown,
+  index: number,
+  defaultAgentProvider: AgentProviderKind = 'codex'
+): CanvasNodeSummary | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !isCanvasNodeKind(value.kind)) {
     return null;
   }
@@ -657,7 +767,7 @@ function normalizeNode(value: unknown, index: number): CanvasNodeSummary | null 
         ? value.summary
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
-    metadata: normalizeMetadata(value.kind, value.id, value.metadata)
+    metadata: normalizeMetadata(value.kind, value.id, value.metadata, defaultAgentProvider)
   };
 }
 
@@ -684,10 +794,14 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function createNodeMetadata(kind: CanvasNodeKind, nodeId: string): CanvasNodeMetadata | undefined {
+function createNodeMetadata(
+  kind: CanvasNodeKind,
+  nodeId: string,
+  defaultAgentProvider: AgentProviderKind = 'codex'
+): CanvasNodeMetadata | undefined {
   if (kind === 'agent') {
     return {
-      agent: createAgentMetadata()
+      agent: createAgentMetadata(defaultAgentProvider)
     };
   }
 
@@ -700,8 +814,9 @@ function createNodeMetadata(kind: CanvasNodeKind, nodeId: string): CanvasNodeMet
   return undefined;
 }
 
-function createAgentMetadata(): AgentNodeMetadata {
+function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
   return {
+    provider,
     liveRun: false
   };
 }
@@ -717,15 +832,20 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
 function normalizeMetadata(
   kind: CanvasNodeKind,
   nodeId: string,
-  value: unknown
+  value: unknown,
+  defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasNodeMetadata | undefined {
   const record = isRecord(value) ? value : {};
   if (kind === 'agent') {
     const agent = isRecord(record.agent) ? record.agent : {};
-    const fallback = createAgentMetadata();
+    const fallback = createAgentMetadata(defaultAgentProvider);
 
     return {
       agent: {
+        provider:
+          agent.provider === 'claude' || agent.provider === 'codex'
+            ? agent.provider
+            : fallback.provider,
         liveRun: typeof agent.liveRun === 'boolean' ? agent.liveRun : fallback.liveRun,
         lastPrompt:
           typeof agent.lastPrompt === 'string' ? trimStoredAgentText(agent.lastPrompt) : undefined,
@@ -733,8 +853,12 @@ function normalizeMetadata(
           typeof agent.lastResponse === 'string'
             ? trimStoredAgentText(agent.lastResponse)
             : undefined,
-        lastModelName:
-          typeof agent.lastModelName === 'string' ? agent.lastModelName : undefined,
+        lastBackendLabel:
+          typeof agent.lastBackendLabel === 'string'
+            ? agent.lastBackendLabel
+            : typeof agent.lastModelName === 'string'
+              ? agent.lastModelName
+              : undefined,
         lastRunId: typeof agent.lastRunId === 'string' ? agent.lastRunId : undefined
       }
     };
@@ -954,7 +1078,7 @@ function isLegacyPlaceholderAgent(
     !metadata.liveRun &&
     !metadata.lastPrompt &&
     !metadata.lastResponse &&
-    !metadata.lastModelName &&
+    !metadata.lastBackendLabel &&
     !metadata.lastRunId
   );
 }
@@ -963,31 +1087,10 @@ function createAgentRunId(nodeId: string): string {
   return `${nodeId}-${Date.now().toString(36)}`;
 }
 
-function hasLanguageModelApi(): boolean {
-  return typeof vscode.lm?.selectChatModels === 'function';
-}
-
-function formatModelLabel(model: vscode.LanguageModelChat): string {
-  const vendorLabel = [model.vendor, model.family].filter(Boolean).join('/');
-  if (!vendorLabel || model.name.includes(vendorLabel)) {
-    return model.name;
-  }
-
-  return `${model.name} (${vendorLabel})`;
-}
-
-function buildAgentPrompt(prompt: string): string {
-  return [
-    '你是 OpenCove 画布中的最小 Agent 原型。',
-    '请基于用户目标给出：1. 目标理解 2. 下一步建议 3. 主要风险。',
-    `用户目标：${prompt}`
-  ].join('\n\n');
-}
-
 function summarizeAgentResponse(response: string, running: boolean): string {
   const normalized = response.replace(/\s+/g, ' ').trim();
   if (!normalized) {
-    return running ? 'Agent 已启动，正在等待模型响应...' : 'Agent 已完成，但未返回可展示文本。';
+    return running ? 'Agent 会话已启动，正在等待 CLI 输出...' : 'Agent 已完成，但未返回可展示文本。';
   }
 
   return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
@@ -997,25 +1100,49 @@ function trimStoredAgentText(value: string): string {
   return value.length > 4000 ? value.slice(0, 4000) : value;
 }
 
-function describeAgentRunError(error: unknown): string {
-  if (error instanceof vscode.LanguageModelError) {
-    switch (error.code) {
-      case vscode.LanguageModelError.NoPermissions.name:
-        return '当前未获得语言模型访问授权，请授权后重试。';
-      case vscode.LanguageModelError.Blocked.name:
-        return '当前语言模型请求被限制或额度已用尽，请稍后重试。';
-      case vscode.LanguageModelError.NotFound.name:
-        return '当前选择的语言模型不可用，请重新运行。';
-      default:
-        return error.message || 'Agent 运行失败。';
-    }
+function summarizeAgentFailure(output: string, running = false): string {
+  const normalized = output.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return running ? 'CLI 已启动，正在等待输出...' : 'Agent CLI 运行失败。';
+  }
+
+  return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+function describeAgentCliSpawnError(spec: AgentCliSpec, error: unknown): string {
+  if (isRecord(error) && error.code === 'ENOENT') {
+    return `没有找到 ${spec.label} 命令 ${spec.command}。请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定命令路径。`;
   }
 
   if (error instanceof Error && error.message) {
-    return error.message;
+    return `启动 ${spec.label} 失败：${error.message}`;
   }
 
-  return 'Agent 运行失败。';
+  return `启动 ${spec.label} 失败。`;
+}
+
+function describeAgentCliExit(
+  spec: AgentCliSpec,
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  output: string
+): string {
+  const summary = summarizeAgentFailure(output);
+  const suffix = summary === 'Agent CLI 运行失败。' ? '' : ` ${summary}`;
+
+  if (signal) {
+    return `${spec.label} 因信号 ${signal} 退出。${suffix}`.trim();
+  }
+
+  if (typeof code === 'number') {
+    return `${spec.label} 以退出码 ${code} 结束。${suffix}`.trim();
+  }
+
+  return `${spec.label} 提前结束。${suffix}`.trim();
 }
 
 function findTerminalByName(name: string): vscode.Terminal | undefined {

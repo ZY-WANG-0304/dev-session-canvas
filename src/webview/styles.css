@@ -253,6 +253,7 @@ body {
 }
 
 .agent-prompt-input,
+.agent-provider-select,
 .selected-node-output {
   width: 100%;
   box-sizing: border-box;
@@ -260,6 +261,11 @@ body {
   border: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
   color: var(--vscode-editor-foreground);
+}
+
+.agent-provider-select {
+  padding: 8px 10px;
+  font: inherit;
 }
 
 .agent-prompt-input {

@@ -6,12 +6,14 @@ export interface CanvasNodePosition {
 }
 
 export type TerminalRevealMode = 'editor' | 'panel';
+export type AgentProviderKind = 'codex' | 'claude';
 
 export interface AgentNodeMetadata {
+  provider: AgentProviderKind;
   liveRun: boolean;
   lastPrompt?: string;
   lastResponse?: string;
-  lastModelName?: string;
+  lastBackendLabel?: string;
   lastRunId?: string;
 }
 
@@ -67,6 +69,7 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
         prompt: string;
+        provider: AgentProviderKind;
       };
     }
   | {
@@ -153,7 +156,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       !payload ||
       typeof payload.nodeId !== 'string' ||
-      typeof payload.prompt !== 'string'
+      typeof payload.prompt !== 'string' ||
+      (payload.provider !== 'codex' && payload.provider !== 'claude')
     ) {
       return null;
     }
@@ -162,7 +166,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/startAgentRun',
       payload: {
         nodeId: payload.nodeId,
-        prompt: payload.prompt
+        prompt: payload.prompt,
+        provider: payload.provider
       }
     };
   }

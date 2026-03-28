@@ -30,7 +30,7 @@
   - 最小宿主状态投影与 Webview 本地 UI 状态
   - React Flow 画布原型
   - 原生终端代理节点
-  - 基于 VSCode `Language Model API` 的最小 Agent 运行原型
+  - 基于 `codex` / `claude` CLI 的最小 Agent 运行原型
 
 ## 本地运行与调试
 
@@ -51,8 +51,10 @@ npm run typecheck
 
 如果要验证 `Agent` 节点的真实运行链路，还需要满足：
 
-- VSCode 版本不低于 `1.91`
-- 当前 VSCode 中存在至少一个可用的语言模型提供者
+- `codex` 或 `claude` 至少有一个可从 Extension Host 解析到
+- 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置：
+  - `opencove.agent.codexCommand`
+  - `opencove.agent.claudeCommand`
 
 ### 2. 启动扩展开发宿主
 
@@ -92,6 +94,7 @@ npm run typecheck
 
 2. `Agent` 节点：
    - 创建一个 `Agent` 节点
+   - 选择 `Codex` 或 `Claude Code`
    - 输入简短目标并点击“运行 Agent”
    - 观察节点进入运行态，并在完成后回流结果摘要
    - 如需验证中断链路，可在运行中点击“停止 Agent”

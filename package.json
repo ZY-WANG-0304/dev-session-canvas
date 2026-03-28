@@ -6,7 +6,7 @@
   "publisher": "opencove",
   "license": "UNLICENSED",
   "engines": {
-    "vscode": "^1.91.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
@@ -22,7 +22,28 @@
         "command": "opencove.openCanvas",
         "title": "OpenCove: 打开画布"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "OpenCove",
+      "properties": {
+        "opencove.agent.defaultProvider": {
+          "type": "string",
+          "enum": ["codex", "claude"],
+          "default": "codex",
+          "markdownDescription": "新建 Agent 节点时默认使用的 CLI provider。"
+        },
+        "opencove.agent.codexCommand": {
+          "type": "string",
+          "default": "codex",
+          "markdownDescription": "启动 Codex CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+        },
+        "opencove.agent.claudeCommand": {
+          "type": "string",
+          "default": "claude",
+          "markdownDescription": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node scripts/build.mjs",

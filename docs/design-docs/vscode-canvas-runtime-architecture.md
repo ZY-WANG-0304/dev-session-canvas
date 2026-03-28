@@ -103,8 +103,8 @@ updated_at: 2026-03-28
 
 ### 5.6 AI 能力接入
 
-- 官方边界：VSCode 当前提供 Language Model Tool、MCP Tool、Chat Participant、Language Model API 等多种 AI 扩展路径，适用场景不同。
-- 设计推论：当前产品目标是“在画布上看清多 Agent 协作”，而不是“先绑定某个 VSCode AI 扩展点”。因此文档层应先设计 Agent 适配边界，而不是先选 LM Tool / MCP / 外部 CLI 之一。
+- 官方边界：VSCode 当前提供 Language Model Tool、MCP Tool、Chat Participant、Language Model API 等多种 AI 扩展路径，但这些入口并不等价于“代理一个外部 CLI Agent 会话”。
+- 设计推论：当前产品目标是把 `Codex` / `Claude Code` 这类真实编码 Agent 放回同一张画布中，因此文档层应先围绕 CLI Agent 适配边界设计，而不是先绑定某个 VSCode AI 扩展点。
 
 ## 6. 候选方案
 
@@ -274,7 +274,7 @@ updated_at: 2026-03-28
 
 这样做的目的不是回避选型，而是避免让画布对象模型被底层执行框架反向绑死。后续无论接 VSCode Language Model Tool、MCP、外部 CLI Agent，还是仓库内自建 orchestrator，都应先对齐这个边界。
 
-在当前原型阶段，`Agent` 节点的第一条真实 backend 路线收敛为“宿主直接使用 VSCode `Language Model API` 发起请求”，而不是把节点先绑定到 chat participant、tool 或外部独立服务。详细取舍见 `docs/design-docs/agent-runtime-prototype.md`。
+在当前原型阶段，`Agent` 节点的第一条真实 backend 路线收敛为“宿主直接启动 `codex` / `claude` CLI 会话”，并通过配置项解决 PATH 与命令路径差异，而不是把节点绑定到 VSCode 内置语言模型。详细取舍见 `docs/design-docs/agent-runtime-prototype.md`。
 
 ### 7.7 安全与信任边界
 
@@ -301,7 +301,7 @@ updated_at: 2026-03-28
   当前缓解：必须把节点状态、最近输出、跳转和回流动作做完整，否则该路线没有成立价值。
 
 - 风险：Agent 适配层如果过度抽象，后续实现时可能发现真正的执行模型差异很大。
-  当前缓解：已选定以 VSCode `Language Model API` 作为第一条最小真实 backend 路线，并通过独立原型验证其状态回流与恢复边界。
+  当前缓解：已选定以 CLI Agent 代理节点作为第一条最小真实 backend 路线，并通过独立原型验证其状态回流与恢复边界。
 
 ## 9. 验证方法
 

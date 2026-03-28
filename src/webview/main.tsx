@@ -16,6 +16,7 @@ import 'reactflow/dist/style.css';
 import './styles.css';
 
 import type {
+  AgentProviderKind,
   CanvasNodeKind,
   CanvasNodeMetadata,
   CanvasNodeSummary,
@@ -59,6 +60,7 @@ function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => vscode.getState() ?? {});
   const [agentDrafts, setAgentDrafts] = useState<Record<string, string>>({});
+  const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
 
@@ -106,6 +108,10 @@ function App(): JSX.Element {
     selectedNode?.kind === 'agent'
       ? agentDrafts[selectedNode.id] ?? selectedNode.metadata?.agent?.lastPrompt ?? ''
       : '';
+  const selectedAgentProvider =
+    selectedNode?.kind === 'agent'
+      ? agentProviderDrafts[selectedNode.id] ?? selectedNode.metadata?.agent?.provider ?? 'codex'
+      : 'codex';
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
     setLocalUiState(nextState);
@@ -233,10 +239,18 @@ function App(): JSX.Element {
                     type: 'webview/startAgentRun',
                     payload: {
                       nodeId: selectedNode.id,
-                      prompt: selectedAgentDraft
+                      prompt: selectedAgentDraft,
+                      provider: selectedAgentProvider
                     }
                   })
                 }
+                agentProvider={selectedAgentProvider}
+                onAgentProviderChange={(value) => {
+                  setAgentProviderDrafts((current) => ({
+                    ...current,
+                    [selectedNode.id]: value
+                  }));
+                }}
                 onStopAgent={() =>
                   postMessage({
                     type: 'webview/stopAgentRun',
@@ -300,10 +314,10 @@ function CanvasCardNode({ data }: NodeProps<CanvasNodeData>): JSX.Element {
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
           {agentMetadata.liveRun
-            ? '真实 Agent 正在运行'
+            ? `${providerLabel(agentMetadata.provider)} 正在运行`
             : agentMetadata.lastResponse
-              ? '已保留最近一次运行结果'
-              : '尚未发起真实运行'}
+              ? `已保留最近一次 ${providerLabel(agentMetadata.provider)} 结果`
+              : '尚未发起真实 CLI 运行'}
         </div>
       ) : null}
       {data.kind === 'terminal' && terminalMetadata ? (
@@ -361,7 +375,9 @@ function toFlowNodes(
 function SelectedNodeDetails(props: {
   node: CanvasNodeSummary;
   agentDraft: string;
+  agentProvider: AgentProviderKind;
   onAgentDraftChange: (value: string) => void;
+  onAgentProviderChange: (value: AgentProviderKind) => void;
   onStartAgent: () => void;
   onStopAgent: () => void;
   onEnsureTerminal: () => void;
@@ -392,8 +408,20 @@ function SelectedNodeDetails(props: {
             />
           </label>
           <div className="selected-node-meta">
-            <span className="meta-label">最近模型</span>
-            <strong>{agentMetadata.lastModelName ?? '尚未运行'}</strong>
+            <span className="meta-label">CLI Provider</span>
+            <select
+              className="agent-provider-select"
+              value={props.agentProvider}
+              disabled={agentMetadata.liveRun}
+              onChange={(event) => props.onAgentProviderChange(event.target.value as AgentProviderKind)}
+            >
+              <option value="codex">Codex</option>
+              <option value="claude">Claude Code</option>
+            </select>
+          </div>
+          <div className="selected-node-meta">
+            <span className="meta-label">最近后端</span>
+            <strong>{agentMetadata.lastBackendLabel ?? '尚未运行'}</strong>
           </div>
           <div className="selected-node-meta">
             <span className="meta-label">会话状态</span>
@@ -407,7 +435,11 @@ function SelectedNodeDetails(props: {
           ) : null}
           <div className="action-row">
             <ActionButton
-              label={agentMetadata.liveRun ? '停止 Agent' : '运行 Agent'}
+              label={
+                agentMetadata.liveRun
+                  ? `停止 ${providerLabel(agentMetadata.provider)}`
+                  : `运行 ${providerLabel(props.agentProvider)}`
+              }
               onClick={agentMetadata.liveRun ? props.onStopAgent : props.onStartAgent}
               disabled={!agentMetadata.liveRun && !props.agentDraft.trim()}
             />
@@ -458,6 +490,10 @@ function colorForKind(kind: CanvasNodeKind): string {
     case 'note':
       return '#a78bfa';
   }
+}
+
+function providerLabel(provider: AgentProviderKind): string {
+  return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
 function postMessage(message: WebviewToHostMessage): void {
