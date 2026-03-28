@@ -14,7 +14,7 @@ const extensionConfig = {
 };
 
 const webviewConfig = {
-  entryPoints: ['src/webview/main.ts'],
+  entryPoints: ['src/webview/main.tsx'],
   bundle: true,
   format: 'iife',
   outfile: 'dist/webview.js',

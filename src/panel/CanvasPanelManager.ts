@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import {
   type CanvasNodeKind,
+  type CanvasNodePosition,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type HostToWebviewMessage,
@@ -79,6 +80,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             break;
           case 'webview/createDemoNode':
             this.state = createNextState(this.state, parsedMessage.payload.kind);
+            this.persistState();
+            this.postState('host/stateUpdated');
+            break;
+          case 'webview/moveNode':
+            this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
             this.persistState();
             this.postState('host/stateUpdated');
             break;
@@ -171,6 +177,39 @@ function createNode(kind: CanvasNodeKind, sequence: number): CanvasNodeSummary {
     kind,
     title: `${titlePrefix[kind]} ${sequence}`,
     status: sequence % 2 === 0 ? 'running' : 'idle',
-    summary: summaryPrefix[kind]
+    summary: summaryPrefix[kind],
+    position: createNodePosition(sequence)
+  };
+}
+
+function createNodePosition(sequence: number): CanvasNodePosition {
+  const zeroBasedIndex = sequence - 1;
+  const column = zeroBasedIndex % 3;
+  const row = Math.floor(zeroBasedIndex / 3);
+
+  return {
+    x: column * 320,
+    y: row * 220
+  };
+}
+
+function moveNode(
+  previousState: CanvasPrototypeState,
+  nodeId: string,
+  position: CanvasNodePosition
+): CanvasPrototypeState {
+  const nodes = previousState.nodes.map((node) =>
+    node.id === nodeId
+      ? {
+          ...node,
+          position
+        }
+      : node
+  );
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes
   };
 }

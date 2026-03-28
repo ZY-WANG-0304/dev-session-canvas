@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview.js'));
+  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview.css'));
   const nonce = createNonce();
 
   return `<!DOCTYPE html>
@@ -14,6 +15,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenCove Canvas Prototype</title>
+    <link rel="stylesheet" href="${styleUri}" />
     <style>
       :root {
         color-scheme: light dark;
@@ -41,6 +43,10 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
       #app {
         min-height: 100vh;
+      }
+
+      .react-flow__attribution {
+        display: none;
       }
     </style>
   </head>
