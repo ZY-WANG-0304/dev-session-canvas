@@ -7,10 +7,21 @@ export interface CanvasNodePosition {
 
 export type TerminalRevealMode = 'editor' | 'panel';
 export type AgentProviderKind = 'codex' | 'claude';
+export type TaskNodeStatus = 'todo' | 'running' | 'blocked' | 'done';
+export type AgentTranscriptRole = 'user' | 'assistant' | 'status';
+export type AgentTranscriptState = 'done' | 'streaming' | 'error';
+
+export interface AgentTranscriptEntry {
+  id: string;
+  role: AgentTranscriptRole;
+  text: string;
+  state?: AgentTranscriptState;
+}
 
 export interface AgentNodeMetadata {
   provider: AgentProviderKind;
   liveRun: boolean;
+  transcript?: AgentTranscriptEntry[];
   lastPrompt?: string;
   lastResponse?: string;
   lastBackendLabel?: string;
@@ -23,9 +34,20 @@ export interface TerminalNodeMetadata {
   revealMode: TerminalRevealMode;
 }
 
+export interface TaskNodeMetadata {
+  description: string;
+  assignee: string;
+}
+
+export interface NoteNodeMetadata {
+  content: string;
+}
+
 export interface CanvasNodeMetadata {
   agent?: AgentNodeMetadata;
   terminal?: TerminalNodeMetadata;
+  task?: TaskNodeMetadata;
+  note?: NoteNodeMetadata;
 }
 
 export interface CanvasNodeSummary {
@@ -94,6 +116,24 @@ export type WebviewToHostMessage =
       type: 'webview/reconnectTerminal';
       payload: {
         nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/updateTaskNode';
+      payload: {
+        nodeId: string;
+        title: string;
+        status: TaskNodeStatus;
+        description: string;
+        assignee: string;
+      };
+    }
+  | {
+      type: 'webview/updateNoteNode';
+      payload: {
+        nodeId: string;
+        title: string;
+        content: string;
       };
     };
 
@@ -172,13 +212,55 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
-  if (value.type === 'webview/moveNode') {
+  if (value.type === 'webview/updateTaskNode') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
-      typeof payload.id !== 'string' ||
-      !isCanvasNodePosition(payload.position)
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.title !== 'string' ||
+      typeof payload.description !== 'string' ||
+      typeof payload.assignee !== 'string' ||
+      !isTaskNodeStatus(payload.status)
     ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateTaskNode',
+      payload: {
+        nodeId: payload.nodeId,
+        title: payload.title,
+        status: payload.status,
+        description: payload.description,
+        assignee: payload.assignee
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateNoteNode') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.title !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateNoteNode',
+      payload: {
+        nodeId: payload.nodeId,
+        title: payload.title,
+        content: payload.content
+      }
+    };
+  }
+
+  if (value.type === 'webview/moveNode') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.id !== 'string' || !isCanvasNodePosition(payload.position)) {
       return null;
     }
 
@@ -213,9 +295,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
-  return (
-    isRecord(value) &&
-    typeof value.x === 'number' &&
-    typeof value.y === 'number'
-  );
+  return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number';
+}
+
+function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
+  return value === 'todo' || value === 'running' || value === 'blocked' || value === 'done';
 }

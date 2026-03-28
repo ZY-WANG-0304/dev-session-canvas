@@ -9,13 +9,19 @@ body,
 
 body {
   margin: 0;
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
 }
 
 .canvas-shell {
   background:
     radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 28%),
     radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.08), transparent 24%),
-    linear-gradient(180deg, color-mix(in srgb, var(--vscode-editor-background) 94%, #09111f 6%), var(--vscode-editor-background));
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--vscode-editor-background) 94%, #09111f 6%),
+      var(--vscode-editor-background)
+    );
 }
 
 .hero-panel,
@@ -41,9 +47,17 @@ body {
   line-height: 1.15;
 }
 
-.hero-panel p {
-  margin: 0;
+.hero-panel p,
+.actions-panel p,
+.footer-panel,
+.selected-node-note {
   color: var(--vscode-descriptionForeground);
+}
+
+.hero-panel p,
+.actions-panel p,
+.selected-node-note {
+  margin: 0;
   line-height: 1.5;
 }
 
@@ -83,13 +97,6 @@ body {
   font-size: 16px;
 }
 
-.actions-panel p {
-  margin: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -102,6 +109,7 @@ body {
   padding: 8px 12px;
   cursor: pointer;
   font-size: 12px;
+  font: inherit;
 }
 
 .action-button:disabled {
@@ -121,33 +129,329 @@ body {
 }
 
 .canvas-node {
-  width: 260px;
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid var(--vscode-panel-border);
-  padding: 14px 14px 12px;
   background: color-mix(in srgb, var(--vscode-editor-background) 95%, #18263f 5%);
   color: var(--vscode-editor-foreground);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
 }
 
 .canvas-node.is-selected {
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 14px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 14px 28px rgba(0, 0, 0, 0.22);
 }
 
 .canvas-node.kind-agent {
-  border-color: color-mix(in srgb, #22c55e 46%, var(--vscode-panel-border) 54%);
+  border-color: color-mix(in srgb, #22c55e 42%, var(--vscode-panel-border) 58%);
 }
 
 .canvas-node.kind-terminal {
-  border-color: color-mix(in srgb, #38bdf8 46%, var(--vscode-panel-border) 54%);
+  border-color: color-mix(in srgb, #38bdf8 42%, var(--vscode-panel-border) 58%);
 }
 
 .canvas-node.kind-task {
-  border-color: color-mix(in srgb, #f59e0b 46%, var(--vscode-panel-border) 54%);
+  border-color: color-mix(in srgb, #f59e0b 42%, var(--vscode-panel-border) 58%);
 }
 
 .canvas-node.kind-note {
-  border-color: color-mix(in srgb, #a78bfa 46%, var(--vscode-panel-border) 54%);
+  border-color: color-mix(in srgb, #a78bfa 42%, var(--vscode-panel-border) 58%);
+}
+
+.compact-node {
+  width: 280px;
+  padding: 14px 14px 12px;
+}
+
+.session-node {
+  overflow: hidden;
+}
+
+.agent-session-node {
+  width: 460px;
+}
+
+.terminal-session-node {
+  width: 360px;
+}
+
+.object-editor-node {
+  width: 380px;
+  overflow: hidden;
+}
+
+.window-chrome {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, #0f172a 16%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0b1324 10%);
+}
+
+.window-title {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.window-title strong {
+  font-size: 14px;
+}
+
+.window-title span {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tone-running {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.tone-success {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+}
+
+.tone-idle {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--vscode-descriptionForeground);
+}
+
+.tone-warning {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d;
+}
+
+.tone-error {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+}
+
+.session-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.session-banner {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, #0f172a 18%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #0b1426 12%);
+}
+
+.session-banner strong {
+  font-size: 13px;
+}
+
+.session-banner span {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.5;
+}
+
+.agent-transcript {
+  display: grid;
+  gap: 10px;
+  min-height: 220px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.agent-empty-state {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 82%, #0f172a 18%);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-bubble {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, #0f172a 16%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0b1426 10%);
+}
+
+.agent-bubble.role-user {
+  background: color-mix(in srgb, rgba(56, 189, 248, 0.16) 48%, var(--vscode-editor-background) 52%);
+}
+
+.agent-bubble.role-assistant {
+  background: color-mix(in srgb, rgba(34, 197, 94, 0.14) 40%, var(--vscode-editor-background) 60%);
+}
+
+.agent-bubble.role-status {
+  background: color-mix(in srgb, rgba(148, 163, 184, 0.08) 40%, var(--vscode-editor-background) 60%);
+}
+
+.agent-bubble.state-error {
+  border-color: rgba(248, 113, 113, 0.38);
+}
+
+.agent-bubble-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.agent-bubble-header span {
+  color: var(--vscode-descriptionForeground);
+}
+
+.agent-bubble-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-composer {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-composer-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.agent-provider-select,
+.agent-prompt-input,
+.selected-node-output {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--vscode-panel-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+}
+
+.agent-provider-select {
+  flex: 1;
+  padding: 8px 10px;
+}
+
+.agent-prompt-input {
+  min-height: 90px;
+  resize: vertical;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.terminal-surface {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #08101f 12%);
+  border: 1px solid color-mix(in srgb, #38bdf8 22%, var(--vscode-panel-border) 78%);
+  font-family: var(--vscode-editor-font-family);
+}
+
+.terminal-surface-line {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+
+.terminal-surface-prefix {
+  color: #86efac;
+  font-weight: 700;
+}
+
+.terminal-surface-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.object-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.object-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.node-field {
+  display: grid;
+  gap: 6px;
+}
+
+.node-field-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.node-text-input,
+.node-textarea,
+.node-select {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--vscode-panel-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+}
+
+.node-text-input,
+.node-select {
+  padding: 9px 11px;
+}
+
+.node-textarea {
+  resize: vertical;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.task-textarea {
+  min-height: 120px;
+}
+
+.note-textarea {
+  min-height: 190px;
+}
+
+.node-text-input:focus,
+.node-textarea:focus,
+.node-select:focus,
+.agent-provider-select:focus,
+.agent-prompt-input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  border-color: var(--vscode-focusBorder);
 }
 
 .node-topline {
@@ -162,26 +466,28 @@ body {
   font-size: 14px;
 }
 
-.node-topline span {
+.node-topline span,
+.selected-node-header span {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--vscode-descriptionForeground);
 }
 
-.node-status {
-  margin-bottom: 8px;
+.node-status,
+.selected-node-status {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 
 .node-hint {
-  margin-bottom: 8px;
+  margin: 8px 0;
   font-size: 11px;
   color: color-mix(in srgb, var(--vscode-descriptionForeground) 82%, #38bdf8 18%);
 }
 
-.canvas-node p {
+.compact-node p,
+.selected-node-panel p {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
@@ -192,10 +498,10 @@ body {
   display: grid;
   gap: 4px;
   font-size: 12px;
-  color: var(--vscode-descriptionForeground);
 }
 
-.selected-node-panel {
+.selected-node-panel,
+.selected-node-meta-group {
   display: grid;
   gap: 10px;
 }
@@ -205,37 +511,6 @@ body {
   justify-content: space-between;
   gap: 8px;
   align-items: flex-start;
-}
-
-.selected-node-header span {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground);
-}
-
-.selected-node-status {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.selected-node-panel p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--vscode-editor-foreground);
-}
-
-.selected-node-terminal {
-  display: grid;
-  gap: 10px;
-  padding-top: 4px;
-}
-
-.selected-node-agent {
-  display: grid;
-  gap: 10px;
-  padding-top: 4px;
 }
 
 .selected-node-meta {
@@ -250,30 +525,6 @@ body {
   border: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
   word-break: break-all;
-}
-
-.agent-prompt-input,
-.agent-provider-select,
-.selected-node-output {
-  width: 100%;
-  box-sizing: border-box;
-  border-radius: 12px;
-  border: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
-  color: var(--vscode-editor-foreground);
-}
-
-.agent-provider-select {
-  padding: 8px 10px;
-  font: inherit;
-}
-
-.agent-prompt-input {
-  min-height: 108px;
-  resize: vertical;
-  padding: 10px 12px;
-  font: inherit;
-  line-height: 1.5;
 }
 
 .selected-node-output {

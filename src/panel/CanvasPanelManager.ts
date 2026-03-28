@@ -4,12 +4,16 @@ import * as vscode from 'vscode';
 import {
   type AgentNodeMetadata,
   type AgentProviderKind,
+  type AgentTranscriptEntry,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type HostToWebviewMessage,
+  type NoteNodeMetadata,
+  type TaskNodeMetadata,
+  type TaskNodeStatus,
   type TerminalNodeMetadata,
   isCanvasNodeKind,
   parseWebviewMessage
@@ -154,6 +158,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           case 'webview/reconnectTerminal':
             void this.reconnectTerminal(parsedMessage.payload.nodeId);
             break;
+          case 'webview/updateTaskNode':
+            this.state = updateTaskContent(this.state, parsedMessage.payload);
+            this.persistState();
+            this.postState('host/stateUpdated');
+            break;
+          case 'webview/updateNoteNode':
+            this.state = updateNoteContent(this.state, parsedMessage.payload);
+            this.persistState();
+            this.postState('host/stateUpdated');
+            break;
           case 'webview/resetDemoState':
             this.cancelAllAgentRuns();
             this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
@@ -257,6 +271,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
     const runId = createAgentRunId(nodeId);
     const cliSpec = this.resolveAgentCli(provider);
+    const initialTranscript = beginAgentTranscript(
+      ensureAgentMetadata(agentNode).transcript ?? [],
+      runId,
+      trimmedPrompt
+    );
     let aggregatedResponse = '';
     let aggregatedError = '';
 
@@ -266,6 +285,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       metadata: buildAgentMetadataPatch(this.state, nodeId, {
         provider,
         liveRun: true,
+        transcript: initialTranscript,
         lastPrompt: trimmedPrompt,
         lastResponse: undefined,
         lastRunId: runId,
@@ -308,6 +328,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           status === 'idle'
             ? summarizeAgentResponse(finalOutput, false)
             : message ?? summarizeAgentFailure(finalError || finalOutput);
+        const transcript = finalizeAgentTranscript(
+          readAgentTranscript(this.state, nodeId),
+          runId,
+          status,
+          finalOutput,
+          message ?? finalError
+        );
 
         this.state = updateAgentNode(this.state, nodeId, {
           status,
@@ -315,6 +342,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
             provider,
             liveRun: false,
+            transcript,
             lastPrompt: trimmedPrompt,
             lastRunId: runId,
             lastBackendLabel: cliSpec.label,
@@ -342,6 +370,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
         session.stdout = trimStoredAgentText(`${session.stdout}${text}`);
         aggregatedResponse = trimStoredAgentText(stripAnsi(session.stdout).trim());
+        const transcript = updateAssistantTranscript(
+          readAgentTranscript(this.state, nodeId),
+          runId,
+          aggregatedResponse,
+          'streaming'
+        );
 
         this.state = updateAgentNode(this.state, nodeId, {
           status: 'running',
@@ -349,6 +383,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
             provider,
             liveRun: true,
+            transcript,
             lastPrompt: trimmedPrompt,
             lastRunId: runId,
             lastBackendLabel: cliSpec.label,
@@ -412,6 +447,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
           provider,
           liveRun: false,
+          transcript: finalizeAgentTranscript(
+            readAgentTranscript(this.state, nodeId),
+            runId,
+            'error',
+            '',
+            errorMessage
+          ),
           lastPrompt: trimmedPrompt,
           lastRunId: runId,
           lastBackendLabel: cliSpec.label
@@ -651,13 +693,26 @@ function createNextState(
 function defaultSummaryForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return '等待输入目标并通过 CLI 启动真实 Agent。';
+      return '等待在节点内输入第一条消息，并启动真实 CLI Agent 运行。';
     case 'terminal':
       return '尚未创建宿主终端，选中后可创建并显示。';
     case 'task':
-      return '用于验证任务状态展示的占位节点';
+      return '等待补充任务描述。';
     case 'note':
-      return '用于验证最小协作上下文的占位节点';
+      return '等待记录笔记内容。';
+  }
+}
+
+function defaultStatusForKind(kind: CanvasNodeKind): string {
+  switch (kind) {
+    case 'agent':
+      return 'idle';
+    case 'terminal':
+      return 'draft';
+    case 'task':
+      return 'todo';
+    case 'note':
+      return 'ready';
   }
 }
 
@@ -678,14 +733,7 @@ function createNode(
     id,
     kind,
     title: `${titlePrefix[kind]} ${sequence}`,
-    status:
-      kind === 'terminal'
-        ? 'draft'
-        : kind === 'agent'
-          ? 'idle'
-          : sequence % 2 === 0
-            ? 'running'
-            : 'idle',
+    status: defaultStatusForKind(kind),
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
     metadata: createNodeMetadata(kind, id, defaultAgentProvider)
@@ -761,7 +809,7 @@ function normalizeNode(
     id: value.id,
     kind: value.kind,
     title: typeof value.title === 'string' ? value.title : `${capitalize(value.kind)} ${sequence}`,
-    status: typeof value.status === 'string' ? value.status : 'idle',
+    status: typeof value.status === 'string' ? value.status : defaultStatusForKind(value.kind),
     summary:
       typeof value.summary === 'string'
         ? value.summary
@@ -811,13 +859,26 @@ function createNodeMetadata(
     };
   }
 
+  if (kind === 'task') {
+    return {
+      task: createTaskMetadata()
+    };
+  }
+
+  if (kind === 'note') {
+    return {
+      note: createNoteMetadata()
+    };
+  }
+
   return undefined;
 }
 
 function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
   return {
     provider,
-    liveRun: false
+    liveRun: false,
+    transcript: []
   };
 }
 
@@ -826,6 +887,19 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
     terminalName: `OpenCove Terminal · ${nodeId}`,
     liveSession: false,
     revealMode: 'editor'
+  };
+}
+
+function createTaskMetadata(): TaskNodeMetadata {
+  return {
+    description: '',
+    assignee: ''
+  };
+}
+
+function createNoteMetadata(): NoteNodeMetadata {
+  return {
+    content: ''
   };
 }
 
@@ -847,6 +921,7 @@ function normalizeMetadata(
             ? agent.provider
             : fallback.provider,
         liveRun: typeof agent.liveRun === 'boolean' ? agent.liveRun : fallback.liveRun,
+        transcript: normalizeAgentTranscript(agent.transcript),
         lastPrompt:
           typeof agent.lastPrompt === 'string' ? trimStoredAgentText(agent.lastPrompt) : undefined,
         lastResponse:
@@ -883,7 +958,73 @@ function normalizeMetadata(
     };
   }
 
+  if (kind === 'task') {
+    const task = isRecord(record.task) ? record.task : {};
+    const fallback = createTaskMetadata();
+
+    return {
+      task: {
+        description:
+          typeof task.description === 'string'
+            ? trimStoredNodeText(task.description)
+            : fallback.description,
+        assignee:
+          typeof task.assignee === 'string'
+            ? trimStoredNodeText(task.assignee)
+            : fallback.assignee
+      }
+    };
+  }
+
+  if (kind === 'note') {
+    const note = isRecord(record.note) ? record.note : {};
+    const fallback = createNoteMetadata();
+
+    return {
+      note: {
+        content:
+          typeof note.content === 'string'
+            ? trimStoredNodeText(note.content)
+            : fallback.content
+      }
+    };
+  }
+
   return undefined;
+}
+
+function normalizeAgentTranscript(value: unknown): AgentTranscriptEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return trimAgentTranscript(
+    value
+      .map((entry) => normalizeAgentTranscriptEntry(entry))
+      .filter((entry): entry is AgentTranscriptEntry => entry !== null)
+  );
+}
+
+function normalizeAgentTranscriptEntry(value: unknown): AgentTranscriptEntry | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.text !== 'string') {
+    return null;
+  }
+
+  if (value.role !== 'user' && value.role !== 'assistant' && value.role !== 'status') {
+    return null;
+  }
+
+  const state =
+    value.state === 'streaming' || value.state === 'done' || value.state === 'error'
+      ? value.state
+      : undefined;
+
+  return {
+    id: value.id,
+    role: value.role,
+    text: trimStoredAgentText(value.text),
+    state
+  };
 }
 
 function reconcileRuntimeNodes(state: CanvasPrototypeState): CanvasPrototypeState {
@@ -894,7 +1035,9 @@ function reconcileRuntimeNodes(state: CanvasPrototypeState): CanvasPrototypeStat
 }
 
 function reconcileRuntimeNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
-  return reconcileAgentNodesInArray(reconcileTerminalNodesInArray(nodes));
+  return reconcileTaskAndNoteNodesInArray(
+    reconcileAgentNodesInArray(reconcileTerminalNodesInArray(nodes))
+  );
 }
 
 function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
@@ -913,7 +1056,12 @@ function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSumma
           ...node.metadata,
           agent: {
             ...metadata,
-            liveRun: false
+            liveRun: false,
+            transcript: markAgentTranscriptInterrupted(
+              metadata.transcript ?? [],
+              metadata.lastRunId,
+              '扩展重载后，本轮运行未恢复。'
+            )
           }
         }
       };
@@ -965,6 +1113,51 @@ function reconcileTerminalNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSu
         }
       }
     };
+  });
+}
+
+function reconcileTaskAndNoteNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+  return nodes.map((node) => {
+    if (node.kind === 'task') {
+      const metadata = ensureTaskMetadata(node);
+      const shouldMigrate =
+        node.summary === '用于验证任务状态展示的占位节点' ||
+        !node.metadata?.task;
+
+      return {
+        ...node,
+        status:
+          node.status === 'todo' || node.status === 'running' || node.status === 'blocked' || node.status === 'done'
+            ? node.status
+            : 'todo',
+        summary: shouldMigrate
+          ? summarizeTaskNode(metadata.description, metadata.assignee, 'todo')
+          : node.summary,
+        metadata: {
+          ...node.metadata,
+          task: metadata
+        }
+      };
+    }
+
+    if (node.kind === 'note') {
+      const metadata = ensureNoteMetadata(node);
+      const shouldMigrate =
+        node.summary === '用于验证最小协作上下文的占位节点' ||
+        !node.metadata?.note;
+
+      return {
+        ...node,
+        status: node.status === 'ready' ? node.status : 'ready',
+        summary: shouldMigrate ? summarizeNoteNode(metadata.content) : node.summary,
+        metadata: {
+          ...node.metadata,
+          note: metadata
+        }
+      };
+    }
+
+    return node;
   });
 }
 
@@ -1045,12 +1238,108 @@ function updateAgentNode(
   return updateCanvasNode(state, nodeId, patch);
 }
 
+function updateTaskContent(
+  state: CanvasPrototypeState,
+  payload: {
+    nodeId: string;
+    title: string;
+    status: TaskNodeStatus;
+    description: string;
+    assignee: string;
+  }
+): CanvasPrototypeState {
+  const node = state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'task');
+  if (!node) {
+    return state;
+  }
+
+  const nextTitle = trimStoredNodeText(payload.title).trim() || node.title;
+  const nextDescription = trimStoredNodeText(payload.description);
+  const nextAssignee = trimStoredNodeText(payload.assignee);
+  const nextMetadata: CanvasNodeMetadata = {
+    ...node.metadata,
+    task: {
+      ...ensureTaskMetadata(node),
+      description: nextDescription,
+      assignee: nextAssignee
+    }
+  };
+
+  const nextNodes = state.nodes.map((currentNode) =>
+    currentNode.id === payload.nodeId
+      ? {
+          ...currentNode,
+          title: nextTitle,
+          status: payload.status,
+          summary: summarizeTaskNode(nextDescription, nextAssignee, payload.status),
+          metadata: nextMetadata
+        }
+      : currentNode
+  );
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
+function updateNoteContent(
+  state: CanvasPrototypeState,
+  payload: {
+    nodeId: string;
+    title: string;
+    content: string;
+  }
+): CanvasPrototypeState {
+  const node = state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+  if (!node) {
+    return state;
+  }
+
+  const nextTitle = trimStoredNodeText(payload.title).trim() || node.title;
+  const nextContent = trimStoredNodeText(payload.content);
+  const nextMetadata: CanvasNodeMetadata = {
+    ...node.metadata,
+    note: {
+      ...ensureNoteMetadata(node),
+      content: nextContent
+    }
+  };
+
+  const nextNodes = state.nodes.map((currentNode) =>
+    currentNode.id === payload.nodeId
+      ? {
+          ...currentNode,
+          title: nextTitle,
+          status: 'ready',
+          summary: summarizeNoteNode(nextContent),
+          metadata: nextMetadata
+        }
+      : currentNode
+  );
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
 function ensureAgentMetadata(node: CanvasNodeSummary): AgentNodeMetadata {
   return node.metadata?.agent ?? createAgentMetadata();
 }
 
 function ensureTerminalMetadata(node: CanvasNodeSummary): TerminalNodeMetadata {
   return node.metadata?.terminal ?? createTerminalMetadata(node.id);
+}
+
+function ensureTaskMetadata(node: CanvasNodeSummary): TaskNodeMetadata {
+  return node.metadata?.task ?? createTaskMetadata();
+}
+
+function ensureNoteMetadata(node: CanvasNodeSummary): NoteNodeMetadata {
+  return node.metadata?.note ?? createNoteMetadata();
 }
 
 function buildAgentMetadataPatch(
@@ -1069,6 +1358,175 @@ function buildAgentMetadataPatch(
   };
 }
 
+function readAgentTranscript(state: CanvasPrototypeState, nodeId: string): AgentTranscriptEntry[] {
+  const agentNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+  if (!agentNode) {
+    return [];
+  }
+
+  return ensureAgentMetadata(agentNode).transcript ?? [];
+}
+
+function beginAgentTranscript(
+  existing: AgentTranscriptEntry[],
+  runId: string,
+  prompt: string
+): AgentTranscriptEntry[] {
+  return trimAgentTranscript([
+    ...existing,
+    {
+      id: createAgentTranscriptEntryId(runId, 'user'),
+      role: 'user',
+      text: trimStoredAgentText(prompt),
+      state: 'done'
+    },
+    {
+      id: createAgentTranscriptEntryId(runId, 'assistant'),
+      role: 'assistant',
+      text: '',
+      state: 'streaming'
+    }
+  ]);
+}
+
+function updateAssistantTranscript(
+  existing: AgentTranscriptEntry[],
+  runId: string,
+  output: string,
+  state: 'streaming' | 'done' | 'error'
+): AgentTranscriptEntry[] {
+  return upsertAgentTranscriptEntry(existing, {
+    id: createAgentTranscriptEntryId(runId, 'assistant'),
+    role: 'assistant',
+    text: trimStoredAgentText(output),
+    state
+  });
+}
+
+function finalizeAgentTranscript(
+  existing: AgentTranscriptEntry[],
+  runId: string,
+  status: 'idle' | 'error' | 'cancelled',
+  output: string,
+  statusMessage?: string
+): AgentTranscriptEntry[] {
+  let transcript = existing;
+  const normalizedOutput = trimStoredAgentText(output);
+
+  if (normalizedOutput) {
+    transcript = updateAssistantTranscript(
+      transcript,
+      runId,
+      normalizedOutput,
+      status === 'error' ? 'error' : 'done'
+    );
+  } else {
+    transcript = removeAgentTranscriptEntry(
+      transcript,
+      createAgentTranscriptEntryId(runId, 'assistant')
+    );
+  }
+
+  const nextStatusMessage = normalizeAgentTranscriptStatusMessage(status, normalizedOutput, statusMessage);
+  if (!nextStatusMessage) {
+    return removeAgentTranscriptEntry(transcript, createAgentTranscriptEntryId(runId, 'status'));
+  }
+
+  return upsertAgentTranscriptEntry(transcript, {
+    id: createAgentTranscriptEntryId(runId, 'status'),
+    role: 'status',
+    text: nextStatusMessage,
+    state: status === 'error' ? 'error' : 'done'
+  });
+}
+
+function markAgentTranscriptInterrupted(
+  existing: AgentTranscriptEntry[],
+  runId: string | undefined,
+  message: string
+): AgentTranscriptEntry[] {
+  if (!runId) {
+    return trimAgentTranscript(existing);
+  }
+
+  let transcript = existing;
+  const assistantId = createAgentTranscriptEntryId(runId, 'assistant');
+  const assistantEntry = transcript.find((entry) => entry.id === assistantId);
+  if (assistantEntry) {
+    if (assistantEntry.text) {
+      transcript = updateAssistantTranscript(transcript, runId, assistantEntry.text, 'done');
+    } else {
+      transcript = removeAgentTranscriptEntry(transcript, assistantId);
+    }
+  }
+
+  return upsertAgentTranscriptEntry(transcript, {
+    id: createAgentTranscriptEntryId(runId, 'status'),
+    role: 'status',
+    text: message,
+    state: 'error'
+  });
+}
+
+function normalizeAgentTranscriptStatusMessage(
+  status: 'idle' | 'error' | 'cancelled',
+  output: string,
+  statusMessage?: string
+): string {
+  if (status === 'idle') {
+    return output ? '' : '本轮运行已完成，但没有返回可展示文本。';
+  }
+
+  if (status === 'cancelled') {
+    return statusMessage || '本轮运行已停止。';
+  }
+
+  return statusMessage || '本轮运行失败。';
+}
+
+function upsertAgentTranscriptEntry(
+  entries: AgentTranscriptEntry[],
+  nextEntry: AgentTranscriptEntry
+): AgentTranscriptEntry[] {
+  const nextEntries = entries.filter((entry) => entry.id !== nextEntry.id);
+  nextEntries.push({
+    ...nextEntry,
+    text: trimStoredAgentText(nextEntry.text)
+  });
+  return trimAgentTranscript(nextEntries);
+}
+
+function removeAgentTranscriptEntry(
+  entries: AgentTranscriptEntry[],
+  entryId: string
+): AgentTranscriptEntry[] {
+  return trimAgentTranscript(entries.filter((entry) => entry.id !== entryId));
+}
+
+function trimAgentTranscript(entries: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
+  const limited = entries
+    .slice(-18)
+    .map((entry) => ({
+      ...entry,
+      text: trimStoredAgentText(entry.text)
+    }));
+
+  let totalChars = limited.reduce((sum, entry) => sum + entry.text.length, 0);
+  while (totalChars > 12000 && limited.length > 1) {
+    const removed = limited.shift();
+    totalChars -= removed?.text.length ?? 0;
+  }
+
+  return limited;
+}
+
+function createAgentTranscriptEntryId(
+  runId: string,
+  role: AgentTranscriptEntry['role']
+): string {
+  return `${runId}:${role}`;
+}
+
 function isLegacyPlaceholderAgent(
   node: CanvasNodeSummary,
   metadata: AgentNodeMetadata
@@ -1076,6 +1534,7 @@ function isLegacyPlaceholderAgent(
   return (
     node.summary === '等待接入真实 backend 的原型节点' &&
     !metadata.liveRun &&
+    (!metadata.transcript || metadata.transcript.length === 0) &&
     !metadata.lastPrompt &&
     !metadata.lastResponse &&
     !metadata.lastBackendLabel &&
@@ -1096,8 +1555,40 @@ function summarizeAgentResponse(response: string, running: boolean): string {
   return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
 }
 
+function summarizeTaskNode(
+  description: string,
+  assignee: string,
+  status: TaskNodeStatus
+): string {
+  const normalizedDescription = description.replace(/\s+/g, ' ').trim();
+  const normalizedAssignee = assignee.replace(/\s+/g, ' ').trim();
+  if (normalizedDescription) {
+    const summary = normalizedDescription.length > 120
+      ? `${normalizedDescription.slice(0, 120)}...`
+      : normalizedDescription;
+    return normalizedAssignee ? `${summary} · 负责人：${normalizedAssignee}` : summary;
+  }
+
+  return normalizedAssignee
+    ? `${humanizeTaskStatus(status)} · 负责人：${normalizedAssignee}`
+    : `${humanizeTaskStatus(status)} · 等待补充任务描述。`;
+}
+
+function summarizeNoteNode(content: string): string {
+  const normalizedContent = content.replace(/\s+/g, ' ').trim();
+  if (!normalizedContent) {
+    return '等待记录笔记内容。';
+  }
+
+  return normalizedContent.length > 140 ? `${normalizedContent.slice(0, 140)}...` : normalizedContent;
+}
+
 function trimStoredAgentText(value: string): string {
   return value.length > 4000 ? value.slice(0, 4000) : value;
+}
+
+function trimStoredNodeText(value: string): string {
+  return value.length > 8000 ? value.slice(0, 8000) : value;
 }
 
 function summarizeAgentFailure(output: string, running = false): string {
@@ -1143,6 +1634,19 @@ function describeAgentCliExit(
   }
 
   return `${spec.label} 提前结束。${suffix}`.trim();
+}
+
+function humanizeTaskStatus(status: TaskNodeStatus): string {
+  switch (status) {
+    case 'todo':
+      return '待办';
+    case 'running':
+      return '进行中';
+    case 'blocked':
+      return '受阻';
+    case 'done':
+      return '已完成';
+  }
 }
 
 function findTerminalByName(name: string): vscode.Terminal | undefined {

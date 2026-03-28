@@ -18,6 +18,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/canvas-architecture-research.md
   - docs/exec-plans/active/agent-runtime-prototype.md
+  - docs/exec-plans/active/agent-session-surface-alignment.md
 updated_at: 2026-03-28
 ---
 
@@ -276,6 +277,12 @@ updated_at: 2026-03-28
 
 在当前原型阶段，`Agent` 节点的第一条真实 backend 路线收敛为“宿主直接启动 `codex` / `claude` CLI 会话”，并通过配置项解决 PATH 与命令路径差异，而不是把节点绑定到 VSCode 内置语言模型。详细取舍见 `docs/design-docs/agent-runtime-prototype.md`。
 
+同时需要补一个产品表面约束：
+
+- `Agent` 节点的正确语义是“画布上的会话窗口”，不是“右侧 inspector 里的单次请求卡片”。
+- 因此主交互必须在节点内部承载，至少包括输入区、运行状态和连续转录。
+- 右侧检查器最多只保留概况，不再承载 Agent 的主要操作。详细结论见 `docs/design-docs/agent-session-surface.md`。
+
 ### 7.7 安全与信任边界
 
 当前建议在扩展层显式支持 Restricted Mode：
@@ -302,6 +309,9 @@ updated_at: 2026-03-28
 
 - 风险：Agent 适配层如果过度抽象，后续实现时可能发现真正的执行模型差异很大。
   当前缓解：已选定以 CLI Agent 代理节点作为第一条最小真实 backend 路线，并通过独立原型验证其状态回流与恢复边界。
+
+- 风险：如果 Agent 节点继续依赖 inspector 才能交互，画布会失去“空间化会话窗口”的核心价值。
+  当前缓解：已新增独立设计文档，把 Agent 的主交互面收敛到节点内部，并让执行型对象共享 runtime window 风格。
 
 ## 9. 验证方法
 

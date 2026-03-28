@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactFlow, {
   Background,
@@ -17,11 +17,13 @@ import './styles.css';
 
 import type {
   AgentProviderKind,
+  AgentTranscriptEntry,
   CanvasNodeKind,
   CanvasNodeMetadata,
   CanvasNodeSummary,
   CanvasPrototypeState,
   HostToWebviewMessage,
+  TaskNodeStatus,
   WebviewToHostMessage
 } from '../common/protocol';
 
@@ -34,6 +36,8 @@ declare function acquireVsCodeApi<T>(): {
 interface LocalUiState {
   selectedNodeId?: string;
   viewport?: Viewport;
+  agentDraftSnapshots?: Record<string, string>;
+  agentProviderDrafts?: Record<string, AgentProviderKind>;
 }
 
 interface CanvasNodeData {
@@ -43,11 +47,34 @@ interface CanvasNodeData {
   summary: string;
   selected: boolean;
   metadata?: CanvasNodeMetadata;
+  initialAgentDraft?: string;
+  agentProvider?: AgentProviderKind;
+  onSelectNode?: (nodeId: string) => void;
+  onPersistAgentDraft?: (nodeId: string, value: string) => void;
+  onAgentProviderChange?: (nodeId: string, value: AgentProviderKind) => void;
+  onStartAgent?: (nodeId: string, prompt: string, provider: AgentProviderKind) => void;
+  onStopAgent?: (nodeId: string) => void;
+  onEnsureTerminal?: (nodeId: string) => void;
+  onRevealTerminal?: (nodeId: string) => void;
+  onReconnectTerminal?: (nodeId: string) => void;
+  onUpdateTask?: (payload: {
+    nodeId: string;
+    title: string;
+    status: TaskNodeStatus;
+    description: string;
+    assignee: string;
+  }) => void;
+  onUpdateNote?: (payload: {
+    nodeId: string;
+    title: string;
+    content: string;
+  }) => void;
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
 
 const vscode = acquireVsCodeApi<LocalUiState>();
+const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 
 if (!rootElement) {
@@ -58,9 +85,16 @@ const root = createRoot(rootElement);
 
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
-  const [localUiState, setLocalUiState] = useState<LocalUiState>(() => vscode.getState() ?? {});
-  const [agentDrafts, setAgentDrafts] = useState<Record<string, string>>({});
-  const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>({});
+  const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
+    selectedNodeId: initialPersistedState.selectedNodeId,
+    viewport: initialPersistedState.viewport
+  }));
+  const [agentDraftSnapshots, setAgentDraftSnapshots] = useState<Record<string, string>>(
+    () => initialPersistedState.agentDraftSnapshots ?? {}
+  );
+  const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>(
+    () => initialPersistedState.agentProviderDrafts ?? {}
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
 
@@ -94,31 +128,107 @@ function App(): JSX.Element {
     };
   }, []);
 
-  const nodes = useMemo(
-    () => toFlowNodes(hostState?.nodes ?? [], localUiState.selectedNodeId),
-    [hostState, localUiState.selectedNodeId]
-  );
+  useEffect(() => {
+    vscode.setState({
+      ...localUiState,
+      agentDraftSnapshots,
+      agentProviderDrafts
+    });
+  }, [localUiState, agentDraftSnapshots, agentProviderDrafts]);
 
-  const selectedNode = useMemo(
-    () => hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId),
-    [hostState, localUiState.selectedNodeId]
-  );
+  const selectedNode = hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId);
+  const updatedAtLabel = hostState
+    ? new Date(hostState.updatedAt).toLocaleString()
+    : '等待宿主初始化';
 
-  const selectedAgentDraft =
-    selectedNode?.kind === 'agent'
-      ? agentDrafts[selectedNode.id] ?? selectedNode.metadata?.agent?.lastPrompt ?? ''
-      : '';
-  const selectedAgentProvider =
-    selectedNode?.kind === 'agent'
-      ? agentProviderDrafts[selectedNode.id] ?? selectedNode.metadata?.agent?.provider ?? 'codex'
-      : 'codex';
+  const nodes = toFlowNodes({
+    nodes: hostState?.nodes ?? [],
+    selectedNodeId: localUiState.selectedNodeId,
+    agentDraftSnapshots,
+    agentProviderDrafts,
+    onSelectNode: (nodeId) => {
+      if (localUiState.selectedNodeId === nodeId) {
+        return;
+      }
+
+      setLocalUiState((current) => ({
+        ...current,
+        selectedNodeId: nodeId
+      }));
+    },
+    onPersistAgentDraft: (nodeId, value) => {
+      setAgentDraftSnapshots((current) => ({
+        ...current,
+        [nodeId]: value
+      }));
+    },
+    onAgentProviderChange: (nodeId, value) => {
+      setAgentProviderDrafts((current) => ({
+        ...current,
+        [nodeId]: value
+      }));
+    },
+    onStartAgent: (nodeId, prompt, provider) => {
+      const trimmedPrompt = prompt.trim();
+      if (!trimmedPrompt) {
+        return;
+      }
+
+      postMessage({
+        type: 'webview/startAgentRun',
+        payload: {
+          nodeId,
+          prompt: trimmedPrompt,
+          provider
+        }
+      });
+
+      setAgentDraftSnapshots((current) => ({
+        ...current,
+        [nodeId]: ''
+      }));
+    },
+    onStopAgent: (nodeId) =>
+      postMessage({
+        type: 'webview/stopAgentRun',
+        payload: { nodeId }
+      }),
+    onEnsureTerminal: (nodeId) =>
+      postMessage({
+        type: 'webview/ensureTerminalSession',
+        payload: { nodeId }
+      }),
+    onRevealTerminal: (nodeId) =>
+      postMessage({
+        type: 'webview/revealTerminal',
+        payload: { nodeId }
+      }),
+    onReconnectTerminal: (nodeId) =>
+      postMessage({
+        type: 'webview/reconnectTerminal',
+        payload: { nodeId }
+      }),
+    onUpdateTask: (payload) =>
+      postMessage({
+        type: 'webview/updateTaskNode',
+        payload
+      }),
+    onUpdateNote: (payload) =>
+      postMessage({
+        type: 'webview/updateNoteNode',
+        payload
+      })
+  });
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
     setLocalUiState(nextState);
-    vscode.setState(nextState);
   };
 
   const handleNodeClick: NodeMouseHandler = (_event, node) => {
+    if (isInteractiveTarget(_event.target)) {
+      return;
+    }
+
     updateLocalUiState({
       ...localUiState,
       selectedNodeId: node.id
@@ -153,10 +263,6 @@ function App(): JSX.Element {
     });
   };
 
-  const updatedAtLabel = hostState
-    ? new Date(hostState.updatedAt).toLocaleString()
-    : '等待宿主初始化';
-
   return (
     <div className="canvas-shell">
       <ReactFlow
@@ -184,10 +290,8 @@ function App(): JSX.Element {
 
         <Panel position="top-left" className="hero-panel">
           <div className="eyebrow">OpenCove Prototype</div>
-          <h1>React Flow canvas prototype</h1>
-          <p>
-            当前重点是验证“真正的空间化画布 + 宿主权威状态 + typed message bridge”这条主线。
-          </p>
+          <h1>Canvas runtime windows</h1>
+          <p>当前重点是把 Agent 和 Terminal 收敛成真正放在画布上的会话窗口，而不是侧栏驱动的配置卡片。</p>
           <div className="meta-row">
             <div>
               <span className="meta-label">宿主状态更新时间</span>
@@ -203,7 +307,7 @@ function App(): JSX.Element {
         <Panel position="top-right" className="actions-panel">
           <section>
             <h2>创建示例对象</h2>
-            <p>用最小动作验证宿主消息处理、节点创建和画布状态投影。</p>
+            <p>直接创建四类对象，验证会话窗口、宿主消息处理与节点状态投影。</p>
             <div className="action-row">
               <ActionButton label="新增 Agent" onClick={() => createNode('agent')} />
               <ActionButton label="新增 Terminal" onClick={() => createNode('terminal')} />
@@ -213,7 +317,7 @@ function App(): JSX.Element {
           </section>
           <section>
             <h2>恢复链路</h2>
-            <p>宿主负责对象图与位置，Webview 只记录视口与选中态等局部 UI 状态。</p>
+            <p>宿主仍是对象图权威来源；Webview 只保存视口、选中态和节点内草稿。</p>
             <div className="action-row">
               <ActionButton
                 label="重置宿主状态"
@@ -223,68 +327,14 @@ function App(): JSX.Element {
             </div>
           </section>
           <section>
-            <h2>选中节点</h2>
-            {selectedNode ? (
-              <SelectedNodeDetails
-                node={selectedNode}
-                agentDraft={selectedAgentDraft}
-                onAgentDraftChange={(value) => {
-                  setAgentDrafts((current) => ({
-                    ...current,
-                    [selectedNode.id]: value
-                  }));
-                }}
-                onStartAgent={() =>
-                  postMessage({
-                    type: 'webview/startAgentRun',
-                    payload: {
-                      nodeId: selectedNode.id,
-                      prompt: selectedAgentDraft,
-                      provider: selectedAgentProvider
-                    }
-                  })
-                }
-                agentProvider={selectedAgentProvider}
-                onAgentProviderChange={(value) => {
-                  setAgentProviderDrafts((current) => ({
-                    ...current,
-                    [selectedNode.id]: value
-                  }));
-                }}
-                onStopAgent={() =>
-                  postMessage({
-                    type: 'webview/stopAgentRun',
-                    payload: { nodeId: selectedNode.id }
-                  })
-                }
-                onEnsureTerminal={() =>
-                  postMessage({
-                    type: 'webview/ensureTerminalSession',
-                    payload: { nodeId: selectedNode.id }
-                  })
-                }
-                onRevealTerminal={() =>
-                  postMessage({
-                    type: 'webview/revealTerminal',
-                    payload: { nodeId: selectedNode.id }
-                  })
-                }
-                onReconnectTerminal={() =>
-                  postMessage({
-                    type: 'webview/reconnectTerminal',
-                    payload: { nodeId: selectedNode.id }
-                  })
-                }
-              />
-            ) : (
-              <p>选中一个节点后，这里会显示节点详情与可用动作。</p>
-            )}
+            <h2>选中节点概况</h2>
+            {selectedNode ? <SelectedNodeDetails node={selectedNode} /> : <p>选中一个节点后，这里会显示当前概况。</p>}
           </section>
         </Panel>
 
         <Panel position="bottom-left" className="footer-panel">
           <strong>当前验证范围</strong>
-          <span>平移、缩放、节点呈现、拖拽回传、宿主状态恢复入口。</span>
+          <span>节点内会话交互、宿主状态回流、拖拽定位和 Webview 局部状态恢复。</span>
         </Panel>
       </ReactFlow>
 
@@ -300,24 +350,518 @@ function App(): JSX.Element {
   }
 }
 
-function CanvasCardNode({ data }: NodeProps<CanvasNodeData>): JSX.Element {
+function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const agentMetadata = data.metadata?.agent;
+  if (!agentMetadata) {
+    return <CanvasCardNode data={data} />;
+  }
+
+  const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
+  const transcript = agentMetadata.transcript ?? [];
+  const initialDraft = data.initialAgentDraft ?? agentMetadata.lastPrompt ?? '';
+  const [draft, setDraft] = useState(initialDraft);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
+  const actionLabel = agentMetadata.liveRun ? '停止' : '发送';
+
+  useEffect(() => {
+    if (!isFocused && !isComposing) {
+      setDraft(initialDraft);
+    }
+  }, [id, initialDraft, isFocused, isComposing]);
+
+  const submitDraft = (): void => {
+    const trimmedDraft = draft.trim();
+    if (!trimmedDraft || agentMetadata.liveRun) {
+      return;
+    }
+
+    data.onStartAgent?.(id, trimmedDraft, provider);
+    setDraft('');
+  };
+
+  return (
+    <div className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}>
+      <div className="window-chrome">
+        <div className="window-title">
+          <strong>{providerLabel(provider)}</strong>
+          <span>{data.title}</span>
+        </div>
+        <span className={`status-pill ${statusToneClass(data.status)}`}>
+          {agentMetadata.liveRun ? '运行中' : humanizeStatus(data.status)}
+        </span>
+      </div>
+
+      <div className="session-body">
+        <div className="session-banner">
+          <strong>{agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}</strong>
+          <span>{data.summary}</span>
+        </div>
+
+        <div
+          className="agent-transcript nowheel nopan nodrag"
+          data-node-interactive="true"
+          onMouseDown={stopCanvasEvent}
+          onClick={stopCanvasEvent}
+          onDoubleClick={stopCanvasEvent}
+          onWheel={stopCanvasEvent}
+        >
+          {transcript.length > 0 ? (
+            transcript.map((entry) => (
+              <AgentTranscriptBubble key={entry.id} entry={entry} provider={provider} />
+            ))
+          ) : (
+            <div className="agent-empty-state">
+              在节点内输入第一条消息后，这里会保留用户输入、流式输出和运行状态。
+            </div>
+          )}
+        </div>
+
+        <div
+          className="agent-composer nodrag nopan"
+          data-node-interactive="true"
+          onMouseDown={stopCanvasEvent}
+          onClick={stopCanvasEvent}
+          onDoubleClick={stopCanvasEvent}
+        >
+          <div className="agent-composer-toolbar">
+            <select
+              className="agent-provider-select nodrag nopan"
+              data-node-interactive="true"
+              value={provider}
+              disabled={agentMetadata.liveRun}
+              onFocus={() => data.onSelectNode?.(id)}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onKeyDown={stopCanvasEvent}
+              onChange={(event) =>
+                data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
+              }
+            >
+              <option value="codex">Codex</option>
+              <option value="claude">Claude Code</option>
+            </select>
+            <ActionButton
+              label={actionLabel}
+              onClick={() =>
+                agentMetadata.liveRun
+                  ? data.onStopAgent?.(id)
+                  : submitDraft()
+              }
+              disabled={!agentMetadata.liveRun && !draft.trim()}
+              className="nodrag nopan"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          </div>
+          <textarea
+            className="agent-prompt-input nowheel nodrag nopan"
+            data-node-interactive="true"
+            value={draft}
+            onFocus={() => {
+              setIsFocused(true);
+              data.onSelectNode?.(id);
+            }}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={(event) => {
+              setIsComposing(false);
+              const nextValue = event.currentTarget.value;
+              setDraft(nextValue);
+            }}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setDraft(nextValue);
+            }}
+            onBlur={(event) => {
+              setIsFocused(false);
+              data.onPersistAgentDraft?.(id, event.target.value);
+            }}
+            onKeyDown={(event) => {
+              stopCanvasEvent(event);
+              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                event.preventDefault();
+                submitDraft();
+                return;
+              }
+
+              if (event.key === 'Escape') {
+                event.currentTarget.blur();
+              }
+            }}
+            placeholder="向这个 Agent 发送下一条指令"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentTranscriptBubble(props: {
+  entry: AgentTranscriptEntry;
+  provider: AgentProviderKind;
+}): JSX.Element {
+  const { entry, provider } = props;
+  const label =
+    entry.role === 'user'
+      ? '你'
+      : entry.role === 'assistant'
+        ? providerLabel(provider)
+        : '系统';
+  const content =
+    entry.role === 'assistant' && entry.state === 'streaming' && !entry.text
+      ? '正在运行...'
+      : entry.text;
+
+  return (
+    <div className={`agent-bubble role-${entry.role} state-${entry.state ?? 'done'}`}>
+      <div className="agent-bubble-header">
+        <strong>{label}</strong>
+        {entry.state === 'streaming' ? <span>流式输出</span> : null}
+      </div>
+      <div className="agent-bubble-content">{content}</div>
+    </div>
+  );
+}
+
+function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const terminalMetadata = data.metadata?.terminal;
+  if (!terminalMetadata) {
+    return <CanvasCardNode data={data} />;
+  }
+
+  return (
+    <div
+      className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
+    >
+      <div className="window-chrome">
+        <div className="window-title">
+          <strong>{data.title}</strong>
+          <span>{terminalMetadata.terminalName}</span>
+        </div>
+        <span className={`status-pill ${terminalMetadata.liveSession ? 'tone-running' : 'tone-idle'}`}>
+          {terminalMetadata.liveSession ? '已连接' : '未连接'}
+        </span>
+      </div>
+
+      <div className="session-body">
+        <div className="terminal-surface">
+          <div className="terminal-surface-line">
+            <span className="terminal-surface-prefix">$</span>
+            <span>{data.summary}</span>
+          </div>
+          <div className="terminal-surface-meta">
+            <span>显示位置</span>
+            <strong>{terminalMetadata.revealMode === 'editor' ? '编辑器区域' : '终端面板'}</strong>
+          </div>
+        </div>
+
+        <div className="action-row">
+          <ActionButton
+            label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
+            onClick={() =>
+              terminalMetadata.liveSession ? data.onRevealTerminal?.(id) : data.onEnsureTerminal?.(id)
+            }
+            className="nodrag nopan"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+          {!terminalMetadata.liveSession ? (
+            <ActionButton
+              label="尝试连接现有终端"
+              tone="secondary"
+              onClick={() => data.onReconnectTerminal?.(id)}
+              className="nodrag nopan"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const taskMetadata = data.metadata?.task;
+  if (!taskMetadata) {
+    return <CanvasCardNode data={data} />;
+  }
+
+  const [title, setTitle] = useState(data.title);
+  const [status, setStatus] = useState<TaskNodeStatus>(normalizeTaskStatus(data.status));
+  const [description, setDescription] = useState(taskMetadata.description);
+  const [assignee, setAssignee] = useState(taskMetadata.assignee);
+  const [activeFieldCount, setActiveFieldCount] = useState(0);
+  const [isComposing, setIsComposing] = useState(false);
+
+  useEffect(() => {
+    if (activeFieldCount === 0 && !isComposing) {
+      setTitle(data.title);
+      setStatus(normalizeTaskStatus(data.status));
+      setDescription(taskMetadata.description);
+      setAssignee(taskMetadata.assignee);
+    }
+  }, [
+    id,
+    data.status,
+    data.title,
+    isComposing,
+    taskMetadata.assignee,
+    taskMetadata.description
+  ]);
+
+  const submitTask = (patch?: Partial<{
+    title: string;
+    status: TaskNodeStatus;
+    description: string;
+    assignee: string;
+  }>): void => {
+    data.onUpdateTask?.({
+      nodeId: id,
+      title: patch?.title ?? title,
+      status: patch?.status ?? status,
+      description: patch?.description ?? description,
+      assignee: patch?.assignee ?? assignee
+    });
+  };
+
+  const beginEditing = (): void => {
+    setActiveFieldCount((current) => current + 1);
+    data.onSelectNode?.(id);
+  };
+
+  const finishEditing = (): void => {
+    setActiveFieldCount((current) => Math.max(0, current - 1));
+  };
+
+  return (
+    <div className={`canvas-node object-editor-node kind-task ${data.selected ? 'is-selected' : ''}`}>
+      <div className="window-chrome">
+        <div className="window-title">
+          <strong>Task</strong>
+          <span>{title.trim() || '未命名任务'}</span>
+        </div>
+        <span className={`status-pill ${statusToneClass(status)}`}>{humanizeStatus(status)}</span>
+      </div>
+
+      <div className="object-body">
+        <label className="node-field">
+          <span className="node-field-label">标题</span>
+          <input
+            className="node-text-input nodrag nopan"
+            data-node-interactive="true"
+            value={title}
+            onFocus={beginEditing}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onChange={(event) => setTitle(event.target.value)}
+            onBlur={(event) => {
+              const nextTitle = event.currentTarget.value;
+              setTitle(nextTitle);
+              finishEditing();
+              submitTask({ title: nextTitle });
+            }}
+            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitTask)}
+            placeholder="给这个任务起一个标题"
+          />
+        </label>
+
+        <div className="object-grid">
+          <label className="node-field">
+            <span className="node-field-label">状态</span>
+            <select
+              className="node-select nodrag nopan"
+              data-node-interactive="true"
+              value={status}
+              onFocus={beginEditing}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onChange={(event) => {
+                const nextStatus = normalizeTaskStatus(event.target.value);
+                setStatus(nextStatus);
+                submitTask({ status: nextStatus });
+              }}
+              onBlur={finishEditing}
+              onKeyDown={handleEditableSelectKeyDown}
+            >
+              <option value="todo">待开始</option>
+              <option value="running">进行中</option>
+              <option value="blocked">阻塞</option>
+              <option value="done">已完成</option>
+            </select>
+          </label>
+
+          <label className="node-field">
+            <span className="node-field-label">负责人</span>
+            <input
+              className="node-text-input nodrag nopan"
+              data-node-interactive="true"
+              value={assignee}
+              onFocus={beginEditing}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onChange={(event) => setAssignee(event.target.value)}
+              onBlur={(event) => {
+                const nextAssignee = event.currentTarget.value;
+                setAssignee(nextAssignee);
+                finishEditing();
+                submitTask({ assignee: nextAssignee });
+              }}
+              onKeyDown={(event) => handleEditableFieldKeyDown(event, submitTask)}
+              placeholder="例如：Codex 或你自己"
+            />
+          </label>
+        </div>
+
+        <label className="node-field">
+          <span className="node-field-label">任务描述</span>
+          <textarea
+            className="node-textarea task-textarea nowheel nodrag nopan"
+            data-node-interactive="true"
+            value={description}
+            onFocus={beginEditing}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onWheel={stopCanvasEvent}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={(event) => {
+              setIsComposing(false);
+              setDescription(event.currentTarget.value);
+            }}
+            onChange={(event) => setDescription(event.target.value)}
+            onBlur={(event) => {
+              const nextDescription = event.currentTarget.value;
+              setDescription(nextDescription);
+              finishEditing();
+              submitTask({ description: nextDescription });
+            }}
+            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitTask)}
+            placeholder="补充这个任务的目标、范围或下一步。"
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const noteMetadata = data.metadata?.note;
+  if (!noteMetadata) {
+    return <CanvasCardNode data={data} />;
+  }
+
+  const [title, setTitle] = useState(data.title);
+  const [content, setContent] = useState(noteMetadata.content);
+  const [activeFieldCount, setActiveFieldCount] = useState(0);
+  const [isComposing, setIsComposing] = useState(false);
+
+  useEffect(() => {
+    if (activeFieldCount === 0 && !isComposing) {
+      setTitle(data.title);
+      setContent(noteMetadata.content);
+    }
+  }, [id, data.title, isComposing, noteMetadata.content]);
+
+  const submitNote = (patch?: Partial<{ title: string; content: string }>): void => {
+    data.onUpdateNote?.({
+      nodeId: id,
+      title: patch?.title ?? title,
+      content: patch?.content ?? content
+    });
+  };
+
+  const beginEditing = (): void => {
+    setActiveFieldCount((current) => current + 1);
+    data.onSelectNode?.(id);
+  };
+
+  const finishEditing = (): void => {
+    setActiveFieldCount((current) => Math.max(0, current - 1));
+  };
+
+  return (
+    <div className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}>
+      <div className="window-chrome">
+        <div className="window-title">
+          <strong>Note</strong>
+          <span>{title.trim() || '未命名笔记'}</span>
+        </div>
+        <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+      </div>
+
+      <div className="object-body">
+        <label className="node-field">
+          <span className="node-field-label">标题</span>
+          <input
+            className="node-text-input nodrag nopan"
+            data-node-interactive="true"
+            value={title}
+            onFocus={beginEditing}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onChange={(event) => setTitle(event.target.value)}
+            onBlur={(event) => {
+              const nextTitle = event.currentTarget.value;
+              setTitle(nextTitle);
+              finishEditing();
+              submitNote({ title: nextTitle });
+            }}
+            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitNote)}
+            placeholder="给这条笔记起一个标题"
+          />
+        </label>
+
+        <label className="node-field">
+          <span className="node-field-label">内容</span>
+          <textarea
+            className="node-textarea note-textarea nowheel nodrag nopan"
+            data-node-interactive="true"
+            value={content}
+            onFocus={beginEditing}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onWheel={stopCanvasEvent}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={(event) => {
+              setIsComposing(false);
+              setContent(event.currentTarget.value);
+            }}
+            onChange={(event) => setContent(event.target.value)}
+            onBlur={(event) => {
+              const nextContent = event.currentTarget.value;
+              setContent(nextContent);
+              finishEditing();
+              submitNote({ content: nextContent });
+            }}
+            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitNote)}
+            placeholder="直接在画布上记录思路、上下文或待确认信息。"
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function CanvasCardNode({ data }: Pick<NodeProps<CanvasNodeData>, 'data'>): JSX.Element {
   const agentMetadata = data.metadata?.agent;
   const terminalMetadata = data.metadata?.terminal;
 
   return (
-    <div className={`canvas-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}>
+    <div className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}>
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
       </div>
-      <div className="node-status">状态：{data.status}</div>
+      <div className="node-status">状态：{humanizeStatus(data.status)}</div>
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
           {agentMetadata.liveRun
             ? `${providerLabel(agentMetadata.provider)} 正在运行`
-            : agentMetadata.lastResponse
-              ? `已保留最近一次 ${providerLabel(agentMetadata.provider)} 结果`
-              : '尚未发起真实 CLI 运行'}
+            : agentMetadata.transcript?.length
+              ? '已保留最近会话转录'
+              : '等待首次运行'}
         </div>
       ) : null}
       {data.kind === 'terminal' && terminalMetadata ? (
@@ -331,7 +875,11 @@ function CanvasCardNode({ data }: NodeProps<CanvasNodeData>): JSX.Element {
 }
 
 const nodeTypes = {
-  canvas: CanvasCardNode
+  agent: AgentSessionNode,
+  terminal: TerminalSessionNode,
+  task: TaskEditableNode,
+  note: NoteEditableNode,
+  card: CanvasCardNode
 };
 
 function ActionButton(props: {
@@ -339,26 +887,69 @@ function ActionButton(props: {
   onClick: () => void;
   tone?: 'primary' | 'secondary';
   disabled?: boolean;
+  className?: string;
+  interactive?: boolean;
+  onFocus?: () => void;
 }): JSX.Element {
   return (
     <button
       type="button"
-      className={`action-button ${props.tone === 'secondary' ? 'secondary' : 'primary'}`}
+      data-node-interactive={props.interactive ? 'true' : undefined}
+      className={`action-button ${props.tone === 'secondary' ? 'secondary' : 'primary'} ${props.className ?? ''}`.trim()}
       disabled={props.disabled}
-      onClick={props.onClick}
+      onFocus={props.onFocus}
+      onMouseDown={props.interactive ? stopCanvasEvent : undefined}
+      onClick={(event) => {
+        if (props.interactive) {
+          stopCanvasEvent(event);
+        }
+        props.onClick();
+      }}
+      onKeyDown={props.interactive ? stopCanvasEvent : undefined}
     >
       {props.label}
     </button>
   );
 }
 
-function toFlowNodes(
-  nodes: CanvasNodeSummary[],
-  selectedNodeId: string | undefined
-): CanvasFlowNode[] {
-  return nodes.map((node) => ({
+function toFlowNodes(params: {
+  nodes: CanvasNodeSummary[];
+  selectedNodeId: string | undefined;
+  agentDraftSnapshots: Record<string, string>;
+  agentProviderDrafts: Record<string, AgentProviderKind>;
+  onSelectNode: (nodeId: string) => void;
+  onPersistAgentDraft: (nodeId: string, value: string) => void;
+  onAgentProviderChange: (nodeId: string, value: AgentProviderKind) => void;
+  onStartAgent: (nodeId: string, prompt: string, provider: AgentProviderKind) => void;
+  onStopAgent: (nodeId: string) => void;
+  onEnsureTerminal: (nodeId: string) => void;
+  onRevealTerminal: (nodeId: string) => void;
+  onReconnectTerminal: (nodeId: string) => void;
+  onUpdateTask: (payload: {
+    nodeId: string;
+    title: string;
+    status: TaskNodeStatus;
+    description: string;
+    assignee: string;
+  }) => void;
+  onUpdateNote: (payload: {
+    nodeId: string;
+    title: string;
+    content: string;
+  }) => void;
+}): CanvasFlowNode[] {
+  return params.nodes.map((node) => ({
     id: node.id,
-    type: 'canvas',
+    type:
+      node.kind === 'agent'
+        ? 'agent'
+        : node.kind === 'terminal'
+          ? 'terminal'
+          : node.kind === 'task'
+            ? 'task'
+            : node.kind === 'note'
+              ? 'note'
+              : 'card',
     position: node.position,
     draggable: true,
     data: {
@@ -366,27 +957,31 @@ function toFlowNodes(
       title: node.title,
       status: node.status,
       summary: node.summary,
-      selected: node.id === selectedNodeId,
-      metadata: node.metadata
+      selected: node.id === params.selectedNodeId,
+      metadata: node.metadata,
+      initialAgentDraft:
+        params.agentDraftSnapshots[node.id] ?? node.metadata?.agent?.lastPrompt ?? '',
+      agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
+      onSelectNode: params.onSelectNode,
+      onPersistAgentDraft: params.onPersistAgentDraft,
+      onAgentProviderChange: params.onAgentProviderChange,
+      onStartAgent: params.onStartAgent,
+      onStopAgent: params.onStopAgent,
+      onEnsureTerminal: params.onEnsureTerminal,
+      onRevealTerminal: params.onRevealTerminal,
+      onReconnectTerminal: params.onReconnectTerminal,
+      onUpdateTask: params.onUpdateTask,
+      onUpdateNote: params.onUpdateNote
     }
   }));
 }
 
-function SelectedNodeDetails(props: {
-  node: CanvasNodeSummary;
-  agentDraft: string;
-  agentProvider: AgentProviderKind;
-  onAgentDraftChange: (value: string) => void;
-  onAgentProviderChange: (value: AgentProviderKind) => void;
-  onStartAgent: () => void;
-  onStopAgent: () => void;
-  onEnsureTerminal: () => void;
-  onRevealTerminal: () => void;
-  onReconnectTerminal: () => void;
-}): JSX.Element {
+function SelectedNodeDetails(props: { node: CanvasNodeSummary }): JSX.Element {
   const { node } = props;
   const agentMetadata = node.metadata?.agent;
   const terminalMetadata = node.metadata?.terminal;
+  const taskMetadata = node.metadata?.task;
+  const noteMetadata = node.metadata?.note;
 
   return (
     <div className="selected-node-panel">
@@ -394,38 +989,21 @@ function SelectedNodeDetails(props: {
         <strong>{node.title}</strong>
         <span>{node.kind}</span>
       </div>
-      <div className="selected-node-status">状态：{node.status}</div>
+      <div className="selected-node-status">状态：{humanizeStatus(node.status)}</div>
       <p>{node.summary}</p>
       {node.kind === 'agent' && agentMetadata ? (
-        <div className="selected-node-agent">
-          <label className="selected-node-meta">
-            <span className="meta-label">本次目标</span>
-            <textarea
-              className="agent-prompt-input"
-              value={props.agentDraft}
-              onChange={(event) => props.onAgentDraftChange(event.target.value)}
-              placeholder="例如：总结当前画布里的下一步行动，并指出主要风险。"
-            />
-          </label>
+        <div className="selected-node-meta-group">
           <div className="selected-node-meta">
-            <span className="meta-label">CLI Provider</span>
-            <select
-              className="agent-provider-select"
-              value={props.agentProvider}
-              disabled={agentMetadata.liveRun}
-              onChange={(event) => props.onAgentProviderChange(event.target.value as AgentProviderKind)}
-            >
-              <option value="codex">Codex</option>
-              <option value="claude">Claude Code</option>
-            </select>
+            <span className="meta-label">当前 provider</span>
+            <strong>{providerLabel(agentMetadata.provider)}</strong>
           </div>
           <div className="selected-node-meta">
             <span className="meta-label">最近后端</span>
             <strong>{agentMetadata.lastBackendLabel ?? '尚未运行'}</strong>
           </div>
           <div className="selected-node-meta">
-            <span className="meta-label">会话状态</span>
-            <strong>{agentMetadata.liveRun ? '运行中' : '空闲'}</strong>
+            <span className="meta-label">转录条目数</span>
+            <strong>{agentMetadata.transcript?.length ?? 0}</strong>
           </div>
           {agentMetadata.lastResponse ? (
             <div className="selected-node-meta">
@@ -433,21 +1011,11 @@ function SelectedNodeDetails(props: {
               <pre className="selected-node-output">{agentMetadata.lastResponse}</pre>
             </div>
           ) : null}
-          <div className="action-row">
-            <ActionButton
-              label={
-                agentMetadata.liveRun
-                  ? `停止 ${providerLabel(agentMetadata.provider)}`
-                  : `运行 ${providerLabel(props.agentProvider)}`
-              }
-              onClick={agentMetadata.liveRun ? props.onStopAgent : props.onStartAgent}
-              disabled={!agentMetadata.liveRun && !props.agentDraft.trim()}
-            />
-          </div>
+          <p className="selected-node-note">主交互已收敛到节点内部：在画布上直接发送消息并查看转录。</p>
         </div>
       ) : null}
       {node.kind === 'terminal' && terminalMetadata ? (
-        <div className="selected-node-terminal">
+        <div className="selected-node-meta-group">
           <div className="selected-node-meta">
             <span className="meta-label">宿主终端名称</span>
             <code>{terminalMetadata.terminalName}</code>
@@ -456,22 +1024,29 @@ function SelectedNodeDetails(props: {
             <span className="meta-label">显示位置</span>
             <strong>{terminalMetadata.revealMode === 'editor' ? '编辑器区域' : '终端面板'}</strong>
           </div>
+        </div>
+      ) : null}
+      {node.kind === 'task' && taskMetadata ? (
+        <div className="selected-node-meta-group">
           <div className="selected-node-meta">
-            <span className="meta-label">会话状态</span>
-            <strong>{terminalMetadata.liveSession ? '已连接' : '未连接'}</strong>
+            <span className="meta-label">任务状态</span>
+            <strong>{humanizeStatus(node.status)}</strong>
           </div>
-          <div className="action-row">
-            <ActionButton
-              label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
-              onClick={terminalMetadata.liveSession ? props.onRevealTerminal : props.onEnsureTerminal}
-            />
-            {!terminalMetadata.liveSession ? (
-              <ActionButton
-                label="尝试连接现有终端"
-                tone="secondary"
-                onClick={props.onReconnectTerminal}
-              />
-            ) : null}
+          <div className="selected-node-meta">
+            <span className="meta-label">负责人</span>
+            <strong>{taskMetadata.assignee || '未填写'}</strong>
+          </div>
+          <div className="selected-node-meta">
+            <span className="meta-label">任务描述</span>
+            <pre className="selected-node-output">{taskMetadata.description || '暂无描述'}</pre>
+          </div>
+        </div>
+      ) : null}
+      {node.kind === 'note' && noteMetadata ? (
+        <div className="selected-node-meta-group">
+          <div className="selected-node-meta">
+            <span className="meta-label">笔记内容</span>
+            <pre className="selected-node-output">{noteMetadata.content || '暂无内容'}</pre>
           </div>
         </div>
       ) : null}
@@ -494,6 +1069,98 @@ function colorForKind(kind: CanvasNodeKind): string {
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function humanizeStatus(status: string): string {
+  switch (status) {
+    case 'idle':
+      return '空闲';
+    case 'todo':
+      return '待开始';
+    case 'running':
+      return '运行中';
+    case 'blocked':
+      return '阻塞';
+    case 'done':
+      return '已完成';
+    case 'draft':
+      return '草稿';
+    case 'ready':
+      return '就绪';
+    case 'live':
+      return '活动';
+    case 'closed':
+      return '已关闭';
+    case 'error':
+      return '失败';
+    case 'cancelled':
+      return '已停止';
+    case 'interrupted':
+      return '已中断';
+    default:
+      return status;
+  }
+}
+
+function statusToneClass(status: string): string {
+  switch (status) {
+    case 'running':
+      return 'tone-running';
+    case 'done':
+      return 'tone-success';
+    case 'blocked':
+    case 'cancelled':
+    case 'interrupted':
+      return 'tone-warning';
+    case 'error':
+      return 'tone-error';
+    default:
+      return 'tone-idle';
+  }
+}
+
+function normalizeTaskStatus(status: string): TaskNodeStatus {
+  if (status === 'running' || status === 'blocked' || status === 'done') {
+    return status;
+  }
+
+  return 'todo';
+}
+
+function handleEditableFieldKeyDown(
+  event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  submit: () => void
+): void {
+  stopCanvasEvent(event);
+
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    event.preventDefault();
+    submit();
+    event.currentTarget.blur();
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.currentTarget.blur();
+  }
+}
+
+function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElement>): void {
+  stopCanvasEvent(event);
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.currentTarget.blur();
+  }
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest('[data-node-interactive="true"]'));
+}
+
+function stopCanvasEvent(event: { stopPropagation: () => void }): void {
+  event.stopPropagation();
 }
 
 function postMessage(message: WebviewToHostMessage): void {
