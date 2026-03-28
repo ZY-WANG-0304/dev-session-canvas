@@ -170,6 +170,12 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.node-hint {
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 82%, #38bdf8 18%);
+}
+
 .canvas-node p {
   margin: 0;
   font-size: 13px;
@@ -182,6 +188,57 @@ body {
   gap: 4px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
+}
+
+.selected-node-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.selected-node-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.selected-node-header span {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.selected-node-status {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.selected-node-panel p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vscode-editor-foreground);
+}
+
+.selected-node-terminal {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.selected-node-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.selected-node-meta code {
+  display: inline-block;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-panel-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
+  word-break: break-all;
 }
 
 .toast-error {

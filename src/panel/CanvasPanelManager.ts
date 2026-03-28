@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 
 import {
   type CanvasNodeKind,
+  type CanvasNodeMetadata,
   type CanvasNodePosition,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type HostToWebviewMessage,
+  type TerminalNodeMetadata,
   isCanvasNodeKind,
   parseWebviewMessage
 } from '../common/protocol';
@@ -20,7 +22,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   private state: CanvasPrototypeState;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.state = this.loadState();
+    this.state = reconcileTerminalNodes(this.loadState());
+    this.persistState();
+
+    context.subscriptions.push(
+      vscode.window.onDidCloseTerminal((terminal) => {
+        const nextState = updateTerminalConnectionState(this.state, terminal.name, false);
+        if (nextState === this.state) {
+          return;
+        }
+
+        this.state = nextState;
+        this.persistState();
+        this.postState('host/stateUpdated');
+      })
+    );
   }
 
   public async revealOrCreate(): Promise<void> {
@@ -43,7 +59,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
   ): Promise<void> {
-    this.state = this.loadState();
+    this.state = reconcileTerminalNodes(this.loadState());
+    this.persistState();
     this.attachPanel(webviewPanel);
   }
 
@@ -89,6 +106,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.persistState();
             this.postState('host/stateUpdated');
             break;
+          case 'webview/ensureTerminalSession':
+            void this.ensureTerminalSession(parsedMessage.payload.nodeId, true);
+            break;
+          case 'webview/revealTerminal':
+            void this.revealTerminal(parsedMessage.payload.nodeId);
+            break;
           case 'webview/resetDemoState':
             this.state = createDefaultState();
             this.persistState();
@@ -129,6 +152,93 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   private postMessage(message: HostToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
   }
+
+  private async ensureTerminalSession(nodeId: string, reveal: boolean): Promise<void> {
+    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+    if (!terminalNode) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '未找到可创建终端的节点。'
+        }
+      });
+      return;
+    }
+
+    const metadata = ensureTerminalMetadata(terminalNode);
+    const existingTerminal = findTerminalByName(metadata.terminalName);
+    const terminal =
+      existingTerminal ??
+      vscode.window.createTerminal({
+        name: metadata.terminalName,
+        location:
+          metadata.revealMode === 'editor'
+            ? { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }
+            : vscode.TerminalLocation.Panel
+      });
+
+    if (reveal) {
+      terminal.show(false);
+    }
+
+    this.state = updateTerminalNode(this.state, nodeId, {
+      status: 'live',
+      summary:
+        metadata.revealMode === 'editor'
+          ? '宿主终端已就绪，可在编辑器区域查看和使用。'
+          : '宿主终端已就绪，可在终端面板查看和使用。',
+      metadata: {
+        terminal: {
+          ...metadata,
+          liveSession: true
+        }
+      }
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async revealTerminal(nodeId: string): Promise<void> {
+    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+    if (!terminalNode) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '未找到可显示的终端节点。'
+        }
+      });
+      return;
+    }
+
+    const metadata = terminalNode.metadata?.terminal;
+    if (!metadata) {
+      await this.ensureTerminalSession(nodeId, true);
+      return;
+    }
+
+    const terminal = findTerminalByName(metadata.terminalName);
+    if (!terminal) {
+      await this.ensureTerminalSession(nodeId, true);
+      return;
+    }
+
+    terminal.show(false);
+
+    if (!metadata.liveSession) {
+      this.state = updateTerminalNode(this.state, nodeId, {
+        status: 'live',
+        summary: '已重新连接到现存宿主终端。',
+        metadata: {
+          terminal: {
+            ...metadata,
+            liveSession: true
+          }
+        }
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+    }
+  }
 }
 
 function createDefaultState(): CanvasPrototypeState {
@@ -166,18 +276,20 @@ function createNode(kind: CanvasNodeKind, sequence: number): CanvasNodeSummary {
 
   const summaryPrefix = {
     agent: '等待接入真实 backend 的原型节点',
-    terminal: '可跳转到宿主终端的占位节点',
+    terminal: '尚未创建宿主终端，选中后可创建并显示。',
     task: '用于验证任务状态展示的占位节点',
     note: '用于验证最小协作上下文的占位节点'
   } satisfies Record<CanvasNodeKind, string>;
 
+  const id = `${kind}-${sequence}`;
   return {
-    id: `${kind}-${sequence}`,
+    id,
     kind,
     title: `${titlePrefix[kind]} ${sequence}`,
-    status: sequence % 2 === 0 ? 'running' : 'idle',
+    status: kind === 'terminal' ? 'draft' : sequence % 2 === 0 ? 'running' : 'idle',
     summary: summaryPrefix[kind],
-    position: createNodePosition(sequence)
+    position: createNodePosition(sequence),
+    metadata: createNodeMetadata(kind, id)
   };
 }
 
@@ -226,7 +338,7 @@ function normalizeState(value: unknown): CanvasPrototypeState {
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: nodes.length > 0 ? nodes : createDefaultState().nodes
+    nodes: reconcileTerminalNodesInArray(nodes.length > 0 ? nodes : createDefaultState().nodes)
   };
 }
 
@@ -247,6 +359,8 @@ function normalizeNode(value: unknown, index: number): CanvasNodeSummary | null 
         ? value.summary
         : '从旧状态恢复的节点，已补齐默认摘要。',
     position: normalizePosition(value.position, sequence)
+    ,
+    metadata: normalizeMetadata(value.kind, value.id, value.metadata)
   };
 }
 
@@ -271,4 +385,151 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function createNodeMetadata(kind: CanvasNodeKind, nodeId: string): CanvasNodeMetadata | undefined {
+  if (kind !== 'terminal') {
+    return undefined;
+  }
+
+  return {
+    terminal: createTerminalMetadata(nodeId)
+  };
+}
+
+function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
+  return {
+    terminalName: `OpenCove Terminal · ${nodeId}`,
+    liveSession: false,
+    revealMode: 'editor'
+  };
+}
+
+function normalizeMetadata(
+  kind: CanvasNodeKind,
+  nodeId: string,
+  value: unknown
+): CanvasNodeMetadata | undefined {
+  if (kind !== 'terminal') {
+    return undefined;
+  }
+
+  const record = isRecord(value) ? value : {};
+  const terminal = isRecord(record.terminal) ? record.terminal : {};
+  const fallback = createTerminalMetadata(nodeId);
+
+  return {
+    terminal: {
+      terminalName:
+        typeof terminal.terminalName === 'string' ? terminal.terminalName : fallback.terminalName,
+      liveSession: false,
+      revealMode:
+        terminal.revealMode === 'panel' || terminal.revealMode === 'editor'
+          ? terminal.revealMode
+          : fallback.revealMode
+    }
+  };
+}
+
+function reconcileTerminalNodes(state: CanvasPrototypeState): CanvasPrototypeState {
+  return {
+    ...state,
+    nodes: reconcileTerminalNodesInArray(state.nodes)
+  };
+}
+
+function reconcileTerminalNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+  return nodes.map((node) => {
+    if (node.kind !== 'terminal') {
+      return node;
+    }
+
+    const metadata = ensureTerminalMetadata(node);
+    const liveTerminal = findTerminalByName(metadata.terminalName);
+
+    return {
+      ...node,
+      status: liveTerminal ? 'live' : node.status === 'live' ? 'closed' : node.status,
+      summary: liveTerminal
+        ? '已匹配到现存宿主终端，可直接显示。'
+        : node.status === 'closed'
+          ? '宿主终端已关闭，可重新创建。'
+          : node.summary,
+      metadata: {
+        terminal: {
+          ...metadata,
+          liveSession: Boolean(liveTerminal)
+        }
+      }
+    };
+  });
+}
+
+function updateTerminalConnectionState(
+  state: CanvasPrototypeState,
+  terminalName: string,
+  liveSession: boolean
+): CanvasPrototypeState {
+  let hasChanged = false;
+  const nextNodes = state.nodes.map((node) => {
+    if (node.kind !== 'terminal' || node.metadata?.terminal?.terminalName !== terminalName) {
+      return node;
+    }
+
+    hasChanged = true;
+    return {
+      ...node,
+      status: liveSession ? 'live' : 'closed',
+      summary: liveSession
+        ? '宿主终端已连接，可直接显示。'
+        : '宿主终端已关闭，可重新创建。',
+      metadata: {
+        terminal: {
+          ...ensureTerminalMetadata(node),
+          liveSession
+        }
+      }
+    };
+  });
+
+  if (!hasChanged) {
+    return state;
+  }
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
+function updateTerminalNode(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  patch: Pick<CanvasNodeSummary, 'status' | 'summary' | 'metadata'>
+): CanvasPrototypeState {
+  const nextNodes = state.nodes.map((node) =>
+    node.id === nodeId
+      ? {
+          ...node,
+          status: patch.status,
+          summary: patch.summary,
+          metadata: patch.metadata
+        }
+      : node
+  );
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
+function ensureTerminalMetadata(node: CanvasNodeSummary): TerminalNodeMetadata {
+  return node.metadata?.terminal ?? createTerminalMetadata(node.id);
+}
+
+function findTerminalByName(name: string): vscode.Terminal | undefined {
+  return vscode.window.terminals.find((terminal) => terminal.name === name);
 }

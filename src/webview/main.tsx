@@ -17,6 +17,7 @@ import './styles.css';
 
 import type {
   CanvasNodeKind,
+  CanvasNodeMetadata,
   CanvasNodeSummary,
   CanvasPrototypeState,
   HostToWebviewMessage,
@@ -40,6 +41,7 @@ interface CanvasNodeData {
   status: string;
   summary: string;
   selected: boolean;
+  metadata?: CanvasNodeMetadata;
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
@@ -91,6 +93,11 @@ function App(): JSX.Element {
 
   const nodes = useMemo(
     () => toFlowNodes(hostState?.nodes ?? [], localUiState.selectedNodeId),
+    [hostState, localUiState.selectedNodeId]
+  );
+
+  const selectedNode = useMemo(
+    () => hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId),
     [hostState, localUiState.selectedNodeId]
   );
 
@@ -203,6 +210,28 @@ function App(): JSX.Element {
               />
             </div>
           </section>
+          <section>
+            <h2>选中节点</h2>
+            {selectedNode ? (
+              <SelectedNodeDetails
+                node={selectedNode}
+                onEnsureTerminal={() =>
+                  postMessage({
+                    type: 'webview/ensureTerminalSession',
+                    payload: { nodeId: selectedNode.id }
+                  })
+                }
+                onRevealTerminal={() =>
+                  postMessage({
+                    type: 'webview/revealTerminal',
+                    payload: { nodeId: selectedNode.id }
+                  })
+                }
+              />
+            ) : (
+              <p>选中一个节点后，这里会显示节点详情与可用动作。</p>
+            )}
+          </section>
         </Panel>
 
         <Panel position="bottom-left" className="footer-panel">
@@ -231,6 +260,11 @@ function CanvasCardNode({ data }: NodeProps<CanvasNodeData>): JSX.Element {
         <span>{data.kind}</span>
       </div>
       <div className="node-status">状态：{data.status}</div>
+      {data.kind === 'terminal' ? (
+        <div className="node-hint">
+          {data.metadata?.terminal?.liveSession ? '已连接宿主终端' : '终端尚未创建或已关闭'}
+        </div>
+      ) : null}
       <p>{data.summary}</p>
     </div>
   );
@@ -270,9 +304,53 @@ function toFlowNodes(
       title: node.title,
       status: node.status,
       summary: node.summary,
-      selected: node.id === selectedNodeId
+      selected: node.id === selectedNodeId,
+      metadata: node.metadata
     }
   }));
+}
+
+function SelectedNodeDetails(props: {
+  node: CanvasNodeSummary;
+  onEnsureTerminal: () => void;
+  onRevealTerminal: () => void;
+}): JSX.Element {
+  const { node } = props;
+  const terminalMetadata = node.metadata?.terminal;
+
+  return (
+    <div className="selected-node-panel">
+      <div className="selected-node-header">
+        <strong>{node.title}</strong>
+        <span>{node.kind}</span>
+      </div>
+      <div className="selected-node-status">状态：{node.status}</div>
+      <p>{node.summary}</p>
+      {node.kind === 'terminal' && terminalMetadata ? (
+        <div className="selected-node-terminal">
+          <div className="selected-node-meta">
+            <span className="meta-label">宿主终端名称</span>
+            <code>{terminalMetadata.terminalName}</code>
+          </div>
+          <div className="selected-node-meta">
+            <span className="meta-label">显示位置</span>
+            <strong>{terminalMetadata.revealMode === 'editor' ? '编辑器区域' : '终端面板'}</strong>
+          </div>
+          <div className="selected-node-meta">
+            <span className="meta-label">会话状态</span>
+            <strong>{terminalMetadata.liveSession ? '已连接' : '未连接'}</strong>
+          </div>
+          <div className="action-row">
+            <ActionButton
+              label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
+              onClick={terminalMetadata.liveSession ? props.onRevealTerminal : props.onEnsureTerminal}
+            />
+            <ActionButton label="创建或重连终端" tone="secondary" onClick={props.onEnsureTerminal} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function colorForKind(kind: CanvasNodeKind): string {

@@ -5,6 +5,18 @@ export interface CanvasNodePosition {
   y: number;
 }
 
+export type TerminalRevealMode = 'editor' | 'panel';
+
+export interface TerminalNodeMetadata {
+  terminalName: string;
+  liveSession: boolean;
+  revealMode: TerminalRevealMode;
+}
+
+export interface CanvasNodeMetadata {
+  terminal?: TerminalNodeMetadata;
+}
+
 export interface CanvasNodeSummary {
   id: string;
   kind: CanvasNodeKind;
@@ -12,6 +24,7 @@ export interface CanvasNodeSummary {
   status: string;
   summary: string;
   position: CanvasNodePosition;
+  metadata?: CanvasNodeMetadata;
 }
 
 export interface CanvasPrototypeState {
@@ -39,6 +52,18 @@ export type WebviewToHostMessage =
     }
   | {
       type: 'webview/resetDemoState';
+    }
+  | {
+      type: 'webview/ensureTerminalSession';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/revealTerminal';
+      payload: {
+        nodeId: string;
+      };
     };
 
 export type HostToWebviewMessage =
@@ -74,6 +99,23 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (value.type === 'webview/ready' || value.type === 'webview/resetDemoState') {
     return { type: value.type };
+  }
+
+  if (
+    value.type === 'webview/ensureTerminalSession' ||
+    value.type === 'webview/revealTerminal'
+  ) {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: value.type,
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
   }
 
   if (value.type === 'webview/moveNode') {
