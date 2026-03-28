@@ -6,7 +6,7 @@
   "publisher": "opencove",
   "license": "UNLICENSED",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Other"

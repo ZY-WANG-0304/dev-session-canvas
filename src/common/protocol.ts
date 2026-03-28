@@ -7,6 +7,14 @@ export interface CanvasNodePosition {
 
 export type TerminalRevealMode = 'editor' | 'panel';
 
+export interface AgentNodeMetadata {
+  liveRun: boolean;
+  lastPrompt?: string;
+  lastResponse?: string;
+  lastModelName?: string;
+  lastRunId?: string;
+}
+
 export interface TerminalNodeMetadata {
   terminalName: string;
   liveSession: boolean;
@@ -14,6 +22,7 @@ export interface TerminalNodeMetadata {
 }
 
 export interface CanvasNodeMetadata {
+  agent?: AgentNodeMetadata;
   terminal?: TerminalNodeMetadata;
 }
 
@@ -52,6 +61,19 @@ export type WebviewToHostMessage =
     }
   | {
       type: 'webview/resetDemoState';
+    }
+  | {
+      type: 'webview/startAgentRun';
+      payload: {
+        nodeId: string;
+        prompt: string;
+      };
+    }
+  | {
+      type: 'webview/stopAgentRun';
+      payload: {
+        nodeId: string;
+      };
     }
   | {
       type: 'webview/ensureTerminalSession';
@@ -108,6 +130,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
   }
 
   if (
+    value.type === 'webview/stopAgentRun' ||
     value.type === 'webview/ensureTerminalSession' ||
     value.type === 'webview/revealTerminal' ||
     value.type === 'webview/reconnectTerminal'
@@ -121,6 +144,25 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: value.type,
       payload: {
         nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/startAgentRun') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.prompt !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/startAgentRun',
+      payload: {
+        nodeId: payload.nodeId,
+        prompt: payload.prompt
       }
     };
   }

@@ -58,6 +58,7 @@ const root = createRoot(rootElement);
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => vscode.getState() ?? {});
+  const [agentDrafts, setAgentDrafts] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
 
@@ -100,6 +101,11 @@ function App(): JSX.Element {
     () => hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId),
     [hostState, localUiState.selectedNodeId]
   );
+
+  const selectedAgentDraft =
+    selectedNode?.kind === 'agent'
+      ? agentDrafts[selectedNode.id] ?? selectedNode.metadata?.agent?.lastPrompt ?? ''
+      : '';
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
     setLocalUiState(nextState);
@@ -215,6 +221,28 @@ function App(): JSX.Element {
             {selectedNode ? (
               <SelectedNodeDetails
                 node={selectedNode}
+                agentDraft={selectedAgentDraft}
+                onAgentDraftChange={(value) => {
+                  setAgentDrafts((current) => ({
+                    ...current,
+                    [selectedNode.id]: value
+                  }));
+                }}
+                onStartAgent={() =>
+                  postMessage({
+                    type: 'webview/startAgentRun',
+                    payload: {
+                      nodeId: selectedNode.id,
+                      prompt: selectedAgentDraft
+                    }
+                  })
+                }
+                onStopAgent={() =>
+                  postMessage({
+                    type: 'webview/stopAgentRun',
+                    payload: { nodeId: selectedNode.id }
+                  })
+                }
                 onEnsureTerminal={() =>
                   postMessage({
                     type: 'webview/ensureTerminalSession',
@@ -259,6 +287,9 @@ function App(): JSX.Element {
 }
 
 function CanvasCardNode({ data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const agentMetadata = data.metadata?.agent;
+  const terminalMetadata = data.metadata?.terminal;
+
   return (
     <div className={`canvas-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}>
       <div className="node-topline">
@@ -266,9 +297,18 @@ function CanvasCardNode({ data }: NodeProps<CanvasNodeData>): JSX.Element {
         <span>{data.kind}</span>
       </div>
       <div className="node-status">状态：{data.status}</div>
-      {data.kind === 'terminal' ? (
+      {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
-          {data.metadata?.terminal?.liveSession ? '已连接宿主终端' : '终端尚未创建或已关闭'}
+          {agentMetadata.liveRun
+            ? '真实 Agent 正在运行'
+            : agentMetadata.lastResponse
+              ? '已保留最近一次运行结果'
+              : '尚未发起真实运行'}
+        </div>
+      ) : null}
+      {data.kind === 'terminal' && terminalMetadata ? (
+        <div className="node-hint">
+          {terminalMetadata.liveSession ? '已连接宿主终端' : '终端尚未创建或已关闭'}
         </div>
       ) : null}
       <p>{data.summary}</p>
@@ -284,11 +324,13 @@ function ActionButton(props: {
   label: string;
   onClick: () => void;
   tone?: 'primary' | 'secondary';
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <button
       type="button"
       className={`action-button ${props.tone === 'secondary' ? 'secondary' : 'primary'}`}
+      disabled={props.disabled}
       onClick={props.onClick}
     >
       {props.label}
@@ -318,11 +360,16 @@ function toFlowNodes(
 
 function SelectedNodeDetails(props: {
   node: CanvasNodeSummary;
+  agentDraft: string;
+  onAgentDraftChange: (value: string) => void;
+  onStartAgent: () => void;
+  onStopAgent: () => void;
   onEnsureTerminal: () => void;
   onRevealTerminal: () => void;
   onReconnectTerminal: () => void;
 }): JSX.Element {
   const { node } = props;
+  const agentMetadata = node.metadata?.agent;
   const terminalMetadata = node.metadata?.terminal;
 
   return (
@@ -333,6 +380,40 @@ function SelectedNodeDetails(props: {
       </div>
       <div className="selected-node-status">状态：{node.status}</div>
       <p>{node.summary}</p>
+      {node.kind === 'agent' && agentMetadata ? (
+        <div className="selected-node-agent">
+          <label className="selected-node-meta">
+            <span className="meta-label">本次目标</span>
+            <textarea
+              className="agent-prompt-input"
+              value={props.agentDraft}
+              onChange={(event) => props.onAgentDraftChange(event.target.value)}
+              placeholder="例如：总结当前画布里的下一步行动，并指出主要风险。"
+            />
+          </label>
+          <div className="selected-node-meta">
+            <span className="meta-label">最近模型</span>
+            <strong>{agentMetadata.lastModelName ?? '尚未运行'}</strong>
+          </div>
+          <div className="selected-node-meta">
+            <span className="meta-label">会话状态</span>
+            <strong>{agentMetadata.liveRun ? '运行中' : '空闲'}</strong>
+          </div>
+          {agentMetadata.lastResponse ? (
+            <div className="selected-node-meta">
+              <span className="meta-label">最近输出</span>
+              <pre className="selected-node-output">{agentMetadata.lastResponse}</pre>
+            </div>
+          ) : null}
+          <div className="action-row">
+            <ActionButton
+              label={agentMetadata.liveRun ? '停止 Agent' : '运行 Agent'}
+              onClick={agentMetadata.liveRun ? props.onStopAgent : props.onStartAgent}
+              disabled={!agentMetadata.liveRun && !props.agentDraft.trim()}
+            />
+          </div>
+        </div>
+      ) : null}
       {node.kind === 'terminal' && terminalMetadata ? (
         <div className="selected-node-terminal">
           <div className="selected-node-meta">

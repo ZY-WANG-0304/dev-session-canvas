@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import {
+  type AgentNodeMetadata,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
@@ -15,14 +16,20 @@ import { getWebviewHtml } from './getWebviewHtml';
 
 const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
 
+interface AgentRunSession {
+  runId: string;
+  cancellationSource: vscode.CancellationTokenSource;
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   public static readonly viewType = 'opencove.canvas';
 
   private panel: vscode.WebviewPanel | undefined;
   private state: CanvasPrototypeState;
+  private readonly agentRuns = new Map<string, AgentRunSession>();
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.state = reconcileTerminalNodes(this.loadState());
+    this.state = reconcileRuntimeNodes(this.loadState());
     this.persistState();
 
     context.subscriptions.push(
@@ -58,7 +65,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
   ): Promise<void> {
-    this.state = reconcileTerminalNodes(this.loadState());
+    this.state = reconcileRuntimeNodes(this.loadState());
     this.persistState();
     this.attachPanel(webviewPanel);
   }
@@ -105,6 +112,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.persistState();
             this.postState('host/stateUpdated');
             break;
+          case 'webview/startAgentRun':
+            void this.startAgentRun(parsedMessage.payload.nodeId, parsedMessage.payload.prompt);
+            break;
+          case 'webview/stopAgentRun':
+            void this.stopAgentRun(parsedMessage.payload.nodeId);
+            break;
           case 'webview/ensureTerminalSession':
             void this.ensureTerminalSession(parsedMessage.payload.nodeId, true);
             break;
@@ -115,6 +128,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             void this.reconnectTerminal(parsedMessage.payload.nodeId);
             break;
           case 'webview/resetDemoState':
+            this.cancelAllAgentRuns();
             this.state = createDefaultState();
             this.persistState();
             this.postState('host/stateUpdated');
@@ -164,6 +178,220 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     this.state = nextState;
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  private async startAgentRun(nodeId: string, prompt: string): Promise<void> {
+    const agentNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+    if (!agentNode) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '未找到可运行的 Agent 节点。'
+        }
+      });
+      return;
+    }
+
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '请先输入 Agent 目标，再启动运行。'
+        }
+      });
+      return;
+    }
+
+    if (!vscode.workspace.isTrusted) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '当前 workspace 未受信任，已禁止 Agent 运行。'
+        }
+      });
+      return;
+    }
+
+    const existingRun = this.agentRuns.get(nodeId);
+    if (existingRun) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '该 Agent 已在运行中。'
+        }
+      });
+      return;
+    }
+
+    const previousMetadata = ensureAgentMetadata(agentNode);
+    const runId = createAgentRunId(nodeId);
+    const cancellationSource = new vscode.CancellationTokenSource();
+    this.agentRuns.set(nodeId, { runId, cancellationSource });
+
+    let lastModelName = previousMetadata.lastModelName;
+    let aggregatedResponse = '';
+
+    this.state = updateAgentNode(this.state, nodeId, {
+      status: 'running',
+      summary: '正在准备 Agent 运行...',
+      metadata: {
+        ...agentNode.metadata,
+        agent: {
+          ...previousMetadata,
+          liveRun: true,
+          lastPrompt: trimmedPrompt,
+          lastResponse: undefined,
+          lastRunId: runId
+        }
+      }
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+
+    try {
+      const model = await this.resolveAgentModel();
+      if (!model) {
+        throw new Error('当前 VSCode 中没有可用的语言模型。');
+      }
+
+      lastModelName = formatModelLabel(model);
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: 'running',
+        summary: `正在通过 ${lastModelName} 运行 Agent...`,
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          liveRun: true,
+          lastPrompt: trimmedPrompt,
+          lastRunId: runId,
+          lastModelName,
+          lastResponse: undefined
+        })
+      });
+      this.postState('host/stateUpdated');
+
+      const response = await model.sendRequest(
+        [
+          vscode.LanguageModelChatMessage.User(buildAgentPrompt(trimmedPrompt))
+        ],
+        {
+          justification: '需要让画布中的 Agent 节点根据用户目标生成下一步建议。'
+        },
+        cancellationSource.token
+      );
+
+      for await (const chunk of response.text) {
+        if (!this.isActiveAgentRun(nodeId, runId)) {
+          return;
+        }
+
+        aggregatedResponse = trimStoredAgentText(`${aggregatedResponse}${chunk}`);
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: 'running',
+          summary: summarizeAgentResponse(aggregatedResponse, true),
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            liveRun: true,
+            lastPrompt: trimmedPrompt,
+            lastRunId: runId,
+            lastModelName,
+            lastResponse: aggregatedResponse
+          })
+        });
+        this.postState('host/stateUpdated');
+      }
+
+      if (!this.isActiveAgentRun(nodeId, runId)) {
+        return;
+      }
+
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: 'idle',
+        summary: summarizeAgentResponse(aggregatedResponse, false),
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          liveRun: false,
+          lastPrompt: trimmedPrompt,
+          lastRunId: runId,
+          lastModelName,
+          lastResponse: aggregatedResponse || undefined
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+    } catch (error) {
+      if (!this.isActiveAgentRun(nodeId, runId)) {
+        return;
+      }
+
+      const cancelled = cancellationSource.token.isCancellationRequested;
+      const errorMessage = cancelled ? '已停止 Agent 运行。' : describeAgentRunError(error);
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: cancelled ? 'cancelled' : 'error',
+        summary: errorMessage,
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          liveRun: false,
+          lastPrompt: trimmedPrompt,
+          lastRunId: runId,
+          lastModelName,
+          lastResponse: aggregatedResponse || undefined
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+
+      if (!cancelled) {
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message: errorMessage
+          }
+        });
+      }
+    } finally {
+      const activeRun = this.agentRuns.get(nodeId);
+      if (activeRun?.runId === runId) {
+        this.agentRuns.delete(nodeId);
+      }
+      cancellationSource.dispose();
+    }
+  }
+
+  private async stopAgentRun(nodeId: string): Promise<void> {
+    const activeRun = this.agentRuns.get(nodeId);
+    if (!activeRun) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '当前没有可停止的 Agent 运行。'
+        }
+      });
+      return;
+    }
+
+    activeRun.cancellationSource.cancel();
+  }
+
+  private cancelAllAgentRuns(): void {
+    for (const run of this.agentRuns.values()) {
+      run.cancellationSource.cancel();
+    }
+    this.agentRuns.clear();
+  }
+
+  private isActiveAgentRun(nodeId: string, runId: string): boolean {
+    return this.agentRuns.get(nodeId)?.runId === runId;
+  }
+
+  private async resolveAgentModel(): Promise<vscode.LanguageModelChat | undefined> {
+    if (!hasLanguageModelApi()) {
+      return undefined;
+    }
+
+    const preferredModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    if (preferredModels.length > 0) {
+      return preferredModels[0];
+    }
+
+    const fallbackModels = await vscode.lm.selectChatModels();
+    return fallbackModels[0];
   }
 
   private async ensureTerminalSession(nodeId: string, reveal: boolean): Promise<void> {
@@ -323,6 +551,19 @@ function createNextState(
   };
 }
 
+function defaultSummaryForKind(kind: CanvasNodeKind): string {
+  switch (kind) {
+    case 'agent':
+      return '等待输入目标并启动一次真实运行。';
+    case 'terminal':
+      return '尚未创建宿主终端，选中后可创建并显示。';
+    case 'task':
+      return '用于验证任务状态展示的占位节点';
+    case 'note':
+      return '用于验证最小协作上下文的占位节点';
+  }
+}
+
 function createNode(kind: CanvasNodeKind, sequence: number): CanvasNodeSummary {
   const titlePrefix = {
     agent: 'Agent',
@@ -331,20 +572,20 @@ function createNode(kind: CanvasNodeKind, sequence: number): CanvasNodeSummary {
     note: 'Note'
   } satisfies Record<CanvasNodeKind, string>;
 
-  const summaryPrefix = {
-    agent: '等待接入真实 backend 的原型节点',
-    terminal: '尚未创建宿主终端，选中后可创建并显示。',
-    task: '用于验证任务状态展示的占位节点',
-    note: '用于验证最小协作上下文的占位节点'
-  } satisfies Record<CanvasNodeKind, string>;
-
   const id = `${kind}-${sequence}`;
   return {
     id,
     kind,
     title: `${titlePrefix[kind]} ${sequence}`,
-    status: kind === 'terminal' ? 'draft' : sequence % 2 === 0 ? 'running' : 'idle',
-    summary: summaryPrefix[kind],
+    status:
+      kind === 'terminal'
+        ? 'draft'
+        : kind === 'agent'
+          ? 'idle'
+          : sequence % 2 === 0
+            ? 'running'
+            : 'idle',
+    summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
     metadata: createNodeMetadata(kind, id)
   };
@@ -395,7 +636,7 @@ function normalizeState(value: unknown): CanvasPrototypeState {
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: reconcileTerminalNodesInArray(nodes.length > 0 ? nodes : createDefaultState().nodes)
+    nodes: reconcileRuntimeNodesInArray(nodes.length > 0 ? nodes : createDefaultState().nodes)
   };
 }
 
@@ -414,9 +655,8 @@ function normalizeNode(value: unknown, index: number): CanvasNodeSummary | null 
     summary:
       typeof value.summary === 'string'
         ? value.summary
-        : '从旧状态恢复的节点，已补齐默认摘要。',
-    position: normalizePosition(value.position, sequence)
-    ,
+        : defaultSummaryForKind(value.kind),
+    position: normalizePosition(value.position, sequence),
     metadata: normalizeMetadata(value.kind, value.id, value.metadata)
   };
 }
@@ -445,12 +685,24 @@ function capitalize(value: string): string {
 }
 
 function createNodeMetadata(kind: CanvasNodeKind, nodeId: string): CanvasNodeMetadata | undefined {
-  if (kind !== 'terminal') {
-    return undefined;
+  if (kind === 'agent') {
+    return {
+      agent: createAgentMetadata()
+    };
   }
 
+  if (kind === 'terminal') {
+    return {
+      terminal: createTerminalMetadata(nodeId)
+    };
+  }
+
+  return undefined;
+}
+
+function createAgentMetadata(): AgentNodeMetadata {
   return {
-    terminal: createTerminalMetadata(nodeId)
+    liveRun: false
   };
 }
 
@@ -467,32 +719,102 @@ function normalizeMetadata(
   nodeId: string,
   value: unknown
 ): CanvasNodeMetadata | undefined {
-  if (kind !== 'terminal') {
-    return undefined;
+  const record = isRecord(value) ? value : {};
+  if (kind === 'agent') {
+    const agent = isRecord(record.agent) ? record.agent : {};
+    const fallback = createAgentMetadata();
+
+    return {
+      agent: {
+        liveRun: typeof agent.liveRun === 'boolean' ? agent.liveRun : fallback.liveRun,
+        lastPrompt:
+          typeof agent.lastPrompt === 'string' ? trimStoredAgentText(agent.lastPrompt) : undefined,
+        lastResponse:
+          typeof agent.lastResponse === 'string'
+            ? trimStoredAgentText(agent.lastResponse)
+            : undefined,
+        lastModelName:
+          typeof agent.lastModelName === 'string' ? agent.lastModelName : undefined,
+        lastRunId: typeof agent.lastRunId === 'string' ? agent.lastRunId : undefined
+      }
+    };
   }
 
-  const record = isRecord(value) ? value : {};
-  const terminal = isRecord(record.terminal) ? record.terminal : {};
-  const fallback = createTerminalMetadata(nodeId);
+  if (kind === 'terminal') {
+    const terminal = isRecord(record.terminal) ? record.terminal : {};
+    const fallback = createTerminalMetadata(nodeId);
 
+    return {
+      terminal: {
+        terminalName:
+          typeof terminal.terminalName === 'string'
+            ? terminal.terminalName
+            : fallback.terminalName,
+        liveSession: false,
+        revealMode:
+          terminal.revealMode === 'panel' || terminal.revealMode === 'editor'
+            ? terminal.revealMode
+            : fallback.revealMode
+      }
+    };
+  }
+
+  return undefined;
+}
+
+function reconcileRuntimeNodes(state: CanvasPrototypeState): CanvasPrototypeState {
   return {
-    terminal: {
-      terminalName:
-        typeof terminal.terminalName === 'string' ? terminal.terminalName : fallback.terminalName,
-      liveSession: false,
-      revealMode:
-        terminal.revealMode === 'panel' || terminal.revealMode === 'editor'
-          ? terminal.revealMode
-          : fallback.revealMode
-    }
+    ...state,
+    nodes: reconcileRuntimeNodesInArray(state.nodes)
   };
 }
 
-function reconcileTerminalNodes(state: CanvasPrototypeState): CanvasPrototypeState {
-  return {
-    ...state,
-    nodes: reconcileTerminalNodesInArray(state.nodes)
-  };
+function reconcileRuntimeNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+  return reconcileAgentNodesInArray(reconcileTerminalNodesInArray(nodes));
+}
+
+function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+  return nodes.map((node) => {
+    if (node.kind !== 'agent') {
+      return node;
+    }
+
+    const metadata = ensureAgentMetadata(node);
+    if (metadata.liveRun) {
+      return {
+        ...node,
+        status: 'interrupted',
+        summary: '上一次 Agent 运行在扩展重载后未恢复，可重新启动。',
+        metadata: {
+          ...node.metadata,
+          agent: {
+            ...metadata,
+            liveRun: false
+          }
+        }
+      };
+    }
+
+    if (isLegacyPlaceholderAgent(node, metadata)) {
+      return {
+        ...node,
+        status: 'idle',
+        summary: defaultSummaryForKind('agent'),
+        metadata: {
+          ...node.metadata,
+          agent: metadata
+        }
+      };
+    }
+
+    return {
+      ...node,
+      metadata: {
+        ...node.metadata,
+        agent: metadata
+      }
+    };
+  });
 }
 
 function reconcileTerminalNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
@@ -560,7 +882,7 @@ function updateTerminalConnectionState(
   };
 }
 
-function updateTerminalNode(
+function updateCanvasNode(
   state: CanvasPrototypeState,
   nodeId: string,
   patch: Pick<CanvasNodeSummary, 'status' | 'summary' | 'metadata'>
@@ -583,8 +905,117 @@ function updateTerminalNode(
   };
 }
 
+function updateTerminalNode(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  patch: Pick<CanvasNodeSummary, 'status' | 'summary' | 'metadata'>
+): CanvasPrototypeState {
+  return updateCanvasNode(state, nodeId, patch);
+}
+
+function updateAgentNode(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  patch: Pick<CanvasNodeSummary, 'status' | 'summary' | 'metadata'>
+): CanvasPrototypeState {
+  return updateCanvasNode(state, nodeId, patch);
+}
+
+function ensureAgentMetadata(node: CanvasNodeSummary): AgentNodeMetadata {
+  return node.metadata?.agent ?? createAgentMetadata();
+}
+
 function ensureTerminalMetadata(node: CanvasNodeSummary): TerminalNodeMetadata {
   return node.metadata?.terminal ?? createTerminalMetadata(node.id);
+}
+
+function buildAgentMetadataPatch(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  patch: AgentNodeMetadata
+): CanvasNodeMetadata {
+  const currentNode = state.nodes.find((node) => node.id === nodeId);
+
+  return {
+    ...currentNode?.metadata,
+    agent: {
+      ...(currentNode ? ensureAgentMetadata(currentNode) : createAgentMetadata()),
+      ...patch
+    }
+  };
+}
+
+function isLegacyPlaceholderAgent(
+  node: CanvasNodeSummary,
+  metadata: AgentNodeMetadata
+): boolean {
+  return (
+    node.summary === '等待接入真实 backend 的原型节点' &&
+    !metadata.liveRun &&
+    !metadata.lastPrompt &&
+    !metadata.lastResponse &&
+    !metadata.lastModelName &&
+    !metadata.lastRunId
+  );
+}
+
+function createAgentRunId(nodeId: string): string {
+  return `${nodeId}-${Date.now().toString(36)}`;
+}
+
+function hasLanguageModelApi(): boolean {
+  return typeof vscode.lm?.selectChatModels === 'function';
+}
+
+function formatModelLabel(model: vscode.LanguageModelChat): string {
+  const vendorLabel = [model.vendor, model.family].filter(Boolean).join('/');
+  if (!vendorLabel || model.name.includes(vendorLabel)) {
+    return model.name;
+  }
+
+  return `${model.name} (${vendorLabel})`;
+}
+
+function buildAgentPrompt(prompt: string): string {
+  return [
+    '你是 OpenCove 画布中的最小 Agent 原型。',
+    '请基于用户目标给出：1. 目标理解 2. 下一步建议 3. 主要风险。',
+    `用户目标：${prompt}`
+  ].join('\n\n');
+}
+
+function summarizeAgentResponse(response: string, running: boolean): string {
+  const normalized = response.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return running ? 'Agent 已启动，正在等待模型响应...' : 'Agent 已完成，但未返回可展示文本。';
+  }
+
+  return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
+}
+
+function trimStoredAgentText(value: string): string {
+  return value.length > 4000 ? value.slice(0, 4000) : value;
+}
+
+function describeAgentRunError(error: unknown): string {
+  if (error instanceof vscode.LanguageModelError) {
+    switch (error.code) {
+      case vscode.LanguageModelError.NoPermissions.name:
+        return '当前未获得语言模型访问授权，请授权后重试。';
+      case vscode.LanguageModelError.Blocked.name:
+        return '当前语言模型请求被限制或额度已用尽，请稍后重试。';
+      case vscode.LanguageModelError.NotFound.name:
+        return '当前选择的语言模型不可用，请重新运行。';
+      default:
+        return error.message || 'Agent 运行失败。';
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return 'Agent 运行失败。';
 }
 
 function findTerminalByName(name: string): vscode.Terminal | undefined {

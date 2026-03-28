@@ -28,6 +28,9 @@
   - typed message bridge
   - `WebviewPanelSerializer`
   - 最小宿主状态投影与 Webview 本地 UI 状态
+  - React Flow 画布原型
+  - 原生终端代理节点
+  - 基于 VSCode `Language Model API` 的最小 Agent 运行原型
 
 ## 本地运行与调试
 
@@ -45,6 +48,11 @@ npm run build
 ```bash
 npm run typecheck
 ```
+
+如果要验证 `Agent` 节点的真实运行链路，还需要满足：
+
+- VSCode 版本不低于 `1.91`
+- 当前 VSCode 中存在至少一个可用的语言模型提供者
 
 ### 2. 启动扩展开发宿主
 
@@ -72,7 +80,23 @@ npm run typecheck
 
 这条命令会打开当前原型里的主画布 `WebviewPanel`。
 
-### 4. 常见误区
+### 4. 验证当前主路径
+
+在新的 `Extension Development Host` 窗口中，当前建议至少验证以下两条链路：
+
+1. `Terminal` 节点：
+   - 创建一个 `Terminal` 节点
+   - 点击“创建并显示终端”
+   - 关闭真实终端后，确认节点状态回流为关闭态
+   - 重新打开画布后，点击“尝试连接现有终端”不会错误新建终端
+
+2. `Agent` 节点：
+   - 创建一个 `Agent` 节点
+   - 输入简短目标并点击“运行 Agent”
+   - 观察节点进入运行态，并在完成后回流结果摘要
+   - 如需验证中断链路，可在运行中点击“停止 Agent”
+
+### 5. 常见误区
 
 - `Run OpenCove Extension` 不是命令面板命令，而是调试配置名称。
 - `OpenCove: 打开画布` 才是插件注册到命令面板里的命令。

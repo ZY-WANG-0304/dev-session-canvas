@@ -104,6 +104,11 @@ body {
   font-size: 12px;
 }
 
+.action-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .action-button.primary {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
@@ -227,6 +232,12 @@ body {
   padding-top: 4px;
 }
 
+.selected-node-agent {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
 .selected-node-meta {
   display: grid;
   gap: 4px;
@@ -239,6 +250,35 @@ body {
   border: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
   word-break: break-all;
+}
+
+.agent-prompt-input,
+.selected-node-output {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--vscode-panel-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
+  color: var(--vscode-editor-foreground);
+}
+
+.agent-prompt-input {
+  min-height: 108px;
+  resize: vertical;
+  padding: 10px 12px;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.selected-node-output {
+  margin: 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .toast-error {
