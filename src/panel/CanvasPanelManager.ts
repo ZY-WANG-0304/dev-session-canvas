@@ -6,6 +6,7 @@ import {
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type HostToWebviewMessage,
+  isCanvasNodeKind,
   parseWebviewMessage
 } from '../common/protocol';
 import { getWebviewHtml } from './getWebviewHtml';
@@ -108,10 +109,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   private loadState(): CanvasPrototypeState {
-    return this.context.workspaceState.get<CanvasPrototypeState>(
-      CANVAS_STATE_STORAGE_KEY,
-      createDefaultState()
-    );
+    const rawState = this.context.workspaceState.get<unknown>(CANVAS_STATE_STORAGE_KEY);
+    return normalizeState(rawState);
   }
 
   private persistState(): void {
@@ -212,4 +211,64 @@ function moveNode(
     updatedAt: new Date().toISOString(),
     nodes
   };
+}
+
+function normalizeState(value: unknown): CanvasPrototypeState {
+  if (!isRecord(value)) {
+    return createDefaultState();
+  }
+
+  const rawNodes = Array.isArray(value.nodes) ? value.nodes : [];
+  const nodes = rawNodes
+    .map((node, index) => normalizeNode(node, index))
+    .filter((node): node is CanvasNodeSummary => node !== null);
+
+  return {
+    version: 1,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
+    nodes: nodes.length > 0 ? nodes : createDefaultState().nodes
+  };
+}
+
+function normalizeNode(value: unknown, index: number): CanvasNodeSummary | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || !isCanvasNodeKind(value.kind)) {
+    return null;
+  }
+
+  const sequence = index + 1;
+
+  return {
+    id: value.id,
+    kind: value.kind,
+    title: typeof value.title === 'string' ? value.title : `${capitalize(value.kind)} ${sequence}`,
+    status: typeof value.status === 'string' ? value.status : 'idle',
+    summary:
+      typeof value.summary === 'string'
+        ? value.summary
+        : '从旧状态恢复的节点，已补齐默认摘要。',
+    position: normalizePosition(value.position, sequence)
+  };
+}
+
+function normalizePosition(value: unknown, sequence: number): CanvasNodePosition {
+  if (
+    isRecord(value) &&
+    typeof value.x === 'number' &&
+    typeof value.y === 'number'
+  ) {
+    return {
+      x: value.x,
+      y: value.y
+    };
+  }
+
+  return createNodePosition(sequence);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
