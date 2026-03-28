@@ -227,6 +227,12 @@ function App(): JSX.Element {
                     payload: { nodeId: selectedNode.id }
                   })
                 }
+                onReconnectTerminal={() =>
+                  postMessage({
+                    type: 'webview/reconnectTerminal',
+                    payload: { nodeId: selectedNode.id }
+                  })
+                }
               />
             ) : (
               <p>选中一个节点后，这里会显示节点详情与可用动作。</p>
@@ -314,6 +320,7 @@ function SelectedNodeDetails(props: {
   node: CanvasNodeSummary;
   onEnsureTerminal: () => void;
   onRevealTerminal: () => void;
+  onReconnectTerminal: () => void;
 }): JSX.Element {
   const { node } = props;
   const terminalMetadata = node.metadata?.terminal;
@@ -345,7 +352,13 @@ function SelectedNodeDetails(props: {
               label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
               onClick={terminalMetadata.liveSession ? props.onRevealTerminal : props.onEnsureTerminal}
             />
-            <ActionButton label="创建或重连终端" tone="secondary" onClick={props.onEnsureTerminal} />
+            {!terminalMetadata.liveSession ? (
+              <ActionButton
+                label="尝试连接现有终端"
+                tone="secondary"
+                onClick={props.onReconnectTerminal}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

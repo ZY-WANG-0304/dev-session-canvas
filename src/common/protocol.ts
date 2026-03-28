@@ -64,6 +64,12 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
       };
+    }
+  | {
+      type: 'webview/reconnectTerminal';
+      payload: {
+        nodeId: string;
+      };
     };
 
 export type HostToWebviewMessage =
@@ -103,7 +109,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/ensureTerminalSession' ||
-    value.type === 'webview/revealTerminal'
+    value.type === 'webview/revealTerminal' ||
+    value.type === 'webview/reconnectTerminal'
   ) {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (!payload || typeof payload.nodeId !== 'string') {

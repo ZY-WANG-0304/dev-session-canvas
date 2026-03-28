@@ -26,15 +26,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     this.persistState();
 
     context.subscriptions.push(
-      vscode.window.onDidCloseTerminal((terminal) => {
-        const nextState = updateTerminalConnectionState(this.state, terminal.name, false);
-        if (nextState === this.state) {
-          return;
-        }
+      vscode.window.onDidOpenTerminal((terminal) => {
+        this.handleTerminalConnectivityChange(terminal.name, true);
+      })
+    );
 
-        this.state = nextState;
-        this.persistState();
-        this.postState('host/stateUpdated');
+    context.subscriptions.push(
+      vscode.window.onDidCloseTerminal((terminal) => {
+        this.handleTerminalConnectivityChange(terminal.name, false);
       })
     );
   }
@@ -112,6 +111,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           case 'webview/revealTerminal':
             void this.revealTerminal(parsedMessage.payload.nodeId);
             break;
+          case 'webview/reconnectTerminal':
+            void this.reconnectTerminal(parsedMessage.payload.nodeId);
+            break;
           case 'webview/resetDemoState':
             this.state = createDefaultState();
             this.persistState();
@@ -151,6 +153,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
   private postMessage(message: HostToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
+  }
+
+  private handleTerminalConnectivityChange(terminalName: string, liveSession: boolean): void {
+    const nextState = updateTerminalConnectionState(this.state, terminalName, liveSession);
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
   }
 
   private async ensureTerminalSession(nodeId: string, reveal: boolean): Promise<void> {
@@ -198,6 +211,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     this.postState('host/stateUpdated');
   }
 
+  private async reconnectTerminal(nodeId: string): Promise<void> {
+    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+    if (!terminalNode) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '未找到可重连的终端节点。'
+        }
+      });
+      return;
+    }
+
+    const metadata = ensureTerminalMetadata(terminalNode);
+    const terminal = findTerminalByName(metadata.terminalName);
+    if (!terminal) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '没有找到可重连的现有终端，请使用“创建并显示终端”。'
+        }
+      });
+      return;
+    }
+
+    terminal.show(false);
+    this.state = updateTerminalNode(this.state, nodeId, {
+      status: 'live',
+      summary: '已重新连接到现存宿主终端。',
+      metadata: {
+        terminal: {
+          ...metadata,
+          liveSession: true
+        }
+      }
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
   private async revealTerminal(nodeId: string): Promise<void> {
     const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
     if (!terminalNode) {
@@ -218,7 +270,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
     const terminal = findTerminalByName(metadata.terminalName);
     if (!terminal) {
-      await this.ensureTerminalSession(nodeId, true);
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '当前没有可显示的现有终端，请先创建并显示终端。'
+        }
+      });
       return;
     }
 
