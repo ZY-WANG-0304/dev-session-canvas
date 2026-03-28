@@ -13,9 +13,11 @@ architecture_layers:
   - 画布呈现层
   - 共享模型与编排层
   - 适配与基础设施层
-related_specs: []
+related_specs:
+  - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/canvas-architecture-research.md
+  - docs/exec-plans/active/agent-runtime-prototype.md
 updated_at: 2026-03-28
 ---
 
@@ -272,6 +274,8 @@ updated_at: 2026-03-28
 
 这样做的目的不是回避选型，而是避免让画布对象模型被底层执行框架反向绑死。后续无论接 VSCode Language Model Tool、MCP、外部 CLI Agent，还是仓库内自建 orchestrator，都应先对齐这个边界。
 
+在当前原型阶段，`Agent` 节点的第一条真实 backend 路线收敛为“宿主直接使用 VSCode `Language Model API` 发起请求”，而不是把节点先绑定到 chat participant、tool 或外部独立服务。详细取舍见 `docs/design-docs/agent-runtime-prototype.md`。
+
 ### 7.7 安全与信任边界
 
 当前建议在扩展层显式支持 Restricted Mode：
@@ -297,7 +301,7 @@ updated_at: 2026-03-28
   当前缓解：必须把节点状态、最近输出、跳转和回流动作做完整，否则该路线没有成立价值。
 
 - 风险：Agent 适配层如果过度抽象，后续实现时可能发现真正的执行模型差异很大。
-  当前缓解：下一阶段应尽快选一个最小 Agent backend 做垂直打通原型。
+  当前缓解：已选定以 VSCode `Language Model API` 作为第一条最小真实 backend 路线，并通过独立原型验证其状态回流与恢复边界。
 
 ## 9. 验证方法
 
