@@ -113,7 +113,7 @@
 
 本轮已完成以下结果：
 
-- 新建研究型 `ExecPlan`：`docs/exec-plans/active/canvas-architecture-research.md`
+- 新建研究型 `ExecPlan`：`docs/exec-plans/completed/canvas-architecture-research.md`
 - 新增具体设计文档：`docs/design-docs/vscode-canvas-runtime-architecture.md`
 - 更新设计索引：`docs/design-docs/index.md`
 - 在 `ARCHITECTURE.md` 中补充“具体技术路线应以下游设计文档为准”的指向

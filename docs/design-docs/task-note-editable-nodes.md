@@ -12,7 +12,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
-  - docs/exec-plans/active/task-note-editable-nodes.md
+  - docs/exec-plans/completed/task-note-editable-nodes.md
 updated_at: 2026-03-28
 ---
 

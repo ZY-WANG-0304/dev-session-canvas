@@ -19,12 +19,13 @@
 - [x] 扩展共享状态模型，使其可承载节点位置等画布信息。
 - [x] 用 React Flow 重建 Webview 前端，支持基础平移、缩放和节点呈现。
 - [x] 完成构建与类型检查，并补充验证说明。
-- [ ] 提交本轮画布原型改动。
+- [x] 提交本轮画布原型改动。
+- [ ] 补齐画布交互与恢复链路的手动验证，并据此决定是否迁入 `completed`。
 
 ## 意外与发现
 
 - 观察：上一轮原型已经验证了 `WebviewPanel`、消息桥和 serializer 主线，因此本轮可以把风险集中到画布引擎本身。
-  证据：`docs/exec-plans/active/webviewpanel-prototype-bootstrap.md` 已记录自动化与手动验证结果。
+  证据：`docs/exec-plans/completed/webviewpanel-prototype-bootstrap.md` 已记录自动化与手动验证结果。
 
 - 观察：在当前本地 `node 12` 环境下，`react`、`react-dom` 与 `reactflow@11.11.4` 可以与现有构建链共同工作。
   证据：完成依赖安装后，`npm run build` 与 `npm run typecheck` 都通过。
@@ -45,7 +46,7 @@
 
 - 技术路线设计：`docs/design-docs/vscode-canvas-runtime-architecture.md`
 - 产品规格：`docs/product-specs/canvas-core-collaboration-mvp.md`
-- 上一轮原型计划：`docs/exec-plans/active/webviewpanel-prototype-bootstrap.md`
+- 上一轮原型计划：`docs/exec-plans/completed/webviewpanel-prototype-bootstrap.md`
 
 本轮要验证的是“画布呈现层是否能从列表占位演进到空间化节点图”，而不是一次性做完所有协作能力。
 
@@ -95,6 +96,8 @@
 
 - `npm run build`
 - `npm run typecheck`
+
+后续终端、Agent、Task 与 Note 迭代已经证明 React Flow 画布可以持续承载真实节点交互与宿主状态回流；本计划当前只剩“画布专属交互与恢复链路”的专项手动验证仍待补齐。
 
 当前仍待手动验证的内容：
 

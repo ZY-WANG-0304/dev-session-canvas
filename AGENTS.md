@@ -1,56 +1,39 @@
 # AGENTS.md
 
-本仓库遵循 Harness Engineering 工作流。
-当前目标是构建一个复刻 OpenCove 核心产品体验的 VSCode 插件：把 AI Agents、终端、任务和笔记放到同一张无限 2D 画布上，让用户在多 Agent 协作时仍能看清全局。
+本仓库遵循 Harness Engineering 工作流。代理在执行任务时，应优先保证可追踪性、文档一致性和假设显式化。
 
 ## 当前约束
 
-- 当前阶段只复刻核心协作体验，不复刻独立 app 的 workspace 管理能力。
-- 所有面向人的正式项目文档默认使用中文。
-- `AGENTS.md` 保持高信号，不写具体实现细节或待确认方案。
-- 未确认内容不得写成既定事实；空白或占位是有意设计。
+`AGENTS.md` 总长度不超过 100 行，并保持高信号。当前文档集不预设具体方案或执行计划；新增设计决策必须显式写入设计文档；所有面向人的项目文档默认使用中文。
 
 ## ExecPlans
 
-- 复杂功能、显著重构、多步研究或存在较大不确定性的任务，先按 `docs/PLANS.md` 创建或更新 `ExecPlan`。
-- 如果任务本身是设计研究，`ExecPlan` 负责推进过程；正式设计结论仍需落到 `docs/DESIGN.md` 和 `docs/design-docs/`。
+编写复杂功能或进行显著重构时，使用 `ExecPlan`（定义见 `docs/PLANS.md`）覆盖从设计到实现的全过程。
+如果任务本身是复杂设计研究，且涉及多步探索、候选方案比较、原型验证或持续决策记录，也应先创建设计阶段的 `ExecPlan`；`ExecPlan` 负责推进过程，设计结论仍需按 `docs/DESIGN.md` 记录到设计文档。
 
 ## 产品
 
-- 需要判断目标用户、价值主张、优先级或范围时，先读 `docs/PRODUCT_SENSE.md`。
-- 需要写单个需求的范围与验收口径时，使用 `docs/product-specs/`。
+目标用户、价值判断、优先级或取舍标准不清楚时读 `docs/PRODUCT_SENSE.md`；需要明确需求范围、验收口径和产品约束时读 `docs/product-specs/index.md`。
 
 ## 架构与设计
 
-- 需要理解系统边界、领域划分和稳定接口时，读 `ARCHITECTURE.md`。
-- 需要记录问题定义、候选方案、取舍和验证证据时，按 `docs/DESIGN.md` 更新 `docs/design-docs/`。
-- 涉及 UI、交互或前端实现时，再补充参考 `docs/FRONTEND.md`。
+理解系统边界、依赖方向与稳定接口时读 `ARCHITECTURE.md`。涉及设计决策、方案比较、取舍或验证证据时按 `docs/DESIGN.md` 的机制更新 `docs/design-docs/index.md`、`docs/design-docs/core-beliefs.md` 和 `docs/design-docs/`；仅在任务涉及 UI、交互或前端实现时读 `docs/FRONTEND.md`。
 
 ## 工作流
 
-- 开始交付性工作或 Code Review 前，先读 `docs/WORKFLOW.md`。
-- 需要执行具体动作时，再进入 `docs/workflows/` 中的细分规则。
+开始交付性工作或进行 Code Review 工作前，统一先读 `docs/WORKFLOW.md`；需要执行具体协作动作时，再从该入口进入对应细分文档。
 
-## 质量与风险
+## 质量与参考
 
-- 质量维度见 `docs/QUALITY_SCORE.md`。
-- 可靠性要求见 `docs/RELIABILITY.md`。
-- 漏洞报告与安全响应流程见 `docs/SECURITY.md`。
-- 系统安全与隐私边界以 `ARCHITECTURE.md` 和相关设计文档为准。
+评估质量、可靠性和安全时分别读 `docs/QUALITY_SCORE.md`、`docs/RELIABILITY.md` 和 `docs/SECURITY.md`；`docs/generated/` 不能替代人工确认后的正式结论，`docs/references/` 只能作为输入，不能直接当作仓库结论。
 
 ## 重要原则
 
-- 不要把参考产品、历史经验或个人偏好直接写成当前仓库已确认结论。
-- 不要用实现细节替代正式文档；实现与文档冲突时，必须显式收口。
-- 文档应先于关键实现落地，至少要把问题、边界和验证方式写清楚。
+不要把未确认内容写成已确认内容，也不要从当前仓库文档中脑补具体方案。文档为空白或占位是有意为之；任何实质性实现前都应先补齐对应文档。
 
 ## 验证要求
 
-每次有意义的变更，至少应包含以下之一：
-
-- 正式文档更新
-- 自动化测试
-- 手动验证说明
+每次有意义的变更，至少应包含文档更新、自动化测试或手动验证说明之一。
 
 ## 完成定义
 

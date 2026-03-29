@@ -58,7 +58,7 @@
 
 - 产品规格：`docs/product-specs/canvas-core-collaboration-mvp.md`
 - 运行时设计：`docs/design-docs/vscode-canvas-runtime-architecture.md`
-- 当前终端原型计划：`docs/exec-plans/active/terminal-proxy-node.md`
+- 当前终端原型计划：`docs/exec-plans/completed/terminal-proxy-node.md`
 
 关键代码路径：
 

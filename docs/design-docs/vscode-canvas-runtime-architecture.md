@@ -16,9 +16,9 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
-  - docs/exec-plans/active/canvas-architecture-research.md
-  - docs/exec-plans/active/agent-runtime-prototype.md
-  - docs/exec-plans/active/agent-session-surface-alignment.md
+  - docs/exec-plans/completed/canvas-architecture-research.md
+  - docs/exec-plans/completed/agent-runtime-prototype.md
+  - docs/exec-plans/completed/agent-session-surface-alignment.md
 updated_at: 2026-03-28
 ---
 
