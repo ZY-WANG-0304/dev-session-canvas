@@ -20,12 +20,12 @@ import './styles.css';
 
 import type {
   AgentProviderKind,
-  AgentTranscriptEntry,
   CanvasNodeKind,
   CanvasNodeMetadata,
   CanvasRuntimeContext,
   CanvasNodeSummary,
   CanvasPrototypeState,
+  ExecutionNodeKind,
   HostToWebviewMessage,
   TaskNodeStatus,
   WebviewToHostMessage
@@ -40,7 +40,6 @@ declare function acquireVsCodeApi<T>(): {
 interface LocalUiState {
   selectedNodeId?: string;
   viewport?: Viewport;
-  agentDraftSnapshots?: Record<string, string>;
   agentProviderDrafts?: Record<string, AgentProviderKind>;
 }
 
@@ -52,18 +51,20 @@ interface CanvasNodeData {
   selected: boolean;
   workspaceTrusted: boolean;
   metadata?: CanvasNodeMetadata;
-  initialAgentDraft?: string;
   agentProvider?: AgentProviderKind;
   onSelectNode?: (nodeId: string) => void;
-  onPersistAgentDraft?: (nodeId: string, value: string) => void;
   onAgentProviderChange?: (nodeId: string, value: AgentProviderKind) => void;
-  onStartAgent?: (nodeId: string, prompt: string, provider: AgentProviderKind) => void;
-  onStopAgent?: (nodeId: string) => void;
-  onStartTerminal?: (nodeId: string, cols: number, rows: number) => void;
-  onAttachTerminal?: (nodeId: string) => void;
-  onTerminalInput?: (nodeId: string, data: string) => void;
-  onResizeTerminal?: (nodeId: string, cols: number, rows: number) => void;
-  onStopTerminal?: (nodeId: string) => void;
+  onStartExecution?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    cols: number,
+    rows: number,
+    provider?: AgentProviderKind
+  ) => void;
+  onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
+  onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
+  onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateTask?: (payload: {
     nodeId: string;
     title: string;
@@ -81,10 +82,11 @@ interface CanvasNodeData {
 const EMBEDDED_TERMINAL_VIEWPORT_HEIGHT = 340;
 
 type CanvasFlowNode = Node<CanvasNodeData>;
-type TerminalHostEvent =
+type ExecutionHostEvent =
   | {
       type: 'snapshot';
       nodeId: string;
+      kind: ExecutionNodeKind;
       output: string;
       cols: number;
       rows: number;
@@ -93,19 +95,21 @@ type TerminalHostEvent =
   | {
       type: 'output';
       nodeId: string;
+      kind: ExecutionNodeKind;
       chunk: string;
     }
   | {
       type: 'exit';
       nodeId: string;
+      kind: ExecutionNodeKind;
       message: string;
     };
 
 const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
-const TERMINAL_EVENT_NAME = 'opencove-terminal-event';
-const terminalEventTarget = new EventTarget();
+const EXECUTION_EVENT_NAME = 'opencove-execution-event';
+const executionEventTarget = new EventTarget();
 
 if (!rootElement) {
   throw new Error('Webview root element not found.');
@@ -122,9 +126,6 @@ function App(): JSX.Element {
     selectedNodeId: initialPersistedState.selectedNodeId,
     viewport: initialPersistedState.viewport
   }));
-  const [agentDraftSnapshots, setAgentDraftSnapshots] = useState<Record<string, string>>(
-    () => initialPersistedState.agentDraftSnapshots ?? {}
-  );
   const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>(
     () => initialPersistedState.agentProviderDrafts ?? {}
   );
@@ -141,27 +142,30 @@ function App(): JSX.Element {
           setHostState(message.payload.state);
           setRuntimeContext(message.payload.runtime);
           break;
-        case 'host/terminalSnapshot':
-          emitTerminalHostEvent({
+        case 'host/executionSnapshot':
+          emitExecutionHostEvent({
             type: 'snapshot',
             nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
             output: message.payload.output,
             cols: message.payload.cols,
             rows: message.payload.rows,
             liveSession: message.payload.liveSession
           });
           break;
-        case 'host/terminalOutput':
-          emitTerminalHostEvent({
+        case 'host/executionOutput':
+          emitExecutionHostEvent({
             type: 'output',
             nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
             chunk: message.payload.chunk
           });
           break;
-        case 'host/terminalExit':
-          emitTerminalHostEvent({
+        case 'host/executionExit':
+          emitExecutionHostEvent({
             type: 'exit',
             nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
             message: message.payload.message
           });
           break;
@@ -189,10 +193,9 @@ function App(): JSX.Element {
   useEffect(() => {
     vscode.setState({
       ...localUiState,
-      agentDraftSnapshots,
       agentProviderDrafts
     });
-  }, [localUiState, agentDraftSnapshots, agentProviderDrafts]);
+  }, [localUiState, agentProviderDrafts]);
 
   const selectedNode = hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId);
   const workspaceTrusted = runtimeContext.workspaceTrusted;
@@ -204,7 +207,6 @@ function App(): JSX.Element {
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
     workspaceTrusted,
-    agentDraftSnapshots,
     agentProviderDrafts,
     onSelectNode: (nodeId) => {
       if (localUiState.selectedNodeId === nodeId) {
@@ -216,67 +218,42 @@ function App(): JSX.Element {
         selectedNodeId: nodeId
       }));
     },
-    onPersistAgentDraft: (nodeId, value) => {
-      setAgentDraftSnapshots((current) => ({
-        ...current,
-        [nodeId]: value
-      }));
-    },
     onAgentProviderChange: (nodeId, value) => {
       setAgentProviderDrafts((current) => ({
         ...current,
         [nodeId]: value
       }));
     },
-    onStartAgent: (nodeId, prompt, provider) => {
-      const trimmedPrompt = prompt.trim();
-      if (!trimmedPrompt) {
-        return;
-      }
-
+    onStartExecution: (nodeId, kind, cols, rows, provider) =>
       postMessage({
-        type: 'webview/startAgentRun',
+        type: 'webview/startExecutionSession',
         payload: {
           nodeId,
-          prompt: trimmedPrompt,
+          kind,
+          cols,
+          rows,
           provider
         }
-      });
-
-      setAgentDraftSnapshots((current) => ({
-        ...current,
-        [nodeId]: ''
-      }));
-    },
-    onStopAgent: (nodeId) =>
-      postMessage({
-        type: 'webview/stopAgentRun',
-        payload: { nodeId }
       }),
-    onStartTerminal: (nodeId, cols, rows) =>
+    onAttachExecution: (nodeId, kind) =>
       postMessage({
-        type: 'webview/startTerminalSession',
-        payload: { nodeId, cols, rows }
+        type: 'webview/attachExecutionSession',
+        payload: { nodeId, kind }
       }),
-    onAttachTerminal: (nodeId) =>
+    onExecutionInput: (nodeId, kind, data) =>
       postMessage({
-        type: 'webview/attachTerminalSession',
-        payload: { nodeId }
+        type: 'webview/executionInput',
+        payload: { nodeId, kind, data }
       }),
-    onTerminalInput: (nodeId, data) =>
+    onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
-        type: 'webview/terminalInput',
-        payload: { nodeId, data }
+        type: 'webview/resizeExecutionSession',
+        payload: { nodeId, kind, cols, rows }
       }),
-    onResizeTerminal: (nodeId, cols, rows) =>
+    onStopExecution: (nodeId, kind) =>
       postMessage({
-        type: 'webview/resizeTerminalSession',
-        payload: { nodeId, cols, rows }
-      }),
-    onStopTerminal: (nodeId) =>
-      postMessage({
-        type: 'webview/stopTerminalSession',
-        payload: { nodeId }
+        type: 'webview/stopExecutionSession',
+        payload: { nodeId, kind }
       }),
     onUpdateTask: (payload) =>
       postMessage({
@@ -440,178 +417,242 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }
 
   const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
-  const transcript = agentMetadata.transcript ?? [];
-  const initialDraft = data.initialAgentDraft ?? agentMetadata.lastPrompt ?? '';
   const executionBlocked = !data.workspaceTrusted;
-  const [draft, setDraft] = useState(initialDraft);
-  const [isFocused, setIsFocused] = useState(false);
-  const [isComposing, setIsComposing] = useState(false);
-  const actionLabel = agentMetadata.liveRun ? '停止' : '发送';
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const xtermRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const resizeFrameRef = useRef<number | undefined>(undefined);
+  const terminalSizeRef = useRef({
+    cols: agentMetadata.lastCols ?? 96,
+    rows: agentMetadata.lastRows ?? 28
+  });
+  const terminalFlagsRef = useRef({
+    liveSession: agentMetadata.liveSession
+  });
 
   useEffect(() => {
-    if (!isFocused && !isComposing) {
-      setDraft(initialDraft);
-    }
-  }, [id, initialDraft, isFocused, isComposing]);
+    terminalSizeRef.current = {
+      cols: agentMetadata.lastCols ?? terminalSizeRef.current.cols,
+      rows: agentMetadata.lastRows ?? terminalSizeRef.current.rows
+    };
+  }, [agentMetadata.lastCols, agentMetadata.lastRows]);
 
-  const submitDraft = (): void => {
-    const trimmedDraft = draft.trim();
-    if (!trimmedDraft || agentMetadata.liveRun) {
+  useEffect(() => {
+    terminalFlagsRef.current = {
+      liveSession: agentMetadata.liveSession
+    };
+  }, [agentMetadata.liveSession]);
+
+  useEffect(() => {
+    const container = viewportRef.current;
+    if (!container) {
       return;
     }
 
-    data.onStartAgent?.(id, trimmedDraft, provider);
-    setDraft('');
+    const terminal = new Terminal(createEmbeddedTerminalOptions());
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(container);
+
+    const fitTerminal = (): void => {
+      fitAddon.fit();
+      const snappedHeight = snapEmbeddedTerminalViewportHeight(terminal, EMBEDDED_TERMINAL_VIEWPORT_HEIGHT);
+      if (snappedHeight && container.clientHeight !== snappedHeight) {
+        container.style.setProperty('--embedded-terminal-viewport-height', `${snappedHeight}px`);
+        fitAddon.fit();
+      }
+
+      terminalSizeRef.current = {
+        cols: terminal.cols,
+        rows: terminal.rows
+      };
+
+      if (terminal.cols <= 0 || terminal.rows <= 0) {
+        return;
+      }
+
+      const flags = terminalFlagsRef.current;
+      if (!flags.liveSession) {
+        data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
+      }
+    };
+
+    xtermRef.current = terminal;
+    fitAddonRef.current = fitAddon;
+    window.requestAnimationFrame(fitTerminal);
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeFrameRef.current) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
+
+      resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+    });
+    resizeObserver.observe(container);
+
+    const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'agent', input));
+    const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+
+    data.onAttachExecution?.(id, 'agent');
+
+    return () => {
+      dataDisposable.dispose();
+      selectionDisposable.dispose();
+      resizeObserver.disconnect();
+      if (resizeFrameRef.current) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
+      terminal.dispose();
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (agentMetadata.liveSession) {
+      data.onAttachExecution?.(id, 'agent');
+    }
+  }, [agentMetadata.liveSession, id]);
+
+  useEffect(() => {
+    const listener = (event: Event): void => {
+      const detail = (event as CustomEvent<ExecutionHostEvent>).detail;
+      if (detail.nodeId !== id || detail.kind !== 'agent') {
+        return;
+      }
+
+      const terminal = xtermRef.current;
+      if (!terminal) {
+        return;
+      }
+
+      if (detail.type === 'snapshot') {
+        terminal.reset();
+        if (detail.output) {
+          terminal.write(detail.output);
+        }
+        window.requestAnimationFrame(() => {
+          fitAddonRef.current?.fit();
+          if (terminal.cols > 0 && terminal.rows > 0) {
+            terminalSizeRef.current = {
+              cols: terminal.cols,
+              rows: terminal.rows
+            };
+            if (!detail.liveSession) {
+              data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
+            }
+          }
+        });
+        terminal.scrollToBottom();
+        return;
+      }
+
+      if (detail.type === 'output') {
+        terminal.write(detail.chunk);
+        terminal.scrollToBottom();
+        return;
+      }
+
+      terminal.writeln(`\r\n[OpenCove] ${detail.message}`);
+      terminal.scrollToBottom();
+    };
+
+    executionEventTarget.addEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
+    return () => {
+      executionEventTarget.removeEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
+    };
+  }, [id]);
+
+  const startAgent = (): void => {
+    data.onSelectNode?.(id);
+    data.onStartExecution?.(
+      id,
+      'agent',
+      terminalSizeRef.current.cols,
+      terminalSizeRef.current.rows,
+      provider
+    );
+  };
+
+  const stopAgent = (): void => {
+    data.onSelectNode?.(id);
+    data.onStopExecution?.(id, 'agent');
   };
 
   return (
     <div className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}>
       <div className="window-chrome">
         <div className="window-title">
-          <strong>{providerLabel(provider)}</strong>
-          <span>{data.title}</span>
+          <strong>{data.title}</strong>
+          <span>{agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}</span>
         </div>
-        <span className={`status-pill ${statusToneClass(data.status)}`}>
-          {agentMetadata.liveRun ? '运行中' : humanizeStatus(data.status)}
-        </span>
+        <div className="window-chrome-actions">
+          <select
+            className="agent-provider-select nodrag nopan"
+            data-node-interactive="true"
+            value={provider}
+            disabled={executionBlocked || agentMetadata.liveSession}
+            onFocus={() => data.onSelectNode?.(id)}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onKeyDown={stopCanvasEvent}
+            onChange={(event) =>
+              data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
+            }
+          >
+            <option value="codex">Codex</option>
+            <option value="claude">Claude Code</option>
+          </select>
+          <span className={`status-pill ${agentMetadata.liveSession ? 'tone-running' : statusToneClass(data.status)}`}>
+            {agentMetadata.liveSession ? '运行中' : humanizeStatus(data.status)}
+          </span>
+          <ActionButton
+            label={agentMetadata.liveSession ? '停止' : agentMetadata.lastExitMessage ? '重启' : '启动'}
+            onClick={() => (agentMetadata.liveSession ? stopAgent() : startAgent())}
+            disabled={executionBlocked}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+        </div>
       </div>
 
       <div className="session-body">
-        <div className="session-banner">
-          <strong>{agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}</strong>
-          <span>{data.summary}</span>
-        </div>
-
         <div
-          className="agent-transcript nowheel nopan nodrag"
+          className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'}`}
           data-node-interactive="true"
-          onMouseDown={stopCanvasEvent}
-          onClick={stopCanvasEvent}
+          onMouseDown={(event) => {
+            stopCanvasEvent(event);
+            data.onSelectNode?.(id);
+          }}
+          onClick={(event) => {
+            stopCanvasEvent(event);
+            data.onSelectNode?.(id);
+          }}
           onDoubleClick={stopCanvasEvent}
           onWheel={stopCanvasEvent}
         >
-          {transcript.length > 0 ? (
-            transcript.map((entry) => (
-              <AgentTranscriptBubble key={entry.id} entry={entry} provider={provider} />
-            ))
-          ) : (
-            <div className="agent-empty-state">
-              在节点内输入第一条消息后，这里会保留用户输入、流式输出和运行状态。
+          <div ref={viewportRef} className="terminal-viewport" />
+          {!agentMetadata.liveSession ? (
+            <div className="terminal-overlay">
+              <strong>
+                {executionBlocked
+                  ? 'Restricted Mode'
+                  : agentMetadata.lastExitMessage
+                    ? 'Agent 当前未运行'
+                    : 'Agent 尚未启动'}
+              </strong>
+              <span>
+                {executionBlocked
+                  ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
+                  : agentMetadata.lastExitMessage
+                    ? agentMetadata.lastExitMessage
+                    : data.summary}
+              </span>
             </div>
-          )}
+          ) : null}
         </div>
-
-        {executionBlocked ? (
-          <RestrictedBanner
-            title="Restricted Mode"
-            description="当前 workspace 未受信任，Agent 运行入口已禁用。信任 workspace 后可继续发送消息。"
-          />
-        ) : (
-          <div
-            className="agent-composer nodrag nopan"
-            data-node-interactive="true"
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onDoubleClick={stopCanvasEvent}
-          >
-            <div className="agent-composer-toolbar">
-              <select
-                className="agent-provider-select nodrag nopan"
-                data-node-interactive="true"
-                value={provider}
-                disabled={agentMetadata.liveRun}
-                onFocus={() => data.onSelectNode?.(id)}
-                onMouseDown={stopCanvasEvent}
-                onClick={stopCanvasEvent}
-                onKeyDown={stopCanvasEvent}
-                onChange={(event) =>
-                  data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
-                }
-              >
-                <option value="codex">Codex</option>
-                <option value="claude">Claude Code</option>
-              </select>
-              <ActionButton
-                label={actionLabel}
-                onClick={() =>
-                  agentMetadata.liveRun
-                    ? data.onStopAgent?.(id)
-                    : submitDraft()
-                }
-                disabled={!agentMetadata.liveRun && !draft.trim()}
-                className="nodrag nopan"
-                interactive
-                onFocus={() => data.onSelectNode?.(id)}
-              />
-            </div>
-            <textarea
-              className="agent-prompt-input nowheel nodrag nopan"
-              data-node-interactive="true"
-              value={draft}
-              onFocus={() => {
-                setIsFocused(true);
-                data.onSelectNode?.(id);
-              }}
-              onMouseDown={stopCanvasEvent}
-              onClick={stopCanvasEvent}
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={(event) => {
-                setIsComposing(false);
-                const nextValue = event.currentTarget.value;
-                setDraft(nextValue);
-              }}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setDraft(nextValue);
-              }}
-              onBlur={(event) => {
-                setIsFocused(false);
-                data.onPersistAgentDraft?.(id, event.target.value);
-              }}
-              onKeyDown={(event) => {
-                stopCanvasEvent(event);
-                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                  event.preventDefault();
-                  submitDraft();
-                  return;
-                }
-
-                if (event.key === 'Escape') {
-                  event.currentTarget.blur();
-                }
-              }}
-              placeholder="向这个 Agent 发送下一条指令"
-            />
-          </div>
-        )}
       </div>
-    </div>
-  );
-}
-
-function AgentTranscriptBubble(props: {
-  entry: AgentTranscriptEntry;
-  provider: AgentProviderKind;
-}): JSX.Element {
-  const { entry, provider } = props;
-  const label =
-    entry.role === 'user'
-      ? '你'
-      : entry.role === 'assistant'
-        ? providerLabel(provider)
-        : '系统';
-  const content =
-    entry.role === 'assistant' && entry.state === 'streaming' && !entry.text
-      ? '正在运行...'
-      : entry.text;
-
-  return (
-    <div className={`agent-bubble role-${entry.role} state-${entry.state ?? 'done'}`}>
-      <div className="agent-bubble-header">
-        <strong>{label}</strong>
-        {entry.state === 'streaming' ? <span>流式输出</span> : null}
-      </div>
-      <div className="agent-bubble-content">{content}</div>
     </div>
   );
 }
@@ -687,12 +728,12 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       if (flags.autoStartPending && !flags.liveSession && !flags.executionBlocked && !autoStartRequestedRef.current) {
         autoStartRequestedRef.current = true;
         data.onSelectNode?.(id);
-        data.onStartTerminal?.(id, terminal.cols, terminal.rows);
+        data.onStartExecution?.(id, 'terminal', terminal.cols, terminal.rows);
         return;
       }
 
       if (!flags.liveSession) {
-        data.onResizeTerminal?.(id, terminal.cols, terminal.rows);
+        data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
       }
     };
 
@@ -709,10 +750,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) => data.onTerminalInput?.(id, input));
+    const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'terminal', input));
     const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
 
-    data.onAttachTerminal?.(id);
+    data.onAttachExecution?.(id, 'terminal');
 
     return () => {
       dataDisposable.dispose();
@@ -729,14 +770,14 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
   useEffect(() => {
     if (terminalMetadata.liveSession) {
-      data.onAttachTerminal?.(id);
+      data.onAttachExecution?.(id, 'terminal');
     }
   }, [id, terminalMetadata.liveSession]);
 
   useEffect(() => {
     const listener = (event: Event): void => {
-      const detail = (event as CustomEvent<TerminalHostEvent>).detail;
-      if (detail.nodeId !== id) {
+      const detail = (event as CustomEvent<ExecutionHostEvent>).detail;
+      if (detail.nodeId !== id || detail.kind !== 'terminal') {
         return;
       }
 
@@ -758,7 +799,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
               rows: terminal.rows
             };
             if (!detail.liveSession) {
-              data.onResizeTerminal?.(id, terminal.cols, terminal.rows);
+              data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
             }
           }
         });
@@ -776,20 +817,20 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       terminal.scrollToBottom();
     };
 
-    terminalEventTarget.addEventListener(TERMINAL_EVENT_NAME, listener as EventListener);
+    executionEventTarget.addEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
     return () => {
-      terminalEventTarget.removeEventListener(TERMINAL_EVENT_NAME, listener as EventListener);
+      executionEventTarget.removeEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
     };
   }, [id]);
 
   const startTerminal = (): void => {
     data.onSelectNode?.(id);
-    data.onStartTerminal?.(id, terminalSizeRef.current.cols, terminalSizeRef.current.rows);
+    data.onStartExecution?.(id, 'terminal', terminalSizeRef.current.cols, terminalSizeRef.current.rows);
   };
 
   const stopTerminal = (): void => {
     data.onSelectNode?.(id);
-    data.onStopTerminal?.(id);
+    data.onStopExecution?.(id, 'terminal');
   };
 
   return (
@@ -1139,11 +1180,11 @@ function CanvasCardNode({ data }: Pick<NodeProps<CanvasNodeData>, 'data'>): JSX.
       <div className="node-status">状态：{humanizeStatus(data.status)}</div>
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
-          {agentMetadata.liveRun
-            ? `${providerLabel(agentMetadata.provider)} 正在运行`
-            : agentMetadata.transcript?.length
-              ? '已保留最近会话转录'
-              : '等待首次运行'}
+          {agentMetadata.liveSession
+            ? `${providerLabel(agentMetadata.provider)} 会话正在运行`
+            : agentMetadata.recentOutput
+              ? '已保留最近输出摘要'
+              : 'Agent 未运行，可在节点内启动'}
         </div>
       ) : null}
       {data.kind === 'terminal' && terminalMetadata ? (
@@ -1198,18 +1239,20 @@ function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
   workspaceTrusted: boolean;
-  agentDraftSnapshots: Record<string, string>;
   agentProviderDrafts: Record<string, AgentProviderKind>;
   onSelectNode: (nodeId: string) => void;
-  onPersistAgentDraft: (nodeId: string, value: string) => void;
   onAgentProviderChange: (nodeId: string, value: AgentProviderKind) => void;
-  onStartAgent: (nodeId: string, prompt: string, provider: AgentProviderKind) => void;
-  onStopAgent: (nodeId: string) => void;
-  onStartTerminal: (nodeId: string, cols: number, rows: number) => void;
-  onAttachTerminal: (nodeId: string) => void;
-  onTerminalInput: (nodeId: string, data: string) => void;
-  onResizeTerminal: (nodeId: string, cols: number, rows: number) => void;
-  onStopTerminal: (nodeId: string) => void;
+  onStartExecution: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    cols: number,
+    rows: number,
+    provider?: AgentProviderKind
+  ) => void;
+  onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
+  onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
+  onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateTask: (payload: {
     nodeId: string;
     title: string;
@@ -1245,19 +1288,14 @@ function toFlowNodes(params: {
       selected: node.id === params.selectedNodeId,
       workspaceTrusted: params.workspaceTrusted,
       metadata: node.metadata,
-      initialAgentDraft:
-        params.agentDraftSnapshots[node.id] ?? node.metadata?.agent?.lastPrompt ?? '',
       agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
       onSelectNode: params.onSelectNode,
-      onPersistAgentDraft: params.onPersistAgentDraft,
       onAgentProviderChange: params.onAgentProviderChange,
-      onStartAgent: params.onStartAgent,
-      onStopAgent: params.onStopAgent,
-      onStartTerminal: params.onStartTerminal,
-      onAttachTerminal: params.onAttachTerminal,
-      onTerminalInput: params.onTerminalInput,
-      onResizeTerminal: params.onResizeTerminal,
-      onStopTerminal: params.onStopTerminal,
+      onStartExecution: params.onStartExecution,
+      onAttachExecution: params.onAttachExecution,
+      onExecutionInput: params.onExecutionInput,
+      onResizeExecution: params.onResizeExecution,
+      onStopExecution: params.onStopExecution,
       onUpdateTask: params.onUpdateTask,
       onUpdateNote: params.onUpdateNote
     }
@@ -1290,19 +1328,23 @@ function SelectedNodeDetails(props: { node: CanvasNodeSummary; workspaceTrusted:
             <strong>{agentMetadata.lastBackendLabel ?? '尚未运行'}</strong>
           </div>
           <div className="selected-node-meta">
-            <span className="meta-label">转录条目数</span>
-            <strong>{agentMetadata.transcript?.length ?? 0}</strong>
+            <span className="meta-label">命令路径</span>
+            <code>{agentMetadata.shellPath}</code>
           </div>
-          {agentMetadata.lastResponse ? (
+          <div className="selected-node-meta">
+            <span className="meta-label">工作目录</span>
+            <strong>{agentMetadata.cwd}</strong>
+          </div>
+          {agentMetadata.recentOutput ? (
             <div className="selected-node-meta">
               <span className="meta-label">最近输出</span>
-              <pre className="selected-node-output">{agentMetadata.lastResponse}</pre>
+              <pre className="selected-node-output">{agentMetadata.recentOutput}</pre>
             </div>
           ) : null}
           {!props.workspaceTrusted ? (
             <p className="selected-node-note">当前 workspace 未受信任，Agent 运行入口已退化为只读展示。</p>
           ) : null}
-          <p className="selected-node-note">主交互已收敛到节点内部：在画布上直接发送消息并查看转录。</p>
+          <p className="selected-node-note">主交互已收敛到节点内部：在画布上直接使用 CLI 会话窗口。</p>
         </div>
       ) : null}
       {node.kind === 'terminal' && terminalMetadata ? (
@@ -1489,8 +1531,8 @@ function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }
 
-function emitTerminalHostEvent(detail: TerminalHostEvent): void {
-  terminalEventTarget.dispatchEvent(new CustomEvent<TerminalHostEvent>(TERMINAL_EVENT_NAME, { detail }));
+function emitExecutionHostEvent(detail: ExecutionHostEvent): void {
+  executionEventTarget.dispatchEvent(new CustomEvent<ExecutionHostEvent>(EXECUTION_EVENT_NAME, { detail }));
 }
 
 function snapEmbeddedTerminalViewportHeight(terminal: Terminal, preferredHeight: number): number | null {
