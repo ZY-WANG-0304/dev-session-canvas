@@ -135,6 +135,12 @@ body {
   border-color: var(--vscode-panel-border);
 }
 
+.action-button.danger {
+  background: rgba(127, 29, 29, 0.22);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
 .canvas-node {
   border-radius: 18px;
   border: 1px solid var(--vscode-panel-border);
@@ -559,6 +565,10 @@ body {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.compact-node-actions {
+  margin-top: 10px;
 }
 
 .footer-panel {

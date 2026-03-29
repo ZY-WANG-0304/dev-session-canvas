@@ -85,6 +85,12 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/deleteNode';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
       type: 'webview/resetDemoState';
     }
   | {
@@ -360,6 +366,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         nodeId: payload.nodeId,
         title: payload.title,
         content: payload.content
+      }
+    };
+  }
+
+  if (value.type === 'webview/deleteNode') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/deleteNode',
+      payload: {
+        nodeId: payload.nodeId
       }
     };
   }

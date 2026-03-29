@@ -77,6 +77,7 @@ interface CanvasNodeData {
     title: string;
     content: string;
   }) => void;
+  onDeleteNode?: (nodeId: string) => void;
 }
 
 const EMBEDDED_TERMINAL_VIEWPORT_HEIGHT = 340;
@@ -197,11 +198,46 @@ function App(): JSX.Element {
     });
   }, [localUiState, agentProviderDrafts]);
 
+  useEffect(() => {
+    if (!hostState) {
+      return;
+    }
+
+    const validNodeIds = new Set(hostState.nodes.map((node) => node.id));
+    setLocalUiState((current) =>
+      current.selectedNodeId && !validNodeIds.has(current.selectedNodeId)
+        ? {
+            ...current,
+            selectedNodeId: undefined
+          }
+        : current
+    );
+    setAgentProviderDrafts((current) => pruneAgentProviderDrafts(current, validNodeIds));
+  }, [hostState]);
+
   const selectedNode = hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId);
   const workspaceTrusted = runtimeContext.workspaceTrusted;
   const updatedAtLabel = hostState
     ? new Date(hostState.updatedAt).toLocaleString()
     : '等待宿主初始化';
+
+  const deleteNode = (nodeId: string): void => {
+    setLocalUiState((current) =>
+      current.selectedNodeId === nodeId
+        ? {
+            ...current,
+            selectedNodeId: undefined
+          }
+        : current
+    );
+    setAgentProviderDrafts((current) => removeAgentProviderDraft(current, nodeId));
+    postMessage({
+      type: 'webview/deleteNode',
+      payload: {
+        nodeId
+      }
+    });
+  };
 
   const nodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
@@ -264,7 +300,8 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/updateNoteNode',
         payload
-      })
+      }),
+    onDeleteNode: deleteNode
   });
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
@@ -310,6 +347,27 @@ function App(): JSX.Element {
     });
   };
 
+  useEffect(() => {
+    const selectedNodeId = selectedNode?.id;
+    if (!selectedNodeId) {
+      return;
+    }
+
+    const handleWindowKeyDown = (event: KeyboardEvent): void => {
+      if (!shouldDeleteSelectedNodeFromKeyboard(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      deleteNode(selectedNodeId);
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [selectedNode?.id]);
+
   return (
     <div className="canvas-shell">
       <ReactFlow
@@ -354,7 +412,7 @@ function App(): JSX.Element {
         <Panel position="top-right" className="actions-panel">
           <section>
             <h2>创建示例对象</h2>
-            <p>直接创建四类对象，验证会话窗口、宿主消息处理与节点状态投影。</p>
+            <p>直接创建四类对象，再从节点头部或键盘删除，验证对象生命周期与宿主状态投影。</p>
             <div className="action-row">
               {workspaceTrusted ? (
                 <>
@@ -413,7 +471,7 @@ function App(): JSX.Element {
 function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const agentMetadata = data.metadata?.agent;
   if (!agentMetadata) {
-    return <CanvasCardNode data={data} />;
+    return <CanvasCardNode id={id} data={data} />;
   }
 
   const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
@@ -579,6 +637,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onStopExecution?.(id, 'agent');
   };
 
+  const deleteAgent = (): void => {
+    data.onSelectNode?.(id);
+    data.onDeleteNode?.(id);
+  };
+
   return (
     <div className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}>
       <div className="window-chrome">
@@ -610,6 +673,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             label={agentMetadata.liveSession ? '停止' : agentMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (agentMetadata.liveSession ? stopAgent() : startAgent())}
             disabled={executionBlocked}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+          <ActionButton
+            label="删除"
+            tone="danger"
+            onClick={deleteAgent}
             className="nodrag nopan compact"
             interactive
             onFocus={() => data.onSelectNode?.(id)}
@@ -660,7 +731,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const terminalMetadata = data.metadata?.terminal;
   if (!terminalMetadata) {
-    return <CanvasCardNode data={data} />;
+    return <CanvasCardNode id={id} data={data} />;
   }
 
   const executionBlocked = !data.workspaceTrusted;
@@ -833,6 +904,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     data.onStopExecution?.(id, 'terminal');
   };
 
+  const deleteTerminal = (): void => {
+    data.onSelectNode?.(id);
+    data.onDeleteNode?.(id);
+  };
+
   return (
     <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
@@ -850,6 +926,14 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
             disabled={executionBlocked}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+          <ActionButton
+            label="删除"
+            tone="danger"
+            onClick={deleteTerminal}
             className="nodrag nopan compact"
             interactive
             onFocus={() => data.onSelectNode?.(id)}
@@ -909,7 +993,7 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
 function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const taskMetadata = data.metadata?.task;
   if (!taskMetadata) {
-    return <CanvasCardNode data={data} />;
+    return <CanvasCardNode id={id} data={data} />;
   }
 
   const [title, setTitle] = useState(data.title);
@@ -959,6 +1043,11 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     setActiveFieldCount((current) => Math.max(0, current - 1));
   };
 
+  const deleteTask = (): void => {
+    data.onSelectNode?.(id);
+    data.onDeleteNode?.(id);
+  };
+
   return (
     <div className={`canvas-node object-editor-node kind-task ${data.selected ? 'is-selected' : ''}`}>
       <div className="window-chrome">
@@ -966,7 +1055,17 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <strong>Task</strong>
           <span>{title.trim() || '未命名任务'}</span>
         </div>
-        <span className={`status-pill ${statusToneClass(status)}`}>{humanizeStatus(status)}</span>
+        <div className="window-chrome-actions">
+          <span className={`status-pill ${statusToneClass(status)}`}>{humanizeStatus(status)}</span>
+          <ActionButton
+            label="删除"
+            tone="danger"
+            onClick={deleteTask}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+        </div>
       </div>
 
       <div className="object-body">
@@ -1072,7 +1171,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const noteMetadata = data.metadata?.note;
   if (!noteMetadata) {
-    return <CanvasCardNode data={data} />;
+    return <CanvasCardNode id={id} data={data} />;
   }
 
   const [title, setTitle] = useState(data.title);
@@ -1104,6 +1203,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     setActiveFieldCount((current) => Math.max(0, current - 1));
   };
 
+  const deleteNote = (): void => {
+    data.onSelectNode?.(id);
+    data.onDeleteNode?.(id);
+  };
+
   return (
     <div className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}>
       <div className="window-chrome">
@@ -1111,7 +1215,17 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <strong>Note</strong>
           <span>{title.trim() || '未命名笔记'}</span>
         </div>
-        <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+        <div className="window-chrome-actions">
+          <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+          <ActionButton
+            label="删除"
+            tone="danger"
+            onClick={deleteNote}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+        </div>
       </div>
 
       <div className="object-body">
@@ -1167,7 +1281,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   );
 }
 
-function CanvasCardNode({ data }: Pick<NodeProps<CanvasNodeData>, 'data'>): JSX.Element {
+function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
   const agentMetadata = data.metadata?.agent;
   const terminalMetadata = data.metadata?.terminal;
 
@@ -1193,6 +1307,16 @@ function CanvasCardNode({ data }: Pick<NodeProps<CanvasNodeData>, 'data'>): JSX.
         </div>
       ) : null}
       <p>{data.summary}</p>
+      <div className="action-row compact-node-actions">
+        <ActionButton
+          label="删除"
+          tone="danger"
+          onClick={() => data.onDeleteNode?.(id)}
+          className="compact nodrag nopan"
+          interactive
+          onFocus={() => data.onSelectNode?.(id)}
+        />
+      </div>
     </div>
   );
 }
@@ -1208,17 +1332,24 @@ const nodeTypes = {
 function ActionButton(props: {
   label: string;
   onClick: () => void;
-  tone?: 'primary' | 'secondary';
+  tone?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
   className?: string;
   interactive?: boolean;
   onFocus?: () => void;
 }): JSX.Element {
+  const toneClass =
+    props.tone === 'secondary'
+      ? 'secondary'
+      : props.tone === 'danger'
+        ? 'danger'
+        : 'primary';
+
   return (
     <button
       type="button"
       data-node-interactive={props.interactive ? 'true' : undefined}
-      className={`action-button ${props.tone === 'secondary' ? 'secondary' : 'primary'} ${props.className ?? ''}`.trim()}
+      className={`action-button ${toneClass} ${props.className ?? ''}`.trim()}
       disabled={props.disabled}
       onFocus={props.onFocus}
       onMouseDown={props.interactive ? stopCanvasEvent : undefined}
@@ -1265,6 +1396,7 @@ function toFlowNodes(params: {
     title: string;
     content: string;
   }) => void;
+  onDeleteNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
   return params.nodes.map((node) => ({
     id: node.id,
@@ -1297,7 +1429,8 @@ function toFlowNodes(params: {
       onResizeExecution: params.onResizeExecution,
       onStopExecution: params.onStopExecution,
       onUpdateTask: params.onUpdateTask,
-      onUpdateNote: params.onUpdateNote
+      onUpdateNote: params.onUpdateNote,
+      onDeleteNode: params.onDeleteNode
     }
   }));
 }
@@ -1525,6 +1658,68 @@ function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElemen
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(target.closest('[data-node-interactive="true"]'));
+}
+
+function shouldDeleteSelectedNodeFromKeyboard(event: KeyboardEvent): boolean {
+  if (
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.repeat ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    (event.key !== 'Delete' && event.key !== 'Backspace')
+  ) {
+    return false;
+  }
+
+  return !isDeleteShortcutBlockedTarget(event.target);
+}
+
+function isDeleteShortcutBlockedTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  return Boolean(
+    target.closest('input, textarea, select, button, a, [contenteditable="true"], [data-node-interactive="true"]')
+  );
+}
+
+function removeAgentProviderDraft(
+  drafts: Record<string, AgentProviderKind>,
+  nodeId: string
+): Record<string, AgentProviderKind> {
+  if (!(nodeId in drafts)) {
+    return drafts;
+  }
+
+  const nextDrafts = { ...drafts };
+  delete nextDrafts[nodeId];
+  return nextDrafts;
+}
+
+function pruneAgentProviderDrafts(
+  drafts: Record<string, AgentProviderKind>,
+  validNodeIds: Set<string>
+): Record<string, AgentProviderKind> {
+  let changed = false;
+  const nextDrafts: Record<string, AgentProviderKind> = {};
+
+  for (const [nodeId, provider] of Object.entries(drafts)) {
+    if (validNodeIds.has(nodeId)) {
+      nextDrafts[nodeId] = provider;
+      continue;
+    }
+
+    changed = true;
+  }
+
+  return changed ? nextDrafts : drafts;
 }
 
 function stopCanvasEvent(event: { stopPropagation: () => void }): void {
