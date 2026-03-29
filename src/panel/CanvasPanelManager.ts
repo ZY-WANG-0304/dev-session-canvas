@@ -166,6 +166,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.persistState();
             this.postState('host/stateUpdated');
             break;
+          case 'webview/deleteNode':
+            this.deleteNode(parsedMessage.payload.nodeId);
+            break;
           case 'webview/startExecutionSession':
             if (parsedMessage.payload.kind === 'agent') {
               void this.startAgentSession(
@@ -534,17 +537,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   private cancelAllAgentSessions(): void {
-    for (const [nodeId, session] of this.agentSessions.entries()) {
-      session.stopRequested = true;
-      if (session.syncTimer) {
-        clearTimeout(session.syncTimer);
-      }
-
-      session.process.stdout.removeAllListeners();
-      session.process.stderr.removeAllListeners();
-      session.process.removeAllListeners();
-      session.process.kill('SIGTERM');
-      this.agentSessions.delete(nodeId);
+    for (const nodeId of Array.from(this.agentSessions.keys())) {
+      this.disposeExecutionSession('agent', nodeId, {
+        terminateProcess: true
+      });
     }
   }
 
@@ -910,18 +906,61 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     session.process.kill('SIGTERM');
   }
 
-  private cancelAllTerminalSessions(): void {
-    for (const [nodeId, session] of this.terminalSessions.entries()) {
-      session.stopRequested = true;
-      if (session.syncTimer) {
-        clearTimeout(session.syncTimer);
-      }
+  private deleteNode(nodeId: string): void {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
+    if (!node) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '未找到可删除的节点。'
+        }
+      });
+      return;
+    }
 
-      session.process.stdout.removeAllListeners();
-      session.process.stderr.removeAllListeners();
-      session.process.removeAllListeners();
+    if (isExecutionNodeKind(node.kind)) {
+      this.disposeExecutionSession(node.kind, nodeId, {
+        terminateProcess: true
+      });
+    }
+
+    this.state = deleteCanvasNode(this.state, nodeId);
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private cancelAllTerminalSessions(): void {
+    for (const nodeId of Array.from(this.terminalSessions.keys())) {
+      this.disposeExecutionSession('terminal', nodeId, {
+        terminateProcess: true
+      });
+    }
+  }
+
+  private disposeExecutionSession(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    options: { terminateProcess: boolean }
+  ): void {
+    const sessionMap = this.getExecutionSessions(kind);
+    const session = sessionMap.get(nodeId);
+    if (!session) {
+      return;
+    }
+
+    session.stopRequested = true;
+    if (session.syncTimer) {
+      clearTimeout(session.syncTimer);
+      session.syncTimer = undefined;
+    }
+
+    session.process.stdout.removeAllListeners();
+    session.process.stderr.removeAllListeners();
+    session.process.removeAllListeners();
+    sessionMap.delete(nodeId);
+
+    if (options.terminateProcess) {
       session.process.kill('SIGTERM');
-      this.terminalSessions.delete(nodeId);
     }
   }
 
@@ -1012,7 +1051,7 @@ function createNextState(
   kind: CanvasNodeKind,
   defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasPrototypeState {
-  const nextIndex = previousState.nodes.length + 1;
+  const nextIndex = readNextNodeSequence(previousState.nodes);
   const nextNode = createNode(kind, nextIndex, defaultAgentProvider);
 
   return {
@@ -1104,6 +1143,19 @@ function moveNode(
   };
 }
 
+function deleteCanvasNode(previousState: CanvasPrototypeState, nodeId: string): CanvasPrototypeState {
+  const nextNodes = previousState.nodes.filter((node) => node.id !== nodeId);
+  if (nextNodes.length === previousState.nodes.length) {
+    return previousState;
+  }
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
 function normalizeState(
   value: unknown,
   defaultAgentProvider: AgentProviderKind = 'codex'
@@ -1112,17 +1164,24 @@ function normalizeState(
     return createDefaultState(defaultAgentProvider);
   }
 
-  const rawNodes = Array.isArray(value.nodes) ? value.nodes : [];
+  const hasStoredNodesArray = Array.isArray(value.nodes);
+  const rawNodes: unknown[] = hasStoredNodesArray ? (value.nodes as unknown[]) : [];
   const nodes = rawNodes
     .map((node, index) => normalizeNode(node, index, defaultAgentProvider))
     .filter((node): node is CanvasNodeSummary => node !== null);
 
+  const normalizedNodes = hasStoredNodesArray
+    ? rawNodes.length === 0
+      ? []
+      : nodes.length > 0
+        ? nodes
+        : createDefaultState(defaultAgentProvider).nodes
+    : createDefaultState(defaultAgentProvider).nodes;
+
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: reconcileRuntimeNodesInArray(
-      nodes.length > 0 ? nodes : createDefaultState(defaultAgentProvider).nodes
-    )
+    nodes: reconcileRuntimeNodesInArray(normalizedNodes)
   };
 }
 
@@ -1172,6 +1231,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function readNextNodeSequence(nodes: CanvasNodeSummary[]): number {
+  const maxSequence = nodes.reduce((currentMax, node) => {
+    const matchedSuffix = node.id.match(/-(\d+)$/);
+    if (!matchedSuffix) {
+      return currentMax;
+    }
+
+    const parsedValue = Number.parseInt(matchedSuffix[1], 10);
+    return Number.isFinite(parsedValue) ? Math.max(currentMax, parsedValue) : currentMax;
+  }, 0);
+
+  return maxSequence + 1;
 }
 
 function createNodeMetadata(
