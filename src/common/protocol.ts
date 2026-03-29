@@ -6,6 +6,11 @@ export interface CanvasNodePosition {
   y: number;
 }
 
+export interface CanvasNodeFootprint {
+  width: number;
+  height: number;
+}
+
 export type TerminalBackendKind = 'script';
 export type AgentProviderKind = 'codex' | 'claude';
 export type TaskNodeStatus = 'todo' | 'running' | 'blocked' | 'done';
@@ -75,6 +80,7 @@ export type WebviewToHostMessage =
       type: 'webview/createDemoNode';
       payload: {
         kind: CanvasNodeKind;
+        preferredPosition?: CanvasNodePosition;
       };
     }
   | {
@@ -401,14 +407,21 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (value.type === 'webview/createDemoNode') {
     const payload = isRecord(value.payload) ? value.payload : null;
-    if (!payload || !isCanvasNodeKind(payload.kind)) {
+    if (
+      !payload ||
+      !isCanvasNodeKind(payload.kind) ||
+      (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition))
+    ) {
       return null;
     }
 
     return {
       type: 'webview/createDemoNode',
       payload: {
-        kind: payload.kind
+        kind: payload.kind,
+        preferredPosition: isCanvasNodePosition(payload.preferredPosition)
+          ? payload.preferredPosition
+          : undefined
       }
     };
   }
@@ -430,4 +443,29 @@ function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
 
 function isTerminalDimension(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFootprint {
+  switch (kind) {
+    case 'agent':
+      return {
+        width: 560,
+        height: 430
+      };
+    case 'terminal':
+      return {
+        width: 540,
+        height: 420
+      };
+    case 'task':
+      return {
+        width: 380,
+        height: 360
+      };
+    case 'note':
+      return {
+        width: 380,
+        height: 430
+      };
+  }
 }

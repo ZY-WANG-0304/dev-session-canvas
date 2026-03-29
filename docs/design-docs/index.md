@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/canvas-feedback-polish.md` | 画布空状态、辅助面板密度与新增节点摆放规则 | 画布交互域、协作对象域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/canvas-feedback-polish.md` | 2026-03-30 |
 | `docs/design-docs/agent-session-surface.md` | Agent 节点的正确产品语义、交互面位置与最小会话窗口边界 | 画布交互域、协作对象域、执行编排域 / 画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/agent-session-surface-alignment.md`、`docs/exec-plans/completed/agent-special-terminal.md` | 2026-03-30 |
 | `docs/design-docs/agent-runtime-prototype.md` | Agent 节点最小真实 backend 的候选路线、取舍与原型边界 | VSCode 集成域、协作对象域、执行编排域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/agent-runtime-prototype.md`、`docs/exec-plans/completed/agent-special-terminal.md` | 2026-03-30 |
 | `docs/design-docs/canvas-node-deletion.md` | 四类画布节点的删除入口、执行会话清理语义与删除后恢复边界 | 画布交互域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/canvas-node-deletion.md` | 2026-03-30 |

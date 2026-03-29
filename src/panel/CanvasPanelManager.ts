@@ -17,6 +17,7 @@ import {
   type TaskNodeMetadata,
   type TaskNodeStatus,
   type TerminalNodeMetadata,
+  estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
   isExecutionNodeKind,
   parseWebviewMessage
@@ -26,6 +27,10 @@ import { getWebviewHtml } from './getWebviewHtml';
 const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
+const NODE_PLACEMENT_PADDING = 40;
+const NODE_PLACEMENT_STEP_X = 120;
+const NODE_PLACEMENT_STEP_Y = 96;
+const NODE_PLACEMENT_SEARCH_RADIUS = 8;
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
@@ -140,7 +145,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.state = createNextState(
               this.state,
               parsedMessage.payload.kind,
-              this.getAgentCliConfig().defaultProvider
+              this.getAgentCliConfig().defaultProvider,
+              parsedMessage.payload.preferredPosition
             );
             if (parsedMessage.payload.kind === 'terminal') {
               const createdNode = this.state.nodes[this.state.nodes.length - 1];
@@ -1039,25 +1045,34 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
   return {
     version: 1,
     updatedAt: new Date().toISOString(),
-    nodes: [
-      createNode('note', 1, defaultAgentProvider),
-      createNode('task', 2, defaultAgentProvider)
-    ]
+    nodes: []
   };
 }
 
 function createNextState(
   previousState: CanvasPrototypeState,
   kind: CanvasNodeKind,
-  defaultAgentProvider: AgentProviderKind = 'codex'
+  defaultAgentProvider: AgentProviderKind = 'codex',
+  preferredPosition?: CanvasNodePosition
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
   const nextNode = createNode(kind, nextIndex, defaultAgentProvider);
+  const resolvedPosition = resolveNewNodePosition(
+    previousState.nodes,
+    kind,
+    preferredPosition ?? nextNode.position
+  );
 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    nodes: [...previousState.nodes, nextNode]
+    nodes: [
+      ...previousState.nodes,
+      {
+        ...nextNode,
+        position: resolvedPosition
+      }
+    ]
   };
 }
 
@@ -1120,6 +1135,141 @@ function createNodePosition(sequence: number): CanvasNodePosition {
     x: column * 320,
     y: row * 220
   };
+}
+
+function resolveNewNodePosition(
+  existingNodes: CanvasNodeSummary[],
+  kind: CanvasNodeKind,
+  anchor: CanvasNodePosition
+): CanvasNodePosition {
+  const normalizedAnchor = snapCanvasPosition(anchor);
+
+  for (const candidate of buildPlacementCandidates(normalizedAnchor)) {
+    if (!doesPlacementCollide(existingNodes, kind, candidate)) {
+      return candidate;
+    }
+  }
+
+  return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor);
+}
+
+function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePosition[] {
+  const offsets: Array<{ dx: number; dy: number; distance: number; backwardBias: number }> = [];
+
+  for (let dx = -NODE_PLACEMENT_SEARCH_RADIUS; dx <= NODE_PLACEMENT_SEARCH_RADIUS; dx += 1) {
+    for (let dy = -NODE_PLACEMENT_SEARCH_RADIUS; dy <= NODE_PLACEMENT_SEARCH_RADIUS; dy += 1) {
+      offsets.push({
+        dx,
+        dy,
+        distance: Math.abs(dx) + Math.abs(dy),
+        backwardBias: (dx < 0 ? 1 : 0) + (dy < 0 ? 1 : 0)
+      });
+    }
+  }
+
+  offsets.sort((left, right) => {
+    if (left.distance !== right.distance) {
+      return left.distance - right.distance;
+    }
+
+    if (left.backwardBias !== right.backwardBias) {
+      return left.backwardBias - right.backwardBias;
+    }
+
+    if (left.dy !== right.dy) {
+      return left.dy - right.dy;
+    }
+
+    return left.dx - right.dx;
+  });
+
+  return offsets.map(({ dx, dy }) =>
+    snapCanvasPosition({
+      x: anchor.x + dx * NODE_PLACEMENT_STEP_X,
+      y: anchor.y + dy * NODE_PLACEMENT_STEP_Y
+    })
+  );
+}
+
+function doesPlacementCollide(
+  existingNodes: CanvasNodeSummary[],
+  nextKind: CanvasNodeKind,
+  nextPosition: CanvasNodePosition
+): boolean {
+  const nextRect = createPlacementRect(nextKind, nextPosition);
+
+  return existingNodes.some((node) =>
+    placementRectsOverlap(nextRect, createPlacementRect(node.kind, node.position))
+  );
+}
+
+function fallbackPlacementPosition(
+  existingNodes: CanvasNodeSummary[],
+  kind: CanvasNodeKind,
+  normalizedAnchor: CanvasNodePosition
+): CanvasNodePosition {
+  if (existingNodes.length === 0) {
+    return normalizedAnchor;
+  }
+
+  const bounds = existingNodes.reduce(
+    (current, node) => {
+      const rect = createPlacementRect(node.kind, node.position);
+      return {
+        maxRight: Math.max(current.maxRight, rect.right),
+        minTop: Math.min(current.minTop, rect.top)
+      };
+    },
+    {
+      maxRight: Number.NEGATIVE_INFINITY,
+      minTop: Number.POSITIVE_INFINITY
+    }
+  );
+  const nextFootprint = estimatedCanvasNodeFootprint(kind);
+
+  return snapCanvasPosition({
+    x: bounds.maxRight + NODE_PLACEMENT_PADDING,
+    y: Math.max(bounds.minTop, normalizedAnchor.y - Math.round(nextFootprint.height / 3))
+  });
+}
+
+function snapCanvasPosition(position: CanvasNodePosition): CanvasNodePosition {
+  return {
+    x: snapCanvasCoordinate(position.x),
+    y: snapCanvasCoordinate(position.y)
+  };
+}
+
+function snapCanvasCoordinate(value: number): number {
+  return Math.round(value / 20) * 20;
+}
+
+function createPlacementRect(kind: CanvasNodeKind, position: CanvasNodePosition): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
+  const footprint = estimatedCanvasNodeFootprint(kind);
+
+  return {
+    left: position.x,
+    top: position.y,
+    right: position.x + footprint.width,
+    bottom: position.y + footprint.height
+  };
+}
+
+function placementRectsOverlap(
+  left: { left: number; top: number; right: number; bottom: number },
+  right: { left: number; top: number; right: number; bottom: number }
+): boolean {
+  return (
+    left.left < right.right + NODE_PLACEMENT_PADDING &&
+    left.right > right.left - NODE_PLACEMENT_PADDING &&
+    left.top < right.bottom + NODE_PLACEMENT_PADDING &&
+    left.bottom > right.top - NODE_PLACEMENT_PADDING
+  );
 }
 
 function moveNode(

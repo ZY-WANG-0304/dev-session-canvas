@@ -25,8 +25,7 @@ body {
 }
 
 .hero-panel,
-.actions-panel,
-.footer-panel {
+.actions-panel {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 18px;
   background: color-mix(in srgb, var(--vscode-editor-background) 94%, #122033 6%);
@@ -80,6 +79,13 @@ body {
 .meta-row > div {
   display: grid;
   gap: 4px;
+}
+
+.hero-support {
+  display: grid;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, #0f172a 18%);
 }
 
 .actions-panel {
@@ -571,13 +577,6 @@ body {
   margin-top: 10px;
 }
 
-.footer-panel {
-  padding: 12px 14px;
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-}
-
 .selected-node-panel,
 .selected-node-meta-group {
   display: grid;
@@ -610,7 +609,7 @@ body {
   padding: 10px 12px;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 220px;
+  max-height: 160px;
   overflow: auto;
   font-size: 12px;
   line-height: 1.5;
