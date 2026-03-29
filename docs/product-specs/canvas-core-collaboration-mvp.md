@@ -36,7 +36,7 @@
 - 对象的基础状态展示，例如标题、类型、位置、最近状态摘要
 - Agent 对象的最小真实 backend 主路径：
   - 用户可选择 `Codex` 或 `Claude Code`
-  - 用户新建或启动 Agent 节点后，系统会按当前 provider 启动真实 CLI 会话
+  - 用户新建 Agent 节点后可先切换 provider，再显式启动真实 CLI 会话；系统按当前 provider 启动对应 CLI
   - 用户直接在 Agent 节点内和 CLI 会话交互，而不是通过独立 prompt 调用
   - 节点至少保留连续输出、活动态、关闭态、失败态和最近输出摘要
 - 终端对象的最小真实主路径：

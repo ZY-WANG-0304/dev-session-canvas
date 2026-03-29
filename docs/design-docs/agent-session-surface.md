@@ -15,7 +15,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-session-surface-alignment.md
   - docs/exec-plans/completed/agent-special-terminal.md
-updated_at: 2026-03-29
+updated_at: 2026-03-30
 ---
 
 # Agent 节点会话窗口设计
@@ -78,7 +78,7 @@ updated_at: 2026-03-29
 特点：
 
 - 节点本体仍是 runtime window，但主体变成嵌入式终端前端。
-- 节点创建或启动时，默认按当前 provider 启动 `codex` 或 `claude` CLI。
+- 用户显式启动节点时，按当前 provider 启动 `codex` 或 `claude` CLI。
 - 主要输入、输出和状态反馈都来自 CLI 会话本身。
 
 优点：
@@ -111,6 +111,7 @@ updated_at: 2026-03-29
 - `Agent` 节点的正确产品定义是“画布上的会话窗口”。
 - 主交互必须放在节点内部，右侧检查器最多只承担概况展示，不再是主要操作面。
 - `Agent` 与 `Terminal` 应属于同一类 runtime window；区别主要在默认启动命令和对象语义，不在运行时模型。
+- 新建 `Agent` 节点默认停留在未运行态，允许用户先切换 provider，再显式启动 CLI 会话。
 - 第一版最小会话窗口至少包含：
   - 当前 provider 标识
   - 运行状态
@@ -132,7 +133,7 @@ updated_at: 2026-03-29
   当前缓解：把执行型对象单独做成 runtime window 风格，并让任务/笔记继续保持轻量。
 
 - 风险：如果 provider CLI 在 PTY 里出现兼容问题，节点会退化成“能开窗但不好用”的半成品。
-  当前缓解：保持文档验证状态为“验证中”，先完成构建与本地 smoke test，再做人工验证。
+  当前缓解：已完成构建、本地 smoke test 和人工验证；继续把非 Linux 平台与长期兼容性留在后续技术债中处理。
 
 ## 8. 验证方法
 

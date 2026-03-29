@@ -142,7 +142,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
               parsedMessage.payload.kind,
               this.getAgentCliConfig().defaultProvider
             );
-            if (isExecutionNodeKind(parsedMessage.payload.kind)) {
+            if (parsedMessage.payload.kind === 'terminal') {
               const createdNode = this.state.nodes[this.state.nodes.length - 1];
               if (
                 createdNode &&
@@ -150,10 +150,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
               ) {
                 this.state = updateExecutionNode(this.state, createdNode.id, parsedMessage.payload.kind, {
                   status: 'draft',
-                  summary:
-                    parsedMessage.payload.kind === 'agent'
-                      ? 'Agent 会话准备按节点尺寸自动启动。'
-                      : '终端准备按节点尺寸自动启动。',
+                  summary: '终端准备按节点尺寸自动启动。',
                   metadata: buildExecutionMetadataPatch(this.state, createdNode.id, parsedMessage.payload.kind, {
                     autoStartPending: true,
                     lastExitMessage: undefined
@@ -1281,10 +1278,7 @@ function normalizeMetadata(
             : typeof agent.liveRun === 'boolean'
               ? agent.liveRun
               : fallback.liveSession,
-        autoStartPending:
-          typeof agent.autoStartPending === 'boolean'
-            ? agent.autoStartPending
-            : fallback.autoStartPending,
+        autoStartPending: false,
         recentOutput:
           typeof agent.recentOutput === 'string'
             ? trimStoredTerminalText(agent.recentOutput)
@@ -1478,7 +1472,7 @@ function reconcileAgentNodesInArray(
       };
     }
 
-    if (isLegacyPlaceholderAgent(node, metadata)) {
+    if (shouldResetIdleAgentNode(node, metadata)) {
       return {
         ...node,
         status: 'draft',
@@ -1853,16 +1847,16 @@ function buildExecutionMetadataPatch(
     : buildTerminalMetadataPatch(state, nodeId, patch as Partial<TerminalNodeMetadata>);
 }
 
-function isLegacyPlaceholderAgent(
+function shouldResetIdleAgentNode(
   node: CanvasNodeSummary,
   metadata: AgentNodeMetadata
 ): boolean {
   return (
-    node.summary === '等待接入真实 backend 的原型节点' &&
+    (node.summary === '等待接入真实 backend 的原型节点' ||
+      node.summary === 'Agent 会话准备按节点尺寸自动启动。') &&
     !metadata.liveSession &&
     !metadata.recentOutput &&
-    !metadata.lastExitMessage &&
-    !metadata.lastBackendLabel
+    !metadata.lastExitMessage
   );
 }
 

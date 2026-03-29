@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-runtime-prototype.md
   - docs/exec-plans/completed/agent-special-terminal.md
-updated_at: 2026-03-29
+updated_at: 2026-03-30
 ---
 
 # Agent 节点特殊 Terminal backend 设计
@@ -104,6 +104,7 @@ updated_at: 2026-03-29
 - `Agent` 节点不再继续走“prompt -> 单次 CLI 调用 -> transcript 聚合”路线。
 - `Agent` 节点与 `Terminal` 节点共享同类 PTY 会话模型；差别只在于启动命令、默认 provider 和节点标题语义。
 - 默认 provider 仍为 `codex`，同时支持 `claude`，并继续通过设置项覆盖命令路径。
+- 新建 `Agent` 节点默认不自动启动；用户可先切换 provider，再显式启动会话。
 - 节点的新最小主路径变为：
   - 选择 provider
   - 启动嵌入式会话
@@ -133,10 +134,10 @@ updated_at: 2026-03-29
   原因：如果节点本身就是 CLI 会话窗口，主要历史应由会话 buffer 承担；宿主权威状态只需要保存摘要和退出信息。
 
 - 风险：Extension Host 未必能从 PATH 中找到 `codex` 或 `claude`。
-  当前缓解：默认用命令名解析，同时提供插件设置项覆盖命令路径；命令缺失时给出明确错误。
+  当前缓解：默认用命令名解析，同时提供插件设置项覆盖命令路径；新建节点默认不自动运行，允许用户先切换到可用 provider；命令缺失时给出明确错误。
 
 - 风险：provider CLI 在 PTY 环境下可能与普通 shell 有额外兼容性问题。
-  当前缓解：先复用已经验证过的 `script` PTY bridge；当前文档状态保持“验证中”，直到完成人工验证。
+  当前缓解：先复用已经验证过的 `script` PTY bridge；当前实现已通过人工验证，跨平台兼容性继续作为后续技术债跟踪。
 
 - 风险：扩展 reload 后，运行中的请求无法继续。
   当前缓解：沿用嵌入式终端的处理方式，把旧活动态显式收敛为 `interrupted`，不制造虚假恢复。

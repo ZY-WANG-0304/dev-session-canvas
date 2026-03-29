@@ -421,22 +421,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const autoStartRequestedRef = useRef(false);
   const resizeFrameRef = useRef<number | undefined>(undefined);
-  const providerRef = useRef(provider);
   const terminalSizeRef = useRef({
     cols: agentMetadata.lastCols ?? 96,
     rows: agentMetadata.lastRows ?? 28
   });
   const terminalFlagsRef = useRef({
-    liveSession: agentMetadata.liveSession,
-    autoStartPending: Boolean(agentMetadata.autoStartPending),
-    executionBlocked
+    liveSession: agentMetadata.liveSession
   });
-
-  useEffect(() => {
-    providerRef.current = provider;
-  }, [provider]);
 
   useEffect(() => {
     terminalSizeRef.current = {
@@ -447,14 +439,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
   useEffect(() => {
     terminalFlagsRef.current = {
-      liveSession: agentMetadata.liveSession,
-      autoStartPending: Boolean(agentMetadata.autoStartPending),
-      executionBlocked
+      liveSession: agentMetadata.liveSession
     };
-    if (!agentMetadata.autoStartPending) {
-      autoStartRequestedRef.current = false;
-    }
-  }, [agentMetadata.autoStartPending, agentMetadata.liveSession, executionBlocked]);
+  }, [agentMetadata.liveSession]);
 
   useEffect(() => {
     const container = viewportRef.current;
@@ -485,13 +472,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       }
 
       const flags = terminalFlagsRef.current;
-      if (flags.autoStartPending && !flags.liveSession && !flags.executionBlocked && !autoStartRequestedRef.current) {
-        autoStartRequestedRef.current = true;
-        data.onSelectNode?.(id);
-        data.onStartExecution?.(id, 'agent', terminal.cols, terminal.rows, providerRef.current);
-        return;
-      }
-
       if (!flags.liveSession) {
         data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
       }
@@ -660,7 +640,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   ? 'Restricted Mode'
                   : agentMetadata.lastExitMessage
                     ? 'Agent 当前未运行'
-                    : 'Agent 正在初始化'}
+                    : 'Agent 尚未启动'}
               </strong>
               <span>
                 {executionBlocked
