@@ -1,4 +1,5 @@
 export type CanvasNodeKind = 'agent' | 'terminal' | 'task' | 'note';
+export type ExecutionNodeKind = 'agent' | 'terminal';
 
 export interface CanvasNodePosition {
   x: number;
@@ -8,27 +9,8 @@ export interface CanvasNodePosition {
 export type TerminalBackendKind = 'script';
 export type AgentProviderKind = 'codex' | 'claude';
 export type TaskNodeStatus = 'todo' | 'running' | 'blocked' | 'done';
-export type AgentTranscriptRole = 'user' | 'assistant' | 'status';
-export type AgentTranscriptState = 'done' | 'streaming' | 'error';
 
-export interface AgentTranscriptEntry {
-  id: string;
-  role: AgentTranscriptRole;
-  text: string;
-  state?: AgentTranscriptState;
-}
-
-export interface AgentNodeMetadata {
-  provider: AgentProviderKind;
-  liveRun: boolean;
-  transcript?: AgentTranscriptEntry[];
-  lastPrompt?: string;
-  lastResponse?: string;
-  lastBackendLabel?: string;
-  lastRunId?: string;
-}
-
-export interface TerminalNodeMetadata {
+export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
   shellPath: string;
   cwd: string;
@@ -41,6 +23,13 @@ export interface TerminalNodeMetadata {
   lastCols?: number;
   lastRows?: number;
 }
+
+export interface AgentNodeMetadata extends ExecutionSessionMetadata {
+  provider: AgentProviderKind;
+  lastBackendLabel?: string;
+}
+
+export interface TerminalNodeMetadata extends ExecutionSessionMetadata {}
 
 export interface TaskNodeMetadata {
   description: string;
@@ -99,52 +88,44 @@ export type WebviewToHostMessage =
       type: 'webview/resetDemoState';
     }
   | {
-      type: 'webview/startAgentRun';
+      type: 'webview/startExecutionSession';
       payload: {
         nodeId: string;
-        prompt: string;
-        provider: AgentProviderKind;
-      };
-    }
-  | {
-      type: 'webview/stopAgentRun';
-      payload: {
-        nodeId: string;
-      };
-    }
-  | {
-      type: 'webview/startTerminalSession';
-      payload: {
-        nodeId: string;
+        kind: ExecutionNodeKind;
         cols: number;
         rows: number;
+        provider?: AgentProviderKind;
       };
     }
   | {
-      type: 'webview/attachTerminalSession';
+      type: 'webview/attachExecutionSession';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
       };
     }
   | {
-      type: 'webview/terminalInput';
+      type: 'webview/executionInput';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
         data: string;
       };
     }
   | {
-      type: 'webview/resizeTerminalSession';
+      type: 'webview/resizeExecutionSession';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
         cols: number;
         rows: number;
       };
     }
   | {
-      type: 'webview/stopTerminalSession';
+      type: 'webview/stopExecutionSession';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
       };
     }
   | {
@@ -188,9 +169,10 @@ export type HostToWebviewMessage =
       };
     }
   | {
-      type: 'host/terminalSnapshot';
+      type: 'host/executionSnapshot';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
         output: string;
         cols: number;
         rows: number;
@@ -198,16 +180,18 @@ export type HostToWebviewMessage =
       };
     }
   | {
-      type: 'host/terminalOutput';
+      type: 'host/executionOutput';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
         chunk: string;
       };
     }
   | {
-      type: 'host/terminalExit';
+      type: 'host/executionExit';
       payload: {
         nodeId: string;
+        kind: ExecutionNodeKind;
         message: string;
       };
     };
@@ -216,6 +200,10 @@ const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'task', 'note'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
+}
+
+export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
+  return value === 'agent' || value === 'terminal';
 }
 
 export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null {
@@ -228,28 +216,70 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
   }
 
   if (
-    value.type === 'webview/stopAgentRun' ||
-    value.type === 'webview/attachTerminalSession' ||
-    value.type === 'webview/stopTerminalSession'
+    value.type === 'webview/attachExecutionSession' ||
+    value.type === 'webview/stopExecutionSession'
   ) {
     const payload = isRecord(value.payload) ? value.payload : null;
-    if (!payload || typeof payload.nodeId !== 'string') {
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind)
+    ) {
       return null;
     }
 
     return {
       type: value.type,
       payload: {
-        nodeId: payload.nodeId
+        nodeId: payload.nodeId,
+        kind: payload.kind
       }
     };
   }
 
-  if (value.type === 'webview/startTerminalSession') {
+  if (value.type === 'webview/startExecutionSession') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
       typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      !isTerminalDimension(payload.cols) ||
+      !isTerminalDimension(payload.rows)
+    ) {
+      return null;
+    }
+
+    if (
+      payload.kind === 'agent' &&
+      payload.provider !== undefined &&
+      payload.provider !== 'codex' &&
+      payload.provider !== 'claude'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        cols: payload.cols,
+        rows: payload.rows,
+        provider:
+          payload.kind === 'agent' &&
+          (payload.provider === 'codex' || payload.provider === 'claude')
+            ? payload.provider
+            : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/resizeExecutionSession') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
       !isTerminalDimension(payload.cols) ||
       !isTerminalDimension(payload.rows)
     ) {
@@ -257,72 +287,33 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     }
 
     return {
-      type: 'webview/startTerminalSession',
+      type: 'webview/resizeExecutionSession',
       payload: {
         nodeId: payload.nodeId,
+        kind: payload.kind,
         cols: payload.cols,
         rows: payload.rows
       }
     };
   }
 
-  if (value.type === 'webview/resizeTerminalSession') {
+  if (value.type === 'webview/executionInput') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
       typeof payload.nodeId !== 'string' ||
-      !isTerminalDimension(payload.cols) ||
-      !isTerminalDimension(payload.rows)
-    ) {
-      return null;
-    }
-
-    return {
-      type: 'webview/resizeTerminalSession',
-      payload: {
-        nodeId: payload.nodeId,
-        cols: payload.cols,
-        rows: payload.rows
-      }
-    };
-  }
-
-  if (value.type === 'webview/terminalInput') {
-    const payload = isRecord(value.payload) ? value.payload : null;
-    if (
-      !payload ||
-      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
       typeof payload.data !== 'string'
     ) {
       return null;
     }
 
     return {
-      type: 'webview/terminalInput',
+      type: 'webview/executionInput',
       payload: {
         nodeId: payload.nodeId,
+        kind: payload.kind,
         data: payload.data
-      }
-    };
-  }
-
-  if (value.type === 'webview/startAgentRun') {
-    const payload = isRecord(value.payload) ? value.payload : null;
-    if (
-      !payload ||
-      typeof payload.nodeId !== 'string' ||
-      typeof payload.prompt !== 'string' ||
-      (payload.provider !== 'codex' && payload.provider !== 'claude')
-    ) {
-      return null;
-    }
-
-    return {
-      type: 'webview/startAgentRun',
-      payload: {
-        nodeId: payload.nodeId,
-        prompt: payload.prompt,
-        provider: payload.provider
       }
     };
   }

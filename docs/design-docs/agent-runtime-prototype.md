@@ -1,5 +1,5 @@
 ---
-title: Agent 节点最小 backend 原型设计
+title: Agent 节点特殊 Terminal backend 设计
 decision_status: 已选定
 validation_status: 已验证
 domains:
@@ -15,84 +15,77 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/agent-runtime-prototype.md
-updated_at: 2026-03-28
+  - docs/exec-plans/completed/agent-special-terminal.md
+updated_at: 2026-03-29
 ---
 
-# Agent 节点最小 backend 原型设计
+# Agent 节点特殊 Terminal backend 设计
 
 ## 1. 背景
 
-当前仓库已经完成了 `WebviewPanel` 主画布、React Flow 原型和终端代理节点原型，但 `Agent` 节点仍只是静态占位卡片。这样虽然可以验证对象布局，却无法验证画布与真实外部 Agent 会话之间的关键边界。
+当前仓库已经完成了 `WebviewPanel` 主画布、React Flow 原型，以及 `Terminal` 节点的嵌入式 PTY 会话窗口；`Agent` 节点也接入过一版最小真实 backend，但那条路线仍把 `Agent` 当成“输入 prompt，然后宿主离散执行一次 CLI，再把 stdout 聚合回节点”的对象。
 
-如果继续让 `Agent` 节点保持纯占位，我们会同时失去三项最重要的验证：
+这条实现已经能跑通最小主路径，但产品定义仍然偏了。用户要的不是“一个会向 CLI 发请求的特殊卡片”，而是“一个默认启动 `Codex` 或 `Claude Code` 的特殊终端窗口”。既然 `Terminal` 已经有 PTY 会话窗口，`Agent` 继续保留单独调用模型只会让系统复杂度继续上升。
 
-- 画布中的执行型对象是否真的能由宿主驱动
-- Webview 与宿主之间的运行时状态回流是否足够稳定
-- 当前抽象出来的 Agent 适配边界，是否能覆盖至少一种真实 backend
-
-因此，下一步需要给 `Agent` 节点接入一个“足够真实但范围可控”的最小 backend。
-
-需要额外说明的是：本文只解决 backend 路线，不定义 Agent 节点最终的产品表面。关于“Agent 应该是节点内会话窗口，而不是 inspector 驱动卡片”的交互结论，见 `docs/design-docs/agent-session-surface.md`。
+因此，本文需要把 Agent backend 收敛到新的方向：`Agent` 也是 PTY 会话窗口，只是默认启动命令不是 shell，而是 provider CLI。
 
 ## 2. 问题定义
 
 本轮需要回答的问题不是“长期应该绑定哪家 AI provider”，而是：
 
-1. 画布中的 `Agent` 节点，第一版应该通过什么宿主能力接入真实 `Codex` / `Claude Code` 会话。
-2. 这条路线是否既能保留画布自定义 UI，又不把系统过早绑定到某个本机绝对路径或某个 shell 环境细节。
-3. 在不引入复杂任务编排的前提下，最小验证闭环应包含哪些状态和动作。
+1. 画布中的 `Agent` 节点，应该继续维持“离散 CLI 调用”模型，还是应该和 `Terminal` 一样收敛为真实 PTY 会话窗口。
+2. 如果收敛为会话窗口，宿主应该怎样启动 `codex` / `claude`，才能尽量复用当前嵌入式终端后端。
+3. `Agent` 还需要保留哪些专属元数据，哪些状态应直接与终端会话模型共享。
 
 ## 3. 目标
 
-- 让 `Agent` 节点具备一次真实 CLI Agent 调用能力。
+- 把 `Agent` 明确定义为一种预置 CLI 启动命令的嵌入式会话窗口。
 - 保持“宿主权威状态 + Webview 投影”的当前运行时主线不变。
-- 让用户能在画布里看到 `Agent` 的运行中、完成、失败和停止状态。
-- 为后续 `AgentAdapter` 抽象补上第一条真实垂直验证链路。
+- 让 `Agent` 与 `Terminal` 尽量共享 PTY 会话模型、输入输出桥和恢复边界。
+- 让用户能在画布里直接和 `Codex` / `Claude Code` CLI TUI 交互，而不是只看聚合后的文本摘要。
 
 ## 4. 非目标
 
-- 不在本轮实现多轮对话或长期会话管理。
-- 不在本文中定义 Agent 节点的最终交互表面。
-- 不在本轮实现工具调用、终端执行、文件修改或自治任务规划。
-- 不在本轮绑定私有 provider SDK、外部 CLI orchestrator 或自建远程服务。
-- 不把当前原型包装成“完整多 Agent 系统”。
+- 不在本轮实现多 Agent 自动协作、任务编排或工具调用编排。
+- 不在本轮引入新的原生 Node PTY 依赖。
+- 不在本轮承诺跨扩展重载恢复完整活动 Agent 会话。
+- 不把当前实现包装成“完整 Agent orchestrator”。
 
 ## 5. 候选方案
 
-### 5.1 直接代理外部 CLI Agent
+### 5.1 保留当前离散 CLI 调用模型
 
 特点：
 
-- 扩展在宿主内启动 `codex` 或 `claude` 子进程。
-- 保留对 stdout / stderr、停止和错误处理的直接控制。
-- 更符合“画布节点代理一个外部 Agent 会话”的产品语义。
+- 宿主在收到节点输入后，离散执行 `codex exec ...` 或 `claude --print ...`。
+- 节点里显示的是聚合后的 transcript，而不是 provider 原生 CLI 会话。
+
+不选原因：
+
+- 这条路线和用户心中的 OpenCove 语义不一致；它更像“调用器”，而不是“会话窗口”。
+- 它会把 `Agent` 和 `Terminal` 固化成两套运行时模型，继续放大宿主状态与前端交互复杂度。
+- 节点内看起来像会话，实际上却不是长期会话，语义更容易误导。
+
+### 5.2 预置 provider CLI 的 PTY 会话窗口
+
+特点：
+
+- `Agent` 节点使用与 `Terminal` 节点同类的 PTY 会话桥。
+- 节点启动时默认执行 `codex` 或 `claude`，后续输入直接进入该 CLI TUI。
+- 节点保留 provider、最近输出摘要、退出信息等轻量元数据，而不再维护 transcript 状态机。
 
 优点：
 
-- 与画布内 `Agent` 节点的交互形态最匹配。
-- 与真实目标对象 `Codex` / `Claude Code` 一致，不会在语义上跑偏到内置模型调用。
-- 运行在 Extension Host 内，可继续访问 VSCode API 和 workspace。
+- 与 OpenCove 中“Agent 是特殊 Terminal”的产品语义一致。
+- 可以最大化复用当前 `xterm.js + script PTY bridge` 宿主后端。
+- 让 `Agent` 与 `Terminal` 的恢复边界和事件流更清晰。
 
 风险：
 
-- 需要自行管理命令解析、状态回流、停止和错误提示。
-- Extension Host 的 PATH 与用户日常 shell 可能不一致。
+- 需要确认当前 provider CLI 在 PTY 环境下的行为是否足够稳定。
+- Agent 会话启动失败、退出或缺命令时，需要给出比普通 shell 更明确的错误说明。
 
-### 5.2 使用 VSCode Language Model API
-
-不选原因：
-
-- 用户已经明确 `Agent` 节点要代理 `Codex` 或 `Claude Code`，而不是 GitHub Copilot 或其他 VSCode 内置 provider。
-- 如果继续走内置 Language Model API，会把产品语义改成“向某个编辑器 provider 发请求”，与目标能力不一致。
-
-### 5.3 使用 Chat Participant / Language Model Tool / MCP Tool
-
-不选原因：
-
-- 当前要验证的是画布里的 `Agent` 节点本身，而不是把它变成 chat 生态中的一个参与者或工具。
-- 这些入口都不能直接表达“启动本机 `codex` / `claude` CLI 会话”的产品语义。
-
-### 5.4 直接接外部 CLI Agent 或自建 orchestrator
+### 5.3 直接接外部 CLI orchestrator 或自建 orchestrator
 
 特点：
 
@@ -101,70 +94,67 @@ updated_at: 2026-03-28
 
 不选原因：
 
-- 当前仓库还没有稳定的 `AgentAdapter` 实现和恢复语义。
-- 直接接入外部 orchestrator 会把问题从“验证运行时边界”升级为“搭建整套 agent 平台”。
+- 当前仓库还没有稳定的 PTY 会话恢复语义。
+- 直接接入外部 orchestrator 会把问题从“修正对象定义”升级为“搭建整套 agent 平台”。
 
 ## 6. 当前结论
 
-当前原型阶段选择：
+当前收敛结论如下：
 
-- 使用外部 CLI Agent 作为 `Agent` 节点的第一条真实 backend 路线。
-- 默认 provider 为 `codex`，同时支持 `claude`，并通过插件设置项覆盖命令路径。
-- 第一版只支持“选择 provider -> 输入目标 -> 启动 CLI 会话 -> 回流输出 -> 支持停止”的最小闭环。
+- `Agent` 节点不再继续走“prompt -> 单次 CLI 调用 -> transcript 聚合”路线。
+- `Agent` 节点与 `Terminal` 节点共享同类 PTY 会话模型；差别只在于启动命令、默认 provider 和节点标题语义。
+- 默认 provider 仍为 `codex`，同时支持 `claude`，并继续通过设置项覆盖命令路径。
+- 节点的新最小主路径变为：
+  - 选择 provider
+  - 启动嵌入式会话
+  - 在节点内直接与 CLI TUI 交互
+  - 支持停止、重启和重新附着
 
 建议的最小节点状态包括：
 
-- `idle`：尚未运行，或上次运行已完成
-- `running`：当前正在请求或消费流式输出
-- `error`：本次运行失败
-- `cancelled`：用户主动停止
-- `interrupted`：扩展 reload 后，之前的运行无法恢复
+- `idle`：尚未运行，或上次会话已结束
+- `live`：当前 PTY 会话仍活跃
+- `error`：启动失败或异常退出
+- `closed`：用户主动停止或会话自然结束
+- `interrupted`：扩展 reload 后，之前的活动会话未恢复
 
 建议的最小节点元数据包括：
 
-- 最近一次输入目标
-- 最近一次输出全文或最小可读结果
-- 最近一次使用的 backend 标识
-- 当前是否存在活动运行
-- 最近一次运行 ID
+- 当前 provider
+- 当前是否存在活动会话
+- 最近输出摘要
+- 最近一次退出信息
+- 最近一次会话的列宽/行高
+- provider CLI 的展示标签
 
 ## 7. 风险与取舍
 
-- 取舍：第一版不做多轮上下文保留。
-  原因：当前优先验证的是宿主调用与状态回流，不是长期记忆。
-
-- 取舍：第一版不做工具调用。
-  原因：工具调用会立刻把 Agent backend 与终端、文件系统、安全策略绑在一起，超出当前验证边界。
+- 取舍：第一版不保留独立 transcript 存储。
+  原因：如果节点本身就是 CLI 会话窗口，主要历史应由会话 buffer 承担；宿主权威状态只需要保存摘要和退出信息。
 
 - 风险：Extension Host 未必能从 PATH 中找到 `codex` 或 `claude`。
   当前缓解：默认用命令名解析，同时提供插件设置项覆盖命令路径；命令缺失时给出明确错误。
 
-- 风险：CLI Agent 会话具有非确定性，难以做端到端自动化测试。
-  当前缓解：把可测部分限制在状态归一化、消息协议和宿主状态机；真实 CLI 会话以手动验证为主。
+- 风险：provider CLI 在 PTY 环境下可能与普通 shell 有额外兼容性问题。
+  当前缓解：先复用已经验证过的 `script` PTY bridge；当前文档状态保持“验证中”，直到完成人工验证。
 
 - 风险：扩展 reload 后，运行中的请求无法继续。
-  当前缓解：把旧运行态显式收敛为 `interrupted`，不制造虚假恢复。
+  当前缓解：沿用嵌入式终端的处理方式，把旧活动态显式收敛为 `interrupted`，不制造虚假恢复。
 
 ## 8. 验证方法
 
 至少需要完成以下验证：
 
-1. 在 `Agent` 节点中选择 provider、输入目标并启动运行，节点进入运行态。
-2. 运行中可看到摘要逐步更新或至少看到明确的运行反馈。
-3. 请求成功后，节点保留结果摘要与最近 backend 信息。
-4. 用户主动停止时，节点从运行态回到可解释的终止态。
+1. 在 `Agent` 节点中选择 provider 并启动运行，节点进入活动态。
+2. 节点启动后，用户可直接在节点内与 CLI TUI 交互，而不是继续依赖独立 prompt 输入区。
+3. 会话中能看到连续终端输出，节点摘要随最近输出更新。
+4. 用户主动停止时，节点从活动态回到可解释的终止态。
 5. 命令不存在、PATH 不一致或 CLI 异常退出时，用户能收到明确失败原因。
-6. reload 后，不会把原本已丢失的运行继续显示为 `running`。
+6. reload 后，不会把原本已丢失的活动会话继续显示为 `live`。
 
 ## 9. 当前验证结果
 
-- 用户已在当前环境下完成手动验证，并确认 Agent 节点主路径可用。
-- 当前已验证的结论是：CLI Agent 代理节点这条路线成立，至少在当前 workspace 与本机 CLI 环境下可闭合最小主路径。
-- 但这不等于 Agent 的产品表面已经对齐；节点内会话窗口的交互修正需由独立设计与原型继续推进。
-
-## 10. 参考资料
-
-以下资料于 2026-03-28 检索：
-
-- Claude Code CLI help
-- Codex CLI help
+- 旧版“离散 CLI 调用”原型已经验证过可以闭合最小主路径，但该验证结果不再代表当前结论。
+- 当前新的结论是：Agent backend 应收敛为预置 provider CLI 的 PTY 会话窗口。
+- 本轮代码实现已经完成，并通过 `npm run typecheck` 与 `npm run build`。
+- 用户已在 VSCode `Extension Development Host` 中完成真实 `codex` / `claude` CLI 人工 smoke test，确认 Agent 节点已按“特殊 Terminal”模型稳定运行。

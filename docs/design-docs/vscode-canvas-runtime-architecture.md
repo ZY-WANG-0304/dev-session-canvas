@@ -19,7 +19,8 @@ related_plans:
   - docs/exec-plans/completed/canvas-architecture-research.md
   - docs/exec-plans/completed/agent-runtime-prototype.md
   - docs/exec-plans/completed/agent-session-surface-alignment.md
-updated_at: 2026-03-28
+  - docs/exec-plans/completed/agent-special-terminal.md
+updated_at: 2026-03-29
 ---
 
 # VSCode 画布运行时与技术路线初步设计
@@ -39,7 +40,7 @@ updated_at: 2026-03-28
 3. 画布底层更适合采用节点图导向、白板导向，还是自研高性能渲染路线。
 4. 终端对象如何进入画布，才能在“体验完整度”“实现风险”“远程兼容性”之间取得平衡。
 5. 哪些状态应由 Extension Host 持有，哪些状态只留在 Webview，哪些状态需要持久化。
-6. Agent 能力应如何被接入，才能不把当前文档过早绑定到某个 provider 或某种执行框架。
+6. Agent 能力应如何被接入，才能既贴近 OpenCove 里的真实对象语义，又不继续引入一套和 Terminal 平行的重型运行时模型。
 
 ## 3. 目标
 
@@ -181,8 +182,7 @@ updated_at: 2026-03-28
 `适配与基础设施层`
 
 - `CanvasStorage`：负责 `workspaceState` / `storageUri` 下的数据读写
-- `TerminalSessionAdapter`：抽象 VSCode 终端会话
-- `AgentAdapter`：抽象 Agent 启动、事件和输出流
+- `ExecutionSessionBridge`：抽象嵌入式 PTY 会话的启动、输入输出桥、停止与重连
 - `SecretConfigStore`：抽象密钥与 provider 配置
 
 `画布呈现层`
@@ -266,21 +266,18 @@ updated_at: 2026-03-28
 
 ### 7.6 Agent 策略
 
-当前不把“Agent”直接等同于某个 provider 或某种 VSCode AI API，而是先定义宿主侧适配边界：
+当前不再把 `Agent` 设计成一套独立的“prompt -> run -> transcript”运行时。新的收敛原则是：
 
-- `AgentAdapter.start(runSpec)`
-- `AgentAdapter.stop(runId)`
-- `AgentAdapter.subscribe(runId, listener)`
-- `AgentAdapter.resume(runId)`
+- `Agent` 在对象语义上仍是 `Agent`，因为它代表一个默认绑定 provider 的执行窗口。
+- 但在运行时模型上，`Agent` 应视为“预置启动命令的嵌入式终端会话”。
+- 因此 `Agent` 与 `Terminal` 应共享同一类 PTY 会话桥、输入输出事件流和恢复边界。
 
-这样做的目的不是回避选型，而是避免让画布对象模型被底层执行框架反向绑死。后续无论接 VSCode Language Model Tool、MCP、外部 CLI Agent，还是仓库内自建 orchestrator，都应先对齐这个边界。
-
-在当前原型阶段，`Agent` 节点的第一条真实 backend 路线收敛为“宿主直接启动 `codex` / `claude` CLI 会话”，并通过配置项解决 PATH 与命令路径差异，而不是把节点绑定到 VSCode 内置语言模型。详细取舍见 `docs/design-docs/agent-runtime-prototype.md`。
+在当前原型阶段，`Agent` 节点的真实 backend 路线收敛为“宿主通过 PTY 启动 `codex` / `claude` CLI 会话”，并通过配置项解决 PATH 与命令路径差异。详细取舍见 `docs/design-docs/agent-runtime-prototype.md`。
 
 同时需要补一个产品表面约束：
 
-- `Agent` 节点的正确语义是“画布上的会话窗口”，不是“右侧 inspector 里的单次请求卡片”。
-- 因此主交互必须在节点内部承载，至少包括输入区、运行状态和连续转录。
+- `Agent` 节点的正确语义是“画布上的特殊终端会话窗口”，不是“右侧 inspector 里的单次请求卡片”，也不是“我们自己维护 transcript 的聊天组件”。
+- 因此主交互必须在节点内部承载，核心是 provider 选择、会话状态和嵌入式终端前端。
 - 右侧检查器最多只保留概况，不再承载 Agent 的主要操作。详细结论见 `docs/design-docs/agent-session-surface.md`。
 
 ### 7.7 安全与信任边界
@@ -307,8 +304,8 @@ updated_at: 2026-03-28
 - 风险：如果 PTY 后端只在 Linux 环境被验证，其他平台可能仍存在能力缺口。
   当前缓解：当前实现明确标注已验证环境，不把未验证平台写成已完成能力；后续再评估更稳定的跨平台后端。
 
-- 风险：Agent 适配层如果过度抽象，后续实现时可能发现真正的执行模型差异很大。
-  当前缓解：已选定以 CLI Agent 代理节点作为第一条最小真实 backend 路线，并通过独立原型验证其状态回流与恢复边界。
+- 风险：如果 Agent 继续维持独立运行时模型，后续会和 Terminal 的 PTY 路线长期分叉。
+  当前缓解：当前已把 Agent 收敛为“预置命令的嵌入式终端会话”，优先复用统一执行会话桥。
 
 - 风险：如果 Agent 节点继续依赖 inspector 才能交互，画布会失去“空间化会话窗口”的核心价值。
   当前缓解：已新增独立设计文档，把 Agent 的主交互面收敛到节点内部，并让执行型对象共享 runtime window 风格。

@@ -5,19 +5,20 @@ import * as vscode from 'vscode';
 import {
   type AgentNodeMetadata,
   type AgentProviderKind,
-  type AgentTranscriptEntry,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
   type CanvasRuntimeContext,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
+  type ExecutionNodeKind,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
   type TaskNodeMetadata,
   type TaskNodeStatus,
   type TerminalNodeMetadata,
   isCanvasNodeKind,
+  isExecutionNodeKind,
   parseWebviewMessage
 } from '../common/protocol';
 import { getWebviewHtml } from './getWebviewHtml';
@@ -25,15 +26,6 @@ import { getWebviewHtml } from './getWebviewHtml';
 const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
-
-interface AgentRunSession {
-  runId: string;
-  provider: AgentProviderKind;
-  process: ChildProcessWithoutNullStreams;
-  stopRequested: boolean;
-  stdout: string;
-  stderr: string;
-}
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
@@ -45,10 +37,9 @@ interface AgentCliSpec {
   provider: AgentProviderKind;
   label: string;
   command: string;
-  args: string[];
 }
 
-interface EmbeddedTerminalSession {
+interface EmbeddedExecutionSession {
   sessionId: string;
   process: ChildProcessWithoutNullStreams;
   shellPath: string;
@@ -59,6 +50,7 @@ interface EmbeddedTerminalSession {
   decoder: StringDecoder;
   stopRequested: boolean;
   syncTimer: NodeJS.Timeout | undefined;
+  displayLabel: string;
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
@@ -66,11 +58,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
   private panel: vscode.WebviewPanel | undefined;
   private state: CanvasPrototypeState;
-  private readonly agentRuns = new Map<string, AgentRunSession>();
-  private readonly terminalSessions = new Map<string, EmbeddedTerminalSession>();
+  private readonly agentSessions = new Map<string, EmbeddedExecutionSession>();
+  private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.state = reconcileRuntimeNodes(this.loadState(), this.terminalSessions);
+    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.persistState();
 
     context.subscriptions.push(
@@ -100,7 +92,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
   ): Promise<void> {
-    this.state = reconcileRuntimeNodes(this.loadState(), this.terminalSessions);
+    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.persistState();
     this.attachPanel(webviewPanel);
   }
@@ -150,13 +142,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
               parsedMessage.payload.kind,
               this.getAgentCliConfig().defaultProvider
             );
-            if (parsedMessage.payload.kind === 'terminal') {
+            if (isExecutionNodeKind(parsedMessage.payload.kind)) {
               const createdNode = this.state.nodes[this.state.nodes.length - 1];
-              if (createdNode?.kind === 'terminal') {
-                this.state = updateTerminalNode(this.state, createdNode.id, {
+              if (
+                createdNode &&
+                createdNode.kind === parsedMessage.payload.kind
+              ) {
+                this.state = updateExecutionNode(this.state, createdNode.id, parsedMessage.payload.kind, {
                   status: 'draft',
-                  summary: '终端准备按节点尺寸自动启动。',
-                  metadata: buildTerminalMetadataPatch(this.state, createdNode.id, {
+                  summary:
+                    parsedMessage.payload.kind === 'agent'
+                      ? 'Agent 会话准备按节点尺寸自动启动。'
+                      : '终端准备按节点尺寸自动启动。',
+                  metadata: buildExecutionMetadataPatch(this.state, createdNode.id, parsedMessage.payload.kind, {
                     autoStartPending: true,
                     lastExitMessage: undefined
                   })
@@ -171,38 +169,43 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.persistState();
             this.postState('host/stateUpdated');
             break;
-          case 'webview/startAgentRun':
-            void this.startAgentRun(
-              parsedMessage.payload.nodeId,
-              parsedMessage.payload.prompt,
-              parsedMessage.payload.provider
-            );
-            break;
-          case 'webview/stopAgentRun':
-            void this.stopAgentRun(parsedMessage.payload.nodeId);
-            break;
-          case 'webview/startTerminalSession':
+          case 'webview/startExecutionSession':
+            if (parsedMessage.payload.kind === 'agent') {
+              void this.startAgentSession(
+                parsedMessage.payload.nodeId,
+                parsedMessage.payload.cols,
+                parsedMessage.payload.rows,
+                parsedMessage.payload.provider
+              );
+              break;
+            }
+
             void this.startTerminalSession(
               parsedMessage.payload.nodeId,
               parsedMessage.payload.cols,
               parsedMessage.payload.rows
             );
             break;
-          case 'webview/attachTerminalSession':
-            this.attachTerminalSession(parsedMessage.payload.nodeId);
+          case 'webview/attachExecutionSession':
+            this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
             break;
-          case 'webview/terminalInput':
-            this.writeTerminalInput(parsedMessage.payload.nodeId, parsedMessage.payload.data);
+          case 'webview/executionInput':
+            this.writeExecutionInput(
+              parsedMessage.payload.kind,
+              parsedMessage.payload.nodeId,
+              parsedMessage.payload.data
+            );
             break;
-          case 'webview/resizeTerminalSession':
-            this.resizeTerminalSession(
+          case 'webview/resizeExecutionSession':
+            this.resizeExecutionSession(
+              parsedMessage.payload.kind,
               parsedMessage.payload.nodeId,
               parsedMessage.payload.cols,
               parsedMessage.payload.rows
             );
             break;
-          case 'webview/stopTerminalSession':
-            void this.stopTerminalSession(parsedMessage.payload.nodeId);
+          case 'webview/stopExecutionSession':
+            void this.stopExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
             break;
           case 'webview/updateTaskNode':
             this.state = updateTaskContent(this.state, parsedMessage.payload);
@@ -215,7 +218,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.postState('host/stateUpdated');
             break;
           case 'webview/resetDemoState':
-            this.cancelAllAgentRuns();
+            this.cancelAllAgentSessions();
             this.cancelAllTerminalSessions();
             this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
             this.persistState();
@@ -278,235 +281,247 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     return false;
   }
 
-  private async startAgentRun(
+  private async startAgentSession(
     nodeId: string,
-    prompt: string,
-    provider: AgentProviderKind
+    cols: number,
+    rows: number,
+    requestedProvider: AgentProviderKind | undefined
   ): Promise<void> {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+      return;
+    }
+
     const agentNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
     if (!agentNode) {
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '未找到可运行的 Agent 节点。'
+          message: '未找到可启动的 Agent 节点。'
         }
       });
       return;
     }
 
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt) {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '请先输入 Agent 目标，再启动运行。'
-        }
-      });
-      return;
-    }
-
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
-      return;
-    }
-
-    const existingRun = this.agentRuns.get(nodeId);
-    if (existingRun) {
+    const activeSessions = this.getExecutionSessions('agent');
+    if (activeSessions.has(nodeId)) {
       this.postMessage({
         type: 'host/error',
         payload: {
           message: '该 Agent 已在运行中。'
         }
       });
+      this.attachExecutionSession('agent', nodeId);
       return;
     }
 
-    const runId = createAgentRunId(nodeId);
-    const cliSpec = this.resolveAgentCli(provider);
-    const initialTranscript = beginAgentTranscript(
-      ensureAgentMetadata(agentNode).transcript ?? [],
-      runId,
-      trimmedPrompt
-    );
-    let aggregatedResponse = '';
-    let aggregatedError = '';
+    if (process.platform !== 'linux') {
+      const message = '当前 Agent 嵌入式会话后端只在 Linux 环境完成验证；此环境暂不支持直接启动。';
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: 'error',
+        summary: message,
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          liveSession: false,
+          autoStartPending: false,
+          lastExitMessage: message
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+      return;
+    }
 
-    this.state = updateAgentNode(this.state, nodeId, {
-      status: 'running',
-      summary: `正在准备 ${cliSpec.label} 会话...`,
-      metadata: buildAgentMetadataPatch(this.state, nodeId, {
-        provider,
-        liveRun: true,
-        transcript: initialTranscript,
-        lastPrompt: trimmedPrompt,
-        lastResponse: undefined,
-        lastRunId: runId,
-        lastBackendLabel: cliSpec.label
-      })
-    });
-    this.persistState();
-    this.postState('host/stateUpdated');
+    const provider = requestedProvider ?? ensureAgentMetadata(agentNode).provider;
+    const cliSpec = this.resolveAgentCli(provider);
+    const normalizedCols = normalizeTerminalCols(cols);
+    const normalizedRows = normalizeTerminalRows(rows);
+    const cwd = this.getTerminalWorkingDirectory();
+    const sessionId = createExecutionSessionId(nodeId, 'agent');
+    const bootstrapCommand = `stty cols ${normalizedCols} rows ${normalizedRows}; exec ${quotePosixShellArg(cliSpec.command)}`;
 
     try {
-      const respawnedChild = spawn(cliSpec.command, [...cliSpec.args, trimmedPrompt], {
-        cwd: this.getWorkspaceRoot(),
-        env: process.env
+      const child = spawn('script', ['-qfc', bootstrapCommand, '/dev/null'], {
+        cwd,
+        env: {
+          ...process.env,
+          TERM: process.env.TERM?.trim() || 'xterm-256color',
+          COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
+        }
       });
 
-      const session: AgentRunSession = {
-        runId,
-        provider,
-        process: respawnedChild,
+      const session: EmbeddedExecutionSession = {
+        sessionId,
+        process: child,
+        shellPath: cliSpec.command,
+        cwd,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        buffer: '',
+        decoder: new StringDecoder('utf8'),
         stopRequested: false,
-        stdout: '',
-        stderr: ''
+        syncTimer: undefined,
+        displayLabel: cliSpec.label
       };
-      this.agentRuns.set(nodeId, session);
+      activeSessions.set(nodeId, session);
 
-      let settled = false;
-      const finalize = (status: 'idle' | 'error' | 'cancelled', message?: string): void => {
-        if (settled) {
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: 'live',
+        summary: summarizeAgentSessionOutput('', true, cliSpec.label),
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          provider,
+          liveSession: true,
+          autoStartPending: false,
+          shellPath: cliSpec.command,
+          cwd,
+          recentOutput: undefined,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          lastCols: normalizedCols,
+          lastRows: normalizedRows,
+          lastBackendLabel: cliSpec.label
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postExecutionSnapshot('agent', nodeId);
+
+      const handleSessionChunk = (chunk: Buffer | string): void => {
+        const sessionMap = this.getExecutionSessions('agent');
+        const activeSession = sessionMap.get(nodeId);
+        if (!activeSession) {
           return;
         }
 
-        settled = true;
-        if (this.isActiveAgentRun(nodeId, runId)) {
-          this.agentRuns.delete(nodeId);
+        const text =
+          typeof chunk === 'string'
+            ? chunk
+            : activeSession.decoder.write(chunk);
+        if (!text) {
+          return;
         }
 
-        const finalOutput = trimStoredAgentText(stripAnsi(session.stdout).trim());
-        const finalError = trimStoredAgentText(stripAnsi(session.stderr).trim());
-        const summary =
-          status === 'idle'
-            ? summarizeAgentResponse(finalOutput, false)
-            : message ?? summarizeAgentFailure(finalError || finalOutput);
-        const transcript = finalizeAgentTranscript(
-          readAgentTranscript(this.state, nodeId),
-          runId,
-          status,
-          finalOutput,
-          message ?? finalError
-        );
+        activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        this.queueExecutionStateSync('agent', nodeId);
+        this.postMessage({
+          type: 'host/executionOutput',
+          payload: {
+            nodeId,
+            kind: 'agent',
+            chunk: text
+          }
+        });
+      };
 
+      const finalize = (
+        status: 'closed' | 'error',
+        message: string,
+        exitCode?: number,
+        signal?: NodeJS.Signals | null
+      ): void => {
+        const sessionMap = this.getExecutionSessions('agent');
+        const activeSession = sessionMap.get(nodeId);
+        if (!activeSession) {
+          return;
+        }
+
+        if (activeSession.syncTimer) {
+          clearTimeout(activeSession.syncTimer);
+          activeSession.syncTimer = undefined;
+        }
+
+        const tail = activeSession.decoder.end();
+        if (tail) {
+          activeSession.buffer = appendTerminalBuffer(activeSession.buffer, tail);
+        }
+
+        const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
+        const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+
+        sessionMap.delete(nodeId);
         this.state = updateAgentNode(this.state, nodeId, {
           status,
-          summary,
+          summary: message,
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
             provider,
-            liveRun: false,
-            transcript,
-            lastPrompt: trimmedPrompt,
-            lastRunId: runId,
-            lastBackendLabel: cliSpec.label,
-            lastResponse: finalOutput || undefined
+            liveSession: false,
+            autoStartPending: false,
+            shellPath: activeSession.shellPath,
+            cwd: activeSession.cwd,
+            recentOutput: recentOutput || undefined,
+            lastExitCode: exitCode,
+            lastExitSignal: signal ?? undefined,
+            lastExitMessage: message,
+            lastCols: activeSession.cols,
+            lastRows: activeSession.rows,
+            lastBackendLabel: cliSpec.label
           })
         });
         this.persistState();
         this.postState('host/stateUpdated');
-
+        this.postMessage({
+          type: 'host/executionExit',
+          payload: {
+            nodeId,
+            kind: 'agent',
+            message
+          }
+        });
         if (status === 'error') {
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: summary
+              message
             }
           });
         }
       };
 
-      respawnedChild.stdout.on('data', (chunk: Buffer | string) => {
-        if (!this.isActiveAgentRun(nodeId, runId)) {
-          return;
-        }
+      child.stdout.on('data', handleSessionChunk);
+      child.stderr.on('data', handleSessionChunk);
 
-        const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-        session.stdout = trimStoredAgentText(`${session.stdout}${text}`);
-        aggregatedResponse = trimStoredAgentText(stripAnsi(session.stdout).trim());
-        const transcript = updateAssistantTranscript(
-          readAgentTranscript(this.state, nodeId),
-          runId,
-          aggregatedResponse,
-          'streaming'
-        );
-
-        this.state = updateAgentNode(this.state, nodeId, {
-          status: 'running',
-          summary: summarizeAgentResponse(aggregatedResponse, true),
-          metadata: buildAgentMetadataPatch(this.state, nodeId, {
-            provider,
-            liveRun: true,
-            transcript,
-            lastPrompt: trimmedPrompt,
-            lastRunId: runId,
-            lastBackendLabel: cliSpec.label,
-            lastResponse: aggregatedResponse || undefined
-          })
-        });
-        this.postState('host/stateUpdated');
+      child.once('error', (error) => {
+        finalize('error', describeAgentSessionSpawnError(cliSpec, error));
       });
 
-      respawnedChild.stderr.on('data', (chunk: Buffer | string) => {
-        if (!this.isActiveAgentRun(nodeId, runId)) {
-          return;
-        }
-
-        const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-        session.stderr = trimStoredAgentText(`${session.stderr}${text}`);
-        aggregatedError = trimStoredAgentText(stripAnsi(session.stderr).trim());
-
-        if (!aggregatedResponse) {
-          this.state = updateAgentNode(this.state, nodeId, {
-            status: 'running',
-            summary: summarizeAgentFailure(aggregatedError, true),
-            metadata: buildAgentMetadataPatch(this.state, nodeId, {
-              provider,
-              liveRun: true,
-              lastPrompt: trimmedPrompt,
-              lastRunId: runId,
-              lastBackendLabel: cliSpec.label
-            })
-          });
-          this.postState('host/stateUpdated');
-        }
-      });
-
-      respawnedChild.once('error', (error) => {
-        finalize('error', describeAgentCliSpawnError(cliSpec, error));
-      });
-
-      respawnedChild.once('close', (code, signal) => {
+      child.once('close', (code, signal) => {
         if (session.stopRequested) {
-          finalize('cancelled', `已停止 ${cliSpec.label} 会话。`);
+          finalize('closed', `已停止 ${cliSpec.label} 会话。`, typeof code === 'number' ? code : undefined, signal);
           return;
         }
 
         if (code === 0) {
-          finalize('idle');
+          finalize('closed', `${cliSpec.label} 会话已结束。`, code, signal);
           return;
         }
 
+        const cleanedOutput = stripTerminalControlSequences(session.buffer);
         finalize(
           'error',
-          describeAgentCliExit(cliSpec, code, signal, aggregatedError || aggregatedResponse)
+          describeAgentSessionExit(cliSpec, code, signal, cleanedOutput),
+          typeof code === 'number' ? code : undefined,
+          signal
         );
       });
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Agent CLI 会话启动失败。';
+      const message = describeAgentSessionSpawnError(cliSpec, error);
       this.state = updateAgentNode(this.state, nodeId, {
         status: 'error',
-        summary: errorMessage,
+        summary: message,
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
           provider,
-          liveRun: false,
-          transcript: finalizeAgentTranscript(
-            readAgentTranscript(this.state, nodeId),
-            runId,
-            'error',
-            '',
-            errorMessage
-          ),
-          lastPrompt: trimmedPrompt,
-          lastRunId: runId,
+          liveSession: false,
+          autoStartPending: false,
+          shellPath: cliSpec.command,
+          cwd,
+          lastExitMessage: message,
+          lastCols: normalizedCols,
+          lastRows: normalizedRows,
           lastBackendLabel: cliSpec.label
         })
       });
@@ -515,38 +530,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: errorMessage
+          message
         }
       });
     }
   }
 
-  private async stopAgentRun(nodeId: string): Promise<void> {
-    const activeRun = this.agentRuns.get(nodeId);
-    if (!activeRun) {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '当前没有可停止的 Agent 运行。'
-        }
-      });
-      return;
+  private cancelAllAgentSessions(): void {
+    for (const [nodeId, session] of this.agentSessions.entries()) {
+      session.stopRequested = true;
+      if (session.syncTimer) {
+        clearTimeout(session.syncTimer);
+      }
+
+      session.process.stdout.removeAllListeners();
+      session.process.stderr.removeAllListeners();
+      session.process.removeAllListeners();
+      session.process.kill('SIGTERM');
+      this.agentSessions.delete(nodeId);
     }
-
-    activeRun.stopRequested = true;
-    activeRun.process.kill('SIGTERM');
-  }
-
-  private cancelAllAgentRuns(): void {
-    for (const run of this.agentRuns.values()) {
-      run.stopRequested = true;
-      run.process.kill('SIGTERM');
-    }
-    this.agentRuns.clear();
-  }
-
-  private isActiveAgentRun(nodeId: string, runId: string): boolean {
-    return this.agentRuns.get(nodeId)?.runId === runId;
   }
 
   private getAgentCliConfig(): AgentCliConfig {
@@ -566,16 +568,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return {
         provider,
         label: 'Claude Code',
-        command: configuration.claudeCommand,
-        args: ['--print']
+        command: configuration.claudeCommand
       };
     }
 
     return {
       provider: 'codex',
       label: 'Codex',
-      command: configuration.codexCommand,
-      args: ['exec', '--color', 'never']
+      command: configuration.codexCommand
     };
   }
 
@@ -624,7 +624,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           message: '该终端已在运行中。'
         }
       });
-      this.attachTerminalSession(nodeId);
+      this.attachExecutionSession('terminal', nodeId);
       return;
     }
 
@@ -654,7 +654,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     const normalizedRows = normalizeTerminalRows(rows);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
-    const sessionId = createTerminalSessionId(nodeId);
+    const sessionId = createExecutionSessionId(nodeId, 'terminal');
     const bootstrapCommand = `stty cols ${normalizedCols} rows ${normalizedRows}; exec ${quotePosixShellArg(shellPath)}`;
 
     try {
@@ -667,7 +667,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         }
       });
 
-      const session: EmbeddedTerminalSession = {
+      const session: EmbeddedExecutionSession = {
         sessionId,
         process: child,
         shellPath,
@@ -677,7 +677,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         buffer: '',
         decoder: new StringDecoder('utf8'),
         stopRequested: false,
-        syncTimer: undefined
+        syncTimer: undefined,
+        displayLabel: shellPath
       };
       this.terminalSessions.set(nodeId, session);
 
@@ -699,7 +700,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       });
       this.persistState();
       this.postState('host/stateUpdated');
-      this.postTerminalSnapshot(nodeId);
+      this.postExecutionSnapshot('terminal', nodeId);
 
       const handleTerminalChunk = (chunk: Buffer | string): void => {
         const activeSession = this.terminalSessions.get(nodeId);
@@ -716,11 +717,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         }
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
-        this.queueTerminalStateSync(nodeId);
+        this.queueExecutionStateSync('terminal', nodeId);
         this.postMessage({
-          type: 'host/terminalOutput',
+          type: 'host/executionOutput',
           payload: {
             nodeId,
+            kind: 'terminal',
             chunk: text
           }
         });
@@ -770,9 +772,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         this.persistState();
         this.postState('host/stateUpdated');
         this.postMessage({
-          type: 'host/terminalExit',
+          type: 'host/executionExit',
           payload: {
             nodeId,
+            kind: 'terminal',
             message
           }
         });
@@ -838,21 +841,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     }
   }
 
-  private attachTerminalSession(nodeId: string): void {
-    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
-    if (!terminalNode) {
-      return;
-    }
-
-    this.postTerminalSnapshot(nodeId);
+  private getExecutionSessions(kind: ExecutionNodeKind): Map<string, EmbeddedExecutionSession> {
+    return kind === 'agent' ? this.agentSessions : this.terminalSessions;
   }
 
-  private writeTerminalInput(nodeId: string, data: string): void {
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端输入。')) {
+  private attachExecutionSession(kind: ExecutionNodeKind, nodeId: string): void {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+    if (!node) {
       return;
     }
 
-    const session = this.terminalSessions.get(nodeId);
+    this.postExecutionSnapshot(kind, nodeId);
+  }
+
+  private writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): void {
+    if (
+      !this.assertExecutionAllowed(
+        kind === 'agent' ? '当前 workspace 未受信任，已禁止 Agent 输入。' : '当前 workspace 未受信任，已禁止终端输入。'
+      )
+    ) {
+      return;
+    }
+
+    const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
       return;
     }
@@ -860,16 +871,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     session.process.stdin.write(data);
   }
 
-  private resizeTerminalSession(nodeId: string, cols: number, rows: number): void {
+  private resizeExecutionSession(kind: ExecutionNodeKind, nodeId: string, cols: number, rows: number): void {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
-    const session = this.terminalSessions.get(nodeId);
+    const session = this.getExecutionSessions(kind).get(nodeId);
 
     if (!session) {
-      this.state = updateTerminalNode(this.state, nodeId, {
-        status: readTerminalStatus(this.state, nodeId),
-        summary: readTerminalSummary(this.state, nodeId),
-        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+      this.state = updateExecutionNode(this.state, nodeId, kind, {
+        status: readExecutionStatus(this.state, nodeId, kind),
+        summary: readExecutionSummary(this.state, nodeId, kind),
+        metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
           lastCols: normalizedCols,
           lastRows: normalizedRows
         })
@@ -886,13 +897,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     return;
   }
 
-  private async stopTerminalSession(nodeId: string): Promise<void> {
-    const session = this.terminalSessions.get(nodeId);
+  private async stopExecutionSession(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
+    const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '当前没有可停止的终端会话。'
+          message: kind === 'agent' ? '当前没有可停止的 Agent 会话。' : '当前没有可停止的终端会话。'
         }
       });
       return;
@@ -917,56 +928,68 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     }
   }
 
-  private queueTerminalStateSync(nodeId: string): void {
-    const session = this.terminalSessions.get(nodeId);
+  private queueExecutionStateSync(kind: ExecutionNodeKind, nodeId: string): void {
+    const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session || session.syncTimer) {
       return;
     }
 
     session.syncTimer = setTimeout(() => {
-      const activeSession = this.terminalSessions.get(nodeId);
+      const activeSession = this.getExecutionSessions(kind).get(nodeId);
       if (!activeSession) {
         return;
       }
 
       activeSession.syncTimer = undefined;
-      this.flushLiveTerminalState(nodeId);
+      this.flushLiveExecutionState(kind, nodeId);
     }, 160);
   }
 
-  private flushLiveTerminalState(nodeId: string): void {
-    const session = this.terminalSessions.get(nodeId);
+  private flushLiveExecutionState(kind: ExecutionNodeKind, nodeId: string): void {
+    const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
       return;
     }
 
     const cleanedOutput = stripTerminalControlSequences(session.buffer);
     const recentOutput = extractRecentTerminalOutput(cleanedOutput);
-    this.state = updateTerminalNode(this.state, nodeId, {
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: 'live',
-      summary: summarizeEmbeddedTerminalOutput(cleanedOutput, true),
-      metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+      summary:
+        kind === 'agent'
+          ? summarizeAgentSessionOutput(cleanedOutput, true, session.displayLabel)
+          : summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
         liveSession: true,
         shellPath: session.shellPath,
         cwd: session.cwd,
         recentOutput: recentOutput || undefined,
         lastCols: session.cols,
-        lastRows: session.rows
+        lastRows: session.rows,
+        ...(kind === 'agent' ? { lastBackendLabel: session.displayLabel } : {})
       })
     });
     this.persistState();
     this.postState('host/stateUpdated');
   }
 
-  private postTerminalSnapshot(nodeId: string): void {
-    const session = this.terminalSessions.get(nodeId);
-    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
-    const metadata = terminalNode ? ensureTerminalMetadata(terminalNode) : undefined;
+  private postExecutionSnapshot(kind: ExecutionNodeKind, nodeId: string): void {
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+    const metadata =
+      kind === 'agent'
+        ? node
+          ? ensureAgentMetadata(node)
+          : undefined
+        : node
+          ? ensureTerminalMetadata(node)
+          : undefined;
 
     this.postMessage({
-      type: 'host/terminalSnapshot',
+      type: 'host/executionSnapshot',
       payload: {
         nodeId,
+        kind,
         output: session?.buffer ?? '',
         cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
         rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
@@ -987,10 +1010,6 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
   };
 }
 
-function isExecutionNodeKind(kind: CanvasNodeKind): boolean {
-  return kind === 'agent' || kind === 'terminal';
-}
-
 function createNextState(
   previousState: CanvasPrototypeState,
   kind: CanvasNodeKind,
@@ -1009,7 +1028,7 @@ function createNextState(
 function defaultSummaryForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return '等待在节点内输入第一条消息，并启动真实 CLI Agent 运行。';
+      return '尚未启动 Agent 会话。';
     case 'terminal':
       return '尚未启动嵌入式终端。';
     case 'task':
@@ -1022,7 +1041,7 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
 function defaultStatusForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return 'idle';
+      return 'draft';
     case 'terminal':
       return 'draft';
     case 'task':
@@ -1192,9 +1211,15 @@ function createNodeMetadata(
 
 function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
   return {
+    backend: 'script',
     provider,
-    liveRun: false,
-    transcript: []
+    shellPath: defaultAgentCommand(provider),
+    cwd: defaultTerminalWorkingDirectory(),
+    liveSession: false,
+    autoStartPending: false,
+    lastCols: DEFAULT_TERMINAL_COLS,
+    lastRows: DEFAULT_TERMINAL_ROWS,
+    lastBackendLabel: agentProviderDisplayLabel(provider)
   };
 }
 
@@ -1232,29 +1257,66 @@ function normalizeMetadata(
   const record = isRecord(value) ? value : {};
   if (kind === 'agent') {
     const agent = isRecord(record.agent) ? record.agent : {};
-    const fallback = createAgentMetadata(defaultAgentProvider);
+    const provider =
+      agent.provider === 'claude' || agent.provider === 'codex'
+        ? agent.provider
+        : defaultAgentProvider;
+    const fallback = createAgentMetadata(provider);
 
     return {
       agent: {
-        provider:
-          agent.provider === 'claude' || agent.provider === 'codex'
-            ? agent.provider
-            : fallback.provider,
-        liveRun: typeof agent.liveRun === 'boolean' ? agent.liveRun : fallback.liveRun,
-        transcript: normalizeAgentTranscript(agent.transcript),
-        lastPrompt:
-          typeof agent.lastPrompt === 'string' ? trimStoredAgentText(agent.lastPrompt) : undefined,
-        lastResponse:
-          typeof agent.lastResponse === 'string'
-            ? trimStoredAgentText(agent.lastResponse)
+        backend: 'script',
+        provider,
+        shellPath:
+          typeof agent.shellPath === 'string'
+            ? agent.shellPath
+            : fallback.shellPath,
+        cwd:
+          typeof agent.cwd === 'string'
+            ? agent.cwd
+            : fallback.cwd,
+        liveSession:
+          typeof agent.liveSession === 'boolean'
+            ? agent.liveSession
+            : typeof agent.liveRun === 'boolean'
+              ? agent.liveRun
+              : fallback.liveSession,
+        autoStartPending:
+          typeof agent.autoStartPending === 'boolean'
+            ? agent.autoStartPending
+            : fallback.autoStartPending,
+        recentOutput:
+          typeof agent.recentOutput === 'string'
+            ? trimStoredTerminalText(agent.recentOutput)
+            : typeof agent.lastResponse === 'string'
+              ? trimStoredTerminalText(agent.lastResponse)
+              : undefined,
+        lastExitCode:
+          typeof agent.lastExitCode === 'number'
+            ? agent.lastExitCode
             : undefined,
+        lastExitSignal:
+          typeof agent.lastExitSignal === 'string'
+            ? agent.lastExitSignal
+            : undefined,
+        lastExitMessage:
+          typeof agent.lastExitMessage === 'string'
+            ? trimStoredTerminalText(agent.lastExitMessage)
+            : undefined,
+        lastCols:
+          typeof agent.lastCols === 'number'
+            ? normalizeTerminalCols(agent.lastCols)
+            : fallback.lastCols,
+        lastRows:
+          typeof agent.lastRows === 'number'
+            ? normalizeTerminalRows(agent.lastRows)
+            : fallback.lastRows,
         lastBackendLabel:
           typeof agent.lastBackendLabel === 'string'
             ? agent.lastBackendLabel
             : typeof agent.lastModelName === 'string'
               ? agent.lastModelName
-              : undefined,
-        lastRunId: typeof agent.lastRunId === 'string' ? agent.lastRunId : undefined
+              : fallback.lastBackendLabel
       }
     };
   }
@@ -1342,81 +1404,75 @@ function normalizeMetadata(
   return undefined;
 }
 
-function normalizeAgentTranscript(value: unknown): AgentTranscriptEntry[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return trimAgentTranscript(
-    value
-      .map((entry) => normalizeAgentTranscriptEntry(entry))
-      .filter((entry): entry is AgentTranscriptEntry => entry !== null)
-  );
-}
-
-function normalizeAgentTranscriptEntry(value: unknown): AgentTranscriptEntry | null {
-  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.text !== 'string') {
-    return null;
-  }
-
-  if (value.role !== 'user' && value.role !== 'assistant' && value.role !== 'status') {
-    return null;
-  }
-
-  const state =
-    value.state === 'streaming' || value.state === 'done' || value.state === 'error'
-      ? value.state
-      : undefined;
-
-  return {
-    id: value.id,
-    role: value.role,
-    text: trimStoredAgentText(value.text),
-    state
-  };
-}
-
 function reconcileRuntimeNodes(
   state: CanvasPrototypeState,
-  terminalSessions: Map<string, EmbeddedTerminalSession> = new Map()
+  agentSessions: Map<string, EmbeddedExecutionSession> = new Map(),
+  terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
 ): CanvasPrototypeState {
   return {
     ...state,
-    nodes: reconcileRuntimeNodesInArray(state.nodes, terminalSessions)
+    nodes: reconcileRuntimeNodesInArray(state.nodes, agentSessions, terminalSessions)
   };
 }
 
 function reconcileRuntimeNodesInArray(
   nodes: CanvasNodeSummary[],
-  terminalSessions: Map<string, EmbeddedTerminalSession> = new Map()
+  agentSessions: Map<string, EmbeddedExecutionSession> = new Map(),
+  terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
 ): CanvasNodeSummary[] {
   return reconcileTaskAndNoteNodesInArray(
-    reconcileAgentNodesInArray(reconcileTerminalNodesInArray(nodes, terminalSessions))
+    reconcileAgentNodesInArray(
+      reconcileTerminalNodesInArray(nodes, terminalSessions),
+      agentSessions
+    )
   );
 }
 
-function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+function reconcileAgentNodesInArray(
+  nodes: CanvasNodeSummary[],
+  agentSessions: Map<string, EmbeddedExecutionSession> = new Map()
+): CanvasNodeSummary[] {
   return nodes.map((node) => {
     if (node.kind !== 'agent') {
       return node;
     }
 
     const metadata = ensureAgentMetadata(node);
-    if (metadata.liveRun) {
+    const liveSession = agentSessions.get(node.id);
+    if (liveSession) {
+      const cleanedOutput = stripTerminalControlSequences(liveSession.buffer);
+      const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+
       return {
         ...node,
-        status: 'interrupted',
-        summary: '上一次 Agent 运行在扩展重载后未恢复，可重新启动。',
+        status: 'live',
+        summary: summarizeAgentSessionOutput(cleanedOutput, true, liveSession.displayLabel),
         metadata: {
           ...node.metadata,
           agent: {
             ...metadata,
-            liveRun: false,
-            transcript: markAgentTranscriptInterrupted(
-              metadata.transcript ?? [],
-              metadata.lastRunId,
-              '扩展重载后，本轮运行未恢复。'
-            )
+            liveSession: true,
+            shellPath: liveSession.shellPath,
+            cwd: liveSession.cwd,
+            recentOutput: recentOutput || metadata.recentOutput,
+            lastCols: liveSession.cols,
+            lastRows: liveSession.rows,
+            lastBackendLabel: liveSession.displayLabel
+          }
+        }
+      };
+    }
+
+    if (metadata.liveSession) {
+      return {
+        ...node,
+        status: 'interrupted',
+        summary: '上一次 Agent 会话在扩展重载后未恢复，可重新启动。',
+        metadata: {
+          ...node.metadata,
+          agent: {
+            ...metadata,
+            liveSession: false
           }
         }
       };
@@ -1425,7 +1481,7 @@ function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSumma
     if (isLegacyPlaceholderAgent(node, metadata)) {
       return {
         ...node,
-        status: 'idle',
+        status: 'draft',
         summary: defaultSummaryForKind('agent'),
         metadata: {
           ...node.metadata,
@@ -1438,7 +1494,10 @@ function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSumma
       ...node,
       metadata: {
         ...node.metadata,
-        agent: metadata
+        agent: {
+          ...metadata,
+          liveSession: false
+        }
       }
     };
   });
@@ -1446,7 +1505,7 @@ function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSumma
 
 function reconcileTerminalNodesInArray(
   nodes: CanvasNodeSummary[],
-  terminalSessions: Map<string, EmbeddedTerminalSession> = new Map()
+  terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
 ): CanvasNodeSummary[] {
   return nodes.map((node) => {
     if (node.kind !== 'terminal') {
@@ -1584,6 +1643,17 @@ function updateCanvasNode(
   };
 }
 
+function updateExecutionNode(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  patch: Pick<CanvasNodeSummary, 'status' | 'summary' | 'metadata'>
+): CanvasPrototypeState {
+  return kind === 'agent'
+    ? updateAgentNode(state, nodeId, patch)
+    : updateTerminalNode(state, nodeId, patch);
+}
+
 function updateTerminalNode(
   state: CanvasPrototypeState,
   nodeId: string,
@@ -1696,6 +1766,32 @@ function ensureTerminalMetadata(node: CanvasNodeSummary): TerminalNodeMetadata {
   return node.metadata?.terminal ?? createTerminalMetadata(node.id);
 }
 
+function readExecutionStatus(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  kind: ExecutionNodeKind
+): string {
+  return kind === 'agent' ? readAgentStatus(state, nodeId) : readTerminalStatus(state, nodeId);
+}
+
+function readExecutionSummary(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  kind: ExecutionNodeKind
+): string {
+  return kind === 'agent' ? readAgentSummary(state, nodeId) : readTerminalSummary(state, nodeId);
+}
+
+function readAgentStatus(state: CanvasPrototypeState, nodeId: string): string {
+  const agentNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+  return agentNode?.status ?? 'draft';
+}
+
+function readAgentSummary(state: CanvasPrototypeState, nodeId: string): string {
+  const agentNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+  return agentNode?.summary ?? defaultSummaryForKind('agent');
+}
+
 function readTerminalStatus(state: CanvasPrototypeState, nodeId: string): string {
   const terminalNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
   return terminalNode?.status ?? 'draft';
@@ -1717,7 +1813,7 @@ function ensureNoteMetadata(node: CanvasNodeSummary): NoteNodeMetadata {
 function buildAgentMetadataPatch(
   state: CanvasPrototypeState,
   nodeId: string,
-  patch: AgentNodeMetadata
+  patch: Partial<AgentNodeMetadata>
 ): CanvasNodeMetadata {
   const currentNode = state.nodes.find((node) => node.id === nodeId);
 
@@ -1746,173 +1842,15 @@ function buildTerminalMetadataPatch(
   };
 }
 
-function readAgentTranscript(state: CanvasPrototypeState, nodeId: string): AgentTranscriptEntry[] {
-  const agentNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
-  if (!agentNode) {
-    return [];
-  }
-
-  return ensureAgentMetadata(agentNode).transcript ?? [];
-}
-
-function beginAgentTranscript(
-  existing: AgentTranscriptEntry[],
-  runId: string,
-  prompt: string
-): AgentTranscriptEntry[] {
-  return trimAgentTranscript([
-    ...existing,
-    {
-      id: createAgentTranscriptEntryId(runId, 'user'),
-      role: 'user',
-      text: trimStoredAgentText(prompt),
-      state: 'done'
-    },
-    {
-      id: createAgentTranscriptEntryId(runId, 'assistant'),
-      role: 'assistant',
-      text: '',
-      state: 'streaming'
-    }
-  ]);
-}
-
-function updateAssistantTranscript(
-  existing: AgentTranscriptEntry[],
-  runId: string,
-  output: string,
-  state: 'streaming' | 'done' | 'error'
-): AgentTranscriptEntry[] {
-  return upsertAgentTranscriptEntry(existing, {
-    id: createAgentTranscriptEntryId(runId, 'assistant'),
-    role: 'assistant',
-    text: trimStoredAgentText(output),
-    state
-  });
-}
-
-function finalizeAgentTranscript(
-  existing: AgentTranscriptEntry[],
-  runId: string,
-  status: 'idle' | 'error' | 'cancelled',
-  output: string,
-  statusMessage?: string
-): AgentTranscriptEntry[] {
-  let transcript = existing;
-  const normalizedOutput = trimStoredAgentText(output);
-
-  if (normalizedOutput) {
-    transcript = updateAssistantTranscript(
-      transcript,
-      runId,
-      normalizedOutput,
-      status === 'error' ? 'error' : 'done'
-    );
-  } else {
-    transcript = removeAgentTranscriptEntry(
-      transcript,
-      createAgentTranscriptEntryId(runId, 'assistant')
-    );
-  }
-
-  const nextStatusMessage = normalizeAgentTranscriptStatusMessage(status, normalizedOutput, statusMessage);
-  if (!nextStatusMessage) {
-    return removeAgentTranscriptEntry(transcript, createAgentTranscriptEntryId(runId, 'status'));
-  }
-
-  return upsertAgentTranscriptEntry(transcript, {
-    id: createAgentTranscriptEntryId(runId, 'status'),
-    role: 'status',
-    text: nextStatusMessage,
-    state: status === 'error' ? 'error' : 'done'
-  });
-}
-
-function markAgentTranscriptInterrupted(
-  existing: AgentTranscriptEntry[],
-  runId: string | undefined,
-  message: string
-): AgentTranscriptEntry[] {
-  if (!runId) {
-    return trimAgentTranscript(existing);
-  }
-
-  let transcript = existing;
-  const assistantId = createAgentTranscriptEntryId(runId, 'assistant');
-  const assistantEntry = transcript.find((entry) => entry.id === assistantId);
-  if (assistantEntry) {
-    if (assistantEntry.text) {
-      transcript = updateAssistantTranscript(transcript, runId, assistantEntry.text, 'done');
-    } else {
-      transcript = removeAgentTranscriptEntry(transcript, assistantId);
-    }
-  }
-
-  return upsertAgentTranscriptEntry(transcript, {
-    id: createAgentTranscriptEntryId(runId, 'status'),
-    role: 'status',
-    text: message,
-    state: 'error'
-  });
-}
-
-function normalizeAgentTranscriptStatusMessage(
-  status: 'idle' | 'error' | 'cancelled',
-  output: string,
-  statusMessage?: string
-): string {
-  if (status === 'idle') {
-    return output ? '' : '本轮运行已完成，但没有返回可展示文本。';
-  }
-
-  if (status === 'cancelled') {
-    return statusMessage || '本轮运行已停止。';
-  }
-
-  return statusMessage || '本轮运行失败。';
-}
-
-function upsertAgentTranscriptEntry(
-  entries: AgentTranscriptEntry[],
-  nextEntry: AgentTranscriptEntry
-): AgentTranscriptEntry[] {
-  const nextEntries = entries.filter((entry) => entry.id !== nextEntry.id);
-  nextEntries.push({
-    ...nextEntry,
-    text: trimStoredAgentText(nextEntry.text)
-  });
-  return trimAgentTranscript(nextEntries);
-}
-
-function removeAgentTranscriptEntry(
-  entries: AgentTranscriptEntry[],
-  entryId: string
-): AgentTranscriptEntry[] {
-  return trimAgentTranscript(entries.filter((entry) => entry.id !== entryId));
-}
-
-function trimAgentTranscript(entries: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
-  const limited = entries
-    .slice(-18)
-    .map((entry) => ({
-      ...entry,
-      text: trimStoredAgentText(entry.text)
-    }));
-
-  let totalChars = limited.reduce((sum, entry) => sum + entry.text.length, 0);
-  while (totalChars > 12000 && limited.length > 1) {
-    const removed = limited.shift();
-    totalChars -= removed?.text.length ?? 0;
-  }
-
-  return limited;
-}
-
-function createAgentTranscriptEntryId(
-  runId: string,
-  role: AgentTranscriptEntry['role']
-): string {
-  return `${runId}:${role}`;
+function buildExecutionMetadataPatch(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  patch: Partial<AgentNodeMetadata> | Partial<TerminalNodeMetadata>
+): CanvasNodeMetadata {
+  return kind === 'agent'
+    ? buildAgentMetadataPatch(state, nodeId, patch as Partial<AgentNodeMetadata>)
+    : buildTerminalMetadataPatch(state, nodeId, patch as Partial<TerminalNodeMetadata>);
 }
 
 function isLegacyPlaceholderAgent(
@@ -1921,21 +1859,15 @@ function isLegacyPlaceholderAgent(
 ): boolean {
   return (
     node.summary === '等待接入真实 backend 的原型节点' &&
-    !metadata.liveRun &&
-    (!metadata.transcript || metadata.transcript.length === 0) &&
-    !metadata.lastPrompt &&
-    !metadata.lastResponse &&
-    !metadata.lastBackendLabel &&
-    !metadata.lastRunId
+    !metadata.liveSession &&
+    !metadata.recentOutput &&
+    !metadata.lastExitMessage &&
+    !metadata.lastBackendLabel
   );
 }
 
-function createAgentRunId(nodeId: string): string {
-  return `${nodeId}-${Date.now().toString(36)}`;
-}
-
-function createTerminalSessionId(nodeId: string): string {
-  return `${nodeId}-terminal-${Date.now().toString(36)}`;
+function createExecutionSessionId(nodeId: string, kind: ExecutionNodeKind): string {
+  return `${nodeId}-${kind}-${Date.now().toString(36)}`;
 }
 
 function defaultTerminalShellPath(): string {
@@ -1948,6 +1880,14 @@ function defaultTerminalShellPath(): string {
 
 function defaultTerminalWorkingDirectory(): string {
   return process.env.HOME ?? process.cwd();
+}
+
+function defaultAgentCommand(provider: AgentProviderKind): string {
+  return provider === 'claude' ? 'claude' : 'codex';
+}
+
+function agentProviderDisplayLabel(provider: AgentProviderKind): string {
+  return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
 function normalizeTerminalCols(value: number | undefined): number {
@@ -1968,15 +1908,6 @@ function normalizeTerminalRows(value: number | undefined): number {
 
 function quotePosixShellArg(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function summarizeAgentResponse(response: string, running: boolean): string {
-  const normalized = response.replace(/\s+/g, ' ').trim();
-  if (!normalized) {
-    return running ? 'Agent 会话已启动，正在等待 CLI 输出...' : 'Agent 已完成，但未返回可展示文本。';
-  }
-
-  return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
 }
 
 function summarizeTaskNode(
@@ -2007,10 +1938,6 @@ function summarizeNoteNode(content: string): string {
   return normalizedContent.length > 140 ? `${normalizedContent.slice(0, 140)}...` : normalizedContent;
 }
 
-function trimStoredAgentText(value: string): string {
-  return value.length > 4000 ? value.slice(0, 4000) : value;
-}
-
 function trimStoredTerminalText(value: string): string {
   return value.length > 6000 ? value.slice(-6000) : value;
 }
@@ -2021,19 +1948,6 @@ function trimStoredNodeText(value: string): string {
 
 function appendTerminalBuffer(existing: string, nextChunk: string): string {
   return trimStoredTerminalText(`${existing}${nextChunk}`);
-}
-
-function summarizeAgentFailure(output: string, running = false): string {
-  const normalized = output.replace(/\s+/g, ' ').trim();
-  if (!normalized) {
-    return running ? 'CLI 已启动，正在等待输出...' : 'Agent CLI 运行失败。';
-  }
-
-  return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
-}
-
-function stripAnsi(value: string): string {
-  return value.replace(/\u001b\[[0-9;]*m/g, '');
 }
 
 function stripTerminalControlSequences(value: string): string {
@@ -2066,7 +1980,22 @@ function summarizeEmbeddedTerminalOutput(output: string, live: boolean): string 
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
 }
 
-function describeAgentCliSpawnError(spec: AgentCliSpec, error: unknown): string {
+function summarizeAgentSessionOutput(output: string, live: boolean, label: string): string {
+  const normalized = output
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const lastLine = normalized[normalized.length - 1];
+
+  if (!lastLine) {
+    return live ? `${label} 会话已启动，等待输入。` : `${label} 会话已结束。`;
+  }
+
+  return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
+}
+
+function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
   if (isRecord(error) && error.code === 'ENOENT') {
     return `没有找到 ${spec.label} 命令 ${spec.command}。请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定命令路径。`;
   }
@@ -2078,14 +2007,14 @@ function describeAgentCliSpawnError(spec: AgentCliSpec, error: unknown): string 
   return `启动 ${spec.label} 失败。`;
 }
 
-function describeAgentCliExit(
+function describeAgentSessionExit(
   spec: AgentCliSpec,
   code: number | null,
   signal: NodeJS.Signals | null,
   output: string
 ): string {
-  const summary = summarizeAgentFailure(output);
-  const suffix = summary === 'Agent CLI 运行失败。' ? '' : ` ${summary}`;
+  const summary = summarizeAgentSessionOutput(output, false, spec.label);
+  const suffix = summary === `${spec.label} 会话已结束。` ? '' : ` ${summary}`;
 
   if (signal) {
     return `${spec.label} 因信号 ${signal} 退出。${suffix}`.trim();

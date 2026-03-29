@@ -14,30 +14,31 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/agent-session-surface-alignment.md
-updated_at: 2026-03-28
+  - docs/exec-plans/completed/agent-special-terminal.md
+updated_at: 2026-03-29
 ---
 
 # Agent 节点会话窗口设计
 
 ## 1. 背景
 
-当前仓库已经验证了 `Codex` / `Claude Code` CLI 代理这条最小 backend 路线，但当前 Webview 原型仍把 `Agent` 节点做成“选中节点后，在右侧面板输入目标并运行一次”的交互形态。
+当前仓库已经把 `Agent` 的主交互从右侧 inspector 挪回节点内部，但当前节点表面仍然保留了一套“provider 选择器 + prompt textarea + transcript 冒泡”的独立调用 UI。
 
-这会带来一个关键偏差：虽然 backend 能跑，但产品表面已经不再像“画布上的 Agent 会话窗口”，而更像“带外检查器上的一次性请求表单”。
+这比 inspector 方案更接近会话窗口，但仍然过重也不够准确。对 OpenCove 来说，`Agent` 更像一个会默认启动 `Codex` 或 `Claude Code` 的特殊 terminal，而不是一个自己维护 request/response transcript 的调用卡片。
 
 ## 2. 问题定义
 
 本轮需要回答的问题不是“Agent backend 走 CLI 还是 SDK”，而是：
 
 1. 画布里的 `Agent` 节点，在产品语义上到底代表什么对象。
-2. 节点的主要交互面应放在节点内部，还是放在外部 inspector。
+2. 节点内部的主交互到底应该是“独立 composer + transcript”，还是“provider CLI 自己的会话终端”。
 3. 第一版最小可用的会话窗口，至少要保留哪些可见元素，才能不再误导后续实现。
 
 ## 3. 目标
 
 - 把 `Agent` 明确定义为画布上的持续会话窗口，而不是单次请求卡片。
-- 让节点本体承载用户输入、运行状态和连续转录。
-- 让 backend 原型与产品表面显式解耦：backend 可以先简化，产品语义不能先跑偏。
+- 让节点本体承载主要输入、输出和运行状态。
+- 让 `Agent` 与 `Terminal` 收敛到同一类 runtime window 家族，而不是继续长成一个独立调用系统。
 
 ## 4. 非目标
 
@@ -59,25 +60,39 @@ updated_at: 2026-03-28
 - 这会把主要交互从画布节点中抽走，破坏“空间化会话窗口”的核心体验。
 - 多 Agent 并列时，用户无法直接从节点上理解哪个窗口正在运行、最近交流了什么。
 
-### 5.2 采用节点内会话窗口
+### 5.2 采用节点内 transcript/composer 会话窗口
 
 特点：
 
 - 节点本体包含标题区、状态、转录区和输入区。
 - 用户直接在节点内部发送下一条消息、停止运行并查看最近输出。
 
+不选原因：
+
+- 这比 inspector 更接近正确方向，但仍然把 `Agent` 做成了专属调用系统。
+- 用户真正熟悉的对象是 `Claude` / `Codex` CLI 自己的会话终端，而不是一套我们自己定义的 transcript UI。
+- 继续保留 composer/transcript，会让 `Agent` 和 `Terminal` 的运行时模型继续分叉。
+
+### 5.3 采用节点内嵌入式 CLI 会话窗口
+
+特点：
+
+- 节点本体仍是 runtime window，但主体变成嵌入式终端前端。
+- 节点创建或启动时，默认按当前 provider 启动 `codex` 或 `claude` CLI。
+- 主要输入、输出和状态反馈都来自 CLI 会话本身。
+
 优点：
 
-- 与 OpenCove 的核心产品语义一致。
-- 让 Agent 真正成为画布上的一级执行对象，而不是 inspector 的从属目标。
-- 与终端节点更容易收敛到同一类 runtime window 交互家族。
+- 与 OpenCove 中“Agent 是特殊 Terminal”的产品语义一致。
+- 让 `Agent` 与 `Terminal` 更容易共享同一套宿主后端和恢复边界。
+- 避免把当前实现包装成一套独立的聊天型交互系统。
 
 风险：
 
 - 节点渲染复杂度和 React Flow 重渲染压力都会增加。
-- 当前 backend 若仍按离散 CLI 调用实现，会和“真正长期会话”存在语义差距。
+- provider CLI 的 TUI 细节并不完全受我们控制。
 
-### 5.3 直接嵌入 provider 原生 CLI/TUI
+### 5.4 直接嵌入 provider 原生 CLI/TUI
 
 特点：
 
@@ -95,41 +110,42 @@ updated_at: 2026-03-28
 
 - `Agent` 节点的正确产品定义是“画布上的会话窗口”。
 - 主交互必须放在节点内部，右侧检查器最多只承担概况展示，不再是主要操作面。
+- `Agent` 与 `Terminal` 应属于同一类 runtime window；区别主要在默认启动命令和对象语义，不在运行时模型。
 - 第一版最小会话窗口至少包含：
-  - 当前 provider 或 backend 标识
+  - 当前 provider 标识
   - 运行状态
-  - 连续转录
-  - 节点内输入区
-  - 停止或发送动作
+  - 嵌入式终端前端
+  - 启动、停止和重启动作
+  - 最近输出摘要或退出信息
 
 同时必须显式记录一个重要边界：
 
-- 当前 backend 原型可以继续沿用 CLI 代理路线。
-- 但如果它仍以逐轮 CLI 运行累积到同一节点转录中，这只是当前原型实现方式，不等于已经实现了完整长期会话。
+- 当前 backend 原型应直接收敛为 provider CLI 的 PTY 会话。
+- 节点不再以独立 transcript 作为核心产品表面；会话历史主要来自终端 buffer，宿主持久化只保留摘要与退出信息。
 
 ## 7. 风险与取舍
 
-- 取舍：先做“节点内会话窗口”，不做“完整原生 TUI 嵌入”。
-  原因：前者先修正产品定义，后者会把任务规模抬高一个量级。
+- 取舍：先做“预置 provider CLI 的嵌入式会话窗口”，不做“我们自己定义的 transcript/composer UI”。
+  原因：前者更贴近产品语义，也能直接减少系统复杂度。
 
 - 风险：如果转录和输入都进节点，节点会比普通卡片大很多。
   当前缓解：把执行型对象单独做成 runtime window 风格，并让任务/笔记继续保持轻量。
 
-- 风险：如果 backend 仍是逐轮 CLI 运行，用户可能误以为当前已经是可持续长会话。
-  当前缓解：文档里明确写清当前原型边界，不把离散运行包装成完整会话恢复。
+- 风险：如果 provider CLI 在 PTY 里出现兼容问题，节点会退化成“能开窗但不好用”的半成品。
+  当前缓解：保持文档验证状态为“验证中”，先完成构建与本地 smoke test，再做人工验证。
 
 ## 8. 验证方法
 
 至少需要完成以下验证：
 
-1. 用户可以直接在 Agent 节点内部输入消息并发起运行。
-2. 节点内部能看到用户消息、流式输出和最终状态，而不是只看到摘要。
+1. 用户可以直接在 Agent 节点内部看到并使用嵌入式 CLI 会话窗口。
+2. 节点内部能看到连续终端输出和最终状态，而不是只看到聚合 transcript。
 3. 右侧概况区不再承载 Agent 的主要操作。
-4. 在已有多个 Agent 节点时，用户能直接从节点本体区分它们的运行态和最近会话内容。
+4. 在已有多个 Agent 节点时，用户能直接从节点本体区分它们的 provider、运行态和最近输出。
 
 ## 9. 当前验证状态
 
-- 用户已完成手动验证，确认 Agent 节点主交互已从右侧详情区收敛到节点内部。
-- 用户已完成中文输入法场景验证，确认输入框支持正常输入与候选词上屏。
-- 当前已验证的结论是：Agent 节点作为“节点内会话窗口”这条产品修正路线已成立。
-- 仍未验证的部分是长期 CLI 会话模型；当前实现仍是逐轮 CLI 运行累计到同一节点转录。
+- 旧版“节点内 transcript/composer”路线已经证明主交互应该留在节点内部，但它不再是当前要继续保留的最终结论。
+- 当前新的结论是：Agent 节点应进一步收敛为预置 provider CLI 的嵌入式会话窗口。
+- 本轮代码实现已经移除 transcript/composer 主交互，并通过 `npm run typecheck` 与 `npm run build`。
+- 用户已在 VSCode `Extension Development Host` 中完成人工验证，确认节点顶部仅保留必要 chrome，主体已收敛为真实 CLI 会话窗口。
