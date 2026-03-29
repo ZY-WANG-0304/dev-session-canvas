@@ -13,7 +13,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
-  - docs/exec-plans/active/canvas-feedback-polish.md
+  - docs/exec-plans/completed/canvas-feedback-polish.md
 updated_at: 2026-03-30
 ---
 
