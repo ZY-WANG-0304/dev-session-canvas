@@ -66,6 +66,10 @@ export interface CanvasPrototypeState {
   nodes: CanvasNodeSummary[];
 }
 
+export interface CanvasRuntimeContext {
+  workspaceTrusted: boolean;
+}
+
 export type WebviewToHostMessage =
   | {
       type: 'webview/ready';
@@ -142,12 +146,14 @@ export type HostToWebviewMessage =
       type: 'host/bootstrap';
       payload: {
         state: CanvasPrototypeState;
+        runtime: CanvasRuntimeContext;
       };
     }
   | {
       type: 'host/stateUpdated';
       payload: {
         state: CanvasPrototypeState;
+        runtime: CanvasRuntimeContext;
       };
     }
   | {

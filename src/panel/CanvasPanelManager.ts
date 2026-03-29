@@ -8,6 +8,7 @@ import {
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
+  type CanvasRuntimeContext,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type HostToWebviewMessage,
@@ -64,6 +65,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     context.subscriptions.push(
       vscode.window.onDidCloseTerminal((terminal) => {
         this.handleTerminalConnectivityChange(terminal.name, false);
+      })
+    );
+
+    context.subscriptions.push(
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        this.postState('host/stateUpdated');
       })
     );
   }
@@ -126,6 +133,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.postState('host/bootstrap');
             break;
           case 'webview/createDemoNode':
+            if (
+              isExecutionNodeKind(parsedMessage.payload.kind) &&
+              !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
+            ) {
+              break;
+            }
+
             this.state = createNextState(
               this.state,
               parsedMessage.payload.kind,
@@ -201,13 +215,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     this.postMessage({
       type,
       payload: {
-        state: this.state
+        state: this.state,
+        runtime: this.getRuntimeContext()
       }
     });
   }
 
   private postMessage(message: HostToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
+  }
+
+  private getRuntimeContext(): CanvasRuntimeContext {
+    return {
+      workspaceTrusted: vscode.workspace.isTrusted
+    };
+  }
+
+  private assertExecutionAllowed(errorMessage: string): boolean {
+    if (vscode.workspace.isTrusted) {
+      return true;
+    }
+
+    this.postMessage({
+      type: 'host/error',
+      payload: {
+        message: errorMessage
+      }
+    });
+    return false;
   }
 
   private handleTerminalConnectivityChange(terminalName: string, liveSession: boolean): void {
@@ -248,13 +283,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    if (!vscode.workspace.isTrusted) {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '当前 workspace 未受信任，已禁止 Agent 运行。'
-        }
-      });
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
       return;
     }
 
@@ -533,6 +562,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   private async ensureTerminalSession(nodeId: string, reveal: boolean): Promise<void> {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+      return;
+    }
+
     const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
     if (!terminalNode) {
       this.postMessage({
@@ -578,6 +611,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   private async reconnectTerminal(nodeId: string): Promise<void> {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+      return;
+    }
+
     const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
     if (!terminalNode) {
       this.postMessage({
@@ -617,6 +654,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   private async revealTerminal(nodeId: string): Promise<void> {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+      return;
+    }
+
     const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
     if (!terminalNode) {
       this.postMessage({
@@ -673,6 +714,10 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
       createNode('task', 2, defaultAgentProvider)
     ]
   };
+}
+
+function isExecutionNodeKind(kind: CanvasNodeKind): boolean {
+  return kind === 'agent' || kind === 'terminal';
 }
 
 function createNextState(

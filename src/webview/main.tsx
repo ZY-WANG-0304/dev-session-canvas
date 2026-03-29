@@ -20,6 +20,7 @@ import type {
   AgentTranscriptEntry,
   CanvasNodeKind,
   CanvasNodeMetadata,
+  CanvasRuntimeContext,
   CanvasNodeSummary,
   CanvasPrototypeState,
   HostToWebviewMessage,
@@ -46,6 +47,7 @@ interface CanvasNodeData {
   status: string;
   summary: string;
   selected: boolean;
+  workspaceTrusted: boolean;
   metadata?: CanvasNodeMetadata;
   initialAgentDraft?: string;
   agentProvider?: AgentProviderKind;
@@ -85,6 +87,9 @@ const root = createRoot(rootElement);
 
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
+  const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
+    workspaceTrusted: false
+  });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
     viewport: initialPersistedState.viewport
@@ -106,6 +111,7 @@ function App(): JSX.Element {
         case 'host/bootstrap':
         case 'host/stateUpdated':
           setHostState(message.payload.state);
+          setRuntimeContext(message.payload.runtime);
           break;
         case 'host/error':
           setErrorMessage(message.payload.message);
@@ -137,6 +143,7 @@ function App(): JSX.Element {
   }, [localUiState, agentDraftSnapshots, agentProviderDrafts]);
 
   const selectedNode = hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId);
+  const workspaceTrusted = runtimeContext.workspaceTrusted;
   const updatedAtLabel = hostState
     ? new Date(hostState.updatedAt).toLocaleString()
     : '等待宿主初始化';
@@ -144,6 +151,7 @@ function App(): JSX.Element {
   const nodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
+    workspaceTrusted,
     agentDraftSnapshots,
     agentProviderDrafts,
     onSelectNode: (nodeId) => {
@@ -309,11 +317,20 @@ function App(): JSX.Element {
             <h2>创建示例对象</h2>
             <p>直接创建四类对象，验证会话窗口、宿主消息处理与节点状态投影。</p>
             <div className="action-row">
-              <ActionButton label="新增 Agent" onClick={() => createNode('agent')} />
-              <ActionButton label="新增 Terminal" onClick={() => createNode('terminal')} />
+              {workspaceTrusted ? (
+                <>
+                  <ActionButton label="新增 Agent" onClick={() => createNode('agent')} />
+                  <ActionButton label="新增 Terminal" onClick={() => createNode('terminal')} />
+                </>
+              ) : null}
               <ActionButton label="新增 Task" onClick={() => createNode('task')} />
               <ActionButton label="新增 Note" onClick={() => createNode('note')} />
             </div>
+            {!workspaceTrusted ? (
+              <p className="restricted-note">
+                当前 workspace 未受信任，已隐藏 Agent / Terminal 执行型对象入口。
+              </p>
+            ) : null}
           </section>
           <section>
             <h2>恢复链路</h2>
@@ -328,7 +345,11 @@ function App(): JSX.Element {
           </section>
           <section>
             <h2>选中节点概况</h2>
-            {selectedNode ? <SelectedNodeDetails node={selectedNode} /> : <p>选中一个节点后，这里会显示当前概况。</p>}
+            {selectedNode ? (
+              <SelectedNodeDetails node={selectedNode} workspaceTrusted={workspaceTrusted} />
+            ) : (
+              <p>选中一个节点后，这里会显示当前概况。</p>
+            )}
           </section>
         </Panel>
 
@@ -359,6 +380,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
   const transcript = agentMetadata.transcript ?? [];
   const initialDraft = data.initialAgentDraft ?? agentMetadata.lastPrompt ?? '';
+  const executionBlocked = !data.workspaceTrusted;
   const [draft, setDraft] = useState(initialDraft);
   const [isFocused, setIsFocused] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
@@ -417,82 +439,89 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           )}
         </div>
 
-        <div
-          className="agent-composer nodrag nopan"
-          data-node-interactive="true"
-          onMouseDown={stopCanvasEvent}
-          onClick={stopCanvasEvent}
-          onDoubleClick={stopCanvasEvent}
-        >
-          <div className="agent-composer-toolbar">
-            <select
-              className="agent-provider-select nodrag nopan"
-              data-node-interactive="true"
-              value={provider}
-              disabled={agentMetadata.liveRun}
-              onFocus={() => data.onSelectNode?.(id)}
-              onMouseDown={stopCanvasEvent}
-              onClick={stopCanvasEvent}
-              onKeyDown={stopCanvasEvent}
-              onChange={(event) =>
-                data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
-              }
-            >
-              <option value="codex">Codex</option>
-              <option value="claude">Claude Code</option>
-            </select>
-            <ActionButton
-              label={actionLabel}
-              onClick={() =>
-                agentMetadata.liveRun
-                  ? data.onStopAgent?.(id)
-                  : submitDraft()
-              }
-              disabled={!agentMetadata.liveRun && !draft.trim()}
-              className="nodrag nopan"
-              interactive
-              onFocus={() => data.onSelectNode?.(id)}
-            />
-          </div>
-          <textarea
-            className="agent-prompt-input nowheel nodrag nopan"
+        {executionBlocked ? (
+          <RestrictedBanner
+            title="Restricted Mode"
+            description="当前 workspace 未受信任，Agent 运行入口已禁用。信任 workspace 后可继续发送消息。"
+          />
+        ) : (
+          <div
+            className="agent-composer nodrag nopan"
             data-node-interactive="true"
-            value={draft}
-            onFocus={() => {
-              setIsFocused(true);
-              data.onSelectNode?.(id);
-            }}
             onMouseDown={stopCanvasEvent}
             onClick={stopCanvasEvent}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={(event) => {
-              setIsComposing(false);
-              const nextValue = event.currentTarget.value;
-              setDraft(nextValue);
-            }}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              setDraft(nextValue);
-            }}
-            onBlur={(event) => {
-              setIsFocused(false);
-              data.onPersistAgentDraft?.(id, event.target.value);
-            }}
-            onKeyDown={(event) => {
-              stopCanvasEvent(event);
-              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                event.preventDefault();
-                submitDraft();
-                return;
-              }
+            onDoubleClick={stopCanvasEvent}
+          >
+            <div className="agent-composer-toolbar">
+              <select
+                className="agent-provider-select nodrag nopan"
+                data-node-interactive="true"
+                value={provider}
+                disabled={agentMetadata.liveRun}
+                onFocus={() => data.onSelectNode?.(id)}
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+                onKeyDown={stopCanvasEvent}
+                onChange={(event) =>
+                  data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
+                }
+              >
+                <option value="codex">Codex</option>
+                <option value="claude">Claude Code</option>
+              </select>
+              <ActionButton
+                label={actionLabel}
+                onClick={() =>
+                  agentMetadata.liveRun
+                    ? data.onStopAgent?.(id)
+                    : submitDraft()
+                }
+                disabled={!agentMetadata.liveRun && !draft.trim()}
+                className="nodrag nopan"
+                interactive
+                onFocus={() => data.onSelectNode?.(id)}
+              />
+            </div>
+            <textarea
+              className="agent-prompt-input nowheel nodrag nopan"
+              data-node-interactive="true"
+              value={draft}
+              onFocus={() => {
+                setIsFocused(true);
+                data.onSelectNode?.(id);
+              }}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={(event) => {
+                setIsComposing(false);
+                const nextValue = event.currentTarget.value;
+                setDraft(nextValue);
+              }}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setDraft(nextValue);
+              }}
+              onBlur={(event) => {
+                setIsFocused(false);
+                data.onPersistAgentDraft?.(id, event.target.value);
+              }}
+              onKeyDown={(event) => {
+                stopCanvasEvent(event);
+                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                  event.preventDefault();
+                  submitDraft();
+                  return;
+                }
 
-              if (event.key === 'Escape') {
-                event.currentTarget.blur();
-              }
-            }}
-            placeholder="向这个 Agent 发送下一条指令"
-          />
-        </div>
+                if (event.key === 'Escape') {
+                  event.currentTarget.blur();
+                }
+              }}
+              placeholder="向这个 Agent 发送下一条指令"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -531,6 +560,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     return <CanvasCardNode data={data} />;
   }
 
+  const executionBlocked = !data.workspaceTrusted;
+
   return (
     <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
@@ -557,28 +588,44 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           </div>
         </div>
 
-        <div className="action-row">
-          <ActionButton
-            label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
-            onClick={() =>
-              terminalMetadata.liveSession ? data.onRevealTerminal?.(id) : data.onEnsureTerminal?.(id)
-            }
-            className="nodrag nopan"
-            interactive
-            onFocus={() => data.onSelectNode?.(id)}
+        {executionBlocked ? (
+          <RestrictedBanner
+            title="Restricted Mode"
+            description="当前 workspace 未受信任，终端入口已禁用。信任 workspace 后可创建、显示或重连终端。"
           />
-          {!terminalMetadata.liveSession ? (
+        ) : (
+          <div className="action-row">
             <ActionButton
-              label="尝试连接现有终端"
-              tone="secondary"
-              onClick={() => data.onReconnectTerminal?.(id)}
+              label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
+              onClick={() =>
+                terminalMetadata.liveSession ? data.onRevealTerminal?.(id) : data.onEnsureTerminal?.(id)
+              }
               className="nodrag nopan"
               interactive
               onFocus={() => data.onSelectNode?.(id)}
             />
-          ) : null}
-        </div>
+            {!terminalMetadata.liveSession ? (
+              <ActionButton
+                label="尝试连接现有终端"
+                tone="secondary"
+                onClick={() => data.onReconnectTerminal?.(id)}
+                className="nodrag nopan"
+                interactive
+                onFocus={() => data.onSelectNode?.(id)}
+              />
+            ) : null}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function RestrictedBanner(props: { title: string; description: string }): JSX.Element {
+  return (
+    <div className="restricted-banner">
+      <strong>{props.title}</strong>
+      <span>{props.description}</span>
     </div>
   );
 }
@@ -915,6 +962,7 @@ function ActionButton(props: {
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
+  workspaceTrusted: boolean;
   agentDraftSnapshots: Record<string, string>;
   agentProviderDrafts: Record<string, AgentProviderKind>;
   onSelectNode: (nodeId: string) => void;
@@ -958,6 +1006,7 @@ function toFlowNodes(params: {
       status: node.status,
       summary: node.summary,
       selected: node.id === params.selectedNodeId,
+      workspaceTrusted: params.workspaceTrusted,
       metadata: node.metadata,
       initialAgentDraft:
         params.agentDraftSnapshots[node.id] ?? node.metadata?.agent?.lastPrompt ?? '',
@@ -976,7 +1025,7 @@ function toFlowNodes(params: {
   }));
 }
 
-function SelectedNodeDetails(props: { node: CanvasNodeSummary }): JSX.Element {
+function SelectedNodeDetails(props: { node: CanvasNodeSummary; workspaceTrusted: boolean }): JSX.Element {
   const { node } = props;
   const agentMetadata = node.metadata?.agent;
   const terminalMetadata = node.metadata?.terminal;
@@ -1011,6 +1060,9 @@ function SelectedNodeDetails(props: { node: CanvasNodeSummary }): JSX.Element {
               <pre className="selected-node-output">{agentMetadata.lastResponse}</pre>
             </div>
           ) : null}
+          {!props.workspaceTrusted ? (
+            <p className="selected-node-note">当前 workspace 未受信任，Agent 运行入口已退化为只读展示。</p>
+          ) : null}
           <p className="selected-node-note">主交互已收敛到节点内部：在画布上直接发送消息并查看转录。</p>
         </div>
       ) : null}
@@ -1024,6 +1076,9 @@ function SelectedNodeDetails(props: { node: CanvasNodeSummary }): JSX.Element {
             <span className="meta-label">显示位置</span>
             <strong>{terminalMetadata.revealMode === 'editor' ? '编辑器区域' : '终端面板'}</strong>
           </div>
+          {!props.workspaceTrusted ? (
+            <p className="selected-node-note">当前 workspace 未受信任，终端相关入口已退化为只读展示。</p>
+          ) : null}
         </div>
       ) : null}
       {node.kind === 'task' && taskMetadata ? (
