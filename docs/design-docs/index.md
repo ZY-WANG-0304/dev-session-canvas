@@ -21,10 +21,12 @@
 
 ## 设计方案注册表
 
-当前暂无已登记的具体设计文档。
-
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/agent-session-surface.md` | Agent 节点的正确产品语义、交互面位置与最小会话窗口边界 | 画布交互域、协作对象域、执行编排域 / 画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/agent-session-surface-alignment.md` | 2026-03-28 |
+| `docs/design-docs/agent-runtime-prototype.md` | Agent 节点最小真实 backend 的候选路线、取舍与原型边界 | VSCode 集成域、协作对象域、执行编排域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/agent-runtime-prototype.md` | 2026-03-28 |
+| `docs/design-docs/task-note-editable-nodes.md` | Task 与 Note 从占位卡片升级为可编辑真实节点的字段与状态分层设计 | 画布交互域、协作对象域、项目状态域 / 画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/task-note-editable-nodes.md` | 2026-03-28 |
+| `docs/design-docs/vscode-canvas-runtime-architecture.md` | VSCode 内无限画布的运行时边界、技术路线与初步选型 | VSCode 集成域、画布交互域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 未验证 | `docs/exec-plans/active/canvas-architecture-research.md`、`docs/exec-plans/active/agent-session-surface-alignment.md` | 2026-03-28 |
 
 ## 维护约定
 

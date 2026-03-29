@@ -35,7 +35,8 @@
 
 - 质量维度见 `docs/QUALITY_SCORE.md`。
 - 可靠性要求见 `docs/RELIABILITY.md`。
-- 安全与隐私边界见 `docs/SECURITY.md`。
+- 漏洞报告与安全响应流程见 `docs/SECURITY.md`。
+- 系统安全与隐私边界以 `ARCHITECTURE.md` 和相关设计文档为准。
 
 ## 重要原则
 

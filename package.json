@@ -1,0 +1,72 @@
+{
+  "name": "opencove-extension",
+  "displayName": "OpenCove Extension",
+  "description": "在 VSCode 中提供一张承载 Agent、终端、任务和笔记的协作画布。",
+  "version": "0.0.1",
+  "publisher": "opencove",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:opencove.openCanvas",
+    "onWebviewPanel:opencove.canvas"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "未信任 workspace 时允许打开画布并查看已保存布局，但 Agent 和 Terminal 等执行型入口会被禁用。"
+    }
+  },
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "opencove.openCanvas",
+        "title": "OpenCove: 打开画布"
+      }
+    ],
+    "configuration": {
+      "title": "OpenCove",
+      "properties": {
+        "opencove.agent.defaultProvider": {
+          "type": "string",
+          "enum": ["codex", "claude"],
+          "default": "codex",
+          "markdownDescription": "新建 Agent 节点时默认使用的 CLI provider。"
+        },
+        "opencove.agent.codexCommand": {
+          "type": "string",
+          "default": "codex",
+          "markdownDescription": "启动 Codex CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+        },
+        "opencove.agent.claudeCommand": {
+          "type": "string",
+          "default": "claude",
+          "markdownDescription": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "reactflow": "11.11.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.80",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.17.19",
+    "typescript": "5.0.4"
+  }
+}

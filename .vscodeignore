@@ -1,0 +1,8 @@
+docs/**
+src/**
+scripts/**
+tsconfig.json
+.gitignore
+AGENTS.md
+ARCHITECTURE.md
+SECURITY写作指南.md.md
