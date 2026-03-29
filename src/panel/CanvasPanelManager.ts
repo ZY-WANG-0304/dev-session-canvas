@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { StringDecoder } from 'string_decoder';
 import * as vscode from 'vscode';
 
 import {
@@ -22,6 +23,8 @@ import {
 import { getWebviewHtml } from './getWebviewHtml';
 
 const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
+const DEFAULT_TERMINAL_COLS = 96;
+const DEFAULT_TERMINAL_ROWS = 28;
 
 interface AgentRunSession {
   runId: string;
@@ -45,28 +48,30 @@ interface AgentCliSpec {
   args: string[];
 }
 
+interface EmbeddedTerminalSession {
+  sessionId: string;
+  process: ChildProcessWithoutNullStreams;
+  shellPath: string;
+  cwd: string;
+  cols: number;
+  rows: number;
+  buffer: string;
+  decoder: StringDecoder;
+  stopRequested: boolean;
+  syncTimer: NodeJS.Timeout | undefined;
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   public static readonly viewType = 'opencove.canvas';
 
   private panel: vscode.WebviewPanel | undefined;
   private state: CanvasPrototypeState;
   private readonly agentRuns = new Map<string, AgentRunSession>();
+  private readonly terminalSessions = new Map<string, EmbeddedTerminalSession>();
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.state = reconcileRuntimeNodes(this.loadState());
+    this.state = reconcileRuntimeNodes(this.loadState(), this.terminalSessions);
     this.persistState();
-
-    context.subscriptions.push(
-      vscode.window.onDidOpenTerminal((terminal) => {
-        this.handleTerminalConnectivityChange(terminal.name, true);
-      })
-    );
-
-    context.subscriptions.push(
-      vscode.window.onDidCloseTerminal((terminal) => {
-        this.handleTerminalConnectivityChange(terminal.name, false);
-      })
-    );
 
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
@@ -95,7 +100,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
   ): Promise<void> {
-    this.state = reconcileRuntimeNodes(this.loadState());
+    this.state = reconcileRuntimeNodes(this.loadState(), this.terminalSessions);
     this.persistState();
     this.attachPanel(webviewPanel);
   }
@@ -147,6 +152,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             );
             this.persistState();
             this.postState('host/stateUpdated');
+            if (parsedMessage.payload.kind === 'terminal') {
+              const createdNode = this.state.nodes[this.state.nodes.length - 1];
+              if (createdNode?.kind === 'terminal') {
+                void this.startTerminalSession(createdNode.id, DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS);
+              }
+            }
             break;
           case 'webview/moveNode':
             this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
@@ -163,14 +174,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           case 'webview/stopAgentRun':
             void this.stopAgentRun(parsedMessage.payload.nodeId);
             break;
-          case 'webview/ensureTerminalSession':
-            void this.ensureTerminalSession(parsedMessage.payload.nodeId, true);
+          case 'webview/startTerminalSession':
+            void this.startTerminalSession(
+              parsedMessage.payload.nodeId,
+              parsedMessage.payload.cols,
+              parsedMessage.payload.rows
+            );
             break;
-          case 'webview/revealTerminal':
-            void this.revealTerminal(parsedMessage.payload.nodeId);
+          case 'webview/attachTerminalSession':
+            this.attachTerminalSession(parsedMessage.payload.nodeId);
             break;
-          case 'webview/reconnectTerminal':
-            void this.reconnectTerminal(parsedMessage.payload.nodeId);
+          case 'webview/terminalInput':
+            this.writeTerminalInput(parsedMessage.payload.nodeId, parsedMessage.payload.data);
+            break;
+          case 'webview/resizeTerminalSession':
+            this.resizeTerminalSession(
+              parsedMessage.payload.nodeId,
+              parsedMessage.payload.cols,
+              parsedMessage.payload.rows
+            );
+            break;
+          case 'webview/stopTerminalSession':
+            void this.stopTerminalSession(parsedMessage.payload.nodeId);
             break;
           case 'webview/updateTaskNode':
             this.state = updateTaskContent(this.state, parsedMessage.payload);
@@ -184,6 +209,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             break;
           case 'webview/resetDemoState':
             this.cancelAllAgentRuns();
+            this.cancelAllTerminalSessions();
             this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
             this.persistState();
             this.postState('host/stateUpdated');
@@ -243,17 +269,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       }
     });
     return false;
-  }
-
-  private handleTerminalConnectivityChange(terminalName: string, liveSession: boolean): void {
-    const nextState = updateTerminalConnectionState(this.state, terminalName, liveSession);
-    if (nextState === this.state) {
-      return;
-    }
-
-    this.state = nextState;
-    this.persistState();
-    this.postState('host/stateUpdated');
   }
 
   private async startAgentRun(
@@ -561,99 +576,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
-  private async ensureTerminalSession(nodeId: string, reveal: boolean): Promise<void> {
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
-      return;
+  private getTerminalShellPath(): string {
+    const configuration = vscode.workspace.getConfiguration('opencove.terminal');
+    const configuredPath = configuration.get<string>('shellPath', '').trim();
+    if (configuredPath) {
+      return configuredPath;
     }
 
-    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
-    if (!terminalNode) {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '未找到可创建终端的节点。'
-        }
-      });
-      return;
+    if (process.platform === 'win32') {
+      return process.env.COMSPEC?.trim() || 'powershell.exe';
     }
 
-    const metadata = ensureTerminalMetadata(terminalNode);
-    const existingTerminal = findTerminalByName(metadata.terminalName);
-    const terminal =
-      existingTerminal ??
-      vscode.window.createTerminal({
-        name: metadata.terminalName,
-        location:
-          metadata.revealMode === 'editor'
-            ? { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }
-            : vscode.TerminalLocation.Panel
-      });
-
-    if (reveal) {
-      terminal.show(false);
-    }
-
-    this.state = updateTerminalNode(this.state, nodeId, {
-      status: 'live',
-      summary:
-        metadata.revealMode === 'editor'
-          ? '宿主终端已就绪，可在编辑器区域查看和使用。'
-          : '宿主终端已就绪，可在终端面板查看和使用。',
-      metadata: {
-        terminal: {
-          ...metadata,
-          liveSession: true
-        }
-      }
-    });
-    this.persistState();
-    this.postState('host/stateUpdated');
+    return process.env.SHELL?.trim() || '/bin/bash';
   }
 
-  private async reconnectTerminal(nodeId: string): Promise<void> {
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
-      return;
-    }
-
-    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
-    if (!terminalNode) {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '未找到可重连的终端节点。'
-        }
-      });
-      return;
-    }
-
-    const metadata = ensureTerminalMetadata(terminalNode);
-    const terminal = findTerminalByName(metadata.terminalName);
-    if (!terminal) {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '没有找到可重连的现有终端，请使用“创建并显示终端”。'
-        }
-      });
-      return;
-    }
-
-    terminal.show(false);
-    this.state = updateTerminalNode(this.state, nodeId, {
-      status: 'live',
-      summary: '已重新连接到现存宿主终端。',
-      metadata: {
-        terminal: {
-          ...metadata,
-          liveSession: true
-        }
-      }
-    });
-    this.persistState();
-    this.postState('host/stateUpdated');
+  private getTerminalWorkingDirectory(): string {
+    return this.getWorkspaceRoot() ?? process.env.HOME ?? process.cwd();
   }
 
-  private async revealTerminal(nodeId: string): Promise<void> {
+  private async startTerminalSession(nodeId: string, cols: number, rows: number): Promise<void> {
     if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
       return;
     }
@@ -663,45 +604,381 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '未找到可显示的终端节点。'
+          message: '未找到可启动的终端节点。'
         }
       });
       return;
     }
 
-    const metadata = terminalNode.metadata?.terminal;
-    if (!metadata) {
-      await this.ensureTerminalSession(nodeId, true);
-      return;
-    }
-
-    const terminal = findTerminalByName(metadata.terminalName);
-    if (!terminal) {
+    if (this.terminalSessions.has(nodeId)) {
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '当前没有可显示的现有终端，请先创建并显示终端。'
+          message: '该终端已在运行中。'
         }
       });
+      this.attachTerminalSession(nodeId);
       return;
     }
 
-    terminal.show(false);
-
-    if (!metadata.liveSession) {
+    if (process.platform !== 'linux') {
+      const message = '当前嵌入式终端后端只在 Linux 环境完成验证；此环境暂不支持直接启动。';
       this.state = updateTerminalNode(this.state, nodeId, {
-        status: 'live',
-        summary: '已重新连接到现存宿主终端。',
-        metadata: {
-          terminal: {
-            ...metadata,
-            liveSession: true
-          }
-        }
+        status: 'error',
+        summary: message,
+        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          liveSession: false,
+          lastExitMessage: message
+        })
       });
       this.persistState();
       this.postState('host/stateUpdated');
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+      return;
     }
+
+    const normalizedCols = normalizeTerminalCols(cols);
+    const normalizedRows = normalizeTerminalRows(rows);
+    const shellPath = this.getTerminalShellPath();
+    const cwd = this.getTerminalWorkingDirectory();
+    const sessionId = createTerminalSessionId(nodeId);
+    const bootstrapCommand = `stty cols ${normalizedCols} rows ${normalizedRows}; exec ${quotePosixShellArg(shellPath)}`;
+
+    try {
+      const child = spawn('script', ['-qfc', bootstrapCommand, '/dev/null'], {
+        cwd,
+        env: {
+          ...process.env,
+          TERM: process.env.TERM?.trim() || 'xterm-256color',
+          COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
+        }
+      });
+
+      const session: EmbeddedTerminalSession = {
+        sessionId,
+        process: child,
+        shellPath,
+        cwd,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        buffer: '',
+        decoder: new StringDecoder('utf8'),
+        stopRequested: false,
+        syncTimer: undefined
+      };
+      this.terminalSessions.set(nodeId, session);
+
+      this.state = updateTerminalNode(this.state, nodeId, {
+        status: 'live',
+        summary: '嵌入式终端已启动，等待输入。',
+        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          liveSession: true,
+          shellPath,
+          cwd,
+          lastCols: normalizedCols,
+          lastRows: normalizedRows,
+          recentOutput: undefined,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postTerminalSnapshot(nodeId);
+
+      const handleTerminalChunk = (chunk: Buffer | string): void => {
+        const activeSession = this.terminalSessions.get(nodeId);
+        if (!activeSession) {
+          return;
+        }
+
+        const text =
+          typeof chunk === 'string'
+            ? chunk
+            : activeSession.decoder.write(chunk);
+        if (!text) {
+          return;
+        }
+
+        activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        this.queueTerminalStateSync(nodeId);
+        this.postMessage({
+          type: 'host/terminalOutput',
+          payload: {
+            nodeId,
+            chunk: text
+          }
+        });
+      };
+
+      const finalize = (
+        status: 'closed' | 'error',
+        message: string,
+        exitCode?: number,
+        signal?: NodeJS.Signals | null
+      ): void => {
+        const activeSession = this.terminalSessions.get(nodeId);
+        if (!activeSession) {
+          return;
+        }
+
+        if (activeSession.syncTimer) {
+          clearTimeout(activeSession.syncTimer);
+          activeSession.syncTimer = undefined;
+        }
+
+        const tail = activeSession.decoder.end();
+        if (tail) {
+          activeSession.buffer = appendTerminalBuffer(activeSession.buffer, tail);
+        }
+
+        const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
+        const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+
+        this.terminalSessions.delete(nodeId);
+        this.state = updateTerminalNode(this.state, nodeId, {
+          status,
+          summary: message,
+          metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+            liveSession: false,
+            shellPath: activeSession.shellPath,
+            cwd: activeSession.cwd,
+            recentOutput: recentOutput || undefined,
+            lastExitCode: exitCode,
+            lastExitSignal: signal ?? undefined,
+            lastExitMessage: message,
+            lastCols: activeSession.cols,
+            lastRows: activeSession.rows
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        this.postMessage({
+          type: 'host/terminalExit',
+          payload: {
+            nodeId,
+            message
+          }
+        });
+        if (status === 'error') {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message
+            }
+          });
+        }
+      };
+
+      child.stdout.on('data', handleTerminalChunk);
+      child.stderr.on('data', handleTerminalChunk);
+
+      child.once('error', (error) => {
+        finalize('error', describeEmbeddedTerminalSpawnError(shellPath, error));
+      });
+
+      child.once('close', (code, signal) => {
+        if (session.stopRequested) {
+          finalize('closed', '终端已停止。', typeof code === 'number' ? code : undefined, signal);
+          return;
+        }
+
+        if (code === 0) {
+          finalize('closed', '终端会话已结束。', code, signal);
+          return;
+        }
+
+        const cleanedOutput = stripTerminalControlSequences(session.buffer);
+        finalize(
+          'error',
+          describeEmbeddedTerminalExit(shellPath, code, signal, cleanedOutput),
+          typeof code === 'number' ? code : undefined,
+          signal
+        );
+      });
+    } catch (error) {
+      const message = describeEmbeddedTerminalSpawnError(shellPath, error);
+      this.state = updateTerminalNode(this.state, nodeId, {
+        status: 'error',
+        summary: message,
+        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          liveSession: false,
+          shellPath,
+          cwd,
+          lastExitMessage: message,
+          lastCols: normalizedCols,
+          lastRows: normalizedRows
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+    }
+  }
+
+  private attachTerminalSession(nodeId: string): void {
+    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+    if (!terminalNode) {
+      return;
+    }
+
+    this.postTerminalSnapshot(nodeId);
+  }
+
+  private writeTerminalInput(nodeId: string, data: string): void {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端输入。')) {
+      return;
+    }
+
+    const session = this.terminalSessions.get(nodeId);
+    if (!session) {
+      return;
+    }
+
+    session.process.stdin.write(data);
+  }
+
+  private resizeTerminalSession(nodeId: string, cols: number, rows: number): void {
+    const normalizedCols = normalizeTerminalCols(cols);
+    const normalizedRows = normalizeTerminalRows(rows);
+    const session = this.terminalSessions.get(nodeId);
+
+    if (!session) {
+      this.state = updateTerminalNode(this.state, nodeId, {
+        status: readTerminalStatus(this.state, nodeId),
+        summary: readTerminalSummary(this.state, nodeId),
+        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lastCols: normalizedCols,
+          lastRows: normalizedRows
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    if (session.cols === normalizedCols && session.rows === normalizedRows) {
+      return;
+    }
+
+    session.cols = normalizedCols;
+    session.rows = normalizedRows;
+    session.process.stdin.write(`stty cols ${normalizedCols} rows ${normalizedRows}\n`);
+
+    this.state = updateTerminalNode(this.state, nodeId, {
+      status: 'live',
+      summary: summarizeEmbeddedTerminalOutput(stripTerminalControlSequences(session.buffer), true),
+      metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+        liveSession: true,
+        shellPath: session.shellPath,
+        cwd: session.cwd,
+        recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(session.buffer)) || undefined,
+        lastCols: normalizedCols,
+        lastRows: normalizedRows
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async stopTerminalSession(nodeId: string): Promise<void> {
+    const session = this.terminalSessions.get(nodeId);
+    if (!session) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '当前没有可停止的终端会话。'
+        }
+      });
+      return;
+    }
+
+    session.stopRequested = true;
+    session.process.kill('SIGTERM');
+  }
+
+  private cancelAllTerminalSessions(): void {
+    for (const [nodeId, session] of this.terminalSessions.entries()) {
+      session.stopRequested = true;
+      if (session.syncTimer) {
+        clearTimeout(session.syncTimer);
+      }
+
+      session.process.stdout.removeAllListeners();
+      session.process.stderr.removeAllListeners();
+      session.process.removeAllListeners();
+      session.process.kill('SIGTERM');
+      this.terminalSessions.delete(nodeId);
+    }
+  }
+
+  private queueTerminalStateSync(nodeId: string): void {
+    const session = this.terminalSessions.get(nodeId);
+    if (!session || session.syncTimer) {
+      return;
+    }
+
+    session.syncTimer = setTimeout(() => {
+      const activeSession = this.terminalSessions.get(nodeId);
+      if (!activeSession) {
+        return;
+      }
+
+      activeSession.syncTimer = undefined;
+      this.flushLiveTerminalState(nodeId);
+    }, 160);
+  }
+
+  private flushLiveTerminalState(nodeId: string): void {
+    const session = this.terminalSessions.get(nodeId);
+    if (!session) {
+      return;
+    }
+
+    const cleanedOutput = stripTerminalControlSequences(session.buffer);
+    const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+    this.state = updateTerminalNode(this.state, nodeId, {
+      status: 'live',
+      summary: summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+      metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+        liveSession: true,
+        shellPath: session.shellPath,
+        cwd: session.cwd,
+        recentOutput: recentOutput || undefined,
+        lastCols: session.cols,
+        lastRows: session.rows
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private postTerminalSnapshot(nodeId: string): void {
+    const session = this.terminalSessions.get(nodeId);
+    const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+    const metadata = terminalNode ? ensureTerminalMetadata(terminalNode) : undefined;
+
+    this.postMessage({
+      type: 'host/terminalSnapshot',
+      payload: {
+        nodeId,
+        output: session?.buffer ?? '',
+        cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
+        rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
+        liveSession: Boolean(session)
+      }
+    });
   }
 }
 
@@ -740,7 +1017,7 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
     case 'agent':
       return '等待在节点内输入第一条消息，并启动真实 CLI Agent 运行。';
     case 'terminal':
-      return '尚未创建宿主终端，选中后可创建并显示。';
+      return '尚未启动嵌入式终端。';
     case 'task':
       return '等待补充任务描述。';
     case 'note':
@@ -929,9 +1206,12 @@ function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMe
 
 function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
   return {
-    terminalName: `OpenCove Terminal · ${nodeId}`,
+    backend: 'script',
+    shellPath: defaultTerminalShellPath(),
+    cwd: defaultTerminalWorkingDirectory(),
     liveSession: false,
-    revealMode: 'editor'
+    lastCols: DEFAULT_TERMINAL_COLS,
+    lastRows: DEFAULT_TERMINAL_ROWS
   };
 }
 
@@ -990,15 +1270,40 @@ function normalizeMetadata(
 
     return {
       terminal: {
-        terminalName:
-          typeof terminal.terminalName === 'string'
-            ? terminal.terminalName
-            : fallback.terminalName,
+        backend: 'script',
+        shellPath:
+          typeof terminal.shellPath === 'string'
+            ? terminal.shellPath
+            : fallback.shellPath,
+        cwd:
+          typeof terminal.cwd === 'string'
+            ? terminal.cwd
+            : fallback.cwd,
         liveSession: false,
-        revealMode:
-          terminal.revealMode === 'panel' || terminal.revealMode === 'editor'
-            ? terminal.revealMode
-            : fallback.revealMode
+        recentOutput:
+          typeof terminal.recentOutput === 'string'
+            ? trimStoredTerminalText(terminal.recentOutput)
+            : undefined,
+        lastExitCode:
+          typeof terminal.lastExitCode === 'number'
+            ? terminal.lastExitCode
+            : undefined,
+        lastExitSignal:
+          typeof terminal.lastExitSignal === 'string'
+            ? terminal.lastExitSignal
+            : undefined,
+        lastExitMessage:
+          typeof terminal.lastExitMessage === 'string'
+            ? trimStoredTerminalText(terminal.lastExitMessage)
+            : undefined,
+        lastCols:
+          typeof terminal.lastCols === 'number'
+            ? normalizeTerminalCols(terminal.lastCols)
+            : fallback.lastCols,
+        lastRows:
+          typeof terminal.lastRows === 'number'
+            ? normalizeTerminalRows(terminal.lastRows)
+            : fallback.lastRows
       }
     };
   }
@@ -1072,16 +1377,22 @@ function normalizeAgentTranscriptEntry(value: unknown): AgentTranscriptEntry | n
   };
 }
 
-function reconcileRuntimeNodes(state: CanvasPrototypeState): CanvasPrototypeState {
+function reconcileRuntimeNodes(
+  state: CanvasPrototypeState,
+  terminalSessions: Map<string, EmbeddedTerminalSession> = new Map()
+): CanvasPrototypeState {
   return {
     ...state,
-    nodes: reconcileRuntimeNodesInArray(state.nodes)
+    nodes: reconcileRuntimeNodesInArray(state.nodes, terminalSessions)
   };
 }
 
-function reconcileRuntimeNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+function reconcileRuntimeNodesInArray(
+  nodes: CanvasNodeSummary[],
+  terminalSessions: Map<string, EmbeddedTerminalSession> = new Map()
+): CanvasNodeSummary[] {
   return reconcileTaskAndNoteNodesInArray(
-    reconcileAgentNodesInArray(reconcileTerminalNodesInArray(nodes))
+    reconcileAgentNodesInArray(reconcileTerminalNodesInArray(nodes, terminalSessions))
   );
 }
 
@@ -1134,27 +1445,71 @@ function reconcileAgentNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSumma
   });
 }
 
-function reconcileTerminalNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+function reconcileTerminalNodesInArray(
+  nodes: CanvasNodeSummary[],
+  terminalSessions: Map<string, EmbeddedTerminalSession> = new Map()
+): CanvasNodeSummary[] {
   return nodes.map((node) => {
     if (node.kind !== 'terminal') {
       return node;
     }
 
     const metadata = ensureTerminalMetadata(node);
-    const liveTerminal = findTerminalByName(metadata.terminalName);
+    const liveSession = terminalSessions.get(node.id);
+    if (liveSession) {
+      const cleanedOutput = stripTerminalControlSequences(liveSession.buffer);
+      const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+
+      return {
+        ...node,
+        status: 'live',
+        summary: summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+        metadata: {
+          terminal: {
+            ...metadata,
+            liveSession: true,
+            shellPath: liveSession.shellPath,
+            cwd: liveSession.cwd,
+            recentOutput: recentOutput || metadata.recentOutput,
+            lastCols: liveSession.cols,
+            lastRows: liveSession.rows
+          }
+        }
+      };
+    }
+
+    if (metadata.liveSession) {
+      return {
+        ...node,
+        status: 'interrupted',
+        summary: '上一次嵌入式终端在扩展重载后未恢复，可重新启动。',
+        metadata: {
+          terminal: {
+            ...metadata,
+            liveSession: false
+          }
+        }
+      };
+    }
+
+    if (isLegacyPlaceholderTerminal(node)) {
+      return {
+        ...node,
+        status: 'draft',
+        summary: defaultSummaryForKind('terminal'),
+        metadata: {
+          ...node.metadata,
+          terminal: metadata
+        }
+      };
+    }
 
     return {
       ...node,
-      status: liveTerminal ? 'live' : node.status === 'live' ? 'closed' : node.status,
-      summary: liveTerminal
-        ? '已匹配到现存宿主终端，可直接显示。'
-        : node.status === 'closed'
-          ? '宿主终端已关闭，可重新创建。'
-          : node.summary,
       metadata: {
         terminal: {
           ...metadata,
-          liveSession: Boolean(liveTerminal)
+          liveSession: false
         }
       }
     };
@@ -1206,43 +1561,6 @@ function reconcileTaskAndNoteNodesInArray(nodes: CanvasNodeSummary[]): CanvasNod
   });
 }
 
-function updateTerminalConnectionState(
-  state: CanvasPrototypeState,
-  terminalName: string,
-  liveSession: boolean
-): CanvasPrototypeState {
-  let hasChanged = false;
-  const nextNodes = state.nodes.map((node) => {
-    if (node.kind !== 'terminal' || node.metadata?.terminal?.terminalName !== terminalName) {
-      return node;
-    }
-
-    hasChanged = true;
-    return {
-      ...node,
-      status: liveSession ? 'live' : 'closed',
-      summary: liveSession
-        ? '宿主终端已连接，可直接显示。'
-        : '宿主终端已关闭，可重新创建。',
-      metadata: {
-        terminal: {
-          ...ensureTerminalMetadata(node),
-          liveSession
-        }
-      }
-    };
-  });
-
-  if (!hasChanged) {
-    return state;
-  }
-
-  return {
-    ...state,
-    updatedAt: new Date().toISOString(),
-    nodes: nextNodes
-  };
-}
 
 function updateCanvasNode(
   state: CanvasPrototypeState,
@@ -1379,6 +1697,16 @@ function ensureTerminalMetadata(node: CanvasNodeSummary): TerminalNodeMetadata {
   return node.metadata?.terminal ?? createTerminalMetadata(node.id);
 }
 
+function readTerminalStatus(state: CanvasPrototypeState, nodeId: string): string {
+  const terminalNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+  return terminalNode?.status ?? 'draft';
+}
+
+function readTerminalSummary(state: CanvasPrototypeState, nodeId: string): string {
+  const terminalNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+  return terminalNode?.summary ?? defaultSummaryForKind('terminal');
+}
+
 function ensureTaskMetadata(node: CanvasNodeSummary): TaskNodeMetadata {
   return node.metadata?.task ?? createTaskMetadata();
 }
@@ -1398,6 +1726,22 @@ function buildAgentMetadataPatch(
     ...currentNode?.metadata,
     agent: {
       ...(currentNode ? ensureAgentMetadata(currentNode) : createAgentMetadata()),
+      ...patch
+    }
+  };
+}
+
+function buildTerminalMetadataPatch(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  patch: Partial<TerminalNodeMetadata>
+): CanvasNodeMetadata {
+  const currentNode = state.nodes.find((node) => node.id === nodeId);
+
+  return {
+    ...currentNode?.metadata,
+    terminal: {
+      ...(currentNode ? ensureTerminalMetadata(currentNode) : createTerminalMetadata(nodeId)),
       ...patch
     }
   };
@@ -1591,6 +1935,42 @@ function createAgentRunId(nodeId: string): string {
   return `${nodeId}-${Date.now().toString(36)}`;
 }
 
+function createTerminalSessionId(nodeId: string): string {
+  return `${nodeId}-terminal-${Date.now().toString(36)}`;
+}
+
+function defaultTerminalShellPath(): string {
+  if (process.platform === 'win32') {
+    return process.env.COMSPEC?.trim() || 'powershell.exe';
+  }
+
+  return process.env.SHELL?.trim() || '/bin/bash';
+}
+
+function defaultTerminalWorkingDirectory(): string {
+  return process.env.HOME ?? process.cwd();
+}
+
+function normalizeTerminalCols(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_TERMINAL_COLS;
+  }
+
+  return Math.max(40, Math.min(220, Math.round(value)));
+}
+
+function normalizeTerminalRows(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_TERMINAL_ROWS;
+  }
+
+  return Math.max(12, Math.min(80, Math.round(value)));
+}
+
+function quotePosixShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function summarizeAgentResponse(response: string, running: boolean): string {
   const normalized = response.replace(/\s+/g, ' ').trim();
   if (!normalized) {
@@ -1632,8 +2012,16 @@ function trimStoredAgentText(value: string): string {
   return value.length > 4000 ? value.slice(0, 4000) : value;
 }
 
+function trimStoredTerminalText(value: string): string {
+  return value.length > 6000 ? value.slice(-6000) : value;
+}
+
 function trimStoredNodeText(value: string): string {
   return value.length > 8000 ? value.slice(0, 8000) : value;
+}
+
+function appendTerminalBuffer(existing: string, nextChunk: string): string {
+  return trimStoredTerminalText(`${existing}${nextChunk}`);
 }
 
 function summarizeAgentFailure(output: string, running = false): string {
@@ -1647,6 +2035,36 @@ function summarizeAgentFailure(output: string, running = false): string {
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+function stripTerminalControlSequences(value: string): string {
+  return value
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
+    .replace(/\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+}
+
+function extractRecentTerminalOutput(value: string): string {
+  const trimmed = value.replace(/\r/g, '').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimStoredTerminalText(trimmed);
+}
+
+function summarizeEmbeddedTerminalOutput(output: string, live: boolean): string {
+  const normalized = output
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const lastLine = normalized[normalized.length - 1];
+
+  if (!lastLine) {
+    return live ? '嵌入式终端已启动，等待输入。' : '终端会话已结束。';
+  }
+
+  return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
 }
 
 function describeAgentCliSpawnError(spec: AgentCliSpec, error: unknown): string {
@@ -1681,6 +2099,47 @@ function describeAgentCliExit(
   return `${spec.label} 提前结束。${suffix}`.trim();
 }
 
+function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
+  if (isRecord(error) && error.code === 'ENOENT') {
+    return `没有找到启动嵌入式终端所需的宿主命令或 shell：${shellPath}。请确认当前 Linux 环境提供 /usr/bin/script，并检查终端 shell 路径配置。`;
+  }
+
+  if (error instanceof Error && error.message) {
+    return `启动嵌入式终端失败：${error.message}`;
+  }
+
+  return '启动嵌入式终端失败。';
+}
+
+function describeEmbeddedTerminalExit(
+  shellPath: string,
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  output: string
+): string {
+  const summary = summarizeEmbeddedTerminalOutput(output, false);
+  const suffix = summary === '终端会话已结束。' ? '' : ` ${summary}`;
+
+  if (signal) {
+    return `终端 shell ${shellPath} 因信号 ${signal} 退出。${suffix}`.trim();
+  }
+
+  if (typeof code === 'number') {
+    return `终端 shell ${shellPath} 以退出码 ${code} 结束。${suffix}`.trim();
+  }
+
+  return `终端 shell ${shellPath} 已结束。${suffix}`.trim();
+}
+
+function isLegacyPlaceholderTerminal(node: CanvasNodeSummary): boolean {
+  return (
+    node.summary === '尚未创建宿主终端，选中后可创建并显示。' ||
+    node.summary === '宿主终端已连接，可直接显示。' ||
+    node.summary === '宿主终端已关闭，可重新创建。' ||
+    node.summary === '已匹配到现存宿主终端，可直接显示。'
+  );
+}
+
 function humanizeTaskStatus(status: TaskNodeStatus): string {
   switch (status) {
     case 'todo':
@@ -1692,8 +2151,4 @@ function humanizeTaskStatus(status: TaskNodeStatus): string {
     case 'done':
       return '已完成';
   }
-}
-
-function findTerminalByName(name: string): vscode.Terminal | undefined {
-  return vscode.window.terminals.find((terminal) => terminal.name === name);
 }

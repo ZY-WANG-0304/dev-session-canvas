@@ -34,7 +34,10 @@
       "properties": {
         "opencove.agent.defaultProvider": {
           "type": "string",
-          "enum": ["codex", "claude"],
+          "enum": [
+            "codex",
+            "claude"
+          ],
           "default": "codex",
           "markdownDescription": "新建 Agent 节点时默认使用的 CLI provider。"
         },
@@ -47,6 +50,11 @@
           "type": "string",
           "default": "claude",
           "markdownDescription": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+        },
+        "opencove.terminal.shellPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "嵌入式 Terminal 节点启动 shell 时使用的命令路径。留空时默认读取 `SHELL`（Linux/macOS）或 `COMSPEC`（Windows）。"
         }
       }
     }
@@ -57,6 +65,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "reactflow": "11.11.4"

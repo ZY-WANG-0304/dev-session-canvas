@@ -5,7 +5,7 @@ export interface CanvasNodePosition {
   y: number;
 }
 
-export type TerminalRevealMode = 'editor' | 'panel';
+export type TerminalBackendKind = 'script';
 export type AgentProviderKind = 'codex' | 'claude';
 export type TaskNodeStatus = 'todo' | 'running' | 'blocked' | 'done';
 export type AgentTranscriptRole = 'user' | 'assistant' | 'status';
@@ -29,9 +29,16 @@ export interface AgentNodeMetadata {
 }
 
 export interface TerminalNodeMetadata {
-  terminalName: string;
+  backend: TerminalBackendKind;
+  shellPath: string;
+  cwd: string;
   liveSession: boolean;
-  revealMode: TerminalRevealMode;
+  recentOutput?: string;
+  lastExitCode?: number;
+  lastExitSignal?: string;
+  lastExitMessage?: string;
+  lastCols?: number;
+  lastRows?: number;
 }
 
 export interface TaskNodeMetadata {
@@ -105,19 +112,36 @@ export type WebviewToHostMessage =
       };
     }
   | {
-      type: 'webview/ensureTerminalSession';
+      type: 'webview/startTerminalSession';
+      payload: {
+        nodeId: string;
+        cols: number;
+        rows: number;
+      };
+    }
+  | {
+      type: 'webview/attachTerminalSession';
       payload: {
         nodeId: string;
       };
     }
   | {
-      type: 'webview/revealTerminal';
+      type: 'webview/terminalInput';
       payload: {
         nodeId: string;
+        data: string;
       };
     }
   | {
-      type: 'webview/reconnectTerminal';
+      type: 'webview/resizeTerminalSession';
+      payload: {
+        nodeId: string;
+        cols: number;
+        rows: number;
+      };
+    }
+  | {
+      type: 'webview/stopTerminalSession';
       payload: {
         nodeId: string;
       };
@@ -161,6 +185,30 @@ export type HostToWebviewMessage =
       payload: {
         message: string;
       };
+    }
+  | {
+      type: 'host/terminalSnapshot';
+      payload: {
+        nodeId: string;
+        output: string;
+        cols: number;
+        rows: number;
+        liveSession: boolean;
+      };
+    }
+  | {
+      type: 'host/terminalOutput';
+      payload: {
+        nodeId: string;
+        chunk: string;
+      };
+    }
+  | {
+      type: 'host/terminalExit';
+      payload: {
+        nodeId: string;
+        message: string;
+      };
     };
 
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'task', 'note'];
@@ -180,9 +228,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/stopAgentRun' ||
-    value.type === 'webview/ensureTerminalSession' ||
-    value.type === 'webview/revealTerminal' ||
-    value.type === 'webview/reconnectTerminal'
+    value.type === 'webview/attachTerminalSession' ||
+    value.type === 'webview/stopTerminalSession'
   ) {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (!payload || typeof payload.nodeId !== 'string') {
@@ -193,6 +240,67 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: value.type,
       payload: {
         nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/startTerminalSession') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isTerminalDimension(payload.cols) ||
+      !isTerminalDimension(payload.rows)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/startTerminalSession',
+      payload: {
+        nodeId: payload.nodeId,
+        cols: payload.cols,
+        rows: payload.rows
+      }
+    };
+  }
+
+  if (value.type === 'webview/resizeTerminalSession') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isTerminalDimension(payload.cols) ||
+      !isTerminalDimension(payload.rows)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/resizeTerminalSession',
+      payload: {
+        nodeId: payload.nodeId,
+        cols: payload.cols,
+        rows: payload.rows
+      }
+    };
+  }
+
+  if (value.type === 'webview/terminalInput') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.data !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/terminalInput',
+      payload: {
+        nodeId: payload.nodeId,
+        data: payload.data
       }
     };
   }
@@ -306,4 +414,8 @@ function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
 
 function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
   return value === 'todo' || value === 'running' || value === 'blocked' || value === 'done';
+}
+
+function isTerminalDimension(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }

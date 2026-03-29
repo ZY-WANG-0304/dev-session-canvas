@@ -114,6 +114,11 @@ body {
   font: inherit;
 }
 
+.action-button.compact {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 .action-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -172,7 +177,7 @@ body {
 }
 
 .terminal-session-node {
-  width: 360px;
+  width: 540px;
 }
 
 .object-editor-node {
@@ -206,6 +211,12 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.window-chrome-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .status-pill {
@@ -383,33 +394,68 @@ body {
   line-height: 1.5;
 }
 
-.terminal-surface {
+.terminal-session-body {
+  gap: 0;
+  padding: 0;
+}
+
+.terminal-window-title strong {
+  font-size: 13px;
+}
+
+.terminal-frame {
+  position: relative;
+  min-height: 340px;
+  border: 0;
+  border-radius: 0 0 16px 16px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0b1324 10%);
+  overflow: hidden;
+}
+
+.terminal-viewport {
+  height: var(--embedded-terminal-viewport-height, 340px);
+  width: 100%;
+  border-radius: 12px;
+  background: var(--vscode-terminal-background, #08101f);
+}
+
+.terminal-viewport .xterm {
+  height: 100%;
+  width: 100%;
+  background: var(--vscode-terminal-background, #08101f);
+}
+
+.terminal-viewport .xterm-screen {
+  left: 0;
+}
+
+.terminal-viewport .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+.terminal-overlay {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  max-width: 300px;
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 6px;
+  padding: 12px 14px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #08101f 12%);
-  border: 1px solid color-mix(in srgb, #38bdf8 22%, var(--vscode-panel-border) 78%);
-  font-family: var(--vscode-editor-font-family);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(7, 12, 24, 0.78);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
 }
 
-.terminal-surface-line {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  line-height: 1.5;
+.terminal-overlay strong {
+  font-size: 13px;
 }
 
-.terminal-surface-prefix {
-  color: #86efac;
-  font-weight: 700;
-}
-
-.terminal-surface-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+.terminal-overlay span {
   font-size: 12px;
+  line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
 

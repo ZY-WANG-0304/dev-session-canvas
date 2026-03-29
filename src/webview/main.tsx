@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal } from '@xterm/xterm';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -13,6 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
+import '@xterm/xterm/css/xterm.css';
 import './styles.css';
 
 import type {
@@ -56,9 +59,11 @@ interface CanvasNodeData {
   onAgentProviderChange?: (nodeId: string, value: AgentProviderKind) => void;
   onStartAgent?: (nodeId: string, prompt: string, provider: AgentProviderKind) => void;
   onStopAgent?: (nodeId: string) => void;
-  onEnsureTerminal?: (nodeId: string) => void;
-  onRevealTerminal?: (nodeId: string) => void;
-  onReconnectTerminal?: (nodeId: string) => void;
+  onStartTerminal?: (nodeId: string, cols: number, rows: number) => void;
+  onAttachTerminal?: (nodeId: string) => void;
+  onTerminalInput?: (nodeId: string, data: string) => void;
+  onResizeTerminal?: (nodeId: string, cols: number, rows: number) => void;
+  onStopTerminal?: (nodeId: string) => void;
   onUpdateTask?: (payload: {
     nodeId: string;
     title: string;
@@ -73,11 +78,34 @@ interface CanvasNodeData {
   }) => void;
 }
 
+const EMBEDDED_TERMINAL_VIEWPORT_HEIGHT = 340;
+
 type CanvasFlowNode = Node<CanvasNodeData>;
+type TerminalHostEvent =
+  | {
+      type: 'snapshot';
+      nodeId: string;
+      output: string;
+      cols: number;
+      rows: number;
+      liveSession: boolean;
+    }
+  | {
+      type: 'output';
+      nodeId: string;
+      chunk: string;
+    }
+  | {
+      type: 'exit';
+      nodeId: string;
+      message: string;
+    };
 
 const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
+const TERMINAL_EVENT_NAME = 'opencove-terminal-event';
+const terminalEventTarget = new EventTarget();
 
 if (!rootElement) {
   throw new Error('Webview root element not found.');
@@ -112,6 +140,30 @@ function App(): JSX.Element {
         case 'host/stateUpdated':
           setHostState(message.payload.state);
           setRuntimeContext(message.payload.runtime);
+          break;
+        case 'host/terminalSnapshot':
+          emitTerminalHostEvent({
+            type: 'snapshot',
+            nodeId: message.payload.nodeId,
+            output: message.payload.output,
+            cols: message.payload.cols,
+            rows: message.payload.rows,
+            liveSession: message.payload.liveSession
+          });
+          break;
+        case 'host/terminalOutput':
+          emitTerminalHostEvent({
+            type: 'output',
+            nodeId: message.payload.nodeId,
+            chunk: message.payload.chunk
+          });
+          break;
+        case 'host/terminalExit':
+          emitTerminalHostEvent({
+            type: 'exit',
+            nodeId: message.payload.nodeId,
+            message: message.payload.message
+          });
           break;
         case 'host/error':
           setErrorMessage(message.payload.message);
@@ -201,19 +253,29 @@ function App(): JSX.Element {
         type: 'webview/stopAgentRun',
         payload: { nodeId }
       }),
-    onEnsureTerminal: (nodeId) =>
+    onStartTerminal: (nodeId, cols, rows) =>
       postMessage({
-        type: 'webview/ensureTerminalSession',
+        type: 'webview/startTerminalSession',
+        payload: { nodeId, cols, rows }
+      }),
+    onAttachTerminal: (nodeId) =>
+      postMessage({
+        type: 'webview/attachTerminalSession',
         payload: { nodeId }
       }),
-    onRevealTerminal: (nodeId) =>
+    onTerminalInput: (nodeId, data) =>
       postMessage({
-        type: 'webview/revealTerminal',
-        payload: { nodeId }
+        type: 'webview/terminalInput',
+        payload: { nodeId, data }
       }),
-    onReconnectTerminal: (nodeId) =>
+    onResizeTerminal: (nodeId, cols, rows) =>
       postMessage({
-        type: 'webview/reconnectTerminal',
+        type: 'webview/resizeTerminalSession',
+        payload: { nodeId, cols, rows }
+      }),
+    onStopTerminal: (nodeId) =>
+      postMessage({
+        type: 'webview/stopTerminalSession',
         payload: { nodeId }
       }),
     onUpdateTask: (payload) =>
@@ -561,61 +623,202 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }
 
   const executionBlocked = !data.workspaceTrusted;
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const xtermRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const terminalSizeRef = useRef({
+    cols: terminalMetadata.lastCols ?? 96,
+    rows: terminalMetadata.lastRows ?? 28
+  });
+  const resizeFrameRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    terminalSizeRef.current = {
+      cols: terminalMetadata.lastCols ?? terminalSizeRef.current.cols,
+      rows: terminalMetadata.lastRows ?? terminalSizeRef.current.rows
+    };
+  }, [terminalMetadata.lastCols, terminalMetadata.lastRows]);
+
+  useEffect(() => {
+    const container = viewportRef.current;
+    if (!container) {
+      return;
+    }
+
+    const terminal = new Terminal(createEmbeddedTerminalOptions());
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(container);
+
+    const fitTerminal = (): void => {
+      fitAddon.fit();
+      const snappedHeight = snapEmbeddedTerminalViewportHeight(terminal, EMBEDDED_TERMINAL_VIEWPORT_HEIGHT);
+      if (snappedHeight && container.clientHeight !== snappedHeight) {
+        container.style.setProperty('--embedded-terminal-viewport-height', `${snappedHeight}px`);
+        fitAddon.fit();
+      }
+      if (terminal.cols > 0 && terminal.rows > 0) {
+        data.onResizeTerminal?.(id, terminal.cols, terminal.rows);
+      }
+      terminalSizeRef.current = {
+        cols: terminal.cols,
+        rows: terminal.rows
+      };
+    };
+
+    xtermRef.current = terminal;
+    fitAddonRef.current = fitAddon;
+    window.requestAnimationFrame(fitTerminal);
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeFrameRef.current) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
+
+      resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+    });
+    resizeObserver.observe(container);
+
+    const dataDisposable = terminal.onData((input) => data.onTerminalInput?.(id, input));
+    const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+
+    data.onAttachTerminal?.(id);
+
+    return () => {
+      dataDisposable.dispose();
+      selectionDisposable.dispose();
+      resizeObserver.disconnect();
+      if (resizeFrameRef.current) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
+      terminal.dispose();
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (terminalMetadata.liveSession) {
+      data.onAttachTerminal?.(id);
+    }
+  }, [id, terminalMetadata.liveSession]);
+
+  useEffect(() => {
+    const listener = (event: Event): void => {
+      const detail = (event as CustomEvent<TerminalHostEvent>).detail;
+      if (detail.nodeId !== id) {
+        return;
+      }
+
+      const terminal = xtermRef.current;
+      if (!terminal) {
+        return;
+      }
+
+      if (detail.type === 'snapshot') {
+        terminal.reset();
+        if (detail.output) {
+          terminal.write(detail.output);
+        }
+        window.requestAnimationFrame(() => {
+          fitAddonRef.current?.fit();
+          if (terminal.cols > 0 && terminal.rows > 0) {
+            terminalSizeRef.current = {
+              cols: terminal.cols,
+              rows: terminal.rows
+            };
+            data.onResizeTerminal?.(id, terminal.cols, terminal.rows);
+          }
+        });
+        terminal.scrollToBottom();
+        return;
+      }
+
+      if (detail.type === 'output') {
+        terminal.write(detail.chunk);
+        terminal.scrollToBottom();
+        return;
+      }
+
+      terminal.writeln(`\r\n[OpenCove] ${detail.message}`);
+      terminal.scrollToBottom();
+    };
+
+    terminalEventTarget.addEventListener(TERMINAL_EVENT_NAME, listener as EventListener);
+    return () => {
+      terminalEventTarget.removeEventListener(TERMINAL_EVENT_NAME, listener as EventListener);
+    };
+  }, [id]);
+
+  const startTerminal = (): void => {
+    data.onSelectNode?.(id);
+    data.onStartTerminal?.(id, terminalSizeRef.current.cols, terminalSizeRef.current.rows);
+  };
+
+  const stopTerminal = (): void => {
+    data.onSelectNode?.(id);
+    data.onStopTerminal?.(id);
+  };
 
   return (
     <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
     >
       <div className="window-chrome">
-        <div className="window-title">
+        <div className="window-title terminal-window-title">
           <strong>{data.title}</strong>
-          <span>{terminalMetadata.terminalName}</span>
+          <span>{terminalMetadata.shellPath}</span>
         </div>
-        <span className={`status-pill ${terminalMetadata.liveSession ? 'tone-running' : 'tone-idle'}`}>
-          {terminalMetadata.liveSession ? '已连接' : '未连接'}
-        </span>
+        <div className="window-chrome-actions">
+          <span className={`status-pill ${terminalMetadata.liveSession ? 'tone-running' : 'tone-idle'}`}>
+            {terminalMetadata.liveSession ? '运行中' : humanizeStatus(data.status)}
+          </span>
+          <ActionButton
+            label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
+            onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
+            disabled={executionBlocked}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+        </div>
       </div>
 
-      <div className="session-body">
-        <div className="terminal-surface">
-          <div className="terminal-surface-line">
-            <span className="terminal-surface-prefix">$</span>
-            <span>{data.summary}</span>
-          </div>
-          <div className="terminal-surface-meta">
-            <span>显示位置</span>
-            <strong>{terminalMetadata.revealMode === 'editor' ? '编辑器区域' : '终端面板'}</strong>
-          </div>
+      <div className="session-body terminal-session-body">
+        <div
+          className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'}`}
+          data-node-interactive="true"
+          onMouseDown={(event) => {
+            stopCanvasEvent(event);
+            data.onSelectNode?.(id);
+          }}
+          onClick={(event) => {
+            stopCanvasEvent(event);
+            data.onSelectNode?.(id);
+          }}
+          onDoubleClick={stopCanvasEvent}
+          onWheel={stopCanvasEvent}
+        >
+          <div ref={viewportRef} className="terminal-viewport" />
+          {!terminalMetadata.liveSession ? (
+            <div className="terminal-overlay">
+              <strong>
+                {executionBlocked
+                  ? 'Restricted Mode'
+                  : terminalMetadata.lastExitMessage
+                    ? '终端当前未运行'
+                    : '终端正在初始化'}
+              </strong>
+              <span>
+                {executionBlocked
+                  ? '当前 workspace 未受信任，嵌入式终端入口已禁用。'
+                  : terminalMetadata.lastExitMessage
+                    ? terminalMetadata.lastExitMessage
+                    : data.summary}
+              </span>
+            </div>
+          ) : null}
         </div>
-
-        {executionBlocked ? (
-          <RestrictedBanner
-            title="Restricted Mode"
-            description="当前 workspace 未受信任，终端入口已禁用。信任 workspace 后可创建、显示或重连终端。"
-          />
-        ) : (
-          <div className="action-row">
-            <ActionButton
-              label={terminalMetadata.liveSession ? '显示终端' : '创建并显示终端'}
-              onClick={() =>
-                terminalMetadata.liveSession ? data.onRevealTerminal?.(id) : data.onEnsureTerminal?.(id)
-              }
-              className="nodrag nopan"
-              interactive
-              onFocus={() => data.onSelectNode?.(id)}
-            />
-            {!terminalMetadata.liveSession ? (
-              <ActionButton
-                label="尝试连接现有终端"
-                tone="secondary"
-                onClick={() => data.onReconnectTerminal?.(id)}
-                className="nodrag nopan"
-                interactive
-                onFocus={() => data.onSelectNode?.(id)}
-              />
-            ) : null}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -913,7 +1116,7 @@ function CanvasCardNode({ data }: Pick<NodeProps<CanvasNodeData>, 'data'>): JSX.
       ) : null}
       {data.kind === 'terminal' && terminalMetadata ? (
         <div className="node-hint">
-          {terminalMetadata.liveSession ? '已连接宿主终端' : '终端尚未创建或已关闭'}
+          {terminalMetadata.liveSession ? '节点内终端正在运行' : '终端未运行，可在节点内启动'}
         </div>
       ) : null}
       <p>{data.summary}</p>
@@ -970,9 +1173,11 @@ function toFlowNodes(params: {
   onAgentProviderChange: (nodeId: string, value: AgentProviderKind) => void;
   onStartAgent: (nodeId: string, prompt: string, provider: AgentProviderKind) => void;
   onStopAgent: (nodeId: string) => void;
-  onEnsureTerminal: (nodeId: string) => void;
-  onRevealTerminal: (nodeId: string) => void;
-  onReconnectTerminal: (nodeId: string) => void;
+  onStartTerminal: (nodeId: string, cols: number, rows: number) => void;
+  onAttachTerminal: (nodeId: string) => void;
+  onTerminalInput: (nodeId: string, data: string) => void;
+  onResizeTerminal: (nodeId: string, cols: number, rows: number) => void;
+  onStopTerminal: (nodeId: string) => void;
   onUpdateTask: (payload: {
     nodeId: string;
     title: string;
@@ -1016,9 +1221,11 @@ function toFlowNodes(params: {
       onAgentProviderChange: params.onAgentProviderChange,
       onStartAgent: params.onStartAgent,
       onStopAgent: params.onStopAgent,
-      onEnsureTerminal: params.onEnsureTerminal,
-      onRevealTerminal: params.onRevealTerminal,
-      onReconnectTerminal: params.onReconnectTerminal,
+      onStartTerminal: params.onStartTerminal,
+      onAttachTerminal: params.onAttachTerminal,
+      onTerminalInput: params.onTerminalInput,
+      onResizeTerminal: params.onResizeTerminal,
+      onStopTerminal: params.onStopTerminal,
       onUpdateTask: params.onUpdateTask,
       onUpdateNote: params.onUpdateNote
     }
@@ -1069,15 +1276,47 @@ function SelectedNodeDetails(props: { node: CanvasNodeSummary; workspaceTrusted:
       {node.kind === 'terminal' && terminalMetadata ? (
         <div className="selected-node-meta-group">
           <div className="selected-node-meta">
-            <span className="meta-label">宿主终端名称</span>
-            <code>{terminalMetadata.terminalName}</code>
+            <span className="meta-label">shell 路径</span>
+            <code>{terminalMetadata.shellPath}</code>
           </div>
           <div className="selected-node-meta">
-            <span className="meta-label">显示位置</span>
-            <strong>{terminalMetadata.revealMode === 'editor' ? '编辑器区域' : '终端面板'}</strong>
+            <span className="meta-label">工作目录</span>
+            <strong>{terminalMetadata.cwd}</strong>
+          </div>
+          <div className="selected-node-meta">
+            <span className="meta-label">后端</span>
+            <strong>{terminalMetadata.backend}</strong>
+          </div>
+          {terminalMetadata.recentOutput ? (
+            <div className="selected-node-meta">
+              <span className="meta-label">最近输出</span>
+              <pre className="selected-node-output">{terminalMetadata.recentOutput}</pre>
+            </div>
+          ) : null}
+          {terminalMetadata.lastExitMessage ? (
+            <div className="selected-node-meta">
+              <span className="meta-label">最近退出信息</span>
+              <pre className="selected-node-output">{terminalMetadata.lastExitMessage}</pre>
+            </div>
+          ) : null}
+          {terminalMetadata.lastExitCode !== undefined ? (
+            <div className="selected-node-meta">
+              <span className="meta-label">退出码</span>
+              <strong>{terminalMetadata.lastExitCode}</strong>
+            </div>
+          ) : null}
+          {terminalMetadata.lastExitSignal ? (
+            <div className="selected-node-meta">
+              <span className="meta-label">退出信号</span>
+              <strong>{terminalMetadata.lastExitSignal}</strong>
+            </div>
+          ) : null}
+          <div className="selected-node-meta">
+            <span className="meta-label">最近尺寸</span>
+            <strong>{terminalMetadata.lastCols ?? 96} x {terminalMetadata.lastRows ?? 28}</strong>
           </div>
           {!props.workspaceTrusted ? (
-            <p className="selected-node-note">当前 workspace 未受信任，终端相关入口已退化为只读展示。</p>
+            <p className="selected-node-note">当前 workspace 未受信任，嵌入式终端已退化为只读展示。</p>
           ) : null}
         </div>
       ) : null}
@@ -1216,6 +1455,73 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
 
 function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
+}
+
+function emitTerminalHostEvent(detail: TerminalHostEvent): void {
+  terminalEventTarget.dispatchEvent(new CustomEvent<TerminalHostEvent>(TERMINAL_EVENT_NAME, { detail }));
+}
+
+function snapEmbeddedTerminalViewportHeight(terminal: Terminal, preferredHeight: number): number | null {
+  const cellHeight = readEmbeddedTerminalCellHeight(terminal);
+  if (!cellHeight || preferredHeight <= 0) {
+    return null;
+  }
+
+  const rows = Math.max(1, Math.floor(preferredHeight / cellHeight));
+  return Math.ceil(rows * cellHeight);
+}
+
+function readEmbeddedTerminalCellHeight(terminal: Terminal): number | null {
+  const core = (
+    terminal as Terminal & {
+      _core?: {
+        _renderService?: {
+          dimensions?: {
+            css?: {
+              cell?: {
+                height?: number;
+              };
+            };
+          };
+        };
+      };
+    }
+  )._core;
+  const cellHeight = core?._renderService?.dimensions?.css?.cell?.height;
+  return typeof cellHeight === 'number' && Number.isFinite(cellHeight) && cellHeight > 0 ? cellHeight : null;
+}
+
+function createEmbeddedTerminalOptions(): ConstructorParameters<typeof Terminal>[0] {
+  const styles = getComputedStyle(document.documentElement);
+  const background = readCssVariable(styles, '--vscode-terminal-background', '#08101f');
+  const foreground = readCssVariable(styles, '--vscode-terminal-foreground', '#e5e7eb');
+  const cursor = readCssVariable(styles, '--vscode-terminalCursor-foreground', '#38bdf8');
+  const selectionBackground = readCssVariable(styles, '--vscode-terminal-selectionBackground', 'rgba(56, 189, 248, 0.24)');
+  const fontFamily = readCssVariable(
+    styles,
+    '--vscode-editor-font-family',
+    `'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace`
+  );
+
+  return {
+    allowTransparency: true,
+    cursorBlink: true,
+    convertEol: false,
+    fontFamily,
+    fontSize: 12.5,
+    scrollback: 4000,
+    theme: {
+      background,
+      foreground,
+      cursor,
+      selectionBackground
+    }
+  };
+}
+
+function readCssVariable(styles: CSSStyleDeclaration, variableName: string, fallback: string): string {
+  const value = styles.getPropertyValue(variableName).trim();
+  return value || fallback;
 }
 
 function postMessage(message: WebviewToHostMessage): void {
