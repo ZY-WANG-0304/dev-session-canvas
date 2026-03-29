@@ -150,14 +150,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
               parsedMessage.payload.kind,
               this.getAgentCliConfig().defaultProvider
             );
-            this.persistState();
-            this.postState('host/stateUpdated');
             if (parsedMessage.payload.kind === 'terminal') {
               const createdNode = this.state.nodes[this.state.nodes.length - 1];
               if (createdNode?.kind === 'terminal') {
-                void this.startTerminalSession(createdNode.id, DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS);
+                this.state = updateTerminalNode(this.state, createdNode.id, {
+                  status: 'draft',
+                  summary: '终端准备按节点尺寸自动启动。',
+                  metadata: buildTerminalMetadataPatch(this.state, createdNode.id, {
+                    autoStartPending: true,
+                    lastExitMessage: undefined
+                  })
+                });
               }
             }
+            this.persistState();
+            this.postState('host/stateUpdated');
             break;
           case 'webview/moveNode':
             this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
@@ -628,6 +635,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         summary: message,
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
           liveSession: false,
+          autoStartPending: false,
           lastExitMessage: message
         })
       });
@@ -678,6 +686,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         summary: '嵌入式终端已启动，等待输入。',
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
           liveSession: true,
+          autoStartPending: false,
           shellPath,
           cwd,
           lastCols: normalizedCols,
@@ -747,6 +756,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           summary: message,
           metadata: buildTerminalMetadataPatch(this.state, nodeId, {
             liveSession: false,
+            autoStartPending: false,
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
@@ -809,6 +819,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         summary: message,
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
           liveSession: false,
+          autoStartPending: false,
           shellPath,
           cwd,
           lastExitMessage: message,
@@ -872,24 +883,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    session.cols = normalizedCols;
-    session.rows = normalizedRows;
-    session.process.stdin.write(`stty cols ${normalizedCols} rows ${normalizedRows}\n`);
-
-    this.state = updateTerminalNode(this.state, nodeId, {
-      status: 'live',
-      summary: summarizeEmbeddedTerminalOutput(stripTerminalControlSequences(session.buffer), true),
-      metadata: buildTerminalMetadataPatch(this.state, nodeId, {
-        liveSession: true,
-        shellPath: session.shellPath,
-        cwd: session.cwd,
-        recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(session.buffer)) || undefined,
-        lastCols: normalizedCols,
-        lastRows: normalizedRows
-      })
-    });
-    this.persistState();
-    this.postState('host/stateUpdated');
+    return;
   }
 
   private async stopTerminalSession(nodeId: string): Promise<void> {
@@ -1210,6 +1204,7 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
     shellPath: defaultTerminalShellPath(),
     cwd: defaultTerminalWorkingDirectory(),
     liveSession: false,
+    autoStartPending: false,
     lastCols: DEFAULT_TERMINAL_COLS,
     lastRows: DEFAULT_TERMINAL_ROWS
   };
@@ -1280,6 +1275,10 @@ function normalizeMetadata(
             ? terminal.cwd
             : fallback.cwd,
         liveSession: false,
+        autoStartPending:
+          typeof terminal.autoStartPending === 'boolean'
+            ? terminal.autoStartPending
+            : fallback.autoStartPending,
         recentOutput:
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)

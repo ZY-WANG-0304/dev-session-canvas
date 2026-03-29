@@ -33,6 +33,7 @@ export interface TerminalNodeMetadata {
   shellPath: string;
   cwd: string;
   liveSession: boolean;
+  autoStartPending?: boolean;
   recentOutput?: string;
   lastExitCode?: number;
   lastExitSignal?: string;
