@@ -2,7 +2,7 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
-本文件位于 `docs/exec-plans/active/canvas-node-deletion.md`，必须按照 `docs/PLANS.md` 的要求持续维护。
+本文件位于 `docs/exec-plans/completed/canvas-node-deletion.md`，必须按照 `docs/PLANS.md` 的要求持续维护。
 
 ## 目标与全局图景
 
@@ -19,7 +19,7 @@
 - [x] (2026-03-29 18:02Z) 在 Webview 侧实现统一删除入口、选中态与本地草稿清理、键盘删除和危险态按钮样式。
 - [x] (2026-03-29 18:02Z) 运行 `npm run build` 与 `npm run typecheck`，两者均通过。
 - [x] (2026-03-29 18:02Z) 补齐计划、设计文档和残余风险说明。
-- [ ] 提交当前分支并创建 MR。
+- [x] (2026-03-29 18:07Z) 提交当前分支、推送 `canvas-node-deletion` 并创建 MR `!5`。
 
 ## 意外与发现
 
@@ -56,6 +56,7 @@
 - 恢复逻辑改为尊重显式持久化的空节点数组，从而支持“删光后 reload 仍为空画布”。
 - Webview 为四类节点统一补上删除按钮，并增加选中节点后的键盘删除。
 - Webview 删除后会同步清理本地 `selectedNodeId` 与 `agentProviderDrafts`，避免幽灵选中态和陈旧 provider 草稿。
+- 当前改动已通过分支 `canvas-node-deletion` 推送，并创建 MR `!5` 进入评审流。
 
 已完成的自动化验证：
 
@@ -159,4 +160,4 @@ Webview 实现同样分三部分推进。第一，在四类节点的头部统一
 
   该动作除了发送 `webview/deleteNode` 以外，还要同步回收本地选中态和草稿态。
 
-更新说明：2026-03-29 新建本计划，记录删除功能的范围、关键风险和执行步骤。
+更新说明：2026-03-29 新建本计划，记录删除功能的范围、关键风险和执行步骤；同日完成实现、推送分支并在创建 MR `!5` 后归档到 `completed/`。
