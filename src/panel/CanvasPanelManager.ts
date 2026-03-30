@@ -25,7 +25,8 @@ import {
   type DisposableLike,
   type ExecutionSessionExitEvent,
   type ExecutionSessionLaunchSpec,
-  type ExecutionSessionProcess
+  type ExecutionSessionProcess,
+  isMissingNodePtyDependencyError
 } from './executionSessionBridge';
 import { getWebviewHtml } from './getWebviewHtml';
 
@@ -2196,6 +2197,10 @@ function summarizeAgentSessionOutput(output: string, live: boolean, label: strin
 }
 
 function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
+  if (isMissingNodePtyDependencyError(error)) {
+    return '缺少 node-pty 运行时依赖，请在仓库根目录执行 npm install 后重试。';
+  }
+
   if (isRecord(error) && error.code === 'ENOENT') {
     const suffix =
       process.platform === 'win32'
@@ -2233,6 +2238,10 @@ function describeAgentSessionExit(
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
+  if (isMissingNodePtyDependencyError(error)) {
+    return '缺少 node-pty 运行时依赖，请在仓库根目录执行 npm install 后重试。';
+  }
+
   if (isRecord(error) && error.code === 'ENOENT') {
     return `没有找到启动嵌入式终端所需的 shell 或命令：${shellPath}。请检查终端 shell 路径配置，或确认当前平台可正常加载 node-pty 运行时。`;
   }

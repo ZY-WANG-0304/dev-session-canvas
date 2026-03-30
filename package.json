@@ -107,6 +107,7 @@
     "build": "node scripts/build.mjs",
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
+    "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit"
