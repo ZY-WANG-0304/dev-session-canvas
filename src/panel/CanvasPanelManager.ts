@@ -2089,6 +2089,11 @@ function agentProviderDisplayLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
+function normalizeExecutionExitSignal(signal: string | undefined): string | undefined {
+  const normalizedSignal = signal?.trim();
+  return normalizedSignal && normalizedSignal !== '0' ? normalizedSignal : undefined;
+}
+
 function normalizeTerminalCols(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return DEFAULT_TERMINAL_COLS;
@@ -2214,9 +2219,10 @@ function describeAgentSessionExit(
 ): string {
   const summary = summarizeAgentSessionOutput(output, false, spec.label);
   const suffix = summary === `${spec.label} 会话已结束。` ? '' : ` ${summary}`;
+  const normalizedSignal = normalizeExecutionExitSignal(signal);
 
-  if (signal) {
-    return `${spec.label} 因信号 ${signal} 退出。${suffix}`.trim();
+  if (normalizedSignal) {
+    return `${spec.label} 因信号 ${normalizedSignal} 退出。${suffix}`.trim();
   }
 
   if (typeof code === 'number') {
@@ -2246,9 +2252,10 @@ function describeEmbeddedTerminalExit(
 ): string {
   const summary = summarizeEmbeddedTerminalOutput(output, false);
   const suffix = summary === '终端会话已结束。' ? '' : ` ${summary}`;
+  const normalizedSignal = normalizeExecutionExitSignal(signal);
 
-  if (signal) {
-    return `终端 shell ${shellPath} 因信号 ${signal} 退出。${suffix}`.trim();
+  if (normalizedSignal) {
+    return `终端 shell ${shellPath} 因信号 ${normalizedSignal} 退出。${suffix}`.trim();
   }
 
   if (typeof code === 'number') {

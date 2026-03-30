@@ -20,6 +20,7 @@
 - [x] (2026-03-30 10:18Z) 通过 `npm run typecheck`、`npm run build` 和 Linux 本地 `node-pty` TTY smoke test。
 - [x] (2026-03-30 10:26Z) 把 macOS / Windows / Remote 人工验证缺口登记为正式技术债，而不是在当前轮次伪装成已完成。
 - [x] (2026-03-30 10:41Z) 完成 `npm run package:vsix`，确认 VSIX 可生成，并把 `node-pty` 运行时打包体积偏大的问题登记为残余风险。
+- [x] (2026-03-30 15:28Z) 根据 review 修复 `node-pty` 退出事件里 `signal: 0` 被误写成字符串 `"0"` 的确定性回归，避免非零退出码被错误摘要成“因信号 0 退出”。
 
 ## 意外与发现
 

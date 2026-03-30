@@ -65,10 +65,23 @@ class NodePtyExecutionSessionProcess implements ExecutionSessionProcess {
     return this.pty.onExit((event) =>
       listener({
         exitCode: event.exitCode,
-        signal: typeof event.signal === 'number' ? String(event.signal) : undefined
+        signal: normalizeExecutionSessionExitSignal(event.signal)
       })
     );
   }
+}
+
+function normalizeExecutionSessionExitSignal(signal: number | string | undefined): string | undefined {
+  if (typeof signal === 'number') {
+    return signal > 0 ? String(signal) : undefined;
+  }
+
+  if (typeof signal === 'string') {
+    const normalizedSignal = signal.trim();
+    return normalizedSignal && normalizedSignal !== '0' ? normalizedSignal : undefined;
+  }
+
+  return undefined;
 }
 
 export function createExecutionSessionProcess(spec: ExecutionSessionLaunchSpec): ExecutionSessionProcess {
