@@ -1,7 +1,7 @@
 ---
 title: Agent 节点特殊 Terminal backend 设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 协作对象域
@@ -16,6 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-runtime-prototype.md
   - docs/exec-plans/completed/agent-special-terminal.md
+  - docs/exec-plans/completed/execution-session-platform-compatibility.md
 updated_at: 2026-03-30
 ---
 
@@ -47,7 +48,7 @@ updated_at: 2026-03-30
 ## 4. 非目标
 
 - 不在本轮实现多 Agent 自动协作、任务编排或工具调用编排。
-- 不在本轮引入新的原生 Node PTY 依赖。
+- 不在本轮为 `Agent` 单独引入一套不同于 `Terminal` 的 PTY 依赖或后端。
 - 不在本轮承诺跨扩展重载恢复完整活动 Agent 会话。
 - 不把当前实现包装成“完整 Agent orchestrator”。
 
@@ -77,7 +78,7 @@ updated_at: 2026-03-30
 优点：
 
 - 与 OpenCove 中“Agent 是特殊 Terminal”的产品语义一致。
-- 可以最大化复用当前 `xterm.js + script PTY bridge` 宿主后端。
+- 可以最大化复用当前 `xterm.js + node-pty` 宿主后端。
 - 让 `Agent` 与 `Terminal` 的恢复边界和事件流更清晰。
 
 风险：
@@ -136,8 +137,8 @@ updated_at: 2026-03-30
 - 风险：Extension Host 未必能从 PATH 中找到 `codex` 或 `claude`。
   当前缓解：默认用命令名解析，同时提供插件设置项覆盖命令路径；新建节点默认不自动运行，允许用户先切换到可用 provider；命令缺失时给出明确错误。
 
-- 风险：provider CLI 在 PTY 环境下可能与普通 shell 有额外兼容性问题。
-  当前缓解：先复用已经验证过的 `script` PTY bridge；当前实现已通过人工验证，跨平台兼容性继续作为后续技术债跟踪。
+- 风险：provider CLI 在 PTY 环境下可能与普通 shell 有额外兼容性问题，Windows 下还可能涉及 `.cmd` / `.exe` 路径差异。
+  当前缓解：当前统一复用 `node-pty` backend，并保留设置项覆盖命令路径；Linux 构建与 PTY smoke test 已完成，macOS / Windows 人工验证继续作为后续技术债跟踪。
 
 - 风险：扩展 reload 后，运行中的请求无法继续。
   当前缓解：沿用嵌入式终端的处理方式，把旧活动态显式收敛为 `interrupted`，不制造虚假恢复。
@@ -158,4 +159,4 @@ updated_at: 2026-03-30
 - 旧版“离散 CLI 调用”原型已经验证过可以闭合最小主路径，但该验证结果不再代表当前结论。
 - 当前新的结论是：Agent backend 应收敛为预置 provider CLI 的 PTY 会话窗口。
 - 本轮代码实现已经完成，并通过 `npm run typecheck` 与 `npm run build`。
-- 用户已在 VSCode `Extension Development Host` 中完成真实 `codex` / `claude` CLI 人工 smoke test，确认 Agent 节点已按“特殊 Terminal”模型稳定运行。
+- 当前 Linux 环境已完成 `node-pty` PTY smoke test；`Agent` 节点在 macOS / Windows / 本地 VSCode 中的真实 provider CLI 人工验证仍待补充，因此文档状态改为“验证中”。

@@ -1,7 +1,7 @@
 ---
 title: VSCode 画布运行时与技术路线初步设计
 decision_status: 比较中
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -20,7 +20,8 @@ related_plans:
   - docs/exec-plans/completed/agent-runtime-prototype.md
   - docs/exec-plans/completed/agent-session-surface-alignment.md
   - docs/exec-plans/completed/agent-special-terminal.md
-updated_at: 2026-03-29
+  - docs/exec-plans/completed/execution-session-platform-compatibility.md
+updated_at: 2026-03-30
 ---
 
 # VSCode 画布运行时与技术路线初步设计
@@ -139,8 +140,8 @@ updated_at: 2026-03-29
 | 方案 | 优点 | 风险 | 初步判断 |
 | --- | --- | --- | --- |
 | 原生终端代理节点 | 可复用 VSCode 原生终端、shell integration 与远程能力 | 主要交互仍留在画布外，已不满足当前产品目标 | 已放弃 |
-| `xterm.js + script PTY bridge` 嵌入式终端 | 可在当前 Linux 环境中用真实 PTY 先闭合产品主路径，避免额外原生 Node 模块 ABI 风险 | 当前更偏类 Unix 环境，跨平台一致性不足 | 当前实现路线 |
-| `xterm.js + node-pty` 嵌入式终端 | 后续更容易走向跨平台完整方案 | 需要处理原生模块、Electron ABI、权限控制与远程恢复 | 作为后续备选 |
+| `xterm.js + script PTY bridge` 嵌入式终端 | 适合快速验证 Linux 原型，依赖少 | 平台能力和 resize 控制都会继续分叉，不适合作为长期主线 | 历史原型 |
+| `xterm.js + node-pty` 嵌入式终端 | 更容易收敛 Linux / macOS / Windows 的统一 PTY 模型，并原生支持 resize | 需要处理原生模块、Electron ABI、权限控制与远程恢复 | 当前实现路线 |
 | `Pseudoterminal` 为主 | 便于扩展控制输入输出 | 更适合日志流 / 虚拟终端，不天然等于真实 shell | 不作为主路线 |
 
 ### 6.5 状态权威来源
@@ -163,7 +164,7 @@ updated_at: 2026-03-29
 2. 以 `WebviewPanel` 作为主画布入口，位于 Editor Group。
 3. 以“宿主权威状态 + Webview 投影”的消息驱动架构作为状态主线。
 4. 以 React Flow 为第一阶段画布引擎，但通过自有抽象隔离具体库。
-5. 以“嵌入式终端节点”闭合终端主路径，当前实现优先使用 `xterm.js + script PTY bridge`。
+5. 以“嵌入式终端节点”闭合终端主路径，当前实现优先使用 `xterm.js + node-pty`。
 
 ### 7.2 分层职责
 
@@ -257,12 +258,12 @@ updated_at: 2026-03-29
 - 画布上的终端对象代表一个真实的嵌入式 shell 会话窗口。
 - 节点展示标题、状态、最近输出摘要、cwd、退出信息和节点内终端前端。
 - 用户的主要输入、输出、滚动与聚焦行为都在节点内部完成。
-- 宿主负责 PTY、输入输出桥接和状态回流；当前 Linux 实现使用 `script` 提供真实 PTY。
+- 宿主负责 PTY、输入输出桥接和状态回流；当前实现使用统一 `node-pty` backend，Linux / macOS 优先，Windows 代码路径已接通但仍待人工验证。
 
 `待验证路线`
 
-- 把当前 `script` 后端收敛为更稳定的跨平台 PTY 路线，例如 `node-pty`。
-- 验证重点不是“能不能跑起来”，而是远程工作区、平台兼容性、重连恢复、权限边界、复制粘贴、滚动和性能是否可接受。
+- 补齐 macOS / Windows / Remote SSH / Codespaces 的人工验证矩阵。
+- 验证重点不是“代码路径是否存在”，而是平台兼容性、重连恢复、权限边界、复制粘贴、滚动和性能是否可接受。
 
 ### 7.6 Agent 策略
 

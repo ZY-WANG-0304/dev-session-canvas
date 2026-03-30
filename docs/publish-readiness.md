@@ -61,9 +61,9 @@
 
 - 本地磁盘工作区下，能打开画布并创建四类对象。
 - `Restricted Mode` 下，画布可打开，但 `Agent` / `Terminal` 执行入口被禁用且说明清晰。
-- Linux 本地环境下，`Agent` 与嵌入式终端主路径可运行或至少能明确报错。
+- Linux 与 macOS 本地环境下，`Agent` 与嵌入式终端主路径可运行或至少能明确报错。
 - 重新打开窗口后，关键对象图和画布恢复链路成立。
-- 若未来准备对外发布，还应补做 Windows、macOS、Remote SSH / Codespaces 的人工验证。
+- 若未来准备对外发布，还应补做 Windows、Remote SSH / Codespaces 的人工验证。
 
 ## 暂不承诺项
 

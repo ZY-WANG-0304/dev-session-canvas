@@ -16,7 +16,7 @@ const extensionConfig = {
   entryPoints: ['src/extension.ts'],
   bundle: true,
   ...sharedConfig,
-  external: ['vscode'],
+  external: ['vscode', 'node-pty'],
   format: 'cjs',
   outfile: 'dist/extension.js',
   platform: 'node',

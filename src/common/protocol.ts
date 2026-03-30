@@ -11,7 +11,7 @@ export interface CanvasNodeFootprint {
   height: number;
 }
 
-export type TerminalBackendKind = 'script';
+export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type TaskNodeStatus = 'todo' | 'running' | 'blocked' | 'done';
 
