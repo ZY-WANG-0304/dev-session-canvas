@@ -2,8 +2,10 @@ import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 
-const binaryName = process.platform === 'win32' ? 'vsce.cmd' : 'vsce';
-const binaryPath = path.resolve(process.cwd(), 'node_modules', '.bin', binaryName);
+const projectRoot = process.cwd();
+const isWindows = process.platform === 'win32';
+const binaryName = isWindows ? 'vsce.cmd' : 'vsce';
+const binaryPath = path.resolve(projectRoot, 'node_modules', '.bin', binaryName);
 
 if (!existsSync(binaryPath)) {
   console.error(
@@ -12,8 +14,19 @@ if (!existsSync(binaryPath)) {
   process.exit(1);
 }
 
-const result = spawnSync(binaryPath, ['package'], {
-  cwd: process.cwd(),
+const command = isWindows
+  ? {
+      // Windows 需要经 cmd.exe 调用 .cmd 脚本，不能像普通可执行文件一样直接 spawn。
+      file: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe',
+      args: ['/d', '/s', '/c', `"${binaryPath}" package`]
+    }
+  : {
+      file: binaryPath,
+      args: ['package']
+    };
+
+const result = spawnSync(command.file, command.args, {
+  cwd: projectRoot,
   stdio: 'inherit'
 });
 
