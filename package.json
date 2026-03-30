@@ -1,15 +1,45 @@
 {
   "name": "opencove-extension",
-  "displayName": "OpenCove Extension",
-  "description": "在 VSCode 中提供一张承载 Agent、终端、任务和笔记的协作画布。",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.0.1",
   "publisher": "opencove",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "ssh://git@10.79.10.70:1022/ziyang01.wang/opencove_extension.git"
+  },
+  "homepage": "http://10.79.10.70:1080/ziyang01.wang/opencove_extension",
+  "bugs": {
+    "url": "http://10.79.10.70:1080/ziyang01.wang/opencove_extension/-/issues"
+  },
+  "preview": true,
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Visualization",
     "Other"
+  ],
+  "keywords": [
+    "agent",
+    "canvas",
+    "terminal",
+    "task",
+    "note",
+    "collaboration",
+    "画布",
+    "协作"
+  ],
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#102033",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "qna": false,
+  "extensionKind": [
+    "workspace"
   ],
   "activationEvents": [
     "onCommand:opencove.openCanvas",
@@ -18,7 +48,17 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "未信任 workspace 时允许打开画布并查看已保存布局，但 Agent 和 Terminal 等执行型入口会被禁用。"
+      "description": "%capabilities.untrusted.description%",
+      "restrictedConfigurations": [
+        "opencove.agent.defaultProvider",
+        "opencove.agent.codexCommand",
+        "opencove.agent.claudeCommand",
+        "opencove.terminal.shellPath"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "%capabilities.virtual.description%"
     }
   },
   "main": "./dist/extension.js",
@@ -26,11 +66,11 @@
     "commands": [
       {
         "command": "opencove.openCanvas",
-        "title": "OpenCove: 打开画布"
+        "title": "%command.openCanvas.title%"
       }
     ],
     "configuration": {
-      "title": "OpenCove",
+      "title": "%configuration.title%",
       "properties": {
         "opencove.agent.defaultProvider": {
           "type": "string",
@@ -39,28 +79,35 @@
             "claude"
           ],
           "default": "codex",
-          "markdownDescription": "新建 Agent 节点时默认使用的 CLI provider。"
+          "scope": "window",
+          "markdownDescription": "%configuration.agent.defaultProvider.description%"
         },
         "opencove.agent.codexCommand": {
           "type": "string",
           "default": "codex",
-          "markdownDescription": "启动 Codex CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+          "scope": "machine",
+          "markdownDescription": "%configuration.agent.codexCommand.description%"
         },
         "opencove.agent.claudeCommand": {
           "type": "string",
           "default": "claude",
-          "markdownDescription": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。"
+          "scope": "machine",
+          "markdownDescription": "%configuration.agent.claudeCommand.description%"
         },
         "opencove.terminal.shellPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "嵌入式 Terminal 节点启动 shell 时使用的命令路径。留空时默认读取 `SHELL`（Linux/macOS）或 `COMSPEC`（Windows）。"
+          "scope": "machine",
+          "markdownDescription": "%configuration.terminal.shellPath.description%"
         }
       }
     }
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package": "npm run typecheck && node scripts/build.mjs --production",
+    "package:vsix": "npm run package && node scripts/package-vsix.mjs",
+    "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit"
   },
@@ -71,12 +118,19 @@
     "react-dom": "18.2.0",
     "reactflow": "11.11.4"
   },
+  "overrides": {
+    "cheerio": "1.0.0-rc.12",
+    "tmp": "0.2.1"
+  },
   "devDependencies": {
     "@types/node": "^18.19.80",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.85.0",
+    "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.17.19",
-    "typescript": "5.0.4"
+    "tmp": "0.2.1",
+    "typescript": "5.0.4",
+    "vsce": "1.103.1"
   }
 }

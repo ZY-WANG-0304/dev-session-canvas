@@ -1,0 +1,12 @@
+{
+  "extension.displayName": "OpenCove Extension",
+  "extension.description": "在 VS Code 中提供一张承载 Agent、终端、任务和笔记的协作画布。",
+  "capabilities.untrusted.description": "未信任 workspace 时允许打开画布并查看已保存布局，但 Agent 和 Terminal 等执行型入口会被禁用。",
+  "capabilities.virtual.description": "当前版本依赖 Node.js workspace extension、宿主 shell 和本地磁盘工作区；虚拟工作区暂不支持。",
+  "command.openCanvas.title": "OpenCove: 打开画布",
+  "configuration.title": "OpenCove",
+  "configuration.agent.defaultProvider.description": "新建 Agent 节点时默认使用的 CLI provider。",
+  "configuration.agent.codexCommand.description": "启动 Codex CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。",
+  "configuration.agent.claudeCommand.description": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。",
+  "configuration.terminal.shellPath.description": "嵌入式 Terminal 节点启动 shell 时使用的命令路径。留空时默认读取 `SHELL`（Linux/macOS）或 `COMSPEC`（Windows）。"
+}

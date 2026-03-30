@@ -1,29 +1,41 @@
 import esbuild from 'esbuild';
+import { promises as fs } from 'fs';
 
 const isWatch = process.argv.includes('--watch');
+const isProduction = process.argv.includes('--production');
+
+const sharedConfig = {
+  minify: isProduction,
+  sourcemap: !isProduction,
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development')
+  }
+};
 
 const extensionConfig = {
   entryPoints: ['src/extension.ts'],
   bundle: true,
+  ...sharedConfig,
   external: ['vscode'],
   format: 'cjs',
   outfile: 'dist/extension.js',
   platform: 'node',
-  sourcemap: true,
   target: 'node18'
 };
 
 const webviewConfig = {
   entryPoints: ['src/webview/main.tsx'],
   bundle: true,
+  ...sharedConfig,
   format: 'iife',
   outfile: 'dist/webview.js',
   platform: 'browser',
-  sourcemap: true,
   target: 'es2020'
 };
 
 async function runBuild() {
+  await fs.rmdir('dist', { recursive: true }).catch(() => {});
+
   if (!isWatch) {
     await Promise.all([esbuild.build(extensionConfig), esbuild.build(webviewConfig)]);
     return;
