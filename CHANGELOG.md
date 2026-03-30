@@ -6,7 +6,7 @@
 - 提供 React Flow 画布原型，以及 `Agent`、`Terminal`、`Task`、`Note` 四类核心对象。
 - 提供基于 `codex` / `claude` CLI 的最小 Agent 运行原型。
 - 提供基于 `xterm.js` 与宿主 shell 的嵌入式终端原型。
-- 补齐预览发布所需的基础 manifest 元数据、打包脚本和发布准备文档。
+- 补齐内部体验版分发所需的基础 manifest 元数据、打包脚本和发布准备文档。
 
 ## 已知限制
 

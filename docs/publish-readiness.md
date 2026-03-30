@@ -12,10 +12,13 @@
 ## 仓库内已落实项
 
 - `package.json` 已补齐 `preview`、`icon`、`galleryBanner`、`extensionKind`、`pricing`、`qna` 等发布元数据。
+- manifest 已补齐当前内部仓库可用的 `repository`、`homepage` 与 `bugs` 元数据，保证内部 VSIX 打包不会再因 README 或仓库信息缺失而失败。
 - `vscode:prepublish` 会先执行 `npm run package`，确保打包前经过类型检查和生产构建。
+- 仓库已把 `vsce` 纳入本地开发依赖，并通过 `scripts/package-vsix.mjs` 统一走本地可执行文件，不依赖额外全局安装。
 - 已显式声明 `Restricted Mode` 为有限支持，并通过 `restrictedConfigurations` 保护执行型设置。
 - 已显式声明 `Virtual Workspace` 暂不支持，避免在当前实现尚未适配时误报支持能力。
 - `docs/SECURITY.md` 已补齐专用安全邮箱、响应时限与“只支持最新主线 / 预览版”的支持口径。
+- 仓库根目录已补齐 `LICENSE` 文件，与当前 `UNLICENSED` 的内部体验版分发口径保持一致。
 - `README.md` 与 `CHANGELOG.md` 已补齐发布准备说明与当前限制。
 
 ## 若未来公开发布的阻塞项
@@ -32,7 +35,7 @@
 
 1. 在仓库根目录执行 `npm install`。
 2. 运行 `npm run package`，确认类型检查和生产构建同时通过。
-3. 在 `Node.js >= 20` 的环境中运行 `npm run package:vsix`，生成内部体验版 VSIX。
+3. 运行 `npm run package:vsix`，生成内部体验版 VSIX。
 4. 通过内部渠道分发 VSIX，供体验和验证使用。
 
 ## 内部安装方式

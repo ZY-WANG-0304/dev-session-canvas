@@ -44,7 +44,7 @@
 - 当前不以公开 `Marketplace` 发布为目标，因此开发者账号、`publisher` 身份和 PAT 不是当前阶段阻塞项。
 - 在明确公开分发策略前，不应把当前版本包装成面对外部用户的正式公开发布。
 
-具体清单见 [docs/publish-readiness.md](./docs/publish-readiness.md)。
+具体清单见 `docs/publish-readiness.md`。
 
 ## 内部体验版分发
 
@@ -58,8 +58,8 @@ npm run package:vsix
 
 注意：
 
-- 当前 `@vscode/vsce` 要求 `Node.js >= 20`。
-- 如果本机 Node 版本过低，`npm run package:vsix` 会失败；此时应切换到满足要求的 Node 环境后再生成内部体验版包。
+- 仓库已把 `vsce` 作为本地开发依赖纳入，不要求额外全局安装。
+- 在干净 checkout 中，先执行一次 `npm install`，再执行 `npm run package:vsix`。
 
 生成 `.vsix` 后，可通过以下任一方式安装：
 
@@ -95,7 +95,7 @@ npm run package
 npm run typecheck
 ```
 
-如需生成内部体验版 VSIX，请先确保本机已安装 `vsce`，再执行：
+如需生成内部体验版 VSIX，直接执行：
 
 ```bash
 npm run package:vsix
@@ -161,17 +161,17 @@ npm run package:vsix
 ## 对开发者的说明
 
 - 这个 `README.md` 只保留开发者需要的项目级说明。
-- 开始继续开发前，先阅读 [ARCHITECTURE.md](./ARCHITECTURE.md) 和 [docs/PRODUCT_SENSE.md](./docs/PRODUCT_SENSE.md)，先理解当前项目的产品目标和架构边界。
+- 开始继续开发前，先阅读 `ARCHITECTURE.md` 和 `docs/PRODUCT_SENSE.md`，先理解当前项目的产品目标和架构边界。
 - 在理解产品和架构后，优先通过 AI 继续推进开发工作，而不是直接脱离现有文档体系单独扩写实现。
 - `AGENTS.md` 和 `docs/` 主要用于 Agent 驱动开发时的约束、设计记录和执行计划。
 
 ## 相关文档
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md)
-- [AGENTS.md](./AGENTS.md)
-- [docs/PRODUCT_SENSE.md](./docs/PRODUCT_SENSE.md)
-- [docs/PLANS.md](./docs/PLANS.md)
-- [docs/publish-readiness.md](./docs/publish-readiness.md)
-- [docs/product-specs/canvas-core-collaboration-mvp.md](./docs/product-specs/canvas-core-collaboration-mvp.md)
-- [docs/design-docs/vscode-canvas-runtime-architecture.md](./docs/design-docs/vscode-canvas-runtime-architecture.md)
-- [CHANGELOG.md](./CHANGELOG.md)
+- `ARCHITECTURE.md`
+- `AGENTS.md`
+- `docs/PRODUCT_SENSE.md`
+- `docs/PLANS.md`
+- `docs/publish-readiness.md`
+- `docs/product-specs/canvas-core-collaboration-mvp.md`
+- `docs/design-docs/vscode-canvas-runtime-architecture.md`
+- `CHANGELOG.md`

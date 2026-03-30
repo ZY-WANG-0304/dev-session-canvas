@@ -5,6 +5,14 @@
   "version": "0.0.1",
   "publisher": "opencove",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "ssh://git@10.79.10.70:1022/ziyang01.wang/opencove_extension.git"
+  },
+  "homepage": "http://10.79.10.70:1080/ziyang01.wang/opencove_extension",
+  "bugs": {
+    "url": "http://10.79.10.70:1080/ziyang01.wang/opencove_extension/-/issues"
+  },
   "preview": true,
   "engines": {
     "vscode": "^1.85.0"
@@ -98,7 +106,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "package": "npm run typecheck && node scripts/build.mjs --production",
-    "package:vsix": "npm run package && vsce package",
+    "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit"
@@ -110,12 +118,19 @@
     "react-dom": "18.2.0",
     "reactflow": "11.11.4"
   },
+  "overrides": {
+    "cheerio": "1.0.0-rc.12",
+    "tmp": "0.2.1"
+  },
   "devDependencies": {
     "@types/node": "^18.19.80",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.85.0",
+    "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.17.19",
-    "typescript": "5.0.4"
+    "tmp": "0.2.1",
+    "typescript": "5.0.4",
+    "vsce": "1.103.1"
   }
 }
