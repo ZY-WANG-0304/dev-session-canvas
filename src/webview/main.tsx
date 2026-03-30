@@ -531,10 +531,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         return;
       }
 
-      const flags = terminalFlagsRef.current;
-      if (!flags.liveSession) {
-        data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
-      }
+      data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
     };
 
     xtermRef.current = terminal;
@@ -598,9 +595,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               cols: terminal.cols,
               rows: terminal.rows
             };
-            if (!detail.liveSession) {
-              data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
-            }
+            data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
           }
         });
         terminal.scrollToBottom();
@@ -805,9 +800,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         return;
       }
 
-      if (!flags.liveSession) {
-        data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
-      }
+      data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
     };
 
     xtermRef.current = terminal;
@@ -871,9 +864,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
               cols: terminal.cols,
               rows: terminal.rows
             };
-            if (!detail.liveSession) {
-              data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
-            }
+            data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
           }
         });
         terminal.scrollToBottom();

@@ -1,5 +1,3 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
-import { StringDecoder } from 'string_decoder';
 import * as vscode from 'vscode';
 
 import {
@@ -22,6 +20,13 @@ import {
   isExecutionNodeKind,
   parseWebviewMessage
 } from '../common/protocol';
+import {
+  createExecutionSessionProcess,
+  type DisposableLike,
+  type ExecutionSessionExitEvent,
+  type ExecutionSessionLaunchSpec,
+  type ExecutionSessionProcess
+} from './executionSessionBridge';
 import { getWebviewHtml } from './getWebviewHtml';
 
 const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
@@ -46,16 +51,17 @@ interface AgentCliSpec {
 
 interface EmbeddedExecutionSession {
   sessionId: string;
-  process: ChildProcessWithoutNullStreams;
+  process: ExecutionSessionProcess;
   shellPath: string;
   cwd: string;
   cols: number;
   rows: number;
   buffer: string;
-  decoder: StringDecoder;
   stopRequested: boolean;
   syncTimer: NodeJS.Timeout | undefined;
   displayLabel: string;
+  outputSubscription: DisposableLike | undefined;
+  exitSubscription: DisposableLike | undefined;
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
@@ -320,58 +326,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    if (process.platform !== 'linux') {
-      const message = '当前 Agent 嵌入式会话后端只在 Linux 环境完成验证；此环境暂不支持直接启动。';
-      this.state = updateAgentNode(this.state, nodeId, {
-        status: 'error',
-        summary: message,
-        metadata: buildAgentMetadataPatch(this.state, nodeId, {
-          liveSession: false,
-          autoStartPending: false,
-          lastExitMessage: message
-        })
-      });
-      this.persistState();
-      this.postState('host/stateUpdated');
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message
-        }
-      });
-      return;
-    }
-
     const provider = requestedProvider ?? ensureAgentMetadata(agentNode).provider;
     const cliSpec = this.resolveAgentCli(provider);
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
-    const bootstrapCommand = `stty cols ${normalizedCols} rows ${normalizedRows}; exec ${quotePosixShellArg(cliSpec.command)}`;
 
     try {
-      const child = spawn('script', ['-qfc', bootstrapCommand, '/dev/null'], {
-        cwd,
-        env: {
-          ...process.env,
-          TERM: process.env.TERM?.trim() || 'xterm-256color',
-          COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
-        }
-      });
+      const process = createExecutionSessionProcess(
+        this.buildAgentLaunchSpec(cliSpec.command, cwd, normalizedCols, normalizedRows)
+      );
 
       const session: EmbeddedExecutionSession = {
         sessionId,
-        process: child,
+        process,
         shellPath: cliSpec.command,
         cwd,
         cols: normalizedCols,
         rows: normalizedRows,
         buffer: '',
-        decoder: new StringDecoder('utf8'),
         stopRequested: false,
         syncTimer: undefined,
-        displayLabel: cliSpec.label
+        displayLabel: cliSpec.label,
+        outputSubscription: undefined,
+        exitSubscription: undefined
       };
       activeSessions.set(nodeId, session);
 
@@ -397,17 +376,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('agent', nodeId);
 
-      const handleSessionChunk = (chunk: Buffer | string): void => {
+      const handleSessionChunk = (text: string): void => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
         if (!activeSession) {
           return;
         }
 
-        const text =
-          typeof chunk === 'string'
-            ? chunk
-            : activeSession.decoder.write(chunk);
         if (!text) {
           return;
         }
@@ -428,7 +403,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         status: 'closed' | 'error',
         message: string,
         exitCode?: number,
-        signal?: NodeJS.Signals | null
+        signal?: string
       ): void => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
@@ -440,11 +415,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           clearTimeout(activeSession.syncTimer);
           activeSession.syncTimer = undefined;
         }
-
-        const tail = activeSession.decoder.end();
-        if (tail) {
-          activeSession.buffer = appendTerminalBuffer(activeSession.buffer, tail);
-        }
+        activeSession.outputSubscription?.dispose();
+        activeSession.exitSubscription?.dispose();
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
@@ -488,29 +460,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         }
       };
 
-      child.stdout.on('data', handleSessionChunk);
-      child.stderr.on('data', handleSessionChunk);
-
-      child.once('error', (error) => {
-        finalize('error', describeAgentSessionSpawnError(cliSpec, error));
-      });
-
-      child.once('close', (code, signal) => {
+      session.outputSubscription = session.process.onData(handleSessionChunk);
+      session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('closed', `已停止 ${cliSpec.label} 会话。`, typeof code === 'number' ? code : undefined, signal);
+          finalize('closed', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
           return;
         }
 
-        if (code === 0) {
-          finalize('closed', `${cliSpec.label} 会话已结束。`, code, signal);
+        if (exitCode === 0) {
+          finalize('closed', `${cliSpec.label} 会话已结束。`, exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
         finalize(
           'error',
-          describeAgentSessionExit(cliSpec, code, signal, cleanedOutput),
-          typeof code === 'number' ? code : undefined,
+          describeAgentSessionExit(cliSpec, exitCode, signal, cleanedOutput),
+          exitCode,
           signal
         );
       });
@@ -590,14 +556,60 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     }
 
     if (process.platform === 'win32') {
-      return process.env.COMSPEC?.trim() || 'powershell.exe';
+      return process.env.ComSpec?.trim() || process.env.COMSPEC?.trim() || 'powershell.exe';
     }
 
     return process.env.SHELL?.trim() || '/bin/bash';
   }
 
   private getTerminalWorkingDirectory(): string {
-    return this.getWorkspaceRoot() ?? process.env.HOME ?? process.cwd();
+    return this.getWorkspaceRoot() ?? defaultTerminalWorkingDirectory();
+  }
+
+  private buildExecutionEnvironment(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      TERM: process.env.TERM?.trim() || (process.platform === 'win32' ? 'xterm-color' : 'xterm-256color'),
+      COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
+    };
+
+    if (process.platform === 'win32') {
+      env.SystemRoot = process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim() || 'C:\\Windows';
+    }
+
+    return env;
+  }
+
+  private buildTerminalLaunchSpec(
+    shellPath: string,
+    cwd: string,
+    cols: number,
+    rows: number
+  ): ExecutionSessionLaunchSpec {
+    return {
+      file: shellPath,
+      args: [],
+      cwd,
+      cols,
+      rows,
+      env: this.buildExecutionEnvironment()
+    };
+  }
+
+  private buildAgentLaunchSpec(
+    command: string,
+    cwd: string,
+    cols: number,
+    rows: number
+  ): ExecutionSessionLaunchSpec {
+    return {
+      file: command,
+      args: [],
+      cwd,
+      cols,
+      rows,
+      env: this.buildExecutionEnvironment()
+    };
   }
 
   private async startTerminalSession(nodeId: string, cols: number, rows: number): Promise<void> {
@@ -627,57 +639,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    if (process.platform !== 'linux') {
-      const message = '当前嵌入式终端后端只在 Linux 环境完成验证；此环境暂不支持直接启动。';
-      this.state = updateTerminalNode(this.state, nodeId, {
-        status: 'error',
-        summary: message,
-        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
-          liveSession: false,
-          autoStartPending: false,
-          lastExitMessage: message
-        })
-      });
-      this.persistState();
-      this.postState('host/stateUpdated');
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message
-        }
-      });
-      return;
-    }
-
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'terminal');
-    const bootstrapCommand = `stty cols ${normalizedCols} rows ${normalizedRows}; exec ${quotePosixShellArg(shellPath)}`;
 
     try {
-      const child = spawn('script', ['-qfc', bootstrapCommand, '/dev/null'], {
-        cwd,
-        env: {
-          ...process.env,
-          TERM: process.env.TERM?.trim() || 'xterm-256color',
-          COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
-        }
-      });
+      const process = createExecutionSessionProcess(
+        this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows)
+      );
 
       const session: EmbeddedExecutionSession = {
         sessionId,
-        process: child,
+        process,
         shellPath,
         cwd,
         cols: normalizedCols,
         rows: normalizedRows,
         buffer: '',
-        decoder: new StringDecoder('utf8'),
         stopRequested: false,
         syncTimer: undefined,
-        displayLabel: shellPath
+        displayLabel: shellPath,
+        outputSubscription: undefined,
+        exitSubscription: undefined
       };
       this.terminalSessions.set(nodeId, session);
 
@@ -701,16 +686,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('terminal', nodeId);
 
-      const handleTerminalChunk = (chunk: Buffer | string): void => {
+      const handleTerminalChunk = (text: string): void => {
         const activeSession = this.terminalSessions.get(nodeId);
         if (!activeSession) {
           return;
         }
 
-        const text =
-          typeof chunk === 'string'
-            ? chunk
-            : activeSession.decoder.write(chunk);
         if (!text) {
           return;
         }
@@ -731,7 +712,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         status: 'closed' | 'error',
         message: string,
         exitCode?: number,
-        signal?: NodeJS.Signals | null
+        signal?: string
       ): void => {
         const activeSession = this.terminalSessions.get(nodeId);
         if (!activeSession) {
@@ -742,11 +723,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
           clearTimeout(activeSession.syncTimer);
           activeSession.syncTimer = undefined;
         }
-
-        const tail = activeSession.decoder.end();
-        if (tail) {
-          activeSession.buffer = appendTerminalBuffer(activeSession.buffer, tail);
-        }
+        activeSession.outputSubscription?.dispose();
+        activeSession.exitSubscription?.dispose();
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
@@ -788,29 +766,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         }
       };
 
-      child.stdout.on('data', handleTerminalChunk);
-      child.stderr.on('data', handleTerminalChunk);
-
-      child.once('error', (error) => {
-        finalize('error', describeEmbeddedTerminalSpawnError(shellPath, error));
-      });
-
-      child.once('close', (code, signal) => {
+      session.outputSubscription = session.process.onData(handleTerminalChunk);
+      session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('closed', '终端已停止。', typeof code === 'number' ? code : undefined, signal);
+          finalize('closed', '终端已停止。', exitCode, signal);
           return;
         }
 
-        if (code === 0) {
-          finalize('closed', '终端会话已结束。', code, signal);
+        if (exitCode === 0) {
+          finalize('closed', '终端会话已结束。', exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
         finalize(
           'error',
-          describeEmbeddedTerminalExit(shellPath, code, signal, cleanedOutput),
-          typeof code === 'number' ? code : undefined,
+          describeEmbeddedTerminalExit(shellPath, exitCode, signal, cleanedOutput),
+          exitCode,
           signal
         );
       });
@@ -867,7 +839,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    session.process.stdin.write(data);
+    session.process.write(data);
   }
 
   private resizeExecutionSession(kind: ExecutionNodeKind, nodeId: string, cols: number, rows: number): void {
@@ -893,7 +865,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       return;
     }
 
-    return;
+    session.cols = normalizedCols;
+    session.rows = normalizedRows;
+    session.process.resize(normalizedCols, normalizedRows);
+    this.queueExecutionStateSync(kind, nodeId);
   }
 
   private async stopExecutionSession(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
@@ -909,7 +884,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     }
 
     session.stopRequested = true;
-    session.process.kill('SIGTERM');
+    session.process.kill();
   }
 
   private deleteNode(nodeId: string): void {
@@ -960,13 +935,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       session.syncTimer = undefined;
     }
 
-    session.process.stdout.removeAllListeners();
-    session.process.stderr.removeAllListeners();
-    session.process.removeAllListeners();
+    session.outputSubscription?.dispose();
+    session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
 
     if (options.terminateProcess) {
-      session.process.kill('SIGTERM');
+      session.process.kill();
     }
   }
 
@@ -1431,7 +1405,7 @@ function createNodeMetadata(
 
 function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
   return {
-    backend: 'script',
+    backend: 'node-pty',
     provider,
     shellPath: defaultAgentCommand(provider),
     cwd: defaultTerminalWorkingDirectory(),
@@ -1445,7 +1419,7 @@ function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMe
 
 function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
   return {
-    backend: 'script',
+    backend: 'node-pty',
     shellPath: defaultTerminalShellPath(),
     cwd: defaultTerminalWorkingDirectory(),
     liveSession: false,
@@ -1485,7 +1459,7 @@ function normalizeMetadata(
 
     return {
       agent: {
-        backend: 'script',
+        backend: 'node-pty',
         provider,
         shellPath:
           typeof agent.shellPath === 'string'
@@ -1544,7 +1518,7 @@ function normalizeMetadata(
 
     return {
       terminal: {
-        backend: 'script',
+        backend: 'node-pty',
         shellPath:
           typeof terminal.shellPath === 'string'
             ? terminal.shellPath
@@ -2089,14 +2063,22 @@ function createExecutionSessionId(nodeId: string, kind: ExecutionNodeKind): stri
 
 function defaultTerminalShellPath(): string {
   if (process.platform === 'win32') {
-    return process.env.COMSPEC?.trim() || 'powershell.exe';
+    return process.env.ComSpec?.trim() || process.env.COMSPEC?.trim() || 'powershell.exe';
   }
 
   return process.env.SHELL?.trim() || '/bin/bash';
 }
 
 function defaultTerminalWorkingDirectory(): string {
-  return process.env.HOME ?? process.cwd();
+  if (process.platform === 'win32') {
+    return (
+      process.env.USERPROFILE?.trim() ||
+      process.env.HOME?.trim() ||
+      process.cwd()
+    );
+  }
+
+  return process.env.HOME?.trim() || process.cwd();
 }
 
 function defaultAgentCommand(provider: AgentProviderKind): string {
@@ -2121,10 +2103,6 @@ function normalizeTerminalRows(value: number | undefined): number {
   }
 
   return Math.max(12, Math.min(80, Math.round(value)));
-}
-
-function quotePosixShellArg(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function summarizeTaskNode(
@@ -2214,7 +2192,11 @@ function summarizeAgentSessionOutput(output: string, live: boolean, label: strin
 
 function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
   if (isRecord(error) && error.code === 'ENOENT') {
-    return `没有找到 ${spec.label} 命令 ${spec.command}。请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定命令路径。`;
+    const suffix =
+      process.platform === 'win32'
+        ? '请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定 .exe / .cmd 命令路径。'
+        : '请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定命令路径。';
+    return `没有找到 ${spec.label} 命令 ${spec.command}。${suffix}`;
   }
 
   if (error instanceof Error && error.message) {
@@ -2227,7 +2209,7 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
 function describeAgentSessionExit(
   spec: AgentCliSpec,
   code: number | null,
-  signal: NodeJS.Signals | null,
+  signal: string | undefined,
   output: string
 ): string {
   const summary = summarizeAgentSessionOutput(output, false, spec.label);
@@ -2246,7 +2228,7 @@ function describeAgentSessionExit(
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
   if (isRecord(error) && error.code === 'ENOENT') {
-    return `没有找到启动嵌入式终端所需的宿主命令或 shell：${shellPath}。请确认当前 Linux 环境提供 /usr/bin/script，并检查终端 shell 路径配置。`;
+    return `没有找到启动嵌入式终端所需的 shell 或命令：${shellPath}。请检查终端 shell 路径配置，或确认当前平台可正常加载 node-pty 运行时。`;
   }
 
   if (error instanceof Error && error.message) {
@@ -2259,7 +2241,7 @@ function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): 
 function describeEmbeddedTerminalExit(
   shellPath: string,
   code: number | null,
-  signal: NodeJS.Signals | null,
+  signal: string | undefined,
   output: string
 ): string {
   const summary = summarizeEmbeddedTerminalOutput(output, false);
