@@ -1,6 +1,6 @@
 # OpenCove Extension
 
-一个 VSCode 插件项目，目标是在 VSCode 内复刻 OpenCove 的核心产品体验：把 AI Agents、终端、任务和笔记放到同一张无限 2D 画布上，让多 Agent 协作时的全局状态保持可见。
+一个 VS Code 插件项目，目标是在 VS Code 内复刻 OpenCove 的核心产品体验：把 AI Agents、终端、任务和笔记放到同一张无限 2D 画布上，让多 Agent 协作时的全局状态保持可见。
 
 ## 当前范围
 
@@ -29,8 +29,48 @@
   - `WebviewPanelSerializer`
   - 最小宿主状态投影与 Webview 本地 UI 状态
   - React Flow 画布原型
-  - 原生终端代理节点
-  - 基于 `codex` / `claude` CLI 的最小 Agent 运行原型
+- 原生终端代理节点
+- 基于 `codex` / `claude` CLI 的最小 Agent 运行原型
+
+## 发布准备状态
+
+当前仓库已经进入“内部体验版分发准备”阶段，但还不应被包装成稳定正式版。
+
+当前明确结论：
+
+- 当前阶段只支持内部体验版分发，首发形态以内部 `Preview` VSIX 为准。
+- 当前支持 `Restricted Mode` 的有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
+- 当前不支持 `Virtual Workspace`；例如 `vscode.dev`、GitHub Repositories 一类纯虚拟文件系统窗口不在当前发布范围内。
+- 当前不以公开 `Marketplace` 发布为目标，因此开发者账号、`publisher` 身份和 PAT 不是当前阶段阻塞项。
+- 在明确公开分发策略前，不应把当前版本包装成面对外部用户的正式公开发布。
+
+具体清单见 [docs/publish-readiness.md](./docs/publish-readiness.md)。
+
+## 内部体验版分发
+
+当前阶段推荐的内部体验版交付方式是 `.vsix`。
+
+如果你在本机打包：
+
+```bash
+npm run package:vsix
+```
+
+注意：
+
+- 当前 `@vscode/vsce` 要求 `Node.js >= 20`。
+- 如果本机 Node 版本过低，`npm run package:vsix` 会失败；此时应切换到满足要求的 Node 环境后再生成内部体验版包。
+
+生成 `.vsix` 后，可通过以下任一方式安装：
+
+1. 在 VS Code 命令面板执行 `Extensions: Install from VSIX...`
+2. 或在终端执行：
+
+```bash
+code --install-extension <your-vsix-file>
+```
+
+同版本重复安装时，如遇到覆盖提示，先卸载旧包或显式升级当前体验版。
 
 ## 本地运行与调试
 
@@ -43,10 +83,22 @@ npm install
 npm run build
 ```
 
-如果只想做静态检查，可以额外运行：
+如果要做发布前打包检查，推荐执行：
+
+```bash
+npm run package
+```
+
+如果只想做静态检查，可以单独运行：
 
 ```bash
 npm run typecheck
+```
+
+如需生成内部体验版 VSIX，请先确保本机已安装 `vsce`，再执行：
+
+```bash
+npm run package:vsix
 ```
 
 如果要验证 `Agent` 节点的真实运行链路，还需要满足：
@@ -104,6 +156,7 @@ npm run typecheck
 - `Run OpenCove Extension` 不是命令面板命令，而是调试配置名称。
 - `OpenCove: 打开画布` 才是插件注册到命令面板里的命令。
 - 如果你只在当前仓库窗口里搜索 `Run OpenCove Extension`，通常找不到正确入口，因为它应从调试配置启动。
+- 当前不是稳定版发布仓库状态；当前阶段默认只做内部体验版 VSIX 分发。
 
 ## 对开发者的说明
 
@@ -118,5 +171,7 @@ npm run typecheck
 - [AGENTS.md](./AGENTS.md)
 - [docs/PRODUCT_SENSE.md](./docs/PRODUCT_SENSE.md)
 - [docs/PLANS.md](./docs/PLANS.md)
+- [docs/publish-readiness.md](./docs/publish-readiness.md)
 - [docs/product-specs/canvas-core-collaboration-mvp.md](./docs/product-specs/canvas-core-collaboration-mvp.md)
 - [docs/design-docs/vscode-canvas-runtime-architecture.md](./docs/design-docs/vscode-canvas-runtime-architecture.md)
+- [CHANGELOG.md](./CHANGELOG.md)
