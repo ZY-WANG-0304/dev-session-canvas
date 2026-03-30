@@ -8,6 +8,7 @@ import ReactFlow, {
   Controls,
   MiniMap,
   Panel,
+  type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
   type NodeProps,
@@ -22,6 +23,7 @@ import type {
   AgentProviderKind,
   CanvasNodeKind,
   CanvasNodeMetadata,
+  CanvasNodePosition,
   CanvasRuntimeContext,
   CanvasNodeSummary,
   CanvasPrototypeState,
@@ -30,6 +32,7 @@ import type {
   TaskNodeStatus,
   WebviewToHostMessage
 } from '../common/protocol';
+import { estimatedCanvasNodeFootprint } from '../common/protocol';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -132,6 +135,7 @@ function App(): JSX.Element {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
+  const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
 
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
@@ -378,6 +382,9 @@ function App(): JSX.Element {
         defaultViewport={localUiState.viewport}
         minZoom={0.4}
         maxZoom={1.8}
+        onInit={(instance) => {
+          reactFlowRef.current = instance;
+        }}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
@@ -407,12 +414,16 @@ function App(): JSX.Element {
               <strong>{hostState?.nodes.length ?? 0}</strong>
             </div>
           </div>
+          <div className="hero-support">
+            <span className="meta-label">当前验证范围</span>
+            <p>空画布默认态、非遮挡导航、补充型概况面板，以及新建节点默认避碰。</p>
+          </div>
         </Panel>
 
         <Panel position="top-right" className="actions-panel">
           <section>
             <h2>创建示例对象</h2>
-            <p>直接创建四类对象，再从节点头部或键盘删除，验证对象生命周期与宿主状态投影。</p>
+            <p>从空画布直接创建四类对象，再验证节点创建、删除、恢复和默认摆放是否稳定。</p>
             <div className="action-row">
               {workspaceTrusted ? (
                 <>
@@ -440,19 +451,6 @@ function App(): JSX.Element {
               />
             </div>
           </section>
-          <section>
-            <h2>选中节点概况</h2>
-            {selectedNode ? (
-              <SelectedNodeDetails node={selectedNode} workspaceTrusted={workspaceTrusted} />
-            ) : (
-              <p>选中一个节点后，这里会显示当前概况。</p>
-            )}
-          </section>
-        </Panel>
-
-        <Panel position="bottom-left" className="footer-panel">
-          <strong>当前验证范围</strong>
-          <span>节点内会话交互、宿主状态回流、拖拽定位和 Webview 局部状态恢复。</span>
         </Panel>
       </ReactFlow>
 
@@ -461,9 +459,13 @@ function App(): JSX.Element {
   );
 
   function createNode(kind: CanvasNodeKind): void {
+    const preferredPosition = resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
     postMessage({
       type: 'webview/createDemoNode',
-      payload: { kind }
+      payload: {
+        kind,
+        preferredPosition
+      }
     });
   }
 }
@@ -1435,124 +1437,24 @@ function toFlowNodes(params: {
   }));
 }
 
-function SelectedNodeDetails(props: { node: CanvasNodeSummary; workspaceTrusted: boolean }): JSX.Element {
-  const { node } = props;
-  const agentMetadata = node.metadata?.agent;
-  const terminalMetadata = node.metadata?.terminal;
-  const taskMetadata = node.metadata?.task;
-  const noteMetadata = node.metadata?.note;
+function resolveCreateNodePreferredPosition(
+  kind: CanvasNodeKind,
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null
+): CanvasNodePosition | undefined {
+  if (!reactFlowInstance || !reactFlowInstance.viewportInitialized) {
+    return undefined;
+  }
 
-  return (
-    <div className="selected-node-panel">
-      <div className="selected-node-header">
-        <strong>{node.title}</strong>
-        <span>{node.kind}</span>
-      </div>
-      <div className="selected-node-status">状态：{humanizeStatus(node.status)}</div>
-      <p>{node.summary}</p>
-      {node.kind === 'agent' && agentMetadata ? (
-        <div className="selected-node-meta-group">
-          <div className="selected-node-meta">
-            <span className="meta-label">当前 provider</span>
-            <strong>{providerLabel(agentMetadata.provider)}</strong>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">最近后端</span>
-            <strong>{agentMetadata.lastBackendLabel ?? '尚未运行'}</strong>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">命令路径</span>
-            <code>{agentMetadata.shellPath}</code>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">工作目录</span>
-            <strong>{agentMetadata.cwd}</strong>
-          </div>
-          {agentMetadata.recentOutput ? (
-            <div className="selected-node-meta">
-              <span className="meta-label">最近输出</span>
-              <pre className="selected-node-output">{agentMetadata.recentOutput}</pre>
-            </div>
-          ) : null}
-          {!props.workspaceTrusted ? (
-            <p className="selected-node-note">当前 workspace 未受信任，Agent 运行入口已退化为只读展示。</p>
-          ) : null}
-          <p className="selected-node-note">主交互已收敛到节点内部：在画布上直接使用 CLI 会话窗口。</p>
-        </div>
-      ) : null}
-      {node.kind === 'terminal' && terminalMetadata ? (
-        <div className="selected-node-meta-group">
-          <div className="selected-node-meta">
-            <span className="meta-label">shell 路径</span>
-            <code>{terminalMetadata.shellPath}</code>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">工作目录</span>
-            <strong>{terminalMetadata.cwd}</strong>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">后端</span>
-            <strong>{terminalMetadata.backend}</strong>
-          </div>
-          {terminalMetadata.recentOutput ? (
-            <div className="selected-node-meta">
-              <span className="meta-label">最近输出</span>
-              <pre className="selected-node-output">{terminalMetadata.recentOutput}</pre>
-            </div>
-          ) : null}
-          {terminalMetadata.lastExitMessage ? (
-            <div className="selected-node-meta">
-              <span className="meta-label">最近退出信息</span>
-              <pre className="selected-node-output">{terminalMetadata.lastExitMessage}</pre>
-            </div>
-          ) : null}
-          {terminalMetadata.lastExitCode !== undefined ? (
-            <div className="selected-node-meta">
-              <span className="meta-label">退出码</span>
-              <strong>{terminalMetadata.lastExitCode}</strong>
-            </div>
-          ) : null}
-          {terminalMetadata.lastExitSignal ? (
-            <div className="selected-node-meta">
-              <span className="meta-label">退出信号</span>
-              <strong>{terminalMetadata.lastExitSignal}</strong>
-            </div>
-          ) : null}
-          <div className="selected-node-meta">
-            <span className="meta-label">最近尺寸</span>
-            <strong>{terminalMetadata.lastCols ?? 96} x {terminalMetadata.lastRows ?? 28}</strong>
-          </div>
-          {!props.workspaceTrusted ? (
-            <p className="selected-node-note">当前 workspace 未受信任，嵌入式终端已退化为只读展示。</p>
-          ) : null}
-        </div>
-      ) : null}
-      {node.kind === 'task' && taskMetadata ? (
-        <div className="selected-node-meta-group">
-          <div className="selected-node-meta">
-            <span className="meta-label">任务状态</span>
-            <strong>{humanizeStatus(node.status)}</strong>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">负责人</span>
-            <strong>{taskMetadata.assignee || '未填写'}</strong>
-          </div>
-          <div className="selected-node-meta">
-            <span className="meta-label">任务描述</span>
-            <pre className="selected-node-output">{taskMetadata.description || '暂无描述'}</pre>
-          </div>
-        </div>
-      ) : null}
-      {node.kind === 'note' && noteMetadata ? (
-        <div className="selected-node-meta-group">
-          <div className="selected-node-meta">
-            <span className="meta-label">笔记内容</span>
-            <pre className="selected-node-output">{noteMetadata.content || '暂无内容'}</pre>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+  const viewportCenter = reactFlowInstance.screenToFlowPosition({
+    x: Math.round(window.innerWidth * 0.5),
+    y: Math.round(window.innerHeight * 0.55)
+  });
+  const footprint = estimatedCanvasNodeFootprint(kind);
+
+  return {
+    x: Math.round(viewportCenter.x - footprint.width / 2),
+    y: Math.round(viewportCenter.y - footprint.height / 2)
+  };
 }
 
 function colorForKind(kind: CanvasNodeKind): string {
