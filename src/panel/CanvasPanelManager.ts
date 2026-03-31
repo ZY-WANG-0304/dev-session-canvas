@@ -1066,20 +1066,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       preferredPosition
     );
 
-    if (kind === 'terminal') {
-      const createdNode = this.state.nodes[this.state.nodes.length - 1];
-      if (createdNode && createdNode.kind === kind) {
-        this.state = updateExecutionNode(this.state, createdNode.id, kind, {
-          status: 'draft',
-          summary: '终端准备按节点尺寸自动启动。',
-          metadata: buildExecutionMetadataPatch(this.state, createdNode.id, kind, {
-            autoStartPending: true,
-            lastExitMessage: undefined
-          })
-        });
-      }
-    }
-
     this.persistState();
     this.postState('host/stateUpdated');
   }
@@ -1598,10 +1584,7 @@ function normalizeMetadata(
             ? terminal.cwd
             : fallback.cwd,
         liveSession: false,
-        autoStartPending:
-          typeof terminal.autoStartPending === 'boolean'
-            ? terminal.autoStartPending
-            : fallback.autoStartPending,
+        autoStartPending: false,
         recentOutput:
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)
@@ -1811,7 +1794,7 @@ function reconcileTerminalNodesInArray(
       };
     }
 
-    if (isLegacyPlaceholderTerminal(node)) {
+    if (isLegacyPlaceholderTerminal(node) || shouldResetIdleTerminalNode(node, metadata)) {
       return {
         ...node,
         status: 'draft',
@@ -2121,6 +2104,18 @@ function shouldResetIdleAgentNode(
   return (
     (node.summary === '等待接入真实 backend 的原型节点' ||
       node.summary === 'Agent 会话准备按节点尺寸自动启动。') &&
+    !metadata.liveSession &&
+    !metadata.recentOutput &&
+    !metadata.lastExitMessage
+  );
+}
+
+function shouldResetIdleTerminalNode(
+  node: CanvasNodeSummary,
+  metadata: TerminalNodeMetadata
+): boolean {
+  return (
+    node.summary === '终端准备按节点尺寸自动启动。' &&
     !metadata.liveSession &&
     !metadata.recentOutput &&
     !metadata.lastExitMessage

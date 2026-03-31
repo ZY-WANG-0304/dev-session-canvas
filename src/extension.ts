@@ -10,10 +10,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     sidebarView,
-    vscode.window.createTreeView('opencove.sidebar', {
-      treeDataProvider: sidebarView,
-      showCollapseAll: false
-    })
+    vscode.window.registerTreeDataProvider('opencove.sidebar', sidebarView)
   );
 
   context.subscriptions.push(

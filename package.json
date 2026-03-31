@@ -45,6 +45,7 @@
     "onCommand:opencove.openCanvas",
     "onCommand:opencove.createNode",
     "onCommand:opencove.resetCanvasState",
+    "onView:opencove.sidebar",
     "onWebviewPanel:opencove.canvas"
   ],
   "capabilities": {

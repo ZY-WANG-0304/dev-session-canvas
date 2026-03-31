@@ -681,15 +681,9 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const autoStartRequestedRef = useRef(false);
   const terminalSizeRef = useRef({
     cols: terminalMetadata.lastCols ?? 96,
     rows: terminalMetadata.lastRows ?? 28
-  });
-  const terminalFlagsRef = useRef({
-    liveSession: terminalMetadata.liveSession,
-    autoStartPending: Boolean(terminalMetadata.autoStartPending),
-    executionBlocked
   });
   const resizeFrameRef = useRef<number | undefined>(undefined);
 
@@ -699,17 +693,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       rows: terminalMetadata.lastRows ?? terminalSizeRef.current.rows
     };
   }, [terminalMetadata.lastCols, terminalMetadata.lastRows]);
-
-  useEffect(() => {
-    terminalFlagsRef.current = {
-      liveSession: terminalMetadata.liveSession,
-      autoStartPending: Boolean(terminalMetadata.autoStartPending),
-      executionBlocked
-    };
-    if (!terminalMetadata.autoStartPending) {
-      autoStartRequestedRef.current = false;
-    }
-  }, [executionBlocked, terminalMetadata.autoStartPending, terminalMetadata.liveSession]);
 
   useEffect(() => {
     const container = viewportRef.current;
@@ -735,14 +718,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       };
 
       if (terminal.cols <= 0 || terminal.rows <= 0) {
-        return;
-      }
-
-      const flags = terminalFlagsRef.current;
-      if (flags.autoStartPending && !flags.liveSession && !flags.executionBlocked && !autoStartRequestedRef.current) {
-        autoStartRequestedRef.current = true;
-        data.onSelectNode?.(id);
-        data.onStartExecution?.(id, 'terminal', terminal.cols, terminal.rows);
         return;
       }
 
@@ -903,7 +878,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
                   ? 'Restricted Mode'
                   : terminalMetadata.lastExitMessage
                     ? '终端当前未运行'
-                    : '终端正在初始化'}
+                    : '终端尚未启动'}
               </strong>
               <span>
                 {executionBlocked
