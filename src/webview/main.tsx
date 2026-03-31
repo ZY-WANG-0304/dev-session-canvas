@@ -392,12 +392,20 @@ function App(): JSX.Element {
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
         <MiniMap
+          className="canvas-minimap"
+          position="bottom-right"
+          style={{ width: 210, height: 138 }}
           pannable
           zoomable
           nodeColor={(node) => colorForKind((node.data as CanvasNodeData).kind)}
-          maskColor="rgba(7, 12, 24, 0.72)"
+          nodeStrokeColor={(node) => colorForKind((node.data as CanvasNodeData).kind)}
+          nodeBorderRadius={10}
+          nodeStrokeWidth={1.5}
+          maskColor="rgba(7, 10, 18, 0.62)"
+          maskStrokeColor="rgba(241, 245, 249, 0.92)"
+          maskStrokeWidth={2.5}
         />
-        <Controls showInteractive={false} />
+        <Controls className="canvas-corner-panel canvas-controls" showInteractive={false} />
       </ReactFlow>
 
       {errorMessage ? <div className="toast-error">{errorMessage}</div> : null}
