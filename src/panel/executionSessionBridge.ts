@@ -1,5 +1,6 @@
 export type ExecutionSessionBackendKind = 'node-pty';
 export const MISSING_NODE_PTY_ERROR_CODE = 'OPENCOVE_NODE_PTY_MISSING';
+export const INCOMPATIBLE_NODE_PTY_ERROR_CODE = 'OPENCOVE_NODE_PTY_INCOMPATIBLE';
 
 export interface ExecutionSessionExitEvent {
   exitCode: number;
@@ -57,6 +58,8 @@ interface NodePtyModule {
     }
   ): NodePtyLike;
 }
+
+let nodePtyRuntimeCompatibilityVerified = false;
 
 class NodePtyExecutionSessionProcess implements ExecutionSessionProcess {
   public readonly backend: ExecutionSessionBackendKind = 'node-pty';
@@ -128,8 +131,13 @@ export function isMissingNodePtyDependencyError(error: unknown): boolean {
   return isRecord(error) && error.code === MISSING_NODE_PTY_ERROR_CODE;
 }
 
+export function isIncompatibleNodePtyRuntimeError(error: unknown): boolean {
+  return isRecord(error) && error.code === INCOMPATIBLE_NODE_PTY_ERROR_CODE;
+}
+
 function loadNodePtyModule(): NodePtyModule {
   try {
+    ensureNodePtyRuntimeCompatibility();
     ensureNodePtyHelperExecutable();
     return require('node-pty') as NodePtyModule;
   } catch (error) {
@@ -159,6 +167,46 @@ function createMissingNodePtyDependencyError(): Error & { code: string } {
   error.name = 'MissingNodePtyDependencyError';
   error.code = MISSING_NODE_PTY_ERROR_CODE;
   return error;
+}
+
+function ensureNodePtyRuntimeCompatibility(): void {
+  if (nodePtyRuntimeCompatibilityVerified) {
+    return;
+  }
+
+  const childProcess = require('child_process') as typeof import('child_process');
+  const nodePtyEntryPath = require.resolve('node-pty');
+  const probeResult = childProcess.spawnSync(
+    process.execPath,
+    ['-e', "require(process.argv[1]);", nodePtyEntryPath],
+    {
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1'
+      },
+      encoding: 'utf8',
+      stdio: 'pipe'
+    }
+  );
+
+  if (probeResult.error) {
+    throw createIncompatibleNodePtyRuntimeError(
+      `兼容性探测启动失败：${probeResult.error.message}`
+    );
+  }
+
+  if (probeResult.signal || probeResult.status !== 0) {
+    const signal = probeResult.signal ? `signal ${probeResult.signal}` : undefined;
+    const status =
+      typeof probeResult.status === 'number' ? `exit code ${probeResult.status}` : undefined;
+    const reason = [signal, status].filter(Boolean).join(', ');
+    const output = sanitizeProbeOutput(probeResult.stderr || probeResult.stdout || '');
+    throw createIncompatibleNodePtyRuntimeError(
+      [reason || '兼容性探测失败', output].filter(Boolean).join('；')
+    );
+  }
+
+  nodePtyRuntimeCompatibilityVerified = true;
 }
 
 function ensureNodePtyHelperExecutable(): void {
@@ -192,6 +240,21 @@ function ensureNodePtyHelperExecutable(): void {
   } catch {
     // Best effort only. If permission repair still fails, node-pty will surface the spawn error.
   }
+}
+
+function createIncompatibleNodePtyRuntimeError(details: string): Error & { code: string } {
+  const suffix = details ? `（${details}）` : '';
+  const error = new Error(
+    `当前 node-pty 运行时与 VS Code 扩展宿主 ${process.version} 不兼容，已阻止加载以避免扩展宿主崩溃。请重新执行 npm install，或升级到兼容当前 VS Code 版本的依赖后重试。${suffix}`
+  ) as Error & { code: string };
+  error.name = 'IncompatibleNodePtyRuntimeError';
+  error.code = INCOMPATIBLE_NODE_PTY_ERROR_CODE;
+  return error;
+}
+
+function sanitizeProbeOutput(value: string): string {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  return compact.length > 180 ? `${compact.slice(0, 180)}...` : compact;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

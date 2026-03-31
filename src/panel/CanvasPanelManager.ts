@@ -26,6 +26,7 @@ import {
   type ExecutionSessionExitEvent,
   type ExecutionSessionLaunchSpec,
   type ExecutionSessionProcess,
+  isIncompatibleNodePtyRuntimeError,
   isMissingNodePtyDependencyError
 } from './executionSessionBridge';
 import { getWebviewHtml } from './getWebviewHtml';
@@ -2261,6 +2262,10 @@ function summarizeAgentSessionOutput(output: string, live: boolean, label: strin
 }
 
 function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
+  if (isIncompatibleNodePtyRuntimeError(error)) {
+    return `当前 node-pty 运行时与 VS Code 扩展宿主不兼容，已阻止启动 ${spec.label} 以避免插件崩溃。请重新执行 npm install，或升级到兼容当前 VS Code 版本的依赖后重试。`;
+  }
+
   if (isMissingNodePtyDependencyError(error)) {
     return '缺少 node-pty 运行时依赖，请在仓库根目录执行 npm install 后重试。';
   }
@@ -2302,6 +2307,10 @@ function describeAgentSessionExit(
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
+  if (isIncompatibleNodePtyRuntimeError(error)) {
+    return '当前 node-pty 运行时与 VS Code 扩展宿主不兼容，已阻止启动嵌入式终端以避免插件崩溃。请重新执行 npm install，或升级到兼容当前 VS Code 版本的依赖后重试。';
+  }
+
   if (isMissingNodePtyDependencyError(error)) {
     return '缺少 node-pty 运行时依赖，请在仓库根目录执行 npm install 后重试。';
   }
