@@ -43,6 +43,9 @@
   ],
   "activationEvents": [
     "onCommand:opencove.openCanvas",
+    "onCommand:opencove.createNode",
+    "onCommand:opencove.resetCanvasState",
+    "onView:opencove.sidebar",
     "onWebviewPanel:opencove.canvas"
   ],
   "capabilities": {
@@ -63,10 +66,35 @@
   },
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "opencove",
+          "title": "%viewsContainer.opencove.title%",
+          "icon": "images/opencove-activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "opencove": [
+        {
+          "id": "opencove.sidebar",
+          "name": "%view.opencove.sidebar.title%"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "opencove.openCanvas",
         "title": "%command.openCanvas.title%"
+      },
+      {
+        "command": "opencove.createNode",
+        "title": "%command.createNode.title%"
+      },
+      {
+        "command": "opencove.resetCanvasState",
+        "title": "%command.resetCanvasState.title%"
       }
     ],
     "configuration": {
@@ -115,7 +143,7 @@
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "node-pty": "^1.1.0",
+    "node-pty": "^1.2.0-beta.12",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "reactflow": "11.11.4"

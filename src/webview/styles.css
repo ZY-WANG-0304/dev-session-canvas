@@ -24,88 +24,103 @@ body {
     );
 }
 
-.hero-panel,
-.actions-panel {
-  border: 1px solid var(--vscode-panel-border);
+.canvas-corner-panel {
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 76%, #1e3a5f 24%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--vscode-editor-background) 78%, #111d32 22%),
+      color-mix(in srgb, var(--vscode-editor-background) 90%, #09111f 10%)
+    );
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(16px);
+}
+
+.canvas-shell .canvas-controls {
+  left: 18px;
+  bottom: 18px;
+  overflow: hidden;
   border-radius: 18px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, #122033 6%);
-  color: var(--vscode-editor-foreground);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
 }
 
-.hero-panel {
-  max-width: 560px;
-  padding: 18px 20px;
-  display: grid;
-  gap: 10px;
+.canvas-shell .canvas-controls::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 42%);
+  pointer-events: none;
 }
 
-.hero-panel h1 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.15;
+.canvas-shell .react-flow__controls-button {
+  width: 20px;
+  height: 20px;
+  padding: 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, #0b1324 20%);
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground) 80%, #dbeafe 20%);
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
 }
 
-.hero-panel p,
-.actions-panel p,
-.restricted-note {
-  color: var(--vscode-descriptionForeground);
+.canvas-shell .react-flow__controls-button:last-child {
+  border-bottom: 0;
 }
 
-.hero-panel p,
-.actions-panel p,
-.restricted-note {
-  margin: 0;
-  line-height: 1.5;
+.canvas-shell .react-flow__controls-button:hover {
+  background: color-mix(in srgb, rgba(56, 189, 248, 0.16) 48%, transparent 52%);
+  color: #e0f2fe;
 }
 
-.eyebrow,
-.meta-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground);
+.canvas-shell .react-flow__controls-button:active {
+  transform: translateY(1px);
 }
 
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
+.canvas-shell .react-flow__controls-button svg {
+  max-width: 14px;
+  max-height: 14px;
+  fill: currentColor;
 }
 
-.meta-row > div {
-  display: grid;
-  gap: 4px;
+.canvas-shell .react-flow__controls-button:disabled {
+  opacity: 0.4;
 }
 
-.hero-support {
-  display: grid;
-  gap: 6px;
-  padding-top: 4px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, #0f172a 18%);
+.canvas-shell .react-flow__controls-button:disabled svg {
+  fill-opacity: 1;
 }
 
-.actions-panel {
-  width: 360px;
-  padding: 16px;
-  display: grid;
-  gap: 16px;
+.canvas-shell .canvas-minimap {
+  right: 18px;
+  bottom: 18px;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 76%, #1e3a5f 24%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--vscode-editor-background) 82%, #16243a 18%),
+      color-mix(in srgb, var(--vscode-editor-background) 90%, #0d1625 10%)
+    );
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
 }
 
-.actions-panel section {
-  display: grid;
-  gap: 10px;
+.canvas-shell .canvas-minimap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(80, 88, 102, 0.92), rgba(66, 74, 88, 0.94));
 }
 
-.actions-panel h2 {
-  margin: 0;
-  font-size: 16px;
+.canvas-shell .canvas-minimap .react-flow__minimap-mask {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.12));
 }
 
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.canvas-shell .canvas-minimap .react-flow__minimap-node {
+  opacity: 0.96;
 }
 
 .action-button {
@@ -130,12 +145,6 @@ body {
 .action-button.primary {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
-}
-
-.action-button.secondary {
-  background: color-mix(in srgb, var(--vscode-editor-background) 84%, #334155 16%);
-  color: var(--vscode-editor-foreground);
-  border-color: var(--vscode-panel-border);
 }
 
 .action-button.danger {
