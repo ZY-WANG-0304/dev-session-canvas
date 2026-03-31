@@ -206,6 +206,12 @@ export type HostToWebviewMessage =
         kind: ExecutionNodeKind;
         message: string;
       };
+    }
+  | {
+      type: 'host/requestCreateNode';
+      payload: {
+        kind: CanvasNodeKind;
+      };
     };
 
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'task', 'note'];

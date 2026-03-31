@@ -43,6 +43,8 @@
   ],
   "activationEvents": [
     "onCommand:opencove.openCanvas",
+    "onCommand:opencove.createNode",
+    "onCommand:opencove.resetCanvasState",
     "onWebviewPanel:opencove.canvas"
   ],
   "capabilities": {
@@ -63,10 +65,35 @@
   },
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "opencove",
+          "title": "%viewsContainer.opencove.title%",
+          "icon": "images/opencove-activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "opencove": [
+        {
+          "id": "opencove.sidebar",
+          "name": "%view.opencove.sidebar.title%"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "opencove.openCanvas",
         "title": "%command.openCanvas.title%"
+      },
+      {
+        "command": "opencove.createNode",
+        "title": "%command.createNode.title%"
+      },
+      {
+        "command": "opencove.resetCanvasState",
+        "title": "%command.resetCanvasState.title%"
       }
     ],
     "configuration": {

@@ -24,90 +24,6 @@ body {
     );
 }
 
-.hero-panel,
-.actions-panel {
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, #122033 6%);
-  color: var(--vscode-editor-foreground);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
-}
-
-.hero-panel {
-  max-width: 560px;
-  padding: 18px 20px;
-  display: grid;
-  gap: 10px;
-}
-
-.hero-panel h1 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.15;
-}
-
-.hero-panel p,
-.actions-panel p,
-.restricted-note {
-  color: var(--vscode-descriptionForeground);
-}
-
-.hero-panel p,
-.actions-panel p,
-.restricted-note {
-  margin: 0;
-  line-height: 1.5;
-}
-
-.eyebrow,
-.meta-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground);
-}
-
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-}
-
-.meta-row > div {
-  display: grid;
-  gap: 4px;
-}
-
-.hero-support {
-  display: grid;
-  gap: 6px;
-  padding-top: 4px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, #0f172a 18%);
-}
-
-.actions-panel {
-  width: 360px;
-  padding: 16px;
-  display: grid;
-  gap: 16px;
-}
-
-.actions-panel section {
-  display: grid;
-  gap: 10px;
-}
-
-.actions-panel h2 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .action-button {
   border-radius: 999px;
   border: 1px solid transparent;
@@ -130,12 +46,6 @@ body {
 .action-button.primary {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
-}
-
-.action-button.secondary {
-  background: color-mix(in srgb, var(--vscode-editor-background) 84%, #334155 16%);
-  color: var(--vscode-editor-foreground);
-  border-color: var(--vscode-panel-border);
 }
 
 .action-button.danger {

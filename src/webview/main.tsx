@@ -7,7 +7,6 @@ import ReactFlow, {
   BackgroundVariant,
   Controls,
   MiniMap,
-  Panel,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -181,6 +180,9 @@ function App(): JSX.Element {
           }
           clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
           break;
+        case 'host/requestCreateNode':
+          createNode(message.payload.kind);
+          break;
       }
     };
 
@@ -221,9 +223,6 @@ function App(): JSX.Element {
 
   const selectedNode = hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId);
   const workspaceTrusted = runtimeContext.workspaceTrusted;
-  const updatedAtLabel = hostState
-    ? new Date(hostState.updatedAt).toLocaleString()
-    : '等待宿主初始化';
 
   const deleteNode = (nodeId: string): void => {
     setLocalUiState((current) =>
@@ -399,59 +398,6 @@ function App(): JSX.Element {
           maskColor="rgba(7, 12, 24, 0.72)"
         />
         <Controls showInteractive={false} />
-
-        <Panel position="top-left" className="hero-panel">
-          <div className="eyebrow">OpenCove Prototype</div>
-          <h1>Canvas runtime windows</h1>
-          <p>当前重点是把 Agent 和 Terminal 收敛成真正放在画布上的会话窗口，而不是侧栏驱动的配置卡片。</p>
-          <div className="meta-row">
-            <div>
-              <span className="meta-label">宿主状态更新时间</span>
-              <strong>{updatedAtLabel}</strong>
-            </div>
-            <div>
-              <span className="meta-label">对象数量</span>
-              <strong>{hostState?.nodes.length ?? 0}</strong>
-            </div>
-          </div>
-          <div className="hero-support">
-            <span className="meta-label">当前验证范围</span>
-            <p>空画布默认态、非遮挡导航、补充型概况面板，以及新建节点默认避碰。</p>
-          </div>
-        </Panel>
-
-        <Panel position="top-right" className="actions-panel">
-          <section>
-            <h2>创建示例对象</h2>
-            <p>从空画布直接创建四类对象，再验证节点创建、删除、恢复和默认摆放是否稳定。</p>
-            <div className="action-row">
-              {workspaceTrusted ? (
-                <>
-                  <ActionButton label="新增 Agent" onClick={() => createNode('agent')} />
-                  <ActionButton label="新增 Terminal" onClick={() => createNode('terminal')} />
-                </>
-              ) : null}
-              <ActionButton label="新增 Task" onClick={() => createNode('task')} />
-              <ActionButton label="新增 Note" onClick={() => createNode('note')} />
-            </div>
-            {!workspaceTrusted ? (
-              <p className="restricted-note">
-                当前 workspace 未受信任，已隐藏 Agent / Terminal 执行型对象入口。
-              </p>
-            ) : null}
-          </section>
-          <section>
-            <h2>恢复链路</h2>
-            <p>宿主仍是对象图权威来源；Webview 只保存视口、选中态和节点内草稿。</p>
-            <div className="action-row">
-              <ActionButton
-                label="重置宿主状态"
-                tone="secondary"
-                onClick={() => postMessage({ type: 'webview/resetDemoState' })}
-              />
-            </div>
-          </section>
-        </Panel>
       </ReactFlow>
 
       {errorMessage ? <div className="toast-error">{errorMessage}</div> : null}

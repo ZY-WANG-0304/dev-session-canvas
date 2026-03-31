@@ -8,7 +8,7 @@
 
 这项工作要把当前画布里占据左上角和右上角的固定说明与操作区，收口成“画布只留空间导航，非空间控件迁到 VSCode 侧栏”的正式设计。完成后，用户进入画布时应主要看到节点本体、左下角导航控件和右下角全局定位控件，而创建对象、打开画布、恢复状态和最小必要的全局状态则转移到 VSCode 侧栏中。
 
-这份计划当前聚焦设计阶段，而不是立刻改代码。设计阶段完成的可见结果是：仓库里出现一份独立产品规格、一份独立设计文档，并明确记录候选方案、当前推荐路线、范围边界和后续需要验证的实现假设。
+这份计划最初从设计阶段开始，但现在已经推进到第一版实现。当前可见结果不仅包括独立产品规格和设计文档，还包括一个原生侧栏入口、移除顶角 panel 后的画布界面，以及可重复运行的自动化检查结果。
 
 ## 进度
 
@@ -18,9 +18,11 @@
 - [x] (2026-03-31 10:42 +0800) 新增独立产品规格，定义画布外层控件极简化、侧栏承载范围和验收口径。
 - [x] (2026-03-31 10:42 +0800) 新增独立设计文档，对比“继续保留顶角 panel”“原生侧栏 View”“侧栏 WebviewView”等方案，并写明当前推荐路线。
 - [x] (2026-03-31 10:42 +0800) 同步更新 `docs/product-specs/index.md`、`docs/design-docs/index.md` 与 `docs/design-docs/core-beliefs.md`。
-- [ ] 为侧栏承载面做最小原型验证，确认原生 `TreeView + WelcomeView + View Toolbar` 是否足以承载当前规格要求。
-- [ ] 基于原型结果，把当前“比较中”的设计状态收口为“已选定”或明确回退到替代路线。
-- [ ] 在实现阶段把画布顶角 panel 移出 Webview，并完成侧栏集成、自动化检查与人工验证。
+- [x] (2026-03-31 11:11 +0800) 为侧栏承载面做最小原型实现，确认原生 `TreeView` 足以承载打开、创建、重置和最小状态摘要。
+- [x] (2026-03-31 11:11 +0800) 基于原型结果，把 `docs/design-docs/canvas-sidebar-controls.md` 从“比较中 / 未验证”收口为“已选定 / 验证中”。
+- [x] (2026-03-31 11:11 +0800) 在实现阶段移除画布顶角 panel，接入原生侧栏容器、`TreeView` 和命令入口。
+- [x] (2026-03-31 11:11 +0800) 完成自动化检查：`npm run typecheck` 与 `npm run build` 通过。
+- [ ] 在 `Extension Development Host` 中完成人工验证，并据此决定是否把本计划迁入 `docs/exec-plans/completed/`。
 
 ## 意外与发现
 
@@ -32,6 +34,9 @@
 
 - 观察：VSCode 官方 UX 指南更支持“侧栏里放真实 view”，而不是把 Activity Bar 仅仅当成打开 `WebviewPanel` 的启动器；同时也建议谨慎使用 `WebviewView`。
   证据：2026-03-31 对 VSCode 官方 Views / Sidebars / Webviews 指南的核查结果已在本轮设计结论中消化为约束。
+
+- 观察：当前最小需求不需要 `WebviewView`；原生 `TreeView + QuickPick + 命令入口` 已足以承载打开、创建、重置和最小状态摘要。
+  证据：`src/sidebar/CanvasSidebarView.ts`、`src/extension.ts` 与 `package.json` 已完成对应实现，且 `npm run typecheck`、`npm run build` 通过。
 
 ## 决策记录
 
@@ -47,6 +52,10 @@
   理由：这更符合“极简、VSCode 左侧 SideBar 风格”的目标，也更接近官方 UX 对 Activity Bar / Views 的建议；只有在原生 View 无法承载最小状态与动作密度时，才应升级为 `WebviewView`。
   日期/作者：2026-03-31 / Codex
 
+- 决策：第一版把“创建对象”收口为单一侧栏动作，再通过原生 QuickPick 选择对象类型。
+  理由：这比在侧栏平铺四个常驻按钮更符合“极简侧栏”的目标，也能避免重新长出另一块 dashboard。
+  日期/作者：2026-03-31 / Codex
+
 ## 结果与复盘
 
 当前设计阶段已完成：
@@ -55,11 +64,18 @@
 - 明确记录了现状、目标、候选方案、推荐路线和未验证假设。
 - 把“画布顶角过渡态”与“侧栏化目标态”分离为两个层次，避免把实现现状误写成长期结论。
 
+当前实现阶段已完成：
+
+- 新增自定义 Activity Bar 容器和原生 `TreeView` 侧栏入口。
+- 新增“打开画布”“创建对象”“重置宿主状态”三个宿主命令。
+- 从 Webview 中移除了左上角 hero 和右上角 actions panel。
+- 当画布已在前台可见时，侧栏创建动作会通过 Host -> Webview 消息复用当前视口锚点。
+- `npm run typecheck` 与 `npm run build` 已通过。
+
 当前仍未完成：
 
-- 没有侧栏承载面的代码原型。
-- 还没有验证原生 `TreeView` 是否足以承载所需最小信息密度。
-- 还没有把现有 `WebviewPanel` 顶角 UI 真正迁出。
+- 还没有完成 `Extension Development Host` 中的人工验证。
+- 还没有把本计划迁入 `completed/`，也没有基于人工验证补最终复盘。
 
 如果下一位协作者接手，应先做最小原型，再根据结果更新本计划的 `进度`、`意外与发现` 和 `决策记录`，然后才进入实现阶段。
 
@@ -91,7 +107,7 @@
 
 第四步，同步更新文档索引与通用信念。索引负责让下一位协作者能找到新文档；核心信念负责把“空间无关的固定 chrome 应优先离开画布”提升成跨主题通用原则。
 
-第五步，下一阶段的实现前准备是做一个最小侧栏原型，验证原生 View 是否足够。如果不足，再回到设计文档里更新决策，而不是跳过验证直接堆自定义 Webview。
+第五步，当前已经落地第一版实现；下一阶段应进入人工验证与细节打磨，而不是重新打开“是否需要 `WebviewView`”这类已经收口的问题。只有当人工验证证明原生 View 明显不足时，才回到设计文档改写路线。
 
 ## 具体步骤
 
@@ -109,12 +125,12 @@
    - `docs/design-docs/core-beliefs.md`
 5. 进行文档自检，确认状态字段、索引登记和设计结论之间没有相互矛盾。
 
-后续实现阶段应在仓库根目录追加执行：
+当前阶段应在仓库根目录追加执行：
 
-1. 为侧栏增加最小 view container 原型。
-2. 运行 `npm run typecheck`。
-3. 运行 `npm run build`。
-4. 在 VSCode `Extension Development Host` 中手动验证侧栏与画布联动。
+1. 运行 `npm run typecheck`。
+2. 运行 `npm run build`。
+3. 在 VSCode `Extension Development Host` 中手动验证侧栏与画布联动。
+4. 根据手动验证结果更新本计划、设计文档和必要的实现细节。
 
 ## 验证与验收
 
@@ -126,11 +142,12 @@
 - `docs/design-docs/core-beliefs.md` 已补充可复用的通用原则，而不是只留下零散局部结论。
 - 文档中没有把“尚未原型验证的侧栏路线”误写成“已验证”或“已实现”。
 
-后续实现阶段的验收标准应至少包含：
+当前实现阶段的验收标准应至少包含：
 
 - 打开画布后，左上角和右上角不再出现固定 hero / actions panel。
 - 用户可从默认侧栏入口打开或定位画布、创建对象和重置宿主状态。
 - 画布内只保留左下角导航控件和右下角全局定位控件作为常驻角落 UI。
+- 自动化检查 `npm run typecheck` 与 `npm run build` 通过。
 
 ## 幂等性与恢复
 
@@ -147,21 +164,24 @@
     左上角和右上角的控件内容不在画板区域显示。
     只保留最小必要的按钮和信息，以极简的风格作成 VSCode 左侧的 SideBar”
 
-    当前 Webview 实现：
-    src/webview/main.tsx 中仍存在 Panel position="top-left" 与 Panel position="top-right"
+    第一版实现：
+    package.json 中新增 Activity Bar 容器与 opencove.sidebar 视图
+    src/sidebar/CanvasSidebarView.ts 中新增原生 TreeView
+    src/webview/main.tsx 中删除 Panel position="top-left" 与 Panel position="top-right"
 
-    当前正式设计结论：
-    docs/design-docs/canvas-feedback-polish.md 仍把右上角固定区域视为过渡期保留操作入口
+    自动化验证：
+    npm run typecheck
+    npm run build
 
 ## 接口与依赖
 
-下一阶段实现若开始，应先围绕以下宿主接口与 UI 接口做最小设计：
+当前实现已围绕以下宿主接口与 UI 接口落地：
 
 - `package.json` 中的 `contributes.viewsContainers.activitybar` 与 `contributes.views`
 - `vscode.window.createTreeView(...)` 或等价的原生 View Provider 路径
 - 现有 `opencove.openCanvas` 命令，以及后续可能新增的 `createNode` / `resetState` 命令
 - `src/panel/CanvasPanelManager.ts` 暴露给侧栏的宿主权威状态摘要，例如节点数、运行中执行单元数与 workspace trust 状态
 
-第一版实现不应引入第二个大型 React 前端来复制侧栏。如果最小原生 View 路线确实不能满足需求，再把 `WebviewView` 作为升级方案写回设计文档。
+当前仍保持“不引入第二个大型 React 前端来复制侧栏”的边界。如果后续人工验证证明原生 View 路线确实不能满足需求，再把 `WebviewView` 作为升级方案写回设计文档。
 
-本次修订说明：2026-03-31 新建本计划，用于把 `功能体验.md` 第 2 条从零散体验诉求提升为正式规格与设计链路，并明确下一阶段需要验证的侧栏承载路线。
+本次修订说明：2026-03-31 11:11 +0800 将本计划从纯设计阶段推进到第一版实现，新增原生侧栏入口、移除 Webview 顶角 panel，并补充自动化验证结果与剩余人工验证事项。

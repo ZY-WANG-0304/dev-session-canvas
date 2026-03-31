@@ -65,17 +65,30 @@ interface EmbeddedExecutionSession {
   exitSubscription: DisposableLike | undefined;
 }
 
+export interface CanvasSidebarState {
+  canvasSurface: 'closed' | 'hidden' | 'visible';
+  nodeCount: number;
+  runningExecutionCount: number;
+  workspaceTrusted: boolean;
+  creatableKinds: CanvasNodeKind[];
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   public static readonly viewType = 'opencove.canvas';
 
   private panel: vscode.WebviewPanel | undefined;
   private state: CanvasPrototypeState;
+  private webviewReady = false;
   private readonly agentSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
+  private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
+
+  public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.persistState();
+    context.subscriptions.push(this.sidebarStateEmitter);
 
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
@@ -100,6 +113,44 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     this.attachPanel(panel);
   }
 
+  public getSidebarState(): CanvasSidebarState {
+    return {
+      canvasSurface: this.panel ? (this.panel.visible ? 'visible' : 'hidden') : 'closed',
+      nodeCount: this.state.nodes.length,
+      runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
+      workspaceTrusted: vscode.workspace.isTrusted,
+      creatableKinds: vscode.workspace.isTrusted
+        ? ['agent', 'terminal', 'task', 'note']
+        : ['task', 'note']
+    };
+  }
+
+  public createNode(kind: CanvasNodeKind): void {
+    if (
+      this.panel &&
+      this.panel.visible &&
+      this.webviewReady
+    ) {
+      this.postMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind
+        }
+      });
+      return;
+    }
+
+    this.applyCreateNode(kind);
+  }
+
+  public resetState(): void {
+    this.cancelAllAgentSessions();
+    this.cancelAllTerminalSessions();
+    this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
   public async deserializeWebviewPanel(
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
@@ -111,6 +162,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
   private attachPanel(panel: vscode.WebviewPanel): void {
     this.panel = panel;
+    this.webviewReady = false;
     panel.webview.options = this.getWebviewOptions();
     panel.webview.html = getWebviewHtml(panel.webview, this.context.extensionUri);
 
@@ -118,7 +170,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
       () => {
         if (this.panel === panel) {
           this.panel = undefined;
+          this.webviewReady = false;
+          this.notifySidebarStateChanged();
         }
+      },
+      null,
+      this.context.subscriptions
+    );
+
+    panel.onDidChangeViewState(
+      () => {
+        this.notifySidebarStateChanged();
       },
       null,
       this.context.subscriptions
@@ -139,40 +201,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
         switch (parsedMessage.type) {
           case 'webview/ready':
+            this.webviewReady = true;
             this.postState('host/bootstrap');
             break;
           case 'webview/createDemoNode':
-            if (
-              isExecutionNodeKind(parsedMessage.payload.kind) &&
-              !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
-            ) {
-              break;
-            }
-
-            this.state = createNextState(
-              this.state,
-              parsedMessage.payload.kind,
-              this.getAgentCliConfig().defaultProvider,
-              parsedMessage.payload.preferredPosition
-            );
-            if (parsedMessage.payload.kind === 'terminal') {
-              const createdNode = this.state.nodes[this.state.nodes.length - 1];
-              if (
-                createdNode &&
-                createdNode.kind === parsedMessage.payload.kind
-              ) {
-                this.state = updateExecutionNode(this.state, createdNode.id, parsedMessage.payload.kind, {
-                  status: 'draft',
-                  summary: '终端准备按节点尺寸自动启动。',
-                  metadata: buildExecutionMetadataPatch(this.state, createdNode.id, parsedMessage.payload.kind, {
-                    autoStartPending: true,
-                    lastExitMessage: undefined
-                  })
-                });
-              }
-            }
-            this.persistState();
-            this.postState('host/stateUpdated');
+            this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition);
             break;
           case 'webview/moveNode':
             this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
@@ -231,17 +264,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
             this.postState('host/stateUpdated');
             break;
           case 'webview/resetDemoState':
-            this.cancelAllAgentSessions();
-            this.cancelAllTerminalSessions();
-            this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
-            this.persistState();
-            this.postState('host/stateUpdated');
+            this.resetState();
             break;
         }
       },
       null,
       this.context.subscriptions
     );
+
+    this.notifySidebarStateChanged();
   }
 
   private getWebviewOptions(): vscode.WebviewOptions & vscode.WebviewPanelOptions {
@@ -268,10 +299,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         runtime: this.getRuntimeContext()
       }
     });
+    this.notifySidebarStateChanged();
   }
 
   private postMessage(message: HostToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
+  }
+
+  private notifySidebarStateChanged(): void {
+    this.sidebarStateEmitter.fire(this.getSidebarState());
   }
 
   private getRuntimeContext(): CanvasRuntimeContext {
@@ -1013,6 +1049,39 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
         liveSession: Boolean(session)
       }
     });
+  }
+
+  private applyCreateNode(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+    if (
+      isExecutionNodeKind(kind) &&
+      !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
+    ) {
+      return;
+    }
+
+    this.state = createNextState(
+      this.state,
+      kind,
+      this.getAgentCliConfig().defaultProvider,
+      preferredPosition
+    );
+
+    if (kind === 'terminal') {
+      const createdNode = this.state.nodes[this.state.nodes.length - 1];
+      if (createdNode && createdNode.kind === kind) {
+        this.state = updateExecutionNode(this.state, createdNode.id, kind, {
+          status: 'draft',
+          summary: '终端准备按节点尺寸自动启动。',
+          metadata: buildExecutionMetadataPatch(this.state, createdNode.id, kind, {
+            autoStartPending: true,
+            lastExitMessage: undefined
+          })
+        });
+      }
+    }
+
+    this.persistState();
+    this.postState('host/stateUpdated');
   }
 }
 
