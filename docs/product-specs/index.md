@@ -11,10 +11,11 @@
 | 文档 | 主题 | 状态 | 依据 | 最后更新 |
 | --- | --- | --- | --- | --- |
 | `docs/product-specs/canvas-core-collaboration-mvp.md` | 画布核心协作 MVP 主路径与验收口径 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/vscode-canvas-runtime-architecture.md` | 2026-03-28 |
+| `docs/product-specs/canvas-sidebar-controls.md` | 画布外层控件极简化与侧栏承载范围 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-controls.md` | 2026-03-31 |
 
 ## 当前状态
 
-当前仓库已登记首份具体产品规格文档，后续规格应继续按主题拆分，而不是把所有需求堆入单一文档。
+当前仓库已开始按主题拆分具体产品规格，而不是把所有需求堆入单一文档。涉及画布外层控件、侧栏承载面和 UI 收口的后续讨论，应优先继续维护对应专项规格。
 
 ## 维护约定
 
