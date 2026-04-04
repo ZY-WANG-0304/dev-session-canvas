@@ -23,7 +23,8 @@
 - 顶层架构与技术路线研究文档
 - 第一份 MVP 产品规格
 - 一个可构建的 VSCode 扩展原型，包含：
-  - `opencove.openCanvas` 命令
+  - `opencove.openCanvas` / `opencove.openCanvasInEditor` / `opencove.openCanvasInPanel` 命令
+  - `editor/panel` 可配置主画布承载面
   - `WebviewPanel` 主画布入口
   - typed message bridge
   - `WebviewPanelSerializer`
@@ -107,6 +108,8 @@ npm run package:vsix
 - 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置：
   - `opencove.agent.codexCommand`
   - `opencove.agent.claudeCommand`
+- 如果要让主画布默认出现在 VSCode Panel，而不是编辑区，可在设置中配置：
+  - `opencove.canvas.defaultSurface = panel`
 
 ### 2. 启动扩展开发宿主
 
@@ -130,9 +133,12 @@ npm run package:vsix
 在新的 `Extension Development Host` 窗口中：
 
 1. 打开命令面板
-2. 执行命令 `OpenCove: 打开画布`
+2. 执行以下任一命令：
+   - `OpenCove: 打开画布`
+   - `OpenCove: 在编辑区打开画布`
+   - `OpenCove: 在面板打开画布`
 
-这条命令会打开当前原型里的主画布 `WebviewPanel`。
+默认情况下，`OpenCove: 打开画布` 会按 `opencove.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
 
 ### 4. 验证当前主路径
 
@@ -154,7 +160,7 @@ npm run package:vsix
 ### 5. 常见误区
 
 - `Run OpenCove Extension` 不是命令面板命令，而是调试配置名称。
-- `OpenCove: 打开画布` 才是插件注册到命令面板里的命令。
+- `OpenCove: 打开画布` 会按默认承载面打开主画布；如需直接落在某个宿主区域，请使用显式的编辑区 / 面板打开命令。
 - 如果你只在当前仓库窗口里搜索 `Run OpenCove Extension`，通常找不到正确入口，因为它应从调试配置启动。
 - 当前不是稳定版发布仓库状态；当前阶段默认只做内部体验版 VSIX 分发。
 

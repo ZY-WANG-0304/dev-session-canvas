@@ -21,7 +21,8 @@ related_plans:
   - docs/exec-plans/completed/agent-session-surface-alignment.md
   - docs/exec-plans/completed/agent-special-terminal.md
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
-updated_at: 2026-03-30
+  - docs/exec-plans/completed/canvas-surface-configurable-host.md
+updated_at: 2026-04-05
 ---
 
 # VSCode 画布运行时与技术路线初步设计
@@ -70,7 +71,7 @@ updated_at: 2026-03-30
 - 官方边界：Webview 适用于 VSCode API 无法直接表达的自定义体验，但官方明确要求“只在确有必要时使用”，并要求主题适配、可访问性和与 workspace 相关性。
 - 官方边界：`WebviewView` 属于 Sidebar / Panel 内的视图，官方 UX 指南建议限制自定义 `WebviewView` 的使用数量，也不建议把它作为打开编辑器内 Webview 的入口。
 - 官方边界：`CustomEditor` 的定位是“某个资源的替代视图”，其文档模型围绕具体资源展开。
-- 设计推论：当前产品的主对象是“workspace 内的一张协作画布”，而不是某个文件的另一种编辑器，因此更适合作为 Editor Group 中的 `WebviewPanel`，而不是 `CustomEditor` 或侧边栏 `WebviewView`。
+- 设计推论：当前产品的主对象是“workspace 内的一张协作画布”，而不是某个文件的另一种编辑器，因此不应走 `CustomEditor` 路线。第一条完整主路径更适合作为 Editor Group 中的 `WebviewPanel` 启动；但当用户需要避免与文件编辑竞争同一宿主区域时，承载在 Panel 中的 `WebviewView` 可以作为可配置替代承载面。侧边栏 `WebviewView` 仍不适合作为完整主画布。
 
 ### 5.2 Webview 生命周期、通信与恢复
 
@@ -123,8 +124,9 @@ updated_at: 2026-03-30
 
 | 方案 | 优点 | 风险 | 初步判断 |
 | --- | --- | --- | --- |
-| `WebviewPanel` | 位于 Editor Group，空间足够，天然适合“主工作面” | 需要自行处理生命周期与恢复 | 当前首选 |
-| `WebviewView` | 与侧边栏生态一致 | 宽度受限，官方建议限制使用；不适合作为主画布 | 仅适合作为后续辅助视图 |
+| 编辑区 `WebviewPanel` | 位于 Editor Group，空间足够，天然适合“主工作面” | 会与文件编辑共享同一宿主区域，需要自行处理生命周期与恢复 | 当前保留 |
+| Panel 中的 `WebviewView` | 不与文件编辑直接互斥，适合做可配置的稳定工作面 | reveal 入口与 view 生命周期更复杂；用户把 Panel 保持很矮时体验会变窄 | 当前加入为可配置替代承载面 |
+| 侧边栏 `WebviewView` | 与侧边栏生态一致 | 宽度受限，官方建议限制使用；不适合作为完整主画布 | 仅适合作为后续辅助视图 |
 | `CustomEditor` | 具备文件式生命周期与 undo/redo 语义 | 本问题不是“某个文件的替代编辑器” | 当前排除 |
 
 ### 6.3 画布渲染路线
@@ -161,7 +163,7 @@ updated_at: 2026-03-30
 当前更推荐采用如下结构：
 
 1. 以 `Node.js workspace extension` 作为第一阶段唯一必须落地的宿主形态。
-2. 以 `WebviewPanel` 作为主画布入口，位于 Editor Group。
+2. 主画布支持两种宿主承载面：编辑区 `WebviewPanel` 与 Panel 中的 `WebviewView`；默认按配置决定首选承载面。
 3. 以“宿主权威状态 + Webview 投影”的消息驱动架构作为状态主线。
 4. 以 React Flow 为第一阶段画布引擎，但通过自有抽象隔离具体库。
 5. 以“嵌入式终端节点”闭合终端主路径，当前实现优先使用 `xterm.js + node-pty`。
@@ -170,7 +172,7 @@ updated_at: 2026-03-30
 
 `宿主集成层`
 
-- 注册命令、打开/恢复 `WebviewPanel`
+- 注册命令、打开/恢复编辑区 `WebviewPanel` 与 Panel `WebviewView`
 - 管理 VSCode `Terminal`、workspace、trust、secrets、storage
 - 处理远程工作区与本地工作区差异
 
