@@ -47,7 +47,7 @@ npm run package:vsix
 - `codex` 或 `claude` 至少有一个可从 Extension Host 解析到
 - 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置 `devSessionCanvas.agent.codexCommand` 或 `devSessionCanvas.agent.claudeCommand`
 - 如果要让主画布默认出现在 VSCode Panel，而不是编辑区，可在设置中配置 `devSessionCanvas.canvas.defaultSurface = panel`
-- 如果本机或旧 workspace 中仍保留 `opencove.*` 设置，当前版本仍兼容读取，但新文档与新配置入口都以 `devSessionCanvas.*` 为准。
+- 本轮开始不再兼容旧命名空间设置、旧命令别名和旧 workspace 状态键；本地调试请以当前 `devSessionCanvas.*` 命名为准。
 
 ## 本地调试
 

@@ -14,7 +14,7 @@
 - `package.json` 已补齐 `preview`、`icon`、`galleryBanner`、`extensionKind`、`pricing`、`qna` 等发布元数据。
 - manifest 已补齐当前内部仓库可用的 `repository`、`homepage` 与 `bugs` 元数据，保证内部 VSIX 打包不会再因 README 或仓库信息缺失而失败。
 - `vscode:prepublish` 会先执行 `npm run package`，确保打包前经过类型检查和生产构建。
-- 仓库已把 `vsce` 纳入本地开发依赖，并通过 `scripts/package-vsix.mjs` 统一走本地可执行文件，不依赖额外全局安装。
+- 仓库已把 VSIX 打包逻辑收口到 `scripts/package-vsix.mjs`；脚本直接复用本地依赖中的打包处理器与显式运行时文件清单，不依赖额外全局安装 `vsce`。
 - 已显式声明 `Restricted Mode` 为有限支持，并通过 `restrictedConfigurations` 保护执行型设置。
 - 已显式声明 `Virtual Workspace` 暂不支持，避免在当前实现尚未适配时误报支持能力。
 - `docs/SECURITY.md` 已补齐专用安全邮箱、响应时限与“只支持最新主线 / 预览版”的支持口径。
@@ -27,7 +27,7 @@
 
 - 公开资源链接：确认对外可访问的 `repository`、`homepage`、`bugs` 链接；在未确认前不要填写假的 URL。
 - 许可证策略：当前仓库仍为 `UNLICENSED`，只适合内部或待定状态；若要公开发布，应先明确许可证文件与条款。
-- 公开发布渠道：若未来进入公开发布，再确认 `Visual Studio Marketplace`、`publisher`、Azure DevOps 组织与 Personal Access Token。
+- 公开发布渠道：若未来进入公开发布，再确认 `Visual Studio Marketplace` 中 `devsessioncanvas` 这个 `publisher` 是否已注册可用，并准备 Azure DevOps 组织与 Personal Access Token。
 
 ## 当前分发流程
 
@@ -51,7 +51,7 @@
 
 只有在明确要做公开发布时，才需要额外补齐以下动作：
 
-1. 创建或确认最终 `publisher`。
+1. 确认当前 `publisher` `devsessioncanvas` 已在目标 Marketplace 环境中注册可用。
 2. 准备 Azure DevOps 组织与 Personal Access Token。
 3. 执行 `vsce login <publisher>` 与 `vsce publish`，或改走 Marketplace 手动上传流程。
 

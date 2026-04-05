@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { COMMAND_ID_ALIASES, VIEW_IDS } from './common/extensionIdentity';
+import { COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import type { CanvasNodeKind } from './common/protocol';
 import { CanvasPanelManager } from './panel/CanvasPanelManager';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
@@ -14,19 +14,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarView)
   );
 
-  registerCommandAliases(context, COMMAND_ID_ALIASES.openCanvas, async () => {
+  registerCommand(context, COMMAND_IDS.openCanvas, async () => {
     await panelManager.revealOrCreate();
   });
 
-  registerCommandAliases(context, COMMAND_ID_ALIASES.openCanvasInEditor, async () => {
+  registerCommand(context, COMMAND_IDS.openCanvasInEditor, async () => {
     await panelManager.revealInEditor();
   });
 
-  registerCommandAliases(context, COMMAND_ID_ALIASES.openCanvasInPanel, async () => {
+  registerCommand(context, COMMAND_IDS.openCanvasInPanel, async () => {
     await panelManager.revealInPanel();
   });
 
-  registerCommandAliases(context, COMMAND_ID_ALIASES.createNode, async () => {
+  registerCommand(context, COMMAND_IDS.createNode, async () => {
     const targetKind = await promptCreateNodeKind(panelManager.getSidebarState().creatableKinds);
     if (!targetKind) {
       return;
@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext): void {
     panelManager.createNode(targetKind);
   });
 
-  registerCommandAliases(context, COMMAND_ID_ALIASES.resetCanvasState, async () => {
+  registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
     const confirmed = await vscode.window.showWarningMessage(
       '重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
       { modal: true },
@@ -57,14 +57,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {}
 
-function registerCommandAliases(
-  context: vscode.ExtensionContext,
-  commandIds: readonly string[],
-  handler: () => Promise<void>
-): void {
-  for (const commandId of commandIds) {
-    context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
-  }
+function registerCommand(context: vscode.ExtensionContext, commandId: string, handler: () => Promise<void>): void {
+  context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 }
 
 async function promptCreateNodeKind(creatableKinds: CanvasNodeKind[]): Promise<CanvasNodeKind | undefined> {

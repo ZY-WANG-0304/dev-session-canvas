@@ -12,37 +12,37 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/dev-session-canvas-namespace-migration.md
-updated_at: 2026-04-05
+updated_at: 2026-04-06
 ---
 
 # DevSessionCanvas 命名空间迁移
 
 ## 背景
 
-仓库的正式产品名和扩展显示名已经收口到 `DevSessionCanvas` / `Dev Session Canvas`，但运行时命名空间里仍保留大量 `opencove`。这些残留并不都属于同一种风险：有些只是资源文件名或内部常量，有些已经成为命令、配置和持久化状态的正式接口，还有一些则绑定在 VS Code 的扩展身份和视图恢复机制上。
+仓库的正式产品名和扩展显示名已经收口到 `DevSessionCanvas` / `Dev Session Canvas`。此前仓库曾短暂保留旧命名兼容层，但在正式开发阶段继续维持双命名只会放大维护成本，因此当前已进一步收口为单一正式身份。
 
-当前需要解决的问题不是“把所有字符串全局替换”，而是在不破坏已有使用者配置和 workspace 状态的前提下，逐步把真正面向用户和脚本的接口迁移到新的正式命名上。
+当前需要解决的问题不是“是否保留旧兼容”，而是把运行时、扩展身份与对外接口统一到同一套正式命名上，避免继续同时维护两套身份。
 
 ## 问题定义
 
-如果继续让命令、配置和状态键暴露为 `opencove.*`，会有两个直接问题：
+如果继续让命令、配置和状态键暴露为旧命名空间，会有两个直接问题：
 
 1. 用户看到的对外接口与正式产品名不一致，README、CONTRIBUTING、命令面板和设置示例都带着旧项目名。
 2. 后续继续推进正式开发时，任何围绕命令、配置或自动化脚本的文档都要反复解释“显示名是新的，但键名还是旧的”，成本会越来越高。
 
-但如果直接把所有 `opencove` 一次性替换掉，又会破坏兼容性：用户已有的设置键、命令调用和 workspace 状态恢复都会受到影响。
+但如果直接把所有旧命名接口一次性替换掉，又会破坏兼容性：用户已有的设置键、命令调用和 workspace 状态恢复都会受到影响。
 
 ## 目标
 
-- 把命令 ID、配置键和 workspace 状态键的正式主命名空间迁移到 `devSessionCanvas.*`。
-- 保证旧 `opencove.*` 命令、旧配置键和旧状态键在升级后仍然可用。
-- 把当前事实来源文档里的接口示例统一改成新键名。
+- 把命令 ID、配置键、workspace 状态键、view/container/webview panel ID 统一到 `devSessionCanvas.*` 与对应新扩展身份。
+- 把扩展 `publisher` 切换到新的正式标识。
+- 把当前事实来源文档里的接口示例统一改成当前正式命名。
 
 ## 非目标
 
 - 本轮不迁移 OpenCove 作为灵感来源的 README 说明。
 - 本轮不改写历史归档文档中的旧命名。
-- 本轮不迁移 `publisher`、view/container/webview panel 这类扩展身份位。
+- 本轮不为旧命名保留兼容读取、别名注册或状态迁移。
 
 ## 候选方案
 
@@ -83,27 +83,27 @@ updated_at: 2026-04-05
 
 ## 风险与取舍
 
-最大的取舍在于：不是所有 `opencove` 都值得在本轮追求“完全消失”。
+本轮最大的取舍是：不再为了平滑升级而继续保留旧命名兼容层。
 
-命令、配置和 workspace 状态键可以通过兼容逻辑安全迁移，因此应当本轮完成。相对地，view/container/publisher 这类标识要么直接关系到 VS Code 的视图贡献与恢复，要么关系到扩展身份，不具备低成本别名机制。本轮如果强行推进，只会把“命名统一”问题升级成“状态丢失”或“扩展身份变化”问题。
+这样做的直接代价是，旧命令脚本、旧设置键、旧 workspace 状态以及旧视图恢复不再自动延续；用户会经历一次明确的断点升级。但这也换来了更清晰的正式身份、更低的维护复杂度，以及不再被双命名和双视图 ID 长期拖累的后续迭代空间。
 
 ## 当前结论
 
-当前选定路线是方案 C。
+当前选定路线是方案 A。
 
 具体边界如下：
 
-- 正式命令 ID 迁移到 `devSessionCanvas.*`，旧 `opencove.*` 命令继续作为兼容别名注册。
-- 正式配置键迁移到 `devSessionCanvas.*`，旧 `opencove.*` 配置键继续兼容读取，但不再作为正式文档和设置示例出现。
-- workspace 状态新写入统一使用 `devSessionCanvas.*`，读取时继续回退兼容旧 `opencove.*` 键。
-- view/container/webview panel ID 与 `publisher` 暂不迁移，并明确登记为后续独立主题。
+- 正式命令 ID、配置键和 workspace 状态键统一收口到 `devSessionCanvas.*`。
+- 旧命名空间命令、旧配置键和旧状态键不再保留兼容逻辑。
+- view/container/webview panel ID 一并迁移到新的 `devSessionCanvas` 扩展身份。
+- 扩展 `publisher` 切换为新的正式标识。
 
 ## 验证方法
 
 - 运行 `npm run typecheck` 与 `npm run build`，确认命名空间迁移后类型和构建都正常。
-- 检查 `package.json`，确认正式命令贡献与正式配置键都已切换到 `devSessionCanvas.*`。
-- 检查 `src/extension.ts`、`src/panel/CanvasPanelManager.ts`、`src/sidebar/CanvasSidebarView.ts` 和 `src/panel/getWebviewHtml.ts`，确认旧命令和旧状态键仍有兼容入口。
-- 检查 README、CONTRIBUTING 和当前设计/活计划文档，确认对外示例已切换到新键名。
+- 检查 `package.json`，确认正式命令贡献、正式配置键、view/container/webview panel ID 与 `publisher` 都已切换。
+- 检查 `src/extension.ts`、`src/panel/CanvasPanelManager.ts`、`src/sidebar/CanvasSidebarView.ts` 和 `src/panel/getWebviewHtml.ts`，确认不再保留旧命名兼容入口。
+- 检查 README、CONTRIBUTING 和当前设计/活计划文档，确认对外示例已切换到当前正式命名。
 
 当前验证结果：
 

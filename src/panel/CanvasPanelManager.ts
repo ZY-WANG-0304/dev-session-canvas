@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 
 import {
   EXTENSION_DISPLAY_NAME,
-  LEGACY_STORAGE_KEYS,
   STORAGE_KEYS,
   VIEW_IDS
 } from '../common/extensionIdentity';
@@ -33,10 +32,10 @@ import {
   type ExecutionSessionExitEvent,
   type ExecutionSessionLaunchSpec,
   type ExecutionSessionProcess,
-  isIncompatibleNodePtyRuntimeError,
-  isMissingNodePtyDependencyError
-} from './executionSessionBridge';
-import { getCanonicalConfigurationValue } from './configurationCompatibility';
+    isIncompatibleNodePtyRuntimeError,
+    isMissingNodePtyDependencyError
+  } from './executionSessionBridge';
+import { getConfigurationValue } from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
 
 const DEFAULT_TERMINAL_COLS = 96;
@@ -110,7 +109,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
-    void this.migrateLegacyWorkspaceState();
     context.subscriptions.push(this.sidebarStateEmitter);
 
     context.subscriptions.push(
@@ -320,36 +318,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private getStoredValue<T>(primaryKey: string, legacyKey: string): T | undefined {
-    const primaryValue = this.context.workspaceState.get<T>(primaryKey);
-    if (primaryValue !== undefined) {
-      return primaryValue;
-    }
-
-    return this.context.workspaceState.get<T>(legacyKey);
-  }
-
-  private async migrateLegacyWorkspaceState(): Promise<void> {
-    await this.migrateLegacyWorkspaceStateEntry(STORAGE_KEYS.canvasState, LEGACY_STORAGE_KEYS.canvasState);
-    await this.migrateLegacyWorkspaceStateEntry(STORAGE_KEYS.canvasLastSurface, LEGACY_STORAGE_KEYS.canvasLastSurface);
-  }
-
-  private async migrateLegacyWorkspaceStateEntry(primaryKey: string, legacyKey: string): Promise<void> {
-    const primaryValue = this.context.workspaceState.get<unknown>(primaryKey);
-    if (primaryValue !== undefined) {
-      return;
-    }
-
-    const legacyValue = this.context.workspaceState.get<unknown>(legacyKey);
-    if (legacyValue === undefined) {
-      return;
-    }
-
-    await this.context.workspaceState.update(primaryKey, legacyValue);
+  private getStoredValue<T>(key: string): T | undefined {
+    return this.context.workspaceState.get<T>(key);
   }
 
   private loadState(): CanvasPrototypeState {
-    const rawState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState, LEGACY_STORAGE_KEYS.canvasState);
+    const rawState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
     return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
   }
 
@@ -388,13 +362,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getConfiguredSurface(): CanvasSurfaceLocation {
-    return getCanonicalConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'editor') === 'panel'
+    return getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'editor') === 'panel'
       ? 'panel'
       : 'editor';
   }
 
   private loadStoredSurface(): CanvasSurfaceLocation | undefined {
-    const storedSurface = this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface, LEGACY_STORAGE_KEYS.canvasLastSurface);
+    const storedSurface = this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface);
     if (storedSurface === 'editor' || storedSurface === 'panel') {
       return storedSurface;
     }
@@ -875,12 +849,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getAgentCliConfig(): AgentCliConfig {
-    const defaultProvider = getCanonicalConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
+    const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
 
     return {
       defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
-      codexCommand: getCanonicalConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex',
-      claudeCommand: getCanonicalConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude'
+      codexCommand: getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex',
+      claudeCommand: getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude'
     };
   }
 
@@ -906,7 +880,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getTerminalShellPath(): string {
-    const configuredPath = getCanonicalConfigurationValue<string>('terminalShellPath', '').trim();
+    const configuredPath = getConfigurationValue<string>('terminalShellPath', '').trim();
     if (configuredPath) {
       return configuredPath;
     }

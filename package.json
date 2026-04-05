@@ -3,15 +3,15 @@
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "version": "0.0.1",
-  "publisher": "opencove",
+  "publisher": "devsessioncanvas",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "ssh://git@10.79.10.70:1022/ziyang01.wang/opencove_extension.git"
+    "url": "ssh://git@10.79.10.70:1022/ziyang01.wang/dev-session-canvas.git"
   },
-  "homepage": "http://10.79.10.70:1080/ziyang01.wang/opencove_extension",
+  "homepage": "http://10.79.10.70:1080/ziyang01.wang/dev-session-canvas",
   "bugs": {
-    "url": "http://10.79.10.70:1080/ziyang01.wang/opencove_extension/-/issues"
+    "url": "http://10.79.10.70:1080/ziyang01.wang/dev-session-canvas/-/issues"
   },
   "preview": true,
   "engines": {
@@ -47,14 +47,9 @@
     "onCommand:devSessionCanvas.openCanvasInPanel",
     "onCommand:devSessionCanvas.createNode",
     "onCommand:devSessionCanvas.resetCanvasState",
-    "onCommand:opencove.openCanvas",
-    "onCommand:opencove.openCanvasInEditor",
-    "onCommand:opencove.openCanvasInPanel",
-    "onCommand:opencove.createNode",
-    "onCommand:opencove.resetCanvasState",
-    "onView:opencove.sidebar",
-    "onView:opencove.canvasPanel",
-    "onWebviewPanel:opencove.canvas"
+    "onView:devSessionCanvas.sidebar",
+    "onView:devSessionCanvas.canvasPanel",
+    "onWebviewPanel:devSessionCanvas.canvas"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -64,11 +59,7 @@
         "devSessionCanvas.agent.defaultProvider",
         "devSessionCanvas.agent.codexCommand",
         "devSessionCanvas.agent.claudeCommand",
-        "devSessionCanvas.terminal.shellPath",
-        "opencove.agent.defaultProvider",
-        "opencove.agent.codexCommand",
-        "opencove.agent.claudeCommand",
-        "opencove.terminal.shellPath"
+        "devSessionCanvas.terminal.shellPath"
       ]
     },
     "virtualWorkspaces": {
@@ -81,30 +72,30 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "opencove",
+          "id": "devSessionCanvas",
           "title": "%viewsContainer.canvas.title%",
           "icon": "images/dev-session-canvas-activitybar.svg"
         }
       ],
       "panel": [
         {
-          "id": "opencoveCanvasPanel",
+          "id": "devSessionCanvasPanel",
           "title": "%viewsContainer.canvasPanel.title%",
           "icon": "images/dev-session-canvas-activitybar.svg"
         }
       ]
     },
     "views": {
-      "opencove": [
+      "devSessionCanvas": [
         {
-          "id": "opencove.sidebar",
+          "id": "devSessionCanvas.sidebar",
           "name": "%view.canvas.sidebar.title%"
         }
       ],
-      "opencoveCanvasPanel": [
+      "devSessionCanvasPanel": [
         {
           "type": "webview",
-          "id": "opencove.canvasPanel",
+          "id": "devSessionCanvas.canvasPanel",
           "name": "%view.canvas.panel.title%"
         }
       ]

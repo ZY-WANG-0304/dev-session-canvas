@@ -39,9 +39,9 @@
 
 - 正式产品名：`DevSessionCanvas`
 - VS Code 扩展显示名：`Dev Session Canvas`
-- 当前正式命令 ID、配置命名空间与持久化键已收口到 `devSessionCanvas.*`。
-- 旧 `opencove.*` 命令、配置键与状态键当前仍保留兼容读取。
-- 内部 view/container ID 与 `publisher` 仍暂保留旧值，以兼容 VS Code 宿主恢复与现有扩展身份。
+- 命令 ID、配置命名空间、持久化键与 view/container ID 已统一到 `devSessionCanvas.*` 及对应新扩展身份。
+- 当前不再保留旧命名空间命令、旧配置键、旧状态键或旧视图 ID 的兼容读取。
+- 当前扩展 `publisher` 已切换为 `devsessioncanvas`。
 
 ## 发布准备状态
 
@@ -69,7 +69,7 @@ npm run package:vsix
 
 注意：
 
-- 仓库已把 `vsce` 作为本地开发依赖纳入，不要求额外全局安装。
+- 仓库已把 VSIX 打包逻辑收口到 `scripts/package-vsix.mjs`，不要求额外全局安装 `vsce`。
 - 在干净 checkout 中，先执行一次 `npm install`，再执行 `npm run package:vsix`。
 
 生成 `.vsix` 后，可通过以下任一方式安装：

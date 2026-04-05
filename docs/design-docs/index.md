@@ -23,7 +23,8 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/dev-session-canvas-namespace-migration.md` | 正式产品名落定后，命令、配置与持久化键向 `devSessionCanvas.*` 收口的迁移边界与兼容策略 | VSCode 集成域、项目状态域 / 宿主集成层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/dev-session-canvas-namespace-migration.md` | 2026-04-05 |
+| `docs/design-docs/dev-session-canvas-namespace-migration.md` | 正式产品名落定后，将命令、配置、持久化键与扩展身份统一到 `DevSessionCanvas` 的迁移方案 | VSCode 集成域、项目状态域 / 宿主集成层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/dev-session-canvas-namespace-migration.md` | 2026-04-06 |
+| `docs/design-docs/extension-icon-candidates.md` | 主扩展 icon 与 activity bar icon 的最终资产收口、PNG 同步与历史草稿清理 | VSCode 集成域、画布交互域 / 宿主集成层、画布呈现层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md` | 2026-04-06 |
 | `docs/design-docs/canvas-sidebar-controls.md` | 画布外层控件迁出画布并以 VSCode 极简侧栏承载的候选路线与取舍 | VSCode 集成域、画布交互域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/product-specs/canvas-sidebar-controls.md`、`docs/exec-plans/active/canvas-sidebar-controls-design.md` | 2026-03-31 |
 | `docs/design-docs/canvas-feedback-polish.md` | 画布空状态、辅助面板密度与新增节点摆放规则 | 画布交互域、协作对象域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/canvas-feedback-polish.md` | 2026-03-31 |
 | `docs/design-docs/canvas-surface-placement.md` | 主画布从固定编辑区升级为 `editor/panel` 可配置宿主承载面的产品语义、宿主边界与单主 surface 取舍 | VSCode 集成域、画布交互域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/canvas-surface-configurable-host.md` | 2026-04-05 |
