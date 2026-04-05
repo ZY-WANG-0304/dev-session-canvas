@@ -52,7 +52,7 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
   return [
     {
       id: 'action-open-canvas',
-      label: state.canvasSurface === 'visible' ? '定位画布' : '打开画布',
+      label: state.canvasSurface === 'closed' ? '打开画布' : '定位画布',
       description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
       tooltip:
         state.canvasSurface === 'visible'
@@ -60,10 +60,7 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
           : state.canvasSurface === 'hidden'
             ? `OpenCove 画布当前位于${humanizeSurfaceLocation(state.surfaceLocation)}，但不在前台。`
             : `当前还没有在${humanizeSurfaceLocation(state.surfaceLocation)}打开 OpenCove 画布。`,
-      command: {
-        command: 'opencove.openCanvas',
-        title: 'OpenCove: 打开画布'
-      },
+      command: getOpenCanvasCommand(state),
       icon: new vscode.ThemeIcon('layout')
     },
     {
@@ -153,6 +150,27 @@ function describeSurfaceState(
 
 function humanizeSurfaceLocation(location: CanvasSidebarState['surfaceLocation']): string {
   return location === 'panel' ? '面板' : '编辑区';
+}
+
+function getOpenCanvasCommand(state: CanvasSidebarState): vscode.Command {
+  if (state.canvasSurface === 'closed') {
+    return {
+      command: 'opencove.openCanvas',
+      title: 'OpenCove: 打开画布'
+    };
+  }
+
+  if (state.surfaceLocation === 'panel') {
+    return {
+      command: 'opencove.openCanvasInPanel',
+      title: 'OpenCove: 在面板打开画布'
+    };
+  }
+
+  return {
+    command: 'opencove.openCanvasInEditor',
+    title: 'OpenCove: 在编辑区打开画布'
+  };
 }
 
 function describeCreatableKinds(kinds: CanvasNodeKind[]): string {
