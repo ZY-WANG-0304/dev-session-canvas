@@ -15,6 +15,7 @@ import {
   type TaskNodeMetadata,
   type TaskNodeStatus,
   type TerminalNodeMetadata,
+  type WebviewToHostMessage,
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
   isExecutionNodeKind,
@@ -38,6 +39,7 @@ const NODE_PLACEMENT_PADDING = 40;
 const NODE_PLACEMENT_STEP_X = 120;
 const NODE_PLACEMENT_STEP_Y = 96;
 const NODE_PLACEMENT_SEARCH_RADIUS = 8;
+const CANVAS_SURFACE_STORAGE_KEY = 'opencove.canvas.lastSurface';
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
@@ -66,20 +68,33 @@ interface EmbeddedExecutionSession {
   exitSubscription: DisposableLike | undefined;
 }
 
+export type CanvasSurfaceLocation = 'editor' | 'panel';
+type CanvasSurfaceMode = 'active' | 'standby';
+
 export interface CanvasSidebarState {
   canvasSurface: 'closed' | 'hidden' | 'visible';
+  surfaceLocation: CanvasSurfaceLocation;
+  configuredSurface: CanvasSurfaceLocation;
   nodeCount: number;
   runningExecutionCount: number;
   workspaceTrusted: boolean;
   creatableKinds: CanvasNodeKind[];
 }
 
-export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
+export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = 'opencove.canvas';
+  public static readonly panelViewType = 'opencove.canvasPanel';
+  public static readonly panelContainerId = 'opencoveCanvasPanel';
 
-  private panel: vscode.WebviewPanel | undefined;
+  private editorPanel: vscode.WebviewPanel | undefined;
+  private panelView: vscode.WebviewView | undefined;
   private state: CanvasPrototypeState;
-  private webviewReady = false;
+  private activeSurface: CanvasSurfaceLocation | undefined;
+  private readonly surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>> = {};
+  private readonly surfaceReady: Record<CanvasSurfaceLocation, boolean> = {
+    editor: false,
+    panel: false
+  };
   private readonly agentSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
@@ -88,6 +103,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.activeSurface = this.loadStoredSurface();
     this.persistState();
     context.subscriptions.push(this.sidebarStateEmitter);
 
@@ -98,25 +114,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     );
   }
 
-  public async revealOrCreate(): Promise<void> {
-    if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.One);
-      return;
-    }
+  public async revealOrCreate(surface: CanvasSurfaceLocation = this.getConfiguredSurface()): Promise<void> {
+    await this.revealSurface(surface);
+  }
 
-    const panel = vscode.window.createWebviewPanel(
-      CanvasPanelManager.viewType,
-      'OpenCove Canvas',
-      vscode.ViewColumn.One,
-      this.getWebviewOptions()
-    );
+  public async revealInEditor(): Promise<void> {
+    await this.revealSurface('editor');
+  }
 
-    this.attachPanel(panel);
+  public async revealInPanel(): Promise<void> {
+    await this.revealSurface('panel');
   }
 
   public getSidebarState(): CanvasSidebarState {
+    const configuredSurface = this.getConfiguredSurface();
+    const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
+    const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
+
     return {
-      canvasSurface: this.panel ? (this.panel.visible ? 'visible' : 'hidden') : 'closed',
+      canvasSurface,
+      surfaceLocation,
+      configuredSurface,
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
@@ -127,11 +145,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   public createNode(kind: CanvasNodeKind): void {
-    if (
-      this.panel &&
-      this.panel.visible &&
-      this.webviewReady
-    ) {
+    if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
         payload: {
@@ -158,20 +172,67 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   ): Promise<void> {
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.persistState();
-    this.attachPanel(webviewPanel);
+    this.attachEditorPanel(webviewPanel);
   }
 
-  private attachPanel(panel: vscode.WebviewPanel): void {
-    this.panel = panel;
-    this.webviewReady = false;
+  public resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.attachPanelView(webviewView);
+  }
+
+  private async revealSurface(surface: CanvasSurfaceLocation): Promise<void> {
+    this.activeSurface = surface;
+    this.persistActiveSurface();
+
+    if (surface === 'editor') {
+      this.renderStandbySurface('panel');
+
+      if (this.editorPanel) {
+        this.ensureActiveSurfaceRendered('editor');
+        this.editorPanel.reveal(vscode.ViewColumn.One);
+        this.notifySidebarStateChanged();
+        return;
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        CanvasPanelManager.viewType,
+        'OpenCove Canvas',
+        vscode.ViewColumn.One,
+        this.getWebviewOptions()
+      );
+      this.attachEditorPanel(panel);
+      this.ensureActiveSurfaceRendered('editor');
+      this.notifySidebarStateChanged();
+      return;
+    }
+
+    if (this.editorPanel) {
+      this.editorPanel.dispose();
+    }
+
+    if (this.panelView) {
+      this.ensureActiveSurfaceRendered('panel');
+      this.panelView.show(false);
+      this.notifySidebarStateChanged();
+      return;
+    }
+
+    await this.revealPanelView();
+    this.notifySidebarStateChanged();
+  }
+
+  private attachEditorPanel(panel: vscode.WebviewPanel): void {
+    this.editorPanel = panel;
+    this.surfaceMode.editor = undefined;
+    this.surfaceReady.editor = false;
+    this.claimSurfaceIfNeeded('editor');
     panel.webview.options = this.getWebviewOptions();
-    panel.webview.html = getWebviewHtml(panel.webview, this.context.extensionUri);
 
     panel.onDidDispose(
       () => {
-        if (this.panel === panel) {
-          this.panel = undefined;
-          this.webviewReady = false;
+        if (this.editorPanel === panel) {
+          this.editorPanel = undefined;
+          this.surfaceMode.editor = undefined;
+          this.surfaceReady.editor = false;
           this.notifySidebarStateChanged();
         }
       },
@@ -188,90 +249,59 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     );
 
     panel.webview.onDidReceiveMessage(
-      (message) => {
-        const parsedMessage = parseWebviewMessage(message);
-        if (!parsedMessage) {
-          this.postMessage({
-            type: 'host/error',
-            payload: {
-              message: '收到无法识别的消息，已忽略。'
-            }
-          });
-          return;
-        }
+      (message) => this.handleWebviewMessage('editor', message),
+      null,
+      this.context.subscriptions
+    );
 
-        switch (parsedMessage.type) {
-          case 'webview/ready':
-            this.webviewReady = true;
-            this.postState('host/bootstrap');
-            break;
-          case 'webview/createDemoNode':
-            this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition);
-            break;
-          case 'webview/moveNode':
-            this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
-            this.persistState();
-            this.postState('host/stateUpdated');
-            break;
-          case 'webview/deleteNode':
-            this.deleteNode(parsedMessage.payload.nodeId);
-            break;
-          case 'webview/startExecutionSession':
-            if (parsedMessage.payload.kind === 'agent') {
-              void this.startAgentSession(
-                parsedMessage.payload.nodeId,
-                parsedMessage.payload.cols,
-                parsedMessage.payload.rows,
-                parsedMessage.payload.provider
-              );
-              break;
-            }
+    if (this.activeSurface === 'editor') {
+      this.ensureActiveSurfaceRendered('editor');
+    } else {
+      this.renderStandbySurface('editor');
+    }
 
-            void this.startTerminalSession(
-              parsedMessage.payload.nodeId,
-              parsedMessage.payload.cols,
-              parsedMessage.payload.rows
-            );
-            break;
-          case 'webview/attachExecutionSession':
-            this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
-            break;
-          case 'webview/executionInput':
-            this.writeExecutionInput(
-              parsedMessage.payload.kind,
-              parsedMessage.payload.nodeId,
-              parsedMessage.payload.data
-            );
-            break;
-          case 'webview/resizeExecutionSession':
-            this.resizeExecutionSession(
-              parsedMessage.payload.kind,
-              parsedMessage.payload.nodeId,
-              parsedMessage.payload.cols,
-              parsedMessage.payload.rows
-            );
-            break;
-          case 'webview/stopExecutionSession':
-            void this.stopExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
-            break;
-          case 'webview/updateTaskNode':
-            this.state = updateTaskContent(this.state, parsedMessage.payload);
-            this.persistState();
-            this.postState('host/stateUpdated');
-            break;
-          case 'webview/updateNoteNode':
-            this.state = updateNoteContent(this.state, parsedMessage.payload);
-            this.persistState();
-            this.postState('host/stateUpdated');
-            break;
-          case 'webview/resetDemoState':
-            this.resetState();
-            break;
+    this.notifySidebarStateChanged();
+  }
+
+  private attachPanelView(webviewView: vscode.WebviewView): void {
+    this.panelView = webviewView;
+    this.surfaceMode.panel = undefined;
+    this.surfaceReady.panel = false;
+    this.claimSurfaceIfNeeded('panel');
+    webviewView.webview.options = this.getWebviewOptions();
+
+    webviewView.onDidDispose(
+      () => {
+        if (this.panelView === webviewView) {
+          this.panelView = undefined;
+          this.surfaceMode.panel = undefined;
+          this.surfaceReady.panel = false;
+          this.notifySidebarStateChanged();
         }
       },
       null,
       this.context.subscriptions
     );
+
+    webviewView.onDidChangeVisibility(
+      () => {
+        this.notifySidebarStateChanged();
+      },
+      null,
+      this.context.subscriptions
+    );
+
+    webviewView.webview.onDidReceiveMessage(
+      (message) => this.handleWebviewMessage('panel', message),
+      null,
+      this.context.subscriptions
+    );
+
+    if (this.activeSurface === 'panel') {
+      this.ensureActiveSurfaceRendered('panel');
+    } else {
+      this.renderStandbySurface('panel');
+    }
 
     this.notifySidebarStateChanged();
   }
@@ -279,6 +309,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   private getWebviewOptions(): vscode.WebviewOptions & vscode.WebviewPanelOptions {
     return {
       enableScripts: true,
+      enableCommandUris: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')]
     };
   }
@@ -304,7 +335,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
   }
 
   private postMessage(message: HostToWebviewMessage): void {
-    void this.panel?.webview.postMessage(message);
+    const activeWebview = this.getActiveWebview();
+    if (!activeWebview) {
+      return;
+    }
+
+    void activeWebview.postMessage(message);
   }
 
   private notifySidebarStateChanged(): void {
@@ -315,6 +351,255 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer {
     return {
       workspaceTrusted: vscode.workspace.isTrusted
     };
+  }
+
+  private getConfiguredSurface(): CanvasSurfaceLocation {
+    const configuration = vscode.workspace.getConfiguration('opencove.canvas');
+    return configuration.get<CanvasSurfaceLocation>('defaultSurface', 'editor') === 'panel' ? 'panel' : 'editor';
+  }
+
+  private loadStoredSurface(): CanvasSurfaceLocation | undefined {
+    const storedSurface = this.context.workspaceState.get<string>(CANVAS_SURFACE_STORAGE_KEY);
+    if (storedSurface === 'editor' || storedSurface === 'panel') {
+      return storedSurface;
+    }
+
+    return undefined;
+  }
+
+  private persistActiveSurface(): void {
+    if (!this.activeSurface) {
+      return;
+    }
+
+    void this.context.workspaceState.update(CANVAS_SURFACE_STORAGE_KEY, this.activeSurface);
+  }
+
+  private claimSurfaceIfNeeded(surface: CanvasSurfaceLocation): void {
+    if (!this.activeSurface || this.getSurfaceVisibility(this.activeSurface) === 'closed') {
+      this.activeSurface = surface;
+      this.persistActiveSurface();
+    }
+  }
+
+  private getSurfaceWebview(surface: CanvasSurfaceLocation): vscode.Webview | undefined {
+    return surface === 'editor' ? this.editorPanel?.webview : this.panelView?.webview;
+  }
+
+  private getSurfaceVisibility(surface: CanvasSurfaceLocation): CanvasSidebarState['canvasSurface'] {
+    if (surface === 'editor') {
+      if (!this.editorPanel) {
+        return 'closed';
+      }
+
+      return this.editorPanel.visible ? 'visible' : 'hidden';
+    }
+
+    if (!this.panelView) {
+      return 'closed';
+    }
+
+    return this.panelView.visible ? 'visible' : 'hidden';
+  }
+
+  private ensureActiveSurfaceRendered(surface: CanvasSurfaceLocation): void {
+    const webview = this.getSurfaceWebview(surface);
+    if (!webview) {
+      return;
+    }
+
+    if (this.surfaceMode[surface] === 'active') {
+      return;
+    }
+
+    this.surfaceMode[surface] = 'active';
+    this.surfaceReady[surface] = false;
+    webview.options = this.getWebviewOptions();
+    webview.html = getWebviewHtml(webview, this.context.extensionUri, {
+      mode: 'active',
+      surface
+    });
+  }
+
+  private renderStandbySurface(surface: CanvasSurfaceLocation): void {
+    if (!this.activeSurface || this.activeSurface === surface) {
+      return;
+    }
+
+    const webview = this.getSurfaceWebview(surface);
+    if (!webview) {
+      return;
+    }
+
+    this.surfaceMode[surface] = 'standby';
+    this.surfaceReady[surface] = false;
+    webview.options = this.getWebviewOptions();
+    webview.html = getWebviewHtml(webview, this.context.extensionUri, {
+      mode: 'standby',
+      surface,
+      activeSurface: this.activeSurface
+    });
+  }
+
+  private isInteractiveSurface(surface: CanvasSurfaceLocation): boolean {
+    return this.activeSurface === surface && this.surfaceMode[surface] === 'active';
+  }
+
+  private isInteractiveSurfaceReady(): boolean {
+    if (!this.activeSurface) {
+      return false;
+    }
+
+    return (
+      this.isInteractiveSurface(this.activeSurface) &&
+      this.getSurfaceVisibility(this.activeSurface) === 'visible' &&
+      this.surfaceReady[this.activeSurface]
+    );
+  }
+
+  private getActiveWebview(): vscode.Webview | undefined {
+    if (!this.activeSurface || !this.isInteractiveSurface(this.activeSurface)) {
+      return undefined;
+    }
+
+    return this.getSurfaceWebview(this.activeSurface);
+  }
+
+  private async revealPanelView(): Promise<void> {
+    if (this.panelView) {
+      this.panelView.show(false);
+      return;
+    }
+
+    const candidateCommands = [
+      `${CanvasPanelManager.panelViewType}.open`,
+      `${CanvasPanelManager.panelViewType}.focus`,
+      `workbench.view.extension.${CanvasPanelManager.panelContainerId}`
+    ];
+
+    for (const command of candidateCommands) {
+      try {
+        await vscode.commands.executeCommand(command);
+        return;
+      } catch {
+        continue;
+      }
+    }
+
+    try {
+      await vscode.commands.executeCommand('workbench.action.openPanel');
+    } catch {
+      // Ignore and fall through to the explicit hint below.
+    }
+
+    void vscode.window.showInformationMessage('请从 Panel 中打开 OpenCove Canvas 视图。');
+  }
+
+  private handleWebviewMessage(surface: CanvasSurfaceLocation, message: unknown): void {
+    const parsedMessage = parseWebviewMessage(message);
+    if (!parsedMessage) {
+      if (this.isInteractiveSurface(surface)) {
+        this.postMessageToSurface(surface, {
+          type: 'host/error',
+          payload: {
+            message: '收到无法识别的消息，已忽略。'
+          }
+        });
+      }
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/ready') {
+      this.surfaceReady[surface] = true;
+      if (this.isInteractiveSurface(surface)) {
+        this.postState('host/bootstrap');
+      }
+      return;
+    }
+
+    if (!this.isInteractiveSurface(surface)) {
+      return;
+    }
+
+    this.handleActiveWebviewMessage(parsedMessage);
+  }
+
+  private handleActiveWebviewMessage(parsedMessage: WebviewToHostMessage): void {
+    switch (parsedMessage.type) {
+      case 'webview/ready':
+        return;
+      case 'webview/createDemoNode':
+        this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition);
+        return;
+      case 'webview/moveNode':
+        this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/deleteNode':
+        this.deleteNode(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/startExecutionSession':
+        if (parsedMessage.payload.kind === 'agent') {
+          void this.startAgentSession(
+            parsedMessage.payload.nodeId,
+            parsedMessage.payload.cols,
+            parsedMessage.payload.rows,
+            parsedMessage.payload.provider
+          );
+          return;
+        }
+
+        void this.startTerminalSession(
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.cols,
+          parsedMessage.payload.rows
+        );
+        return;
+      case 'webview/attachExecutionSession':
+        this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
+        return;
+      case 'webview/executionInput':
+        this.writeExecutionInput(
+          parsedMessage.payload.kind,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.data
+        );
+        return;
+      case 'webview/resizeExecutionSession':
+        this.resizeExecutionSession(
+          parsedMessage.payload.kind,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.cols,
+          parsedMessage.payload.rows
+        );
+        return;
+      case 'webview/stopExecutionSession':
+        void this.stopExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
+        return;
+      case 'webview/updateTaskNode':
+        this.state = updateTaskContent(this.state, parsedMessage.payload);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/updateNoteNode':
+        this.state = updateNoteContent(this.state, parsedMessage.payload);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/resetDemoState':
+        this.resetState();
+        return;
+    }
+  }
+
+  private postMessageToSurface(surface: CanvasSurfaceLocation, message: HostToWebviewMessage): void {
+    const webview = this.getSurfaceWebview(surface);
+    if (!webview) {
+      return;
+    }
+
+    void webview.postMessage(message);
   }
 
   private assertExecutionAllowed(errorMessage: string): boolean {

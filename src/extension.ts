@@ -20,6 +20,18 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('opencove.openCanvasInEditor', async () => {
+      await panelManager.revealInEditor();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('opencove.openCanvasInPanel', async () => {
+      await panelManager.revealInPanel();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('opencove.createNode', async () => {
       const targetKind = await promptCreateNodeKind(panelManager.getSidebarState().creatableKinds);
       if (!targetKind) {
@@ -47,6 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager),
     vscode.window.registerWebviewPanelSerializer(CanvasPanelManager.viewType, panelManager)
   );
 }

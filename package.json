@@ -43,9 +43,12 @@
   ],
   "activationEvents": [
     "onCommand:opencove.openCanvas",
+    "onCommand:opencove.openCanvasInEditor",
+    "onCommand:opencove.openCanvasInPanel",
     "onCommand:opencove.createNode",
     "onCommand:opencove.resetCanvasState",
     "onView:opencove.sidebar",
+    "onView:opencove.canvasPanel",
     "onWebviewPanel:opencove.canvas"
   ],
   "capabilities": {
@@ -73,6 +76,13 @@
           "title": "%viewsContainer.opencove.title%",
           "icon": "images/opencove-activitybar.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "opencoveCanvasPanel",
+          "title": "%viewsContainer.opencovePanel.title%",
+          "icon": "images/opencove-activitybar.svg"
+        }
       ]
     },
     "views": {
@@ -81,12 +91,27 @@
           "id": "opencove.sidebar",
           "name": "%view.opencove.sidebar.title%"
         }
+      ],
+      "opencoveCanvasPanel": [
+        {
+          "type": "webview",
+          "id": "opencove.canvasPanel",
+          "name": "%view.opencove.canvasPanel.title%"
+        }
       ]
     },
     "commands": [
       {
         "command": "opencove.openCanvas",
         "title": "%command.openCanvas.title%"
+      },
+      {
+        "command": "opencove.openCanvasInEditor",
+        "title": "%command.openCanvasInEditor.title%"
+      },
+      {
+        "command": "opencove.openCanvasInPanel",
+        "title": "%command.openCanvasInPanel.title%"
       },
       {
         "command": "opencove.createNode",
@@ -100,6 +125,16 @@
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
+        "opencove.canvas.defaultSurface": {
+          "type": "string",
+          "enum": [
+            "editor",
+            "panel"
+          ],
+          "default": "editor",
+          "scope": "window",
+          "markdownDescription": "%configuration.canvas.defaultSurface.description%"
+        },
         "opencove.agent.defaultProvider": {
           "type": "string",
           "enum": [
