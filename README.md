@@ -24,7 +24,7 @@
 - 顶层架构与技术路线研究文档
 - 以 MVP 范围为基线的正式产品规格
 - 一个可构建并可持续迭代的 VSCode 扩展基线，包含：
-  - `opencove.openCanvas` / `opencove.openCanvasInEditor` / `opencove.openCanvasInPanel` 命令
+  - `devSessionCanvas.openCanvas` / `devSessionCanvas.openCanvasInEditor` / `devSessionCanvas.openCanvasInPanel` 命令
   - `editor/panel` 可配置主画布承载面
   - `WebviewPanel` 主画布入口
   - typed message bridge
@@ -39,7 +39,9 @@
 
 - 正式产品名：`DevSessionCanvas`
 - VS Code 扩展显示名：`Dev Session Canvas`
-- 当前内部命令 ID、view ID 与配置命名空间暂仍保留 `opencove.*`，以兼容已有状态与脚本。
+- 当前正式命令 ID、配置命名空间与持久化键已收口到 `devSessionCanvas.*`。
+- 旧 `opencove.*` 命令、配置键与状态键当前仍保留兼容读取。
+- 内部 view/container ID 与 `publisher` 仍暂保留旧值，以兼容 VS Code 宿主恢复与现有扩展身份。
 
 ## 发布准备状态
 

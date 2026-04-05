@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 
+import { COMMAND_IDS, EXTENSION_DISPLAY_NAME } from '../common/extensionIdentity';
+
 type CanvasSurfaceLocation = 'editor' | 'panel';
 
 interface CanvasWebviewHtmlOptions {
@@ -35,7 +37,7 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
       content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dev Session Canvas</title>
+    <title>${EXTENSION_DISPLAY_NAME}</title>
     <link rel="stylesheet" href="${styleUri}" />
     <style>
       :root {
@@ -147,22 +149,25 @@ function buildActiveHtml(shell: string, scriptUri: vscode.Uri, nonce: string): s
 }
 
 function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions): string {
-  const targetCommand = options.surface === 'editor' ? 'command:opencove.openCanvasInEditor' : 'command:opencove.openCanvasInPanel';
+  const targetCommand =
+    options.surface === 'editor'
+      ? `command:${COMMAND_IDS.openCanvasInEditor}`
+      : `command:${COMMAND_IDS.openCanvasInPanel}`;
   const activeSurface = options.activeSurface ? humanizeSurfaceLocation(options.activeSurface) : '另一个宿主承载面';
 
   return `${shell}
   <body>
     <div class="surface-standby">
       <div class="surface-standby-card">
-        <p class="surface-standby-eyebrow">Dev Session Canvas</p>
+        <p class="surface-standby-eyebrow">${EXTENSION_DISPLAY_NAME}</p>
         <h1>当前主画布正在${activeSurface}中运行</h1>
         <p>
-          DevSessionCanvas 当前采用单主 surface 模型。为了避免同一个 Agent 或 Terminal 会话被两个宿主区域重复附着，
+          ${EXTENSION_DISPLAY_NAME} 当前采用单主 surface 模型。为了避免同一个 Agent 或 Terminal 会话被两个宿主区域重复附着，
           这里仅保留切换入口，不再渲染第二个可交互画布。
         </p>
         <div class="surface-standby-actions">
           <a class="surface-standby-link" href="${targetCommand}">切换到${humanizeSurfaceLocation(options.surface)}</a>
-          <a class="surface-standby-link is-secondary" href="command:opencove.openCanvas">按默认位置打开</a>
+          <a class="surface-standby-link is-secondary" href="command:${COMMAND_IDS.openCanvas}">按默认位置打开</a>
         </div>
       </div>
     </div>

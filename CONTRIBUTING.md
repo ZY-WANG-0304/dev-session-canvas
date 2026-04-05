@@ -45,8 +45,9 @@ npm run package:vsix
 如果要验证 `Agent` 节点的真实运行链路，还需要满足以下条件：
 
 - `codex` 或 `claude` 至少有一个可从 Extension Host 解析到
-- 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置 `opencove.agent.codexCommand` 或 `opencove.agent.claudeCommand`
-- 如果要让主画布默认出现在 VSCode Panel，而不是编辑区，可在设置中配置 `opencove.canvas.defaultSurface = panel`
+- 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置 `devSessionCanvas.agent.codexCommand` 或 `devSessionCanvas.agent.claudeCommand`
+- 如果要让主画布默认出现在 VSCode Panel，而不是编辑区，可在设置中配置 `devSessionCanvas.canvas.defaultSurface = panel`
+- 如果本机或旧 workspace 中仍保留 `opencove.*` 设置，当前版本仍兼容读取，但新文档与新配置入口都以 `devSessionCanvas.*` 为准。
 
 ## 本地调试
 
@@ -75,7 +76,7 @@ npm run package:vsix
    - `Dev Session Canvas: 在编辑区打开画布`
    - `Dev Session Canvas: 在面板打开画布`
 
-默认情况下，`Dev Session Canvas: 打开画布` 会按 `opencove.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
+默认情况下，`Dev Session Canvas: 打开画布` 会按 `devSessionCanvas.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
 
 ## 建议验证路径
 

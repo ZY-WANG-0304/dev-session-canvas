@@ -165,7 +165,7 @@
     只保留最小必要的按钮和信息，以极简的风格作成 VSCode 左侧的 SideBar”
 
     第一版实现：
-    package.json 中新增 Activity Bar 容器与 opencove.sidebar 视图
+    package.json 中新增 Activity Bar 容器与 `opencove.sidebar` 视图
     src/sidebar/CanvasSidebarView.ts 中新增原生 TreeView
     src/webview/main.tsx 中删除 Panel position="top-left" 与 Panel position="top-right"
 
@@ -179,7 +179,7 @@
 
 - `package.json` 中的 `contributes.viewsContainers.activitybar` 与 `contributes.views`
 - `vscode.window.createTreeView(...)` 或等价的原生 View Provider 路径
-- 现有 `opencove.openCanvas` 命令，以及后续可能新增的 `createNode` / `resetState` 命令
+- 现有 `devSessionCanvas.openCanvas` 正式命令，以及保留兼容的旧 `opencove.openCanvas` 别名
 - `src/panel/CanvasPanelManager.ts` 暴露给侧栏的宿主权威状态摘要，例如节点数、运行中执行单元数与 workspace trust 状态
 
 当前仍保持“不引入第二个大型 React 前端来复制侧栏”的边界。如果后续人工验证证明原生 View 路线确实不能满足需求，再把 `WebviewView` 作为升级方案写回设计文档。

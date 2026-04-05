@@ -139,7 +139,7 @@ updated_at: 2026-04-05
 
 ### 7.2 默认按配置打开主画布
 
-- 新增配置项 `opencove.canvas.defaultSurface`，枚举值为 `editor | panel`。
+- 新增配置项 `devSessionCanvas.canvas.defaultSurface`，枚举值为 `editor | panel`。
 - `Dev Session Canvas: 打开画布` 按该配置决定默认打开位置。
 - 同时保留显式命令，使用户可以直接在编辑区或 Panel 中打开主画布，而不必每次先改设置。
 

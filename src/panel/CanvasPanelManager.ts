@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 
 import {
+  EXTENSION_DISPLAY_NAME,
+  LEGACY_STORAGE_KEYS,
+  STORAGE_KEYS,
+  VIEW_IDS
+} from '../common/extensionIdentity';
+import {
   type AgentNodeMetadata,
   type AgentProviderKind,
   type CanvasNodeKind,
@@ -30,16 +36,15 @@ import {
   isIncompatibleNodePtyRuntimeError,
   isMissingNodePtyDependencyError
 } from './executionSessionBridge';
+import { getCanonicalConfigurationValue } from './configurationCompatibility';
 import { getWebviewHtml } from './getWebviewHtml';
 
-const CANVAS_STATE_STORAGE_KEY = 'opencove.canvas.prototypeState';
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
 const NODE_PLACEMENT_PADDING = 40;
 const NODE_PLACEMENT_STEP_X = 120;
 const NODE_PLACEMENT_STEP_Y = 96;
 const NODE_PLACEMENT_SEARCH_RADIUS = 8;
-const CANVAS_SURFACE_STORAGE_KEY = 'opencove.canvas.lastSurface';
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
@@ -82,9 +87,9 @@ export interface CanvasSidebarState {
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
-  public static readonly viewType = 'opencove.canvas';
-  public static readonly panelViewType = 'opencove.canvasPanel';
-  public static readonly panelContainerId = 'opencoveCanvasPanel';
+  public static readonly viewType = VIEW_IDS.editorWebviewPanel;
+  public static readonly panelViewType = VIEW_IDS.panelWebviewView;
+  public static readonly panelContainerId = VIEW_IDS.panelContainer;
 
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
@@ -105,6 +110,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
+    void this.migrateLegacyWorkspaceState();
     context.subscriptions.push(this.sidebarStateEmitter);
 
     context.subscriptions.push(
@@ -195,7 +201,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       const panel = vscode.window.createWebviewPanel(
         CanvasPanelManager.viewType,
-        'Dev Session Canvas',
+        EXTENSION_DISPLAY_NAME,
         vscode.ViewColumn.One,
         this.getWebviewOptions()
       );
@@ -314,13 +320,41 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private getStoredValue<T>(primaryKey: string, legacyKey: string): T | undefined {
+    const primaryValue = this.context.workspaceState.get<T>(primaryKey);
+    if (primaryValue !== undefined) {
+      return primaryValue;
+    }
+
+    return this.context.workspaceState.get<T>(legacyKey);
+  }
+
+  private async migrateLegacyWorkspaceState(): Promise<void> {
+    await this.migrateLegacyWorkspaceStateEntry(STORAGE_KEYS.canvasState, LEGACY_STORAGE_KEYS.canvasState);
+    await this.migrateLegacyWorkspaceStateEntry(STORAGE_KEYS.canvasLastSurface, LEGACY_STORAGE_KEYS.canvasLastSurface);
+  }
+
+  private async migrateLegacyWorkspaceStateEntry(primaryKey: string, legacyKey: string): Promise<void> {
+    const primaryValue = this.context.workspaceState.get<unknown>(primaryKey);
+    if (primaryValue !== undefined) {
+      return;
+    }
+
+    const legacyValue = this.context.workspaceState.get<unknown>(legacyKey);
+    if (legacyValue === undefined) {
+      return;
+    }
+
+    await this.context.workspaceState.update(primaryKey, legacyValue);
+  }
+
   private loadState(): CanvasPrototypeState {
-    const rawState = this.context.workspaceState.get<unknown>(CANVAS_STATE_STORAGE_KEY);
+    const rawState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState, LEGACY_STORAGE_KEYS.canvasState);
     return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
   }
 
   private persistState(): void {
-    void this.context.workspaceState.update(CANVAS_STATE_STORAGE_KEY, this.state);
+    void this.context.workspaceState.update(STORAGE_KEYS.canvasState, this.state);
   }
 
   private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
@@ -354,12 +388,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getConfiguredSurface(): CanvasSurfaceLocation {
-    const configuration = vscode.workspace.getConfiguration('opencove.canvas');
-    return configuration.get<CanvasSurfaceLocation>('defaultSurface', 'editor') === 'panel' ? 'panel' : 'editor';
+    return getCanonicalConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'editor') === 'panel'
+      ? 'panel'
+      : 'editor';
   }
 
   private loadStoredSurface(): CanvasSurfaceLocation | undefined {
-    const storedSurface = this.context.workspaceState.get<string>(CANVAS_SURFACE_STORAGE_KEY);
+    const storedSurface = this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface, LEGACY_STORAGE_KEYS.canvasLastSurface);
     if (storedSurface === 'editor' || storedSurface === 'panel') {
       return storedSurface;
     }
@@ -372,7 +407,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    void this.context.workspaceState.update(CANVAS_SURFACE_STORAGE_KEY, this.activeSurface);
+    void this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, this.activeSurface);
   }
 
   private claimSurfaceIfNeeded(surface: CanvasSurfaceLocation): void {
@@ -492,7 +527,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       // Ignore and fall through to the explicit hint below.
     }
 
-    void vscode.window.showInformationMessage('请从 Panel 中打开 Dev Session Canvas 视图。');
+    void vscode.window.showInformationMessage(`请从 Panel 中打开 ${EXTENSION_DISPLAY_NAME} 视图。`);
   }
 
   private handleWebviewMessage(surface: CanvasSurfaceLocation, message: unknown): void {
@@ -840,13 +875,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getAgentCliConfig(): AgentCliConfig {
-    const configuration = vscode.workspace.getConfiguration('opencove.agent');
-    const defaultProvider = configuration.get<AgentProviderKind>('defaultProvider', 'codex');
+    const defaultProvider = getCanonicalConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
 
     return {
       defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
-      codexCommand: configuration.get<string>('codexCommand', 'codex').trim() || 'codex',
-      claudeCommand: configuration.get<string>('claudeCommand', 'claude').trim() || 'claude'
+      codexCommand: getCanonicalConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex',
+      claudeCommand: getCanonicalConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude'
     };
   }
 
@@ -872,8 +906,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getTerminalShellPath(): string {
-    const configuration = vscode.workspace.getConfiguration('opencove.terminal');
-    const configuredPath = configuration.get<string>('shellPath', '').trim();
+    const configuredPath = getCanonicalConfigurationValue<string>('terminalShellPath', '').trim();
     if (configuredPath) {
       return configuredPath;
     }
