@@ -81,112 +81,16 @@ code --install-extension <your-vsix-file>
 
 同版本重复安装时，如遇到覆盖提示，先卸载旧包或显式升级当前体验版。
 
-## 本地运行与调试
+## 开发与贡献
 
-### 1. 准备依赖
+开发环境准备、本地调试、主路径验证和提交收口约定，统一见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-在仓库根目录执行：
+如果你要继续推进开发，建议先从 `docs/WORKFLOW.md`、`ARCHITECTURE.md` 和 `docs/PRODUCT_SENSE.md` 开始。
 
-```bash
-npm install
-npm run build
-```
+## 背景与动机
 
-如果要做发布前打包检查，推荐执行：
+本项目最初的直接灵感来自 [OpenCove](https://github.com/DeadWaveWave/opencove)。它“在一张画布中管理多个开发会话”的方式很有启发性，因为这类方式对应的是一个很实际的问题：当同时开启多个终端后，开发者往往需要在不同终端之间频繁切换，才能知道每个会话当前在做什么、已经推进到了哪里。
 
-```bash
-npm run package
-```
+之所以启动这个项目，是因为日常开发主要在 VS Code 中完成，希望把这种面向多开发会话的全局视角带到熟悉的编辑器工作流中。当时在 VS Code 插件生态里没有找到足够接近的现成项目，因此决定以扩展的形式自行实现。
 
-如果只想做静态检查，可以单独运行：
-
-```bash
-npm run typecheck
-```
-
-如需生成内部体验版 VSIX，直接执行：
-
-```bash
-npm run package:vsix
-```
-
-如果要验证 `Agent` 节点的真实运行链路，还需要满足：
-
-- `codex` 或 `claude` 至少有一个可从 Extension Host 解析到
-- 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置：
-  - `opencove.agent.codexCommand`
-  - `opencove.agent.claudeCommand`
-- 如果要让主画布默认出现在 VSCode Panel，而不是编辑区，可在设置中配置：
-  - `opencove.canvas.defaultSurface = panel`
-
-### 2. 启动扩展开发宿主
-
-`Run Dev Session Canvas` 是仓库自带的 VSCode 调试配置，不是命令面板里的普通命令。
-
-推荐启动方式：
-
-1. 打开 VSCode 的 `Run and Debug` 视图
-2. 在顶部调试配置下拉框中选择 `Run Dev Session Canvas`
-3. 点击启动按钮，或直接按 `F5`
-
-也可以通过命令面板执行：
-
-1. `Debug: Select and Start Debugging`
-2. 选择 `Run Dev Session Canvas`
-
-启动后，VSCode 会打开一个新的 `Extension Development Host` 窗口。后续所有插件交互都在这个新窗口中进行，不是在当前仓库窗口里完成。
-
-### 3. 打开画布
-
-在新的 `Extension Development Host` 窗口中：
-
-1. 打开命令面板
-2. 执行以下任一命令：
-   - `Dev Session Canvas: 打开画布`
-   - `Dev Session Canvas: 在编辑区打开画布`
-   - `Dev Session Canvas: 在面板打开画布`
-
-默认情况下，`Dev Session Canvas: 打开画布` 会按 `opencove.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
-
-### 4. 验证当前主路径
-
-在新的 `Extension Development Host` 窗口中，当前建议至少验证以下两条链路：
-
-1. `Terminal` 节点：
-   - 创建一个 `Terminal` 节点
-   - 点击“创建并显示终端”
-   - 关闭真实终端后，确认节点状态回流为关闭态
-   - 重新打开画布后，点击“尝试连接现有终端”不会错误新建终端
-
-2. `Agent` 节点：
-   - 创建一个 `Agent` 节点
-   - 选择 `Codex` 或 `Claude Code`
-   - 输入简短目标并点击“运行 Agent”
-   - 观察节点进入运行态，并在完成后回流结果摘要
-   - 如需验证中断链路，可在运行中点击“停止 Agent”
-
-### 5. 常见误区
-
-- `Run Dev Session Canvas` 不是命令面板命令，而是调试配置名称。
-- `Dev Session Canvas: 打开画布` 会按默认承载面打开主画布；如需直接落在某个宿主区域，请使用显式的编辑区 / 面板打开命令。
-- 如果你只在当前仓库窗口里搜索 `Run Dev Session Canvas`，通常找不到正确入口，因为它应从调试配置启动。
-- 当前不是稳定版发布仓库状态；当前阶段默认只做内部体验版 VSIX 分发。
-- 正式开发阶段不等于公开稳定发布；当前仍以内部 Preview 迭代为主。
-
-## 对开发者的说明
-
-- 这个 `README.md` 只保留开发者需要的项目级说明。
-- 开始继续开发前，先阅读 `ARCHITECTURE.md` 和 `docs/PRODUCT_SENSE.md`，先理解当前项目的产品目标和架构边界。
-- 在理解产品和架构后，优先通过 AI 继续推进开发工作，而不是直接脱离现有文档体系单独扩写实现。
-- `AGENTS.md` 和 `docs/` 主要用于 Agent 驱动开发时的约束、设计记录和执行计划。
-
-## 相关文档
-
-- `ARCHITECTURE.md`
-- `AGENTS.md`
-- `docs/PRODUCT_SENSE.md`
-- `docs/PLANS.md`
-- `docs/publish-readiness.md`
-- `docs/product-specs/canvas-core-collaboration-mvp.md`
-- `docs/design-docs/vscode-canvas-runtime-architecture.md`
-- `CHANGELOG.md`
+这个项目的目标不是在 VS Code 中复刻 OpenCove 的全部功能或完整产品体验，而是吸收它带来的产品启发，并围绕 VS Code 的开发场景做收敛：优先解决 `Agent` / `Terminal` 的全局可见性与管理问题，并与现有插件生态配合，补足 AI 开发时代的开发体验。
