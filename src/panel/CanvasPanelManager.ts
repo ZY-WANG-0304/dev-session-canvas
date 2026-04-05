@@ -128,10 +128,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public getSidebarState(): CanvasSidebarState {
     const configuredSurface = this.getConfiguredSurface();
-    const surfaceLocation = this.activeSurface ?? configuredSurface;
+    const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
+    const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
 
     return {
-      canvasSurface: this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed',
+      canvasSurface,
       surfaceLocation,
       configuredSurface,
       nodeCount: this.state.nodes.length,
