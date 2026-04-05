@@ -195,7 +195,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       const panel = vscode.window.createWebviewPanel(
         CanvasPanelManager.viewType,
-        'OpenCove Canvas',
+        'Dev Session Canvas',
         vscode.ViewColumn.One,
         this.getWebviewOptions()
       );
@@ -492,7 +492,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       // Ignore and fall through to the explicit hint below.
     }
 
-    void vscode.window.showInformationMessage('请从 Panel 中打开 OpenCove Canvas 视图。');
+    void vscode.window.showInformationMessage('请从 Panel 中打开 Dev Session Canvas 视图。');
   }
 
   private handleWebviewMessage(surface: CanvasSurfaceLocation, message: unknown): void {

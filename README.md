@@ -1,37 +1,45 @@
-# OpenCove Extension
+# DevSessionCanvas
 
-一个 VS Code 插件项目，目标是在 VS Code 内复刻 OpenCove 的核心产品体验：把 AI Agents、终端、任务和笔记放到同一张无限 2D 画布上，让多 Agent 协作时的全局状态保持可见。
+一个 VS Code 插件项目，定位是面向 VSCode 的多 Agent 协作画布。它通过一张画布为 `Agent` 与 `Terminal` 提供全局视角，并与 VSCode 现有插件生态配合，提升 AI 开发时代的开发体验。
 
 ## 当前范围
 
-- 复刻核心协作体验
+- 提供 `Agent` / `Terminal` 的全局可见主视图
 - 宿主为 VSCode
+- 与 VSCode 现有插件生态协同
 - 不复刻独立 app 的 workspace 管理能力
 
 ## 当前状态
 
-项目已完成第一轮研究与设计收口，并具备最小可构建的 VSCode 扩展原型骨架。
+项目已完成第一轮研究、设计与 MVP 验证，当前进入正式开发与内部 Preview 持续迭代阶段。
 
 下一阶段重点：
 
-- 在当前 `WebviewPanel` 原型上继续打通真实对象模型与终端主路径
-- 引入下一阶段画布实现与交互原型
-- 继续验证 Remote / Restricted Mode / 恢复链路
+- 在当前主画布与对象模型基线上继续补齐真实主路径、恢复能力与质量收口
+- 持续迭代画布交互、对象体验与平台兼容性
+- 继续验证并收口 Remote / Restricted Mode / 恢复链路
 
 当前已落地的内容：
 
 - 顶层架构与技术路线研究文档
-- 第一份 MVP 产品规格
-- 一个可构建的 VSCode 扩展原型，包含：
+- 以 MVP 范围为基线的正式产品规格
+- 一个可构建并可持续迭代的 VSCode 扩展基线，包含：
   - `opencove.openCanvas` / `opencove.openCanvasInEditor` / `opencove.openCanvasInPanel` 命令
   - `editor/panel` 可配置主画布承载面
   - `WebviewPanel` 主画布入口
   - typed message bridge
   - `WebviewPanelSerializer`
   - 最小宿主状态投影与 Webview 本地 UI 状态
-  - React Flow 画布原型
-- 原生终端代理节点
-- 基于 `codex` / `claude` CLI 的最小 Agent 运行原型
+  - React Flow 画布实现基线
+- `Agent` 与 `Terminal` 的主画布运行基线
+- 基于 `codex` / `claude` CLI 的最小 Agent 真实运行链路
+- `Task` / `Note` 作为辅助协作对象的当前实现
+
+当前命名约定：
+
+- 正式产品名：`DevSessionCanvas`
+- VS Code 扩展显示名：`Dev Session Canvas`
+- 当前内部命令 ID、view ID 与配置命名空间暂仍保留 `opencove.*`，以兼容已有状态与脚本。
 
 ## 发布准备状态
 
@@ -113,18 +121,18 @@ npm run package:vsix
 
 ### 2. 启动扩展开发宿主
 
-`Run OpenCove Extension` 是仓库自带的 VSCode 调试配置，不是命令面板里的普通命令。
+`Run Dev Session Canvas` 是仓库自带的 VSCode 调试配置，不是命令面板里的普通命令。
 
 推荐启动方式：
 
 1. 打开 VSCode 的 `Run and Debug` 视图
-2. 在顶部调试配置下拉框中选择 `Run OpenCove Extension`
+2. 在顶部调试配置下拉框中选择 `Run Dev Session Canvas`
 3. 点击启动按钮，或直接按 `F5`
 
 也可以通过命令面板执行：
 
 1. `Debug: Select and Start Debugging`
-2. 选择 `Run OpenCove Extension`
+2. 选择 `Run Dev Session Canvas`
 
 启动后，VSCode 会打开一个新的 `Extension Development Host` 窗口。后续所有插件交互都在这个新窗口中进行，不是在当前仓库窗口里完成。
 
@@ -134,11 +142,11 @@ npm run package:vsix
 
 1. 打开命令面板
 2. 执行以下任一命令：
-   - `OpenCove: 打开画布`
-   - `OpenCove: 在编辑区打开画布`
-   - `OpenCove: 在面板打开画布`
+   - `Dev Session Canvas: 打开画布`
+   - `Dev Session Canvas: 在编辑区打开画布`
+   - `Dev Session Canvas: 在面板打开画布`
 
-默认情况下，`OpenCove: 打开画布` 会按 `opencove.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
+默认情况下，`Dev Session Canvas: 打开画布` 会按 `opencove.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
 
 ### 4. 验证当前主路径
 
@@ -159,10 +167,11 @@ npm run package:vsix
 
 ### 5. 常见误区
 
-- `Run OpenCove Extension` 不是命令面板命令，而是调试配置名称。
-- `OpenCove: 打开画布` 会按默认承载面打开主画布；如需直接落在某个宿主区域，请使用显式的编辑区 / 面板打开命令。
-- 如果你只在当前仓库窗口里搜索 `Run OpenCove Extension`，通常找不到正确入口，因为它应从调试配置启动。
+- `Run Dev Session Canvas` 不是命令面板命令，而是调试配置名称。
+- `Dev Session Canvas: 打开画布` 会按默认承载面打开主画布；如需直接落在某个宿主区域，请使用显式的编辑区 / 面板打开命令。
+- 如果你只在当前仓库窗口里搜索 `Run Dev Session Canvas`，通常找不到正确入口，因为它应从调试配置启动。
 - 当前不是稳定版发布仓库状态；当前阶段默认只做内部体验版 VSIX 分发。
+- 正式开发阶段不等于公开稳定发布；当前仍以内部 Preview 迭代为主。
 
 ## 对开发者的说明
 

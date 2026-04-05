@@ -140,7 +140,7 @@ updated_at: 2026-04-05
 ### 7.2 默认按配置打开主画布
 
 - 新增配置项 `opencove.canvas.defaultSurface`，枚举值为 `editor | panel`。
-- `OpenCove: 打开画布` 按该配置决定默认打开位置。
+- `Dev Session Canvas: 打开画布` 按该配置决定默认打开位置。
 - 同时保留显式命令，使用户可以直接在编辑区或 Panel 中打开主画布，而不必每次先改设置。
 
 ### 7.3 采用单主 surface 模型
@@ -165,7 +165,7 @@ updated_at: 2026-04-05
 
 本轮已完成以下验证，并据此把当前结论推进到“已验证”：
 
-1. 在 `Extension Development Host` 中把默认承载面设为 `panel`，执行 `OpenCove: 打开画布`，确认主画布出现在 Panel，而不是编辑区。
+1. 在 `Extension Development Host` 中把默认承载面设为 `panel`，执行 `Dev Session Canvas: 打开画布`，确认主画布出现在 Panel，而不是编辑区。
 2. 再把默认承载面设为 `editor`，确认同一命令重新回到编辑区主画布。
 3. 在两种承载面中分别创建至少一个 `Task` 节点和一个执行型节点，确认对象图不丢失，执行会话可重新附着。
 4. 当非活动 surface 被用户展开时，确认它只展示静态切换提示，不会出现第二个可交互终端窗口。

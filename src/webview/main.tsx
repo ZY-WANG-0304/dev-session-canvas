@@ -562,7 +562,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         return;
       }
 
-      terminal.writeln(`\r\n[OpenCove] ${detail.message}`);
+      terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
       terminal.scrollToBottom();
     };
 
@@ -806,7 +806,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         return;
       }
 
-      terminal.writeln(`\r\n[OpenCove] ${detail.message}`);
+      terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
       terminal.scrollToBottom();
     };
 

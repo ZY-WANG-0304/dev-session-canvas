@@ -24,7 +24,7 @@ updated_at: 2026-03-30
 
 当前仓库已经把 `Agent` 的主交互从右侧 inspector 挪回节点内部，但当前节点表面仍然保留了一套“provider 选择器 + prompt textarea + transcript 冒泡”的独立调用 UI。
 
-这比 inspector 方案更接近会话窗口，但仍然过重也不够准确。对 OpenCove 来说，`Agent` 更像一个会默认启动 `Codex` 或 `Claude Code` 的特殊 terminal，而不是一个自己维护 request/response transcript 的调用卡片。
+这比 inspector 方案更接近会话窗口，但仍然过重也不够准确。对当前产品来说，`Agent` 更像一个会默认启动 `Codex` 或 `Claude Code` 的特殊 terminal，而不是一个自己维护 request/response transcript 的调用卡片。
 
 ## 2. 问题定义
 
@@ -83,7 +83,7 @@ updated_at: 2026-03-30
 
 优点：
 
-- 与 OpenCove 中“Agent 是特殊 Terminal”的产品语义一致。
+- 与当前产品里“Agent 是特殊 Terminal”的产品语义一致。
 - 让 `Agent` 与 `Terminal` 更容易共享同一套宿主后端和恢复边界。
 - 避免把当前实现包装成一套独立的聊天型交互系统。
 

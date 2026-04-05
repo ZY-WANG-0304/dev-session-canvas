@@ -35,7 +35,7 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
       content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenCove Canvas Prototype</title>
+    <title>Dev Session Canvas</title>
     <link rel="stylesheet" href="${styleUri}" />
     <style>
       :root {
@@ -154,10 +154,10 @@ function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions): str
   <body>
     <div class="surface-standby">
       <div class="surface-standby-card">
-        <p class="surface-standby-eyebrow">OpenCove Canvas</p>
+        <p class="surface-standby-eyebrow">Dev Session Canvas</p>
         <h1>当前主画布正在${activeSurface}中运行</h1>
         <p>
-          OpenCove 当前采用单主 surface 模型。为了避免同一个 Agent 或 Terminal 会话被两个宿主区域重复附着，
+          DevSessionCanvas 当前采用单主 surface 模型。为了避免同一个 Agent 或 Terminal 会话被两个宿主区域重复附着，
           这里仅保留切换入口，不再渲染第二个可交互画布。
         </p>
         <div class="surface-standby-actions">
