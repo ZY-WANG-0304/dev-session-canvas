@@ -30,6 +30,7 @@ import type {
   ExecutionNodeKind,
   HostToWebviewMessage,
   TaskNodeStatus,
+  WebviewDomAction,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
   WebviewToHostMessage
@@ -193,6 +194,9 @@ function App(): JSX.Element {
               snapshot: collectWebviewProbeSnapshot()
             }
           });
+          break;
+        case 'host/testDomAction':
+          void performWebviewDomAction(message.payload.requestId, message.payload.action);
           break;
       }
     };
@@ -1630,6 +1634,8 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     chromeSubtitle: readProbeText(element.querySelector('.window-title span, .node-topline span')),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     selected: element.dataset.nodeSelected === 'true',
+    overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
+    overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
     providerValue: readProbeFieldValue(element, 'provider'),
     titleInputValue: readProbeFieldValue(element, 'title'),
     statusValue: readProbeFieldValue(element, 'status'),
@@ -1649,6 +1655,103 @@ function readProbeFieldValue(element: HTMLElement, fieldName: string): string | 
 function readProbeText(element: Element | null): string | null {
   const text = element?.textContent?.trim();
   return text ? text : null;
+}
+
+function readProbeTextOrUndefined(element: Element | null): string | undefined {
+  return readProbeText(element) ?? undefined;
+}
+
+async function performWebviewDomAction(requestId: string, action: WebviewDomAction): Promise<void> {
+  try {
+    switch (action.kind) {
+      case 'editNoteBody': {
+        const field = queryNodeField<HTMLTextAreaElement>(
+          action.nodeId,
+          'body',
+          (element): element is HTMLTextAreaElement => element instanceof HTMLTextAreaElement
+        );
+        field.focus();
+        setControlledFieldValue(field, action.value);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.blur();
+        break;
+      }
+      case 'changeTaskStatus': {
+        const field = queryNodeField<HTMLSelectElement>(
+          action.nodeId,
+          'status',
+          (element): element is HTMLSelectElement => element instanceof HTMLSelectElement
+        );
+        field.focus();
+        setControlledFieldValue(field, action.value);
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        field.blur();
+        break;
+      }
+    }
+
+    await waitForDomActionFlush();
+    postMessage({
+      type: 'webview/testDomActionResult',
+      payload: {
+        requestId,
+        ok: true
+      }
+    });
+  } catch (error) {
+    postMessage({
+      type: 'webview/testDomActionResult',
+      payload: {
+        requestId,
+        ok: false,
+        errorMessage: formatTestDomActionError(error)
+      }
+    });
+  }
+}
+
+function queryNodeField<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+  nodeId: string,
+  fieldName: string,
+  predicate: (element: Element) => element is T
+): T {
+  const field = document.querySelector(`[data-node-id="${nodeId}"] [data-probe-field="${fieldName}"]`);
+  if (!field || !predicate(field)) {
+    throw new Error(`未找到节点 ${nodeId} 的 ${fieldName} 字段。`);
+  }
+
+  return field;
+}
+
+function setControlledFieldValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  value: string
+): void {
+  const prototype =
+    element instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : element instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+
+  descriptor?.set?.call(element, value);
+}
+
+function waitForDomActionFlush(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function formatTestDomActionError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
 }
 
 function snapEmbeddedTerminalViewportHeight(terminal: Terminal, preferredHeight: number): number | null {

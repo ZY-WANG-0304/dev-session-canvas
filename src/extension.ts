@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { COMMAND_IDS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
-import { isCanvasNodeKind, type CanvasNodeKind } from './common/protocol';
+import { isCanvasNodeKind, isWebviewDomAction, type CanvasNodeKind } from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
@@ -126,6 +126,20 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
         parseCanvasSurfaceLocation(surface),
         typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
       )
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.performWebviewDomAction,
+      async (action?: unknown, surface?: unknown, timeoutMs?: unknown) => {
+        if (!isWebviewDomAction(action)) {
+          throw new Error('测试命令 devSessionCanvas.__test.performWebviewDomAction 需要有效的 DOM 动作。');
+        }
+
+        return panelManager.performWebviewDomActionForTest(
+          action,
+          parseCanvasSurfaceLocation(surface),
+          typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
+        );
+      }
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.reloadPersistedState, () => panelManager.reloadPersistedStateForTest()),
     vscode.commands.registerCommand(

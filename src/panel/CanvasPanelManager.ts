@@ -20,6 +20,7 @@ import {
   type TaskNodeMetadata,
   type TaskNodeStatus,
   type TerminalNodeMetadata,
+  type WebviewDomAction,
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   estimatedCanvasNodeFootprint,
@@ -80,6 +81,13 @@ interface PendingWebviewProbeRequest {
   timeout: NodeJS.Timeout;
 }
 
+interface PendingWebviewDomActionRequest {
+  surface: CanvasSurfaceLocation;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
 export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
 
@@ -120,6 +128,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
+  private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
@@ -199,7 +208,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public createNodeForTest(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
-    this.applyCreateNode(kind, preferredPosition);
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('createNodeForTest 仅在测试模式下可用。');
+    }
+
+    this.applyCreateNode(kind, preferredPosition, {
+      bypassTrust: true
+    });
   }
 
   public dispatchWebviewMessageForTest(
@@ -297,6 +312,52 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  public async performWebviewDomActionForTest(
+    action: WebviewDomAction,
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface,
+    timeoutMs = 5000
+  ): Promise<void> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('performWebviewDomActionForTest 仅在测试模式下可用。');
+    }
+
+    if (!surface) {
+      throw new Error('测试命令 devSessionCanvas.__test.performWebviewDomAction 需要一个有效的画布承载面。');
+    }
+
+    if (!this.isInteractiveSurface(surface)) {
+      throw new Error(`当前 ${surface} 不是可交互的主画布承载面。`);
+    }
+
+    if (!this.surfaceReady[surface]) {
+      throw new Error(`当前 ${surface} 画布尚未完成 ready。`);
+    }
+
+    const requestId = `dom-action-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingWebviewDomActionRequests.delete(requestId);
+        reject(new Error(`等待 ${surface} Webview DOM 动作返回超时（${timeoutMs}ms）。`));
+      }, timeoutMs);
+
+      this.pendingWebviewDomActionRequests.set(requestId, {
+        surface,
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.postMessageToSurface(surface, {
+        type: 'host/testDomAction',
+        payload: {
+          requestId,
+          action
+        }
+      });
+    });
+  }
+
   public async deserializeWebviewPanel(
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
@@ -365,6 +426,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.surfaceMode.editor = undefined;
           this.surfaceReady.editor = false;
           this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
+          this.rejectPendingWebviewDomActionRequests('editor', '编辑区 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -409,6 +471,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.surfaceMode.panel = undefined;
           this.surfaceReady.panel = false;
           this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
+          this.rejectPendingWebviewDomActionRequests('panel', '面板 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -651,6 +714,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (parsedMessage.type === 'webview/testProbeResult') {
       this.resolvePendingWebviewProbeRequest(surface, parsedMessage.payload.requestId, parsedMessage.payload.snapshot);
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/testDomActionResult') {
+      this.resolvePendingWebviewDomActionRequest(
+        surface,
+        parsedMessage.payload.requestId,
+        parsedMessage.payload.ok,
+        parsedMessage.payload.errorMessage
+      );
       return;
     }
 
@@ -1493,9 +1566,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private applyCreateNode(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+  private applyCreateNode(
+    kind: CanvasNodeKind,
+    preferredPosition?: CanvasNodePosition,
+    options?: { bypassTrust?: boolean }
+  ): void {
     if (
       isExecutionNodeKind(kind) &&
+      !options?.bypassTrust &&
       !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
     ) {
       return;
@@ -1552,6 +1630,47 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       clearTimeout(pendingRequest.timeout);
       this.pendingWebviewProbeRequests.delete(requestId);
+      pendingRequest.reject(new Error(message));
+    }
+  }
+
+  private resolvePendingWebviewDomActionRequest(
+    surface: CanvasSurfaceLocation,
+    requestId: string,
+    ok: boolean,
+    errorMessage: string | undefined
+  ): void {
+    const pendingRequest = this.pendingWebviewDomActionRequests.get(requestId);
+    if (!pendingRequest) {
+      return;
+    }
+
+    clearTimeout(pendingRequest.timeout);
+    this.pendingWebviewDomActionRequests.delete(requestId);
+
+    if (pendingRequest.surface !== surface) {
+      pendingRequest.reject(
+        new Error(`收到来自 ${surface} 的 DOM 动作结果，但请求原本发往 ${pendingRequest.surface}。`)
+      );
+      return;
+    }
+
+    if (!ok) {
+      pendingRequest.reject(new Error(errorMessage || '真实 Webview DOM 动作执行失败。'));
+      return;
+    }
+
+    pendingRequest.resolve();
+  }
+
+  private rejectPendingWebviewDomActionRequests(surface: CanvasSurfaceLocation, message: string): void {
+    for (const [requestId, pendingRequest] of this.pendingWebviewDomActionRequests.entries()) {
+      if (pendingRequest.surface !== surface) {
+        continue;
+      }
+
+      clearTimeout(pendingRequest.timeout);
+      this.pendingWebviewDomActionRequests.delete(requestId);
       pendingRequest.reject(new Error(message));
     }
   }

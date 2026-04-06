@@ -79,6 +79,8 @@ export interface WebviewProbeNodeSnapshot {
   chromeSubtitle: string | null;
   statusText: string | null;
   selected: boolean;
+  overlayTitle?: string;
+  overlayMessage?: string;
   providerValue?: string;
   titleInputValue?: string;
   statusValue?: string;
@@ -94,6 +96,18 @@ export interface WebviewProbeSnapshot {
   nodeCount: number;
   nodes: WebviewProbeNodeSnapshot[];
 }
+
+export type WebviewDomAction =
+  | {
+      kind: 'editNoteBody';
+      nodeId: string;
+      value: string;
+    }
+  | {
+      kind: 'changeTaskStatus';
+      nodeId: string;
+      value: TaskNodeStatus;
+    };
 
 export type WebviewToHostMessage =
   | {
@@ -187,6 +201,14 @@ export type WebviewToHostMessage =
         requestId: string;
         snapshot: WebviewProbeSnapshot;
       };
+    }
+  | {
+      type: 'webview/testDomActionResult';
+      payload: {
+        requestId: string;
+        ok: boolean;
+        errorMessage?: string;
+      };
     };
 
 export type HostToWebviewMessage =
@@ -247,6 +269,13 @@ export type HostToWebviewMessage =
       type: 'host/testProbeRequest';
       payload: {
         requestId: string;
+      };
+    }
+  | {
+      type: 'host/testDomAction';
+      payload: {
+        requestId: string;
+        action: WebviewDomAction;
       };
     };
 
@@ -437,6 +466,27 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/testDomActionResult') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.requestId !== 'string' ||
+      typeof payload.ok !== 'boolean' ||
+      (payload.errorMessage !== undefined && typeof payload.errorMessage !== 'string')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/testDomActionResult',
+      payload: {
+        requestId: payload.requestId,
+        ok: payload.ok,
+        errorMessage: typeof payload.errorMessage === 'string' ? payload.errorMessage : undefined
+      }
+    };
+  }
+
   if (value.type === 'webview/deleteNode') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (!payload || typeof payload.nodeId !== 'string') {
@@ -506,6 +556,22 @@ function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
   return value === 'todo' || value === 'running' || value === 'blocked' || value === 'done';
 }
 
+export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
+  if (!isRecord(value) || typeof value.kind !== 'string' || typeof value.nodeId !== 'string') {
+    return false;
+  }
+
+  if (value.kind === 'editNoteBody') {
+    return typeof value.value === 'string';
+  }
+
+  if (value.kind === 'changeTaskStatus') {
+    return isTaskNodeStatus(value.value);
+  }
+
+  return false;
+}
+
 function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSnapshot {
   return (
     isRecord(value) &&
@@ -515,6 +581,8 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     isNullableString(value.chromeSubtitle) &&
     isNullableString(value.statusText) &&
     typeof value.selected === 'boolean' &&
+    (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
+    (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
     (value.providerValue === undefined || typeof value.providerValue === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.statusValue === undefined || typeof value.statusValue === 'string') &&

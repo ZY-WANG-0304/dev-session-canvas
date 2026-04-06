@@ -134,16 +134,19 @@ code --profile "Dev Session Canvas Extension Debug" --uninstall-extension devses
 ```bash
 npm run test:smoke
 npm run test:webview
+npm run test:vsix-smoke
 ```
 
 说明：
 
-- `test:smoke` 会启动一个真实的 VS Code Electron 实例，自动验证扩展激活、打开画布、等待 Webview ready、Webview 到宿主的创建/更新/移动/删除/reset 消息、`Agent` 假 provider 启动/输入/停止/失败路径、`Terminal` 启动/输入/resize/停止、状态持久化恢复、非激活 surface 语义，以及一条真实 VS Code Webview 容器里的 DOM / toast probe。
-- `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；当前已覆盖截图基线、Note 编辑、删除按钮、provider 切换和错误 toast。
+- `test:smoke` 会按顺序启动两个真实的 VS Code Electron 场景：`trusted` 和 `restricted`。可信场景当前覆盖扩展激活、打开画布、真实 Webview DOM 交互、`Agent` / `Terminal` 执行生命周期、live session 在 editor / panel 切面与 persisted reload 下的竞态、PTY 大输出 / 非零退出 / 快速 stop-start / 并发，以及失败诊断产物；受限场景当前覆盖真实 Restricted Mode 下的创建限制、运行 / 输入阻断和真实容器中的 Restricted overlay 文案。
+- `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；当前已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
+- `test:vsix-smoke` 当前仅在 Linux 上运行。它会先执行 `npm run package:vsix`，再解包最新 `.vsix`，验证打包后的运行时文件是否齐全，并用解包产物跑一遍 trusted smoke。这个入口当前验证的是“打包内容完整性”，不是未来公开发布前的三平台安装矩阵替代品。
 - 执行 `npm test` 会依次运行 `typecheck`、`test:smoke` 和 `test:webview`。
 - 首次运行 `test:smoke` 会下载一份 VS Code 测试副本；首次运行 `test:webview` 会下载 Chromium 到仓库内缓存目录。
 - `test:smoke` 默认使用仓库内 fake provider fixture，不要求开发机真的安装 `codex` / `claude`；如需验证真实 Agent CLI，请走上面的人工主路径。
-- `test:smoke` 失败时会把快照、宿主消息和 VS Code logs 写到 `.debug/vscode-smoke/artifacts/`；`test:webview` 失败时会把截图、trace 和报告写到 `.debug/playwright/results/`。
+- `test:smoke` 失败时会把场景相关的快照、最后一次真实 Webview probe、宿主消息和 VS Code logs 分别写到 `.debug/vscode-smoke/trusted/artifacts/` 或 `.debug/vscode-smoke/restricted/artifacts/`。
+- `test:webview` 失败时会把截图、trace、`harness-posted-messages.json` 和 `harness-persisted-state.json` 写到 `.debug/playwright/results/`。
 
 如果你修改了 Webview 视觉基线，需要显式更新截图：
 

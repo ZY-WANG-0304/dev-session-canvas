@@ -1,3 +1,4 @@
+import { promises as fs } from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { expect, test } from '@playwright/test';
@@ -5,6 +6,41 @@ import { expect, test } from '@playwright/test';
 const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
 ).href;
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) {
+    return;
+  }
+
+  const diagnostics = await page
+    .evaluate(() => {
+      const harness = window.__devSessionCanvasHarness;
+      if (!harness) {
+        return null;
+      }
+
+      return {
+        postedMessages: harness.getPostedMessages(),
+        persistedState: harness.getPersistedState()
+      };
+    })
+    .catch(() => null);
+
+  if (!diagnostics) {
+    return;
+  }
+
+  await fs.writeFile(
+    testInfo.outputPath('harness-posted-messages.json'),
+    `${JSON.stringify(diagnostics.postedMessages, null, 2)}\n`,
+    'utf8'
+  );
+  await fs.writeFile(
+    testInfo.outputPath('harness-persisted-state.json'),
+    `${JSON.stringify(diagnostics.persistedState, null, 2)}\n`,
+    'utf8'
+  );
+});
 
 test('webview bundle emits ready and matches the baseline screenshot', async ({ page }) => {
   await openHarness(page);
@@ -87,7 +123,7 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
   const noteNode = nodeById(page, 'note-1');
   const noteBody = noteNode.locator('[data-probe-field="body"]');
   await noteBody.fill('把真实容器 probe 也纳入回归。');
-  await noteBody.blur();
+  await noteBody.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
 
   await expect
     .poll(async () => {

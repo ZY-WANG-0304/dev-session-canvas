@@ -24,5 +24,23 @@ while IFS= read -r line; do
     exit "$exit_code"
   fi
 
+  if [[ "$line" == burst\ * ]]; then
+    burst_count="${line#burst }"
+    if [[ "$burst_count" =~ ^[0-9]+$ ]]; then
+      for ((i = 1; i <= burst_count; i += 1)); do
+        printf '[fake-agent] burst %03d\n' "$i"
+      done
+      continue
+    fi
+  fi
+
+  if [[ "$line" == sleep\ * ]]; then
+    sleep_seconds="${line#sleep }"
+    echo "[fake-agent] sleeping ${sleep_seconds}s"
+    sleep "$sleep_seconds"
+    echo "[fake-agent] woke after ${sleep_seconds}s"
+    continue
+  fi
+
   echo "[fake-agent] ${line}"
 done
