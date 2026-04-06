@@ -99,14 +99,31 @@ export interface WebviewProbeSnapshot {
 
 export type WebviewDomAction =
   | {
-      kind: 'editNoteBody';
+      kind: 'setNodeTextField';
       nodeId: string;
+      field: 'title' | 'assignee' | 'body';
       value: string;
+      delayMs?: number;
     }
   | {
-      kind: 'changeTaskStatus';
+      kind: 'selectNodeOption';
       nodeId: string;
+      field: 'status';
       value: TaskNodeStatus;
+      delayMs?: number;
+    }
+  | {
+      kind: 'selectNodeOption';
+      nodeId: string;
+      field: 'provider';
+      value: AgentProviderKind;
+      delayMs?: number;
+    }
+  | {
+      kind: 'clickNodeActionButton';
+      nodeId: string;
+      label: '删除' | '启动' | '停止' | '重启';
+      delayMs?: number;
     };
 
 export type WebviewToHostMessage =
@@ -269,6 +286,7 @@ export type HostToWebviewMessage =
       type: 'host/testProbeRequest';
       payload: {
         requestId: string;
+        delayMs?: number;
       };
     }
   | {
@@ -561,12 +579,36 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
     return false;
   }
 
-  if (value.kind === 'editNoteBody') {
-    return typeof value.value === 'string';
+  if (value.delayMs !== undefined && !isNonNegativeDelay(value.delayMs)) {
+    return false;
   }
 
-  if (value.kind === 'changeTaskStatus') {
-    return isTaskNodeStatus(value.value);
+  if (value.kind === 'setNodeTextField') {
+    return (
+      (value.field === 'title' || value.field === 'assignee' || value.field === 'body') &&
+      typeof value.value === 'string'
+    );
+  }
+
+  if (value.kind === 'selectNodeOption') {
+    if (value.field === 'status') {
+      return isTaskNodeStatus(value.value);
+    }
+
+    if (value.field === 'provider') {
+      return value.value === 'codex' || value.value === 'claude';
+    }
+
+    return false;
+  }
+
+  if (value.kind === 'clickNodeActionButton') {
+    return (
+      value.label === '删除' ||
+      value.label === '启动' ||
+      value.label === '停止' ||
+      value.label === '重启'
+    );
   }
 
   return false;
@@ -607,6 +649,10 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
 
 function isTerminalDimension(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeDelay(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFootprint {

@@ -298,7 +298,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async captureWebviewProbeForTest(
     surface: CanvasSurfaceLocation | undefined = this.activeSurface,
-    timeoutMs = 5000
+    timeoutMs = 5000,
+    delayMs = 0
   ): Promise<WebviewProbeSnapshot> {
     if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
       throw new Error('captureWebviewProbeForTest 仅在测试模式下可用。');
@@ -334,7 +335,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(surface, {
         type: 'host/testProbeRequest',
         payload: {
-          requestId
+          requestId,
+          delayMs: delayMs > 0 ? delayMs : undefined
         }
       });
     });

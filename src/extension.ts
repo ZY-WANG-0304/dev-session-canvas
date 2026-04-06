@@ -125,11 +125,14 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
         typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 15000
       )
     ),
-    vscode.commands.registerCommand(TEST_COMMAND_IDS.captureWebviewProbe, async (surface?: unknown, timeoutMs?: unknown) =>
-      panelManager.captureWebviewProbeForTest(
-        parseCanvasSurfaceLocation(surface),
-        typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
-      )
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.captureWebviewProbe,
+      async (surface?: unknown, timeoutMs?: unknown, delayMs?: unknown) =>
+        panelManager.captureWebviewProbeForTest(
+          parseCanvasSurfaceLocation(surface),
+          typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000,
+          typeof delayMs === 'number' && delayMs >= 0 ? delayMs : 0
+        )
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.performWebviewDomAction,

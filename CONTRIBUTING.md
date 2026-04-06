@@ -139,7 +139,7 @@ npm run test:vsix-smoke
 
 说明：
 
-- `test:smoke` 会按顺序启动两个真实的 VS Code Electron 场景：`trusted` 和 `restricted`。可信场景当前覆盖扩展激活、打开画布、真实 Webview DOM 交互、`Agent` / `Terminal` 执行生命周期、live session 在 editor / panel 切面与 persisted reload 下的竞态、PTY 大输出 / 非零退出 / 快速 stop-start / 并发，以及失败诊断产物；受限场景当前覆盖真实 Restricted Mode 下的创建限制、运行 / 输入阻断和真实容器中的 Restricted overlay 文案。
+- `test:smoke` 会按顺序启动两个真实的 VS Code Electron 场景：`trusted` 和 `restricted`。可信场景当前覆盖扩展激活、打开画布、真实 Webview DOM 交互、Task 状态切换、Note 正文编辑、Agent provider 切换后重启、删除按钮、`Agent` / `Terminal` 执行生命周期、live session 在 editor / panel 切面与 persisted reload 下的竞态、pending probe / DOM action 在 editor dispose 下的故障注入、PTY 大输出 / 非零退出 / stop-vs-queued-exit / 并发，以及失败诊断产物；受限场景当前覆盖真实 Restricted Mode 下的创建限制、运行 / 输入阻断和真实容器中的 Restricted overlay 文案。
 - `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；当前已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
 - `test:vsix-smoke` 当前仅在 Linux 上运行。它会先执行 `npm run package:vsix`，再解包最新 `.vsix`，验证打包后的运行时文件是否齐全，并用解包产物跑一遍 trusted smoke。这个入口当前验证的是“打包内容完整性”，不是未来公开发布前的三平台安装矩阵替代品。
 - 执行 `npm test` 会依次运行 `typecheck`、`test:smoke` 和 `test:webview`。

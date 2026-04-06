@@ -187,13 +187,7 @@ function App(): JSX.Element {
           createNode(message.payload.kind);
           break;
         case 'host/testProbeRequest':
-          postMessage({
-            type: 'webview/testProbeResult',
-            payload: {
-              requestId: message.payload.requestId,
-              snapshot: collectWebviewProbeSnapshot()
-            }
-          });
+          void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
           break;
         case 'host/testDomAction':
           void performWebviewDomAction(message.payload.requestId, message.payload.action);
@@ -1663,29 +1657,29 @@ function readProbeTextOrUndefined(element: Element | null): string | undefined {
 
 async function performWebviewDomAction(requestId: string, action: WebviewDomAction): Promise<void> {
   try {
+    await delayTestAction(action.delayMs);
+
     switch (action.kind) {
-      case 'editNoteBody': {
-        const field = queryNodeField<HTMLTextAreaElement>(
-          action.nodeId,
-          'body',
-          (element): element is HTMLTextAreaElement => element instanceof HTMLTextAreaElement
-        );
+      case 'setNodeTextField': {
+        const field = queryNodeTextField(action.nodeId, action.field);
         field.focus();
         setControlledFieldValue(field, action.value);
         field.dispatchEvent(new Event('input', { bubbles: true }));
         field.blur();
         break;
       }
-      case 'changeTaskStatus': {
-        const field = queryNodeField<HTMLSelectElement>(
-          action.nodeId,
-          'status',
-          (element): element is HTMLSelectElement => element instanceof HTMLSelectElement
-        );
+      case 'selectNodeOption': {
+        const field = queryNodeSelectField(action.nodeId, action.field);
         field.focus();
         setControlledFieldValue(field, action.value);
         field.dispatchEvent(new Event('change', { bubbles: true }));
         field.blur();
+        break;
+      }
+      case 'clickNodeActionButton': {
+        const button = queryNodeActionButton(action.nodeId, action.label);
+        button.focus();
+        button.click();
         break;
       }
     }
@@ -1710,17 +1704,69 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
   }
 }
 
-function queryNodeField<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+async function respondWithWebviewProbeSnapshot(requestId: string, delayMs?: number): Promise<void> {
+  await delayTestAction(delayMs);
+  postMessage({
+    type: 'webview/testProbeResult',
+    payload: {
+      requestId,
+      snapshot: collectWebviewProbeSnapshot()
+    }
+  });
+}
+
+function queryNodeTextField(
   nodeId: string,
-  fieldName: string,
-  predicate: (element: Element) => element is T
-): T {
-  const field = document.querySelector(`[data-node-id="${nodeId}"] [data-probe-field="${fieldName}"]`);
-  if (!field || !predicate(field)) {
+  fieldName: 'title' | 'assignee' | 'body'
+): HTMLInputElement | HTMLTextAreaElement {
+  const field = queryNodeField(nodeId, fieldName);
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    return field;
+  }
+
+  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
+}
+
+function queryNodeSelectField(
+  nodeId: string,
+  fieldName: 'status' | 'provider'
+): HTMLSelectElement {
+  const field = queryNodeField(nodeId, fieldName);
+  if (field instanceof HTMLSelectElement) {
+    return field;
+  }
+
+  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是下拉选择控件。`);
+}
+
+function queryNodeActionButton(nodeId: string, label: '删除' | '启动' | '停止' | '重启'): HTMLButtonElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  const button = Array.from(nodeRoot.querySelectorAll('button')).find(
+    (candidate) => candidate.textContent?.trim() === label
+  );
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`未找到节点 ${nodeId} 上标签为 ${label} 的按钮。`);
+  }
+
+  return button;
+}
+
+function queryNodeField(nodeId: string, fieldName: string): Element {
+  const field = queryNodeRoot(nodeId).querySelector(`[data-probe-field="${fieldName}"]`);
+  if (!field) {
     throw new Error(`未找到节点 ${nodeId} 的 ${fieldName} 字段。`);
   }
 
   return field;
+}
+
+function queryNodeRoot(nodeId: string): HTMLElement {
+  const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
+  if (!nodeRoot) {
+    throw new Error(`未找到节点 ${nodeId}。`);
+  }
+
+  return nodeRoot;
 }
 
 function setControlledFieldValue(
@@ -1743,6 +1789,16 @@ function waitForDomActionFlush(): Promise<void> {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => resolve());
     });
+  });
+}
+
+function delayTestAction(delayMs?: number): Promise<void> {
+  if (!delayMs || delayMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, delayMs);
   });
 }
 
