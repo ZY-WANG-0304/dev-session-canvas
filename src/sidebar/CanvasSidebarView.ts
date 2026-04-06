@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { COMMAND_IDS, EXTENSION_DISPLAY_NAME } from '../common/extensionIdentity';
 import type { CanvasNodeKind } from '../common/protocol';
 import { type CanvasSidebarState, CanvasPanelManager } from '../panel/CanvasPanelManager';
 
@@ -56,10 +57,10 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
       description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
       tooltip:
         state.canvasSurface === 'visible'
-          ? `OpenCove 画布已在当前${humanizeSurfaceLocation(state.surfaceLocation)}可见。`
+          ? `${EXTENSION_DISPLAY_NAME} 画布已在当前${humanizeSurfaceLocation(state.surfaceLocation)}可见。`
           : state.canvasSurface === 'hidden'
-            ? `OpenCove 画布当前位于${humanizeSurfaceLocation(state.surfaceLocation)}，但不在前台。`
-            : `当前还没有在${humanizeSurfaceLocation(state.surfaceLocation)}打开 OpenCove 画布。`,
+            ? `${EXTENSION_DISPLAY_NAME} 画布当前位于${humanizeSurfaceLocation(state.surfaceLocation)}，但不在前台。`
+            : `当前还没有在${humanizeSurfaceLocation(state.surfaceLocation)}打开 ${EXTENSION_DISPLAY_NAME} 画布。`,
       command: getOpenCanvasCommand(state),
       icon: new vscode.ThemeIcon('layout')
     },
@@ -69,8 +70,8 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
       description: describeCreatableKinds(state.creatableKinds),
       tooltip: '创建一个新的 Agent、Terminal、Task 或 Note 节点。',
       command: {
-        command: 'opencove.createNode',
-        title: 'OpenCove: 创建对象'
+        command: COMMAND_IDS.createNode,
+        title: `${EXTENSION_DISPLAY_NAME}: 创建对象`
       },
       icon: new vscode.ThemeIcon('add')
     },
@@ -81,8 +82,8 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
         state.runningExecutionCount > 0 ? `会停止 ${state.runningExecutionCount} 个运行中会话` : '清空当前画布节点',
       tooltip: '清空当前 workspace 绑定的画布对象，并停止运行中的 Agent / Terminal 会话。',
       command: {
-        command: 'opencove.resetCanvasState',
-        title: 'OpenCove: 重置画布状态'
+        command: COMMAND_IDS.resetCanvasState,
+        title: `${EXTENSION_DISPLAY_NAME}: 重置画布状态`
       },
       icon: new vscode.ThemeIcon('discard')
     },
@@ -90,14 +91,14 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
       id: 'status-canvas-surface',
       label: '画布状态',
       description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
-      tooltip: `当前 OpenCove 主画布在 VSCode ${humanizeSurfaceLocation(state.surfaceLocation)}中的状态。`,
+      tooltip: `当前 ${EXTENSION_DISPLAY_NAME} 主画布在 VSCode ${humanizeSurfaceLocation(state.surfaceLocation)}中的状态。`,
       icon: new vscode.ThemeIcon('browser')
     },
     {
       id: 'status-default-surface',
       label: '默认承载面',
       description: humanizeSurfaceLocation(state.configuredSurface),
-      tooltip: 'OpenCove: 打开画布 命令会按这个宿主承载面打开主画布。',
+      tooltip: `${EXTENSION_DISPLAY_NAME}: 打开画布 命令会按这个宿主承载面打开主画布。`,
       icon: new vscode.ThemeIcon('layout-panel')
     },
     {
@@ -155,21 +156,21 @@ function humanizeSurfaceLocation(location: CanvasSidebarState['surfaceLocation']
 function getOpenCanvasCommand(state: CanvasSidebarState): vscode.Command {
   if (state.canvasSurface === 'closed') {
     return {
-      command: 'opencove.openCanvas',
-      title: 'OpenCove: 打开画布'
+      command: COMMAND_IDS.openCanvas,
+      title: `${EXTENSION_DISPLAY_NAME}: 打开画布`
     };
   }
 
   if (state.surfaceLocation === 'panel') {
     return {
-      command: 'opencove.openCanvasInPanel',
-      title: 'OpenCove: 在面板打开画布'
+      command: COMMAND_IDS.openCanvasInPanel,
+      title: `${EXTENSION_DISPLAY_NAME}: 在面板打开画布`
     };
   }
 
   return {
-    command: 'opencove.openCanvasInEditor',
-    title: 'OpenCove: 在编辑区打开画布'
+    command: COMMAND_IDS.openCanvasInEditor,
+    title: `${EXTENSION_DISPLAY_NAME}: 在编辑区打开画布`
   };
 }
 

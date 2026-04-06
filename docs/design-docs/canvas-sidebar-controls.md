@@ -80,7 +80,7 @@ updated_at: 2026-03-31
 
 特点：
 
-- 在 VSCode Activity Bar / Primary Sidebar 中新增一个 OpenCove 侧栏容器或视图入口。
+- 在 VSCode Activity Bar / Primary Sidebar 中新增一个 Dev Session Canvas 侧栏容器或视图入口。
 - 侧栏中只保留一个最小 view，不拆成多个 tab。
 - 优先使用原生 View 能力，例如 `TreeView`、`WelcomeView`、view title toolbar 和命令入口，而不是先做 `WebviewView`。
 - 画布内移除顶角 panel，只留下左下角导航控件和右下角全局定位控件。
@@ -161,7 +161,7 @@ updated_at: 2026-03-31
 
 ### 7.2 默认使用单一原生侧栏 View 作为宿主入口
 
-- 默认在 VSCode 主侧栏提供一个 OpenCove 入口。
+- 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 入口。
 - 该入口下只保留一个最小 view，不拆分多个子视图。
 - 第一版已使用原生 `TreeView` 承载，而不是 `WebviewView`。
 - 侧栏动作收口为：

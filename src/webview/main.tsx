@@ -18,6 +18,7 @@ import 'reactflow/dist/style.css';
 import '@xterm/xterm/css/xterm.css';
 import './styles.css';
 
+import { EXECUTION_EVENT_NAME } from '../common/extensionIdentity';
 import type {
   AgentProviderKind,
   CanvasNodeKind,
@@ -111,7 +112,6 @@ type ExecutionHostEvent =
 const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
-const EXECUTION_EVENT_NAME = 'opencove-execution-event';
 const executionEventTarget = new EventTarget();
 
 if (!rootElement) {
@@ -562,7 +562,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         return;
       }
 
-      terminal.writeln(`\r\n[OpenCove] ${detail.message}`);
+      terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
       terminal.scrollToBottom();
     };
 
@@ -806,7 +806,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         return;
       }
 
-      terminal.writeln(`\r\n[OpenCove] ${detail.message}`);
+      terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
       terminal.scrollToBottom();
     };
 

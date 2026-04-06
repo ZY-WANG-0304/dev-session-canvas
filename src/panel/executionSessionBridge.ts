@@ -1,6 +1,6 @@
 export type ExecutionSessionBackendKind = 'node-pty';
-export const MISSING_NODE_PTY_ERROR_CODE = 'OPENCOVE_NODE_PTY_MISSING';
-export const INCOMPATIBLE_NODE_PTY_ERROR_CODE = 'OPENCOVE_NODE_PTY_INCOMPATIBLE';
+export const MISSING_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_MISSING';
+export const INCOMPATIBLE_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_INCOMPATIBLE';
 
 export interface ExecutionSessionExitEvent {
   exitCode: number;

@@ -32,6 +32,10 @@ tsconfig.json
 .env
 .env.*
 *.log
+core
+core.*
+image.png
+image copy*.png
 *.vsix
 *.tgz
 .gitignore
