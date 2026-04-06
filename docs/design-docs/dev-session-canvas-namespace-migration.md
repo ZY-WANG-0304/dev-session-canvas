@@ -11,6 +11,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
+  - docs/exec-plans/completed/dev-session-canvas-extension-identity-cutover.md
   - docs/exec-plans/completed/dev-session-canvas-namespace-migration.md
 updated_at: 2026-04-06
 ---
@@ -19,9 +20,9 @@ updated_at: 2026-04-06
 
 ## 背景
 
-仓库的正式产品名和扩展显示名已经收口到 `DevSessionCanvas` / `Dev Session Canvas`。此前仓库曾短暂保留旧命名兼容层，但在正式开发阶段继续维持双命名只会放大维护成本，因此当前已进一步收口为单一正式身份。
+仓库的正式产品名和扩展显示名已经收口到 `DevSessionCanvas` / `Dev Session Canvas`。2026-04-05 的第一阶段已完成“命令 / 配置 / 状态键的新主键 + 旧键兼容”迁移；随后在正式开发阶段确认接受一次显式断点升级，因此 2026-04-06 又继续推进了扩展身份与视图 ID 的完整切换。
 
-当前需要解决的问题不是“是否保留旧兼容”，而是把运行时、扩展身份与对外接口统一到同一套正式命名上，避免继续同时维护两套身份。
+当前需要解决的问题不是“是否保留旧兼容”，而是把运行时、扩展身份与对外接口统一到同一套正式命名上，同时把这次断点升级的分发影响明确写进当前发布口径。
 
 ## 问题定义
 

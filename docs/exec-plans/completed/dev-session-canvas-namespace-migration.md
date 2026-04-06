@@ -1,5 +1,7 @@
 # 收口 DevSessionCanvas 命名空间并保留兼容迁移
 
+> 说明：本文件记录的是 2026-04-05 完成的“兼容迁移阶段”。2026-04-06 又继续推进了破坏性的扩展身份切换；当前仓库事实请同时参见 `docs/exec-plans/completed/dev-session-canvas-extension-identity-cutover.md` 与对应设计文档。
+
 本 ExecPlan 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
 本计划位于仓库根目录下的 `docs/PLANS.md` 约束体系内，后续任何继续推进该主题的协作者都必须按 `docs/PLANS.md` 的要求持续维护本文件。

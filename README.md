@@ -42,6 +42,7 @@
 - 命令 ID、配置命名空间、持久化键与 view/container ID 已统一到 `devSessionCanvas.*` 及对应新扩展身份。
 - 当前不再保留旧命名空间命令、旧配置键、旧状态键或旧视图 ID 的兼容读取。
 - 当前扩展 `publisher` 已切换为 `devsessioncanvas`。
+- 这次切换不是对旧 `opencove` 预览包的原地升级；内部体验用户需要按一次性断点迁移处理。
 
 ## 发布准备状态
 
@@ -81,7 +82,11 @@ npm run package:vsix
 code --install-extension <your-vsix-file>
 ```
 
-同版本重复安装时，如遇到覆盖提示，先卸载旧包或显式升级当前体验版。
+注意：
+
+- 如果本机此前安装的是旧 `opencove` 预览包，本轮必须先卸载旧扩展，再安装当前 `devsessioncanvas.dev-session-canvas` VSIX；这不是原地覆盖升级。
+- 旧扩展下的命令入口、Activity Bar 入口、视图布局和 workspaceState 不会自动迁移到当前扩展身份。
+- 如果已经安装的是当前 `devsessioncanvas.dev-session-canvas` 包，同版本重复安装时，如遇到覆盖提示，再按普通覆盖升级处理。
 
 ## 开发与贡献
 

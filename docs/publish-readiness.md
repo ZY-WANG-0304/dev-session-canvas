@@ -36,7 +36,8 @@
 1. 在仓库根目录执行 `npm install`。
 2. 运行 `npm run package`，确认类型检查和生产构建同时通过。
 3. 运行 `npm run package:vsix`，生成内部体验版 VSIX。
-4. 通过内部渠道分发 VSIX，供体验和验证使用。
+4. 如果体验者本机此前安装过旧 `opencove` 预览包，明确告知其先卸载旧扩展，再安装当前 `devsessioncanvas.dev-session-canvas` VSIX。
+5. 通过内部渠道分发 VSIX，供体验和验证使用。
 
 ## 内部安装方式
 
@@ -45,7 +46,11 @@
 1. 在 VS Code 命令面板执行 `Extensions: Install from VSIX...`。
 2. 在终端执行 `code --install-extension <your-vsix-file>`。
 
-如果是同一内部体验版的覆盖安装，优先走升级安装；若本机保留了旧测试包，也可以先卸载旧包后再安装。
+注意：
+
+- 如果本机此前安装的是旧 `opencove` 预览包，这一轮不是覆盖升级，必须先卸载旧扩展，再安装当前 `devsessioncanvas.dev-session-canvas` 包。
+- 旧扩展下的命令、视图、Activity Bar 入口与 workspaceState 不会自动迁移到当前扩展身份。
+- 如果已经安装的是当前 `devsessioncanvas.dev-session-canvas` 包，后续同一产品线的 VSIX 才按普通覆盖升级处理。
 
 ## 若未来转向公开发布
 

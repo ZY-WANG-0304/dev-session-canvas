@@ -14,4 +14,5 @@
 - 当前版本仍以原型验证为主，不应包装成稳定正式版。
 - 当前不支持 `Virtual Workspace`。
 - 当前阶段默认只支持内部体验版 VSIX 分发，不以公开 Marketplace 发布为目标。
+- 从旧 `opencove` 预览包切换到当前 `devsessioncanvas.dev-session-canvas` 包时，不是原地升级；需要手动卸载旧扩展，并按新扩展身份重新安装。
 - 若未来转向公开发布，仍需补齐许可证策略和对外可访问的资源链接。
