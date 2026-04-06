@@ -138,8 +138,8 @@ npm run test:webview
 
 说明：
 
-- `test:smoke` 会启动一个真实的 VS Code Electron 实例，自动验证扩展激活、打开画布、等待 Webview ready、Webview 到宿主的创建/更新/移动/删除/reset 消息、`Agent` 假 provider 启动/输入/停止/失败路径、`Terminal` 启动/输入/resize/停止，以及状态持久化恢复和非激活 surface 语义。
-- `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归。
+- `test:smoke` 会启动一个真实的 VS Code Electron 实例，自动验证扩展激活、打开画布、等待 Webview ready、Webview 到宿主的创建/更新/移动/删除/reset 消息、`Agent` 假 provider 启动/输入/停止/失败路径、`Terminal` 启动/输入/resize/停止、状态持久化恢复、非激活 surface 语义，以及一条真实 VS Code Webview 容器里的 DOM / toast probe。
+- `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；当前已覆盖截图基线、Note 编辑、删除按钮、provider 切换和错误 toast。
 - 执行 `npm test` 会依次运行 `typecheck`、`test:smoke` 和 `test:webview`。
 - 首次运行 `test:smoke` 会下载一份 VS Code 测试副本；首次运行 `test:webview` 会下载 Chromium 到仓库内缓存目录。
 - `test:smoke` 默认使用仓库内 fake provider fixture，不要求开发机真的安装 `codex` / `claude`；如需验证真实 Agent CLI，请走上面的人工主路径。

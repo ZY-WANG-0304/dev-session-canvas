@@ -82,7 +82,7 @@
 - 第二层：仓库新增真实 VS Code smoke test，代理可以在命令行里完成扩展激活、打开画布、等待 Webview ready、`webview -> host` 创建/更新/移动/删除/reset 消息，以及 `Agent` 假 provider / `Terminal` 的启动、输入、resize、停止、失败路径、持久化恢复和非激活 surface 语义的自动验证。
 - 第三层：仓库新增 Playwright Webview harness，可直接加载真实 bundle，完成交互断言和截图回归。
 
-本轮剩余技术债主要有两项：Playwright harness 仍然运行在浏览器页面而不是真实 VS Code Webview 容器里；以及 Remote-SSH 下的 debug profile 第一次仍需要用户在本机完成一次准备。两者都已登记到技术债追踪或文档前置条件中。继续把第三层往真实容器下压的工作由 `docs/exec-plans/active/test-automation-hardening.md` 继续推进。
+本轮剩余技术债主要有两项：Playwright harness 仍然主要运行在浏览器页面里，真实 Webview 容器覆盖仍偏窄；以及 Remote-SSH 下的 debug profile 第一次仍需要用户在本机完成一次准备。两者都已登记到技术债追踪或文档前置条件中。继续把第三层往真实容器下压的工作由 `docs/exec-plans/completed/test-automation-hardening.md` 记录。
 
 ## 上下文与定向
 

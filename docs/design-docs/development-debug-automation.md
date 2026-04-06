@@ -13,6 +13,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/extension-debug-automation.md
+  - docs/exec-plans/completed/test-automation-hardening.md
 updated_at: 2026-04-06
 ---
 
@@ -88,9 +89,9 @@ updated_at: 2026-04-06
 
 第一层：隔离式 `Run and Debug` 改为走 VS Code 官方推荐的命名 profile。`Run Dev Session Canvas` 固定使用 `Dev Session Canvas Extension Debug` profile，并仅通过 `--extensionDevelopmentPath` 加载当前仓库里的开发态扩展；Remote-SSH 等远程能力由这个 profile 预先安装的 `Remote Development` 扩展提供，而不是继续手工改写 `user-data-dir`、`extensions-dir` 或远端工作区身份。
 
-第二层：使用 `@vscode/test-electron` 提供真实 VS Code smoke test，覆盖宿主主路径、`webview -> host` 消息桥接、`Agent` 假 provider / `Terminal` 执行生命周期、状态持久化恢复、关键失败路径和非激活 surface 语义，但仍不承担像素级 UI 回归。
+第二层：使用 `@vscode/test-electron` 提供真实 VS Code smoke test，覆盖宿主主路径、`webview -> host` 消息桥接、`Agent` 假 provider / `Terminal` 执行生命周期、状态持久化恢复、关键失败路径和非激活 surface 语义，并额外通过 test-only probe 读取真实 Webview 容器里的 DOM 摘要，但仍不承担大范围像素级 UI 回归。
 
-第三层：使用 Playwright 直接加载真实 `dist/webview.js` bundle，并通过假 `acquireVsCodeApi()` bridge 驱动 Webview，承担 UI 交互与截图测试。
+第三层：使用 Playwright 直接加载真实 `dist/webview.js` bundle，并通过假 `acquireVsCodeApi()` bridge 驱动 Webview，承担大范围 UI 交互与截图测试；与此同时，保留一条跑进真实 VS Code Webview 容器的轻量 probe，补足“完全停留在浏览器 stub 页面里”的缺口。
 
 结论：选择三层方案。这样每一层都只承担自己最擅长的验证范围，不把任何单一工具硬拉成“万能测试框架”。
 
@@ -102,8 +103,8 @@ updated_at: 2026-04-06
 - 取舍：Webview UI 测试直接吃现有 bundle，并在浏览器里 stub `acquireVsCodeApi()`。
   原因：这能最大程度复用真实前端代码，同时避免为了测试再造一套平行的假页面实现。
 
-- 风险：Playwright 的 Webview harness 不是运行在真实 VS Code Webview 容器里。
-  当前缓解：把它定位为“Webview 专项 UI 回归”，不拿它替代扩展级 smoke test。
+- 风险：大多数 Webview UI 回归仍运行在浏览器 harness 中，而不是真实 VS Code Webview 容器。
+  当前缓解：保留 Playwright harness 做大范围交互回归，同时在真实宿主 smoke 中增加 test-only DOM probe，至少覆盖真实容器里的节点渲染与错误提示。
 
 - 风险：`Agent` 真实 CLI 在不同开发机上的命令路径和 PATH 解析不稳定，直接拿本机安装做 smoke test 容易把宿主集成问题和环境偶然性混在一起。
   当前缓解：第二层 smoke 默认使用仓库内 fake provider fixture 验证执行链路，同时单独保留真实 CLI 的人工验收路径。
@@ -117,8 +118,8 @@ updated_at: 2026-04-06
 - 风险：Linux headless 环境启动 VS Code 需要图形后端。
   当前缓解：VS Code smoke runner 在无显示环境下自动走 `xvfb-run`。
 
-- 风险：Playwright harness 当前不运行在真实 VS Code Webview 容器里。
-  当前缓解：保留真实 VS Code smoke test 承担宿主级闭环验证，并把该边界继续登记为技术债。
+- 风险：大多数 Webview UI 回归当前仍不运行在真实 VS Code Webview 容器里。
+  当前缓解：保留真实 VS Code smoke test 承担宿主级闭环验证，并新增一条真实容器 probe；更深的容器差异继续登记为技术债。
 
 ## 7. 当前结论
 
@@ -127,9 +128,10 @@ updated_at: 2026-04-06
 1. 调试配置改为使用固定命名 profile `Dev Session Canvas Extension Debug` 启动 Development Host，让调试环境的隔离回到 VS Code 官方的 Profile 机制，而不是继续依赖手工目录隔离。
 2. 扩展在 `ExtensionMode.Test` 下额外注册内部测试命令，用于读取状态、等待 Webview ready、派发合成 `webview/*` 消息，以及拉取宿主发往 Webview 的消息记录。
 3. 仓库新增 `test:smoke` 与 `test:webview` 两条入口。
-4. Playwright 基线截图和交互断言已经入库，可直接随 Webview 改动回归。
-5. smoke / Playwright runner 会在失败时留下快照、宿主消息、VS Code logs、截图或 trace，避免只剩退出码。
-6. 文档明确区分：
+4. `test:smoke` 现在还包含一条真实 VS Code Webview 容器里的 probe，可直接断言节点标题、字段值和错误 toast 是否真的渲染出来。
+5. Playwright 基线截图和交互断言已经入库，可直接随 Webview 改动回归；当前回归面已覆盖 Note 编辑、删除按钮、provider 切换和错误 toast。
+6. smoke / Playwright runner 会在失败时留下快照、宿主消息、VS Code logs、截图或 trace，避免只剩退出码。
+7. 文档明确区分：
    - 真实 VS Code 集成验证
    - Webview 专项 UI / 截图验证
 
@@ -145,7 +147,7 @@ updated_at: 2026-04-06
 验收口径：
 
 - `Run Dev Session Canvas` 的启动参数明确固定 profile 名称，不再通过重写 `user-data-dir`、`extensions-dir`、隔离整个本地 SSH 环境或复用原始远端工作区锁来破坏调试。
-- VS Code smoke test 能自动完成扩展激活、打开画布、等待 Webview ready、`webview -> host` 创建/更新/移动/删除/reset 消息，以及 `Agent` 假 provider / `Terminal` 的启动、输入、resize、停止、失败路径、持久化恢复和非激活 surface 语义。
-- Playwright 能加载 Webview harness，验证至少一条交互消息和一张基线截图。
+- VS Code smoke test 能自动完成扩展激活、打开画布、等待 Webview ready、`webview -> host` 创建/更新/移动/删除/reset 消息，以及 `Agent` 假 provider / `Terminal` 的启动、输入、resize、停止、失败路径、持久化恢复、非激活 surface 语义和至少一条真实 Webview 容器 probe。
+- Playwright 能加载 Webview harness，并覆盖至少一张基线截图、Note 编辑、删除按钮、provider 切换和错误 toast。
 - smoke 或 Playwright 失败时，仓库内会留下可回放的调试产物，而不是只有进程退出码。
 - `Remote - SSH` 下的 F5 行为继续保留一条人工验收，并明确把“一次性准备本机 debug profile”当作前置条件写入文档。

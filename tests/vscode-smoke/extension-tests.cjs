@@ -11,6 +11,7 @@ const COMMAND_IDS = {
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
+  testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testCreateNode: 'devSessionCanvas.__test.createNode',
@@ -125,6 +126,7 @@ async function runSmoke() {
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
 
+  await verifyRealWebviewProbe(taskNode.id, noteNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyFailurePaths(agentNode.id, terminalNode.id, taskNode.id, noteNode.id);
@@ -299,6 +301,41 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.match(agentNode.summary, /已停止 Codex 会话/);
+}
+
+async function verifyRealWebviewProbe(taskNodeId, noteNodeId) {
+  let probe = await waitForWebviewProbe((currentProbe) => {
+    const taskNode = currentProbe.nodes.find((node) => node.nodeId === taskNodeId);
+    const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
+
+    return Boolean(
+      currentProbe.hasCanvasShell &&
+        currentProbe.hasReactFlow &&
+        currentProbe.nodeCount === 4 &&
+        taskNode &&
+        taskNode.kind === 'task' &&
+        taskNode.chromeSubtitle === 'Host Smoke Task' &&
+        taskNode.titleInputValue === 'Host Smoke Task' &&
+        taskNode.statusValue === 'running' &&
+        taskNode.assigneeValue === 'Codex' &&
+        taskNode.bodyValue === 'Verify execution and recovery in VS Code smoke.' &&
+        noteNode &&
+        noteNode.kind === 'note' &&
+        noteNode.chromeSubtitle === 'Host Smoke Note' &&
+        noteNode.titleInputValue === 'Host Smoke Note' &&
+        noteNode.bodyValue === 'Exercise the real webview-to-host update path.'
+    );
+  });
+
+  assert.strictEqual(probe.hasCanvasShell, true);
+  assert.strictEqual(probe.hasReactFlow, true);
+  assert.strictEqual(probe.nodeCount, 4);
+
+  await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
+  probe = await waitForWebviewProbe(
+    (currentProbe) => currentProbe.toastMessage === '收到无法识别的消息，已忽略。'
+  );
+  assert.strictEqual(probe.toastMessage, '收到无法识别的消息，已忽略。');
 }
 
 async function verifyTerminalExecutionFlow(terminalNodeId) {
@@ -545,8 +582,28 @@ async function reloadPersistedState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testReloadPersistedState);
 }
 
+async function captureWebviewProbe(surface, timeoutMs) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testCaptureWebviewProbe, surface, timeoutMs);
+}
+
 async function dispatchWebviewMessage(message, surface) {
   return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, message, surface);
+}
+
+async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastProbe = await captureWebviewProbe('editor', 2000);
+
+  while (Date.now() < deadline) {
+    if (predicate(lastProbe)) {
+      return lastProbe;
+    }
+
+    await sleep(100);
+    lastProbe = await captureWebviewProbe('editor', 2000);
+  }
+
+  assert.fail(`Timed out while waiting for webview probe. Last probe: ${JSON.stringify(lastProbe)}`);
 }
 
 async function waitForSnapshot(predicate, timeoutMs = 15000) {

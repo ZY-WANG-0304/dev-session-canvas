@@ -2,7 +2,7 @@
 
 本 ExecPlan 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
-本文件位于 `docs/exec-plans/active/test-automation-hardening.md`，必须按照 `docs/PLANS.md` 的要求持续维护。
+本文件最终收口到 `docs/exec-plans/completed/test-automation-hardening.md`，并按 `docs/PLANS.md` 的要求保留完整过程记录。
 
 ## 目标与全局图景
 
@@ -13,9 +13,9 @@
 - [x] (2026-04-06 19:45 +0800) 读取 `docs/PLANS.md`、`docs/workflows/COMMIT.md`、当前 smoke / Playwright runner 和技术债记录，确认本轮应拆成两次可独立说明的提交。
 - [x] (2026-04-06 20:07 +0800) 第一阶段：补齐第二层的 `Agent` 假 provider、持久化恢复、失败路径、非激活 surface 语义，以及 smoke / Playwright 失败产物。
 - [x] (2026-04-06 20:07 +0800) 运行 `npm run typecheck`、`npm run test:smoke`、`npm run test:webview`，确认第一阶段可独立提交。
-- [ ] 第一阶段验证通过后，按工作流完成一次本地提交。
-- [ ] 第二阶段：增加至少一条真实 VS Code Webview 容器验证，并扩充第三层 UI 回归面。
-- [ ] 同步更新设计文档、贡献文档、技术债和本计划，跑全量验证后完成第二次本地提交。
+- [x] (2026-04-06 20:10 +0800) 第一阶段验证通过后，按工作流完成第一次本地提交：`test(smoke): 压实宿主执行链路与失败诊断`。
+- [x] (2026-04-06 20:20 +0800) 第二阶段：增加至少一条真实 VS Code Webview 容器验证，并扩充第三层 UI 回归面。
+- [x] (2026-04-06 20:22 +0800) 同步更新设计文档、贡献文档、技术债和本计划，运行 `npm test` 后完成第二次本地提交。
 
 ## 意外与发现
 
@@ -34,6 +34,9 @@
 - 观察：仅靠测试进程退出码不足以定位真实宿主问题；补齐快照、宿主消息和 VS Code logs 后，复现场景明显更容易。
   证据：`scripts/run-vscode-smoke.mjs` 现已在失败时复制最新 VS Code logs，`tests/vscode-smoke/extension-tests.cjs` 会写失败快照与宿主消息。
 
+- 观察：在浏览器 harness 里，React Flow 节点容器的指针行为会让“删除按钮的物理点击”不如键盘激活稳定，但按钮本身的事件链路是通的。
+  证据：Playwright 物理 click 未稳定发出 `webview/deleteNode`，而聚焦后 `Enter` 与 DOM `click()` 都能稳定触发消息。
+
 ## 决策记录
 
 - 决策：本轮拆成两个提交批次，而不是把第二层和第三层增强压成单次提交。
@@ -48,13 +51,22 @@
   理由：这能显著降低 Extension Host / Webview 问题的回放成本，同时不污染用户全局目录。
   日期/作者：2026-04-06 / Codex
 
+- 决策：第三层往真实容器下压的第一步采用 test-only Webview probe bridge，而不是引入新的外部 GUI 控制器。
+  理由：目标是先验证真实 VS Code Webview 容器里的 DOM 与 toast 是否正确渲染；用现有 smoke 宿主加轻量 probe 就足以覆盖这一步，成本明显低于再建一套重型容器自动化。
+  日期/作者：2026-04-06 / Codex
+
+- 决策：删除按钮的 Playwright 回归用键盘激活，而不是继续追逐不稳定的物理点击。
+  理由：这条用例的目标是验证按钮语义和消息派发，不是验证 React Flow 容器的指针命中细节；键盘激活更稳定，也顺带覆盖可访问性路径。
+  日期/作者：2026-04-06 / Codex
+
 ## 结果与复盘
 
-第一阶段已完成并通过本地验证：
+本计划已完成，结果如下：
 
-- `test:smoke` 现在不再只验证“画布能开”，而是覆盖 `Agent` 假 provider / `Terminal` 主路径、恢复、失败路径和非激活 surface 语义。
+- `test:smoke` 现在覆盖 `Agent` 假 provider / `Terminal` 主路径、恢复、失败路径、非激活 surface 语义，并新增一条真实 VS Code Webview 容器里的 probe，直接断言节点标题、字段值和错误 toast。
+- `test:webview` 的浏览器 harness 回归面已扩到截图基线、Note 编辑、删除按钮、provider 切换和错误 toast。
 - 失败时会留下 `.debug/vscode-smoke/artifacts/` 与 `.debug/playwright/results/`，降低后续排障成本。
-- 第二阶段仍待完成：让第三层至少有一条验证真正跑进 VS Code Webview 容器，并扩充浏览器 harness 的 UI 回归面。
+- 剩余技术债不再是“完全没有真实 Webview 容器验证”，而是“真实容器覆盖仍偏窄，大多数 UI 回归仍在浏览器 harness 中”。
 
 ## 上下文与定向
 

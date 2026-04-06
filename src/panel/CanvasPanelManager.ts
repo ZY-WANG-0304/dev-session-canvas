@@ -20,6 +20,7 @@ import {
   type TaskNodeMetadata,
   type TaskNodeStatus,
   type TerminalNodeMetadata,
+  type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -72,6 +73,13 @@ interface EmbeddedExecutionSession {
   exitSubscription: DisposableLike | undefined;
 }
 
+interface PendingWebviewProbeRequest {
+  surface: CanvasSurfaceLocation;
+  resolve: (snapshot: WebviewProbeSnapshot) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
 export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
 
@@ -111,6 +119,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly testHostMessages: HostToWebviewMessage[] = [];
+  private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
@@ -244,6 +253,50 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     throw new Error(`等待 ${targetLabel} 画布完成 ready 超时（${timeoutMs}ms）。`);
   }
 
+  public async captureWebviewProbeForTest(
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface,
+    timeoutMs = 5000
+  ): Promise<WebviewProbeSnapshot> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('captureWebviewProbeForTest 仅在测试模式下可用。');
+    }
+
+    if (!surface) {
+      throw new Error('测试命令 devSessionCanvas.__test.captureWebviewProbe 需要一个有效的画布承载面。');
+    }
+
+    if (!this.isInteractiveSurface(surface)) {
+      throw new Error(`当前 ${surface} 不是可交互的主画布承载面。`);
+    }
+
+    if (!this.surfaceReady[surface]) {
+      throw new Error(`当前 ${surface} 画布尚未完成 ready。`);
+    }
+
+    const requestId = `probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingWebviewProbeRequests.delete(requestId);
+        reject(new Error(`等待 ${surface} Webview probe 返回超时（${timeoutMs}ms）。`));
+      }, timeoutMs);
+
+      this.pendingWebviewProbeRequests.set(requestId, {
+        surface,
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.postMessageToSurface(surface, {
+        type: 'host/testProbeRequest',
+        payload: {
+          requestId
+        }
+      });
+    });
+  }
+
   public async deserializeWebviewPanel(
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
@@ -311,6 +364,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.editorPanel = undefined;
           this.surfaceMode.editor = undefined;
           this.surfaceReady.editor = false;
+          this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -354,6 +408,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.panelView = undefined;
           this.surfaceMode.panel = undefined;
           this.surfaceReady.panel = false;
+          this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -591,6 +646,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
         });
       }
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/testProbeResult') {
+      this.resolvePendingWebviewProbeRequest(surface, parsedMessage.payload.requestId, parsedMessage.payload.snapshot);
       return;
     }
 
@@ -1460,6 +1520,39 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testHostMessages.push(cloneJsonValue(message));
     if (this.testHostMessages.length > 200) {
       this.testHostMessages.splice(0, this.testHostMessages.length - 200);
+    }
+  }
+
+  private resolvePendingWebviewProbeRequest(
+    surface: CanvasSurfaceLocation,
+    requestId: string,
+    snapshot: WebviewProbeSnapshot
+  ): void {
+    const pendingRequest = this.pendingWebviewProbeRequests.get(requestId);
+    if (!pendingRequest) {
+      return;
+    }
+
+    clearTimeout(pendingRequest.timeout);
+    this.pendingWebviewProbeRequests.delete(requestId);
+
+    if (pendingRequest.surface !== surface) {
+      pendingRequest.reject(new Error(`收到来自 ${surface} 的 probe 结果，但请求原本发往 ${pendingRequest.surface}。`));
+      return;
+    }
+
+    pendingRequest.resolve(cloneJsonValue(snapshot));
+  }
+
+  private rejectPendingWebviewProbeRequests(surface: CanvasSurfaceLocation, message: string): void {
+    for (const [requestId, pendingRequest] of this.pendingWebviewProbeRequests.entries()) {
+      if (pendingRequest.surface !== surface) {
+        continue;
+      }
+
+      clearTimeout(pendingRequest.timeout);
+      this.pendingWebviewProbeRequests.delete(requestId);
+      pendingRequest.reject(new Error(message));
     }
   }
 }

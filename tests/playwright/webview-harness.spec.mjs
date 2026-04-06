@@ -23,7 +23,7 @@ test('agent start button posts a startExecutionSession message', async ({ page }
   await bootstrap(page, createAgentNodeState());
   await clearPostedMessages(page);
 
-  await page.locator('.agent-session-node').getByRole('button', { name: '启动' }).click();
+  await nodeById(page, 'agent-1').getByRole('button', { name: '启动' }).click();
 
   await expect
     .poll(async () => {
@@ -63,7 +63,7 @@ test('changing a task node status posts updateTaskNode', async ({ page }) => {
   await bootstrap(page, createTaskNodeState());
   await clearPostedMessages(page);
 
-  await page.getByLabel('状态').selectOption('running');
+  await nodeById(page, 'task-1').locator('[data-probe-field="status"]').selectOption('running');
 
   await expect
     .poll(async () => {
@@ -77,6 +77,99 @@ test('changing a task node status posts updateTaskNode', async ({ page }) => {
       });
     })
     .toBe(true);
+});
+
+test('editing a note body posts updateNoteNode', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const noteBody = noteNode.locator('[data-probe-field="body"]');
+  await noteBody.fill('把真实容器 probe 也纳入回归。');
+  await noteBody.blur();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return window.__devSessionCanvasHarness.getPostedMessages().find(
+          (entry) =>
+            entry.type === 'webview/updateNoteNode' &&
+            entry.payload.nodeId === 'note-1' &&
+            entry.payload.content === '把真实容器 probe 也纳入回归。'
+        )
+          ? 'matched'
+          : null;
+      });
+    })
+    .toBe('matched');
+});
+
+test('deleting a task posts deleteNode', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createTaskNodeState());
+  await clearPostedMessages(page);
+
+  const deleteButton = nodeById(page, 'task-1').getByRole('button', { name: '删除', exact: true });
+  await deleteButton.focus();
+  await deleteButton.press('Enter');
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return window.__devSessionCanvasHarness.getPostedMessages().find(
+          (entry) =>
+            entry.type === 'webview/deleteNode' && entry.payload.nodeId === 'task-1'
+        )
+          ? 'matched'
+          : null;
+      });
+    })
+    .toBe('matched');
+});
+
+test('switching provider changes the next agent start message', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createAgentNodeState());
+  await clearPostedMessages(page);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await agentNode.locator('[data-probe-field="provider"]').selectOption('claude');
+  await agentNode.getByRole('button', { name: '启动' }).click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        if (!message) {
+          return null;
+        }
+
+        return message.payload.provider ?? null;
+      });
+    })
+    .toBe('claude');
+});
+
+test('incoming host error shows a toast in the harness', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createTaskNodeState());
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/error',
+      payload: {
+        message: '真实容器之外也要保留错误提示。'
+      }
+    });
+  });
+
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveText(
+    '真实容器之外也要保留错误提示。'
+  );
 });
 
 async function openHarness(page) {
@@ -104,6 +197,10 @@ async function clearPostedMessages(page) {
   await page.evaluate(() => {
     window.__devSessionCanvasHarness.clearPostedMessages();
   });
+}
+
+function nodeById(page, nodeId) {
+  return page.locator(`[data-node-id="${nodeId}"]`);
 }
 
 function createCanvasScreenshotState() {
@@ -187,6 +284,28 @@ function createTaskNodeState() {
           task: {
             description: '旧描述',
             assignee: 'Codex'
+          }
+        }
+      }
+    ]
+  };
+}
+
+function createNoteNodeState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-06T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'note-1',
+        kind: 'note',
+        title: '初始笔记标题',
+        status: 'ready',
+        summary: '等待补充说明。',
+        position: { x: 120, y: 140 },
+        metadata: {
+          note: {
+            content: '先记录当前上下文。'
           }
         }
       }
