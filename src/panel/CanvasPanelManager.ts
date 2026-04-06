@@ -85,6 +85,14 @@ export interface CanvasSidebarState {
   creatableKinds: CanvasNodeKind[];
 }
 
+export interface CanvasDebugSnapshot {
+  activeSurface: CanvasSurfaceLocation | undefined;
+  sidebar: CanvasSidebarState;
+  state: CanvasPrototypeState;
+  surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>>;
+  surfaceReady: Record<CanvasSurfaceLocation, boolean>;
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
@@ -148,6 +156,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  public getDebugSnapshot(): CanvasDebugSnapshot {
+    return {
+      activeSurface: this.activeSurface,
+      sidebar: cloneJsonValue(this.getSidebarState()),
+      state: cloneJsonValue(this.state),
+      surfaceMode: cloneJsonValue(this.surfaceMode),
+      surfaceReady: cloneJsonValue(this.surfaceReady)
+    };
+  }
+
   public createNode(kind: CanvasNodeKind): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
@@ -162,12 +180,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.applyCreateNode(kind);
   }
 
+  public createNodeForTest(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+    this.applyCreateNode(kind, preferredPosition);
+  }
+
   public resetState(): void {
     this.cancelAllAgentSessions();
     this.cancelAllTerminalSessions();
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  public async waitForCanvasReady(
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface,
+    timeoutMs = 15000
+  ): Promise<CanvasDebugSnapshot> {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const targetSurface = surface ?? this.activeSurface;
+      if (targetSurface && this.activeSurface === targetSurface && this.isInteractiveSurfaceReady()) {
+        return this.getDebugSnapshot();
+      }
+
+      await delay(50);
+    }
+
+    const targetLabel = surface ?? this.activeSurface ?? 'active surface';
+    throw new Error(`等待 ${targetLabel} 画布完成 ready 超时（${timeoutMs}ms）。`);
   }
 
   public async deserializeWebviewPanel(
@@ -1370,6 +1411,16 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     updatedAt: new Date().toISOString(),
     nodes: []
   };
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function delay(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, timeoutMs);
+  });
 }
 
 function createNextState(

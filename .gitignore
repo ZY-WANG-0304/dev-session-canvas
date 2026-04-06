@@ -2,3 +2,7 @@ node_modules/
 dist/
 .vscode-test/
 *.vsix
+.debug/
+.playwright-browsers/
+playwright-report/
+test-results/

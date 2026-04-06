@@ -9,6 +9,13 @@ export const COMMAND_IDS = {
   resetCanvasState: 'devSessionCanvas.resetCanvasState'
 } as const;
 
+export const TEST_COMMAND_IDS = {
+  getDebugState: 'devSessionCanvas.__test.getDebugState',
+  waitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
+  createNode: 'devSessionCanvas.__test.createNode',
+  resetState: 'devSessionCanvas.__test.resetState'
+} as const;
+
 export const VIEW_IDS = {
   activityBarContainer: 'devSessionCanvas',
   sidebarTree: 'devSessionCanvas.sidebar',

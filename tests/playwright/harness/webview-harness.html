@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dev Session Canvas Webview Harness</title>
+    <link rel="stylesheet" href="../../../dist/webview.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      (() => {
+        const postedMessages = [];
+        let persistedState = {};
+
+        window.acquireVsCodeApi = function acquireVsCodeApi() {
+          return {
+            getState() {
+              return persistedState;
+            },
+            setState(nextState) {
+              persistedState = nextState;
+            },
+            postMessage(message) {
+              postedMessages.push(message);
+              window.dispatchEvent(
+                new CustomEvent('dev-session-canvas:harness-post-message', {
+                  detail: message
+                })
+              );
+            }
+          };
+        };
+
+        window.__devSessionCanvasHarness = {
+          bootstrap(state, runtime = { workspaceTrusted: true }) {
+            window.postMessage(
+              {
+                type: 'host/bootstrap',
+                payload: {
+                  state,
+                  runtime
+                }
+              },
+              '*'
+            );
+          },
+          update(state, runtime = { workspaceTrusted: true }) {
+            window.postMessage(
+              {
+                type: 'host/stateUpdated',
+                payload: {
+                  state,
+                  runtime
+                }
+              },
+              '*'
+            );
+          },
+          getPostedMessages() {
+            return postedMessages.slice();
+          },
+          clearPostedMessages() {
+            postedMessages.length = 0;
+          },
+          getPersistedState() {
+            return persistedState;
+          }
+        };
+      })();
+    </script>
+    <script src="../../../dist/webview.js"></script>
+  </body>
+</html>
