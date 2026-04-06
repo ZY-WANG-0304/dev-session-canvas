@@ -115,6 +115,10 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
     vscode.commands.registerCommand(TEST_COMMAND_IDS.clearHostMessages, () => {
       panelManager.clearHostMessagesForTest();
     }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getDiagnosticEvents, () => panelManager.getDiagnosticEventsForTest()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.clearDiagnosticEvents, () => {
+      panelManager.clearDiagnosticEventsForTest();
+    }),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.waitForCanvasReady, async (surface?: unknown, timeoutMs?: unknown) =>
       panelManager.waitForCanvasReady(
         parseCanvasSurfaceLocation(surface),

@@ -13,6 +13,8 @@ export const TEST_COMMAND_IDS = {
   getDebugState: 'devSessionCanvas.__test.getDebugState',
   getHostMessages: 'devSessionCanvas.__test.getHostMessages',
   clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
+  getDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
+  clearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   waitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   captureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',

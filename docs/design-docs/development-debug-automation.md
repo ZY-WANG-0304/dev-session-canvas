@@ -130,13 +130,13 @@ updated_at: 2026-04-06
 本轮按以下结构收口：
 
 1. 调试配置改为使用固定命名 profile `Dev Session Canvas Extension Debug` 启动 Development Host，让调试环境的隔离回到 VS Code 官方的 Profile 机制，而不是继续依赖手工目录隔离。
-2. 扩展在 `ExtensionMode.Test` 下额外注册内部测试命令，用于读取状态、等待 Webview ready、派发合成 `webview/*` 消息，以及拉取宿主发往 Webview 的消息记录。
+2. 扩展在 `ExtensionMode.Test` 下额外注册内部测试命令，用于读取状态、等待 Webview ready、派发合成 `webview/*` 消息，以及拉取宿主发往 Webview 的消息记录与诊断时间线。
 3. 仓库现在提供 `test:smoke`、`test:webview` 和 `test:vsix-smoke` 三条入口。
 4. `test:smoke` 现在按 `trusted` / `restricted` 两个真实场景运行；可信场景覆盖真实 DOM action、live session 切面 / reload 竞态与 PTY 边界，受限场景覆盖真实 Restricted Mode 下的创建 / 运行 / 输入限制和 overlay 文案。
 5. `test:vsix-smoke` 会先打包 `.vsix`，再解包并用打包产物跑 trusted smoke，用来验证运行时文件集是否完整。
 6. `test:smoke` 现在包含真实 VS Code Webview 容器里的 probe 与 test-only DOM action，可直接断言节点标题、字段值、Restricted overlay 和错误 toast 是否真的渲染出来。
 7. Playwright 基线截图和交互断言已经入库，可直接随 Webview 改动回归；当前回归面已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
-8. smoke / Playwright runner 会在失败时留下快照、最后一次真实 Webview probe、宿主消息、VS Code logs、截图、trace、posted messages 和 persisted state，避免只剩退出码。
+8. smoke / Playwright runner 会在失败时留下快照、最后一次真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图、trace、页面级 console / error / request failed 诊断、posted messages 和 persisted state，避免只剩退出码。
 9. 文档明确区分：
    - 真实 VS Code 集成验证
    - Webview 专项 UI / 截图验证

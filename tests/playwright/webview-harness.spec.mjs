@@ -6,13 +6,52 @@ import { expect, test } from '@playwright/test';
 const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
 ).href;
+const pageDiagnosticsByPage = new WeakMap();
+
+test.beforeEach(async ({ page }) => {
+  const pageDiagnostics = {
+    consoleMessages: [],
+    pageErrors: [],
+    requestFailures: []
+  };
+  pageDiagnosticsByPage.set(page, pageDiagnostics);
+
+  page.on('console', (message) => {
+    pageDiagnostics.consoleMessages.push({
+      type: message.type(),
+      text: message.text(),
+      location: message.location()
+    });
+  });
+
+  page.on('pageerror', (error) => {
+    pageDiagnostics.pageErrors.push({
+      message: error.message,
+      stack: error.stack ?? null
+    });
+  });
+
+  page.on('requestfailed', (request) => {
+    pageDiagnostics.requestFailures.push({
+      url: request.url(),
+      method: request.method(),
+      resourceType: request.resourceType(),
+      errorText: request.failure()?.errorText ?? null
+    });
+  });
+});
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status === testInfo.expectedStatus) {
     return;
   }
 
-  const diagnostics = await page
+  const pageDiagnostics = pageDiagnosticsByPage.get(page) ?? {
+    consoleMessages: [],
+    pageErrors: [],
+    requestFailures: []
+  };
+  const harnessDiagnostics = await page
     .evaluate(() => {
       const harness = window.__devSessionCanvasHarness;
       if (!harness) {
@@ -26,20 +65,24 @@ test.afterEach(async ({ page }, testInfo) => {
     })
     .catch(() => null);
 
-  if (!diagnostics) {
-    return;
-  }
+  await fs.writeFile(
+    testInfo.outputPath('playwright-page-diagnostics.json'),
+    `${JSON.stringify(pageDiagnostics, null, 2)}\n`,
+    'utf8'
+  );
 
-  await fs.writeFile(
-    testInfo.outputPath('harness-posted-messages.json'),
-    `${JSON.stringify(diagnostics.postedMessages, null, 2)}\n`,
-    'utf8'
-  );
-  await fs.writeFile(
-    testInfo.outputPath('harness-persisted-state.json'),
-    `${JSON.stringify(diagnostics.persistedState, null, 2)}\n`,
-    'utf8'
-  );
+  if (harnessDiagnostics) {
+    await fs.writeFile(
+      testInfo.outputPath('harness-posted-messages.json'),
+      `${JSON.stringify(harnessDiagnostics.postedMessages, null, 2)}\n`,
+      'utf8'
+    );
+    await fs.writeFile(
+      testInfo.outputPath('harness-persisted-state.json'),
+      `${JSON.stringify(harnessDiagnostics.persistedState, null, 2)}\n`,
+      'utf8'
+    );
+  }
 });
 
 test('webview bundle emits ready and matches the baseline screenshot', async ({ page }) => {

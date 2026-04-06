@@ -10,6 +10,8 @@ const COMMAND_IDS = {
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
+  testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
+  testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
@@ -49,6 +51,7 @@ async function runSmoke() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
+  await clearDiagnosticEvents();
 
   if (smokeScenario === 'restricted') {
     await runRestrictedSmoke();
@@ -179,6 +182,7 @@ async function runTrustedSmoke() {
   await verifyFailurePaths(agentNode.id, terminalNode.id, taskNode.id, noteNode.id);
   await verifyPersistenceAndRecovery(taskNode.id, noteNode.id, agentNode.id, terminalNode.id);
   await verifyStandbySurfaceIgnoresMessages(taskNode.id);
+  await verifyTrustedDiagnostics(agentNode.id, terminalNode.id);
 
   await dispatchWebviewMessage({
     type: 'webview/deleteNode',
@@ -353,6 +357,7 @@ async function runRestrictedSmoke() {
   const probeTerminal = probe.nodes.find((node) => node.nodeId === terminalNode.id);
   assert.strictEqual(probeAgent?.overlayTitle, 'Restricted Mode');
   assert.strictEqual(probeTerminal?.overlayTitle, 'Restricted Mode');
+  await verifyRestrictedDiagnostics(agentNode.id, terminalNode.id);
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -1087,8 +1092,16 @@ async function getHostMessages() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetHostMessages);
 }
 
+async function getDiagnosticEvents() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+}
+
 async function clearHostMessages() {
   await vscode.commands.executeCommand(COMMAND_IDS.testClearHostMessages);
+}
+
+async function clearDiagnosticEvents() {
+  await vscode.commands.executeCommand(COMMAND_IDS.testClearDiagnosticEvents);
 }
 
 async function reloadPersistedState() {
@@ -1192,6 +1205,112 @@ async function persistLastWebviewProbe() {
   );
 }
 
+async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
+  const diagnosticEvents = await getDiagnosticEvents();
+
+  assert.ok(
+    diagnosticEvents.some(
+      (event) => event.kind === 'surface/revealRequested' && event.detail?.to === 'panel'
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) => event.kind === 'surface/ready' && event.detail?.surface === 'panel'
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === agentNodeId
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/exited' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === agentNodeId
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'terminal' &&
+        event.detail?.nodeId === terminalNodeId
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/snapshotPosted' &&
+        event.detail?.kind === 'terminal' &&
+        event.detail?.nodeId === terminalNodeId &&
+        event.detail?.liveSession === true
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        ((event.kind === 'execution/spawnError' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === agentNodeId) ||
+          (event.kind === 'execution/exited' &&
+            event.detail?.kind === 'agent' &&
+            event.detail?.nodeId === agentNodeId &&
+            event.detail?.status === 'error'))
+    )
+  );
+}
+
+async function verifyRestrictedDiagnostics(agentNodeId, terminalNodeId) {
+  const diagnosticEvents = await getDiagnosticEvents();
+
+  assert.ok(
+    diagnosticEvents.some(
+      (event) => event.kind === 'surface/ready' && event.detail?.surface === 'editor'
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === agentNodeId &&
+        event.detail?.reason === 'workspace-untrusted'
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.kind === 'terminal' &&
+        event.detail?.nodeId === terminalNodeId &&
+        event.detail?.reason === 'workspace-untrusted'
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/inputRejected' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === agentNodeId &&
+        event.detail?.reason === 'workspace-untrusted'
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'execution/inputRejected' &&
+        event.detail?.kind === 'terminal' &&
+        event.detail?.nodeId === terminalNodeId &&
+        event.detail?.reason === 'workspace-untrusted'
+    )
+  );
+}
+
 async function writeFailureArtifacts(error) {
   if (!artifactDir) {
     return;
@@ -1214,6 +1333,15 @@ async function writeFailureArtifacts(error) {
     await fs.writeFile(
       path.join(artifactDir, 'failure-host-messages.json'),
       `${JSON.stringify(hostMessages, null, 2)}\n`,
+      'utf8'
+    );
+  }
+
+  const diagnosticEvents = await safeGet(() => getDiagnosticEvents());
+  if (diagnosticEvents !== undefined) {
+    await fs.writeFile(
+      path.join(artifactDir, 'failure-diagnostic-events.json'),
+      `${JSON.stringify(diagnosticEvents, null, 2)}\n`,
       'utf8'
     );
   }

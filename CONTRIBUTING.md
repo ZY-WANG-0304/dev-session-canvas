@@ -145,8 +145,8 @@ npm run test:vsix-smoke
 - 执行 `npm test` 会依次运行 `typecheck`、`test:smoke` 和 `test:webview`。
 - 首次运行 `test:smoke` 会下载一份 VS Code 测试副本；首次运行 `test:webview` 会下载 Chromium 到仓库内缓存目录。
 - `test:smoke` 默认使用仓库内 fake provider fixture，不要求开发机真的安装 `codex` / `claude`；如需验证真实 Agent CLI，请走上面的人工主路径。
-- `test:smoke` 失败时会把场景相关的快照、最后一次真实 Webview probe、宿主消息和 VS Code logs 分别写到 `.debug/vscode-smoke/trusted/artifacts/` 或 `.debug/vscode-smoke/restricted/artifacts/`。
-- `test:webview` 失败时会把截图、trace、`harness-posted-messages.json` 和 `harness-persisted-state.json` 写到 `.debug/playwright/results/`。
+- `test:smoke` 失败时会把场景相关的快照、最后一次真实 Webview probe、宿主消息、`failure-diagnostic-events.json`（宿主侧 surface / session 生命周期时间线）和 VS Code logs 分别写到 `.debug/vscode-smoke/trusted/artifacts/` 或 `.debug/vscode-smoke/restricted/artifacts/`。
+- `test:webview` 失败时会把截图、trace、`playwright-page-diagnostics.json`（console / page error / request failed）、`harness-posted-messages.json` 和 `harness-persisted-state.json` 写到 `.debug/playwright/results/`。
 
 如果你修改了 Webview 视觉基线，需要显式更新截图：
 
