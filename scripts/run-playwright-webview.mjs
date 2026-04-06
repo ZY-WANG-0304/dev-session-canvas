@@ -57,6 +57,7 @@ function runPlaywrightCli(args) {
   }
 
   if (result.status !== 0) {
+    console.error(`Playwright failure artifacts are available under ${path.join(runtimeRoot, '..', 'playwright', 'results')}`);
     process.exit(result.status ?? 1);
   }
 }

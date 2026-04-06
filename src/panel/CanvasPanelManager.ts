@@ -110,6 +110,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly agentSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
+  private readonly testHostMessages: HostToWebviewMessage[] = [];
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
@@ -166,6 +167,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  public getHostMessagesForTest(): HostToWebviewMessage[] {
+    return cloneJsonValue(this.testHostMessages);
+  }
+
+  public clearHostMessagesForTest(): void {
+    this.testHostMessages.length = 0;
+  }
+
   public createNode(kind: CanvasNodeKind): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
@@ -182,6 +191,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public createNodeForTest(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
     this.applyCreateNode(kind, preferredPosition);
+  }
+
+  public dispatchWebviewMessageForTest(
+    message: unknown,
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface
+  ): CanvasDebugSnapshot {
+    if (!surface) {
+      throw new Error('测试命令 devSessionCanvas.__test.dispatchWebviewMessage 需要一个有效的画布承载面。');
+    }
+
+    this.handleWebviewMessage(surface, message);
+    return this.getDebugSnapshot();
+  }
+
+  public reloadPersistedStateForTest(): CanvasDebugSnapshot {
+    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.activeSurface = this.loadStoredSurface();
+    this.notifySidebarStateChanged();
+
+    if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
+      this.postState('host/stateUpdated');
+    }
+
+    return this.getDebugSnapshot();
   }
 
   public resetState(): void {
@@ -384,6 +417,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessage(message: HostToWebviewMessage): void {
+    this.recordHostMessageForTest(message);
+
     const activeWebview = this.getActiveWebview();
     if (!activeWebview) {
       return;
@@ -644,6 +679,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessageToSurface(surface: CanvasSurfaceLocation, message: HostToWebviewMessage): void {
+    this.recordHostMessageForTest(message);
+
     const webview = this.getSurfaceWebview(surface);
     if (!webview) {
       return;
@@ -891,11 +928,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getAgentCliConfig(): AgentCliConfig {
     const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
+    const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex';
+    const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude';
+
+    const codexCommand =
+      this.context.extensionMode === vscode.ExtensionMode.Test
+        ? process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND?.trim() || configuredCodexCommand
+        : configuredCodexCommand;
+    const claudeCommand =
+      this.context.extensionMode === vscode.ExtensionMode.Test
+        ? process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND?.trim() || configuredClaudeCommand
+        : configuredClaudeCommand;
 
     return {
       defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
-      codexCommand: getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex',
-      claudeCommand: getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude'
+      codexCommand,
+      claudeCommand
     };
   }
 
@@ -1402,6 +1450,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  private recordHostMessageForTest(message: HostToWebviewMessage): void {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      return;
+    }
+
+    this.testHostMessages.push(cloneJsonValue(message));
+    if (this.testHostMessages.length > 200) {
+      this.testHostMessages.splice(0, this.testHostMessages.length - 200);
+    }
   }
 }
 

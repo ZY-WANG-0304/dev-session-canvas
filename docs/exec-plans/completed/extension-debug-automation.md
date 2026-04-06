@@ -22,6 +22,8 @@
 - [x] (2026-04-06 13:33 +0800) 为测试模式补充内部命令，并新增真实 VS Code smoke test runner。
 - [x] (2026-04-06 13:42 +0800) 新增 Playwright Webview harness、交互测试与截图基线。
 - [x] (2026-04-06 13:46 +0800) 运行 `npm run build`、`npm run typecheck`、`npm run test:smoke` 和 `npm run test:webview`，同步更新本计划、设计文档和技术债记录。
+- [x] (2026-04-06 18:26 +0800) 在第二层新增合成 `webview/*` 消息派发入口，并把真实 VS Code smoke test 下压到宿主消息桥接与 `Terminal` 执行链路。
+- [x] (2026-04-06 20:07 +0800) 在第二层补齐 `Agent` 假 provider、恢复、失败路径、非激活 surface 语义与失败诊断产物，作为后续继续下压第三层前的压实步骤。
 
 ## 意外与发现
 
@@ -77,10 +79,10 @@
 本计划定义的三层交付已全部完成：
 
 - 第一层：`Run Dev Session Canvas` 现在固定使用命名 profile `Dev Session Canvas Extension Debug` 启动 Development Host，并只通过 `--extensionDevelopmentPath` 加载当前仓库里的开发态扩展；旧的 `user-data-dir` / `extensions-dir` / 远端 workspace 规避脚本已回收。
-- 第二层：仓库新增真实 VS Code smoke test，代理可以在命令行里完成扩展激活、打开画布、等待 Webview ready、创建节点和重置状态的自动验证。
+- 第二层：仓库新增真实 VS Code smoke test，代理可以在命令行里完成扩展激活、打开画布、等待 Webview ready、`webview -> host` 创建/更新/移动/删除/reset 消息，以及 `Agent` 假 provider / `Terminal` 的启动、输入、resize、停止、失败路径、持久化恢复和非激活 surface 语义的自动验证。
 - 第三层：仓库新增 Playwright Webview harness，可直接加载真实 bundle，完成交互断言和截图回归。
 
-本轮剩余技术债主要有两项：Playwright harness 仍然运行在浏览器页面而不是真实 VS Code Webview 容器里；以及 Remote-SSH 下的 debug profile 第一次仍需要用户在本机完成一次准备。两者都已登记到技术债追踪或文档前置条件中。
+本轮剩余技术债主要有两项：Playwright harness 仍然运行在浏览器页面而不是真实 VS Code Webview 容器里；以及 Remote-SSH 下的 debug profile 第一次仍需要用户在本机完成一次准备。两者都已登记到技术债追踪或文档前置条件中。继续把第三层往真实容器下压的工作由 `docs/exec-plans/active/test-automation-hardening.md` 继续推进。
 
 ## 上下文与定向
 
@@ -119,9 +121,10 @@
 - `Run Dev Session Canvas` 的启动参数已经固定为官方 Profile 方案。
 - `npm run build` 通过。
 - `npm run typecheck` 通过。
-- `npm run test:smoke` 通过，并覆盖扩展激活、打开画布、等待 ready、创建节点、重置状态。
+- `npm run test:smoke` 通过，并覆盖扩展激活、打开画布、等待 ready、`webview -> host` 创建/更新/移动/删除/reset 消息，以及 `Agent` 假 provider / `Terminal` 的启动、输入、resize、停止、失败路径、恢复和非激活 surface 语义。
 - `npm run test:webview` 通过，并覆盖一条截图基线和两条 UI 消息断言。
 - 文档明确区分真实扩展 smoke test 与 Webview Playwright 测试各自的边界。
+- smoke 与 Playwright runner 失败时，仓库内会留下可定位问题的调试产物。
 
 ## 幂等性与恢复
 
@@ -157,7 +160,11 @@
 测试模式内部命令如下：
 
     devSessionCanvas.__test.getDebugState
+    devSessionCanvas.__test.getHostMessages
+    devSessionCanvas.__test.clearHostMessages
     devSessionCanvas.__test.waitForCanvasReady
+    devSessionCanvas.__test.reloadPersistedState
+    devSessionCanvas.__test.dispatchWebviewMessage
     devSessionCanvas.__test.createNode
     devSessionCanvas.__test.resetState
 

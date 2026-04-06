@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+echo "[fake-agent] ready pid=$$"
+
+handle_signal() {
+  echo "[fake-agent] received signal"
+  exit 0
+}
+
+trap handle_signal TERM INT
+
+while IFS= read -r line; do
+  line="${line%$'\r'}"
+
+  if [[ -z "$line" ]]; then
+    continue
+  fi
+
+  if [[ "$line" == exit\ * ]]; then
+    exit_code="${line#exit }"
+    echo "[fake-agent] exiting with code ${exit_code}"
+    exit "$exit_code"
+  fi
+
+  echo "[fake-agent] ${line}"
+done

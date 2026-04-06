@@ -111,11 +111,21 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
 
   context.subscriptions.push(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getHostMessages, () => panelManager.getHostMessagesForTest()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.clearHostMessages, () => {
+      panelManager.clearHostMessagesForTest();
+    }),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.waitForCanvasReady, async (surface?: unknown, timeoutMs?: unknown) =>
       panelManager.waitForCanvasReady(
         parseCanvasSurfaceLocation(surface),
         typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 15000
       )
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.reloadPersistedState, () => panelManager.reloadPersistedStateForTest()),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.dispatchWebviewMessage,
+      (message?: unknown, surface?: unknown) =>
+        panelManager.dispatchWebviewMessageForTest(message, parseCanvasSurfaceLocation(surface))
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown) => {
       if (!isCanvasNodeKind(kind)) {

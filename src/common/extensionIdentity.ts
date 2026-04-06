@@ -11,7 +11,11 @@ export const COMMAND_IDS = {
 
 export const TEST_COMMAND_IDS = {
   getDebugState: 'devSessionCanvas.__test.getDebugState',
+  getHostMessages: 'devSessionCanvas.__test.getHostMessages',
+  clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   waitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
+  reloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
+  dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   createNode: 'devSessionCanvas.__test.createNode',
   resetState: 'devSessionCanvas.__test.resetState'
 } as const;
