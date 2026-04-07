@@ -15,6 +15,7 @@ const COMMAND_IDS = {
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testCreateNode: 'devSessionCanvas.__test.createNode',
@@ -23,7 +24,9 @@ const COMMAND_IDS = {
 
 const artifactDir = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const smokeScenario = process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO || 'trusted';
-const REAL_DOM_TASK_STATUS = 'blocked';
+const REAL_DOM_AGENT_TITLE = 'Agent Title Through DOM';
+const REAL_DOM_TERMINAL_TITLE = 'Terminal Title Through DOM';
+const REAL_DOM_NOTE_TITLE = 'Host Smoke Note Through DOM';
 const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview DOM.';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
@@ -31,8 +34,7 @@ const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
-  task: { width: 480, height: 390 },
-  note: { width: 500, height: 520 }
+  note: { width: 500, height: 500 }
 };
 let lastWebviewProbe;
 
@@ -89,13 +91,6 @@ async function createBaseNodes() {
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
-      kind: 'task',
-      preferredPosition: { x: 40, y: 320 }
-    }
-  });
-  await dispatchWebviewMessage({
-    type: 'webview/createDemoNode',
-    payload: {
       kind: 'note',
       preferredPosition: { x: 420, y: 320 }
     }
@@ -131,29 +126,23 @@ async function runTrustedSmoke() {
   snapshot = await getDebugSnapshot();
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    ['agent', 'note', 'task', 'terminal']
+    ['agent', 'note', 'terminal']
   );
 
-  const taskNode = findNodeByKind(snapshot, 'task');
   const noteNode = findNodeByKind(snapshot, 'note');
   const terminalNode = findNodeByKind(snapshot, 'terminal');
   const agentNode = findNodeByKind(snapshot, 'agent');
-
   await dispatchWebviewMessage({
-    type: 'webview/updateTaskNode',
+    type: 'webview/updateNodeTitle',
     payload: {
-      nodeId: taskNode.id,
-      title: 'Host Smoke Task',
-      status: 'running',
-      description: 'Verify execution and recovery in VS Code smoke.',
-      assignee: 'Codex'
+      nodeId: noteNode.id,
+      title: 'Host Smoke Note'
     }
   });
   await dispatchWebviewMessage({
     type: 'webview/updateNoteNode',
     payload: {
       nodeId: noteNode.id,
-      title: 'Host Smoke Note',
       content: 'Exercise the real webview-to-host update path.'
     }
   });
@@ -169,13 +158,6 @@ async function runTrustedSmoke() {
   });
 
   snapshot = await getDebugSnapshot();
-  assert.strictEqual(findNodeById(snapshot, taskNode.id).title, 'Host Smoke Task');
-  assert.strictEqual(findNodeById(snapshot, taskNode.id).status, 'running');
-  assert.strictEqual(
-    findNodeById(snapshot, taskNode.id).metadata.task.description,
-    'Verify execution and recovery in VS Code smoke.'
-  );
-  assert.strictEqual(findNodeById(snapshot, taskNode.id).metadata.task.assignee, 'Codex');
   assert.strictEqual(findNodeById(snapshot, noteNode.id).title, 'Host Smoke Note');
   assert.strictEqual(
     findNodeById(snapshot, noteNode.id).metadata.note.content,
@@ -183,16 +165,17 @@ async function runTrustedSmoke() {
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
 
-  await verifyRealWebviewProbe(taskNode.id, noteNode.id);
-  await verifyRealWebviewDomInteractions(taskNode.id, noteNode.id);
-  await verifyNodeResizePersistence(agentNode.id, terminalNode.id, taskNode.id, noteNode.id);
+  await verifyLegacyTaskFiltering();
+  await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
+  await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
+  await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyLiveSessionCutoverAndReload(terminalNode.id);
   await verifyPtyRobustness(agentNode.id, terminalNode.id);
-  await verifyFailurePaths(agentNode.id, terminalNode.id, taskNode.id, noteNode.id);
-  await verifyPersistenceAndRecovery(taskNode.id, noteNode.id, agentNode.id, terminalNode.id);
-  await verifyStandbySurfaceIgnoresMessages(taskNode.id);
+  await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);
+  await verifyPersistenceAndRecovery(noteNode.id, agentNode.id, terminalNode.id);
+  await verifyStandbySurfaceIgnoresMessages(noteNode.id);
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyTrustedDiagnostics(agentNode.id, terminalNode.id);
@@ -200,7 +183,7 @@ async function runTrustedSmoke() {
 
   snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === noteNode.id), false);
-  assert.strictEqual(snapshot.state.nodes.length, 3);
+  assert.strictEqual(snapshot.state.nodes.length, 2);
 
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
   snapshot = await getDebugSnapshot();
@@ -218,7 +201,7 @@ async function runRestrictedSmoke() {
   assert.strictEqual(snapshot.activeSurface, 'editor');
   assert.strictEqual(snapshot.sidebar.canvasSurface, 'visible');
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, false);
-  assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['task', 'note']);
+  assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['note']);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
@@ -239,13 +222,6 @@ async function runRestrictedSmoke() {
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
-      kind: 'task',
-      preferredPosition: { x: 40, y: 320 }
-    }
-  });
-  await dispatchWebviewMessage({
-    type: 'webview/createDemoNode',
-    payload: {
       kind: 'note',
       preferredPosition: { x: 420, y: 320 }
     }
@@ -254,7 +230,7 @@ async function runRestrictedSmoke() {
   snapshot = await getDebugSnapshot();
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    ['note', 'task']
+    ['note']
   );
 
   let hostMessages = await getHostMessages();
@@ -490,25 +466,84 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.match(agentNode.summary, /已停止 Codex 会话/);
 }
 
-async function verifyRealWebviewProbe(taskNodeId, noteNodeId) {
+async function verifyLegacyTaskFiltering() {
+  const beforeSnapshot = await getDebugSnapshot();
+  const beforeState = beforeSnapshot.state;
+
+  let snapshot = await setPersistedState({
+    version: 1,
+    updatedAt: '2026-04-07T14:00:00.000Z',
+    nodes: [
+      {
+        id: 'legacy-task-1',
+        kind: 'task',
+        title: 'Legacy Task',
+        status: 'running',
+        summary: 'Should be filtered when the canvas state reloads.',
+        position: { x: 120, y: 80 },
+        size: { width: 420, height: 320 },
+        metadata: {
+          task: {
+            description: 'Outdated task node payload.',
+            assignee: 'Codex'
+          }
+        }
+      }
+    ]
+  });
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  snapshot = await setPersistedState({
+    ...beforeState,
+    nodes: [
+      ...beforeState.nodes,
+      {
+        id: 'legacy-task-2',
+        kind: 'task',
+        title: 'Legacy Task Kept Out',
+        status: 'done',
+        summary: 'Should not survive beside current nodes.',
+        position: { x: 960, y: 120 },
+        size: { width: 420, height: 320 },
+        metadata: {
+          task: {
+            description: 'Mixed legacy state.',
+            assignee: 'Codex'
+          }
+        }
+      }
+    ]
+  });
+  assert.deepStrictEqual(
+    snapshot.state.nodes.map((node) => node.kind).sort(),
+    beforeState.nodes.map((node) => node.kind).sort()
+  );
+  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'), false);
+}
+
+async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   let probe = await waitForWebviewProbe((currentProbe) => {
-    const taskNode = currentProbe.nodes.find((node) => node.nodeId === taskNodeId);
+    const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+    const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
     const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
 
     return Boolean(
       currentProbe.hasCanvasShell &&
         currentProbe.hasReactFlow &&
-        currentProbe.nodeCount === 4 &&
-        taskNode &&
-        taskNode.kind === 'task' &&
-        taskNode.chromeSubtitle === 'Host Smoke Task' &&
-        taskNode.titleInputValue === 'Host Smoke Task' &&
-        taskNode.statusValue === 'running' &&
-        taskNode.assigneeValue === 'Codex' &&
-        taskNode.bodyValue === 'Verify execution and recovery in VS Code smoke.' &&
+        currentProbe.nodeCount === 3 &&
+        agentNode &&
+        agentNode.kind === 'agent' &&
+        typeof agentNode.titleInputValue === 'string' &&
+        agentNode.titleInputValue.length > 0 &&
+        terminalNode &&
+        terminalNode.kind === 'terminal' &&
+        typeof terminalNode.titleInputValue === 'string' &&
+        terminalNode.titleInputValue.length > 0 &&
         noteNode &&
         noteNode.kind === 'note' &&
-        noteNode.chromeSubtitle === 'Host Smoke Note' &&
+        noteNode.chromeTitle === 'Host Smoke Note' &&
+        noteNode.chromeSubtitle === null &&
+        noteNode.statusText === null &&
         noteNode.titleInputValue === 'Host Smoke Note' &&
         noteNode.bodyValue === 'Exercise the real webview-to-host update path.'
     );
@@ -516,7 +551,7 @@ async function verifyRealWebviewProbe(taskNodeId, noteNodeId) {
 
   assert.strictEqual(probe.hasCanvasShell, true);
   assert.strictEqual(probe.hasReactFlow, true);
-  assert.strictEqual(probe.nodeCount, 4);
+  assert.strictEqual(probe.nodeCount, 3);
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
   probe = await waitForWebviewProbe(
@@ -525,27 +560,71 @@ async function verifyRealWebviewProbe(taskNodeId, noteNodeId) {
   assert.strictEqual(probe.toastMessage, '收到无法识别的消息，已忽略。');
 }
 
-async function verifyRealWebviewDomInteractions(taskNodeId, noteNodeId) {
+async function verifyRealWebviewDomInteractions(agentNodeId, terminalNodeId, noteNodeId) {
   await performWebviewDomAction({
-    kind: 'selectNodeOption',
-    nodeId: taskNodeId,
-    field: 'status',
-    value: REAL_DOM_TASK_STATUS
+    kind: 'setNodeTextField',
+    nodeId: agentNodeId,
+    field: 'title',
+    value: REAL_DOM_AGENT_TITLE
   });
 
   let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentTask = currentSnapshot.state.nodes.find((node) => node.id === taskNodeId);
-    return Boolean(currentTask?.status === REAL_DOM_TASK_STATUS);
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentAgent?.title === REAL_DOM_AGENT_TITLE);
   });
-  assert.strictEqual(findNodeById(snapshot, taskNodeId).status, REAL_DOM_TASK_STATUS);
+  assert.strictEqual(findNodeById(snapshot, agentNodeId).title, REAL_DOM_AGENT_TITLE);
+
+  await performWebviewDomAction({
+    kind: 'setNodeTextField',
+    nodeId: terminalNodeId,
+    field: 'title',
+    value: REAL_DOM_TERMINAL_TITLE
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+    return Boolean(currentTerminal?.title === REAL_DOM_TERMINAL_TITLE);
+  });
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).title, REAL_DOM_TERMINAL_TITLE);
+
+  await performWebviewDomAction({
+    kind: 'setNodeTextField',
+    nodeId: noteNodeId,
+    field: 'title',
+    value: REAL_DOM_NOTE_TITLE
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.title === REAL_DOM_NOTE_TITLE);
+  });
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).title, REAL_DOM_NOTE_TITLE);
 
   let probe = await waitForWebviewProbe((currentProbe) => {
-    const currentTask = currentProbe.nodes.find((node) => node.nodeId === taskNodeId);
-    return Boolean(currentTask && currentTask.statusValue === REAL_DOM_TASK_STATUS);
+    const currentAgent = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+    const currentTerminal = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
+    const currentNote = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
+    return Boolean(
+      currentAgent &&
+        currentAgent.titleInputValue === REAL_DOM_AGENT_TITLE &&
+        currentTerminal &&
+        currentTerminal.titleInputValue === REAL_DOM_TERMINAL_TITLE &&
+      currentNote &&
+        currentNote.chromeTitle === REAL_DOM_NOTE_TITLE &&
+        currentNote.titleInputValue === REAL_DOM_NOTE_TITLE
+    );
   });
   assert.strictEqual(
-    probe.nodes.find((node) => node.nodeId === taskNodeId)?.statusValue,
-    REAL_DOM_TASK_STATUS
+    probe.nodes.find((node) => node.nodeId === agentNodeId)?.titleInputValue,
+    REAL_DOM_AGENT_TITLE
+  );
+  assert.strictEqual(
+    probe.nodes.find((node) => node.nodeId === terminalNodeId)?.titleInputValue,
+    REAL_DOM_TERMINAL_TITLE
+  );
+  assert.strictEqual(
+    probe.nodes.find((node) => node.nodeId === noteNodeId)?.titleInputValue,
+    REAL_DOM_NOTE_TITLE
   );
 
   await performWebviewDomAction({
@@ -563,7 +642,11 @@ async function verifyRealWebviewDomInteractions(taskNodeId, noteNodeId) {
 
   probe = await waitForWebviewProbe((currentProbe) => {
     const currentNote = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
-    return Boolean(currentNote && currentNote.bodyValue === REAL_DOM_NOTE_BODY);
+    return Boolean(
+      currentNote &&
+        currentNote.titleInputValue === REAL_DOM_NOTE_TITLE &&
+        currentNote.bodyValue === REAL_DOM_NOTE_BODY
+    );
   });
   assert.strictEqual(
     probe.nodes.find((node) => node.nodeId === noteNodeId)?.bodyValue,
@@ -571,18 +654,16 @@ async function verifyRealWebviewDomInteractions(taskNodeId, noteNodeId) {
   );
 }
 
-async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNodeId, noteNodeId) {
+async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {
   let snapshot = await waitForSnapshot((currentSnapshot) => {
     return (
       currentSnapshot.state.nodes.some((node) => node.id === agentNodeId) &&
       currentSnapshot.state.nodes.some((node) => node.id === terminalNodeId) &&
-      currentSnapshot.state.nodes.some((node) => node.id === taskNodeId) &&
       currentSnapshot.state.nodes.some((node) => node.id === noteNodeId)
     );
   });
   const agentNode = findNodeById(snapshot, agentNodeId);
   const terminalNode = findNodeById(snapshot, terminalNodeId);
-  const taskNode = findNodeById(snapshot, taskNodeId);
   const noteNode = findNodeById(snapshot, noteNodeId);
 
   await dispatchWebviewMessage({
@@ -604,14 +685,6 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNode
   await dispatchWebviewMessage({
     type: 'webview/resizeNode',
     payload: {
-      nodeId: taskNodeId,
-      position: taskNode.position,
-      size: RESIZED_NODE_SIZES.task
-    }
-  });
-  await dispatchWebviewMessage({
-    type: 'webview/resizeNode',
-    payload: {
       nodeId: noteNodeId,
       position: noteNode.position,
       size: RESIZED_NODE_SIZES.note
@@ -622,34 +695,29 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNode
     return (
       hasNodeSize(currentSnapshot, agentNodeId, RESIZED_NODE_SIZES.agent) &&
       hasNodeSize(currentSnapshot, terminalNodeId, RESIZED_NODE_SIZES.terminal) &&
-      hasNodeSize(currentSnapshot, taskNodeId, RESIZED_NODE_SIZES.task) &&
       hasNodeSize(currentSnapshot, noteNodeId, RESIZED_NODE_SIZES.note)
     );
   });
 
   assert.deepStrictEqual(findNodeById(snapshot, agentNodeId).size, RESIZED_NODE_SIZES.agent);
   assert.deepStrictEqual(findNodeById(snapshot, terminalNodeId).size, RESIZED_NODE_SIZES.terminal);
-  assert.deepStrictEqual(findNodeById(snapshot, taskNodeId).size, RESIZED_NODE_SIZES.task);
   assert.deepStrictEqual(findNodeById(snapshot, noteNodeId).size, RESIZED_NODE_SIZES.note);
 
   const probe = await waitForWebviewProbe((currentProbe) => {
     return (
       hasRenderedNodeSize(currentProbe, agentNodeId, RESIZED_NODE_SIZES.agent) &&
       hasRenderedNodeSize(currentProbe, terminalNodeId, RESIZED_NODE_SIZES.terminal) &&
-      hasRenderedNodeSize(currentProbe, taskNodeId, RESIZED_NODE_SIZES.task) &&
       hasRenderedNodeSize(currentProbe, noteNodeId, RESIZED_NODE_SIZES.note)
     );
   });
 
   assert.ok(hasRenderedNodeSize(probe, agentNodeId, RESIZED_NODE_SIZES.agent));
   assert.ok(hasRenderedNodeSize(probe, terminalNodeId, RESIZED_NODE_SIZES.terminal));
-  assert.ok(hasRenderedNodeSize(probe, taskNodeId, RESIZED_NODE_SIZES.task));
   assert.ok(hasRenderedNodeSize(probe, noteNodeId, RESIZED_NODE_SIZES.note));
 
   snapshot = await reloadPersistedState();
   assert.deepStrictEqual(findNodeById(snapshot, agentNodeId).size, RESIZED_NODE_SIZES.agent);
   assert.deepStrictEqual(findNodeById(snapshot, terminalNodeId).size, RESIZED_NODE_SIZES.terminal);
-  assert.deepStrictEqual(findNodeById(snapshot, taskNodeId).size, RESIZED_NODE_SIZES.task);
   assert.deepStrictEqual(findNodeById(snapshot, noteNodeId).size, RESIZED_NODE_SIZES.note);
 }
 
@@ -1056,7 +1124,7 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
 }
 
-async function verifyFailurePaths(agentNodeId, terminalNodeId, taskNodeId, noteNodeId) {
+async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
 
@@ -1161,13 +1229,14 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, taskNodeId, noteN
   );
 
   snapshot = await getDebugSnapshot();
-  assert.strictEqual(findNodeById(snapshot, taskNodeId).title, 'Host Smoke Task');
-  assert.strictEqual(findNodeById(snapshot, noteNodeId).title, 'Host Smoke Note');
+  assert.strictEqual(findNodeById(snapshot, agentNodeId).title, REAL_DOM_AGENT_TITLE);
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).title, REAL_DOM_TERMINAL_TITLE);
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).title, REAL_DOM_NOTE_TITLE);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
 }
 
-async function verifyPersistenceAndRecovery(taskNodeId, noteNodeId, agentNodeId, terminalNodeId) {
+async function verifyPersistenceAndRecovery(noteNodeId, agentNodeId, terminalNodeId) {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
@@ -1175,32 +1244,39 @@ async function verifyPersistenceAndRecovery(taskNodeId, noteNodeId, agentNodeId,
   assert.strictEqual(snapshot.activeSurface, 'panel');
   assert.strictEqual(snapshot.sidebar.surfaceLocation, 'panel');
   assert.strictEqual(snapshot.surfaceReady.panel, true);
-  assert.strictEqual(snapshot.state.nodes.length, 4);
-  assert.strictEqual(findNodeById(snapshot, taskNodeId).title, 'Host Smoke Task');
-  assert.strictEqual(findNodeById(snapshot, noteNodeId).title, 'Host Smoke Note');
-  assert.strictEqual(findNodeById(snapshot, taskNodeId).status, REAL_DOM_TASK_STATUS);
+  assert.strictEqual(snapshot.state.nodes.length, 3);
+  assert.strictEqual(findNodeById(snapshot, agentNodeId).title, REAL_DOM_AGENT_TITLE);
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).title, REAL_DOM_TERMINAL_TITLE);
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).title, REAL_DOM_NOTE_TITLE);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
   assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'error');
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
 }
 
-async function verifyStandbySurfaceIgnoresMessages(taskNodeId) {
+async function verifyStandbySurfaceIgnoresMessages(noteNodeId) {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
   await clearHostMessages();
 
   const beforeSnapshot = await getDebugSnapshot();
-  const beforeTask = findNodeById(beforeSnapshot, taskNodeId);
+  const beforeNote = findNodeById(beforeSnapshot, noteNodeId);
 
   await dispatchWebviewMessage(
     {
-      type: 'webview/updateTaskNode',
+      type: 'webview/updateNodeTitle',
       payload: {
-        nodeId: taskNodeId,
-        title: 'Standby Should Not Win',
-        status: 'done',
-        description: 'This payload comes from a standby surface.',
-        assignee: 'Panel'
+        nodeId: noteNodeId,
+        title: 'Standby Should Not Win'
+      }
+    },
+    'panel'
+  );
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/updateNoteNode',
+      payload: {
+        nodeId: noteNodeId,
+        content: 'This payload comes from a standby surface.'
       }
     },
     'panel'
@@ -1208,10 +1284,10 @@ async function verifyStandbySurfaceIgnoresMessages(taskNodeId) {
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' }, 'panel');
 
   const afterSnapshot = await getDebugSnapshot();
-  const afterTask = findNodeById(afterSnapshot, taskNodeId);
-  assert.strictEqual(afterTask.title, beforeTask.title);
-  assert.strictEqual(afterTask.status, beforeTask.status);
-  assert.strictEqual(afterTask.metadata.task.description, beforeTask.metadata.task.description);
+  const afterNote = findNodeById(afterSnapshot, noteNodeId);
+  assert.strictEqual(afterNote.title, beforeNote.title);
+  assert.strictEqual(afterNote.status, beforeNote.status);
+  assert.strictEqual(afterNote.metadata.note.content, beforeNote.metadata.note.content);
 
   const hostMessages = await getHostMessages();
   assert.strictEqual(hostMessages.length, 0);
@@ -1401,6 +1477,10 @@ async function clearDiagnosticEvents() {
 
 async function reloadPersistedState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testReloadPersistedState);
+}
+
+async function setPersistedState(rawState) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, rawState);
 }
 
 async function captureWebviewProbe(surface, timeoutMs, delayMs = 0) {

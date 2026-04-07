@@ -68,7 +68,7 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
       id: 'action-create-node',
       label: '创建对象',
       description: describeCreatableKinds(state.creatableKinds),
-      tooltip: '创建一个新的 Agent、Terminal、Task 或 Note 节点。',
+      tooltip: '创建一个新的 Agent、Terminal 或 Note 节点。',
       command: {
         command: COMMAND_IDS.createNode,
         title: `${EXTENSION_DISPLAY_NAME}: 创建对象`
@@ -184,8 +184,6 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
       return 'Agent';
     case 'terminal':
       return 'Terminal';
-    case 'task':
-      return 'Task';
     case 'note':
       return 'Note';
   }

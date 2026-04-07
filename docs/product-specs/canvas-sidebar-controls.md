@@ -31,7 +31,7 @@
   - 右下角：全局定位性质控件，例如 MiniMap。
 - 默认提供一个 VSCode 侧栏承载面，作为以下能力的主入口：
   - 打开或定位画布
-  - 通过单一“创建对象”入口创建 `Agent`、`Terminal`、`Task`、`Note`
+  - 通过单一“创建对象”入口创建 `Agent`、`Terminal`、`Note`
   - 重置宿主状态
   - 展示最小必要状态，例如 workspace trust、画布是否可定位、节点总数，以及必要的执行状态摘要
 - 当侧栏不可见时，上述动作仍可通过命令入口到达。
@@ -39,7 +39,7 @@
 
 ## 5. 不在范围内
 
-- 在侧栏复刻选中节点详情、Agent/Terminal 连续输出、Task/Note 正文或其他 richer metadata
+- 在侧栏复刻选中节点详情、Agent/Terminal 连续输出、Note 正文或其他 richer metadata
 - 用侧栏取代画布成为主要工作面
 - 新增多个侧栏 view、tab 或 dashboard 式信息墙
 - 在侧栏中维护完整节点列表、关系图或 mini inspector

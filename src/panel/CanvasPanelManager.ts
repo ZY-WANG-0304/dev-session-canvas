@@ -18,8 +18,6 @@ import {
   type ExecutionNodeKind,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
-  type TaskNodeMetadata,
-  type TaskNodeStatus,
   type TerminalNodeMetadata,
   type WebviewDomAction,
   type WebviewProbeSnapshot,
@@ -183,9 +181,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
-      creatableKinds: vscode.workspace.isTrusted
-        ? ['agent', 'terminal', 'task', 'note']
-        : ['task', 'note']
+      creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note']
     };
   }
 
@@ -256,6 +252,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/reloaded', {
       activeSurface: this.activeSurface,
+      nodeCount: this.state.nodes.length
+    });
+    this.notifySidebarStateChanged();
+
+    if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
+      this.postState('host/stateUpdated');
+    }
+
+    return this.getDebugSnapshot();
+  }
+
+  public async setPersistedStateForTest(rawState: unknown): Promise<CanvasDebugSnapshot> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
+    }
+
+    await this.context.workspaceState.update(STORAGE_KEYS.canvasState, rawState);
+    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.recordDiagnosticEvent('state/seededForTest', {
       nodeCount: this.state.nodes.length
     });
     this.notifySidebarStateChanged();
@@ -878,8 +893,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/stopExecutionSession':
         void this.stopExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
         return;
-      case 'webview/updateTaskNode':
-        this.state = updateTaskContent(this.state, parsedMessage.payload);
+      case 'webview/updateNodeTitle':
+        this.state = updateNodeTitle(this.state, parsedMessage.payload.nodeId, parsedMessage.payload.title);
         this.persistState();
         this.postState('host/stateUpdated');
         return;
@@ -1977,8 +1992,6 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
       return '尚未启动 Agent 会话。';
     case 'terminal':
       return '尚未启动嵌入式终端。';
-    case 'task':
-      return '等待补充任务描述。';
     case 'note':
       return '等待记录笔记内容。';
   }
@@ -1990,8 +2003,6 @@ function defaultStatusForKind(kind: CanvasNodeKind): string {
       return 'draft';
     case 'terminal':
       return 'draft';
-    case 'task':
-      return 'todo';
     case 'note':
       return 'ready';
   }
@@ -2005,7 +2016,6 @@ function createNode(
   const titlePrefix = {
     agent: 'Agent',
     terminal: 'Terminal',
-    task: 'Task',
     note: 'Note'
   } satisfies Record<CanvasNodeKind, string>;
 
@@ -2350,12 +2360,6 @@ function createNodeMetadata(
     };
   }
 
-  if (kind === 'task') {
-    return {
-      task: createTaskMetadata()
-    };
-  }
-
   if (kind === 'note') {
     return {
       note: createNoteMetadata()
@@ -2388,13 +2392,6 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
     autoStartPending: false,
     lastCols: DEFAULT_TERMINAL_COLS,
     lastRows: DEFAULT_TERMINAL_ROWS
-  };
-}
-
-function createTaskMetadata(): TaskNodeMetadata {
-  return {
-    description: '',
-    assignee: ''
   };
 }
 
@@ -2519,24 +2516,6 @@ function normalizeMetadata(
     };
   }
 
-  if (kind === 'task') {
-    const task = isRecord(record.task) ? record.task : {};
-    const fallback = createTaskMetadata();
-
-    return {
-      task: {
-        description:
-          typeof task.description === 'string'
-            ? trimStoredNodeText(task.description)
-            : fallback.description,
-        assignee:
-          typeof task.assignee === 'string'
-            ? trimStoredNodeText(task.assignee)
-            : fallback.assignee
-      }
-    };
-  }
-
   if (kind === 'note') {
     const note = isRecord(record.note) ? record.note : {};
     const fallback = createNoteMetadata();
@@ -2570,7 +2549,7 @@ function reconcileRuntimeNodesInArray(
   agentSessions: Map<string, EmbeddedExecutionSession> = new Map(),
   terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
 ): CanvasNodeSummary[] {
-  return reconcileTaskAndNoteNodesInArray(
+  return reconcileNoteNodesInArray(
     reconcileAgentNodesInArray(
       reconcileTerminalNodesInArray(nodes, terminalSessions),
       agentSessions
@@ -2724,30 +2703,8 @@ function reconcileTerminalNodesInArray(
   });
 }
 
-function reconcileTaskAndNoteNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
+function reconcileNoteNodesInArray(nodes: CanvasNodeSummary[]): CanvasNodeSummary[] {
   return nodes.map((node) => {
-    if (node.kind === 'task') {
-      const metadata = ensureTaskMetadata(node);
-      const shouldMigrate =
-        node.summary === '用于验证任务状态展示的占位节点' ||
-        !node.metadata?.task;
-
-      return {
-        ...node,
-        status:
-          node.status === 'todo' || node.status === 'running' || node.status === 'blocked' || node.status === 'done'
-            ? node.status
-            : 'todo',
-        summary: shouldMigrate
-          ? summarizeTaskNode(metadata.description, metadata.assignee, 'todo')
-          : node.summary,
-        metadata: {
-          ...node.metadata,
-          task: metadata
-        }
-      };
-    }
-
     if (node.kind === 'note') {
       const metadata = ensureNoteMetadata(node);
       const shouldMigrate =
@@ -2820,57 +2777,10 @@ function updateAgentNode(
   return updateCanvasNode(state, nodeId, patch);
 }
 
-function updateTaskContent(
-  state: CanvasPrototypeState,
-  payload: {
-    nodeId: string;
-    title: string;
-    status: TaskNodeStatus;
-    description: string;
-    assignee: string;
-  }
-): CanvasPrototypeState {
-  const node = state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'task');
-  if (!node) {
-    return state;
-  }
-
-  const nextTitle = trimStoredNodeText(payload.title).trim() || node.title;
-  const nextDescription = trimStoredNodeText(payload.description);
-  const nextAssignee = trimStoredNodeText(payload.assignee);
-  const nextMetadata: CanvasNodeMetadata = {
-    ...node.metadata,
-    task: {
-      ...ensureTaskMetadata(node),
-      description: nextDescription,
-      assignee: nextAssignee
-    }
-  };
-
-  const nextNodes = state.nodes.map((currentNode) =>
-    currentNode.id === payload.nodeId
-      ? {
-          ...currentNode,
-          title: nextTitle,
-          status: payload.status,
-          summary: summarizeTaskNode(nextDescription, nextAssignee, payload.status),
-          metadata: nextMetadata
-        }
-      : currentNode
-  );
-
-  return {
-    ...state,
-    updatedAt: new Date().toISOString(),
-    nodes: nextNodes
-  };
-}
-
 function updateNoteContent(
   state: CanvasPrototypeState,
   payload: {
     nodeId: string;
-    title: string;
     content: string;
   }
 ): CanvasPrototypeState {
@@ -2879,7 +2789,6 @@ function updateNoteContent(
     return state;
   }
 
-  const nextTitle = trimStoredNodeText(payload.title).trim() || node.title;
   const nextContent = trimStoredNodeText(payload.content);
   const nextMetadata: CanvasNodeMetadata = {
     ...node.metadata,
@@ -2893,7 +2802,6 @@ function updateNoteContent(
     currentNode.id === payload.nodeId
       ? {
           ...currentNode,
-          title: nextTitle,
           status: 'ready',
           summary: summarizeNoteNode(nextContent),
           metadata: nextMetadata
@@ -2905,6 +2813,35 @@ function updateNoteContent(
     ...state,
     updatedAt: new Date().toISOString(),
     nodes: nextNodes
+  };
+}
+
+function updateNodeTitle(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  title: string
+): CanvasPrototypeState {
+  const currentNode = state.nodes.find((node) => node.id === nodeId);
+  if (!currentNode) {
+    return state;
+  }
+
+  const nextTitle = trimStoredNodeText(title).trim() || currentNode.title;
+  if (nextTitle === currentNode.title) {
+    return state;
+  }
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: state.nodes.map((node) =>
+      node.id === nodeId
+        ? {
+            ...node,
+            title: nextTitle
+          }
+        : node
+    )
   };
 }
 
@@ -2950,10 +2887,6 @@ function readTerminalStatus(state: CanvasPrototypeState, nodeId: string): string
 function readTerminalSummary(state: CanvasPrototypeState, nodeId: string): string {
   const terminalNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
   return terminalNode?.summary ?? defaultSummaryForKind('terminal');
-}
-
-function ensureTaskMetadata(node: CanvasNodeSummary): TaskNodeMetadata {
-  return node.metadata?.task ?? createTaskMetadata();
 }
 
 function ensureNoteMetadata(node: CanvasNodeSummary): NoteNodeMetadata {
@@ -3079,25 +3012,6 @@ function normalizeTerminalRows(value: number | undefined): number {
   }
 
   return Math.max(12, Math.min(80, Math.round(value)));
-}
-
-function summarizeTaskNode(
-  description: string,
-  assignee: string,
-  status: TaskNodeStatus
-): string {
-  const normalizedDescription = description.replace(/\s+/g, ' ').trim();
-  const normalizedAssignee = assignee.replace(/\s+/g, ' ').trim();
-  if (normalizedDescription) {
-    const summary = normalizedDescription.length > 120
-      ? `${normalizedDescription.slice(0, 120)}...`
-      : normalizedDescription;
-    return normalizedAssignee ? `${summary} · 负责人：${normalizedAssignee}` : summary;
-  }
-
-  return normalizedAssignee
-    ? `${humanizeTaskStatus(status)} · 负责人：${normalizedAssignee}`
-    : `${humanizeTaskStatus(status)} · 等待补充任务描述。`;
 }
 
 function summarizeNoteNode(content: string): string {
@@ -3259,17 +3173,4 @@ function isLegacyPlaceholderTerminal(node: CanvasNodeSummary): boolean {
     node.summary === '宿主终端已关闭，可重新创建。' ||
     node.summary === '已匹配到现存宿主终端，可直接显示。'
   );
-}
-
-function humanizeTaskStatus(status: TaskNodeStatus): string {
-  switch (status) {
-    case 'todo':
-      return '待办';
-    case 'running':
-      return '进行中';
-    case 'blocked':
-      return '受阻';
-    case 'done':
-      return '已完成';
-  }
 }

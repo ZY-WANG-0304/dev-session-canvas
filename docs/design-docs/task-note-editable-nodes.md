@@ -11,12 +11,15 @@ architecture_layers:
   - 共享模型与编排层
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
+  - docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md
 related_plans:
   - docs/exec-plans/completed/task-note-editable-nodes.md
-updated_at: 2026-03-28
+updated_at: 2026-04-07
 ---
 
 # Task 与 Note 可编辑节点设计
+
+> 更新（2026-04-07）：本文记录的是 `Task` 与 `Note` 同时存在阶段的已验证设计。当前正式支持范围已收口为 `Agent` / `Terminal` / `Note`，相关当前结论以 `docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md` 为准。
 
 ## 1. 背景
 

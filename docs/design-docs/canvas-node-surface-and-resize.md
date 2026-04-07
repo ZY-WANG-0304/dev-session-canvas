@@ -12,12 +12,15 @@ architecture_layers:
   - 共享模型与编排层
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
+  - docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-surface-and-resize-polish.md
 updated_at: 2026-04-07
 ---
 
 # 节点窗口表面与通用尺寸设计
+
+> 更新（2026-04-07）：本文记录的是 `Task` / `Note` 并存阶段的窗口化表面与 resize 设计。当前正式支持范围已收口为 `Agent` / `Terminal` / `Note`，其中辅助对象表面的现行结论以 `docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md` 为准。
 
 ## 1. 背景
 

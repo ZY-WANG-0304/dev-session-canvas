@@ -32,7 +32,6 @@ import type {
   CanvasPrototypeState,
   ExecutionNodeKind,
   HostToWebviewMessage,
-  TaskNodeStatus,
   WebviewDomAction,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -80,16 +79,9 @@ interface CanvasNodeData {
   onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
-  onUpdateTask?: (payload: {
-    nodeId: string;
-    title: string;
-    status: TaskNodeStatus;
-    description: string;
-    assignee: string;
-  }) => void;
+  onUpdateNodeTitle?: (nodeId: string, title: string) => void;
   onUpdateNote?: (payload: {
     nodeId: string;
-    title: string;
     content: string;
   }) => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -128,6 +120,7 @@ const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionEventTarget = new EventTarget();
+const CANVAS_FIT_VIEW_PADDING = 0.05;
 
 if (!rootElement) {
   throw new Error('Webview root element not found.');
@@ -316,10 +309,13 @@ function App(): JSX.Element {
         type: 'webview/stopExecutionSession',
         payload: { nodeId, kind }
       }),
-    onUpdateTask: (payload) =>
+    onUpdateNodeTitle: (nodeId, title) =>
       postMessage({
-        type: 'webview/updateTaskNode',
-        payload
+        type: 'webview/updateNodeTitle',
+        payload: {
+          nodeId,
+          title
+        }
       }),
     onUpdateNote: (payload) =>
       postMessage({
@@ -422,6 +418,7 @@ function App(): JSX.Element {
         edges={[]}
         nodeTypes={nodeTypes}
         fitView={!localUiState.viewport}
+        fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
         defaultViewport={localUiState.viewport}
         minZoom={0.4}
         maxZoom={1.8}
@@ -450,7 +447,11 @@ function App(): JSX.Element {
           maskStrokeColor="rgba(241, 245, 249, 0.92)"
           maskStrokeWidth={2.5}
         />
-        <Controls className="canvas-corner-panel canvas-controls" showInteractive={false} />
+        <Controls
+          className="canvas-corner-panel canvas-controls"
+          showInteractive={false}
+          fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
+        />
       </ReactFlow>
 
       {errorMessage ? (
@@ -645,10 +646,13 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     >
       <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
-        <div className="window-title">
-          <strong>{data.title}</strong>
-          <span>{agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}</span>
-        </div>
+        <ChromeTitleEditor
+          value={data.title}
+          subtitle={agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}
+          placeholder="Agent 标题"
+          onSelectNode={() => data.onSelectNode?.(id)}
+          onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
+        />
         <div className="window-chrome-actions">
           <select
             className="agent-provider-select nodrag nopan"
@@ -885,10 +889,14 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     >
       <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
-        <div className="window-title terminal-window-title">
-          <strong>{data.title}</strong>
-          <span>{terminalMetadata.shellPath}</span>
-        </div>
+        <ChromeTitleEditor
+          value={data.title}
+          subtitle={terminalMetadata.shellPath}
+          placeholder="Terminal 标题"
+          className="terminal-window-title"
+          onSelectNode={() => data.onSelectNode?.(id)}
+          onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
+        />
         <div className="window-chrome-actions">
           <span className={`status-pill ${terminalMetadata.liveSession ? 'tone-running' : 'tone-idle'}`}>
             {terminalMetadata.liveSession ? '运行中' : humanizeStatus(data.status)}
@@ -1002,244 +1010,34 @@ function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id'
   );
 }
 
-function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
-  const taskMetadata = data.metadata?.task;
-  if (!taskMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
-  }
-
-  const [title, setTitle] = useState(data.title);
-  const [status, setStatus] = useState<TaskNodeStatus>(normalizeTaskStatus(data.status));
-  const [description, setDescription] = useState(taskMetadata.description);
-  const [assignee, setAssignee] = useState(taskMetadata.assignee);
-  const [activeFieldCount, setActiveFieldCount] = useState(0);
-  const [isComposing, setIsComposing] = useState(false);
-
-  useLayoutEffect(() => {
-    if (activeFieldCount === 0 && !isComposing) {
-      setTitle(data.title);
-      setStatus(normalizeTaskStatus(data.status));
-      setDescription(taskMetadata.description);
-      setAssignee(taskMetadata.assignee);
-    }
-  }, [
-    activeFieldCount,
-    id,
-    data.status,
-    data.title,
-    isComposing,
-    taskMetadata.assignee,
-    taskMetadata.description
-  ]);
-
-  const submitTask = (patch?: Partial<{
-    title: string;
-    status: TaskNodeStatus;
-    description: string;
-    assignee: string;
-  }>): void => {
-    data.onUpdateTask?.({
-      nodeId: id,
-      title: patch?.title ?? title,
-      status: patch?.status ?? status,
-      description: patch?.description ?? description,
-      assignee: patch?.assignee ?? assignee
-    });
-  };
-
-  const beginEditing = (): void => {
-    setActiveFieldCount((current) => current + 1);
-    data.onSelectNode?.(id);
-  };
-
-  const finishEditing = (): void => {
-    setActiveFieldCount((current) => Math.max(0, current - 1));
-  };
-
-  const deleteTask = (): void => {
-    data.onSelectNode?.(id);
-    data.onDeleteNode?.(id);
-  };
-
-  return (
-    <div
-      className={`canvas-node object-editor-node kind-task ${data.selected ? 'is-selected' : ''}`}
-      data-node-id={id}
-      data-node-kind={data.kind}
-      data-node-selected={data.selected ? 'true' : 'false'}
-    >
-      <NodeResizeAffordance id={id} data={data} />
-      <div className="window-chrome">
-        <div className="window-title">
-          <strong>Task</strong>
-          <span>{title.trim() || '未命名任务'}</span>
-        </div>
-        <div className="window-chrome-actions">
-          <span className={`status-pill ${statusToneClass(status)}`}>{humanizeStatus(status)}</span>
-          <ActionButton
-            label="删除"
-            tone="danger"
-            onClick={deleteTask}
-            className="nodrag nopan compact"
-            interactive
-            onFocus={() => data.onSelectNode?.(id)}
-          />
-        </div>
-      </div>
-
-      <div className="object-body object-surface task-surface">
-        <div className="object-context-strip task-context-strip">
-          <label className="object-context-block">
-            <span className="object-context-label">当前任务</span>
-            <input
-              className="node-title-input nodrag nopan"
-              data-node-interactive="true"
-              data-probe-field="title"
-              value={title}
-              onFocus={beginEditing}
-              onMouseDown={stopCanvasEvent}
-              onClick={stopCanvasEvent}
-              onChange={(event) => setTitle(event.target.value)}
-              onBlur={(event) => {
-                const nextTitle = event.currentTarget.value;
-                setTitle(nextTitle);
-                finishEditing();
-                submitTask({ title: nextTitle });
-              }}
-              onKeyDown={(event) =>
-                handleEditableFieldKeyDown(event, () =>
-                  submitTask({ title: event.currentTarget.value })
-                )
-              }
-              placeholder="给这个任务起一个标题"
-            />
-          </label>
-
-          <div className="object-context-row">
-            <label className="node-chip-field">
-              <span className="node-chip-label">状态</span>
-              <select
-                className="node-chip-select nodrag nopan"
-                data-node-interactive="true"
-                data-probe-field="status"
-                value={status}
-                onFocus={beginEditing}
-                onMouseDown={stopCanvasEvent}
-                onClick={stopCanvasEvent}
-                onChange={(event) => {
-                  const nextStatus = normalizeTaskStatus(event.target.value);
-                  setStatus(nextStatus);
-                  submitTask({ status: nextStatus });
-                }}
-                onBlur={finishEditing}
-                onKeyDown={handleEditableSelectKeyDown}
-              >
-                <option value="todo">待开始</option>
-                <option value="running">进行中</option>
-                <option value="blocked">阻塞</option>
-                <option value="done">已完成</option>
-              </select>
-            </label>
-
-            <label className="node-chip-field">
-              <span className="node-chip-label">负责人</span>
-              <input
-                className="node-chip-input nodrag nopan"
-                data-node-interactive="true"
-                data-probe-field="assignee"
-                value={assignee}
-                onFocus={beginEditing}
-                onMouseDown={stopCanvasEvent}
-                onClick={stopCanvasEvent}
-                onChange={(event) => setAssignee(event.target.value)}
-                onBlur={(event) => {
-                  const nextAssignee = event.currentTarget.value;
-                  setAssignee(nextAssignee);
-                  finishEditing();
-                  submitTask({ assignee: nextAssignee });
-                }}
-                onKeyDown={(event) =>
-                  handleEditableFieldKeyDown(event, () =>
-                    submitTask({ assignee: event.currentTarget.value })
-                  )
-                }
-                placeholder="例如：Codex 或你自己"
-              />
-            </label>
-          </div>
-        </div>
-
-        <label className="document-sheet task-document-sheet">
-          <span className="document-kicker">执行说明</span>
-          <textarea
-            className="node-document-input task-document-input nowheel nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="body"
-            value={description}
-            onFocus={beginEditing}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onWheel={stopCanvasEvent}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={(event) => {
-              setIsComposing(false);
-              setDescription(event.currentTarget.value);
-            }}
-            onChange={(event) => setDescription(event.target.value)}
-            onBlur={(event) => {
-              const nextDescription = event.currentTarget.value;
-              setDescription(nextDescription);
-              finishEditing();
-              submitTask({ description: nextDescription });
-            }}
-            onKeyDown={(event) =>
-              handleEditableFieldKeyDown(event, () =>
-                submitTask({ description: event.currentTarget.value })
-              )
-            }
-            placeholder="补充这个任务的目标、范围、约束或下一步。"
-          />
-        </label>
-
-        <div className="object-footer-hint">{data.summary}</div>
-      </div>
-    </div>
-  );
-}
-
 function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const noteMetadata = data.metadata?.note;
   if (!noteMetadata) {
     return <CanvasCardNode id={id} data={data} />;
   }
 
-  const [title, setTitle] = useState(data.title);
   const [content, setContent] = useState(noteMetadata.content);
-  const [activeFieldCount, setActiveFieldCount] = useState(0);
+  const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const committedContentRef = useRef(noteMetadata.content);
 
   useLayoutEffect(() => {
-    if (activeFieldCount === 0 && !isComposing) {
-      setTitle(data.title);
+    committedContentRef.current = noteMetadata.content;
+    if (!isEditingBody && !isComposing) {
       setContent(noteMetadata.content);
     }
-  }, [activeFieldCount, id, data.title, isComposing, noteMetadata.content]);
+  }, [id, isComposing, isEditingBody, noteMetadata.content]);
 
-  const submitNote = (patch?: Partial<{ title: string; content: string }>): void => {
+  const submitNote = (nextContent: string): void => {
+    if (nextContent === committedContentRef.current) {
+      return;
+    }
+
+    committedContentRef.current = nextContent;
     data.onUpdateNote?.({
       nodeId: id,
-      title: patch?.title ?? title,
-      content: patch?.content ?? content
+      content: nextContent
     });
-  };
-
-  const beginEditing = (): void => {
-    setActiveFieldCount((current) => current + 1);
-    data.onSelectNode?.(id);
-  };
-
-  const finishEditing = (): void => {
-    setActiveFieldCount((current) => Math.max(0, current - 1));
   };
 
   const deleteNote = (): void => {
@@ -1256,12 +1054,14 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     >
       <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
-        <div className="window-title">
-          <strong>Note</strong>
-          <span>{title.trim() || '未命名笔记'}</span>
-        </div>
+        <ChromeTitleEditor
+          value={data.title}
+          placeholder="Note 标题"
+          className="note-window-title"
+          onSelectNode={() => data.onSelectNode?.(id)}
+          onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
+        />
         <div className="window-chrome-actions">
-          <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
           <ActionButton
             label="删除"
             tone="danger"
@@ -1274,40 +1074,16 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       </div>
 
       <div className="object-body object-surface note-surface">
-        <label className="object-context-block note-context-strip">
-          <span className="object-context-label">当前笔记</span>
-          <input
-            className="node-title-input nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="title"
-            value={title}
-            onFocus={beginEditing}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={(event) => {
-              const nextTitle = event.currentTarget.value;
-              setTitle(nextTitle);
-              finishEditing();
-              submitNote({ title: nextTitle });
-            }}
-            onKeyDown={(event) =>
-              handleEditableFieldKeyDown(event, () =>
-                submitNote({ title: event.currentTarget.value })
-              )
-            }
-            placeholder="给这条笔记起一个标题"
-          />
-        </label>
-
-        <label className="document-sheet note-document-sheet">
-          <span className="document-kicker">工作笔记</span>
+        <div className="note-editor-surface">
           <textarea
             className="node-document-input note-document-input nowheel nodrag nopan"
             data-node-interactive="true"
             data-probe-field="body"
             value={content}
-            onFocus={beginEditing}
+            onFocus={() => {
+              setIsEditingBody(true);
+              data.onSelectNode?.(id);
+            }}
             onMouseDown={stopCanvasEvent}
             onClick={stopCanvasEvent}
             onWheel={stopCanvasEvent}
@@ -1320,19 +1096,17 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             onBlur={(event) => {
               const nextContent = event.currentTarget.value;
               setContent(nextContent);
-              finishEditing();
-              submitNote({ content: nextContent });
+              setIsEditingBody(false);
+              submitNote(nextContent);
             }}
             onKeyDown={(event) =>
               handleEditableFieldKeyDown(event, () =>
-                submitNote({ content: event.currentTarget.value })
+                submitNote(event.currentTarget.value)
               )
             }
             placeholder="直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。"
           />
-        </label>
-
-        <div className="object-footer-hint">{data.summary}</div>
+        </div>
       </div>
     </div>
   );
@@ -1387,7 +1161,6 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
 const nodeTypes = {
   agent: AgentSessionNode,
   terminal: TerminalSessionNode,
-  task: TaskEditableNode,
   note: NoteEditableNode,
   card: CanvasCardNode
 };
@@ -1429,6 +1202,63 @@ function ActionButton(props: {
   );
 }
 
+function ChromeTitleEditor(props: {
+  value: string;
+  placeholder: string;
+  subtitle?: string;
+  className?: string;
+  onSelectNode?: () => void;
+  onSubmit: (title: string) => void;
+}): JSX.Element {
+  const [draft, setDraft] = useState(props.value);
+  const [isEditing, setIsEditing] = useState(false);
+  const committedTitleRef = useRef(props.value);
+
+  useLayoutEffect(() => {
+    committedTitleRef.current = props.value;
+    if (!isEditing) {
+      setDraft(props.value);
+    }
+  }, [isEditing, props.value]);
+
+  const commitTitle = (rawValue: string): void => {
+    const baselineTitle = committedTitleRef.current;
+    const nextTitle = rawValue.trim() || baselineTitle;
+    setDraft(nextTitle);
+    if (nextTitle !== baselineTitle) {
+      committedTitleRef.current = nextTitle;
+      props.onSubmit(nextTitle);
+    }
+  };
+
+  return (
+    <div className={`window-title ${props.className ?? ''}`.trim()}>
+      <input
+        className="window-title-input nodrag nopan"
+        data-node-interactive="true"
+        data-probe-field="title"
+        value={draft}
+        onFocus={() => {
+          setIsEditing(true);
+          props.onSelectNode?.();
+        }}
+        onMouseDown={stopCanvasEvent}
+        onClick={stopCanvasEvent}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={(event) => {
+          setIsEditing(false);
+          commitTitle(event.currentTarget.value);
+        }}
+        onKeyDown={(event) =>
+          handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value))
+        }
+        placeholder={props.placeholder}
+      />
+      {props.subtitle ? <span>{props.subtitle}</span> : null}
+    </div>
+  );
+}
+
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
@@ -1436,6 +1266,7 @@ function toFlowNodes(params: {
   agentProviderDrafts: Record<string, AgentProviderKind>;
   onSelectNode: (nodeId: string) => void;
   onAgentProviderChange: (nodeId: string, value: AgentProviderKind) => void;
+  onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -1447,16 +1278,8 @@ function toFlowNodes(params: {
   onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
-  onUpdateTask: (payload: {
-    nodeId: string;
-    title: string;
-    status: TaskNodeStatus;
-    description: string;
-    assignee: string;
-  }) => void;
   onUpdateNote: (payload: {
     nodeId: string;
-    title: string;
     content: string;
   }) => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -1472,11 +1295,9 @@ function toFlowNodes(params: {
           ? 'agent'
           : node.kind === 'terminal'
             ? 'terminal'
-            : node.kind === 'task'
-              ? 'task'
-              : node.kind === 'note'
-                ? 'note'
-                : 'card',
+            : node.kind === 'note'
+              ? 'note'
+              : 'card',
       position: node.position,
       draggable: true,
       selected: node.id === params.selectedNodeId,
@@ -1498,12 +1319,12 @@ function toFlowNodes(params: {
         agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
         onSelectNode: params.onSelectNode,
         onAgentProviderChange: params.onAgentProviderChange,
+        onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
         onExecutionInput: params.onExecutionInput,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
-        onUpdateTask: params.onUpdateTask,
         onUpdateNote: params.onUpdateNote,
         onResizeNode: params.onResizeNode,
         onDeleteNode: params.onDeleteNode
@@ -1652,8 +1473,6 @@ function colorForKind(kind: CanvasNodeKind): string {
       return '#22c55e';
     case 'terminal':
       return '#38bdf8';
-    case 'task':
-      return '#f59e0b';
     case 'note':
       return '#a78bfa';
   }
@@ -1667,14 +1486,6 @@ function humanizeStatus(status: string): string {
   switch (status) {
     case 'idle':
       return '空闲';
-    case 'todo':
-      return '待开始';
-    case 'running':
-      return '运行中';
-    case 'blocked':
-      return '阻塞';
-    case 'done':
-      return '已完成';
     case 'draft':
       return '草稿';
     case 'ready':
@@ -1696,11 +1507,6 @@ function humanizeStatus(status: string): string {
 
 function statusToneClass(status: string): string {
   switch (status) {
-    case 'running':
-      return 'tone-running';
-    case 'done':
-      return 'tone-success';
-    case 'blocked':
     case 'cancelled':
     case 'interrupted':
       return 'tone-warning';
@@ -1711,19 +1517,18 @@ function statusToneClass(status: string): string {
   }
 }
 
-function normalizeTaskStatus(status: string): TaskNodeStatus {
-  if (status === 'running' || status === 'blocked' || status === 'done') {
-    return status;
-  }
-
-  return 'todo';
-}
-
 function handleEditableFieldKeyDown(
   event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   submit: () => void
 ): void {
   stopCanvasEvent(event);
+
+  if (event.currentTarget instanceof HTMLInputElement && event.key === 'Enter') {
+    event.preventDefault();
+    submit();
+    event.currentTarget.blur();
+    return;
+  }
 
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
     event.preventDefault();
@@ -1855,7 +1660,10 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
   return {
     nodeId,
     kind: nodeKind,
-    chromeTitle: readProbeText(element.querySelector('.window-title strong, .node-topline strong')),
+    chromeTitle:
+      readProbeText(element.querySelector('.window-title strong, .node-topline strong')) ??
+      readProbeFieldValue(element, 'title') ??
+      null,
     chromeSubtitle: readProbeText(element.querySelector('.window-title span, .node-topline span')),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     selected: element.dataset.nodeSelected === 'true',
@@ -1865,8 +1673,6 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
     providerValue: readProbeFieldValue(element, 'provider'),
     titleInputValue: readProbeFieldValue(element, 'title'),
-    statusValue: readProbeFieldValue(element, 'status'),
-    assigneeValue: readProbeFieldValue(element, 'assignee'),
     bodyValue: readProbeFieldValue(element, 'body')
   };
 }
@@ -1981,7 +1787,7 @@ async function respondWithWebviewProbeSnapshot(requestId: string, delayMs?: numb
 
 function queryNodeTextField(
   nodeId: string,
-  fieldName: 'title' | 'assignee' | 'body'
+  fieldName: 'title' | 'body'
 ): HTMLInputElement | HTMLTextAreaElement {
   const field = queryNodeField(nodeId, fieldName);
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
@@ -1993,7 +1799,7 @@ function queryNodeTextField(
 
 function queryNodeSelectField(
   nodeId: string,
-  fieldName: 'status' | 'provider'
+  fieldName: 'provider'
 ): HTMLSelectElement {
   const field = queryNodeField(nodeId, fieldName);
   if (field instanceof HTMLSelectElement) {
