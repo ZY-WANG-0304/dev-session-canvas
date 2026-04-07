@@ -102,7 +102,11 @@ test('agent start button posts a startExecutionSession message', async ({ page }
   await bootstrap(page, createAgentNodeState());
   await clearPostedMessages(page);
 
-  await nodeById(page, 'agent-1').getByRole('button', { name: '启动' }).click();
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'agent-1',
+    label: '启动'
+  });
 
   await expect
     .poll(async () => {
@@ -192,7 +196,11 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
   await clearPostedMessages(page);
 
   const taskNode = nodeById(page, 'task-1');
-  await taskNode.locator('.window-chrome').click();
+  await performTestDomAction(page, {
+    kind: 'selectNode',
+    nodeId: 'task-1'
+  });
+  await clearPostedMessages(page);
 
   const beforeBox = await taskNode.boundingBox();
   expect(beforeBox).not.toBeNull();
@@ -223,13 +231,15 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
 
         return message
           ? JSON.stringify({
+              x: message.payload.position.x,
+              y: message.payload.position.y,
               width: message.payload.size.width,
               height: message.payload.size.height
             })
           : null;
       });
     })
-    .toMatch(/"width":\d+,"height":\d+/);
+    .toMatch(/"x":\d+,"y":\d+,"width":\d+,"height":\d+/);
 
   const resizedSize = await page.evaluate(() => {
     const message = window.__devSessionCanvasHarness
@@ -241,6 +251,7 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
     }
 
     return {
+      position: message.payload.position,
       width: message.payload.size.width,
       height: message.payload.size.height
     };
@@ -248,7 +259,11 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
   expect(resizedSize).not.toBeNull();
 
   const nextState = createTaskNodeState();
-  nextState.nodes[0].size = resizedSize;
+  nextState.nodes[0].position = resizedSize.position;
+  nextState.nodes[0].size = {
+    width: resizedSize.width,
+    height: resizedSize.height
+  };
   await page.evaluate((state) => {
     window.__devSessionCanvasHarness.dispatchHostMessage({
       type: 'host/stateUpdated',
@@ -268,14 +283,110 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
   expect(afterBox.height).toBeGreaterThan(beforeBox.height + 30);
 });
 
+test('dragging the top-left resize handle moves the task origin and grows the frame', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createTaskNodeState());
+  await clearPostedMessages(page);
+
+  const taskNode = nodeById(page, 'task-1');
+  await performTestDomAction(page, {
+    kind: 'selectNode',
+    nodeId: 'task-1'
+  });
+  await clearPostedMessages(page);
+
+  const beforeBox = await taskNode.boundingBox();
+  expect(beforeBox).not.toBeNull();
+
+  const handle = taskNode.locator('.canvas-node-resize-handle.top.left');
+  await expect(handle).toBeVisible();
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2,
+    handleBox.y + handleBox.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2 - 100,
+    handleBox.y + handleBox.height / 2 - 70,
+    { steps: 12 }
+  );
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'task-1');
+
+        return message
+          ? JSON.stringify({
+              x: message.payload.position.x,
+              y: message.payload.position.y,
+              width: message.payload.size.width,
+              height: message.payload.size.height
+            })
+          : null;
+      });
+    })
+    .toMatch(/"x":\d+,"y":\d+,"width":\d+,"height":\d+/);
+
+  const nextLayout = await page.evaluate(() => {
+    const message = window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'task-1');
+
+    if (!message) {
+      return null;
+    }
+
+    return {
+      position: message.payload.position,
+      size: message.payload.size
+    };
+  });
+  expect(nextLayout).not.toBeNull();
+  expect(nextLayout.position.x).toBeLessThan(120);
+  expect(nextLayout.position.y).toBeLessThan(140);
+  expect(nextLayout.size.width).toBeGreaterThan(380);
+  expect(nextLayout.size.height).toBeGreaterThan(360);
+
+  const nextState = createTaskNodeState();
+  nextState.nodes[0].position = nextLayout.position;
+  nextState.nodes[0].size = nextLayout.size;
+  await page.evaluate((state) => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/stateUpdated',
+      payload: {
+        state,
+        runtime: {
+          workspaceTrusted: true
+        }
+      }
+    });
+  }, nextState);
+
+  const afterBox = await taskNode.boundingBox();
+  expect(afterBox).not.toBeNull();
+  expect(afterBox.x).toBeLessThan(beforeBox.x - 40);
+  expect(afterBox.y).toBeLessThan(beforeBox.y - 20);
+  expect(afterBox.width).toBeGreaterThan(beforeBox.width + 40);
+  expect(afterBox.height).toBeGreaterThan(beforeBox.height + 30);
+});
+
 test('deleting a task posts deleteNode', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createTaskNodeState());
   await clearPostedMessages(page);
 
-  const deleteButton = nodeById(page, 'task-1').getByRole('button', { name: '删除', exact: true });
-  await deleteButton.focus();
-  await deleteButton.press('Enter');
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'task-1',
+    label: '删除'
+  });
 
   await expect
     .poll(async () => {
@@ -298,7 +409,11 @@ test('switching provider changes the next agent start message', async ({ page })
 
   const agentNode = nodeById(page, 'agent-1');
   await agentNode.locator('[data-probe-field="provider"]').selectOption('claude');
-  await agentNode.getByRole('button', { name: '启动' }).click();
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'agent-1',
+    label: '启动'
+  });
 
   await expect
     .poll(async () => {

@@ -572,10 +572,24 @@ async function verifyRealWebviewDomInteractions(taskNodeId, noteNodeId) {
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNodeId, noteNodeId) {
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    return (
+      currentSnapshot.state.nodes.some((node) => node.id === agentNodeId) &&
+      currentSnapshot.state.nodes.some((node) => node.id === terminalNodeId) &&
+      currentSnapshot.state.nodes.some((node) => node.id === taskNodeId) &&
+      currentSnapshot.state.nodes.some((node) => node.id === noteNodeId)
+    );
+  });
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  const terminalNode = findNodeById(snapshot, terminalNodeId);
+  const taskNode = findNodeById(snapshot, taskNodeId);
+  const noteNode = findNodeById(snapshot, noteNodeId);
+
   await dispatchWebviewMessage({
     type: 'webview/resizeNode',
     payload: {
       nodeId: agentNodeId,
+      position: agentNode.position,
       size: RESIZED_NODE_SIZES.agent
     }
   });
@@ -583,6 +597,7 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNode
     type: 'webview/resizeNode',
     payload: {
       nodeId: terminalNodeId,
+      position: terminalNode.position,
       size: RESIZED_NODE_SIZES.terminal
     }
   });
@@ -590,6 +605,7 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNode
     type: 'webview/resizeNode',
     payload: {
       nodeId: taskNodeId,
+      position: taskNode.position,
       size: RESIZED_NODE_SIZES.task
     }
   });
@@ -597,11 +613,12 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNode
     type: 'webview/resizeNode',
     payload: {
       nodeId: noteNodeId,
+      position: noteNode.position,
       size: RESIZED_NODE_SIZES.note
     }
   });
 
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
+  snapshot = await waitForSnapshot((currentSnapshot) => {
     return (
       hasNodeSize(currentSnapshot, agentNodeId, RESIZED_NODE_SIZES.agent) &&
       hasNodeSize(currentSnapshot, terminalNodeId, RESIZED_NODE_SIZES.terminal) &&

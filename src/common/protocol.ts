@@ -102,6 +102,11 @@ export interface WebviewProbeSnapshot {
 
 export type WebviewDomAction =
   | {
+      kind: 'selectNode';
+      nodeId: string;
+      delayMs?: number;
+    }
+  | {
       kind: 'setNodeTextField';
       nodeId: string;
       field: 'title' | 'assignee' | 'body';
@@ -151,6 +156,7 @@ export type WebviewToHostMessage =
       type: 'webview/resizeNode';
       payload: {
         nodeId: string;
+        position: CanvasNodePosition;
         size: CanvasNodeFootprint;
       };
     }
@@ -549,6 +555,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       !payload ||
       typeof payload.nodeId !== 'string' ||
+      !isCanvasNodePosition(payload.position) ||
       !isCanvasNodeFootprint(payload.size)
     ) {
       return null;
@@ -558,6 +565,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/resizeNode',
       payload: {
         nodeId: payload.nodeId,
+        position: payload.position,
         size: payload.size
       }
     };
@@ -622,6 +630,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.delayMs !== undefined && !isNonNegativeDelay(value.delayMs)) {
     return false;
+  }
+
+  if (value.kind === 'selectNode') {
+    return true;
   }
 
   if (value.kind === 'setNodeTextField') {
