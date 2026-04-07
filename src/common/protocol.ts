@@ -59,6 +59,7 @@ export interface CanvasNodeSummary {
   status: string;
   summary: string;
   position: CanvasNodePosition;
+  size: CanvasNodeFootprint;
   metadata?: CanvasNodeMetadata;
 }
 
@@ -79,6 +80,8 @@ export interface WebviewProbeNodeSnapshot {
   chromeSubtitle: string | null;
   statusText: string | null;
   selected: boolean;
+  renderedWidth: number;
+  renderedHeight: number;
   overlayTitle?: string;
   overlayMessage?: string;
   providerValue?: string;
@@ -142,6 +145,13 @@ export type WebviewToHostMessage =
       payload: {
         id: string;
         position: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/resizeNode';
+      payload: {
+        nodeId: string;
+        size: CanvasNodeFootprint;
       };
     }
   | {
@@ -534,6 +544,25 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/resizeNode') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isCanvasNodeFootprint(payload.size)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/resizeNode',
+      payload: {
+        nodeId: payload.nodeId,
+        size: payload.size
+      }
+    };
+  }
+
   if (value.type === 'webview/createDemoNode') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
@@ -568,6 +597,18 @@ function isNullableString(value: unknown): value is string | null {
 
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
   return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number';
+}
+
+function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {
+  return (
+    isRecord(value) &&
+    typeof value.width === 'number' &&
+    Number.isFinite(value.width) &&
+    value.width > 0 &&
+    typeof value.height === 'number' &&
+    Number.isFinite(value.height) &&
+    value.height > 0
+  );
 }
 
 function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
@@ -623,6 +664,10 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     isNullableString(value.chromeSubtitle) &&
     isNullableString(value.statusText) &&
     typeof value.selected === 'boolean' &&
+    typeof value.renderedWidth === 'number' &&
+    Number.isFinite(value.renderedWidth) &&
+    typeof value.renderedHeight === 'number' &&
+    Number.isFinite(value.renderedHeight) &&
     (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
     (value.providerValue === undefined || typeof value.providerValue === 'string') &&
@@ -678,4 +723,46 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
         height: 430
       };
   }
+}
+
+export function minimumCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFootprint {
+  switch (kind) {
+    case 'agent':
+      return {
+        width: 420,
+        height: 320
+      };
+    case 'terminal':
+      return {
+        width: 420,
+        height: 300
+      };
+    case 'task':
+      return {
+        width: 320,
+        height: 260
+      };
+    case 'note':
+      return {
+        width: 320,
+        height: 300
+      };
+  }
+}
+
+export function normalizeCanvasNodeFootprint(
+  kind: CanvasNodeKind,
+  value: unknown
+): CanvasNodeFootprint {
+  const fallback = estimatedCanvasNodeFootprint(kind);
+  const minimum = minimumCanvasNodeFootprint(kind);
+
+  if (!isCanvasNodeFootprint(value)) {
+    return fallback;
+  }
+
+  return {
+    width: Math.max(minimum.width, Math.round(value.width)),
+    height: Math.max(minimum.height, Math.round(value.height))
+  };
 }

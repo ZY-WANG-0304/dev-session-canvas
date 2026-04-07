@@ -28,6 +28,12 @@ const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
+const RESIZED_NODE_SIZES = {
+  agent: { width: 640, height: 500 },
+  terminal: { width: 620, height: 460 },
+  task: { width: 480, height: 390 },
+  note: { width: 500, height: 520 }
+};
 let lastWebviewProbe;
 
 module.exports = {
@@ -179,6 +185,7 @@ async function runTrustedSmoke() {
 
   await verifyRealWebviewProbe(taskNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(taskNode.id, noteNode.id);
+  await verifyNodeResizePersistence(agentNode.id, terminalNode.id, taskNode.id, noteNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyLiveSessionCutoverAndReload(terminalNode.id);
@@ -562,6 +569,71 @@ async function verifyRealWebviewDomInteractions(taskNodeId, noteNodeId) {
     probe.nodes.find((node) => node.nodeId === noteNodeId)?.bodyValue,
     REAL_DOM_NOTE_BODY
   );
+}
+
+async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, taskNodeId, noteNodeId) {
+  await dispatchWebviewMessage({
+    type: 'webview/resizeNode',
+    payload: {
+      nodeId: agentNodeId,
+      size: RESIZED_NODE_SIZES.agent
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/resizeNode',
+    payload: {
+      nodeId: terminalNodeId,
+      size: RESIZED_NODE_SIZES.terminal
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/resizeNode',
+    payload: {
+      nodeId: taskNodeId,
+      size: RESIZED_NODE_SIZES.task
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/resizeNode',
+    payload: {
+      nodeId: noteNodeId,
+      size: RESIZED_NODE_SIZES.note
+    }
+  });
+
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    return (
+      hasNodeSize(currentSnapshot, agentNodeId, RESIZED_NODE_SIZES.agent) &&
+      hasNodeSize(currentSnapshot, terminalNodeId, RESIZED_NODE_SIZES.terminal) &&
+      hasNodeSize(currentSnapshot, taskNodeId, RESIZED_NODE_SIZES.task) &&
+      hasNodeSize(currentSnapshot, noteNodeId, RESIZED_NODE_SIZES.note)
+    );
+  });
+
+  assert.deepStrictEqual(findNodeById(snapshot, agentNodeId).size, RESIZED_NODE_SIZES.agent);
+  assert.deepStrictEqual(findNodeById(snapshot, terminalNodeId).size, RESIZED_NODE_SIZES.terminal);
+  assert.deepStrictEqual(findNodeById(snapshot, taskNodeId).size, RESIZED_NODE_SIZES.task);
+  assert.deepStrictEqual(findNodeById(snapshot, noteNodeId).size, RESIZED_NODE_SIZES.note);
+
+  const probe = await waitForWebviewProbe((currentProbe) => {
+    return (
+      hasRenderedNodeSize(currentProbe, agentNodeId, RESIZED_NODE_SIZES.agent) &&
+      hasRenderedNodeSize(currentProbe, terminalNodeId, RESIZED_NODE_SIZES.terminal) &&
+      hasRenderedNodeSize(currentProbe, taskNodeId, RESIZED_NODE_SIZES.task) &&
+      hasRenderedNodeSize(currentProbe, noteNodeId, RESIZED_NODE_SIZES.note)
+    );
+  });
+
+  assert.ok(hasRenderedNodeSize(probe, agentNodeId, RESIZED_NODE_SIZES.agent));
+  assert.ok(hasRenderedNodeSize(probe, terminalNodeId, RESIZED_NODE_SIZES.terminal));
+  assert.ok(hasRenderedNodeSize(probe, taskNodeId, RESIZED_NODE_SIZES.task));
+  assert.ok(hasRenderedNodeSize(probe, noteNodeId, RESIZED_NODE_SIZES.note));
+
+  snapshot = await reloadPersistedState();
+  assert.deepStrictEqual(findNodeById(snapshot, agentNodeId).size, RESIZED_NODE_SIZES.agent);
+  assert.deepStrictEqual(findNodeById(snapshot, terminalNodeId).size, RESIZED_NODE_SIZES.terminal);
+  assert.deepStrictEqual(findNodeById(snapshot, taskNodeId).size, RESIZED_NODE_SIZES.task);
+  assert.deepStrictEqual(findNodeById(snapshot, noteNodeId).size, RESIZED_NODE_SIZES.note);
 }
 
 async function verifyTerminalExecutionFlow(terminalNodeId) {
@@ -1397,6 +1469,24 @@ function findNodeById(snapshot, nodeId) {
   const node = snapshot.state.nodes.find((currentNode) => currentNode.id === nodeId);
   assert.ok(node, `Missing node ${nodeId} in smoke snapshot.`);
   return node;
+}
+
+function hasNodeSize(snapshot, nodeId, targetSize) {
+  const node = snapshot.state.nodes.find((currentNode) => currentNode.id === nodeId);
+  return Boolean(
+    node &&
+      node.size?.width === targetSize.width &&
+      node.size?.height === targetSize.height
+  );
+}
+
+function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
+  const node = probe.nodes.find((currentNode) => currentNode.nodeId === nodeId);
+  return Boolean(
+    node &&
+      Math.abs(node.renderedWidth - targetSize.width) <= tolerance &&
+      Math.abs(node.renderedHeight - targetSize.height) <= tolerance
+  );
 }
 
 function sleep(timeoutMs) {

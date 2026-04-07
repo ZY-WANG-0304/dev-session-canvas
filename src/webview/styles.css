@@ -154,6 +154,13 @@ body {
 }
 
 .canvas-node {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
   border-radius: 18px;
   border: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 95%, #18263f 5%);
@@ -182,7 +189,7 @@ body {
 }
 
 .compact-node {
-  width: 280px;
+  justify-content: space-between;
   padding: 14px 14px 12px;
 }
 
@@ -191,15 +198,15 @@ body {
 }
 
 .agent-session-node {
-  width: 560px;
+  min-height: 0;
 }
 
 .terminal-session-node {
-  width: 540px;
+  min-height: 0;
 }
 
 .object-editor-node {
-  width: 380px;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -271,7 +278,10 @@ body {
 }
 
 .session-body {
-  display: grid;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
   gap: 12px;
   padding: 12px;
 }
@@ -412,6 +422,8 @@ body {
 }
 
 .terminal-session-body {
+  flex: 1;
+  min-height: 0;
   gap: 0;
   padding: 0;
 }
@@ -422,7 +434,9 @@ body {
 
 .terminal-frame {
   position: relative;
-  min-height: 340px;
+  display: flex;
+  flex: 1;
+  min-height: 0;
   border: 0;
   border-radius: 0 0 16px 16px;
   padding: 6px;
@@ -431,7 +445,8 @@ body {
 }
 
 .terminal-viewport {
-  height: var(--embedded-terminal-viewport-height, 340px);
+  flex: 1;
+  min-height: 0;
   width: 100%;
   border-radius: 12px;
   background: var(--vscode-terminal-background, #08101f);
@@ -477,7 +492,10 @@ body {
 }
 
 .object-body {
-  display: grid;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
   gap: 12px;
   padding: 12px;
 }
@@ -517,7 +535,7 @@ body {
 }
 
 .node-textarea {
-  resize: vertical;
+  resize: none;
   padding: 10px 12px;
   line-height: 1.5;
 }
@@ -530,11 +548,172 @@ body {
   min-height: 190px;
 }
 
+.object-surface {
+  gap: 14px;
+  overflow: hidden;
+}
+
+.object-context-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, #0f172a 16%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0d1729 10%);
+}
+
+.task-context-strip {
+  background:
+    linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.05)),
+    color-mix(in srgb, var(--vscode-editor-background) 92%, #0d1729 8%);
+}
+
+.note-context-strip {
+  background:
+    linear-gradient(180deg, rgba(167, 139, 250, 0.12), rgba(167, 139, 250, 0.05)),
+    color-mix(in srgb, var(--vscode-editor-background) 92%, #0d1729 8%);
+}
+
+.object-context-block {
+  display: grid;
+  gap: 8px;
+}
+
+.object-context-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 90%, #e2e8f0 10%);
+}
+
+.object-context-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.node-title-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 82%, #f8fafc 18%);
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.node-chip-field {
+  display: grid;
+  gap: 6px;
+}
+
+.node-chip-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.node-chip-select,
+.node-chip-input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-panel-border);
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #0f172a 12%);
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.document-sheet {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, #0f172a 20%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 96%, #ffffff 4%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.task-document-sheet {
+  border-color: rgba(245, 158, 11, 0.24);
+  background:
+    linear-gradient(180deg, rgba(245, 158, 11, 0.06), transparent 22%),
+    color-mix(in srgb, var(--vscode-editor-background) 96%, #ffffff 4%);
+}
+
+.note-document-sheet {
+  border-color: rgba(167, 139, 250, 0.24);
+  background:
+    linear-gradient(180deg, rgba(167, 139, 250, 0.06), transparent 22%),
+    color-mix(in srgb, var(--vscode-editor-background) 96%, #ffffff 4%);
+}
+
+.document-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.node-document-input {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  line-height: 1.6;
+}
+
+.task-document-input {
+  min-height: 140px;
+}
+
+.note-document-input {
+  min-height: 220px;
+}
+
+.object-footer-hint {
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 86%, #cbd5f5 14%);
+}
+
+.canvas-node-resize-handle {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+}
+
+.canvas-node-resize-line {
+  border-width: 2px;
+}
+
 .node-text-input:focus,
 .node-textarea:focus,
 .node-select:focus,
 .agent-provider-select:focus,
-.agent-prompt-input:focus {
+.agent-prompt-input:focus,
+.node-title-input:focus,
+.node-chip-select:focus,
+.node-chip-input:focus,
+.node-document-input:focus {
   outline: 1px solid var(--vscode-focusBorder);
   border-color: var(--vscode-focusBorder);
 }

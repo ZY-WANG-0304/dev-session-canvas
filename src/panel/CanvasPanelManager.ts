@@ -8,6 +8,7 @@ import {
 import {
   type AgentNodeMetadata,
   type AgentProviderKind,
+  type CanvasNodeFootprint,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
@@ -26,6 +27,7 @@ import {
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
   isExecutionNodeKind,
+  normalizeCanvasNodeFootprint,
   parseWebviewMessage
 } from '../common/protocol';
 import {
@@ -822,6 +824,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/moveNode':
         this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/resizeNode':
+        this.state = resizeNode(this.state, parsedMessage.payload.nodeId, parsedMessage.payload.size);
         this.persistState();
         this.postState('host/stateUpdated');
         return;
@@ -2005,6 +2012,7 @@ function createNode(
     status: defaultStatusForKind(kind),
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
+    size: estimatedCanvasNodeFootprint(kind),
     metadata: createNodeMetadata(kind, id, defaultAgentProvider)
   };
 }
@@ -2079,10 +2087,10 @@ function doesPlacementCollide(
   nextKind: CanvasNodeKind,
   nextPosition: CanvasNodePosition
 ): boolean {
-  const nextRect = createPlacementRect(nextKind, nextPosition);
+  const nextRect = createPlacementRect(nextPosition, estimatedCanvasNodeFootprint(nextKind));
 
   return existingNodes.some((node) =>
-    placementRectsOverlap(nextRect, createPlacementRect(node.kind, node.position))
+    placementRectsOverlap(nextRect, createPlacementRect(node.position, node.size))
   );
 }
 
@@ -2097,7 +2105,7 @@ function fallbackPlacementPosition(
 
   const bounds = existingNodes.reduce(
     (current, node) => {
-      const rect = createPlacementRect(node.kind, node.position);
+      const rect = createPlacementRect(node.position, node.size);
       return {
         maxRight: Math.max(current.maxRight, rect.right),
         minTop: Math.min(current.minTop, rect.top)
@@ -2127,14 +2135,12 @@ function snapCanvasCoordinate(value: number): number {
   return Math.round(value / 20) * 20;
 }
 
-function createPlacementRect(kind: CanvasNodeKind, position: CanvasNodePosition): {
+function createPlacementRect(position: CanvasNodePosition, footprint: CanvasNodeFootprint): {
   left: number;
   top: number;
   right: number;
   bottom: number;
 } {
-  const footprint = estimatedCanvasNodeFootprint(kind);
-
   return {
     left: position.x,
     top: position.y,
@@ -2173,6 +2179,38 @@ function moveNode(
     ...previousState,
     updatedAt: new Date().toISOString(),
     nodes
+  };
+}
+
+function resizeNode(
+  previousState: CanvasPrototypeState,
+  nodeId: string,
+  size: CanvasNodeFootprint
+): CanvasPrototypeState {
+  const targetNode = previousState.nodes.find((node) => node.id === nodeId);
+  if (!targetNode) {
+    return previousState;
+  }
+
+  const normalizedSize = normalizeCanvasNodeFootprint(targetNode.kind, size);
+  const didChange =
+    targetNode.size.width !== normalizedSize.width || targetNode.size.height !== normalizedSize.height;
+
+  if (!didChange) {
+    return previousState;
+  }
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: previousState.nodes.map((node) =>
+      node.id === nodeId
+        ? {
+            ...node,
+            size: normalizedSize
+          }
+        : node
+    )
   };
 }
 
@@ -2239,6 +2277,7 @@ function normalizeNode(
         ? value.summary
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
+    size: normalizeCanvasNodeFootprint(value.kind, value.size),
     metadata: normalizeMetadata(value.kind, value.id, value.metadata, defaultAgentProvider)
   };
 }

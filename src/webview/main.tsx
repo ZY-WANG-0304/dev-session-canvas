@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -7,6 +7,7 @@ import ReactFlow, {
   BackgroundVariant,
   Controls,
   MiniMap,
+  NodeResizer,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -22,6 +23,7 @@ import { EXECUTION_EVENT_NAME } from '../common/extensionIdentity';
 import type {
   AgentProviderKind,
   CanvasNodeKind,
+  CanvasNodeFootprint,
   CanvasNodeMetadata,
   CanvasNodePosition,
   CanvasRuntimeContext,
@@ -35,7 +37,12 @@ import type {
   WebviewProbeSnapshot,
   WebviewToHostMessage
 } from '../common/protocol';
-import { estimatedCanvasNodeFootprint, isCanvasNodeKind } from '../common/protocol';
+import {
+  estimatedCanvasNodeFootprint,
+  isCanvasNodeKind,
+  minimumCanvasNodeFootprint,
+  normalizeCanvasNodeFootprint
+} from '../common/protocol';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -56,6 +63,7 @@ interface CanvasNodeData {
   summary: string;
   selected: boolean;
   workspaceTrusted: boolean;
+  size: CanvasNodeFootprint;
   metadata?: CanvasNodeMetadata;
   agentProvider?: AgentProviderKind;
   onSelectNode?: (nodeId: string) => void;
@@ -83,10 +91,9 @@ interface CanvasNodeData {
     title: string;
     content: string;
   }) => void;
+  onResizeNode?: (nodeId: string, size: CanvasNodeFootprint) => void;
   onDeleteNode?: (nodeId: string) => void;
 }
-
-const EMBEDDED_TERMINAL_VIEWPORT_HEIGHT = 340;
 
 type CanvasFlowNode = Node<CanvasNodeData>;
 type ExecutionHostEvent =
@@ -313,6 +320,14 @@ function App(): JSX.Element {
         type: 'webview/updateNoteNode',
         payload
       }),
+    onResizeNode: (nodeId, size) =>
+      postMessage({
+        type: 'webview/resizeNode',
+        payload: {
+          nodeId,
+          size
+        }
+      }),
     onDeleteNode: deleteNode
   });
 
@@ -483,12 +498,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     const fitTerminal = (): void => {
       fitAddon.fit();
-      const snappedHeight = snapEmbeddedTerminalViewportHeight(terminal, EMBEDDED_TERMINAL_VIEWPORT_HEIGHT);
-      if (snappedHeight && container.clientHeight !== snappedHeight) {
-        container.style.setProperty('--embedded-terminal-viewport-height', `${snappedHeight}px`);
-        fitAddon.fit();
-      }
-
       terminalSizeRef.current = {
         cols: terminal.cols,
         rows: terminal.rows
@@ -613,6 +622,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
+      <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
         <div className="window-title">
           <strong>{data.title}</strong>
@@ -734,11 +744,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
     const fitTerminal = (): void => {
       fitAddon.fit();
-      const snappedHeight = snapEmbeddedTerminalViewportHeight(terminal, EMBEDDED_TERMINAL_VIEWPORT_HEIGHT);
-      if (snappedHeight && container.clientHeight !== snappedHeight) {
-        container.style.setProperty('--embedded-terminal-viewport-height', `${snappedHeight}px`);
-        fitAddon.fit();
-      }
       terminalSizeRef.current = {
         cols: terminal.cols,
         rows: terminal.rows
@@ -857,6 +862,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
+      <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
         <div className="window-title terminal-window-title">
           <strong>{data.title}</strong>
@@ -934,6 +940,40 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
   );
 }
 
+function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
+  const minimum = minimumCanvasNodeFootprint(data.kind);
+
+  return (
+    <NodeResizer
+      nodeId={id}
+      isVisible={data.selected}
+      minWidth={minimum.width}
+      minHeight={minimum.height}
+      handleClassName="canvas-node-resize-handle"
+      lineClassName="canvas-node-resize-line"
+      color={colorForKind(data.kind)}
+      onResizeStart={() => {
+        data.onSelectNode?.(id);
+      }}
+      onResizeEnd={(_event, params) => {
+        const nextSize = normalizeCanvasNodeFootprint(data.kind, {
+          width: params.width,
+          height: params.height
+        });
+
+        if (
+          nextSize.width === data.size.width &&
+          nextSize.height === data.size.height
+        ) {
+          return;
+        }
+
+        data.onResizeNode?.(id, nextSize);
+      }}
+    />
+  );
+}
+
 function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const taskMetadata = data.metadata?.task;
   if (!taskMetadata) {
@@ -947,7 +987,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [activeFieldCount, setActiveFieldCount] = useState(0);
   const [isComposing, setIsComposing] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (activeFieldCount === 0 && !isComposing) {
       setTitle(data.title);
       setStatus(normalizeTaskStatus(data.status));
@@ -955,6 +995,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       setAssignee(taskMetadata.assignee);
     }
   }, [
+    activeFieldCount,
     id,
     data.status,
     data.title,
@@ -999,6 +1040,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
+      <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
         <div className="window-title">
           <strong>Task</strong>
@@ -1017,82 +1059,92 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         </div>
       </div>
 
-      <div className="object-body">
-        <label className="node-field">
-          <span className="node-field-label">标题</span>
-          <input
-            className="node-text-input nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="title"
-            value={title}
-            onFocus={beginEditing}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={(event) => {
-              const nextTitle = event.currentTarget.value;
-              setTitle(nextTitle);
-              finishEditing();
-              submitTask({ title: nextTitle });
-            }}
-            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitTask)}
-            placeholder="给这个任务起一个标题"
-          />
-        </label>
-
-        <div className="object-grid">
-          <label className="node-field">
-            <span className="node-field-label">状态</span>
-            <select
-              className="node-select nodrag nopan"
-              data-node-interactive="true"
-              data-probe-field="status"
-              value={status}
-              onFocus={beginEditing}
-              onMouseDown={stopCanvasEvent}
-              onClick={stopCanvasEvent}
-              onChange={(event) => {
-                const nextStatus = normalizeTaskStatus(event.target.value);
-                setStatus(nextStatus);
-                submitTask({ status: nextStatus });
-              }}
-              onBlur={finishEditing}
-              onKeyDown={handleEditableSelectKeyDown}
-            >
-              <option value="todo">待开始</option>
-              <option value="running">进行中</option>
-              <option value="blocked">阻塞</option>
-              <option value="done">已完成</option>
-            </select>
-          </label>
-
-          <label className="node-field">
-            <span className="node-field-label">负责人</span>
+      <div className="object-body object-surface task-surface">
+        <div className="object-context-strip task-context-strip">
+          <label className="object-context-block">
+            <span className="object-context-label">当前任务</span>
             <input
-              className="node-text-input nodrag nopan"
+              className="node-title-input nodrag nopan"
               data-node-interactive="true"
-              data-probe-field="assignee"
-              value={assignee}
+              data-probe-field="title"
+              value={title}
               onFocus={beginEditing}
               onMouseDown={stopCanvasEvent}
               onClick={stopCanvasEvent}
-              onChange={(event) => setAssignee(event.target.value)}
+              onChange={(event) => setTitle(event.target.value)}
               onBlur={(event) => {
-                const nextAssignee = event.currentTarget.value;
-                setAssignee(nextAssignee);
+                const nextTitle = event.currentTarget.value;
+                setTitle(nextTitle);
                 finishEditing();
-                submitTask({ assignee: nextAssignee });
+                submitTask({ title: nextTitle });
               }}
-              onKeyDown={(event) => handleEditableFieldKeyDown(event, submitTask)}
-              placeholder="例如：Codex 或你自己"
+              onKeyDown={(event) =>
+                handleEditableFieldKeyDown(event, () =>
+                  submitTask({ title: event.currentTarget.value })
+                )
+              }
+              placeholder="给这个任务起一个标题"
             />
           </label>
+
+          <div className="object-context-row">
+            <label className="node-chip-field">
+              <span className="node-chip-label">状态</span>
+              <select
+                className="node-chip-select nodrag nopan"
+                data-node-interactive="true"
+                data-probe-field="status"
+                value={status}
+                onFocus={beginEditing}
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+                onChange={(event) => {
+                  const nextStatus = normalizeTaskStatus(event.target.value);
+                  setStatus(nextStatus);
+                  submitTask({ status: nextStatus });
+                }}
+                onBlur={finishEditing}
+                onKeyDown={handleEditableSelectKeyDown}
+              >
+                <option value="todo">待开始</option>
+                <option value="running">进行中</option>
+                <option value="blocked">阻塞</option>
+                <option value="done">已完成</option>
+              </select>
+            </label>
+
+            <label className="node-chip-field">
+              <span className="node-chip-label">负责人</span>
+              <input
+                className="node-chip-input nodrag nopan"
+                data-node-interactive="true"
+                data-probe-field="assignee"
+                value={assignee}
+                onFocus={beginEditing}
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+                onChange={(event) => setAssignee(event.target.value)}
+                onBlur={(event) => {
+                  const nextAssignee = event.currentTarget.value;
+                  setAssignee(nextAssignee);
+                  finishEditing();
+                  submitTask({ assignee: nextAssignee });
+                }}
+                onKeyDown={(event) =>
+                  handleEditableFieldKeyDown(event, () =>
+                    submitTask({ assignee: event.currentTarget.value })
+                  )
+                }
+                placeholder="例如：Codex 或你自己"
+              />
+            </label>
+          </div>
         </div>
 
-        <label className="node-field">
-          <span className="node-field-label">任务描述</span>
+        <label className="document-sheet task-document-sheet">
+          <span className="document-kicker">执行说明</span>
           <textarea
-            className="node-textarea task-textarea nowheel nodrag nopan"
+            className="node-document-input task-document-input nowheel nodrag nopan"
             data-node-interactive="true"
             data-probe-field="body"
             value={description}
@@ -1112,10 +1164,16 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               finishEditing();
               submitTask({ description: nextDescription });
             }}
-            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitTask)}
-            placeholder="补充这个任务的目标、范围或下一步。"
+            onKeyDown={(event) =>
+              handleEditableFieldKeyDown(event, () =>
+                submitTask({ description: event.currentTarget.value })
+              )
+            }
+            placeholder="补充这个任务的目标、范围、约束或下一步。"
           />
         </label>
+
+        <div className="object-footer-hint">{data.summary}</div>
       </div>
     </div>
   );
@@ -1132,12 +1190,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [activeFieldCount, setActiveFieldCount] = useState(0);
   const [isComposing, setIsComposing] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (activeFieldCount === 0 && !isComposing) {
       setTitle(data.title);
       setContent(noteMetadata.content);
     }
-  }, [id, data.title, isComposing, noteMetadata.content]);
+  }, [activeFieldCount, id, data.title, isComposing, noteMetadata.content]);
 
   const submitNote = (patch?: Partial<{ title: string; content: string }>): void => {
     data.onUpdateNote?.({
@@ -1168,6 +1226,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
+      <NodeResizeAffordance id={id} data={data} />
       <div className="window-chrome">
         <div className="window-title">
           <strong>Note</strong>
@@ -1186,11 +1245,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         </div>
       </div>
 
-      <div className="object-body">
-        <label className="node-field">
-          <span className="node-field-label">标题</span>
+      <div className="object-body object-surface note-surface">
+        <label className="object-context-block note-context-strip">
+          <span className="object-context-label">当前笔记</span>
           <input
-            className="node-text-input nodrag nopan"
+            className="node-title-input nodrag nopan"
             data-node-interactive="true"
             data-probe-field="title"
             value={title}
@@ -1204,15 +1263,19 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               finishEditing();
               submitNote({ title: nextTitle });
             }}
-            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitNote)}
+            onKeyDown={(event) =>
+              handleEditableFieldKeyDown(event, () =>
+                submitNote({ title: event.currentTarget.value })
+              )
+            }
             placeholder="给这条笔记起一个标题"
           />
         </label>
 
-        <label className="node-field">
-          <span className="node-field-label">内容</span>
+        <label className="document-sheet note-document-sheet">
+          <span className="document-kicker">工作笔记</span>
           <textarea
-            className="node-textarea note-textarea nowheel nodrag nopan"
+            className="node-document-input note-document-input nowheel nodrag nopan"
             data-node-interactive="true"
             data-probe-field="body"
             value={content}
@@ -1232,10 +1295,16 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               finishEditing();
               submitNote({ content: nextContent });
             }}
-            onKeyDown={(event) => handleEditableFieldKeyDown(event, submitNote)}
-            placeholder="直接在画布上记录思路、上下文或待确认信息。"
+            onKeyDown={(event) =>
+              handleEditableFieldKeyDown(event, () =>
+                submitNote({ content: event.currentTarget.value })
+              )
+            }
+            placeholder="直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。"
           />
         </label>
+
+        <div className="object-footer-hint">{data.summary}</div>
       </div>
     </div>
   );
@@ -1252,6 +1321,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
+      <NodeResizeAffordance id={id} data={data} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
@@ -1361,43 +1431,55 @@ function toFlowNodes(params: {
     title: string;
     content: string;
   }) => void;
+  onResizeNode: (nodeId: string, size: CanvasNodeFootprint) => void;
   onDeleteNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
-  return params.nodes.map((node) => ({
-    id: node.id,
-    type:
-      node.kind === 'agent'
-        ? 'agent'
-        : node.kind === 'terminal'
-          ? 'terminal'
-          : node.kind === 'task'
-            ? 'task'
-            : node.kind === 'note'
-              ? 'note'
-              : 'card',
-    position: node.position,
-    draggable: true,
-    data: {
-      kind: node.kind,
-      title: node.title,
-      status: node.status,
-      summary: node.summary,
+  return params.nodes.map((node) => {
+    const size = normalizeCanvasNodeFootprint(node.kind, node.size);
+
+    return {
+      id: node.id,
+      type:
+        node.kind === 'agent'
+          ? 'agent'
+          : node.kind === 'terminal'
+            ? 'terminal'
+            : node.kind === 'task'
+              ? 'task'
+              : node.kind === 'note'
+                ? 'note'
+                : 'card',
+      position: node.position,
+      draggable: true,
       selected: node.id === params.selectedNodeId,
-      workspaceTrusted: params.workspaceTrusted,
-      metadata: node.metadata,
-      agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
-      onSelectNode: params.onSelectNode,
-      onAgentProviderChange: params.onAgentProviderChange,
-      onStartExecution: params.onStartExecution,
-      onAttachExecution: params.onAttachExecution,
-      onExecutionInput: params.onExecutionInput,
-      onResizeExecution: params.onResizeExecution,
-      onStopExecution: params.onStopExecution,
-      onUpdateTask: params.onUpdateTask,
-      onUpdateNote: params.onUpdateNote,
-      onDeleteNode: params.onDeleteNode
-    }
-  }));
+      style: {
+        width: size.width,
+        height: size.height
+      },
+      data: {
+        kind: node.kind,
+        title: node.title,
+        status: node.status,
+        summary: node.summary,
+        selected: node.id === params.selectedNodeId,
+        workspaceTrusted: params.workspaceTrusted,
+        size,
+        metadata: node.metadata,
+        agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
+        onSelectNode: params.onSelectNode,
+        onAgentProviderChange: params.onAgentProviderChange,
+        onStartExecution: params.onStartExecution,
+        onAttachExecution: params.onAttachExecution,
+        onExecutionInput: params.onExecutionInput,
+        onResizeExecution: params.onResizeExecution,
+        onStopExecution: params.onStopExecution,
+        onUpdateTask: params.onUpdateTask,
+        onUpdateNote: params.onUpdateNote,
+        onResizeNode: params.onResizeNode,
+        onDeleteNode: params.onDeleteNode
+      }
+    };
+  });
 }
 
 function resolveCreateNodePreferredPosition(
@@ -1522,7 +1604,10 @@ function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElemen
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && Boolean(target.closest('[data-node-interactive="true"]'));
+  return (
+    target instanceof HTMLElement &&
+    Boolean(target.closest('[data-node-interactive="true"], .react-flow__resize-control'))
+  );
 }
 
 function shouldDeleteSelectedNodeFromKeyboard(event: KeyboardEvent): boolean {
@@ -1621,6 +1706,8 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     return null;
   }
 
+  const footprint = readProbeNodeFootprint(element);
+
   return {
     nodeId,
     kind: nodeKind,
@@ -1628,6 +1715,8 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     chromeSubtitle: readProbeText(element.querySelector('.window-title span, .node-topline span')),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     selected: element.dataset.nodeSelected === 'true',
+    renderedWidth: footprint.width,
+    renderedHeight: footprint.height,
     overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
     providerValue: readProbeFieldValue(element, 'provider'),
@@ -1635,6 +1724,18 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     statusValue: readProbeFieldValue(element, 'status'),
     assigneeValue: readProbeFieldValue(element, 'assignee'),
     bodyValue: readProbeFieldValue(element, 'body')
+  };
+}
+
+function readProbeNodeFootprint(element: HTMLElement): CanvasNodeFootprint {
+  const wrapper = element.closest<HTMLElement>('.react-flow__node');
+  const probeTarget = wrapper ?? element;
+  const width = Math.round(probeTarget.offsetWidth || element.getBoundingClientRect().width);
+  const height = Math.round(probeTarget.offsetHeight || element.getBoundingClientRect().height);
+
+  return {
+    width,
+    height
   };
 }
 
@@ -1663,9 +1764,14 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
       case 'setNodeTextField': {
         const field = queryNodeTextField(action.nodeId, action.field);
         field.focus();
+        field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
         setControlledFieldValue(field, action.value);
         field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        await waitForDomActionFlush();
         field.blur();
+        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        await waitForDomActionFlush();
         break;
       }
       case 'selectNodeOption': {
@@ -1808,36 +1914,6 @@ function formatTestDomActionError(error: unknown): string {
   }
 
   return String(error);
-}
-
-function snapEmbeddedTerminalViewportHeight(terminal: Terminal, preferredHeight: number): number | null {
-  const cellHeight = readEmbeddedTerminalCellHeight(terminal);
-  if (!cellHeight || preferredHeight <= 0) {
-    return null;
-  }
-
-  const rows = Math.max(1, Math.floor(preferredHeight / cellHeight));
-  return Math.ceil(rows * cellHeight);
-}
-
-function readEmbeddedTerminalCellHeight(terminal: Terminal): number | null {
-  const core = (
-    terminal as Terminal & {
-      _core?: {
-        _renderService?: {
-          dimensions?: {
-            css?: {
-              cell?: {
-                height?: number;
-              };
-            };
-          };
-        };
-      };
-    }
-  )._core;
-  const cellHeight = core?._renderService?.dimensions?.css?.cell?.height;
-  return typeof cellHeight === 'number' && Number.isFinite(cellHeight) && cellHeight > 0 ? cellHeight : null;
 }
 
 function createEmbeddedTerminalOptions(): ConstructorParameters<typeof Terminal>[0] {
