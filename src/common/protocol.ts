@@ -13,13 +13,36 @@ export interface CanvasNodeFootprint {
 
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
+export type PendingExecutionLaunch = 'start' | 'resume';
+export type TerminalNodeStatus =
+  | 'idle'
+  | 'launching'
+  | 'live'
+  | 'stopping'
+  | 'closed'
+  | 'error'
+  | 'interrupted';
+export type AgentNodeStatus =
+  | 'idle'
+  | 'starting'
+  | 'waiting-input'
+  | 'running'
+  | 'resuming'
+  | 'resume-ready'
+  | 'resume-failed'
+  | 'stopping'
+  | 'stopped'
+  | 'error'
+  | 'interrupted';
+export type AgentRuntimeKind = 'pty-cli';
+export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-home' | 'fake-provider';
 
 export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
   shellPath: string;
   cwd: string;
   liveSession: boolean;
-  autoStartPending?: boolean;
+  pendingLaunch?: PendingExecutionLaunch;
   recentOutput?: string;
   lastExitCode?: number;
   lastExitSignal?: string;
@@ -29,11 +52,20 @@ export interface ExecutionSessionMetadata {
 }
 
 export interface AgentNodeMetadata extends ExecutionSessionMetadata {
+  lifecycle: AgentNodeStatus;
   provider: AgentProviderKind;
+  runtimeKind: AgentRuntimeKind;
+  resumeSupported: boolean;
+  resumeStrategy: AgentResumeStrategy;
+  resumeSessionId?: string;
+  resumeStoragePath?: string;
+  lastResumeError?: string;
   lastBackendLabel?: string;
 }
 
-export interface TerminalNodeMetadata extends ExecutionSessionMetadata {}
+export interface TerminalNodeMetadata extends ExecutionSessionMetadata {
+  lifecycle: TerminalNodeStatus;
+}
 
 export interface NoteNodeMetadata {
   content: string;
@@ -114,7 +146,7 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label: '删除' | '启动' | '停止' | '重启';
+      label: '删除' | '启动' | '停止' | '重启' | '恢复';
       delayMs?: number;
     };
 
@@ -161,6 +193,7 @@ export type WebviewToHostMessage =
         cols: number;
         rows: number;
         provider?: AgentProviderKind;
+        resume?: boolean;
       };
     }
   | {
@@ -341,7 +374,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       typeof payload.nodeId !== 'string' ||
       !isExecutionNodeKind(payload.kind) ||
       !isTerminalDimension(payload.cols) ||
-      !isTerminalDimension(payload.rows)
+      !isTerminalDimension(payload.rows) ||
+      (payload.resume !== undefined && typeof payload.resume !== 'boolean')
     ) {
       return null;
     }
@@ -362,6 +396,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         kind: payload.kind,
         cols: payload.cols,
         rows: payload.rows,
+        resume: payload.resume === true,
         provider:
           payload.kind === 'agent' &&
           (payload.provider === 'codex' || payload.provider === 'claude')
@@ -613,12 +648,13 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'clickNodeActionButton') {
-    return (
-      value.label === '删除' ||
-      value.label === '启动' ||
-      value.label === '停止' ||
-      value.label === '重启'
-    );
+      return (
+        value.label === '删除' ||
+        value.label === '启动' ||
+        value.label === '停止' ||
+        value.label === '重启' ||
+        value.label === '恢复'
+      );
   }
 
   return false;

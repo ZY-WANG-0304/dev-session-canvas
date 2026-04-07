@@ -73,7 +73,8 @@ interface CanvasNodeData {
     kind: ExecutionNodeKind,
     cols: number,
     rows: number,
-    provider?: AgentProviderKind
+    provider?: AgentProviderKind,
+    resume?: boolean
   ) => void;
   onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
@@ -278,7 +279,7 @@ function App(): JSX.Element {
         [nodeId]: value
       }));
     },
-    onStartExecution: (nodeId, kind, cols, rows, provider) =>
+    onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
         payload: {
@@ -286,7 +287,8 @@ function App(): JSX.Element {
           kind,
           cols,
           rows,
-          provider
+          provider,
+          resume: resume === true
         }
       }),
     onAttachExecution: (nodeId, kind) =>
@@ -482,10 +484,17 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
   const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
+  const lifecycle = agentMetadata.lifecycle;
+  const resumeRequested =
+    (lifecycle === 'resume-ready' ||
+      lifecycle === 'resume-failed' ||
+      agentMetadata.pendingLaunch === 'resume') &&
+    provider === agentMetadata.provider;
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
+  const autoLaunchRef = useRef<string | null>(null);
   const terminalSizeRef = useRef({
     cols: agentMetadata.lastCols ?? 96,
     rows: agentMetadata.lastRows ?? 28
@@ -616,14 +625,16 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     };
   }, [id]);
 
-  const startAgent = (): void => {
+  const startAgent = (resume = resumeRequested): void => {
+    const executionProvider = resume ? agentMetadata.provider : provider;
     data.onSelectNode?.(id);
     data.onStartExecution?.(
       id,
       'agent',
       terminalSizeRef.current.cols,
       terminalSizeRef.current.rows,
-      provider
+      executionProvider,
+      resume
     );
   };
 
@@ -636,6 +647,23 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
   };
+
+  useEffect(() => {
+    if (!agentMetadata.pendingLaunch) {
+      autoLaunchRef.current = null;
+      return;
+    }
+
+    if (executionBlocked || agentMetadata.liveSession || autoLaunchRef.current === agentMetadata.pendingLaunch) {
+      return;
+    }
+
+    autoLaunchRef.current = agentMetadata.pendingLaunch;
+    const frame = window.requestAnimationFrame(() => startAgent(agentMetadata.pendingLaunch === 'resume'));
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
   return (
     <div
@@ -671,11 +699,19 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             <option value="codex">Codex</option>
             <option value="claude">Claude Code</option>
           </select>
-          <span className={`status-pill ${agentMetadata.liveSession ? 'tone-running' : statusToneClass(data.status)}`}>
-            {agentMetadata.liveSession ? '运行中' : humanizeStatus(data.status)}
+          <span className={`status-pill ${statusToneClass(lifecycle)}`}>
+            {humanizeStatus(lifecycle)}
           </span>
           <ActionButton
-            label={agentMetadata.liveSession ? '停止' : agentMetadata.lastExitMessage ? '重启' : '启动'}
+            label={
+              agentMetadata.liveSession
+                ? '停止'
+                : resumeRequested
+                  ? '恢复'
+                  : agentMetadata.lastExitMessage
+                    ? '重启'
+                    : '启动'
+            }
             onClick={() => (agentMetadata.liveSession ? stopAgent() : startAgent())}
             disabled={executionBlocked}
             className="nodrag nopan compact"
@@ -714,6 +750,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               <strong>
                 {executionBlocked
                   ? 'Restricted Mode'
+                  : lifecycle === 'resume-ready'
+                    ? 'Agent 可恢复'
+                    : lifecycle === 'resume-failed'
+                      ? 'Agent 恢复失败'
                   : agentMetadata.lastExitMessage
                     ? 'Agent 当前未运行'
                     : 'Agent 尚未启动'}
@@ -721,6 +761,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               <span>
                 {executionBlocked
                   ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
+                  : lifecycle === 'resume-ready'
+                    ? data.summary
+                    : lifecycle === 'resume-failed'
+                      ? agentMetadata.lastResumeError ?? data.summary
                   : agentMetadata.lastExitMessage
                     ? agentMetadata.lastExitMessage
                     : data.summary}
@@ -740,9 +784,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }
 
   const executionBlocked = !data.workspaceTrusted;
+  const lifecycle = terminalMetadata.lifecycle;
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const autoLaunchRef = useRef<string | null>(null);
   const terminalSizeRef = useRef({
     cols: terminalMetadata.lastCols ?? 96,
     rows: terminalMetadata.lastRows ?? 28
@@ -880,6 +926,23 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     data.onDeleteNode?.(id);
   };
 
+  useEffect(() => {
+    if (!terminalMetadata.pendingLaunch) {
+      autoLaunchRef.current = null;
+      return;
+    }
+
+    if (executionBlocked || terminalMetadata.liveSession || autoLaunchRef.current === terminalMetadata.pendingLaunch) {
+      return;
+    }
+
+    autoLaunchRef.current = terminalMetadata.pendingLaunch;
+    const frame = window.requestAnimationFrame(startTerminal);
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [executionBlocked, id, terminalMetadata.liveSession, terminalMetadata.pendingLaunch]);
+
   return (
     <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
@@ -898,8 +961,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          <span className={`status-pill ${terminalMetadata.liveSession ? 'tone-running' : 'tone-idle'}`}>
-            {terminalMetadata.liveSession ? '运行中' : humanizeStatus(data.status)}
+          <span className={`status-pill ${statusToneClass(lifecycle)}`}>
+            {humanizeStatus(lifecycle)}
           </span>
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
@@ -941,6 +1004,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
               <strong>
                 {executionBlocked
                   ? 'Restricted Mode'
+                  : lifecycle === 'interrupted'
+                    ? '终端已中断'
                   : terminalMetadata.lastExitMessage
                     ? '终端当前未运行'
                     : '终端尚未启动'}
@@ -948,6 +1013,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
               <span>
                 {executionBlocked
                   ? '当前 workspace 未受信任，嵌入式终端入口已禁用。'
+                  : lifecycle === 'interrupted'
+                    ? data.summary
                   : terminalMetadata.lastExitMessage
                     ? terminalMetadata.lastExitMessage
                     : data.summary}
@@ -1272,7 +1339,8 @@ function toFlowNodes(params: {
     kind: ExecutionNodeKind,
     cols: number,
     rows: number,
-    provider?: AgentProviderKind
+    provider?: AgentProviderKind,
+    resume?: boolean
   ) => void;
   onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
@@ -1486,6 +1554,24 @@ function humanizeStatus(status: string): string {
   switch (status) {
     case 'idle':
       return '空闲';
+    case 'launching':
+      return '启动中';
+    case 'starting':
+      return '启动中';
+    case 'waiting-input':
+      return '等待输入';
+    case 'resuming':
+      return '恢复中';
+    case 'resume-ready':
+      return '可恢复';
+    case 'resume-failed':
+      return '恢复失败';
+    case 'stopping':
+      return '停止中';
+    case 'stopped':
+      return '已停止';
+    case 'running':
+      return '运行中';
     case 'draft':
       return '草稿';
     case 'ready':
@@ -1507,9 +1593,22 @@ function humanizeStatus(status: string): string {
 
 function statusToneClass(status: string): string {
   switch (status) {
+    case 'launching':
+    case 'starting':
+    case 'resuming':
+    case 'running':
+    case 'live':
+      return 'tone-running';
+    case 'waiting-input':
+      return 'tone-success';
+    case 'resume-ready':
+    case 'stopping':
+    case 'stopped':
+    case 'closed':
     case 'cancelled':
     case 'interrupted':
       return 'tone-warning';
+    case 'resume-failed':
     case 'error':
       return 'tone-error';
     default:
@@ -1809,7 +1908,10 @@ function queryNodeSelectField(
   throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是下拉选择控件。`);
 }
 
-function queryNodeActionButton(nodeId: string, label: '删除' | '启动' | '停止' | '重启'): HTMLButtonElement {
+function queryNodeActionButton(
+  nodeId: string,
+  label: '删除' | '启动' | '停止' | '重启' | '恢复'
+): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
   const button = Array.from(nodeRoot.querySelectorAll('button')).find(
     (candidate) => candidate.textContent?.trim() === label

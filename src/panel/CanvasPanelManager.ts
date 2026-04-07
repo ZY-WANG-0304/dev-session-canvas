@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {
@@ -6,8 +9,10 @@ import {
   VIEW_IDS
 } from '../common/extensionIdentity';
 import {
+  type AgentNodeStatus,
   type AgentNodeMetadata,
   type AgentProviderKind,
+  type AgentResumeStrategy,
   type CanvasNodeFootprint,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
@@ -18,6 +23,8 @@ import {
   type ExecutionNodeKind,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
+  type PendingExecutionLaunch,
+  type TerminalNodeStatus,
   type TerminalNodeMetadata,
   type WebviewDomAction,
   type WebviewProbeSnapshot,
@@ -59,6 +66,13 @@ interface AgentCliSpec {
   command: string;
 }
 
+interface AgentResumeContext {
+  supported: boolean;
+  strategy: AgentResumeStrategy;
+  sessionId?: string;
+  storagePath?: string;
+}
+
 interface EmbeddedExecutionSession {
   sessionId: string;
   process: ExecutionSessionProcess;
@@ -69,7 +83,12 @@ interface EmbeddedExecutionSession {
   buffer: string;
   stopRequested: boolean;
   syncTimer: NodeJS.Timeout | undefined;
+  lifecycleTimer: NodeJS.Timeout | undefined;
   displayLabel: string;
+  lifecycleStatus: AgentNodeStatus | TerminalNodeStatus;
+  launchMode: PendingExecutionLaunch;
+  agentProvider?: AgentProviderKind;
+  agentResume?: AgentResumeContext;
   outputSubscription: DisposableLike | undefined;
   exitSubscription: DisposableLike | undefined;
 }
@@ -271,6 +290,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.context.workspaceState.update(STORAGE_KEYS.canvasState, rawState);
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.recordDiagnosticEvent('state/seededForTest', {
+      nodeCount: this.state.nodes.length
+    });
+    this.notifySidebarStateChanged();
+
+    if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
+      this.postState('host/stateUpdated');
+    }
+
+    return this.getDebugSnapshot();
+  }
+
+  public simulateRuntimeReloadForTest(): CanvasDebugSnapshot {
+    this.cancelAllAgentSessions();
+    this.cancelAllTerminalSessions();
+    this.state = reconcileRuntimeNodes(this.loadState());
+    this.activeSurface = this.loadStoredSurface();
+    this.recordDiagnosticEvent('state/runtimeReloaded', {
+      activeSurface: this.activeSurface,
       nodeCount: this.state.nodes.length
     });
     this.notifySidebarStateChanged();
@@ -861,7 +898,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             parsedMessage.payload.nodeId,
             parsedMessage.payload.cols,
             parsedMessage.payload.rows,
-            parsedMessage.payload.provider
+            parsedMessage.payload.provider,
+            parsedMessage.payload.resume === true
           );
           return;
         }
@@ -934,11 +972,46 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return false;
   }
 
+  private ensureRuntimeDirectory(targetPath: string): string {
+    fs.mkdirSync(targetPath, {
+      recursive: true
+    });
+    return targetPath;
+  }
+
+  private getAgentRuntimeStorageRoot(): string {
+    const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    return this.ensureRuntimeDirectory(path.join(basePath, 'agent-runtime'));
+  }
+
+  private resolveAgentResumeContext(
+    nodeId: string,
+    provider: AgentProviderKind,
+    metadata?: AgentNodeMetadata
+  ): AgentResumeContext {
+    if (provider === 'claude') {
+      return {
+        supported: true,
+        strategy: 'claude-session-id',
+        sessionId: metadata?.resumeSessionId?.trim() || randomUUID()
+      };
+    }
+
+    return {
+      supported: true,
+      strategy: this.context.extensionMode === vscode.ExtensionMode.Test ? 'fake-provider' : 'codex-home',
+      storagePath:
+        metadata?.resumeStoragePath?.trim() ||
+        this.ensureRuntimeDirectory(path.join(this.getAgentRuntimeStorageRoot(), nodeId))
+    };
+  }
+
   private async startAgentSession(
     nodeId: string,
     cols: number,
     rows: number,
-    requestedProvider: AgentProviderKind | undefined
+    requestedProvider: AgentProviderKind | undefined,
+    resumeRequested: boolean
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
@@ -946,12 +1019,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind: 'agent',
       nodeId,
       provider: requestedProvider ?? null,
+      resumeRequested,
       cols: normalizedCols,
       rows: normalizedRows,
       workspaceTrusted: vscode.workspace.isTrusted
     });
 
     if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+      const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+      if (blockedNode) {
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: 'idle',
+          summary: defaultSummaryForKind('agent'),
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            lifecycle: 'idle',
+            pendingLaunch: undefined,
+            liveSession: false
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+      }
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'agent',
         nodeId,
@@ -993,14 +1081,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const provider = requestedProvider ?? ensureAgentMetadata(agentNode).provider;
+    const currentMetadata = ensureAgentMetadata(agentNode);
+    const provider = requestedProvider ?? currentMetadata.provider;
     const cliSpec = this.resolveAgentCli(provider);
+    const resumeContext = this.resolveAgentResumeContext(nodeId, provider, currentMetadata);
+    const launchMode: PendingExecutionLaunch = resumeRequested ? 'resume' : 'start';
+    const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
 
     try {
       const process = createExecutionSessionProcess(
-        this.buildAgentLaunchSpec(cliSpec.command, cwd, normalizedCols, normalizedRows)
+        this.buildAgentLaunchSpec(cliSpec, cwd, normalizedCols, normalizedRows, launchMode, resumeContext)
       );
 
       const session: EmbeddedExecutionSession = {
@@ -1013,7 +1105,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         buffer: '',
         stopRequested: false,
         syncTimer: undefined,
+        lifecycleTimer: undefined,
         displayLabel: cliSpec.label,
+        lifecycleStatus,
+        launchMode,
+        agentProvider: provider,
+        agentResume: resumeContext,
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -1023,19 +1120,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         sessionId,
         provider,
+        launchMode,
         cols: normalizedCols,
         rows: normalizedRows,
         shellPath: cliSpec.command,
-        cwd
+        cwd,
+        resumeStrategy: resumeContext.strategy,
+        resumeSessionId: resumeContext.sessionId ?? null,
+        resumeStoragePath: resumeContext.storagePath ?? null
       });
 
       this.state = updateAgentNode(this.state, nodeId, {
-        status: 'live',
-        summary: summarizeAgentSessionOutput('', true, cliSpec.label),
+        status: lifecycleStatus,
+        summary: summarizeAgentSessionOutput('', lifecycleStatus, cliSpec.label),
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
           provider,
+          lifecycle: lifecycleStatus,
+          runtimeKind: 'pty-cli',
+          resumeSupported: resumeContext.supported,
+          resumeStrategy: resumeContext.strategy,
+          resumeSessionId: resumeContext.sessionId,
+          resumeStoragePath: resumeContext.storagePath,
+          lastResumeError: undefined,
           liveSession: true,
-          autoStartPending: false,
+          pendingLaunch: undefined,
           shellPath: cliSpec.command,
           cwd,
           recentOutput: undefined,
@@ -1051,6 +1159,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('agent', nodeId);
 
+      const queueAgentWaitingInput = (): void => {
+        const activeSession = this.getExecutionSessions('agent').get(nodeId);
+        if (!activeSession || activeSession.lifecycleStatus !== 'running') {
+          return;
+        }
+
+        if (activeSession.lifecycleTimer) {
+          clearTimeout(activeSession.lifecycleTimer);
+        }
+
+        activeSession.lifecycleTimer = setTimeout(() => {
+          const liveSession = this.getExecutionSessions('agent').get(nodeId);
+          if (!liveSession || liveSession.lifecycleStatus !== 'running') {
+            return;
+          }
+
+          liveSession.lifecycleTimer = undefined;
+          liveSession.lifecycleStatus = 'waiting-input';
+          this.flushLiveExecutionState('agent', nodeId);
+        }, 380);
+      };
+
       const handleSessionChunk = (text: string): void => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
@@ -1063,6 +1193,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        if (activeSession.lifecycleStatus === 'starting' || activeSession.lifecycleStatus === 'resuming') {
+          activeSession.lifecycleStatus = 'waiting-input';
+        } else if (activeSession.lifecycleStatus === 'running') {
+          queueAgentWaitingInput();
+        }
         this.queueExecutionStateSync('agent', nodeId);
         this.postMessage({
           type: 'host/executionOutput',
@@ -1075,7 +1210,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
 
       const finalize = (
-        status: 'closed' | 'error',
+        status: 'stopped' | 'error' | 'resume-failed',
         message: string,
         exitCode?: number,
         signal?: string
@@ -1089,6 +1224,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         if (activeSession.syncTimer) {
           clearTimeout(activeSession.syncTimer);
           activeSession.syncTimer = undefined;
+        }
+        if (activeSession.lifecycleTimer) {
+          clearTimeout(activeSession.lifecycleTimer);
+          activeSession.lifecycleTimer = undefined;
         }
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
@@ -1105,15 +1244,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           exitCode: exitCode ?? null,
           signal: signal ?? null,
           stopRequested: activeSession.stopRequested,
-          message
+          message,
+          launchMode: activeSession.launchMode
         });
         this.state = updateAgentNode(this.state, nodeId, {
           status,
           summary: message,
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
             provider,
+            lifecycle: status,
+            runtimeKind: 'pty-cli',
+            resumeSupported: resumeContext.supported,
+            resumeStrategy: resumeContext.strategy,
+            resumeSessionId: resumeContext.sessionId,
+            resumeStoragePath: resumeContext.storagePath,
+            lastResumeError: status === 'resume-failed' ? message : undefined,
             liveSession: false,
-            autoStartPending: false,
+            pendingLaunch: undefined,
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
@@ -1135,7 +1282,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             message
           }
         });
-        if (status === 'error') {
+        if (status === 'error' || status === 'resume-failed') {
           this.postMessage({
             type: 'host/error',
             payload: {
@@ -1148,16 +1295,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleSessionChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('closed', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
+          finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          finalize('closed', `${cliSpec.label} 会话已结束。`, exitCode, signal);
+          finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
+        if (session.launchMode === 'resume') {
+          finalize(
+            'resume-failed',
+            describeAgentResumeFailure(cliSpec, exitCode, signal, cleanedOutput),
+            exitCode,
+            signal
+          );
+          return;
+        }
+
         finalize(
           'error',
           describeAgentSessionExit(cliSpec, exitCode, signal, cleanedOutput),
@@ -1166,22 +1323,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         );
       });
     } catch (error) {
-      const message = describeAgentSessionSpawnError(cliSpec, error);
+      const message =
+        launchMode === 'resume'
+          ? describeAgentResumeSpawnError(cliSpec, error)
+          : describeAgentSessionSpawnError(cliSpec, error);
       this.recordDiagnosticEvent('execution/spawnError', {
         kind: 'agent',
         nodeId,
         provider,
+        launchMode,
         cols: normalizedCols,
         rows: normalizedRows,
         message
       });
       this.state = updateAgentNode(this.state, nodeId, {
-        status: 'error',
+        status: launchMode === 'resume' ? 'resume-failed' : 'error',
         summary: message,
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
           provider,
+          lifecycle: launchMode === 'resume' ? 'resume-failed' : 'error',
+          runtimeKind: 'pty-cli',
+          resumeSupported: resumeContext.supported,
+          resumeStrategy: resumeContext.strategy,
+          resumeSessionId: resumeContext.sessionId,
+          resumeStoragePath: resumeContext.storagePath,
+          lastResumeError: launchMode === 'resume' ? message : undefined,
           liveSession: false,
-          autoStartPending: false,
+          pendingLaunch: undefined,
           shellPath: cliSpec.command,
           cwd,
           lastExitMessage: message,
@@ -1299,18 +1467,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private buildAgentLaunchSpec(
-    command: string,
+    spec: AgentCliSpec,
     cwd: string,
     cols: number,
-    rows: number
+    rows: number,
+    launchMode: PendingExecutionLaunch,
+    resumeContext: AgentResumeContext
   ): ExecutionSessionLaunchSpec {
+    const env = this.buildExecutionEnvironment();
+    const args: string[] = [];
+
+    if (spec.provider === 'claude') {
+      if (launchMode === 'resume' && resumeContext.sessionId) {
+        args.push('--resume', resumeContext.sessionId);
+      } else if (resumeContext.sessionId) {
+        args.push('--session-id', resumeContext.sessionId);
+      }
+    } else if (launchMode === 'resume') {
+      args.push('resume', '--last');
+    }
+
+    if (resumeContext.storagePath) {
+      env.CODEX_HOME = resumeContext.storagePath;
+    }
+
     return {
-      file: command,
-      args: [],
+      file: spec.command,
+      args,
       cwd,
       cols,
       rows,
-      env: this.buildExecutionEnvironment()
+      env
     };
   }
 
@@ -1326,6 +1513,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
 
     if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+      const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+      if (blockedNode) {
+        this.state = updateTerminalNode(this.state, nodeId, {
+          status: 'idle',
+          summary: defaultSummaryForKind('terminal'),
+          metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+            lifecycle: 'idle',
+            pendingLaunch: undefined,
+            liveSession: false
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+      }
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'terminal',
         nodeId,
@@ -1385,7 +1586,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         buffer: '',
         stopRequested: false,
         syncTimer: undefined,
+        lifecycleTimer: undefined,
         displayLabel: shellPath,
+        lifecycleStatus: 'launching',
+        launchMode: 'start',
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -1401,11 +1605,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
 
       this.state = updateTerminalNode(this.state, nodeId, {
-        status: 'live',
-        summary: '嵌入式终端已启动，等待输入。',
+        status: 'launching',
+        summary: summarizeEmbeddedTerminalOutput('', 'launching'),
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lifecycle: 'launching',
           liveSession: true,
-          autoStartPending: false,
+          pendingLaunch: undefined,
           shellPath,
           cwd,
           lastCols: normalizedCols,
@@ -1420,6 +1625,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('terminal', nodeId);
 
+      session.lifecycleTimer = setTimeout(() => {
+        const activeSession = this.terminalSessions.get(nodeId);
+        if (!activeSession || activeSession.lifecycleStatus !== 'launching') {
+          return;
+        }
+
+        activeSession.lifecycleTimer = undefined;
+        activeSession.lifecycleStatus = 'live';
+        this.flushLiveExecutionState('terminal', nodeId);
+      }, 160);
+
       const handleTerminalChunk = (text: string): void => {
         const activeSession = this.terminalSessions.get(nodeId);
         if (!activeSession) {
@@ -1431,6 +1647,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        if (activeSession.lifecycleStatus === 'launching') {
+          activeSession.lifecycleStatus = 'live';
+        }
         this.queueExecutionStateSync('terminal', nodeId);
         this.postMessage({
           type: 'host/executionOutput',
@@ -1457,6 +1676,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           clearTimeout(activeSession.syncTimer);
           activeSession.syncTimer = undefined;
         }
+        if (activeSession.lifecycleTimer) {
+          clearTimeout(activeSession.lifecycleTimer);
+          activeSession.lifecycleTimer = undefined;
+        }
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
 
@@ -1478,8 +1701,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           status,
           summary: message,
           metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+            lifecycle: status,
             liveSession: false,
-            autoStartPending: false,
+            pendingLaunch: undefined,
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
@@ -1543,8 +1767,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         status: 'error',
         summary: message,
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lifecycle: 'error',
           liveSession: false,
-          autoStartPending: false,
+          pendingLaunch: undefined,
           shellPath,
           cwd,
           lastExitMessage: message,
@@ -1611,6 +1836,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (kind === 'agent') {
+      if (session.lifecycleTimer) {
+        clearTimeout(session.lifecycleTimer);
+        session.lifecycleTimer = undefined;
+      }
+      if (session.lifecycleStatus !== 'starting' && session.lifecycleStatus !== 'resuming') {
+        session.lifecycleStatus = 'running';
+        this.queueExecutionStateSync('agent', nodeId);
+      }
+    } else if (session.lifecycleStatus === 'launching') {
+      session.lifecycleStatus = 'live';
+      this.queueExecutionStateSync('terminal', nodeId);
+    }
+
     session.process.write(data);
     this.recordDiagnosticEvent('execution/inputWritten', {
       ...inputDetail,
@@ -1670,6 +1909,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       sessionId: session.sessionId
     });
     session.stopRequested = true;
+    session.lifecycleStatus = kind === 'agent' ? 'stopping' : 'stopping';
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+    }
+    this.flushLiveExecutionState(kind, nodeId);
     session.process.kill();
   }
 
@@ -1720,6 +1965,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       clearTimeout(session.syncTimer);
       session.syncTimer = undefined;
     }
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+    }
 
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
@@ -1756,12 +2005,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const cleanedOutput = stripTerminalControlSequences(session.buffer);
     const recentOutput = extractRecentTerminalOutput(cleanedOutput);
     this.state = updateExecutionNode(this.state, nodeId, kind, {
-      status: 'live',
+      status: session.lifecycleStatus,
       summary:
         kind === 'agent'
-          ? summarizeAgentSessionOutput(cleanedOutput, true, session.displayLabel)
-          : summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+          ? summarizeAgentSessionOutput(
+              cleanedOutput,
+              session.lifecycleStatus as AgentNodeStatus,
+              session.displayLabel
+            )
+          : summarizeEmbeddedTerminalOutput(cleanedOutput, session.lifecycleStatus as TerminalNodeStatus),
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        lifecycle: session.lifecycleStatus,
         liveSession: true,
         shellPath: session.shellPath,
         cwd: session.cwd,
@@ -1820,12 +2074,46 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.state = createNextState(
+    const nextState = createNextState(
       this.state,
       kind,
       this.getAgentCliConfig().defaultProvider,
       preferredPosition
     );
+    const createdNode = nextState.nodes[nextState.nodes.length - 1];
+
+    if (createdNode && createdNode.kind === 'agent') {
+      this.state = updateAgentNode(nextState, createdNode.id, {
+        status: 'starting',
+        summary: '正在等待节点尺寸就绪后启动 Agent 会话。',
+        metadata: buildAgentMetadataPatch(nextState, createdNode.id, {
+          lifecycle: 'starting',
+          pendingLaunch: 'start',
+          liveSession: false,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          recentOutput: undefined,
+          lastResumeError: undefined
+        })
+      });
+    } else if (createdNode && createdNode.kind === 'terminal') {
+      this.state = updateTerminalNode(nextState, createdNode.id, {
+        status: 'launching',
+        summary: '正在等待节点尺寸就绪后启动嵌入式终端。',
+        metadata: buildTerminalMetadataPatch(nextState, createdNode.id, {
+          lifecycle: 'launching',
+          pendingLaunch: 'start',
+          liveSession: false,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          recentOutput: undefined
+        })
+      });
+    } else {
+      this.state = nextState;
+    }
 
     this.persistState();
     this.postState('host/stateUpdated');
@@ -2000,9 +2288,9 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
 function defaultStatusForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return 'draft';
+      return 'idle';
     case 'terminal':
-      return 'draft';
+      return 'idle';
     case 'note':
       return 'ready';
   }
@@ -2302,7 +2590,13 @@ function normalizeNode(
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
     size: normalizeCanvasNodeFootprint(value.kind, value.size),
-    metadata: normalizeMetadata(value.kind, value.id, value.metadata, defaultAgentProvider)
+    metadata: normalizeMetadata(
+      value.kind,
+      value.id,
+      typeof value.status === 'string' ? value.status : undefined,
+      value.metadata,
+      defaultAgentProvider
+    )
   };
 }
 
@@ -2372,11 +2666,15 @@ function createNodeMetadata(
 function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
   return {
     backend: 'node-pty',
+    lifecycle: 'idle',
     provider,
+    runtimeKind: 'pty-cli',
+    resumeSupported: true,
+    resumeStrategy: provider === 'claude' ? 'claude-session-id' : 'codex-home',
     shellPath: defaultAgentCommand(provider),
     cwd: defaultTerminalWorkingDirectory(),
     liveSession: false,
-    autoStartPending: false,
+    pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
     lastRows: DEFAULT_TERMINAL_ROWS,
     lastBackendLabel: agentProviderDisplayLabel(provider)
@@ -2386,10 +2684,11 @@ function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMe
 function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
   return {
     backend: 'node-pty',
+    lifecycle: 'idle',
     shellPath: defaultTerminalShellPath(),
     cwd: defaultTerminalWorkingDirectory(),
     liveSession: false,
-    autoStartPending: false,
+    pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
     lastRows: DEFAULT_TERMINAL_ROWS
   };
@@ -2401,9 +2700,102 @@ function createNoteMetadata(): NoteNodeMetadata {
   };
 }
 
+function normalizePendingLaunch(value: unknown): PendingExecutionLaunch | undefined {
+  if (value === 'start' || value === 'resume') {
+    return value;
+  }
+
+  return value === true ? 'start' : undefined;
+}
+
+function normalizeAgentLifecycle(
+  nodeStatus: string | undefined,
+  liveSession: boolean,
+  value: unknown
+): AgentNodeStatus {
+  if (
+    value === 'idle' ||
+    value === 'starting' ||
+    value === 'waiting-input' ||
+    value === 'running' ||
+    value === 'resuming' ||
+    value === 'resume-ready' ||
+    value === 'resume-failed' ||
+    value === 'stopping' ||
+    value === 'stopped' ||
+    value === 'error' ||
+    value === 'interrupted'
+  ) {
+    return value;
+  }
+
+  if (nodeStatus === 'resume-ready' || nodeStatus === 'resume-failed') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'starting' || nodeStatus === 'waiting-input' || nodeStatus === 'running' || nodeStatus === 'resuming') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'stopped' || nodeStatus === 'stopping') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'error' || nodeStatus === 'interrupted') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'closed') {
+    return 'stopped';
+  }
+
+  if (nodeStatus === 'draft' || nodeStatus === 'idle') {
+    return 'idle';
+  }
+
+  return liveSession ? 'running' : 'idle';
+}
+
+function normalizeTerminalLifecycle(
+  nodeStatus: string | undefined,
+  liveSession: boolean,
+  value: unknown
+): TerminalNodeStatus {
+  if (
+    value === 'idle' ||
+    value === 'launching' ||
+    value === 'live' ||
+    value === 'stopping' ||
+    value === 'closed' ||
+    value === 'error' ||
+    value === 'interrupted'
+  ) {
+    return value;
+  }
+
+  if (
+    nodeStatus === 'idle' ||
+    nodeStatus === 'launching' ||
+    nodeStatus === 'live' ||
+    nodeStatus === 'stopping' ||
+    nodeStatus === 'closed' ||
+    nodeStatus === 'error' ||
+    nodeStatus === 'interrupted'
+  ) {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'draft') {
+    return 'idle';
+  }
+
+  return liveSession ? 'live' : 'idle';
+}
+
 function normalizeMetadata(
   kind: CanvasNodeKind,
   nodeId: string,
+  nodeStatus: string | undefined,
   value: unknown,
   defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasNodeMetadata | undefined {
@@ -2415,11 +2807,30 @@ function normalizeMetadata(
         ? agent.provider
         : defaultAgentProvider;
     const fallback = createAgentMetadata(provider);
+    const liveSession =
+      typeof agent.liveSession === 'boolean'
+        ? agent.liveSession
+        : typeof agent.liveRun === 'boolean'
+          ? agent.liveRun
+          : fallback.liveSession;
 
     return {
       agent: {
         backend: 'node-pty',
+        lifecycle: normalizeAgentLifecycle(
+          nodeStatus,
+          liveSession,
+          agent.lifecycle
+        ),
         provider,
+        runtimeKind: 'pty-cli',
+        resumeSupported: true,
+        resumeStrategy:
+          agent.resumeStrategy === 'claude-session-id' ||
+          agent.resumeStrategy === 'codex-home' ||
+          agent.resumeStrategy === 'fake-provider'
+            ? agent.resumeStrategy
+            : fallback.resumeStrategy,
         shellPath:
           typeof agent.shellPath === 'string'
             ? agent.shellPath
@@ -2428,13 +2839,8 @@ function normalizeMetadata(
           typeof agent.cwd === 'string'
             ? agent.cwd
             : fallback.cwd,
-        liveSession:
-          typeof agent.liveSession === 'boolean'
-            ? agent.liveSession
-            : typeof agent.liveRun === 'boolean'
-              ? agent.liveRun
-              : fallback.liveSession,
-        autoStartPending: false,
+        liveSession,
+        pendingLaunch: normalizePendingLaunch(agent.pendingLaunch ?? agent.autoStartPending),
         recentOutput:
           typeof agent.recentOutput === 'string'
             ? trimStoredTerminalText(agent.recentOutput)
@@ -2452,6 +2858,18 @@ function normalizeMetadata(
         lastExitMessage:
           typeof agent.lastExitMessage === 'string'
             ? trimStoredTerminalText(agent.lastExitMessage)
+            : undefined,
+        resumeSessionId:
+          typeof agent.resumeSessionId === 'string'
+            ? agent.resumeSessionId
+            : undefined,
+        resumeStoragePath:
+          typeof agent.resumeStoragePath === 'string'
+            ? agent.resumeStoragePath
+            : undefined,
+        lastResumeError:
+          typeof agent.lastResumeError === 'string'
+            ? trimStoredTerminalText(agent.lastResumeError)
             : undefined,
         lastCols:
           typeof agent.lastCols === 'number'
@@ -2474,10 +2892,21 @@ function normalizeMetadata(
   if (kind === 'terminal') {
     const terminal = isRecord(record.terminal) ? record.terminal : {};
     const fallback = createTerminalMetadata(nodeId);
+    const liveSession =
+      typeof terminal.liveSession === 'boolean'
+        ? terminal.liveSession
+        : typeof terminal.liveRun === 'boolean'
+          ? terminal.liveRun
+          : fallback.liveSession;
 
     return {
       terminal: {
         backend: 'node-pty',
+        lifecycle: normalizeTerminalLifecycle(
+          nodeStatus,
+          liveSession,
+          terminal.lifecycle
+        ),
         shellPath:
           typeof terminal.shellPath === 'string'
             ? terminal.shellPath
@@ -2486,8 +2915,8 @@ function normalizeMetadata(
           typeof terminal.cwd === 'string'
             ? terminal.cwd
             : fallback.cwd,
-        liveSession: false,
-        autoStartPending: false,
+        liveSession,
+        pendingLaunch: normalizePendingLaunch(terminal.pendingLaunch ?? terminal.autoStartPending),
         recentOutput:
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)
@@ -2574,13 +3003,19 @@ function reconcileAgentNodesInArray(
 
       return {
         ...node,
-        status: 'live',
-        summary: summarizeAgentSessionOutput(cleanedOutput, true, liveSession.displayLabel),
+        status: liveSession.lifecycleStatus,
+        summary: summarizeAgentSessionOutput(
+          cleanedOutput,
+          liveSession.lifecycleStatus as AgentNodeStatus,
+          liveSession.displayLabel
+        ),
         metadata: {
           ...node.metadata,
           agent: {
             ...metadata,
+            lifecycle: liveSession.lifecycleStatus as AgentNodeStatus,
             liveSession: true,
+            pendingLaunch: undefined,
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
@@ -2593,15 +3028,18 @@ function reconcileAgentNodesInArray(
     }
 
     if (metadata.liveSession) {
+      const canResume = metadata.resumeSupported && Boolean(metadata.resumeSessionId || metadata.resumeStoragePath);
       return {
         ...node,
-        status: 'interrupted',
-        summary: '上一次 Agent 会话在扩展重载后未恢复，可重新启动。',
+        status: canResume ? 'resume-ready' : 'interrupted',
+        summary: canResume ? '检测到可恢复的 Agent 会话，正在等待恢复。' : '上一次 Agent 会话在扩展重载后未恢复，可重新启动。',
         metadata: {
           ...node.metadata,
           agent: {
             ...metadata,
-            liveSession: false
+            lifecycle: canResume ? 'resume-ready' : 'interrupted',
+            liveSession: false,
+            pendingLaunch: canResume ? 'resume' : undefined
           }
         }
       };
@@ -2610,17 +3048,22 @@ function reconcileAgentNodesInArray(
     if (shouldResetIdleAgentNode(node, metadata)) {
       return {
         ...node,
-        status: 'draft',
+        status: 'idle',
         summary: defaultSummaryForKind('agent'),
         metadata: {
           ...node.metadata,
-          agent: metadata
+          agent: {
+            ...metadata,
+            lifecycle: 'idle',
+            pendingLaunch: undefined
+          }
         }
       };
     }
 
     return {
       ...node,
+      status: metadata.lifecycle,
       metadata: {
         ...node.metadata,
         agent: {
@@ -2649,12 +3092,17 @@ function reconcileTerminalNodesInArray(
 
       return {
         ...node,
-        status: 'live',
-        summary: summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+        status: liveSession.lifecycleStatus,
+        summary: summarizeEmbeddedTerminalOutput(
+          cleanedOutput,
+          liveSession.lifecycleStatus as TerminalNodeStatus
+        ),
         metadata: {
           terminal: {
             ...metadata,
+            lifecycle: liveSession.lifecycleStatus as TerminalNodeStatus,
             liveSession: true,
+            pendingLaunch: undefined,
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
@@ -2673,7 +3121,9 @@ function reconcileTerminalNodesInArray(
         metadata: {
           terminal: {
             ...metadata,
-            liveSession: false
+            lifecycle: 'interrupted',
+            liveSession: false,
+            pendingLaunch: undefined
           }
         }
       };
@@ -2682,17 +3132,22 @@ function reconcileTerminalNodesInArray(
     if (isLegacyPlaceholderTerminal(node) || shouldResetIdleTerminalNode(node, metadata)) {
       return {
         ...node,
-        status: 'draft',
+        status: 'idle',
         summary: defaultSummaryForKind('terminal'),
         metadata: {
           ...node.metadata,
-          terminal: metadata
+          terminal: {
+            ...metadata,
+            lifecycle: 'idle',
+            pendingLaunch: undefined
+          }
         }
       };
     }
 
     return {
       ...node,
+      status: metadata.lifecycle,
       metadata: {
         terminal: {
           ...metadata,
@@ -2871,7 +3326,7 @@ function readExecutionSummary(
 
 function readAgentStatus(state: CanvasPrototypeState, nodeId: string): string {
   const agentNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
-  return agentNode?.status ?? 'draft';
+  return agentNode?.status ?? 'idle';
 }
 
 function readAgentSummary(state: CanvasPrototypeState, nodeId: string): string {
@@ -2881,7 +3336,7 @@ function readAgentSummary(state: CanvasPrototypeState, nodeId: string): string {
 
 function readTerminalStatus(state: CanvasPrototypeState, nodeId: string): string {
   const terminalNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
-  return terminalNode?.status ?? 'draft';
+  return terminalNode?.status ?? 'idle';
 }
 
 function readTerminalSummary(state: CanvasPrototypeState, nodeId: string): string {
@@ -3050,7 +3505,7 @@ function extractRecentTerminalOutput(value: string): string {
   return trimStoredTerminalText(trimmed);
 }
 
-function summarizeEmbeddedTerminalOutput(output: string, live: boolean): string {
+function summarizeEmbeddedTerminalOutput(output: string, status: TerminalNodeStatus): string {
   const normalized = output
     .replace(/\r/g, '')
     .split('\n')
@@ -3059,13 +3514,26 @@ function summarizeEmbeddedTerminalOutput(output: string, live: boolean): string 
   const lastLine = normalized[normalized.length - 1];
 
   if (!lastLine) {
-    return live ? '嵌入式终端已启动，等待输入。' : '终端会话已结束。';
+    switch (status) {
+      case 'launching':
+        return '正在启动嵌入式终端。';
+      case 'stopping':
+        return '正在停止终端会话。';
+      case 'closed':
+        return '终端会话已结束。';
+      case 'error':
+        return '终端会话异常退出。';
+      case 'interrupted':
+        return '上一次嵌入式终端在扩展重载后未恢复。';
+      default:
+        return '嵌入式终端已启动，等待输入。';
+    }
   }
 
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
 }
 
-function summarizeAgentSessionOutput(output: string, live: boolean, label: string): string {
+function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, label: string): string {
   const normalized = output
     .replace(/\r/g, '')
     .split('\n')
@@ -3074,7 +3542,30 @@ function summarizeAgentSessionOutput(output: string, live: boolean, label: strin
   const lastLine = normalized[normalized.length - 1];
 
   if (!lastLine) {
-    return live ? `${label} 会话已启动，等待输入。` : `${label} 会话已结束。`;
+    switch (status) {
+      case 'starting':
+        return `正在启动 ${label} 会话。`;
+      case 'resuming':
+        return `正在恢复 ${label} 会话。`;
+      case 'running':
+        return `${label} 正在处理输入。`;
+      case 'waiting-input':
+        return `${label} 已就绪，等待输入。`;
+      case 'stopping':
+        return `正在停止 ${label} 会话。`;
+      case 'resume-ready':
+        return `检测到可恢复的 ${label} 会话。`;
+      case 'resume-failed':
+        return `${label} 会话恢复失败。`;
+      case 'stopped':
+        return `${label} 会话已结束。`;
+      case 'error':
+        return `${label} 会话异常退出。`;
+      case 'interrupted':
+        return `${label} 会话在扩展重载后未恢复。`;
+      default:
+        return `${label} 会话尚未启动。`;
+    }
   }
 
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
@@ -3104,13 +3595,18 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
   return `启动 ${spec.label} 失败。`;
 }
 
+function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): string {
+  const message = describeAgentSessionSpawnError(spec, error);
+  return message.replace(/^启动/, '恢复');
+}
+
 function describeAgentSessionExit(
   spec: AgentCliSpec,
   code: number | null,
   signal: string | undefined,
   output: string
 ): string {
-  const summary = summarizeAgentSessionOutput(output, false, spec.label);
+  const summary = summarizeAgentSessionOutput(output, 'stopped', spec.label);
   const suffix = summary === `${spec.label} 会话已结束。` ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
@@ -3123,6 +3619,27 @@ function describeAgentSessionExit(
   }
 
   return `${spec.label} 提前结束。${suffix}`.trim();
+}
+
+function describeAgentResumeFailure(
+  spec: AgentCliSpec,
+  code: number | null,
+  signal: string | undefined,
+  output: string
+): string {
+  const summary = summarizeAgentSessionOutput(output, 'resume-failed', spec.label);
+  const suffix = summary === `${spec.label} 会话恢复失败。` ? '' : ` ${summary}`;
+  const normalizedSignal = normalizeExecutionExitSignal(signal);
+
+  if (normalizedSignal) {
+    return `恢复 ${spec.label} 时收到信号 ${normalizedSignal}。${suffix}`.trim();
+  }
+
+  if (typeof code === 'number') {
+    return `恢复 ${spec.label} 时进程以退出码 ${code} 结束。${suffix}`.trim();
+  }
+
+  return `恢复 ${spec.label} 失败。${suffix}`.trim();
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
@@ -3151,7 +3668,7 @@ function describeEmbeddedTerminalExit(
   signal: string | undefined,
   output: string
 ): string {
-  const summary = summarizeEmbeddedTerminalOutput(output, false);
+  const summary = summarizeEmbeddedTerminalOutput(output, 'closed');
   const suffix = summary === '终端会话已结束。' ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
