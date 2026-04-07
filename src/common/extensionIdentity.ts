@@ -9,6 +9,21 @@ export const COMMAND_IDS = {
   resetCanvasState: 'devSessionCanvas.resetCanvasState'
 } as const;
 
+export const TEST_COMMAND_IDS = {
+  getDebugState: 'devSessionCanvas.__test.getDebugState',
+  getHostMessages: 'devSessionCanvas.__test.getHostMessages',
+  clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
+  getDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
+  clearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  waitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
+  captureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
+  performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  reloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
+  dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
+  createNode: 'devSessionCanvas.__test.createNode',
+  resetState: 'devSessionCanvas.__test.resetState'
+} as const;
+
 export const VIEW_IDS = {
   activityBarContainer: 'devSessionCanvas',
   sidebarTree: 'devSessionCanvas.sidebar',

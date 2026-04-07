@@ -30,9 +30,12 @@ import type {
   ExecutionNodeKind,
   HostToWebviewMessage,
   TaskNodeStatus,
+  WebviewDomAction,
+  WebviewProbeNodeSnapshot,
+  WebviewProbeSnapshot,
   WebviewToHostMessage
 } from '../common/protocol';
-import { estimatedCanvasNodeFootprint } from '../common/protocol';
+import { estimatedCanvasNodeFootprint, isCanvasNodeKind } from '../common/protocol';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -182,6 +185,12 @@ function App(): JSX.Element {
           break;
         case 'host/requestCreateNode':
           createNode(message.payload.kind);
+          break;
+        case 'host/testProbeRequest':
+          void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
+          break;
+        case 'host/testDomAction':
+          void performWebviewDomAction(message.payload.requestId, message.payload.action);
           break;
       }
     };
@@ -408,7 +417,11 @@ function App(): JSX.Element {
         <Controls className="canvas-corner-panel canvas-controls" showInteractive={false} />
       </ReactFlow>
 
-      {errorMessage ? <div className="toast-error">{errorMessage}</div> : null}
+      {errorMessage ? (
+        <div className="toast-error" data-toast-kind="error">
+          {errorMessage}
+        </div>
+      ) : null}
     </div>
   );
 
@@ -594,7 +607,12 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   return (
-    <div className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}>
+    <div
+      className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
       <div className="window-chrome">
         <div className="window-title">
           <strong>{data.title}</strong>
@@ -604,6 +622,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <select
             className="agent-provider-select nodrag nopan"
             data-node-interactive="true"
+            data-probe-field="provider"
             value={provider}
             disabled={executionBlocked || agentMetadata.liveSession}
             onFocus={() => data.onSelectNode?.(id)}
@@ -834,6 +853,9 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   return (
     <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
     >
       <div className="window-chrome">
         <div className="window-title terminal-window-title">
@@ -971,7 +993,12 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   return (
-    <div className={`canvas-node object-editor-node kind-task ${data.selected ? 'is-selected' : ''}`}>
+    <div
+      className={`canvas-node object-editor-node kind-task ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
       <div className="window-chrome">
         <div className="window-title">
           <strong>Task</strong>
@@ -996,6 +1023,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <input
             className="node-text-input nodrag nopan"
             data-node-interactive="true"
+            data-probe-field="title"
             value={title}
             onFocus={beginEditing}
             onMouseDown={stopCanvasEvent}
@@ -1018,6 +1046,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             <select
               className="node-select nodrag nopan"
               data-node-interactive="true"
+              data-probe-field="status"
               value={status}
               onFocus={beginEditing}
               onMouseDown={stopCanvasEvent}
@@ -1042,6 +1071,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             <input
               className="node-text-input nodrag nopan"
               data-node-interactive="true"
+              data-probe-field="assignee"
               value={assignee}
               onFocus={beginEditing}
               onMouseDown={stopCanvasEvent}
@@ -1064,6 +1094,7 @@ function TaskEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <textarea
             className="node-textarea task-textarea nowheel nodrag nopan"
             data-node-interactive="true"
+            data-probe-field="body"
             value={description}
             onFocus={beginEditing}
             onMouseDown={stopCanvasEvent}
@@ -1131,7 +1162,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   return (
-    <div className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}>
+    <div
+      className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
       <div className="window-chrome">
         <div className="window-title">
           <strong>Note</strong>
@@ -1156,6 +1192,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <input
             className="node-text-input nodrag nopan"
             data-node-interactive="true"
+            data-probe-field="title"
             value={title}
             onFocus={beginEditing}
             onMouseDown={stopCanvasEvent}
@@ -1177,6 +1214,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <textarea
             className="node-textarea note-textarea nowheel nodrag nopan"
             data-node-interactive="true"
+            data-probe-field="body"
             value={content}
             onFocus={beginEditing}
             onMouseDown={stopCanvasEvent}
@@ -1208,7 +1246,12 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
   const terminalMetadata = data.metadata?.terminal;
 
   return (
-    <div className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}>
+    <div
+      className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
@@ -1550,6 +1593,221 @@ function stopCanvasEvent(event: { stopPropagation: () => void }): void {
 
 function emitExecutionHostEvent(detail: ExecutionHostEvent): void {
   executionEventTarget.dispatchEvent(new CustomEvent<ExecutionHostEvent>(EXECUTION_EVENT_NAME, { detail }));
+}
+
+function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
+  const nodeElements = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-node-id][data-node-kind]')
+  );
+  const nodes = nodeElements
+    .map((element) => readWebviewProbeNodeSnapshot(element))
+    .filter((node): node is WebviewProbeNodeSnapshot => node !== null);
+
+  return {
+    documentTitle: document.title,
+    hasCanvasShell: Boolean(document.querySelector('.canvas-shell')),
+    hasReactFlow: Boolean(document.querySelector('.react-flow')),
+    toastMessage: readProbeText(document.querySelector('[data-toast-kind="error"]')),
+    nodeCount: nodes.length,
+    nodes
+  };
+}
+
+function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSnapshot | null {
+  const nodeId = element.dataset.nodeId;
+  const nodeKind = element.dataset.nodeKind;
+
+  if (!nodeId || !isCanvasNodeKind(nodeKind)) {
+    return null;
+  }
+
+  return {
+    nodeId,
+    kind: nodeKind,
+    chromeTitle: readProbeText(element.querySelector('.window-title strong, .node-topline strong')),
+    chromeSubtitle: readProbeText(element.querySelector('.window-title span, .node-topline span')),
+    statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
+    selected: element.dataset.nodeSelected === 'true',
+    overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
+    overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
+    providerValue: readProbeFieldValue(element, 'provider'),
+    titleInputValue: readProbeFieldValue(element, 'title'),
+    statusValue: readProbeFieldValue(element, 'status'),
+    assigneeValue: readProbeFieldValue(element, 'assignee'),
+    bodyValue: readProbeFieldValue(element, 'body')
+  };
+}
+
+function readProbeFieldValue(element: HTMLElement, fieldName: string): string | undefined {
+  const field = element.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+    `[data-probe-field="${fieldName}"]`
+  );
+
+  return field?.value;
+}
+
+function readProbeText(element: Element | null): string | null {
+  const text = element?.textContent?.trim();
+  return text ? text : null;
+}
+
+function readProbeTextOrUndefined(element: Element | null): string | undefined {
+  return readProbeText(element) ?? undefined;
+}
+
+async function performWebviewDomAction(requestId: string, action: WebviewDomAction): Promise<void> {
+  try {
+    await delayTestAction(action.delayMs);
+
+    switch (action.kind) {
+      case 'setNodeTextField': {
+        const field = queryNodeTextField(action.nodeId, action.field);
+        field.focus();
+        setControlledFieldValue(field, action.value);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.blur();
+        break;
+      }
+      case 'selectNodeOption': {
+        const field = queryNodeSelectField(action.nodeId, action.field);
+        field.focus();
+        setControlledFieldValue(field, action.value);
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        field.blur();
+        break;
+      }
+      case 'clickNodeActionButton': {
+        const button = queryNodeActionButton(action.nodeId, action.label);
+        button.focus();
+        button.click();
+        break;
+      }
+    }
+
+    await waitForDomActionFlush();
+    postMessage({
+      type: 'webview/testDomActionResult',
+      payload: {
+        requestId,
+        ok: true
+      }
+    });
+  } catch (error) {
+    postMessage({
+      type: 'webview/testDomActionResult',
+      payload: {
+        requestId,
+        ok: false,
+        errorMessage: formatTestDomActionError(error)
+      }
+    });
+  }
+}
+
+async function respondWithWebviewProbeSnapshot(requestId: string, delayMs?: number): Promise<void> {
+  await delayTestAction(delayMs);
+  postMessage({
+    type: 'webview/testProbeResult',
+    payload: {
+      requestId,
+      snapshot: collectWebviewProbeSnapshot()
+    }
+  });
+}
+
+function queryNodeTextField(
+  nodeId: string,
+  fieldName: 'title' | 'assignee' | 'body'
+): HTMLInputElement | HTMLTextAreaElement {
+  const field = queryNodeField(nodeId, fieldName);
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    return field;
+  }
+
+  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
+}
+
+function queryNodeSelectField(
+  nodeId: string,
+  fieldName: 'status' | 'provider'
+): HTMLSelectElement {
+  const field = queryNodeField(nodeId, fieldName);
+  if (field instanceof HTMLSelectElement) {
+    return field;
+  }
+
+  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是下拉选择控件。`);
+}
+
+function queryNodeActionButton(nodeId: string, label: '删除' | '启动' | '停止' | '重启'): HTMLButtonElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  const button = Array.from(nodeRoot.querySelectorAll('button')).find(
+    (candidate) => candidate.textContent?.trim() === label
+  );
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`未找到节点 ${nodeId} 上标签为 ${label} 的按钮。`);
+  }
+
+  return button;
+}
+
+function queryNodeField(nodeId: string, fieldName: string): Element {
+  const field = queryNodeRoot(nodeId).querySelector(`[data-probe-field="${fieldName}"]`);
+  if (!field) {
+    throw new Error(`未找到节点 ${nodeId} 的 ${fieldName} 字段。`);
+  }
+
+  return field;
+}
+
+function queryNodeRoot(nodeId: string): HTMLElement {
+  const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
+  if (!nodeRoot) {
+    throw new Error(`未找到节点 ${nodeId}。`);
+  }
+
+  return nodeRoot;
+}
+
+function setControlledFieldValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  value: string
+): void {
+  const prototype =
+    element instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : element instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+
+  descriptor?.set?.call(element, value);
+}
+
+function waitForDomActionFlush(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function delayTestAction(delayMs?: number): Promise<void> {
+  if (!delayMs || delayMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
+}
+
+function formatTestDomActionError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
 }
 
 function snapEmbeddedTerminalViewportHeight(terminal: Terminal, preferredHeight: number): number | null {

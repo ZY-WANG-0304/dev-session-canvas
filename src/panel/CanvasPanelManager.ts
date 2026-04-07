@@ -20,6 +20,8 @@ import {
   type TaskNodeMetadata,
   type TaskNodeStatus,
   type TerminalNodeMetadata,
+  type WebviewDomAction,
+  type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -72,6 +74,26 @@ interface EmbeddedExecutionSession {
   exitSubscription: DisposableLike | undefined;
 }
 
+interface PendingWebviewProbeRequest {
+  surface: CanvasSurfaceLocation;
+  resolve: (snapshot: WebviewProbeSnapshot) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
+interface PendingWebviewDomActionRequest {
+  surface: CanvasSurfaceLocation;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
+interface CanvasTestDiagnosticEvent {
+  timestamp: string;
+  kind: string;
+  detail?: Record<string, unknown>;
+}
+
 export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
 
@@ -83,6 +105,14 @@ export interface CanvasSidebarState {
   runningExecutionCount: number;
   workspaceTrusted: boolean;
   creatableKinds: CanvasNodeKind[];
+}
+
+export interface CanvasDebugSnapshot {
+  activeSurface: CanvasSurfaceLocation | undefined;
+  sidebar: CanvasSidebarState;
+  state: CanvasPrototypeState;
+  surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>>;
+  surfaceReady: Record<CanvasSurfaceLocation, boolean>;
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
@@ -102,6 +132,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly agentSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
+  private readonly testHostMessages: HostToWebviewMessage[] = [];
+  private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
+  private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
+  private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
@@ -109,10 +143,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
+    this.recordDiagnosticEvent('state/initialized', {
+      activeSurface: this.activeSurface,
+      nodeCount: this.state.nodes.length
+    });
     context.subscriptions.push(this.sidebarStateEmitter);
 
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        this.recordDiagnosticEvent('workspace/trustGranted');
         this.postState('host/stateUpdated');
       })
     );
@@ -148,6 +187,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  public getDebugSnapshot(): CanvasDebugSnapshot {
+    return {
+      activeSurface: this.activeSurface,
+      sidebar: cloneJsonValue(this.getSidebarState()),
+      state: cloneJsonValue(this.state),
+      surfaceMode: cloneJsonValue(this.surfaceMode),
+      surfaceReady: cloneJsonValue(this.surfaceReady)
+    };
+  }
+
+  public getHostMessagesForTest(): HostToWebviewMessage[] {
+    return cloneJsonValue(this.testHostMessages);
+  }
+
+  public clearHostMessagesForTest(): void {
+    this.testHostMessages.length = 0;
+  }
+
+  public getDiagnosticEventsForTest(): CanvasTestDiagnosticEvent[] {
+    return cloneJsonValue(this.testDiagnosticEvents);
+  }
+
+  public clearDiagnosticEventsForTest(): void {
+    this.testDiagnosticEvents.length = 0;
+  }
+
   public createNode(kind: CanvasNodeKind): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
@@ -162,12 +227,165 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.applyCreateNode(kind);
   }
 
+  public createNodeForTest(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('createNodeForTest 仅在测试模式下可用。');
+    }
+
+    this.applyCreateNode(kind, preferredPosition, {
+      bypassTrust: true
+    });
+  }
+
+  public dispatchWebviewMessageForTest(
+    message: unknown,
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface
+  ): CanvasDebugSnapshot {
+    if (!surface) {
+      throw new Error('测试命令 devSessionCanvas.__test.dispatchWebviewMessage 需要一个有效的画布承载面。');
+    }
+
+    this.handleWebviewMessage(surface, message);
+    return this.getDebugSnapshot();
+  }
+
+  public reloadPersistedStateForTest(): CanvasDebugSnapshot {
+    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.activeSurface = this.loadStoredSurface();
+    this.recordDiagnosticEvent('state/reloaded', {
+      activeSurface: this.activeSurface,
+      nodeCount: this.state.nodes.length
+    });
+    this.notifySidebarStateChanged();
+
+    if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
+      this.postState('host/stateUpdated');
+    }
+
+    return this.getDebugSnapshot();
+  }
+
   public resetState(): void {
+    const previousNodeCount = this.state.nodes.length;
     this.cancelAllAgentSessions();
     this.cancelAllTerminalSessions();
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     this.persistState();
+    this.recordDiagnosticEvent('state/reset', {
+      previousNodeCount
+    });
     this.postState('host/stateUpdated');
+  }
+
+  public async waitForCanvasReady(
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface,
+    timeoutMs = 15000
+  ): Promise<CanvasDebugSnapshot> {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const targetSurface = surface ?? this.activeSurface;
+      if (targetSurface && this.activeSurface === targetSurface && this.isInteractiveSurfaceReady()) {
+        return this.getDebugSnapshot();
+      }
+
+      await delay(50);
+    }
+
+    const targetLabel = surface ?? this.activeSurface ?? 'active surface';
+    throw new Error(`等待 ${targetLabel} 画布完成 ready 超时（${timeoutMs}ms）。`);
+  }
+
+  public async captureWebviewProbeForTest(
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface,
+    timeoutMs = 5000,
+    delayMs = 0
+  ): Promise<WebviewProbeSnapshot> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('captureWebviewProbeForTest 仅在测试模式下可用。');
+    }
+
+    if (!surface) {
+      throw new Error('测试命令 devSessionCanvas.__test.captureWebviewProbe 需要一个有效的画布承载面。');
+    }
+
+    if (!this.isInteractiveSurface(surface)) {
+      throw new Error(`当前 ${surface} 不是可交互的主画布承载面。`);
+    }
+
+    if (!this.surfaceReady[surface]) {
+      throw new Error(`当前 ${surface} 画布尚未完成 ready。`);
+    }
+
+    const requestId = `probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingWebviewProbeRequests.delete(requestId);
+        reject(new Error(`等待 ${surface} Webview probe 返回超时（${timeoutMs}ms）。`));
+      }, timeoutMs);
+
+      this.pendingWebviewProbeRequests.set(requestId, {
+        surface,
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.postMessageToSurface(surface, {
+        type: 'host/testProbeRequest',
+        payload: {
+          requestId,
+          delayMs: delayMs > 0 ? delayMs : undefined
+        }
+      });
+    });
+  }
+
+  public async performWebviewDomActionForTest(
+    action: WebviewDomAction,
+    surface: CanvasSurfaceLocation | undefined = this.activeSurface,
+    timeoutMs = 5000
+  ): Promise<void> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('performWebviewDomActionForTest 仅在测试模式下可用。');
+    }
+
+    if (!surface) {
+      throw new Error('测试命令 devSessionCanvas.__test.performWebviewDomAction 需要一个有效的画布承载面。');
+    }
+
+    if (!this.isInteractiveSurface(surface)) {
+      throw new Error(`当前 ${surface} 不是可交互的主画布承载面。`);
+    }
+
+    if (!this.surfaceReady[surface]) {
+      throw new Error(`当前 ${surface} 画布尚未完成 ready。`);
+    }
+
+    const requestId = `dom-action-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingWebviewDomActionRequests.delete(requestId);
+        reject(new Error(`等待 ${surface} Webview DOM 动作返回超时（${timeoutMs}ms）。`));
+      }, timeoutMs);
+
+      this.pendingWebviewDomActionRequests.set(requestId, {
+        surface,
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.postMessageToSurface(surface, {
+        type: 'host/testDomAction',
+        payload: {
+          requestId,
+          action
+        }
+      });
+    });
   }
 
   public async deserializeWebviewPanel(
@@ -184,6 +402,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async revealSurface(surface: CanvasSurfaceLocation): Promise<void> {
+    this.recordDiagnosticEvent('surface/revealRequested', {
+      from: this.activeSurface,
+      to: surface
+    });
     this.activeSurface = surface;
     this.persistActiveSurface();
 
@@ -229,6 +451,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.surfaceMode.editor = undefined;
     this.surfaceReady.editor = false;
     this.claimSurfaceIfNeeded('editor');
+    this.recordDiagnosticEvent('surface/attached', {
+      surface: 'editor'
+    });
     panel.webview.options = this.getWebviewOptions();
 
     panel.onDidDispose(
@@ -237,6 +462,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.editorPanel = undefined;
           this.surfaceMode.editor = undefined;
           this.surfaceReady.editor = false;
+          this.recordDiagnosticEvent('surface/disposed', {
+            surface: 'editor'
+          });
+          this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
+          this.rejectPendingWebviewDomActionRequests('editor', '编辑区 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -246,6 +476,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     panel.onDidChangeViewState(
       () => {
+        this.recordDiagnosticEvent('surface/visibilityChanged', {
+          surface: 'editor',
+          visible: panel.visible
+        });
         this.notifySidebarStateChanged();
       },
       null,
@@ -272,6 +506,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.surfaceMode.panel = undefined;
     this.surfaceReady.panel = false;
     this.claimSurfaceIfNeeded('panel');
+    this.recordDiagnosticEvent('surface/attached', {
+      surface: 'panel'
+    });
     webviewView.webview.options = this.getWebviewOptions();
 
     webviewView.onDidDispose(
@@ -280,6 +517,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.panelView = undefined;
           this.surfaceMode.panel = undefined;
           this.surfaceReady.panel = false;
+          this.recordDiagnosticEvent('surface/disposed', {
+            surface: 'panel'
+          });
+          this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
+          this.rejectPendingWebviewDomActionRequests('panel', '面板 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -289,6 +531,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     webviewView.onDidChangeVisibility(
       () => {
+        this.recordDiagnosticEvent('surface/visibilityChanged', {
+          surface: 'panel',
+          visible: webviewView.visible
+        });
         this.notifySidebarStateChanged();
       },
       null,
@@ -343,6 +589,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessage(message: HostToWebviewMessage): void {
+    this.recordHostMessageForTest(message);
+
     const activeWebview = this.getActiveWebview();
     if (!activeWebview) {
       return;
@@ -388,6 +636,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!this.activeSurface || this.getSurfaceVisibility(this.activeSurface) === 'closed') {
       this.activeSurface = surface;
       this.persistActiveSurface();
+      this.recordDiagnosticEvent('surface/claimed', {
+        surface
+      });
     }
   }
 
@@ -423,6 +674,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.surfaceMode[surface] = 'active';
     this.surfaceReady[surface] = false;
+    this.recordDiagnosticEvent('surface/rendered', {
+      surface,
+      mode: 'active'
+    });
     webview.options = this.getWebviewOptions();
     webview.html = getWebviewHtml(webview, this.context.extensionUri, {
       mode: 'active',
@@ -442,6 +697,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.surfaceMode[surface] = 'standby';
     this.surfaceReady[surface] = false;
+    this.recordDiagnosticEvent('surface/rendered', {
+      surface,
+      mode: 'standby',
+      activeSurface: this.activeSurface
+    });
     webview.options = this.getWebviewOptions();
     webview.html = getWebviewHtml(webview, this.context.extensionUri, {
       mode: 'standby',
@@ -518,8 +778,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (parsedMessage.type === 'webview/testProbeResult') {
+      this.resolvePendingWebviewProbeRequest(surface, parsedMessage.payload.requestId, parsedMessage.payload.snapshot);
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/testDomActionResult') {
+      this.resolvePendingWebviewDomActionRequest(
+        surface,
+        parsedMessage.payload.requestId,
+        parsedMessage.payload.ok,
+        parsedMessage.payload.errorMessage
+      );
+      return;
+    }
+
     if (parsedMessage.type === 'webview/ready') {
       this.surfaceReady[surface] = true;
+      this.recordDiagnosticEvent('surface/ready', {
+        surface,
+        mode: this.surfaceMode[surface],
+        activeSurface: this.activeSurface
+      });
       if (this.isInteractiveSurface(surface)) {
         this.postState('host/bootstrap');
       }
@@ -603,6 +883,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessageToSurface(surface: CanvasSurfaceLocation, message: HostToWebviewMessage): void {
+    this.recordHostMessageForTest(message);
+
     const webview = this.getSurfaceWebview(surface);
     if (!webview) {
       return;
@@ -631,12 +913,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     rows: number,
     requestedProvider: AgentProviderKind | undefined
   ): Promise<void> {
+    const normalizedCols = normalizeTerminalCols(cols);
+    const normalizedRows = normalizeTerminalRows(rows);
+    this.recordDiagnosticEvent('execution/startRequested', {
+      kind: 'agent',
+      nodeId,
+      provider: requestedProvider ?? null,
+      cols: normalizedCols,
+      rows: normalizedRows,
+      workspaceTrusted: vscode.workspace.isTrusted
+    });
+
     if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'agent',
+        nodeId,
+        reason: 'workspace-untrusted'
+      });
       return;
     }
 
     const agentNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
     if (!agentNode) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'agent',
+        nodeId,
+        reason: 'missing-node'
+      });
       this.postMessage({
         type: 'host/error',
         payload: {
@@ -648,6 +951,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const activeSessions = this.getExecutionSessions('agent');
     if (activeSessions.has(nodeId)) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'agent',
+        nodeId,
+        reason: 'already-running'
+      });
       this.postMessage({
         type: 'host/error',
         payload: {
@@ -660,8 +968,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const provider = requestedProvider ?? ensureAgentMetadata(agentNode).provider;
     const cliSpec = this.resolveAgentCli(provider);
-    const normalizedCols = normalizeTerminalCols(cols);
-    const normalizedRows = normalizeTerminalRows(rows);
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
 
@@ -685,6 +991,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         exitSubscription: undefined
       };
       activeSessions.set(nodeId, session);
+      this.recordDiagnosticEvent('execution/started', {
+        kind: 'agent',
+        nodeId,
+        sessionId,
+        provider,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        shellPath: cliSpec.command,
+        cwd
+      });
 
       this.state = updateAgentNode(this.state, nodeId, {
         status: 'live',
@@ -754,6 +1070,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
 
         sessionMap.delete(nodeId);
+        this.recordDiagnosticEvent('execution/exited', {
+          kind: 'agent',
+          nodeId,
+          sessionId: activeSession.sessionId,
+          status,
+          exitCode: exitCode ?? null,
+          signal: signal ?? null,
+          stopRequested: activeSession.stopRequested,
+          message
+        });
         this.state = updateAgentNode(this.state, nodeId, {
           status,
           summary: message,
@@ -814,6 +1140,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     } catch (error) {
       const message = describeAgentSessionSpawnError(cliSpec, error);
+      this.recordDiagnosticEvent('execution/spawnError', {
+        kind: 'agent',
+        nodeId,
+        provider,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        message
+      });
       this.state = updateAgentNode(this.state, nodeId, {
         status: 'error',
         summary: message,
@@ -850,11 +1184,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getAgentCliConfig(): AgentCliConfig {
     const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
+    const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex';
+    const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude';
+
+    const codexCommand =
+      this.context.extensionMode === vscode.ExtensionMode.Test
+        ? process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND?.trim() || configuredCodexCommand
+        : configuredCodexCommand;
+    const claudeCommand =
+      this.context.extensionMode === vscode.ExtensionMode.Test
+        ? process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND?.trim() || configuredClaudeCommand
+        : configuredClaudeCommand;
 
     return {
       defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
-      codexCommand: getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex',
-      claudeCommand: getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude'
+      codexCommand,
+      claudeCommand
     };
   }
 
@@ -943,12 +1288,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async startTerminalSession(nodeId: string, cols: number, rows: number): Promise<void> {
+    const normalizedCols = normalizeTerminalCols(cols);
+    const normalizedRows = normalizeTerminalRows(rows);
+    this.recordDiagnosticEvent('execution/startRequested', {
+      kind: 'terminal',
+      nodeId,
+      cols: normalizedCols,
+      rows: normalizedRows,
+      workspaceTrusted: vscode.workspace.isTrusted
+    });
+
     if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'terminal',
+        nodeId,
+        reason: 'workspace-untrusted'
+      });
       return;
     }
 
     const terminalNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
     if (!terminalNode) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'terminal',
+        nodeId,
+        reason: 'missing-node'
+      });
       this.postMessage({
         type: 'host/error',
         payload: {
@@ -959,6 +1324,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (this.terminalSessions.has(nodeId)) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'terminal',
+        nodeId,
+        reason: 'already-running'
+      });
       this.postMessage({
         type: 'host/error',
         payload: {
@@ -969,8 +1339,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const normalizedCols = normalizeTerminalCols(cols);
-    const normalizedRows = normalizeTerminalRows(rows);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'terminal');
@@ -995,6 +1363,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         exitSubscription: undefined
       };
       this.terminalSessions.set(nodeId, session);
+      this.recordDiagnosticEvent('execution/started', {
+        kind: 'terminal',
+        nodeId,
+        sessionId,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        shellPath,
+        cwd
+      });
 
       this.state = updateTerminalNode(this.state, nodeId, {
         status: 'live',
@@ -1060,6 +1437,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
 
         this.terminalSessions.delete(nodeId);
+        this.recordDiagnosticEvent('execution/exited', {
+          kind: 'terminal',
+          nodeId,
+          sessionId: activeSession.sessionId,
+          status,
+          exitCode: exitCode ?? null,
+          signal: signal ?? null,
+          stopRequested: activeSession.stopRequested,
+          message
+        });
         this.state = updateTerminalNode(this.state, nodeId, {
           status,
           summary: message,
@@ -1118,6 +1505,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     } catch (error) {
       const message = describeEmbeddedTerminalSpawnError(shellPath, error);
+      this.recordDiagnosticEvent('execution/spawnError', {
+        kind: 'terminal',
+        nodeId,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        message
+      });
       this.state = updateTerminalNode(this.state, nodeId, {
         status: 'error',
         summary: message,
@@ -1147,6 +1541,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private attachExecutionSession(kind: ExecutionNodeKind, nodeId: string): void {
+    this.recordDiagnosticEvent('execution/attachRequested', {
+      kind,
+      nodeId,
+      liveSession: this.getExecutionSessions(kind).has(nodeId)
+    });
+
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
     if (!node) {
       return;
@@ -1156,20 +1556,39 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): void {
+    const inputDetail = {
+      kind,
+      nodeId,
+      bytes: Buffer.byteLength(data, 'utf8'),
+      preview: summarizeDiagnosticInput(data)
+    };
+
     if (
       !this.assertExecutionAllowed(
         kind === 'agent' ? '当前 workspace 未受信任，已禁止 Agent 输入。' : '当前 workspace 未受信任，已禁止终端输入。'
       )
     ) {
+      this.recordDiagnosticEvent('execution/inputRejected', {
+        ...inputDetail,
+        reason: 'workspace-untrusted'
+      });
       return;
     }
 
     const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
+      this.recordDiagnosticEvent('execution/inputRejected', {
+        ...inputDetail,
+        reason: 'missing-session'
+      });
       return;
     }
 
     session.process.write(data);
+    this.recordDiagnosticEvent('execution/inputWritten', {
+      ...inputDetail,
+      sessionId: session.sessionId
+    });
   }
 
   private resizeExecutionSession(kind: ExecutionNodeKind, nodeId: string, cols: number, rows: number): void {
@@ -1204,6 +1623,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async stopExecutionSession(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
     const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
+      this.recordDiagnosticEvent('execution/stopRejected', {
+        kind,
+        nodeId,
+        reason: 'missing-session'
+      });
       this.postMessage({
         type: 'host/error',
         payload: {
@@ -1213,6 +1637,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    this.recordDiagnosticEvent('execution/stopRequested', {
+      kind,
+      nodeId,
+      sessionId: session.sessionId
+    });
     session.stopRequested = true;
     session.process.kill();
   }
@@ -1342,11 +1771,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         liveSession: Boolean(session)
       }
     });
+    this.recordDiagnosticEvent('execution/snapshotPosted', {
+      kind,
+      nodeId,
+      cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
+      rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
+      liveSession: Boolean(session)
+    });
   }
 
-  private applyCreateNode(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+  private applyCreateNode(
+    kind: CanvasNodeKind,
+    preferredPosition?: CanvasNodePosition,
+    options?: { bypassTrust?: boolean }
+  ): void {
     if (
       isExecutionNodeKind(kind) &&
+      !options?.bypassTrust &&
       !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
     ) {
       return;
@@ -1362,6 +1803,106 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.persistState();
     this.postState('host/stateUpdated');
   }
+
+  private recordHostMessageForTest(message: HostToWebviewMessage): void {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      return;
+    }
+
+    this.testHostMessages.push(cloneJsonValue(message));
+    if (this.testHostMessages.length > 200) {
+      this.testHostMessages.splice(0, this.testHostMessages.length - 200);
+    }
+  }
+
+  private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      return;
+    }
+
+    this.testDiagnosticEvents.push({
+      timestamp: new Date().toISOString(),
+      kind,
+      detail: detail ? cloneJsonValue(detail) : undefined
+    });
+    if (this.testDiagnosticEvents.length > 400) {
+      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length - 400);
+    }
+  }
+
+  private resolvePendingWebviewProbeRequest(
+    surface: CanvasSurfaceLocation,
+    requestId: string,
+    snapshot: WebviewProbeSnapshot
+  ): void {
+    const pendingRequest = this.pendingWebviewProbeRequests.get(requestId);
+    if (!pendingRequest) {
+      return;
+    }
+
+    clearTimeout(pendingRequest.timeout);
+    this.pendingWebviewProbeRequests.delete(requestId);
+
+    if (pendingRequest.surface !== surface) {
+      pendingRequest.reject(new Error(`收到来自 ${surface} 的 probe 结果，但请求原本发往 ${pendingRequest.surface}。`));
+      return;
+    }
+
+    pendingRequest.resolve(cloneJsonValue(snapshot));
+  }
+
+  private rejectPendingWebviewProbeRequests(surface: CanvasSurfaceLocation, message: string): void {
+    for (const [requestId, pendingRequest] of this.pendingWebviewProbeRequests.entries()) {
+      if (pendingRequest.surface !== surface) {
+        continue;
+      }
+
+      clearTimeout(pendingRequest.timeout);
+      this.pendingWebviewProbeRequests.delete(requestId);
+      pendingRequest.reject(new Error(message));
+    }
+  }
+
+  private resolvePendingWebviewDomActionRequest(
+    surface: CanvasSurfaceLocation,
+    requestId: string,
+    ok: boolean,
+    errorMessage: string | undefined
+  ): void {
+    const pendingRequest = this.pendingWebviewDomActionRequests.get(requestId);
+    if (!pendingRequest) {
+      return;
+    }
+
+    clearTimeout(pendingRequest.timeout);
+    this.pendingWebviewDomActionRequests.delete(requestId);
+
+    if (pendingRequest.surface !== surface) {
+      pendingRequest.reject(
+        new Error(`收到来自 ${surface} 的 DOM 动作结果，但请求原本发往 ${pendingRequest.surface}。`)
+      );
+      return;
+    }
+
+    if (!ok) {
+      pendingRequest.reject(new Error(errorMessage || '真实 Webview DOM 动作执行失败。'));
+      return;
+    }
+
+    pendingRequest.resolve();
+  }
+
+  private rejectPendingWebviewDomActionRequests(surface: CanvasSurfaceLocation, message: string): void {
+    for (const [requestId, pendingRequest] of this.pendingWebviewDomActionRequests.entries()) {
+      if (pendingRequest.surface !== surface) {
+        continue;
+      }
+
+      clearTimeout(pendingRequest.timeout);
+      this.pendingWebviewDomActionRequests.delete(requestId);
+      pendingRequest.reject(new Error(message));
+    }
+  }
 }
 
 function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): CanvasPrototypeState {
@@ -1370,6 +1911,25 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     updatedAt: new Date().toISOString(),
     nodes: []
   };
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function delay(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, timeoutMs);
+  });
+}
+
+function summarizeDiagnosticInput(data: string): string {
+  const normalized = data.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+  if (normalized.length <= 120) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 117)}...`;
 }
 
 function createNextState(

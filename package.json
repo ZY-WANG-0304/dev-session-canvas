@@ -171,6 +171,10 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
+    "test": "npm run typecheck && npm run test:smoke && npm run test:webview",
+    "test:smoke": "npm run build && node scripts/run-vscode-smoke.mjs",
+    "test:vsix-smoke": "node scripts/run-vscode-vsix-smoke.mjs",
+    "test:webview": "npm run build && node scripts/run-playwright-webview.mjs",
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit"
@@ -188,10 +192,12 @@
     "tmp": "0.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^18.19.80",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.2",
     "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.17.19",
     "tmp": "0.2.1",

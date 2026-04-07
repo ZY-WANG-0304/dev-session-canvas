@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
-import { COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
-import type { CanvasNodeKind } from './common/protocol';
-import { CanvasPanelManager } from './panel/CanvasPanelManager';
+import { COMMAND_IDS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
+import { isCanvasNodeKind, isWebviewDomAction, type CanvasNodeKind } from './common/protocol';
+import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -53,6 +53,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager),
     vscode.window.registerWebviewPanelSerializer(CanvasPanelManager.viewType, panelManager)
   );
+
+  registerTestCommands(context, panelManager);
 }
 
 export function deactivate(): void {}
@@ -100,4 +102,73 @@ function describeNodeKind(kind: CanvasNodeKind): string {
     case 'note':
       return '可编辑的笔记节点';
   }
+}
+
+function registerTestCommands(context: vscode.ExtensionContext, panelManager: CanvasPanelManager): void {
+  if (context.extensionMode !== vscode.ExtensionMode.Test) {
+    return;
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getHostMessages, () => panelManager.getHostMessagesForTest()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.clearHostMessages, () => {
+      panelManager.clearHostMessagesForTest();
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getDiagnosticEvents, () => panelManager.getDiagnosticEventsForTest()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.clearDiagnosticEvents, () => {
+      panelManager.clearDiagnosticEventsForTest();
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.waitForCanvasReady, async (surface?: unknown, timeoutMs?: unknown) =>
+      panelManager.waitForCanvasReady(
+        parseCanvasSurfaceLocation(surface),
+        typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 15000
+      )
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.captureWebviewProbe,
+      async (surface?: unknown, timeoutMs?: unknown, delayMs?: unknown) =>
+        panelManager.captureWebviewProbeForTest(
+          parseCanvasSurfaceLocation(surface),
+          typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000,
+          typeof delayMs === 'number' && delayMs >= 0 ? delayMs : 0
+        )
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.performWebviewDomAction,
+      async (action?: unknown, surface?: unknown, timeoutMs?: unknown) => {
+        if (!isWebviewDomAction(action)) {
+          throw new Error('测试命令 devSessionCanvas.__test.performWebviewDomAction 需要有效的 DOM 动作。');
+        }
+
+        return panelManager.performWebviewDomActionForTest(
+          action,
+          parseCanvasSurfaceLocation(surface),
+          typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
+        );
+      }
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.reloadPersistedState, () => panelManager.reloadPersistedStateForTest()),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.dispatchWebviewMessage,
+      (message?: unknown, surface?: unknown) =>
+        panelManager.dispatchWebviewMessageForTest(message, parseCanvasSurfaceLocation(surface))
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown) => {
+      if (!isCanvasNodeKind(kind)) {
+        throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');
+      }
+
+      panelManager.createNodeForTest(kind);
+      return panelManager.getDebugSnapshot();
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, () => {
+      panelManager.resetState();
+      return panelManager.getDebugSnapshot();
+    })
+  );
+}
+
+function parseCanvasSurfaceLocation(value: unknown): CanvasSurfaceLocation | undefined {
+  return value === 'editor' || value === 'panel' ? value : undefined;
 }

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+echo "[fake-agent] ready pid=$$"
+
+handle_signal() {
+  echo "[fake-agent] received signal"
+  exit 0
+}
+
+trap handle_signal TERM INT
+
+while IFS= read -r line; do
+  line="${line%$'\r'}"
+
+  if [[ -z "$line" ]]; then
+    continue
+  fi
+
+  if [[ "$line" == exit\ * ]]; then
+    exit_code="${line#exit }"
+    echo "[fake-agent] exiting with code ${exit_code}"
+    exit "$exit_code"
+  fi
+
+  if [[ "$line" == burst\ * ]]; then
+    burst_count="${line#burst }"
+    if [[ "$burst_count" =~ ^[0-9]+$ ]]; then
+      for ((i = 1; i <= burst_count; i += 1)); do
+        printf '[fake-agent] burst %03d\n' "$i"
+      done
+      continue
+    fi
+  fi
+
+  if [[ "$line" == sleep\ * ]]; then
+    sleep_seconds="${line#sleep }"
+    echo "[fake-agent] sleeping ${sleep_seconds}s"
+    sleep "$sleep_seconds"
+    echo "[fake-agent] woke after ${sleep_seconds}s"
+    continue
+  fi
+
+  echo "[fake-agent] ${line}"
+done

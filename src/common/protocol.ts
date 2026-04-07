@@ -72,6 +72,60 @@ export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
 }
 
+export interface WebviewProbeNodeSnapshot {
+  nodeId: string;
+  kind: CanvasNodeKind;
+  chromeTitle: string | null;
+  chromeSubtitle: string | null;
+  statusText: string | null;
+  selected: boolean;
+  overlayTitle?: string;
+  overlayMessage?: string;
+  providerValue?: string;
+  titleInputValue?: string;
+  statusValue?: string;
+  assigneeValue?: string;
+  bodyValue?: string;
+}
+
+export interface WebviewProbeSnapshot {
+  documentTitle: string;
+  hasCanvasShell: boolean;
+  hasReactFlow: boolean;
+  toastMessage: string | null;
+  nodeCount: number;
+  nodes: WebviewProbeNodeSnapshot[];
+}
+
+export type WebviewDomAction =
+  | {
+      kind: 'setNodeTextField';
+      nodeId: string;
+      field: 'title' | 'assignee' | 'body';
+      value: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'selectNodeOption';
+      nodeId: string;
+      field: 'status';
+      value: TaskNodeStatus;
+      delayMs?: number;
+    }
+  | {
+      kind: 'selectNodeOption';
+      nodeId: string;
+      field: 'provider';
+      value: AgentProviderKind;
+      delayMs?: number;
+    }
+  | {
+      kind: 'clickNodeActionButton';
+      nodeId: string;
+      label: '删除' | '启动' | '停止' | '重启';
+      delayMs?: number;
+    };
+
 export type WebviewToHostMessage =
   | {
       type: 'webview/ready';
@@ -157,6 +211,21 @@ export type WebviewToHostMessage =
         title: string;
         content: string;
       };
+    }
+  | {
+      type: 'webview/testProbeResult';
+      payload: {
+        requestId: string;
+        snapshot: WebviewProbeSnapshot;
+      };
+    }
+  | {
+      type: 'webview/testDomActionResult';
+      payload: {
+        requestId: string;
+        ok: boolean;
+        errorMessage?: string;
+      };
     };
 
 export type HostToWebviewMessage =
@@ -211,6 +280,20 @@ export type HostToWebviewMessage =
       type: 'host/requestCreateNode';
       payload: {
         kind: CanvasNodeKind;
+      };
+    }
+  | {
+      type: 'host/testProbeRequest';
+      payload: {
+        requestId: string;
+        delayMs?: number;
+      };
+    }
+  | {
+      type: 'host/testDomAction';
+      payload: {
+        requestId: string;
+        action: WebviewDomAction;
       };
     };
 
@@ -382,6 +465,46 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/testProbeResult') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.requestId !== 'string' ||
+      !isWebviewProbeSnapshot(payload.snapshot)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/testProbeResult',
+      payload: {
+        requestId: payload.requestId,
+        snapshot: payload.snapshot
+      }
+    };
+  }
+
+  if (value.type === 'webview/testDomActionResult') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.requestId !== 'string' ||
+      typeof payload.ok !== 'boolean' ||
+      (payload.errorMessage !== undefined && typeof payload.errorMessage !== 'string')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/testDomActionResult',
+      payload: {
+        requestId: payload.requestId,
+        ok: payload.ok,
+        errorMessage: typeof payload.errorMessage === 'string' ? payload.errorMessage : undefined
+      }
+    };
+  }
+
   if (value.type === 'webview/deleteNode') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (!payload || typeof payload.nodeId !== 'string') {
@@ -439,6 +562,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
   return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number';
 }
@@ -447,8 +574,85 @@ function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
   return value === 'todo' || value === 'running' || value === 'blocked' || value === 'done';
 }
 
+export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
+  if (!isRecord(value) || typeof value.kind !== 'string' || typeof value.nodeId !== 'string') {
+    return false;
+  }
+
+  if (value.delayMs !== undefined && !isNonNegativeDelay(value.delayMs)) {
+    return false;
+  }
+
+  if (value.kind === 'setNodeTextField') {
+    return (
+      (value.field === 'title' || value.field === 'assignee' || value.field === 'body') &&
+      typeof value.value === 'string'
+    );
+  }
+
+  if (value.kind === 'selectNodeOption') {
+    if (value.field === 'status') {
+      return isTaskNodeStatus(value.value);
+    }
+
+    if (value.field === 'provider') {
+      return value.value === 'codex' || value.value === 'claude';
+    }
+
+    return false;
+  }
+
+  if (value.kind === 'clickNodeActionButton') {
+    return (
+      value.label === '删除' ||
+      value.label === '启动' ||
+      value.label === '停止' ||
+      value.label === '重启'
+    );
+  }
+
+  return false;
+}
+
+function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.nodeId === 'string' &&
+    isCanvasNodeKind(value.kind) &&
+    isNullableString(value.chromeTitle) &&
+    isNullableString(value.chromeSubtitle) &&
+    isNullableString(value.statusText) &&
+    typeof value.selected === 'boolean' &&
+    (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
+    (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
+    (value.providerValue === undefined || typeof value.providerValue === 'string') &&
+    (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
+    (value.statusValue === undefined || typeof value.statusValue === 'string') &&
+    (value.assigneeValue === undefined || typeof value.assigneeValue === 'string') &&
+    (value.bodyValue === undefined || typeof value.bodyValue === 'string')
+  );
+}
+
+function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.documentTitle === 'string' &&
+    typeof value.hasCanvasShell === 'boolean' &&
+    typeof value.hasReactFlow === 'boolean' &&
+    isNullableString(value.toastMessage) &&
+    typeof value.nodeCount === 'number' &&
+    Number.isInteger(value.nodeCount) &&
+    Array.isArray(value.nodes) &&
+    value.nodes.every((node) => isWebviewProbeNodeSnapshot(node))
+  );
+}
+
 function isTerminalDimension(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeDelay(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFootprint {
