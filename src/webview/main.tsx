@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import ReactFlow, {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Controls,
@@ -91,11 +92,15 @@ interface CanvasNodeData {
     title: string;
     content: string;
   }) => void;
-  onResizeNode?: (nodeId: string, size: CanvasNodeFootprint) => void;
+  onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onDeleteNode?: (nodeId: string) => void;
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
+interface CanvasNodeLayoutDraft {
+  position?: CanvasNodePosition;
+  size?: CanvasNodeFootprint;
+}
 type ExecutionHostEvent =
   | {
       type: 'snapshot';
@@ -142,6 +147,7 @@ function App(): JSX.Element {
   const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>(
     () => initialPersistedState.agentProviderDrafts ?? {}
   );
+  const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
@@ -258,7 +264,7 @@ function App(): JSX.Element {
     });
   };
 
-  const nodes = toFlowNodes({
+  const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
     workspaceTrusted,
@@ -320,16 +326,22 @@ function App(): JSX.Element {
         type: 'webview/updateNoteNode',
         payload
       }),
-    onResizeNode: (nodeId, size) =>
+    onResizeNode: (nodeId, position, size) =>
       postMessage({
         type: 'webview/resizeNode',
         payload: {
           nodeId,
+          position,
           size
         }
       }),
     onDeleteNode: deleteNode
   });
+  const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+
+  useEffect(() => {
+    setNodeLayoutDrafts((current) => pruneCanvasNodeLayoutDrafts(baseNodes, current));
+  }, [hostState]);
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
     setLocalUiState(nextState);
@@ -364,6 +376,14 @@ function App(): JSX.Element {
         id: node.id,
         position: node.position
       }
+    });
+  };
+
+  const handleNodesChange = (changes: any[]): void => {
+    setNodeLayoutDrafts((current) => {
+      const currentNodes = applyCanvasNodeLayoutDrafts(baseNodes, current);
+      const nextNodes = applyNodeChanges(changes, currentNodes);
+      return collectCanvasNodeLayoutDrafts(baseNodes, nextNodes);
     });
   };
 
@@ -408,6 +428,7 @@ function App(): JSX.Element {
         onInit={(instance) => {
           reactFlowRef.current = instance;
         }}
+        onNodesChange={handleNodesChange}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
@@ -968,7 +989,14 @@ function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id'
           return;
         }
 
-        data.onResizeNode?.(id, nextSize);
+        data.onResizeNode?.(
+          id,
+          {
+            x: Math.round(params.x),
+            y: Math.round(params.y)
+          },
+          nextSize
+        );
       }}
     />
   );
@@ -1431,7 +1459,7 @@ function toFlowNodes(params: {
     title: string;
     content: string;
   }) => void;
-  onResizeNode: (nodeId: string, size: CanvasNodeFootprint) => void;
+  onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onDeleteNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
   return params.nodes.map((node) => {
@@ -1452,6 +1480,8 @@ function toFlowNodes(params: {
       position: node.position,
       draggable: true,
       selected: node.id === params.selectedNodeId,
+      width: size.width,
+      height: size.height,
       style: {
         width: size.width,
         height: size.height
@@ -1480,6 +1510,120 @@ function toFlowNodes(params: {
       }
     };
   });
+}
+
+function applyCanvasNodeLayoutDrafts(
+  nodes: CanvasFlowNode[],
+  drafts: Record<string, CanvasNodeLayoutDraft>
+): CanvasFlowNode[] {
+  return nodes.map((node) => {
+    const draft = drafts[node.id];
+    if (!draft) {
+      return node;
+    }
+
+    const nextSize = draft.size ?? node.data.size;
+
+    return {
+      ...node,
+      position: draft.position ?? node.position,
+      width: nextSize.width,
+      height: nextSize.height,
+      style: {
+        ...node.style,
+        width: nextSize.width,
+        height: nextSize.height
+      },
+      data: {
+        ...node.data,
+        size: nextSize
+      }
+    };
+  });
+}
+
+function pruneCanvasNodeLayoutDrafts(
+  nodes: CanvasFlowNode[],
+  drafts: Record<string, CanvasNodeLayoutDraft>
+): Record<string, CanvasNodeLayoutDraft> {
+  const nextDrafts = collectCanvasNodeLayoutDrafts(nodes, applyCanvasNodeLayoutDrafts(nodes, drafts));
+  return shallowEqualCanvasNodeLayoutDrafts(drafts, nextDrafts) ? drafts : nextDrafts;
+}
+
+function collectCanvasNodeLayoutDrafts(
+  baseNodes: CanvasFlowNode[],
+  nextNodes: CanvasFlowNode[]
+): Record<string, CanvasNodeLayoutDraft> {
+  const baseNodesById = new Map(baseNodes.map((node) => [node.id, node]));
+  const drafts: Record<string, CanvasNodeLayoutDraft> = {};
+
+  for (const node of nextNodes) {
+    const baseNode = baseNodesById.get(node.id);
+    if (!baseNode) {
+      continue;
+    }
+
+    const draft: CanvasNodeLayoutDraft = {};
+    if (!positionsEqual(node.position, baseNode.position)) {
+      draft.position = {
+        x: Math.round(node.position.x),
+        y: Math.round(node.position.y)
+      };
+    }
+
+    const nextSize = normalizeCanvasNodeFootprint(node.data.kind, {
+      width: Number(node.style?.width ?? node.data.size.width),
+      height: Number(node.style?.height ?? node.data.size.height)
+    });
+
+    if (!footprintsEqual(nextSize, baseNode.data.size)) {
+      draft.size = nextSize;
+    }
+
+    if (draft.position || draft.size) {
+      drafts[node.id] = draft;
+    }
+  }
+
+  return drafts;
+}
+
+function shallowEqualCanvasNodeLayoutDrafts(
+  left: Record<string, CanvasNodeLayoutDraft>,
+  right: Record<string, CanvasNodeLayoutDraft>
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key) => {
+    const leftDraft = left[key];
+    const rightDraft = right[key];
+    if (!rightDraft) {
+      return false;
+    }
+
+    return (
+      positionsEqual(leftDraft.position, rightDraft.position) &&
+      footprintsEqual(leftDraft.size, rightDraft.size)
+    );
+  });
+}
+
+function positionsEqual(
+  left: CanvasNodePosition | undefined,
+  right: CanvasNodePosition | undefined
+): boolean {
+  return left?.x === right?.x && left?.y === right?.y;
+}
+
+function footprintsEqual(
+  left: CanvasNodeFootprint | undefined,
+  right: CanvasNodeFootprint | undefined
+): boolean {
+  return left?.width === right?.width && left?.height === right?.height;
 }
 
 function resolveCreateNodePreferredPosition(
@@ -1761,6 +1905,12 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
     await delayTestAction(action.delayMs);
 
     switch (action.kind) {
+      case 'selectNode': {
+        const target = queryNodeSelectionTarget(action.nodeId);
+        dispatchSyntheticMouseClick(target);
+        await waitForDomActionFlush();
+        break;
+      }
       case 'setNodeTextField': {
         const field = queryNodeTextField(action.nodeId, action.field);
         field.focus();
@@ -1777,15 +1927,23 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
       case 'selectNodeOption': {
         const field = queryNodeSelectField(action.nodeId, action.field);
         field.focus();
+        field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
         setControlledFieldValue(field, action.value);
         field.dispatchEvent(new Event('change', { bubbles: true }));
+        await waitForDomActionFlush();
         field.blur();
+        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        await waitForDomActionFlush();
         break;
       }
       case 'clickNodeActionButton': {
         const button = queryNodeActionButton(action.nodeId, action.label);
         button.focus();
-        button.click();
+        button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        dispatchSyntheticMouseClick(button);
+        await waitForDomActionFlush();
+        button.blur();
+        button.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         break;
       }
     }
@@ -1857,6 +2015,14 @@ function queryNodeActionButton(nodeId: string, label: '删除' | '启动' | '停
   return button;
 }
 
+function queryNodeSelectionTarget(nodeId: string): HTMLElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  return (
+    nodeRoot.querySelector<HTMLElement>('.window-chrome, .node-topline, .session-body, .object-body') ??
+    nodeRoot
+  );
+}
+
 function queryNodeField(nodeId: string, fieldName: string): Element {
   const field = queryNodeRoot(nodeId).querySelector(`[data-probe-field="${fieldName}"]`);
   if (!field) {
@@ -1888,6 +2054,19 @@ function setControlledFieldValue(
   const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
 
   descriptor?.set?.call(element, value);
+}
+
+function dispatchSyntheticMouseClick(target: HTMLElement): void {
+  const eventInit = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    button: 0
+  };
+
+  target.dispatchEvent(new MouseEvent('mousedown', eventInit));
+  target.dispatchEvent(new MouseEvent('mouseup', eventInit));
+  target.dispatchEvent(new MouseEvent('click', eventInit));
 }
 
 function waitForDomActionFlush(): Promise<void> {

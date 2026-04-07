@@ -828,7 +828,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/resizeNode':
-        this.state = resizeNode(this.state, parsedMessage.payload.nodeId, parsedMessage.payload.size);
+        this.state = resizeNode(
+          this.state,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.position,
+          parsedMessage.payload.size
+        );
         this.persistState();
         this.postState('host/stateUpdated');
         return;
@@ -2185,6 +2190,7 @@ function moveNode(
 function resizeNode(
   previousState: CanvasPrototypeState,
   nodeId: string,
+  position: CanvasNodePosition,
   size: CanvasNodeFootprint
 ): CanvasPrototypeState {
   const targetNode = previousState.nodes.find((node) => node.id === nodeId);
@@ -2193,8 +2199,15 @@ function resizeNode(
   }
 
   const normalizedSize = normalizeCanvasNodeFootprint(targetNode.kind, size);
+  const normalizedPosition = {
+    x: Math.round(position.x),
+    y: Math.round(position.y)
+  };
   const didChange =
-    targetNode.size.width !== normalizedSize.width || targetNode.size.height !== normalizedSize.height;
+    targetNode.size.width !== normalizedSize.width ||
+    targetNode.size.height !== normalizedSize.height ||
+    targetNode.position.x !== normalizedPosition.x ||
+    targetNode.position.y !== normalizedPosition.y;
 
   if (!didChange) {
     return previousState;
@@ -2207,6 +2220,7 @@ function resizeNode(
       node.id === nodeId
         ? {
             ...node,
+            position: normalizedPosition,
             size: normalizedSize
           }
         : node
