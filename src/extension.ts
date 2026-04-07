@@ -84,8 +84,6 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
       return 'Agent';
     case 'terminal':
       return 'Terminal';
-    case 'task':
-      return 'Task';
     case 'note':
       return 'Note';
   }
@@ -97,8 +95,6 @@ function describeNodeKind(kind: CanvasNodeKind): string {
       return '画布中的 Codex / Claude Code 会话窗口';
     case 'terminal':
       return '画布中的嵌入式终端窗口';
-    case 'task':
-      return '可编辑的任务节点';
     case 'note':
       return '可编辑的笔记节点';
   }
@@ -147,6 +143,9 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
           typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
         );
       }
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.setPersistedState, (rawState?: unknown) =>
+      panelManager.setPersistedStateForTest(rawState)
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.reloadPersistedState, () => panelManager.reloadPersistedStateForTest()),
     vscode.commands.registerCommand(

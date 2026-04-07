@@ -196,6 +196,8 @@ updated_at: 2026-04-05
 
 ### 7.3 初步对象模型
 
+> 更新（2026-04-07）：下述四类对象属于研究阶段候选。当前正式支持的节点类型已收口为 `agent | terminal | note`；如果需要当前实现口径，应以 `docs/product-specs/canvas-core-collaboration-mvp.md` 和 `docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md` 为准。
+
 建议先抽象一个统一的 `CanvasNode` 基类，再派生四类对象：
 
 `CanvasNode`

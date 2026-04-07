@@ -33,7 +33,8 @@
   - React Flow 画布实现基线
 - `Agent` 与 `Terminal` 的主画布运行基线
 - 基于 `codex` / `claude` CLI 的最小 Agent 真实运行链路
-- `Task` / `Note` 作为辅助协作对象的当前实现
+- `Note` 作为当前轻量辅助协作对象的实现
+- 跟随 VSCode 主题的极简协作画布基线，而不是固定深色画布
 
 当前命名约定：
 

@@ -135,7 +135,7 @@ updated_at: 2026-04-06
 4. `test:smoke` 现在按 `trusted` / `restricted` 两个真实场景运行；可信场景覆盖真实 DOM action、Note 编辑、provider 切换后重启、删除按钮、live session 切面 / reload 竞态、pending request dispose fault injection 与 PTY 边界，受限场景覆盖真实 Restricted Mode 下的创建 / 运行 / 输入限制和 overlay 文案。
 5. `test:vsix-smoke` 会先打包 `.vsix`，再解包并用打包产物跑 trusted smoke，用来验证运行时文件集是否完整。
 6. `test:smoke` 现在包含真实 VS Code Webview 容器里的 probe 与 test-only DOM action，可直接断言节点标题、字段值、provider 切换、删除按钮、Restricted overlay 和错误 toast 是否真的渲染出来。
-7. Playwright 基线截图和交互断言已经入库，可直接随 Webview 改动回归；当前回归面已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
+7. Playwright 基线截图和交互断言已经入库，可直接随 Webview 改动回归；当前回归面已覆盖截图基线、Note 编辑、删除按钮、provider 切换和错误 toast。
 8. smoke / Playwright runner 会在失败时留下快照、最后一次真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图、trace、页面级 console / error / request failed 诊断、posted messages 和 persisted state，且 smoke 现在还能通过可控 delay 主动制造 pending request 与 stop-vs-queued-exit 竞态，避免只剩退出码。
 9. 文档明确区分：
    - 真实 VS Code 集成验证
@@ -156,6 +156,6 @@ updated_at: 2026-04-06
 - `Run Dev Session Canvas` 的启动参数明确固定 profile 名称，不再通过重写 `user-data-dir`、`extensions-dir`、隔离整个本地 SSH 环境或复用原始远端工作区锁来破坏调试。
 - VS Code smoke test 能自动完成扩展激活、打开画布、等待 Webview ready、`webview -> host` 创建/更新/移动/删除/reset 消息，以及 `Agent` 假 provider / `Terminal` 的启动、输入、resize、停止、失败路径、持久化恢复、live session 切面 / reload、非激活 surface 语义、真实 Restricted Mode 行为、多条真实 Webview 容器交互和至少两类生命周期 fault injection。
 - `test:vsix-smoke` 能成功打包 VSIX、解包并用打包内容跑通 trusted smoke。
-- Playwright 能加载 Webview harness，并覆盖至少一张基线截图、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
+- Playwright 能加载 Webview harness，并覆盖至少一张基线截图、Note 编辑、删除按钮、provider 切换和错误 toast。
 - smoke 或 Playwright 失败时，仓库内会留下可回放的调试产物，而不是只有进程退出码。
 - `Remote - SSH` 下的 F5 行为继续保留一条人工验收，并明确把“一次性准备本机 debug profile”当作前置条件写入文档。

@@ -89,7 +89,9 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   await openHarness(page);
   await bootstrap(page, createCanvasScreenshotState());
 
-  await expect(nodeById(page, 'task-1').locator('[data-probe-field="title"]')).toHaveValue('收口隔离调试');
+  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveValue('codex');
+  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toHaveValue('Agent 1');
+  await expect(nodeById(page, 'terminal-1').locator('[data-probe-field="title"]')).toHaveValue('Terminal 1');
   await expect(nodeById(page, 'note-1').locator('[data-probe-field="title"]')).toHaveValue('回看 smoke test');
   await expect(page.locator('.canvas-shell')).toHaveScreenshot('canvas-shell-baseline.png', {
     animations: 'disabled',
@@ -141,25 +143,56 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
-test('changing a task node status posts updateTaskNode', async ({ page }) => {
+test('editing node titles posts updateNodeTitle for agent, terminal, and note', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createTaskNodeState());
+  await bootstrap(page, createCanvasScreenshotState());
   await clearPostedMessages(page);
 
-  await nodeById(page, 'task-1').locator('[data-probe-field="status"]').selectOption('running');
+  await performTestDomAction(page, {
+    kind: 'setNodeTextField',
+    nodeId: 'agent-1',
+    field: 'title',
+    value: 'Agent Heading'
+  });
+  await performTestDomAction(page, {
+    kind: 'setNodeTextField',
+    nodeId: 'terminal-1',
+    field: 'title',
+    value: 'Terminal Heading'
+  });
+  await performTestDomAction(page, {
+    kind: 'setNodeTextField',
+    nodeId: 'note-1',
+    field: 'title',
+    value: 'Note Heading'
+  });
 
   await expect
     .poll(async () => {
       return page.evaluate(() => {
-        return window.__devSessionCanvasHarness.getPostedMessages().some(
-          (entry) =>
-            entry.type === 'webview/updateTaskNode' &&
-            entry.payload.nodeId === 'task-1' &&
-            entry.payload.status === 'running'
+        const messages = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateNodeTitle');
+
+        if (messages.length < 3) {
+          return null;
+        }
+
+        return JSON.stringify(
+          messages.map((entry) => ({
+            nodeId: entry.payload.nodeId,
+            title: entry.payload.title
+          }))
         );
       });
     })
-    .toBe(true);
+    .toBe(
+      JSON.stringify([
+        { nodeId: 'agent-1', title: 'Agent Heading' },
+        { nodeId: 'terminal-1', title: 'Terminal Heading' },
+        { nodeId: 'note-1', title: 'Note Heading' }
+      ])
+    );
 });
 
 test('editing a note body posts updateNoteNode', async ({ page }) => {
@@ -190,22 +223,22 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
     .toBe('matched');
 });
 
-test('dragging a resize handle posts resizeNode and updates the task frame size', async ({ page }) => {
+test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createTaskNodeState());
+  await bootstrap(page, createNoteNodeState());
   await clearPostedMessages(page);
 
-  const taskNode = nodeById(page, 'task-1');
+  const noteNode = nodeById(page, 'note-1');
   await performTestDomAction(page, {
     kind: 'selectNode',
-    nodeId: 'task-1'
+    nodeId: 'note-1'
   });
   await clearPostedMessages(page);
 
-  const beforeBox = await taskNode.boundingBox();
+  const beforeBox = await noteNode.boundingBox();
   expect(beforeBox).not.toBeNull();
 
-  const handle = taskNode.locator('.canvas-node-resize-handle.bottom.right');
+  const handle = noteNode.locator('.canvas-node-resize-handle.bottom.right');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -227,7 +260,7 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
       return page.evaluate(() => {
         const message = window.__devSessionCanvasHarness
           .getPostedMessages()
-          .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'task-1');
+          .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'note-1');
 
         return message
           ? JSON.stringify({
@@ -242,9 +275,9 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
     .toMatch(/"x":\d+,"y":\d+,"width":\d+,"height":\d+/);
 
   const resizedSize = await page.evaluate(() => {
-    const message = window.__devSessionCanvasHarness
-      .getPostedMessages()
-      .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'task-1');
+      const message = window.__devSessionCanvasHarness
+        .getPostedMessages()
+        .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'note-1');
 
     if (!message) {
       return null;
@@ -258,7 +291,7 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
   });
   expect(resizedSize).not.toBeNull();
 
-  const nextState = createTaskNodeState();
+  const nextState = createNoteNodeState();
   nextState.nodes[0].position = resizedSize.position;
   nextState.nodes[0].size = {
     width: resizedSize.width,
@@ -276,29 +309,29 @@ test('dragging a resize handle posts resizeNode and updates the task frame size'
     });
   }, nextState);
 
-  await expect.poll(async () => taskNode.boundingBox()).not.toBeNull();
-  const afterBox = await taskNode.boundingBox();
+  await expect.poll(async () => noteNode.boundingBox()).not.toBeNull();
+  const afterBox = await noteNode.boundingBox();
   expect(afterBox).not.toBeNull();
   expect(afterBox.width).toBeGreaterThan(beforeBox.width + 40);
   expect(afterBox.height).toBeGreaterThan(beforeBox.height + 30);
 });
 
-test('dragging the top-left resize handle moves the task origin and grows the frame', async ({ page }) => {
+test('dragging the top-left resize handle moves the note origin and grows the frame', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createTaskNodeState());
+  await bootstrap(page, createNoteNodeState());
   await clearPostedMessages(page);
 
-  const taskNode = nodeById(page, 'task-1');
+  const noteNode = nodeById(page, 'note-1');
   await performTestDomAction(page, {
     kind: 'selectNode',
-    nodeId: 'task-1'
+    nodeId: 'note-1'
   });
   await clearPostedMessages(page);
 
-  const beforeBox = await taskNode.boundingBox();
+  const beforeBox = await noteNode.boundingBox();
   expect(beforeBox).not.toBeNull();
 
-  const handle = taskNode.locator('.canvas-node-resize-handle.top.left');
+  const handle = noteNode.locator('.canvas-node-resize-handle.top.left');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -320,7 +353,7 @@ test('dragging the top-left resize handle moves the task origin and grows the fr
       return page.evaluate(() => {
         const message = window.__devSessionCanvasHarness
           .getPostedMessages()
-          .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'task-1');
+          .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'note-1');
 
         return message
           ? JSON.stringify({
@@ -335,9 +368,9 @@ test('dragging the top-left resize handle moves the task origin and grows the fr
     .toMatch(/"x":\d+,"y":\d+,"width":\d+,"height":\d+/);
 
   const nextLayout = await page.evaluate(() => {
-    const message = window.__devSessionCanvasHarness
-      .getPostedMessages()
-      .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'task-1');
+      const message = window.__devSessionCanvasHarness
+        .getPostedMessages()
+        .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'note-1');
 
     if (!message) {
       return null;
@@ -352,9 +385,9 @@ test('dragging the top-left resize handle moves the task origin and grows the fr
   expect(nextLayout.position.x).toBeLessThan(120);
   expect(nextLayout.position.y).toBeLessThan(140);
   expect(nextLayout.size.width).toBeGreaterThan(380);
-  expect(nextLayout.size.height).toBeGreaterThan(360);
+  expect(nextLayout.size.height).toBeGreaterThan(400);
 
-  const nextState = createTaskNodeState();
+  const nextState = createNoteNodeState();
   nextState.nodes[0].position = nextLayout.position;
   nextState.nodes[0].size = nextLayout.size;
   await page.evaluate((state) => {
@@ -369,7 +402,7 @@ test('dragging the top-left resize handle moves the task origin and grows the fr
     });
   }, nextState);
 
-  const afterBox = await taskNode.boundingBox();
+  const afterBox = await noteNode.boundingBox();
   expect(afterBox).not.toBeNull();
   expect(afterBox.x).toBeLessThan(beforeBox.x - 40);
   expect(afterBox.y).toBeLessThan(beforeBox.y - 20);
@@ -377,14 +410,14 @@ test('dragging the top-left resize handle moves the task origin and grows the fr
   expect(afterBox.height).toBeGreaterThan(beforeBox.height + 30);
 });
 
-test('deleting a task posts deleteNode', async ({ page }) => {
+test('deleting a note posts deleteNode', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createTaskNodeState());
+  await bootstrap(page, createNoteNodeState());
   await clearPostedMessages(page);
 
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
-    nodeId: 'task-1',
+    nodeId: 'note-1',
     label: '删除'
   });
 
@@ -393,7 +426,7 @@ test('deleting a task posts deleteNode', async ({ page }) => {
       return page.evaluate(() => {
         return window.__devSessionCanvasHarness.getPostedMessages().find(
           (entry) =>
-            entry.type === 'webview/deleteNode' && entry.payload.nodeId === 'task-1'
+            entry.type === 'webview/deleteNode' && entry.payload.nodeId === 'note-1'
         )
           ? 'matched'
           : null;
@@ -434,7 +467,7 @@ test('switching provider changes the next agent start message', async ({ page })
 
 test('incoming host error shows a toast in the harness', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createTaskNodeState());
+  await bootstrap(page, createNoteNodeState());
 
   await page.evaluate(() => {
     window.__devSessionCanvasHarness.dispatchHostMessage({
@@ -527,17 +560,42 @@ function createCanvasScreenshotState() {
     updatedAt: '2026-04-06T00:00:00.000Z',
     nodes: [
       {
-        id: 'task-1',
-        kind: 'task',
-        title: '收口隔离调试',
-        status: 'running',
-        summary: '让 F5 始终启动到隔离的开发宿主。',
-        position: { x: 80, y: 120 },
-        size: sizeFor('task'),
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 60 },
+        size: sizeFor('agent'),
         metadata: {
-          task: {
-            description: '固定 user-data-dir、extensions-dir，并禁用外部扩展。',
-            assignee: 'Codex'
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'terminal-1',
+        kind: 'terminal',
+        title: 'Terminal 1',
+        status: 'draft',
+        summary: '尚未启动嵌入式终端。',
+        position: { x: 700, y: 60 },
+        size: sizeFor('terminal'),
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            shellPath: '/bin/bash',
+            cwd: '/workspace',
+            liveSession: false,
+            lastCols: 96,
+            lastRows: 28
           }
         }
       },
@@ -545,9 +603,9 @@ function createCanvasScreenshotState() {
         id: 'note-1',
         kind: 'note',
         title: '回看 smoke test',
-        status: 'todo',
+        status: 'ready',
         summary: '补齐真实 VS Code 宿主验证与截图回归。',
-        position: { x: 520, y: 180 },
+        position: { x: 430, y: 420 },
         size: sizeFor('note'),
         metadata: {
           note: {
@@ -589,30 +647,6 @@ function createAgentNodeState() {
   };
 }
 
-function createTaskNodeState() {
-  return {
-    version: 1,
-    updatedAt: '2026-04-06T00:00:00.000Z',
-    nodes: [
-      {
-        id: 'task-1',
-        kind: 'task',
-        title: '原始任务标题',
-        status: 'todo',
-        summary: '等待更新任务字段。',
-        position: { x: 120, y: 140 },
-        size: sizeFor('task'),
-        metadata: {
-          task: {
-            description: '旧描述',
-            assignee: 'Codex'
-          }
-        }
-      }
-    ]
-  };
-}
-
 function createNoteNodeState() {
   return {
     version: 1,
@@ -642,10 +676,8 @@ function sizeFor(kind) {
       return { width: 560, height: 430 };
     case 'terminal':
       return { width: 540, height: 420 };
-    case 'task':
-      return { width: 380, height: 360 };
     case 'note':
-      return { width: 380, height: 430 };
+      return { width: 380, height: 400 };
     default:
       throw new Error(`Unsupported kind ${kind}`);
   }

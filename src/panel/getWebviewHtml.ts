@@ -47,7 +47,7 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
         --panel-muted: var(--vscode-descriptionForeground);
         --panel-border: var(--vscode-panel-border);
         --accent: var(--vscode-focusBorder);
-        --card-bg: color-mix(in srgb, var(--panel-bg) 92%, #4f8cff 8%);
+        --card-bg: color-mix(in srgb, var(--panel-bg) 92%, var(--vscode-sideBar-background) 8%);
       }
 
       * {
@@ -59,13 +59,12 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
         min-height: 100vh;
         font-family: var(--vscode-font-family);
         color: var(--panel-fg);
-        background:
-          radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 28%, transparent) 0%, transparent 38%),
-          linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 94%, #0b1020 6%), var(--panel-bg));
+        background: var(--panel-bg);
       }
 
       #app {
         min-height: 100vh;
+        background: var(--panel-bg);
       }
 
       .react-flow__attribution {
@@ -85,8 +84,8 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
         gap: 14px;
         padding: 24px;
         border-radius: 18px;
-        border: 1px solid color-mix(in srgb, var(--panel-border) 80%, #1e3a5f 20%);
-        background: color-mix(in srgb, var(--panel-bg) 92%, #0b1426 8%);
+        border: 1px solid color-mix(in srgb, var(--panel-border) 82%, var(--accent) 18%);
+        background: color-mix(in srgb, var(--panel-bg) 90%, var(--vscode-sideBar-background) 10%);
         box-shadow: 0 18px 40px rgba(8, 15, 28, 0.24);
       }
 
@@ -132,7 +131,7 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
       }
 
       .surface-standby-link.is-secondary {
-        border-color: color-mix(in srgb, var(--panel-border) 82%, #0f172a 18%);
+        border-color: color-mix(in srgb, var(--panel-border) 88%, var(--accent) 12%);
         background: transparent;
       }
     </style>

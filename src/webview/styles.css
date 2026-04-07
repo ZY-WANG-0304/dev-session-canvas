@@ -14,55 +14,37 @@ body {
 }
 
 .canvas-shell {
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.08), transparent 24%),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--vscode-editor-background) 94%, #09111f 6%),
-      var(--vscode-editor-background)
-    );
+  background: var(--vscode-editor-background);
 }
 
 .canvas-corner-panel {
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 76%, #1e3a5f 24%);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--vscode-editor-background) 78%, #111d32 22%),
-      color-mix(in srgb, var(--vscode-editor-background) 90%, #09111f 10%)
-    );
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, var(--vscode-focusBorder) 18%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-sideBar-background) 10%);
   box-shadow: 0 18px 34px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(16px);
 }
 
 .canvas-shell .canvas-controls {
-  left: 18px;
-  bottom: 18px;
+  left: 14px;
+  bottom: 14px;
   overflow: hidden;
-  border-radius: 18px;
-}
-
-.canvas-shell .canvas-controls::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 42%);
-  pointer-events: none;
+  border-radius: 8px;
+  border-color: var(--vscode-widget-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  backdrop-filter: none;
 }
 
 .canvas-shell .react-flow__controls-button {
-  width: 20px;
-  height: 20px;
-  padding: 9px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, #0b1324 20%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground) 80%, #dbeafe 20%);
+  color: var(--vscode-icon-foreground, var(--vscode-editor-foreground));
   transition:
     background-color 140ms ease,
-    color 140ms ease,
-    transform 140ms ease;
+    color 140ms ease;
 }
 
 .canvas-shell .react-flow__controls-button:last-child {
@@ -70,17 +52,17 @@ body {
 }
 
 .canvas-shell .react-flow__controls-button:hover {
-  background: color-mix(in srgb, rgba(56, 189, 248, 0.16) 48%, transparent 52%);
-  color: #e0f2fe;
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent));
+  color: var(--vscode-editor-foreground);
 }
 
 .canvas-shell .react-flow__controls-button:active {
-  transform: translateY(1px);
+  background: var(--vscode-toolbar-activeBackground, color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent));
 }
 
 .canvas-shell .react-flow__controls-button svg {
-  max-width: 14px;
-  max-height: 14px;
+  max-width: 12px;
+  max-height: 12px;
   fill: currentColor;
 }
 
@@ -97,13 +79,8 @@ body {
   bottom: 18px;
   overflow: hidden;
   border-radius: 20px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 76%, #1e3a5f 24%);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--vscode-editor-background) 82%, #16243a 18%),
-      color-mix(in srgb, var(--vscode-editor-background) 90%, #0d1625 10%)
-    );
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, var(--vscode-focusBorder) 16%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-sideBar-background) 10%);
   box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
 }
 
@@ -112,7 +89,7 @@ body {
   width: 100%;
   height: 100%;
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(80, 88, 102, 0.92), rgba(66, 74, 88, 0.94));
+  background: color-mix(in srgb, var(--vscode-editor-background) 84%, var(--vscode-sideBar-background) 16%);
 }
 
 .canvas-shell .canvas-minimap .react-flow__minimap-mask {
@@ -163,7 +140,7 @@ body {
   box-sizing: border-box;
   border-radius: 18px;
   border: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 95%, #18263f 5%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
   color: var(--vscode-editor-foreground);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
 }
@@ -178,10 +155,6 @@ body {
 
 .canvas-node.kind-terminal {
   border-color: color-mix(in srgb, #38bdf8 42%, var(--vscode-panel-border) 58%);
-}
-
-.canvas-node.kind-task {
-  border-color: color-mix(in srgb, #f59e0b 42%, var(--vscode-panel-border) 58%);
 }
 
 .canvas-node.kind-note {
@@ -216,8 +189,8 @@ body {
   gap: 12px;
   align-items: center;
   padding: 12px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, #0f172a 16%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0b1324 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 90%, var(--vscode-focusBorder) 10%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
 }
 
 .window-title {
@@ -226,8 +199,18 @@ body {
   gap: 3px;
 }
 
-.window-title strong {
+.window-title-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
   font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .window-title span {
@@ -291,8 +274,8 @@ body {
   gap: 4px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, #0f172a 18%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #0b1426 12%);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 86%, var(--vscode-focusBorder) 14%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-sideBar-background) 10%);
 }
 
 .session-banner strong {
@@ -348,20 +331,20 @@ body {
   gap: 6px;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, #0f172a 16%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0b1426 10%);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 88%, var(--vscode-focusBorder) 12%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
 }
 
 .agent-bubble.role-user {
-  background: color-mix(in srgb, rgba(56, 189, 248, 0.16) 48%, var(--vscode-editor-background) 52%);
+  background: color-mix(in srgb, var(--vscode-focusBorder) 12%, var(--vscode-editor-background) 88%);
 }
 
 .agent-bubble.role-assistant {
-  background: color-mix(in srgb, rgba(34, 197, 94, 0.14) 40%, var(--vscode-editor-background) 60%);
+  background: color-mix(in srgb, #22c55e 10%, var(--vscode-editor-background) 90%);
 }
 
 .agent-bubble.role-status {
-  background: color-mix(in srgb, rgba(148, 163, 184, 0.08) 40%, var(--vscode-editor-background) 60%);
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 8%, var(--vscode-editor-background) 92%);
 }
 
 .agent-bubble.state-error {
@@ -404,7 +387,7 @@ body {
   box-sizing: border-box;
   border-radius: 12px;
   border: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   color: var(--vscode-editor-foreground);
   font: inherit;
 }
@@ -428,8 +411,8 @@ body {
   padding: 0;
 }
 
-.terminal-window-title strong {
-  font-size: 13px;
+.note-window-title {
+  gap: 0;
 }
 
 .terminal-frame {
@@ -440,7 +423,7 @@ body {
   border: 0;
   border-radius: 0 0 16px 16px;
   padding: 6px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0b1324 10%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   overflow: hidden;
 }
 
@@ -475,8 +458,8 @@ body {
   gap: 6px;
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(7, 12, 24, 0.78);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, var(--vscode-focusBorder) 16%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 78%, var(--vscode-sideBar-background) 22%);
   backdrop-filter: blur(8px);
   pointer-events: none;
 }
@@ -500,23 +483,6 @@ body {
   padding: 12px;
 }
 
-.object-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.node-field {
-  display: grid;
-  gap: 6px;
-}
-
-.node-field-label {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--vscode-descriptionForeground);
-}
-
 .node-text-input,
 .node-textarea,
 .node-select {
@@ -524,7 +490,7 @@ body {
   box-sizing: border-box;
   border-radius: 12px;
   border: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0f172a 10%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   color: var(--vscode-editor-foreground);
   font: inherit;
 }
@@ -540,10 +506,6 @@ body {
   line-height: 1.5;
 }
 
-.task-textarea {
-  min-height: 120px;
-}
-
 .note-textarea {
   min-height: 190px;
 }
@@ -553,117 +515,16 @@ body {
   overflow: hidden;
 }
 
-.object-context-strip {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, #0f172a 16%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #0d1729 10%);
-}
-
-.task-context-strip {
-  background:
-    linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.05)),
-    color-mix(in srgb, var(--vscode-editor-background) 92%, #0d1729 8%);
-}
-
-.note-context-strip {
-  background:
-    linear-gradient(180deg, rgba(167, 139, 250, 0.12), rgba(167, 139, 250, 0.05)),
-    color-mix(in srgb, var(--vscode-editor-background) 92%, #0d1729 8%);
-}
-
-.object-context-block {
-  display: grid;
-  gap: 8px;
-}
-
-.object-context-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--vscode-descriptionForeground) 90%, #e2e8f0 10%);
-}
-
-.object-context-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.node-title-input {
-  width: 100%;
-  box-sizing: border-box;
-  border: 0;
-  border-radius: 14px;
-  padding: 12px 14px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 82%, #f8fafc 18%);
-  color: var(--vscode-editor-foreground);
-  font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.node-chip-field {
-  display: grid;
-  gap: 6px;
-}
-
-.node-chip-label {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground);
-}
-
-.node-chip-select,
-.node-chip-input {
-  width: 100%;
-  box-sizing: border-box;
-  border-radius: 999px;
-  border: 1px solid var(--vscode-panel-border);
-  padding: 9px 12px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, #0f172a 12%);
-  color: var(--vscode-editor-foreground);
-  font: inherit;
-  font-size: 12px;
-}
-
-.document-sheet {
+.note-editor-surface {
   display: flex;
   flex: 1;
   min-height: 0;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, #0f172a 20%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 96%, #ffffff 4%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.task-document-sheet {
-  border-color: rgba(245, 158, 11, 0.24);
-  background:
-    linear-gradient(180deg, rgba(245, 158, 11, 0.06), transparent 22%),
-    color-mix(in srgb, var(--vscode-editor-background) 96%, #ffffff 4%);
-}
-
-.note-document-sheet {
-  border-color: rgba(167, 139, 250, 0.24);
-  background:
-    linear-gradient(180deg, rgba(167, 139, 250, 0.06), transparent 22%),
-    color-mix(in srgb, var(--vscode-editor-background) 96%, #ffffff 4%);
-}
-
-.document-kicker {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground);
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-panel-border) 76%);
+  border-style: solid;
+  border-width: 1px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 97%, var(--vscode-sideBar-background) 3%);
 }
 
 .node-document-input {
@@ -678,26 +539,16 @@ body {
   line-height: 1.6;
 }
 
-.task-document-input {
-  min-height: 140px;
-}
-
 .note-document-input {
-  min-height: 220px;
-}
-
-.object-footer-hint {
-  padding: 0 2px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: color-mix(in srgb, var(--vscode-descriptionForeground) 86%, #cbd5f5 14%);
+  min-height: 100%;
 }
 
 .canvas-node-resize-handle {
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  border: 2px solid rgba(255, 255, 255, 0.82);
+  border: 2px solid var(--vscode-editor-background);
+  background: var(--vscode-focusBorder);
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
 }
 
@@ -710,12 +561,10 @@ body {
 .node-select:focus,
 .agent-provider-select:focus,
 .agent-prompt-input:focus,
-.node-title-input:focus,
-.node-chip-select:focus,
-.node-chip-input:focus,
+.window-title-input:focus,
 .node-document-input:focus {
   outline: 1px solid var(--vscode-focusBorder);
-  border-color: var(--vscode-focusBorder);
+  outline-offset: 2px;
 }
 
 .node-topline {

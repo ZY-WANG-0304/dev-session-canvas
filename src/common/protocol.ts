@@ -1,4 +1,4 @@
-export type CanvasNodeKind = 'agent' | 'terminal' | 'task' | 'note';
+export type CanvasNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
 
 export interface CanvasNodePosition {
@@ -13,7 +13,6 @@ export interface CanvasNodeFootprint {
 
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
-export type TaskNodeStatus = 'todo' | 'running' | 'blocked' | 'done';
 
 export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
@@ -36,11 +35,6 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
 
 export interface TerminalNodeMetadata extends ExecutionSessionMetadata {}
 
-export interface TaskNodeMetadata {
-  description: string;
-  assignee: string;
-}
-
 export interface NoteNodeMetadata {
   content: string;
 }
@@ -48,7 +42,6 @@ export interface NoteNodeMetadata {
 export interface CanvasNodeMetadata {
   agent?: AgentNodeMetadata;
   terminal?: TerminalNodeMetadata;
-  task?: TaskNodeMetadata;
   note?: NoteNodeMetadata;
 }
 
@@ -86,8 +79,6 @@ export interface WebviewProbeNodeSnapshot {
   overlayMessage?: string;
   providerValue?: string;
   titleInputValue?: string;
-  statusValue?: string;
-  assigneeValue?: string;
   bodyValue?: string;
 }
 
@@ -109,15 +100,8 @@ export type WebviewDomAction =
   | {
       kind: 'setNodeTextField';
       nodeId: string;
-      field: 'title' | 'assignee' | 'body';
+      field: 'title' | 'body';
       value: string;
-      delayMs?: number;
-    }
-  | {
-      kind: 'selectNodeOption';
-      nodeId: string;
-      field: 'status';
-      value: TaskNodeStatus;
       delayMs?: number;
     }
   | {
@@ -211,20 +195,16 @@ export type WebviewToHostMessage =
       };
     }
   | {
-      type: 'webview/updateTaskNode';
+      type: 'webview/updateNodeTitle';
       payload: {
         nodeId: string;
         title: string;
-        status: TaskNodeStatus;
-        description: string;
-        assignee: string;
       };
     }
   | {
       type: 'webview/updateNoteNode';
       payload: {
         nodeId: string;
-        title: string;
         content: string;
       };
     }
@@ -313,7 +293,7 @@ export type HostToWebviewMessage =
       };
     };
 
-const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'task', 'note'];
+const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
@@ -435,27 +415,21 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
-  if (value.type === 'webview/updateTaskNode') {
+  if (value.type === 'webview/updateNodeTitle') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
       typeof payload.nodeId !== 'string' ||
-      typeof payload.title !== 'string' ||
-      typeof payload.description !== 'string' ||
-      typeof payload.assignee !== 'string' ||
-      !isTaskNodeStatus(payload.status)
+      typeof payload.title !== 'string'
     ) {
       return null;
     }
 
     return {
-      type: 'webview/updateTaskNode',
+      type: 'webview/updateNodeTitle',
       payload: {
         nodeId: payload.nodeId,
-        title: payload.title,
-        status: payload.status,
-        description: payload.description,
-        assignee: payload.assignee
+        title: payload.title
       }
     };
   }
@@ -465,7 +439,6 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       !payload ||
       typeof payload.nodeId !== 'string' ||
-      typeof payload.title !== 'string' ||
       typeof payload.content !== 'string'
     ) {
       return null;
@@ -475,7 +448,6 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/updateNoteNode',
       payload: {
         nodeId: payload.nodeId,
-        title: payload.title,
         content: payload.content
       }
     };
@@ -619,10 +591,6 @@ function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {
   );
 }
 
-function isTaskNodeStatus(value: unknown): value is TaskNodeStatus {
-  return value === 'todo' || value === 'running' || value === 'blocked' || value === 'done';
-}
-
 export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   if (!isRecord(value) || typeof value.kind !== 'string' || typeof value.nodeId !== 'string') {
     return false;
@@ -637,22 +605,11 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'setNodeTextField') {
-    return (
-      (value.field === 'title' || value.field === 'assignee' || value.field === 'body') &&
-      typeof value.value === 'string'
-    );
+    return (value.field === 'title' || value.field === 'body') && typeof value.value === 'string';
   }
 
   if (value.kind === 'selectNodeOption') {
-    if (value.field === 'status') {
-      return isTaskNodeStatus(value.value);
-    }
-
-    if (value.field === 'provider') {
-      return value.value === 'codex' || value.value === 'claude';
-    }
-
-    return false;
+    return value.field === 'provider' && (value.value === 'codex' || value.value === 'claude');
   }
 
   if (value.kind === 'clickNodeActionButton') {
@@ -684,8 +641,6 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
     (value.providerValue === undefined || typeof value.providerValue === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
-    (value.statusValue === undefined || typeof value.statusValue === 'string') &&
-    (value.assigneeValue === undefined || typeof value.assigneeValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string')
   );
 }
@@ -724,15 +679,10 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
         width: 540,
         height: 420
       };
-    case 'task':
-      return {
-        width: 380,
-        height: 360
-      };
     case 'note':
       return {
         width: 380,
-        height: 430
+        height: 400
       };
   }
 }
@@ -749,15 +699,10 @@ export function minimumCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFoot
         width: 420,
         height: 300
       };
-    case 'task':
-      return {
-        width: 320,
-        height: 260
-      };
     case 'note':
       return {
         width: 320,
-        height: 300
+        height: 280
       };
   }
 }
