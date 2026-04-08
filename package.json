@@ -55,6 +55,7 @@
       "supported": "limited",
       "description": "%capabilities.untrusted.description%",
       "restrictedConfigurations": [
+        "devSessionCanvas.runtimePersistence.enabled",
         "devSessionCanvas.agent.defaultProvider",
         "devSessionCanvas.agent.codexCommand",
         "devSessionCanvas.agent.claudeCommand",
@@ -133,6 +134,12 @@
           "default": "editor",
           "scope": "window",
           "markdownDescription": "%configuration.canvas.defaultSurface.description%"
+        },
+        "devSessionCanvas.runtimePersistence.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDescription": "%configuration.runtimePersistence.enabled.description%"
         },
         "devSessionCanvas.agent.defaultProvider": {
           "type": "string",

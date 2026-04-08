@@ -5,8 +5,11 @@ import { isCanvasNodeKind, isWebviewDomAction, type CanvasNodeKind } from './com
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
+let activePanelManager: CanvasPanelManager | undefined;
+
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
+  activePanelManager = panelManager;
   const sidebarView = new CanvasSidebarView(panelManager);
 
   context.subscriptions.push(
@@ -57,7 +60,11 @@ export function activate(context: vscode.ExtensionContext): void {
   registerTestCommands(context, panelManager);
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  const panelManager = activePanelManager;
+  activePanelManager = undefined;
+  await panelManager?.prepareForDeactivation();
+}
 
 function registerCommand(context: vscode.ExtensionContext, commandId: string, handler: () => Promise<void>): void {
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));

@@ -14,6 +14,8 @@ export interface CanvasNodeFootprint {
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type PendingExecutionLaunch = 'start' | 'resume';
+export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
+export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
 export type TerminalNodeStatus =
   | 'idle'
   | 'launching'
@@ -41,7 +43,11 @@ export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
   shellPath: string;
   cwd: string;
+  persistenceMode: RuntimePersistenceMode;
+  attachmentState: RuntimeAttachmentState;
   liveSession: boolean;
+  runtimeSessionId?: string;
+  lastRuntimeError?: string;
   pendingLaunch?: PendingExecutionLaunch;
   recentOutput?: string;
   lastExitCode?: number;

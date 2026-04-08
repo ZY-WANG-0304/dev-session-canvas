@@ -54,6 +54,7 @@ updated_at: 2026-04-08
 - 不在本轮承诺跨扩展重载恢复 `Terminal` 的完整活动 buffer。
 - 不在本轮把 `Agent` 做成完整的多 Agent orchestrator。
 - 不在本轮为 `Agent` 引入完全脱离现有 PTY 适配器的全新 backend；当前只把边界设计成可演进，而不是一步到位重写实现。
+- 不在本轮处理“关闭 VSCode 后真实 `Agent` / `Terminal` 进程仍继续存在”的运行时持久化；该主题由 [docs/design-docs/runtime-persistence-and-session-supervisor.md](./runtime-persistence-and-session-supervisor.md) 单独收口。
 
 ## 5. 候选方案
 
@@ -132,6 +133,12 @@ updated_at: 2026-04-08
 
 - `Terminal`：同一扩展进程内跨 surface 可重附着；扩展重载后不承诺完整活动态恢复，只显式标记为 `interrupted`。
 - `Agent`：扩展重载后优先尝试 provider 自身的 resume；若 provider 不支持或上下文缺失，则分别落到 `resume-failed` 或 `interrupted`，不制造虚假恢复。
+
+当问题变成“关闭整个 VSCode 后重新打开”时，本文件里的生命周期状态还需要叠加运行时持久化文档定义的附着态语义。第一版的用户可见规则是：
+
+- 只要节点带着 `live-runtime` 的会话身份重新进入恢复流程，且系统尚未确认 live runtime 仍存在，主状态标签显示 `重连中`。
+- 若重新附着成功，再切回本文件定义的真实生命周期状态。
+- 若无法重新附着，则主状态标签显示 `历史恢复`，并保留最后已知生命周期信息作为历史结果，而不是继续显示旧的活动态。
 
 自动启动边界明确如下：
 

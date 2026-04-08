@@ -485,11 +485,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
+  const displayStatus = data.status;
+  const attachmentState = agentMetadata.attachmentState;
   const resumeRequested =
     (lifecycle === 'resume-ready' ||
       lifecycle === 'resume-failed' ||
       agentMetadata.pendingLaunch === 'resume') &&
     provider === agentMetadata.provider;
+  const reattaching = attachmentState === 'reattaching' || displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -687,7 +690,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             data-node-interactive="true"
             data-probe-field="provider"
             value={provider}
-            disabled={executionBlocked || agentMetadata.liveSession}
+            disabled={executionBlocked || agentMetadata.liveSession || reattaching}
             onFocus={() => data.onSelectNode?.(id)}
             onMouseDown={stopCanvasEvent}
             onClick={stopCanvasEvent}
@@ -699,8 +702,8 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             <option value="codex">Codex</option>
             <option value="claude">Claude Code</option>
           </select>
-          <span className={`status-pill ${statusToneClass(lifecycle)}`}>
-            {humanizeStatus(lifecycle)}
+          <span className={`status-pill ${statusToneClass(displayStatus)}`}>
+            {humanizeStatus(displayStatus)}
           </span>
           <ActionButton
             label={
@@ -713,7 +716,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     : '启动'
             }
             onClick={() => (agentMetadata.liveSession ? stopAgent() : startAgent())}
-            disabled={executionBlocked}
+            disabled={executionBlocked || reattaching}
             className="nodrag nopan compact"
             interactive
             onFocus={() => data.onSelectNode?.(id)}
@@ -750,6 +753,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               <strong>
                 {executionBlocked
                   ? 'Restricted Mode'
+                  : reattaching
+                    ? 'Agent 重连中'
+                    : displayStatus === 'history-restored'
+                      ? '历史恢复'
                   : lifecycle === 'resume-ready'
                     ? 'Agent 可恢复'
                     : lifecycle === 'resume-failed'
@@ -761,6 +768,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               <span>
                 {executionBlocked
                   ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
+                  : reattaching
+                    ? data.summary
+                    : displayStatus === 'history-restored'
+                      ? data.summary
                   : lifecycle === 'resume-ready'
                     ? data.summary
                     : lifecycle === 'resume-failed'
@@ -785,6 +796,9 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
+  const displayStatus = data.status;
+  const attachmentState = terminalMetadata.attachmentState;
+  const reattaching = attachmentState === 'reattaching' || displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -961,13 +975,13 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          <span className={`status-pill ${statusToneClass(lifecycle)}`}>
-            {humanizeStatus(lifecycle)}
+          <span className={`status-pill ${statusToneClass(displayStatus)}`}>
+            {humanizeStatus(displayStatus)}
           </span>
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
-            disabled={executionBlocked}
+            disabled={executionBlocked || reattaching}
             className="nodrag nopan compact"
             interactive
             onFocus={() => data.onSelectNode?.(id)}
@@ -1004,6 +1018,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
               <strong>
                 {executionBlocked
                   ? 'Restricted Mode'
+                  : reattaching
+                    ? '终端重连中'
+                    : displayStatus === 'history-restored'
+                      ? '历史恢复'
                   : lifecycle === 'interrupted'
                     ? '终端已中断'
                   : terminalMetadata.lastExitMessage
@@ -1013,6 +1031,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
               <span>
                 {executionBlocked
                   ? '当前 workspace 未受信任，嵌入式终端入口已禁用。'
+                  : reattaching
+                    ? data.summary
+                    : displayStatus === 'history-restored'
+                      ? data.summary
                   : lifecycle === 'interrupted'
                     ? data.summary
                   : terminalMetadata.lastExitMessage
@@ -1564,6 +1586,8 @@ function humanizeStatus(status: string): string {
       return '恢复中';
     case 'resume-ready':
       return '可恢复';
+    case 'reattaching':
+      return '重连中';
     case 'resume-failed':
       return '恢复失败';
     case 'stopping':
@@ -1586,6 +1610,8 @@ function humanizeStatus(status: string): string {
       return '已停止';
     case 'interrupted':
       return '已中断';
+    case 'history-restored':
+      return '历史恢复';
     default:
       return status;
   }
@@ -1598,6 +1624,7 @@ function statusToneClass(status: string): string {
     case 'resuming':
     case 'running':
     case 'live':
+    case 'reattaching':
       return 'tone-running';
     case 'waiting-input':
       return 'tone-success';
@@ -1607,6 +1634,7 @@ function statusToneClass(status: string): string {
     case 'closed':
     case 'cancelled':
     case 'interrupted':
+    case 'history-restored':
       return 'tone-warning';
     case 'resume-failed':
     case 'error':

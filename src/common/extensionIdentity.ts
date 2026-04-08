@@ -36,6 +36,7 @@ export const VIEW_IDS = {
 
 export const CONFIG_KEYS = {
   canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
+  runtimePersistenceEnabled: 'devSessionCanvas.runtimePersistence.enabled',
   agentDefaultProvider: 'devSessionCanvas.agent.defaultProvider',
   agentCodexCommand: 'devSessionCanvas.agent.codexCommand',
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
