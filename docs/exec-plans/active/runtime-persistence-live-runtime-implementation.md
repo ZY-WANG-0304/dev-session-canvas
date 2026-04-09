@@ -27,6 +27,7 @@
 - [x] (2026-04-08 11:28 +0800) 扩展 smoke tests，覆盖 live-runtime 启动、断开后重新附着、离线期间输出可见，以及关闭开关后不再重连。
 - [x] (2026-04-08 11:31 +0800) 运行 `npm run typecheck`、`npm run build`、`npm run test:smoke`、`npm run test:webview`，并把残余验证缺口写回计划与设计文档。
 - [x] (2026-04-09 08:27 +0800) 将 runtime supervisor 路径模型正式重构为 `storageDir` / `runtimeDir` 分层；client 改为显式传递 `--storage-dir`、`--socket-path`、`--runtime-dir`，并补充路径回归测试。
+- [x] (2026-04-09 09:35 +0800) 补上“真实关闭整个 VSCode 窗口再重新打开”的两阶段 smoke；setup 阶段显式 flush 画布快照到 `canvas-state.json`，verify 阶段确认节点恢复、sessionId 不变且能拿到关闭期间新增输出。
 
 ## 意外与发现
 
@@ -44,6 +45,9 @@
 
 - 观察：只把 `socketPath` 从 storage 路径回退到 `/tmp` 还不够清晰；路径模型本身需要显式区分持久化目录和运行时目录，否则 client、supervisor 与文档都仍在共享一个含混的 “rootDir”。
   证据：现有实现里 `registryPath` 明显应归属 storage，而 `socketPath` 明显应归属 runtime，但接口层只有一个 `rootDir`，导致启动参数与目录准备逻辑都需要隐式推断。
+
+- 观察：真实关窗重开场景里，仅依赖 `workspaceState` 和异步 `persistState()` 不足以形成稳定证据；如果第一阶段在 VSCode 进程退出前没有显式等待快照落盘，第二阶段可能会先激活一个空画布状态。
+  证据：补测试前，real-reopen phase2 的 failure snapshot 一直是 `nodes: []`，而 supervisor registry 仍然存在；补充显式 flush 后，`canvas-state.json` 会稳定出现在 workspace storage 下，phase2 也能恢复到原节点并重新附着。
 
 ## 决策记录
 
@@ -90,7 +94,6 @@
 
 当前仍未完成的验证不是实现 blocker，而是剩余验证缺口：
 
-- 还没有针对“真实关闭整个 VSCode 进程再重新打开”的自动化 e2e；目前以 `deactivate()` 路径和 smoke 的 runtime reload 场景作为本地替代证据。
 - Remote SSH 的真实重连链路仍未在自动化或人工环境中跑通，因此设计文档验证状态只能推进到 `验证中`，还不能写成 `已验证`。
 
 ## 上下文与定向

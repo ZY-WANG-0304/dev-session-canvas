@@ -258,9 +258,9 @@ updated_at: 2026-04-09
 - 已经被本地验证覆盖的行为包括：
   - live-runtime 的 `Agent` / `Terminal` 启动与重新附着
   - 关闭期间新增输出在重连后可见
+  - 真实关闭整个 VSCode 窗口再重新打开后，节点可从持久化快照恢复，并重新附着到原 live runtime session
   - `重连中` / `历史恢复` UI 语义
   - 关闭运行时持久化开关后，不再自动重连既有 live-runtime
 - 尚未完成的验证主要是：
   - Remote SSH 的真实重连链路
-  - “真实关闭整个 VSCode 进程再重新打开”的独立 e2e 证据
 - 因此本设计的 `validation_status` 现阶段推进到 `验证中`，但还不能写成 `已验证`。

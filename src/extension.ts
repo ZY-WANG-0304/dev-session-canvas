@@ -155,6 +155,9 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       panelManager.setPersistedStateForTest(rawState)
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.reloadPersistedState, () => panelManager.reloadPersistedStateForTest()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.flushPersistedState, () =>
+      panelManager.flushPersistedCanvasStateForTest()
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.simulateRuntimeReload, () =>
       panelManager.simulateRuntimeReloadForTest()
     ),

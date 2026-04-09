@@ -158,6 +158,20 @@ export interface CanvasDebugSnapshot {
   surfaceReady: Record<CanvasSurfaceLocation, boolean>;
 }
 
+interface PersistedCanvasSnapshot {
+  version: 1;
+  state?: unknown;
+  activeSurface?: CanvasSurfaceLocation;
+}
+
+interface PersistedCanvasStateFlushResult {
+  snapshotPath: string;
+  exists: boolean;
+  lastError?: string;
+  writtenAt?: string;
+  snapshot?: PersistedCanvasSnapshot;
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
@@ -181,6 +195,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
   private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
+  private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
+  private lastPersistedCanvasSnapshotError: string | undefined;
+  private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
   private runtimeSupervisorClient: RuntimeSupervisorClient | undefined;
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
@@ -324,7 +341,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
     }
 
-    await this.context.workspaceState.update(STORAGE_KEYS.canvasState, rawState);
+    await this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: rawState,
+      activeSurface: this.activeSurface
+    });
     this.state = this.loadReconciledState();
     this.recordDiagnosticEvent('state/seededForTest', {
       nodeCount: this.state.nodes.length
@@ -363,6 +384,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.getDebugSnapshot();
   }
 
+  public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('flushPersistedCanvasStateForTest 仅在测试模式下可用。');
+    }
+
+    await this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: this.state,
+      activeSurface: this.activeSurface
+    });
+    await this.waitForPendingWorkspaceStateUpdates();
+
+    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    return {
+      snapshotPath,
+      exists: fs.existsSync(snapshotPath),
+      lastError: this.lastPersistedCanvasSnapshotError,
+      writtenAt: this.lastPersistedCanvasSnapshotWrittenAt,
+      snapshot: snapshot ? cloneJsonValue(snapshot) : undefined
+    };
+  }
+
   public async prepareForDeactivation(): Promise<void> {
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.isRuntimePersistenceEnabled(),
@@ -375,6 +419,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     allowRuntimeSupervisorRestart: boolean;
   }): Promise<void> {
     await this.waitForPendingRuntimeSupervisorOperations();
+    await this.waitForPendingWorkspaceStateUpdates();
 
     const persistedRuntimeSessionIds = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessionIds();
 
@@ -404,6 +449,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.runtimeSupervisorClient?.dispose();
     this.runtimeSupervisorClient = undefined;
+    await this.waitForPendingWorkspaceStateUpdates();
   }
 
   public resetState(): void {
@@ -709,8 +755,64 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private getPersistedCanvasSnapshotPath(): string {
+    const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    return path.join(basePath, 'canvas-state.json');
+  }
+
+  private loadPersistedCanvasSnapshot(): PersistedCanvasSnapshot | undefined {
+    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+
+    try {
+      if (!fs.existsSync(snapshotPath)) {
+        return undefined;
+      }
+
+      const rawSnapshot = fs.readFileSync(snapshotPath, 'utf8');
+      const parsedSnapshot = JSON.parse(rawSnapshot) as PersistedCanvasSnapshot;
+      if (!parsedSnapshot || typeof parsedSnapshot !== 'object') {
+        return undefined;
+      }
+
+      return parsedSnapshot;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
+    const operation = this.pendingWorkspaceStateUpdate.then(async () => {
+      const snapshotPath = this.getPersistedCanvasSnapshotPath();
+      const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
+      await fs.promises.mkdir(path.dirname(snapshotPath), {
+        recursive: true
+      });
+      const tempSnapshotPath = `${snapshotPath}.tmp`;
+      await fs.promises.writeFile(tempSnapshotPath, serializedSnapshot, 'utf8');
+      await fs.promises.rename(tempSnapshotPath, snapshotPath);
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasState, snapshot.state);
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshot.activeSurface);
+      this.lastPersistedCanvasSnapshotError = undefined;
+      this.lastPersistedCanvasSnapshotWrittenAt = new Date().toISOString();
+    }).catch((error) => {
+      const message = formatUnknownError(error);
+      this.lastPersistedCanvasSnapshotError = message;
+      this.recordDiagnosticEvent('state/persistFailed', {
+        message,
+        snapshotPath: this.getPersistedCanvasSnapshotPath()
+      });
+      throw error;
+    });
+    this.pendingWorkspaceStateUpdate = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    return operation;
+  }
+
   private loadState(): CanvasPrototypeState {
-    const rawState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const rawState =
+      this.loadPersistedCanvasSnapshot()?.state ?? this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
     return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
   }
 
@@ -721,7 +823,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private persistState(): void {
-    void this.context.workspaceState.update(STORAGE_KEYS.canvasState, this.state);
+    void this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: this.state,
+      activeSurface: this.activeSurface
+    }).catch(() => undefined);
   }
 
   private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
@@ -931,6 +1037,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await Promise.allSettled(Array.from(this.pendingRuntimeSupervisorOperations));
+  }
+
+  private async waitForPendingWorkspaceStateUpdates(): Promise<void> {
+    await this.pendingWorkspaceStateUpdate;
   }
 
   private unbindRuntimeSession(runtimeSessionId: string | undefined): void {
@@ -1229,7 +1339,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private loadStoredSurface(): CanvasSurfaceLocation | undefined {
-    const storedSurface = this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface);
+    const storedSurface =
+      this.loadPersistedCanvasSnapshot()?.activeSurface ?? this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface);
     if (storedSurface === 'editor' || storedSurface === 'panel') {
       return storedSurface;
     }
@@ -1242,7 +1353,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    void this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, this.activeSurface);
+    void this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: this.state,
+      activeSurface: this.activeSurface
+    }).catch(() => undefined);
   }
 
   private claimSurfaceIfNeeded(surface: CanvasSurfaceLocation): void {
@@ -1453,21 +1568,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/startExecutionSession':
         if (parsedMessage.payload.kind === 'agent') {
-          void this.startAgentSession(
+          const operation = this.startAgentSession(
             parsedMessage.payload.nodeId,
             parsedMessage.payload.cols,
             parsedMessage.payload.rows,
             parsedMessage.payload.provider,
             parsedMessage.payload.resume === true
           );
+          if (this.isRuntimePersistenceEnabled()) {
+            this.trackRuntimeSupervisorOperation(operation);
+          }
           return;
         }
 
-        void this.startTerminalSession(
+        const operation = this.startTerminalSession(
           parsedMessage.payload.nodeId,
           parsedMessage.payload.cols,
           parsedMessage.payload.rows
         );
+        if (this.isRuntimePersistenceEnabled()) {
+          this.trackRuntimeSupervisorOperation(operation);
+        }
         return;
       case 'webview/attachExecutionSession':
         this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
@@ -3156,6 +3277,14 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack || error.message;
+  }
+
+  return String(error);
 }
 
 function delay(timeoutMs: number): Promise<void> {

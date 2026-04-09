@@ -33,6 +33,14 @@ export function runInsideXvfb(currentScriptPath, projectRoot) {
 
 export async function runVSCodeScenario(options) {
   const runtime = await prepareRuntime(options);
+  return launchPreparedVSCodeScenario({
+    ...options,
+    runtime
+  });
+}
+
+export async function launchPreparedVSCodeScenario(options) {
+  const runtime = options.runtime;
   const vscodeExecutablePath = await ensureVSCodeExecutable(options.projectRoot);
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
@@ -45,7 +53,10 @@ export async function runVSCodeScenario(options) {
   });
 
   try {
-    await launchVSCodeTestProcess(vscodeExecutablePath, args, runtime.environment);
+    await launchVSCodeTestProcess(vscodeExecutablePath, args, {
+      ...runtime.environment,
+      ...(options.extensionTestsEnv ?? {})
+    });
   } catch (error) {
     await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
     console.error(`Smoke test artifacts saved to ${runtime.artifactsDir}`);

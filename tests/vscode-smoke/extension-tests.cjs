@@ -182,6 +182,7 @@ async function runTrustedSmoke() {
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
+  await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
   await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
   await verifyTrustedDiagnostics(agentNode.id, terminalNode.id);
   await verifyRealDeleteButton(noteNode.id);
@@ -1681,6 +1682,73 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
     terminalNode = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(agentNode.status, 'stopped');
     assert.strictEqual(terminalNode.status, 'closed');
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await clearHostMessages();
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 92,
+        rows: 28,
+        provider: 'codex'
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 92,
+        rows: 28
+      }
+    });
+
+    let snapshot = await simulateRuntimeReload();
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.notStrictEqual(agentNode.status, 'history-restored');
+    assert.notStrictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.persistenceMode, 'live-runtime');
+    assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'live-runtime');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
+          currentAgent.metadata?.agent?.runtimeSessionId &&
+          currentTerminal?.metadata?.terminal?.liveSession &&
+          currentTerminal.metadata?.terminal?.attachmentState === 'attached-live' &&
+          currentTerminal.metadata?.terminal?.runtimeSessionId
+      );
+    }, 20000);
+
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.metadata.agent.liveSession, true);
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'attached-live');
+    assert.ok(agentNode.metadata.agent.runtimeSessionId);
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
+    assert.ok(terminalNode.metadata.terminal.runtimeSessionId);
+
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
   } finally {
     await setRuntimePersistenceEnabled(false);
   }

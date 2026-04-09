@@ -20,6 +20,7 @@ export const TEST_COMMAND_IDS = {
   performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
   setPersistedState: 'devSessionCanvas.__test.setPersistedState',
   reloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
+  flushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
   simulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   createNode: 'devSessionCanvas.__test.createNode',
