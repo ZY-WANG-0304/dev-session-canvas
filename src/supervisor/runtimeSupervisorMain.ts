@@ -11,7 +11,7 @@ import {
   type PendingExecutionLaunch,
   type TerminalNodeStatus
 } from '../common/protocol';
-import { resolveRuntimeSupervisorPathsFromRoot } from '../common/runtimeSupervisorPaths';
+import { resolveRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import {
   deserializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorAttachSessionParams,
@@ -80,7 +80,8 @@ class RuntimeSupervisorServer {
   public constructor(private readonly paths: RuntimeSupervisorPaths) {}
 
   public async start(): Promise<void> {
-    fs.mkdirSync(this.paths.rootDir, { recursive: true });
+    fs.mkdirSync(this.paths.storageDir, { recursive: true });
+    ensureSocketDirectoryReady(this.paths);
     this.loadRegistry();
     await this.listen();
     this.scheduleIdleShutdownIfNeeded();
@@ -730,16 +731,61 @@ function createErrorResponse(id: string, message: string): RuntimeSupervisorMess
   };
 }
 
-async function main(): Promise<void> {
-  const rootIndex = process.argv.indexOf('--root');
-  const rootDir = rootIndex >= 0 ? process.argv[rootIndex + 1] : '';
-  if (!rootDir) {
-    throw new Error('runtime supervisor 启动失败：缺少 --root 参数。');
+function ensureSocketDirectoryReady(paths: RuntimeSupervisorPaths): void {
+  if (process.platform === 'win32') {
+    return;
   }
 
-  const paths = resolveRuntimeSupervisorPathsFromRoot(path.resolve(rootDir));
+  const socketDir = paths.runtimeDir ?? path.dirname(paths.socketPath);
+  fs.mkdirSync(socketDir, {
+    recursive: true,
+    mode: shouldRestrictSocketDirectory(paths) ? 0o700 : undefined
+  });
+
+  if (shouldRestrictSocketDirectory(paths)) {
+    try {
+      fs.chmodSync(socketDir, 0o700);
+    } catch {
+      // Best effort only. Some remote filesystems do not allow chmod here.
+    }
+  }
+}
+
+function shouldRestrictSocketDirectory(paths: RuntimeSupervisorPaths): boolean {
+  return paths.socketLocation === 'runtime-private';
+}
+
+async function main(): Promise<void> {
+  const storageDir = readCliPathFlag('--storage-dir');
+  if (!storageDir) {
+    throw new Error('runtime supervisor 启动失败：缺少 --storage-dir 参数。');
+  }
+
+  const resolvedPaths = resolveRuntimeSupervisorPathsFromStorageDir(storageDir);
+  const socketPath = readCliFlag('--socket-path') ?? resolvedPaths.socketPath;
+  const runtimeDir = readCliPathFlag('--runtime-dir') ?? resolvedPaths.runtimeDir;
+  const paths: RuntimeSupervisorPaths = {
+    ...resolvedPaths,
+    socketPath,
+    runtimeDir
+  };
   const server = new RuntimeSupervisorServer(paths);
   await server.start();
+}
+
+function readCliFlag(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index < 0) {
+    return undefined;
+  }
+
+  const value = process.argv[index + 1];
+  return value?.trim() || undefined;
+}
+
+function readCliPathFlag(name: string): string | undefined {
+  const value = readCliFlag(name);
+  return value ? path.resolve(value) : undefined;
 }
 
 void main().catch((error) => {

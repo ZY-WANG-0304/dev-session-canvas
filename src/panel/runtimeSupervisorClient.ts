@@ -281,7 +281,19 @@ export class RuntimeSupervisorClient {
   }
 
   private startSupervisorProcess(): void {
-    const child = spawn(process.execPath, [this.options.supervisorScriptPath, '--root', this.options.paths.rootDir], {
+    const args = [
+      this.options.supervisorScriptPath,
+      '--storage-dir',
+      this.options.paths.storageDir,
+      '--socket-path',
+      this.options.paths.socketPath
+    ];
+    const runtimeDir = this.options.paths.runtimeDir;
+    if (runtimeDir) {
+      args.push('--runtime-dir', runtimeDir);
+    }
+
+    const child = spawn(process.execPath, args, {
       detached: true,
       stdio: 'ignore'
     });

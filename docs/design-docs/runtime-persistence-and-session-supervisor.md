@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
-updated_at: 2026-04-08
+updated_at: 2026-04-09
 ---
 
 # 运行时持久化与会话监督器设计
@@ -133,7 +133,11 @@ updated_at: 2026-04-08
 2. 会话注册表与持久化日志
    - 不再塞进 `workspaceState`。
    - 应放到独立的本地持久化目录，由监督器和扩展共同理解。
-3. 真实进程所有权
+   - 这里需要显式区分两类目录：`storageDir` 与 `runtimeDir`。
+   - registry、会话快照与恢复元数据继续放 extension `storageDir`。
+   - 本地 IPC socket 放 `runtimeDir`，不复用 storage 长路径；Linux / Remote SSH 优先 `XDG_RUNTIME_DIR/<extension-id>/`，否则退到 temp 下的私有子目录。
+   - 只有当 storage 路径本身足够短时，才允许把 `runtimeDir` 与 `storageDir` 复用为同一目录。
+   3. 真实进程所有权
    - 只在 `live-runtime` 模式下成立。
    - 必须由独立会话监督器持有，不能再依赖 extension host 直接拥有。
 

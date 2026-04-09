@@ -26,6 +26,7 @@
 - [x] (2026-04-08 11:24 +0800) 更新 Webview UI，使状态标签优先显示 `重连中` / `历史恢复`，而不是直接沿用旧 lifecycle。
 - [x] (2026-04-08 11:28 +0800) 扩展 smoke tests，覆盖 live-runtime 启动、断开后重新附着、离线期间输出可见，以及关闭开关后不再重连。
 - [x] (2026-04-08 11:31 +0800) 运行 `npm run typecheck`、`npm run build`、`npm run test:smoke`、`npm run test:webview`，并把残余验证缺口写回计划与设计文档。
+- [x] (2026-04-09 08:27 +0800) 将 runtime supervisor 路径模型正式重构为 `storageDir` / `runtimeDir` 分层；client 改为显式传递 `--storage-dir`、`--socket-path`、`--runtime-dir`，并补充路径回归测试。
 
 ## 意外与发现
 
@@ -40,6 +41,9 @@
 
 - 观察：Playwright 功能测试全部通过后，仍出现基线截图与当前节点头部状态 pill 的轻微差异。
   证据：`npm run test:webview` 首次失败仅剩 `canvas-shell-baseline.png`，差异集中在 `Agent` / `Terminal` 头部的 `草稿` pill；同步快照基线后，9 个 Playwright 用例全部通过。
+
+- 观察：只把 `socketPath` 从 storage 路径回退到 `/tmp` 还不够清晰；路径模型本身需要显式区分持久化目录和运行时目录，否则 client、supervisor 与文档都仍在共享一个含混的 “rootDir”。
+  证据：现有实现里 `registryPath` 明显应归属 storage，而 `socketPath` 明显应归属 runtime，但接口层只有一个 `rootDir`，导致启动参数与目录准备逻辑都需要隐式推断。
 
 ## 决策记录
 
@@ -63,6 +67,10 @@
   理由：否则“用户已经输入但尚未真正写到 socket”的命令会在 reload 时丢失，违背 live-runtime 对工作连续性的承诺。
   日期/作者：2026-04-08 / Codex
 
+- 决策：runtime supervisor 路径模型显式拆成 `storageDir` 与 `runtimeDir`；client 启动 supervisor 时传递 `--storage-dir`、`--socket-path` 与可选的 `--runtime-dir`，不再只传单一 `--root`。
+  理由：这样才能把“持久化数据落 storage、IPC endpoint 落 runtime”落实到接口层，避免 supervisor 子进程再自行猜测目录语义。
+  日期/作者：2026-04-09 / Codex
+
 ## 结果与复盘
 
 当前已交付以下用户可见行为：
@@ -76,6 +84,7 @@
 
 - `npm run typecheck`
 - `npm run build`
+- `npm run test:runtime-supervisor-paths`
 - `npm run test:smoke`
 - `npm run test:webview`
 
@@ -155,7 +164,8 @@
 
 ## 幂等性与恢复
 
-- supervisor 数据目录必须放在 extension 的 storage 目录下，允许重复启动时重用既有 registry 与 socket 路径。
+- supervisor registry 与恢复元数据必须放在 extension 的 `storageDir` 下，允许重复启动时重用既有持久化状态。
+- supervisor 本地 socket 必须放在显式的 `runtimeDir`；默认优先使用 `XDG_RUNTIME_DIR/<extension-id>`，其次是 temp 私有子目录，只有在 storage 路径足够短时才允许与 `storageDir` 复用。
 - 若 socket 路径残留但 supervisor 已不在，新的启动路径必须能清理陈旧 socket 并重新拉起服务。
 - 如果实现中途发现 supervisor 路线在当前仓库无法稳定跑通，不得静默回退成“继续靠 provider resume”；必须把 blocker 写回本计划和设计文档。
 

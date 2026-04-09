@@ -9,9 +9,11 @@ import type {
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
-  rootDir: string;
+  storageDir: string;
+  runtimeDir?: string;
   socketPath: string;
   registryPath: string;
+  socketLocation: 'storage' | 'runtime-private' | 'runtime-fallback' | 'named-pipe';
 }
 
 export interface RuntimeSupervisorHelloResult {
