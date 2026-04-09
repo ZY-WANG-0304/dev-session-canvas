@@ -875,11 +875,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return path.join(this.context.extensionUri.fsPath, 'dist', 'runtime-supervisor.js');
   }
 
+  private getRuntimeSupervisorLauncherScriptPath(): string {
+    return path.join(this.context.extensionUri.fsPath, 'dist', 'runtime-supervisor-launcher.js');
+  }
+
   private async getRuntimeSupervisorClient(options: { allowRestart?: boolean } = {}): Promise<RuntimeSupervisorClient> {
     if (!this.runtimeSupervisorClient) {
       this.runtimeSupervisorClient = new RuntimeSupervisorClient({
         paths: this.getRuntimeSupervisorPaths(),
         supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
+        supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
         onSessionOutput: (event) => this.handleRuntimeSupervisorOutput(event.sessionId, event.chunk),
         onSessionState: (snapshot) => this.handleRuntimeSupervisorState(snapshot),
         onDisconnected: (error) => this.handleRuntimeSupervisorDisconnected(error)

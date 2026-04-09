@@ -7,7 +7,8 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--profile=Dev Session Canvas Extension Debug",
+        "--user-data-dir=${workspaceFolder}/.debug/extension-dev-host/user-data",
+        "--profile=Dev Session Canvas Persistence Debug",
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
       "skipFiles": [

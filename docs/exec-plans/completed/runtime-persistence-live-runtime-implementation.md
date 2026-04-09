@@ -28,6 +28,9 @@
 - [x] (2026-04-08 11:31 +0800) 运行 `npm run typecheck`、`npm run build`、`npm run test:smoke`、`npm run test:webview`，并把残余验证缺口写回计划与设计文档。
 - [x] (2026-04-09 08:27 +0800) 将 runtime supervisor 路径模型正式重构为 `storageDir` / `runtimeDir` 分层；client 改为显式传递 `--storage-dir`、`--socket-path`、`--runtime-dir`，并补充路径回归测试。
 - [x] (2026-04-09 09:35 +0800) 补上“真实关闭整个 VSCode 窗口再重新打开”的两阶段 smoke；setup 阶段显式 flush 画布快照到 `canvas-state.json`，verify 阶段确认节点恢复、sessionId 不变且能拿到关闭期间新增输出。
+- [x] (2026-04-10 15:46 +0800) 将 supervisor 启动链路改为“短命 launcher 拉起真正 supervisor”，避免 `Extension Development Host` 在 Run and Debug / Remote SSH 下把 direct child supervisor 一并终止。
+- [x] (2026-04-10 16:58 +0800) 用户完成 Remote SSH + `Run Dev Session Canvas` 的 F5 手动验证，确认 launcher 链路下 `Agent` / `Terminal` 会重新附着到原 live runtime，而不是退化为 `历史恢复`。
+- [x] (2026-04-10 17:06 +0800) 调试入口收敛为单一 `Run Dev Session Canvas` configuration，固定 `user-data-dir` 用于 runtime persistence 验证，并将本计划迁入 `docs/exec-plans/completed/`。
 
 ## 意外与发现
 
@@ -48,6 +51,12 @@
 
 - 观察：真实关窗重开场景里，仅依赖 `workspaceState` 和异步 `persistState()` 不足以形成稳定证据；如果第一阶段在 VSCode 进程退出前没有显式等待快照落盘，第二阶段可能会先激活一个空画布状态。
   证据：补测试前，real-reopen phase2 的 failure snapshot 一直是 `nodes: []`，而 supervisor registry 仍然存在；补充显式 flush 后，`canvas-state.json` 会稳定出现在 workspace storage 下，phase2 也能恢复到原节点并重新附着。
+
+- 观察：在“直接安装扩展”链路下，detached supervisor 可以跨真实关窗重开存活；但在 `Extension Development Host` 链路下，Run and Debug 会把 extension host 直接拉起的 supervisor 一并带走，最终只能从 registry 恢复到 `历史恢复`。
+  证据：用户在安装版手动验证中已确认真实重连可通过，而 Remote SSH + Development Host 重开后节点统一落入 `history-restored`，并显示“会话监督器未保留原 live runtime，已仅恢复历史结果。”。
+
+- 观察：在 launcher 化之后，Remote SSH + F5 的 `Run Dev Session Canvas` 链路已可稳定重新附着；当前剩余缺口不是功能失效，而是这条调试链路还没有自动化回归。
+  证据：用户已确认“手动验证通过”，并要求只保留单一的持久化调试 configuration。
 
 ## 决策记录
 
@@ -75,6 +84,10 @@
   理由：这样才能把“持久化数据落 storage、IPC endpoint 落 runtime”落实到接口层，避免 supervisor 子进程再自行猜测目录语义。
   日期/作者：2026-04-09 / Codex
 
+- 决策：client 不再直接把真正的 supervisor 作为 extension host 的 direct child 拉起，而是先拉一个短命 launcher，再由 launcher 以 detached 模式拉起真正 supervisor。
+  理由：Run and Debug / Extension Development Host 会干预 direct child 生命周期；通过 launcher 让真正 supervisor 在会话启动后尽快脱离调试宿主的直接进程树，既不影响安装版主链路，也更符合 live-runtime 的独立所有权模型。
+  日期/作者：2026-04-10 / Codex
+
 ## 结果与复盘
 
 当前已交付以下用户可见行为：
@@ -92,9 +105,12 @@
 - `npm run test:smoke`
 - `npm run test:webview`
 
-当前仍未完成的验证不是实现 blocker，而是剩余验证缺口：
+当前已完成的人工验证：
 
-- Remote SSH 的真实重连链路仍未在自动化或人工环境中跑通，因此设计文档验证状态只能推进到 `验证中`，还不能写成 `已验证`。
+- 直接安装扩展后的 Remote SSH 真实重连链路。
+- Remote SSH + `Run Dev Session Canvas` 的 F5 重开链路。
+
+本计划当前没有剩余实现 blocker。唯一保留的后续事项是：Remote SSH + Run and Debug 的真实重连链路仍缺自动化回归，已登记到 `docs/exec-plans/tech-debt-tracker.md`。
 
 ## 上下文与定向
 
@@ -204,4 +220,4 @@
 - 执行 metadata 上的运行时附着态字段
   至少要能表达 `attached-live`、`reattaching`、`history-restored`。
 
-本次修订说明：2026-04-08 10:48 +0800 新建实现阶段 `ExecPlan`，把 runtime persistence 主题从纯设计收口推进到正式代码实现。
+本次修订说明：2026-04-10 17:06 +0800 补记 Remote SSH + F5 手动验证结果，收敛为单一持久化调试配置，并将本计划迁入 `completed/`。

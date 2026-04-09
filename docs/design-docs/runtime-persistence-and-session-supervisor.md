@@ -1,7 +1,7 @@
 ---
 title: 运行时持久化与会话监督器设计
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 协作对象域
@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
-updated_at: 2026-04-09
+updated_at: 2026-04-10
 ---
 
 # 运行时持久化与会话监督器设计
@@ -155,6 +155,8 @@ updated_at: 2026-04-09
 
 监督器不是画布，也不是新的工作面。它只是一个进程所有权和重连能力的承载层。
 
+在实现层，再补一条约束：如果运行环境是 `Extension Development Host`，不要由 extension host 直接把真正的 supervisor 作为 direct child 长期持有。更稳妥的启动方式是“短命 launcher 拉起真正 supervisor”，让真正 supervisor 在启动后尽快脱离调试宿主的直接进程树。这个 launcher 只是 bootstrap，不持有会话状态，也不参与后续 IPC。
+
 当前设计范围明确包含两类部署位置：
 
 - 本地 workspace：监督器运行在本机，与本地 extension host 协同。
@@ -235,6 +237,9 @@ updated_at: 2026-04-09
 - 风险：Remote 场景里，“VSCode 关闭”与“远端扩展宿主是否还活着”并不总是同一件事。
   当前缓解：当前设计已把 Remote SSH 纳入 `live-runtime` 目标范围，并明确要求监督器部署在远端；但验证状态仍保持未验证，直到远端真实重连链路被跑通。Dev Container / Codespaces 继续留在后续范围。
 
+- 风险：`Run and Debug` / `Extension Development Host` 不是安装版扩展的完全等价宿主；调试宿主可能回收 direct child 进程，导致 live-runtime 在 debug-only 场景下退化成历史恢复。
+  当前缓解：监督器启动路径改为 launcher 中转，避免真正 supervisor 长期停留在调试宿主的直接进程树中；当前已在 Remote SSH + F5 场景完成人工验证，剩余缺口只是不具备自动化回归。
+
 ## 8. 验证方法
 
 至少需要完成以下验证后，才能把本设计从“验证中”推进到 `已验证`：
@@ -261,6 +266,9 @@ updated_at: 2026-04-09
   - 真实关闭整个 VSCode 窗口再重新打开后，节点可从持久化快照恢复，并重新附着到原 live runtime session
   - `重连中` / `历史恢复` UI 语义
   - 关闭运行时持久化开关后，不再自动重连既有 live-runtime
-- 尚未完成的验证主要是：
-  - Remote SSH 的真实重连链路
-- 因此本设计的 `validation_status` 现阶段推进到 `验证中`，但还不能写成 `已验证`。
+- 已完成人工验证的行为包括：
+  - 直接安装扩展后，Remote SSH 下的 live-runtime 重连链路可正常工作。
+  - `Run Dev Session Canvas` 调试配置在 Remote SSH + F5 下经过重开验证后，`Agent` / `Terminal` 不再错误落入 `历史恢复`，而是重新附着到原 live runtime。
+- 当前剩余缺口不是产品能力验证，而是自动化覆盖面：
+  - Remote SSH + Run and Debug 的真实重连链路还没有自动化回归。
+- 因此本设计的 `validation_status` 现阶段推进到 `已验证`；自动化缺口单独登记为技术债，不再阻塞设计结论。

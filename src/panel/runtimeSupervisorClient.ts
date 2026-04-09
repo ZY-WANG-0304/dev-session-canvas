@@ -25,6 +25,7 @@ interface PendingSupervisorRequest<T> {
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
   paths: RuntimeSupervisorPaths;
   supervisorScriptPath: string;
+  supervisorLauncherScriptPath: string;
   onDisconnected?: (error?: Error) => void;
 }
 
@@ -282,6 +283,8 @@ export class RuntimeSupervisorClient {
 
   private startSupervisorProcess(): void {
     const args = [
+      this.options.supervisorLauncherScriptPath,
+      '--supervisor-script',
       this.options.supervisorScriptPath,
       '--storage-dir',
       this.options.paths.storageDir,
@@ -295,7 +298,8 @@ export class RuntimeSupervisorClient {
 
     const child = spawn(process.execPath, args, {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      windowsHide: true
     });
     child.unref();
   }
