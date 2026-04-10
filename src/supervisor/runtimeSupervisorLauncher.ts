@@ -23,6 +23,21 @@ async function main(): Promise<void> {
     args.push('--runtime-dir', runtimeDir);
   }
 
+  const controlDir = readCliPathFlag('--control-dir');
+  if (controlDir) {
+    args.push('--control-dir', controlDir);
+  }
+
+  const runtimeBackend = readCliFlag('--runtime-backend');
+  if (runtimeBackend) {
+    args.push('--runtime-backend', runtimeBackend);
+  }
+
+  const runtimeGuarantee = readCliFlag('--runtime-guarantee');
+  if (runtimeGuarantee) {
+    args.push('--runtime-guarantee', runtimeGuarantee);
+  }
+
   const child = spawn(process.execPath, args, {
     detached: true,
     stdio: 'ignore',

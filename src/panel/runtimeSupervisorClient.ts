@@ -1,5 +1,4 @@
 import { randomUUID } from 'crypto';
-import { spawn } from 'child_process';
 import * as net from 'net';
 
 import type {
@@ -10,12 +9,12 @@ import type {
   RuntimeSupervisorEvent,
   RuntimeSupervisorHelloResult,
   RuntimeSupervisorMessage,
-  RuntimeSupervisorPaths,
   RuntimeSupervisorResizeSessionParams,
   RuntimeSupervisorSessionSnapshot,
   RuntimeSupervisorStopSessionParams,
   RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
+import type { RuntimeHostBackend } from './runtimeHostBackend';
 
 interface PendingSupervisorRequest<T> {
   resolve: (value: T) => void;
@@ -23,7 +22,7 @@ interface PendingSupervisorRequest<T> {
 }
 
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
-  paths: RuntimeSupervisorPaths;
+  backend: RuntimeHostBackend;
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
   onDisconnected?: (error?: Error) => void;
@@ -161,7 +160,7 @@ export class RuntimeSupervisorClient {
       }
     }
 
-    this.startSupervisorProcess();
+    await this.startSupervisorProcess();
     await this.waitForSupervisorReady();
   }
 
@@ -171,7 +170,7 @@ export class RuntimeSupervisorClient {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const socket = net.createConnection(this.options.paths.socketPath);
+      const socket = net.createConnection(this.options.backend.paths.socketPath);
       const cleanup = (): void => {
         socket.removeListener('connect', handleConnect);
         socket.removeListener('error', handleError);
@@ -281,27 +280,11 @@ export class RuntimeSupervisorClient {
     this.pendingRequests.clear();
   }
 
-  private startSupervisorProcess(): void {
-    const args = [
-      this.options.supervisorLauncherScriptPath,
-      '--supervisor-script',
-      this.options.supervisorScriptPath,
-      '--storage-dir',
-      this.options.paths.storageDir,
-      '--socket-path',
-      this.options.paths.socketPath
-    ];
-    const runtimeDir = this.options.paths.runtimeDir;
-    if (runtimeDir) {
-      args.push('--runtime-dir', runtimeDir);
-    }
-
-    const child = spawn(process.execPath, args, {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
+  private async startSupervisorProcess(): Promise<void> {
+    await this.options.backend.startSupervisor({
+      supervisorScriptPath: this.options.supervisorScriptPath,
+      supervisorLauncherScriptPath: this.options.supervisorLauncherScriptPath
     });
-    child.unref();
   }
 
   private async waitForSupervisorReady(): Promise<void> {

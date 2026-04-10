@@ -9,9 +9,11 @@ import {
   type AgentResumeStrategy,
   type ExecutionNodeKind,
   type PendingExecutionLaunch,
+  type RuntimeHostBackendKind,
+  type RuntimePersistenceGuarantee,
   type TerminalNodeStatus
 } from '../common/protocol';
-import { resolveRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
+import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import {
   deserializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorAttachSessionParams,
@@ -48,6 +50,8 @@ interface SupervisorSession {
   kind: ExecutionNodeKind;
   live: boolean;
   lifecycle: AgentNodeStatus | TerminalNodeStatus;
+  runtimeBackend: RuntimeHostBackendKind;
+  runtimeGuarantee: RuntimePersistenceGuarantee;
   resumePhaseActive: boolean;
   shellPath: string;
   cwd: string;
@@ -78,7 +82,11 @@ class RuntimeSupervisorServer {
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
 
-  public constructor(private readonly paths: RuntimeSupervisorPaths) {}
+  public constructor(
+    private readonly paths: RuntimeSupervisorPaths,
+    private readonly runtimeBackend: RuntimeHostBackendKind,
+    private readonly runtimeGuarantee: RuntimePersistenceGuarantee
+  ) {}
 
   public async start(): Promise<void> {
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
@@ -153,7 +161,9 @@ class RuntimeSupervisorServer {
             ok: true,
             result: {
               serverVersion: 1,
-              pid: process.pid
+              pid: process.pid,
+              runtimeBackend: this.runtimeBackend,
+              runtimeGuarantee: this.runtimeGuarantee
             }
           });
           return;
@@ -228,6 +238,8 @@ class RuntimeSupervisorServer {
       kind: params.kind,
       live: true,
       lifecycle,
+      runtimeBackend: this.runtimeBackend,
+      runtimeGuarantee: this.runtimeGuarantee,
       resumePhaseActive: params.kind === 'agent' && params.launchMode === 'resume',
       shellPath: params.launchSpec.file,
       cwd: params.launchSpec.cwd,
@@ -465,6 +477,8 @@ class RuntimeSupervisorServer {
       kind: session.kind,
       live: session.live,
       lifecycle: session.lifecycle,
+      runtimeBackend: session.runtimeBackend,
+      runtimeGuarantee: session.runtimeGuarantee,
       resumePhaseActive: session.resumePhaseActive,
       shellPath: session.shellPath,
       cwd: session.cwd,
@@ -616,6 +630,8 @@ class RuntimeSupervisorServer {
       ...snapshot,
       live: false,
       lifecycle,
+      runtimeBackend: normalizeRuntimeHostBackend(snapshot.runtimeBackend),
+      runtimeGuarantee: normalizeRuntimePersistenceGuarantee(snapshot.runtimeGuarantee),
       resumePhaseActive:
         typeof snapshot.resumePhaseActive === 'boolean'
           ? snapshot.resumePhaseActive
@@ -753,7 +769,7 @@ function ensureSocketDirectoryReady(paths: RuntimeSupervisorPaths): void {
     return;
   }
 
-  const socketDir = paths.runtimeDir ?? path.dirname(paths.socketPath);
+  const socketDir = paths.controlDir ?? paths.runtimeDir ?? path.dirname(paths.socketPath);
   fs.mkdirSync(socketDir, {
     recursive: true,
     mode: shouldRestrictSocketDirectory(paths) ? 0o700 : undefined
@@ -769,7 +785,7 @@ function ensureSocketDirectoryReady(paths: RuntimeSupervisorPaths): void {
 }
 
 function shouldRestrictSocketDirectory(paths: RuntimeSupervisorPaths): boolean {
-  return paths.socketLocation === 'runtime-private';
+  return paths.socketLocation === 'runtime-private' || paths.socketLocation === 'control-dir';
 }
 
 async function main(): Promise<void> {
@@ -778,15 +794,19 @@ async function main(): Promise<void> {
     throw new Error('runtime supervisor 启动失败：缺少 --storage-dir 参数。');
   }
 
-  const resolvedPaths = resolveRuntimeSupervisorPathsFromStorageDir(storageDir);
+  const resolvedPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(storageDir);
   const socketPath = readCliFlag('--socket-path') ?? resolvedPaths.socketPath;
   const runtimeDir = readCliPathFlag('--runtime-dir') ?? resolvedPaths.runtimeDir;
+  const controlDir = readCliPathFlag('--control-dir') ?? resolvedPaths.controlDir;
+  const runtimeBackend = normalizeRuntimeHostBackend(readCliFlag('--runtime-backend'));
+  const runtimeGuarantee = normalizeRuntimePersistenceGuarantee(readCliFlag('--runtime-guarantee'));
   const paths: RuntimeSupervisorPaths = {
     ...resolvedPaths,
     socketPath,
-    runtimeDir
+    runtimeDir,
+    controlDir
   };
-  const server = new RuntimeSupervisorServer(paths);
+  const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee);
   await server.start();
 }
 
@@ -803,6 +823,14 @@ function readCliFlag(name: string): string | undefined {
 function readCliPathFlag(name: string): string | undefined {
   const value = readCliFlag(name);
   return value ? path.resolve(value) : undefined;
+}
+
+function normalizeRuntimeHostBackend(value: unknown): RuntimeHostBackendKind {
+  return value === 'systemd-user' ? 'systemd-user' : 'legacy-detached';
+}
+
+function normalizeRuntimePersistenceGuarantee(value: unknown): RuntimePersistenceGuarantee {
+  return value === 'strong' ? 'strong' : 'best-effort';
 }
 
 void main().catch((error) => {

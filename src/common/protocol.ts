@@ -16,6 +16,8 @@ export type AgentProviderKind = 'codex' | 'claude';
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
+export type RuntimeHostBackendKind = 'systemd-user' | 'legacy-detached';
+export type RuntimePersistenceGuarantee = 'strong' | 'best-effort';
 export type TerminalNodeStatus =
   | 'idle'
   | 'launching'
@@ -45,6 +47,8 @@ export interface ExecutionSessionMetadata {
   cwd: string;
   persistenceMode: RuntimePersistenceMode;
   attachmentState: RuntimeAttachmentState;
+  runtimeBackend?: RuntimeHostBackendKind;
+  runtimeGuarantee?: RuntimePersistenceGuarantee;
   liveSession: boolean;
   runtimeSessionId?: string;
   lastRuntimeError?: string;

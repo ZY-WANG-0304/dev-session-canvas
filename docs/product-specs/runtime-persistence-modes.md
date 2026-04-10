@@ -10,6 +10,7 @@
 - 用户关闭整个 VSCode 后，希望在某些场景下 `Agent` 仍能继续工作，等下次打开 VSCode 时再看到结果。
 - 当系统做不到“真实进程继续存在”时，用户仍希望重开后能看到尽量完整的关闭前状态，而不是只剩一个空白节点。
 - 用户需要一个明确的配置开关，理解当前拿到的是“真实进程持久化”还是“快照/上下文恢复”。
+- 用户还需要知道当前 live runtime 到底由哪条 backend 托管，以及这是 `strong` 还是 `best-effort` 保证。
 
 ## 2. 目标用户
 
@@ -21,7 +22,7 @@
 2. 用户创建 `Agent` 或 `Terminal` 节点，并在节点内直接开始交互。
 3. 当用户关闭画布、切换到其他 surface、隐藏 Webview 或 reload Webview 时，会话不应因此被无声终止。
 4. 当用户关闭整个 VSCode 时：
-   - 若运行时持久化已开启，真实 `Agent` / `Terminal` 进程继续存在。
+   - 若运行时持久化已开启且当前 backend 提供 live runtime，真实 `Agent` / `Terminal` 进程继续存在。
    - 若运行时持久化已关闭，系统不承诺真实进程继续存在；退出前会先刷盘最后状态与恢复信息，并在合理超时内结束现有 `Agent` / `Terminal` 进程。
 5. 用户重新打开 VSCode 后：
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
@@ -34,7 +35,9 @@
 - 两档正式语义：
   - `snapshot-only`：只恢复快照与上下文，不承诺真实进程跨 VSCode 生命周期存活
   - `live-runtime`：真实进程可在 VSCode 退出后继续存在，并在下次打开时重新附着
-- `live-runtime` 第一版的正式设计范围包含本地 workspace 与 Remote SSH workspace
+- `live-runtime` 不是单一路径，而是 “模式 + backend + guarantee” 三层语义
+- Linux 本地与 Remote SSH 在能力满足时优先使用 `systemd-user` backend；当前 detached supervisor 保留为 `legacy-detached` fallback
+- 第一版的正式设计范围包含本地 workspace 与 Remote SSH workspace，但不同平台/环境下允许因为 backend 能力不足而降级到 `best-effort`
 - 第一版默认追求尽量完整实现；只有明确记录的 blocker、外部依赖边界或暂不支持的平台，才允许把能力留到后续版本
 - `Agent` / `Terminal` 在关闭画布、切换 surface、Webview reload 时的 detach / reattach 语义
 - 关闭 VSCode 后的重开语义
@@ -57,6 +60,13 @@
 - 当前模式对应的关闭 VSCode 语义
 - 该模式是否要求真实进程在编辑器退出后继续存在
 
+### Runtime Host Backend
+
+- `systemd-user`：Linux 本地与 Remote SSH 的优先主路径，由用户服务层托管 supervisor
+- `legacy-detached`：当前 detached launcher 路线，作为 fallback 保留
+- `strong` / `best-effort` 保证等级
+- 当前节点实际使用的 backend 与 guarantee
+
 ### 会话对象
 
 - 稳定会话 ID
@@ -65,6 +75,7 @@
 - 启动命令、cwd、尺寸与必要环境信息
 - 当前生命周期状态
 - 当前是 `重连中`、已附着 live，还是 `历史恢复`
+- 当前 runtime backend 与 guarantee
 
 ### 日志与恢复上下文
 
@@ -76,12 +87,13 @@
 ## 7. 验收标准
 
 - 在 `snapshot-only` 与 `live-runtime` 两档模式下，关闭画布、切换 surface 或 Webview reload 都不会无声终止当前 `Agent` / `Terminal` 会话。
-- 当运行时持久化开关开启时，关闭 VSCode 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
-- 在 Remote SSH workspace 中，当运行时持久化开关开启时，关闭本地 VSCode 后远端真实 `Agent` / `Terminal` 进程仍可继续存在；重新连接后系统会优先重新附着到远端 live 会话。
+- 当系统选中 `systemd-user` backend 时，关闭 VSCode 或断开 Remote SSH 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
+- 在 Linux 本地或 Remote SSH workspace 中，如果 `systemd-user` backend 不可用，系统会自动降级到 `legacy-detached`，并把 guarantee 标成 `best-effort`，而不是继续把它伪装成强保证。
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
 - 当系统无法重新附着到 live runtime 时，无论原因是会话自然结束、监督器不可达还是 session 不存在，节点都会明确进入 `历史恢复`，而不是继续沿用旧的活动态标签。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
+- 当节点处于 `live-runtime` 时，用户能直接看到当前 runtime backend 与 guarantee，不需要靠环境猜测自己拿到的是 `systemd-user` 还是 `legacy-detached`。
 - 当 `Agent` 在 `live-runtime` 模式下于 VSCode 关闭期间继续执行时，用户下次打开 VSCode 后能看到关闭期间新增的执行结果。
 - 当用户关闭运行时持久化开关时，下一次关闭 VSCode 后，不再对真实 `Agent` / `Terminal` 进程跨编辑器生命周期存活做承诺。
 - 对没有被明确记为 blocker 或外部平台边界的组合，第一版应尽量做到完整实现；当前已确认的本地 workspace / Remote SSH 与 `Agent` / `Terminal` 四种组合都不应被故意拆成“先做一半、另一半留后面”。

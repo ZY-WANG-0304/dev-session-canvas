@@ -1,7 +1,7 @@
 ---
 title: 运行时持久化与会话监督器设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 协作对象域
@@ -17,6 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
+  - docs/exec-plans/active/runtime-host-backend-systemd-user.md
 updated_at: 2026-04-10
 ---
 
@@ -52,7 +53,7 @@ updated_at: 2026-04-10
 
 ## 4. 非目标
 
-- 不在本轮实现监督器进程、IPC、日志回放或新的状态字段。
+- 不把监督器扩展成第二个前端或通用进程平台；本轮只聚焦 runtime host backend、会话登记、重连、必要状态字段与最小可用日志持久化。
 - 不在本轮承诺 Dev Container / Codespaces 已经支持 `live-runtime`。
 - 不在本轮把 provider 自身 resume 能力误写成对“真实进程仍然存在”的统一替代。
 - 不在本轮把终端完整 scrollback 或每一帧 UI 临时态都定义成必须长期持久化的数据。
@@ -112,6 +113,15 @@ updated_at: 2026-04-10
   - 下次打开时优先重新附着到原会话。
   - 如果会话在 VSCode 关闭期间自然结束，则恢复的是该会话的最终结果，而不是新的伪会话。
 
+同时，`live-runtime` 现在正式拆成两条 backend 路线与两档 guarantee：
+
+- backend
+  - `systemd-user`：Linux 本地与 `Remote SSH` 的正式主路径。它把 supervisor 提升到用户服务层，不再依赖 extension host 自己长期持有 detached child。
+  - `legacy-detached`：当前 detached launcher 路线。它继续保留为 fallback，但不再被当成 Linux / `Remote SSH` 的正式强保证主路径。
+- guarantee
+  - `strong`：由平台级服务管理器持有 runtime，目标是关闭整个 VSCode 或断开 `Remote SSH` 后仍能稳定重连。
+  - `best-effort`：仍然尝试保活与重连，但不再把这条路径写成强承诺。
+
 配置层当前建议使用布尔开关 `devSessionCanvas.runtimePersistence.enabled`。它控制的是“是否要求真实进程跨 VSCode 生命周期继续存在”，而不是“是否做任何持久化”。无论开关开或关，对象图与关键上下文都仍然需要持久化。
 
 #### 第一版完成度目标
@@ -134,10 +144,11 @@ updated_at: 2026-04-10
 2. 会话注册表与持久化日志
    - 不再塞进 `workspaceState`。
    - 应放到独立的本地持久化目录，由监督器和扩展共同理解。
-   - 这里需要显式区分两类目录：`storageDir` 与 `runtimeDir`。
+   - 这里需要显式区分三类落点：`storageDir`、`controlDir` 与 legacy 的 `runtimeDir`。
    - registry、会话快照与恢复元数据继续放 extension `storageDir`。
-   - 本地 IPC socket 放 `runtimeDir`，不复用 storage 长路径；Linux / Remote SSH 优先 `XDG_RUNTIME_DIR/<extension-id>/`，否则退到 temp 下的私有子目录。
-   - 只有当 storage 路径本身足够短时，才允许把 `runtimeDir` 与 `storageDir` 复用为同一目录。
+   - 正式主路径中的 IPC control socket 不再默认依赖 `XDG_RUNTIME_DIR`。对 Linux / `Remote SSH`，应由 `systemd-user` backend 管理 control endpoint。
+   - `XDG_RUNTIME_DIR` 或 temp 下的 runtime socket 现在只属于 `legacy-detached` fallback，不再承担 Linux / `Remote SSH` 强保证语义。
+   - 只有 legacy backend 才允许继续复用短 storage 路径或 runtime-private/temp 路径。
    3. 真实进程所有权
    - 只在 `live-runtime` 模式下成立。
    - 必须由独立会话监督器持有，不能再依赖 extension host 直接拥有。
@@ -156,12 +167,19 @@ updated_at: 2026-04-10
 
 监督器不是画布，也不是新的工作面。它只是一个进程所有权和重连能力的承载层。
 
-在实现层，再补一条约束：如果运行环境是 `Extension Development Host`，不要由 extension host 直接把真正的 supervisor 作为 direct child 长期持有。更稳妥的启动方式是“短命 launcher 拉起真正 supervisor”，让真正 supervisor 在启动后尽快脱离调试宿主的直接进程树。这个 launcher 只是 bootstrap，不持有会话状态，也不参与后续 IPC。
+在实现层，再补两条 backend 约束：
+
+- `systemd-user`
+  - 用于 Linux 本地与 `Remote SSH` 的正式主路径。
+  - extension host 不再直接长期持有 supervisor，而是写入并启动用户级 service，由用户服务层继续持有 runtime。
+- `legacy-detached`
+  - 保留当前“短命 launcher 拉起 detached supervisor”的路径。
+  - 只作为 fallback，不再被记录为 Linux / `Remote SSH` 已验证的正式主路径。
 
 当前设计范围明确包含两类部署位置：
 
-- 本地 workspace：监督器运行在本机，与本地 extension host 协同。
-- Remote SSH workspace：监督器运行在远端 workspace 所在主机，与远端 extension host 协同；本地 VSCode 只是前端，关闭本地窗口不应直接结束远端 live runtime。
+- 本地 workspace：Linux 本地应优先走 `systemd-user`。macOS 本地的正式强保证 backend 仍待 `launchd` 路线收口；在此之前只保留 fallback。
+- Remote SSH workspace：监督器运行在远端 workspace 所在主机，与远端 extension host 协同；正式主路径应优先走远端 `systemd-user`，而不是仅靠 detached child。
 
 当前不把 Dev Container / Codespaces 写成已承诺范围，因为这两类环境还额外涉及容器生命周期、端口转发与宿主管理边界。
 
@@ -178,6 +196,13 @@ updated_at: 2026-04-10
 - 最后附着时间与最后状态
 
 其中 `sessionId` 不应再依赖 extension host 的一次性内存。只要产品要承诺重新附着，`sessionId` 就必须是可持久化、可查询的长期身份。
+
+除了 `sessionId`，当前正式结论还要求会话元数据至少保留：
+
+- `runtimeBackend`
+- `runtimeGuarantee`
+
+否则宿主与 UI 都无法区分“当前会话来自 `systemd-user` 正式主路径”，还是“来自 `legacy-detached` fallback”。
 
 ### 6.5 关闭与重开语义
 
@@ -203,6 +228,7 @@ updated_at: 2026-04-10
   - 若节点带有可附着的持久化会话身份，UI 先进入 `重连中`，而不是直接复用关闭前的 `运行中` / `等待输入` 标签。
   - 若监督器报告会话仍活着并完成附着，状态切回真实生命周期状态。
   - 若监督器确认不存在该会话、会话已在离线期间自然结束、监督器不可达超时，或重新附着失败，则节点进入 `历史恢复`，不再伪装成当前 live runtime。
+  - 同时要让用户能看见当前 backend 与 guarantee，避免把 `legacy-detached` fallback 误读成正式强保证路径。
 
 ### 6.6 UI 与状态机含义
 
@@ -230,13 +256,13 @@ updated_at: 2026-04-10
   原因：这是满足真实 runtime persistence 的必要条件，但代价是要新增 IPC、日志、会话发现与清理逻辑。
 
 - 风险：后台持久进程会引入孤儿进程、资源泄漏和版本兼容问题。
-  当前缓解：把监督器职责限制在最小范围，并明确要求会话注册表、超时清理和版本握手机制。
+  当前缓解：把监督器职责限制在最小范围，并明确要求会话注册表、超时清理、版本握手机制，以及 backend 级别的 guarantee 区分。
 
 - 风险：用户容易把“恢复快照”误解成“还是原来的 live 进程”。
   当前缓解：正式把产品语义拆成两档，并要求宿主状态能表达附着态差异。
 
 - 风险：Remote 场景里，“VSCode 关闭”与“远端扩展宿主是否还活着”并不总是同一件事。
-  当前缓解：当前设计已把 Remote SSH 纳入 `live-runtime` 目标范围，并明确要求监督器部署在远端；现在已经通过同机 self-ssh 的 `Remote-SSH + Extension Development Host + real-reopen` smoke 跑通远端真实重连链路。Dev Container / Codespaces 继续留在后续范围。
+  当前缓解：当前设计仍把 Remote SSH 纳入 `live-runtime` 目标范围，但 detached launcher 已不再被视作最终充分条件；正式主路径改为远端 `systemd-user` backend，原 detached 路线只保留为 fallback。Dev Container / Codespaces 继续留在后续范围。
 
 - 风险：`Run and Debug` / `Extension Development Host` 不是安装版扩展的完全等价宿主；调试宿主可能回收 direct child 进程，导致 live-runtime 在 debug-only 场景下退化成历史恢复。
   当前缓解：监督器启动路径改为 launcher 中转，避免真正 supervisor 长期停留在调试宿主的直接进程树中；当前既有 Remote SSH + F5 的人工验证，也有 Remote-SSH Extension Development Host 的自动化 smoke 覆盖。剩余人工验证只针对调试配置入口本身，而不是产品 runtime persistence 主路径。
@@ -256,20 +282,16 @@ updated_at: 2026-04-10
 
 ## 9. 当前验证状态
 
-- 当前已经有 supervisor 实现代码，以及本地自动化验证：
+- 当前已经有 detached supervisor 实现代码，以及本地自动化验证：
   - `npm run typecheck`
   - `npm run build`
   - `npm run test:smoke`
   - `npm run test:webview`
 - 已经被本地验证覆盖的行为包括：
-  - live-runtime 的 `Agent` / `Terminal` 启动与重新附着
-  - 关闭期间新增输出在重连后可见
-  - 真实关闭整个 VSCode 窗口再重新打开后，节点可从持久化快照恢复，并重新附着到原 live runtime session
+  - detached supervisor 路径下的 `Agent` / `Terminal` 启动与重新附着
+  - 关闭期间新增输出在短链路重连后可见
   - `重连中` / `历史恢复` UI 语义
   - 关闭运行时持久化开关后，不再自动重连既有 live-runtime
-  - Remote-SSH Extension Development Host 下的 `Agent` / `Terminal` real-reopen 两阶段自动化重连
-- 已完成人工验证的行为包括：
-  - 直接安装扩展后，Remote SSH 下的 live-runtime 重连链路可正常工作。
-  - `Run Dev Session Canvas` 调试配置在 Remote SSH + F5 下经过重开验证后，`Agent` / `Terminal` 不再错误落入 `历史恢复`，而是重新附着到原 live runtime。
-- 当前剩余人工验收聚焦于调试配置入口本身，例如本机 debug profile 是否准备正确；这不再构成 runtime persistence 设计结论的自动化缺口。
-- 因此本设计的 `validation_status` 维持 `已验证`；Remote-SSH runtime persistence 的自动化缺口已收口。
+  - Remote-SSH Extension Development Host 下基于 detached 路线的 real-reopen 自动化
+- 新的确认是：上述证据足以证明当前 detached 路线具备 `best-effort` 能力，但不足以继续把 Linux / `Remote SSH` 的正式强保证主路径写成“已验证”。用户已经在 `Remote SSH` 长断开场景下观察到节点仍可恢复、但 live session 会退化成历史结果的反例。
+- 因此本设计的 `validation_status` 回退到 `验证中`。后续只有在 `systemd-user` 主路径接入并完成验证后，Linux / `Remote SSH` 的正式强保证结论才可重新标为 `已验证`。

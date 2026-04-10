@@ -486,6 +486,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
   const displayStatus = data.status;
+  const runtimeBadge = formatRuntimeBackendBadge(agentMetadata);
   const resumeRequested =
     (lifecycle === 'resume-ready' ||
       lifecycle === 'resume-failed' ||
@@ -704,6 +705,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
+          {runtimeBadge ? (
+            <span className={`status-pill ${runtimeGuaranteeToneClass(agentMetadata.runtimeGuarantee)}`}>
+              {runtimeBadge}
+            </span>
+          ) : null}
           <ActionButton
             label={
               agentMetadata.liveSession
@@ -796,6 +802,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
+  const runtimeBadge = formatRuntimeBackendBadge(terminalMetadata);
   const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -976,6 +983,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
+          {runtimeBadge ? (
+            <span className={`status-pill ${runtimeGuaranteeToneClass(terminalMetadata.runtimeGuarantee)}`}>
+              {runtimeBadge}
+            </span>
+          ) : null}
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
@@ -1570,6 +1582,34 @@ function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
+function formatRuntimeBackendBadge(
+  metadata: NonNullable<CanvasNodeMetadata['agent']> | NonNullable<CanvasNodeMetadata['terminal']>
+): string | undefined {
+  if (
+    metadata.persistenceMode !== 'live-runtime' &&
+    !metadata.runtimeSessionId &&
+    !metadata.runtimeBackend
+  ) {
+    return undefined;
+  }
+
+  const backend =
+    metadata.runtimeBackend === 'systemd-user'
+      ? 'systemd-user'
+      : metadata.runtimeBackend === 'legacy-detached'
+        ? 'detached'
+        : 'runtime';
+  const guarantee =
+    metadata.runtimeGuarantee === 'strong'
+      ? '强保证'
+      : metadata.runtimeGuarantee === 'best-effort'
+        ? 'best-effort'
+        : metadata.runtimeBackend === 'systemd-user'
+          ? '强保证'
+          : 'best-effort';
+  return `${backend} / ${guarantee}`;
+}
+
 function humanizeStatus(status: string): string {
   switch (status) {
     case 'idle':
@@ -1613,6 +1653,10 @@ function humanizeStatus(status: string): string {
     default:
       return status;
   }
+}
+
+function runtimeGuaranteeToneClass(guarantee: string | undefined): string {
+  return guarantee === 'strong' ? 'tone-success' : 'tone-warning';
 }
 
 function statusToneClass(status: string): string {

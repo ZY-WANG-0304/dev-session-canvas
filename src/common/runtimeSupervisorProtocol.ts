@@ -3,6 +3,8 @@ import type {
   AgentResumeStrategy,
   ExecutionNodeKind,
   PendingExecutionLaunch,
+  RuntimeHostBackendKind,
+  RuntimePersistenceGuarantee,
   TerminalNodeStatus,
   AgentNodeStatus
 } from './protocol';
@@ -10,15 +12,20 @@ import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge
 
 export interface RuntimeSupervisorPaths {
   storageDir: string;
+  controlDir?: string;
   runtimeDir?: string;
   socketPath: string;
   registryPath: string;
-  socketLocation: 'storage' | 'runtime-private' | 'runtime-fallback' | 'named-pipe';
+  socketLocation: 'storage' | 'runtime-private' | 'runtime-fallback' | 'named-pipe' | 'control-dir';
+  unitName?: string;
+  unitFilePath?: string;
 }
 
 export interface RuntimeSupervisorHelloResult {
   serverVersion: 1;
   pid: number;
+  runtimeBackend: RuntimeHostBackendKind;
+  runtimeGuarantee: RuntimePersistenceGuarantee;
 }
 
 export interface RuntimeSupervisorSessionSnapshot {
@@ -26,6 +33,8 @@ export interface RuntimeSupervisorSessionSnapshot {
   kind: ExecutionNodeKind;
   live: boolean;
   lifecycle: AgentNodeStatus | TerminalNodeStatus;
+  runtimeBackend: RuntimeHostBackendKind;
+  runtimeGuarantee: RuntimePersistenceGuarantee;
   resumePhaseActive?: boolean;
   shellPath: string;
   cwd: string;

@@ -21,7 +21,10 @@ try {
   });
 
   const require = createRequire(import.meta.url);
-  const { resolveRuntimeSupervisorPathsFromStorageDir } = require(outfile);
+  const {
+    resolveRuntimeSupervisorPathsFromStorageDir,
+    resolveSystemdUserRuntimeSupervisorPathsFromStorageDir
+  } = require(outfile);
 
   const shortStorageDir = '/tmp/dev-session-canvas/runtime-supervisor';
   const shortPaths = resolveRuntimeSupervisorPathsFromStorageDir(shortStorageDir, {
@@ -90,6 +93,59 @@ try {
   assert.equal(windowsPaths.runtimeDir, undefined);
   assert.equal(windowsPaths.socketLocation, 'named-pipe');
   assert.equal(windowsPaths.socketPath, `\\\\.\\pipe\\dev-session-canvas-${digest}`);
+
+  const systemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(longStorageDir, {
+    platform: 'linux',
+    env: {},
+    homeDir: '/home/users/example'
+  });
+  assert.equal(systemdPaths.storageDir, longStorageDir);
+  assert.equal(systemdPaths.runtimeDir, undefined);
+  assert.equal(systemdPaths.controlDir, path.join('/home/users/example', '.local', 'state', 'dsc', 'rh', digest));
+  assert.equal(systemdPaths.socketLocation, 'control-dir');
+  assert.equal(systemdPaths.socketPath, path.join(systemdPaths.controlDir, 's.sock'));
+  assert.equal(
+    systemdPaths.unitFilePath,
+    path.join(
+      '/home/users/example',
+      '.config',
+      'systemd',
+      'user',
+      `dev-session-canvas-runtime-supervisor-${digest}.service`
+    )
+  );
+  assert.equal(systemdPaths.unitName, `dev-session-canvas-runtime-supervisor-${digest}.service`);
+  assert.ok(Buffer.byteLength(systemdPaths.socketPath, 'utf8') <= 104);
+
+  const xdgSystemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(longStorageDir, {
+    platform: 'linux',
+    env: {
+      XDG_CONFIG_HOME: '/home/users/example/.config-alt',
+      XDG_STATE_HOME: '/home/users/example/.state-alt'
+    },
+    homeDir: '/home/users/example'
+  });
+  assert.equal(xdgSystemdPaths.controlDir, path.join('/home/users/example', '.state-alt', 'dsc', 'rh', digest));
+  assert.equal(
+    xdgSystemdPaths.unitFilePath,
+    path.join(
+      '/home/users/example',
+      '.config-alt',
+      'systemd',
+      'user',
+      `dev-session-canvas-runtime-supervisor-${digest}.service`
+    )
+  );
+
+  const fallbackHome = '/home/' + 'x'.repeat(60);
+  const fallbackSystemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(longStorageDir, {
+    platform: 'linux',
+    env: {},
+    homeDir: fallbackHome
+  });
+  assert.equal(fallbackSystemdPaths.socketLocation, 'control-dir');
+  assert.ok(Buffer.byteLength(fallbackSystemdPaths.socketPath, 'utf8') <= 104);
+  assert.ok(fallbackSystemdPaths.socketPath.endsWith('.sock'));
 
   console.log('runtimeSupervisorPaths tests passed');
 } finally {
