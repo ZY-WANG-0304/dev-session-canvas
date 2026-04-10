@@ -16,6 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
+  - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
 updated_at: 2026-04-10
 ---
 
@@ -235,10 +236,10 @@ updated_at: 2026-04-10
   当前缓解：正式把产品语义拆成两档，并要求宿主状态能表达附着态差异。
 
 - 风险：Remote 场景里，“VSCode 关闭”与“远端扩展宿主是否还活着”并不总是同一件事。
-  当前缓解：当前设计已把 Remote SSH 纳入 `live-runtime` 目标范围，并明确要求监督器部署在远端；但验证状态仍保持未验证，直到远端真实重连链路被跑通。Dev Container / Codespaces 继续留在后续范围。
+  当前缓解：当前设计已把 Remote SSH 纳入 `live-runtime` 目标范围，并明确要求监督器部署在远端；现在已经通过同机 self-ssh 的 `Remote-SSH + Extension Development Host + real-reopen` smoke 跑通远端真实重连链路。Dev Container / Codespaces 继续留在后续范围。
 
 - 风险：`Run and Debug` / `Extension Development Host` 不是安装版扩展的完全等价宿主；调试宿主可能回收 direct child 进程，导致 live-runtime 在 debug-only 场景下退化成历史恢复。
-  当前缓解：监督器启动路径改为 launcher 中转，避免真正 supervisor 长期停留在调试宿主的直接进程树中；当前已在 Remote SSH + F5 场景完成人工验证，剩余缺口只是不具备自动化回归。
+  当前缓解：监督器启动路径改为 launcher 中转，避免真正 supervisor 长期停留在调试宿主的直接进程树中；当前既有 Remote SSH + F5 的人工验证，也有 Remote-SSH Extension Development Host 的自动化 smoke 覆盖。剩余人工验证只针对调试配置入口本身，而不是产品 runtime persistence 主路径。
 
 ## 8. 验证方法
 
@@ -266,9 +267,9 @@ updated_at: 2026-04-10
   - 真实关闭整个 VSCode 窗口再重新打开后，节点可从持久化快照恢复，并重新附着到原 live runtime session
   - `重连中` / `历史恢复` UI 语义
   - 关闭运行时持久化开关后，不再自动重连既有 live-runtime
+  - Remote-SSH Extension Development Host 下的 `Agent` / `Terminal` real-reopen 两阶段自动化重连
 - 已完成人工验证的行为包括：
   - 直接安装扩展后，Remote SSH 下的 live-runtime 重连链路可正常工作。
   - `Run Dev Session Canvas` 调试配置在 Remote SSH + F5 下经过重开验证后，`Agent` / `Terminal` 不再错误落入 `历史恢复`，而是重新附着到原 live runtime。
-- 当前剩余缺口不是产品能力验证，而是自动化覆盖面：
-  - Remote SSH + Run and Debug 的真实重连链路还没有自动化回归。
-- 因此本设计的 `validation_status` 现阶段推进到 `已验证`；自动化缺口单独登记为技术债，不再阻塞设计结论。
+- 当前剩余人工验收聚焦于调试配置入口本身，例如本机 debug profile 是否准备正确；这不再构成 runtime persistence 设计结论的自动化缺口。
+- 因此本设计的 `validation_status` 维持 `已验证`；Remote-SSH runtime persistence 的自动化缺口已收口。

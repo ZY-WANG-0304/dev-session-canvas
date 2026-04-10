@@ -55,8 +55,8 @@
 - 观察：在“直接安装扩展”链路下，detached supervisor 可以跨真实关窗重开存活；但在 `Extension Development Host` 链路下，Run and Debug 会把 extension host 直接拉起的 supervisor 一并带走，最终只能从 registry 恢复到 `历史恢复`。
   证据：用户在安装版手动验证中已确认真实重连可通过，而 Remote SSH + Development Host 重开后节点统一落入 `history-restored`，并显示“会话监督器未保留原 live runtime，已仅恢复历史结果。”。
 
-- 观察：在 launcher 化之后，Remote SSH + F5 的 `Run Dev Session Canvas` 链路已可稳定重新附着；当前剩余缺口不是功能失效，而是这条调试链路还没有自动化回归。
-  证据：用户已确认“手动验证通过”，并要求只保留单一的持久化调试 configuration。
+- 观察：在 launcher 化之后，Remote SSH + F5 的 `Run Dev Session Canvas` 链路已可稳定重新附着；当时剩余缺口不是功能失效，而是这条调试链路还没有自动化回归。该缺口随后已由 `docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md` 收口。
+  证据：用户已确认“手动验证通过”，后续又新增 `Remote-SSH + Extension Development Host + real-reopen` 自动化 smoke，并要求只保留单一的持久化调试 configuration。
 
 ## 决策记录
 
@@ -110,7 +110,7 @@
 - 直接安装扩展后的 Remote SSH 真实重连链路。
 - Remote SSH + `Run Dev Session Canvas` 的 F5 重开链路。
 
-本计划当前没有剩余实现 blocker。唯一保留的后续事项是：Remote SSH + Run and Debug 的真实重连链路仍缺自动化回归，已登记到 `docs/exec-plans/tech-debt-tracker.md`。
+本计划当前没有剩余实现 blocker。原先遗留的“Remote SSH + Run and Debug 的真实重连链路自动化回归”已由 `docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md` 收口；当前剩余人工验收仅聚焦调试配置入口本身，而不再是 runtime persistence 主路径缺自动化。
 
 ## 上下文与定向
 

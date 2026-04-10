@@ -13,14 +13,6 @@ const COMMAND_IDS = {
   testResetState: 'devSessionCanvas.__test.resetState'
 };
 
-const artifactDir = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
-const phase = process.env.DEV_SESSION_CANVAS_REAL_REOPEN_PHASE || 'verify';
-const stateFile =
-  process.env.DEV_SESSION_CANVAS_REAL_REOPEN_STATE_FILE ||
-  (artifactDir
-    ? path.join(artifactDir, 'real-reopen-state.json')
-    : path.join(process.cwd(), '.debug', 'real-reopen-state.json'));
-
 const OFFLINE_SLEEP_SECONDS = 12;
 const AGENT_REOPEN_OUTPUT = '[fake-agent] REAL_REOPEN_AGENT';
 const AGENT_POST_REOPEN_OUTPUT = '[fake-agent] AFTER_REOPEN_AGENT';
@@ -28,6 +20,9 @@ const AGENT_SETUP_OUTPUT = `[fake-agent] sleeping ${OFFLINE_SLEEP_SECONDS}s`;
 const TERMINAL_SETUP_OUTPUT = 'REAL_REOPEN_TERMINAL_SLEEPING';
 const TERMINAL_REOPEN_OUTPUT = 'REAL_REOPEN_TERMINAL';
 const TERMINAL_POST_REOPEN_OUTPUT = 'AFTER_REOPEN_TERMINAL';
+let artifactDir;
+let phase = 'verify';
+let stateFile;
 
 module.exports = {
   run
@@ -35,6 +30,7 @@ module.exports = {
 
 async function run() {
   try {
+    await resolveRuntimeInputs();
     console.log(`[real-reopen] phase=${phase} start`);
     if (phase === 'setup') {
       await runSetupPhase();
@@ -60,6 +56,7 @@ async function runSetupPhase() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await fs.mkdir(path.dirname(stateFile), { recursive: true });
   await fs.rm(stateFile, { force: true });
+  await configureAgentCommandOverrides();
   await setRuntimePersistenceEnabled(true);
 
   await openCanvasEditor();
@@ -307,6 +304,33 @@ async function setRuntimePersistenceEnabled(enabled) {
     .update('devSessionCanvas.runtimePersistence.enabled', enabled, vscode.ConfigurationTarget.Global);
 }
 
+async function configureAgentCommandOverrides() {
+  const codexCommand = await resolveSmokeCommand('DEV_SESSION_CANVAS_TEST_CODEX_COMMAND', ['fixtures', 'fake-agent-provider']);
+  assert.ok(codexCommand, 'Missing fake agent provider for real reopen smoke.');
+  const claudeCommand =
+    (await resolveSmokeCommand('DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND', ['fixtures', 'missing-agent-provider'])) ||
+    path.join(__dirname, 'fixtures', 'missing-agent-provider');
+
+  const configuration = vscode.workspace.getConfiguration();
+  await configuration.update('devSessionCanvas.agent.codexCommand', codexCommand, vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.agent.claudeCommand', claudeCommand, vscode.ConfigurationTarget.Global);
+}
+
+async function resolveSmokeCommand(envKey, relativePathSegments) {
+  const configuredPath = process.env[envKey]?.trim();
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  const fallbackPath = path.join(__dirname, ...relativePathSegments);
+  try {
+    await fs.access(fallbackPath);
+    return fallbackPath;
+  } catch {
+    return undefined;
+  }
+}
+
 function findNodeByKind(snapshot, kind) {
   const node = snapshot.state.nodes.find((currentNode) => currentNode.kind === kind);
   assert.ok(node, `Missing ${kind} node in snapshot.`);
@@ -349,4 +373,30 @@ function formatError(error) {
   }
 
   return String(error);
+}
+
+async function resolveRuntimeInputs() {
+  const workspaceRoot =
+    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const controlFilePath =
+    process.env.DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE ||
+    path.join(workspaceRoot, '.debug', 'vscode-smoke', 'real-reopen-control.json');
+  const defaultArtifactDir =
+    process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR || path.join(workspaceRoot, '.debug', 'vscode-smoke', 'artifacts');
+  const defaultStateFile =
+    process.env.DEV_SESSION_CANVAS_REAL_REOPEN_STATE_FILE ||
+    path.join(defaultArtifactDir, 'real-reopen-state.json');
+
+  let controlPayload = null;
+  try {
+    controlPayload = JSON.parse(await fs.readFile(controlFilePath, 'utf8'));
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  artifactDir = controlPayload?.artifactDir || defaultArtifactDir;
+  phase = controlPayload?.phase || process.env.DEV_SESSION_CANVAS_REAL_REOPEN_PHASE || 'verify';
+  stateFile = controlPayload?.stateFile || defaultStateFile;
 }
