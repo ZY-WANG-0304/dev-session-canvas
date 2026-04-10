@@ -26,6 +26,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   kind: ExecutionNodeKind;
   live: boolean;
   lifecycle: AgentNodeStatus | TerminalNodeStatus;
+  resumePhaseActive?: boolean;
   shellPath: string;
   cwd: string;
   cols: number;

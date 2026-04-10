@@ -48,6 +48,7 @@ interface SupervisorSession {
   kind: ExecutionNodeKind;
   live: boolean;
   lifecycle: AgentNodeStatus | TerminalNodeStatus;
+  resumePhaseActive: boolean;
   shellPath: string;
   cwd: string;
   cols: number;
@@ -227,6 +228,7 @@ class RuntimeSupervisorServer {
       kind: params.kind,
       live: true,
       lifecycle,
+      resumePhaseActive: params.kind === 'agent' && params.launchMode === 'resume',
       shellPath: params.launchSpec.file,
       cwd: params.launchSpec.cwd,
       cols: params.launchSpec.cols,
@@ -284,6 +286,7 @@ class RuntimeSupervisorServer {
       }
       if (session.lifecycle !== 'starting' && session.lifecycle !== 'resuming') {
         session.lifecycle = 'running';
+        session.resumePhaseActive = false;
         this.emitSessionState(session);
       }
     } else if (session.lifecycle === 'launching') {
@@ -335,6 +338,9 @@ class RuntimeSupervisorServer {
       session.output = appendOutputTail(session.output, chunk);
       if (session.kind === 'agent') {
         if (session.lifecycle === 'starting' || session.lifecycle === 'resuming') {
+          if (session.lifecycle === 'resuming') {
+            session.resumePhaseActive = false;
+          }
           session.lifecycle = 'waiting-input';
           this.emitSessionState(session);
         } else if (session.lifecycle === 'running') {
@@ -383,7 +389,7 @@ class RuntimeSupervisorServer {
       } else if (exitCode === 0) {
         session.lifecycle = 'stopped';
         session.lastExitMessage = `${session.displayLabel} 会话已结束。`;
-      } else if (session.launchMode === 'resume') {
+      } else if (session.resumePhaseActive) {
         session.lifecycle = 'resume-failed';
         session.lastExitMessage = describeAgentResumeFailure(session.displayLabel, exitCode, signal, session.output);
       } else {
@@ -459,6 +465,7 @@ class RuntimeSupervisorServer {
       kind: session.kind,
       live: session.live,
       lifecycle: session.lifecycle,
+      resumePhaseActive: session.resumePhaseActive,
       shellPath: session.shellPath,
       cwd: session.cwd,
       cols: session.cols,
@@ -609,6 +616,12 @@ class RuntimeSupervisorServer {
       ...snapshot,
       live: false,
       lifecycle,
+      resumePhaseActive:
+        typeof snapshot.resumePhaseActive === 'boolean'
+          ? snapshot.resumePhaseActive
+          : snapshot.kind === 'agent' &&
+            snapshot.launchMode === 'resume' &&
+            isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus),
       lastExitMessage,
       stopRequested: false,
       process: undefined,
@@ -710,6 +723,10 @@ function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeSta
   }
 
   return status;
+}
+
+function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
+  return status === 'starting' || status === 'resuming';
 }
 
 function normalizeRecoveredTerminalLifecycle(status: TerminalNodeStatus): TerminalNodeStatus {

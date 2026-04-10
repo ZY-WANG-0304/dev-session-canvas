@@ -82,6 +82,8 @@ interface AgentResumeContext {
   storagePath?: string;
 }
 
+type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
+
 interface ManagedExecutionSessionBase {
   sessionId: string;
   owner: 'local' | 'supervisor';
@@ -96,6 +98,7 @@ interface ManagedExecutionSessionBase {
   displayLabel: string;
   lifecycleStatus: AgentNodeStatus | TerminalNodeStatus;
   launchMode: PendingExecutionLaunch;
+  resumePhaseActive: boolean;
   runtimeSessionId?: string;
   agentProvider?: AgentProviderKind;
   agentResume?: AgentResumeContext;
@@ -215,7 +218,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
         this.recordDiagnosticEvent('workspace/trustGranted');
+        this.state = this.loadReconciledState();
+        this.persistState();
         this.postState('host/stateUpdated');
+        void this.restoreLiveRuntimeSessions();
       })
     );
 
@@ -363,7 +369,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
     await this.prepareForHostBoundary({
-      preserveLiveRuntime: this.isRuntimePersistenceEnabled(),
+      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(),
       allowRuntimeSupervisorRestart: false
     });
 
@@ -409,7 +415,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async prepareForDeactivation(): Promise<void> {
     await this.prepareForHostBoundary({
-      preserveLiveRuntime: this.isRuntimePersistenceEnabled(),
+      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(),
       allowRuntimeSupervisorRestart: false
     });
   }
@@ -817,8 +823,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private loadReconciledState(): CanvasPrototypeState {
+    const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
     return reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
-      allowLiveRuntimeReconnect: this.isRuntimePersistenceEnabled()
+      allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
+      liveRuntimeReconnectBlockReason
     });
   }
 
@@ -866,6 +874,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return getConfigurationValue<boolean>('runtimePersistenceEnabled', false);
   }
 
+  private getLiveRuntimeReconnectBlockReason(): LiveRuntimeReconnectBlockReason | undefined {
+    if (!vscode.workspace.isTrusted) {
+      return 'workspace-untrusted';
+    }
+
+    return this.isRuntimePersistenceEnabled() ? undefined : 'runtime-persistence-disabled';
+  }
+
+  private shouldPreserveLiveRuntimeAcrossHostBoundary(): boolean {
+    return this.getLiveRuntimeReconnectBlockReason() !== 'runtime-persistence-disabled';
+  }
+
   private getRuntimeSupervisorPaths() {
     const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     return resolveRuntimeSupervisorPaths(basePath);
@@ -896,7 +916,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async restoreLiveRuntimeSessions(): Promise<void> {
-    if (!this.isRuntimePersistenceEnabled()) {
+    const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
+    if (liveRuntimeReconnectBlockReason === 'workspace-untrusted') {
+      return;
+    }
+
+    if (liveRuntimeReconnectBlockReason === 'runtime-persistence-disabled') {
       await this.deleteRuntimeSupervisorSessions(this.collectPersistedLiveRuntimeSessionIds(), {
         allowRestart: false
       });
@@ -1074,6 +1099,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       displayLabel: snapshot.displayLabel,
       lifecycleStatus: snapshot.lifecycle,
       launchMode: snapshot.launchMode,
+      resumePhaseActive:
+        snapshot.kind === 'agent'
+          ? typeof snapshot.resumePhaseActive === 'boolean'
+            ? snapshot.resumePhaseActive
+            : snapshot.launchMode === 'resume' &&
+              isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus)
+          : false,
       agentProvider: snapshot.provider,
       agentResume:
         snapshot.kind === 'agent'
@@ -1993,6 +2025,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         displayLabel: cliSpec.label,
         lifecycleStatus,
         launchMode,
+        resumePhaseActive: launchMode === 'resume',
         agentProvider: provider,
         agentResume: resumeContext,
         outputSubscription: undefined,
@@ -2081,6 +2114,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         if (activeSession.lifecycleStatus === 'starting' || activeSession.lifecycleStatus === 'resuming') {
+          if (activeSession.lifecycleStatus === 'resuming') {
+            activeSession.resumePhaseActive = false;
+          }
           activeSession.lifecycleStatus = 'waiting-input';
         } else if (activeSession.lifecycleStatus === 'running') {
           queueAgentWaitingInput();
@@ -2195,7 +2231,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
-        if (session.launchMode === 'resume') {
+        if (session.resumePhaseActive) {
           finalize(
             'resume-failed',
             describeAgentResumeFailure(cliSpec, exitCode, signal, cleanedOutput),
@@ -2524,6 +2560,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         displayLabel: shellPath,
         lifecycleStatus: 'launching',
         launchMode: 'start',
+        resumePhaseActive: false,
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -2752,7 +2789,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       !this.getExecutionSessions(kind).has(nodeId) &&
       metadata.persistenceMode === 'live-runtime' &&
       metadata.runtimeSessionId &&
-      metadata.attachmentState === 'reattaching'
+      metadata.attachmentState === 'reattaching' &&
+      this.getLiveRuntimeReconnectBlockReason() === undefined
     ) {
       void this.getRuntimeSupervisorClient()
         .then((client) =>
@@ -2815,6 +2853,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       if (session.lifecycleStatus !== 'starting' && session.lifecycleStatus !== 'resuming') {
         session.lifecycleStatus = 'running';
+        session.resumePhaseActive = false;
         this.queueExecutionStateSync('agent', nodeId);
       }
     } else if (session.lifecycleStatus === 'launching') {
@@ -4078,6 +4117,7 @@ function normalizeMetadata(
 
 interface ReconcileRuntimeOptions {
   allowLiveRuntimeReconnect: boolean;
+  liveRuntimeReconnectBlockReason?: LiveRuntimeReconnectBlockReason;
 }
 
 function reconcileRuntimeNodes(
@@ -4164,15 +4204,20 @@ function reconcileAgentNodesInArray(
       (metadata.liveSession || metadata.attachmentState === 'reattaching')
     ) {
       if (!options.allowLiveRuntimeReconnect) {
+        const liveRuntimeReconnectBlockReason =
+          options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
         return {
           ...node,
           status: 'history-restored',
-          summary: '运行时持久化已关闭，原 Agent live runtime 已恢复为历史结果。',
+          summary: describeBlockedAgentLiveRuntimeSummary(liveRuntimeReconnectBlockReason),
           metadata: {
             ...node.metadata,
             agent: {
               ...metadata,
-              attachmentState: 'history-restored',
+              attachmentState:
+                liveRuntimeReconnectBlockReason === 'workspace-untrusted'
+                  ? 'reattaching'
+                  : 'history-restored',
               liveSession: false,
               pendingLaunch: undefined
             }
@@ -4308,14 +4353,19 @@ function reconcileTerminalNodesInArray(
       (metadata.liveSession || metadata.attachmentState === 'reattaching')
     ) {
       if (!options.allowLiveRuntimeReconnect) {
+        const liveRuntimeReconnectBlockReason =
+          options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
         return {
           ...node,
           status: 'history-restored',
-          summary: '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。',
+          summary: describeBlockedTerminalLiveRuntimeSummary(liveRuntimeReconnectBlockReason),
           metadata: {
             terminal: {
               ...metadata,
-              attachmentState: 'history-restored',
+              attachmentState:
+                liveRuntimeReconnectBlockReason === 'workspace-untrusted'
+                  ? 'reattaching'
+                  : 'history-restored',
               liveSession: false,
               pendingLaunch: undefined
             }
@@ -4878,6 +4928,26 @@ function describeAgentResumeFailure(
   }
 
   return `恢复 ${spec.label} 失败。${suffix}`.trim();
+}
+
+function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
+  if (blockReason === 'workspace-untrusted') {
+    return '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。';
+  }
+
+  return '运行时持久化已关闭，原 Agent live runtime 已恢复为历史结果。';
+}
+
+function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
+  if (blockReason === 'workspace-untrusted') {
+    return '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。';
+  }
+
+  return '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。';
+}
+
+function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
+  return status === 'starting' || status === 'resuming';
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {

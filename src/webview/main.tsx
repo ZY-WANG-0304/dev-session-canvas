@@ -486,13 +486,12 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
   const displayStatus = data.status;
-  const attachmentState = agentMetadata.attachmentState;
   const resumeRequested =
     (lifecycle === 'resume-ready' ||
       lifecycle === 'resume-failed' ||
       agentMetadata.pendingLaunch === 'resume') &&
     provider === agentMetadata.provider;
-  const reattaching = attachmentState === 'reattaching' || displayStatus === 'reattaching';
+  const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -797,8 +796,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
-  const attachmentState = terminalMetadata.attachmentState;
-  const reattaching = attachmentState === 'reattaching' || displayStatus === 'reattaching';
+  const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
