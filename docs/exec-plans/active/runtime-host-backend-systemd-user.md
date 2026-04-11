@@ -19,6 +19,7 @@
 - [x] 2026-04-10 23:25+08:00 保留 legacy detached backend 作为 fallback，并把它降级为 `best-effort`。
 - [x] 2026-04-10 23:25+08:00 更新宿主状态、节点 metadata 与 Webview 展示，使用户能看见当前 backend 和保证等级。
 - [x] 2026-04-10 23:25+08:00 补充路径/渲染测试并运行 `npm run typecheck`、`npm run build`、运行时路径测试。
+- [x] 2026-04-11 00:40+08:00 补上 `fake-systemd` 本地 reopen smoke 场景与 backend / guarantee 断言，并把真实 Remote SSH 长断开 nightly 化记入技术债追踪。
 
 ## 意外与发现
 
@@ -54,6 +55,7 @@
 
 - 真实 Linux / `Remote SSH` 长断开手工验证还没在本地执行；因此设计文档仍保持 `验证中`，没有把 `systemd-user` 路线提前写成“已验证”。
 - macOS 的正式强保证 backend 仍未实现；当前仍停留在 `legacy-detached` fallback，后续需要单独收口 `launchd` 方案。
+- 真实 Remote SSH 长断开自动化仍未接入 PR 级 runner；目前已经把这项需求明确登记到 `docs/exec-plans/tech-debt-tracker.md`，计划放到 nightly / self-hosted。
 
 ## 上下文与定向
 
@@ -150,12 +152,15 @@
     npm run typecheck
     npm run build
     npm run test:runtime-supervisor-paths
+    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-user-real-reopen,systemd-fallback-real-reopen node scripts/run-vscode-smoke.mjs
 
 结果：
 
 - `npm run typecheck` 通过
 - `npm run build` 通过
 - `npm run test:runtime-supervisor-paths` 通过，新增覆盖 `systemd-user` control dir / unit path 与长路径 fallback 解析
+- `real-reopen-tests.cjs` 已补 `runtimeBackend` / `runtimeGuarantee` 断言，`run-vscode-smoke.mjs` 也新增了 `systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 两个 smoke 场景
+- 当前环境里运行新增 smoke 时，仍会在 VS Code 测试宿主启动阶段碰到既有的 `Cannot find module 'vscode'` 问题，因此这两条场景的实际执行结果暂未在本机拿到成功样本
 
 备注：
 

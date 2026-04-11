@@ -16,6 +16,9 @@ import type { RuntimeSupervisorPaths } from '../common/runtimeSupervisorProtocol
 
 const execFileAsync = promisify(execFile);
 const SYSTEMD_COMMAND_TIMEOUT_MS = 4000;
+const RUNTIME_HOST_BACKEND_OVERRIDE_ENV = 'DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE';
+const TEST_SYSTEMCTL_SHIM_ENV = 'DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM';
+const TEST_NODE_PATH_ENV = 'DEV_SESSION_CANVAS_TEST_NODE_PATH';
 
 export interface RuntimeHostBackendDescriptor {
   kind: RuntimeHostBackendKind;
@@ -41,6 +44,15 @@ export interface RuntimeHostBackendFactoryOptions {
 export function listPreferredRuntimeHostBackendKinds(
   options: RuntimeHostBackendFactoryOptions
 ): RuntimeHostBackendKind[] {
+  const override = readRuntimeHostBackendOverride();
+  if (override === 'systemd-user') {
+    return ['systemd-user', 'legacy-detached'];
+  }
+
+  if (override === 'legacy-detached') {
+    return ['legacy-detached'];
+  }
+
   if (options.extensionMode !== vscode.ExtensionMode.Test && process.platform === 'linux') {
     return ['systemd-user', 'legacy-detached'];
   }
@@ -150,8 +162,9 @@ async function startSystemdUserSupervisor(
 }
 
 async function runSystemdUserCommand(args: string[]): Promise<void> {
+  const command = resolveSystemctlCommand();
   try {
-    await execFileAsync('systemctl', ['--user', ...args], {
+    await execFileAsync(command.file, [...command.prefixArgs, '--user', ...args], {
       timeout: SYSTEMD_COMMAND_TIMEOUT_MS,
       windowsHide: true
     });
@@ -227,4 +240,31 @@ function quoteSystemdExecArg(value: string): string {
 
 function escapeSystemdValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
+}
+
+function readRuntimeHostBackendOverride(): RuntimeHostBackendKind | undefined {
+  const value = process.env[RUNTIME_HOST_BACKEND_OVERRIDE_ENV]?.trim();
+  if (value === 'systemd-user' || value === 'legacy-detached') {
+    return value;
+  }
+
+  return undefined;
+}
+
+function resolveSystemctlCommand(): {
+  file: string;
+  prefixArgs: string[];
+} {
+  const shimPath = process.env[TEST_SYSTEMCTL_SHIM_ENV]?.trim();
+  if (shimPath) {
+    return {
+      file: process.env[TEST_NODE_PATH_ENV]?.trim() || process.execPath,
+      prefixArgs: [shimPath]
+    };
+  }
+
+  return {
+    file: 'systemctl',
+    prefixArgs: []
+  };
 }

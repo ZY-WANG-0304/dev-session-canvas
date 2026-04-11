@@ -20,6 +20,10 @@ const AGENT_SETUP_OUTPUT = `[fake-agent] sleeping ${OFFLINE_SLEEP_SECONDS}s`;
 const TERMINAL_SETUP_OUTPUT = 'REAL_REOPEN_TERMINAL_SLEEPING';
 const TERMINAL_REOPEN_OUTPUT = 'REAL_REOPEN_TERMINAL';
 const TERMINAL_POST_REOPEN_OUTPUT = 'AFTER_REOPEN_TERMINAL';
+const expectedRuntimeBackend =
+  process.env.DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND || 'legacy-detached';
+const expectedRuntimeGuarantee =
+  process.env.DEV_SESSION_CANVAS_EXPECTED_RUNTIME_GUARANTEE || 'best-effort';
 let artifactDir;
 let phase = 'verify';
 let stateFile;
@@ -81,6 +85,8 @@ async function runSetupPhase() {
 
   const liveAgentNode = findNodeById(liveSnapshot, agentNode.id);
   const liveTerminalNode = findNodeById(liveSnapshot, terminalNode.id);
+  assertExecutionRuntimeMetadata(liveAgentNode, 'agent');
+  assertExecutionRuntimeMetadata(liveTerminalNode, 'terminal');
 
   await sendExecutionInput(agentNode.id, 'agent', `sleep ${OFFLINE_SLEEP_SECONDS}\rREAL_REOPEN_AGENT\r`);
   await sendExecutionInput(
@@ -147,6 +153,8 @@ async function runVerifyPhase() {
   assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'live-runtime');
   assert.notStrictEqual(agentNode.status, 'history-restored');
   assert.notStrictEqual(terminalNode.status, 'history-restored');
+  assertExecutionRuntimeMetadata(agentNode, 'agent');
+  assertExecutionRuntimeMetadata(terminalNode, 'terminal');
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === expected.agentNodeId);
@@ -170,11 +178,13 @@ async function runVerifyPhase() {
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.strictEqual(agentNode.metadata.agent.attachmentState, 'attached-live');
   assert.ok(agentNode.metadata.agent.recentOutput.includes(AGENT_REOPEN_OUTPUT));
+  assertExecutionRuntimeMetadata(agentNode, 'agent');
 
   assert.strictEqual(terminalNode.metadata.terminal.runtimeSessionId, expected.terminalSessionId);
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(TERMINAL_REOPEN_OUTPUT));
+  assertExecutionRuntimeMetadata(terminalNode, 'terminal');
 
   await sendExecutionInput(expected.agentNodeId, 'agent', 'AFTER_REOPEN_AGENT\r');
   await sendExecutionInput(expected.terminalNodeId, 'terminal', `echo ${TERMINAL_POST_REOPEN_OUTPUT}\r`);
@@ -341,6 +351,20 @@ function findNodeById(snapshot, nodeId) {
   const node = snapshot.state.nodes.find((currentNode) => currentNode.id === nodeId);
   assert.ok(node, `Missing node ${nodeId}.`);
   return node;
+}
+
+function assertExecutionRuntimeMetadata(node, kind) {
+  const metadata = kind === 'agent' ? node.metadata.agent : node.metadata.terminal;
+  assert.strictEqual(
+    metadata.runtimeBackend,
+    expectedRuntimeBackend,
+    `${kind} runtime backend mismatch`
+  );
+  assert.strictEqual(
+    metadata.runtimeGuarantee,
+    expectedRuntimeGuarantee,
+    `${kind} runtime guarantee mismatch`
+  );
 }
 
 function sleep(ms) {

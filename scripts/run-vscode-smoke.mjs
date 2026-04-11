@@ -20,6 +20,14 @@ const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'exte
 const realReopenExtensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'real-reopen-tests.cjs');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
+const fakeSystemdShimPath = path.join(
+  projectRoot,
+  'tests',
+  'vscode-smoke',
+  'fixtures',
+  'fake-systemd',
+  'systemctl.cjs'
+);
 const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER);
 
 const scenarios = [
@@ -72,6 +80,12 @@ async function main() {
   if (shouldRunScenario('real-reopen')) {
     await runRealWindowReopenScenario();
   }
+  if (shouldRunScenario('systemd-user-real-reopen')) {
+    await runSystemdUserRealWindowReopenScenario();
+  }
+  if (shouldRunScenario('systemd-fallback-real-reopen')) {
+    await runSystemdFallbackRealWindowReopenScenario();
+  }
   if (shouldRunScenario('remote-ssh-real-reopen')) {
     await runRemoteSSHRealReopenScenario();
   }
@@ -79,9 +93,49 @@ async function main() {
 }
 
 async function runRealWindowReopenScenario() {
-  const runtime = await prepareRuntime({
-    debugRoot: path.join(projectRoot, '.debug', 'vscode-smoke', 'real-reopen'),
+  await runLocalRealWindowReopenScenario({
+    scenarioName: 'real-reopen',
+    description: 'Real window reopen smoke',
     runtimeDirName: 'dsc-vscode-smoke-runtime-real-reopen',
+    expectedRuntimeBackend: 'legacy-detached',
+    expectedRuntimeGuarantee: 'best-effort'
+  });
+}
+
+async function runSystemdUserRealWindowReopenScenario() {
+  await runLocalRealWindowReopenScenario({
+    scenarioName: 'systemd-user-real-reopen',
+    description: 'Fake systemd-user real window reopen smoke',
+    runtimeDirName: 'dsc-vscode-smoke-runtime-systemd-user-real-reopen',
+    expectedRuntimeBackend: 'systemd-user',
+    expectedRuntimeGuarantee: 'strong',
+    extraEnv: {
+      DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'systemd-user',
+      DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: fakeSystemdShimPath,
+      DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'success'
+    }
+  });
+}
+
+async function runSystemdFallbackRealWindowReopenScenario() {
+  await runLocalRealWindowReopenScenario({
+    scenarioName: 'systemd-fallback-real-reopen',
+    description: 'Fake systemd fallback real window reopen smoke',
+    runtimeDirName: 'dsc-vscode-smoke-runtime-systemd-fallback-real-reopen',
+    expectedRuntimeBackend: 'legacy-detached',
+    expectedRuntimeGuarantee: 'best-effort',
+    extraEnv: {
+      DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'systemd-user',
+      DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: fakeSystemdShimPath,
+      DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'fail-start'
+    }
+  });
+}
+
+async function runLocalRealWindowReopenScenario(options) {
+  const runtime = await prepareRuntime({
+    debugRoot: path.join(projectRoot, '.debug', 'vscode-smoke', options.scenarioName),
+    runtimeDirName: options.runtimeDirName,
     userSettings: {
       'security.workspace.trust.enabled': false
     }
@@ -95,13 +149,27 @@ async function runRealWindowReopenScenario() {
     extensionTestsPath: realReopenExtensionTestsPath,
     disableWorkspaceTrust: true
   };
-  const controlFilePath = path.join(runtime.artifactsDir, 'real-reopen-control.json');
-  const workspaceFallbackControlFilePath = path.join(projectRoot, '.debug', 'vscode-smoke', 'real-reopen-control.json');
-  const stateFilePath = path.join(runtime.artifactsDir, 'real-reopen-state.json');
+  const controlFilePath = path.join(runtime.artifactsDir, `${options.scenarioName}-control.json`);
+  const workspaceFallbackControlFilePath = path.join(
+    projectRoot,
+    '.debug',
+    'vscode-smoke',
+    `${options.scenarioName}-control.json`
+  );
+  const stateFilePath = path.join(runtime.artifactsDir, `${options.scenarioName}-state.json`);
   const sharedEnv = {
     DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
     DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
-    DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE: controlFilePath
+    DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE: controlFilePath,
+    DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND: options.expectedRuntimeBackend,
+    DEV_SESSION_CANVAS_EXPECTED_RUNTIME_GUARANTEE: options.expectedRuntimeGuarantee,
+    ...(options.extraEnv?.DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM
+      ? {
+          DEV_SESSION_CANVAS_TEST_NODE_PATH: process.execPath,
+          DEV_SESSION_CANVAS_FAKE_SYSTEMD_STATE_DIR: path.join(runtime.artifactsDir, 'fake-systemd-state')
+        }
+      : {}),
+    ...(options.extraEnv ?? {})
   };
 
   await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
@@ -128,7 +196,7 @@ async function runRealWindowReopenScenario() {
     }
   });
 
-  console.log('Real window reopen smoke passed.');
+  console.log(`${options.description} passed.`);
 }
 
 async function runRemoteSSHRealReopenScenario() {
