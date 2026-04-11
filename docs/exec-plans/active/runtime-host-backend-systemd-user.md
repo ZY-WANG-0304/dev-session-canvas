@@ -20,6 +20,7 @@
 - [x] 2026-04-10 23:25+08:00 更新宿主状态、节点 metadata 与 Webview 展示，使用户能看见当前 backend 和保证等级。
 - [x] 2026-04-10 23:25+08:00 补充路径/渲染测试并运行 `npm run typecheck`、`npm run build`、运行时路径测试。
 - [x] 2026-04-11 00:40+08:00 补上 `fake-systemd` 本地 reopen smoke 场景与 backend / guarantee 断言，并把真实 Remote SSH 长断开 nightly 化记入技术债追踪。
+- [x] 2026-04-11 09:45+08:00 定位并修复本地 smoke 宿主环境污染：`ELECTRON_RUN_AS_NODE=1` 与继承的 `VSCODE_*` 会把下载的 VS Code 测试宿主拉成错误模式；runner 现已在启动 VS Code / CLI 前显式净化这类变量，并补上一条环境净化测试。
 
 ## 意外与发现
 
@@ -152,19 +153,24 @@
     npm run typecheck
     npm run build
     npm run test:runtime-supervisor-paths
+    npm run test:vscode-smoke-runner-env
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-user-real-reopen,systemd-fallback-real-reopen node scripts/run-vscode-smoke.mjs
+    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs
 
 结果：
 
 - `npm run typecheck` 通过
 - `npm run build` 通过
 - `npm run test:runtime-supervisor-paths` 通过，新增覆盖 `systemd-user` control dir / unit path 与长路径 fallback 解析
+- `npm run test:vscode-smoke-runner-env` 通过，覆盖 VS Code / Electron 子进程环境净化
+- 在沙箱外运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 已通过，确认此前 `Cannot find module 'vscode'` 的根因是从当前宿主终端继承了 `ELECTRON_RUN_AS_NODE=1` 与 `VSCODE_*`
 - `real-reopen-tests.cjs` 已补 `runtimeBackend` / `runtimeGuarantee` 断言，`run-vscode-smoke.mjs` 也新增了 `systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 两个 smoke 场景
-- 当前环境里运行新增 smoke 时，仍会在 VS Code 测试宿主启动阶段碰到既有的 `Cannot find module 'vscode'` 问题，因此这两条场景的实际执行结果暂未在本机拿到成功样本
+- 在沙箱外运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-user-real-reopen,systemd-fallback-real-reopen node scripts/run-vscode-smoke.mjs` 时，宿主已能正常启动并进入 `real-reopen` 测试代码；当前新的本机 blocker 已变成 `systemd-user-real-reopen` setup 阶段拿到的 `runtimeBackend` 仍是 `legacy-detached`，而不是预期的 `systemd-user`
 
 备注：
 
 - 当前未在本机跑真实 `systemd --user` smoke，也未做长断开人工回归；这部分留待后续验证。
+- `systemd-user-real-reopen` / `systemd-fallback-real-reopen` 的真实断言还未全部跑绿；当前需要继续定位为什么 fake-systemd 覆盖下 backend override 没有真正落到 `systemd-user` 主路径。
 
 ## 接口与依赖
 

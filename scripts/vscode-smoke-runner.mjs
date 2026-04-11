@@ -5,6 +5,9 @@ import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 
+const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
+const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
+
 export function shouldReRunInsideXvfb() {
   return (
     process.platform === 'linux' &&
@@ -238,10 +241,7 @@ function resolveVSCodeExecutablePath(installDir) {
 }
 
 async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
-  const fullEnv = {
-    ...process.env,
-    ...extensionTestsEnv
-  };
+  const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
   const shell = process.platform === 'win32';
 
   await new Promise((resolve, reject) => {
@@ -302,10 +302,7 @@ export async function installVSCodeExtensions(options) {
 
   await new Promise((resolve, reject) => {
     const child = spawn(cliPath, args, {
-      env: {
-        ...process.env,
-        ...(options.environment ?? {})
-      }
+      env: buildVSCodeChildEnv(options.environment ?? {})
     });
 
     child.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -326,6 +323,24 @@ export async function installVSCodeExtensions(options) {
       );
     });
   });
+}
+
+export function buildVSCodeChildEnv(overrides = {}) {
+  const env = {
+    ...process.env,
+    ...overrides
+  };
+
+  for (const key of Object.keys(env)) {
+    if (
+      BLOCKED_VSCODE_ENV_KEYS.has(key) ||
+      BLOCKED_VSCODE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ) {
+      delete env[key];
+    }
+  }
+
+  return env;
 }
 
 function resolveVSCodeCliPath(vscodeExecutablePath) {
