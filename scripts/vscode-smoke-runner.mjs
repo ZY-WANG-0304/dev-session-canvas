@@ -81,6 +81,7 @@ export async function prepareRuntime(options) {
   const configDir = path.join(debugRoot, 'config');
   const cacheDir = path.join(debugRoot, 'cache');
   const runtimeDir = path.join(os.tmpdir(), options.runtimeDirName ?? 'dsc-vscode-smoke-runtime');
+  const stateDir = path.join(runtimeDir, 'state');
   const tmpDir = path.join(debugRoot, 'tmp');
   const artifactsDir = path.join(debugRoot, 'artifacts');
 
@@ -94,6 +95,7 @@ export async function prepareRuntime(options) {
   await fs.mkdir(path.join(cacheDir, 'mesa'), { recursive: true });
   await fs.rm(runtimeDir, { recursive: true, force: true });
   await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
+  await fs.mkdir(stateDir, { recursive: true });
   await fs.mkdir(tmpDir, { recursive: true });
   await fs.mkdir(artifactsDir, { recursive: true });
 
@@ -115,6 +117,7 @@ export async function prepareRuntime(options) {
       HOME: homeDir,
       XDG_CONFIG_HOME: configDir,
       XDG_CACHE_HOME: cacheDir,
+      XDG_STATE_HOME: stateDir,
       XDG_RUNTIME_DIR: runtimeDir,
       TMPDIR: tmpDir,
       MESA_SHADER_CACHE_DIR: path.join(cacheDir, 'mesa'),

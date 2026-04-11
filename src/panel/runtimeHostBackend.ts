@@ -19,6 +19,10 @@ const SYSTEMD_COMMAND_TIMEOUT_MS = 4000;
 const RUNTIME_HOST_BACKEND_OVERRIDE_ENV = 'DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE';
 const TEST_SYSTEMCTL_SHIM_ENV = 'DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM';
 const TEST_NODE_PATH_ENV = 'DEV_SESSION_CANVAS_TEST_NODE_PATH';
+const SUPERVISOR_PROCESS_ENV = {
+  ELECTRON_RUN_AS_NODE: '1',
+  ELECTRON_NO_ATTACH_CONSOLE: '1'
+} as const;
 
 export interface RuntimeHostBackendDescriptor {
   kind: RuntimeHostBackendKind;
@@ -101,6 +105,7 @@ function startLegacyDetachedSupervisor(
   backend: RuntimeHostBackendDescriptor,
   args: RuntimeHostBackendStartArgs
 ): void {
+  const executablePath = resolveSupervisorExecPath();
   const childArgs = [
     args.supervisorLauncherScriptPath,
     '--supervisor-script',
@@ -123,8 +128,9 @@ function startLegacyDetachedSupervisor(
     childArgs.push('--control-dir', backend.paths.controlDir);
   }
 
-  const child = spawn(process.execPath, childArgs, {
+  const child = spawn(executablePath, childArgs, {
     detached: true,
+    env: buildSupervisorProcessEnv(),
     stdio: 'ignore',
     windowsHide: true
   });
@@ -142,6 +148,7 @@ async function startSystemdUserSupervisor(
     throw new Error('systemd-user backend 缺少 unit 或 controlDir 路径。');
   }
 
+  await fs.mkdir(backend.paths.storageDir, { recursive: true });
   await fs.mkdir(path.dirname(unitFilePath), { recursive: true });
   await fs.mkdir(controlDir, { recursive: true, mode: 0o700 });
   try {
@@ -196,8 +203,9 @@ function renderSystemdUserUnit(params: {
   backend: RuntimeHostBackendDescriptor;
   supervisorScriptPath: string;
 }): string {
+  const executablePath = resolveSupervisorExecPath();
   const execArgs = [
-    process.execPath,
+    executablePath,
     params.supervisorScriptPath,
     '--storage-dir',
     params.backend.paths.storageDir,
@@ -223,6 +231,9 @@ function renderSystemdUserUnit(params: {
     '',
     '[Service]',
     'Type=simple',
+    ...Object.entries(SUPERVISOR_PROCESS_ENV).map(
+      ([key, value]) => `Environment=${quoteSystemdExecArg(`${key}=${value}`)}`
+    ),
     `WorkingDirectory=${quoteSystemdExecArg(params.backend.paths.storageDir)}`,
     `ExecStart=${execArgs.map((value) => quoteSystemdExecArg(value)).join(' ')}`,
     'Restart=on-failure',
@@ -249,6 +260,17 @@ function readRuntimeHostBackendOverride(): RuntimeHostBackendKind | undefined {
   }
 
   return undefined;
+}
+
+function resolveSupervisorExecPath(): string {
+  return process.env[TEST_NODE_PATH_ENV]?.trim() || process.execPath;
+}
+
+function buildSupervisorProcessEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...SUPERVISOR_PROCESS_ENV
+  };
 }
 
 function resolveSystemctlCommand(): {

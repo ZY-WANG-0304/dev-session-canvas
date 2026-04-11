@@ -59,11 +59,13 @@ async function handleStart(unitName) {
   const workingDirectory = workingDirectoryLine
     ? parseQuotedValue(workingDirectoryLine.slice('WorkingDirectory='.length))
     : process.cwd();
+  const environment = parseUnitEnvironment(unitContent);
   const execArgs = parseQuotedArgList(execStartLine.slice('ExecStart='.length));
   await appendLog({
     unitName,
     unitFilePath,
     workingDirectory,
+    environment,
     execArgs,
     timestamp: new Date().toISOString()
   });
@@ -83,7 +85,8 @@ async function handleStart(unitName) {
     detached: true,
     stdio: 'ignore',
     env: {
-      ...process.env
+      ...process.env,
+      ...environment
     }
   });
   child.unref();
@@ -173,6 +176,30 @@ function parseQuotedArgList(value) {
   }
 
   return args;
+}
+
+function parseUnitEnvironment(unitContent) {
+  const environment = {};
+  const lines = unitContent
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('Environment='));
+
+  for (const line of lines) {
+    const assignments = parseQuotedArgList(line.slice('Environment='.length));
+    for (const assignment of assignments) {
+      const separatorIndex = assignment.indexOf('=');
+      if (separatorIndex <= 0) {
+        continue;
+      }
+
+      const key = assignment.slice(0, separatorIndex);
+      const value = assignment.slice(separatorIndex + 1);
+      environment[key] = value;
+    }
+  }
+
+  return environment;
 }
 
 async function appendLog(payload) {

@@ -21,6 +21,7 @@
 - [x] 2026-04-10 23:25+08:00 补充路径/渲染测试并运行 `npm run typecheck`、`npm run build`、运行时路径测试。
 - [x] 2026-04-11 00:40+08:00 补上 `fake-systemd` 本地 reopen smoke 场景与 backend / guarantee 断言，并把真实 Remote SSH 长断开 nightly 化记入技术债追踪。
 - [x] 2026-04-11 09:45+08:00 定位并修复本地 smoke 宿主环境污染：`ELECTRON_RUN_AS_NODE=1` 与继承的 `VSCODE_*` 会把下载的 VS Code 测试宿主拉成错误模式；runner 现已在启动 VS Code / CLI 前显式净化这类变量，并补上一条环境净化测试。
+- [x] 2026-04-11 10:15+08:00 收口 `systemd-user-real-reopen` 本机 blocker：smoke runtime 现在显式提供短 `XDG_STATE_HOME`，systemd / legacy supervisor 都改为显式 Node exec + `ELECTRON_RUN_AS_NODE=1` 环境，`systemd-user` 启动前会预建 `WorkingDirectory`；`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 已在本机跑绿。
 
 ## 意外与发现
 
@@ -29,6 +30,9 @@
 
 - 观察：当前 `runtimePersistence.enabled` 一旦开启，宿主就直接把节点记成 `live-runtime`，没有区分“强保证”与 “best-effort”。
   证据：`src/panel/CanvasPanelManager.ts` 中 `startAgentSessionWithSupervisor`、`startTerminalSessionWithSupervisor` 与 `reconcile*NodesInArray` 路径。
+
+- 观察：`fake-systemd` 覆盖下的 `systemd-user-real-reopen` 回退不是单一问题，而是三层叠加的宿主启动细节：一是 smoke runtime 需要短 `XDG_STATE_HOME` 才能稳定落到短 control socket；二是 extension host 里的 `process.execPath` 实际指向 VS Code `code`，因此 systemd unit / detached fallback 都必须显式改用 Node 可执行文件并带上 `ELECTRON_RUN_AS_NODE=1`；三是 systemd unit 的 `WorkingDirectory` 如果未预建，会在实际启动阶段以 `spawn <node> ENOENT` 形式失败。
+  证据：`scripts/vscode-smoke-runner.mjs`、`src/panel/runtimeHostBackend.ts`、`tests/vscode-smoke/fixtures/fake-systemd/systemctl.cjs`，以及 2026-04-11 10:05+08:00 的 `exthost.log`
 
 ## 决策记录
 
@@ -165,12 +169,11 @@
 - `npm run test:vscode-smoke-runner-env` 通过，覆盖 VS Code / Electron 子进程环境净化
 - 在沙箱外运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 已通过，确认此前 `Cannot find module 'vscode'` 的根因是从当前宿主终端继承了 `ELECTRON_RUN_AS_NODE=1` 与 `VSCODE_*`
 - `real-reopen-tests.cjs` 已补 `runtimeBackend` / `runtimeGuarantee` 断言，`run-vscode-smoke.mjs` 也新增了 `systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 两个 smoke 场景
-- 在沙箱外运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-user-real-reopen,systemd-fallback-real-reopen node scripts/run-vscode-smoke.mjs` 时，宿主已能正常启动并进入 `real-reopen` 测试代码；当前新的本机 blocker 已变成 `systemd-user-real-reopen` setup 阶段拿到的 `runtimeBackend` 仍是 `legacy-detached`，而不是预期的 `systemd-user`
+- 在沙箱外运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-user-real-reopen,systemd-fallback-real-reopen node scripts/run-vscode-smoke.mjs` 已通过；本机 blocker 已确认并修复为 `systemd-user` unit 启动前缺少短状态目录、显式 Node/Electron 环境，以及预建 `WorkingDirectory`
 
 备注：
 
 - 当前未在本机跑真实 `systemd --user` smoke，也未做长断开人工回归；这部分留待后续验证。
-- `systemd-user-real-reopen` / `systemd-fallback-real-reopen` 的真实断言还未全部跑绿；当前需要继续定位为什么 fake-systemd 覆盖下 backend override 没有真正落到 `systemd-user` 主路径。
 
 ## 接口与依赖
 
