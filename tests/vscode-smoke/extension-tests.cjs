@@ -20,6 +20,7 @@ const COMMAND_IDS = {
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
+  testStartExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
@@ -33,6 +34,8 @@ const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
+const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
+const HOST_BOUNDARY_FLUSH_TERMINAL_MARKER = 'HOST_BOUNDARY_TERMINAL_FLUSH';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
@@ -186,6 +189,7 @@ async function runTrustedSmoke() {
   await verifyLiveRuntimeResumeExitClassification(agentNode.id);
   await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
   await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
+  await verifyHostBoundaryFlushesRecentLocalState(agentNode.id, terminalNode.id);
   await verifyTrustedDiagnostics(agentNode.id, terminalNode.id);
   await verifyRealDeleteButton(noteNode.id);
 
@@ -350,6 +354,8 @@ async function runRestrictedSmoke() {
   assert.strictEqual(probeTerminal?.overlayTitle, 'Restricted Mode');
   await verifyRestrictedLiveRuntimeReconnectBlocked(agentNode.id, terminalNode.id);
   await verifyRestrictedDiagnostics(agentNode.id, terminalNode.id);
+  await verifyRestrictedDisablingRuntimePersistenceCleansLiveRuntime(agentNode.id, terminalNode.id);
+  await verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNode.id, terminalNode.id);
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -1913,107 +1919,315 @@ async function verifyDisablingRuntimePersistenceStopsReattach(agentNodeId, termi
   }
 }
 
-async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminalNodeId) {
-  const currentSnapshot = await getDebugSnapshot();
-  const noteNode = findNodeByKind(currentSnapshot, 'note');
-  const agentNode = findNodeById(currentSnapshot, agentNodeId);
-  const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
-
+async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(false);
   await clearHostMessages();
-  let snapshot = await setPersistedState({
-    version: 1,
-    updatedAt: '2026-04-10T09:00:00.000Z',
-    nodes: [
-      {
-        ...agentNode,
-        status: 'reattaching',
-        summary: '正在重新连接原 Agent live runtime。',
-        metadata: {
-          ...agentNode.metadata,
-          agent: {
-            ...agentNode.metadata.agent,
-            lifecycle: 'waiting-input',
-            persistenceMode: 'live-runtime',
-            attachmentState: 'reattaching',
-            liveSession: false,
-            runtimeSessionId: 'restricted-agent-live-session',
-            pendingLaunch: undefined
-          }
-        }
-      },
-      {
-        ...terminalNode,
-        status: 'reattaching',
-        summary: '正在重新连接原终端 live runtime。',
-        metadata: {
-          ...terminalNode.metadata,
-          terminal: {
-            ...terminalNode.metadata.terminal,
-            lifecycle: 'live',
-            persistenceMode: 'live-runtime',
-            attachmentState: 'reattaching',
-            liveSession: false,
-            runtimeSessionId: 'restricted-terminal-live-session',
-            pendingLaunch: undefined
-          }
-        }
-      },
-      noteNode
-    ]
+  await ensureAgentStopped(agentNodeId);
+  await ensureTerminalStopped(terminalNodeId);
+
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      cols: 92,
+      rows: 28,
+      provider: 'codex'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal',
+      cols: 92,
+      rows: 28
+    }
   });
 
-  snapshot = await waitForSnapshot((currentState) => {
-    const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
-    const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(
-      currentAgent?.status === 'history-restored' &&
-        currentAgent.summary === '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。' &&
-        currentTerminal?.status === 'history-restored' &&
-        currentTerminal.summary === '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
-    );
+  await waitForAgentLive(agentNodeId);
+  await waitForTerminalLive(terminalNodeId);
+  await clearHostMessages();
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: `echo ${HOST_BOUNDARY_FLUSH_AGENT_MARKER}\r`
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal',
+      data: `echo ${HOST_BOUNDARY_FLUSH_TERMINAL_MARKER}\r`
+    }
   });
 
-  assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState, 'reattaching');
-  assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
-
-  await clearHostMessages();
-  await requestExecutionSnapshot('agent', agentNodeId);
-  await requestExecutionSnapshot('terminal', terminalNodeId);
-  await sleep(400);
-
-  snapshot = await getDebugSnapshot();
-  assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
-
-  const hostMessages = await getHostMessages();
-  assert.ok(
-    hostMessages.some(
+  await waitForHostMessages((messages) => {
+    const sawAgentMarker = messages.some(
       (message) =>
-        message.type === 'host/executionSnapshot' &&
+        message.type === 'host/executionOutput' &&
         message.payload.kind === 'agent' &&
         message.payload.nodeId === agentNodeId &&
-        message.payload.liveSession === false
-    )
-  );
-  assert.ok(
-    hostMessages.some(
+        message.payload.chunk.includes(HOST_BOUNDARY_FLUSH_AGENT_MARKER)
+    );
+    const sawTerminalMarker = messages.some(
       (message) =>
-        message.type === 'host/executionSnapshot' &&
+        message.type === 'host/executionOutput' &&
         message.payload.kind === 'terminal' &&
         message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === false
-    )
-  );
-  assert.strictEqual(
-    hostMessages.some(
-      (message) =>
-        message.type === 'host/error' &&
-        /runtime session|重新附着 live runtime/.test(message.payload.message)
-    ),
-    false
-  );
+        message.payload.chunk.includes(HOST_BOUNDARY_FLUSH_TERMINAL_MARKER)
+    );
+    return sawAgentMarker && sawTerminalMarker;
+  }, 8000);
+
+  const snapshot = await simulateRuntimeReload();
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  const terminalNode = findNodeById(snapshot, terminalNodeId);
+
+  assert.match(agentNode.metadata.agent.recentOutput || '', new RegExp(HOST_BOUNDARY_FLUSH_AGENT_MARKER));
+  assert.match(terminalNode.metadata.terminal.recentOutput || '', new RegExp(HOST_BOUNDARY_FLUSH_TERMINAL_MARKER));
+}
+
+async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    const currentSnapshot = await getDebugSnapshot();
+    const noteNode = findNodeByKind(currentSnapshot, 'note');
+    const agentNode = findNodeById(currentSnapshot, agentNodeId);
+    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+
+    await clearHostMessages();
+    let snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-10T09:00:00.000Z',
+      nodes: [
+        {
+          ...agentNode,
+          status: 'reattaching',
+          summary: '正在重新连接原 Agent live runtime。',
+          metadata: {
+            ...agentNode.metadata,
+            agent: {
+              ...agentNode.metadata.agent,
+              lifecycle: 'waiting-input',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeSessionId: 'restricted-agent-live-session',
+              pendingLaunch: undefined
+            }
+          }
+        },
+        {
+          ...terminalNode,
+          status: 'reattaching',
+          summary: '正在重新连接原终端 live runtime。',
+          metadata: {
+            ...terminalNode.metadata,
+            terminal: {
+              ...terminalNode.metadata.terminal,
+              lifecycle: 'live',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeSessionId: 'restricted-terminal-live-session',
+              pendingLaunch: undefined
+            }
+          }
+        },
+        noteNode
+      ]
+    });
+
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.status === 'history-restored' &&
+          currentAgent.summary === '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。' &&
+          currentTerminal?.status === 'history-restored' &&
+          currentTerminal.summary === '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
+      );
+    });
+
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState, 'reattaching');
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
+
+    await clearHostMessages();
+    await requestExecutionSnapshot('agent', agentNodeId);
+    await requestExecutionSnapshot('terminal', terminalNodeId);
+    await sleep(400);
+
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
+
+    const hostMessages = await getHostMessages();
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/executionSnapshot' &&
+          message.payload.kind === 'agent' &&
+          message.payload.nodeId === agentNodeId &&
+          message.payload.liveSession === false
+      )
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/executionSnapshot' &&
+          message.payload.kind === 'terminal' &&
+          message.payload.nodeId === terminalNodeId &&
+          message.payload.liveSession === false
+      )
+    );
+    assert.strictEqual(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/error' &&
+          /runtime session|重新附着 live runtime/.test(message.payload.message)
+      ),
+      false
+    );
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyRestrictedDisablingRuntimePersistenceCleansLiveRuntime(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 88,
+      rows: 26,
+      provider: 'codex'
+    });
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: terminalNodeId,
+      cols: 88,
+      rows: 26
+    });
+
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => listRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      20000
+    );
+
+    await setRuntimePersistenceEnabled(false);
+
+    const snapshot = await simulateRuntimeReload();
+    const agentNode = findNodeById(snapshot, agentNodeId);
+    const terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+
+    const runtimeSupervisorState = await waitForRuntimeSupervisorState(
+      (currentState) =>
+        listRuntimeSupervisorSessions(currentState).length === 0 && currentState.bindings.length === 0,
+      20000
+    );
+    assert.deepStrictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState), []);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 88,
+      rows: 26,
+      provider: 'codex'
+    });
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: terminalNodeId,
+      cols: 88,
+      rows: 26
+    });
+
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => listRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      20000
+    );
+
+    let snapshot = await simulateRuntimeReload();
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'reattaching');
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'reattaching');
+
+    const agentRuntimeSessionId = agentNode.metadata.agent.runtimeSessionId;
+    const terminalRuntimeSessionId = terminalNode.metadata.terminal.runtimeSessionId;
+    assert.ok(agentRuntimeSessionId);
+    assert.ok(terminalRuntimeSessionId);
+
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: agentNodeId,
+      label: '删除'
+    });
+
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === agentNodeId),
+      20000
+    );
+    assert.ok(snapshot.state.nodes.some((node) => node.id === terminalNodeId));
+
+    let runtimeSupervisorState = await waitForRuntimeSupervisorState((currentState) => {
+      const sessionIds = listRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
+      return (
+        sessionIds.length === 1 &&
+        !sessionIds.includes(agentRuntimeSessionId) &&
+        sessionIds.includes(terminalRuntimeSessionId) &&
+        currentState.bindings.length === 0
+      );
+    }, 20000);
+    assert.strictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState).length, 1);
+
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: terminalNodeId,
+      label: '删除'
+    });
+
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === terminalNodeId),
+      20000
+    );
+    assert.strictEqual(snapshot.state.nodes.some((node) => node.id === terminalNodeId), false);
+
+    runtimeSupervisorState = await waitForRuntimeSupervisorState(
+      (currentState) =>
+        listRuntimeSupervisorSessions(currentState).length === 0 && currentState.bindings.length === 0,
+      20000
+    );
+    assert.deepStrictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState), []);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
 }
 
 async function verifyRealDeleteButton(noteNodeId) {
@@ -2031,6 +2245,10 @@ async function verifyRealDeleteButton(noteNodeId) {
 
 async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
+}
+
+async function getRuntimeSupervisorState() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetRuntimeSupervisorState);
 }
 
 async function getHostMessages() {
@@ -2086,6 +2304,18 @@ async function dispatchWebviewMessage(message, surface) {
   return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, message, surface);
 }
 
+async function startExecutionSessionForTest({ kind, nodeId, cols, rows, provider, resumeRequested = false }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testStartExecutionSession,
+    kind,
+    nodeId,
+    cols,
+    rows,
+    provider,
+    resumeRequested
+  );
+}
+
 async function setRuntimePersistenceEnabled(enabled) {
   await vscode.workspace
     .getConfiguration()
@@ -2135,6 +2365,41 @@ async function waitForSnapshot(predicate, timeoutMs = 15000) {
   }
 
   assert.fail(`Timed out while waiting for smoke test state. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
+}
+
+function listRuntimeSupervisorSessions(runtimeSupervisorState) {
+  const dedupedSessions = new Map();
+
+  for (const registryState of Object.values(runtimeSupervisorState?.registries || {})) {
+    const sessions = registryState?.registry?.sessions;
+    if (!Array.isArray(sessions)) {
+      continue;
+    }
+
+    for (const session of sessions) {
+      if (session?.sessionId) {
+        dedupedSessions.set(session.sessionId, session);
+      }
+    }
+  }
+
+  return Array.from(dedupedSessions.values());
+}
+
+async function waitForRuntimeSupervisorState(predicate, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = await getRuntimeSupervisorState();
+
+  while (Date.now() < deadline) {
+    if (predicate(lastState)) {
+      return lastState;
+    }
+
+    await sleep(100);
+    lastState = await getRuntimeSupervisorState();
+  }
+
+  assert.fail(`Timed out while waiting for runtime supervisor state. Last state: ${JSON.stringify(lastState)}`);
 }
 
 async function waitForHostMessages(predicate, timeoutMs = 8000) {

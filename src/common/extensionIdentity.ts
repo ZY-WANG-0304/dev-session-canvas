@@ -24,6 +24,7 @@ export const TEST_COMMAND_IDS = {
   flushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
   simulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
+  startExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   createNode: 'devSessionCanvas.__test.createNode',
   resetState: 'devSessionCanvas.__test.resetState'
 } as const;

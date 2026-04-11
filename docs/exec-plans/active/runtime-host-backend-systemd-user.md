@@ -23,6 +23,7 @@
 - [x] 2026-04-11 09:45+08:00 定位并修复本地 smoke 宿主环境污染：`ELECTRON_RUN_AS_NODE=1` 与继承的 `VSCODE_*` 会把下载的 VS Code 测试宿主拉成错误模式；runner 现已在启动 VS Code / CLI 前显式净化这类变量，并补上一条环境净化测试。
 - [x] 2026-04-11 10:15+08:00 收口 `systemd-user-real-reopen` 本机 blocker：smoke runtime 现在显式提供短 `XDG_STATE_HOME`，systemd / legacy supervisor 都改为显式 Node exec + `ELECTRON_RUN_AS_NODE=1` 环境，`systemd-user` 启动前会预建 `WorkingDirectory`；`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 已在本机跑绿。
 - [x] 2026-04-11 12:05+08:00 修复 reopen/reset 竞态：`resetState()` 改为等待 runtime supervisor 清理完成，live-runtime attach/create 结果按节点级 token 去重并忽略陈旧异步完成，新增 runtime supervisor 测试探针后，`trusted`、`real-reopen` 与全量 `npm test` 已跑绿。
+- [x] 2026-04-11 16:20+08:00 收口 review 新 blocker：Restricted Mode 下“持久化关闭仍保活”和“删除 history-only 节点遗留后台 runtime”都已修复；host-boundary teardown 现在会先强制 flush 本地会话最后状态，新增 `trusted` / `restricted` smoke 覆盖并再次跑绿。
 
 ## 意外与发现
 
@@ -37,6 +38,9 @@
 
 - 观察：`resetState()` 之前同步返回，导致测试命令和真实 reset 路径都可能在 runtime supervisor 会话尚未清理完时继续推进；同时 live-runtime 的 attach/create 结果缺少“这次异步完成是否还属于当前节点”的判定，因此会把已经失效的 runtime 重新绑定回节点。
   证据：`src/panel/CanvasPanelManager.ts`、`tests/vscode-smoke/extension-tests.cjs`、`tests/vscode-smoke/real-reopen-tests.cjs`
+
+- 观察：review 指出的三条问题都属于当前代码路径上可直接成立的确定性 bug，而不是环境猜测：一是 reconnect block reason 与 host-boundary cleanup 被同一个判断耦合，导致 Restricted Mode + 持久化关闭时不会清理已有 runtime；二是 history-only live-runtime 节点删除前没有按 `runtimeSessionId` 回收 supervisor session；三是 host-boundary teardown 只清理定时器、不强制 flush 本地会话，最后一批输出会丢。
+  证据：`src/panel/CanvasPanelManager.ts`、`src/webview/main.tsx`、`docs/product-specs/runtime-persistence-modes.md`
 
 ## 决策记录
 
@@ -179,6 +183,7 @@
 
 - 当前未在本机跑真实 `systemd --user` smoke，也未做长断开人工回归；这部分留待后续验证。
 - 本轮新增的 reopen/reset 修复已通过 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 与全量 `npm test` 验证，确认此前失败同时包含测试脚本时序假设错误和真实 runtime 绑定竞态两部分问题。
+- 本轮 review blocker 修复已补自动化覆盖：`trusted` smoke 新增 host-boundary flush 断言，`restricted` smoke 新增“关闭持久化后清理 live runtime”和“删除 history-only 节点同步清理后台 runtime”两条回归。
 
 ## 接口与依赖
 

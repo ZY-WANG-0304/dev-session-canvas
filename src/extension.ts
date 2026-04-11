@@ -169,6 +169,33 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       (message?: unknown, surface?: unknown) =>
         panelManager.dispatchWebviewMessageForTest(message, parseCanvasSurfaceLocation(surface))
     ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.startExecutionSession,
+      async (
+        kind?: unknown,
+        nodeId?: unknown,
+        cols?: unknown,
+        rows?: unknown,
+        provider?: unknown,
+        resumeRequested?: unknown
+      ) => {
+        if (kind !== 'agent' && kind !== 'terminal') {
+          throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的执行节点类型。');
+        }
+        if (typeof nodeId !== 'string' || !nodeId) {
+          throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的节点 ID。');
+        }
+
+        return panelManager.startExecutionSessionForTest({
+          kind,
+          nodeId,
+          cols: typeof cols === 'number' ? cols : undefined,
+          rows: typeof rows === 'number' ? rows : undefined,
+          provider: provider === 'codex' || provider === 'claude' ? provider : undefined,
+          resumeRequested: resumeRequested === true
+        });
+      }
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown) => {
       if (!isCanvasNodeKind(kind)) {
         throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');

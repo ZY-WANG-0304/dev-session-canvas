@@ -183,6 +183,15 @@ interface PersistedCanvasStateFlushResult {
   snapshot?: PersistedCanvasSnapshot;
 }
 
+interface StartExecutionSessionForTestParams {
+  kind: ExecutionNodeKind;
+  nodeId: string;
+  cols?: number;
+  rows?: number;
+  provider?: AgentProviderKind;
+  resumeRequested?: boolean;
+}
+
 interface RuntimeSupervisorRegistryForTest {
   registryPath?: string;
   exists: boolean;
@@ -204,6 +213,10 @@ interface ConnectedRuntimeSupervisorClient {
   client: RuntimeSupervisorClient;
   backend: RuntimeHostBackend;
   fallbackReason?: string;
+}
+
+interface StartExecutionSessionOptions {
+  bypassTrust?: boolean;
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
@@ -367,6 +380,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
+    }
+
+    if (params.kind === 'agent') {
+      await this.startAgentSession(
+        params.nodeId,
+        params.cols ?? DEFAULT_TERMINAL_COLS,
+        params.rows ?? DEFAULT_TERMINAL_ROWS,
+        params.provider,
+        params.resumeRequested === true,
+        {
+          bypassTrust: true
+        }
+      );
+    } else {
+      await this.startTerminalSession(params.nodeId, params.cols ?? DEFAULT_TERMINAL_COLS, params.rows ?? DEFAULT_TERMINAL_ROWS, {
+        bypassTrust: true
+      });
+    }
+
+    return this.getDebugSnapshot();
+  }
+
   public dispatchWebviewMessageForTest(
     message: unknown,
     surface: CanvasSurfaceLocation | undefined = this.activeSurface
@@ -485,6 +523,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await this.waitForPendingRuntimeSupervisorOperations();
+    this.flushAllExecutionSessionStatesForHostBoundary();
     await this.waitForPendingWorkspaceStateUpdates();
 
     const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions();
@@ -938,15 +977,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getLiveRuntimeReconnectBlockReason(): LiveRuntimeReconnectBlockReason | undefined {
+    if (!this.isRuntimePersistenceEnabled()) {
+      return 'runtime-persistence-disabled';
+    }
+
     if (!vscode.workspace.isTrusted) {
       return 'workspace-untrusted';
     }
 
-    return this.isRuntimePersistenceEnabled() ? undefined : 'runtime-persistence-disabled';
+    return undefined;
   }
 
   private shouldPreserveLiveRuntimeAcrossHostBoundary(): boolean {
-    return this.getLiveRuntimeReconnectBlockReason() !== 'runtime-persistence-disabled';
+    return this.isRuntimePersistenceEnabled();
   }
 
   private getRuntimeHostBaseStoragePath(): string {
@@ -1381,6 +1424,56 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return sessions;
+  }
+
+  private getPersistedLiveRuntimeSessionForNode(
+    node: CanvasNodeSummary
+  ): { backendKind: RuntimeHostBackendKind; sessionId: string } | undefined {
+    if (node.kind === 'agent') {
+      const metadata = ensureAgentMetadata(node);
+      if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
+        return {
+          backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
+          sessionId: metadata.runtimeSessionId
+        };
+      }
+      return undefined;
+    }
+
+    if (node.kind === 'terminal') {
+      const metadata = ensureTerminalMetadata(node);
+      if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
+        return {
+          backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
+          sessionId: metadata.runtimeSessionId
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private isMissingRuntimeSupervisorSessionError(error: unknown): boolean {
+    return formatUnknownError(error).includes('未找到 runtime session');
+  }
+
+  private async deleteRuntimeSupervisorSessionStrict(
+    session: { backendKind: RuntimeHostBackendKind; sessionId: string },
+    options: { allowRestart: boolean }
+  ): Promise<void> {
+    try {
+      const client = await this.getRuntimeSupervisorClientForKind(session.backendKind, {
+        allowRestart: options.allowRestart
+      });
+      await client.deleteSession({
+        sessionId: session.sessionId
+      });
+    } catch (error) {
+      if (this.isMissingRuntimeSupervisorSessionError(error)) {
+        return;
+      }
+      throw error;
+    }
   }
 
   private async deleteRuntimeSupervisorSessions(
@@ -1979,7 +2072,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/deleteNode':
-        this.deleteNode(parsedMessage.payload.nodeId);
+        void this.deleteNode(parsedMessage.payload.nodeId);
         return;
       case 'webview/startExecutionSession':
         if (parsedMessage.payload.kind === 'agent') {
@@ -2300,7 +2393,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     cols: number,
     rows: number,
     requestedProvider: AgentProviderKind | undefined,
-    resumeRequested: boolean
+    resumeRequested: boolean,
+    options: StartExecutionSessionOptions = {}
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
@@ -2314,7 +2408,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted
     });
 
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+    if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
       if (blockedNode) {
         this.state = updateAgentNode(this.state, nodeId, {
@@ -2873,7 +2967,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private async startTerminalSession(nodeId: string, cols: number, rows: number): Promise<void> {
+  private async startTerminalSession(
+    nodeId: string,
+    cols: number,
+    rows: number,
+    options: StartExecutionSessionOptions = {}
+  ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
     this.recordDiagnosticEvent('execution/startRequested', {
@@ -2884,7 +2983,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted
     });
 
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+    if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
       if (blockedNode) {
         this.state = updateTerminalNode(this.state, nodeId, {
@@ -3432,7 +3531,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private deleteNode(nodeId: string): void {
+  private async terminateExecutionNodeForDeletion(node: CanvasNodeSummary): Promise<void> {
+    if (!isExecutionNodeKind(node.kind)) {
+      return;
+    }
+
+    const attachedSession = this.getExecutionSessions(node.kind).get(node.id);
+    if (attachedSession?.owner === 'local') {
+      this.flushExecutionStateImmediately(node.kind, node.id);
+      this.disposeExecutionSession(node.kind, node.id, {
+        terminateProcess: true
+      });
+      return;
+    }
+
+    if (attachedSession?.owner === 'supervisor') {
+      const backendKind = normalizeRuntimeHostBackendKind(attachedSession.runtimeBackend) ?? 'legacy-detached';
+      await this.deleteRuntimeSupervisorSessionStrict(
+        {
+          backendKind,
+          sessionId: attachedSession.runtimeSessionId
+        },
+        {
+          allowRestart: true
+        }
+      );
+      this.disposeExecutionSession(node.kind, node.id, {
+        terminateProcess: false
+      });
+      return;
+    }
+
+    const persistedRuntimeSession = this.getPersistedLiveRuntimeSessionForNode(node);
+    if (!persistedRuntimeSession) {
+      return;
+    }
+
+    await this.deleteRuntimeSupervisorSessionStrict(persistedRuntimeSession, {
+      allowRestart: true
+    });
+    this.unbindRuntimeSession(persistedRuntimeSession.sessionId);
+  }
+
+  private async deleteNode(nodeId: string): Promise<void> {
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
     if (!node) {
       this.postMessage({
@@ -3446,9 +3587,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
-      this.disposeExecutionSession(node.kind, nodeId, {
-        terminateProcess: true
-      });
+      try {
+        await this.terminateExecutionNodeForDeletion(node);
+      } catch (error) {
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message: error instanceof Error ? error.message : '删除执行节点时清理 live runtime 失败。'
+          }
+        });
+        return;
+      }
     }
 
     this.state = deleteCanvasNode(this.state, nodeId);
@@ -3529,6 +3678,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeSession.syncTimer = undefined;
       this.flushLiveExecutionState(kind, nodeId);
     }, 160);
+  }
+
+  private flushExecutionStateSyncTimer(kind: ExecutionNodeKind, nodeId: string): void {
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    if (!session?.syncTimer) {
+      return;
+    }
+
+    clearTimeout(session.syncTimer);
+    session.syncTimer = undefined;
+  }
+
+  private flushExecutionStateImmediately(kind: ExecutionNodeKind, nodeId: string): void {
+    if (!this.getExecutionSessions(kind).has(nodeId)) {
+      return;
+    }
+
+    this.flushExecutionStateSyncTimer(kind, nodeId);
+    this.flushLiveExecutionState(kind, nodeId);
+  }
+
+  private flushAllExecutionSessionStatesForHostBoundary(): void {
+    for (const nodeId of this.agentSessions.keys()) {
+      this.flushExecutionStateImmediately('agent', nodeId);
+    }
+    for (const nodeId of this.terminalSessions.keys()) {
+      this.flushExecutionStateImmediately('terminal', nodeId);
+    }
   }
 
   private flushLiveExecutionState(kind: ExecutionNodeKind, nodeId: string): void {
