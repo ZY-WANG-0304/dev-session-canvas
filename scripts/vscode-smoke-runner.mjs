@@ -5,6 +5,9 @@ import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 
+const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
+const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
+
 export function shouldReRunInsideXvfb() {
   return (
     process.platform === 'linux' &&
@@ -33,19 +36,34 @@ export function runInsideXvfb(currentScriptPath, projectRoot) {
 
 export async function runVSCodeScenario(options) {
   const runtime = await prepareRuntime(options);
-  const vscodeExecutablePath = await ensureVSCodeExecutable(options.projectRoot);
+  return launchPreparedVSCodeScenario({
+    ...options,
+    runtime
+  });
+}
+
+export async function launchPreparedVSCodeScenario(options) {
+  const runtime = options.runtime;
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot));
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
+    folderUri: options.folderUri,
+    remoteAuthority: options.remoteAuthority,
     extensionDevelopmentPath: options.extensionDevelopmentPath,
     extensionTestsPath: options.extensionTestsPath,
     userDataDir: runtime.userDataDir,
     extensionsDir: runtime.extensionsDir,
     disableWorkspaceTrust: options.disableWorkspaceTrust ?? true,
+    disableExtensions: options.disableExtensions ?? true,
+    profileName: options.profileName,
     extraLaunchArgs: options.extraLaunchArgs ?? []
   });
 
   try {
-    await launchVSCodeTestProcess(vscodeExecutablePath, args, runtime.environment);
+    await launchVSCodeTestProcess(vscodeExecutablePath, args, {
+      ...runtime.environment,
+      ...(options.extensionTestsEnv ?? {})
+    });
   } catch (error) {
     await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
     console.error(`Smoke test artifacts saved to ${runtime.artifactsDir}`);
@@ -63,6 +81,7 @@ export async function prepareRuntime(options) {
   const configDir = path.join(debugRoot, 'config');
   const cacheDir = path.join(debugRoot, 'cache');
   const runtimeDir = path.join(os.tmpdir(), options.runtimeDirName ?? 'dsc-vscode-smoke-runtime');
+  const stateDir = path.join(runtimeDir, 'state');
   const tmpDir = path.join(debugRoot, 'tmp');
   const artifactsDir = path.join(debugRoot, 'artifacts');
 
@@ -76,15 +95,12 @@ export async function prepareRuntime(options) {
   await fs.mkdir(path.join(cacheDir, 'mesa'), { recursive: true });
   await fs.rm(runtimeDir, { recursive: true, force: true });
   await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
+  await fs.mkdir(stateDir, { recursive: true });
   await fs.mkdir(tmpDir, { recursive: true });
   await fs.mkdir(artifactsDir, { recursive: true });
 
   if (options.userSettings) {
-    await fs.writeFile(
-      path.join(userDataDir, 'User', 'settings.json'),
-      `${JSON.stringify(options.userSettings, null, 2)}\n`,
-      'utf8'
-    );
+    await writeUserSettings(userDataDir, options.userSettings);
   }
 
   return {
@@ -101,6 +117,7 @@ export async function prepareRuntime(options) {
       HOME: homeDir,
       XDG_CONFIG_HOME: configDir,
       XDG_CACHE_HOME: cacheDir,
+      XDG_STATE_HOME: stateDir,
       XDG_RUNTIME_DIR: runtimeDir,
       TMPDIR: tmpDir,
       MESA_SHADER_CACHE_DIR: path.join(cacheDir, 'mesa'),
@@ -108,6 +125,15 @@ export async function prepareRuntime(options) {
       ...(options.extensionTestsEnv ?? {})
     }
   };
+}
+
+export async function writeUserSettings(userDataDir, userSettings) {
+  await fs.mkdir(path.join(userDataDir, 'User'), { recursive: true });
+  await fs.writeFile(
+    path.join(userDataDir, 'User', 'settings.json'),
+    `${JSON.stringify(userSettings, null, 2)}\n`,
+    'utf8'
+  );
 }
 
 export async function snapshotVSCodeLogs(userDataDir, artifactsDir) {
@@ -159,9 +185,22 @@ export async function findExistingVSCodeExecutablePath(projectRoot) {
 }
 
 function buildVSCodeArgs(options) {
-  const args = [
-    options.workspacePath,
-    '--disable-extensions',
+  const args = [];
+  if (options.remoteAuthority) {
+    args.push('--remote', options.remoteAuthority);
+  }
+
+  if (options.folderUri) {
+    args.push(`--folder-uri=${options.folderUri}`);
+  } else if (options.workspacePath) {
+    args.push(options.workspacePath);
+  }
+
+  if (options.disableExtensions !== false) {
+    args.push('--disable-extensions');
+  }
+
+  args.push(
     '--log=trace',
     `--user-data-dir=${options.userDataDir}`,
     `--extensions-dir=${options.extensionsDir}`,
@@ -169,16 +208,26 @@ function buildVSCodeArgs(options) {
     '--disable-gpu-sandbox',
     '--disable-updates',
     '--skip-welcome',
-    '--skip-release-notes',
-    ...options.extraLaunchArgs
-  ];
+    '--skip-release-notes'
+  );
+
+  if (options.profileName) {
+    args.push(`--profile=${options.profileName}`);
+  }
+
+  args.push(...options.extraLaunchArgs);
 
   if (options.disableWorkspaceTrust) {
     args.push('--disable-workspace-trust');
   }
 
   args.push(`--extensionTestsPath=${options.extensionTestsPath}`);
-  args.push(`--extensionDevelopmentPath=${options.extensionDevelopmentPath}`);
+  const extensionDevelopmentPaths = Array.isArray(options.extensionDevelopmentPath)
+    ? options.extensionDevelopmentPath
+    : [options.extensionDevelopmentPath];
+  for (const extensionDevelopmentPath of extensionDevelopmentPaths) {
+    args.push(`--extensionDevelopmentPath=${extensionDevelopmentPath}`);
+  }
   return args;
 }
 
@@ -195,10 +244,7 @@ function resolveVSCodeExecutablePath(installDir) {
 }
 
 async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
-  const fullEnv = {
-    ...process.env,
-    ...extensionTestsEnv
-  };
+  const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
   const shell = process.platform === 'win32';
 
   await new Promise((resolve, reject) => {
@@ -240,4 +286,80 @@ async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) 
     child.on('close', finalize);
     child.on('exit', finalize);
   });
+}
+
+export async function installVSCodeExtensions(options) {
+  if (!options.extensionIds?.length) {
+    return;
+  }
+
+  const cliPath = resolveVSCodeCliPath(options.vscodeExecutablePath);
+  const args = [
+    `--user-data-dir=${options.userDataDir}`,
+    `--extensions-dir=${options.extensionsDir}`
+  ];
+  for (const extensionId of options.extensionIds) {
+    args.push('--install-extension', extensionId);
+  }
+  args.push('--force');
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(cliPath, args, {
+      env: buildVSCodeChildEnv(options.environment ?? {})
+    });
+
+    child.stdout.on('data', (chunk) => process.stdout.write(chunk));
+    child.stderr.on('data', (chunk) => process.stderr.write(chunk));
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(
+        new Error(
+          signal
+            ? `VS Code CLI extension install terminated with signal ${signal}.`
+            : `VS Code CLI extension install failed with code ${code}.`
+        )
+      );
+    });
+  });
+}
+
+export function buildVSCodeChildEnv(overrides = {}) {
+  const env = {
+    ...process.env,
+    ...overrides
+  };
+
+  for (const key of Object.keys(env)) {
+    if (
+      BLOCKED_VSCODE_ENV_KEYS.has(key) ||
+      BLOCKED_VSCODE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ) {
+      delete env[key];
+    }
+  }
+
+  return env;
+}
+
+function resolveVSCodeCliPath(vscodeExecutablePath) {
+  if (process.platform === 'win32') {
+    return path.join(path.dirname(vscodeExecutablePath), 'bin', 'code.cmd');
+  }
+
+  if (process.platform === 'darwin') {
+    return path.join(
+      path.dirname(path.dirname(vscodeExecutablePath)),
+      'Resources',
+      'app',
+      'bin',
+      'code'
+    );
+  }
+
+  return path.join(path.dirname(vscodeExecutablePath), 'bin', 'code');
 }

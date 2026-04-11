@@ -11,6 +11,7 @@ export const COMMAND_IDS = {
 
 export const TEST_COMMAND_IDS = {
   getDebugState: 'devSessionCanvas.__test.getDebugState',
+  getRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   getHostMessages: 'devSessionCanvas.__test.getHostMessages',
   clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   getDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
@@ -20,7 +21,10 @@ export const TEST_COMMAND_IDS = {
   performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
   setPersistedState: 'devSessionCanvas.__test.setPersistedState',
   reloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
+  flushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
+  simulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
+  startExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   createNode: 'devSessionCanvas.__test.createNode',
   resetState: 'devSessionCanvas.__test.resetState'
 } as const;
@@ -35,6 +39,7 @@ export const VIEW_IDS = {
 
 export const CONFIG_KEYS = {
   canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
+  runtimePersistenceEnabled: 'devSessionCanvas.runtimePersistence.enabled',
   agentDefaultProvider: 'devSessionCanvas.agent.defaultProvider',
   agentCodexCommand: 'devSessionCanvas.agent.codexCommand',
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',

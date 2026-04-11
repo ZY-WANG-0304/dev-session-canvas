@@ -15,7 +15,8 @@ related_plans:
   - docs/exec-plans/completed/extension-debug-automation.md
   - docs/exec-plans/completed/test-automation-hardening.md
   - docs/exec-plans/completed/debug-automation-next-six.md
-updated_at: 2026-04-06
+  - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
+updated_at: 2026-04-10
 ---
 
 # 开发调试与自动化验证
@@ -90,7 +91,7 @@ updated_at: 2026-04-06
 
 第一层：隔离式 `Run and Debug` 改为走 VS Code 官方推荐的命名 profile。`Run Dev Session Canvas` 固定使用 `Dev Session Canvas Extension Debug` profile，并仅通过 `--extensionDevelopmentPath` 加载当前仓库里的开发态扩展；Remote-SSH 等远程能力由这个 profile 预先安装的 `Remote Development` 扩展提供，而不是继续手工改写 `user-data-dir`、`extensions-dir` 或远端工作区身份。
 
-第二层：继续复用 `@vscode/test-electron` 提供的 VS Code 下载与可执行文件解析能力，但 smoke 启动改为自建 launcher，直接启动 VS Code，而不是调用默认 `runTests()`。这样才能真正控制 `--disable-workspace-trust` 参数，覆盖可信 workspace 与真实 Restricted Mode 两种场景。第二层继续承担宿主主路径、`webview -> host` 消息桥接、`Agent` 假 provider / `Terminal` 执行生命周期、状态持久化恢复、关键失败路径、切面 / reload 竞态和非激活 surface 语义，并额外通过 test-only probe 与 test-only DOM action 桥读取真实 Webview 容器里的 DOM 摘要和一条真实交互。
+第二层：继续复用 `@vscode/test-electron` 提供的 VS Code 下载与可执行文件解析能力，但 smoke 启动改为自建 launcher，直接启动 VS Code，而不是调用默认 `runTests()`。这样才能真正控制 `--disable-workspace-trust` 参数，覆盖可信 workspace 与真实 Restricted Mode 两种场景。第二层继续承担宿主主路径、`webview -> host` 消息桥接、`Agent` 假 provider / `Terminal` 执行生命周期、状态持久化恢复、关键失败路径、切面 / reload 竞态和非激活 surface 语义，并额外通过 test-only probe 与 test-only DOM action 桥读取真实 Webview 容器里的 DOM 摘要和一条真实交互。当前第二层还新增了一条 `Remote-SSH + Extension Development Host + real-reopen` smoke：runner 会在 Linux 上启动临时用户态 `sshd`，让 `Remote-SSH` 扩展通过真实 SSH 协议连接同机远端，从而把 runtime persistence 的远端重连链路纳入自动化。
 
 第三层：使用 Playwright 直接加载真实 `dist/webview.js` bundle，并通过假 `acquireVsCodeApi()` bridge 驱动 Webview，承担大范围 UI 交互与截图测试；与此同时，保留一条跑进真实 VS Code Webview 容器的轻量 probe 和一条真实 DOM action，补足“完全停留在浏览器 stub 页面里”的缺口。
 
@@ -132,11 +133,11 @@ updated_at: 2026-04-06
 1. 调试配置改为使用固定命名 profile `Dev Session Canvas Extension Debug` 启动 Development Host，让调试环境的隔离回到 VS Code 官方的 Profile 机制，而不是继续依赖手工目录隔离。
 2. 扩展在 `ExtensionMode.Test` 下额外注册内部测试命令，用于读取状态、等待 Webview ready、派发合成 `webview/*` 消息，以及拉取宿主发往 Webview 的消息记录与诊断时间线。
 3. 仓库现在提供 `test:smoke`、`test:webview` 和 `test:vsix-smoke` 三条入口。
-4. `test:smoke` 现在按 `trusted` / `restricted` 两个真实场景运行；可信场景覆盖真实 DOM action、Note 编辑、provider 切换后重启、删除按钮、live session 切面 / reload 竞态、pending request dispose fault injection 与 PTY 边界，受限场景覆盖真实 Restricted Mode 下的创建 / 运行 / 输入限制和 overlay 文案。
+4. `test:smoke` 现在按 `trusted`、`restricted`、本地 `real-reopen`、以及 `remote-ssh-real-reopen` 四类真实场景运行；Remote-SSH 场景会经过真实 SSH 客户端层与远端 Extension Development Host，覆盖 runtime persistence 的远端 setup / verify 两阶段。
 5. `test:vsix-smoke` 会先打包 `.vsix`，再解包并用打包产物跑 trusted smoke，用来验证运行时文件集是否完整。
 6. `test:smoke` 现在包含真实 VS Code Webview 容器里的 probe 与 test-only DOM action，可直接断言节点标题、字段值、provider 切换、删除按钮、Restricted overlay 和错误 toast 是否真的渲染出来。
 7. Playwright 基线截图和交互断言已经入库，可直接随 Webview 改动回归；当前回归面已覆盖截图基线、Note 编辑、删除按钮、provider 切换和错误 toast。
-8. smoke / Playwright runner 会在失败时留下快照、最后一次真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图、trace、页面级 console / error / request failed 诊断、posted messages 和 persisted state，且 smoke 现在还能通过可控 delay 主动制造 pending request 与 stop-vs-queued-exit 竞态，避免只剩退出码。
+8. smoke / Playwright runner 会在失败时留下快照、最后一次真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图、trace、页面级 console / error / request failed 诊断、posted messages 和 persisted state；Remote-SSH real-reopen 场景还会把远端重连产物独立落到 `.debug/vscode-smoke/remote-ssh-real-reopen/artifacts/`，避免和本地 smoke 混在一起。
 9. 文档明确区分：
    - 真实 VS Code 集成验证
    - Webview 专项 UI / 截图验证
@@ -158,4 +159,4 @@ updated_at: 2026-04-06
 - `test:vsix-smoke` 能成功打包 VSIX、解包并用打包内容跑通 trusted smoke。
 - Playwright 能加载 Webview harness，并覆盖至少一张基线截图、Note 编辑、删除按钮、provider 切换和错误 toast。
 - smoke 或 Playwright 失败时，仓库内会留下可回放的调试产物，而不是只有进程退出码。
-- `Remote - SSH` 下的 F5 行为继续保留一条人工验收，并明确把“一次性准备本机 debug profile”当作前置条件写入文档。
+- `Remote - SSH` 下的 F5 调试配置继续保留一条人工验收，并明确把“一次性准备本机 debug profile”当作前置条件写入文档；但远端 runtime persistence 主路径本身已经进入 `test:smoke` 自动化。

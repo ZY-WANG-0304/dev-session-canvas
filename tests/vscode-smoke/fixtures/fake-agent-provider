@@ -2,7 +2,36 @@
 
 set -uo pipefail
 
-echo "[fake-agent] ready pid=$$"
+mode="start"
+if [[ "${1-}" == "resume" ]]; then
+  mode="resume"
+  shift
+fi
+
+session_dir="${CODEX_HOME:-}"
+session_file=""
+session_id=""
+
+if [[ -n "$session_dir" ]]; then
+  mkdir -p "$session_dir"
+  session_file="${session_dir%/}/last-session"
+fi
+
+if [[ "$mode" == "resume" ]]; then
+  if [[ -z "$session_file" || ! -f "$session_file" ]]; then
+    echo "[fake-agent] no resumable session"
+    exit 19
+  fi
+
+  session_id="$(cat "$session_file")"
+  echo "[fake-agent] resumed session ${session_id} pid=$$"
+else
+  session_id="session-$$"
+  if [[ -n "$session_file" ]]; then
+    printf '%s\n' "$session_id" > "$session_file"
+  fi
+  echo "[fake-agent] ready pid=$$ session=${session_id}"
+fi
 
 handle_signal() {
   echo "[fake-agent] received signal"

@@ -129,7 +129,7 @@ code --profile "Dev Session Canvas Extension Debug" --uninstall-extension devses
 
 ## 自动化验证
 
-当前仓库已经提供两条自动化验证入口：
+当前仓库已经提供三条主要自动化验证入口：
 
 ```bash
 npm run test:smoke
@@ -139,13 +139,13 @@ npm run test:vsix-smoke
 
 说明：
 
-- `test:smoke` 会按顺序启动两个真实的 VS Code Electron 场景：`trusted` 和 `restricted`。可信场景当前覆盖扩展激活、打开画布、真实 Webview DOM 交互、Task 状态切换、Note 正文编辑、Agent provider 切换后重启、删除按钮、`Agent` / `Terminal` 执行生命周期、live session 在 editor / panel 切面与 persisted reload 下的竞态、pending probe / DOM action 在 editor dispose 下的故障注入、PTY 大输出 / 非零退出 / stop-vs-queued-exit / 并发，以及失败诊断产物；受限场景当前覆盖真实 Restricted Mode 下的创建限制、运行 / 输入阻断和真实容器中的 Restricted overlay 文案。
+- `test:smoke` 会按顺序启动 `trusted`、`restricted`、本地 `real-reopen` 和 `remote-ssh-real-reopen` 四类真实 VS Code Electron 场景。Remote-SSH 场景当前仅在 Linux 上启用：runner 会先启动一个临时用户态 `sshd`，再让 `Remote-SSH` 扩展通过真实 SSH 协议连接同机远端，从而验证远端 Extension Development Host 下的 runtime persistence setup / verify 两阶段。可信与受限场景继续覆盖扩展激活、打开画布、真实 Webview DOM 交互、Note 编辑、provider 切换后重启、删除按钮、`Agent` / `Terminal` 执行生命周期、live session 切面 / reload 竞态、故障注入与 PTY 边界。
 - `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；当前已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
 - `test:vsix-smoke` 当前仅在 Linux 上运行。它会先执行 `npm run package:vsix`，再解包最新 `.vsix`，验证打包后的运行时文件是否齐全，并用解包产物跑一遍 trusted smoke。这个入口当前验证的是“打包内容完整性”，不是未来公开发布前的三平台安装矩阵替代品。
-- 执行 `npm test` 会依次运行 `typecheck`、`test:smoke` 和 `test:webview`。
+- 执行 `npm test` 会依次运行 `typecheck`、`test:runtime-supervisor-paths`、`test:smoke` 和 `test:webview`。
 - 首次运行 `test:smoke` 会下载一份 VS Code 测试副本；首次运行 `test:webview` 会下载 Chromium 到仓库内缓存目录。
 - `test:smoke` 默认使用仓库内 fake provider fixture，不要求开发机真的安装 `codex` / `claude`；如需验证真实 Agent CLI，请走上面的人工主路径。
-- `test:smoke` 失败时会把场景相关的快照、最后一次真实 Webview probe、宿主消息、`failure-diagnostic-events.json`（宿主侧 surface / session 生命周期时间线）和 VS Code logs 分别写到 `.debug/vscode-smoke/trusted/artifacts/` 或 `.debug/vscode-smoke/restricted/artifacts/`。
+- `test:smoke` 失败时会把场景相关的快照、最后一次真实 Webview probe、宿主消息、`failure-diagnostic-events.json`（宿主侧 surface / session 生命周期时间线）和 VS Code logs 写到对应场景自己的 artifacts 目录；Remote-SSH real-reopen 的产物位于 `.debug/vscode-smoke/remote-ssh-real-reopen/artifacts/`。
 - `test:webview` 失败时会把截图、trace、`playwright-page-diagnostics.json`（console / page error / request failed）、`harness-posted-messages.json` 和 `harness-persisted-state.json` 写到 `.debug/playwright/results/`。
 
 如果你修改了 Webview 视觉基线，需要显式更新截图：
@@ -156,7 +156,7 @@ npm run test:webview -- --update-snapshots
 
 ## Remote-SSH 人工验收
 
-当前自动化链路已经覆盖扩展主路径和 Webview UI 回归，但还不能直接替代 `Remote - SSH` 下的 F5 宿主验证。涉及调试配置、扩展身份或远程宿主行为时，请额外做一次人工验收：
+当前自动化链路已经覆盖扩展主路径、Webview UI 回归，以及 `Remote-SSH + Extension Development Host + live-runtime real-reopen` 主路径；但它仍不能直接替代调试配置本身的 `Remote - SSH` 下 F5 宿主验证。涉及调试配置、扩展身份或专用 debug profile 行为时，请额外做一次人工验收：
 
 1. 在 `Remote - SSH` 打开的仓库窗口中按 `F5` 运行 `Run Dev Session Canvas`。
 2. 确认新开的 Development Host 使用的是 `Dev Session Canvas Extension Debug` profile。

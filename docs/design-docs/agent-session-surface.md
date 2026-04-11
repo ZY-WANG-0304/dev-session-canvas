@@ -15,7 +15,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-session-surface-alignment.md
   - docs/exec-plans/completed/agent-special-terminal.md
-updated_at: 2026-03-30
+updated_at: 2026-04-08
 ---
 
 # Agent 节点会话窗口设计
@@ -24,7 +24,7 @@ updated_at: 2026-03-30
 
 当前仓库已经把 `Agent` 的主交互从右侧 inspector 挪回节点内部，但当前节点表面仍然保留了一套“provider 选择器 + prompt textarea + transcript 冒泡”的独立调用 UI。
 
-这比 inspector 方案更接近会话窗口，但仍然过重也不够准确。对当前产品来说，`Agent` 更像一个会默认启动 `Codex` 或 `Claude Code` 的特殊 terminal，而不是一个自己维护 request/response transcript 的调用卡片。
+这比 inspector 方案更接近会话窗口，但仍然过重也不够准确。对当前产品来说，`Agent` 更像一个带有 provider 上下文的执行会话窗口，而不是一个自己维护 request/response transcript 的调用卡片。
 
 ## 2. 问题定义
 
@@ -38,7 +38,7 @@ updated_at: 2026-03-30
 
 - 把 `Agent` 明确定义为画布上的持续会话窗口，而不是单次请求卡片。
 - 让节点本体承载主要输入、输出和运行状态。
-- 让 `Agent` 与 `Terminal` 收敛到同一类 runtime window 家族，而不是继续长成一个独立调用系统。
+- 让 `Agent` 与 `Terminal` 收敛到同一类 runtime window 家族，而不是继续长成一个独立调用系统，同时保留两者状态与恢复语义可以不同的空间。
 
 ## 4. 非目标
 
@@ -83,7 +83,7 @@ updated_at: 2026-03-30
 
 优点：
 
-- 与当前产品里“Agent 是特殊 Terminal”的产品语义一致。
+- 与当前产品里“Agent 是执行会话窗口，而不是聊天调用卡片”的产品语义一致。
 - 让 `Agent` 与 `Terminal` 更容易共享同一套宿主后端和恢复边界。
 - 避免把当前实现包装成一套独立的聊天型交互系统。
 
@@ -110,7 +110,7 @@ updated_at: 2026-03-30
 
 - `Agent` 节点的正确产品定义是“画布上的会话窗口”。
 - 主交互必须放在节点内部，右侧检查器最多只承担概况展示，不再是主要操作面。
-- `Agent` 与 `Terminal` 应属于同一类 runtime window；区别主要在默认启动命令和对象语义，不在运行时模型。
+- `Agent` 与 `Terminal` 应属于同一类 runtime window 家族；区别不仅在对象语义，也允许延伸到状态机和恢复路径，不要求它们完全共享运行时模型。
 - 新建 `Agent` 节点默认停留在未运行态，允许用户先切换 provider，再显式启动 CLI 会话。
 - 第一版最小会话窗口至少包含：
   - 当前 provider 标识
@@ -123,6 +123,8 @@ updated_at: 2026-03-30
 
 - 当前 backend 原型应直接收敛为 provider CLI 的 PTY 会话。
 - 节点不再以独立 transcript 作为核心产品表面；会话历史主要来自终端 buffer，宿主持久化只保留摘要与退出信息。
+
+与生命周期、恢复和自动启动相关的当前有效结论，进一步以 [docs/design-docs/execution-lifecycle-and-recovery.md](./execution-lifecycle-and-recovery.md) 为准。
 
 ## 7. 风险与取舍
 

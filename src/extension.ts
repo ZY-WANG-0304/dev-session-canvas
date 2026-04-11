@@ -5,8 +5,11 @@ import { isCanvasNodeKind, isWebviewDomAction, type CanvasNodeKind } from './com
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
+let activePanelManager: CanvasPanelManager | undefined;
+
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
+  activePanelManager = panelManager;
   const sidebarView = new CanvasSidebarView(panelManager);
 
   context.subscriptions.push(
@@ -46,7 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    panelManager.resetState();
+    await panelManager.resetState();
   });
 
   context.subscriptions.push(
@@ -57,7 +60,11 @@ export function activate(context: vscode.ExtensionContext): void {
   registerTestCommands(context, panelManager);
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  const panelManager = activePanelManager;
+  activePanelManager = undefined;
+  await panelManager?.prepareForDeactivation();
+}
 
 function registerCommand(context: vscode.ExtensionContext, commandId: string, handler: () => Promise<void>): void {
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
@@ -107,6 +114,9 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
 
   context.subscriptions.push(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getRuntimeSupervisorState, () =>
+      panelManager.getRuntimeSupervisorStateForTest()
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getHostMessages, () => panelManager.getHostMessagesForTest()),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.clearHostMessages, () => {
       panelManager.clearHostMessagesForTest();
@@ -148,10 +158,43 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       panelManager.setPersistedStateForTest(rawState)
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.reloadPersistedState, () => panelManager.reloadPersistedStateForTest()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.flushPersistedState, () =>
+      panelManager.flushPersistedCanvasStateForTest()
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.simulateRuntimeReload, () =>
+      panelManager.simulateRuntimeReloadForTest()
+    ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.dispatchWebviewMessage,
       (message?: unknown, surface?: unknown) =>
         panelManager.dispatchWebviewMessageForTest(message, parseCanvasSurfaceLocation(surface))
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.startExecutionSession,
+      async (
+        kind?: unknown,
+        nodeId?: unknown,
+        cols?: unknown,
+        rows?: unknown,
+        provider?: unknown,
+        resumeRequested?: unknown
+      ) => {
+        if (kind !== 'agent' && kind !== 'terminal') {
+          throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的执行节点类型。');
+        }
+        if (typeof nodeId !== 'string' || !nodeId) {
+          throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的节点 ID。');
+        }
+
+        return panelManager.startExecutionSessionForTest({
+          kind,
+          nodeId,
+          cols: typeof cols === 'number' ? cols : undefined,
+          rows: typeof rows === 'number' ? rows : undefined,
+          provider: provider === 'codex' || provider === 'claude' ? provider : undefined,
+          resumeRequested: resumeRequested === true
+        });
+      }
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown) => {
       if (!isCanvasNodeKind(kind)) {
@@ -161,8 +204,8 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       panelManager.createNodeForTest(kind);
       return panelManager.getDebugSnapshot();
     }),
-    vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, () => {
-      panelManager.resetState();
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, async () => {
+      await panelManager.resetState();
       return panelManager.getDebugSnapshot();
     })
   );

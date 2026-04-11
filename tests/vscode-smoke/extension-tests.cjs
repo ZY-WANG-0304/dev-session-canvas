@@ -8,6 +8,7 @@ const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
+  testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
@@ -17,7 +18,9 @@ const COMMAND_IDS = {
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
+  testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
+  testStartExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
@@ -31,6 +34,8 @@ const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
+const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
+const HOST_BOUNDARY_FLUSH_TERMINAL_MARKER = 'HOST_BOUNDARY_TERMINAL_FLUSH';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
@@ -169,8 +174,10 @@ async function runTrustedSmoke() {
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
+  await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);
   await verifyLiveSessionCutoverAndReload(terminalNode.id);
   await verifyPtyRobustness(agentNode.id, terminalNode.id);
   await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);
@@ -178,6 +185,11 @@ async function runTrustedSmoke() {
   await verifyStandbySurfaceIgnoresMessages(noteNode.id);
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
+  await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
+  await verifyLiveRuntimeResumeExitClassification(agentNode.id);
+  await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
+  await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
+  await verifyHostBoundaryFlushesRecentLocalState(agentNode.id, terminalNode.id);
   await verifyTrustedDiagnostics(agentNode.id, terminalNode.id);
   await verifyRealDeleteButton(noteNode.id);
 
@@ -186,7 +198,7 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.length, 2);
 
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
-  snapshot = await getDebugSnapshot();
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -340,34 +352,110 @@ async function runRestrictedSmoke() {
   const probeTerminal = probe.nodes.find((node) => node.nodeId === terminalNode.id);
   assert.strictEqual(probeAgent?.overlayTitle, 'Restricted Mode');
   assert.strictEqual(probeTerminal?.overlayTitle, 'Restricted Mode');
+  await verifyRestrictedLiveRuntimeReconnectBlocked(agentNode.id, terminalNode.id);
   await verifyRestrictedDiagnostics(agentNode.id, terminalNode.id);
+  await verifyRestrictedDisablingRuntimePersistenceCleansLiveRuntime(agentNode.id, terminalNode.id);
+  await verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNode.id, terminalNode.id);
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+}
+
+async function waitForAgentLive(agentNodeId) {
+  return waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
+      currentAgent?.metadata?.agent?.liveSession &&
+        (currentAgent.status === 'starting' ||
+          currentAgent.status === 'running' ||
+          currentAgent.status === 'waiting-input' ||
+          currentAgent.status === 'resuming')
+    );
+  });
+}
+
+async function waitForTerminalLive(terminalNodeId) {
+  return waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+    return Boolean(
+      currentNode?.metadata?.terminal?.liveSession &&
+        (currentNode.status === 'launching' || currentNode.status === 'live')
+    );
+  });
+}
+
+async function ensureAgentStopped(agentNodeId) {
+  const snapshot = await getDebugSnapshot();
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  if (!agentNode.metadata?.agent?.liveSession) {
+    return snapshot;
+  }
+
+  await dispatchWebviewMessage({
+    type: 'webview/stopExecutionSession',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent'
+    }
+  });
+
+  return waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentNode && !currentNode.metadata?.agent?.liveSession);
+  });
+}
+
+async function ensureTerminalStopped(terminalNodeId) {
+  const snapshot = await getDebugSnapshot();
+  const terminalNode = findNodeById(snapshot, terminalNodeId);
+  if (!terminalNode.metadata?.terminal?.liveSession) {
+    return snapshot;
+  }
+
+  await dispatchWebviewMessage({
+    type: 'webview/stopExecutionSession',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal'
+    }
+  });
+
+  return waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+    return Boolean(currentNode && !currentNode.metadata?.terminal?.liveSession);
+  });
+}
+
+async function verifyAutoStartOnCreate(agentNodeId, terminalNodeId) {
+  const snapshot = await waitForAgentLive(agentNodeId);
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.metadata.agent.liveSession, true);
+  assert.ok(
+    agentNode.status === 'starting' ||
+      agentNode.status === 'running' ||
+      agentNode.status === 'waiting-input'
+  );
+
+  const terminalSnapshot = await waitForTerminalLive(terminalNodeId);
+  const terminalNode = findNodeById(terminalSnapshot, terminalNodeId);
+  assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
+  assert.ok(terminalNode.status === 'launching' || terminalNode.status === 'live');
 }
 
 async function verifyAgentExecutionFlow(agentNodeId) {
   await clearHostMessages();
 
-  await dispatchWebviewMessage({
-    type: 'webview/startExecutionSession',
-    payload: {
-      nodeId: agentNodeId,
-      kind: 'agent',
-      cols: 84,
-      rows: 26,
-      provider: 'codex'
-    }
-  });
-
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'live');
-  });
+  let snapshot = await waitForAgentLive(agentNodeId);
   let agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.ok(agentNode.metadata.agent.lastCols > 0);
   assert.ok(agentNode.metadata.agent.lastRows > 0);
+  assert.ok(
+    agentNode.status === 'starting' ||
+      agentNode.status === 'running' ||
+      agentNode.status === 'waiting-input'
+  );
 
+  await requestExecutionSnapshot('agent', agentNodeId);
   let hostMessages = await getHostMessages();
   assert.ok(
     hostMessages.some(
@@ -389,10 +477,14 @@ async function verifyAgentExecutionFlow(agentNodeId) {
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] hello smoke'));
+    return Boolean(
+      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] hello smoke') &&
+        currentNode.status === 'waiting-input'
+    );
   });
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] hello smoke'));
+  assert.strictEqual(agentNode.status, 'waiting-input');
 
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
@@ -405,10 +497,10 @@ async function verifyAgentExecutionFlow(agentNodeId) {
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentNode && currentNode.status === 'closed' && !currentNode.metadata?.agent?.liveSession);
+    return Boolean(currentNode && currentNode.status === 'stopped' && !currentNode.metadata?.agent?.liveSession);
   });
   agentNode = findNodeById(snapshot, agentNodeId);
-  assert.strictEqual(agentNode.status, 'closed');
+  assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.strictEqual(agentNode.metadata.agent.lastExitCode, 0);
   assert.match(agentNode.summary, /Codex 会话已结束/);
@@ -425,10 +517,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     }
   });
 
-  await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentNode?.metadata?.agent?.liveSession);
-  });
+  await waitForAgentLive(agentNodeId);
 
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -459,10 +548,11 @@ async function verifyAgentExecutionFlow(agentNodeId) {
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentNode && currentNode.status === 'closed' && !currentNode.metadata?.agent?.liveSession);
+    return Boolean(currentNode && currentNode.status === 'stopped' && !currentNode.metadata?.agent?.liveSession);
   });
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+  assert.strictEqual(agentNode.status, 'stopped');
   assert.match(agentNode.summary, /已停止 Codex 会话/);
 }
 
@@ -724,20 +814,7 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNode
 async function verifyTerminalExecutionFlow(terminalNodeId) {
   await clearHostMessages();
 
-  await dispatchWebviewMessage({
-    type: 'webview/startExecutionSession',
-    payload: {
-      nodeId: terminalNodeId,
-      kind: 'terminal',
-      cols: 84,
-      rows: 26
-    }
-  });
-
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentTerminal?.metadata?.terminal?.liveSession && currentTerminal.status === 'live');
-  });
+  let snapshot = await waitForTerminalLive(terminalNodeId);
   let terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.ok(terminalNode.metadata.terminal.lastCols > 0);
@@ -778,6 +855,7 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   });
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(outputMarker));
+  assert.strictEqual(terminalNode.status, 'live');
 
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
@@ -808,6 +886,92 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.lastCols, 100);
   assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
+}
+
+async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
+  await clearHostMessages();
+
+  await ensureAgentStopped(agentNodeId);
+  await ensureTerminalStopped(terminalNodeId);
+
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      cols: 90,
+      rows: 28,
+      provider: 'codex'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal',
+      cols: 90,
+      rows: 28
+    }
+  });
+
+  await waitForAgentLive(agentNodeId);
+  await waitForTerminalLive(terminalNodeId);
+
+  let snapshot = await simulateRuntimeReload();
+  let agentNode = findNodeById(snapshot, agentNodeId);
+  let terminalNode = findNodeById(snapshot, terminalNodeId);
+
+  assert.strictEqual(agentNode.status, 'resume-ready');
+  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, 'resume');
+  assert.strictEqual(terminalNode.status, 'interrupted');
+  assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
+      currentAgent?.metadata?.agent?.liveSession &&
+        currentAgent.status === 'waiting-input' &&
+        currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+    );
+  });
+
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'waiting-input');
+  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: 'exit 19\r'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
+      currentAgent &&
+        !currentAgent.metadata?.agent?.liveSession &&
+        (currentAgent.status === 'error' || currentAgent.status === 'resume-failed')
+    );
+  });
+
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'error');
+  assert.strictEqual(agentNode.metadata.agent.lastExitCode, 19);
+  assert.match(agentNode.summary, /退出码 19/);
+
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal',
+      cols: 90,
+      rows: 28
+    }
+  });
+  await waitForTerminalLive(terminalNodeId);
 }
 
 async function verifyLiveSessionCutoverAndReload(terminalNodeId) {
@@ -947,6 +1111,10 @@ async function verifyLiveSessionCutoverAndReload(terminalNodeId) {
 
 async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   await clearHostMessages();
+  await ensureAgentStopped(agentNodeId);
+  await ensureTerminalStopped(terminalNodeId);
+  await clearHostMessages();
+
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: {
@@ -1015,7 +1183,7 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   });
   await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentAgent?.status === 'closed' && !currentAgent.metadata?.agent?.liveSession);
+    return Boolean(currentAgent?.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
   });
 
   await clearHostMessages();
@@ -1051,6 +1219,8 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
 
+  await requestExecutionSnapshot('agent', agentNodeId);
+  await requestExecutionSnapshot('terminal', terminalNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -1114,13 +1284,13 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
     return Boolean(
-      currentAgent?.status === 'closed' &&
+      currentAgent?.status === 'stopped' &&
         !currentAgent.metadata?.agent?.liveSession &&
         currentTerminal?.status === 'closed' &&
         !currentTerminal.metadata?.terminal?.liveSession
     );
   });
-  assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'closed');
+  assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'stopped');
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
 }
 
@@ -1410,10 +1580,10 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
 
   const snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentAgent && currentAgent.status === 'closed' && !currentAgent.metadata?.agent?.liveSession);
+    return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
   });
   const agentNode = findNodeById(snapshot, agentNodeId);
-  assert.strictEqual(agentNode.status, 'closed');
+  assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.match(agentNode.summary, /已停止 Codex 会话/);
 
@@ -1428,7 +1598,7 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
   const exitEvents = scopedDiagnostics.filter((event) => event.kind === 'execution/exited');
   assert.strictEqual(exitEvents.length, 1);
   assert.strictEqual(exitEvents[0].detail?.stopRequested, true);
-  assert.strictEqual(exitEvents[0].detail?.status, 'closed');
+  assert.strictEqual(exitEvents[0].detail?.status, 'stopped');
 
   const hostMessages = await getHostMessages();
   assert.strictEqual(
@@ -1440,6 +1610,624 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
     ).length,
     1
   );
+}
+
+async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await clearHostMessages();
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 92,
+        rows: 28,
+        provider: 'codex'
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 92,
+        rows: 28
+      }
+    });
+
+    await waitForAgentLive(agentNodeId);
+    await waitForTerminalLive(terminalNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        data: 'sleep 1\rburst 3\r'
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        data: 'sleep 1; echo LIVE_RUNTIME_TERMINAL\r'
+      }
+    });
+
+    let snapshot = await simulateRuntimeReload();
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.status, 'reattaching');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'reattaching');
+    assert.strictEqual(agentNode.metadata.agent.persistenceMode, 'live-runtime');
+    assert.strictEqual(terminalNode.status, 'reattaching');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'reattaching');
+    assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'live-runtime');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] burst 003') &&
+          currentTerminal?.metadata?.terminal?.liveSession &&
+          currentTerminal.metadata?.terminal?.attachmentState === 'attached-live' &&
+          currentTerminal.metadata?.terminal?.recentOutput?.includes('LIVE_RUNTIME_TERMINAL')
+      );
+    }, 20000);
+
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.metadata.agent.liveSession, true);
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'attached-live');
+    assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] burst 003'));
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes('LIVE_RUNTIME_TERMINAL'));
+
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent &&
+          !currentAgent.metadata?.agent?.liveSession &&
+          currentAgent.status === 'stopped' &&
+          currentTerminal &&
+          !currentTerminal.metadata?.terminal?.liveSession &&
+          currentTerminal.status === 'closed'
+      );
+    });
+
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(agentNode.status, 'stopped');
+    assert.strictEqual(terminalNode.status, 'closed');
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await clearHostMessages();
+    await ensureAgentStopped(agentNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 92,
+        rows: 28,
+        provider: 'codex',
+        resume: true
+      }
+    });
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+      );
+    }, 20000);
+
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(agentNode.status, 'waiting-input');
+
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        data: 'exit 23\r'
+      }
+    });
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent &&
+          !currentAgent.metadata?.agent?.liveSession &&
+          (currentAgent.status === 'error' || currentAgent.status === 'resume-failed')
+      );
+    }, 20000);
+
+    agentNode = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(agentNode.status, 'error');
+    assert.strictEqual(agentNode.metadata.agent.lastExitCode, 23);
+    assert.match(agentNode.summary, /退出码 23/);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await clearHostMessages();
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 92,
+        rows: 28,
+        provider: 'codex'
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 92,
+        rows: 28
+      }
+    });
+
+    let snapshot = await simulateRuntimeReload();
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.notStrictEqual(agentNode.status, 'history-restored');
+    assert.notStrictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.persistenceMode, 'live-runtime');
+    assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'live-runtime');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
+          currentAgent.metadata?.agent?.runtimeSessionId &&
+          currentTerminal?.metadata?.terminal?.liveSession &&
+          currentTerminal.metadata?.terminal?.attachmentState === 'attached-live' &&
+          currentTerminal.metadata?.terminal?.runtimeSessionId
+      );
+    }, 20000);
+
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.metadata.agent.liveSession, true);
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'attached-live');
+    assert.ok(agentNode.metadata.agent.runtimeSessionId);
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
+    assert.ok(terminalNode.metadata.terminal.runtimeSessionId);
+
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyDisablingRuntimePersistenceStopsReattach(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await clearHostMessages();
+    await ensureAgentStopped(agentNodeId);
+    await ensureTerminalStopped(terminalNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 92,
+        rows: 28,
+        provider: 'codex'
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 92,
+        rows: 28
+      }
+    });
+
+    await waitForAgentLive(agentNodeId);
+    await waitForTerminalLive(terminalNodeId);
+
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        data: 'echo SHOULD_NOT_REATTACH\r'
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        data: 'echo SHOULD_NOT_REATTACH\r'
+      }
+    });
+
+    await setRuntimePersistenceEnabled(false);
+
+    let snapshot = await simulateRuntimeReload();
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+
+    await sleep(600);
+    snapshot = await getDebugSnapshot();
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(false);
+  await clearHostMessages();
+  await ensureAgentStopped(agentNodeId);
+  await ensureTerminalStopped(terminalNodeId);
+
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      cols: 92,
+      rows: 28,
+      provider: 'codex'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal',
+      cols: 92,
+      rows: 28
+    }
+  });
+
+  await waitForAgentLive(agentNodeId);
+  await waitForTerminalLive(terminalNodeId);
+  await clearHostMessages();
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: `echo ${HOST_BOUNDARY_FLUSH_AGENT_MARKER}\r`
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: terminalNodeId,
+      kind: 'terminal',
+      data: `echo ${HOST_BOUNDARY_FLUSH_TERMINAL_MARKER}\r`
+    }
+  });
+
+  await waitForHostMessages((messages) => {
+    const sawAgentMarker = messages.some(
+      (message) =>
+        message.type === 'host/executionOutput' &&
+        message.payload.kind === 'agent' &&
+        message.payload.nodeId === agentNodeId &&
+        message.payload.chunk.includes(HOST_BOUNDARY_FLUSH_AGENT_MARKER)
+    );
+    const sawTerminalMarker = messages.some(
+      (message) =>
+        message.type === 'host/executionOutput' &&
+        message.payload.kind === 'terminal' &&
+        message.payload.nodeId === terminalNodeId &&
+        message.payload.chunk.includes(HOST_BOUNDARY_FLUSH_TERMINAL_MARKER)
+    );
+    return sawAgentMarker && sawTerminalMarker;
+  }, 8000);
+
+  const snapshot = await simulateRuntimeReload();
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  const terminalNode = findNodeById(snapshot, terminalNodeId);
+
+  assert.match(agentNode.metadata.agent.recentOutput || '', new RegExp(HOST_BOUNDARY_FLUSH_AGENT_MARKER));
+  assert.match(terminalNode.metadata.terminal.recentOutput || '', new RegExp(HOST_BOUNDARY_FLUSH_TERMINAL_MARKER));
+}
+
+async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    const currentSnapshot = await getDebugSnapshot();
+    const noteNode = findNodeByKind(currentSnapshot, 'note');
+    const agentNode = findNodeById(currentSnapshot, agentNodeId);
+    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+
+    await clearHostMessages();
+    let snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-10T09:00:00.000Z',
+      nodes: [
+        {
+          ...agentNode,
+          status: 'reattaching',
+          summary: '正在重新连接原 Agent live runtime。',
+          metadata: {
+            ...agentNode.metadata,
+            agent: {
+              ...agentNode.metadata.agent,
+              lifecycle: 'waiting-input',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeSessionId: 'restricted-agent-live-session',
+              pendingLaunch: undefined
+            }
+          }
+        },
+        {
+          ...terminalNode,
+          status: 'reattaching',
+          summary: '正在重新连接原终端 live runtime。',
+          metadata: {
+            ...terminalNode.metadata,
+            terminal: {
+              ...terminalNode.metadata.terminal,
+              lifecycle: 'live',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeSessionId: 'restricted-terminal-live-session',
+              pendingLaunch: undefined
+            }
+          }
+        },
+        noteNode
+      ]
+    });
+
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.status === 'history-restored' &&
+          currentAgent.summary === '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。' &&
+          currentTerminal?.status === 'history-restored' &&
+          currentTerminal.summary === '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
+      );
+    });
+
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState, 'reattaching');
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
+
+    await clearHostMessages();
+    await requestExecutionSnapshot('agent', agentNodeId);
+    await requestExecutionSnapshot('terminal', terminalNodeId);
+    await sleep(400);
+
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
+
+    const hostMessages = await getHostMessages();
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/executionSnapshot' &&
+          message.payload.kind === 'agent' &&
+          message.payload.nodeId === agentNodeId &&
+          message.payload.liveSession === false
+      )
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/executionSnapshot' &&
+          message.payload.kind === 'terminal' &&
+          message.payload.nodeId === terminalNodeId &&
+          message.payload.liveSession === false
+      )
+    );
+    assert.strictEqual(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/error' &&
+          /runtime session|重新附着 live runtime/.test(message.payload.message)
+      ),
+      false
+    );
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyRestrictedDisablingRuntimePersistenceCleansLiveRuntime(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 88,
+      rows: 26,
+      provider: 'codex'
+    });
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: terminalNodeId,
+      cols: 88,
+      rows: 26
+    });
+
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => listRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      20000
+    );
+
+    await setRuntimePersistenceEnabled(false);
+
+    const snapshot = await simulateRuntimeReload();
+    const agentNode = findNodeById(snapshot, agentNodeId);
+    const terminalNode = findNodeById(snapshot, terminalNodeId);
+
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+
+    const runtimeSupervisorState = await waitForRuntimeSupervisorState(
+      (currentState) =>
+        listRuntimeSupervisorSessions(currentState).length === 0 && currentState.bindings.length === 0,
+      20000
+    );
+    assert.deepStrictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState), []);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  try {
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 88,
+      rows: 26,
+      provider: 'codex'
+    });
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: terminalNodeId,
+      cols: 88,
+      rows: 26
+    });
+
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => listRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      20000
+    );
+
+    let snapshot = await simulateRuntimeReload();
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'reattaching');
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'reattaching');
+
+    const agentRuntimeSessionId = agentNode.metadata.agent.runtimeSessionId;
+    const terminalRuntimeSessionId = terminalNode.metadata.terminal.runtimeSessionId;
+    assert.ok(agentRuntimeSessionId);
+    assert.ok(terminalRuntimeSessionId);
+
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: agentNodeId,
+      label: '删除'
+    });
+
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === agentNodeId),
+      20000
+    );
+    assert.ok(snapshot.state.nodes.some((node) => node.id === terminalNodeId));
+
+    let runtimeSupervisorState = await waitForRuntimeSupervisorState((currentState) => {
+      const sessionIds = listRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
+      return (
+        sessionIds.length === 1 &&
+        !sessionIds.includes(agentRuntimeSessionId) &&
+        sessionIds.includes(terminalRuntimeSessionId) &&
+        currentState.bindings.length === 0
+      );
+    }, 20000);
+    assert.strictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState).length, 1);
+
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: terminalNodeId,
+      label: '删除'
+    });
+
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === terminalNodeId),
+      20000
+    );
+    assert.strictEqual(snapshot.state.nodes.some((node) => node.id === terminalNodeId), false);
+
+    runtimeSupervisorState = await waitForRuntimeSupervisorState(
+      (currentState) =>
+        listRuntimeSupervisorSessions(currentState).length === 0 && currentState.bindings.length === 0,
+      20000
+    );
+    assert.deepStrictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState), []);
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+  }
 }
 
 async function verifyRealDeleteButton(noteNodeId) {
@@ -1457,6 +2245,10 @@ async function verifyRealDeleteButton(noteNodeId) {
 
 async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
+}
+
+async function getRuntimeSupervisorState() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetRuntimeSupervisorState);
 }
 
 async function getHostMessages() {
@@ -1483,6 +2275,10 @@ async function setPersistedState(rawState) {
   return vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, rawState);
 }
 
+async function simulateRuntimeReload() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
+}
+
 async function captureWebviewProbe(surface, timeoutMs, delayMs = 0) {
   const probe = await vscode.commands.executeCommand(
     COMMAND_IDS.testCaptureWebviewProbe,
@@ -1506,6 +2302,37 @@ async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5
 
 async function dispatchWebviewMessage(message, surface) {
   return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, message, surface);
+}
+
+async function startExecutionSessionForTest({ kind, nodeId, cols, rows, provider, resumeRequested = false }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testStartExecutionSession,
+    kind,
+    nodeId,
+    cols,
+    rows,
+    provider,
+    resumeRequested
+  );
+}
+
+async function setRuntimePersistenceEnabled(enabled) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.runtimePersistence.enabled', enabled, vscode.ConfigurationTarget.Global);
+}
+
+async function requestExecutionSnapshot(kind, nodeId, surface) {
+  return dispatchWebviewMessage(
+    {
+      type: 'webview/attachExecutionSession',
+      payload: {
+        kind,
+        nodeId
+      }
+    },
+    surface
+  );
 }
 
 async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
@@ -1538,6 +2365,41 @@ async function waitForSnapshot(predicate, timeoutMs = 15000) {
   }
 
   assert.fail(`Timed out while waiting for smoke test state. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
+}
+
+function listRuntimeSupervisorSessions(runtimeSupervisorState) {
+  const dedupedSessions = new Map();
+
+  for (const registryState of Object.values(runtimeSupervisorState?.registries || {})) {
+    const sessions = registryState?.registry?.sessions;
+    if (!Array.isArray(sessions)) {
+      continue;
+    }
+
+    for (const session of sessions) {
+      if (session?.sessionId) {
+        dedupedSessions.set(session.sessionId, session);
+      }
+    }
+  }
+
+  return Array.from(dedupedSessions.values());
+}
+
+async function waitForRuntimeSupervisorState(predicate, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = await getRuntimeSupervisorState();
+
+  while (Date.now() < deadline) {
+    if (predicate(lastState)) {
+      return lastState;
+    }
+
+    await sleep(100);
+    lastState = await getRuntimeSupervisorState();
+  }
+
+  assert.fail(`Timed out while waiting for runtime supervisor state. Last state: ${JSON.stringify(lastState)}`);
 }
 
 async function waitForHostMessages(predicate, timeoutMs = 8000) {

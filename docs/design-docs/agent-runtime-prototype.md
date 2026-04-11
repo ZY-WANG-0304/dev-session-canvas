@@ -1,6 +1,6 @@
 ---
 title: Agent 节点特殊 Terminal backend 设计
-decision_status: 已选定
+decision_status: 已废弃
 validation_status: 验证中
 domains:
   - VSCode 集成域
@@ -17,10 +17,13 @@ related_plans:
   - docs/exec-plans/completed/agent-runtime-prototype.md
   - docs/exec-plans/completed/agent-special-terminal.md
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
-updated_at: 2026-03-30
+  - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
+updated_at: 2026-04-08
 ---
 
 # Agent 节点特殊 Terminal backend 设计
+
+> 状态说明：本文记录的是 2026-03-30 之前的收敛结论，核心前提是“`Agent` 应正式收敛为特殊 `Terminal`”。该前提已被新的产品判断取代。当前有效结论请以 [docs/design-docs/execution-lifecycle-and-recovery.md](./execution-lifecycle-and-recovery.md) 为准；本文保留仅用于追踪历史取舍，不再作为当前实现依据。
 
 ## 1. 背景
 

@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {
@@ -6,8 +9,10 @@ import {
   VIEW_IDS
 } from '../common/extensionIdentity';
 import {
+  type AgentNodeStatus,
   type AgentNodeMetadata,
   type AgentProviderKind,
+  type AgentResumeStrategy,
   type CanvasNodeFootprint,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
@@ -18,6 +23,12 @@ import {
   type ExecutionNodeKind,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
+  type PendingExecutionLaunch,
+  type RuntimeAttachmentState,
+  type RuntimeHostBackendKind,
+  type RuntimePersistenceMode,
+  type RuntimePersistenceGuarantee,
+  type TerminalNodeStatus,
   type TerminalNodeMetadata,
   type WebviewDomAction,
   type WebviewProbeSnapshot,
@@ -39,6 +50,17 @@ import {
   } from './executionSessionBridge';
 import { getConfigurationValue } from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
+import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
+import {
+  serializeExecutionSessionLaunchSpec,
+  type RuntimeSupervisorCreateSessionParams,
+  type RuntimeSupervisorSessionSnapshot
+} from '../common/runtimeSupervisorProtocol';
+import {
+  createRuntimeHostBackend,
+  listPreferredRuntimeHostBackendKinds,
+  type RuntimeHostBackend
+} from './runtimeHostBackend';
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
@@ -59,9 +81,18 @@ interface AgentCliSpec {
   command: string;
 }
 
-interface EmbeddedExecutionSession {
+interface AgentResumeContext {
+  supported: boolean;
+  strategy: AgentResumeStrategy;
+  sessionId?: string;
+  storagePath?: string;
+}
+
+type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
+
+interface ManagedExecutionSessionBase {
   sessionId: string;
-  process: ExecutionSessionProcess;
+  owner: 'local' | 'supervisor';
   shellPath: string;
   cwd: string;
   cols: number;
@@ -69,10 +100,33 @@ interface EmbeddedExecutionSession {
   buffer: string;
   stopRequested: boolean;
   syncTimer: NodeJS.Timeout | undefined;
+  lifecycleTimer: NodeJS.Timeout | undefined;
   displayLabel: string;
+  lifecycleStatus: AgentNodeStatus | TerminalNodeStatus;
+  launchMode: PendingExecutionLaunch;
+  resumePhaseActive: boolean;
+  runtimeBackend?: RuntimeHostBackendKind;
+  runtimeGuarantee?: RuntimePersistenceGuarantee;
+  runtimeSessionId?: string;
+  agentProvider?: AgentProviderKind;
+  agentResume?: AgentResumeContext;
+}
+
+interface LocalExecutionSession extends ManagedExecutionSessionBase {
+  owner: 'local';
+  process: ExecutionSessionProcess;
   outputSubscription: DisposableLike | undefined;
   exitSubscription: DisposableLike | undefined;
 }
+
+interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
+  owner: 'supervisor';
+  runtimeSessionId: string;
+  outputSubscription: undefined;
+  exitSubscription: undefined;
+}
+
+type ManagedExecutionSession = LocalExecutionSession | SupervisorExecutionSession;
 
 interface PendingWebviewProbeRequest {
   surface: CanvasSurfaceLocation;
@@ -115,6 +169,56 @@ export interface CanvasDebugSnapshot {
   surfaceReady: Record<CanvasSurfaceLocation, boolean>;
 }
 
+interface PersistedCanvasSnapshot {
+  version: 1;
+  state?: unknown;
+  activeSurface?: CanvasSurfaceLocation;
+}
+
+interface PersistedCanvasStateFlushResult {
+  snapshotPath: string;
+  exists: boolean;
+  lastError?: string;
+  writtenAt?: string;
+  snapshot?: PersistedCanvasSnapshot;
+}
+
+interface StartExecutionSessionForTestParams {
+  kind: ExecutionNodeKind;
+  nodeId: string;
+  cols?: number;
+  rows?: number;
+  provider?: AgentProviderKind;
+  resumeRequested?: boolean;
+}
+
+interface RuntimeSupervisorRegistryForTest {
+  registryPath?: string;
+  exists: boolean;
+  registry?: unknown;
+  error?: string;
+}
+
+interface RuntimeSupervisorDebugStateForTest {
+  pendingRuntimeSupervisorOperationCount: number;
+  bindings: Array<{
+    runtimeSessionId: string;
+    nodeId: string;
+    kind: ExecutionNodeKind;
+  }>;
+  registries: Partial<Record<RuntimeHostBackendKind, RuntimeSupervisorRegistryForTest>>;
+}
+
+interface ConnectedRuntimeSupervisorClient {
+  client: RuntimeSupervisorClient;
+  backend: RuntimeHostBackend;
+  fallbackReason?: string;
+}
+
+interface StartExecutionSessionOptions {
+  bypassTrust?: boolean;
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
@@ -129,18 +233,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     editor: false,
     panel: false
   };
-  private readonly agentSessions = new Map<string, EmbeddedExecutionSession>();
-  private readonly terminalSessions = new Map<string, EmbeddedExecutionSession>();
+  private readonly agentSessions = new Map<string, ManagedExecutionSession>();
+  private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
+  private readonly runtimeSessionBindings = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
   private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
+  private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
+  private readonly executionSessionOperationTokens = new Map<string, number>();
+  private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
+  private lastPersistedCanvasSnapshotError: string | undefined;
+  private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
+  private readonly runtimeSupervisorClients = new Map<RuntimeHostBackendKind, RuntimeSupervisorClient>();
+  private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
+  private preferredRuntimeHostBackendFallbackReason: string | undefined;
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.recordDiagnosticEvent('state/initialized', {
@@ -152,9 +265,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
         this.recordDiagnosticEvent('workspace/trustGranted');
+        this.state = this.loadReconciledState();
+        this.persistState();
         this.postState('host/stateUpdated');
+        this.scheduleRestoreLiveRuntimeSessions();
       })
     );
+
+    context.subscriptions.push(
+      new vscode.Disposable(() => {
+        this.disposeRuntimeSupervisorClients();
+      })
+    );
+
+    this.scheduleRestoreLiveRuntimeSessions();
   }
 
   public async revealOrCreate(surface: CanvasSurfaceLocation = this.getConfiguredSurface()): Promise<void> {
@@ -192,6 +316,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       state: cloneJsonValue(this.state),
       surfaceMode: cloneJsonValue(this.surfaceMode),
       surfaceReady: cloneJsonValue(this.surfaceReady)
+    };
+  }
+
+  public getRuntimeSupervisorStateForTest(): RuntimeSupervisorDebugStateForTest {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('getRuntimeSupervisorStateForTest 仅在测试模式下可用。');
+    }
+
+    const registries: Partial<Record<RuntimeHostBackendKind, RuntimeSupervisorRegistryForTest>> = {};
+    for (const backendKind of ['legacy-detached', 'systemd-user'] as const) {
+      registries[backendKind] = this.readRuntimeSupervisorRegistryForTest(backendKind);
+    }
+
+    return {
+      pendingRuntimeSupervisorOperationCount: this.pendingRuntimeSupervisorOperations.size,
+      bindings: Array.from(this.runtimeSessionBindings.entries()).map(([runtimeSessionId, binding]) => ({
+        runtimeSessionId,
+        nodeId: binding.nodeId,
+        kind: binding.kind
+      })),
+      registries
     };
   }
 
@@ -235,6 +380,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
+    }
+
+    if (params.kind === 'agent') {
+      await this.startAgentSession(
+        params.nodeId,
+        params.cols ?? DEFAULT_TERMINAL_COLS,
+        params.rows ?? DEFAULT_TERMINAL_ROWS,
+        params.provider,
+        params.resumeRequested === true,
+        {
+          bypassTrust: true
+        }
+      );
+    } else {
+      await this.startTerminalSession(params.nodeId, params.cols ?? DEFAULT_TERMINAL_COLS, params.rows ?? DEFAULT_TERMINAL_ROWS, {
+        bypassTrust: true
+      });
+    }
+
+    return this.getDebugSnapshot();
+  }
+
   public dispatchWebviewMessageForTest(
     message: unknown,
     surface: CanvasSurfaceLocation | undefined = this.activeSurface
@@ -248,7 +418,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public reloadPersistedStateForTest(): CanvasDebugSnapshot {
-    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/reloaded', {
       activeSurface: this.activeSurface,
@@ -260,6 +430,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
     }
 
+    this.scheduleRestoreLiveRuntimeSessions();
+
     return this.getDebugSnapshot();
   }
 
@@ -268,8 +440,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
     }
 
-    await this.context.workspaceState.update(STORAGE_KEYS.canvasState, rawState);
-    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    await this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: rawState,
+      activeSurface: this.activeSurface
+    });
+    this.state = this.loadReconciledState();
     this.recordDiagnosticEvent('state/seededForTest', {
       nodeCount: this.state.nodes.length
     });
@@ -279,13 +455,115 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
     }
 
+    this.scheduleRestoreLiveRuntimeSessions();
+
     return this.getDebugSnapshot();
   }
 
-  public resetState(): void {
+  public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
+    await this.prepareForHostBoundary({
+      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(),
+      allowRuntimeSupervisorRestart: false
+    });
+
+    this.state = this.loadReconciledState();
+    this.activeSurface = this.loadStoredSurface();
+    this.recordDiagnosticEvent('state/runtimeReloaded', {
+      activeSurface: this.activeSurface,
+      nodeCount: this.state.nodes.length
+    });
+    this.notifySidebarStateChanged();
+
+    if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
+      this.postState('host/stateUpdated');
+    }
+
+    this.scheduleRestoreLiveRuntimeSessions();
+
+    return this.getDebugSnapshot();
+  }
+
+  public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('flushPersistedCanvasStateForTest 仅在测试模式下可用。');
+    }
+
+    await this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: this.state,
+      activeSurface: this.activeSurface
+    });
+    await this.waitForPendingWorkspaceStateUpdates();
+
+    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    return {
+      snapshotPath,
+      exists: fs.existsSync(snapshotPath),
+      lastError: this.lastPersistedCanvasSnapshotError,
+      writtenAt: this.lastPersistedCanvasSnapshotWrittenAt,
+      snapshot: snapshot ? cloneJsonValue(snapshot) : undefined
+    };
+  }
+
+  public async prepareForDeactivation(): Promise<void> {
+    await this.prepareForHostBoundary({
+      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(),
+      allowRuntimeSupervisorRestart: false
+    });
+  }
+
+  private async prepareForHostBoundary(options: {
+    preserveLiveRuntime: boolean;
+    allowRuntimeSupervisorRestart: boolean;
+    invalidatePendingExecutionOperations?: boolean;
+  }): Promise<void> {
+    if (options.invalidatePendingExecutionOperations) {
+      this.invalidateAllExecutionSessionOperations();
+    }
+
+    await this.waitForPendingRuntimeSupervisorOperations();
+    this.flushAllExecutionSessionStatesForHostBoundary();
+    await this.waitForPendingWorkspaceStateUpdates();
+
+    const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions();
+
+    for (const [nodeId, session] of Array.from(this.agentSessions.entries())) {
+      if (session.owner === 'local') {
+        this.disposeExecutionSession('agent', nodeId, {
+          terminateProcess: true
+        });
+      }
+    }
+    for (const [nodeId, session] of Array.from(this.terminalSessions.entries())) {
+      if (session.owner === 'local') {
+        this.disposeExecutionSession('terminal', nodeId, {
+          terminateProcess: true
+        });
+      }
+    }
+    this.agentSessions.clear();
+    this.terminalSessions.clear();
+    this.runtimeSessionBindings.clear();
+
+    if (persistedRuntimeSessions.length > 0) {
+      await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, {
+        allowRestart: options.allowRuntimeSupervisorRestart
+      });
+    }
+
+    await this.waitForPendingRuntimeSupervisorOperations();
+    this.disposeRuntimeSupervisorClients();
+    await this.waitForPendingWorkspaceStateUpdates();
+  }
+
+  public async resetState(): Promise<void> {
     const previousNodeCount = this.state.nodes.length;
-    this.cancelAllAgentSessions();
-    this.cancelAllTerminalSessions();
+    await this.prepareForHostBoundary({
+      preserveLiveRuntime: false,
+      allowRuntimeSupervisorRestart: false,
+      invalidatePendingExecutionOperations: true
+    });
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     this.persistState();
     this.recordDiagnosticEvent('state/reset', {
@@ -409,7 +687,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     webviewPanel: vscode.WebviewPanel,
     _state: unknown
   ): Promise<void> {
-    this.state = reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions);
+    this.state = this.loadReconciledState();
     this.persistState();
     this.attachEditorPanel(webviewPanel);
   }
@@ -585,13 +863,81 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private getPersistedCanvasSnapshotPath(): string {
+    const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    return path.join(basePath, 'canvas-state.json');
+  }
+
+  private loadPersistedCanvasSnapshot(): PersistedCanvasSnapshot | undefined {
+    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+
+    try {
+      if (!fs.existsSync(snapshotPath)) {
+        return undefined;
+      }
+
+      const rawSnapshot = fs.readFileSync(snapshotPath, 'utf8');
+      const parsedSnapshot = JSON.parse(rawSnapshot) as PersistedCanvasSnapshot;
+      if (!parsedSnapshot || typeof parsedSnapshot !== 'object') {
+        return undefined;
+      }
+
+      return parsedSnapshot;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
+    const operation = this.pendingWorkspaceStateUpdate.then(async () => {
+      const snapshotPath = this.getPersistedCanvasSnapshotPath();
+      const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
+      await fs.promises.mkdir(path.dirname(snapshotPath), {
+        recursive: true
+      });
+      const tempSnapshotPath = `${snapshotPath}.tmp`;
+      await fs.promises.writeFile(tempSnapshotPath, serializedSnapshot, 'utf8');
+      await fs.promises.rename(tempSnapshotPath, snapshotPath);
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasState, snapshot.state);
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshot.activeSurface);
+      this.lastPersistedCanvasSnapshotError = undefined;
+      this.lastPersistedCanvasSnapshotWrittenAt = new Date().toISOString();
+    }).catch((error) => {
+      const message = formatUnknownError(error);
+      this.lastPersistedCanvasSnapshotError = message;
+      this.recordDiagnosticEvent('state/persistFailed', {
+        message,
+        snapshotPath: this.getPersistedCanvasSnapshotPath()
+      });
+      throw error;
+    });
+    this.pendingWorkspaceStateUpdate = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    return operation;
+  }
+
   private loadState(): CanvasPrototypeState {
-    const rawState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const rawState =
+      this.loadPersistedCanvasSnapshot()?.state ?? this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
     return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
   }
 
+  private loadReconciledState(): CanvasPrototypeState {
+    const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
+    return reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
+      allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
+      liveRuntimeReconnectBlockReason
+    });
+  }
+
   private persistState(): void {
-    void this.context.workspaceState.update(STORAGE_KEYS.canvasState, this.state);
+    void this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: this.state,
+      activeSurface: this.activeSurface
+    }).catch(() => undefined);
   }
 
   private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
@@ -626,6 +972,874 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private isRuntimePersistenceEnabled(): boolean {
+    return getConfigurationValue<boolean>('runtimePersistenceEnabled', false);
+  }
+
+  private getLiveRuntimeReconnectBlockReason(): LiveRuntimeReconnectBlockReason | undefined {
+    if (!this.isRuntimePersistenceEnabled()) {
+      return 'runtime-persistence-disabled';
+    }
+
+    if (!vscode.workspace.isTrusted) {
+      return 'workspace-untrusted';
+    }
+
+    return undefined;
+  }
+
+  private shouldPreserveLiveRuntimeAcrossHostBoundary(): boolean {
+    return this.isRuntimePersistenceEnabled();
+  }
+
+  private getRuntimeHostBaseStoragePath(): string {
+    return this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+  }
+
+  private getRuntimeSupervisorScriptPath(): string {
+    return path.join(this.context.extensionUri.fsPath, 'dist', 'runtime-supervisor.js');
+  }
+
+  private getRuntimeSupervisorLauncherScriptPath(): string {
+    return path.join(this.context.extensionUri.fsPath, 'dist', 'runtime-supervisor-launcher.js');
+  }
+
+  private getRuntimeHostBackend(kind: RuntimeHostBackendKind): RuntimeHostBackend {
+    return createRuntimeHostBackend(kind, {
+      baseStoragePath: this.getRuntimeHostBaseStoragePath(),
+      extensionMode: this.context.extensionMode
+    });
+  }
+
+  private scheduleRestoreLiveRuntimeSessions(): void {
+    const operation = this.restoreLiveRuntimeSessions().catch((error) => {
+      this.recordDiagnosticEvent('runtime/restoreFailed', {
+        message: formatUnknownError(error)
+      });
+    });
+    this.trackRuntimeSupervisorOperation(operation);
+  }
+
+  private readRuntimeSupervisorRegistryForTest(
+    backendKind: RuntimeHostBackendKind
+  ): RuntimeSupervisorRegistryForTest {
+    try {
+      const registryPath = this.getRuntimeHostBackend(backendKind).paths.registryPath;
+      if (!fs.existsSync(registryPath)) {
+        return {
+          registryPath,
+          exists: false
+        };
+      }
+
+      return {
+        registryPath,
+        exists: true,
+        registry: JSON.parse(fs.readFileSync(registryPath, 'utf8')) as unknown
+      };
+    } catch (error) {
+      return {
+        exists: false,
+        error: formatUnknownError(error)
+      };
+    }
+  }
+
+  private disposeRuntimeSupervisorClients(): void {
+    for (const client of this.runtimeSupervisorClients.values()) {
+      client.dispose();
+    }
+    this.runtimeSupervisorClients.clear();
+  }
+
+  private async getRuntimeSupervisorClientForBackend(
+    backend: RuntimeHostBackend,
+    options: { allowRestart?: boolean } = {}
+  ): Promise<RuntimeSupervisorClient> {
+    let client = this.runtimeSupervisorClients.get(backend.kind);
+    if (!client) {
+      client = new RuntimeSupervisorClient({
+        backend,
+        supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
+        supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
+        onSessionOutput: (event) => this.handleRuntimeSupervisorOutput(event.sessionId, event.chunk),
+        onSessionState: (snapshot) => this.handleRuntimeSupervisorState(snapshot),
+        onDisconnected: (error) => this.handleRuntimeSupervisorDisconnected(backend.kind, error)
+      });
+      this.runtimeSupervisorClients.set(backend.kind, client);
+    }
+
+    await client.ensureConnected(options);
+    return client;
+  }
+
+  private async getRuntimeSupervisorClientForKind(
+    kind: RuntimeHostBackendKind,
+    options: { allowRestart?: boolean } = {}
+  ): Promise<RuntimeSupervisorClient> {
+    return this.getRuntimeSupervisorClientForBackend(this.getRuntimeHostBackend(kind), options);
+  }
+
+  private async getPreferredRuntimeSupervisorClient(
+    options: { allowRestart?: boolean } = {}
+  ): Promise<ConnectedRuntimeSupervisorClient> {
+    if (this.preferredRuntimeHostBackendKind) {
+      try {
+        const backend = this.getRuntimeHostBackend(this.preferredRuntimeHostBackendKind);
+        return {
+          client: await this.getRuntimeSupervisorClientForBackend(backend, options),
+          backend,
+          fallbackReason: this.preferredRuntimeHostBackendFallbackReason
+        };
+      } catch {
+        this.preferredRuntimeHostBackendKind = undefined;
+        this.preferredRuntimeHostBackendFallbackReason = undefined;
+      }
+    }
+
+    const preferredKinds = listPreferredRuntimeHostBackendKinds({
+      baseStoragePath: this.getRuntimeHostBaseStoragePath(),
+      extensionMode: this.context.extensionMode
+    });
+    let lastError: Error | undefined;
+    let fallbackReason: string | undefined;
+
+    for (const kind of preferredKinds) {
+      try {
+        const backend = this.getRuntimeHostBackend(kind);
+        const client = await this.getRuntimeSupervisorClientForBackend(backend, options);
+        this.preferredRuntimeHostBackendKind = kind;
+        this.preferredRuntimeHostBackendFallbackReason = fallbackReason;
+        return {
+          client,
+          backend,
+          fallbackReason
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (kind === 'systemd-user') {
+          fallbackReason = lastError.message;
+          continue;
+        }
+      }
+    }
+
+    throw lastError ?? new Error('无法连接 runtime supervisor。');
+  }
+
+  private getExecutionSessionOperationKey(kind: ExecutionNodeKind, nodeId: string): string {
+    return `${kind}:${nodeId}`;
+  }
+
+  private beginExecutionSessionOperation(kind: ExecutionNodeKind, nodeId: string): number {
+    const key = this.getExecutionSessionOperationKey(kind, nodeId);
+    const nextToken = (this.executionSessionOperationTokens.get(key) ?? 0) + 1;
+    this.executionSessionOperationTokens.set(key, nextToken);
+    return nextToken;
+  }
+
+  private invalidateExecutionSessionOperation(kind: ExecutionNodeKind, nodeId: string): void {
+    this.beginExecutionSessionOperation(kind, nodeId);
+  }
+
+  private invalidateAllExecutionSessionOperations(): void {
+    const executionNodeKeys = new Set<string>();
+    for (const node of this.state.nodes) {
+      if (!isExecutionNodeKind(node.kind)) {
+        continue;
+      }
+      executionNodeKeys.add(this.getExecutionSessionOperationKey(node.kind, node.id));
+    }
+    for (const nodeId of this.agentSessions.keys()) {
+      executionNodeKeys.add(this.getExecutionSessionOperationKey('agent', nodeId));
+    }
+    for (const nodeId of this.terminalSessions.keys()) {
+      executionNodeKeys.add(this.getExecutionSessionOperationKey('terminal', nodeId));
+    }
+    for (const binding of this.runtimeSessionBindings.values()) {
+      executionNodeKeys.add(this.getExecutionSessionOperationKey(binding.kind, binding.nodeId));
+    }
+
+    for (const key of executionNodeKeys) {
+      const nextToken = (this.executionSessionOperationTokens.get(key) ?? 0) + 1;
+      this.executionSessionOperationTokens.set(key, nextToken);
+    }
+  }
+
+  private isExecutionSessionOperationCurrent(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    token: number
+  ): boolean {
+    return this.executionSessionOperationTokens.get(this.getExecutionSessionOperationKey(kind, nodeId)) === token;
+  }
+
+  private shouldApplyRuntimeAttachResult(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    token: number,
+    expectedRuntimeSessionId: string
+  ): boolean {
+    if (!this.isExecutionSessionOperationCurrent(kind, nodeId, token)) {
+      return false;
+    }
+
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+    if (!node) {
+      return false;
+    }
+
+    const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+    return (
+      metadata.persistenceMode === 'live-runtime' &&
+      metadata.runtimeSessionId === expectedRuntimeSessionId &&
+      metadata.attachmentState === 'reattaching'
+    );
+  }
+
+  private shouldApplyRuntimeCreateResult(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    token: number,
+    expectedBackendKind: RuntimeHostBackendKind
+  ): boolean {
+    if (!this.isExecutionSessionOperationCurrent(kind, nodeId, token)) {
+      return false;
+    }
+
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+    if (!node) {
+      return false;
+    }
+
+    const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+    return metadata.persistenceMode === 'live-runtime' && metadata.runtimeBackend === expectedBackendKind;
+  }
+
+  private recordIgnoredExecutionSessionOperation(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    stage: 'attach' | 'create',
+    runtimeSessionId?: string
+  ): void {
+    this.recordDiagnosticEvent('execution/operationIgnored', {
+      kind,
+      nodeId,
+      stage,
+      runtimeSessionId: runtimeSessionId ?? null
+    });
+  }
+
+  private async deleteRuntimeSupervisorSessionBestEffort(
+    client: RuntimeSupervisorClient,
+    sessionId: string
+  ): Promise<void> {
+    try {
+      await client.deleteSession({
+        sessionId
+      });
+    } catch {
+      // Best effort only for stale-session cleanup.
+    }
+  }
+
+  private async attachPersistedRuntimeSession(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    runtimeSessionId: string,
+    attachSession: () => Promise<RuntimeSupervisorSessionSnapshot>
+  ): Promise<void> {
+    const operationToken = this.beginExecutionSessionOperation(kind, nodeId);
+
+    try {
+      const snapshot = await attachSession();
+      if (!this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId)) {
+        this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
+        return;
+      }
+
+      this.bindRuntimeSession(nodeId, kind, snapshot.sessionId);
+      this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, {
+        postSnapshot: true,
+        historyOnUnavailable: true
+      });
+    } catch (error) {
+      if (!this.isExecutionSessionOperationCurrent(kind, nodeId, operationToken)) {
+        this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
+        return;
+      }
+
+      this.markExecutionNodeAsHistoryRestored(
+        nodeId,
+        kind,
+        error instanceof Error ? error.message : '重新附着 live runtime 失败。'
+      );
+    }
+  }
+
+  private async restoreLiveRuntimeSessions(): Promise<void> {
+    const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
+    if (liveRuntimeReconnectBlockReason === 'workspace-untrusted') {
+      return;
+    }
+
+    if (liveRuntimeReconnectBlockReason === 'runtime-persistence-disabled') {
+      await this.deleteRuntimeSupervisorSessions(this.collectPersistedLiveRuntimeSessions(), {
+        allowRestart: false
+      });
+      return;
+    }
+
+    const reconnectableNodes = this.state.nodes.filter((node) => {
+      if (node.kind === 'agent') {
+        const metadata = ensureAgentMetadata(node);
+        return (
+          metadata.persistenceMode === 'live-runtime' &&
+          metadata.runtimeSessionId &&
+          metadata.attachmentState === 'reattaching'
+        );
+      }
+
+      if (node.kind === 'terminal') {
+        const metadata = ensureTerminalMetadata(node);
+        return (
+          metadata.persistenceMode === 'live-runtime' &&
+          metadata.runtimeSessionId &&
+          metadata.attachmentState === 'reattaching'
+        );
+      }
+
+      return false;
+    });
+
+    if (reconnectableNodes.length === 0) {
+      return;
+    }
+
+    const nodesByBackend = new Map<RuntimeHostBackendKind, CanvasNodeSummary[]>();
+    for (const node of reconnectableNodes) {
+      const metadata = node.kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+      const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
+      const bucket = nodesByBackend.get(backendKind);
+      if (bucket) {
+        bucket.push(node);
+      } else {
+        nodesByBackend.set(backendKind, [node]);
+      }
+    }
+
+    for (const [backendKind, nodes] of nodesByBackend.entries()) {
+      let client: RuntimeSupervisorClient;
+      try {
+        client = await this.getRuntimeSupervisorClientForKind(backendKind);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '无法连接 runtime supervisor。';
+        for (const node of nodes) {
+          this.markExecutionNodeAsHistoryRestored(
+            node.id,
+            node.kind as ExecutionNodeKind,
+            message
+          );
+        }
+        continue;
+      }
+
+      await Promise.all(
+        nodes.map(async (node) => {
+          const runtimeSessionId =
+            node.kind === 'agent'
+              ? ensureAgentMetadata(node).runtimeSessionId
+              : ensureTerminalMetadata(node).runtimeSessionId;
+          if (!runtimeSessionId) {
+            return;
+          }
+
+          await this.attachPersistedRuntimeSession(
+            node.kind as ExecutionNodeKind,
+            node.id,
+            runtimeSessionId,
+            () =>
+              client.attachSession({
+                sessionId: runtimeSessionId
+              })
+          );
+        })
+      );
+    }
+  }
+
+  private bindRuntimeSession(nodeId: string, kind: ExecutionNodeKind, runtimeSessionId: string): void {
+    for (const [boundSessionId, binding] of Array.from(this.runtimeSessionBindings.entries())) {
+      if (boundSessionId !== runtimeSessionId && binding.nodeId === nodeId && binding.kind === kind) {
+        this.runtimeSessionBindings.delete(boundSessionId);
+      }
+    }
+
+    this.runtimeSessionBindings.set(runtimeSessionId, {
+      nodeId,
+      kind
+    });
+  }
+
+  private collectPersistedLiveRuntimeSessions(): Array<{
+    backendKind: RuntimeHostBackendKind;
+    sessionId: string;
+  }> {
+    const sessionKeys = new Set<string>();
+    const sessions: Array<{
+      backendKind: RuntimeHostBackendKind;
+      sessionId: string;
+    }> = [];
+    for (const node of this.state.nodes) {
+      if (node.kind === 'agent') {
+        const metadata = ensureAgentMetadata(node);
+        if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
+          const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
+          const key = `${backendKind}:${metadata.runtimeSessionId}`;
+          if (!sessionKeys.has(key)) {
+            sessionKeys.add(key);
+            sessions.push({
+              backendKind,
+              sessionId: metadata.runtimeSessionId
+            });
+          }
+        }
+        continue;
+      }
+
+      if (node.kind === 'terminal') {
+        const metadata = ensureTerminalMetadata(node);
+        if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
+          const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
+          const key = `${backendKind}:${metadata.runtimeSessionId}`;
+          if (!sessionKeys.has(key)) {
+            sessionKeys.add(key);
+            sessions.push({
+              backendKind,
+              sessionId: metadata.runtimeSessionId
+            });
+          }
+        }
+      }
+    }
+
+    return sessions;
+  }
+
+  private getPersistedLiveRuntimeSessionForNode(
+    node: CanvasNodeSummary
+  ): { backendKind: RuntimeHostBackendKind; sessionId: string } | undefined {
+    if (node.kind === 'agent') {
+      const metadata = ensureAgentMetadata(node);
+      if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
+        return {
+          backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
+          sessionId: metadata.runtimeSessionId
+        };
+      }
+      return undefined;
+    }
+
+    if (node.kind === 'terminal') {
+      const metadata = ensureTerminalMetadata(node);
+      if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
+        return {
+          backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
+          sessionId: metadata.runtimeSessionId
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private isMissingRuntimeSupervisorSessionError(error: unknown): boolean {
+    return formatUnknownError(error).includes('未找到 runtime session');
+  }
+
+  private async deleteRuntimeSupervisorSessionStrict(
+    session: { backendKind: RuntimeHostBackendKind; sessionId: string },
+    options: { allowRestart: boolean }
+  ): Promise<void> {
+    try {
+      const client = await this.getRuntimeSupervisorClientForKind(session.backendKind, {
+        allowRestart: options.allowRestart
+      });
+      await client.deleteSession({
+        sessionId: session.sessionId
+      });
+    } catch (error) {
+      if (this.isMissingRuntimeSupervisorSessionError(error)) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private async deleteRuntimeSupervisorSessions(
+    sessions: Array<{ backendKind: RuntimeHostBackendKind; sessionId: string }>,
+    options: { allowRestart: boolean }
+  ): Promise<void> {
+    if (sessions.length === 0) {
+      return;
+    }
+
+    const sessionsByBackend = new Map<RuntimeHostBackendKind, string[]>();
+    for (const session of sessions) {
+      const bucket = sessionsByBackend.get(session.backendKind);
+      if (bucket) {
+        bucket.push(session.sessionId);
+      } else {
+        sessionsByBackend.set(session.backendKind, [session.sessionId]);
+      }
+    }
+
+    for (const [backendKind, sessionIds] of sessionsByBackend.entries()) {
+      let client: RuntimeSupervisorClient;
+      try {
+        client = await this.getRuntimeSupervisorClientForKind(backendKind, {
+          allowRestart: options.allowRestart
+        });
+      } catch {
+        continue;
+      }
+
+      await Promise.allSettled(
+        sessionIds.map((sessionId) =>
+          client.deleteSession({
+            sessionId
+          })
+        )
+      );
+    }
+  }
+
+  private trackRuntimeSupervisorOperation<T>(operation: Promise<T>): void {
+    this.pendingRuntimeSupervisorOperations.add(operation);
+    operation.finally(() => {
+      this.pendingRuntimeSupervisorOperations.delete(operation);
+    });
+  }
+
+  private async waitForPendingRuntimeSupervisorOperations(): Promise<void> {
+    if (this.pendingRuntimeSupervisorOperations.size === 0) {
+      return;
+    }
+
+    await Promise.allSettled(Array.from(this.pendingRuntimeSupervisorOperations));
+  }
+
+  private async waitForPendingWorkspaceStateUpdates(): Promise<void> {
+    await this.pendingWorkspaceStateUpdate;
+  }
+
+  private unbindRuntimeSession(runtimeSessionId: string | undefined): void {
+    if (!runtimeSessionId) {
+      return;
+    }
+
+    this.runtimeSessionBindings.delete(runtimeSessionId);
+  }
+
+  private createSupervisorExecutionSession(
+    snapshot: RuntimeSupervisorSessionSnapshot
+  ): SupervisorExecutionSession {
+    return {
+      sessionId: snapshot.sessionId,
+      owner: 'supervisor',
+      runtimeBackend: snapshot.runtimeBackend,
+      runtimeGuarantee: snapshot.runtimeGuarantee,
+      runtimeSessionId: snapshot.sessionId,
+      shellPath: snapshot.shellPath,
+      cwd: snapshot.cwd,
+      cols: snapshot.cols,
+      rows: snapshot.rows,
+      buffer: snapshot.output,
+      stopRequested: false,
+      syncTimer: undefined,
+      lifecycleTimer: undefined,
+      displayLabel: snapshot.displayLabel,
+      lifecycleStatus: snapshot.lifecycle,
+      launchMode: snapshot.launchMode,
+      resumePhaseActive:
+        snapshot.kind === 'agent'
+          ? typeof snapshot.resumePhaseActive === 'boolean'
+            ? snapshot.resumePhaseActive
+            : snapshot.launchMode === 'resume' &&
+              isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus)
+          : false,
+      agentProvider: snapshot.provider,
+      agentResume:
+        snapshot.kind === 'agent'
+          ? {
+              supported: Boolean(snapshot.resumeStrategy && snapshot.resumeStrategy !== 'none'),
+              strategy: snapshot.resumeStrategy ?? 'none',
+              sessionId: snapshot.resumeSessionId,
+              storagePath: snapshot.resumeStoragePath
+            }
+          : undefined,
+      outputSubscription: undefined,
+      exitSubscription: undefined
+    };
+  }
+
+  private handleRuntimeSupervisorOutput(runtimeSessionId: string, chunk: string): void {
+    const binding = this.runtimeSessionBindings.get(runtimeSessionId);
+    if (!binding) {
+      return;
+    }
+
+    const session = this.getExecutionSessions(binding.kind).get(binding.nodeId);
+    if (!session || session.owner !== 'supervisor') {
+      return;
+    }
+
+    session.buffer = appendTerminalBuffer(session.buffer, chunk);
+    this.flushLiveExecutionState(binding.kind, binding.nodeId);
+    this.postMessage({
+      type: 'host/executionOutput',
+      payload: {
+        nodeId: binding.nodeId,
+        kind: binding.kind,
+        chunk
+      }
+    });
+  }
+
+  private handleRuntimeSupervisorState(snapshot: RuntimeSupervisorSessionSnapshot): void {
+    const binding = this.runtimeSessionBindings.get(snapshot.sessionId);
+    if (!binding) {
+      return;
+    }
+
+    const wasLive = this.getExecutionSessions(binding.kind).has(binding.nodeId);
+    this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
+      postSnapshot: false,
+      historyOnUnavailable: false
+    });
+
+    if (wasLive && !snapshot.live) {
+      this.postMessage({
+        type: 'host/executionExit',
+        payload: {
+          nodeId: binding.nodeId,
+          kind: binding.kind,
+          message: snapshot.lastExitMessage ?? '会话已结束。'
+        }
+      });
+      if (
+        snapshot.lifecycle === 'error' ||
+        snapshot.lifecycle === 'resume-failed'
+      ) {
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message: snapshot.lastExitMessage ?? '会话异常退出。'
+          }
+        });
+      }
+    }
+  }
+
+  private handleRuntimeSupervisorDisconnected(
+    backendKind: RuntimeHostBackendKind,
+    error?: Error
+  ): void {
+    for (const [nodeId, session] of this.agentSessions.entries()) {
+      if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+        this.markExecutionNodeAsHistoryRestored(nodeId, 'agent', error?.message);
+      }
+    }
+
+    for (const [nodeId, session] of this.terminalSessions.entries()) {
+      if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+        this.markExecutionNodeAsHistoryRestored(nodeId, 'terminal', error?.message);
+      }
+    }
+  }
+
+  private applyRuntimeSupervisorSnapshot(
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    snapshot: RuntimeSupervisorSessionSnapshot,
+    options: { postSnapshot: boolean; historyOnUnavailable: boolean }
+  ): void {
+    if (snapshot.live) {
+      const session = this.createSupervisorExecutionSession(snapshot);
+      this.getExecutionSessions(kind).set(nodeId, session);
+      this.state = updateExecutionNode(this.state, nodeId, kind, {
+        status: snapshot.lifecycle,
+        summary:
+          kind === 'agent'
+            ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
+            : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus),
+        metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+          persistenceMode: 'live-runtime',
+          attachmentState: 'attached-live',
+          runtimeBackend: snapshot.runtimeBackend,
+          runtimeGuarantee: snapshot.runtimeGuarantee,
+          liveSession: true,
+          runtimeSessionId: snapshot.sessionId,
+          lastRuntimeError: undefined,
+          shellPath: snapshot.shellPath,
+          cwd: snapshot.cwd,
+          recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || undefined,
+          lastCols: snapshot.cols,
+          lastRows: snapshot.rows,
+          lastExitCode: snapshot.lastExitCode,
+          lastExitSignal: snapshot.lastExitSignal,
+          lastExitMessage: snapshot.lastExitMessage,
+          ...(kind === 'agent'
+            ? {
+                lifecycle: snapshot.lifecycle as AgentNodeStatus,
+                provider: snapshot.provider ?? ensureAgentMetadata(this.requireNode(nodeId, kind)).provider,
+                resumeStrategy: snapshot.resumeStrategy,
+                resumeSessionId: snapshot.resumeSessionId,
+                resumeStoragePath: snapshot.resumeStoragePath,
+                lastBackendLabel: snapshot.displayLabel
+              }
+            : {
+                lifecycle: snapshot.lifecycle as TerminalNodeStatus
+              })
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      if (options.postSnapshot) {
+        this.postExecutionSnapshot(kind, nodeId);
+      }
+      return;
+    }
+
+    if (options.historyOnUnavailable) {
+      this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshot.lastExitMessage, snapshot);
+      return;
+    }
+
+    this.applyCompletedRuntimeSupervisorSnapshot(nodeId, kind, snapshot);
+  }
+
+  private applyCompletedRuntimeSupervisorSnapshot(
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    snapshot: RuntimeSupervisorSessionSnapshot
+  ): void {
+    const existingNode = this.requireNode(nodeId, kind);
+    const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
+    this.unbindRuntimeSession(snapshot.sessionId);
+    this.getExecutionSessions(kind).delete(nodeId);
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status: snapshot.lifecycle,
+      summary:
+        snapshot.lastExitMessage ||
+        (kind === 'agent'
+          ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
+          : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus)),
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        persistenceMode: 'live-runtime',
+        attachmentState: 'history-restored',
+        runtimeBackend: snapshot.runtimeBackend,
+        runtimeGuarantee: snapshot.runtimeGuarantee,
+        liveSession: false,
+        runtimeSessionId: snapshot.sessionId,
+        lastRuntimeError: undefined,
+        shellPath: snapshot.shellPath,
+        cwd: snapshot.cwd,
+        recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput,
+        lastExitCode: snapshot.lastExitCode,
+        lastExitSignal: snapshot.lastExitSignal,
+        lastExitMessage: snapshot.lastExitMessage,
+        lastCols: snapshot.cols,
+        lastRows: snapshot.rows,
+        ...(kind === 'agent'
+          ? {
+              lifecycle: snapshot.lifecycle as AgentNodeStatus,
+              provider: snapshot.provider ?? ensureAgentMetadata(existingNode).provider,
+              resumeStrategy: snapshot.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy,
+              resumeSessionId: snapshot.resumeSessionId ?? ensureAgentMetadata(existingNode).resumeSessionId,
+              resumeStoragePath: snapshot.resumeStoragePath ?? ensureAgentMetadata(existingNode).resumeStoragePath,
+              lastBackendLabel: snapshot.displayLabel
+            }
+          : {
+              lifecycle: snapshot.lifecycle as TerminalNodeStatus
+            })
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private markExecutionNodeAsHistoryRestored(
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    reason?: string,
+    snapshot?: RuntimeSupervisorSessionSnapshot
+  ): void {
+    const existingNode = this.requireNode(nodeId, kind);
+    const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
+    const runtimeSessionId = snapshot?.sessionId ?? currentMetadata.runtimeSessionId;
+    this.unbindRuntimeSession(runtimeSessionId);
+    this.getExecutionSessions(kind).delete(nodeId);
+
+    const lifecycle =
+      snapshot?.lifecycle ??
+      (kind === 'agent'
+        ? ensureAgentMetadata(existingNode).lifecycle
+        : ensureTerminalMetadata(existingNode).lifecycle);
+    const summary =
+      reason?.trim() ||
+      (kind === 'agent'
+        ? '未能重新附着到原 Agent live runtime，已恢复为历史结果。'
+        : '未能重新附着到原终端 live runtime，已恢复为历史结果。');
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status: 'history-restored',
+      summary,
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        persistenceMode: 'live-runtime',
+        attachmentState: 'history-restored',
+        runtimeBackend: snapshot?.runtimeBackend ?? currentMetadata.runtimeBackend,
+        runtimeGuarantee: snapshot?.runtimeGuarantee ?? currentMetadata.runtimeGuarantee,
+        liveSession: false,
+        runtimeSessionId,
+        lastRuntimeError: reason,
+        recentOutput:
+          snapshot?.output !== undefined
+            ? extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput
+            : currentMetadata.recentOutput,
+        lastExitCode: snapshot?.lastExitCode ?? currentMetadata.lastExitCode,
+        lastExitSignal: snapshot?.lastExitSignal ?? currentMetadata.lastExitSignal,
+        lastExitMessage: snapshot?.lastExitMessage ?? currentMetadata.lastExitMessage ?? summary,
+        lastCols: snapshot?.cols ?? currentMetadata.lastCols,
+        lastRows: snapshot?.rows ?? currentMetadata.lastRows,
+        ...(kind === 'agent'
+          ? {
+              lifecycle: lifecycle as AgentNodeStatus,
+              provider: snapshot?.provider ?? ensureAgentMetadata(existingNode).provider,
+              resumeStrategy: snapshot?.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy,
+              resumeSessionId: snapshot?.resumeSessionId ?? ensureAgentMetadata(existingNode).resumeSessionId,
+              resumeStoragePath: snapshot?.resumeStoragePath ?? ensureAgentMetadata(existingNode).resumeStoragePath,
+              lastBackendLabel: snapshot?.displayLabel ?? ensureAgentMetadata(existingNode).lastBackendLabel
+            }
+          : {
+              lifecycle: lifecycle as TerminalNodeStatus,
+              shellPath: snapshot?.shellPath ?? ensureTerminalMetadata(existingNode).shellPath,
+              cwd: snapshot?.cwd ?? ensureTerminalMetadata(existingNode).cwd
+            })
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private requireNode(nodeId: string, kind: ExecutionNodeKind): CanvasNodeSummary {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+    if (!node) {
+      throw new Error(`未找到 ${kind} 节点 ${nodeId}。`);
+    }
+
+    return node;
+  }
+
   private getConfiguredSurface(): CanvasSurfaceLocation {
     return getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'editor') === 'panel'
       ? 'panel'
@@ -633,7 +1847,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private loadStoredSurface(): CanvasSurfaceLocation | undefined {
-    const storedSurface = this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface);
+    const storedSurface =
+      this.loadPersistedCanvasSnapshot()?.activeSurface ?? this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface);
     if (storedSurface === 'editor' || storedSurface === 'panel') {
       return storedSurface;
     }
@@ -646,7 +1861,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    void this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, this.activeSurface);
+    void this.queuePersistedCanvasSnapshotWrite({
+      version: 1,
+      state: this.state,
+      activeSurface: this.activeSurface
+    }).catch(() => undefined);
   }
 
   private claimSurfaceIfNeeded(surface: CanvasSurfaceLocation): void {
@@ -853,24 +2072,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/deleteNode':
-        this.deleteNode(parsedMessage.payload.nodeId);
+        void this.deleteNode(parsedMessage.payload.nodeId);
         return;
       case 'webview/startExecutionSession':
         if (parsedMessage.payload.kind === 'agent') {
-          void this.startAgentSession(
+          const operation = this.startAgentSession(
             parsedMessage.payload.nodeId,
             parsedMessage.payload.cols,
             parsedMessage.payload.rows,
-            parsedMessage.payload.provider
+            parsedMessage.payload.provider,
+            parsedMessage.payload.resume === true
           );
+          if (this.isRuntimePersistenceEnabled()) {
+            this.trackRuntimeSupervisorOperation(operation);
+          }
           return;
         }
 
-        void this.startTerminalSession(
+        const operation = this.startTerminalSession(
           parsedMessage.payload.nodeId,
           parsedMessage.payload.cols,
           parsedMessage.payload.rows
         );
+        if (this.isRuntimePersistenceEnabled()) {
+          this.trackRuntimeSupervisorOperation(operation);
+        }
         return;
       case 'webview/attachExecutionSession':
         this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
@@ -904,7 +2130,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/resetDemoState':
-        this.resetState();
+        void this.resetState().catch((error) => {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: formatUnknownError(error)
+            }
+          });
+        });
         return;
     }
   }
@@ -934,11 +2167,234 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return false;
   }
 
+  private ensureRuntimeDirectory(targetPath: string): string {
+    fs.mkdirSync(targetPath, {
+      recursive: true
+    });
+    return targetPath;
+  }
+
+  private getAgentRuntimeStorageRoot(): string {
+    const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    return this.ensureRuntimeDirectory(path.join(basePath, 'agent-runtime'));
+  }
+
+  private resolveAgentResumeContext(
+    nodeId: string,
+    provider: AgentProviderKind,
+    metadata?: AgentNodeMetadata
+  ): AgentResumeContext {
+    if (provider === 'claude') {
+      return {
+        supported: true,
+        strategy: 'claude-session-id',
+        sessionId: metadata?.resumeSessionId?.trim() || randomUUID()
+      };
+    }
+
+    return {
+      supported: true,
+      strategy: this.context.extensionMode === vscode.ExtensionMode.Test ? 'fake-provider' : 'codex-home',
+      storagePath:
+        metadata?.resumeStoragePath?.trim() ||
+        this.ensureRuntimeDirectory(path.join(this.getAgentRuntimeStorageRoot(), nodeId))
+    };
+  }
+
+  private async startAgentSessionWithSupervisor(
+    nodeId: string,
+    normalizedCols: number,
+    normalizedRows: number,
+    provider: AgentProviderKind,
+    cliSpec: AgentCliSpec,
+    resumeContext: AgentResumeContext,
+    launchMode: PendingExecutionLaunch
+  ): Promise<void> {
+    const operationToken = this.beginExecutionSessionOperation('agent', nodeId);
+    const existingNode = this.requireNode(nodeId, 'agent');
+    const existingMetadata = ensureAgentMetadata(existingNode);
+    const cwd = this.getTerminalWorkingDirectory();
+    const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
+    const { client, backend, fallbackReason } = await this.getPreferredRuntimeSupervisorClient();
+    if (fallbackReason) {
+      this.recordDiagnosticEvent('runtime/backendFallback', {
+        kind: 'agent',
+        nodeId,
+        selectedBackend: backend.kind,
+        guarantee: backend.guarantee,
+        reason: fallbackReason
+      });
+    }
+
+    this.state = updateAgentNode(this.state, nodeId, {
+      status: lifecycleStatus,
+      summary: summarizeAgentSessionOutput('', lifecycleStatus, cliSpec.label),
+      metadata: buildAgentMetadataPatch(this.state, nodeId, {
+        provider,
+        lifecycle: lifecycleStatus,
+        runtimeKind: 'pty-cli',
+        resumeSupported: resumeContext.supported,
+        resumeStrategy: resumeContext.strategy,
+        resumeSessionId: resumeContext.sessionId,
+        resumeStoragePath: resumeContext.storagePath,
+        persistenceMode: 'live-runtime',
+        attachmentState: 'attached-live',
+        runtimeBackend: backend.kind,
+        runtimeGuarantee: backend.guarantee,
+        liveSession: false,
+        runtimeSessionId: undefined,
+        pendingLaunch: undefined,
+        shellPath: cliSpec.command,
+        cwd,
+        lastExitCode: undefined,
+        lastExitSignal: undefined,
+        lastExitMessage: undefined,
+        lastResumeError: undefined,
+        lastRuntimeError: undefined,
+        lastCols: normalizedCols,
+        lastRows: normalizedRows,
+        lastBackendLabel: cliSpec.label
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+
+    const previousRuntimeSessionId = existingMetadata.runtimeSessionId;
+    if (previousRuntimeSessionId) {
+      const previousBackendKind =
+        normalizeRuntimeHostBackendKind(existingMetadata.runtimeBackend) ?? 'legacy-detached';
+      try {
+        const previousClient =
+          previousBackendKind === backend.kind
+            ? client
+            : await this.getRuntimeSupervisorClientForKind(previousBackendKind);
+        await previousClient.deleteSession({
+          sessionId: previousRuntimeSessionId
+        });
+      } catch {
+        // Best effort only. The new session can still start with a fresh identity.
+      }
+      this.unbindRuntimeSession(previousRuntimeSessionId);
+    }
+
+    const snapshot = await client.createSession({
+      kind: 'agent',
+      displayLabel: cliSpec.label,
+      launchMode,
+      provider,
+      resumeStrategy: resumeContext.strategy,
+      resumeSessionId: resumeContext.sessionId,
+      resumeStoragePath: resumeContext.storagePath,
+      launchSpec: serializeExecutionSessionLaunchSpec(
+        this.buildAgentLaunchSpec(cliSpec, cwd, normalizedCols, normalizedRows, launchMode, resumeContext)
+      )
+    });
+    if (!this.shouldApplyRuntimeCreateResult('agent', nodeId, operationToken, backend.kind)) {
+      this.recordIgnoredExecutionSessionOperation('agent', nodeId, 'create', snapshot.sessionId);
+      await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
+      return;
+    }
+
+    this.bindRuntimeSession(nodeId, 'agent', snapshot.sessionId);
+    this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
+      postSnapshot: true,
+      historyOnUnavailable: true
+    });
+  }
+
+  private async startTerminalSessionWithSupervisor(
+    nodeId: string,
+    normalizedCols: number,
+    normalizedRows: number
+  ): Promise<void> {
+    const operationToken = this.beginExecutionSessionOperation('terminal', nodeId);
+    const existingNode = this.requireNode(nodeId, 'terminal');
+    const existingMetadata = ensureTerminalMetadata(existingNode);
+    const shellPath = this.getTerminalShellPath();
+    const cwd = this.getTerminalWorkingDirectory();
+    const { client, backend, fallbackReason } = await this.getPreferredRuntimeSupervisorClient();
+    if (fallbackReason) {
+      this.recordDiagnosticEvent('runtime/backendFallback', {
+        kind: 'terminal',
+        nodeId,
+        selectedBackend: backend.kind,
+        guarantee: backend.guarantee,
+        reason: fallbackReason
+      });
+    }
+
+    this.state = updateTerminalNode(this.state, nodeId, {
+      status: 'launching',
+      summary: summarizeEmbeddedTerminalOutput('', 'launching'),
+      metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+        lifecycle: 'launching',
+        persistenceMode: 'live-runtime',
+        attachmentState: 'attached-live',
+        runtimeBackend: backend.kind,
+        runtimeGuarantee: backend.guarantee,
+        liveSession: false,
+        runtimeSessionId: undefined,
+        pendingLaunch: undefined,
+        shellPath,
+        cwd,
+        lastCols: normalizedCols,
+        lastRows: normalizedRows,
+        recentOutput: undefined,
+        lastExitCode: undefined,
+        lastExitSignal: undefined,
+        lastExitMessage: undefined,
+        lastRuntimeError: undefined
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+
+    const previousRuntimeSessionId = existingMetadata.runtimeSessionId;
+    if (previousRuntimeSessionId) {
+      const previousBackendKind =
+        normalizeRuntimeHostBackendKind(existingMetadata.runtimeBackend) ?? 'legacy-detached';
+      try {
+        const previousClient =
+          previousBackendKind === backend.kind
+            ? client
+            : await this.getRuntimeSupervisorClientForKind(previousBackendKind);
+        await previousClient.deleteSession({
+          sessionId: previousRuntimeSessionId
+        });
+      } catch {
+        // Best effort only. The new session can still start with a fresh identity.
+      }
+      this.unbindRuntimeSession(previousRuntimeSessionId);
+    }
+
+    const snapshot = await client.createSession({
+      kind: 'terminal',
+      displayLabel: shellPath,
+      launchMode: 'start',
+      launchSpec: serializeExecutionSessionLaunchSpec(
+        this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows)
+      )
+    });
+    if (!this.shouldApplyRuntimeCreateResult('terminal', nodeId, operationToken, backend.kind)) {
+      this.recordIgnoredExecutionSessionOperation('terminal', nodeId, 'create', snapshot.sessionId);
+      await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
+      return;
+    }
+
+    this.bindRuntimeSession(nodeId, 'terminal', snapshot.sessionId);
+    this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
+      postSnapshot: true,
+      historyOnUnavailable: true
+    });
+  }
+
   private async startAgentSession(
     nodeId: string,
     cols: number,
     rows: number,
-    requestedProvider: AgentProviderKind | undefined
+    requestedProvider: AgentProviderKind | undefined,
+    resumeRequested: boolean,
+    options: StartExecutionSessionOptions = {}
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
@@ -946,12 +2402,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind: 'agent',
       nodeId,
       provider: requestedProvider ?? null,
+      resumeRequested,
       cols: normalizedCols,
       rows: normalizedRows,
       workspaceTrusted: vscode.workspace.isTrusted
     });
 
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+    if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+      const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+      if (blockedNode) {
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: 'idle',
+          summary: defaultSummaryForKind('agent'),
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            lifecycle: 'idle',
+            pendingLaunch: undefined,
+            liveSession: false
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+      }
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'agent',
         nodeId,
@@ -993,18 +2464,86 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const provider = requestedProvider ?? ensureAgentMetadata(agentNode).provider;
+    const currentMetadata = ensureAgentMetadata(agentNode);
+    const provider = requestedProvider ?? currentMetadata.provider;
     const cliSpec = this.resolveAgentCli(provider);
+    const resumeContext = this.resolveAgentResumeContext(nodeId, provider, currentMetadata);
+    const launchMode: PendingExecutionLaunch = resumeRequested ? 'resume' : 'start';
+    const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
+    if (this.isRuntimePersistenceEnabled()) {
+      try {
+        await this.startAgentSessionWithSupervisor(
+          nodeId,
+          normalizedCols,
+          normalizedRows,
+          provider,
+          cliSpec,
+          resumeContext,
+          launchMode
+        );
+      } catch (error) {
+        const message =
+          launchMode === 'resume'
+            ? describeAgentResumeSpawnError(cliSpec, error)
+            : describeAgentSessionSpawnError(cliSpec, error);
+        this.recordDiagnosticEvent('execution/spawnError', {
+          kind: 'agent',
+          nodeId,
+          provider,
+          launchMode,
+          cols: normalizedCols,
+          rows: normalizedRows,
+          message
+        });
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: launchMode === 'resume' ? 'resume-failed' : 'error',
+          summary: message,
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            provider,
+            lifecycle: launchMode === 'resume' ? 'resume-failed' : 'error',
+            runtimeKind: 'pty-cli',
+            resumeSupported: resumeContext.supported,
+            resumeStrategy: resumeContext.strategy,
+            resumeSessionId: resumeContext.sessionId,
+            resumeStoragePath: resumeContext.storagePath,
+            lastResumeError: launchMode === 'resume' ? message : undefined,
+            persistenceMode: 'live-runtime',
+            attachmentState: 'history-restored',
+            runtimeBackend: currentMetadata.runtimeBackend,
+            runtimeGuarantee: currentMetadata.runtimeGuarantee,
+            liveSession: false,
+            runtimeSessionId: undefined,
+            shellPath: cliSpec.command,
+            cwd: this.getTerminalWorkingDirectory(),
+            lastExitMessage: message,
+            lastCols: normalizedCols,
+            lastRows: normalizedRows,
+            lastBackendLabel: cliSpec.label,
+            lastRuntimeError: message
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+      }
+      return;
+    }
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
 
     try {
       const process = createExecutionSessionProcess(
-        this.buildAgentLaunchSpec(cliSpec.command, cwd, normalizedCols, normalizedRows)
+        this.buildAgentLaunchSpec(cliSpec, cwd, normalizedCols, normalizedRows, launchMode, resumeContext)
       );
 
-      const session: EmbeddedExecutionSession = {
+      const session: LocalExecutionSession = {
         sessionId,
+        owner: 'local',
         process,
         shellPath: cliSpec.command,
         cwd,
@@ -1013,7 +2552,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         buffer: '',
         stopRequested: false,
         syncTimer: undefined,
+        lifecycleTimer: undefined,
         displayLabel: cliSpec.label,
+        lifecycleStatus,
+        launchMode,
+        resumePhaseActive: launchMode === 'resume',
+        agentProvider: provider,
+        agentResume: resumeContext,
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -1023,19 +2568,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         sessionId,
         provider,
+        launchMode,
         cols: normalizedCols,
         rows: normalizedRows,
         shellPath: cliSpec.command,
-        cwd
+        cwd,
+        resumeStrategy: resumeContext.strategy,
+        resumeSessionId: resumeContext.sessionId ?? null,
+        resumeStoragePath: resumeContext.storagePath ?? null
       });
 
       this.state = updateAgentNode(this.state, nodeId, {
-        status: 'live',
-        summary: summarizeAgentSessionOutput('', true, cliSpec.label),
+        status: lifecycleStatus,
+        summary: summarizeAgentSessionOutput('', lifecycleStatus, cliSpec.label),
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
           provider,
+          lifecycle: lifecycleStatus,
+          runtimeKind: 'pty-cli',
+          resumeSupported: resumeContext.supported,
+          resumeStrategy: resumeContext.strategy,
+          resumeSessionId: resumeContext.sessionId,
+          resumeStoragePath: resumeContext.storagePath,
+          lastResumeError: undefined,
+          persistenceMode: 'snapshot-only',
+          attachmentState: 'attached-live',
+          runtimeBackend: undefined,
+          runtimeGuarantee: undefined,
           liveSession: true,
-          autoStartPending: false,
+          runtimeSessionId: undefined,
+          pendingLaunch: undefined,
           shellPath: cliSpec.command,
           cwd,
           recentOutput: undefined,
@@ -1051,6 +2612,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('agent', nodeId);
 
+      const queueAgentWaitingInput = (): void => {
+        const activeSession = this.getExecutionSessions('agent').get(nodeId);
+        if (!activeSession || activeSession.lifecycleStatus !== 'running') {
+          return;
+        }
+
+        if (activeSession.lifecycleTimer) {
+          clearTimeout(activeSession.lifecycleTimer);
+        }
+
+        activeSession.lifecycleTimer = setTimeout(() => {
+          const liveSession = this.getExecutionSessions('agent').get(nodeId);
+          if (!liveSession || liveSession.lifecycleStatus !== 'running') {
+            return;
+          }
+
+          liveSession.lifecycleTimer = undefined;
+          liveSession.lifecycleStatus = 'waiting-input';
+          this.flushLiveExecutionState('agent', nodeId);
+        }, 380);
+      };
+
       const handleSessionChunk = (text: string): void => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
@@ -1063,6 +2646,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        if (activeSession.lifecycleStatus === 'starting' || activeSession.lifecycleStatus === 'resuming') {
+          if (activeSession.lifecycleStatus === 'resuming') {
+            activeSession.resumePhaseActive = false;
+          }
+          activeSession.lifecycleStatus = 'waiting-input';
+        } else if (activeSession.lifecycleStatus === 'running') {
+          queueAgentWaitingInput();
+        }
         this.queueExecutionStateSync('agent', nodeId);
         this.postMessage({
           type: 'host/executionOutput',
@@ -1075,7 +2666,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
 
       const finalize = (
-        status: 'closed' | 'error',
+        status: 'stopped' | 'error' | 'resume-failed',
         message: string,
         exitCode?: number,
         signal?: string
@@ -1089,6 +2680,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         if (activeSession.syncTimer) {
           clearTimeout(activeSession.syncTimer);
           activeSession.syncTimer = undefined;
+        }
+        if (activeSession.lifecycleTimer) {
+          clearTimeout(activeSession.lifecycleTimer);
+          activeSession.lifecycleTimer = undefined;
         }
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
@@ -1105,15 +2700,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           exitCode: exitCode ?? null,
           signal: signal ?? null,
           stopRequested: activeSession.stopRequested,
-          message
+          message,
+          launchMode: activeSession.launchMode
         });
         this.state = updateAgentNode(this.state, nodeId, {
           status,
           summary: message,
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
             provider,
+            lifecycle: status,
+            runtimeKind: 'pty-cli',
+            resumeSupported: resumeContext.supported,
+            resumeStrategy: resumeContext.strategy,
+            resumeSessionId: resumeContext.sessionId,
+            resumeStoragePath: resumeContext.storagePath,
+            lastResumeError: status === 'resume-failed' ? message : undefined,
+            persistenceMode: 'snapshot-only',
+            attachmentState: 'history-restored',
+            runtimeBackend: undefined,
+            runtimeGuarantee: undefined,
             liveSession: false,
-            autoStartPending: false,
+            runtimeSessionId: undefined,
+            pendingLaunch: undefined,
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
@@ -1135,7 +2743,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             message
           }
         });
-        if (status === 'error') {
+        if (status === 'error' || status === 'resume-failed') {
           this.postMessage({
             type: 'host/error',
             payload: {
@@ -1148,16 +2756,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleSessionChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('closed', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
+          finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          finalize('closed', `${cliSpec.label} 会话已结束。`, exitCode, signal);
+          finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
+        if (session.resumePhaseActive) {
+          finalize(
+            'resume-failed',
+            describeAgentResumeFailure(cliSpec, exitCode, signal, cleanedOutput),
+            exitCode,
+            signal
+          );
+          return;
+        }
+
         finalize(
           'error',
           describeAgentSessionExit(cliSpec, exitCode, signal, cleanedOutput),
@@ -1166,22 +2784,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         );
       });
     } catch (error) {
-      const message = describeAgentSessionSpawnError(cliSpec, error);
+      const message =
+        launchMode === 'resume'
+          ? describeAgentResumeSpawnError(cliSpec, error)
+          : describeAgentSessionSpawnError(cliSpec, error);
       this.recordDiagnosticEvent('execution/spawnError', {
         kind: 'agent',
         nodeId,
         provider,
+        launchMode,
         cols: normalizedCols,
         rows: normalizedRows,
         message
       });
       this.state = updateAgentNode(this.state, nodeId, {
-        status: 'error',
+        status: launchMode === 'resume' ? 'resume-failed' : 'error',
         summary: message,
         metadata: buildAgentMetadataPatch(this.state, nodeId, {
           provider,
+          lifecycle: launchMode === 'resume' ? 'resume-failed' : 'error',
+          runtimeKind: 'pty-cli',
+          resumeSupported: resumeContext.supported,
+          resumeStrategy: resumeContext.strategy,
+          resumeSessionId: resumeContext.sessionId,
+          resumeStoragePath: resumeContext.storagePath,
+          lastResumeError: launchMode === 'resume' ? message : undefined,
+          persistenceMode: 'snapshot-only',
+          attachmentState: 'history-restored',
+          runtimeBackend: undefined,
+          runtimeGuarantee: undefined,
           liveSession: false,
-          autoStartPending: false,
+          runtimeSessionId: undefined,
+          pendingLaunch: undefined,
           shellPath: cliSpec.command,
           cwd,
           lastExitMessage: message,
@@ -1299,22 +2933,46 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private buildAgentLaunchSpec(
-    command: string,
+    spec: AgentCliSpec,
     cwd: string,
     cols: number,
-    rows: number
+    rows: number,
+    launchMode: PendingExecutionLaunch,
+    resumeContext: AgentResumeContext
   ): ExecutionSessionLaunchSpec {
+    const env = this.buildExecutionEnvironment();
+    const args: string[] = [];
+
+    if (spec.provider === 'claude') {
+      if (launchMode === 'resume' && resumeContext.sessionId) {
+        args.push('--resume', resumeContext.sessionId);
+      } else if (resumeContext.sessionId) {
+        args.push('--session-id', resumeContext.sessionId);
+      }
+    } else if (launchMode === 'resume') {
+      args.push('resume', '--last');
+    }
+
+    if (resumeContext.storagePath) {
+      env.CODEX_HOME = resumeContext.storagePath;
+    }
+
     return {
-      file: command,
-      args: [],
+      file: spec.command,
+      args,
       cwd,
       cols,
       rows,
-      env: this.buildExecutionEnvironment()
+      env
     };
   }
 
-  private async startTerminalSession(nodeId: string, cols: number, rows: number): Promise<void> {
+  private async startTerminalSession(
+    nodeId: string,
+    cols: number,
+    rows: number,
+    options: StartExecutionSessionOptions = {}
+  ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
     this.recordDiagnosticEvent('execution/startRequested', {
@@ -1325,7 +2983,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted
     });
 
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+    if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+      const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
+      if (blockedNode) {
+        this.state = updateTerminalNode(this.state, nodeId, {
+          status: 'idle',
+          summary: defaultSummaryForKind('terminal'),
+          metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+            lifecycle: 'idle',
+            pendingLaunch: undefined,
+            liveSession: false
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+      }
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'terminal',
         nodeId,
@@ -1368,6 +3040,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
+    const currentMetadata = ensureTerminalMetadata(terminalNode);
+    if (this.isRuntimePersistenceEnabled()) {
+      try {
+        await this.startTerminalSessionWithSupervisor(nodeId, normalizedCols, normalizedRows);
+      } catch (error) {
+        const message = describeEmbeddedTerminalSpawnError(shellPath, error);
+        this.recordDiagnosticEvent('execution/spawnError', {
+          kind: 'terminal',
+          nodeId,
+          cols: normalizedCols,
+          rows: normalizedRows,
+          message
+        });
+        this.state = updateTerminalNode(this.state, nodeId, {
+          status: 'error',
+          summary: message,
+          metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+            lifecycle: 'error',
+            persistenceMode: 'live-runtime',
+            attachmentState: 'history-restored',
+            runtimeBackend: currentMetadata.runtimeBackend,
+            runtimeGuarantee: currentMetadata.runtimeGuarantee,
+            liveSession: false,
+            runtimeSessionId: undefined,
+            shellPath,
+            cwd,
+            lastExitMessage: message,
+            lastCols: normalizedCols,
+            lastRows: normalizedRows,
+            lastRuntimeError: message
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+      }
+      return;
+    }
     const sessionId = createExecutionSessionId(nodeId, 'terminal');
 
     try {
@@ -1375,8 +3090,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows)
       );
 
-      const session: EmbeddedExecutionSession = {
+      const session: LocalExecutionSession = {
         sessionId,
+        owner: 'local',
         process,
         shellPath,
         cwd,
@@ -1385,7 +3101,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         buffer: '',
         stopRequested: false,
         syncTimer: undefined,
+        lifecycleTimer: undefined,
         displayLabel: shellPath,
+        lifecycleStatus: 'launching',
+        launchMode: 'start',
+        resumePhaseActive: false,
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -1401,11 +3121,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
 
       this.state = updateTerminalNode(this.state, nodeId, {
-        status: 'live',
-        summary: '嵌入式终端已启动，等待输入。',
+        status: 'launching',
+        summary: summarizeEmbeddedTerminalOutput('', 'launching'),
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lifecycle: 'launching',
+          persistenceMode: 'snapshot-only',
+          attachmentState: 'attached-live',
+          runtimeBackend: undefined,
+          runtimeGuarantee: undefined,
           liveSession: true,
-          autoStartPending: false,
+          runtimeSessionId: undefined,
+          pendingLaunch: undefined,
           shellPath,
           cwd,
           lastCols: normalizedCols,
@@ -1420,6 +3146,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('terminal', nodeId);
 
+      session.lifecycleTimer = setTimeout(() => {
+        const activeSession = this.terminalSessions.get(nodeId);
+        if (!activeSession || activeSession.lifecycleStatus !== 'launching') {
+          return;
+        }
+
+        activeSession.lifecycleTimer = undefined;
+        activeSession.lifecycleStatus = 'live';
+        this.flushLiveExecutionState('terminal', nodeId);
+      }, 160);
+
       const handleTerminalChunk = (text: string): void => {
         const activeSession = this.terminalSessions.get(nodeId);
         if (!activeSession) {
@@ -1431,6 +3168,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        if (activeSession.lifecycleStatus === 'launching') {
+          activeSession.lifecycleStatus = 'live';
+        }
         this.queueExecutionStateSync('terminal', nodeId);
         this.postMessage({
           type: 'host/executionOutput',
@@ -1457,6 +3197,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           clearTimeout(activeSession.syncTimer);
           activeSession.syncTimer = undefined;
         }
+        if (activeSession.lifecycleTimer) {
+          clearTimeout(activeSession.lifecycleTimer);
+          activeSession.lifecycleTimer = undefined;
+        }
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
 
@@ -1478,8 +3222,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           status,
           summary: message,
           metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+            lifecycle: status,
+            persistenceMode: 'snapshot-only',
+            attachmentState: 'history-restored',
+            runtimeBackend: undefined,
+            runtimeGuarantee: undefined,
             liveSession: false,
-            autoStartPending: false,
+            runtimeSessionId: undefined,
+            pendingLaunch: undefined,
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
@@ -1543,8 +3293,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         status: 'error',
         summary: message,
         metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lifecycle: 'error',
+          persistenceMode: 'snapshot-only',
+          attachmentState: 'history-restored',
+          runtimeBackend: undefined,
+          runtimeGuarantee: undefined,
           liveSession: false,
-          autoStartPending: false,
+          runtimeSessionId: undefined,
+          pendingLaunch: undefined,
           shellPath,
           cwd,
           lastExitMessage: message,
@@ -1563,7 +3319,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private getExecutionSessions(kind: ExecutionNodeKind): Map<string, EmbeddedExecutionSession> {
+  private getExecutionSessions(kind: ExecutionNodeKind): Map<string, ManagedExecutionSession> {
     return kind === 'agent' ? this.agentSessions : this.terminalSessions;
   }
 
@@ -1577,6 +3333,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
     if (!node) {
       return;
+    }
+
+    const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+    if (
+      !this.getExecutionSessions(kind).has(nodeId) &&
+      metadata.persistenceMode === 'live-runtime' &&
+      metadata.runtimeSessionId &&
+      metadata.attachmentState === 'reattaching' &&
+      this.getLiveRuntimeReconnectBlockReason() === undefined
+    ) {
+      const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
+      const runtimeSessionId = metadata.runtimeSessionId as string;
+      const operation = this.attachPersistedRuntimeSession(kind, nodeId, runtimeSessionId, () =>
+        this.getRuntimeSupervisorClientForKind(backendKind).then((client) =>
+          client.attachSession({
+            sessionId: runtimeSessionId
+          })
+        )
+      );
+      this.trackRuntimeSupervisorOperation(operation);
     }
 
     this.postExecutionSnapshot(kind, nodeId);
@@ -1611,7 +3387,43 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    session.process.write(data);
+    if (kind === 'agent') {
+      if (session.lifecycleTimer) {
+        clearTimeout(session.lifecycleTimer);
+        session.lifecycleTimer = undefined;
+      }
+      if (session.lifecycleStatus !== 'starting' && session.lifecycleStatus !== 'resuming') {
+        session.lifecycleStatus = 'running';
+        session.resumePhaseActive = false;
+        this.queueExecutionStateSync('agent', nodeId);
+      }
+    } else if (session.lifecycleStatus === 'launching') {
+      session.lifecycleStatus = 'live';
+      this.queueExecutionStateSync('terminal', nodeId);
+    }
+
+    if (session.owner === 'local') {
+      session.process.write(data);
+    } else {
+      const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+      this.trackRuntimeSupervisorOperation(
+        this.getRuntimeSupervisorClientForKind(backendKind)
+          .then((client) =>
+            client.writeInput({
+              sessionId: session.runtimeSessionId,
+              data
+            })
+          )
+          .catch((error) => {
+            this.postMessage({
+              type: 'host/error',
+              payload: {
+                message: error instanceof Error ? error.message : '向 live runtime 写入输入失败。'
+              }
+            });
+          })
+      );
+    }
     this.recordDiagnosticEvent('execution/inputWritten', {
       ...inputDetail,
       sessionId: session.sessionId
@@ -1643,7 +3455,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     session.cols = normalizedCols;
     session.rows = normalizedRows;
-    session.process.resize(normalizedCols, normalizedRows);
+    if (session.owner === 'local') {
+      session.process.resize(normalizedCols, normalizedRows);
+    } else {
+      const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+      this.trackRuntimeSupervisorOperation(
+        this.getRuntimeSupervisorClientForKind(backendKind)
+          .then((client) =>
+            client.resizeSession({
+              sessionId: session.runtimeSessionId,
+              cols: normalizedCols,
+              rows: normalizedRows
+            })
+          )
+          .catch((error) => {
+            this.postMessage({
+              type: 'host/error',
+              payload: {
+                message: error instanceof Error ? error.message : '调整 live runtime 尺寸失败。'
+              }
+            });
+          })
+      );
+    }
     this.queueExecutionStateSync(kind, nodeId);
   }
 
@@ -1670,10 +3504,76 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       sessionId: session.sessionId
     });
     session.stopRequested = true;
-    session.process.kill();
+    session.lifecycleStatus = kind === 'agent' ? 'stopping' : 'stopping';
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+    }
+    this.flushLiveExecutionState(kind, nodeId);
+    if (session.owner === 'local') {
+      session.process.kill();
+      return;
+    }
+
+    try {
+      const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+      const client = await this.getRuntimeSupervisorClientForKind(backendKind);
+      await client.stopSession({
+        sessionId: session.runtimeSessionId
+      });
+    } catch (error) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '停止 live runtime 失败。'
+        }
+      });
+    }
   }
 
-  private deleteNode(nodeId: string): void {
+  private async terminateExecutionNodeForDeletion(node: CanvasNodeSummary): Promise<void> {
+    if (!isExecutionNodeKind(node.kind)) {
+      return;
+    }
+
+    const attachedSession = this.getExecutionSessions(node.kind).get(node.id);
+    if (attachedSession?.owner === 'local') {
+      this.flushExecutionStateImmediately(node.kind, node.id);
+      this.disposeExecutionSession(node.kind, node.id, {
+        terminateProcess: true
+      });
+      return;
+    }
+
+    if (attachedSession?.owner === 'supervisor') {
+      const backendKind = normalizeRuntimeHostBackendKind(attachedSession.runtimeBackend) ?? 'legacy-detached';
+      await this.deleteRuntimeSupervisorSessionStrict(
+        {
+          backendKind,
+          sessionId: attachedSession.runtimeSessionId
+        },
+        {
+          allowRestart: true
+        }
+      );
+      this.disposeExecutionSession(node.kind, node.id, {
+        terminateProcess: false
+      });
+      return;
+    }
+
+    const persistedRuntimeSession = this.getPersistedLiveRuntimeSessionForNode(node);
+    if (!persistedRuntimeSession) {
+      return;
+    }
+
+    await this.deleteRuntimeSupervisorSessionStrict(persistedRuntimeSession, {
+      allowRestart: true
+    });
+    this.unbindRuntimeSession(persistedRuntimeSession.sessionId);
+  }
+
+  private async deleteNode(nodeId: string): Promise<void> {
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
     if (!node) {
       this.postMessage({
@@ -1686,9 +3586,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (isExecutionNodeKind(node.kind)) {
-      this.disposeExecutionSession(node.kind, nodeId, {
-        terminateProcess: true
-      });
+      this.invalidateExecutionSessionOperation(node.kind, nodeId);
+      try {
+        await this.terminateExecutionNodeForDeletion(node);
+      } catch (error) {
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message: error instanceof Error ? error.message : '删除执行节点时清理 live runtime 失败。'
+          }
+        });
+        return;
+      }
     }
 
     this.state = deleteCanvasNode(this.state, nodeId);
@@ -1709,6 +3618,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     options: { terminateProcess: boolean }
   ): void {
+    this.invalidateExecutionSessionOperation(kind, nodeId);
     const sessionMap = this.getExecutionSessions(kind);
     const session = sessionMap.get(nodeId);
     if (!session) {
@@ -1720,10 +3630,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       clearTimeout(session.syncTimer);
       session.syncTimer = undefined;
     }
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+    }
 
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
+
+    if (session.owner === 'supervisor') {
+      this.unbindRuntimeSession(session.runtimeSessionId);
+      if (options.terminateProcess) {
+        const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+        this.trackRuntimeSupervisorOperation(
+          this.getRuntimeSupervisorClientForKind(backendKind)
+            .then((client) =>
+              client.deleteSession({
+                sessionId: session.runtimeSessionId
+              })
+            )
+            .catch(() => {
+              // Best effort only during dispose paths.
+            })
+        );
+      }
+      return;
+    }
 
     if (options.terminateProcess) {
       session.process.kill();
@@ -1747,6 +3680,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }, 160);
   }
 
+  private flushExecutionStateSyncTimer(kind: ExecutionNodeKind, nodeId: string): void {
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    if (!session?.syncTimer) {
+      return;
+    }
+
+    clearTimeout(session.syncTimer);
+    session.syncTimer = undefined;
+  }
+
+  private flushExecutionStateImmediately(kind: ExecutionNodeKind, nodeId: string): void {
+    if (!this.getExecutionSessions(kind).has(nodeId)) {
+      return;
+    }
+
+    this.flushExecutionStateSyncTimer(kind, nodeId);
+    this.flushLiveExecutionState(kind, nodeId);
+  }
+
+  private flushAllExecutionSessionStatesForHostBoundary(): void {
+    for (const nodeId of this.agentSessions.keys()) {
+      this.flushExecutionStateImmediately('agent', nodeId);
+    }
+    for (const nodeId of this.terminalSessions.keys()) {
+      this.flushExecutionStateImmediately('terminal', nodeId);
+    }
+  }
+
   private flushLiveExecutionState(kind: ExecutionNodeKind, nodeId: string): void {
     const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
@@ -1756,18 +3717,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const cleanedOutput = stripTerminalControlSequences(session.buffer);
     const recentOutput = extractRecentTerminalOutput(cleanedOutput);
     this.state = updateExecutionNode(this.state, nodeId, kind, {
-      status: 'live',
+      status: session.lifecycleStatus,
       summary:
         kind === 'agent'
-          ? summarizeAgentSessionOutput(cleanedOutput, true, session.displayLabel)
-          : summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+          ? summarizeAgentSessionOutput(
+              cleanedOutput,
+              session.lifecycleStatus as AgentNodeStatus,
+              session.displayLabel
+            )
+          : summarizeEmbeddedTerminalOutput(cleanedOutput, session.lifecycleStatus as TerminalNodeStatus),
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        lifecycle: session.lifecycleStatus,
+        persistenceMode: session.owner === 'supervisor' ? 'live-runtime' : 'snapshot-only',
+        attachmentState: 'attached-live',
+        ...(session.owner === 'supervisor'
+          ? {
+              runtimeBackend: session.runtimeBackend,
+              runtimeGuarantee: session.runtimeGuarantee
+            }
+          : {}),
         liveSession: true,
+        runtimeSessionId: session.runtimeSessionId,
         shellPath: session.shellPath,
         cwd: session.cwd,
         recentOutput: recentOutput || undefined,
         lastCols: session.cols,
         lastRows: session.rows,
+        lastRuntimeError: undefined,
         ...(kind === 'agent' ? { lastBackendLabel: session.displayLabel } : {})
       })
     });
@@ -1792,7 +3768,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       payload: {
         nodeId,
         kind,
-        output: session?.buffer ?? '',
+        output: session?.buffer ?? metadata?.recentOutput ?? '',
         cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
         rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
         liveSession: Boolean(session)
@@ -1820,12 +3796,46 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.state = createNextState(
+    const nextState = createNextState(
       this.state,
       kind,
       this.getAgentCliConfig().defaultProvider,
       preferredPosition
     );
+    const createdNode = nextState.nodes[nextState.nodes.length - 1];
+
+    if (createdNode && createdNode.kind === 'agent') {
+      this.state = updateAgentNode(nextState, createdNode.id, {
+        status: 'starting',
+        summary: '正在等待节点尺寸就绪后启动 Agent 会话。',
+        metadata: buildAgentMetadataPatch(nextState, createdNode.id, {
+          lifecycle: 'starting',
+          pendingLaunch: 'start',
+          liveSession: false,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          recentOutput: undefined,
+          lastResumeError: undefined
+        })
+      });
+    } else if (createdNode && createdNode.kind === 'terminal') {
+      this.state = updateTerminalNode(nextState, createdNode.id, {
+        status: 'launching',
+        summary: '正在等待节点尺寸就绪后启动嵌入式终端。',
+        metadata: buildTerminalMetadataPatch(nextState, createdNode.id, {
+          lifecycle: 'launching',
+          pendingLaunch: 'start',
+          liveSession: false,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          recentOutput: undefined
+        })
+      });
+    } else {
+      this.state = nextState;
+    }
 
     this.persistState();
     this.postState('host/stateUpdated');
@@ -1944,6 +3954,14 @@ function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack || error.message;
+  }
+
+  return String(error);
+}
+
 function delay(timeoutMs: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, timeoutMs);
@@ -2000,9 +4018,9 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
 function defaultStatusForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return 'draft';
+      return 'idle';
     case 'terminal':
-      return 'draft';
+      return 'idle';
     case 'note':
       return 'ready';
   }
@@ -2302,7 +4320,13 @@ function normalizeNode(
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
     size: normalizeCanvasNodeFootprint(value.kind, value.size),
-    metadata: normalizeMetadata(value.kind, value.id, value.metadata, defaultAgentProvider)
+    metadata: normalizeMetadata(
+      value.kind,
+      value.id,
+      typeof value.status === 'string' ? value.status : undefined,
+      value.metadata,
+      defaultAgentProvider
+    )
   };
 }
 
@@ -2372,11 +4396,19 @@ function createNodeMetadata(
 function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
   return {
     backend: 'node-pty',
+    lifecycle: 'idle',
     provider,
+    runtimeKind: 'pty-cli',
+    resumeSupported: true,
+    resumeStrategy: provider === 'claude' ? 'claude-session-id' : 'codex-home',
     shellPath: defaultAgentCommand(provider),
     cwd: defaultTerminalWorkingDirectory(),
+    persistenceMode: 'snapshot-only',
+    attachmentState: 'history-restored',
+    runtimeBackend: undefined,
+    runtimeGuarantee: undefined,
     liveSession: false,
-    autoStartPending: false,
+    pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
     lastRows: DEFAULT_TERMINAL_ROWS,
     lastBackendLabel: agentProviderDisplayLabel(provider)
@@ -2386,10 +4418,15 @@ function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMe
 function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
   return {
     backend: 'node-pty',
+    lifecycle: 'idle',
     shellPath: defaultTerminalShellPath(),
     cwd: defaultTerminalWorkingDirectory(),
+    persistenceMode: 'snapshot-only',
+    attachmentState: 'history-restored',
+    runtimeBackend: undefined,
+    runtimeGuarantee: undefined,
     liveSession: false,
-    autoStartPending: false,
+    pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
     lastRows: DEFAULT_TERMINAL_ROWS
   };
@@ -2401,9 +4438,164 @@ function createNoteMetadata(): NoteNodeMetadata {
   };
 }
 
+function normalizePendingLaunch(value: unknown): PendingExecutionLaunch | undefined {
+  if (value === 'start' || value === 'resume') {
+    return value;
+  }
+
+  return value === true ? 'start' : undefined;
+}
+
+function normalizeRuntimePersistenceMode(value: unknown): RuntimePersistenceMode {
+  return value === 'live-runtime' ? 'live-runtime' : 'snapshot-only';
+}
+
+function normalizeRuntimeHostBackendKind(
+  value: unknown,
+  options?: {
+    persistenceMode?: RuntimePersistenceMode;
+    liveSession?: boolean;
+    runtimeSessionId?: string;
+  }
+): RuntimeHostBackendKind | undefined {
+  if (value === 'systemd-user' || value === 'legacy-detached') {
+    return value;
+  }
+
+  if (
+    options?.persistenceMode === 'live-runtime' ||
+    options?.liveSession ||
+    Boolean(options?.runtimeSessionId)
+  ) {
+    return 'legacy-detached';
+  }
+
+  return undefined;
+}
+
+function normalizeRuntimePersistenceGuarantee(
+  value: unknown,
+  runtimeBackend: RuntimeHostBackendKind | undefined
+): RuntimePersistenceGuarantee | undefined {
+  if (value === 'strong' || value === 'best-effort') {
+    return value;
+  }
+
+  if (runtimeBackend === 'systemd-user') {
+    return 'strong';
+  }
+
+  if (runtimeBackend === 'legacy-detached') {
+    return 'best-effort';
+  }
+
+  return undefined;
+}
+
+function normalizeRuntimeAttachmentState(
+  persistenceMode: RuntimePersistenceMode,
+  liveSession: boolean,
+  value: unknown
+): RuntimeAttachmentState {
+  if (value === 'attached-live' || value === 'reattaching' || value === 'history-restored') {
+    return value;
+  }
+
+  if (liveSession) {
+    return 'attached-live';
+  }
+
+  return persistenceMode === 'live-runtime' ? 'history-restored' : 'history-restored';
+}
+
+function normalizeAgentLifecycle(
+  nodeStatus: string | undefined,
+  liveSession: boolean,
+  value: unknown
+): AgentNodeStatus {
+  if (
+    value === 'idle' ||
+    value === 'starting' ||
+    value === 'waiting-input' ||
+    value === 'running' ||
+    value === 'resuming' ||
+    value === 'resume-ready' ||
+    value === 'resume-failed' ||
+    value === 'stopping' ||
+    value === 'stopped' ||
+    value === 'error' ||
+    value === 'interrupted'
+  ) {
+    return value;
+  }
+
+  if (nodeStatus === 'resume-ready' || nodeStatus === 'resume-failed') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'starting' || nodeStatus === 'waiting-input' || nodeStatus === 'running' || nodeStatus === 'resuming') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'stopped' || nodeStatus === 'stopping') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'error' || nodeStatus === 'interrupted') {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'closed') {
+    return 'stopped';
+  }
+
+  if (nodeStatus === 'draft' || nodeStatus === 'idle') {
+    return 'idle';
+  }
+
+  return liveSession ? 'running' : 'idle';
+}
+
+function normalizeTerminalLifecycle(
+  nodeStatus: string | undefined,
+  liveSession: boolean,
+  value: unknown
+): TerminalNodeStatus {
+  if (
+    value === 'idle' ||
+    value === 'launching' ||
+    value === 'live' ||
+    value === 'stopping' ||
+    value === 'closed' ||
+    value === 'error' ||
+    value === 'interrupted'
+  ) {
+    return value;
+  }
+
+  if (
+    nodeStatus === 'idle' ||
+    nodeStatus === 'launching' ||
+    nodeStatus === 'live' ||
+    nodeStatus === 'stopping' ||
+    nodeStatus === 'closed' ||
+    nodeStatus === 'error' ||
+    nodeStatus === 'interrupted'
+  ) {
+    return nodeStatus;
+  }
+
+  if (nodeStatus === 'draft') {
+    return 'idle';
+  }
+
+  return liveSession ? 'live' : 'idle';
+}
+
 function normalizeMetadata(
   kind: CanvasNodeKind,
   nodeId: string,
+  nodeStatus: string | undefined,
   value: unknown,
   defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasNodeMetadata | undefined {
@@ -2415,11 +4607,41 @@ function normalizeMetadata(
         ? agent.provider
         : defaultAgentProvider;
     const fallback = createAgentMetadata(provider);
+    const liveSession =
+      typeof agent.liveSession === 'boolean'
+        ? agent.liveSession
+        : typeof agent.liveRun === 'boolean'
+          ? agent.liveRun
+          : fallback.liveSession;
+    const persistenceMode = normalizeRuntimePersistenceMode(agent.persistenceMode);
+    const runtimeSessionId =
+      typeof agent.runtimeSessionId === 'string'
+        ? agent.runtimeSessionId
+        : undefined;
+    const runtimeBackend = normalizeRuntimeHostBackendKind(agent.runtimeBackend, {
+      persistenceMode,
+      liveSession,
+      runtimeSessionId
+    });
+    const runtimeGuarantee = normalizeRuntimePersistenceGuarantee(agent.runtimeGuarantee, runtimeBackend);
 
     return {
       agent: {
         backend: 'node-pty',
+        lifecycle: normalizeAgentLifecycle(
+          nodeStatus,
+          liveSession,
+          agent.lifecycle
+        ),
         provider,
+        runtimeKind: 'pty-cli',
+        resumeSupported: true,
+        resumeStrategy:
+          agent.resumeStrategy === 'claude-session-id' ||
+          agent.resumeStrategy === 'codex-home' ||
+          agent.resumeStrategy === 'fake-provider'
+            ? agent.resumeStrategy
+            : fallback.resumeStrategy,
         shellPath:
           typeof agent.shellPath === 'string'
             ? agent.shellPath
@@ -2428,13 +4650,21 @@ function normalizeMetadata(
           typeof agent.cwd === 'string'
             ? agent.cwd
             : fallback.cwd,
-        liveSession:
-          typeof agent.liveSession === 'boolean'
-            ? agent.liveSession
-            : typeof agent.liveRun === 'boolean'
-              ? agent.liveRun
-              : fallback.liveSession,
-        autoStartPending: false,
+        persistenceMode,
+        attachmentState: normalizeRuntimeAttachmentState(
+          persistenceMode,
+          liveSession,
+          agent.attachmentState
+        ),
+        runtimeBackend,
+        runtimeGuarantee,
+        liveSession,
+        runtimeSessionId,
+        lastRuntimeError:
+          typeof agent.lastRuntimeError === 'string'
+            ? trimStoredTerminalText(agent.lastRuntimeError)
+            : undefined,
+        pendingLaunch: normalizePendingLaunch(agent.pendingLaunch ?? agent.autoStartPending),
         recentOutput:
           typeof agent.recentOutput === 'string'
             ? trimStoredTerminalText(agent.recentOutput)
@@ -2452,6 +4682,18 @@ function normalizeMetadata(
         lastExitMessage:
           typeof agent.lastExitMessage === 'string'
             ? trimStoredTerminalText(agent.lastExitMessage)
+            : undefined,
+        resumeSessionId:
+          typeof agent.resumeSessionId === 'string'
+            ? agent.resumeSessionId
+            : undefined,
+        resumeStoragePath:
+          typeof agent.resumeStoragePath === 'string'
+            ? agent.resumeStoragePath
+            : undefined,
+        lastResumeError:
+          typeof agent.lastResumeError === 'string'
+            ? trimStoredTerminalText(agent.lastResumeError)
             : undefined,
         lastCols:
           typeof agent.lastCols === 'number'
@@ -2474,10 +4716,35 @@ function normalizeMetadata(
   if (kind === 'terminal') {
     const terminal = isRecord(record.terminal) ? record.terminal : {};
     const fallback = createTerminalMetadata(nodeId);
+    const liveSession =
+      typeof terminal.liveSession === 'boolean'
+        ? terminal.liveSession
+        : typeof terminal.liveRun === 'boolean'
+          ? terminal.liveRun
+          : fallback.liveSession;
+    const persistenceMode = normalizeRuntimePersistenceMode(terminal.persistenceMode);
+    const runtimeSessionId =
+      typeof terminal.runtimeSessionId === 'string'
+        ? terminal.runtimeSessionId
+        : undefined;
+    const runtimeBackend = normalizeRuntimeHostBackendKind(terminal.runtimeBackend, {
+      persistenceMode,
+      liveSession,
+      runtimeSessionId
+    });
+    const runtimeGuarantee = normalizeRuntimePersistenceGuarantee(
+      terminal.runtimeGuarantee,
+      runtimeBackend
+    );
 
     return {
       terminal: {
         backend: 'node-pty',
+        lifecycle: normalizeTerminalLifecycle(
+          nodeStatus,
+          liveSession,
+          terminal.lifecycle
+        ),
         shellPath:
           typeof terminal.shellPath === 'string'
             ? terminal.shellPath
@@ -2486,8 +4753,21 @@ function normalizeMetadata(
           typeof terminal.cwd === 'string'
             ? terminal.cwd
             : fallback.cwd,
-        liveSession: false,
-        autoStartPending: false,
+        persistenceMode,
+        attachmentState: normalizeRuntimeAttachmentState(
+          persistenceMode,
+          liveSession,
+          terminal.attachmentState
+        ),
+        runtimeBackend,
+        runtimeGuarantee,
+        liveSession,
+        runtimeSessionId,
+        lastRuntimeError:
+          typeof terminal.lastRuntimeError === 'string'
+            ? trimStoredTerminalText(terminal.lastRuntimeError)
+            : undefined,
+        pendingLaunch: normalizePendingLaunch(terminal.pendingLaunch ?? terminal.autoStartPending),
         recentOutput:
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)
@@ -2533,33 +4813,48 @@ function normalizeMetadata(
   return undefined;
 }
 
+interface ReconcileRuntimeOptions {
+  allowLiveRuntimeReconnect: boolean;
+  liveRuntimeReconnectBlockReason?: LiveRuntimeReconnectBlockReason;
+}
+
 function reconcileRuntimeNodes(
   state: CanvasPrototypeState,
-  agentSessions: Map<string, EmbeddedExecutionSession> = new Map(),
-  terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
+  agentSessions: Map<string, ManagedExecutionSession> = new Map(),
+  terminalSessions: Map<string, ManagedExecutionSession> = new Map(),
+  options: ReconcileRuntimeOptions = {
+    allowLiveRuntimeReconnect: true
+  }
 ): CanvasPrototypeState {
   return {
     ...state,
-    nodes: reconcileRuntimeNodesInArray(state.nodes, agentSessions, terminalSessions)
+    nodes: reconcileRuntimeNodesInArray(state.nodes, agentSessions, terminalSessions, options)
   };
 }
 
 function reconcileRuntimeNodesInArray(
   nodes: CanvasNodeSummary[],
-  agentSessions: Map<string, EmbeddedExecutionSession> = new Map(),
-  terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
+  agentSessions: Map<string, ManagedExecutionSession> = new Map(),
+  terminalSessions: Map<string, ManagedExecutionSession> = new Map(),
+  options: ReconcileRuntimeOptions = {
+    allowLiveRuntimeReconnect: true
+  }
 ): CanvasNodeSummary[] {
   return reconcileNoteNodesInArray(
     reconcileAgentNodesInArray(
-      reconcileTerminalNodesInArray(nodes, terminalSessions),
-      agentSessions
+      reconcileTerminalNodesInArray(nodes, terminalSessions, options),
+      agentSessions,
+      options
     )
   );
 }
 
 function reconcileAgentNodesInArray(
   nodes: CanvasNodeSummary[],
-  agentSessions: Map<string, EmbeddedExecutionSession> = new Map()
+  agentSessions: Map<string, ManagedExecutionSession> = new Map(),
+  options: ReconcileRuntimeOptions = {
+    allowLiveRuntimeReconnect: true
+  }
 ): CanvasNodeSummary[] {
   return nodes.map((node) => {
     if (node.kind !== 'agent') {
@@ -2574,13 +4869,31 @@ function reconcileAgentNodesInArray(
 
       return {
         ...node,
-        status: 'live',
-        summary: summarizeAgentSessionOutput(cleanedOutput, true, liveSession.displayLabel),
+        status: liveSession.lifecycleStatus,
+        summary: summarizeAgentSessionOutput(
+          cleanedOutput,
+          liveSession.lifecycleStatus as AgentNodeStatus,
+          liveSession.displayLabel
+        ),
         metadata: {
           ...node.metadata,
           agent: {
             ...metadata,
+            lifecycle: liveSession.lifecycleStatus as AgentNodeStatus,
+            persistenceMode: liveSession.owner === 'supervisor' ? 'live-runtime' : 'snapshot-only',
+            attachmentState: 'attached-live',
+            ...(liveSession.owner === 'supervisor'
+              ? {
+                  runtimeBackend: liveSession.runtimeBackend,
+                  runtimeGuarantee: liveSession.runtimeGuarantee
+                }
+              : {
+                  runtimeBackend: undefined,
+                  runtimeGuarantee: undefined
+                }),
             liveSession: true,
+            runtimeSessionId: liveSession.runtimeSessionId,
+            pendingLaunch: undefined,
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
@@ -2592,11 +4905,71 @@ function reconcileAgentNodesInArray(
       };
     }
 
-    if (metadata.liveSession) {
+    if (
+      metadata.persistenceMode === 'live-runtime' &&
+      metadata.runtimeSessionId &&
+      (metadata.liveSession || metadata.attachmentState === 'reattaching')
+    ) {
+      if (!options.allowLiveRuntimeReconnect) {
+        const liveRuntimeReconnectBlockReason =
+          options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
+        return {
+          ...node,
+          status: 'history-restored',
+          summary: describeBlockedAgentLiveRuntimeSummary(liveRuntimeReconnectBlockReason),
+          metadata: {
+            ...node.metadata,
+            agent: {
+              ...metadata,
+              attachmentState:
+                liveRuntimeReconnectBlockReason === 'workspace-untrusted'
+                  ? 'reattaching'
+                  : 'history-restored',
+              liveSession: false,
+              pendingLaunch: undefined
+            }
+          }
+        };
+      }
+
       return {
         ...node,
-        status: 'interrupted',
-        summary: '上一次 Agent 会话在扩展重载后未恢复，可重新启动。',
+        status: 'reattaching',
+        summary: '正在重新连接原 Agent live runtime。',
+        metadata: {
+          ...node.metadata,
+          agent: {
+            ...metadata,
+            attachmentState: 'reattaching',
+            liveSession: false,
+            pendingLaunch: undefined
+          }
+        }
+      };
+    }
+
+    if (metadata.liveSession) {
+      const canResume = metadata.resumeSupported && Boolean(metadata.resumeSessionId || metadata.resumeStoragePath);
+      return {
+        ...node,
+        status: canResume ? 'resume-ready' : 'interrupted',
+        summary: canResume ? '检测到可恢复的 Agent 会话，正在等待恢复。' : '上一次 Agent 会话在扩展重载后未恢复，可重新启动。',
+        metadata: {
+          ...node.metadata,
+          agent: {
+            ...metadata,
+            lifecycle: canResume ? 'resume-ready' : 'interrupted',
+            liveSession: false,
+            pendingLaunch: canResume ? 'resume' : undefined
+          }
+        }
+      };
+    }
+
+    if (metadata.persistenceMode === 'live-runtime' && metadata.attachmentState === 'history-restored') {
+      return {
+        ...node,
+        status: 'history-restored',
         metadata: {
           ...node.metadata,
           agent: {
@@ -2610,17 +4983,22 @@ function reconcileAgentNodesInArray(
     if (shouldResetIdleAgentNode(node, metadata)) {
       return {
         ...node,
-        status: 'draft',
+        status: 'idle',
         summary: defaultSummaryForKind('agent'),
         metadata: {
           ...node.metadata,
-          agent: metadata
+          agent: {
+            ...metadata,
+            lifecycle: 'idle',
+            pendingLaunch: undefined
+          }
         }
       };
     }
 
     return {
       ...node,
+      status: metadata.lifecycle,
       metadata: {
         ...node.metadata,
         agent: {
@@ -2634,7 +5012,10 @@ function reconcileAgentNodesInArray(
 
 function reconcileTerminalNodesInArray(
   nodes: CanvasNodeSummary[],
-  terminalSessions: Map<string, EmbeddedExecutionSession> = new Map()
+  terminalSessions: Map<string, ManagedExecutionSession> = new Map(),
+  options: ReconcileRuntimeOptions = {
+    allowLiveRuntimeReconnect: true
+  }
 ): CanvasNodeSummary[] {
   return nodes.map((node) => {
     if (node.kind !== 'terminal') {
@@ -2649,17 +5030,75 @@ function reconcileTerminalNodesInArray(
 
       return {
         ...node,
-        status: 'live',
-        summary: summarizeEmbeddedTerminalOutput(cleanedOutput, true),
+        status: liveSession.lifecycleStatus,
+        summary: summarizeEmbeddedTerminalOutput(
+          cleanedOutput,
+          liveSession.lifecycleStatus as TerminalNodeStatus
+        ),
         metadata: {
           terminal: {
             ...metadata,
+            lifecycle: liveSession.lifecycleStatus as TerminalNodeStatus,
+            persistenceMode: liveSession.owner === 'supervisor' ? 'live-runtime' : 'snapshot-only',
+            attachmentState: 'attached-live',
+            ...(liveSession.owner === 'supervisor'
+              ? {
+                  runtimeBackend: liveSession.runtimeBackend,
+                  runtimeGuarantee: liveSession.runtimeGuarantee
+                }
+              : {
+                  runtimeBackend: undefined,
+                  runtimeGuarantee: undefined
+                }),
             liveSession: true,
+            runtimeSessionId: liveSession.runtimeSessionId,
+            pendingLaunch: undefined,
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
             lastCols: liveSession.cols,
             lastRows: liveSession.rows
+          }
+        }
+      };
+    }
+
+    if (
+      metadata.persistenceMode === 'live-runtime' &&
+      metadata.runtimeSessionId &&
+      (metadata.liveSession || metadata.attachmentState === 'reattaching')
+    ) {
+      if (!options.allowLiveRuntimeReconnect) {
+        const liveRuntimeReconnectBlockReason =
+          options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
+        return {
+          ...node,
+          status: 'history-restored',
+          summary: describeBlockedTerminalLiveRuntimeSummary(liveRuntimeReconnectBlockReason),
+          metadata: {
+            terminal: {
+              ...metadata,
+              attachmentState:
+                liveRuntimeReconnectBlockReason === 'workspace-untrusted'
+                  ? 'reattaching'
+                  : 'history-restored',
+              liveSession: false,
+              pendingLaunch: undefined
+            }
+          }
+        };
+      }
+
+      return {
+        ...node,
+        status: 'reattaching',
+        summary: '正在重新连接原终端 live runtime。',
+        metadata: {
+          terminal: {
+            ...metadata,
+            attachmentState: 'reattaching',
+            liveSession: false,
+            pendingLaunch: undefined
           }
         }
       };
@@ -2673,6 +5112,21 @@ function reconcileTerminalNodesInArray(
         metadata: {
           terminal: {
             ...metadata,
+            lifecycle: 'interrupted',
+            liveSession: false,
+            pendingLaunch: undefined
+          }
+        }
+      };
+    }
+
+    if (metadata.persistenceMode === 'live-runtime' && metadata.attachmentState === 'history-restored') {
+      return {
+        ...node,
+        status: 'history-restored',
+        metadata: {
+          terminal: {
+            ...metadata,
             liveSession: false
           }
         }
@@ -2682,17 +5136,22 @@ function reconcileTerminalNodesInArray(
     if (isLegacyPlaceholderTerminal(node) || shouldResetIdleTerminalNode(node, metadata)) {
       return {
         ...node,
-        status: 'draft',
+        status: 'idle',
         summary: defaultSummaryForKind('terminal'),
         metadata: {
           ...node.metadata,
-          terminal: metadata
+          terminal: {
+            ...metadata,
+            lifecycle: 'idle',
+            pendingLaunch: undefined
+          }
         }
       };
     }
 
     return {
       ...node,
+      status: metadata.lifecycle,
       metadata: {
         terminal: {
           ...metadata,
@@ -2871,7 +5330,7 @@ function readExecutionSummary(
 
 function readAgentStatus(state: CanvasPrototypeState, nodeId: string): string {
   const agentNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
-  return agentNode?.status ?? 'draft';
+  return agentNode?.status ?? 'idle';
 }
 
 function readAgentSummary(state: CanvasPrototypeState, nodeId: string): string {
@@ -2881,7 +5340,7 @@ function readAgentSummary(state: CanvasPrototypeState, nodeId: string): string {
 
 function readTerminalStatus(state: CanvasPrototypeState, nodeId: string): string {
   const terminalNode = state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
-  return terminalNode?.status ?? 'draft';
+  return terminalNode?.status ?? 'idle';
 }
 
 function readTerminalSummary(state: CanvasPrototypeState, nodeId: string): string {
@@ -3050,7 +5509,7 @@ function extractRecentTerminalOutput(value: string): string {
   return trimStoredTerminalText(trimmed);
 }
 
-function summarizeEmbeddedTerminalOutput(output: string, live: boolean): string {
+function summarizeEmbeddedTerminalOutput(output: string, status: TerminalNodeStatus): string {
   const normalized = output
     .replace(/\r/g, '')
     .split('\n')
@@ -3059,13 +5518,26 @@ function summarizeEmbeddedTerminalOutput(output: string, live: boolean): string 
   const lastLine = normalized[normalized.length - 1];
 
   if (!lastLine) {
-    return live ? '嵌入式终端已启动，等待输入。' : '终端会话已结束。';
+    switch (status) {
+      case 'launching':
+        return '正在启动嵌入式终端。';
+      case 'stopping':
+        return '正在停止终端会话。';
+      case 'closed':
+        return '终端会话已结束。';
+      case 'error':
+        return '终端会话异常退出。';
+      case 'interrupted':
+        return '上一次嵌入式终端在扩展重载后未恢复。';
+      default:
+        return '嵌入式终端已启动，等待输入。';
+    }
   }
 
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
 }
 
-function summarizeAgentSessionOutput(output: string, live: boolean, label: string): string {
+function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, label: string): string {
   const normalized = output
     .replace(/\r/g, '')
     .split('\n')
@@ -3074,7 +5546,30 @@ function summarizeAgentSessionOutput(output: string, live: boolean, label: strin
   const lastLine = normalized[normalized.length - 1];
 
   if (!lastLine) {
-    return live ? `${label} 会话已启动，等待输入。` : `${label} 会话已结束。`;
+    switch (status) {
+      case 'starting':
+        return `正在启动 ${label} 会话。`;
+      case 'resuming':
+        return `正在恢复 ${label} 会话。`;
+      case 'running':
+        return `${label} 正在处理输入。`;
+      case 'waiting-input':
+        return `${label} 已就绪，等待输入。`;
+      case 'stopping':
+        return `正在停止 ${label} 会话。`;
+      case 'resume-ready':
+        return `检测到可恢复的 ${label} 会话。`;
+      case 'resume-failed':
+        return `${label} 会话恢复失败。`;
+      case 'stopped':
+        return `${label} 会话已结束。`;
+      case 'error':
+        return `${label} 会话异常退出。`;
+      case 'interrupted':
+        return `${label} 会话在扩展重载后未恢复。`;
+      default:
+        return `${label} 会话尚未启动。`;
+    }
   }
 
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
@@ -3104,13 +5599,18 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
   return `启动 ${spec.label} 失败。`;
 }
 
+function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): string {
+  const message = describeAgentSessionSpawnError(spec, error);
+  return message.replace(/^启动/, '恢复');
+}
+
 function describeAgentSessionExit(
   spec: AgentCliSpec,
   code: number | null,
   signal: string | undefined,
   output: string
 ): string {
-  const summary = summarizeAgentSessionOutput(output, false, spec.label);
+  const summary = summarizeAgentSessionOutput(output, 'stopped', spec.label);
   const suffix = summary === `${spec.label} 会话已结束。` ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
@@ -3123,6 +5623,47 @@ function describeAgentSessionExit(
   }
 
   return `${spec.label} 提前结束。${suffix}`.trim();
+}
+
+function describeAgentResumeFailure(
+  spec: AgentCliSpec,
+  code: number | null,
+  signal: string | undefined,
+  output: string
+): string {
+  const summary = summarizeAgentSessionOutput(output, 'resume-failed', spec.label);
+  const suffix = summary === `${spec.label} 会话恢复失败。` ? '' : ` ${summary}`;
+  const normalizedSignal = normalizeExecutionExitSignal(signal);
+
+  if (normalizedSignal) {
+    return `恢复 ${spec.label} 时收到信号 ${normalizedSignal}。${suffix}`.trim();
+  }
+
+  if (typeof code === 'number') {
+    return `恢复 ${spec.label} 时进程以退出码 ${code} 结束。${suffix}`.trim();
+  }
+
+  return `恢复 ${spec.label} 失败。${suffix}`.trim();
+}
+
+function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
+  if (blockReason === 'workspace-untrusted') {
+    return '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。';
+  }
+
+  return '运行时持久化已关闭，原 Agent live runtime 已恢复为历史结果。';
+}
+
+function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
+  if (blockReason === 'workspace-untrusted') {
+    return '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。';
+  }
+
+  return '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。';
+}
+
+function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
+  return status === 'starting' || status === 'resuming';
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
@@ -3151,7 +5692,7 @@ function describeEmbeddedTerminalExit(
   signal: string | undefined,
   output: string
 ): string {
-  const summary = summarizeEmbeddedTerminalOutput(output, false);
+  const summary = summarizeEmbeddedTerminalOutput(output, 'closed');
   const suffix = summary === '终端会话已结束。' ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
