@@ -8,6 +8,7 @@ const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
+  testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
@@ -193,7 +194,7 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.length, 2);
 
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
-  snapshot = await getDebugSnapshot();
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');

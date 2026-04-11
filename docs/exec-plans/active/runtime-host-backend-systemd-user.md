@@ -22,6 +22,7 @@
 - [x] 2026-04-11 00:40+08:00 补上 `fake-systemd` 本地 reopen smoke 场景与 backend / guarantee 断言，并把真实 Remote SSH 长断开 nightly 化记入技术债追踪。
 - [x] 2026-04-11 09:45+08:00 定位并修复本地 smoke 宿主环境污染：`ELECTRON_RUN_AS_NODE=1` 与继承的 `VSCODE_*` 会把下载的 VS Code 测试宿主拉成错误模式；runner 现已在启动 VS Code / CLI 前显式净化这类变量，并补上一条环境净化测试。
 - [x] 2026-04-11 10:15+08:00 收口 `systemd-user-real-reopen` 本机 blocker：smoke runtime 现在显式提供短 `XDG_STATE_HOME`，systemd / legacy supervisor 都改为显式 Node exec + `ELECTRON_RUN_AS_NODE=1` 环境，`systemd-user` 启动前会预建 `WorkingDirectory`；`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 已在本机跑绿。
+- [x] 2026-04-11 12:05+08:00 修复 reopen/reset 竞态：`resetState()` 改为等待 runtime supervisor 清理完成，live-runtime attach/create 结果按节点级 token 去重并忽略陈旧异步完成，新增 runtime supervisor 测试探针后，`trusted`、`real-reopen` 与全量 `npm test` 已跑绿。
 
 ## 意外与发现
 
@@ -33,6 +34,9 @@
 
 - 观察：`fake-systemd` 覆盖下的 `systemd-user-real-reopen` 回退不是单一问题，而是三层叠加的宿主启动细节：一是 smoke runtime 需要短 `XDG_STATE_HOME` 才能稳定落到短 control socket；二是 extension host 里的 `process.execPath` 实际指向 VS Code `code`，因此 systemd unit / detached fallback 都必须显式改用 Node 可执行文件并带上 `ELECTRON_RUN_AS_NODE=1`；三是 systemd unit 的 `WorkingDirectory` 如果未预建，会在实际启动阶段以 `spawn <node> ENOENT` 形式失败。
   证据：`scripts/vscode-smoke-runner.mjs`、`src/panel/runtimeHostBackend.ts`、`tests/vscode-smoke/fixtures/fake-systemd/systemctl.cjs`，以及 2026-04-11 10:05+08:00 的 `exthost.log`
+
+- 观察：`resetState()` 之前同步返回，导致测试命令和真实 reset 路径都可能在 runtime supervisor 会话尚未清理完时继续推进；同时 live-runtime 的 attach/create 结果缺少“这次异步完成是否还属于当前节点”的判定，因此会把已经失效的 runtime 重新绑定回节点。
+  证据：`src/panel/CanvasPanelManager.ts`、`tests/vscode-smoke/extension-tests.cjs`、`tests/vscode-smoke/real-reopen-tests.cjs`
 
 ## 决策记录
 
@@ -174,6 +178,7 @@
 备注：
 
 - 当前未在本机跑真实 `systemd --user` smoke，也未做长断开人工回归；这部分留待后续验证。
+- 本轮新增的 reopen/reset 修复已通过 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 与全量 `npm test` 验证，确认此前失败同时包含测试脚本时序假设错误和真实 runtime 绑定竞态两部分问题。
 
 ## 接口与依赖
 

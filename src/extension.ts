@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    panelManager.resetState();
+    await panelManager.resetState();
   });
 
   context.subscriptions.push(
@@ -114,6 +114,9 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
 
   context.subscriptions.push(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getRuntimeSupervisorState, () =>
+      panelManager.getRuntimeSupervisorStateForTest()
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getHostMessages, () => panelManager.getHostMessagesForTest()),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.clearHostMessages, () => {
       panelManager.clearHostMessagesForTest();
@@ -174,8 +177,8 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       panelManager.createNodeForTest(kind);
       return panelManager.getDebugSnapshot();
     }),
-    vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, () => {
-      panelManager.resetState();
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, async () => {
+      await panelManager.resetState();
       return panelManager.getDebugSnapshot();
     })
   );

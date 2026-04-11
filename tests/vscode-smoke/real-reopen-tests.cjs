@@ -7,6 +7,7 @@ const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
+  testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testFlushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
@@ -58,6 +59,7 @@ async function run() {
 async function runSetupPhase() {
   await activateExtension();
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await waitForRuntimeSupervisorSettled(0, 20000);
   await fs.mkdir(path.dirname(stateFile), { recursive: true });
   await fs.rm(stateFile, { force: true });
   await configureAgentCommandOverrides();
@@ -87,6 +89,19 @@ async function runSetupPhase() {
   const liveTerminalNode = findNodeById(liveSnapshot, terminalNode.id);
   assertExecutionRuntimeMetadata(liveAgentNode, 'agent');
   assertExecutionRuntimeMetadata(liveTerminalNode, 'terminal');
+  const liveRuntimeState = await waitForRuntimeSupervisorSettled(2, 20000);
+  assertRuntimeSupervisorSessions(liveRuntimeState, [
+    {
+      sessionId: liveAgentNode.metadata.agent.runtimeSessionId,
+      nodeId: agentNode.id,
+      kind: 'agent'
+    },
+    {
+      sessionId: liveTerminalNode.metadata.terminal.runtimeSessionId,
+      nodeId: terminalNode.id,
+      kind: 'terminal'
+    }
+  ]);
 
   await sendExecutionInput(agentNode.id, 'agent', `sleep ${OFFLINE_SLEEP_SECONDS}\rREAL_REOPEN_AGENT\r`);
   await sendExecutionInput(
@@ -173,6 +188,19 @@ async function runVerifyPhase() {
 
   agentNode = findNodeById(snapshot, expected.agentNodeId);
   terminalNode = findNodeById(snapshot, expected.terminalNodeId);
+  const reopenedRuntimeState = await waitForRuntimeSupervisorSettled(2, 20000);
+  assertRuntimeSupervisorSessions(reopenedRuntimeState, [
+    {
+      sessionId: expected.agentSessionId,
+      nodeId: expected.agentNodeId,
+      kind: 'agent'
+    },
+    {
+      sessionId: expected.terminalSessionId,
+      nodeId: expected.terminalNodeId,
+      kind: 'terminal'
+    }
+  ]);
 
   assert.strictEqual(agentNode.metadata.agent.runtimeSessionId, expected.agentSessionId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
@@ -204,6 +232,7 @@ async function runVerifyPhase() {
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(TERMINAL_POST_REOPEN_OUTPUT));
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await waitForRuntimeSupervisorSettled(0, 20000);
   await setRuntimePersistenceEnabled(false);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -266,8 +295,35 @@ async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
 }
 
+async function getRuntimeSupervisorState() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetRuntimeSupervisorState);
+}
+
 async function flushPersistedState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+}
+
+async function waitForRuntimeSupervisorSettled(expectedSessionCount, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = await getRuntimeSupervisorState();
+
+  while (Date.now() < deadline) {
+    const sessions = getExpectedRuntimeRegistrySessions(lastState);
+    if (
+      sessions.length === expectedSessionCount &&
+      lastState.bindings.length === expectedSessionCount &&
+      lastState.pendingRuntimeSupervisorOperationCount === 0
+    ) {
+      return lastState;
+    }
+
+    await sleep(100);
+    lastState = await getRuntimeSupervisorState();
+  }
+
+  assert.fail(
+    `Timed out while waiting for runtime supervisor to settle. Last state: ${JSON.stringify(lastState)}`
+  );
 }
 
 async function waitForSnapshot(predicate, timeoutMs = 15000) {
@@ -367,6 +423,46 @@ function assertExecutionRuntimeMetadata(node, kind) {
   );
 }
 
+function getExpectedRuntimeRegistrySessions(runtimeSupervisorState) {
+  const registryState = runtimeSupervisorState?.registries?.[expectedRuntimeBackend];
+  assert.ok(registryState, `Missing runtime supervisor registry for backend ${expectedRuntimeBackend}.`);
+  assert.strictEqual(
+    registryState.error,
+    undefined,
+    `Unexpected runtime supervisor registry error for backend ${expectedRuntimeBackend}: ${registryState.error}`
+  );
+
+  const sessions = registryState.registry?.sessions;
+  return Array.isArray(sessions) ? sessions : [];
+}
+
+function assertRuntimeSupervisorSessions(runtimeSupervisorState, expectedSessions) {
+  const sessions = getExpectedRuntimeRegistrySessions(runtimeSupervisorState);
+  assert.strictEqual(
+    sessions.length,
+    expectedSessions.length,
+    `Expected ${expectedSessions.length} runtime supervisor sessions, got ${sessions.length}.`
+  );
+  assert.strictEqual(
+    runtimeSupervisorState.bindings.length,
+    expectedSessions.length,
+    `Expected ${expectedSessions.length} runtime supervisor bindings, got ${runtimeSupervisorState.bindings.length}.`
+  );
+
+  for (const expectedSession of expectedSessions) {
+    const session = sessions.find((currentSession) => currentSession.sessionId === expectedSession.sessionId);
+    assert.ok(session, `Missing runtime supervisor session ${expectedSession.sessionId}.`);
+    assert.strictEqual(session.kind, expectedSession.kind);
+
+    const binding = runtimeSupervisorState.bindings.find(
+      (currentBinding) => currentBinding.runtimeSessionId === expectedSession.sessionId
+    );
+    assert.ok(binding, `Missing runtime supervisor binding for session ${expectedSession.sessionId}.`);
+    assert.strictEqual(binding.nodeId, expectedSession.nodeId);
+    assert.strictEqual(binding.kind, expectedSession.kind);
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -388,6 +484,17 @@ async function writeFailureArtifacts(error) {
     );
   } catch {
     // Ignore snapshot capture errors during teardown.
+  }
+
+  try {
+    const runtimeSupervisorState = await getRuntimeSupervisorState();
+    await fs.writeFile(
+      path.join(artifactDir, `real-reopen-${phase}-failure-runtime-supervisor.json`),
+      `${JSON.stringify(runtimeSupervisorState, null, 2)}\n`,
+      'utf8'
+    );
+  } catch {
+    // Ignore runtime supervisor capture errors during teardown.
   }
 }
 
