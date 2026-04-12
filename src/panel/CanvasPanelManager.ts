@@ -3725,7 +3725,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (session.lifecycleStatus !== 'starting' && session.lifecycleStatus !== 'resuming') {
+      if (
+        session.lifecycleStatus !== 'starting' &&
+        session.lifecycleStatus !== 'resuming' &&
+        isAgentInstructionSubmission(data)
+      ) {
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
         this.queueExecutionStateSync('agent', nodeId);
@@ -6061,6 +6065,10 @@ function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeRecon
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
+}
+
+function isAgentInstructionSubmission(data: string): boolean {
+  return /[\r\n]/.test(data);
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {

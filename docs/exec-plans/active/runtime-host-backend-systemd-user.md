@@ -146,7 +146,7 @@
 - 共享协议中可以明确区分 `systemd-user` 与 `legacy-detached`，以及 `strong` 与 `best-effort`。
 - Linux / `Remote SSH` 在正常环境下会优先选择 `systemd-user` backend；测试模式仍可保留 legacy backend，避免打断现有 smoke。
 - 旧的 persisted state / registry 读回后不会崩溃，并会被归一化成 `legacy-detached` + `best-effort`。
-- Webview 节点能看到当前 runtime backend / guarantee，用户不再只能从文案猜测。
+- runtime backend / guarantee 会进入共享协议、日志与诊断信息；节点默认 UI 不再直接显示这类调试字段。
 - `npm run typecheck`
 - `npm run build`
 - 运行时路径测试脚本通过。

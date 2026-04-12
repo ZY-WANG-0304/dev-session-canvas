@@ -144,6 +144,26 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
+test('execution node chrome hides runtime diagnostics and keeps agent waiting-input visible', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createRuntimeChromeState());
+
+  const agentNode = nodeById(page, 'agent-runtime');
+  const terminalNode = nodeById(page, 'terminal-runtime');
+
+  await expect(agentNode.locator('.status-pill')).toHaveCount(1);
+  await expect(agentNode.locator('.status-pill').first()).toHaveText('等待输入');
+  await expect(agentNode).not.toContainText('best-effort');
+  await expect(agentNode).not.toContainText('systemd-user');
+  await expect(agentNode).not.toContainText('detached');
+
+  await expect(terminalNode.locator('.status-pill')).toHaveCount(1);
+  await expect(terminalNode.locator('.status-pill').first()).toHaveText('活动');
+  await expect(terminalNode).not.toContainText('best-effort');
+  await expect(terminalNode).not.toContainText('systemd-user');
+  await expect(terminalNode).not.toContainText('detached');
+});
+
 test('editing node titles posts updateNodeTitle for agent, terminal, and note', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createCanvasScreenshotState());
@@ -1096,6 +1116,67 @@ function createLiveExecutionNodeState(kind) {
   }
 
   throw new Error(`Unsupported execution kind ${kind}`);
+}
+
+function createRuntimeChromeState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-12T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-runtime',
+        kind: 'agent',
+        title: 'Runtime Agent',
+        status: 'waiting-input',
+        summary: 'Codex 已就绪，等待输入。',
+        position: { x: 120, y: 140 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: true,
+            provider: 'codex',
+            lifecycle: 'waiting-input',
+            persistenceMode: 'live-runtime',
+            attachmentState: 'attached-live',
+            runtimeBackend: 'legacy-detached',
+            runtimeGuarantee: 'best-effort',
+            runtimeSessionId: 'agent-runtime-session',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'terminal-runtime',
+        kind: 'terminal',
+        title: 'Runtime Terminal',
+        status: 'live',
+        summary: '验证 runtime chrome 收口。',
+        position: { x: 520, y: 140 },
+        size: sizeFor('terminal'),
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            shellPath: '/bin/bash',
+            cwd: '/workspace',
+            liveSession: true,
+            lifecycle: 'live',
+            persistenceMode: 'live-runtime',
+            attachmentState: 'attached-live',
+            runtimeBackend: 'systemd-user',
+            runtimeGuarantee: 'strong',
+            runtimeSessionId: 'terminal-runtime-session',
+            lastCols: 96,
+            lastRows: 28
+          }
+        }
+      }
+    ]
+  };
 }
 
 function createScrollableTerminalOutput(lineCount) {

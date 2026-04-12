@@ -155,6 +155,7 @@ updated_at: 2026-04-12
 - 插件默认继承用户已有 CLI 配置与认证上下文；设置项只负责选择可执行文件，不负责改写 provider 的 home / config 根目录。
 - `resume-ready` 只应建立在 provider 原生显式 session identity 之上；`resume --last`、交互式 picker 或“最近会话推断”都不能作为正式自动恢复语义。
 - 如果某个 provider 还没有被验证出可可靠持久化并恢复显式 session identity，或拿到的 identity 仅来自启发式反查，节点应退化为 `interrupted` 或历史态，而不是继续伪装成可恢复。
+- `Agent` 的内部生命周期与节点主状态都保留 `running / waiting-input` 区分；节点处于可继续输入的阶段时，应稳定显示 `waiting-input`，而不是被粗暴收口成 `running`。
 
 这部分详细边界以 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 为准。
 

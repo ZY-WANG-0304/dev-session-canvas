@@ -463,6 +463,13 @@ async function verifyAgentExecutionFlow(agentNodeId) {
       agentNode.status === 'waiting-input'
   );
 
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentNode?.metadata?.agent?.liveSession && currentNode.status === 'waiting-input');
+  });
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'waiting-input');
+
   await requestExecutionSnapshot('agent', agentNodeId);
   let hostMessages = await getHostMessages();
   assert.ok(
@@ -479,7 +486,21 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     payload: {
       nodeId: agentNodeId,
       kind: 'agent',
-      data: 'hello smoke\r'
+      data: 'h'
+    }
+  });
+
+  await sleep(300);
+  snapshot = await getDebugSnapshot();
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'waiting-input');
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: 'ello smoke\r'
     }
   });
 

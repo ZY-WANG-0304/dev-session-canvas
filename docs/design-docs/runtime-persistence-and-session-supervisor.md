@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
   - docs/exec-plans/active/runtime-host-backend-systemd-user.md
-updated_at: 2026-04-10
+updated_at: 2026-04-12
 ---
 
 # 运行时持久化与会话监督器设计
@@ -228,7 +228,7 @@ updated_at: 2026-04-10
   - 若节点带有可附着的持久化会话身份，UI 先进入 `重连中`，而不是直接复用关闭前的 `运行中` / `等待输入` 标签。
   - 若监督器报告会话仍活着并完成附着，状态切回真实生命周期状态。
   - 若监督器确认不存在该会话、会话已在离线期间自然结束、监督器不可达超时，或重新附着失败，则节点进入 `历史恢复`，不再伪装成当前 live runtime。
-  - 同时要让用户能看见当前 backend 与 guarantee，避免把 `legacy-detached` fallback 误读成正式强保证路径。
+  - 当前 backend 与 guarantee 仍需写入宿主权威状态、日志与诊断事件；节点默认 UI 不直接显示这类字段，避免把调试信息塞进主交互区。
 
 ### 6.6 UI 与状态机含义
 
@@ -242,7 +242,7 @@ updated_at: 2026-04-10
 
 - 只要系统尚未重新确认 live runtime 仍然存在，主状态标签就显示 `重连中`，而不是继续显示旧的 `运行中` / `等待输入`。
 - 一旦重新附着成功，主状态标签切回真实生命周期状态：
-  - `Agent` 回到如 `running`、`waiting-input` 之类的真实状态。
+  - `Agent` 回到如 `running`、`waiting-input` 之类的真实状态；当会话已处于可继续输入阶段时，节点主状态应继续显示 `waiting-input`。
   - `Terminal` 回到如 `live`、`closed` 之类的真实状态。
 - 只要节点与上下文恢复了，但系统无法重新附着到 live runtime，主状态标签就显示 `历史恢复`。
 
