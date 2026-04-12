@@ -17,8 +17,9 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/agent-cli-launch-context-and-resume.md
+  - docs/exec-plans/active/agent-running-state-detection.md
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
-updated_at: 2026-04-12
+updated_at: 2026-04-13
 ---
 
 # 执行节点生命周期、恢复与自动启动设计
@@ -156,6 +157,7 @@ updated_at: 2026-04-12
 - `resume-ready` 只应建立在 provider 原生显式 session identity 之上；`resume --last`、交互式 picker 或“最近会话推断”都不能作为正式自动恢复语义。
 - 如果某个 provider 还没有被验证出可可靠持久化并恢复显式 session identity，或拿到的 identity 仅来自启发式反查，节点应退化为 `interrupted` 或历史态，而不是继续伪装成可恢复。
 - `Agent` 的内部生命周期与节点主状态都保留 `running / waiting-input` 区分；节点处于可继续输入的阶段时，应稳定显示 `waiting-input`，而不是被粗暴收口成 `running`。
+- `Agent` 的 `running / waiting-input` 仍然是正式用户语义，但“这些状态如何被判定出来”需要单独按 [docs/design-docs/agent-running-state-detection.md](./agent-running-state-detection.md) 的优先级收口：优先使用 provider 原生结构化事件，其次才是结构化输出、shell integration 和 PTY 启发式。
 
 这部分详细边界以 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 为准。
 
@@ -165,7 +167,7 @@ updated_at: 2026-04-12
   原因：这能在不重写 backend 的前提下，先把状态和恢复语义收口正确。
 
 - 风险：`Agent` 的 `running / waiting-input` 当前仍需要从可观察事件推断，未必能像 provider 原生 UI 那样精细。
-  当前缓解：把状态定义为“用户可观察的最小语义”，并优先依赖启动、输入、输出 quiet period、退出与恢复结果这些明确事件推进。
+  当前缓解：把状态定义为“用户可观察的最小语义”，并把当前基于提交与 quiet period 的实现明确降级为 fallback；长期主路径按 [docs/design-docs/agent-running-state-detection.md](./agent-running-state-detection.md) 改为 provider 原生结构化事件优先。
 
 - 风险：`Codex` 在当前环境中仍未确认存在 fresh start 后可直接读取 session identity 的标准接口。
   当前缓解：新的正式设计已经禁止把 `resume --last` 当成自动恢复主路径；如果后续为了兼容而临时采用日志、状态目录或列表接口反查，也只能作为显式登记的技术债务，而不是正式恢复能力。

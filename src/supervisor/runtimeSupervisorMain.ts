@@ -4,6 +4,14 @@ import * as net from 'net';
 import * as path from 'path';
 
 import {
+  AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
+  createAgentActivityHeuristicState,
+  evaluateAgentWaitingInputTransition,
+  recordAgentOutputHeuristics,
+  resetAgentActivityHeuristics,
+  type AgentActivityHeuristicState
+} from '../common/agentActivityHeuristics';
+import {
   type AgentNodeStatus,
   type AgentProviderKind,
   type AgentResumeStrategy,
@@ -37,7 +45,6 @@ import {
 import { locateCodexSessionId } from '../common/codexSessionIdLocator';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
-const AGENT_WAITING_INPUT_DELAY_MS = 380;
 const TERMINAL_LIVE_DELAY_MS = 160;
 const OUTPUT_TAIL_LIMIT = 6000;
 
@@ -70,6 +77,7 @@ interface SupervisorSession {
   lastExitSignal?: string;
   lastExitMessage?: string;
   stopRequested: boolean;
+  agentActivity?: AgentActivityHeuristicState;
   process?: ExecutionSessionProcess;
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
@@ -257,6 +265,7 @@ class RuntimeSupervisorServer {
       resumeSessionId: params.resumeSessionId,
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
+      agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       process
     };
     this.sessions.set(sessionId, session);
@@ -309,7 +318,12 @@ class RuntimeSupervisorServer {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (session.lifecycle !== 'starting' && session.lifecycle !== 'resuming') {
+      if (
+        session.lifecycle !== 'starting' &&
+        session.lifecycle !== 'resuming' &&
+        isAgentInstructionSubmission(params.data)
+      ) {
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
         this.emitSessionState(session);
@@ -362,13 +376,12 @@ class RuntimeSupervisorServer {
 
       session.output = appendOutputTail(session.output, chunk);
       if (session.kind === 'agent') {
-        if (session.lifecycle === 'starting' || session.lifecycle === 'resuming') {
-          if (session.lifecycle === 'resuming') {
-            session.resumePhaseActive = false;
-          }
-          session.lifecycle = 'waiting-input';
-          this.emitSessionState(session);
-        } else if (session.lifecycle === 'running') {
+        if (
+          session.lifecycle === 'starting' ||
+          session.lifecycle === 'resuming' ||
+          session.lifecycle === 'running'
+        ) {
+          recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output);
           this.queueAgentWaitingInput(session.sessionId);
         }
       } else if (session.lifecycle === 'launching') {
@@ -497,6 +510,14 @@ class RuntimeSupervisorServer {
     this.schedulePersist();
   }
 
+  private ensureAgentActivityState(session: SupervisorSession): AgentActivityHeuristicState {
+    if (!session.agentActivity) {
+      session.agentActivity = createAgentActivityHeuristicState();
+    }
+
+    return session.agentActivity;
+  }
+
   private queueAgentWaitingInput(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.kind !== 'agent') {
@@ -509,14 +530,33 @@ class RuntimeSupervisorServer {
 
     session.lifecycleTimer = setTimeout(() => {
       const current = this.sessions.get(sessionId);
-      if (!current || current.kind !== 'agent' || !current.live || current.lifecycle !== 'running') {
+      if (
+        !current ||
+        current.kind !== 'agent' ||
+        !current.live ||
+        !isAgentLifecycleAwaitingInteractiveState(current.lifecycle)
+      ) {
+        return;
+      }
+
+      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      if (evaluation.shouldTransition) {
+        current.lifecycleTimer = undefined;
+        if (current.lifecycle === 'resuming') {
+          current.resumePhaseActive = false;
+        }
+        current.lifecycle = 'waiting-input';
+        this.emitSessionState(current);
+        return;
+      }
+
+      if (evaluation.shouldKeepPolling) {
+        this.queueAgentWaitingInput(sessionId);
         return;
       }
 
       current.lifecycleTimer = undefined;
-      current.lifecycle = 'waiting-input';
-      this.emitSessionState(current);
-    }, AGENT_WAITING_INPUT_DELAY_MS);
+    }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
   private toSnapshot(session: SupervisorSession): RuntimeSupervisorSessionSnapshot {
@@ -689,6 +729,7 @@ class RuntimeSupervisorServer {
             isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus),
       lastExitMessage,
       stopRequested: false,
+      agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       process: undefined,
       outputSubscription: undefined,
       exitSubscription: undefined,
@@ -792,6 +833,16 @@ function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeSta
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
+}
+
+function isAgentLifecycleAwaitingInteractiveState(
+  status: AgentNodeStatus | TerminalNodeStatus
+): boolean {
+  return status === 'starting' || status === 'resuming' || status === 'running';
+}
+
+function isAgentInstructionSubmission(data: string): boolean {
+  return /[\r\n]/.test(data);
 }
 
 function normalizeRecoveredTerminalLifecycle(status: TerminalNodeStatus): TerminalNodeStatus {

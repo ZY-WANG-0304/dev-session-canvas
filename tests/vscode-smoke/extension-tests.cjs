@@ -520,6 +520,38 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     payload: {
       nodeId: agentNodeId,
       kind: 'agent',
+      data: 'slowspin 3\r'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentNode?.metadata?.agent?.liveSession && currentNode.status === 'running');
+  });
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'running');
+
+  await sleep(430);
+  snapshot = await getDebugSnapshot();
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'running');
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
+      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] slowspin done 003') &&
+        currentNode.status === 'waiting-input'
+    );
+  });
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] slowspin done 003'));
+  assert.strictEqual(agentNode.status, 'waiting-input');
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
       data: 'exit 0\r'
     }
   });

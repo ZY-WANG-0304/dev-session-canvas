@@ -80,5 +80,26 @@ while IFS= read -r line; do
     continue
   fi
 
+  if [[ "$line" == slowspin\ * ]]; then
+    spin_count="${line#slowspin }"
+    if [[ "$spin_count" =~ ^[0-9]+$ ]]; then
+      frames=('-' '\\' '|' '/')
+      for ((i = 1; i <= spin_count; i += 1)); do
+        frame_index=$(((i - 1) % ${#frames[@]}))
+        printf '\r[fake-agent] %s slowspin %03d' "${frames[$frame_index]}" "$i"
+        sleep 0.55
+      done
+      printf '\r[fake-agent] slowspin done %03d\n' "$spin_count"
+      continue
+    fi
+  fi
+
+  if [[ "$line" == notify\ * ]]; then
+    notify_message="${line#notify }"
+    printf '\033]9;%s\007' "$notify_message"
+    printf '[fake-agent] notified %s\n' "$notify_message"
+    continue
+  fi
+
   echo "[fake-agent] ${line}"
 done
