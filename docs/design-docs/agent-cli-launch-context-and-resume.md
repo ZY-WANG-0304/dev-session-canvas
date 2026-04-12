@@ -139,6 +139,7 @@ updated_at: 2026-04-12
 
 `Agent` 自动恢复的正式规则如下：
 
+- 如果节点当前还带着 `live-runtime` 身份，系统先尝试重新附着原 runtime；只有在 reattach 不可用时，才允许降级到 provider resume。
 - 节点只有在持有 provider 原生显式 session identity 时，才可以进入 `resume-ready`。
 - 自动恢复必须调用 provider 的显式目标恢复接口，而不是恢复“最近一次会话”。
 - `resume --last`、交互式 picker 和类似的“最近会话”入口可以作为人工调试手段存在，但不属于正式产品行为。

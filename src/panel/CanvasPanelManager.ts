@@ -1285,6 +1285,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
+      if (
+        kind === 'agent' &&
+        this.maybeFallbackAgentLiveRuntimeToResume(nodeId, error instanceof Error ? error.message : '重新附着 live runtime 失败。')
+      ) {
+        return;
+      }
+
       this.markExecutionNodeAsHistoryRestored(
         nodeId,
         kind,
@@ -1351,6 +1358,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       } catch (error) {
         const message = error instanceof Error ? error.message : '无法连接 runtime supervisor。';
         for (const node of nodes) {
+          if (
+            node.kind === 'agent' &&
+            this.maybeFallbackAgentLiveRuntimeToResume(node.id, message)
+          ) {
+            continue;
+          }
+
           this.markExecutionNodeAsHistoryRestored(
             node.id,
             node.kind as ExecutionNodeKind,
@@ -1664,6 +1678,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): void {
     for (const [nodeId, session] of this.agentSessions.entries()) {
       if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+        if (this.maybeFallbackAgentLiveRuntimeToResume(nodeId, error?.message)) {
+          continue;
+        }
         this.markExecutionNodeAsHistoryRestored(nodeId, 'agent', error?.message);
       }
     }
@@ -1846,6 +1863,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  private maybeFallbackAgentLiveRuntimeToResume(
+    nodeId: string,
+    reason?: string
+  ): boolean {
+    if (this.getLiveRuntimeReconnectBlockReason() !== undefined) {
+      return false;
+    }
+
+    const existingNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
+    if (!existingNode) {
+      return false;
+    }
+
+    const metadata = ensureAgentMetadata(existingNode);
+    if (!canResumeAgentFromMetadata(metadata)) {
+      return false;
+    }
+
+    this.unbindRuntimeSession(metadata.runtimeSessionId);
+    this.getExecutionSessions('agent').delete(nodeId);
+
+    this.state = updateAgentNode(this.state, nodeId, {
+      status: 'resume-ready',
+      summary: '原 Agent live runtime 已断开，将改用可恢复会话继续。',
+      metadata: buildAgentMetadataPatch(this.state, nodeId, {
+        lifecycle: 'resume-ready',
+        provider: metadata.provider,
+        runtimeKind: metadata.runtimeKind,
+        resumeSupported: metadata.resumeSupported,
+        resumeStrategy: metadata.resumeStrategy,
+        resumeSessionId: metadata.resumeSessionId,
+        resumeStoragePath: metadata.resumeStoragePath,
+        lastResumeError: undefined,
+        persistenceMode: metadata.persistenceMode,
+        attachmentState: 'history-restored',
+        runtimeBackend: metadata.runtimeBackend,
+        runtimeGuarantee: metadata.runtimeGuarantee,
+        liveSession: false,
+        runtimeSessionId: undefined,
+        pendingLaunch: 'resume',
+        shellPath: metadata.shellPath,
+        cwd: metadata.cwd,
+        recentOutput: metadata.recentOutput,
+        lastExitCode: metadata.lastExitCode,
+        lastExitSignal: metadata.lastExitSignal,
+        lastExitMessage: metadata.lastExitMessage,
+        lastCols: metadata.lastCols,
+        lastRows: metadata.lastRows,
+        lastBackendLabel: metadata.lastBackendLabel,
+        lastRuntimeError: reason
+      })
+    });
+    this.recordDiagnosticEvent('agent/liveRuntimeReconnectFallbackToResume', {
+      nodeId,
+      resumeStrategy: metadata.resumeStrategy,
+      resumeSessionId: metadata.resumeSessionId ?? null,
+      reason: reason ?? null
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+    return true;
   }
 
   private requireNode(nodeId: string, kind: ExecutionNodeKind): CanvasNodeSummary {
@@ -5175,6 +5255,22 @@ function reconcileAgentNodesInArray(
     }
 
     if (metadata.persistenceMode === 'live-runtime' && metadata.attachmentState === 'history-restored') {
+      if (metadata.pendingLaunch === 'resume' && canResumeAgentFromMetadata(metadata)) {
+        return {
+          ...node,
+          status: 'resume-ready',
+          summary: '检测到可恢复的 Agent 会话，正在等待恢复。',
+          metadata: {
+            ...node.metadata,
+            agent: {
+              ...metadata,
+              lifecycle: 'resume-ready',
+              liveSession: false
+            }
+          }
+        };
+      }
+
       return {
         ...node,
         status: 'history-restored',

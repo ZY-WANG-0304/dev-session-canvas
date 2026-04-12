@@ -40,7 +40,7 @@
 - 对象的基础状态展示，例如标题、类型、位置、最近状态摘要
 - Agent 对象的最小真实 backend 主路径：
   - 用户可选择 `Codex` 或 `Claude Code`
-  - 用户新建 Agent 节点后，节点会按当前 provider 自动进入启动流程；只有在扩展重载前已持有带可信绑定来源的 provider 原生显式 session identity 时，节点才会自动走 provider resume
+  - 用户新建 Agent 节点后，节点会按当前 provider 自动进入启动流程；若运行时持久化已开启且 live runtime 仍可重新附着，则优先 reattach 原会话；只有在扩展重载前已持有带可信绑定来源的 provider 原生显式 session identity，且 live runtime 不可重新附着时，节点才会自动走 provider resume
   - Agent CLI 在当前 repo/workspace 目录启动；插件不应把会话切到扩展私有目录来运行
   - 插件默认继承用户已有 CLI 配置、认证与项目规则；设置项只负责选择命令路径，不负责改写 provider home / config 根目录
   - CLI 命令发现发生在实际执行 Agent 的宿主侧；显式设置优先，其次是 host PATH 与平台原生命令发现，只有全部失败后才要求用户固定绝对路径
@@ -158,7 +158,7 @@
 - 当 Webview 被隐藏后重新显示时，当前活跃终端仍可重新附着，而不是无声丢失。
 - 当 Webview 被隐藏、重新显示或 reload 后，画布不会无声丢失所有对象状态。
 - 当窗口重开或扩展重启后，系统至少能恢复关键上下文，而不是回到全新空白页。
-- 当扩展重载前存在带有 provider 原生显式 session identity 的 `Agent` 会话时，系统会优先自动尝试恢复；若没有该 identity，节点应退化为 `interrupted` 或历史态，而不是恢复“最近一次会话”。
+- 当扩展重载前存在带有 provider 原生显式 session identity 的 `Agent` 会话时，系统会在 live runtime reattach 不可用时自动尝试 provider resume；若没有该 identity，节点应退化为 `interrupted` 或历史态，而不是恢复“最近一次会话”。
 - 在 Restricted Mode 或相关能力不可用时，执行型操作会被禁用或退化，并给出明确反馈。
 - 当用户把默认主画布承载面改为 `panel` 后，点开其他文件不会再从同一宿主区域挤走主画布。
 - 当非活动宿主 surface 被用户展开时，它不会变成第二个可交互画布，也不会附着第二份执行会话。

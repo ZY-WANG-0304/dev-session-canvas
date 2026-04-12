@@ -90,7 +90,7 @@
 - 当系统选中 `systemd-user` backend 时，关闭 VSCode 或断开 Remote SSH 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
 - 在 Linux 本地或 Remote SSH workspace 中，如果 `systemd-user` backend 不可用，系统会自动降级到 `legacy-detached`，并把 guarantee 标成 `best-effort`，而不是继续把它伪装成强保证。
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
-- 当系统无法重新附着到 live runtime 时，无论原因是会话自然结束、监督器不可达还是 session 不存在，节点都会明确进入 `历史恢复`，而不是继续沿用旧的活动态标签。
+- 当系统无法重新附着到 live runtime 时，`Terminal` 会明确进入 `历史恢复`；`Agent` 则会先检查是否已持有 provider 原生显式 session identity，若有则自动降级到 provider resume，否则才进入 `历史恢复` 或 `interrupted`。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
 - 当节点处于 `live-runtime` 时，用户能直接看到当前 runtime backend 与 guarantee，不需要靠环境猜测自己拿到的是 `systemd-user` 还是 `legacy-detached`。

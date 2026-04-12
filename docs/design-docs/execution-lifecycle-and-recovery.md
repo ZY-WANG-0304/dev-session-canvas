@@ -135,13 +135,13 @@ updated_at: 2026-04-12
 恢复边界明确如下：
 
 - `Terminal`：同一扩展进程内跨 surface 可重附着；扩展重载后不承诺完整活动态恢复，只显式标记为 `interrupted`。
-- `Agent`：扩展重载后优先尝试 provider 自身的 resume；若 provider 不支持或上下文缺失，则分别落到 `resume-failed` 或 `interrupted`，不制造虚假恢复。
+- `Agent`：若节点带有 `live-runtime` 身份，则扩展重载后先尝试 reattach 原 live runtime；只有在 reattach 不可用且节点仍持有 provider 原生显式 session identity 时，才降级到 provider resume；若 provider 不支持或上下文缺失，则分别落到 `resume-failed`、`interrupted` 或历史态。
 
 当问题变成“关闭整个 VSCode 后重新打开”时，本文件里的生命周期状态还需要叠加运行时持久化文档定义的附着态语义。第一版的用户可见规则是：
 
 - 只要节点带着 `live-runtime` 的会话身份重新进入恢复流程，且系统尚未确认 live runtime 仍存在，主状态标签显示 `重连中`。
 - 若重新附着成功，再切回本文件定义的真实生命周期状态。
-- 若无法重新附着，则主状态标签显示 `历史恢复`，并保留最后已知生命周期信息作为历史结果，而不是继续显示旧的活动态。
+- 若无法重新附着，`Terminal` 显示 `历史恢复`；`Agent` 则先检查是否存在可用 provider resume 上下文，若有则转成 `resume-ready` 并继续自动恢复，否则才显示 `历史恢复`。
 
 自动启动边界明确如下：
 

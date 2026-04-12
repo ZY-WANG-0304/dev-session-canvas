@@ -21,6 +21,9 @@
 - [x] 2026-04-12 21:08+08:00 依照本计划补验证：通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs`。
 - [x] 2026-04-12 21:24+08:00 补充 session identity 获取约束：如果后续临时参考 OpenCove 那类启动后反查 session id 的路线，必须明确登记为“provider 缺少标准接口下的技术债务 fallback”，不能伪装成正式自动恢复能力。
 - [x] 2026-04-12 15:32+08:00 为 `Codex` 实现最小化技术债务 fallback：按 OpenCove 类思路扫描 `~/.codex/sessions/.../rollout-*.jsonl`，仅在 `cwd + 启动时间窗 + 候选唯一` 同时满足时回填 session id，并同步补齐 local/supervisor 两条运行链路与 smoke 自动化覆盖。
+- [x] 2026-04-12 17:17+08:00 把 `live-runtime` 下 `Agent` 的恢复优先级补成“先 reattach，失败后若持有 provider 显式 session identity 则自动 fallback 到 provider resume”，并补充 smoke 覆盖 `Agent` / `Terminal` 在 reconnect 失败后的分流。
+- [x] 2026-04-12 17:28+08:00 稳定化新增 smoke：修正 Terminal 断言与 baseline 恢复逻辑后，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 再次通过，确认 reconnect fallback 不会污染后续 resume/exit 分类用例。
+- [x] 2026-04-12 17:43+08:00 MR 前补齐最终验证：`npm run build` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 均通过；当前分支相对 `origin/main` 为 `0 behind / 3 ahead`，无需额外 rebase。
 
 ## 意外与发现
 
@@ -80,7 +83,8 @@
 - `Codex` 的正式恢复路径已改成 `codex resume <session-id>`；没有显式 session id 时，节点不会再伪装成 `resume-ready`，而是退化为 `interrupted` 或保持 start-only。
 - `Codex` 当前额外带有一条明确登记为技术债务的 fallback：由于 provider 暂无标准 machine-readable session-id 接口，fresh start 后会短时间扫描 `~/.codex/sessions/.../rollout-*.jsonl`，仅在 `cwd + 启动时间窗` 命中且候选唯一时回填 session id；只要 miss 或歧义就默认 fail closed。
 - `Claude Code` 继续使用显式 session identity 路径：fresh start 通过 `--session-id` 注入，恢复通过 `--resume <session-id>`。
-- 测试用 fake provider 已同步切到“显式 session id + 专用测试存储目录”语义，不再借用 `CODEX_HOME` 或“最近一次会话”推断；本轮还新增了 test-only locator 命令和 smoke 用例，覆盖唯一命中、`cwd` 不匹配与候选歧义三种结果。
+- 当 `runtimePersistenceEnabled=true` 时，`Agent` 现在会优先 reattach live runtime；只有在 reconnect 失败且节点已持有 provider resume identity 时，才自动降级到 provider resume。`Terminal` 仍保持 `history-restored`。
+- 测试用 fake provider 已同步切到“显式 session id + 专用测试存储目录”语义，不再借用 `CODEX_HOME` 或“最近一次会话”推断；本轮还新增了 test-only locator 命令和 smoke 用例，覆盖唯一命中、`cwd` 不匹配、候选歧义，以及 live-runtime reconnect 失败后的 Agent resume fallback。
 
 剩余风险仍是 `Codex` fresh start 后缺少正式 session identity 接口。当前实现虽然补上了启发式 fallback，但它的语义仍然是“因为 provider 没有标准接口才不得不接受的技术债务”，不是正式 capability；后续一旦 provider 暴露标准接口，这段反查逻辑应被移除。
 

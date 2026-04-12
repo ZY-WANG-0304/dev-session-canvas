@@ -190,6 +190,7 @@ async function runTrustedSmoke() {
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
+  await verifyLiveRuntimeReconnectFallbackToResume(agentNode.id, terminalNode.id);
   await verifyLiveRuntimeResumeExitClassification(agentNode.id);
   await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
   await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
@@ -1778,6 +1779,135 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
     assert.match(agentNode.summary, /退出码 23/);
   } finally {
     await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+  const baselineSnapshot = await getDebugSnapshot();
+  const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
+  const baselineTerminal = findNodeById(baselineSnapshot, terminalNodeId);
+  let shouldRestoreBaseline = false;
+
+  const fakeStorageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-runtime-fallback-'));
+  const fallbackSessionId = '44444444-4444-4444-8444-444444444444';
+
+  try {
+    await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
+
+    const currentSnapshot = await getDebugSnapshot();
+    const noteNode = findNodeByKind(currentSnapshot, 'note');
+    const agentNode = findNodeById(currentSnapshot, agentNodeId);
+    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+
+    let snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-12T09:30:00.000Z',
+      nodes: [
+        {
+          ...agentNode,
+          status: 'reattaching',
+          summary: '正在重新连接原 Agent live runtime。',
+          metadata: {
+            ...agentNode.metadata,
+            agent: {
+              ...agentNode.metadata.agent,
+              provider: 'codex',
+              lifecycle: 'waiting-input',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              runtimeSessionId: 'missing-agent-runtime-session',
+              resumeSupported: true,
+              resumeStrategy: 'fake-provider',
+              resumeSessionId: fallbackSessionId,
+              resumeStoragePath: fakeStorageDir,
+              pendingLaunch: undefined,
+              lastRuntimeError: undefined,
+              lastResumeError: undefined
+            }
+          }
+        },
+        {
+          ...terminalNode,
+          status: 'reattaching',
+          summary: '正在重新连接原终端 live runtime。',
+          metadata: {
+            ...terminalNode.metadata,
+            terminal: {
+              ...terminalNode.metadata.terminal,
+              lifecycle: 'live',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              runtimeSessionId: 'missing-terminal-runtime-session',
+              pendingLaunch: undefined,
+              lastRuntimeError: undefined
+            }
+          }
+        },
+        noteNode
+      ]
+    });
+
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
+          currentTerminal?.status === 'history-restored' &&
+          currentTerminal.metadata?.terminal?.attachmentState === 'history-restored' &&
+          currentTerminal.metadata?.terminal?.liveSession === false
+      );
+    }, 20000);
+
+    const restoredAgent = findNodeById(snapshot, agentNodeId);
+    const restoredTerminal = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(restoredAgent.metadata.agent.persistenceMode, 'live-runtime');
+    assert.ok(restoredAgent.metadata.agent.runtimeSessionId);
+    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+    assert.strictEqual(restoredTerminal.metadata.terminal.liveSession, false);
+    assert.match(restoredTerminal.summary, /runtime session/);
+    assert.match(restoredTerminal.metadata.terminal.lastRuntimeError ?? '', /runtime session/);
+
+    const reconnectDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
+    assert.ok(
+      reconnectDiagnostics.some(
+        (event) =>
+          event.kind === 'agent/liveRuntimeReconnectFallbackToResume' &&
+          event.detail?.nodeId === agentNodeId &&
+          event.detail?.resumeSessionId === fallbackSessionId
+      )
+    );
+
+    await ensureAgentStopped(agentNodeId);
+    shouldRestoreBaseline = true;
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+    if (shouldRestoreBaseline) {
+      await setPersistedState(baselineSnapshot.state);
+      await waitForSnapshot((currentState) => {
+        const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+        const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+        return Boolean(
+          !currentAgent?.metadata?.agent?.liveSession &&
+            currentAgent.metadata?.agent?.resumeSessionId === baselineAgent.metadata?.agent?.resumeSessionId &&
+            currentAgent.metadata?.agent?.resumeStoragePath === baselineAgent.metadata?.agent?.resumeStoragePath &&
+            !currentTerminal?.metadata?.terminal?.liveSession &&
+            currentTerminal.metadata?.terminal?.recentOutput ===
+              baselineTerminal.metadata?.terminal?.recentOutput
+        );
+      }, 20000);
+    }
+    await fs.rm(fakeStorageDir, { recursive: true, force: true });
   }
 }
 
