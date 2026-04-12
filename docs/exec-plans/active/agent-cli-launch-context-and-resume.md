@@ -20,6 +20,7 @@
 - [x] 2026-04-12 21:06+08:00 依照本计划修改实现：引入宿主侧 CLI resolver，移除 `resumeStoragePath -> CODEX_HOME` 的正式产品语义，把 `resume-ready` 改为显式 session identity 驱动，并将 `Codex` 默认恢复能力收口为“仅在显式 session id 已知时才支持自动 resume”。
 - [x] 2026-04-12 21:08+08:00 依照本计划补验证：通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs`。
 - [x] 2026-04-12 21:24+08:00 补充 session identity 获取约束：如果后续临时参考 OpenCove 那类启动后反查 session id 的路线，必须明确登记为“provider 缺少标准接口下的技术债务 fallback”，不能伪装成正式自动恢复能力。
+- [x] 2026-04-12 15:32+08:00 为 `Codex` 实现最小化技术债务 fallback：按 OpenCove 类思路扫描 `~/.codex/sessions/.../rollout-*.jsonl`，仅在 `cwd + 启动时间窗 + 候选唯一` 同时满足时回填 session id，并同步补齐 local/supervisor 两条运行链路与 smoke 自动化覆盖。
 
 ## 意外与发现
 
@@ -77,10 +78,11 @@
 - `Agent` 继续在 repo/workspace 目录启动，但插件不再默认改写 `HOME`、`CODEX_HOME` 或 provider 配置根目录环境变量，正式行为改为继承用户现有 CLI 配置与认证上下文。
 - `CanvasPanelManager` 已引入宿主侧 CLI resolver：优先读取显式设置，再读最近成功解析缓存、宿主 `PATH`、POSIX 登录 shell 与 Windows 原生命令发现，并把解析来源记录到诊断事件里。
 - `Codex` 的正式恢复路径已改成 `codex resume <session-id>`；没有显式 session id 时，节点不会再伪装成 `resume-ready`，而是退化为 `interrupted` 或保持 start-only。
+- `Codex` 当前额外带有一条明确登记为技术债务的 fallback：由于 provider 暂无标准 machine-readable session-id 接口，fresh start 后会短时间扫描 `~/.codex/sessions/.../rollout-*.jsonl`，仅在 `cwd + 启动时间窗` 命中且候选唯一时回填 session id；只要 miss 或歧义就默认 fail closed。
 - `Claude Code` 继续使用显式 session identity 路径：fresh start 通过 `--session-id` 注入，恢复通过 `--resume <session-id>`。
-- 测试用 fake provider 已同步切到“显式 session id + 专用测试存储目录”语义，不再借用 `CODEX_HOME` 或“最近一次会话”推断。
+- 测试用 fake provider 已同步切到“显式 session id + 专用测试存储目录”语义，不再借用 `CODEX_HOME` 或“最近一次会话”推断；本轮还新增了 test-only locator 命令和 smoke 用例，覆盖唯一命中、`cwd` 不匹配与候选歧义三种结果。
 
-剩余风险仍是 `Codex` fresh start 后的真实 session identity 获取接口。当前实现选择保守降级：在没有标准接口或可信绑定来源前，不把 `Codex` 自动恢复写成已验证能力；如果后续临时采用反查，只能作为明确记录“provider 缺少标准接口”的技术债务。
+剩余风险仍是 `Codex` fresh start 后缺少正式 session identity 接口。当前实现虽然补上了启发式 fallback，但它的语义仍然是“因为 provider 没有标准接口才不得不接受的技术债务”，不是正式 capability；后续一旦 provider 暴露标准接口，这段反查逻辑应被移除。
 
 ## 上下文与定向
 

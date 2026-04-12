@@ -34,6 +34,7 @@ import {
   type ExecutionSessionExitEvent,
   type ExecutionSessionProcess
 } from '../panel/executionSessionBridge';
+import { locateCodexSessionId } from '../common/codexSessionIdLocator';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const AGENT_WAITING_INPUT_DELAY_MS = 380;
@@ -49,6 +50,7 @@ interface SupervisorSession {
   sessionId: string;
   kind: ExecutionNodeKind;
   live: boolean;
+  startedAtMs: number;
   lifecycle: AgentNodeStatus | TerminalNodeStatus;
   runtimeBackend: RuntimeHostBackendKind;
   runtimeGuarantee: RuntimePersistenceGuarantee;
@@ -232,11 +234,13 @@ class RuntimeSupervisorServer {
           : 'starting'
         : 'launching';
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
+    const startedAtMs = Date.now();
     const process = createExecutionSessionProcess(launchSpec);
     const session: SupervisorSession = {
       sessionId,
       kind: params.kind,
       live: true,
+      startedAtMs,
       lifecycle,
       runtimeBackend: this.runtimeBackend,
       runtimeGuarantee: this.runtimeGuarantee,
@@ -270,6 +274,15 @@ class RuntimeSupervisorServer {
         current.lifecycle = 'live';
         this.emitSessionState(current);
       }, TERMINAL_LIVE_DELAY_MS);
+    }
+
+    if (
+      session.kind === 'agent' &&
+      session.provider === 'codex' &&
+      session.launchMode === 'start' &&
+      !session.resumeSessionId
+    ) {
+      void this.maybeDiscoverCodexResumeSessionId(session.sessionId);
     }
 
     this.schedulePersist();
@@ -424,6 +437,41 @@ class RuntimeSupervisorServer {
     this.emitSessionState(session);
     this.schedulePersist();
     this.scheduleIdleShutdownIfNeeded();
+  }
+
+  private async maybeDiscoverCodexResumeSessionId(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      session.kind !== 'agent' ||
+      session.provider !== 'codex' ||
+      session.launchMode !== 'start' ||
+      session.resumeSessionId?.trim()
+    ) {
+      return;
+    }
+
+    const discoveredSessionId = await locateCodexSessionId({
+      cwd: session.cwd,
+      startedAtMs: session.startedAtMs
+    });
+
+    const current = this.sessions.get(sessionId);
+    if (
+      !current ||
+      current.kind !== 'agent' ||
+      current.provider !== 'codex' ||
+      current.launchMode !== 'start' ||
+      !current.live ||
+      current.resumeSessionId?.trim() ||
+      !discoveredSessionId
+    ) {
+      return;
+    }
+
+    current.resumeStrategy = 'codex-session-id';
+    current.resumeSessionId = discoveredSessionId;
+    this.emitSessionState(current);
   }
 
   private emitSessionOutput(session: SupervisorSession, chunk: string): void {
@@ -629,6 +677,7 @@ class RuntimeSupervisorServer {
     return {
       ...snapshot,
       live: false,
+      startedAtMs: Date.now(),
       lifecycle,
       runtimeBackend: normalizeRuntimeHostBackend(snapshot.runtimeBackend),
       runtimeGuarantee: normalizeRuntimePersistenceGuarantee(snapshot.runtimeGuarantee),

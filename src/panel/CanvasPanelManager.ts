@@ -62,6 +62,7 @@ import {
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
+import { locateCodexSessionId } from '../common/codexSessionIdLocator';
 import {
   createRuntimeHostBackend,
   listPreferredRuntimeHostBackendKinds,
@@ -103,6 +104,7 @@ type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persiste
 interface ManagedExecutionSessionBase {
   sessionId: string;
   owner: 'local' | 'supervisor';
+  startedAtMs: number;
   shellPath: string;
   cwd: string;
   cols: number;
@@ -1561,6 +1563,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       sessionId: snapshot.sessionId,
       owner: 'supervisor',
+      startedAtMs: Date.now(),
       runtimeBackend: snapshot.runtimeBackend,
       runtimeGuarantee: snapshot.runtimeGuarantee,
       runtimeSessionId: snapshot.sessionId,
@@ -2269,6 +2272,51 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private async maybeDiscoverCodexResumeSessionId(
+    nodeId: string,
+    session: ManagedExecutionSession
+  ): Promise<void> {
+    if (
+      session.agentProvider !== 'codex' ||
+      session.launchMode !== 'start' ||
+      session.agentResume?.sessionId?.trim()
+    ) {
+      return;
+    }
+
+    const discoveredSessionId = await locateCodexSessionId({
+      cwd: session.cwd,
+      startedAtMs: session.startedAtMs
+    });
+
+    const currentSession = this.getExecutionSessions('agent').get(nodeId);
+    if (!currentSession || currentSession !== session) {
+      return;
+    }
+
+    if (!discoveredSessionId) {
+      this.recordDiagnosticEvent('agent/codexSessionIdDiscoveryMissed', {
+        nodeId,
+        cwd: session.cwd,
+        startedAtMs: session.startedAtMs
+      });
+      return;
+    }
+
+    currentSession.agentResume = {
+      supported: true,
+      strategy: 'codex-session-id',
+      sessionId: discoveredSessionId
+    };
+    this.recordDiagnosticEvent('agent/codexSessionIdDiscovered', {
+      nodeId,
+      cwd: session.cwd,
+      resumeSessionId: discoveredSessionId,
+      startedAtMs: session.startedAtMs
+    });
+    this.flushLiveExecutionState('agent', nodeId);
+  }
+
   private async startAgentSessionWithSupervisor(
     nodeId: string,
     normalizedCols: number,
@@ -2615,6 +2663,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const session: LocalExecutionSession = {
         sessionId,
         owner: 'local',
+        startedAtMs: Date.now(),
         process,
         shellPath: cliSpec.command,
         cwd,
@@ -2682,6 +2731,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.persistState();
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('agent', nodeId);
+      void this.maybeDiscoverCodexResumeSessionId(nodeId, session);
 
       const queueAgentWaitingInput = (): void => {
         const activeSession = this.getExecutionSessions('agent').get(nodeId);
@@ -2781,10 +2831,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             provider,
             lifecycle: status,
             runtimeKind: 'pty-cli',
-            resumeSupported: resumeContext.supported,
-            resumeStrategy: resumeContext.strategy,
-            resumeSessionId: resumeContext.sessionId,
-            resumeStoragePath: resumeContext.storagePath,
+            resumeSupported: activeSession.agentResume?.supported ?? resumeContext.supported,
+            resumeStrategy: activeSession.agentResume?.strategy ?? resumeContext.strategy,
+            resumeSessionId: activeSession.agentResume?.sessionId ?? resumeContext.sessionId,
+            resumeStoragePath: activeSession.agentResume?.storagePath ?? resumeContext.storagePath,
             lastResumeError: status === 'resume-failed' ? message : undefined,
             persistenceMode: 'snapshot-only',
             attachmentState: 'history-restored',
@@ -3235,6 +3285,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const session: LocalExecutionSession = {
         sessionId,
         owner: 'local',
+        startedAtMs: Date.now(),
         process,
         shellPath,
         cwd,
@@ -3886,7 +3937,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: session.cols,
         lastRows: session.rows,
         lastRuntimeError: undefined,
-        ...(kind === 'agent' ? { lastBackendLabel: session.displayLabel } : {})
+        ...(kind === 'agent' ? { lastBackendLabel: session.displayLabel } : {}),
+        ...(kind === 'agent' && session.agentResume
+          ? {
+              resumeSupported: session.agentResume.supported,
+              resumeStrategy: session.agentResume.strategy,
+              resumeSessionId: session.agentResume.sessionId,
+              resumeStoragePath: session.agentResume.storagePath
+            }
+          : {})
       })
     });
     this.persistState();

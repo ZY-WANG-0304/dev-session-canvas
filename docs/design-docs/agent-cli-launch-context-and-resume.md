@@ -177,6 +177,8 @@ updated_at: 2026-04-12
 - 必须写清退出条件，例如“provider 后续提供标准接口后移除反查逻辑”。
 - 默认不能把这类反查结果直接当成自动恢复凭据；除非另有额外验证闭环，否则它至多用于实验能力、诊断信息或人工恢复辅助。
 
+本轮 `Codex` 实现采用的就是这类技术债务 fallback，但只接受最小闭环：fresh start 后在短时间窗口内扫描 `~/.codex/sessions/.../rollout-*.jsonl`，按 `cwd + 启动时间` 做唯一匹配；只要 miss、超时或出现多个候选，就立即 fail closed，不升级成 `resume-ready`。
+
 当前已确认的最小结论：
 
 - `Claude Code`
@@ -202,7 +204,7 @@ updated_at: 2026-04-12
   原因：当前产品目标是让 Agent 在真实 repo 开发路径中工作；默认破坏用户 CLI 上下文，比默认不隔离的代价更高。
 
 - 风险：`Codex` fresh start 后没有已确认的标准 session identity 获取接口，任何基于私有状态反查的方案都可能漂移、歧义或失效。
-  当前缓解：在真实标准接口出现前，不把 `Codex` 自动恢复写成已支持；如果实现阶段不得不临时采用反查，只能作为显式登记的技术债务，并默认 fail closed。
+  当前缓解：当前代码仅以显式登记的技术债务方式实现 `~/.codex/sessions/.../rollout-*.jsonl` 反查，并要求 `cwd + 启动时间窗 + 候选唯一` 同时成立；任何 miss、歧义或超时都默认 fail closed，且后续应在 provider 暴露标准接口后移除这段逻辑。
 
 - 风险：不同平台和不同启动方式下，执行宿主的 `PATH` 可能与用户交互 shell 可见的 `PATH` 不一致。
   当前缓解：把命令发现从“裸命令名直接 spawn”升级为宿主侧 resolver，并把绝对命令路径缓存和探测诊断纳入正式设计。
@@ -229,4 +231,6 @@ updated_at: 2026-04-12
 - 2026-04-12 已完成设计收口，并同步到生命周期文档、产品规格和设计索引。
 - 本机 `claude --help` 已确认 `--session-id <uuid>` 与 `--resume [value]`。
 - OpenAI 官方 `Codex CLI` 文档已确认显式 `codex resume [SESSION_ID]` 入口，以及 `~/.codex/config.toml` / `<repo>/.codex/config.toml` 这两层正式配置。
-- 当前设计仍是 `未验证`，因为新的显式 session identity 路线尚未代码落地，而 `Codex` fresh start 的标准 session identity 获取接口在当前环境下也还没有被确认存在。
+- 2026-04-12 已完成代码落地：`Codex` 新增一条明确标记为技术债务的 heuristic session-id fallback，会扫描 `~/.codex/sessions/.../rollout-*.jsonl` 并按 `cwd + 启动时间窗` 的唯一候选回填 session id；本地 PTY 与 runtime supervisor 两条链路都已接入。
+- 2026-04-12 已新增自动化覆盖：通过 test-only 命令和 smoke 用例验证 locator 在唯一命中、`cwd` 不匹配与候选歧义三种情况下的行为。
+- 当前设计状态更新为 `验证中`：显式 session identity 路线已经代码落地并有自动化覆盖，但 `Codex` 仍缺少正式 session identity 接口，真实 provider 端到端验证也尚未完成。

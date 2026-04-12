@@ -1,6 +1,7 @@
 const assert = require('assert');
-const path = require('path');
 const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
 const vscode = require('vscode');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
@@ -13,6 +14,7 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
@@ -113,6 +115,8 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, true);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  await verifyCodexSessionIdLocator();
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
   let hostMessages = await getHostMessages();
@@ -2243,6 +2247,70 @@ async function verifyRealDeleteButton(noteNodeId) {
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === noteNodeId), false);
 }
 
+async function verifyCodexSessionIdLocator() {
+  const matchingHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-codex-locator-'));
+  try {
+    const matchingStartedAtMs = Date.now();
+    const expectedSessionId = '11111111-1111-4111-8111-111111111111';
+    const matchingCwd = '/tmp/dev-session-canvas-codex-match';
+
+    await writeCodexRolloutSessionMeta({
+      homeDir: matchingHomeDir,
+      sessionId: expectedSessionId,
+      cwd: matchingCwd,
+      timestampMs: matchingStartedAtMs
+    });
+
+    const detectedSessionId = await locateCodexSessionIdForTest({
+      cwd: matchingCwd,
+      startedAtMs: matchingStartedAtMs,
+      homeDir: matchingHomeDir,
+      timeoutMs: 800
+    });
+    assert.strictEqual(detectedSessionId, expectedSessionId);
+
+    const missedSessionId = await locateCodexSessionIdForTest({
+      cwd: '/tmp/dev-session-canvas-codex-miss',
+      startedAtMs: matchingStartedAtMs,
+      homeDir: matchingHomeDir,
+      timeoutMs: 450
+    });
+    assert.strictEqual(missedSessionId, null);
+  } finally {
+    await fs.rm(matchingHomeDir, { recursive: true, force: true });
+  }
+
+  const ambiguousHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-codex-locator-'));
+  try {
+    const ambiguousStartedAtMs = Date.now();
+    const ambiguousCwd = '/tmp/dev-session-canvas-codex-ambiguous';
+
+    await writeCodexRolloutSessionMeta({
+      homeDir: ambiguousHomeDir,
+      sessionId: '22222222-2222-4222-8222-222222222222',
+      cwd: ambiguousCwd,
+      timestampMs: ambiguousStartedAtMs
+    });
+    await writeCodexRolloutSessionMeta({
+      homeDir: ambiguousHomeDir,
+      sessionId: '33333333-3333-4333-8333-333333333333',
+      cwd: ambiguousCwd,
+      timestampMs: ambiguousStartedAtMs + 5,
+      fileSuffix: 'second'
+    });
+
+    const ambiguousSessionId = await locateCodexSessionIdForTest({
+      cwd: ambiguousCwd,
+      startedAtMs: ambiguousStartedAtMs,
+      homeDir: ambiguousHomeDir,
+      timeoutMs: 450
+    });
+    assert.strictEqual(ambiguousSessionId, null);
+  } finally {
+    await fs.rm(ambiguousHomeDir, { recursive: true, force: true });
+  }
+}
+
 async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
 }
@@ -2257,6 +2325,16 @@ async function getHostMessages() {
 
 async function getDiagnosticEvents() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+}
+
+async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutMs }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testLocateCodexSessionId,
+    cwd,
+    startedAtMs,
+    homeDir,
+    timeoutMs
+  );
 }
 
 async function clearHostMessages() {
@@ -2450,6 +2528,44 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
 
 function sleep(timeoutMs) {
   return new Promise((resolve) => setTimeout(resolve, timeoutMs));
+}
+
+async function writeCodexRolloutSessionMeta({
+  homeDir,
+  sessionId,
+  cwd,
+  timestampMs,
+  fileSuffix = 'match'
+}) {
+  const [year, month, day] = toDateDirectoryParts(timestampMs);
+  const sessionsDir = path.join(homeDir, '.codex', 'sessions', year, month, day);
+  await fs.mkdir(sessionsDir, { recursive: true });
+  const timestamp = new Date(timestampMs).toISOString();
+  const payload = {
+    timestamp,
+    type: 'session_meta',
+    payload: {
+      id: sessionId,
+      timestamp,
+      cwd,
+      originator: 'smoke-test'
+    }
+  };
+
+  await fs.writeFile(
+    path.join(sessionsDir, `rollout-${sessionId}-${fileSuffix}.jsonl`),
+    `${JSON.stringify(payload)}\n`,
+    'utf8'
+  );
+}
+
+function toDateDirectoryParts(timestampMs) {
+  const date = new Date(timestampMs);
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ];
 }
 
 async function persistLastWebviewProbe() {
