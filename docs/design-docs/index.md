@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/execution-node-zoom-interaction-surface.md` | 执行节点在继续跟随 React Flow 缩放的前提下，如何修复 `xterm.js` 的鼠标命中、拖选和右键坐标偏移 | 画布交互域、协作对象域、执行编排域 / 画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/execution-node-zoom-coordinate-alignment.md`、`docs/exec-plans/completed/execution-node-zoom-interaction-research.md` | 2026-04-12 |
 | `docs/design-docs/development-debug-automation.md` | 隔离开发宿主、真实扩展 smoke test 与 Webview Playwright UI 回归的三层调试自动化方案 | VSCode 集成域、画布交互域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/extension-debug-automation.md`、`docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md` | 2026-04-10 |
 | `docs/design-docs/dev-session-canvas-namespace-migration.md` | 正式产品名落定后，将命令、配置、持久化键与扩展身份统一到 `DevSessionCanvas`，并明确内部 VSIX 断点迁移口径的方案 | VSCode 集成域、项目状态域 / 宿主集成层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/dev-session-canvas-extension-identity-cutover.md`、`docs/exec-plans/completed/dev-session-canvas-namespace-migration.md` | 2026-04-06 |
 | `docs/design-docs/execution-lifecycle-and-recovery.md` | 执行节点的差异化生命周期、Agent best-effort resume 与创建即打开规则 | VSCode 集成域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md` | 2026-04-08 |

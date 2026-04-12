@@ -122,6 +122,12 @@ export interface WebviewProbeNodeSnapshot {
   providerValue?: string;
   titleInputValue?: string;
   bodyValue?: string;
+  terminalSelectionText?: string;
+  terminalCols?: number;
+  terminalRows?: number;
+  terminalViewportY?: number;
+  terminalTextareaLeft?: number;
+  terminalTextareaTop?: number;
 }
 
 export interface WebviewProbeSnapshot {
@@ -687,7 +693,24 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
     (value.providerValue === undefined || typeof value.providerValue === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
-    (value.bodyValue === undefined || typeof value.bodyValue === 'string')
+    (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
+    (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&
+    (value.terminalCols === undefined ||
+      (typeof value.terminalCols === 'number' &&
+        Number.isInteger(value.terminalCols) &&
+        value.terminalCols > 0)) &&
+    (value.terminalRows === undefined ||
+      (typeof value.terminalRows === 'number' &&
+        Number.isInteger(value.terminalRows) &&
+        value.terminalRows > 0)) &&
+    (value.terminalViewportY === undefined ||
+      (typeof value.terminalViewportY === 'number' &&
+        Number.isInteger(value.terminalViewportY) &&
+        value.terminalViewportY >= 0)) &&
+    (value.terminalTextareaLeft === undefined ||
+      (typeof value.terminalTextareaLeft === 'number' && Number.isFinite(value.terminalTextareaLeft))) &&
+    (value.terminalTextareaTop === undefined ||
+      (typeof value.terminalTextareaTop === 'number' && Number.isFinite(value.terminalTextareaTop)))
   );
 }
 
