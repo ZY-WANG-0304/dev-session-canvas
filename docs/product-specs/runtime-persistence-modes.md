@@ -81,7 +81,7 @@
 
 - 最近输出
 - 最近退出信息
-- `Agent` 的 provider 恢复上下文
+- `Agent` 的 provider 显式恢复身份与恢复失败原因
 - 关闭前的最后已知状态
 
 ## 7. 验收标准
@@ -95,6 +95,7 @@
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
 - 当节点处于 `live-runtime` 时，用户能直接看到当前 runtime backend 与 guarantee，不需要靠环境猜测自己拿到的是 `systemd-user` 还是 `legacy-detached`。
 - 当 `Agent` 在 `live-runtime` 模式下于 VSCode 关闭期间继续执行时，用户下次打开 VSCode 后能看到关闭期间新增的执行结果。
+- 当 `Agent` 没有 provider 原生显式 session identity 时，系统不得使用“最近一次会话”推断来伪装自动恢复；此时节点应退化为 `interrupted` 或历史态。
 - 当用户关闭运行时持久化开关时，下一次关闭 VSCode 后，不再对真实 `Agent` / `Terminal` 进程跨编辑器生命周期存活做承诺。
 - 对没有被明确记为 blocker 或外部平台边界的组合，第一版应尽量做到完整实现；当前已确认的本地 workspace / Remote SSH 与 `Agent` / `Terminal` 四种组合都不应被故意拆成“先做一半、另一半留后面”。
 

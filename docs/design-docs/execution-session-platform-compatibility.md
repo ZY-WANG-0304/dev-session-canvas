@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
-updated_at: 2026-03-30
+updated_at: 2026-04-12
 ---
 
 # 执行会话平台兼容性设计
@@ -36,6 +36,7 @@ updated_at: 2026-03-30
 1. 当前执行会话后端应该继续围绕 `script` 分平台扩展，还是直接收敛到统一 PTY 抽象。
 2. 在优先支持 Linux / macOS 的前提下，怎样同时为 Windows 预留尽量一致的主路径，而不是继续堆平台特判。
 3. 哪些平台结论已经有实现和验证证据，哪些仍然只能写成“代码已接通、人工验证待补”。
+4. 当 Extension Host 的 `PATH` 与用户交互 shell 不一致时，怎样更稳健地定位本地编程 CLI，而不是把命令发现完全外包给手填设置。
 
 ## 3. 目标
 
@@ -43,6 +44,7 @@ updated_at: 2026-03-30
 - 让 Linux 与 macOS 进入同一条已实现的嵌入式 PTY 主路径。
 - 在不额外分叉运行时模型的前提下，让 Windows 也尽量复用同一后端能力。
 - 让运行中 resize 成为后端原生能力，而不是继续依赖“仅首帧 fit”这种临时退化。
+- 让 `Agent` 的本地编程 CLI 定位不再只依赖当前 Extension Host 进程 PATH。
 
 ## 4. 非目标
 
@@ -91,6 +93,11 @@ updated_at: 2026-03-30
 - 执行会话后端从 Linux `script` 原型迁移到统一 `node-pty` 路线。
 - Linux / macOS 是本轮明确优先支持的平台；Windows 代码路径随统一后端一起接通，但当前仍只应写成“待人工验证”。
 - `Terminal` 与 `Agent` 共用同一个宿主会话 bridge；差别只在于启动命令和节点语义。
+- `Agent` provider CLI 的命令发现采用宿主侧 resolver，而不是把裸命令名直接交给 PTY：
+  - 显式设置优先
+  - 最近成功解析的绝对路径缓存次之
+  - 当前宿主 `PATH` 再次之
+  - POSIX 登录 shell 探测、Windows `where.exe` / `Get-Command` 与常见包装后缀作为最后自动回退
 - 宿主当前通过最小 PTY bridge 暴露：
   - 创建会话
   - 写入输入
@@ -104,8 +111,8 @@ updated_at: 2026-03-30
 - 取舍：接受原生 PTY 依赖，换取平台收敛和真实 resize。
   原因：用户已经不再满足于“Linux 原型可跑”，而是明确要求 Linux / macOS 为主、Windows 尽量兼容。
 
-- 风险：Windows 下 `codex` / `claude` 这类命令若通过 npm 全局安装，可能需要显式 `.cmd` / `.exe` 路径。
-  当前缓解：保留设置项覆盖命令路径，并把 Windows PATH 解析继续登记为待补验证项。
+- 风险：Windows 下 `codex` / `claude` 这类命令若通过 npm 全局安装，常见入口可能是 `.cmd` / `.exe` 包装；macOS / Linux 从 GUI 启动 VSCode 时，Extension Host 的 PATH 也可能和交互 shell 不一致。
+  当前缓解：把命令定位升级为宿主侧 resolver，显式覆盖 Windows 包装后缀、POSIX 登录 shell 探测和成功路径缓存；设置项仍保留为最高优先级兜底。
 
 - 风险：Remote SSH / Codespaces 的 Extension Host 与 Webview 仍然跨端运行，平台兼容并不等于远程兼容。
   当前缓解：本轮只先收口本地 Node workspace extension 主路径，不把远程验证缺口写成已完成。
@@ -119,6 +126,7 @@ updated_at: 2026-03-30
 3. 在本地 VSCode 中，Linux / macOS 至少各完成一次 `Terminal` 与 `Agent` 节点人工 smoke test。
 4. 若准备声明 Windows 可用，则至少完成一次 Windows 本地人工 smoke test。
 5. Webview 尺寸变化后，活跃会话行列能够同步更新，而不是只在启动前生效。
+6. 至少完成一次“CLI 已安装但当前 Extension Host PATH 不直达”的命令发现验证，确认宿主侧 resolver 能定位到目标 CLI。
 
 ## 9. 当前验证状态
 

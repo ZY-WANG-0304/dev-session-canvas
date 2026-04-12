@@ -39,7 +39,7 @@ export type AgentNodeStatus =
   | 'error'
   | 'interrupted';
 export type AgentRuntimeKind = 'pty-cli';
-export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-home' | 'fake-provider';
+export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-session-id' | 'fake-provider';
 
 export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;

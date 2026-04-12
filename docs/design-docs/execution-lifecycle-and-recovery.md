@@ -14,9 +14,11 @@ architecture_layers:
   - 适配与基础设施层
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
+  - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/active/agent-cli-launch-context-and-resume.md
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
-updated_at: 2026-04-08
+updated_at: 2026-04-12
 ---
 
 # 执行节点生命周期、恢复与自动启动设计
@@ -40,6 +42,7 @@ updated_at: 2026-04-08
 1. `Agent` 与 `Terminal` 的正式生命周期应该如何拆分，才能既保留共通执行能力，又不再把两者硬压成同一状态机。
 2. 哪些恢复能力可以被正式承诺，哪些只能明确写成 best-effort。
 3. “创建即打开”应该如何落地，才能避免节点尚未测得尺寸时就抢先拉起进程。
+4. `Agent` 的自动恢复应该建立在什么样的 provider 身份上，才能不把“最近一次会话”误写成“当前节点自己的会话”。
 
 ## 3. 目标
 
@@ -146,12 +149,14 @@ updated_at: 2026-04-08
 - 节点在 Webview 中完成尺寸测量后，由统一的启动消息把待启动意图转成真正的 fresh start 或 resume。
 - 已持久化的待恢复 `Agent` 节点也使用同一条机制进入自动恢复。
 
-当前建议的 provider 恢复策略如下：
+对 `Agent` 的 provider 启动上下文与恢复身份，还需要补充以下硬约束：
 
-- `Claude Code`：使用显式 session id 启动与恢复。
-- `Codex`：为每个节点分配独立的会话状态目录，并用该目录执行最近会话恢复。
+- `Agent` 会话必须在 repo/workspace 工作目录启动；它不应被切到扩展私有目录中运行。
+- 插件默认继承用户已有 CLI 配置与认证上下文；设置项只负责选择可执行文件，不负责改写 provider 的 home / config 根目录。
+- `resume-ready` 只应建立在 provider 原生显式 session identity 之上；`resume --last`、交互式 picker 或“最近会话推断”都不能作为正式自动恢复语义。
+- 如果某个 provider 还没有被验证出可可靠持久化并恢复显式 session identity，或拿到的 identity 仅来自启发式反查，节点应退化为 `interrupted` 或历史态，而不是继续伪装成可恢复。
 
-这两条都属于 best-effort，只有在真实命令、状态目录和 provider 行为成立时才算成功。
+这部分详细边界以 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 为准。
 
 ## 7. 风险与取舍
 
@@ -161,8 +166,8 @@ updated_at: 2026-04-08
 - 风险：`Agent` 的 `running / waiting-input` 当前仍需要从可观察事件推断，未必能像 provider 原生 UI 那样精细。
   当前缓解：把状态定义为“用户可观察的最小语义”，并优先依赖启动、输入、输出 quiet period、退出与恢复结果这些明确事件推进。
 
-- 风险：`Codex` 在当前环境中不可直接本机验证。
-  当前缓解：先把恢复边界设计成 best-effort，并在测试里用可控假 provider 验证宿主状态流；真实 Codex 行为继续作为验证中的项。
+- 风险：`Codex` 在当前环境中仍未确认存在 fresh start 后可直接读取 session identity 的标准接口。
+  当前缓解：新的正式设计已经禁止把 `resume --last` 当成自动恢复主路径；如果后续为了兼容而临时采用日志、状态目录或列表接口反查，也只能作为显式登记的技术债务，而不是正式恢复能力。
 
 - 风险：自动启动会把启动 race 暴露得更明显。
   当前缓解：统一通过“待启动意图 + 节点尺寸就绪后启动”的机制消化 race，而不是在创建节点时立即 spawn。
@@ -174,7 +179,7 @@ updated_at: 2026-04-08
 1. `Agent` 与 `Terminal` 在 UI 上能展示不同的生命周期状态，而不是都退化为“运行中 / 未运行”。
 2. 新建执行节点后，无需手动点启动按钮，节点会自动进入 fresh start。
 3. 扩展重载后，live 的 `Terminal` 节点被标记为 `interrupted`。
-4. 扩展重载后，live 的 `Agent` 节点若具备恢复上下文，会自动进入 `resuming` 并尽量恢复。
+4. 扩展重载后，live 的 `Agent` 节点只有在具备可信恢复上下文时，才会自动进入 `resuming` 并尽量恢复。
 5. 恢复失败时，`Agent` 节点进入 `resume-failed` 并显示明确失败原因。
 6. `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview` 通过。
 
@@ -183,4 +188,5 @@ updated_at: 2026-04-08
 - 2026-04-08 已完成代码落地，并通过 `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview`。
 - smoke test 已覆盖：差异化状态集、创建即自动启动、`Agent` 恢复、`Terminal` 在扩展重载后的 `interrupted`、surface cutover、停止竞态和失败路径。
 - `Claude Code` 的 session id / resume CLI 能力已在本机 `--help` 输出层面确认。
-- 当前文档仍保持“验证中”，因为真实 `Codex` / `Claude Code` provider 的 end-to-end resume 主路径尚未在当前环境完成本机验证；这项缺口已登记为技术债。
+- 2026-04-12 已重新收口 `Agent` 的启动上下文与恢复身份：自动恢复必须建立在 provider 原生显式 session identity 上，不能再以隔离 provider home 或 `resume --last` 作为正式口径。
+- 当前文档仍保持“验证中”，因为新的显式 session identity 约束尚未完成代码落地与真实 provider 验证，而 `Codex` 的标准 session identity 获取接口也尚未确认；这项缺口由 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 继续跟踪。

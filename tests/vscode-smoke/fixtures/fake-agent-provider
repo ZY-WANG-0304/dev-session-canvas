@@ -8,7 +8,8 @@ if [[ "${1-}" == "resume" ]]; then
   shift
 fi
 
-session_dir="${CODEX_HOME:-}"
+requested_resume_session_id="${1-}"
+session_dir="${DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH:-}"
 session_file=""
 session_id=""
 
@@ -24,9 +25,17 @@ if [[ "$mode" == "resume" ]]; then
   fi
 
   session_id="$(cat "$session_file")"
+  if [[ -z "$requested_resume_session_id" ]]; then
+    echo "[fake-agent] missing resume session id"
+    exit 20
+  fi
+  if [[ "$requested_resume_session_id" != "$session_id" ]]; then
+    echo "[fake-agent] resume session mismatch expected=${session_id} actual=${requested_resume_session_id}"
+    exit 21
+  fi
   echo "[fake-agent] resumed session ${session_id} pid=$$"
 else
-  session_id="session-$$"
+  session_id="${DEV_SESSION_CANVAS_FAKE_PROVIDER_SESSION_ID:-session-$$}"
   if [[ -n "$session_file" ]]; then
     printf '%s\n' "$session_id" > "$session_file"
   fi
