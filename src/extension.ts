@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { locateCodexSessionId } from './common/codexSessionIdLocator';
 import { COMMAND_IDS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import { isCanvasNodeKind, isWebviewDomAction, type CanvasNodeKind } from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
@@ -125,6 +126,50 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
     vscode.commands.registerCommand(TEST_COMMAND_IDS.clearDiagnosticEvents, () => {
       panelManager.clearDiagnosticEventsForTest();
     }),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.locateCodexSessionId,
+      async (cwd?: unknown, startedAtMs?: unknown, homeDir?: unknown, timeoutMs?: unknown) => {
+        if (typeof cwd !== 'string' || cwd.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.locateCodexSessionId 需要有效的 cwd。');
+        }
+        if (typeof startedAtMs !== 'number' || !Number.isFinite(startedAtMs)) {
+          throw new Error('测试命令 devSessionCanvas.__test.locateCodexSessionId 需要有效的 startedAtMs。');
+        }
+
+        const normalizedHomeDir = typeof homeDir === 'string' && homeDir.trim().length > 0 ? homeDir : undefined;
+        const env = normalizedHomeDir
+          ? {
+              ...process.env,
+              HOME: normalizedHomeDir,
+              USERPROFILE: normalizedHomeDir
+            }
+          : process.env;
+
+        return locateCodexSessionId({
+          cwd,
+          startedAtMs: Math.round(startedAtMs),
+          timeoutMs: typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : undefined,
+          env
+        });
+      }
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.getAgentCliResolutionCacheKey,
+      (provider?: unknown, requestedCommand?: unknown, workspaceCwd?: unknown) => {
+        if (provider !== 'codex' && provider !== 'claude') {
+          throw new Error('测试命令 devSessionCanvas.__test.getAgentCliResolutionCacheKey 需要有效的 provider。');
+        }
+        if (typeof requestedCommand !== 'string' || requestedCommand.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.getAgentCliResolutionCacheKey 需要有效的 requestedCommand。');
+        }
+
+        return panelManager.getAgentCliResolutionCacheKeyForTest(
+          provider,
+          requestedCommand,
+          typeof workspaceCwd === 'string' && workspaceCwd.trim().length > 0 ? workspaceCwd : undefined
+        );
+      }
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.waitForCanvasReady, async (surface?: unknown, timeoutMs?: unknown) =>
       panelManager.waitForCanvasReady(
         parseCanvasSurfaceLocation(surface),

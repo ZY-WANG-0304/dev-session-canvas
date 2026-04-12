@@ -1,6 +1,7 @@
 const assert = require('assert');
-const path = require('path');
 const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
 const vscode = require('vscode');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
@@ -13,6 +14,8 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
+  testGetAgentCliResolutionCacheKey: 'devSessionCanvas.__test.getAgentCliResolutionCacheKey',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
@@ -114,6 +117,9 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
+  await verifyCodexSessionIdLocator();
+  await verifyAgentCliRelativePathCacheIsolation();
+
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
   let hostMessages = await getHostMessages();
   assert.ok(
@@ -186,6 +192,8 @@ async function runTrustedSmoke() {
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
+  await verifyLiveRuntimeReconnectFallbackToResume(agentNode.id, terminalNode.id);
+  await verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNode.id, terminalNode.id);
   await verifyLiveRuntimeResumeExitClassification(agentNode.id);
   await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
   await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
@@ -1777,6 +1785,230 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
   }
 }
 
+async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+  const baselineSnapshot = await getDebugSnapshot();
+  const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
+  const baselineTerminal = findNodeById(baselineSnapshot, terminalNodeId);
+  let shouldRestoreBaseline = false;
+
+  const fakeStorageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-runtime-fallback-'));
+  const fallbackSessionId = '44444444-4444-4444-8444-444444444444';
+
+  try {
+    await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
+
+    const currentSnapshot = await getDebugSnapshot();
+    const noteNode = findNodeByKind(currentSnapshot, 'note');
+    const agentNode = findNodeById(currentSnapshot, agentNodeId);
+    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+
+    let snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-12T09:30:00.000Z',
+      nodes: [
+        {
+          ...agentNode,
+          status: 'reattaching',
+          summary: '正在重新连接原 Agent live runtime。',
+          metadata: {
+            ...agentNode.metadata,
+            agent: {
+              ...agentNode.metadata.agent,
+              provider: 'codex',
+              lifecycle: 'waiting-input',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              runtimeSessionId: 'missing-agent-runtime-session',
+              resumeSupported: false,
+              resumeStrategy: 'fake-provider',
+              resumeSessionId: fallbackSessionId,
+              resumeStoragePath: fakeStorageDir,
+              pendingLaunch: undefined,
+              lastRuntimeError: undefined,
+              lastResumeError: undefined
+            }
+          }
+        },
+        {
+          ...terminalNode,
+          status: 'reattaching',
+          summary: '正在重新连接原终端 live runtime。',
+          metadata: {
+            ...terminalNode.metadata,
+            terminal: {
+              ...terminalNode.metadata.terminal,
+              lifecycle: 'live',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              liveSession: false,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              runtimeSessionId: 'missing-terminal-runtime-session',
+              pendingLaunch: undefined,
+              lastRuntimeError: undefined
+            }
+          }
+        },
+        noteNode
+      ]
+    });
+
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
+          currentTerminal?.status === 'history-restored' &&
+          currentTerminal.metadata?.terminal?.attachmentState === 'history-restored' &&
+          currentTerminal.metadata?.terminal?.liveSession === false
+      );
+    }, 20000);
+
+    const restoredAgent = findNodeById(snapshot, agentNodeId);
+    const restoredTerminal = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(restoredAgent.metadata.agent.persistenceMode, 'live-runtime');
+    assert.ok(restoredAgent.metadata.agent.runtimeSessionId);
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+    assert.strictEqual(restoredTerminal.metadata.terminal.liveSession, false);
+    assert.match(restoredTerminal.summary, /runtime session/);
+    assert.match(restoredTerminal.metadata.terminal.lastRuntimeError ?? '', /runtime session/);
+
+    const reconnectDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
+    assert.ok(
+      reconnectDiagnostics.some(
+        (event) =>
+          event.kind === 'agent/liveRuntimeReconnectFallbackToResume' &&
+          event.detail?.nodeId === agentNodeId &&
+          event.detail?.resumeSessionId === fallbackSessionId
+      )
+    );
+
+    await ensureAgentStopped(agentNodeId);
+    shouldRestoreBaseline = true;
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+    if (shouldRestoreBaseline) {
+      await setPersistedState(baselineSnapshot.state);
+      await waitForSnapshot((currentState) => {
+        const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+        const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+        return Boolean(
+          !currentAgent?.metadata?.agent?.liveSession &&
+            currentAgent.metadata?.agent?.resumeSessionId === baselineAgent.metadata?.agent?.resumeSessionId &&
+            currentAgent.metadata?.agent?.resumeStoragePath === baselineAgent.metadata?.agent?.resumeStoragePath &&
+            !currentTerminal?.metadata?.terminal?.liveSession &&
+            currentTerminal.metadata?.terminal?.recentOutput ===
+              baselineTerminal.metadata?.terminal?.recentOutput
+        );
+      }, 20000);
+    }
+    await fs.rm(fakeStorageDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  const baselineSnapshot = await getDebugSnapshot();
+  const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
+  const baselineTerminal = findNodeById(baselineSnapshot, terminalNodeId);
+  let shouldRestoreBaseline = false;
+
+  const fakeStorageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-history-resume-'));
+  const fallbackSessionId = '55555555-5555-4555-8555-555555555555';
+
+  try {
+    await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
+
+    const currentSnapshot = await getDebugSnapshot();
+    const noteNode = findNodeByKind(currentSnapshot, 'note');
+    const agentNode = findNodeById(currentSnapshot, agentNodeId);
+    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+
+    let snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-12T09:40:00.000Z',
+      nodes: [
+        {
+          ...agentNode,
+          status: 'history-restored',
+          summary: '原 Agent live runtime 已断开，将等待恢复。',
+          metadata: {
+            ...agentNode.metadata,
+            agent: {
+              ...agentNode.metadata.agent,
+              provider: 'codex',
+              lifecycle: 'resume-ready',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'history-restored',
+              liveSession: false,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              runtimeSessionId: undefined,
+              resumeSupported: false,
+              resumeStrategy: 'fake-provider',
+              resumeSessionId: fallbackSessionId,
+              resumeStoragePath: fakeStorageDir,
+              pendingLaunch: 'resume',
+              lastRuntimeError: '未找到 runtime session old-runtime-session。',
+              lastResumeError: undefined
+            }
+          }
+        },
+        terminalNode,
+        noteNode
+      ]
+    });
+
+    let restoredAgent = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(restoredAgent.status, 'resume-ready');
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+      );
+    }, 20000);
+
+    restoredAgent = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+
+    await ensureAgentStopped(agentNodeId);
+    shouldRestoreBaseline = true;
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+    if (shouldRestoreBaseline) {
+      await setPersistedState(baselineSnapshot.state);
+      await waitForSnapshot((currentState) => {
+        const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+        const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+        return Boolean(
+          !currentAgent?.metadata?.agent?.liveSession &&
+            currentAgent.metadata?.agent?.resumeSessionId === baselineAgent.metadata?.agent?.resumeSessionId &&
+            currentAgent.metadata?.agent?.resumeStoragePath === baselineAgent.metadata?.agent?.resumeStoragePath &&
+            !currentTerminal?.metadata?.terminal?.liveSession &&
+            currentTerminal.metadata?.terminal?.recentOutput ===
+              baselineTerminal.metadata?.terminal?.recentOutput
+        );
+      }, 20000);
+    }
+    await fs.rm(fakeStorageDir, { recursive: true, force: true });
+  }
+}
+
 async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminalNodeId) {
   await setRuntimePersistenceEnabled(true);
 
@@ -2243,6 +2475,104 @@ async function verifyRealDeleteButton(noteNodeId) {
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === noteNodeId), false);
 }
 
+async function verifyCodexSessionIdLocator() {
+  const matchingHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-codex-locator-'));
+  try {
+    const matchingStartedAtMs = Date.now();
+    const expectedSessionId = '11111111-1111-4111-8111-111111111111';
+    const matchingCwd = '/tmp/dev-session-canvas-codex-match';
+
+    await writeCodexRolloutSessionMeta({
+      homeDir: matchingHomeDir,
+      sessionId: expectedSessionId,
+      cwd: matchingCwd,
+      timestampMs: matchingStartedAtMs
+    });
+
+    const detectedSessionId = await locateCodexSessionIdForTest({
+      cwd: matchingCwd,
+      startedAtMs: matchingStartedAtMs,
+      homeDir: matchingHomeDir,
+      timeoutMs: 800
+    });
+    assert.strictEqual(detectedSessionId, expectedSessionId);
+
+    const missedSessionId = await locateCodexSessionIdForTest({
+      cwd: '/tmp/dev-session-canvas-codex-miss',
+      startedAtMs: matchingStartedAtMs,
+      homeDir: matchingHomeDir,
+      timeoutMs: 450
+    });
+    assert.strictEqual(missedSessionId, null);
+  } finally {
+    await fs.rm(matchingHomeDir, { recursive: true, force: true });
+  }
+
+  const ambiguousHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-codex-locator-'));
+  try {
+    const ambiguousStartedAtMs = Date.now();
+    const ambiguousCwd = '/tmp/dev-session-canvas-codex-ambiguous';
+
+    await writeCodexRolloutSessionMeta({
+      homeDir: ambiguousHomeDir,
+      sessionId: '22222222-2222-4222-8222-222222222222',
+      cwd: ambiguousCwd,
+      timestampMs: ambiguousStartedAtMs
+    });
+    await writeCodexRolloutSessionMeta({
+      homeDir: ambiguousHomeDir,
+      sessionId: '33333333-3333-4333-8333-333333333333',
+      cwd: ambiguousCwd,
+      timestampMs: ambiguousStartedAtMs + 5,
+      fileSuffix: 'second'
+    });
+
+    const ambiguousSessionId = await locateCodexSessionIdForTest({
+      cwd: ambiguousCwd,
+      startedAtMs: ambiguousStartedAtMs,
+      homeDir: ambiguousHomeDir,
+      timeoutMs: 450
+    });
+    assert.strictEqual(ambiguousSessionId, null);
+  } finally {
+    await fs.rm(ambiguousHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyAgentCliRelativePathCacheIsolation() {
+  const workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-a-'));
+  const workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-b-'));
+
+  try {
+    const relativeKeyA = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: './tools/codex-wrapper',
+      workspaceCwd: workspaceA
+    });
+    const relativeKeyB = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: './tools/codex-wrapper',
+      workspaceCwd: workspaceB
+    });
+    const absoluteKeyA = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceA
+    });
+    const absoluteKeyB = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceB
+    });
+
+    assert.notStrictEqual(relativeKeyA, relativeKeyB);
+    assert.strictEqual(absoluteKeyA, absoluteKeyB);
+  } finally {
+    await fs.rm(workspaceA, { recursive: true, force: true });
+    await fs.rm(workspaceB, { recursive: true, force: true });
+  }
+}
+
 async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
 }
@@ -2257,6 +2587,25 @@ async function getHostMessages() {
 
 async function getDiagnosticEvents() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+}
+
+async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutMs }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testLocateCodexSessionId,
+    cwd,
+    startedAtMs,
+    homeDir,
+    timeoutMs
+  );
+}
+
+async function getAgentCliResolutionCacheKeyForTest({ provider, requestedCommand, workspaceCwd }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testGetAgentCliResolutionCacheKey,
+    provider,
+    requestedCommand,
+    workspaceCwd
+  );
 }
 
 async function clearHostMessages() {
@@ -2450,6 +2799,44 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
 
 function sleep(timeoutMs) {
   return new Promise((resolve) => setTimeout(resolve, timeoutMs));
+}
+
+async function writeCodexRolloutSessionMeta({
+  homeDir,
+  sessionId,
+  cwd,
+  timestampMs,
+  fileSuffix = 'match'
+}) {
+  const [year, month, day] = toDateDirectoryParts(timestampMs);
+  const sessionsDir = path.join(homeDir, '.codex', 'sessions', year, month, day);
+  await fs.mkdir(sessionsDir, { recursive: true });
+  const timestamp = new Date(timestampMs).toISOString();
+  const payload = {
+    timestamp,
+    type: 'session_meta',
+    payload: {
+      id: sessionId,
+      timestamp,
+      cwd,
+      originator: 'smoke-test'
+    }
+  };
+
+  await fs.writeFile(
+    path.join(sessionsDir, `rollout-${sessionId}-${fileSuffix}.jsonl`),
+    `${JSON.stringify(payload)}\n`,
+    'utf8'
+  );
+}
+
+function toDateDirectoryParts(timestampMs) {
+  const date = new Date(timestampMs);
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ];
 }
 
 async function persistLastWebviewProbe() {
