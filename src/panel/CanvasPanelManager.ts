@@ -49,6 +49,7 @@ import {
   isMissingNodePtyDependencyError
 } from './executionSessionBridge';
 import {
+  isExplicitRelativePath,
   isAgentCliResolutionError,
   resolveAgentCliCommand,
   type AgentCliResolutionCacheEntry,
@@ -497,6 +498,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.scheduleRestoreLiveRuntimeSessions();
 
     return this.getDebugSnapshot();
+  }
+
+  public getAgentCliResolutionCacheKeyForTest(
+    provider: AgentProviderKind,
+    requestedCommand: string,
+    workspaceCwd?: string
+  ): string {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+      throw new Error('getAgentCliResolutionCacheKeyForTest 仅在测试模式下可用。');
+    }
+
+    return this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd);
   }
 
   public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
@@ -1699,6 +1712,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: { postSnapshot: boolean; historyOnUnavailable: boolean }
   ): void {
     if (snapshot.live) {
+      const existingAgentMetadata =
+        kind === 'agent' ? ensureAgentMetadata(this.requireNode(nodeId, kind)) : undefined;
       const session = this.createSupervisorExecutionSession(snapshot);
       this.getExecutionSessions(kind).set(nodeId, session);
       this.state = updateExecutionNode(this.state, nodeId, kind, {
@@ -1726,7 +1741,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ...(kind === 'agent'
             ? {
                 lifecycle: snapshot.lifecycle as AgentNodeStatus,
-                provider: snapshot.provider ?? ensureAgentMetadata(this.requireNode(nodeId, kind)).provider,
+                provider: snapshot.provider ?? existingAgentMetadata?.provider,
+                resumeSupported: doesAgentResumeStrategyRequireSupport(
+                  snapshot.resumeStrategy ?? existingAgentMetadata?.resumeStrategy ?? 'none'
+                ),
                 resumeStrategy: snapshot.resumeStrategy,
                 resumeSessionId: snapshot.resumeSessionId,
                 resumeStoragePath: snapshot.resumeStoragePath,
@@ -1789,6 +1807,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ? {
               lifecycle: snapshot.lifecycle as AgentNodeStatus,
               provider: snapshot.provider ?? ensureAgentMetadata(existingNode).provider,
+              resumeSupported: doesAgentResumeStrategyRequireSupport(
+                snapshot.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy
+              ),
               resumeStrategy: snapshot.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy,
               resumeSessionId: snapshot.resumeSessionId ?? ensureAgentMetadata(existingNode).resumeSessionId,
               resumeStoragePath: snapshot.resumeStoragePath ?? ensureAgentMetadata(existingNode).resumeStoragePath,
@@ -1849,6 +1870,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ? {
               lifecycle: lifecycle as AgentNodeStatus,
               provider: snapshot?.provider ?? ensureAgentMetadata(existingNode).provider,
+              resumeSupported: doesAgentResumeStrategyRequireSupport(
+                snapshot?.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy
+              ),
               resumeStrategy: snapshot?.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy,
               resumeSessionId: snapshot?.resumeSessionId ?? ensureAgentMetadata(existingNode).resumeSessionId,
               resumeStoragePath: snapshot?.resumeStoragePath ?? ensureAgentMetadata(existingNode).resumeStoragePath,
@@ -1893,7 +1917,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycle: 'resume-ready',
         provider: metadata.provider,
         runtimeKind: metadata.runtimeKind,
-        resumeSupported: metadata.resumeSupported,
+        resumeSupported: doesAgentResumeStrategyRequireSupport(metadata.resumeStrategy),
         resumeStrategy: metadata.resumeStrategy,
         resumeSessionId: metadata.resumeSessionId,
         resumeStoragePath: metadata.resumeStoragePath,
@@ -3078,42 +3102,78 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private getAgentCliResolutionCacheKey(provider: AgentProviderKind, requestedCommand: string): string {
+  private getAgentCliResolutionCacheKey(
+    provider: AgentProviderKind,
+    requestedCommand: string,
+    workspaceCwd?: string
+  ): string {
     const normalizedCommand =
       process.platform === 'win32' ? requestedCommand.trim().toLowerCase() : requestedCommand.trim();
-    return `${process.platform}:${provider}:${normalizedCommand}`;
+    if (!isExplicitRelativePath(requestedCommand.trim())) {
+      return `${process.platform}:${provider}:${normalizedCommand}`;
+    }
+
+    const normalizedWorkspaceCwd = normalizeAgentCliCacheWorkspaceCwd(workspaceCwd);
+    return `${process.platform}:${provider}:${normalizedWorkspaceCwd}:${normalizedCommand}`;
   }
 
-  private getCachedAgentCliResolution(provider: AgentProviderKind, requestedCommand: string): string | undefined {
-    return this.agentCliResolutionCache[this.getAgentCliResolutionCacheKey(provider, requestedCommand)]?.resolvedCommand;
+  private getCachedAgentCliResolution(
+    provider: AgentProviderKind,
+    requestedCommand: string,
+    workspaceCwd?: string
+  ): string | undefined {
+    return this.agentCliResolutionCache[
+      this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd)
+    ]?.resolvedCommand;
   }
 
-  private storeAgentCliResolution(provider: AgentProviderKind, requestedCommand: string, resolvedCommand: string): void {
-    this.agentCliResolutionCache[this.getAgentCliResolutionCacheKey(provider, requestedCommand)] = {
+  private storeAgentCliResolution(
+    provider: AgentProviderKind,
+    requestedCommand: string,
+    resolvedCommand: string,
+    workspaceCwd?: string
+  ): void {
+    this.agentCliResolutionCache[this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd)] = {
       requestedCommand,
       resolvedCommand
     };
     void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
-  private clearAgentCliResolution(provider: AgentProviderKind, requestedCommand: string): void {
-    delete this.agentCliResolutionCache[this.getAgentCliResolutionCacheKey(provider, requestedCommand)];
+  private clearAgentCliResolution(
+    provider: AgentProviderKind,
+    requestedCommand: string,
+    workspaceCwd?: string
+  ): void {
+    delete this.agentCliResolutionCache[
+      this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd)
+    ];
     void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
   private async resolveAgentCli(provider: AgentProviderKind): Promise<AgentCliSpec> {
     const configuredSpec = this.getConfiguredAgentCliSpec(provider);
+    const workspaceCwd = this.getTerminalWorkingDirectory();
 
     try {
       const resolution = await resolveAgentCliCommand({
         provider,
         label: configuredSpec.label,
         requestedCommand: configuredSpec.requestedCommand,
-        workspaceCwd: this.getTerminalWorkingDirectory(),
+        workspaceCwd,
         env: this.buildExecutionEnvironment(),
-        cachedResolvedCommand: this.getCachedAgentCliResolution(provider, configuredSpec.requestedCommand)
+        cachedResolvedCommand: this.getCachedAgentCliResolution(
+          provider,
+          configuredSpec.requestedCommand,
+          workspaceCwd
+        )
       });
-      this.storeAgentCliResolution(provider, configuredSpec.requestedCommand, resolution.resolvedCommand);
+      this.storeAgentCliResolution(
+        provider,
+        configuredSpec.requestedCommand,
+        resolution.resolvedCommand,
+        workspaceCwd
+      );
       this.recordDiagnosticEvent('agentCli/commandResolved', {
         provider,
         requestedCommand: resolution.requestedCommand,
@@ -3129,7 +3189,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resolutionSource: resolution.source
       };
     } catch (error) {
-      this.clearAgentCliResolution(provider, configuredSpec.requestedCommand);
+      this.clearAgentCliResolution(provider, configuredSpec.requestedCommand, workspaceCwd);
       if (isAgentCliResolutionError(error)) {
         this.recordDiagnosticEvent('agentCli/commandResolutionFailed', {
           provider,
@@ -4919,10 +4979,7 @@ function normalizeMetadata(
       typeof agent.resumeStoragePath === 'string'
         ? agent.resumeStoragePath
         : undefined;
-    const resumeSupported =
-      typeof agent.resumeSupported === 'boolean'
-        ? resumeStrategy !== 'none' && agent.resumeSupported
-        : doesAgentResumeStrategyRequireSupport(resumeStrategy);
+    const resumeSupported = doesAgentResumeStrategyRequireSupport(resumeStrategy);
 
     return {
       agent: {
@@ -5703,8 +5760,8 @@ function doesAgentResumeStrategyRequireSupport(strategy: AgentResumeStrategy): b
   return strategy === 'claude-session-id' || strategy === 'codex-session-id' || strategy === 'fake-provider';
 }
 
-function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeSupported' | 'resumeStrategy' | 'resumeSessionId' | 'resumeStoragePath'>): boolean {
-  if (!metadata.resumeSupported) {
+function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeStrategy' | 'resumeSessionId' | 'resumeStoragePath'>): boolean {
+  if (!doesAgentResumeStrategyRequireSupport(metadata.resumeStrategy)) {
     return false;
   }
 
@@ -5717,6 +5774,16 @@ function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeSup
   }
 
   return false;
+}
+
+function normalizeAgentCliCacheWorkspaceCwd(workspaceCwd: string | undefined): string {
+  const normalizedWorkspaceCwd = workspaceCwd?.trim();
+  if (!normalizedWorkspaceCwd) {
+    return '<no-workspace>';
+  }
+
+  const resolvedWorkspaceCwd = path.resolve(normalizedWorkspaceCwd);
+  return process.platform === 'win32' ? resolvedWorkspaceCwd.toLowerCase() : resolvedWorkspaceCwd;
 }
 
 function shouldResetIdleAgentNode(

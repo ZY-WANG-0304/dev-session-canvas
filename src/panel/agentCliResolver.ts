@@ -193,7 +193,7 @@ function buildRelativePathCandidates(
   return Array.from(candidates);
 }
 
-function isExplicitRelativePath(command: string): boolean {
+export function isExplicitRelativePath(command: string): boolean {
   if (!command) {
     return false;
   }

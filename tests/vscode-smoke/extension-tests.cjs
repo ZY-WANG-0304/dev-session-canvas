@@ -15,6 +15,7 @@ const COMMAND_IDS = {
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
+  testGetAgentCliResolutionCacheKey: 'devSessionCanvas.__test.getAgentCliResolutionCacheKey',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
@@ -117,6 +118,7 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await verifyCodexSessionIdLocator();
+  await verifyAgentCliRelativePathCacheIsolation();
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
   let hostMessages = await getHostMessages();
@@ -191,6 +193,7 @@ async function runTrustedSmoke() {
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
   await verifyLiveRuntimeReconnectFallbackToResume(agentNode.id, terminalNode.id);
+  await verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNode.id, terminalNode.id);
   await verifyLiveRuntimeResumeExitClassification(agentNode.id);
   await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
   await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
@@ -1821,7 +1824,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               runtimeBackend: 'legacy-detached',
               runtimeGuarantee: 'best-effort',
               runtimeSessionId: 'missing-agent-runtime-session',
-              resumeSupported: true,
+              resumeSupported: false,
               resumeStrategy: 'fake-provider',
               resumeSessionId: fallbackSessionId,
               resumeStoragePath: fakeStorageDir,
@@ -1873,6 +1876,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
     const restoredTerminal = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(restoredAgent.metadata.agent.persistenceMode, 'live-runtime');
     assert.ok(restoredAgent.metadata.agent.runtimeSessionId);
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
     assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
     assert.strictEqual(restoredTerminal.metadata.terminal.liveSession, false);
     assert.match(restoredTerminal.summary, /runtime session/);
@@ -1887,6 +1891,100 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
           event.detail?.resumeSessionId === fallbackSessionId
       )
     );
+
+    await ensureAgentStopped(agentNodeId);
+    shouldRestoreBaseline = true;
+  } finally {
+    await setRuntimePersistenceEnabled(false);
+    if (shouldRestoreBaseline) {
+      await setPersistedState(baselineSnapshot.state);
+      await waitForSnapshot((currentState) => {
+        const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+        const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
+        return Boolean(
+          !currentAgent?.metadata?.agent?.liveSession &&
+            currentAgent.metadata?.agent?.resumeSessionId === baselineAgent.metadata?.agent?.resumeSessionId &&
+            currentAgent.metadata?.agent?.resumeStoragePath === baselineAgent.metadata?.agent?.resumeStoragePath &&
+            !currentTerminal?.metadata?.terminal?.liveSession &&
+            currentTerminal.metadata?.terminal?.recentOutput ===
+              baselineTerminal.metadata?.terminal?.recentOutput
+        );
+      }, 20000);
+    }
+    await fs.rm(fakeStorageDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNodeId, terminalNodeId) {
+  await setRuntimePersistenceEnabled(true);
+
+  const baselineSnapshot = await getDebugSnapshot();
+  const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
+  const baselineTerminal = findNodeById(baselineSnapshot, terminalNodeId);
+  let shouldRestoreBaseline = false;
+
+  const fakeStorageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-history-resume-'));
+  const fallbackSessionId = '55555555-5555-4555-8555-555555555555';
+
+  try {
+    await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
+
+    const currentSnapshot = await getDebugSnapshot();
+    const noteNode = findNodeByKind(currentSnapshot, 'note');
+    const agentNode = findNodeById(currentSnapshot, agentNodeId);
+    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+
+    let snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-12T09:40:00.000Z',
+      nodes: [
+        {
+          ...agentNode,
+          status: 'history-restored',
+          summary: '原 Agent live runtime 已断开，将等待恢复。',
+          metadata: {
+            ...agentNode.metadata,
+            agent: {
+              ...agentNode.metadata.agent,
+              provider: 'codex',
+              lifecycle: 'resume-ready',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'history-restored',
+              liveSession: false,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              runtimeSessionId: undefined,
+              resumeSupported: false,
+              resumeStrategy: 'fake-provider',
+              resumeSessionId: fallbackSessionId,
+              resumeStoragePath: fakeStorageDir,
+              pendingLaunch: 'resume',
+              lastRuntimeError: '未找到 runtime session old-runtime-session。',
+              lastResumeError: undefined
+            }
+          }
+        },
+        terminalNode,
+        noteNode
+      ]
+    });
+
+    let restoredAgent = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(restoredAgent.status, 'resume-ready');
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+      );
+    }, 20000);
+
+    restoredAgent = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
 
     await ensureAgentStopped(agentNodeId);
     shouldRestoreBaseline = true;
@@ -2441,6 +2539,40 @@ async function verifyCodexSessionIdLocator() {
   }
 }
 
+async function verifyAgentCliRelativePathCacheIsolation() {
+  const workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-a-'));
+  const workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-b-'));
+
+  try {
+    const relativeKeyA = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: './tools/codex-wrapper',
+      workspaceCwd: workspaceA
+    });
+    const relativeKeyB = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: './tools/codex-wrapper',
+      workspaceCwd: workspaceB
+    });
+    const absoluteKeyA = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceA
+    });
+    const absoluteKeyB = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceB
+    });
+
+    assert.notStrictEqual(relativeKeyA, relativeKeyB);
+    assert.strictEqual(absoluteKeyA, absoluteKeyB);
+  } finally {
+    await fs.rm(workspaceA, { recursive: true, force: true });
+    await fs.rm(workspaceB, { recursive: true, force: true });
+  }
+}
+
 async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
 }
@@ -2464,6 +2596,15 @@ async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutM
     startedAtMs,
     homeDir,
     timeoutMs
+  );
+}
+
+async function getAgentCliResolutionCacheKeyForTest({ provider, requestedCommand, workspaceCwd }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testGetAgentCliResolutionCacheKey,
+    provider,
+    requestedCommand,
+    workspaceCwd
   );
 }
 

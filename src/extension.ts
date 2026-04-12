@@ -153,6 +153,23 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
         });
       }
     ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.getAgentCliResolutionCacheKey,
+      (provider?: unknown, requestedCommand?: unknown, workspaceCwd?: unknown) => {
+        if (provider !== 'codex' && provider !== 'claude') {
+          throw new Error('测试命令 devSessionCanvas.__test.getAgentCliResolutionCacheKey 需要有效的 provider。');
+        }
+        if (typeof requestedCommand !== 'string' || requestedCommand.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.getAgentCliResolutionCacheKey 需要有效的 requestedCommand。');
+        }
+
+        return panelManager.getAgentCliResolutionCacheKeyForTest(
+          provider,
+          requestedCommand,
+          typeof workspaceCwd === 'string' && workspaceCwd.trim().length > 0 ? workspaceCwd : undefined
+        );
+      }
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.waitForCanvasReady, async (surface?: unknown, timeoutMs?: unknown) =>
       panelManager.waitForCanvasReady(
         parseCanvasSurfaceLocation(surface),

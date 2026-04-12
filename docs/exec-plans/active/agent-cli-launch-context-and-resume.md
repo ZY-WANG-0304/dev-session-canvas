@@ -24,6 +24,7 @@
 - [x] 2026-04-12 17:17+08:00 把 `live-runtime` 下 `Agent` 的恢复优先级补成“先 reattach，失败后若持有 provider 显式 session identity 则自动 fallback 到 provider resume”，并补充 smoke 覆盖 `Agent` / `Terminal` 在 reconnect 失败后的分流。
 - [x] 2026-04-12 17:28+08:00 稳定化新增 smoke：修正 Terminal 断言与 baseline 恢复逻辑后，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 再次通过，确认 reconnect fallback 不会污染后续 resume/exit 分类用例。
 - [x] 2026-04-12 17:43+08:00 MR 前补齐最终验证：`npm run build` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 均通过；当前分支相对 `origin/main` 为 `0 behind / 3 ahead`，无需额外 rebase。
+- [x] 2026-04-12 18:34+08:00 处理 MR review blocker：确认“supervisor 回写丢失 `resumeSupported`”与“显式相对路径 CLI cache key 缺少 workspace 身份”两条意见都成立；已修正实现并补充 smoke 覆盖 `stale resumeSupported` 与相对路径 cache key 隔离，重新通过 `npm run typecheck`、`npm run build`、trusted smoke 与 real-reopen smoke。
 
 ## 意外与发现
 
