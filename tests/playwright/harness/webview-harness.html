@@ -11,7 +11,7 @@
     <script>
       (() => {
         const postedMessages = [];
-        let persistedState = {};
+        let persistedState = window.__devSessionCanvasHarnessInitialPersistedState ?? {};
 
         window.acquireVsCodeApi = function acquireVsCodeApi() {
           return {

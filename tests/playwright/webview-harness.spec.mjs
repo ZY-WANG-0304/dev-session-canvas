@@ -7,6 +7,7 @@ const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
 ).href;
 const pageDiagnosticsByPage = new WeakMap();
+const TERMINAL_VIEWPORT_ZOOM = 1.6;
 
 test.beforeEach(async ({ page }) => {
   const pageDiagnostics = {
@@ -483,7 +484,196 @@ test('incoming host error shows a toast in the harness', async ({ page }) => {
   );
 });
 
-async function openHarness(page) {
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const outputLine = '0123456789ABCDEFGHIJKLMNO';
+    const selectionRange = {
+      startCol: 5,
+      endCol: 12
+    };
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: {
+          x: 0,
+          y: 0,
+          zoom: TERMINAL_VIEWPORT_ZOOM
+        }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${outputLine}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await dragTerminalSelection(page, {
+      nodeId,
+      row: 1,
+      ...selectionRange
+    });
+
+    await expect
+      .poll(async () => {
+        const probeNode = await readProbeNode(page, nodeId, 20);
+        return probeNode?.terminalSelectionText ?? null;
+      })
+      .toBe(outputLine.slice(selectionRange.startCol - 1, selectionRange.endCol));
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} drag scroll waits for the visual edge under zoomed React Flow`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const output = createScrollableTerminalOutput(80);
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: {
+          x: 0,
+          y: 0,
+          zoom: TERMINAL_VIEWPORT_ZOOM
+        }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    const bottomProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) => typeof probeNode?.terminalViewportY === 'number' && probeNode.terminalViewportY > 0
+    );
+    const bottomViewportY = bottomProbe.terminalViewportY;
+
+    const scrolledProbe = await scrollTerminalViewport(page, nodeId, -1400, (probeNode) => {
+      return (
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY < bottomViewportY - 4
+      );
+    });
+    const scrolledViewportY = scrolledProbe.terminalViewportY;
+
+    const screen = nodeById(page, nodeId).locator('.xterm-screen');
+    await expect(screen).toBeVisible();
+    const box = await screen.boundingBox();
+    expect(box).not.toBeNull();
+    expect(scrolledProbe.terminalCols).toBeGreaterThan(0);
+    expect(scrolledProbe.terminalRows).toBeGreaterThan(0);
+
+    const cellWidth = box.width / scrolledProbe.terminalCols;
+    const cellHeight = box.height / scrolledProbe.terminalRows;
+    const startX = box.x + 1.5 * cellWidth;
+    const startY = box.y + Math.floor(scrolledProbe.terminalRows / 2) * cellHeight;
+    const insideBottomY = box.y + box.height - Math.max(24, cellHeight * 1.25);
+    const belowBottomY = box.y + box.height + Math.max(18, cellHeight * 0.9);
+
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX, insideBottomY, { steps: 12 });
+    await page.waitForTimeout(250);
+
+    const insideProbe = await readProbeNode(page, nodeId, 20);
+    expect(insideProbe?.terminalViewportY).toBe(scrolledViewportY);
+
+    await page.mouse.move(startX, belowBottomY, { steps: 8 });
+    const outsideProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY > scrolledViewportY
+    );
+    await page.mouse.up();
+
+    expect(outsideProbe.terminalViewportY).toBeGreaterThan(scrolledViewportY);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} right click keeps xterm textarea aligned under zoomed React Flow`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: {
+          x: 0,
+          y: 0,
+          zoom: TERMINAL_VIEWPORT_ZOOM
+        }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: 'context-menu-anchor\r\n',
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    const screen = nodeById(page, nodeId).locator('.xterm-screen');
+    await expect(screen).toBeVisible();
+    const probeNode = await waitForExecutionTerminalReady(page, nodeId);
+    const box = await screen.boundingBox();
+
+    expect(box).not.toBeNull();
+    expect(probeNode.terminalCols).toBeGreaterThan(0);
+    expect(probeNode.terminalRows).toBeGreaterThan(0);
+
+    const cellWidth = box.width / probeNode.terminalCols;
+    const cellHeight = box.height / probeNode.terminalRows;
+    const offsetX = cellWidth * 12.4;
+    const offsetY = cellHeight * 5.6;
+    const clickX = box.x + offsetX;
+    const clickY = box.y + offsetY;
+    const expectedLeft = offsetX / TERMINAL_VIEWPORT_ZOOM - 10;
+    const expectedTop = offsetY / TERMINAL_VIEWPORT_ZOOM - 10;
+
+    await page.mouse.click(clickX, clickY, { button: 'right' });
+    await settleWebview(page, 3);
+
+    const textareaProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (nextProbeNode) =>
+        typeof nextProbeNode?.terminalTextareaLeft === 'number' &&
+        typeof nextProbeNode?.terminalTextareaTop === 'number' &&
+        Math.abs(nextProbeNode.terminalTextareaLeft - expectedLeft) <= 3 &&
+        Math.abs(nextProbeNode.terminalTextareaTop - expectedTop) <= 3
+    );
+
+    expect(Math.abs(textareaProbe.terminalTextareaLeft - expectedLeft)).toBeLessThanOrEqual(3);
+    expect(Math.abs(textareaProbe.terminalTextareaTop - expectedTop)).toBeLessThanOrEqual(3);
+  });
+}
+
+async function openHarness(page, options = {}) {
+  if (options.persistedState !== undefined) {
+    await page.addInitScript((persistedState) => {
+      window.__devSessionCanvasHarnessInitialPersistedState = persistedState;
+    }, options.persistedState);
+  }
+
   await page.goto(harnessUrl);
 
   await expect
@@ -508,6 +698,181 @@ async function clearPostedMessages(page) {
   await page.evaluate(() => {
     window.__devSessionCanvasHarness.clearPostedMessages();
   });
+}
+
+async function requestWebviewProbe(page, delayMs = 0) {
+  const requestId = `probe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  await page.evaluate(
+    ({ nextRequestId, nextDelayMs }) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/testProbeRequest',
+        payload: {
+          requestId: nextRequestId,
+          delayMs: nextDelayMs
+        }
+      });
+    },
+    {
+      nextRequestId: requestId,
+      nextDelayMs: delayMs
+    }
+  );
+
+  await page.waitForFunction((nextRequestId) => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .some(
+        (entry) =>
+          entry.type === 'webview/testProbeResult' &&
+          entry.payload.requestId === nextRequestId
+      );
+  }, requestId);
+
+  return page.evaluate((nextRequestId) => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .find(
+        (entry) =>
+          entry.type === 'webview/testProbeResult' &&
+          entry.payload.requestId === nextRequestId
+      )?.payload.snapshot;
+  }, requestId);
+}
+
+async function readProbeNode(page, nodeId, delayMs = 0) {
+  const snapshot = await requestWebviewProbe(page, delayMs);
+  return snapshot.nodes.find((node) => node.nodeId === nodeId) ?? null;
+}
+
+async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
+  let matchedNode = null;
+
+  await expect
+    .poll(async () => {
+      const probeNode = await readProbeNode(page, nodeId, delayMs);
+      if (!predicate(probeNode)) {
+        return null;
+      }
+
+      matchedNode = probeNode;
+      return 'matched';
+    })
+    .toBe('matched');
+
+  return matchedNode;
+}
+
+async function waitForExecutionTerminalReady(page, nodeId) {
+  let readyNode = null;
+
+  await expect
+    .poll(async () => {
+      readyNode = await readProbeNode(page, nodeId, 20);
+      if (!readyNode?.terminalCols || !readyNode?.terminalRows) {
+        return null;
+      }
+
+      return JSON.stringify({
+        cols: readyNode.terminalCols,
+        rows: readyNode.terminalRows
+      });
+    })
+    .toMatch(/"cols":\d+,"rows":\d+/);
+
+  return readyNode;
+}
+
+async function scrollTerminalViewport(page, nodeId, deltaY, predicate) {
+  const screen = nodeById(page, nodeId).locator('.xterm-screen');
+  await expect(screen).toBeVisible();
+  const box = await screen.boundingBox();
+
+  expect(box).not.toBeNull();
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, deltaY);
+    await settleWebview(page, 2);
+
+    const probeNode = await readProbeNode(page, nodeId, 20);
+    if (predicate(probeNode)) {
+      return probeNode;
+    }
+  }
+
+  throw new Error(`Failed to scroll terminal viewport for node ${nodeId}.`);
+}
+
+async function dispatchExecutionSnapshot(
+  page,
+  {
+    nodeId,
+    kind,
+    output,
+    cols = 96,
+    rows = 28,
+    liveSession = true
+  }
+) {
+  await page.evaluate(
+    (payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionSnapshot',
+        payload
+      });
+    },
+    {
+      nodeId,
+      kind,
+      output,
+      cols,
+      rows,
+      liveSession
+    }
+  );
+}
+
+async function settleWebview(page, frameCount = 2) {
+  await page.evaluate(async (nextFrameCount) => {
+    for (let index = 0; index < nextFrameCount; index += 1) {
+      await new Promise((resolve) => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    }
+  }, frameCount);
+}
+
+async function dragTerminalSelection(
+  page,
+  {
+    nodeId,
+    startCol,
+    endCol,
+    row
+  }
+) {
+  const screen = nodeById(page, nodeId).locator('.xterm-screen');
+  await expect(screen).toBeVisible();
+  const probeNode = await waitForExecutionTerminalReady(page, nodeId);
+  const box = await screen.boundingBox();
+
+  expect(box).not.toBeNull();
+  expect(probeNode).not.toBeNull();
+  expect(probeNode.terminalCols).toBeGreaterThan(0);
+  expect(probeNode.terminalRows).toBeGreaterThan(0);
+
+  const cellWidth = box.width / probeNode.terminalCols;
+  const cellHeight = box.height / probeNode.terminalRows;
+  const y = box.y + (row - 0.5) * cellHeight;
+  const startX = box.x + (startCol - 0.75) * cellWidth;
+  const endX = box.x + (endCol - 0.25) * cellWidth;
+
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(endX, y, { steps: 14 });
+  await page.mouse.up();
+  await settleWebview(page, 3);
 }
 
 async function performTestDomAction(page, action) {
@@ -668,6 +1033,75 @@ function createNoteNodeState() {
       }
     ]
   };
+}
+
+function createLiveExecutionNodeState(kind) {
+  const common = {
+    version: 1,
+    updatedAt: '2026-04-12T00:00:00.000Z',
+    nodes: []
+  };
+
+  if (kind === 'agent') {
+    common.nodes.push({
+      id: 'agent-zoom',
+      kind: 'agent',
+      title: 'Zoom Agent',
+      status: 'running',
+      summary: '验证缩放后的鼠标拖选坐标。',
+      position: { x: 120, y: 140 },
+      size: sizeFor('agent'),
+      metadata: {
+        agent: {
+          backend: 'node-pty',
+          shellPath: 'codex',
+          cwd: '/workspace',
+          liveSession: true,
+          provider: 'codex',
+          runtimeKind: 'pty-cli',
+          resumeSupported: true,
+          resumeStrategy: 'codex-home',
+          lifecycle: 'running',
+          lastCols: 96,
+          lastRows: 28,
+          lastBackendLabel: 'Codex CLI'
+        }
+      }
+    });
+    return common;
+  }
+
+  if (kind === 'terminal') {
+    common.nodes.push({
+      id: 'terminal-zoom',
+      kind: 'terminal',
+      title: 'Zoom Terminal',
+      status: 'live',
+      summary: '验证缩放后的鼠标拖选坐标。',
+      position: { x: 120, y: 140 },
+      size: sizeFor('terminal'),
+      metadata: {
+        terminal: {
+          backend: 'node-pty',
+          shellPath: '/bin/bash',
+          cwd: '/workspace',
+          liveSession: true,
+          lifecycle: 'live',
+          lastCols: 96,
+          lastRows: 28
+        }
+      }
+    });
+    return common;
+  }
+
+  throw new Error(`Unsupported execution kind ${kind}`);
+}
+
+function createScrollableTerminalOutput(lineCount) {
+  return Array.from({ length: lineCount }, (_value, index) => {
+    return `ROW-${String(index).padStart(3, '0')} scroll target`;
+  }).join('\r\n') + '\r\n';
 }
 
 function sizeFor(kind) {

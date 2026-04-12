@@ -9,6 +9,7 @@ import ReactFlow, {
   Controls,
   MiniMap,
   NodeResizer,
+  useViewport,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -117,10 +118,40 @@ type ExecutionHostEvent =
       message: string;
     };
 
+type MouseCoords = [number, number] | undefined;
+interface MouseReportCoords {
+  col: number;
+  row: number;
+  x: number;
+  y: number;
+}
+interface XtermMouseService {
+  getCoords: (
+    event: Pick<MouseEvent, 'clientX' | 'clientY'>,
+    element: HTMLElement,
+    colCount: number,
+    rowCount: number,
+    isSelection?: boolean
+  ) => MouseCoords;
+  getMouseReportCoords: (
+    event: MouseEvent,
+    element: HTMLElement
+  ) => MouseReportCoords | undefined;
+}
+interface XtermSelectionService {
+  _screenElement?: HTMLElement;
+  _getMouseEventScrollAmount?: (event: MouseEvent) => number;
+}
+interface XtermCoreWithMouseInternals {
+  _mouseService?: XtermMouseService;
+  _selectionService?: XtermSelectionService;
+}
+
 const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionEventTarget = new EventTarget();
+const executionTerminalRegistry = new Map<string, Terminal>();
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 
 if (!rootElement) {
@@ -482,6 +513,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const { zoom } = useViewport();
   const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
@@ -498,6 +530,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
+  const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
     cols: agentMetadata.lastCols ?? 96,
     rows: agentMetadata.lastRows ?? 28
@@ -520,6 +553,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [agentMetadata.liveSession]);
 
   useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
     const container = viewportRef.current;
     if (!container) {
       return;
@@ -529,6 +566,64 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
+    executionTerminalRegistry.set(id, terminal);
+
+    const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
+    const mouseService = internalCore?._mouseService;
+    const selectionService = internalCore?._selectionService;
+    const originalGetCoords = mouseService?.getCoords?.bind(mouseService);
+    const originalGetMouseReportCoords = mouseService?.getMouseReportCoords?.bind(mouseService);
+    const originalGetMouseEventScrollAmount = selectionService?._getMouseEventScrollAmount?.bind(selectionService);
+    const terminalElement = terminal.element;
+
+    if (mouseService && originalGetCoords) {
+      mouseService.getCoords = (event, element, colCount, rowCount, isSelection) =>
+        originalGetCoords(
+          createZoomAdjustedMouseEvent(event, element, zoomRef.current),
+          element,
+          colCount,
+          rowCount,
+          isSelection
+        );
+    }
+
+    if (mouseService && originalGetMouseReportCoords) {
+      mouseService.getMouseReportCoords = (event, element) =>
+        originalGetMouseReportCoords(
+          createZoomAdjustedMouseEvent(event, element, zoomRef.current) as MouseEvent,
+          element
+        );
+    }
+
+    if (selectionService && originalGetMouseEventScrollAmount) {
+      selectionService._getMouseEventScrollAmount = (event: MouseEvent): number => {
+        const screenElement = selectionService._screenElement ?? readXtermScreenElement(terminal);
+        if (!screenElement) {
+          return originalGetMouseEventScrollAmount(event);
+        }
+
+        return originalGetMouseEventScrollAmount(
+          createZoomAdjustedMouseEvent(event, screenElement, zoomRef.current) as MouseEvent
+        );
+      };
+    }
+
+    const syncTextareaToScaledMouse = (event: MouseEvent): void => {
+      window.requestAnimationFrame(() => {
+        positionTextareaUnderScaledMouse(event, terminal, zoomRef.current);
+      });
+    };
+    const handleContextMenu = (event: MouseEvent): void => {
+      syncTextareaToScaledMouse(event);
+    };
+    const handleAuxClick = (event: MouseEvent): void => {
+      if (event.button === 1) {
+        syncTextareaToScaledMouse(event);
+      }
+    };
+
+    terminalElement?.addEventListener('contextmenu', handleContextMenu);
+    terminalElement?.addEventListener('auxclick', handleAuxClick);
 
     const fitTerminal = (): void => {
       fitAddon.fit();
@@ -566,9 +661,21 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       dataDisposable.dispose();
       selectionDisposable.dispose();
       resizeObserver.disconnect();
+      terminalElement?.removeEventListener('contextmenu', handleContextMenu);
+      terminalElement?.removeEventListener('auxclick', handleAuxClick);
+      if (mouseService && originalGetCoords) {
+        mouseService.getCoords = originalGetCoords;
+      }
+      if (mouseService && originalGetMouseReportCoords) {
+        mouseService.getMouseReportCoords = originalGetMouseReportCoords;
+      }
+      if (selectionService && originalGetMouseEventScrollAmount) {
+        selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
+      }
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
+      executionTerminalRegistry.delete(id);
       terminal.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
@@ -799,6 +906,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const { zoom } = useViewport();
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
@@ -808,6 +916,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const autoLaunchRef = useRef<string | null>(null);
+  const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
     cols: terminalMetadata.lastCols ?? 96,
     rows: terminalMetadata.lastRows ?? 28
@@ -822,6 +931,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }, [terminalMetadata.lastCols, terminalMetadata.lastRows]);
 
   useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
     const container = viewportRef.current;
     if (!container) {
       return;
@@ -831,6 +944,64 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
+    executionTerminalRegistry.set(id, terminal);
+
+    const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
+    const mouseService = internalCore?._mouseService;
+    const selectionService = internalCore?._selectionService;
+    const originalGetCoords = mouseService?.getCoords?.bind(mouseService);
+    const originalGetMouseReportCoords = mouseService?.getMouseReportCoords?.bind(mouseService);
+    const originalGetMouseEventScrollAmount = selectionService?._getMouseEventScrollAmount?.bind(selectionService);
+    const terminalElement = terminal.element;
+
+    if (mouseService && originalGetCoords) {
+      mouseService.getCoords = (event, element, colCount, rowCount, isSelection) =>
+        originalGetCoords(
+          createZoomAdjustedMouseEvent(event, element, zoomRef.current),
+          element,
+          colCount,
+          rowCount,
+          isSelection
+        );
+    }
+
+    if (mouseService && originalGetMouseReportCoords) {
+      mouseService.getMouseReportCoords = (event, element) =>
+        originalGetMouseReportCoords(
+          createZoomAdjustedMouseEvent(event, element, zoomRef.current) as MouseEvent,
+          element
+        );
+    }
+
+    if (selectionService && originalGetMouseEventScrollAmount) {
+      selectionService._getMouseEventScrollAmount = (event: MouseEvent): number => {
+        const screenElement = selectionService._screenElement ?? readXtermScreenElement(terminal);
+        if (!screenElement) {
+          return originalGetMouseEventScrollAmount(event);
+        }
+
+        return originalGetMouseEventScrollAmount(
+          createZoomAdjustedMouseEvent(event, screenElement, zoomRef.current) as MouseEvent
+        );
+      };
+    }
+
+    const syncTextareaToScaledMouse = (event: MouseEvent): void => {
+      window.requestAnimationFrame(() => {
+        positionTextareaUnderScaledMouse(event, terminal, zoomRef.current);
+      });
+    };
+    const handleContextMenu = (event: MouseEvent): void => {
+      syncTextareaToScaledMouse(event);
+    };
+    const handleAuxClick = (event: MouseEvent): void => {
+      if (event.button === 1) {
+        syncTextareaToScaledMouse(event);
+      }
+    };
+
+    terminalElement?.addEventListener('contextmenu', handleContextMenu);
+    terminalElement?.addEventListener('auxclick', handleAuxClick);
 
     const fitTerminal = (): void => {
       fitAddon.fit();
@@ -868,9 +1039,21 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       dataDisposable.dispose();
       selectionDisposable.dispose();
       resizeObserver.disconnect();
+      terminalElement?.removeEventListener('contextmenu', handleContextMenu);
+      terminalElement?.removeEventListener('auxclick', handleAuxClick);
+      if (mouseService && originalGetCoords) {
+        mouseService.getCoords = originalGetCoords;
+      }
+      if (mouseService && originalGetMouseReportCoords) {
+        mouseService.getMouseReportCoords = originalGetMouseReportCoords;
+      }
+      if (selectionService && originalGetMouseEventScrollAmount) {
+        selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
+      }
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
+      executionTerminalRegistry.delete(id);
       terminal.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
@@ -1842,7 +2025,8 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
     providerValue: readProbeFieldValue(element, 'provider'),
     titleInputValue: readProbeFieldValue(element, 'title'),
-    bodyValue: readProbeFieldValue(element, 'body')
+    bodyValue: readProbeFieldValue(element, 'body'),
+    ...readProbeExecutionTerminalState(nodeId)
   };
 }
 
@@ -1873,6 +2057,42 @@ function readProbeText(element: Element | null): string | null {
 
 function readProbeTextOrUndefined(element: Element | null): string | undefined {
   return readProbeText(element) ?? undefined;
+}
+
+function readProbeExecutionTerminalState(
+  nodeId: string
+): Pick<
+  WebviewProbeNodeSnapshot,
+  | 'terminalSelectionText'
+  | 'terminalCols'
+  | 'terminalRows'
+  | 'terminalViewportY'
+  | 'terminalTextareaLeft'
+  | 'terminalTextareaTop'
+> {
+  const terminal = executionTerminalRegistry.get(nodeId);
+  if (!terminal) {
+    return {};
+  }
+
+  return {
+    terminalSelectionText: terminal.getSelection(),
+    terminalCols: terminal.cols > 0 ? terminal.cols : undefined,
+    terminalRows: terminal.rows > 0 ? terminal.rows : undefined,
+    terminalViewportY:
+      terminal.buffer.active.viewportY >= 0 ? terminal.buffer.active.viewportY : undefined,
+    terminalTextareaLeft: readProbeNumericStyleValue(terminal.textarea?.style.left),
+    terminalTextareaTop: readProbeNumericStyleValue(terminal.textarea?.style.top)
+  };
+}
+
+function readProbeNumericStyleValue(value: string | undefined): number | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 async function performWebviewDomAction(requestId: string, action: WebviewDomAction): Promise<void> {
@@ -2099,6 +2319,51 @@ function createEmbeddedTerminalOptions(): ConstructorParameters<typeof Terminal>
       selectionBackground
     }
   };
+}
+
+function createZoomAdjustedMouseEvent(
+  event: Pick<MouseEvent, 'clientX' | 'clientY'>,
+  element: HTMLElement,
+  zoom: number
+): Pick<MouseEvent, 'clientX' | 'clientY'> {
+  const normalizedZoom = normalizeTerminalViewportZoom(zoom);
+  if (Math.abs(normalizedZoom - 1) < 0.001) {
+    return event;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return {
+    clientX: rect.left + (event.clientX - rect.left) / normalizedZoom,
+    clientY: rect.top + (event.clientY - rect.top) / normalizedZoom
+  };
+}
+
+function normalizeTerminalViewportZoom(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function positionTextareaUnderScaledMouse(
+  event: MouseEvent,
+  terminal: Terminal,
+  zoom: number
+): void {
+  const textarea = terminal.textarea;
+  const screenElement = readXtermScreenElement(terminal);
+  if (!textarea || !screenElement) {
+    return;
+  }
+
+  const adjustedEvent = createZoomAdjustedMouseEvent(event, screenElement, zoom);
+  const rect = screenElement.getBoundingClientRect();
+  textarea.style.width = '20px';
+  textarea.style.height = '20px';
+  textarea.style.left = `${adjustedEvent.clientX - rect.left - 10}px`;
+  textarea.style.top = `${adjustedEvent.clientY - rect.top - 10}px`;
+  textarea.style.zIndex = '1000';
+}
+
+function readXtermScreenElement(terminal: Terminal): HTMLElement | null {
+  return terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? null;
 }
 
 function readCssVariable(styles: CSSStyleDeclaration, variableName: string, fallback: string): string {
