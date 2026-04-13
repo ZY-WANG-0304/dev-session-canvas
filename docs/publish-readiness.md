@@ -20,7 +20,7 @@
 - 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `7.07 MB`、`82 files` 的 VSIX；`npm run test:vsix-smoke` 已再次通过，说明收口后的工件仍能跑通 packaged-payload smoke。
 - 基于当前本地 `working tree` 快照的隔离 `clean checkout` 验证已于 `2026-04-14` 通过：`npm run validate:clean-checkout:vsix -- --source working-tree` 成功产出约 `7.09 MB`、`82 files` 的 VSIX，且 packaged-payload smoke 再次通过。
 - 基于版本已切到 `0.1.0` 的 release head `346c4bf` 的隔离 `clean checkout` 验证也已于 `2026-04-14` 通过：`npm run validate:clean-checkout:vsix -- --ref HEAD` 成功产出 `dev-session-canvas-0.1.0.vsix`，约 `7.09 MB`、`82 files`，且 packaged-payload smoke 再次通过。
-- 公开 GitHub 仓库 `main` 已同步到 `346c4bf`，当前 manifest 中的 `repository` / `homepage` 和 README 里的相对文档链接都已落到真实公开内容，而不是空仓库。
+- 公开 GitHub 仓库 `main` 已同步到非空、可访问的公开内容；这件事与 release head `346c4bf` 的隔离验证是两个独立事实。当前 manifest 中的 `repository` / `homepage` 和 README 里的相对文档链接都已落到真实公开内容，而不是空仓库。
 - 已显式声明 `Restricted Mode` 为有限支持，并通过 `restrictedConfigurations` 保护执行型设置。
 - 已显式声明 `Virtual Workspace` 暂不支持，避免在当前实现尚未适配时误报支持能力。
 - `docs/SECURITY.md` 已补齐专用安全邮箱、响应时限与“只支持最新主线 / 预览版”的支持口径。

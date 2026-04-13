@@ -21,7 +21,8 @@
 - [x] (2026-04-11 22:48 +0800) 运行 `npm run test:vsix-smoke`，确认收口后的 packaged payload 仍可独立启动并跑通 trusted smoke。
 - [x] (2026-04-11 23:02 +0800) 补上 `validate:clean-checkout:vsix` 隔离验证入口和文档说明，为后续 clean-checkout 验证做准备，不直接扰动当前工作树。
 - [x] (2026-04-14 00:57 +0800) 修复隔离 clean-checkout 验证脚本中的缓存目录与 VS Code 下载路径问题，并基于 `--source working-tree` 成功跑通 `npm run validate:clean-checkout:vsix -- --source working-tree`，确认当前本地待发布工作树可在隔离目录中完成 `npm ci`、VSIX 打包与 packaged-payload smoke。
-- [x] (2026-04-14 02:39 +0800) 基于版本已切到 `0.1.0` 的 release head `346c4bf` 再次执行 `npm run validate:clean-checkout:vsix -- --ref HEAD`，确认隔离目录内可稳定产出 `dev-session-canvas-0.1.0.vsix` 并通过 packaged-payload smoke；同时把同一 ref 同步到公开 GitHub 仓库 `main`，让 manifest 链接与 README 中的相对文档链接落到真实内容。
+- [x] (2026-04-14 02:39 +0800) 基于版本已切到 `0.1.0` 的 release head `346c4bf` 再次执行 `npm run validate:clean-checkout:vsix -- --ref HEAD`，确认隔离目录内可稳定产出 `dev-session-canvas-0.1.0.vsix` 并通过 packaged-payload smoke。
+- [x] (2026-04-14 02:44 +0800) 将当时最新的 MR head 同步到公开 GitHub 仓库 `main`，让 manifest 链接与 README 中的相对文档链接落到真实内容；该公开仓库同步 SHA 与 release 验证 SHA 分别记录，不再混写成同一个值。
 - [ ] 若后续待发布实现内容继续变化，再基于新的 release head 重新执行一次 `npm run validate:clean-checkout:vsix`，并决定是否继续对 `node-pty` 做依赖级瘦身。
 
 ## 意外与发现
@@ -155,9 +156,9 @@
     VSIX packaged-payload smoke passed.
     clean checkout 验证完成。临时目录已清理。
 
+    2026-04-14 02:44 同步公开 GitHub 仓库后，可用以下命令核对当时公开仓库 HEAD：
     git ls-remote https://github.com/ZY-WANG-0304/dev-session-canvas.git HEAD refs/heads/main
-    346c4bf8c8605eeea5895eff3840126c594e5d05  HEAD
-    346c4bf8c8605eeea5895eff3840126c594e5d05  refs/heads/main
+    该返回值用于确认公开仓库不再为空，并与当时同步到 GitHub 的 MR head 一致；它会随后续 MR head 更新而变化，因此不作为固定 release 验证 SHA 记录。
 
     隔离验证脚本在 clean checkout 中实际执行了 npm ci、npm run package:vsix 和 npm run test:vsix-smoke。
 
