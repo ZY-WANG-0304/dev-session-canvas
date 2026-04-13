@@ -4,6 +4,15 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {
+  AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
+  createAgentActivityHeuristicState,
+  evaluateAgentWaitingInputTransition,
+  recordAgentOutputHeuristics,
+  resetAgentActivityHeuristics,
+  stripTerminalControlSequences,
+  type AgentActivityHeuristicState
+} from '../common/agentActivityHeuristics';
+import {
   EXTENSION_DISPLAY_NAME,
   STORAGE_KEYS,
   VIEW_IDS
@@ -123,6 +132,7 @@ interface ManagedExecutionSessionBase {
   runtimeSessionId?: string;
   agentProvider?: AgentProviderKind;
   agentResume?: AgentResumeContext;
+  agentActivity?: AgentActivityHeuristicState;
 }
 
 interface LocalExecutionSession extends ManagedExecutionSessionBase {
@@ -2421,6 +2431,64 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.flushLiveExecutionState('agent', nodeId);
   }
 
+  private ensureAgentActivityState(session: ManagedExecutionSession): AgentActivityHeuristicState {
+    if (!session.agentActivity) {
+      session.agentActivity = createAgentActivityHeuristicState();
+    }
+
+    return session.agentActivity;
+  }
+
+  private recordAgentOutputActivity(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    chunk: string
+  ): void {
+    const state = this.ensureAgentActivityState(session);
+    recordAgentOutputHeuristics(state, chunk, session.buffer);
+    this.scheduleAgentInteractiveStateEvaluation(nodeId);
+  }
+
+  private scheduleAgentInteractiveStateEvaluation(nodeId: string): void {
+    const session = this.getExecutionSessions('agent').get(nodeId);
+    if (!session || !isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus)) {
+      return;
+    }
+
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+    }
+
+    session.lifecycleTimer = setTimeout(() => {
+      const current = this.getExecutionSessions('agent').get(nodeId);
+      if (!current || !isAgentLifecycleAwaitingInteractiveState(current.lifecycleStatus)) {
+        return;
+      }
+
+      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      if (evaluation.shouldTransition) {
+        current.lifecycleTimer = undefined;
+        if (current.lifecycleStatus === 'resuming') {
+          current.resumePhaseActive = false;
+        }
+        current.lifecycleStatus = 'waiting-input';
+        this.flushLiveExecutionState('agent', nodeId);
+        this.recordDiagnosticEvent('agent/waitingInputHeuristicMatched', {
+          nodeId,
+          reason: evaluation.reason ?? 'unknown'
+        });
+        return;
+      }
+
+      if (evaluation.shouldKeepPolling) {
+        this.scheduleAgentInteractiveStateEvaluation(nodeId);
+        return;
+      }
+
+      current.lifecycleTimer = undefined;
+    }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
+  }
+
   private async startAgentSessionWithSupervisor(
     nodeId: string,
     normalizedCols: number,
@@ -2783,6 +2851,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumePhaseActive: launchMode === 'resume',
         agentProvider: provider,
         agentResume: resumeContext,
+        agentActivity: createAgentActivityHeuristicState(),
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -2837,28 +2906,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postExecutionSnapshot('agent', nodeId);
       void this.maybeDiscoverCodexResumeSessionId(nodeId, session);
 
-      const queueAgentWaitingInput = (): void => {
-        const activeSession = this.getExecutionSessions('agent').get(nodeId);
-        if (!activeSession || activeSession.lifecycleStatus !== 'running') {
-          return;
-        }
-
-        if (activeSession.lifecycleTimer) {
-          clearTimeout(activeSession.lifecycleTimer);
-        }
-
-        activeSession.lifecycleTimer = setTimeout(() => {
-          const liveSession = this.getExecutionSessions('agent').get(nodeId);
-          if (!liveSession || liveSession.lifecycleStatus !== 'running') {
-            return;
-          }
-
-          liveSession.lifecycleTimer = undefined;
-          liveSession.lifecycleStatus = 'waiting-input';
-          this.flushLiveExecutionState('agent', nodeId);
-        }, 380);
-      };
-
       const handleSessionChunk = (text: string): void => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
@@ -2871,13 +2918,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
-        if (activeSession.lifecycleStatus === 'starting' || activeSession.lifecycleStatus === 'resuming') {
-          if (activeSession.lifecycleStatus === 'resuming') {
-            activeSession.resumePhaseActive = false;
-          }
-          activeSession.lifecycleStatus = 'waiting-input';
-        } else if (activeSession.lifecycleStatus === 'running') {
-          queueAgentWaitingInput();
+        if (
+          activeSession.lifecycleStatus === 'starting' ||
+          activeSession.lifecycleStatus === 'resuming' ||
+          activeSession.lifecycleStatus === 'running'
+        ) {
+          this.recordAgentOutputActivity(nodeId, activeSession, text);
         }
         this.queueExecutionStateSync('agent', nodeId);
         this.postMessage({
@@ -3721,11 +3767,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (kind === 'agent') {
+      const submittedInstruction = isAgentInstructionSubmission(data);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (session.lifecycleStatus !== 'starting' && session.lifecycleStatus !== 'resuming') {
+      if (submittedInstruction) {
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
         this.queueExecutionStateSync('agent', nodeId);
@@ -5885,12 +5933,6 @@ function appendTerminalBuffer(existing: string, nextChunk: string): string {
   return trimStoredTerminalText(`${existing}${nextChunk}`);
 }
 
-function stripTerminalControlSequences(value: string): string {
-  return value
-    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
-    .replace(/\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-}
-
 function extractRecentTerminalOutput(value: string): string {
   const trimmed = value.replace(/\r/g, '').trim();
   if (!trimmed) {
@@ -6061,6 +6103,16 @@ function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeRecon
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
+}
+
+function isAgentLifecycleAwaitingInteractiveState(
+  status: AgentNodeStatus | TerminalNodeStatus
+): boolean {
+  return status === 'starting' || status === 'resuming' || status === 'running';
+}
+
+function isAgentInstructionSubmission(data: string): boolean {
+  return /[\r\n]/.test(data);
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {

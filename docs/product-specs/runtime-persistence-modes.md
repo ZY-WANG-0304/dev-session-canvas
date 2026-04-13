@@ -75,7 +75,7 @@
 - 启动命令、cwd、尺寸与必要环境信息
 - 当前生命周期状态
 - 当前是 `重连中`、已附着 live，还是 `历史恢复`
-- 当前 runtime backend 与 guarantee
+- 当前 runtime backend 与 guarantee（记录到日志与诊断信息，不默认显示在节点 UI 中）
 
 ### 日志与恢复上下文
 
@@ -93,7 +93,7 @@
 - 当系统无法重新附着到 live runtime 时，`Terminal` 会明确进入 `历史恢复`；`Agent` 则会先检查是否已持有 provider 原生显式 session identity，若有则自动降级到 provider resume，否则才进入 `历史恢复` 或 `interrupted`。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
-- 当节点处于 `live-runtime` 时，用户能直接看到当前 runtime backend 与 guarantee，不需要靠环境猜测自己拿到的是 `systemd-user` 还是 `legacy-detached`。
+- 当节点处于 `live-runtime` 时，系统会把当前 runtime backend 与 guarantee 写入日志与诊断信息；节点默认 UI 只保留与当前操作直接相关的状态，不直接暴露 `systemd-user / best-effort` 这类调试字段。
 - 当 `Agent` 在 `live-runtime` 模式下于 VSCode 关闭期间继续执行时，用户下次打开 VSCode 后能看到关闭期间新增的执行结果。
 - 当 `Agent` 没有 provider 原生显式 session identity 时，系统不得使用“最近一次会话”推断来伪装自动恢复；此时节点应退化为 `interrupted` 或历史态。
 - 当用户关闭运行时持久化开关时，下一次关闭 VSCode 后，不再对真实 `Agent` / `Terminal` 进程跨编辑器生命周期存活做承诺。

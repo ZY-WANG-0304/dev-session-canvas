@@ -12,6 +12,7 @@ requested_resume_session_id="${1-}"
 session_dir="${DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH:-}"
 session_file=""
 session_id=""
+initial_prompt_delay_seconds="0.45"
 
 if [[ -n "$session_dir" ]]; then
   mkdir -p "$session_dir"
@@ -42,6 +43,13 @@ else
   echo "[fake-agent] ready pid=$$ session=${session_id}"
 fi
 
+print_prompt() {
+  printf '> '
+}
+
+sleep "$initial_prompt_delay_seconds"
+print_prompt
+
 handle_signal() {
   echo "[fake-agent] received signal"
   exit 0
@@ -68,6 +76,7 @@ while IFS= read -r line; do
       for ((i = 1; i <= burst_count; i += 1)); do
         printf '[fake-agent] burst %03d\n' "$i"
       done
+      print_prompt
       continue
     fi
   fi
@@ -77,8 +86,33 @@ while IFS= read -r line; do
     echo "[fake-agent] sleeping ${sleep_seconds}s"
     sleep "$sleep_seconds"
     echo "[fake-agent] woke after ${sleep_seconds}s"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == slowspin\ * ]]; then
+    spin_count="${line#slowspin }"
+    if [[ "$spin_count" =~ ^[0-9]+$ ]]; then
+      frames=('-' '\\' '|' '/')
+      for ((i = 1; i <= spin_count; i += 1)); do
+        frame_index=$(((i - 1) % ${#frames[@]}))
+        printf '\r[fake-agent] %s slowspin %03d' "${frames[$frame_index]}" "$i"
+        sleep 0.55
+      done
+      printf '\r[fake-agent] slowspin done %03d\n' "$spin_count"
+      print_prompt
+      continue
+    fi
+  fi
+
+  if [[ "$line" == notify\ * ]]; then
+    notify_message="${line#notify }"
+    printf '\033]9;%s\007' "$notify_message"
+    printf '[fake-agent] notified %s\n' "$notify_message"
+    print_prompt
     continue
   fi
 
   echo "[fake-agent] ${line}"
+  print_prompt
 done
