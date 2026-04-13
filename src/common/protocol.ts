@@ -107,6 +107,7 @@ export interface CanvasPrototypeState {
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
+  defaultAgentProvider: AgentProviderKind;
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -120,7 +121,6 @@ export interface WebviewProbeNodeSnapshot {
   renderedHeight: number;
   overlayTitle?: string;
   overlayMessage?: string;
-  providerValue?: string;
   titleInputValue?: string;
   bodyValue?: string;
   terminalSelectionText?: string;
@@ -164,13 +164,6 @@ export type WebviewDomAction =
       delayMs?: number;
     }
   | {
-      kind: 'selectNodeOption';
-      nodeId: string;
-      field: 'provider';
-      value: AgentProviderKind;
-      delayMs?: number;
-    }
-  | {
       kind: 'clickNodeActionButton';
       nodeId: string;
       label: '删除' | '启动' | '停止' | '重启' | '恢复';
@@ -186,6 +179,7 @@ export type WebviewToHostMessage =
       payload: {
         kind: CanvasNodeKind;
         preferredPosition?: CanvasNodePosition;
+        agentProvider?: AgentProviderKind;
       };
     }
   | {
@@ -339,6 +333,7 @@ export type HostToWebviewMessage =
       type: 'host/requestCreateNode';
       payload: {
         kind: CanvasNodeKind;
+        agentProvider?: AgentProviderKind;
       };
     }
   | {
@@ -357,9 +352,14 @@ export type HostToWebviewMessage =
     };
 
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note'];
+const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
+}
+
+export function isAgentProviderKind(value: unknown): value is AgentProviderKind {
+  return typeof value === 'string' && agentProviderKinds.includes(value as AgentProviderKind);
 }
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
@@ -413,8 +413,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       payload.kind === 'agent' &&
       payload.provider !== undefined &&
-      payload.provider !== 'codex' &&
-      payload.provider !== 'claude'
+      !isAgentProviderKind(payload.provider)
     ) {
       return null;
     }
@@ -427,11 +426,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         cols: payload.cols,
         rows: payload.rows,
         resume: payload.resume === true,
-        provider:
-          payload.kind === 'agent' &&
-          (payload.provider === 'codex' || payload.provider === 'claude')
-            ? payload.provider
-            : undefined
+        provider: payload.kind === 'agent' && isAgentProviderKind(payload.provider) ? payload.provider : undefined
       }
     };
   }
@@ -613,7 +608,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       !payload ||
       !isCanvasNodeKind(payload.kind) ||
-      (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition))
+      (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
+      (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider))
     ) {
       return null;
     }
@@ -624,7 +620,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         kind: payload.kind,
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
-          : undefined
+          : undefined,
+        agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined
       }
     };
   }
@@ -673,10 +670,6 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
     return (value.field === 'title' || value.field === 'body') && typeof value.value === 'string';
   }
 
-  if (value.kind === 'selectNodeOption') {
-    return value.field === 'provider' && (value.value === 'codex' || value.value === 'claude');
-  }
-
   if (value.kind === 'clickNodeActionButton') {
       return (
         value.label === '删除' ||
@@ -705,7 +698,6 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     Number.isFinite(value.renderedHeight) &&
     (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
-    (value.providerValue === undefined || typeof value.providerValue === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
     (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&

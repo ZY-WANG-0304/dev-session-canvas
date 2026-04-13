@@ -13,6 +13,7 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
+  CONFIG_KEYS,
   EXTENSION_DISPLAY_NAME,
   STORAGE_KEYS,
   VIEW_IDS
@@ -308,6 +309,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
 
     context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider)) {
+          return;
+        }
+
+        this.postState('host/stateUpdated');
+      })
+    );
+
+    context.subscriptions.push(
       new vscode.Disposable(() => {
         this.disposeRuntimeSupervisorClients();
       })
@@ -391,27 +402,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testDiagnosticEvents.length = 0;
   }
 
-  public createNode(kind: CanvasNodeKind): void {
+  public createNode(kind: CanvasNodeKind, options?: { agentProvider?: AgentProviderKind }): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
         payload: {
-          kind
+          kind,
+          agentProvider: options?.agentProvider
         }
       });
       return;
     }
 
-    this.applyCreateNode(kind);
+    this.applyCreateNode(kind, undefined, {
+      agentProvider: options?.agentProvider
+    });
   }
 
-  public createNodeForTest(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+  public createNodeForTest(
+    kind: CanvasNodeKind,
+    preferredPosition?: CanvasNodePosition,
+    options?: { agentProvider?: AgentProviderKind }
+  ): void {
     if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
       throw new Error('createNodeForTest 仅在测试模式下可用。');
     }
 
     this.applyCreateNode(kind, preferredPosition, {
-      bypassTrust: true
+      bypassTrust: true,
+      agentProvider: options?.agentProvider
     });
   }
 
@@ -1016,7 +1035,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getRuntimeContext(): CanvasRuntimeContext {
     return {
       workspaceTrusted: vscode.workspace.isTrusted,
-      surfaceLocation: this.activeSurface ?? this.getConfiguredSurface()
+      surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
+      defaultAgentProvider: this.getAgentCliConfig().defaultProvider
     };
   }
 
@@ -2194,7 +2214,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/ready':
         return;
       case 'webview/createDemoNode':
-        this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition);
+        this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
+          agentProvider: parsedMessage.payload.agentProvider
+        });
         return;
       case 'webview/moveNode':
         this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
@@ -4184,7 +4206,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private applyCreateNode(
     kind: CanvasNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: { bypassTrust?: boolean }
+    options?: { bypassTrust?: boolean; agentProvider?: AgentProviderKind }
   ): void {
     if (
       isExecutionNodeKind(kind) &&
@@ -4197,7 +4219,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const nextState = createNextState(
       this.state,
       kind,
-      this.getAgentCliConfig().defaultProvider,
+      options?.agentProvider ?? this.getAgentCliConfig().defaultProvider,
       preferredPosition
     );
     const createdNode = nextState.nodes[nextState.nodes.length - 1];
@@ -4378,11 +4400,11 @@ function summarizeDiagnosticInput(data: string): string {
 function createNextState(
   previousState: CanvasPrototypeState,
   kind: CanvasNodeKind,
-  defaultAgentProvider: AgentProviderKind = 'codex',
+  agentProvider: AgentProviderKind = 'codex',
   preferredPosition?: CanvasNodePosition
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
-  const nextNode = createNode(kind, nextIndex, defaultAgentProvider);
+  const nextNode = createNode(kind, nextIndex, agentProvider);
   const resolvedPosition = resolveNewNodePosition(
     previousState.nodes,
     kind,
@@ -4427,7 +4449,7 @@ function defaultStatusForKind(kind: CanvasNodeKind): string {
 function createNode(
   kind: CanvasNodeKind,
   sequence: number,
-  defaultAgentProvider: AgentProviderKind = 'codex'
+  agentProvider: AgentProviderKind = 'codex'
 ): CanvasNodeSummary {
   const titlePrefix = {
     agent: 'Agent',
@@ -4444,7 +4466,7 @@ function createNode(
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
     size: estimatedCanvasNodeFootprint(kind),
-    metadata: createNodeMetadata(kind, id, defaultAgentProvider)
+    metadata: createNodeMetadata(kind, id, agentProvider)
   };
 }
 
@@ -4768,11 +4790,11 @@ function readNextNodeSequence(nodes: CanvasNodeSummary[]): number {
 function createNodeMetadata(
   kind: CanvasNodeKind,
   nodeId: string,
-  defaultAgentProvider: AgentProviderKind = 'codex'
+  agentProvider: AgentProviderKind = 'codex'
 ): CanvasNodeMetadata | undefined {
   if (kind === 'agent') {
     return {
-      agent: createAgentMetadata(defaultAgentProvider)
+      agent: createAgentMetadata(agentProvider)
     };
   }
 

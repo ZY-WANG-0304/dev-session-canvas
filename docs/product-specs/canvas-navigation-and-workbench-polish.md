@@ -30,7 +30,7 @@
 
 - 节点标题栏双击聚焦：
   - 双击节点标题栏的非交互区域后，节点会居中并缩放到适合阅读的尺寸。
-  - 输入框、下拉选择、按钮本身保持原有交互语义，不把双击改成导航动作。
+  - 输入框、按钮本身保持原有交互语义，不把双击改成导航动作。
 - 默认承载面改成 `panel`：
   - `devSessionCanvas.canvas.defaultSurface` 的默认值改为 `panel`。
   - `Dev Session Canvas: 打开画布` 在默认配置下走 `panel` route。
@@ -40,7 +40,7 @@
   - 用户可以按 VSCode 原生方式把该 view 留在底部 Panel，或移动到 Secondary Sidebar。
   - 扩展文案与说明必须承认这是“用户可移动并由 VSCode 记住的位置”，而不是误写成“永远固定在底部 Panel”。
 - 节点与地图视觉原生化：
-  - 标题栏按钮、provider 下拉和状态标签统一收口为更接近 VSCode workbench 的低强调样式。
+  - 标题栏按钮、Agent provider 的只读副标题和状态标签统一收口为更接近 VSCode workbench 的低强调样式。
   - 节点外轮廓从偏白板的大圆角卡片收口到更接近 VSCode editor widget / panel 的小圆角边界。
   - 右下角 minimap 收口为更接近 VSCode workbench widget 的小圆角地图面板，而不是高圆角浮层。
   - `Agent` 与 `Terminal` 的内嵌 `xterm` 主题需跟随 VSCode 当前主题实时刷新，至少覆盖背景、前景、光标、选区与 ANSI 16 色，不要求重建现有会话实例。
@@ -78,7 +78,7 @@
 ### 节点标题栏
 
 - 标题输入框
-- provider 选择器（仅 Agent）
+- provider 标识（仅 Agent，只读）
 - 状态标签
 - 标题栏动作按钮
 - 可触发聚焦的非交互标题栏区域
@@ -95,7 +95,7 @@
 - 在默认设置下执行 `Dev Session Canvas: 打开画布` 时，主画布进入 `panel` route，而不是默认在编辑区打开。
 - 显式 `在编辑区打开画布` 命令仍能把主画布拉回编辑区。
 - 用户把 `panel` route 的 view 移到 Secondary Sidebar 后，再次执行默认打开或显式 `panel` 打开命令时，扩展不会把它错误描述成“固定在底部 Panel”。
-- 双击节点标题栏非交互区域后，节点会在视口中居中，并缩放到适合阅读的尺寸；双击标题输入框、下拉选择或按钮不会触发该动作。
+- 双击节点标题栏非交互区域后，节点会在视口中居中，并缩放到适合阅读的尺寸；双击标题输入框或按钮不会触发该动作。
 - 节点标题栏按钮和状态标签在视觉上更接近 VSCode workbench 的 toolbar / badge 语言，而不再是高圆角大胶囊。
 - 节点外轮廓和 minimap 的圆角、边框与阴影明显更接近 VSCode workbench widget，而不是白板式浮层卡片。
 - VSCode 切换深浅主题后，`Agent` 与 `Terminal` 节点里的 `xterm` 会同步刷新颜色主题；至少背景、前景、光标、选区与 ANSI 16 色不再停留在旧主题。

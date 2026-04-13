@@ -1,12 +1,36 @@
 import * as vscode from 'vscode';
 
 import { locateCodexSessionId } from './common/codexSessionIdLocator';
-import { COMMAND_IDS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
-import { isCanvasNodeKind, isWebviewDomAction, type CanvasNodeKind } from './common/protocol';
+import { COMMAND_IDS, CONFIG_KEYS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
+import {
+  isAgentProviderKind,
+  isCanvasNodeKind,
+  isWebviewDomAction,
+  type AgentProviderKind,
+  type CanvasNodeKind
+} from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
 let activePanelManager: CanvasPanelManager | undefined;
+let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
+
+type CreateNodeRequest = {
+  kind: CanvasNodeKind;
+  agentProvider?: AgentProviderKind;
+};
+
+type CreateNodeQuickPickSelectionId =
+  | 'create-agent-default'
+  | 'create-terminal'
+  | 'create-note'
+  | 'create-agent-codex'
+  | 'create-agent-claude';
+
+interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
+  selectionId?: CreateNodeQuickPickSelectionId;
+  request?: CreateNodeRequest;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
@@ -31,13 +55,15 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   registerCommand(context, COMMAND_IDS.createNode, async () => {
-    const targetKind = await promptCreateNodeKind(panelManager.getSidebarState().creatableKinds);
-    if (!targetKind) {
+    const createRequest = await promptCreateNodeRequest(panelManager.getSidebarState().creatableKinds);
+    if (!createRequest) {
       return;
     }
 
     await panelManager.revealOrCreate();
-    panelManager.createNode(targetKind);
+    panelManager.createNode(createRequest.kind, {
+      agentProvider: createRequest.agentProvider
+    });
   });
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
@@ -71,19 +97,115 @@ function registerCommand(context: vscode.ExtensionContext, commandId: string, ha
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 }
 
-async function promptCreateNodeKind(creatableKinds: CanvasNodeKind[]): Promise<CanvasNodeKind | undefined> {
-  const picked = await vscode.window.showQuickPick(
-    creatableKinds.map((kind) => ({
-      label: humanizeNodeKind(kind),
-      description: describeNodeKind(kind),
-      nodeKind: kind
-    })),
+async function promptCreateNodeRequest(creatableKinds: CanvasNodeKind[]): Promise<CreateNodeRequest | undefined> {
+  const picked = await showQuickPickWithTestOverride(
+    buildCreateNodeQuickPickItems(creatableKinds, getDefaultAgentProvider()),
     {
-      placeHolder: '选择要创建的对象类型'
+      placeHolder: '选择要创建的对象或 Agent 类型'
     }
   );
 
-  return picked?.nodeKind;
+  return picked?.request;
+}
+
+function buildCreateNodeQuickPickItems(
+  creatableKinds: CanvasNodeKind[],
+  defaultAgentProvider: AgentProviderKind
+): CreateNodeQuickPickItem[] {
+  const items: CreateNodeQuickPickItem[] = [];
+
+  const directCreateItems: CreateNodeQuickPickItem[] = [];
+  if (creatableKinds.includes('agent')) {
+    directCreateItems.push({
+      label: `Agent（默认：${providerLabel(defaultAgentProvider)}）`,
+      description: '创建对象',
+      detail: '最快创建一个默认 provider 的 Agent 会话窗口',
+      selectionId: 'create-agent-default',
+      request: {
+        kind: 'agent',
+        agentProvider: defaultAgentProvider
+      }
+    });
+  }
+  if (creatableKinds.includes('terminal')) {
+    directCreateItems.push({
+      label: 'Terminal',
+      description: '创建对象',
+      detail: describeNodeKind('terminal'),
+      selectionId: 'create-terminal',
+      request: {
+        kind: 'terminal'
+      }
+    });
+  }
+  if (creatableKinds.includes('note')) {
+    directCreateItems.push({
+      label: 'Note',
+      description: '创建对象',
+      detail: describeNodeKind('note'),
+      selectionId: 'create-note',
+      request: {
+        kind: 'note'
+      }
+    });
+  }
+
+  if (directCreateItems.length > 0) {
+    items.push({
+      label: '创建对象',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+    items.push(...directCreateItems);
+  }
+
+  if (creatableKinds.includes('agent')) {
+    items.push({
+      label: '按类型创建 Agent',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+    for (const provider of ['codex', 'claude'] as const) {
+      items.push({
+        label: provider === defaultAgentProvider ? `${providerLabel(provider)}（默认）` : providerLabel(provider),
+        description: '按类型创建 Agent',
+        detail: `直接创建一个 ${providerLabel(provider)} 会话窗口`,
+        selectionId: provider === 'claude' ? 'create-agent-claude' : 'create-agent-codex',
+        request: {
+          kind: 'agent',
+          agentProvider: provider
+        }
+      });
+    }
+  }
+
+  return items;
+}
+
+async function showQuickPickWithTestOverride<T extends CreateNodeQuickPickItem>(
+  items: readonly T[],
+  options: vscode.QuickPickOptions
+): Promise<T | undefined> {
+  if (queuedQuickPickSelectionIds.length > 0) {
+    const selectionId = queuedQuickPickSelectionIds.shift();
+    if (!selectionId) {
+      return undefined;
+    }
+
+    const matchedItem = items.find((item) => item.selectionId === selectionId);
+    if (!matchedItem) {
+      throw new Error(`未找到测试 QuickPick 选择项：${selectionId}`);
+    }
+
+    return matchedItem;
+  }
+
+  return vscode.window.showQuickPick(items, options);
+}
+
+function getDefaultAgentProvider(): AgentProviderKind {
+  const configuredProvider = vscode.workspace
+    .getConfiguration()
+    .get<string>(CONFIG_KEYS.agentDefaultProvider, 'codex');
+  return configuredProvider === 'claude' ? 'claude' : 'codex';
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {
@@ -106,6 +228,10 @@ function describeNodeKind(kind: CanvasNodeKind): string {
     case 'note':
       return '可编辑的笔记节点';
   }
+}
+
+function providerLabel(provider: AgentProviderKind): string {
+  return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
 function registerTestCommands(context: vscode.ExtensionContext, panelManager: CanvasPanelManager): void {
@@ -241,12 +367,32 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
         });
       }
     ),
-    vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown) => {
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.setQuickPickSelections, (selectionIds?: unknown) => {
+      if (
+        !Array.isArray(selectionIds) ||
+        selectionIds.some(
+          (value) =>
+            value !== 'create-agent-default' &&
+            value !== 'create-terminal' &&
+            value !== 'create-note' &&
+            value !== 'create-agent-codex' &&
+            value !== 'create-agent-claude'
+        )
+      ) {
+        throw new Error('测试命令 devSessionCanvas.__test.setQuickPickSelections 需要有效的 QuickPick 选择 ID 数组。');
+      }
+
+      queuedQuickPickSelectionIds = selectionIds.slice() as CreateNodeQuickPickSelectionId[];
+      return queuedQuickPickSelectionIds.slice();
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown, agentProvider?: unknown) => {
       if (!isCanvasNodeKind(kind)) {
         throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');
       }
 
-      panelManager.createNodeForTest(kind);
+      panelManager.createNodeForTest(kind, undefined, {
+        agentProvider: isAgentProviderKind(agentProvider) ? agentProvider : undefined
+      });
       return panelManager.getDebugSnapshot();
     }),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, async () => {

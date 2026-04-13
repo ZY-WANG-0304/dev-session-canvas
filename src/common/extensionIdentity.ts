@@ -27,6 +27,7 @@ export const TEST_COMMAND_IDS = {
   simulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   startExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
+  setQuickPickSelections: 'devSessionCanvas.__test.setQuickPickSelections',
   createNode: 'devSessionCanvas.__test.createNode',
   resetState: 'devSessionCanvas.__test.resetState'
 } as const;

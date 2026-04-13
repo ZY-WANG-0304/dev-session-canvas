@@ -429,7 +429,6 @@ body {
   align-items: center;
 }
 
-.agent-provider-select,
 .agent-prompt-input {
   width: 100%;
   box-sizing: border-box;
@@ -438,13 +437,6 @@ body {
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   color: var(--vscode-editor-foreground);
   font: inherit;
-}
-
-.agent-provider-select {
-  flex: 1;
-  min-height: 24px;
-  padding: 0 8px;
-  font-size: 11px;
 }
 
 .agent-prompt-input {
@@ -615,7 +607,6 @@ body {
 .node-text-input:focus,
 .node-textarea:focus,
 .node-select:focus,
-.agent-provider-select:focus,
 .agent-prompt-input:focus,
 .window-title-input:focus,
 .node-document-input:focus {
@@ -678,7 +669,7 @@ body {
 .canvas-context-menu {
   position: fixed;
   z-index: 30;
-  width: min(220px, calc(100vw - 24px));
+  width: min(268px, calc(100vw - 24px));
   display: grid;
   gap: 6px;
   padding: 6px;
@@ -694,6 +685,17 @@ body {
   padding: 6px 8px 4px;
 }
 
+.canvas-context-menu-header.with-back {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+}
+
+.canvas-context-menu-header-copy {
+  display: grid;
+  gap: 2px;
+}
+
 .canvas-context-menu-header strong {
   font-size: 12px;
   font-weight: 600;
@@ -705,13 +707,42 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.canvas-context-menu-header-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font: inherit;
+}
+
+.canvas-context-menu-header-back:hover,
+.canvas-context-menu-header-back:focus-visible {
+  background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
+  outline: none;
+}
+
 .canvas-context-menu-items {
   display: grid;
   gap: 2px;
 }
 
+.canvas-context-menu-split-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+
 .canvas-context-menu-item,
-.canvas-context-menu-dismiss {
+.canvas-context-menu-dismiss,
+.canvas-context-menu-item-secondary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -728,6 +759,8 @@ body {
 
 .canvas-context-menu-item:hover,
 .canvas-context-menu-item:focus-visible,
+.canvas-context-menu-item-secondary:hover,
+.canvas-context-menu-item-secondary:focus-visible,
 .canvas-context-menu-dismiss:hover,
 .canvas-context-menu-dismiss:focus-visible {
   background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
@@ -768,5 +801,12 @@ body {
   justify-content: center;
   padding-top: 4px;
   border-top: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-panel-border)) 84%, transparent);
+  color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-item-secondary {
+  justify-content: center;
+  min-width: 32px;
+  padding-inline: 8px;
   color: var(--vscode-descriptionForeground);
 }

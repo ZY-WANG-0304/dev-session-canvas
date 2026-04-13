@@ -54,7 +54,6 @@ declare function acquireVsCodeApi<T>(): {
 interface LocalUiState {
   selectedNodeId?: string;
   viewport?: Viewport;
-  agentProviderDrafts?: Record<string, AgentProviderKind>;
 }
 
 interface CanvasNodeData {
@@ -66,9 +65,7 @@ interface CanvasNodeData {
   workspaceTrusted: boolean;
   size: CanvasNodeFootprint;
   metadata?: CanvasNodeMetadata;
-  agentProvider?: AgentProviderKind;
   onSelectNode?: (nodeId: string) => void;
-  onAgentProviderChange?: (nodeId: string, value: AgentProviderKind) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -103,6 +100,7 @@ interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
+  view: 'root' | 'agent-provider';
 }
 type ExecutionHostEvent =
   | {
@@ -298,7 +296,8 @@ const EMBEDDED_TERMINAL_DEFAULTS: Record<
 };
 let latestRuntimeContext: CanvasRuntimeContext = {
   workspaceTrusted: false,
-  surfaceLocation: 'editor'
+  surfaceLocation: 'editor',
+  defaultAgentProvider: 'codex'
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -313,15 +312,13 @@ function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
     workspaceTrusted: false,
-    surfaceLocation: latestRuntimeContext.surfaceLocation
+    surfaceLocation: latestRuntimeContext.surfaceLocation,
+    defaultAgentProvider: latestRuntimeContext.defaultAgentProvider
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
     viewport: initialPersistedState.viewport
   }));
-  const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>(
-    () => initialPersistedState.agentProviderDrafts ?? {}
-  );
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -379,7 +376,7 @@ function App(): JSX.Element {
           clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
           break;
         case 'host/requestCreateNode':
-          createNode(message.payload.kind);
+          createNode(message.payload.kind, undefined, message.payload.agentProvider);
           break;
         case 'host/testProbeRequest':
           void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
@@ -416,11 +413,8 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    vscode.setState({
-      ...localUiState,
-      agentProviderDrafts
-    });
-  }, [localUiState, agentProviderDrafts]);
+    vscode.setState(localUiState);
+  }, [localUiState]);
 
   useEffect(() => {
     if (!hostState) {
@@ -436,7 +430,6 @@ function App(): JSX.Element {
           }
         : current
     );
-    setAgentProviderDrafts((current) => pruneAgentProviderDrafts(current, validNodeIds));
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
@@ -451,7 +444,6 @@ function App(): JSX.Element {
           }
         : current
     );
-    setAgentProviderDrafts((current) => removeAgentProviderDraft(current, nodeId));
     postMessage({
       type: 'webview/deleteNode',
       payload: {
@@ -494,7 +486,6 @@ function App(): JSX.Element {
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
     workspaceTrusted,
-    agentProviderDrafts,
     onSelectNode: (nodeId) => {
       if (localUiState.selectedNodeId === nodeId) {
         return;
@@ -503,12 +494,6 @@ function App(): JSX.Element {
       setLocalUiState((current) => ({
         ...current,
         selectedNodeId: nodeId
-      }));
-    },
-    onAgentProviderChange: (nodeId, value) => {
-      setAgentProviderDrafts((current) => ({
-        ...current,
-        [nodeId]: value
       }));
     },
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
@@ -655,7 +640,8 @@ function App(): JSX.Element {
       flowAnchor: {
         x: Math.round(flowAnchor.x),
         y: Math.round(flowAnchor.y)
-      }
+      },
+      view: 'root'
     });
   };
 
@@ -760,14 +746,23 @@ function App(): JSX.Element {
           ref={contextMenuRef}
           screenX={contextMenu.screenX}
           screenY={contextMenu.screenY}
+          view={contextMenu.view}
           kinds={creatableKinds}
-          onCreate={(kind) => {
+          defaultAgentProvider={runtimeContext.defaultAgentProvider}
+          onCreate={(kind, agentProvider) => {
             createNode(
               kind,
-              resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor)
+              resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
+              agentProvider
             );
             closeContextMenu();
           }}
+          onShowAgentProviders={() =>
+            setContextMenu((current) => (current ? { ...current, view: 'agent-provider' } : current))
+          }
+          onBack={() =>
+            setContextMenu((current) => (current ? { ...current, view: 'root' } : current))
+          }
           onClose={closeContextMenu}
         />
       ) : null}
@@ -780,13 +775,18 @@ function App(): JSX.Element {
     </div>
   );
 
-  function createNode(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+  function createNode(
+    kind: CanvasNodeKind,
+    preferredPosition?: CanvasNodePosition,
+    agentProvider?: AgentProviderKind
+  ): void {
     postMessage({
       type: 'webview/createDemoNode',
       payload: {
         kind,
         preferredPosition:
-          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current)
+          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current),
+        agentProvider
       }
     });
   }
@@ -799,15 +799,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }
 
   const { zoom } = useViewport();
-  const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
+  const provider = agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
   const displayStatus = data.status;
   const resumeRequested =
     (lifecycle === 'resume-ready' ||
       lifecycle === 'resume-failed' ||
-      agentMetadata.pendingLaunch === 'resume') &&
-    provider === agentMetadata.provider;
+      agentMetadata.pendingLaunch === 'resume');
   const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -1020,14 +1019,13 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [id]);
 
   const startAgent = (resume = resumeRequested): void => {
-    const executionProvider = resume ? agentMetadata.provider : provider;
     data.onSelectNode?.(id);
     data.onStartExecution?.(
       id,
       'agent',
       terminalSizeRef.current.cols,
       terminalSizeRef.current.rows,
-      executionProvider,
+      provider,
       resume
     );
   };
@@ -1076,23 +1074,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          <select
-            className="agent-provider-select nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="provider"
-            value={provider}
-            disabled={executionBlocked || agentMetadata.liveSession || reattaching}
-            onFocus={() => data.onSelectNode?.(id)}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onKeyDown={stopCanvasEvent}
-            onChange={(event) =>
-              data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
-            }
-          >
-            <option value="codex">Codex</option>
-            <option value="claude">Claude Code</option>
-          </select>
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
@@ -1764,12 +1745,18 @@ const CanvasContextMenu = React.forwardRef<
   {
     screenX: number;
     screenY: number;
+    view: 'root' | 'agent-provider';
     kinds: CanvasNodeKind[];
-    onCreate: (kind: CanvasNodeKind) => void;
+    defaultAgentProvider: AgentProviderKind;
+    onCreate: (kind: CanvasNodeKind, agentProvider?: AgentProviderKind) => void;
+    onShowAgentProviders: () => void;
+    onBack: () => void;
     onClose: () => void;
   }
 >(function CanvasContextMenu(props, ref): JSX.Element {
   const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
+  const providerItems = ['codex', 'claude'] as const;
+  const isProviderView = props.view === 'agent-provider';
 
   return (
     <div
@@ -1787,30 +1774,101 @@ const CanvasContextMenu = React.forwardRef<
         stopCanvasEvent(event);
       }}
     >
-      <div className="canvas-context-menu-header">
-        <strong>新建节点</strong>
-        <span>在当前空白区域快速放置对象</span>
+      <div className={`canvas-context-menu-header${isProviderView ? ' with-back' : ''}`}>
+        {isProviderView ? (
+          <button
+            type="button"
+            className="canvas-context-menu-header-back"
+            data-context-menu-back="true"
+            onClick={props.onBack}
+            aria-label="返回上一级"
+            title="返回上一级"
+          >
+            {'<'}
+          </button>
+        ) : null}
+        <div className="canvas-context-menu-header-copy">
+          <strong>{props.view === 'root' ? '新建节点' : '选择 Agent 类型'}</strong>
+          <span>{props.view === 'root' ? '在当前空白区域快速放置对象' : '选择创建时要绑定的 provider'}</span>
+        </div>
       </div>
       <div className="canvas-context-menu-items">
-        {props.kinds.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            className="canvas-context-menu-item"
-            data-context-menu-kind={kind}
-            onClick={() => props.onCreate(kind)}
-          >
-            <span
-              className="canvas-context-menu-swatch"
-              style={{ backgroundColor: colorForKind(kind) }}
-              aria-hidden="true"
-            />
-            <span className="canvas-context-menu-copy">
-              <strong>{humanizeNodeKind(kind)}</strong>
-              <span>{describeContextMenuKind(kind)}</span>
-            </span>
-          </button>
-        ))}
+        {props.view === 'root'
+          ? props.kinds.map((kind) =>
+              kind === 'agent' ? (
+                <div
+                  key={kind}
+                  className="canvas-context-menu-split-item"
+                  data-context-menu-kind="agent"
+                >
+                  <button
+                    type="button"
+                    className="canvas-context-menu-item"
+                    data-context-menu-agent-action="create-default"
+                    onClick={() => props.onCreate('agent')}
+                  >
+                    <span
+                      className="canvas-context-menu-swatch"
+                      style={{ backgroundColor: colorForKind(kind) }}
+                      aria-hidden="true"
+                    />
+                    <span className="canvas-context-menu-copy">
+                      <strong>{humanizeNodeKind(kind)}</strong>
+                      <span>{describeAgentContextMenuDefault(props.defaultAgentProvider)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="canvas-context-menu-item-secondary"
+                    data-context-menu-agent-action="show-providers"
+                    onClick={props.onShowAgentProviders}
+                    aria-label="选择 Agent 类型"
+                    title="选择 Agent 类型"
+                  >
+                    <span aria-hidden="true">{'>'}</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  key={kind}
+                  type="button"
+                  className="canvas-context-menu-item"
+                  data-context-menu-kind={kind}
+                  onClick={() => props.onCreate(kind)}
+                >
+                  <span
+                    className="canvas-context-menu-swatch"
+                    style={{ backgroundColor: colorForKind(kind) }}
+                    aria-hidden="true"
+                  />
+                  <span className="canvas-context-menu-copy">
+                    <strong>{humanizeNodeKind(kind)}</strong>
+                    <span>{describeContextMenuKind(kind)}</span>
+                  </span>
+                </button>
+              )
+            )
+          : providerItems.map((provider) => (
+              <button
+                key={provider}
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-provider={provider}
+                onClick={() => props.onCreate('agent', provider)}
+              >
+                <span
+                  className="canvas-context-menu-swatch"
+                  style={{ backgroundColor: colorForKind('agent') }}
+                  aria-hidden="true"
+                />
+                <span className="canvas-context-menu-copy">
+                  <strong>
+                    {provider === props.defaultAgentProvider ? `${providerLabel(provider)}（默认）` : providerLabel(provider)}
+                  </strong>
+                  <span>{describeAgentProviderContextMenu(provider, provider === props.defaultAgentProvider)}</span>
+                </span>
+              </button>
+            ))}
       </div>
       <button
         type="button"
@@ -1884,9 +1942,7 @@ function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
   workspaceTrusted: boolean;
-  agentProviderDrafts: Record<string, AgentProviderKind>;
   onSelectNode: (nodeId: string) => void;
-  onAgentProviderChange: (nodeId: string, value: AgentProviderKind) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -1939,9 +1995,7 @@ function toFlowNodes(params: {
         workspaceTrusted: params.workspaceTrusted,
         size,
         metadata: node.metadata,
-        agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
         onSelectNode: params.onSelectNode,
-        onAgentProviderChange: params.onAgentProviderChange,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
@@ -2140,6 +2194,18 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
   }
 }
 
+function describeAgentContextMenuDefault(provider: AgentProviderKind): string {
+  return `默认：${providerLabel(provider)}，直接新建一个可运行的 Agent 会话窗口`;
+}
+
+function describeAgentProviderContextMenu(provider: AgentProviderKind, isDefault: boolean): string {
+  if (isDefault) {
+    return `按默认类型创建 ${providerLabel(provider)} Agent`;
+  }
+
+  return `创建一个 ${providerLabel(provider)} Agent 会话窗口`;
+}
+
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
@@ -2316,38 +2382,6 @@ function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x
   };
 }
 
-function removeAgentProviderDraft(
-  drafts: Record<string, AgentProviderKind>,
-  nodeId: string
-): Record<string, AgentProviderKind> {
-  if (!(nodeId in drafts)) {
-    return drafts;
-  }
-
-  const nextDrafts = { ...drafts };
-  delete nextDrafts[nodeId];
-  return nextDrafts;
-}
-
-function pruneAgentProviderDrafts(
-  drafts: Record<string, AgentProviderKind>,
-  validNodeIds: Set<string>
-): Record<string, AgentProviderKind> {
-  let changed = false;
-  const nextDrafts: Record<string, AgentProviderKind> = {};
-
-  for (const [nodeId, provider] of Object.entries(drafts)) {
-    if (validNodeIds.has(nodeId)) {
-      nextDrafts[nodeId] = provider;
-      continue;
-    }
-
-    changed = true;
-  }
-
-  return changed ? nextDrafts : drafts;
-}
-
 function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }
@@ -2465,7 +2499,6 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     renderedHeight: footprint.height,
     overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
-    providerValue: readProbeFieldValue(element, 'provider'),
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
     ...readProbeExecutionTerminalState(nodeId)
@@ -2580,18 +2613,6 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
-      case 'selectNodeOption': {
-        const field = queryNodeSelectField(action.nodeId, action.field);
-        field.focus();
-        field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-        setControlledFieldValue(field, action.value);
-        field.dispatchEvent(new Event('change', { bubbles: true }));
-        await waitForDomActionFlush();
-        field.blur();
-        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        await waitForDomActionFlush();
-        break;
-      }
       case 'clickNodeActionButton': {
         const button = queryNodeActionButton(action.nodeId, action.label);
         button.focus();
@@ -2645,18 +2666,6 @@ function queryNodeTextField(
   }
 
   throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
-}
-
-function queryNodeSelectField(
-  nodeId: string,
-  fieldName: 'provider'
-): HTMLSelectElement {
-  const field = queryNodeField(nodeId, fieldName);
-  if (field instanceof HTMLSelectElement) {
-    return field;
-  }
-
-  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是下拉选择控件。`);
 }
 
 function queryNodeActionButton(

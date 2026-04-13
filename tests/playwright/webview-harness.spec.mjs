@@ -262,7 +262,7 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   await applyWorkbenchTheme(page, 'dark');
   await bootstrap(page, createCanvasScreenshotState());
 
-  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveValue('codex');
+  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveCount(0);
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toHaveValue('Agent 1');
   await expect(nodeById(page, 'terminal-1').locator('[data-probe-field="title"]')).toHaveValue('Terminal 1');
   await expect(nodeById(page, 'note-1').locator('[data-probe-field="title"]')).toHaveValue('回看 smoke test');
@@ -888,6 +888,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await expect(menu.locator('[data-context-menu-kind="agent"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-agent-action="show-providers"]')).toBeVisible();
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -917,13 +918,164 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
     );
 });
 
-test('switching provider changes the next agent start message', async ({ page }) => {
+test('right-click create menu can drill into agent providers and create claude directly', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1040,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+
+  await menu.locator('[data-context-menu-provider="claude"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 760,
+          y: 305
+        },
+        agentProvider: 'claude'
+      })
+    );
+});
+
+test('right-click create menu creates the default agent without opening the provider list', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1080,
+      y: 540
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="create-default"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 800,
+          y: 325
+        }
+      })
+    );
+});
+
+test('right-click create menu refreshes its default agent label after runtime context changes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  const state = createCanvasScreenshotState();
+  await bootstrap(page, state);
+  await updateHostState(page, state, createRuntimeContext({ defaultAgentProvider: 'claude' }));
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1010,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-agent-action="create-default"]')).toContainText('默认：Claude Code');
+
+  await menu.locator('[data-context-menu-agent-action="create-default"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 730,
+          y: 285
+        }
+      })
+    );
+});
+
+test('agent start message uses the node metadata provider', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createAgentNodeState());
+  await bootstrap(page, createAgentNodeState('claude'));
   await clearPostedMessages(page);
 
   const agentNode = nodeById(page, 'agent-1');
-  await agentNode.locator('[data-probe-field="provider"]').selectOption('claude');
+  await expect(agentNode.locator('[data-probe-field="provider"]')).toHaveCount(0);
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'agent-1',
@@ -1235,6 +1387,7 @@ function createRuntimeContext(overrides = {}) {
   return {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
+    defaultAgentProvider: 'codex',
     ...overrides
   };
 }
@@ -1541,7 +1694,10 @@ function createCanvasScreenshotState() {
   };
 }
 
-function createAgentNodeState() {
+function createAgentNodeState(provider = 'codex') {
+  const backendLabel = provider === 'claude' ? 'Claude Code CLI' : 'Codex CLI';
+  const shellPath = provider === 'claude' ? 'claude' : 'codex';
+
   return {
     version: 1,
     updatedAt: '2026-04-06T00:00:00.000Z',
@@ -1551,19 +1707,19 @@ function createAgentNodeState() {
         kind: 'agent',
         title: '实现自动化测试',
         status: 'idle',
-        summary: '等待启动 Codex CLI。',
+        summary: `等待启动 ${backendLabel}。`,
         position: { x: 120, y: 140 },
         size: sizeFor('agent'),
         metadata: {
           agent: {
             backend: 'node-pty',
-            shellPath: 'codex',
+            shellPath,
             cwd: '/workspace',
             liveSession: false,
-            provider: 'codex',
+            provider,
             lastCols: 96,
             lastRows: 28,
-            lastBackendLabel: 'Codex CLI'
+            lastBackendLabel: backendLabel
           }
         }
       }
