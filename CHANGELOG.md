@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.1 - Public Preview
+## 0.1.0 - Public Preview
 
 这是 DevSessionCanvas 的首个公开 `Preview` 基线版本，目标是让早期用户在 VS Code 中开始体验“用一张画布管理多个开发执行会话”的主路径。
 
