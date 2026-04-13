@@ -18,6 +18,7 @@ import {
   STORAGE_KEYS,
   VIEW_IDS
 } from '../common/extensionIdentity';
+import { resolvePreferredExtensionStoragePath } from '../common/extensionStoragePaths';
 import {
   type AgentNodeStatus,
   type AgentNodeMetadata,
@@ -248,6 +249,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
   public static readonly panelContainerId = VIEW_IDS.panelContainer;
 
+  private readonly rawExtensionStoragePath: string;
+  private readonly resolvedExtensionStoragePath: string;
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private state: CanvasPrototypeState;
@@ -281,12 +284,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.agentCliResolutionCache = readAgentCliResolutionCache(
       context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
     );
+    this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    const storagePathResolution = resolvePreferredExtensionStoragePath(this.rawExtensionStoragePath, {
+      pathExists: (candidatePath) => fs.existsSync(candidatePath)
+    });
+    this.resolvedExtensionStoragePath = storagePathResolution.resolvedPath;
+    if (storagePathResolution.recoveryReason) {
+      this.recordDiagnosticEvent('storage/pathRecovered', {
+        currentPath: storagePathResolution.currentPath,
+        resolvedPath: storagePathResolution.resolvedPath,
+        reason: storagePathResolution.recoveryReason
+      });
+    }
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
-      nodeCount: this.state.nodes.length
+      nodeCount: this.state.nodes.length,
+      storagePath: this.resolvedExtensionStoragePath,
+      rawStoragePath:
+        this.resolvedExtensionStoragePath === this.rawExtensionStoragePath
+          ? undefined
+          : this.rawExtensionStoragePath
     });
     context.subscriptions.push(this.sidebarStateEmitter);
 
@@ -930,9 +950,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private getExtensionStoragePath(): string {
+    return this.resolvedExtensionStoragePath;
+  }
+
   private getPersistedCanvasSnapshotPath(): string {
-    const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
-    return path.join(basePath, 'canvas-state.json');
+    return path.join(this.getExtensionStoragePath(), 'canvas-state.json');
   }
 
   private loadPersistedCanvasSnapshot(): PersistedCanvasSnapshot | undefined {
@@ -1062,7 +1085,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getRuntimeHostBaseStoragePath(): string {
-    return this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    return this.getExtensionStoragePath();
   }
 
   private getRuntimeSupervisorScriptPath(): string {
@@ -2338,8 +2361,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getAgentRuntimeStorageRoot(): string {
-    const basePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
-    return this.ensureRuntimeDirectory(path.join(basePath, 'agent-runtime'));
+    return this.ensureRuntimeDirectory(path.join(this.getExtensionStoragePath(), 'agent-runtime'));
   }
 
   private resolveAgentResumeContext(

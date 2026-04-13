@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Preview 支持边界
+    url: https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/support.md
+    about: 提交 issue 前先确认当前公开 Preview 的受理范围、环境前提和所需信息。
+  - name: 安全问题私密报告
+    url: https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/SECURITY.md
+    about: 安全问题不要走公开 issue，请按 SECURITY 文档中的私密渠道处理。
