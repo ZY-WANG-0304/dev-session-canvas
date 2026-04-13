@@ -13,7 +13,7 @@
 ## 进度
 
 - [x] (2026-04-12 06:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`docs/DESIGN.md` 和分支命名规则，确认本轮属于需要文档同步与实现验证的交付性修复。
-- [x] (2026-04-12 06:52 +0800) 检查当前工作树、切出主题分支 `webview-xterm-zoom-coordinate-alignment`，并确认当前仓库存在一份未提交的缩放交互研究文档。
+- [x] (2026-04-12 06:52 +0800) 检查当前工作树、切出主题分支 `webview-xterm-zoom-coordinate-alignment`，并复核先前研究阶段的 overlay 倾向已被新的产品约束取代，不再作为当前实现路线。
 - [x] (2026-04-12 06:52 +0800) 复核 `src/webview/main.tsx` 与 `@xterm/xterm` 依赖源码，确认必须同时覆盖 `getCoords`、`getMouseReportCoords`、拖选越界滚动和右键 textarea 定位。
 - [x] (2026-04-12 06:52 +0800) 更新正式设计文档，把“节点内缩放 + 鼠标坐标补偿”写成当前选定路线，并登记到设计索引。
 - [x] (2026-04-12 07:07 +0800) 在 `src/webview/main.tsx` 中为 `Terminal` 与 `Agent` 节点补齐缩放坐标补偿，并覆盖统一鼠标入口、拖选越界滚动与 textarea 定位。

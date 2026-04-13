@@ -13,7 +13,6 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/execution-node-zoom-coordinate-alignment.md
-  - docs/exec-plans/completed/execution-node-zoom-interaction-research.md
 updated_at: 2026-04-12
 ---
 
@@ -140,7 +139,7 @@ updated_at: 2026-04-12
 - 本轮不引入 overlay、默认 drawer/pane，也不把修复扩张成新的共享 `xterm` 适配层。
 - 这条结论同时适用于 `Terminal` 和 `Agent`，因为两者当前都使用相同的 `xterm.js` 节点内运行时表面。
 
-这份文档取代了 2026-04-11 研究阶段在“产品是否允许终端脱离节点缩放”上的旧假设。旧研究保留为历史输入，但不再代表当前实现结论。
+这份文档取代了 2026-04-11 研究阶段在“产品是否允许终端脱离节点缩放”上的旧假设。先前研究阶段的 overlay 倾向不再代表当前实现结论，也不再作为仓库正式跟踪的设计产物。
 
 ## 8. 风险与取舍
 
