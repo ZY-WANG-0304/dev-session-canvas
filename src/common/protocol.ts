@@ -107,6 +107,7 @@ export interface CanvasPrototypeState {
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
+  defaultAgentProvider: AgentProviderKind;
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -186,6 +187,7 @@ export type WebviewToHostMessage =
       payload: {
         kind: CanvasNodeKind;
         preferredPosition?: CanvasNodePosition;
+        agentProvider?: AgentProviderKind;
       };
     }
   | {
@@ -339,6 +341,7 @@ export type HostToWebviewMessage =
       type: 'host/requestCreateNode';
       payload: {
         kind: CanvasNodeKind;
+        agentProvider?: AgentProviderKind;
       };
     }
   | {
@@ -357,9 +360,14 @@ export type HostToWebviewMessage =
     };
 
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note'];
+const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
+}
+
+export function isAgentProviderKind(value: unknown): value is AgentProviderKind {
+  return typeof value === 'string' && agentProviderKinds.includes(value as AgentProviderKind);
 }
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
@@ -413,8 +421,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       payload.kind === 'agent' &&
       payload.provider !== undefined &&
-      payload.provider !== 'codex' &&
-      payload.provider !== 'claude'
+      !isAgentProviderKind(payload.provider)
     ) {
       return null;
     }
@@ -427,11 +434,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         cols: payload.cols,
         rows: payload.rows,
         resume: payload.resume === true,
-        provider:
-          payload.kind === 'agent' &&
-          (payload.provider === 'codex' || payload.provider === 'claude')
-            ? payload.provider
-            : undefined
+        provider: payload.kind === 'agent' && isAgentProviderKind(payload.provider) ? payload.provider : undefined
       }
     };
   }
@@ -613,7 +616,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       !payload ||
       !isCanvasNodeKind(payload.kind) ||
-      (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition))
+      (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
+      (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider))
     ) {
       return null;
     }
@@ -624,7 +628,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         kind: payload.kind,
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
-          : undefined
+          : undefined,
+        agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined
       }
     };
   }

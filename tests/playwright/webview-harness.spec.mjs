@@ -888,6 +888,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await expect(menu.locator('[data-context-menu-kind="agent"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-agent-action="show-providers"]')).toBeVisible();
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -913,6 +914,107 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
           x: 910,
           y: 360
         }
+      })
+    );
+});
+
+test('right-click create menu can drill into agent providers and create claude directly', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1040,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+
+  await menu.locator('[data-context-menu-provider="claude"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 760,
+          y: 305
+        },
+        agentProvider: 'claude'
+      })
+    );
+});
+
+test('right-click create menu creates the default agent without opening the provider list', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1080,
+      y: 540
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="create-default"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 800,
+          y: 325
+        },
+        agentProvider: 'codex'
       })
     );
 });
@@ -1235,6 +1337,7 @@ function createRuntimeContext(overrides = {}) {
   return {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
+    defaultAgentProvider: 'codex',
     ...overrides
   };
 }

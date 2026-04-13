@@ -678,7 +678,7 @@ body {
 .canvas-context-menu {
   position: fixed;
   z-index: 30;
-  width: min(220px, calc(100vw - 24px));
+  width: min(268px, calc(100vw - 24px));
   display: grid;
   gap: 6px;
   padding: 6px;
@@ -710,8 +710,15 @@ body {
   gap: 2px;
 }
 
+.canvas-context-menu-split-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+
 .canvas-context-menu-item,
-.canvas-context-menu-dismiss {
+.canvas-context-menu-dismiss,
+.canvas-context-menu-item-secondary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -728,6 +735,8 @@ body {
 
 .canvas-context-menu-item:hover,
 .canvas-context-menu-item:focus-visible,
+.canvas-context-menu-item-secondary:hover,
+.canvas-context-menu-item-secondary:focus-visible,
 .canvas-context-menu-dismiss:hover,
 .canvas-context-menu-dismiss:focus-visible {
   background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
@@ -768,5 +777,12 @@ body {
   justify-content: center;
   padding-top: 4px;
   border-top: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-panel-border)) 84%, transparent);
+  color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-item-secondary {
+  justify-content: center;
+  min-width: 48px;
+  padding-inline: 10px;
   color: var(--vscode-descriptionForeground);
 }

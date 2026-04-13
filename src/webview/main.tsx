@@ -103,6 +103,7 @@ interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
+  view: 'root' | 'agent-provider';
 }
 type ExecutionHostEvent =
   | {
@@ -298,7 +299,8 @@ const EMBEDDED_TERMINAL_DEFAULTS: Record<
 };
 let latestRuntimeContext: CanvasRuntimeContext = {
   workspaceTrusted: false,
-  surfaceLocation: 'editor'
+  surfaceLocation: 'editor',
+  defaultAgentProvider: 'codex'
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -313,7 +315,8 @@ function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
     workspaceTrusted: false,
-    surfaceLocation: latestRuntimeContext.surfaceLocation
+    surfaceLocation: latestRuntimeContext.surfaceLocation,
+    defaultAgentProvider: latestRuntimeContext.defaultAgentProvider
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -379,7 +382,7 @@ function App(): JSX.Element {
           clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
           break;
         case 'host/requestCreateNode':
-          createNode(message.payload.kind);
+          createNode(message.payload.kind, undefined, message.payload.agentProvider);
           break;
         case 'host/testProbeRequest':
           void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
@@ -655,7 +658,8 @@ function App(): JSX.Element {
       flowAnchor: {
         x: Math.round(flowAnchor.x),
         y: Math.round(flowAnchor.y)
-      }
+      },
+      view: 'root'
     });
   };
 
@@ -760,14 +764,23 @@ function App(): JSX.Element {
           ref={contextMenuRef}
           screenX={contextMenu.screenX}
           screenY={contextMenu.screenY}
+          view={contextMenu.view}
           kinds={creatableKinds}
-          onCreate={(kind) => {
+          defaultAgentProvider={runtimeContext.defaultAgentProvider}
+          onCreate={(kind, agentProvider) => {
             createNode(
               kind,
-              resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor)
+              resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
+              agentProvider
             );
             closeContextMenu();
           }}
+          onShowAgentProviders={() =>
+            setContextMenu((current) => (current ? { ...current, view: 'agent-provider' } : current))
+          }
+          onBack={() =>
+            setContextMenu((current) => (current ? { ...current, view: 'root' } : current))
+          }
           onClose={closeContextMenu}
         />
       ) : null}
@@ -780,13 +793,18 @@ function App(): JSX.Element {
     </div>
   );
 
-  function createNode(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
+  function createNode(
+    kind: CanvasNodeKind,
+    preferredPosition?: CanvasNodePosition,
+    agentProvider?: AgentProviderKind
+  ): void {
     postMessage({
       type: 'webview/createDemoNode',
       payload: {
         kind,
         preferredPosition:
-          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current)
+          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current),
+        agentProvider
       }
     });
   }
@@ -1764,12 +1782,17 @@ const CanvasContextMenu = React.forwardRef<
   {
     screenX: number;
     screenY: number;
+    view: 'root' | 'agent-provider';
     kinds: CanvasNodeKind[];
-    onCreate: (kind: CanvasNodeKind) => void;
+    defaultAgentProvider: AgentProviderKind;
+    onCreate: (kind: CanvasNodeKind, agentProvider?: AgentProviderKind) => void;
+    onShowAgentProviders: () => void;
+    onBack: () => void;
     onClose: () => void;
   }
 >(function CanvasContextMenu(props, ref): JSX.Element {
   const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
+  const providerItems = ['codex', 'claude'] as const;
 
   return (
     <div
@@ -1788,30 +1811,95 @@ const CanvasContextMenu = React.forwardRef<
       }}
     >
       <div className="canvas-context-menu-header">
-        <strong>新建节点</strong>
-        <span>在当前空白区域快速放置对象</span>
+        <strong>{props.view === 'root' ? '新建节点' : '选择 Agent 类型'}</strong>
+        <span>{props.view === 'root' ? '在当前空白区域快速放置对象' : '选择创建时要绑定的 provider'}</span>
       </div>
       <div className="canvas-context-menu-items">
-        {props.kinds.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            className="canvas-context-menu-item"
-            data-context-menu-kind={kind}
-            onClick={() => props.onCreate(kind)}
-          >
-            <span
-              className="canvas-context-menu-swatch"
-              style={{ backgroundColor: colorForKind(kind) }}
-              aria-hidden="true"
-            />
-            <span className="canvas-context-menu-copy">
-              <strong>{humanizeNodeKind(kind)}</strong>
-              <span>{describeContextMenuKind(kind)}</span>
-            </span>
-          </button>
-        ))}
+        {props.view === 'root'
+          ? props.kinds.map((kind) =>
+              kind === 'agent' ? (
+                <div
+                  key={kind}
+                  className="canvas-context-menu-split-item"
+                  data-context-menu-kind="agent"
+                >
+                  <button
+                    type="button"
+                    className="canvas-context-menu-item"
+                    data-context-menu-agent-action="create-default"
+                    onClick={() => props.onCreate('agent', props.defaultAgentProvider)}
+                  >
+                    <span
+                      className="canvas-context-menu-swatch"
+                      style={{ backgroundColor: colorForKind(kind) }}
+                      aria-hidden="true"
+                    />
+                    <span className="canvas-context-menu-copy">
+                      <strong>{humanizeNodeKind(kind)}</strong>
+                      <span>{describeAgentContextMenuDefault(props.defaultAgentProvider)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="canvas-context-menu-item-secondary"
+                    data-context-menu-agent-action="show-providers"
+                    onClick={props.onShowAgentProviders}
+                  >
+                    类型
+                  </button>
+                </div>
+              ) : (
+                <button
+                  key={kind}
+                  type="button"
+                  className="canvas-context-menu-item"
+                  data-context-menu-kind={kind}
+                  onClick={() => props.onCreate(kind)}
+                >
+                  <span
+                    className="canvas-context-menu-swatch"
+                    style={{ backgroundColor: colorForKind(kind) }}
+                    aria-hidden="true"
+                  />
+                  <span className="canvas-context-menu-copy">
+                    <strong>{humanizeNodeKind(kind)}</strong>
+                    <span>{describeContextMenuKind(kind)}</span>
+                  </span>
+                </button>
+              )
+            )
+          : providerItems.map((provider) => (
+              <button
+                key={provider}
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-provider={provider}
+                onClick={() => props.onCreate('agent', provider)}
+              >
+                <span
+                  className="canvas-context-menu-swatch"
+                  style={{ backgroundColor: colorForKind('agent') }}
+                  aria-hidden="true"
+                />
+                <span className="canvas-context-menu-copy">
+                  <strong>
+                    {provider === props.defaultAgentProvider ? `${providerLabel(provider)}（默认）` : providerLabel(provider)}
+                  </strong>
+                  <span>{describeAgentProviderContextMenu(provider, provider === props.defaultAgentProvider)}</span>
+                </span>
+              </button>
+            ))}
       </div>
+      {props.view === 'agent-provider' ? (
+        <button
+          type="button"
+          className="canvas-context-menu-dismiss"
+          data-context-menu-back="true"
+          onClick={props.onBack}
+        >
+          返回
+        </button>
+      ) : null}
       <button
         type="button"
         className="canvas-context-menu-dismiss"
@@ -2138,6 +2226,18 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
     case 'note':
       return '新建一个可编辑的笔记节点';
   }
+}
+
+function describeAgentContextMenuDefault(provider: AgentProviderKind): string {
+  return `默认：${providerLabel(provider)}，直接新建一个可运行的 Agent 会话窗口`;
+}
+
+function describeAgentProviderContextMenu(provider: AgentProviderKind, isDefault: boolean): string {
+  if (isDefault) {
+    return `按默认类型创建 ${providerLabel(provider)} Agent`;
+  }
+
+  return `创建一个 ${providerLabel(provider)} Agent 会话窗口`;
 }
 
 function providerLabel(provider: AgentProviderKind): string {

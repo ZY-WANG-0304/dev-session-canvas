@@ -15,7 +15,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-session-surface-alignment.md
   - docs/exec-plans/completed/agent-special-terminal.md
-updated_at: 2026-04-08
+updated_at: 2026-04-13
 ---
 
 # Agent 节点会话窗口设计
@@ -111,7 +111,7 @@ updated_at: 2026-04-08
 - `Agent` 节点的正确产品定义是“画布上的会话窗口”。
 - 主交互必须放在节点内部，右侧检查器最多只承担概况展示，不再是主要操作面。
 - `Agent` 与 `Terminal` 应属于同一类 runtime window 家族；区别不仅在对象语义，也允许延伸到状态机和恢复路径，不要求它们完全共享运行时模型。
-- 新建 `Agent` 节点默认停留在未运行态，允许用户先切换 provider，再显式启动 CLI 会话。
+- `Agent` 节点创建后的自动启动与恢复边界，不再由本文定义；当前以 [docs/design-docs/execution-lifecycle-and-recovery.md](./execution-lifecycle-and-recovery.md) 为准。
 - 第一版最小会话窗口至少包含：
   - 当前 provider 标识
   - 运行状态
@@ -125,6 +125,8 @@ updated_at: 2026-04-08
 - 节点不再以独立 transcript 作为核心产品表面；会话历史主要来自终端 buffer，宿主持久化只保留摘要与退出信息。
 
 与生命周期、恢复和自动启动相关的当前有效结论，进一步以 [docs/design-docs/execution-lifecycle-and-recovery.md](./execution-lifecycle-and-recovery.md) 为准。
+
+围绕“创建前先选 provider，而不是先创建默认节点再切换”的补充交互方案，见 [docs/design-docs/agent-node-creation-provider-selection.md](./agent-node-creation-provider-selection.md)。
 
 ## 7. 风险与取舍
 
