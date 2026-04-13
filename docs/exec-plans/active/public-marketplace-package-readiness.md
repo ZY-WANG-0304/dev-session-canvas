@@ -29,7 +29,7 @@
 - [x] (2026-04-14 04:36 +0800) 同步发布准备文档与设计文档，记录 `remote-ssh-real-reopen` blocker 已修复、当前人工验收无新增问题，以及“发布流水线本轮暂不建设”的当前决策。
 - [x] (2026-04-14 04:40 +0800) 发现新增的 `.github/ISSUE_TEMPLATE` 也被一起打进 VSIX；随后把 `.github/**` 加入排除并扩展 packaged-payload 守卫，最终 worktree 工件收敛到 `43 files` / `1.90 MB`。
 - [x] (2026-04-14 04:45 +0800) 基于当前 `working tree` 快照再次执行 `npm run validate:clean-checkout:vsix -- --source working-tree`，确认隔离目录内也能稳定产出 `43 files` / `1.90 MB` 的 VSIX，并通过 packaged-payload smoke。
-- [ ] 在当前改动形成新的 release head 后，重新执行一次 `npm run validate:clean-checkout:vsix -- --ref <new-head>`，把 `1.90 MB` / `43 files` 版本的隔离证据固定到可追溯提交。
+- [x] (2026-04-14 07:56 +0800) 基于当前 PR head `329d5a0` 再次执行 `npm run validate:clean-checkout:vsix -- --ref HEAD`，确认 `1.90 MB` / `43 files` 版本的最小 Preview 工件已经固定到可追溯提交，并再次通过 packaged-payload smoke。
 
 ## 意外与发现
 
@@ -111,7 +111,7 @@
 - `CONTRIBUTING.md`、`docs/publish-readiness.md` 与设计文档已同步成“Marketplace Preview + VSIX 仅作发布工件”的当前口径。
 - 当前工作树 `npm run package:vsix` 与 `npm run test:vsix-smoke` 均已通过，说明这轮收口没有破坏 packaged payload 主路径。
 - 已补上 `validate:clean-checkout:vsix` 隔离验证入口，后续可在不打扰当前工作树的前提下继续推进 clean-checkout 验证。
-- 当前本地 `working tree` 快照与版本已切到 `0.1.0` 的 release head `346c4bf` 都已经通过隔离 `clean checkout` 打包与 packaged-payload smoke，说明“当前待发布工作树”与“当前公开首发基线 ref”两层验证都已建立。
+- 当前本地 `working tree` 快照、版本已切到 `0.1.0` 的 release head `346c4bf`，以及当前 PR head `329d5a0` 都已经通过隔离 `clean checkout` 打包与 packaged-payload smoke，说明“当前待发布工作树”“上一轮公开基线 ref”和“当前候选发布提交”三层验证都已建立。
 - `.vscodeignore` 已完成第二轮 `node-pty` 依赖级瘦身，当前 VSIX 进一步缩到 `46 files` / `1.90 MB`，且 packaged-payload smoke 现在会显式阻止 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 回流。
 - `.vscodeignore` 已继续排除 `.github/**`，当前 VSIX 最终收敛到 `43 files` / `1.90 MB`，且 packaged-payload smoke 也会阻止 `.github/` 重新回流。
 - GitHub issue 模板与 `docs/support.md` 已补齐，公开 Preview 的普通反馈、安全问题和支持边界说明不再缺入口。
@@ -119,7 +119,7 @@
 
 本轮仍保留三项后续工作：
 
-- 当前 `working tree` 的隔离验证已经补齐；剩余的是在新的 release head 上再次执行 `npm run validate:clean-checkout:vsix`，把 `1.90 MB` / `43 files` 的最新验证结论固定到可追溯 git ref。
+- 当前候选发布提交 `329d5a0` 的隔离验证已经补齐；若真正对外发布使用的是后续 merge commit、tag 或其他最终 release ref，发布前仍需对该 git ref 再执行一次 `npm run validate:clean-checkout:vsix`。
 - Linux、macOS、Windows 本地路径仍缺严格人工验收证据；当前首发主路径人工验收完成，并不自动代表本地三平台矩阵已经收口。
 - Marketplace listing、release notes、升级说明与回滚口径仍待定稿；这些内容需要在真正点击发布前补齐。
 
@@ -209,6 +209,11 @@
 
     npm run validate:clean-checkout:vsix -- --source working-tree
     DONE  Packaged: /tmp/dev-session-canvas-clean-checkout-nKExCF/repo/dev-session-canvas-0.1.0.vsix (43 files, 1.9 MB)
+    Exit code:   0
+    VSIX packaged-payload smoke passed.
+
+    npm run validate:clean-checkout:vsix -- --ref HEAD
+    DONE  Packaged: /tmp/dev-session-canvas-clean-checkout-gQgexd/repo/dev-session-canvas-0.1.0.vsix (43 files, 1.9 MB)
     Exit code:   0
     VSIX packaged-payload smoke passed.
 
