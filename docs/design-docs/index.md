@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/canvas-navigation-and-workbench-polish.md` | 节点快速聚焦、默认 `panel` 主路径、标题栏 workbench 原生化与空白区右键创建的正式交互边界 | VSCode 集成域、画布交互域、协作对象域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/canvas-navigation-and-workbench-polish.md`、`docs/exec-plans/completed/canvas-navigation-and-native-polish.md` | 2026-04-13 |
 | `docs/design-docs/agent-running-state-detection.md` | Agent 节点的 `running` / `waiting-input` 应如何基于 provider 原生事件、结构化输出与 fallback 启发式进行判定 | VSCode 集成域、协作对象域、执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/agent-running-state-detection.md` | 2026-04-13 |
 | `docs/design-docs/agent-cli-launch-context-and-resume.md` | Agent 节点启动时的 repo 上下文、provider 配置继承边界与显式 session resume 规则 | VSCode 集成域、协作对象域、执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/agent-cli-launch-context-and-resume.md` | 2026-04-12 |
 | `docs/design-docs/execution-node-zoom-interaction-surface.md` | 执行节点在继续跟随 React Flow 缩放的前提下，如何修复 `xterm.js` 的鼠标命中、拖选和右键坐标偏移 | 画布交互域、协作对象域、执行编排域 / 画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/execution-node-zoom-coordinate-alignment.md`、`docs/exec-plans/completed/execution-node-zoom-interaction-research.md` | 2026-04-12 |

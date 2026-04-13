@@ -175,7 +175,7 @@ function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions): str
 }
 
 function humanizeSurfaceLocation(surface: CanvasSurfaceLocation): string {
-  return surface === 'panel' ? '面板' : '编辑区';
+  return surface === 'panel' ? '工作台视图' : '编辑区';
 }
 
 function createNonce(): string {

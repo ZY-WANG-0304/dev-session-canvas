@@ -6,6 +6,7 @@ const vscode = require('vscode');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
+  openCanvas: 'devSessionCanvas.openCanvas',
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
@@ -106,12 +107,24 @@ async function createBaseNodes() {
 }
 
 async function runTrustedSmoke() {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  await clearHostMessages();
+
+  let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
+  assert.strictEqual(snapshot.sidebar.configuredSurface, 'panel');
+  assert.strictEqual(snapshot.sidebar.surfaceLocation, 'panel');
+  assert.strictEqual(snapshot.surfaceReady.panel, true);
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
   await clearHostMessages();
 
-  let snapshot = await getDebugSnapshot();
+  snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.activeSurface, 'editor');
+  assert.strictEqual(snapshot.sidebar.configuredSurface, 'panel');
   assert.strictEqual(snapshot.sidebar.canvasSurface, 'visible');
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, true);
   assert.strictEqual(snapshot.surfaceReady.editor, true);

@@ -128,6 +128,16 @@ export interface WebviewProbeNodeSnapshot {
   terminalViewportY?: number;
   terminalTextareaLeft?: number;
   terminalTextareaTop?: number;
+  terminalTheme?: WebviewProbeTerminalThemeSnapshot;
+}
+
+export interface WebviewProbeTerminalThemeSnapshot {
+  background?: string;
+  foreground?: string;
+  cursor?: string;
+  selectionBackground?: string;
+  ansiBlue?: string;
+  ansiBrightWhite?: string;
 }
 
 export interface WebviewProbeSnapshot {
@@ -287,6 +297,9 @@ export type HostToWebviewMessage =
         state: CanvasPrototypeState;
         runtime: CanvasRuntimeContext;
       };
+    }
+  | {
+      type: 'host/themeChanged';
     }
   | {
       type: 'host/error';
@@ -710,7 +723,8 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     (value.terminalTextareaLeft === undefined ||
       (typeof value.terminalTextareaLeft === 'number' && Number.isFinite(value.terminalTextareaLeft))) &&
     (value.terminalTextareaTop === undefined ||
-      (typeof value.terminalTextareaTop === 'number' && Number.isFinite(value.terminalTextareaTop)))
+      (typeof value.terminalTextareaTop === 'number' && Number.isFinite(value.terminalTextareaTop))) &&
+    (value.terminalTheme === undefined || isWebviewProbeTerminalThemeSnapshot(value.terminalTheme))
   );
 }
 
@@ -730,6 +744,18 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
 
 function isTerminalDimension(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isWebviewProbeTerminalThemeSnapshot(value: unknown): value is WebviewProbeTerminalThemeSnapshot {
+  return (
+    isRecord(value) &&
+    (value.background === undefined || typeof value.background === 'string') &&
+    (value.foreground === undefined || typeof value.foreground === 'string') &&
+    (value.cursor === undefined || typeof value.cursor === 'string') &&
+    (value.selectionBackground === undefined || typeof value.selectionBackground === 'string') &&
+    (value.ansiBlue === undefined || typeof value.ansiBlue === 'string') &&
+    (value.ansiBrightWhite === undefined || typeof value.ansiBrightWhite === 'string')
+  );
 }
 
 function isNonNegativeDelay(value: unknown): value is number {

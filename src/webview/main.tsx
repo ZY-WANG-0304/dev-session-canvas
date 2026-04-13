@@ -87,13 +87,21 @@ interface CanvasNodeData {
     content: string;
   }) => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
+type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
+type EmbeddedTerminalTheme = NonNullable<EmbeddedTerminalOptions['theme']>;
 interface CanvasNodeLayoutDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
+}
+interface CanvasContextMenuState {
+  screenX: number;
+  screenY: number;
+  flowAnchor: CanvasNodePosition;
 }
 type ExecutionHostEvent =
   | {
@@ -153,6 +161,9 @@ const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionEventTarget = new EventTarget();
 const executionTerminalRegistry = new Map<string, Terminal>();
 const CANVAS_FIT_VIEW_PADDING = 0.05;
+const NODE_FOCUS_VIEW_PADDING = 0.22;
+const NODE_FOCUS_MAX_ZOOM = 1.15;
+const NODE_FOCUS_MIN_ZOOM = 0.55;
 
 if (!rootElement) {
   throw new Error('Webview root element not found.');
@@ -173,8 +184,10 @@ function App(): JSX.Element {
     () => initialPersistedState.agentProviderDrafts ?? {}
   );
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
+  const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
 
   useEffect(() => {
@@ -186,6 +199,9 @@ function App(): JSX.Element {
         case 'host/stateUpdated':
           setHostState(message.payload.state);
           setRuntimeContext(message.payload.runtime);
+          break;
+        case 'host/themeChanged':
+          scheduleEmbeddedTerminalAppearanceRefresh();
           break;
         case 'host/executionSnapshot':
           emitExecutionHostEvent({
@@ -268,8 +284,8 @@ function App(): JSX.Element {
     setAgentProviderDrafts((current) => pruneAgentProviderDrafts(current, validNodeIds));
   }, [hostState]);
 
-  const selectedNode = hostState?.nodes.find((node) => node.id === localUiState.selectedNodeId);
   const workspaceTrusted = runtimeContext.workspaceTrusted;
+  const creatableKinds: CanvasNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
 
   const deleteNode = (nodeId: string): void => {
     setLocalUiState((current) =>
@@ -287,6 +303,36 @@ function App(): JSX.Element {
         nodeId
       }
     });
+  };
+
+  const closeContextMenu = (): void => {
+    setContextMenu(null);
+  };
+
+  const focusNodeInViewport = (nodeId: string): void => {
+    const reactFlowInstance = reactFlowRef.current;
+    if (!reactFlowInstance?.viewportInitialized) {
+      return;
+    }
+
+    const didFit = reactFlowInstance.fitView({
+      nodes: [{ id: nodeId }],
+      padding: NODE_FOCUS_VIEW_PADDING,
+      maxZoom: NODE_FOCUS_MAX_ZOOM,
+      minZoom: NODE_FOCUS_MIN_ZOOM
+    });
+
+    if (!didFit) {
+      return;
+    }
+
+    const viewport = reactFlowInstance.getViewport();
+    closeContextMenu();
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: nodeId,
+      viewport
+    }));
   };
 
   const baseNodes = toFlowNodes({
@@ -364,6 +410,7 @@ function App(): JSX.Element {
           size
         }
       }),
+    onFocusNodeInViewport: focusNodeInViewport,
     onDeleteNode: deleteNode
   });
   const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
@@ -381,6 +428,7 @@ function App(): JSX.Element {
       return;
     }
 
+    closeContextMenu();
     updateLocalUiState({
       ...localUiState,
       selectedNodeId: node.id
@@ -388,6 +436,7 @@ function App(): JSX.Element {
   };
 
   const handlePaneClick = (): void => {
+    closeContextMenu();
     if (!localUiState.selectedNodeId) {
       return;
     }
@@ -423,8 +472,40 @@ function App(): JSX.Element {
     });
   };
 
+  const handleMoveStart = (): void => {
+    closeContextMenu();
+  };
+
+  const handlePaneContextMenu = (event: React.MouseEvent): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+
+    const reactFlowInstance = reactFlowRef.current;
+    if (!reactFlowInstance?.viewportInitialized) {
+      return;
+    }
+
+    const flowAnchor = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: undefined
+    }));
+    setContextMenu({
+      screenX: event.clientX,
+      screenY: event.clientY,
+      flowAnchor: {
+        x: Math.round(flowAnchor.x),
+        y: Math.round(flowAnchor.y)
+      }
+    });
+  };
+
   useEffect(() => {
-    const selectedNodeId = selectedNode?.id;
+    const selectedNodeId = localUiState.selectedNodeId;
     if (!selectedNodeId) {
       return;
     }
@@ -442,7 +523,37 @@ function App(): JSX.Element {
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [selectedNode?.id]);
+  }, [localUiState.selectedNodeId]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.target instanceof globalThis.Node && contextMenuRef.current?.contains(event.target)) {
+        return;
+      }
+
+      closeContextMenu();
+    };
+
+    const handleWindowKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      closeContextMenu();
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [contextMenu]);
 
   return (
     <div className="canvas-shell">
@@ -461,24 +572,26 @@ function App(): JSX.Element {
         onNodesChange={handleNodesChange}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
+        onMoveStart={handleMoveStart}
         onPaneClick={handlePaneClick}
+        onPaneContextMenu={handlePaneContextMenu}
         onMoveEnd={handleMoveEnd}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
         <MiniMap
-          className="canvas-minimap"
+          className="canvas-corner-panel canvas-minimap"
           position="bottom-right"
-          style={{ width: 210, height: 138 }}
+          style={{ width: 194, height: 126 }}
           pannable
           zoomable
-          nodeColor={(node) => colorForKind((node.data as CanvasNodeData).kind)}
-          nodeStrokeColor={(node) => colorForKind((node.data as CanvasNodeData).kind)}
-          nodeBorderRadius={10}
-          nodeStrokeWidth={1.5}
-          maskColor="rgba(7, 10, 18, 0.62)"
-          maskStrokeColor="rgba(241, 245, 249, 0.92)"
-          maskStrokeWidth={2.5}
+          nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
+          nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
+          nodeBorderRadius={4}
+          nodeStrokeWidth={1.2}
+          maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
+          maskStrokeColor="var(--vscode-focusBorder)"
+          maskStrokeWidth={1.5}
         />
         <Controls
           className="canvas-corner-panel canvas-controls"
@@ -486,6 +599,23 @@ function App(): JSX.Element {
           fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
         />
       </ReactFlow>
+
+      {contextMenu ? (
+        <CanvasContextMenu
+          ref={contextMenuRef}
+          screenX={contextMenu.screenX}
+          screenY={contextMenu.screenY}
+          kinds={creatableKinds}
+          onCreate={(kind) => {
+            createNode(
+              kind,
+              resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor)
+            );
+            closeContextMenu();
+          }}
+          onClose={closeContextMenu}
+        />
+      ) : null}
 
       {errorMessage ? (
         <div className="toast-error" data-toast-kind="error">
@@ -495,13 +625,13 @@ function App(): JSX.Element {
     </div>
   );
 
-  function createNode(kind: CanvasNodeKind): void {
-    const preferredPosition = resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
+  function createNode(kind: CanvasNodeKind, preferredPosition?: CanvasNodePosition): void {
     postMessage({
       type: 'webview/createDemoNode',
       payload: {
         kind,
-        preferredPosition
+        preferredPosition:
+          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current)
       }
     });
   }
@@ -782,7 +912,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
-      <div className="window-chrome">
+      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
           subtitle={agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}
@@ -822,6 +952,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     : '启动'
             }
             onClick={() => (agentMetadata.liveSession ? stopAgent() : startAgent())}
+            tone="primary"
             disabled={executionBlocked || reattaching}
             className="nodrag nopan compact"
             interactive
@@ -1146,7 +1277,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
-      <div className="window-chrome">
+      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
           subtitle={terminalMetadata.shellPath}
@@ -1162,6 +1293,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
+            tone="primary"
             disabled={executionBlocked || reattaching}
             className="nodrag nopan compact"
             interactive
@@ -1323,7 +1455,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
-      <div className="window-chrome">
+      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
           placeholder="Note 标题"
@@ -1445,11 +1577,11 @@ function ActionButton(props: {
   onFocus?: () => void;
 }): JSX.Element {
   const toneClass =
-    props.tone === 'secondary'
-      ? 'secondary'
+    props.tone === 'primary'
+      ? 'primary'
       : props.tone === 'danger'
         ? 'danger'
-        : 'primary';
+        : 'secondary';
 
   return (
     <button
@@ -1471,6 +1603,70 @@ function ActionButton(props: {
     </button>
   );
 }
+
+const CanvasContextMenu = React.forwardRef<
+  HTMLDivElement,
+  {
+    screenX: number;
+    screenY: number;
+    kinds: CanvasNodeKind[];
+    onCreate: (kind: CanvasNodeKind) => void;
+    onClose: () => void;
+  }
+>(function CanvasContextMenu(props, ref): JSX.Element {
+  const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
+
+  return (
+    <div
+      ref={ref}
+      className="canvas-context-menu"
+      data-context-menu="true"
+      style={{
+        left: position.x,
+        top: position.y
+      }}
+      onMouseDown={stopCanvasEvent}
+      onClick={stopCanvasEvent}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        stopCanvasEvent(event);
+      }}
+    >
+      <div className="canvas-context-menu-header">
+        <strong>新建节点</strong>
+        <span>在当前空白区域快速放置对象</span>
+      </div>
+      <div className="canvas-context-menu-items">
+        {props.kinds.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            className="canvas-context-menu-item"
+            data-context-menu-kind={kind}
+            onClick={() => props.onCreate(kind)}
+          >
+            <span
+              className="canvas-context-menu-swatch"
+              style={{ backgroundColor: colorForKind(kind) }}
+              aria-hidden="true"
+            />
+            <span className="canvas-context-menu-copy">
+              <strong>{humanizeNodeKind(kind)}</strong>
+              <span>{describeContextMenuKind(kind)}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="canvas-context-menu-dismiss"
+        onClick={props.onClose}
+      >
+        取消
+      </button>
+    </div>
+  );
+});
 
 function ChromeTitleEditor(props: {
   value: string;
@@ -1554,6 +1750,7 @@ function toFlowNodes(params: {
     content: string;
   }) => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
   return params.nodes.map((node) => {
@@ -1598,6 +1795,7 @@ function toFlowNodes(params: {
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
         onResizeNode: params.onResizeNode,
+        onFocusNodeInViewport: params.onFocusNodeInViewport,
         onDeleteNode: params.onDeleteNode
       }
     };
@@ -1730,11 +1928,19 @@ function resolveCreateNodePreferredPosition(
     x: Math.round(window.innerWidth * 0.5),
     y: Math.round(window.innerHeight * 0.55)
   });
+
+  return resolveCreateNodePreferredPositionFromFlowAnchor(kind, viewportCenter);
+}
+
+function resolveCreateNodePreferredPositionFromFlowAnchor(
+  kind: CanvasNodeKind,
+  flowAnchor: CanvasNodePosition
+): CanvasNodePosition {
   const footprint = estimatedCanvasNodeFootprint(kind);
 
   return {
-    x: Math.round(viewportCenter.x - footprint.width / 2),
-    y: Math.round(viewportCenter.y - footprint.height / 2)
+    x: Math.round(flowAnchor.x - footprint.width / 2),
+    y: Math.round(flowAnchor.y - footprint.height / 2)
   };
 }
 
@@ -1746,6 +1952,36 @@ function colorForKind(kind: CanvasNodeKind): string {
       return '#38bdf8';
     case 'note':
       return '#a78bfa';
+  }
+}
+
+function minimapFillColorForKind(kind: CanvasNodeKind): string {
+  return `color-mix(in srgb, ${colorForKind(kind)} 70%, var(--vscode-editor-background) 30%)`;
+}
+
+function minimapStrokeColorForKind(kind: CanvasNodeKind): string {
+  return `color-mix(in srgb, ${colorForKind(kind)} 82%, var(--vscode-editor-background) 18%)`;
+}
+
+function humanizeNodeKind(kind: CanvasNodeKind): string {
+  switch (kind) {
+    case 'agent':
+      return 'Agent';
+    case 'terminal':
+      return 'Terminal';
+    case 'note':
+      return 'Note';
+  }
+}
+
+function describeContextMenuKind(kind: CanvasNodeKind): string {
+  switch (kind) {
+    case 'agent':
+      return '新建一个可运行的 Agent 会话窗口';
+    case 'terminal':
+      return '新建一个嵌入式终端窗口';
+    case 'note':
+      return '新建一个可编辑的笔记节点';
   }
 }
 
@@ -1897,6 +2133,34 @@ function isDeleteShortcutBlockedTarget(target: EventTarget | null): boolean {
   );
 }
 
+function handleNodeChromeDoubleClick(
+  event: React.MouseEvent<HTMLElement>,
+  nodeId: string,
+  data: CanvasNodeData
+): void {
+  if (isNodeChromeFocusBlockedTarget(event.target)) {
+    return;
+  }
+
+  stopCanvasEvent(event);
+  data.onSelectNode?.(nodeId);
+  data.onFocusNodeInViewport?.(nodeId);
+}
+
+function isNodeChromeFocusBlockedTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && isDeleteShortcutBlockedTarget(target);
+}
+
+function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x: number; y: number } {
+  const maxX = Math.max(12, window.innerWidth - 236);
+  const maxY = Math.max(12, window.innerHeight - 230);
+
+  return {
+    x: Math.min(Math.max(12, screenX), maxX),
+    y: Math.min(Math.max(12, screenY), maxY)
+  };
+}
+
 function removeAgentProviderDraft(
   drafts: Record<string, AgentProviderKind>,
   nodeId: string
@@ -1935,6 +2199,20 @@ function stopCanvasEvent(event: { stopPropagation: () => void }): void {
 
 function emitExecutionHostEvent(detail: ExecutionHostEvent): void {
   executionEventTarget.dispatchEvent(new CustomEvent<ExecutionHostEvent>(EXECUTION_EVENT_NAME, { detail }));
+}
+
+function scheduleEmbeddedTerminalAppearanceRefresh(): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      refreshAllEmbeddedTerminalAppearances();
+    });
+  });
+}
+
+function refreshAllEmbeddedTerminalAppearances(): void {
+  for (const terminal of executionTerminalRegistry.values()) {
+    applyEmbeddedTerminalAppearance(terminal);
+  }
 }
 
 function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
@@ -2025,6 +2303,7 @@ function readProbeExecutionTerminalState(
   | 'terminalViewportY'
   | 'terminalTextareaLeft'
   | 'terminalTextareaTop'
+  | 'terminalTheme'
 > {
   const terminal = executionTerminalRegistry.get(nodeId);
   if (!terminal) {
@@ -2038,7 +2317,25 @@ function readProbeExecutionTerminalState(
     terminalViewportY:
       terminal.buffer.active.viewportY >= 0 ? terminal.buffer.active.viewportY : undefined,
     terminalTextareaLeft: readProbeNumericStyleValue(terminal.textarea?.style.left),
-    terminalTextareaTop: readProbeNumericStyleValue(terminal.textarea?.style.top)
+    terminalTextareaTop: readProbeNumericStyleValue(terminal.textarea?.style.top),
+    terminalTheme: readProbeTerminalTheme(terminal.options.theme)
+  };
+}
+
+function readProbeTerminalTheme(
+  theme: EmbeddedTerminalOptions['theme']
+): WebviewProbeNodeSnapshot['terminalTheme'] | undefined {
+  if (!theme) {
+    return undefined;
+  }
+
+  return {
+    background: theme.background,
+    foreground: theme.foreground,
+    cursor: theme.cursor,
+    selectionBackground: theme.selectionBackground,
+    ansiBlue: theme.blue,
+    ansiBrightWhite: theme.brightWhite
   };
 }
 
@@ -2249,12 +2546,36 @@ function formatTestDomActionError(error: unknown): string {
   return String(error);
 }
 
-function createEmbeddedTerminalOptions(): ConstructorParameters<typeof Terminal>[0] {
+function createEmbeddedTerminalOptions(): EmbeddedTerminalOptions {
+  const appearance = readEmbeddedTerminalAppearance();
+
+  return {
+    allowTransparency: true,
+    cursorBlink: true,
+    convertEol: false,
+    fontFamily: appearance.fontFamily,
+    fontSize: 12.5,
+    scrollback: 4000,
+    theme: appearance.theme
+  };
+}
+
+function readEmbeddedTerminalAppearance(): {
+  fontFamily: string;
+  theme: EmbeddedTerminalTheme;
+} {
   const styles = getComputedStyle(document.documentElement);
   const background = readCssVariable(styles, '--vscode-terminal-background', '#08101f');
   const foreground = readCssVariable(styles, '--vscode-terminal-foreground', '#e5e7eb');
   const cursor = readCssVariable(styles, '--vscode-terminalCursor-foreground', '#38bdf8');
   const selectionBackground = readCssVariable(styles, '--vscode-terminal-selectionBackground', 'rgba(56, 189, 248, 0.24)');
+  const selectionForeground = readCssVariable(styles, '--vscode-terminal-selectionForeground', foreground);
+  const selectionInactiveBackground = readCssVariable(
+    styles,
+    '--vscode-terminal-inactiveSelectionBackground',
+    selectionBackground
+  );
+  const cursorAccent = readCssVariable(styles, '--vscode-terminalCursor-background', background);
   const fontFamily = readCssVariable(
     styles,
     '--vscode-editor-font-family',
@@ -2262,19 +2583,45 @@ function createEmbeddedTerminalOptions(): ConstructorParameters<typeof Terminal>
   );
 
   return {
-    allowTransparency: true,
-    cursorBlink: true,
-    convertEol: false,
     fontFamily,
-    fontSize: 12.5,
-    scrollback: 4000,
     theme: {
       background,
       foreground,
       cursor,
-      selectionBackground
+      cursorAccent,
+      selectionBackground,
+      selectionForeground,
+      selectionInactiveBackground,
+      black: readCssVariable(styles, '--vscode-terminal-ansiBlack', '#000000'),
+      red: readCssVariable(styles, '--vscode-terminal-ansiRed', '#cd3131'),
+      green: readCssVariable(styles, '--vscode-terminal-ansiGreen', '#0dbc79'),
+      yellow: readCssVariable(styles, '--vscode-terminal-ansiYellow', '#e5e510'),
+      blue: readCssVariable(styles, '--vscode-terminal-ansiBlue', '#2472c8'),
+      magenta: readCssVariable(styles, '--vscode-terminal-ansiMagenta', '#bc3fbc'),
+      cyan: readCssVariable(styles, '--vscode-terminal-ansiCyan', '#11a8cd'),
+      white: readCssVariable(styles, '--vscode-terminal-ansiWhite', '#e5e5e5'),
+      brightBlack: readCssVariable(styles, '--vscode-terminal-ansiBrightBlack', '#666666'),
+      brightRed: readCssVariable(styles, '--vscode-terminal-ansiBrightRed', '#f14c4c'),
+      brightGreen: readCssVariable(styles, '--vscode-terminal-ansiBrightGreen', '#23d18b'),
+      brightYellow: readCssVariable(styles, '--vscode-terminal-ansiBrightYellow', '#f5f543'),
+      brightBlue: readCssVariable(styles, '--vscode-terminal-ansiBrightBlue', '#3b8eea'),
+      brightMagenta: readCssVariable(styles, '--vscode-terminal-ansiBrightMagenta', '#d670d6'),
+      brightCyan: readCssVariable(styles, '--vscode-terminal-ansiBrightCyan', '#29b8db'),
+      brightWhite: readCssVariable(styles, '--vscode-terminal-ansiBrightWhite', '#e5e5e5')
     }
   };
+}
+
+function applyEmbeddedTerminalAppearance(terminal: Terminal): void {
+  const appearance = readEmbeddedTerminalAppearance();
+  terminal.options.fontFamily = appearance.fontFamily;
+  terminal.options.theme = {
+    ...appearance.theme
+  };
+
+  if (terminal.rows > 0) {
+    terminal.refresh(0, terminal.rows - 1);
+  }
 }
 
 function createZoomAdjustedMouseEvent(

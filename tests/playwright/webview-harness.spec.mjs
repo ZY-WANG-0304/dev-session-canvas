@@ -8,6 +8,102 @@ const harnessUrl = pathToFileURL(
 ).href;
 const pageDiagnosticsByPage = new WeakMap();
 const TERMINAL_VIEWPORT_ZOOM = 1.6;
+const WORKBENCH_THEME_VARS = {
+  dark: {
+    '--vscode-editor-background': '#1e1e1e',
+    '--vscode-editor-foreground': '#cccccc',
+    '--vscode-sideBar-background': '#181818',
+    '--vscode-editorWidget-background': '#252526',
+    '--vscode-panel-border': '#454545',
+    '--vscode-widget-border': '#454545',
+    '--vscode-focusBorder': '#0078d4',
+    '--vscode-descriptionForeground': '#9d9d9d',
+    '--vscode-icon-foreground': '#c5c5c5',
+    '--vscode-button-background': '#0e639c',
+    '--vscode-button-foreground': '#ffffff',
+    '--vscode-button-hoverBackground': '#1177bb',
+    '--vscode-button-secondaryBackground': '#3a3d41',
+    '--vscode-button-secondaryForeground': '#cccccc',
+    '--vscode-button-secondaryHoverBackground': '#45494e',
+    '--vscode-menu-background': '#252526',
+    '--vscode-menu-foreground': '#cccccc',
+    '--vscode-menu-selectionBackground': '#04395e',
+    '--vscode-menu-selectionForeground': '#ffffff',
+    '--vscode-menu-border': '#454545',
+    '--vscode-terminal-background': '#181818',
+    '--vscode-terminal-foreground': '#cccccc',
+    '--vscode-terminalCursor-foreground': '#aeafad',
+    '--vscode-terminalCursor-background': '#181818',
+    '--vscode-terminal-selectionBackground': 'rgba(38, 79, 120, 0.5)',
+    '--vscode-terminal-selectionForeground': '#ffffff',
+    '--vscode-terminal-inactiveSelectionBackground': 'rgba(38, 79, 120, 0.28)',
+    '--vscode-terminal-ansiBlack': '#000000',
+    '--vscode-terminal-ansiRed': '#cd3131',
+    '--vscode-terminal-ansiGreen': '#0dbc79',
+    '--vscode-terminal-ansiYellow': '#e5e510',
+    '--vscode-terminal-ansiBlue': '#2472c8',
+    '--vscode-terminal-ansiMagenta': '#bc3fbc',
+    '--vscode-terminal-ansiCyan': '#11a8cd',
+    '--vscode-terminal-ansiWhite': '#e5e5e5',
+    '--vscode-terminal-ansiBrightBlack': '#666666',
+    '--vscode-terminal-ansiBrightRed': '#f14c4c',
+    '--vscode-terminal-ansiBrightGreen': '#23d18b',
+    '--vscode-terminal-ansiBrightYellow': '#f5f543',
+    '--vscode-terminal-ansiBrightBlue': '#3b8eea',
+    '--vscode-terminal-ansiBrightMagenta': '#d670d6',
+    '--vscode-terminal-ansiBrightCyan': '#29b8db',
+    '--vscode-terminal-ansiBrightWhite': '#f2f2f2',
+    '--vscode-font-family': "'Segoe UI', sans-serif",
+    '--vscode-editor-font-family': "'Segoe UI', sans-serif"
+  },
+  light: {
+    '--vscode-editor-background': '#ffffff',
+    '--vscode-editor-foreground': '#1f1f1f',
+    '--vscode-sideBar-background': '#f3f3f3',
+    '--vscode-editorWidget-background': '#f8f8f8',
+    '--vscode-panel-border': '#c8c8c8',
+    '--vscode-widget-border': '#c8c8c8',
+    '--vscode-focusBorder': '#005fb8',
+    '--vscode-descriptionForeground': '#616161',
+    '--vscode-icon-foreground': '#424242',
+    '--vscode-button-background': '#005fb8',
+    '--vscode-button-foreground': '#ffffff',
+    '--vscode-button-hoverBackground': '#004a9f',
+    '--vscode-button-secondaryBackground': '#e8e8e8',
+    '--vscode-button-secondaryForeground': '#1f1f1f',
+    '--vscode-button-secondaryHoverBackground': '#dddddd',
+    '--vscode-menu-background': '#ffffff',
+    '--vscode-menu-foreground': '#1f1f1f',
+    '--vscode-menu-selectionBackground': '#cce8ff',
+    '--vscode-menu-selectionForeground': '#1f1f1f',
+    '--vscode-menu-border': '#d4d4d4',
+    '--vscode-terminal-background': '#fdfdfd',
+    '--vscode-terminal-foreground': '#1f1f1f',
+    '--vscode-terminalCursor-foreground': '#424242',
+    '--vscode-terminalCursor-background': '#fdfdfd',
+    '--vscode-terminal-selectionBackground': 'rgba(173, 214, 255, 0.45)',
+    '--vscode-terminal-selectionForeground': '#0f0f0f',
+    '--vscode-terminal-inactiveSelectionBackground': 'rgba(173, 214, 255, 0.24)',
+    '--vscode-terminal-ansiBlack': '#24292e',
+    '--vscode-terminal-ansiRed': '#b31d28',
+    '--vscode-terminal-ansiGreen': '#16825d',
+    '--vscode-terminal-ansiYellow': '#a05a00',
+    '--vscode-terminal-ansiBlue': '#0451a5',
+    '--vscode-terminal-ansiMagenta': '#6f42c1',
+    '--vscode-terminal-ansiCyan': '#0f7b8f',
+    '--vscode-terminal-ansiWhite': '#6a737d',
+    '--vscode-terminal-ansiBrightBlack': '#4b5563',
+    '--vscode-terminal-ansiBrightRed': '#d73a49',
+    '--vscode-terminal-ansiBrightGreen': '#22863a',
+    '--vscode-terminal-ansiBrightYellow': '#b08800',
+    '--vscode-terminal-ansiBrightBlue': '#0366d6',
+    '--vscode-terminal-ansiBrightMagenta': '#8250df',
+    '--vscode-terminal-ansiBrightCyan': '#1b7c83',
+    '--vscode-terminal-ansiBrightWhite': '#111827',
+    '--vscode-font-family': "'Segoe UI', sans-serif",
+    '--vscode-editor-font-family': "'Segoe UI', sans-serif"
+  }
+};
 
 test.beforeEach(async ({ page }) => {
   const pageDiagnostics = {
@@ -99,6 +195,99 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
     caret: 'hide'
   });
 });
+
+test('embedded xterm theme follows workbench theme changes for agent and terminal nodes', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createCanvasScreenshotState());
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      const agentNode = await readProbeNode(page, 'agent-1', 20);
+      const terminalNode = await readProbeNode(page, 'terminal-1', 20);
+
+      return JSON.stringify({
+        agentBackground: agentNode?.terminalTheme?.background,
+        agentForeground: agentNode?.terminalTheme?.foreground,
+        agentAnsiBlue: agentNode?.terminalTheme?.ansiBlue,
+        terminalBackground: terminalNode?.terminalTheme?.background,
+        terminalBrightWhite: terminalNode?.terminalTheme?.ansiBrightWhite
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        agentBackground: WORKBENCH_THEME_VARS.dark['--vscode-terminal-background'],
+        agentForeground: WORKBENCH_THEME_VARS.dark['--vscode-terminal-foreground'],
+        agentAnsiBlue: WORKBENCH_THEME_VARS.dark['--vscode-terminal-ansiBlue'],
+        terminalBackground: WORKBENCH_THEME_VARS.dark['--vscode-terminal-background'],
+        terminalBrightWhite: WORKBENCH_THEME_VARS.dark['--vscode-terminal-ansiBrightWhite']
+      })
+    );
+
+  await applyWorkbenchTheme(page, 'light');
+  await dispatchThemeChanged(page);
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      const agentNode = await readProbeNode(page, 'agent-1', 20);
+      const terminalNode = await readProbeNode(page, 'terminal-1', 20);
+
+      return JSON.stringify({
+        agentBackground: agentNode?.terminalTheme?.background,
+        agentForeground: agentNode?.terminalTheme?.foreground,
+        agentAnsiBlue: agentNode?.terminalTheme?.ansiBlue,
+        terminalBackground: terminalNode?.terminalTheme?.background,
+        terminalBrightWhite: terminalNode?.terminalTheme?.ansiBrightWhite
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        agentBackground: WORKBENCH_THEME_VARS.light['--vscode-terminal-background'],
+        agentForeground: WORKBENCH_THEME_VARS.light['--vscode-terminal-foreground'],
+        agentAnsiBlue: WORKBENCH_THEME_VARS.light['--vscode-terminal-ansiBlue'],
+        terminalBackground: WORKBENCH_THEME_VARS.light['--vscode-terminal-background'],
+        terminalBrightWhite: WORKBENCH_THEME_VARS.light['--vscode-terminal-ansiBrightWhite']
+      })
+    );
+});
+
+for (const themeName of ['dark', 'light']) {
+  test(`minimap viewport contrast stays readable in ${themeName} workbench theme`, async ({ page }) => {
+    await openHarness(page, {
+      persistedState: {
+        viewport: {
+          x: 0,
+          y: 0,
+          zoom: 1.25
+        }
+      }
+    });
+    await applyWorkbenchTheme(page, themeName);
+    await bootstrap(page, createMinimapContrastState());
+    await settleWebview(page, 4);
+
+    const viewportSize = page.viewportSize();
+    expect(viewportSize).not.toBeNull();
+
+    const agentBox = await nodeById(page, 'agent-minimap-left').boundingBox();
+    const terminalBox = await nodeById(page, 'terminal-minimap-right').boundingBox();
+    const noteBox = await nodeById(page, 'note-minimap-bottom').boundingBox();
+
+    expect(agentBox).not.toBeNull();
+    expect(terminalBox).not.toBeNull();
+    expect(noteBox).not.toBeNull();
+    expect(agentBox.x).toBeLessThan(0);
+    expect(terminalBox.x + terminalBox.width).toBeGreaterThan(viewportSize.width);
+    expect(noteBox.y + noteBox.height).toBeGreaterThan(viewportSize.height);
+
+    await expect(page.locator('.canvas-minimap')).toHaveScreenshot(`canvas-minimap-${themeName}.png`, {
+      animations: 'disabled',
+      caret: 'hide'
+    });
+  });
+}
 
 test('agent start button posts a startExecutionSession message', async ({ page }) => {
   await openHarness(page);
@@ -214,6 +403,64 @@ test('editing node titles posts updateNodeTitle for agent, terminal, and note', 
         { nodeId: 'note-1', title: 'Note Heading' }
       ])
     );
+});
+
+test('double-clicking the chrome focus region recenters the node and updates persisted viewport', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'terminal-1',
+      viewport: {
+        x: -420,
+        y: -220,
+        zoom: 0.48
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await settleWebview(page, 4);
+
+  const beforeState = await readPersistedUiState(page);
+  expect(beforeState.viewport).toEqual({
+    x: -420,
+    y: -220,
+    zoom: 0.48
+  });
+
+  await page
+    .locator('[data-node-id="agent-1"] .window-chrome')
+    .dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
+  await settleWebview(page, 6);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).toBe('agent-1');
+  expect(afterState.viewport.zoom).toBeGreaterThan(0.48);
+  expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
+  expect(afterState.viewport.x).not.toBe(beforeState.viewport.x);
+  expect(afterState.viewport.y).not.toBe(beforeState.viewport.y);
+});
+
+test('double-clicking the title input keeps the current viewport unchanged', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: -320,
+        y: -160,
+        zoom: 0.62
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await settleWebview(page, 4);
+
+  const beforeState = await readPersistedUiState(page);
+
+  await nodeById(page, 'agent-1')
+    .locator('[data-probe-field="title"]')
+    .dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
+  await settleWebview(page, 4);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport).toEqual(beforeState.viewport);
 });
 
 test('editing a note body posts updateNoteNode', async ({ page }) => {
@@ -454,6 +701,62 @@ test('deleting a note posts deleteNode', async ({ page }) => {
       });
     })
     .toBe('matched');
+});
+
+test('right-clicking the empty pane opens a quick-create menu near the pointer', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1100,
+      y: 560
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('[data-context-menu-kind="agent"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
+
+  await menu.locator('[data-context-menu-kind="note"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        if (!message) {
+          return null;
+        }
+
+        return JSON.stringify(message.payload);
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'note',
+        preferredPosition: {
+          x: 910,
+          y: 360
+        }
+      })
+    );
 });
 
 test('switching provider changes the next agent start message', async ({ page }) => {
@@ -714,9 +1017,39 @@ async function bootstrap(page, state) {
   }, state);
 }
 
+async function applyWorkbenchTheme(page, themeName) {
+  const colorScheme = themeName === 'dark' ? 'dark' : 'light';
+  await page.emulateMedia({ colorScheme });
+  await page.evaluate(
+    ({ themeVars }) => {
+      for (const [name, value] of Object.entries(themeVars)) {
+        document.documentElement.style.setProperty(name, value);
+      }
+    },
+    {
+      themeVars: WORKBENCH_THEME_VARS[themeName]
+    }
+  );
+  await settleWebview(page, 2);
+}
+
 async function clearPostedMessages(page) {
   await page.evaluate(() => {
     window.__devSessionCanvasHarness.clearPostedMessages();
+  });
+}
+
+async function dispatchThemeChanged(page) {
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/themeChanged'
+    });
+  });
+}
+
+async function readPersistedUiState(page) {
+  return page.evaluate(() => {
+    return window.__devSessionCanvasHarness.getPersistedState();
   });
 }
 
@@ -1025,6 +1358,69 @@ function createAgentNodeState() {
             lastCols: 96,
             lastRows: 28,
             lastBackendLabel: 'Codex CLI'
+          }
+        }
+      }
+    ]
+  };
+}
+
+function createMinimapContrastState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-13T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-minimap-left',
+        kind: 'agent',
+        title: 'Left Edge Agent',
+        status: 'draft',
+        summary: '让 minimap 可视框切过左上边界。',
+        position: { x: -120, y: -20 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'terminal-minimap-right',
+        kind: 'terminal',
+        title: 'Right Edge Terminal',
+        status: 'draft',
+        summary: '让 minimap 可视框切过右边界。',
+        position: { x: 960, y: 40 },
+        size: sizeFor('terminal'),
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            shellPath: '/bin/bash',
+            cwd: '/workspace',
+            liveSession: false,
+            lastCols: 96,
+            lastRows: 28
+          }
+        }
+      },
+      {
+        id: 'note-minimap-bottom',
+        kind: 'note',
+        title: 'Bottom Edge Note',
+        status: 'ready',
+        summary: '让 minimap 可视框切过下边界。',
+        position: { x: 400, y: 650 },
+        size: sizeFor('note'),
+        metadata: {
+          note: {
+            content: 'minimap 对比截图需要明确跨过视口边界。'
           }
         }
       }
