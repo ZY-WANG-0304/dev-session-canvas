@@ -50,6 +50,8 @@ export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarE
 }
 
 function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
+  const surfaceTooltip = describeSurfaceLocationTooltip(state.surfaceLocation);
+
   return [
     {
       id: 'action-open-canvas',
@@ -57,10 +59,10 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
       description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
       tooltip:
         state.canvasSurface === 'visible'
-          ? `${EXTENSION_DISPLAY_NAME} 画布已在当前${humanizeSurfaceLocation(state.surfaceLocation)}可见。`
+          ? `${EXTENSION_DISPLAY_NAME} 画布已在当前${humanizeSurfaceLocation(state.surfaceLocation)}可见。${surfaceTooltip}`
           : state.canvasSurface === 'hidden'
-            ? `${EXTENSION_DISPLAY_NAME} 画布当前位于${humanizeSurfaceLocation(state.surfaceLocation)}，但不在前台。`
-            : `当前还没有在${humanizeSurfaceLocation(state.surfaceLocation)}打开 ${EXTENSION_DISPLAY_NAME} 画布。`,
+            ? `${EXTENSION_DISPLAY_NAME} 画布当前位于${humanizeSurfaceLocation(state.surfaceLocation)}，但不在前台。${surfaceTooltip}`
+            : `当前还没有在${humanizeSurfaceLocation(state.surfaceLocation)}打开 ${EXTENSION_DISPLAY_NAME} 画布。${surfaceTooltip}`,
       command: getOpenCanvasCommand(state),
       icon: new vscode.ThemeIcon('layout')
     },
@@ -91,14 +93,14 @@ function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
       id: 'status-canvas-surface',
       label: '画布状态',
       description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
-      tooltip: `当前 ${EXTENSION_DISPLAY_NAME} 主画布在 VSCode ${humanizeSurfaceLocation(state.surfaceLocation)}中的状态。`,
+      tooltip: `当前 ${EXTENSION_DISPLAY_NAME} 主画布在 VSCode ${humanizeSurfaceLocation(state.surfaceLocation)}中的状态。${surfaceTooltip}`,
       icon: new vscode.ThemeIcon('browser')
     },
     {
       id: 'status-default-surface',
       label: '默认承载面',
       description: humanizeSurfaceLocation(state.configuredSurface),
-      tooltip: `${EXTENSION_DISPLAY_NAME}: 打开画布 命令会按这个宿主承载面打开主画布。`,
+      tooltip: `${EXTENSION_DISPLAY_NAME}: 打开画布 命令会按这个宿主承载面打开主画布。${describeSurfaceLocationTooltip(state.configuredSurface)}`,
       icon: new vscode.ThemeIcon('layout-panel')
     },
     {
@@ -150,7 +152,15 @@ function describeSurfaceState(
 }
 
 function humanizeSurfaceLocation(location: CanvasSidebarState['surfaceLocation']): string {
-  return location === 'panel' ? '面板' : '编辑区';
+  return location === 'panel' ? '工作台视图' : '编辑区';
+}
+
+function describeSurfaceLocationTooltip(location: CanvasSidebarState['surfaceLocation']): string {
+  if (location !== 'panel') {
+    return '';
+  }
+
+  return ' 该 panel route 的 view 可由用户放在底部 Panel 或 Secondary Sidebar，位置由 VSCode 原生记住。';
 }
 
 function getOpenCanvasCommand(state: CanvasSidebarState): vscode.Command {

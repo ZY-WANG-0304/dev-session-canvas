@@ -15,6 +15,10 @@ body {
 
 .canvas-shell {
   background: var(--vscode-editor-background);
+  --canvas-node-radius: 10px;
+  --canvas-node-radius-inner: 8px;
+  --canvas-widget-radius: 8px;
+  --canvas-widget-radius-sm: 6px;
 }
 
 .canvas-corner-panel {
@@ -28,7 +32,7 @@ body {
   left: 14px;
   bottom: 14px;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: var(--canvas-widget-radius);
   border-color: var(--vscode-widget-border, var(--vscode-panel-border));
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
@@ -75,42 +79,55 @@ body {
 }
 
 .canvas-shell .canvas-minimap {
-  right: 18px;
-  bottom: 18px;
+  right: 14px;
+  bottom: 14px;
+  padding: 4px;
   overflow: hidden;
-  border-radius: 20px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, var(--vscode-focusBorder) 16%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-sideBar-background) 10%);
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+  border-radius: var(--canvas-widget-radius);
+  border-color: var(--vscode-widget-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  backdrop-filter: none;
 }
 
 .canvas-shell .canvas-minimap svg {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 84%, var(--vscode-sideBar-background) 16%);
+  border-radius: calc(var(--canvas-widget-radius) - 2px);
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
 }
 
 .canvas-shell .canvas-minimap .react-flow__minimap-mask {
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.12));
+  filter: none;
 }
 
 .canvas-shell .canvas-minimap .react-flow__minimap-node {
-  opacity: 0.96;
+  opacity: 0.82;
 }
 
 .action-button {
-  border-radius: 999px;
-  border: 1px solid transparent;
-  padding: 8px 12px;
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--canvas-widget-radius-sm);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  padding: 0 10px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   font: inherit;
+  line-height: 1;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .action-button.compact {
-  padding: 6px 10px;
+  min-height: 22px;
+  padding: 0 8px;
   font-size: 11px;
 }
 
@@ -119,15 +136,38 @@ body {
   cursor: not-allowed;
 }
 
+.action-button.secondary {
+  background: var(--vscode-button-secondaryBackground, color-mix(in srgb, var(--vscode-editor-background) 86%, var(--vscode-sideBar-background) 14%));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
+}
+
+.action-button.secondary:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, var(--vscode-editor-background) 90%));
+}
+
 .action-button.primary {
+  border-color: transparent;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
 }
 
+.action-button.primary:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 18%, var(--vscode-button-background) 82%));
+}
+
 .action-button.danger {
-  background: rgba(127, 29, 29, 0.22);
-  color: #fecaca;
-  border-color: rgba(248, 113, 113, 0.32);
+  color: var(--vscode-errorForeground, #fca5a5);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 28%, var(--vscode-panel-border) 72%);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 10%, transparent);
+}
+
+.action-button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 16%, transparent);
+}
+
+.action-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 .canvas-node {
@@ -138,27 +178,27 @@ body {
   min-width: 0;
   min-height: 0;
   box-sizing: border-box;
-  border-radius: 18px;
-  border: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
+  border-radius: var(--canvas-node-radius);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  background: color-mix(in srgb, var(--vscode-editor-background) 96%, var(--vscode-sideBar-background) 4%);
   color: var(--vscode-editor-foreground);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
 .canvas-node.is-selected {
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 14px 28px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 10px 22px rgba(0, 0, 0, 0.14);
 }
 
 .canvas-node.kind-agent {
-  border-color: color-mix(in srgb, #22c55e 42%, var(--vscode-panel-border) 58%);
+  border-color: color-mix(in srgb, #22c55e 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
 }
 
 .canvas-node.kind-terminal {
-  border-color: color-mix(in srgb, #38bdf8 42%, var(--vscode-panel-border) 58%);
+  border-color: color-mix(in srgb, #38bdf8 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
 }
 
 .canvas-node.kind-note {
-  border-color: color-mix(in srgb, #a78bfa 42%, var(--vscode-panel-border) 58%);
+  border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
 }
 
 .compact-node {
@@ -186,9 +226,9 @@ body {
 .window-chrome {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 90%, var(--vscode-focusBorder) 10%);
   background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
 }
@@ -196,7 +236,7 @@ body {
 .window-title {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
 .window-title-input {
@@ -208,7 +248,7 @@ body {
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -224,40 +264,48 @@ body {
 .window-chrome-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .status-pill {
-  padding: 4px 10px;
-  border-radius: 999px;
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: var(--canvas-widget-radius-sm);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .tone-running {
-  background: rgba(34, 197, 94, 0.16);
-  color: #86efac;
+  border-color: color-mix(in srgb, #22c55e 32%, var(--vscode-panel-border) 68%);
+  background: color-mix(in srgb, #22c55e 10%, transparent);
+  color: color-mix(in srgb, #22c55e 58%, var(--vscode-editor-foreground) 42%);
 }
 
 .tone-success {
-  background: rgba(16, 185, 129, 0.16);
-  color: #6ee7b7;
+  border-color: color-mix(in srgb, #10b981 30%, var(--vscode-panel-border) 70%);
+  background: color-mix(in srgb, #10b981 10%, transparent);
+  color: color-mix(in srgb, #10b981 58%, var(--vscode-editor-foreground) 42%);
 }
 
 .tone-idle {
-  background: rgba(148, 163, 184, 0.14);
+  background: color-mix(in srgb, var(--vscode-editor-background) 84%, var(--vscode-sideBar-background) 16%);
   color: var(--vscode-descriptionForeground);
 }
 
 .tone-warning {
-  background: rgba(245, 158, 11, 0.16);
-  color: #fcd34d;
+  border-color: color-mix(in srgb, #f59e0b 28%, var(--vscode-panel-border) 72%);
+  background: color-mix(in srgb, #f59e0b 10%, transparent);
+  color: color-mix(in srgb, #f59e0b 60%, var(--vscode-editor-foreground) 40%);
 }
 
 .tone-error {
-  background: rgba(239, 68, 68, 0.14);
-  color: #fca5a5;
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 28%, var(--vscode-panel-border) 72%);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 10%, transparent);
+  color: var(--vscode-errorForeground, #fca5a5);
 }
 
 .session-body {
@@ -385,7 +433,7 @@ body {
 .agent-prompt-input {
   width: 100%;
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--canvas-widget-radius-sm);
   border: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   color: var(--vscode-editor-foreground);
@@ -394,7 +442,9 @@ body {
 
 .agent-provider-select {
   flex: 1;
-  padding: 8px 10px;
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .agent-prompt-input {
@@ -421,7 +471,7 @@ body {
   flex: 1;
   min-height: 0;
   border: 0;
-  border-radius: 0 0 16px 16px;
+  border-radius: 0 0 var(--canvas-node-radius) var(--canvas-node-radius);
   padding: 6px;
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   overflow: hidden;
@@ -431,14 +481,20 @@ body {
   flex: 1;
   min-height: 0;
   width: 100%;
-  border-radius: 12px;
-  background: var(--vscode-terminal-background, #08101f);
+  border-radius: var(--canvas-node-radius-inner);
+  background: var(
+    --canvas-embedded-terminal-background,
+    var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e1e)))
+  );
 }
 
 .terminal-viewport .xterm {
   height: 100%;
   width: 100%;
-  background: var(--vscode-terminal-background, #08101f);
+  background: var(
+    --canvas-embedded-terminal-background,
+    var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e1e)))
+  );
 }
 
 .terminal-viewport .xterm-screen {
@@ -488,7 +544,7 @@ body {
 .node-select {
   width: 100%;
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--canvas-node-radius-inner);
   border: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   color: var(--vscode-editor-foreground);
@@ -520,7 +576,7 @@ body {
   flex: 1;
   min-height: 0;
   padding: 10px 12px 12px;
-  border-radius: 14px;
+  border-radius: var(--canvas-node-radius-inner);
   border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-panel-border) 76%);
   border-style: solid;
   border-width: 1px;
@@ -617,4 +673,100 @@ body {
   color: var(--vscode-inputValidation-errorForeground);
   border: 1px solid var(--vscode-inputValidation-errorBorder);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.canvas-context-menu {
+  position: fixed;
+  z-index: 30;
+  width: min(220px, calc(100vw - 24px));
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+  background: var(--vscode-menu-background, color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%));
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.24);
+}
+
+.canvas-context-menu-header {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px 4px;
+}
+
+.canvas-context-menu-header strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.canvas-context-menu-header span {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-items {
+  display: grid;
+  gap: 2px;
+}
+
+.canvas-context-menu-item,
+.canvas-context-menu-dismiss {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.canvas-context-menu-item:hover,
+.canvas-context-menu-item:focus-visible,
+.canvas-context-menu-dismiss:hover,
+.canvas-context-menu-dismiss:focus-visible {
+  background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
+  outline: none;
+}
+
+.canvas-context-menu-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.canvas-context-menu-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.canvas-context-menu-copy strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.canvas-context-menu-copy span {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-item:hover .canvas-context-menu-copy span,
+.canvas-context-menu-item:focus-visible .canvas-context-menu-copy span {
+  color: inherit;
+}
+
+.canvas-context-menu-dismiss {
+  justify-content: center;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-panel-border)) 84%, transparent);
+  color: var(--vscode-descriptionForeground);
 }

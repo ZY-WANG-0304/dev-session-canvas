@@ -300,6 +300,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
 
     context.subscriptions.push(
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        this.postMessage({
+          type: 'host/themeChanged'
+        });
+      })
+    );
+
+    context.subscriptions.push(
       new vscode.Disposable(() => {
         this.disposeRuntimeSupervisorClients();
       })
@@ -1007,7 +1015,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getRuntimeContext(): CanvasRuntimeContext {
     return {
-      workspaceTrusted: vscode.workspace.isTrusted
+      workspaceTrusted: vscode.workspace.isTrusted,
+      surfaceLocation: this.activeSurface ?? this.getConfiguredSurface()
     };
   }
 
@@ -1972,7 +1981,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getConfiguredSurface(): CanvasSurfaceLocation {
-    return getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'editor') === 'panel'
+    return getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel'
       ? 'panel'
       : 'editor';
   }

@@ -131,7 +131,7 @@
             "editor",
             "panel"
           ],
-          "default": "editor",
+          "default": "panel",
           "scope": "window",
           "markdownDescription": "%configuration.canvas.defaultSurface.description%"
         },

@@ -36,7 +36,7 @@
           dispatchHostMessage(message) {
             window.postMessage(message, '*');
           },
-          bootstrap(state, runtime = { workspaceTrusted: true }) {
+          bootstrap(state, runtime = { workspaceTrusted: true, surfaceLocation: 'panel' }) {
             this.dispatchHostMessage({
               type: 'host/bootstrap',
               payload: {
@@ -45,7 +45,7 @@
               }
             });
           },
-          update(state, runtime = { workspaceTrusted: true }) {
+          update(state, runtime = { workspaceTrusted: true, surfaceLocation: 'panel' }) {
             this.dispatchHostMessage({
               type: 'host/stateUpdated',
               payload: {
