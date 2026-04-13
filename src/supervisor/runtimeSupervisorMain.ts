@@ -314,15 +314,12 @@ class RuntimeSupervisorServer {
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
     const session = this.requireLiveSession(params.sessionId);
     if (session.kind === 'agent') {
+      const submittedInstruction = isAgentInstructionSubmission(params.data);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (
-        session.lifecycle !== 'starting' &&
-        session.lifecycle !== 'resuming' &&
-        isAgentInstructionSubmission(params.data)
-      ) {
+      if (submittedInstruction) {
         resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
         session.lifecycle = 'running';
         session.resumePhaseActive = false;

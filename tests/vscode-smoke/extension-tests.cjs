@@ -452,22 +452,41 @@ async function verifyAutoStartOnCreate(agentNodeId, terminalNodeId) {
 async function verifyAgentExecutionFlow(agentNodeId) {
   await clearHostMessages();
 
-  let snapshot = await waitForAgentLive(agentNodeId);
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentNode?.metadata?.agent?.liveSession && currentNode.status === 'starting');
+  });
   let agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.ok(agentNode.metadata.agent.lastCols > 0);
   assert.ok(agentNode.metadata.agent.lastRows > 0);
-  assert.ok(
-    agentNode.status === 'starting' ||
-      agentNode.status === 'running' ||
-      agentNode.status === 'waiting-input'
-  );
+  assert.strictEqual(agentNode.status, 'starting');
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: 'burst 1\r'
+    }
+  });
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentNode?.metadata?.agent?.liveSession && currentNode.status === 'waiting-input');
+    return Boolean(currentNode?.metadata?.agent?.liveSession && currentNode.status === 'running');
   });
   agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'running');
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
+      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] burst 001') &&
+        currentNode.status === 'waiting-input'
+    );
+  });
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] burst 001'));
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await requestExecutionSnapshot('agent', agentNodeId);
@@ -513,6 +532,38 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   });
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] hello smoke'));
+  assert.strictEqual(agentNode.status, 'waiting-input');
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: 'sleep 1\r'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentNode?.metadata?.agent?.liveSession && currentNode.status === 'running');
+  });
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'running');
+
+  await sleep(500);
+  snapshot = await getDebugSnapshot();
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'running');
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
+      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] woke after 1s') &&
+        currentNode.status === 'waiting-input'
+    );
+  });
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] woke after 1s'));
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await dispatchWebviewMessage({
@@ -990,15 +1041,41 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     return Boolean(
+      currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'resuming'
+    );
+  }, 20000);
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: agentNodeId,
+      kind: 'agent',
+      data: 'burst 1\r'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'running');
+  }, 20000);
+
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'running');
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(
       currentAgent?.metadata?.agent?.liveSession &&
         currentAgent.status === 'waiting-input' &&
-        currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+        currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
+        currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] burst 001')
     );
-  });
+  }, 20000);
 
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'waiting-input');
   assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] burst 001'));
 
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
@@ -1701,7 +1778,15 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
       }
     });
 
-    await waitForAgentLive(agentNodeId);
+    await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.metadata.agent.attachmentState === 'attached-live' &&
+          currentAgent.metadata.agent.runtimeSessionId &&
+          currentAgent.status === 'starting'
+      );
+    }, 20000);
     await waitForTerminalLive(terminalNodeId);
 
     await dispatchWebviewMessage({
@@ -1712,6 +1797,19 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
         data: 'sleep 1\rburst 3\r'
       }
     });
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'running');
+    }, 20000);
+    let agentNode = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(agentNode.status, 'running');
+
+    await sleep(500);
+    snapshot = await getDebugSnapshot();
+    agentNode = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(agentNode.status, 'running');
+
     await dispatchWebviewMessage({
       type: 'webview/executionInput',
       payload: {
@@ -1721,8 +1819,8 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
       }
     });
 
-    let snapshot = await simulateRuntimeReload();
-    let agentNode = findNodeById(snapshot, agentNodeId);
+    snapshot = await simulateRuntimeReload();
+    agentNode = findNodeById(snapshot, agentNodeId);
     let terminalNode = findNodeById(snapshot, terminalNodeId);
 
     assert.strictEqual(agentNode.status, 'reattaching');
@@ -1802,14 +1900,41 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
     let snapshot = await waitForSnapshot((currentSnapshot) => {
       const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
       return Boolean(
-        currentAgent?.metadata?.agent?.liveSession &&
-          currentAgent.status === 'waiting-input' &&
-          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+        currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'resuming'
       );
     }, 20000);
 
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        data: 'burst 1\r'
+      }
+    });
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'running');
+    }, 20000);
+
     let agentNode = findNodeById(snapshot, agentNodeId);
+    assert.strictEqual(agentNode.status, 'running');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
+          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] burst 001')
+      );
+    }, 20000);
+
+    agentNode = findNodeById(snapshot, agentNodeId);
     assert.strictEqual(agentNode.status, 'waiting-input');
+    assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+    assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] burst 001'));
 
     await dispatchWebviewMessage({
       type: 'webview/executionInput',

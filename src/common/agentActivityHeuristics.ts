@@ -11,7 +11,6 @@ export interface AgentActivityHeuristicState {
 export type AgentWaitingInputTransitionReason =
   | 'prompt'
   | 'notification'
-  | 'line-boundary'
   | 'fallback';
 
 export interface AgentOutputHeuristicSnapshot {
@@ -32,7 +31,6 @@ export const AGENT_WAITING_INPUT_POLL_INTERVAL_MS = 120;
 
 const AGENT_WAITING_INPUT_PROMPT_QUIET_MS = 220;
 const AGENT_WAITING_INPUT_NOTIFICATION_QUIET_MS = 260;
-const AGENT_WAITING_INPUT_LINE_BOUNDARY_QUIET_MS = 420;
 const AGENT_WAITING_INPUT_HARD_FALLBACK_MS = 1600;
 const AGENT_WAITING_INPUT_SPINNER_GRACE_MS = 900;
 const OSC_CARRYOVER_LIMIT = 256;
@@ -147,18 +145,8 @@ export function evaluateAgentWaitingInputTransition(
     };
   }
 
-  if (
-    !spinnerRecentlyActive &&
-    typeof state.lastLineBoundaryAtMs === 'number' &&
-    quietMs >= AGENT_WAITING_INPUT_LINE_BOUNDARY_QUIET_MS
-  ) {
-    return {
-      shouldTransition: true,
-      shouldKeepPolling: false,
-      reason: 'line-boundary'
-    };
-  }
-
+  // A plain newline is not enough to conclude that an agent turn finished.
+  // Long-running tasks may print one full line and then continue working.
   if (!spinnerRecentlyActive && quietMs >= AGENT_WAITING_INPUT_HARD_FALLBACK_MS) {
     return {
       shouldTransition: true,

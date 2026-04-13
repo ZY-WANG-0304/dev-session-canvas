@@ -3767,15 +3767,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (kind === 'agent') {
+      const submittedInstruction = isAgentInstructionSubmission(data);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (
-        session.lifecycleStatus !== 'starting' &&
-        session.lifecycleStatus !== 'resuming' &&
-        isAgentInstructionSubmission(data)
-      ) {
+      if (submittedInstruction) {
         resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;

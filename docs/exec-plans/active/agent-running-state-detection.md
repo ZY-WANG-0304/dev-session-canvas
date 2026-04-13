@@ -17,11 +17,13 @@
 - [x] 2026-04-12 21:56+08:00 查阅官方资料，整理 `Codex`、`Claude Code` 与 VS Code shell integration 中可用于运行态判定的 machine-readable 信号面。
 - [x] 2026-04-12 21:56+08:00 新建设计文档 `docs/design-docs/agent-running-state-detection.md`，把候选方案、风险与当前结论写成正式仓库事实。
 - [x] 2026-04-12 21:56+08:00 更新 `docs/design-docs/execution-lifecycle-and-recovery.md` 与 `docs/design-docs/index.md`，把“状态语义”和“状态判定来源”拆开记录。
-- [x] 2026-04-13 00:20+08:00 新增共享启发式模块 `src/common/agentActivityHeuristics.ts`，把 prompt、通知、bell、行边界、spinner/redraw 与 hard fallback 收口成统一状态评估逻辑。
+- [x] 2026-04-13 00:20+08:00 新增共享启发式模块 `src/common/agentActivityHeuristics.ts`，把 prompt、通知、bell、spinner/redraw 与 hard fallback 收口成统一状态评估逻辑。
 - [x] 2026-04-13 00:20+08:00 将同一套启发式同时接入 `src/panel/CanvasPanelManager.ts` 与 `src/supervisor/runtimeSupervisorMain.ts`，统一本地 PTY 与 runtime supervisor 的 Agent 状态回退行为。
 - [x] 2026-04-13 00:34+08:00 为 fake provider 增加 `slowspin` / `notify` 测试能力，并在 `tests/vscode-smoke/extension-tests.cjs` 新增 spinner 持续输出回归验证。
 - [x] 2026-04-13 00:49+08:00 完成验证：`npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 全部通过。
 - [x] 2026-04-13 06:44+08:00 完成全量验证：`npm run test` 通过，覆盖 `test:runtime-supervisor-paths`、完整 `test:smoke` 与 `test:webview`。
+- [x] 2026-04-13 08:10+08:00 根据 MR review 修复两个确定性 blocker：提交首条输入时即使仍处于 `starting/resuming` 也会进入 `running`；普通换行不再单独触发 `waiting-input`，并补充 local/runtime + start/resume 的回归覆盖。
+- [x] 2026-04-13 08:40+08:00 复核 review 修复后的完整验证：单独 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=remote-ssh-real-reopen node scripts/run-vscode-smoke.mjs` 通过，随后 `npm run test` 再次全量通过，确认上一轮 full test 失败属于场景级抖动而非本轮逻辑回归。
 - [ ] 后续独立特性：验证 `Codex app-server` / provider 原生结构化事件是否可作为权威状态通道；该项已从本轮 BUG 修复中拆出，另行优化。
 - [ ] 后续独立特性：为节点 metadata 增加“状态判定来源/权威性”字段，避免 UI 和诊断把启发式状态误写成权威事实。
 
@@ -44,6 +46,9 @@
 
 - 观察：本地 PTY 路径和 runtime supervisor 路径必须复用同一套 Agent 活动启发式，否则 reopen/reattach 后会重新暴露旧行为。
   证据：`src/panel/CanvasPanelManager.ts` 与 `src/supervisor/runtimeSupervisorMain.ts` 之前各自维护独立状态推进逻辑；本轮 smoke 里 `trusted` 与 `real-reopen` 都需要覆盖，才能证明行为一致。
+
+- 观察：普通换行不能被直接解释成“当前回合结束”，因为长任务可能先输出一整行日志，再在静默中继续执行。
+  证据：fake provider 的 `sleep 1` 会先输出 `[fake-agent] sleeping 1s\n`，随后实际继续 `sleep 1`；若 420ms 后仅凭 line-boundary 回退，就会在任务仍运行时误判成 `waiting-input`。
 
 ## 决策记录
 
@@ -71,6 +76,10 @@
   理由：如果仍让两条路径各自维护状态回退规则，`reopen` 与 `reattach` 会继续和首次启动表现不一致；共享 helper 可以把这一版 fallback 收敛为单一事实来源。
   日期/作者：2026-04-13 / Codex
 
+- 决策：普通 line-boundary 只保留为诊断线索，不再单独触发 `waiting-input`。
+  理由：换行只能说明“输出排版结束”，不能说明“回合结束”；把它当完成信号会稳定误伤 `sleep`、审批等待或其他静默执行中的长任务。
+  日期/作者：2026-04-13 / Codex
+
 ## 结果与复盘
 
 本轮已经完成的不再只是“把问题定义清楚”，还包括把当前 CLI PTY 路径上的状态误判收敛到一版可工作的组合启发式。当前结论仍然不变：如果继续停留在 PTY 文本和静默超时层面，这个 BUG 只能被明显缓解，不能被 provider 原生语义彻底根治。
@@ -81,7 +90,7 @@
 
 第一，`running` 只在真正提交指令时进入，用户单纯编辑输入中的中间状态不再误报为 `running`。
 
-第二，`waiting-input` 的回退不再只看一个固定 quiet timeout，而是综合 prompt-like 尾部、`OSC 9/777`、bell、行边界、spinner/redraw grace 与 hard fallback。
+第二，`waiting-input` 的回退不再只看一个固定 quiet timeout，而是综合 prompt-like 尾部、`OSC 9/777`、bell、spinner/redraw grace 与 hard fallback；普通换行不再被直接当作完成信号。
 
 第三，同一套启发式已经同时接入 local PTY 与 runtime supervisor，因此 `trusted` 和 `real-reopen` 路径下的状态机行为一致。
 
@@ -197,6 +206,13 @@
     runtimeSupervisorPaths tests passed.
     VS Code smoke test passed.
     Playwright webview tests passed.
+
+本轮 review blocker 回归新增覆盖如下：
+
+    - local PTY start: 在 `starting` 阶段立即提交首条输入，状态必须先进入 `running`
+    - local PTY sleep: `sleep 1` 的静默期内必须保持 `running`
+    - local PTY resume: 在 `resuming` 阶段立即提交首条输入，状态必须先进入 `running`
+    - runtime supervisor start/resume: 对应 live-runtime 路径也必须覆盖同样语义
 
 ## 接口与依赖
 
