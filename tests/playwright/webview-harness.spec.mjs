@@ -262,7 +262,7 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   await applyWorkbenchTheme(page, 'dark');
   await bootstrap(page, createCanvasScreenshotState());
 
-  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveValue('codex');
+  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveCount(0);
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toHaveValue('Agent 1');
   await expect(nodeById(page, 'terminal-1').locator('[data-probe-field="title"]')).toHaveValue('Terminal 1');
   await expect(nodeById(page, 'note-1').locator('[data-probe-field="title"]')).toHaveValue('回看 smoke test');
@@ -1069,13 +1069,13 @@ test('right-click create menu refreshes its default agent label after runtime co
     );
 });
 
-test('switching provider changes the next agent start message', async ({ page }) => {
+test('agent start message uses the node metadata provider', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createAgentNodeState());
+  await bootstrap(page, createAgentNodeState('claude'));
   await clearPostedMessages(page);
 
   const agentNode = nodeById(page, 'agent-1');
-  await agentNode.locator('[data-probe-field="provider"]').selectOption('claude');
+  await expect(agentNode.locator('[data-probe-field="provider"]')).toHaveCount(0);
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'agent-1',
@@ -1694,7 +1694,10 @@ function createCanvasScreenshotState() {
   };
 }
 
-function createAgentNodeState() {
+function createAgentNodeState(provider = 'codex') {
+  const backendLabel = provider === 'claude' ? 'Claude Code CLI' : 'Codex CLI';
+  const shellPath = provider === 'claude' ? 'claude' : 'codex';
+
   return {
     version: 1,
     updatedAt: '2026-04-06T00:00:00.000Z',
@@ -1704,19 +1707,19 @@ function createAgentNodeState() {
         kind: 'agent',
         title: '实现自动化测试',
         status: 'idle',
-        summary: '等待启动 Codex CLI。',
+        summary: `等待启动 ${backendLabel}。`,
         position: { x: 120, y: 140 },
         size: sizeFor('agent'),
         metadata: {
           agent: {
             backend: 'node-pty',
-            shellPath: 'codex',
+            shellPath,
             cwd: '/workspace',
             liveSession: false,
-            provider: 'codex',
+            provider,
             lastCols: 96,
             lastRows: 28,
-            lastBackendLabel: 'Codex CLI'
+            lastBackendLabel: backendLabel
           }
         }
       }

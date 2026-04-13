@@ -54,7 +54,6 @@ declare function acquireVsCodeApi<T>(): {
 interface LocalUiState {
   selectedNodeId?: string;
   viewport?: Viewport;
-  agentProviderDrafts?: Record<string, AgentProviderKind>;
 }
 
 interface CanvasNodeData {
@@ -66,9 +65,7 @@ interface CanvasNodeData {
   workspaceTrusted: boolean;
   size: CanvasNodeFootprint;
   metadata?: CanvasNodeMetadata;
-  agentProvider?: AgentProviderKind;
   onSelectNode?: (nodeId: string) => void;
-  onAgentProviderChange?: (nodeId: string, value: AgentProviderKind) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -322,9 +319,6 @@ function App(): JSX.Element {
     selectedNodeId: initialPersistedState.selectedNodeId,
     viewport: initialPersistedState.viewport
   }));
-  const [agentProviderDrafts, setAgentProviderDrafts] = useState<Record<string, AgentProviderKind>>(
-    () => initialPersistedState.agentProviderDrafts ?? {}
-  );
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -419,11 +413,8 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    vscode.setState({
-      ...localUiState,
-      agentProviderDrafts
-    });
-  }, [localUiState, agentProviderDrafts]);
+    vscode.setState(localUiState);
+  }, [localUiState]);
 
   useEffect(() => {
     if (!hostState) {
@@ -439,7 +430,6 @@ function App(): JSX.Element {
           }
         : current
     );
-    setAgentProviderDrafts((current) => pruneAgentProviderDrafts(current, validNodeIds));
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
@@ -454,7 +444,6 @@ function App(): JSX.Element {
           }
         : current
     );
-    setAgentProviderDrafts((current) => removeAgentProviderDraft(current, nodeId));
     postMessage({
       type: 'webview/deleteNode',
       payload: {
@@ -497,7 +486,6 @@ function App(): JSX.Element {
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
     workspaceTrusted,
-    agentProviderDrafts,
     onSelectNode: (nodeId) => {
       if (localUiState.selectedNodeId === nodeId) {
         return;
@@ -506,12 +494,6 @@ function App(): JSX.Element {
       setLocalUiState((current) => ({
         ...current,
         selectedNodeId: nodeId
-      }));
-    },
-    onAgentProviderChange: (nodeId, value) => {
-      setAgentProviderDrafts((current) => ({
-        ...current,
-        [nodeId]: value
       }));
     },
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
@@ -817,15 +799,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }
 
   const { zoom } = useViewport();
-  const provider = data.agentProvider ?? agentMetadata.provider ?? 'codex';
+  const provider = agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
   const displayStatus = data.status;
   const resumeRequested =
     (lifecycle === 'resume-ready' ||
       lifecycle === 'resume-failed' ||
-      agentMetadata.pendingLaunch === 'resume') &&
-    provider === agentMetadata.provider;
+      agentMetadata.pendingLaunch === 'resume');
   const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -1038,14 +1019,13 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [id]);
 
   const startAgent = (resume = resumeRequested): void => {
-    const executionProvider = resume ? agentMetadata.provider : provider;
     data.onSelectNode?.(id);
     data.onStartExecution?.(
       id,
       'agent',
       terminalSizeRef.current.cols,
       terminalSizeRef.current.rows,
-      executionProvider,
+      provider,
       resume
     );
   };
@@ -1094,23 +1074,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          <select
-            className="agent-provider-select nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="provider"
-            value={provider}
-            disabled={executionBlocked || agentMetadata.liveSession || reattaching}
-            onFocus={() => data.onSelectNode?.(id)}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onKeyDown={stopCanvasEvent}
-            onChange={(event) =>
-              data.onAgentProviderChange?.(id, event.target.value as AgentProviderKind)
-            }
-          >
-            <option value="codex">Codex</option>
-            <option value="claude">Claude Code</option>
-          </select>
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
@@ -1979,9 +1942,7 @@ function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
   workspaceTrusted: boolean;
-  agentProviderDrafts: Record<string, AgentProviderKind>;
   onSelectNode: (nodeId: string) => void;
-  onAgentProviderChange: (nodeId: string, value: AgentProviderKind) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -2034,9 +1995,7 @@ function toFlowNodes(params: {
         workspaceTrusted: params.workspaceTrusted,
         size,
         metadata: node.metadata,
-        agentProvider: params.agentProviderDrafts[node.id] ?? node.metadata?.agent?.provider ?? 'codex',
         onSelectNode: params.onSelectNode,
-        onAgentProviderChange: params.onAgentProviderChange,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
@@ -2423,38 +2382,6 @@ function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x
   };
 }
 
-function removeAgentProviderDraft(
-  drafts: Record<string, AgentProviderKind>,
-  nodeId: string
-): Record<string, AgentProviderKind> {
-  if (!(nodeId in drafts)) {
-    return drafts;
-  }
-
-  const nextDrafts = { ...drafts };
-  delete nextDrafts[nodeId];
-  return nextDrafts;
-}
-
-function pruneAgentProviderDrafts(
-  drafts: Record<string, AgentProviderKind>,
-  validNodeIds: Set<string>
-): Record<string, AgentProviderKind> {
-  let changed = false;
-  const nextDrafts: Record<string, AgentProviderKind> = {};
-
-  for (const [nodeId, provider] of Object.entries(drafts)) {
-    if (validNodeIds.has(nodeId)) {
-      nextDrafts[nodeId] = provider;
-      continue;
-    }
-
-    changed = true;
-  }
-
-  return changed ? nextDrafts : drafts;
-}
-
 function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }
@@ -2572,7 +2499,6 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     renderedHeight: footprint.height,
     overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
-    providerValue: readProbeFieldValue(element, 'provider'),
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
     ...readProbeExecutionTerminalState(nodeId)
@@ -2687,18 +2613,6 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
-      case 'selectNodeOption': {
-        const field = queryNodeSelectField(action.nodeId, action.field);
-        field.focus();
-        field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-        setControlledFieldValue(field, action.value);
-        field.dispatchEvent(new Event('change', { bubbles: true }));
-        await waitForDomActionFlush();
-        field.blur();
-        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        await waitForDomActionFlush();
-        break;
-      }
       case 'clickNodeActionButton': {
         const button = queryNodeActionButton(action.nodeId, action.label);
         button.focus();
@@ -2752,18 +2666,6 @@ function queryNodeTextField(
   }
 
   throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
-}
-
-function queryNodeSelectField(
-  nodeId: string,
-  fieldName: 'provider'
-): HTMLSelectElement {
-  const field = queryNodeField(nodeId, fieldName);
-  if (field instanceof HTMLSelectElement) {
-    return field;
-  }
-
-  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是下拉选择控件。`);
 }
 
 function queryNodeActionButton(

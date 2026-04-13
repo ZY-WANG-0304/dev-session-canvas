@@ -906,6 +906,8 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
         currentProbe.nodeCount === 3 &&
         agentNode &&
         agentNode.kind === 'agent' &&
+        typeof agentNode.chromeSubtitle === 'string' &&
+        agentNode.chromeSubtitle.includes('Codex') &&
         typeof agentNode.titleInputValue === 'string' &&
         agentNode.titleInputValue.length > 0 &&
         terminalNode &&
@@ -925,6 +927,13 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(probe.hasCanvasShell, true);
   assert.strictEqual(probe.hasReactFlow, true);
   assert.strictEqual(probe.nodeCount, 3);
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(
+      probe.nodes.find((node) => node.nodeId === agentNodeId) ?? {},
+      'providerValue'
+    ),
+    false
+  );
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
   probe = await waitForWebviewProbe(
@@ -1607,29 +1616,31 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
 
-  await performWebviewDomAction({
-    kind: 'selectNodeOption',
-    nodeId: agentNodeId,
-    field: 'provider',
-    value: 'claude'
-  });
-  let probe = await waitForWebviewProbe((currentProbe) => {
-    const currentAgent = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-    return Boolean(currentAgent?.providerValue === 'claude');
-  });
-  assert.strictEqual(probe.nodes.find((node) => node.nodeId === agentNodeId)?.providerValue, 'claude');
-
-  await performWebviewDomAction({
-    kind: 'clickNodeActionButton',
-    nodeId: agentNodeId,
-    label: '重启'
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'agent',
+      agentProvider: 'claude'
+    }
   });
 
   let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    const currentNode = currentSnapshot.state.nodes.find(
+      (node) =>
+        node.id !== agentNodeId &&
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude'
+    );
     return Boolean(currentNode?.status === 'error');
   });
-  let agentNode = findNodeById(snapshot, agentNodeId);
+  const claudeAgentNode = snapshot.state.nodes.find(
+    (node) =>
+      node.id !== agentNodeId &&
+      node.kind === 'agent' &&
+      node.metadata?.agent?.provider === 'claude'
+  );
+  assert.ok(claudeAgentNode, 'Expected failure-path setup to create a Claude agent node.');
+  let agentNode = findNodeById(snapshot, claudeAgentNode.id);
   assert.ok(
     /没有找到 Claude Code 命令/.test(agentNode.summary) ||
       /Claude Code .*No such file or directory/.test(agentNode.summary)
@@ -1642,7 +1653,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
       (event) =>
         event.kind === 'execution/startRequested' &&
         event.detail?.kind === 'agent' &&
-        event.detail?.nodeId === agentNodeId &&
+        event.detail?.nodeId === claudeAgentNode.id &&
         event.detail?.provider === 'claude'
     )
   );
@@ -1656,6 +1667,18 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
           /Claude Code .*No such file or directory/.test(message.payload.message))
     )
   );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: claudeAgentNode.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgentNode.id),
+    20000
+  );
+  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === claudeAgentNode.id), false);
 
   await clearHostMessages();
   await dispatchWebviewMessage({
@@ -1771,7 +1794,7 @@ async function verifyPersistenceAndRecovery(noteNodeId, agentNodeId, terminalNod
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).title, REAL_DOM_TERMINAL_TITLE);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).title, REAL_DOM_NOTE_TITLE);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
-  assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'error');
+  assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'stopped');
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
 }
 

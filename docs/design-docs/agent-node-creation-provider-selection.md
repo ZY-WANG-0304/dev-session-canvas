@@ -27,7 +27,7 @@ updated_at: 2026-04-13
 - 画布空白区右键快捷菜单，直接创建 `Agent`、`Terminal`、`Note`
 - 侧栏“创建对象”命令，对应一个 VSCode `QuickPick`
 
-但这两条入口当前都只让用户先选“节点种类”，不会在创建前选择 `Agent` 的具体 provider。结果是：用户如果想创建 `Claude Code` 节点，当前只能先创建一个按默认 provider 初始化的 `Agent`，再回到节点标题栏里切换 provider。
+在本轮方案落地前，这两条入口都只让用户先选“节点种类”，不会在创建前选择 `Agent` 的具体 provider。结果是：用户如果想创建 `Claude Code` 节点，只能先创建一个按默认 provider 初始化的 `Agent`，再回到节点标题栏里切换 provider。
 
 这在旧的“创建后先停留未运行态”模型里只是多一步操作，但在当前正式文档里，`Agent` 创建已经以 [docs/design-docs/execution-lifecycle-and-recovery.md](./execution-lifecycle-and-recovery.md) 的自动启动边界为准。也就是说，“先创建默认 provider，再切换”不再只是低效，而会把第一次启动意图绑到错误的 provider 上。
 
@@ -55,7 +55,7 @@ updated_at: 2026-04-13
 ## 4. 非目标
 
 - 不在本轮新增 provider 安装检测、认证引导或命令可用性预检查。
-- 不在本轮移除节点创建后的 provider 切换能力；空闲节点仍保留现有标题栏切换入口。
+- 不支持已创建 Agent 节点的 provider/type 切换；如果需要不同 provider，应重新创建对应 Agent 节点。
 - 不在本轮讨论更多 provider 的接入顺序、配置项设计或 app-server 路线。
 - 不在本轮修改 `Agent` 节点标题、状态机或运行时恢复语义。
 
@@ -202,7 +202,8 @@ updated_at: 2026-04-13
 - 当 `kind !== 'agent'` 时忽略该字段；当 `kind === 'agent'` 且显式给出 provider 时，宿主在第一次落库时就写入该值。
 - 创建动作只触发一次正式节点落地；不允许通过“先创建默认 provider 节点，再发送一次 update provider”来拼出最终结果。
 - 当前自动启动语义下，节点第一次 fresh start 或 resume 使用的 provider，应直接来自这份初始 metadata。
-- 节点创建后的 provider 下拉仍保留，但只承担“空闲节点的后续调整”，不再承担“修复创建时选错 provider”的主要职责。
+- 节点创建后的 provider 仅作为 metadata 与标题副标题的只读展示，不再提供节点内切换入口。
+- 如果用户需要把某个 Agent 改成另一种 provider，应重新创建目标 Agent 节点，而不是原地改配。
 
 ## 8. 验证方法
 
@@ -213,9 +214,11 @@ updated_at: 2026-04-13
 3. 在真实 VSCode smoke 中验证侧栏/命令入口的分区式 `QuickPick`：第一组可直接创建默认 `Agent`、`Terminal`、`Note`，第二组可直接创建完整 provider 列表中的任一 `Agent`。
 4. 在自动启动场景下验证：从 `QuickPick` 第二组显式选择 provider 创建后，第一次启动消息就携带正确 provider。
 5. 在 Restricted Mode 下验证：新增 provider 选择能力不会绕过当前对执行型节点创建的禁用或退化逻辑。
+6. 在浏览器 harness 与真实 VSCode Webview 中验证：已创建 Agent 节点不再渲染 provider 切换控件。
 
 ## 9. 当前验证状态
 
 - 已运行 `npm run typecheck`，通过。
 - 已运行 `npm run test:webview`，新增右键菜单默认创建与 provider drill-in 用例后共 `25 passed`。
 - 已运行 `npm run test:smoke`，验证宿主 `QuickPick` 的默认 `Agent`、显式 `Claude Code` 与 `Note` 路径都可直接创建，且创建后首帧 metadata 与第一次启动记录使用正确 provider。
+- 追加验证要求：已创建 Agent 节点不再暴露 provider 下拉；浏览器 harness 与真实 VSCode Webview 都只保留只读 provider 展示，并要求启动 provider 来自节点 metadata。

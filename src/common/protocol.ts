@@ -121,7 +121,6 @@ export interface WebviewProbeNodeSnapshot {
   renderedHeight: number;
   overlayTitle?: string;
   overlayMessage?: string;
-  providerValue?: string;
   titleInputValue?: string;
   bodyValue?: string;
   terminalSelectionText?: string;
@@ -162,13 +161,6 @@ export type WebviewDomAction =
       nodeId: string;
       field: 'title' | 'body';
       value: string;
-      delayMs?: number;
-    }
-  | {
-      kind: 'selectNodeOption';
-      nodeId: string;
-      field: 'provider';
-      value: AgentProviderKind;
       delayMs?: number;
     }
   | {
@@ -678,10 +670,6 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
     return (value.field === 'title' || value.field === 'body') && typeof value.value === 'string';
   }
 
-  if (value.kind === 'selectNodeOption') {
-    return value.field === 'provider' && (value.value === 'codex' || value.value === 'claude');
-  }
-
   if (value.kind === 'clickNodeActionButton') {
       return (
         value.label === '删除' ||
@@ -710,7 +698,6 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     Number.isFinite(value.renderedHeight) &&
     (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
-    (value.providerValue === undefined || typeof value.providerValue === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
     (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&

@@ -22,7 +22,7 @@ updated_at: 2026-04-13
 
 ## 1. 背景
 
-当前仓库已经把 `Agent` 的主交互从右侧 inspector 挪回节点内部，但当前节点表面仍然保留了一套“provider 选择器 + prompt textarea + transcript 冒泡”的独立调用 UI。
+当前仓库已经把 `Agent` 的主交互从右侧 inspector 挪回节点内部；更早一阶段的节点表面曾保留一套“provider 选择器 + prompt textarea + transcript 冒泡”的独立调用 UI。
 
 这比 inspector 方案更接近会话窗口，但仍然过重也不够准确。对当前产品来说，`Agent` 更像一个带有 provider 上下文的执行会话窗口，而不是一个自己维护 request/response transcript 的调用卡片。
 
