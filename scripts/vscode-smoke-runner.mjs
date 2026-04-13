@@ -1,7 +1,7 @@
 import os from 'os';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 
@@ -161,8 +161,8 @@ export async function ensureVSCodeExecutable(projectRoot) {
     return existingPath;
   }
 
-  const installDir = await downloadAndUnzipVSCode({ version: 'stable' });
-  return resolveVSCodeExecutablePath(installDir);
+  const downloadResult = await downloadAndUnzipVSCode({ version: 'stable' });
+  return normalizeVSCodeExecutablePath(downloadResult);
 }
 
 export async function findExistingVSCodeExecutablePath(projectRoot) {
@@ -241,6 +241,20 @@ function resolveVSCodeExecutablePath(installDir) {
   }
 
   return path.join(installDir, 'code');
+}
+
+function normalizeVSCodeExecutablePath(downloadResult) {
+  if (existsSync(downloadResult)) {
+    try {
+      if (!statSync(downloadResult).isDirectory()) {
+        return downloadResult;
+      }
+    } catch {
+      // Fall through to directory-style resolution.
+    }
+  }
+
+  return resolveVSCodeExecutablePath(downloadResult);
 }
 
 async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) {

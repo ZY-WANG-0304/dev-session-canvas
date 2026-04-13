@@ -36,7 +36,7 @@ npm run package
 npm run typecheck
 ```
 
-如需生成内部体验版 VSIX，执行：
+如需生成 Marketplace 发布工件或执行 packaged-payload 检查，执行：
 
 ```bash
 npm run package:vsix
@@ -46,7 +46,7 @@ npm run package:vsix
 
 - `codex` 或 `claude` 至少有一个可从 Extension Host 解析到
 - 如果 Extension Host 的 `PATH` 无法直接解析命令，可在 VSCode 设置中配置 `devSessionCanvas.agent.codexCommand` 或 `devSessionCanvas.agent.claudeCommand`
-- 如果要让主画布默认出现在 VSCode Panel，而不是编辑区，可在设置中配置 `devSessionCanvas.canvas.defaultSurface = panel`
+- 当前默认主画布承载面已经是 `panel`；如果你希望改回编辑区，可在设置中配置 `devSessionCanvas.canvas.defaultSurface = editor`
 - 本轮开始不再兼容旧命名空间设置、旧命令别名和旧 workspace 状态键；本地调试请以当前 `devSessionCanvas.*` 命名为准。
 
 ## 本地调试
@@ -108,7 +108,7 @@ code --profile "Dev Session Canvas Extension Debug" --uninstall-extension devses
    - `Dev Session Canvas: 在编辑区打开画布`
    - `Dev Session Canvas: 在面板打开画布`
 
-默认情况下，`Dev Session Canvas: 打开画布` 会按 `devSessionCanvas.canvas.defaultSurface` 的当前设置打开主画布；显式命令可直接覆盖本次打开位置。
+默认情况下，`Dev Session Canvas: 打开画布` 会按 `devSessionCanvas.canvas.defaultSurface` 的当前设置打开主画布。当前默认值是 `panel`；该 view 的实际工作台位置由 VSCode 原生记住，用户可自行放在底部 Panel 或 Secondary Sidebar。显式命令可直接覆盖本次打开位置。
 
 ## 建议验证路径
 
@@ -137,11 +137,18 @@ npm run test:webview
 npm run test:vsix-smoke
 ```
 
+如果你需要在不污染当前工作树的情况下，提前准备或执行 clean-checkout 发布验证，可额外使用：
+
+```bash
+npm run validate:clean-checkout:vsix -- --ref HEAD --skip-vsix-smoke
+```
+
 说明：
 
 - `test:smoke` 会按顺序启动 `trusted`、`restricted`、本地 `real-reopen` 和 `remote-ssh-real-reopen` 四类真实 VS Code Electron 场景。Remote-SSH 场景当前仅在 Linux 上启用：runner 会先启动一个临时用户态 `sshd`，再让 `Remote-SSH` 扩展通过真实 SSH 协议连接同机远端，从而验证远端 Extension Development Host 下的 runtime persistence setup / verify 两阶段。可信与受限场景继续覆盖扩展激活、打开画布、真实 Webview DOM 交互、Note 编辑、provider 切换后重启、删除按钮、`Agent` / `Terminal` 执行生命周期、live session 切面 / reload 竞态、故障注入与 PTY 边界。
 - `test:webview` 会在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；当前已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
 - `test:vsix-smoke` 当前仅在 Linux 上运行。它会先执行 `npm run package:vsix`，再解包最新 `.vsix`，验证打包后的运行时文件是否齐全，并用解包产物跑一遍 trusted smoke。这个入口当前验证的是“打包内容完整性”，不是未来公开发布前的三平台安装矩阵替代品。
+- `validate:clean-checkout:vsix` 会在 `/tmp` 下创建隔离目录，默认从 `git archive HEAD` 导出 clean checkout，再执行 `npm ci`、`npm run package:vsix`，并可按需继续执行 `npm run test:vsix-smoke`。如果当前工作树正在被同时修改，但你想先准备发布验证链路，可用它避免直接在当前目录里折腾。
 - 执行 `npm test` 会依次运行 `typecheck`、`test:runtime-supervisor-paths`、`test:smoke` 和 `test:webview`。
 - 首次运行 `test:smoke` 会下载一份 VS Code 测试副本；首次运行 `test:webview` 会下载 Chromium 到仓库内缓存目录。
 - `test:smoke` 默认使用仓库内 fake provider fixture，不要求开发机真的安装 `codex` / `claude`；如需验证真实 Agent CLI，请走上面的人工主路径。
@@ -171,8 +178,9 @@ npm run test:webview -- --update-snapshots
 - `Run Dev Session Canvas` 不再尝试自动禁用当前扩展的已安装副本；正确做法是不要把它装进 debug profile。
 - `Dev Session Canvas: 打开画布` 会按默认承载面打开主画布；如需直接落在某个宿主区域，请使用显式的编辑区 / 面板打开命令。
 - 如果你只在当前仓库窗口里搜索 `Run Dev Session Canvas`，通常找不到正确入口，因为它应从调试配置启动。
-- 当前不是稳定版发布仓库状态；当前阶段默认只做内部体验版 VSIX 分发。
-- 正式开发阶段不等于公开稳定发布；当前仍以内部 Preview 迭代为主。
+- 当前不是稳定版发布仓库状态；当前对外目标是公开 `Marketplace Preview`，不是稳定正式版。
+- `npm run package:vsix` 生成的是 Marketplace 上传工件与发布前验证输入，不是普通用户的推荐安装方式。
+- 正式开发阶段不等于公开稳定发布；当前仍以 `Preview` 迭代为主。
 
 ## 提交与收口
 

@@ -2,16 +2,16 @@
   "name": "dev-session-canvas",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "devsessioncanvas",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "ssh://git@10.79.10.70:1022/ziyang01.wang/dev-session-canvas.git"
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas.git"
   },
-  "homepage": "http://10.79.10.70:1080/ziyang01.wang/dev-session-canvas",
+  "homepage": "https://github.com/ZY-WANG-0304/dev-session-canvas",
   "bugs": {
-    "url": "http://10.79.10.70:1080/ziyang01.wang/dev-session-canvas/-/issues"
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/issues"
   },
   "preview": true,
   "engines": {
@@ -181,6 +181,7 @@
     "test:runtime-supervisor-paths": "node scripts/test-runtime-supervisor-paths.mjs",
     "test:vscode-smoke-runner-env": "node scripts/test-vscode-smoke-runner-env.mjs",
     "test:smoke": "npm run build && node scripts/run-vscode-smoke.mjs",
+    "validate:clean-checkout:vsix": "node scripts/run-clean-checkout-vsix-validation.mjs",
     "test:vsix-smoke": "node scripts/run-vscode-vsix-smoke.mjs",
     "test:webview": "npm run build && node scripts/run-playwright-webview.mjs",
     "vscode:prepublish": "npm run package",
@@ -206,10 +207,10 @@
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
     "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.17.19",
     "tmp": "0.2.1",
-    "typescript": "5.0.4",
-    "vsce": "1.103.1"
+    "typescript": "5.0.4"
   }
 }

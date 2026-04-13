@@ -1,64 +1,157 @@
 # 插件分发准备
 
-本文记录当前仓库的分发准备状态。目标不是“现在立刻公开发布”，而是把仓库推进到一个可打包、可内部试用、风险显式化的体验版准备态。
+本文记录当前仓库的分发准备状态。当前目标已经从“只做内部体验版 VSIX”切换为“公开 Preview 分发准备”，且本次 `Preview` 的对外分发主路径明确为 `Visual Studio Marketplace`，但仍不把当前版本包装成稳定正式版。
 
 ## 当前结论
 
-- 当前阶段的分发目标是内部体验版 VSIX，不是公开 `Marketplace` 发布。
+- 当前阶段的分发目标已切换为公开 `Preview` 分发，主渠道优先以 `Visual Studio Marketplace` 为目标。
 - 当前版本只适合作为 `Preview` 预览版，不应包装成稳定正式版。
-- 当前仓库已于 2026-04-05 完成 MVP 验证，并具备可持续迭代的内部 Preview 基线；后续变更默认按正式开发标准推进。
-- 当前最安全的首发方式是形成可重复打包的 VSIX，先服务内部体验与验证；是否进入公开 Marketplace 延后决策。
+- 当前仓库已于 2026-04-05 完成 MVP 验证，并具备可持续迭代的公开 Preview 基线；后续变更默认按正式开发标准推进。
+- 当前对外分发主路径已经确定为公开 `Marketplace Preview`；`VSIX` 只保留为构建工件和发布验证输入，不再作为普通用户分发方式。
 
 ## 仓库内已落实项
 
 - `package.json` 已补齐 `preview`、`icon`、`galleryBanner`、`extensionKind`、`pricing`、`qna` 等发布元数据。
-- manifest 已补齐当前内部仓库可用的 `repository`、`homepage` 与 `bugs` 元数据，保证内部 VSIX 打包不会再因 README 或仓库信息缺失而失败。
+- manifest 已补齐公开 GitHub 可访问的 `repository`、`homepage` 与 `bugs` 元数据，为后续公开分发做准备。
 - `vscode:prepublish` 会先执行 `npm run package`，确保打包前经过类型检查和生产构建。
-- 仓库已把 VSIX 打包逻辑收口到 `scripts/package-vsix.mjs`；脚本直接复用本地依赖中的打包处理器与显式运行时文件清单，不依赖额外全局安装 `vsce`。
+- 仓库已把 VSIX 打包逻辑收口到 `scripts/package-vsix.mjs`；当前它应被理解为 Marketplace 发布链路中的构建与验证工件输入，而不是普通用户安装入口。
+- 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 当前可同时兼容 `node_modules/.bin/vsce` 与包内 CLI 脚本路径。
+- `.vscodeignore` 已完成第一轮发布包收口，当前会排除 `.debug/`、`.playwright-browsers/`、`tests/`、`test-results/`、截图草稿与未使用的图标变体。
+- 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `7.07 MB`、`82 files` 的 VSIX；`npm run test:vsix-smoke` 已再次通过，说明收口后的工件仍能跑通 packaged-payload smoke。
+- 基于当前本地 `working tree` 快照的隔离 `clean checkout` 验证已于 `2026-04-14` 通过：`npm run validate:clean-checkout:vsix -- --source working-tree` 成功产出约 `7.09 MB`、`82 files` 的 VSIX，且 packaged-payload smoke 再次通过。
+- 基于版本已切到 `0.1.0` 的 release head `346c4bf` 的隔离 `clean checkout` 验证也已于 `2026-04-14` 通过：`npm run validate:clean-checkout:vsix -- --ref HEAD` 成功产出 `dev-session-canvas-0.1.0.vsix`，约 `7.09 MB`、`82 files`，且 packaged-payload smoke 再次通过。
+- 公开 GitHub 仓库 `main` 已同步到非空、可访问的公开内容；这件事与 release head `346c4bf` 的隔离验证是两个独立事实。当前 manifest 中的 `repository` / `homepage` 和 README 里的相对文档链接都已落到真实公开内容，而不是空仓库。
 - 已显式声明 `Restricted Mode` 为有限支持，并通过 `restrictedConfigurations` 保护执行型设置。
 - 已显式声明 `Virtual Workspace` 暂不支持，避免在当前实现尚未适配时误报支持能力。
 - `docs/SECURITY.md` 已补齐专用安全邮箱、响应时限与“只支持最新主线 / 预览版”的支持口径。
-- 仓库根目录已补齐 `LICENSE` 文件，与当前 `UNLICENSED` 的内部体验版分发口径保持一致。
+- 仓库根目录已切换到 `Apache-2.0` 许可证，为公开发布提供明确的开源许可口径。
 - `README.md` 与 `CHANGELOG.md` 已补齐发布准备说明与当前限制。
+- `Visual Studio Marketplace` 发布账号链路已打通：`Azure DevOps organization`、`Marketplace publisher`、`PAT` 与本地 `vsce login devsessioncanvas` 已完成。
 
-## 若未来公开发布的阻塞项
+## 当前公开发布阻塞项
 
-以下项无法仅靠当前 worktree 自动补齐，但它们只在后续准备公开发布时才会成为阻塞项：
+以下项仍是当前 worktree 进入公开 Preview 发布前必须补齐的 blocker：
 
-- 公开资源链接：确认对外可访问的 `repository`、`homepage`、`bugs` 链接；在未确认前不要填写假的 URL。
-- 许可证策略：当前仓库仍为 `UNLICENSED`，只适合内部或待定状态；若要公开发布，应先明确许可证文件与条款。
-- 公开发布渠道：若未来进入公开发布，再确认 `Visual Studio Marketplace` 中 `devsessioncanvas` 这个 `publisher` 是否已注册可用，并准备 Azure DevOps 组织与 Personal Access Token。
+- 发布包治理：当前本地 `working tree` 快照和版本已切到 `0.1.0` 的 release head `346c4bf` 都已经通过隔离 `clean checkout` 打包与 packaged-payload smoke；如果后续待发布实现或打包输入继续变化，仍需基于新的 release head 重新执行一次验证。另一个剩余问题是 `node-pty` 依赖包仍携带 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/` 等超出严格最小运行集的内容，是否继续瘦身仍需单独决策。
+- 公开资源链接：公开 GitHub 仓库与 GitHub Issues 已连通，但 issue 模板和更完整的对外说明页仍待补齐。
+- 公开文档与支持口径：README、CHANGELOG、SECURITY 与问题反馈入口已经完成第一轮公开 Preview 收口，但仍需继续补齐 Marketplace 发布页、issue 模板和更完整的对外支持说明。
+- 平台支持矩阵：当前较强的验证证据主要集中在 `Remote SSH` 开发路径；Linux、macOS、Windows 本地路径仍未经过严格验证。公开发布前，应先明确首发支持的操作系统、Remote / Restricted Mode 范围，以及哪些能力仍是 `best-effort`。
+- 发布执行收口：账号链路已准备完成，但在真正点击发布前，仍需锁定最终版本号、release notes、发布截图或 Listing 文案，以及回滚口径。
 
-## 当前分发流程
+更完整的研究结论见 `docs/design-docs/public-marketplace-release-readiness.md`。
 
-仓库内已经收敛出的内部体验版最小流程如下：
+## 当前工作树收口建议（2026-04-14）
+
+基于当前 `git status` 与 diff，当前工作树里的改动建议按下面三类处理：
+
+### 建议纳入“公开 Marketplace Preview 收口”这一组改动
+
+- `.vscodeignore`
+- `CHANGELOG.md`
+- `CONTRIBUTING.md`
+- `LICENSE`
+- `README.md`
+- `docs/SECURITY.md`
+- `docs/publish-readiness.md`
+- `package.json`
+- `package-lock.json`
+- `scripts/package-vsix.mjs`
+- `scripts/run-clean-checkout-vsix-validation.mjs`
+- `scripts/vscode-smoke-runner.mjs`
+- `docs/design-docs/public-marketplace-release-readiness.md`
+- `docs/exec-plans/active/public-marketplace-package-readiness.md`
+- `docs/exec-plans/completed/public-marketplace-release-readiness-research.md`
+
+这组文件直接对应当前首发发布目标：许可证、公开链接、Marketplace 口径、打包工具链、隔离验证链路与发布证据。
+
+### 建议拆到其他功能或 bugfix 主题
+
+- `src/panel/getWebviewHtml.ts`
+- `docs/design-docs/execution-node-zoom-interaction-surface.md`
+- `docs/exec-plans/completed/execution-node-zoom-coordinate-alignment.md`
+- `docs/exec-plans/completed/execution-node-zoom-interaction-research.md`
+
+这些改动和“Marketplace Preview 发布准备”不是同一个主题。若要一起进入首发，应单独说明它们的用户价值与验证结果，而不要默认跟随发布准备一起混入。
+
+### 建议不要进入发布收口 commit
+
+- `.vscode/settings.json`
+- `core.*`
+- `image.png`
+- `image copy*.png`
+- `img_v3_*.jpg`
+- 未采用的图标变体草稿
+
+这些内容属于本地调试噪音、core dump、截图草稿或未选用素材，不适合进入公开首发版本。
+
+## 公开平台发布准备清单
+
+以下清单默认以“若未来决定进入公开发布”为前提，且建议先以 `Visual Studio Marketplace` 为首发主渠道：
+
+- [x] 确认要从“内部 Preview VSIX”切换到“公开平台发布”，并先以 `Visual Studio Marketplace` 为首发主渠道。
+- [x] 明确公开许可证策略，更新 `package.json` 的 `license` 与仓库根目录 `LICENSE`。
+- [x] 准备对外可访问的 `repository`、`homepage`、`bugs` 链接，避免继续依赖内网 HTTP 地址。
+- [x] 已完成 README、CHANGELOG、SECURITY 和问题反馈入口的第一轮公开 Preview 口径收口；后续仍可继续细化发布页文案。
+- [x] 收口 `.vscodeignore`，排除 `.debug/`、`.playwright-browsers/`、测试 artifacts、core dump、截图草稿等非发布内容。
+- [x] 基于当前本地 `working tree` 快照完成隔离 `clean checkout` 验证，确认 `npm run package:vsix` 与 `npm run test:vsix-smoke` 可以稳定成功，且产物只作为 Marketplace 发布输入。
+- [x] 把发布工具链迁移到官方当前使用的 `@vscode/vsce`；如需同步 `Open VSX`，再补 `ovsx` 流程。
+- [x] 明确首发支持矩阵：操作系统、Local / Remote、Restricted Mode、Virtual Workspace、CLI 依赖要求。
+- [ ] 按首发支持矩阵完成至少一轮人工验收，并保留自动化测试或手动验证记录。
+- [x] 创建并验证 `Visual Studio Marketplace` publisher、Azure DevOps organization 与 PAT，并完成本地 `vsce login devsessioncanvas`。
+- [x] 在版本已切到 `0.1.0` 的 release head `346c4bf` 上再次执行隔离 `clean checkout` 验证，避免把仅存在于未提交工作树中的状态误当成最终发布结论。
+- [ ] 在发布前准备版本号、release notes、升级说明与回滚口径，避免把当前 Preview 状态误写成稳定版承诺。
+- [ ] 先发布一个可控的公开预览版本，再根据真实反馈决定是否进入稳定公开发布。
+
+## 当前首发支持矩阵
+
+| 维度 | 当前状态 | 当前口径 |
+| --- | --- | --- |
+| `Remote SSH` workspace | `Preview` 主路径 | 当前最强验证证据所在路径；首发说明可围绕这条路径建立 |
+| Linux 本地 workspace | 可尝试，但未严格验证 | 不写成正式支持承诺 |
+| macOS 本地 workspace | 可尝试，但未严格验证 | 不写成正式支持承诺 |
+| Windows 本地 workspace | 可尝试，但未严格验证 | 不写成正式支持承诺 |
+| `Restricted Mode` | 有限支持 | 画布可打开；执行型入口禁用 |
+| `Virtual Workspace` | 不支持 | 不进入当前公开 Preview 范围 |
+| `Agent` CLI 依赖 | 必需 | 需要 `codex` 或 `claude` CLI 可被 Extension Host 解析 |
+| `Terminal` shell 依赖 | 必需 | 需要工作区侧可用 shell |
+| `runtimePersistence.enabled = false` | 基线支持 | 不承诺真实进程跨 VS Code 生命周期持续存在 |
+| `runtimePersistence.enabled = true` | `Preview` 能力，已具备较多验证证据 | 已有 `Remote SSH` real-reopen 自动化、相关 smoke 与人工验证证据；当前用户可见 guarantee 仍取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则回退到 `best-effort` |
+
+## 当前公开 Preview 发布链路
+
+仓库内已经收敛出的当前公开 Preview 最小链路如下：
 
 1. 在仓库根目录执行 `npm install`。
 2. 运行 `npm run package`，确认类型检查和生产构建同时通过。
-3. 运行 `npm run package:vsix`，生成内部体验版 VSIX。
-4. 如果体验者本机此前安装过旧 `opencove` 预览包，明确告知其先卸载旧扩展，再安装当前 `devsessioncanvas.dev-session-canvas` VSIX。
-5. 通过内部渠道分发 VSIX，供体验和验证使用。
+3. 运行 `npm run package:vsix`，生成 Marketplace 发布所需的 VSIX 构建工件。
+4. 完成发布前内容校验与主路径验证。
+5. 通过 `Visual Studio Marketplace` 发布公开 Preview 版本。
 
-## 内部安装方式
+当前工作树的最新验证结果：
 
-收到 `.vsix` 后，可通过以下任一方式安装：
+- `npm run package:vsix` 已通过，当前产物约为 `7.07 MB`、`82 files`。
+- `npm run test:vsix-smoke` 已通过，说明当前收口后的 packaged payload 仍可启动并跑通 trusted smoke。
+- 仓库已补上隔离验证脚本 `npm run validate:clean-checkout:vsix`，可在 `/tmp` 下基于 `git archive` 或当前 working tree 快照准备 clean-checkout 验证，不必直接扰动当前工作树。
+- `npm run validate:clean-checkout:vsix -- --source working-tree` 已于 `2026-04-14` 通过，当前本地待发布工作树可在隔离目录中完成 `npm ci`、VSIX 打包与 packaged-payload smoke。
+- `npm run validate:clean-checkout:vsix -- --ref HEAD` 已于 `2026-04-14` 基于版本 `0.1.0` 的 release head `346c4bf` 通过，隔离目录内成功产出 `dev-session-canvas-0.1.0.vsix`，并再次通过 packaged-payload smoke。
 
-1. 在 VS Code 命令面板执行 `Extensions: Install from VSIX...`。
-2. 在终端执行 `code --install-extension <your-vsix-file>`。
+## 源码编译与开发安装
 
-注意：
+如果你是开发者，当前推荐通过源码编译与 Development Host 方式安装和调试：
 
-- 如果本机此前安装的是旧 `opencove` 预览包，这一轮不是覆盖升级，必须先卸载旧扩展，再安装当前 `devsessioncanvas.dev-session-canvas` 包。
-- 旧扩展下的命令、视图、Activity Bar 入口与 workspaceState 不会自动迁移到当前扩展身份。
-- 如果已经安装的是当前 `devsessioncanvas.dev-session-canvas` 包，后续同一产品线的 VSIX 才按普通覆盖升级处理。
+1. 在仓库根目录执行 `npm install` 与 `npm run build`。
+2. 在 VS Code 的 `Run and Debug` 中选择 `Run Dev Session Canvas`。
+3. 按 `F5` 启动 `Extension Development Host`。
 
-## 若未来转向公开发布
+更完整的开发与 Remote-SSH 调试说明见 `CONTRIBUTING.md`。
 
-只有在明确要做公开发布时，才需要额外补齐以下动作：
+## 后续公开发布动作
 
-1. 确认当前 `publisher` `devsessioncanvas` 已在目标 Marketplace 环境中注册可用。
-2. 准备 Azure DevOps 组织与 Personal Access Token。
-3. 执行 `vsce login <publisher>` 与 `vsce publish`，或改走 Marketplace 手动上传流程。
+在完成当前 blocker 后，还需要补齐以下动作：
+
+1. 锁定最终待发布版本号，并整理 Marketplace listing、截图与 release notes。
+2. 如果发布前的实现或打包输入再次变化，再以新的待发布 commit 重跑一次隔离 `clean checkout` 验证，固定新的可追溯证据。
+3. 执行 Marketplace 发布流程，必要时准备回滚或下架口径。
 
 ## 发布前人工验证
 
@@ -66,9 +159,10 @@
 
 - 本地磁盘工作区下，能打开画布并创建四类对象。
 - `Restricted Mode` 下，画布可打开，但 `Agent` / `Terminal` 执行入口被禁用且说明清晰。
-- Linux 与 macOS 本地环境下，`Agent` 与嵌入式终端主路径可运行或至少能明确报错。
+- `Remote SSH` 开发路径下，能打开画布并完成 `Agent` / `Terminal` 主路径验证。
+- Linux、macOS、Windows 本地路径需要补做严格人工验收。
 - 重新打开窗口后，关键对象图和画布恢复链路成立。
-- 若未来准备对外发布，还应补做 Windows、Remote SSH / Codespaces 的人工验证。
+- 若未来准备扩展对外支持范围，还应继续补做 Codespaces 等场景的人工验证。
 
 ## 暂不承诺项
 

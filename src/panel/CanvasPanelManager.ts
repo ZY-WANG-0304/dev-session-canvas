@@ -471,7 +471,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.getDebugSnapshot();
   }
 
-  public reloadPersistedStateForTest(): CanvasDebugSnapshot {
+  public async reloadPersistedStateForTest(): Promise<CanvasDebugSnapshot> {
+    await this.waitForPendingWorkspaceStateUpdates();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/reloaded', {

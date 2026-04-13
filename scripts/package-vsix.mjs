@@ -4,13 +4,12 @@ import path from 'path';
 
 const projectRoot = process.cwd();
 const isWindows = process.platform === 'win32';
-const binaryName = isWindows ? 'vsce.cmd' : 'vsce';
-const binaryPath = path.resolve(projectRoot, 'node_modules', '.bin', binaryName);
 const packageJsonPath = path.join(projectRoot, 'package.json');
+const vsceEntry = resolveVsceEntry(projectRoot);
 
-if (!existsSync(binaryPath)) {
+if (!vsceEntry) {
   console.error(
-    '未找到本地 vsce 可执行文件。请先在仓库根目录运行 npm install，再重新执行 npm run package:vsix。'
+    '未找到由 @vscode/vsce 提供的本地 vsce 可执行文件。请先在仓库根目录运行 npm install，再重新执行 npm run package:vsix。'
   );
   process.exit(1);
 }
@@ -28,16 +27,7 @@ if (baseUrls?.imagesUrl) {
   packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
 }
 
-const command = isWindows
-  ? {
-      // Windows 需要经 cmd.exe 调用 .cmd 脚本，不能像普通可执行文件一样直接 spawn。
-      file: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe',
-      args: ['/d', '/s', '/c', `"${binaryPath}" ${packageArgs.map(quoteForWindowsCmd).join(' ')}`]
-    }
-  : {
-      file: binaryPath,
-      args: packageArgs
-    };
+const command = resolveCommand(vsceEntry, packageArgs);
 
 const result = spawnSync(command.file, command.args, {
   cwd: projectRoot,
@@ -81,4 +71,47 @@ function resolveVsceBaseUrls(homepage, branch) {
 
 function quoteForWindowsCmd(value) {
   return /[\s"]/u.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+}
+
+function resolveVsceEntry(rootDir) {
+  const binName = isWindows ? 'vsce.cmd' : 'vsce';
+  const localBinPath = path.resolve(rootDir, 'node_modules', '.bin', binName);
+  if (existsSync(localBinPath)) {
+    return {
+      kind: 'direct',
+      path: localBinPath
+    };
+  }
+
+  const packageScriptPath = path.resolve(rootDir, 'node_modules', '@vscode', 'vsce', 'vsce');
+  if (existsSync(packageScriptPath)) {
+    return {
+      kind: 'node-script',
+      path: packageScriptPath
+    };
+  }
+
+  return undefined;
+}
+
+function resolveCommand(vsceEntry, packageArgs) {
+  if (vsceEntry.kind === 'node-script') {
+    return {
+      file: process.execPath,
+      args: [vsceEntry.path, ...packageArgs]
+    };
+  }
+
+  if (isWindows) {
+    return {
+      // Windows 需要经 cmd.exe 调用 .cmd 脚本，不能像普通可执行文件一样直接 spawn。
+      file: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe',
+      args: ['/d', '/s', '/c', `"${vsceEntry.path}" ${packageArgs.map(quoteForWindowsCmd).join(' ')}`]
+    };
+  }
+
+  return {
+    file: vsceEntry.path,
+    args: packageArgs
+  };
 }

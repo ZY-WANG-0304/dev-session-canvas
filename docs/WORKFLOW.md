@@ -19,8 +19,9 @@
 2. 开始实现前，先确认相关正式文档已经具备足够上下文；如果涉及复杂功能、显著重构或多步研究，先按 `docs/PLANS.md` 创建或更新 `ExecPlan`。
 3. 在主题分支上完成与当前目标直接相关的设计、开发或文档修改；如果改动触及产品、设计或架构结论，必须同步更新对应正式文档。
 4. 当当前目标已经形成一组可独立说明的改动时，按 `docs/workflows/COMMIT.md` 进行本地提交，并确保相关文档同步或验证说明可追溯。
-5. 当当前目标已经完成，且验证结果与相关文档已同步后，推送分支并创建 MR；目标分支默认是 `main`，MR 描述按 `docs/workflows/MR_CREATE.md` 保持与当前目标、验证结果和残余风险一致。
-6. 当 MR 收到 comment 后，按评论结论处理相关修复、补齐文档、补充验证并登记技术债；完成后再次推送新的 MR head 供 reviewer 复审。
+5. 如果当前目标是一次对外发布或发布收口，应在发布范围冻结后、最终发布验证前，按 `docs/workflows/VERSION.md` 统一更新版本号，并同步 `package.json`、`package-lock.json`、`CHANGELOG.md` 等对外版本信息；普通功能或 bugfix MR 默认不因为开发进行中而单独更新版本号。
+6. 当当前目标已经完成，且验证结果与相关文档已同步后，推送分支并创建 MR；目标分支默认是 `main`，MR 描述按 `docs/workflows/MR_CREATE.md` 保持与当前目标、验证结果和残余风险一致。
+7. 当 MR 收到 comment 后，按评论结论处理相关修复、补齐文档、补充验证并登记技术债；完成后再次推送新的 MR head 供 reviewer 复审。
 
 注意：在每次准备推送当前分支、创建MR、更新MR前，默认先拉取最新 `main` 并对当前分支执行 `rebase`。
 
@@ -34,6 +35,7 @@
 
 - 分支命名规则见 `docs/workflows/BRANCH.md`。
 - commit 约定见 `docs/workflows/COMMIT.md`。
+- 版本号命名规则见 `docs/workflows/VERSION.md`。
 - Code Review 规则见 `docs/workflows/CODE_REVIEW.md`。
 - MR 描述内容与格式见 `docs/workflows/MR_CREATE.md`。
 - 执行 MR 合并的规则见 `docs/workflows/MR_MERGE.md`。

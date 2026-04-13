@@ -1,93 +1,119 @@
 # DevSessionCanvas
 
-一个 VS Code 插件项目，定位是面向 VSCode 的多 Agent 协作画布。它通过一张画布为 `Agent` 与 `Terminal` 提供全局视角，并与 VSCode 现有插件生态配合，提升 AI 开发时代的开发体验。
+DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-## 当前范围
+当前仓库正在准备公开 `Preview` 发布，定位仍是面向愿意接受早期限制、并愿意自行准备本地 CLI 运行环境的高级用户。
 
-- 提供 `Agent` / `Terminal` 的全局可见主视图
-- 宿主为 VSCode
-- 与 VSCode 现有插件生态协同
-- 不复刻独立 app 的 workspace 管理能力
+## 适合谁
+
+- 需要在同一个 VS Code 工作区里并行运行多个 `Agent` 或终端会话的开发者
+- 希望在画布上获得全局上下文，而不是只在终端标签之间来回切换的用户
+- 愿意使用 `Preview` 版本，并能自行准备 `codex` 或 `claude` CLI 的高级用户
+
+## 当前 Preview 提供什么
+
+- 一张默认走 `panel` route、也可显式切回编辑区的主画布
+- `Agent` 与 `Terminal` 节点的最小真实运行链路
+- `Note` 作为轻量辅助协作对象
+- 基于 React Flow 的基础画布交互与对象布局
+- `Restricted Mode` 下的有限能力声明
+- 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
+
+## 当前 Preview 不提供什么
+
+- 稳定版承诺
+- `Virtual Workspace` 支持
+- 面向所有用户的零配置开箱体验
+- 已完全收口的三平台公开支持矩阵
+- 已完成的稳定版发布链路
+
+## 运行前提
+
+- VS Code `1.85.0` 或更高版本
+- 标准文件系统工作区，包括本地磁盘工作区与 `Remote SSH` workspace
+- 对应的本地 CLI 运行环境：
+  - `Agent` 节点当前依赖 `codex` 或 `claude`
+  - `Terminal` 节点当前依赖本机 shell
+- 受信任工作区
+  - 未信任 workspace 下仍可打开画布，但执行型入口会被禁用
 
 ## 当前状态
 
-项目已完成第一轮研究、设计与 MVP 验证，当前进入正式开发与内部 Preview 持续迭代阶段。
-
-下一阶段重点：
-
-- 在当前主画布与对象模型基线上继续补齐真实主路径、恢复能力与质量收口
-- 持续迭代画布交互、对象体验与平台兼容性
-- 继续验证并收口 Remote / Restricted Mode / 恢复链路
-
-当前已落地的内容：
-
-- 顶层架构与技术路线研究文档
-- 以 MVP 范围为基线的正式产品规格
-- 一个可构建并可持续迭代的 VSCode 扩展基线，包含：
-  - `devSessionCanvas.openCanvas` / `devSessionCanvas.openCanvasInEditor` / `devSessionCanvas.openCanvasInPanel` 命令
-  - `editor/panel` 可配置主画布承载面
-  - `WebviewPanel` 主画布入口
-  - typed message bridge
-  - `WebviewPanelSerializer`
-  - 最小宿主状态投影与 Webview 本地 UI 状态
-  - React Flow 画布实现基线
-- `Agent` 与 `Terminal` 的主画布运行基线
-- 基于 `codex` / `claude` CLI 的最小 Agent 真实运行链路
-- `Note` 作为当前轻量辅助协作对象的实现
-- 跟随 VSCode 主题的极简协作画布基线，而不是固定深色画布
-
-当前命名约定：
-
-- 正式产品名：`DevSessionCanvas`
-- VS Code 扩展显示名：`Dev Session Canvas`
-- 命令 ID、配置命名空间、持久化键与 view/container ID 已统一到 `devSessionCanvas.*` 及对应新扩展身份。
-- 当前不再保留旧命名空间命令、旧配置键、旧状态键或旧视图 ID 的兼容读取。
-- 当前扩展 `publisher` 已切换为 `devsessioncanvas`。
-- 这次切换不是对旧 `opencove` 预览包的原地升级；内部体验用户需要按一次性断点迁移处理。
+项目已完成第一轮研究、设计与 MVP 验证，当前进入正式开发与公开 Preview 准备阶段。当前工作重点仍然是发布包治理、平台兼容性收口、恢复链路验证，以及公开发布所需的支持边界整理。
 
 ## 发布准备状态
 
-当前仓库已经进入“内部体验版分发准备”阶段，但还不应被包装成稳定正式版。
+当前仓库已经进入“公开 Preview 分发准备”阶段，但还不应被包装成稳定正式版。
 
 当前明确结论：
 
-- 当前阶段只支持内部体验版分发，首发形态以内部 `Preview` VSIX 为准。
+- 当前阶段准备以公开 `Preview` 形态发布，但还未到稳定正式版。
 - 当前支持 `Restricted Mode` 的有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 当前不支持 `Virtual Workspace`；例如 `vscode.dev`、GitHub Repositories 一类纯虚拟文件系统窗口不在当前发布范围内。
-- 当前不以公开 `Marketplace` 发布为目标，因此开发者账号、`publisher` 身份和 PAT 不是当前阶段阻塞项。
-- 在明确公开分发策略前，不应把当前版本包装成面对外部用户的正式公开发布。
+- 当前公开发布主渠道优先以 `Visual Studio Marketplace` 为目标；是否同步 `Open VSX` 延后决策。
+- 当前版本仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户预览使用。
 
 具体清单见 `docs/publish-readiness.md`。
 
-## 内部体验版分发
+## Preview 分发
 
-当前阶段推荐的内部体验版交付方式是 `.vsix`。
+这次 `Preview` 的对外分发目标是通过 `Visual Studio Marketplace` 发布。当前仓库不再把 `.vsix` 作为普通用户的公开分发方式；`VSIX` 仅保留为构建工件和发布验证输入。
 
-如果你在本机打包：
+当前明确结论：
 
-```bash
-npm run package:vsix
-```
+- 公开 `Preview` 用户应通过 Marketplace 安装，而不是通过手动分发 `.vsix`
+- Marketplace 上架前，仍需继续补齐发布包治理、发布账号和最终发布验证
+- `Open VSX` 不是这次 `Preview` 的首发主路径
 
-注意：
+## 源码编译与开发安装
 
-- 仓库已把 VSIX 打包逻辑收口到 `scripts/package-vsix.mjs`，不要求额外全局安装 `vsce`。
-- 在干净 checkout 中，先执行一次 `npm install`，再执行 `npm run package:vsix`。
+如果你是开发者，当前推荐通过源码编译与 Development Host 方式安装和调试，而不是手动安装 `.vsix`。
 
-生成 `.vsix` 后，可通过以下任一方式安装：
-
-1. 在 VS Code 命令面板执行 `Extensions: Install from VSIX...`
-2. 或在终端执行：
+最小流程：
 
 ```bash
-code --install-extension <your-vsix-file>
+npm install
+npm run build
 ```
 
-注意：
+然后在当前仓库窗口中：
 
-- 如果本机此前安装的是旧 `opencove` 预览包，本轮必须先卸载旧扩展，再安装当前 `devsessioncanvas.dev-session-canvas` VSIX；这不是原地覆盖升级。
-- 旧扩展下的命令入口、Activity Bar 入口、视图布局和 workspaceState 不会自动迁移到当前扩展身份。
-- 如果已经安装的是当前 `devsessioncanvas.dev-session-canvas` 包，同版本重复安装时，如遇到覆盖提示，再按普通覆盖升级处理。
+1. 打开 `Run and Debug`
+2. 选择 `Run Dev Session Canvas`
+3. 按 `F5` 启动 `Extension Development Host`
+
+更完整的源码开发、`Remote SSH` 调试和自动化验证说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 已知限制
+
+- 当前仍是 `Preview`，不应按稳定生产工具理解。
+- 当前不支持 `Virtual Workspace`。
+- 当前公开发布链路仍在准备中，但目标分发主路径已经确定为 `Visual Studio Marketplace`。
+- 当前较强的验证证据主要集中在 `Remote SSH` 开发路径；Linux、macOS、Windows 本地路径仍未经过严格验证。
+- 如果本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点不会提供完整体验。
+
+## 当前支持矩阵
+
+| 场景 | 当前状态 | 用户可预期行为 |
+| --- | --- | --- |
+| `Remote SSH` workspace | `Preview` 主路径 | 当前最强验证证据所在路径；可体验画布、`Agent`、`Terminal` 和恢复相关主路径 |
+| Linux 本地 workspace | 可尝试，但未严格验证 | 具备部分自动化与实现证据，但当前不作为公开 Preview 的严格支持承诺 |
+| macOS 本地 workspace | 可尝试，但未严格验证 | 代码路径已接通，但当前没有严格验证证据 |
+| Windows 本地 workspace | 可尝试，但未严格验证 | 代码路径已接通，但当前没有严格验证证据 |
+| `Restricted Mode` | 有限支持 | 可打开画布并查看已保存布局；`Agent` / `Terminal` 等执行型入口会被禁用 |
+| `Virtual Workspace` | 不支持 | 不在当前公开 Preview 范围内 |
+
+## 当前能力边界
+
+- `Agent` 节点：需要本机或远端 Extension Host 可解析的 `codex` 或 `claude` CLI
+- `Terminal` 节点：需要当前工作区侧可用的 shell 环境
+- `devSessionCanvas.runtimePersistence.enabled = false`：属于当前基线能力，不承诺真实进程跨 VS Code 生命周期持续存在
+- `devSessionCanvas.runtimePersistence.enabled = true`：已具备较多自动化与人工验证证据，尤其覆盖 `Remote SSH` real-reopen 主路径；当前用户可见 guarantee 仍取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则自动回退到 `best-effort`
+
+## 反馈与安全
+
+- 普通问题与功能反馈：<https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
+- 安全问题：`wzy0304@outlook.com`
 
 ## 开发与贡献
 
