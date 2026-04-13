@@ -482,13 +482,19 @@ body {
   min-height: 0;
   width: 100%;
   border-radius: var(--canvas-node-radius-inner);
-  background: var(--vscode-terminal-background, #08101f);
+  background: var(
+    --canvas-embedded-terminal-background,
+    var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e1e)))
+  );
 }
 
 .terminal-viewport .xterm {
   height: 100%;
   width: 100%;
-  background: var(--vscode-terminal-background, #08101f);
+  background: var(
+    --canvas-embedded-terminal-background,
+    var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e1e)))
+  );
 }
 
 .terminal-viewport .xterm-screen {

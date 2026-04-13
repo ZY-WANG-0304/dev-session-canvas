@@ -106,6 +106,7 @@ export interface CanvasPrototypeState {
 
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
+  surfaceLocation: 'editor' | 'panel';
 }
 
 export interface WebviewProbeNodeSnapshot {

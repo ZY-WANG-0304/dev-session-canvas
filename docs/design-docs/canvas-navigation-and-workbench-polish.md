@@ -1,7 +1,7 @@
 ---
 title: 画布导航与工作台原生收口设计
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -118,6 +118,12 @@ updated_at: 2026-04-13
 - 风险：如果 `xterm` 主题只在首次创建时读取一次 CSS 变量，那么切换 VSCode 主题后，终端内容区会继续停留在旧主题，即使节点外壳已经切到新主题。
   当前缓解：宿主在主题切换时显式通知 Webview，Webview 对所有现存 `xterm` 实例热更新完整主题对象，而不是销毁重建终端。
 
+- 风险：VSCode Webview 的主题 token 实际挂在 `body` 侧；如果前端只从 `documentElement` 读 CSS 变量，很多主题会读不到真实颜色，表现成“只在少数主题下跟随”。
+  当前缓解：主题 token 统一从 Webview 当前主题作用域读取，优先使用 `body` 的 computed style，而不是假设 token 一定挂在 `html`。
+
+- 风险：两个同类主题切换时，`body` 的 `vscode-dark` / `vscode-light` class 可能不变；如果只依赖宿主主题消息或 class 变化，`xterm` 可能错过真正的样式落地时机。
+  当前缓解：除了响应 `host/themeChanged`，Webview 还监听 `body/html` 的 class、dataset、style 与 head style 注入变化，在 VSCode 实际完成主题样式更新后再次刷新现存 `xterm`。
+
 ## 7. 当前结论
 
 ### 7.1 节点聚焦入口收口为标题栏双击
@@ -158,8 +164,10 @@ updated_at: 2026-04-13
 ### 7.6 内嵌 `xterm` 跟随 VSCode 主题热更新
 
 - 宿主层通过 `vscode.window.onDidChangeActiveColorTheme` 显式向当前活动 Webview 发送主题变更消息。
-- Webview 不自己推导深浅色，也不维护一套独立调色板；它只读取 VSCode 注入的 CSS token，并把这些 token 映射到 `xterm` 的 `theme` 对象。
-- 第一版至少覆盖背景、前景、光标、选区与 ANSI 16 色；如果某些 token 缺失，才回退到保守默认值。
+- Webview 不直接依赖扩展 API 提供颜色值，而是读取 VSCode Webview 注入到当前主题作用域中的 CSS token，并把这些 token 映射到 `xterm` 的 `theme` 对象。
+- token 读取以 Webview `body` 的 computed style 为准；当 `terminal.background` 缺失时，按当前 surface 位置回退到 `panel.background` 或 `editor.background`，而不是回退到固定深色。
+- ANSI 16 色缺失时，回退到 VSCode 官方终端默认调色板，而不是自定义一套仓库私有颜色。
+- 主题切换不仅依赖宿主主题消息；当 Webview 实际的 class、dataset、style 或 head 中主题样式发生变化时，也会再次刷新所有现存 `xterm`。
 - 主题切换时对所有现存 `xterm` 实例执行热更新，不销毁会话、不清空 scrollback，也不重建 `Terminal` 实例。
 
 ## 8. 验证方法
@@ -177,7 +185,8 @@ updated_at: 2026-04-13
 ## 9. 验证结果
 
 - 2026-04-13 运行 `npm run typecheck`，通过。
-- 2026-04-13 运行 `npm run test:webview`，22 个 Playwright 用例全部通过；其中覆盖标题栏双击聚焦、标题输入框双击不误触、空白 pane 右键快捷创建、节点外轮廓与 minimap 的截图基线更新，以及 `Agent` / `Terminal` 内嵌 `xterm` 在 dark / light workbench token 间的主题热更新。
-- 2026-04-13 追加运行 `node scripts/run-playwright-webview.mjs --update-snapshots`，22 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
+- 2026-04-13 运行 `npm run test:webview`，23 个 Playwright 用例全部通过；其中新增覆盖 `body` 级 theme vars、同类主题切换、稀疏 `terminal.*` token 与当前 surface 背景 fallback，确认 `Agent` / `Terminal` 内嵌 `xterm` 不再只在少数主题下正确跟随。
+- 2026-04-13 追加运行 `node scripts/run-playwright-webview.mjs --update-snapshots`，23 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
 - 2026-04-13 运行 `npm run test:smoke`，通过；覆盖 trusted / restricted、real reopen、fake systemd-user / fallback 与 remote-ssh real reopen，确认默认 `Dev Session Canvas: 打开画布` 走 `panel` route。
+- 2026-04-13 追加运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，通过；真实验证 `Dark Modern` / `Light Modern` 在 `panel` 与 `editor` 两种 surface 下都能让内嵌 `xterm` 正确切换背景、前景与 ANSI 蓝色，并确认当主题缺失 `terminal.background` 时会按当前 surface 回退到 `panel.background` 或 `editor.background`。
 - “用户手动把 view 拖到 Secondary Sidebar 后再 reveal” 这一工作台布局动作，本轮未单独脚本化自动化；当前仅确认扩展继续使用可移动 `WebviewView` / view container 路线，且所有文案都明确写为“位置由 VSCode 原生记住”，没有把它误写成固定底部 Panel。

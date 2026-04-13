@@ -1,6 +1,6 @@
 # 画布导航与工作台原生收口规格
 
-当前状态：已确认。2026-04-13 已按本文规格完成实现，并通过自动化验证覆盖默认 `panel` 主路径、标题栏双击聚焦、空白区右键快捷创建、`Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换，以及相关 smoke 场景。`panel` route 的实际工作台位置仍由 VSCode 原生维护。
+当前状态：已确认。2026-04-13 已按本文规格完成实现，并通过自动化验证覆盖默认 `panel` 主路径、标题栏双击聚焦、空白区右键快捷创建、`Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换，以及相关 smoke 场景。主题跟随逻辑已经收口为“读取 Webview 当前主题作用域的真实 CSS token；当 `terminal.*` token 缺失时按当前 surface 背景和 VSCode 官方 ANSI 默认调色板回退”，不再依赖固定深色兜底。`panel` route 的实际工作台位置仍由 VSCode 原生维护。
 
 ## 1. 用户问题
 
@@ -22,7 +22,7 @@
 2. 在未显式改设置的情况下，主画布默认通过 `panel` route 打开，而不是默认占用编辑区。
 3. 用户在一张包含多个节点的画布上工作；当某个节点跑远或缩得太小，用户双击该节点标题栏，即可让它重新居中并回到合适阅读尺寸。
 4. 用户查看节点时，看到的是更接近 VSCode 原生 workbench 的标题栏、外轮廓和地图 widget，而不是高圆角白板卡片。
-5. 用户在 VSCode 深浅主题之间切换时，`Agent` 和 `Terminal` 节点里的 `xterm` 内容区颜色、光标、选区与 ANSI 调色板会一起切换，而不是停留在旧主题。
+5. 用户在 VSCode 深浅主题之间切换时，`Agent` 和 `Terminal` 节点里的 `xterm` 内容区颜色、光标、选区与 ANSI 调色板会一起切换；即使主题没有显式声明 `terminal.background` 或完整 ANSI 颜色，也不会停留在旧主题或退回固定深色。
 6. 用户在画布空白区右键，看到一个轻量快捷菜单，并可直接新建 `Agent`、`Terminal` 或 `Note`。
 7. 如果用户把 `panel` route 的 view 移到了底部 Panel 或右侧 Secondary Sidebar，VSCode 会继续记住这一工作台位置；扩展不应把它强行拉回某个绝对位置。
 
@@ -44,6 +44,8 @@
   - 节点外轮廓从偏白板的大圆角卡片收口到更接近 VSCode editor widget / panel 的小圆角边界。
   - 右下角 minimap 收口为更接近 VSCode workbench widget 的小圆角地图面板，而不是高圆角浮层。
   - `Agent` 与 `Terminal` 的内嵌 `xterm` 主题需跟随 VSCode 当前主题实时刷新，至少覆盖背景、前景、光标、选区与 ANSI 16 色，不要求重建现有会话实例。
+  - 主题 token 以 VSCode Webview 实际注入到当前页面的 CSS vars 为准；当 `terminal.background` 缺失时，背景需按当前 surface 回退到 `panel.background` 或 `editor.background`。
+  - 当 ANSI 颜色 token 缺失时，需回退到 VSCode 官方终端默认调色板，而不是仓库私有颜色。
   - 保留现有动作集合和状态语义，不额外扩张按钮数量。
 - 画布空白区右键菜单：
   - 仅在空白 pane 出现，不在节点、终端或输入控件内部劫持原有右键语义。
@@ -97,6 +99,8 @@
 - 节点标题栏按钮和状态标签在视觉上更接近 VSCode workbench 的 toolbar / badge 语言，而不再是高圆角大胶囊。
 - 节点外轮廓和 minimap 的圆角、边框与阴影明显更接近 VSCode workbench widget，而不是白板式浮层卡片。
 - VSCode 切换深浅主题后，`Agent` 与 `Terminal` 节点里的 `xterm` 会同步刷新颜色主题；至少背景、前景、光标、选区与 ANSI 16 色不再停留在旧主题。
+- 即使当前主题没有声明 `terminal.background`，`xterm` 背景也会按当前 surface 正确回退到 `panel.background` 或 `editor.background`。
+- 即使当前主题没有声明完整 ANSI 16 色，`xterm` 也会回退到 VSCode 官方默认终端调色板，而不是继续保留上一个主题的颜色。
 - 在空白画布右键后，用户可以直接看到新建 `Agent`、`Terminal`、`Note` 的快捷菜单；点选后节点出现在右键点附近。
 - 右键菜单在点击外部、按 `Escape`、切换节点或完成创建后会关闭。
 

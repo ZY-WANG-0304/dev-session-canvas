@@ -1015,7 +1015,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getRuntimeContext(): CanvasRuntimeContext {
     return {
-      workspaceTrusted: vscode.workspace.isTrusted
+      workspaceTrusted: vscode.workspace.isTrusted,
+      surfaceLocation: this.activeSurface ?? this.getConfiguredSurface()
     };
   }
 

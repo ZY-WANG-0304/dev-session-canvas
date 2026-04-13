@@ -20,6 +20,7 @@
 - [x] (2026-04-13 09:13 +0800) 完成双击标题栏聚焦、默认 `panel`、节点标题栏原生样式、空白区右键新建菜单，并同步更新正式规格、设计与计划文档。
 - [x] (2026-04-13 11:44 +0800) 追加完成 `Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换；覆盖背景、前景、光标、选区与 ANSI 16 色的热更新，并同步刷新相关 Playwright 截图基线。
 - [x] (2026-04-13 09:13 +0800) 运行 `npm run typecheck`、`npm run test:webview`、`npm run test:smoke`；记录自动化结果，并把仍未单独脚本化的 Secondary Sidebar 手动拖拽路径显式保留为验证说明而非已确认结论。
+- [x] (2026-04-13 13:08 +0800) 追加完成 `xterm` 主题跟随健壮性修复：主题 token 改为读取 Webview `body` 的真实 CSS vars，同类主题切换改为监听实际样式落地，缺失 `terminal.background` / ANSI token 时分别回退到当前 surface 背景与 VSCode 官方默认终端调色板，并补齐 Playwright 与 trusted smoke 回归。
 
 ## 意外与发现
 
@@ -31,6 +32,12 @@
 
 - 观察：节点标题栏现在把标题输入框、provider 下拉、状态胶囊和动作按钮都挤在同一行里；如果不先规定“双击只在非交互标题栏区域生效”，就会和标题编辑或 provider 选择冲突。
   证据：`src/webview/main.tsx` 中 `AgentSessionNode`、`TerminalSessionNode`、`NoteEditableNode` 都把 `ChromeTitleEditor`、`select`、`status-pill` 和 `ActionButton` 放在 `.window-chrome` 内。
+
+- 观察：VSCode 扩展 API 的 `ColorTheme` 只暴露主题种类，不提供解析后的颜色值；而 Webview 里的实际主题 token 挂在页面样式层，不能从宿主直接拿到一整套颜色。
+  证据：`node_modules/@types/vscode/index.d.ts` 中 `ColorTheme` 只有 `kind`；真实颜色只能通过 Webview 中注入的 CSS vars 读取。
+
+- 观察：之前 `xterm` 主题读取如果只看 `documentElement`，会错过 VSCode Webview 实际写在 `body` 上的大部分主题 token，因此表现成“只有部分主题能跟随”。
+  证据：本轮修复前，`src/webview/main.tsx` 从 `getComputedStyle(document.documentElement)` 读取 `--vscode-terminal-*`；修复后改为读取 `body` 的 computed style，并新增基于 `body/html` style 变化的回归测试。
 
 ## 决策记录
 
@@ -54,6 +61,14 @@
   理由：该位置变化属于 VSCode 原生 view container 行为，不是扩展自己的状态模型；当前交付重点是默认 `panel` route、truthful copy 和 reveal 主路径。自动化已覆盖默认命令走 `panel`，文案也已明确写为“位置由 VSCode 原生记住”，因此这里保留为显式验证说明，而不把未实测的工作台布局动作写成仓库结论。
   日期/作者：2026-04-13 / Codex
 
+- 决策：`xterm` 主题同步不再依赖固定深色 fallback；当主题缺失 `terminal.background` 时按当前 surface 回退到 `panel.background` 或 `editor.background`，ANSI 颜色缺失时回退到 VSCode 官方默认终端调色板。
+  理由：大量主题不会显式声明完整 `terminal.*` token；如果继续回退到仓库私有固定颜色，会让大多数主题看起来“没有跟随 VSCode”。
+  日期/作者：2026-04-13 / Codex
+
+- 决策：Webview 在收到 `host/themeChanged` 后，除了立即调度一次 `xterm` 主题刷新，还要监听 `body/html` 的 class、dataset、style 与 head 样式变化，在真实主题样式落地后再次刷新。
+  理由：同类主题切换时 `vscode-dark` / `vscode-light` class 可能不变，宿主消息也可能早于 Webview 的 CSS vars 更新；只靠单次消息刷新不够稳定。
+  日期/作者：2026-04-13 / Codex
+
 ## 结果与复盘
 
 本轮已经完成并可交付。结果如下：
@@ -62,6 +77,7 @@
 - 代码上完成了四项交付：默认 `openCanvas` 改走 `panel`、节点标题栏双击聚焦、标题栏按钮/状态/选择器的 workbench 风格收口，以及空白 pane 右键快捷创建菜单。
 - 正式产品规格、设计文档、实现计划与索引已同步更新，不再把 `panel` route 误写成固定底部 Panel。
 - 自动化验证完成：`npm run typecheck` 通过；`npm run test:webview` 22 项通过；`node scripts/run-playwright-webview.mjs --update-snapshots` 22 项通过；`npm run test:smoke` 通过，并覆盖 trusted / restricted、real reopen、fake systemd-user / fallback 与 remote-ssh real reopen。
+- 后续又补了一轮健壮性收口：`npm run typecheck` 通过；`node scripts/run-playwright-webview.mjs --update-snapshots` 23 项通过；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，并新增覆盖 `body` 级 theme vars、同类主题切换、稀疏 terminal token、`panel/editor` surface 背景 fallback 与真实 VSCode `Dark Modern` / `Light Modern` 主题切换。
 
 仍保留的边界是：本轮没有单独脚本化“用户手动把 view 拖到 Secondary Sidebar 后再 reveal”的工作台布局动作，因此仓库只把这条行为写成 VSCode 原生能力边界，不把它误写成扩展已直接控制或单独验证的内部状态。
 
@@ -143,3 +159,4 @@
 
 本次修订说明：2026-04-13 08:49 +0800 新建实现型 `ExecPlan`，先收口产品边界和 VSCode 平台限制，再进入代码实现。
 本次修订说明：2026-04-13 09:13 +0800 完成代码、文档与自动化验证后，将本计划归档到 `completed/`，并显式记录 Secondary Sidebar 拖拽路径仍是 VSCode 原生工作台行为边界。
+本次修订说明：2026-04-13 13:08 +0800 追加记录 `xterm` 主题跟随健壮性修复，明确 body 级 token 读取、surface 背景 fallback、真实样式落地后二次刷新，以及新增 Playwright / trusted smoke 验证。

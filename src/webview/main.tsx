@@ -94,6 +94,7 @@ interface CanvasNodeData {
 type CanvasFlowNode = Node<CanvasNodeData>;
 type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type EmbeddedTerminalTheme = NonNullable<EmbeddedTerminalOptions['theme']>;
+type WorkbenchThemeKind = 'light' | 'dark' | 'hcDark' | 'hcLight';
 interface CanvasNodeLayoutDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
@@ -164,6 +165,143 @@ const CANVAS_FIT_VIEW_PADDING = 0.05;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
+const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
+const EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR = '--canvas-embedded-terminal-foreground';
+const TERMINAL_BACKGROUND_FALLBACKS: Record<'editor' | 'panel', string[]> = {
+  editor: ['--vscode-editor-background', '--vscode-panel-background'],
+  panel: ['--vscode-panel-background', '--vscode-editor-background']
+};
+const EMBEDDED_TERMINAL_DEFAULTS: Record<
+  WorkbenchThemeKind,
+  {
+    editorBackground: string;
+    panelBackground: string;
+    foreground: string;
+    selectionBackground: string;
+    ansi: Record<
+      | 'black'
+      | 'red'
+      | 'green'
+      | 'yellow'
+      | 'blue'
+      | 'magenta'
+      | 'cyan'
+      | 'white'
+      | 'brightBlack'
+      | 'brightRed'
+      | 'brightGreen'
+      | 'brightYellow'
+      | 'brightBlue'
+      | 'brightMagenta'
+      | 'brightCyan'
+      | 'brightWhite',
+      string
+    >;
+  }
+> = {
+  dark: {
+    editorBackground: '#1E1E1E',
+    panelBackground: '#1E1E1E',
+    foreground: '#CCCCCC',
+    selectionBackground: '#264F78',
+    ansi: {
+      black: '#000000',
+      red: '#cd3131',
+      green: '#0DBC79',
+      yellow: '#e5e510',
+      blue: '#2472c8',
+      magenta: '#bc3fbc',
+      cyan: '#11a8cd',
+      white: '#e5e5e5',
+      brightBlack: '#666666',
+      brightRed: '#f14c4c',
+      brightGreen: '#23d18b',
+      brightYellow: '#f5f543',
+      brightBlue: '#3b8eea',
+      brightMagenta: '#d670d6',
+      brightCyan: '#29b8db',
+      brightWhite: '#e5e5e5'
+    }
+  },
+  light: {
+    editorBackground: '#FFFFFF',
+    panelBackground: '#F3F3F3',
+    foreground: '#333333',
+    selectionBackground: '#ADD6FF',
+    ansi: {
+      black: '#000000',
+      red: '#cd3131',
+      green: '#107C10',
+      yellow: '#949800',
+      blue: '#0451a5',
+      magenta: '#bc05bc',
+      cyan: '#0598bc',
+      white: '#555555',
+      brightBlack: '#666666',
+      brightRed: '#cd3131',
+      brightGreen: '#14CE14',
+      brightYellow: '#b5ba00',
+      brightBlue: '#0451a5',
+      brightMagenta: '#bc05bc',
+      brightCyan: '#0598bc',
+      brightWhite: '#a5a5a5'
+    }
+  },
+  hcDark: {
+    editorBackground: '#000000',
+    panelBackground: '#000000',
+    foreground: '#FFFFFF',
+    selectionBackground: '#f3f518',
+    ansi: {
+      black: '#000000',
+      red: '#cd0000',
+      green: '#00cd00',
+      yellow: '#cdcd00',
+      blue: '#0000ee',
+      magenta: '#cd00cd',
+      cyan: '#00cdcd',
+      white: '#e5e5e5',
+      brightBlack: '#7f7f7f',
+      brightRed: '#ff0000',
+      brightGreen: '#00ff00',
+      brightYellow: '#ffff00',
+      brightBlue: '#5c5cff',
+      brightMagenta: '#ff00ff',
+      brightCyan: '#00ffff',
+      brightWhite: '#ffffff'
+    }
+  },
+  hcLight: {
+    editorBackground: '#FFFFFF',
+    panelBackground: '#FFFFFF',
+    foreground: '#292929',
+    selectionBackground: '#0F4A85',
+    ansi: {
+      black: '#292929',
+      red: '#cd3131',
+      green: '#136C13',
+      yellow: '#949800',
+      blue: '#0451a5',
+      magenta: '#bc05bc',
+      cyan: '#0598bc',
+      white: '#555555',
+      brightBlack: '#666666',
+      brightRed: '#cd3131',
+      brightGreen: '#00bc00',
+      brightYellow: '#b5ba00',
+      brightBlue: '#0451a5',
+      brightMagenta: '#bc05bc',
+      brightCyan: '#0598bc',
+      brightWhite: '#a5a5a5'
+    }
+  }
+};
+let latestRuntimeContext: CanvasRuntimeContext = {
+  workspaceTrusted: false,
+  surfaceLocation: 'editor'
+};
+let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
+let embeddedTerminalAppearanceRefreshScheduled = false;
 
 if (!rootElement) {
   throw new Error('Webview root element not found.');
@@ -174,7 +312,8 @@ const root = createRoot(rootElement);
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
-    workspaceTrusted: false
+    workspaceTrusted: false,
+    surfaceLocation: latestRuntimeContext.surfaceLocation
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -197,8 +336,10 @@ function App(): JSX.Element {
       switch (message.type) {
         case 'host/bootstrap':
         case 'host/stateUpdated':
+          latestRuntimeContext = message.payload.runtime;
           setHostState(message.payload.state);
           setRuntimeContext(message.payload.runtime);
+          scheduleEmbeddedTerminalAppearanceRefresh();
           break;
         case 'host/themeChanged':
           scheduleEmbeddedTerminalAppearanceRefresh();
@@ -257,6 +398,20 @@ function App(): JSX.Element {
       if (clearErrorTimer.current) {
         window.clearTimeout(clearErrorTimer.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    latestRuntimeContext = runtimeContext;
+  }, [runtimeContext]);
+
+  useEffect(() => {
+    ensureEmbeddedTerminalThemeObservers();
+    scheduleEmbeddedTerminalAppearanceRefresh();
+
+    return () => {
+      embeddedTerminalThemeObserverDispose?.();
+      embeddedTerminalThemeObserverDispose = undefined;
     };
   }, []);
 
@@ -2202,17 +2357,70 @@ function emitExecutionHostEvent(detail: ExecutionHostEvent): void {
 }
 
 function scheduleEmbeddedTerminalAppearanceRefresh(): void {
+  if (embeddedTerminalAppearanceRefreshScheduled) {
+    return;
+  }
+
+  embeddedTerminalAppearanceRefreshScheduled = true;
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
+      embeddedTerminalAppearanceRefreshScheduled = false;
       refreshAllEmbeddedTerminalAppearances();
     });
   });
 }
 
 function refreshAllEmbeddedTerminalAppearances(): void {
+  const appearance = readEmbeddedTerminalAppearance();
+  syncEmbeddedTerminalCssVariables(appearance);
   for (const terminal of executionTerminalRegistry.values()) {
-    applyEmbeddedTerminalAppearance(terminal);
+    applyEmbeddedTerminalAppearance(terminal, appearance);
   }
+}
+
+function ensureEmbeddedTerminalThemeObservers(): void {
+  if (embeddedTerminalThemeObserverDispose) {
+    return;
+  }
+
+  const scheduleRefresh = (): void => {
+    scheduleEmbeddedTerminalAppearanceRefresh();
+  };
+  const headObserver = new MutationObserver(() => {
+    scheduleRefresh();
+  });
+  const bodyObserver = new MutationObserver(() => {
+    scheduleRefresh();
+  });
+  const rootObserver = new MutationObserver(() => {
+    scheduleRefresh();
+  });
+
+  if (document.head) {
+    headObserver.observe(document.head, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  }
+
+  if (document.body) {
+    bodyObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-vscode-theme-id', 'data-vscode-theme-kind']
+    });
+  }
+
+  rootObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'style']
+  });
+
+  embeddedTerminalThemeObserverDispose = () => {
+    headObserver.disconnect();
+    bodyObserver.disconnect();
+    rootObserver.disconnect();
+  };
 }
 
 function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
@@ -2564,56 +2772,93 @@ function readEmbeddedTerminalAppearance(): {
   fontFamily: string;
   theme: EmbeddedTerminalTheme;
 } {
-  const styles = getComputedStyle(document.documentElement);
-  const background = readCssVariable(styles, '--vscode-terminal-background', '#08101f');
-  const foreground = readCssVariable(styles, '--vscode-terminal-foreground', '#e5e7eb');
-  const cursor = readCssVariable(styles, '--vscode-terminalCursor-foreground', '#38bdf8');
-  const selectionBackground = readCssVariable(styles, '--vscode-terminal-selectionBackground', 'rgba(56, 189, 248, 0.24)');
-  const selectionForeground = readCssVariable(styles, '--vscode-terminal-selectionForeground', foreground);
-  const selectionInactiveBackground = readCssVariable(
-    styles,
-    '--vscode-terminal-inactiveSelectionBackground',
-    selectionBackground
-  );
-  const cursorAccent = readCssVariable(styles, '--vscode-terminalCursor-background', background);
+  const styles = readWorkbenchThemeStyles();
+  const themeKind = readWorkbenchThemeKind();
+  const defaults = EMBEDDED_TERMINAL_DEFAULTS[themeKind];
+  const surfaceLocation = latestRuntimeContext.surfaceLocation;
+  const background =
+    readCssVariableValue(styles, '--vscode-terminal-background') ??
+    readCssVariableChain(styles, TERMINAL_BACKGROUND_FALLBACKS[surfaceLocation]) ??
+    (surfaceLocation === 'panel' ? defaults.panelBackground : defaults.editorBackground);
+  const foreground =
+    readCssVariableValue(styles, '--vscode-terminal-foreground') ?? defaults.foreground;
+  const cursor = readCssVariableValue(styles, '--vscode-terminalCursor-foreground') ?? foreground;
+  const selectionBackground =
+    readCssVariableValue(styles, '--vscode-terminal-selectionBackground') ??
+    readCssVariableValue(styles, '--vscode-editor-selectionBackground') ??
+    defaults.selectionBackground;
+  const selectionForeground =
+    readCssVariableValue(styles, '--vscode-terminal-selectionForeground') ?? foreground;
+  const selectionInactiveBackground =
+    readCssVariableValue(styles, '--vscode-terminal-inactiveSelectionBackground') ??
+    selectionBackground;
+  const cursorAccent = readCssVariableValue(styles, '--vscode-terminalCursor-background') ?? background;
   const fontFamily = readCssVariable(
     styles,
     '--vscode-editor-font-family',
     `'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace`
   );
+  const theme: EmbeddedTerminalTheme = {
+    background,
+    foreground,
+    cursor,
+    cursorAccent,
+    selectionBackground,
+    selectionForeground,
+    selectionInactiveBackground,
+    black: readCssVariable(styles, '--vscode-terminal-ansiBlack', defaults.ansi.black),
+    red: readCssVariable(styles, '--vscode-terminal-ansiRed', defaults.ansi.red),
+    green: readCssVariable(styles, '--vscode-terminal-ansiGreen', defaults.ansi.green),
+    yellow: readCssVariable(styles, '--vscode-terminal-ansiYellow', defaults.ansi.yellow),
+    blue: readCssVariable(styles, '--vscode-terminal-ansiBlue', defaults.ansi.blue),
+    magenta: readCssVariable(styles, '--vscode-terminal-ansiMagenta', defaults.ansi.magenta),
+    cyan: readCssVariable(styles, '--vscode-terminal-ansiCyan', defaults.ansi.cyan),
+    white: readCssVariable(styles, '--vscode-terminal-ansiWhite', defaults.ansi.white),
+    brightBlack: readCssVariable(
+      styles,
+      '--vscode-terminal-ansiBrightBlack',
+      defaults.ansi.brightBlack
+    ),
+    brightRed: readCssVariable(styles, '--vscode-terminal-ansiBrightRed', defaults.ansi.brightRed),
+    brightGreen: readCssVariable(
+      styles,
+      '--vscode-terminal-ansiBrightGreen',
+      defaults.ansi.brightGreen
+    ),
+    brightYellow: readCssVariable(
+      styles,
+      '--vscode-terminal-ansiBrightYellow',
+      defaults.ansi.brightYellow
+    ),
+    brightBlue: readCssVariable(styles, '--vscode-terminal-ansiBrightBlue', defaults.ansi.brightBlue),
+    brightMagenta: readCssVariable(
+      styles,
+      '--vscode-terminal-ansiBrightMagenta',
+      defaults.ansi.brightMagenta
+    ),
+    brightCyan: readCssVariable(styles, '--vscode-terminal-ansiBrightCyan', defaults.ansi.brightCyan),
+    brightWhite: readCssVariable(
+      styles,
+      '--vscode-terminal-ansiBrightWhite',
+      defaults.ansi.brightWhite
+    )
+  };
+
+  syncEmbeddedTerminalCssVariables({
+    fontFamily,
+    theme
+  });
 
   return {
     fontFamily,
-    theme: {
-      background,
-      foreground,
-      cursor,
-      cursorAccent,
-      selectionBackground,
-      selectionForeground,
-      selectionInactiveBackground,
-      black: readCssVariable(styles, '--vscode-terminal-ansiBlack', '#000000'),
-      red: readCssVariable(styles, '--vscode-terminal-ansiRed', '#cd3131'),
-      green: readCssVariable(styles, '--vscode-terminal-ansiGreen', '#0dbc79'),
-      yellow: readCssVariable(styles, '--vscode-terminal-ansiYellow', '#e5e510'),
-      blue: readCssVariable(styles, '--vscode-terminal-ansiBlue', '#2472c8'),
-      magenta: readCssVariable(styles, '--vscode-terminal-ansiMagenta', '#bc3fbc'),
-      cyan: readCssVariable(styles, '--vscode-terminal-ansiCyan', '#11a8cd'),
-      white: readCssVariable(styles, '--vscode-terminal-ansiWhite', '#e5e5e5'),
-      brightBlack: readCssVariable(styles, '--vscode-terminal-ansiBrightBlack', '#666666'),
-      brightRed: readCssVariable(styles, '--vscode-terminal-ansiBrightRed', '#f14c4c'),
-      brightGreen: readCssVariable(styles, '--vscode-terminal-ansiBrightGreen', '#23d18b'),
-      brightYellow: readCssVariable(styles, '--vscode-terminal-ansiBrightYellow', '#f5f543'),
-      brightBlue: readCssVariable(styles, '--vscode-terminal-ansiBrightBlue', '#3b8eea'),
-      brightMagenta: readCssVariable(styles, '--vscode-terminal-ansiBrightMagenta', '#d670d6'),
-      brightCyan: readCssVariable(styles, '--vscode-terminal-ansiBrightCyan', '#29b8db'),
-      brightWhite: readCssVariable(styles, '--vscode-terminal-ansiBrightWhite', '#e5e5e5')
-    }
+    theme
   };
 }
 
-function applyEmbeddedTerminalAppearance(terminal: Terminal): void {
-  const appearance = readEmbeddedTerminalAppearance();
+function applyEmbeddedTerminalAppearance(
+  terminal: Terminal,
+  appearance: { fontFamily: string; theme: EmbeddedTerminalTheme } = readEmbeddedTerminalAppearance()
+): void {
   terminal.options.fontFamily = appearance.fontFamily;
   terminal.options.theme = {
     ...appearance.theme
@@ -2622,6 +2867,46 @@ function applyEmbeddedTerminalAppearance(terminal: Terminal): void {
   if (terminal.rows > 0) {
     terminal.refresh(0, terminal.rows - 1);
   }
+}
+
+function readWorkbenchThemeKind(): WorkbenchThemeKind {
+  const body = document.body;
+  const themeKind = body?.dataset.vscodeThemeKind;
+  if (themeKind === 'vscode-high-contrast-light' || body?.classList.contains('vscode-high-contrast-light')) {
+    return 'hcLight';
+  }
+
+  if (themeKind === 'vscode-high-contrast' || body?.classList.contains('vscode-high-contrast')) {
+    return 'hcDark';
+  }
+
+  if (themeKind === 'vscode-light' || body?.classList.contains('vscode-light')) {
+    return 'light';
+  }
+
+  if (themeKind === 'vscode-dark' || body?.classList.contains('vscode-dark')) {
+    return 'dark';
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function readWorkbenchThemeStyles(): CSSStyleDeclaration {
+  return getComputedStyle(document.body ?? document.documentElement);
+}
+
+function syncEmbeddedTerminalCssVariables(appearance: {
+  fontFamily: string;
+  theme: EmbeddedTerminalTheme;
+}): void {
+  document.documentElement.style.setProperty(
+    EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR,
+    appearance.theme.background ?? ''
+  );
+  document.documentElement.style.setProperty(
+    EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR,
+    appearance.theme.foreground ?? ''
+  );
 }
 
 function createZoomAdjustedMouseEvent(
@@ -2669,9 +2954,30 @@ function readXtermScreenElement(terminal: Terminal): HTMLElement | null {
   return terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? null;
 }
 
-function readCssVariable(styles: CSSStyleDeclaration, variableName: string, fallback: string): string {
+function readCssVariableValue(
+  styles: CSSStyleDeclaration,
+  variableName: string
+): string | undefined {
   const value = styles.getPropertyValue(variableName).trim();
-  return value || fallback;
+  return value.length > 0 ? value : undefined;
+}
+
+function readCssVariableChain(
+  styles: CSSStyleDeclaration,
+  variableNames: readonly string[]
+): string | undefined {
+  for (const variableName of variableNames) {
+    const value = readCssVariableValue(styles, variableName);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readCssVariable(styles: CSSStyleDeclaration, variableName: string, fallback: string): string {
+  return readCssVariableValue(styles, variableName) ?? fallback;
 }
 
 function postMessage(message: WebviewToHostMessage): void {

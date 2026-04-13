@@ -45,6 +45,32 @@ const RESIZED_NODE_SIZES = {
   terminal: { width: 620, height: 460 },
   note: { width: 500, height: 500 }
 };
+const BUILTIN_WORKBENCH_TERMINAL_THEME_EXPECTATIONS = {
+  panel: {
+    'Dark Modern': {
+      background: '#181818',
+      foreground: '#CCCCCC',
+      ansiBlue: '#2472c8'
+    },
+    'Light Modern': {
+      background: '#F8F8F8',
+      foreground: '#3B3B3B',
+      ansiBlue: '#0451a5'
+    }
+  },
+  editor: {
+    'Dark Modern': {
+      background: '#1F1F1F',
+      foreground: '#CCCCCC',
+      ansiBlue: '#2472c8'
+    },
+    'Light Modern': {
+      background: '#FFFFFF',
+      foreground: '#3B3B3B',
+      ansiBlue: '#0451a5'
+    }
+  }
+};
 let lastWebviewProbe;
 
 module.exports = {
@@ -196,6 +222,7 @@ async function runTrustedSmoke() {
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);
   await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);
   await verifyLiveSessionCutoverAndReload(terminalNode.id);
   await verifyPtyRobustness(agentNode.id, terminalNode.id);
@@ -1557,6 +1584,49 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
 }
 
+async function verifyEmbeddedTerminalThemeFollowWorkbench(agentNodeId, terminalNodeId) {
+  const workbenchConfiguration = vscode.workspace.getConfiguration('workbench');
+  const originalColorTheme = workbenchConfiguration.inspect('colorTheme')?.globalValue;
+
+  try {
+    await verifyEmbeddedTerminalThemeOnSurface('panel', agentNodeId, terminalNodeId);
+    await verifyEmbeddedTerminalThemeOnSurface('editor', agentNodeId, terminalNodeId);
+  } finally {
+    await setWorkbenchColorTheme(originalColorTheme);
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  }
+}
+
+async function verifyEmbeddedTerminalThemeOnSurface(surface, agentNodeId, terminalNodeId) {
+  if (surface === 'panel') {
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  } else {
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  }
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, surface, 20000);
+
+  const expectationsByTheme = BUILTIN_WORKBENCH_TERMINAL_THEME_EXPECTATIONS[surface];
+  for (const [themeName, expectedTheme] of Object.entries(expectationsByTheme)) {
+    await setWorkbenchColorTheme(themeName);
+
+    const probe = await waitForWebviewProbeOnSurface(surface, (currentProbe) => {
+      const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+      const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
+
+      return (
+        terminalThemeMatches(agentNode?.terminalTheme, expectedTheme) &&
+        terminalThemeMatches(terminalNode?.terminalTheme, expectedTheme)
+      );
+    }, 15000);
+
+    const agentTheme = probe.nodes.find((node) => node.nodeId === agentNodeId)?.terminalTheme;
+    const terminalTheme = probe.nodes.find((node) => node.nodeId === terminalNodeId)?.terminalTheme;
+    assertTerminalThemeMatches(agentTheme, expectedTheme, `${surface}/${themeName}/agent`);
+    assertTerminalThemeMatches(terminalTheme, expectedTheme, `${surface}/${themeName}/terminal`);
+  }
+}
+
 async function verifyPersistenceAndRecovery(noteNodeId, agentNodeId, terminalNodeId) {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
@@ -2862,6 +2932,12 @@ async function setRuntimePersistenceEnabled(enabled) {
     .update('devSessionCanvas.runtimePersistence.enabled', enabled, vscode.ConfigurationTarget.Global);
 }
 
+async function setWorkbenchColorTheme(themeName) {
+  await vscode.workspace
+    .getConfiguration('workbench')
+    .update('colorTheme', themeName, vscode.ConfigurationTarget.Global);
+}
+
 async function requestExecutionSnapshot(kind, nodeId, surface) {
   return dispatchWebviewMessage(
     {
@@ -2876,8 +2952,12 @@ async function requestExecutionSnapshot(kind, nodeId, surface) {
 }
 
 async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
+  return waitForWebviewProbeOnSurface('editor', predicate, timeoutMs);
+}
+
+async function waitForWebviewProbeOnSurface(surface, predicate, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
-  let lastProbe = await captureWebviewProbe('editor', 2000);
+  let lastProbe = await captureWebviewProbe(surface, 2000);
 
   while (Date.now() < deadline) {
     if (predicate(lastProbe)) {
@@ -2885,10 +2965,12 @@ async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
     }
 
     await sleep(100);
-    lastProbe = await captureWebviewProbe('editor', 2000);
+    lastProbe = await captureWebviewProbe(surface, 2000);
   }
 
-  assert.fail(`Timed out while waiting for webview probe. Last probe: ${JSON.stringify(lastProbe)}`);
+  assert.fail(
+    `Timed out while waiting for ${surface} webview probe. Last probe: ${JSON.stringify(lastProbe)}`
+  );
 }
 
 async function waitForSnapshot(predicate, timeoutMs = 15000) {
@@ -2905,6 +2987,37 @@ async function waitForSnapshot(predicate, timeoutMs = 15000) {
   }
 
   assert.fail(`Timed out while waiting for smoke test state. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
+}
+
+function terminalThemeMatches(actualTheme, expectedTheme) {
+  return (
+    normalizeColorValue(actualTheme?.background) === normalizeColorValue(expectedTheme.background) &&
+    normalizeColorValue(actualTheme?.foreground) === normalizeColorValue(expectedTheme.foreground) &&
+    normalizeColorValue(actualTheme?.ansiBlue) === normalizeColorValue(expectedTheme.ansiBlue)
+  );
+}
+
+function assertTerminalThemeMatches(actualTheme, expectedTheme, label) {
+  assert.ok(actualTheme, `Missing terminal theme snapshot for ${label}.`);
+  assert.strictEqual(
+    normalizeColorValue(actualTheme.background),
+    normalizeColorValue(expectedTheme.background),
+    `${label} background did not match.`
+  );
+  assert.strictEqual(
+    normalizeColorValue(actualTheme.foreground),
+    normalizeColorValue(expectedTheme.foreground),
+    `${label} foreground did not match.`
+  );
+  assert.strictEqual(
+    normalizeColorValue(actualTheme.ansiBlue),
+    normalizeColorValue(expectedTheme.ansiBlue),
+    `${label} ansiBlue did not match.`
+  );
+}
+
+function normalizeColorValue(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : null;
 }
 
 function listRuntimeSupervisorSessions(runtimeSupervisorState) {

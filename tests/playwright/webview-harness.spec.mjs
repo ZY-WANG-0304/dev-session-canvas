@@ -12,6 +12,7 @@ const WORKBENCH_THEME_VARS = {
   dark: {
     '--vscode-editor-background': '#1e1e1e',
     '--vscode-editor-foreground': '#cccccc',
+    '--vscode-panel-background': '#181818',
     '--vscode-sideBar-background': '#181818',
     '--vscode-editorWidget-background': '#252526',
     '--vscode-panel-border': '#454545',
@@ -30,10 +31,10 @@ const WORKBENCH_THEME_VARS = {
     '--vscode-menu-selectionBackground': '#04395e',
     '--vscode-menu-selectionForeground': '#ffffff',
     '--vscode-menu-border': '#454545',
-    '--vscode-terminal-background': '#181818',
+    '--vscode-terminal-background': '#101722',
     '--vscode-terminal-foreground': '#cccccc',
     '--vscode-terminalCursor-foreground': '#aeafad',
-    '--vscode-terminalCursor-background': '#181818',
+    '--vscode-terminalCursor-background': '#101722',
     '--vscode-terminal-selectionBackground': 'rgba(38, 79, 120, 0.5)',
     '--vscode-terminal-selectionForeground': '#ffffff',
     '--vscode-terminal-inactiveSelectionBackground': 'rgba(38, 79, 120, 0.28)',
@@ -59,6 +60,7 @@ const WORKBENCH_THEME_VARS = {
   light: {
     '--vscode-editor-background': '#ffffff',
     '--vscode-editor-foreground': '#1f1f1f',
+    '--vscode-panel-background': '#f8f8f8',
     '--vscode-sideBar-background': '#f3f3f3',
     '--vscode-editorWidget-background': '#f8f8f8',
     '--vscode-panel-border': '#c8c8c8',
@@ -104,6 +106,79 @@ const WORKBENCH_THEME_VARS = {
     '--vscode-editor-font-family': "'Segoe UI', sans-serif"
   }
 };
+const SPARSE_TERMINAL_THEME_UNSET_VARS = [
+  '--vscode-terminal-background',
+  '--vscode-terminalCursor-background',
+  '--vscode-terminal-selectionForeground',
+  '--vscode-terminal-ansiBlack',
+  '--vscode-terminal-ansiRed',
+  '--vscode-terminal-ansiGreen',
+  '--vscode-terminal-ansiYellow',
+  '--vscode-terminal-ansiBlue',
+  '--vscode-terminal-ansiMagenta',
+  '--vscode-terminal-ansiCyan',
+  '--vscode-terminal-ansiWhite',
+  '--vscode-terminal-ansiBrightBlack',
+  '--vscode-terminal-ansiBrightRed',
+  '--vscode-terminal-ansiBrightGreen',
+  '--vscode-terminal-ansiBrightYellow',
+  '--vscode-terminal-ansiBrightBlue',
+  '--vscode-terminal-ansiBrightMagenta',
+  '--vscode-terminal-ansiBrightCyan',
+  '--vscode-terminal-ansiBrightWhite'
+];
+const WORKBENCH_THEME_FIXTURES = {
+  dark: {
+    kind: 'dark',
+    themeId: 'Harness Dark',
+    themeVars: WORKBENCH_THEME_VARS.dark
+  },
+  light: {
+    kind: 'light',
+    themeId: 'Harness Light',
+    themeVars: WORKBENCH_THEME_VARS.light
+  },
+  darkSparse: {
+    kind: 'dark',
+    themeId: 'Harness Dark Modern Sparse',
+    themeVars: {
+      ...WORKBENCH_THEME_VARS.dark,
+      '--vscode-editor-background': '#1f1f1f',
+      '--vscode-editorWidget-background': '#202020',
+      '--vscode-panel-background': '#181818',
+      '--vscode-panel-border': '#2b2b2b',
+      '--vscode-widget-border': '#313131',
+      '--vscode-terminal-foreground': '#cccccc',
+      '--vscode-terminalCursor-foreground': '#aeafad'
+    },
+    unsetVars: SPARSE_TERMINAL_THEME_UNSET_VARS
+  },
+  lightSparse: {
+    kind: 'light',
+    themeId: 'Harness Light Modern Sparse',
+    themeVars: {
+      ...WORKBENCH_THEME_VARS.light,
+      '--vscode-editor-background': '#ffffff',
+      '--vscode-editor-foreground': '#3b3b3b',
+      '--vscode-editorWidget-background': '#f8f8f8',
+      '--vscode-panel-background': '#f8f8f8',
+      '--vscode-panel-border': '#e5e5e5',
+      '--vscode-widget-border': '#e5e5e5',
+      '--vscode-terminal-foreground': '#3b3b3b',
+      '--vscode-terminalCursor-foreground': '#005fb8',
+      '--vscode-terminal-inactiveSelectionBackground': '#e5ebf1'
+    },
+    unsetVars: SPARSE_TERMINAL_THEME_UNSET_VARS
+  }
+};
+const WORKBENCH_THEME_VAR_NAMES = Array.from(
+  new Set(
+    Object.values(WORKBENCH_THEME_FIXTURES).flatMap((fixture) => [
+      ...Object.keys(fixture.themeVars),
+      ...(fixture.unsetVars ?? [])
+    ])
+  )
+);
 
 test.beforeEach(async ({ page }) => {
   const pageDiagnostics = {
@@ -184,6 +259,7 @@ test.afterEach(async ({ page }, testInfo) => {
 
 test('webview bundle emits ready and matches the baseline screenshot', async ({ page }) => {
   await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
   await bootstrap(page, createCanvasScreenshotState());
 
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveValue('codex');
@@ -217,11 +293,11 @@ test('embedded xterm theme follows workbench theme changes for agent and termina
     })
     .toBe(
       JSON.stringify({
-        agentBackground: WORKBENCH_THEME_VARS.dark['--vscode-terminal-background'],
-        agentForeground: WORKBENCH_THEME_VARS.dark['--vscode-terminal-foreground'],
-        agentAnsiBlue: WORKBENCH_THEME_VARS.dark['--vscode-terminal-ansiBlue'],
-        terminalBackground: WORKBENCH_THEME_VARS.dark['--vscode-terminal-background'],
-        terminalBrightWhite: WORKBENCH_THEME_VARS.dark['--vscode-terminal-ansiBrightWhite']
+        agentBackground: WORKBENCH_THEME_FIXTURES.dark.themeVars['--vscode-terminal-background'],
+        agentForeground: WORKBENCH_THEME_FIXTURES.dark.themeVars['--vscode-terminal-foreground'],
+        agentAnsiBlue: WORKBENCH_THEME_FIXTURES.dark.themeVars['--vscode-terminal-ansiBlue'],
+        terminalBackground: WORKBENCH_THEME_FIXTURES.dark.themeVars['--vscode-terminal-background'],
+        terminalBrightWhite: WORKBENCH_THEME_FIXTURES.dark.themeVars['--vscode-terminal-ansiBrightWhite']
       })
     );
 
@@ -244,11 +320,97 @@ test('embedded xterm theme follows workbench theme changes for agent and termina
     })
     .toBe(
       JSON.stringify({
-        agentBackground: WORKBENCH_THEME_VARS.light['--vscode-terminal-background'],
-        agentForeground: WORKBENCH_THEME_VARS.light['--vscode-terminal-foreground'],
-        agentAnsiBlue: WORKBENCH_THEME_VARS.light['--vscode-terminal-ansiBlue'],
-        terminalBackground: WORKBENCH_THEME_VARS.light['--vscode-terminal-background'],
-        terminalBrightWhite: WORKBENCH_THEME_VARS.light['--vscode-terminal-ansiBrightWhite']
+        agentBackground: WORKBENCH_THEME_FIXTURES.light.themeVars['--vscode-terminal-background'],
+        agentForeground: WORKBENCH_THEME_FIXTURES.light.themeVars['--vscode-terminal-foreground'],
+        agentAnsiBlue: WORKBENCH_THEME_FIXTURES.light.themeVars['--vscode-terminal-ansiBlue'],
+        terminalBackground: WORKBENCH_THEME_FIXTURES.light.themeVars['--vscode-terminal-background'],
+        terminalBrightWhite: WORKBENCH_THEME_FIXTURES.light.themeVars['--vscode-terminal-ansiBrightWhite']
+      })
+    );
+});
+
+test('embedded xterm re-reads body theme vars and falls back to workbench surfaces for sparse themes', async ({
+  page
+}) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state, createRuntimeContext({ surfaceLocation: 'panel' }));
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      const agentNode = await readProbeNode(page, 'agent-1', 20);
+      return agentNode?.terminalTheme?.background ?? null;
+    })
+    .toBe(WORKBENCH_THEME_FIXTURES.dark.themeVars['--vscode-terminal-background']);
+
+  await applyWorkbenchTheme(page, 'darkSparse');
+  await dispatchThemeChanged(page);
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      const agentNode = await readProbeNode(page, 'agent-1', 20);
+      const terminalNode = await readProbeNode(page, 'terminal-1', 20);
+
+      return JSON.stringify({
+        agentBackground: agentNode?.terminalTheme?.background,
+        agentForeground: agentNode?.terminalTheme?.foreground,
+        agentAnsiBlue: agentNode?.terminalTheme?.ansiBlue,
+        terminalBackground: terminalNode?.terminalTheme?.background,
+        terminalBrightWhite: terminalNode?.terminalTheme?.ansiBrightWhite
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        agentBackground: WORKBENCH_THEME_FIXTURES.darkSparse.themeVars['--vscode-panel-background'],
+        agentForeground: WORKBENCH_THEME_FIXTURES.darkSparse.themeVars['--vscode-terminal-foreground'],
+        agentAnsiBlue: '#2472c8',
+        terminalBackground: WORKBENCH_THEME_FIXTURES.darkSparse.themeVars['--vscode-panel-background'],
+        terminalBrightWhite: '#e5e5e5'
+      })
+    );
+
+  await updateHostState(page, state, createRuntimeContext({ surfaceLocation: 'editor' }));
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      const agentNode = await readProbeNode(page, 'agent-1', 20);
+      return JSON.stringify({
+        background: agentNode?.terminalTheme?.background,
+        foreground: agentNode?.terminalTheme?.foreground
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        background: WORKBENCH_THEME_FIXTURES.darkSparse.themeVars['--vscode-editor-background'],
+        foreground: WORKBENCH_THEME_FIXTURES.darkSparse.themeVars['--vscode-terminal-foreground']
+      })
+    );
+
+  await applyWorkbenchTheme(page, 'lightSparse');
+  await dispatchThemeChanged(page);
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      const agentNode = await readProbeNode(page, 'agent-1', 20);
+      return JSON.stringify({
+        background: agentNode?.terminalTheme?.background,
+        foreground: agentNode?.terminalTheme?.foreground,
+        ansiBlue: agentNode?.terminalTheme?.ansiBlue,
+        brightWhite: agentNode?.terminalTheme?.ansiBrightWhite
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        background: WORKBENCH_THEME_FIXTURES.lightSparse.themeVars['--vscode-editor-background'],
+        foreground: WORKBENCH_THEME_FIXTURES.lightSparse.themeVars['--vscode-terminal-foreground'],
+        ansiBlue: '#0451a5',
+        brightWhite: '#a5a5a5'
       })
     );
 });
@@ -565,17 +727,15 @@ test('dragging a resize handle posts resizeNode and updates the note frame size'
     width: resizedSize.width,
     height: resizedSize.height
   };
-  await page.evaluate((state) => {
+  await page.evaluate(({ state, runtime }) => {
     window.__devSessionCanvasHarness.dispatchHostMessage({
       type: 'host/stateUpdated',
       payload: {
         state,
-        runtime: {
-          workspaceTrusted: true
-        }
+        runtime
       }
     });
-  }, nextState);
+  }, { state: nextState, runtime: createRuntimeContext() });
 
   await expect.poll(async () => noteNode.boundingBox()).not.toBeNull();
   const afterBox = await noteNode.boundingBox();
@@ -658,17 +818,15 @@ test('dragging the top-left resize handle moves the note origin and grows the fr
   const nextState = createNoteNodeState();
   nextState.nodes[0].position = nextLayout.position;
   nextState.nodes[0].size = nextLayout.size;
-  await page.evaluate((state) => {
+  await page.evaluate(({ state, runtime }) => {
     window.__devSessionCanvasHarness.dispatchHostMessage({
       type: 'host/stateUpdated',
       payload: {
         state,
-        runtime: {
-          workspaceTrusted: true
-        }
+        runtime
       }
     });
-  }, nextState);
+  }, { state: nextState, runtime: createRuntimeContext() });
 
   const afterBox = await noteNode.boundingBox();
   expect(afterBox).not.toBeNull();
@@ -1010,27 +1168,75 @@ async function openHarness(page, options = {}) {
     .toBe(true);
 }
 
-async function bootstrap(page, state) {
-  await page.evaluate((nextState) => {
+async function bootstrap(page, state, runtime = createRuntimeContext()) {
+  await page.evaluate(({ nextState, nextRuntime }) => {
     window.__devSessionCanvasHarness.clearPostedMessages();
-    window.__devSessionCanvasHarness.bootstrap(nextState);
-  }, state);
+    window.__devSessionCanvasHarness.bootstrap(nextState, nextRuntime);
+  }, { nextState: state, nextRuntime: runtime });
+}
+
+async function updateHostState(page, state, runtime = createRuntimeContext()) {
+  await page.evaluate(({ nextState, nextRuntime }) => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/stateUpdated',
+      payload: {
+        state: nextState,
+        runtime: nextRuntime
+      }
+    });
+  }, { nextState: state, nextRuntime: runtime });
 }
 
 async function applyWorkbenchTheme(page, themeName) {
-  const colorScheme = themeName === 'dark' ? 'dark' : 'light';
+  const fixture = WORKBENCH_THEME_FIXTURES[themeName];
+  const colorScheme = fixture.kind === 'dark' ? 'dark' : 'light';
   await page.emulateMedia({ colorScheme });
   await page.evaluate(
-    ({ themeVars }) => {
+    ({ themeVars, themeKind, themeId, themeVarNames, unsetVars }) => {
+      const body = document.body;
+      if (!body) {
+        throw new Error('Harness body not ready.');
+      }
+
+      for (const name of themeVarNames) {
+        body.style.removeProperty(name);
+        document.documentElement.style.removeProperty(name);
+      }
+
+      body.classList.remove(
+        'vscode-light',
+        'vscode-dark',
+        'vscode-high-contrast',
+        'vscode-high-contrast-light'
+      );
+      body.classList.add(themeKind === 'dark' ? 'vscode-dark' : 'vscode-light');
+      body.dataset.vscodeThemeKind = themeKind === 'dark' ? 'vscode-dark' : 'vscode-light';
+      body.dataset.vscodeThemeId = themeId;
+
       for (const [name, value] of Object.entries(themeVars)) {
-        document.documentElement.style.setProperty(name, value);
+        body.style.setProperty(name, value);
+      }
+      for (const name of unsetVars) {
+        body.style.removeProperty(name);
       }
     },
     {
-      themeVars: WORKBENCH_THEME_VARS[themeName]
+      themeVars: fixture.themeVars,
+      themeKind: fixture.kind,
+      themeId: fixture.themeId,
+      themeVarNames: WORKBENCH_THEME_VAR_NAMES,
+      unsetVars: fixture.unsetVars ?? []
     }
   );
   await settleWebview(page, 2);
+}
+
+function createRuntimeContext(overrides = {}) {
+  return {
+    workspaceTrusted: true,
+    surfaceLocation: 'panel',
+    ...overrides
+  };
 }
 
 async function clearPostedMessages(page) {
