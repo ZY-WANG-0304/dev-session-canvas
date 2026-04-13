@@ -13,6 +13,7 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
+  CONFIG_KEYS,
   EXTENSION_DISPLAY_NAME,
   STORAGE_KEYS,
   VIEW_IDS
@@ -304,6 +305,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessage({
           type: 'host/themeChanged'
         });
+      })
+    );
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider)) {
+          return;
+        }
+
+        this.postState('host/stateUpdated');
       })
     );
 

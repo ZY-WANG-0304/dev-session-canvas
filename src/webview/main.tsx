@@ -1793,6 +1793,7 @@ const CanvasContextMenu = React.forwardRef<
 >(function CanvasContextMenu(props, ref): JSX.Element {
   const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
   const providerItems = ['codex', 'claude'] as const;
+  const isProviderView = props.view === 'agent-provider';
 
   return (
     <div
@@ -1810,9 +1811,23 @@ const CanvasContextMenu = React.forwardRef<
         stopCanvasEvent(event);
       }}
     >
-      <div className="canvas-context-menu-header">
-        <strong>{props.view === 'root' ? '新建节点' : '选择 Agent 类型'}</strong>
-        <span>{props.view === 'root' ? '在当前空白区域快速放置对象' : '选择创建时要绑定的 provider'}</span>
+      <div className={`canvas-context-menu-header${isProviderView ? ' with-back' : ''}`}>
+        {isProviderView ? (
+          <button
+            type="button"
+            className="canvas-context-menu-header-back"
+            data-context-menu-back="true"
+            onClick={props.onBack}
+            aria-label="返回上一级"
+            title="返回上一级"
+          >
+            {'<'}
+          </button>
+        ) : null}
+        <div className="canvas-context-menu-header-copy">
+          <strong>{props.view === 'root' ? '新建节点' : '选择 Agent 类型'}</strong>
+          <span>{props.view === 'root' ? '在当前空白区域快速放置对象' : '选择创建时要绑定的 provider'}</span>
+        </div>
       </div>
       <div className="canvas-context-menu-items">
         {props.view === 'root'
@@ -1827,7 +1842,7 @@ const CanvasContextMenu = React.forwardRef<
                     type="button"
                     className="canvas-context-menu-item"
                     data-context-menu-agent-action="create-default"
-                    onClick={() => props.onCreate('agent', props.defaultAgentProvider)}
+                    onClick={() => props.onCreate('agent')}
                   >
                     <span
                       className="canvas-context-menu-swatch"
@@ -1844,8 +1859,10 @@ const CanvasContextMenu = React.forwardRef<
                     className="canvas-context-menu-item-secondary"
                     data-context-menu-agent-action="show-providers"
                     onClick={props.onShowAgentProviders}
+                    aria-label="选择 Agent 类型"
+                    title="选择 Agent 类型"
                   >
-                    类型
+                    <span aria-hidden="true">{'>'}</span>
                   </button>
                 </div>
               ) : (
@@ -1890,16 +1907,6 @@ const CanvasContextMenu = React.forwardRef<
               </button>
             ))}
       </div>
-      {props.view === 'agent-provider' ? (
-        <button
-          type="button"
-          className="canvas-context-menu-dismiss"
-          data-context-menu-back="true"
-          onClick={props.onBack}
-        >
-          返回
-        </button>
-      ) : null}
       <button
         type="button"
         className="canvas-context-menu-dismiss"

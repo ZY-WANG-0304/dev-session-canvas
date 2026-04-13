@@ -31,6 +31,9 @@
 - 观察：新增宿主 `QuickPick` 验证后，`trusted smoke` 里原有 `verifyAgentExecutionFlow()` 对 `starting` 瞬时状态的等待变得不稳定；节点已经 live 且可输入时，也可能先于断言进入 `waiting-input`。
   证据：2026-04-13 22:04 +0800 的一次 `npm run test:smoke` 失败快照显示 `agent-1.metadata.agent.liveSession === true` 且 `status === 'waiting-input'`，超时点位于 `tests/vscode-smoke/extension-tests.cjs:574`。
 
+- 观察：Webview 右键菜单默认创建 `Agent` 时，如果显式把当前默认 provider 回传给 Host，而 Host 又没有在配置变化时刷新 runtime context，就会出现“菜单文案和默认创建都停留在旧 provider”。
+  证据：2026-04-13 的 MR follow-up review 复现路径为“打开画布后切换 `devSessionCanvas.agent.defaultProvider`，不刷新页面，直接在空白区右键点击默认 `Agent`”。
+
 ## 决策记录
 
 - 决策：为 `QuickPick` 自动化增加轻量测试注入，而不是把宿主命令验证完全留给人工。
@@ -45,6 +48,10 @@
   理由：`verifyAutoStartOnCreate()` 已经覆盖“创建后进入 live 启动流程”的核心语义；后续执行流验证的职责是确认会话可继续收发输入输出，不应该绑定一个实现上很短暂的瞬时状态。
   日期/作者：2026-04-13 / Codex
 
+- 决策：Webview 右键菜单的“默认创建 Agent”路径不再显式回传 `agentProvider`；Host 仍在配置变化时主动推送新的 runtime context，用于刷新默认 provider 文案。
+  理由：这让创建正确性始终以 Host 当前配置为准，即使 Webview 尚未完成重绘也不会把旧默认值写进新节点；同时 runtime context 刷新仍可保证菜单文案与用户看到的默认值一致。
+  日期/作者：2026-04-13 / Codex
+
 ## 结果与复盘
 
 本计划已完成，结果如下：
@@ -53,6 +60,7 @@
 - Webview 右键菜单保持 `Agent / Terminal / Note` 根视图，其中 `Agent` 既可主操作直接按默认 provider 创建，也可 drill-in 到 provider 列表显式创建。
 - Host/Webview 共享创建协议、宿主落库路径和自动启动路径都已支持可选 `agentProvider`；显式选择 `Claude Code` 创建时，首帧 metadata 与第一次启动记录都直接使用 `claude`。
 - 自动化已经覆盖宿主 `QuickPick` 默认/显式创建、Webview 右键菜单默认/显式创建，以及创建后 metadata/启动 provider 一致性。
+- review follow-up 进一步覆盖了“默认 provider 配置变化后，Host 会刷新 runtime context，Webview 默认创建文案随之更新”的回归路径。
 - 残余风险主要不在本功能本身，而在 smoke 中若继续依赖非常短暂的中间状态，后续仍可能出现时序脆弱性；本次已把最直接的断言收敛到可观察稳定态。
 
 ## 上下文与定向
@@ -122,7 +130,7 @@
     Exit code: 0
 
     npm run test:webview
-    25 passed (30.5s)
+    26 passed (31.8s)
     Playwright webview tests passed.
 
     npm run test:smoke
@@ -130,7 +138,7 @@
     Remote SSH real window reopen smoke passed.
     VS Code smoke test passed.
 
-新增 smoke / harness 断言直接覆盖了两条关键路径：一条验证宿主 `QuickPick` 选择 `Claude Code` 时，新节点 metadata 和 `execution/startRequested` 的 provider 都是 `claude`；另一条验证默认 `Agent` 路径会直接创建 `codex`。
+新增 smoke / harness 断言直接覆盖了三条关键路径：一条验证宿主 `QuickPick` 选择 `Claude Code` 时，新节点 metadata 和 `execution/startRequested` 的 provider 都是 `claude`；一条验证默认 `Agent` 路径会直接创建默认 provider；还有一条验证切换默认 provider 配置后，Host 会推送新的 runtime context，Webview 默认创建文案随之刷新。
 
 ## 接口与依赖
 
@@ -154,4 +162,4 @@
 
     通过正式 `COMMAND_IDS.createNode` 覆盖默认 `Agent` 与显式 provider 创建。
 
-本次修订说明：2026-04-13 22:09 +0800 回填最终实现结果与验证证据，记录 smoke 时序修复，并将本计划标记为已完成。
+本次修订说明：2026-04-13 23:56 +0800 根据 MR review follow-up 修复默认 provider 配置热更新路径，补充回归测试，并把默认创建语义进一步收口为“由 Host 在创建瞬间决定默认 provider”。

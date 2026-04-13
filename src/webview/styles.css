@@ -694,6 +694,17 @@ body {
   padding: 6px 8px 4px;
 }
 
+.canvas-context-menu-header.with-back {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+}
+
+.canvas-context-menu-header-copy {
+  display: grid;
+  gap: 2px;
+}
+
 .canvas-context-menu-header strong {
   font-size: 12px;
   font-weight: 600;
@@ -703,6 +714,28 @@ body {
   font-size: 11px;
   line-height: 1.4;
   color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-header-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font: inherit;
+}
+
+.canvas-context-menu-header-back:hover,
+.canvas-context-menu-header-back:focus-visible {
+  background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
+  outline: none;
 }
 
 .canvas-context-menu-items {
@@ -782,7 +815,7 @@ body {
 
 .canvas-context-menu-item-secondary {
   justify-content: center;
-  min-width: 48px;
-  padding-inline: 10px;
+  min-width: 32px;
+  padding-inline: 8px;
   color: var(--vscode-descriptionForeground);
 }

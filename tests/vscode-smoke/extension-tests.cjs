@@ -173,6 +173,7 @@ async function runTrustedSmoke() {
   snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
+  await verifyRuntimeContextRefreshesDefaultAgentProvider();
   await verifyCreateNodeCommandQuickPick();
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -329,6 +330,48 @@ async function verifyCreateNodeCommandQuickPick() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+}
+
+async function verifyRuntimeContextRefreshesDefaultAgentProvider() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalProvider =
+    configuration.get('devSessionCanvas.agent.defaultProvider', 'codex') === 'claude' ? 'claude' : 'codex';
+  const updatedProvider = originalProvider === 'claude' ? 'codex' : 'claude';
+
+  await clearHostMessages();
+  await setDefaultAgentProvider(updatedProvider);
+
+  try {
+    const hostMessages = await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.defaultAgentProvider === updatedProvider
+        ),
+      20000
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/stateUpdated' &&
+          message.payload.runtime?.defaultAgentProvider === updatedProvider
+      ),
+      'Expected host to push an updated runtime context after changing the default Agent provider.'
+    );
+  } finally {
+    await clearHostMessages();
+    await setDefaultAgentProvider(originalProvider);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.defaultAgentProvider === originalProvider
+        ),
+      20000
+    );
+  }
 }
 
 async function runRestrictedSmoke() {
@@ -3022,6 +3065,12 @@ async function setRuntimePersistenceEnabled(enabled) {
   await vscode.workspace
     .getConfiguration()
     .update('devSessionCanvas.runtimePersistence.enabled', enabled, vscode.ConfigurationTarget.Global);
+}
+
+async function setDefaultAgentProvider(provider) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.agent.defaultProvider', provider, vscode.ConfigurationTarget.Global);
 }
 
 async function setWorkbenchColorTheme(themeName) {

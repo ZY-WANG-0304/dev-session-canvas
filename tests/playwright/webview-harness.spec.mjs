@@ -1013,8 +1013,58 @@ test('right-click create menu creates the default agent without opening the prov
         preferredPosition: {
           x: 800,
           y: 325
-        },
-        agentProvider: 'codex'
+        }
+      })
+    );
+});
+
+test('right-click create menu refreshes its default agent label after runtime context changes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  const state = createCanvasScreenshotState();
+  await bootstrap(page, state);
+  await updateHostState(page, state, createRuntimeContext({ defaultAgentProvider: 'claude' }));
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1010,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-agent-action="create-default"]')).toContainText('默认：Claude Code');
+
+  await menu.locator('[data-context-menu-agent-action="create-default"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 730,
+          y: 285
+        }
       })
     );
 });
