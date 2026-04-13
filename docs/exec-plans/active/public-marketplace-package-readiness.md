@@ -21,7 +21,8 @@
 - [x] (2026-04-11 22:48 +0800) 运行 `npm run test:vsix-smoke`，确认收口后的 packaged payload 仍可独立启动并跑通 trusted smoke。
 - [x] (2026-04-11 23:02 +0800) 补上 `validate:clean-checkout:vsix` 隔离验证入口和文档说明，为后续 clean-checkout 验证做准备，不直接扰动当前工作树。
 - [x] (2026-04-14 00:57 +0800) 修复隔离 clean-checkout 验证脚本中的缓存目录与 VS Code 下载路径问题，并基于 `--source working-tree` 成功跑通 `npm run validate:clean-checkout:vsix -- --source working-tree`，确认当前本地待发布工作树可在隔离目录中完成 `npm ci`、VSIX 打包与 packaged-payload smoke。
-- [ ] 最终发布前，基于实际待发布 commit 再执行一次 `npm run validate:clean-checkout:vsix`，并决定是否继续对 `node-pty` 做依赖级瘦身。
+- [x] (2026-04-14 02:39 +0800) 基于版本已切到 `0.1.0` 的 release head `346c4bf` 再次执行 `npm run validate:clean-checkout:vsix -- --ref HEAD`，确认隔离目录内可稳定产出 `dev-session-canvas-0.1.0.vsix` 并通过 packaged-payload smoke；同时把同一 ref 同步到公开 GitHub 仓库 `main`，让 manifest 链接与 README 中的相对文档链接落到真实内容。
+- [ ] 若后续待发布实现内容继续变化，再基于新的 release head 重新执行一次 `npm run validate:clean-checkout:vsix`，并决定是否继续对 `node-pty` 做依赖级瘦身。
 
 ## 意外与发现
 
@@ -79,11 +80,11 @@
 - `CONTRIBUTING.md`、`docs/publish-readiness.md` 与设计文档已同步成“Marketplace Preview + VSIX 仅作发布工件”的当前口径。
 - 当前工作树 `npm run package:vsix` 与 `npm run test:vsix-smoke` 均已通过，说明这轮收口没有破坏 packaged payload 主路径。
 - 已补上 `validate:clean-checkout:vsix` 隔离验证入口，后续可在不打扰当前工作树的前提下继续推进 clean-checkout 验证。
-- 当前本地 `working tree` 快照已经通过隔离 `clean checkout` 打包与 packaged-payload smoke，说明“当前待发布工作树”这一层面的可重复发布链路已被验证。
+- 当前本地 `working tree` 快照与版本已切到 `0.1.0` 的 release head `346c4bf` 都已经通过隔离 `clean checkout` 打包与 packaged-payload smoke，说明“当前待发布工作树”与“当前公开首发基线 ref”两层验证都已建立。
 
 本轮仍保留两项后续工作：
 
-- 还需要在最终待发布 commit 上再执行一次 `npm run validate:clean-checkout:vsix`，把当前 working-tree 级别的验证结论固定到可追溯 git ref。
+- 如果后续待发布实现内容继续变化，需要在新的 release head 上再次执行 `npm run validate:clean-checkout:vsix`，把新的验证结论固定到可追溯 git ref。
 - `node-pty` 依赖包仍带入一批可能可进一步收紧的文件；是否继续瘦身，应以不破坏 packaged-payload smoke 为前提单独决策。
 
 ## 上下文与定向
@@ -148,18 +149,17 @@
 
 当前已确认的本地事实：
 
-    npm run package:vsix
-    DONE  Packaged: /home/users/ziyang01.wang-al/projects/opencove_extension/dev-session-canvas-0.0.1.vsix (82 files, 7.07 MB)
-
-    npm run test:vsix-smoke
-    Exit code:   0
-    VSIX packaged-payload smoke passed.
-
-    npm run validate:clean-checkout:vsix -- --source working-tree
-    DONE  Packaged: /tmp/dev-session-canvas-clean-checkout-9XncUT/repo/dev-session-canvas-0.0.1.vsix (82 files, 7.09 MB)
+    npm run validate:clean-checkout:vsix -- --ref HEAD
+    DONE  Packaged: /tmp/dev-session-canvas-clean-checkout-BYhne1/repo/dev-session-canvas-0.1.0.vsix (82 files, 7.09 MB)
     Exit code:   0
     VSIX packaged-payload smoke passed.
     clean checkout 验证完成。临时目录已清理。
+
+    git ls-remote https://github.com/ZY-WANG-0304/dev-session-canvas.git HEAD refs/heads/main
+    346c4bf8c8605eeea5895eff3840126c594e5d05  HEAD
+    346c4bf8c8605eeea5895eff3840126c594e5d05  refs/heads/main
+
+    隔离验证脚本在 clean checkout 中实际执行了 npm ci、npm run package:vsix 和 npm run test:vsix-smoke。
 
     最新 VSIX tree 已不再包含 .debug/、.playwright-browsers/、tests/、playwright.config.mjs、test-results/
 

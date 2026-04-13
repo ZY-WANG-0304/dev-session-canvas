@@ -19,6 +19,8 @@
 - `.vscodeignore` 已完成第一轮发布包收口，当前会排除 `.debug/`、`.playwright-browsers/`、`tests/`、`test-results/`、截图草稿与未使用的图标变体。
 - 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `7.07 MB`、`82 files` 的 VSIX；`npm run test:vsix-smoke` 已再次通过，说明收口后的工件仍能跑通 packaged-payload smoke。
 - 基于当前本地 `working tree` 快照的隔离 `clean checkout` 验证已于 `2026-04-14` 通过：`npm run validate:clean-checkout:vsix -- --source working-tree` 成功产出约 `7.09 MB`、`82 files` 的 VSIX，且 packaged-payload smoke 再次通过。
+- 基于版本已切到 `0.1.0` 的 release head `346c4bf` 的隔离 `clean checkout` 验证也已于 `2026-04-14` 通过：`npm run validate:clean-checkout:vsix -- --ref HEAD` 成功产出 `dev-session-canvas-0.1.0.vsix`，约 `7.09 MB`、`82 files`，且 packaged-payload smoke 再次通过。
+- 公开 GitHub 仓库 `main` 已同步到 `346c4bf`，当前 manifest 中的 `repository` / `homepage` 和 README 里的相对文档链接都已落到真实公开内容，而不是空仓库。
 - 已显式声明 `Restricted Mode` 为有限支持，并通过 `restrictedConfigurations` 保护执行型设置。
 - 已显式声明 `Virtual Workspace` 暂不支持，避免在当前实现尚未适配时误报支持能力。
 - `docs/SECURITY.md` 已补齐专用安全邮箱、响应时限与“只支持最新主线 / 预览版”的支持口径。
@@ -30,8 +32,8 @@
 
 以下项仍是当前 worktree 进入公开 Preview 发布前必须补齐的 blocker：
 
-- 发布包治理：当前本地 `working tree` 快照已经通过隔离 `clean checkout` 打包与 packaged-payload smoke；但要把这个结论绑定到真正待发布的版本，仍需在最终待发布 commit 上再跑一次 `clean checkout` 验证并固定结果。另一个剩余问题是 `node-pty` 依赖包仍携带 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/` 等超出严格最小运行集的内容，是否继续瘦身仍需单独决策。
-- 公开资源链接：已切换到公开 GitHub 仓库，但仍需继续补齐 README、issue 模板和更完整的对外说明页。
+- 发布包治理：当前本地 `working tree` 快照和版本已切到 `0.1.0` 的 release head `346c4bf` 都已经通过隔离 `clean checkout` 打包与 packaged-payload smoke；如果后续待发布实现或打包输入继续变化，仍需基于新的 release head 重新执行一次验证。另一个剩余问题是 `node-pty` 依赖包仍携带 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/` 等超出严格最小运行集的内容，是否继续瘦身仍需单独决策。
+- 公开资源链接：公开 GitHub 仓库与 GitHub Issues 已连通，但 issue 模板和更完整的对外说明页仍待补齐。
 - 公开文档与支持口径：README、CHANGELOG、SECURITY 与问题反馈入口已经完成第一轮公开 Preview 收口，但仍需继续补齐 Marketplace 发布页、issue 模板和更完整的对外支持说明。
 - 平台支持矩阵：当前较强的验证证据主要集中在 `Remote SSH` 开发路径；Linux、macOS、Windows 本地路径仍未经过严格验证。公开发布前，应先明确首发支持的操作系统、Remote / Restricted Mode 范围，以及哪些能力仍是 `best-effort`。
 - 发布执行收口：账号链路已准备完成，但在真正点击发布前，仍需锁定最终版本号、release notes、发布截图或 Listing 文案，以及回滚口径。
@@ -96,7 +98,7 @@
 - [x] 明确首发支持矩阵：操作系统、Local / Remote、Restricted Mode、Virtual Workspace、CLI 依赖要求。
 - [ ] 按首发支持矩阵完成至少一轮人工验收，并保留自动化测试或手动验证记录。
 - [x] 创建并验证 `Visual Studio Marketplace` publisher、Azure DevOps organization 与 PAT，并完成本地 `vsce login devsessioncanvas`。
-- [ ] 在最终待发布 commit 上再跑一次隔离 `clean checkout` 验证，避免把仅存在于未提交工作树中的状态误当成最终发布结论。
+- [x] 在版本已切到 `0.1.0` 的 release head `346c4bf` 上再次执行隔离 `clean checkout` 验证，避免把仅存在于未提交工作树中的状态误当成最终发布结论。
 - [ ] 在发布前准备版本号、release notes、升级说明与回滚口径，避免把当前 Preview 状态误写成稳定版承诺。
 - [ ] 先发布一个可控的公开预览版本，再根据真实反馈决定是否进入稳定公开发布。
 
@@ -131,6 +133,7 @@
 - `npm run test:vsix-smoke` 已通过，说明当前收口后的 packaged payload 仍可启动并跑通 trusted smoke。
 - 仓库已补上隔离验证脚本 `npm run validate:clean-checkout:vsix`，可在 `/tmp` 下基于 `git archive` 或当前 working tree 快照准备 clean-checkout 验证，不必直接扰动当前工作树。
 - `npm run validate:clean-checkout:vsix -- --source working-tree` 已于 `2026-04-14` 通过，当前本地待发布工作树可在隔离目录中完成 `npm ci`、VSIX 打包与 packaged-payload smoke。
+- `npm run validate:clean-checkout:vsix -- --ref HEAD` 已于 `2026-04-14` 基于版本 `0.1.0` 的 release head `346c4bf` 通过，隔离目录内成功产出 `dev-session-canvas-0.1.0.vsix`，并再次通过 packaged-payload smoke。
 
 ## 源码编译与开发安装
 
@@ -147,7 +150,7 @@
 在完成当前 blocker 后，还需要补齐以下动作：
 
 1. 锁定最终待发布版本号，并整理 Marketplace listing、截图与 release notes。
-2. 以最终待发布 commit 再跑一次隔离 `clean checkout` 验证，固定可追溯证据。
+2. 如果发布前的实现或打包输入再次变化，再以新的待发布 commit 重跑一次隔离 `clean checkout` 验证，固定新的可追溯证据。
 3. 执行 Marketplace 发布流程，必要时准备回滚或下架口径。
 
 ## 发布前人工验证
