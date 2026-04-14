@@ -16,6 +16,7 @@ const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'f
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
 const debugRoot = path.join(projectRoot, '.debug', 'vscode-vsix-smoke');
 const unpackRoot = path.join(debugRoot, 'packaged-extension');
+const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
 
 async function main() {
   if (process.platform !== 'linux') {
@@ -81,6 +82,7 @@ async function resolveLatestVsixPath() {
 async function validatePackagedExtension(packagedExtensionPath) {
   const requiredPaths = [
     'package.json',
+    'readme.md',
     path.join('dist', 'extension.js'),
     path.join('dist', 'webview.js'),
     path.join('dist', 'webview.css'),
@@ -95,6 +97,42 @@ async function validatePackagedExtension(packagedExtensionPath) {
     } catch {
       throw new Error(`打包产物缺少运行时文件：${relativePath}`);
     }
+  }
+
+  const forbiddenPaths = [
+    '.github',
+    path.join('images', 'lark-group-qr.png'),
+    path.join('node_modules', 'node-pty', 'binding.gyp'),
+    path.join('node_modules', 'node-pty', 'scripts'),
+    path.join('node_modules', 'node-pty', 'src'),
+    path.join('node_modules', 'node-pty', 'third_party'),
+    path.join('node_modules', 'node-pty', 'typings'),
+    path.join('node_modules', 'node-pty', 'node_modules')
+  ];
+
+  for (const relativePath of forbiddenPaths) {
+    const absolutePath = path.join(packagedExtensionPath, relativePath);
+    if (await pathExists(absolutePath)) {
+      throw new Error(`打包产物仍包含应被排除的文件或目录：${relativePath}`);
+    }
+  }
+
+  const nodePtyRoot = path.join(packagedExtensionPath, 'node_modules', 'node-pty');
+  const nodePtyFiles = await listFilesRecursively(nodePtyRoot);
+  const unexpectedDebugFiles = nodePtyFiles.filter(
+    (relativePath) => relativePath.endsWith('.pdb') || relativePath.endsWith('.map')
+  );
+
+  if (unexpectedDebugFiles.length > 0) {
+    throw new Error(
+      `打包产物仍包含调试冗余文件：${unexpectedDebugFiles.slice(0, 10).join(', ')}`
+    );
+  }
+
+  const packagedReadmePath = path.join(packagedExtensionPath, 'readme.md');
+  const packagedReadmeContents = await fs.readFile(packagedReadmePath, 'utf8');
+  if (!packagedReadmeContents.includes(marketplaceReadmeMarker)) {
+    throw new Error('打包产物中的 README 未命中 Marketplace README 标记，当前 VSIX 可能仍在携带仓库根 README。');
   }
 }
 
@@ -111,6 +149,33 @@ function runCommand(file, args, errorMessage) {
   if (result.status !== 0) {
     throw new Error(errorMessage);
   }
+}
+
+async function pathExists(absolutePath) {
+  try {
+    await fs.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listFilesRecursively(rootPath, prefix = '') {
+  const entries = await fs.readdir(rootPath, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const absolutePath = path.join(rootPath, entry.name);
+    const relativePath = path.join(prefix, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listFilesRecursively(absolutePath, relativePath)));
+      continue;
+    }
+
+    files.push(relativePath);
+  }
+
+  return files;
 }
 
 main().catch((error) => {

@@ -16,8 +16,11 @@ if (!vsceEntry) {
 
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 const docBranch = process.env.DEV_SESSION_CANVAS_VSCE_DOC_BRANCH?.trim() || 'main';
+const readmePath = process.env.DEV_SESSION_CANVAS_VSCE_README_PATH?.trim() || 'README.marketplace.md';
 const baseUrls = resolveVsceBaseUrls(packageJson.homepage, docBranch);
 const packageArgs = ['package'];
+
+packageArgs.push('--readme-path', readmePath);
 
 if (baseUrls?.contentUrl) {
   packageArgs.push('--baseContentUrl', baseUrls.contentUrl);

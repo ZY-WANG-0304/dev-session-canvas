@@ -1,7 +1,7 @@
 ---
 title: 画布外层控件侧栏化设计
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -14,8 +14,8 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/canvas-sidebar-controls.md
 related_plans:
-  - docs/exec-plans/active/canvas-sidebar-controls-design.md
-updated_at: 2026-03-31
+  - docs/exec-plans/completed/canvas-sidebar-controls-design.md
+updated_at: 2026-04-14
 ---
 
 # 画布外层控件侧栏化设计

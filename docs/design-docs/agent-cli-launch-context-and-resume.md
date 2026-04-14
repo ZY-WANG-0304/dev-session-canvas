@@ -15,8 +15,8 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/agent-cli-launch-context-and-resume.md
-updated_at: 2026-04-12
+  - docs/exec-plans/completed/agent-cli-launch-context-and-resume.md
+updated_at: 2026-04-14
 ---
 
 # Agent CLI 启动上下文与显式恢复设计

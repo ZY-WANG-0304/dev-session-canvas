@@ -24,8 +24,7 @@
 - [x] 2026-04-13 06:44+08:00 完成全量验证：`npm run test` 通过，覆盖 `test:runtime-supervisor-paths`、完整 `test:smoke` 与 `test:webview`。
 - [x] 2026-04-13 08:10+08:00 根据 MR review 修复两个确定性 blocker：提交首条输入时即使仍处于 `starting/resuming` 也会进入 `running`；普通换行不再单独触发 `waiting-input`，并补充 local/runtime + start/resume 的回归覆盖。
 - [x] 2026-04-13 08:40+08:00 复核 review 修复后的完整验证：单独 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=remote-ssh-real-reopen node scripts/run-vscode-smoke.mjs` 通过，随后 `npm run test` 再次全量通过，确认上一轮 full test 失败属于场景级抖动而非本轮逻辑回归。
-- [ ] 后续独立特性：验证 `Codex app-server` / provider 原生结构化事件是否可作为权威状态通道；该项已从本轮 BUG 修复中拆出，另行优化。
-- [ ] 后续独立特性：为节点 metadata 增加“状态判定来源/权威性”字段，避免 UI 和诊断把启发式状态误写成权威事实。
+- [x] 2026-04-14 11:09+08:00 将 provider 原生结构化事件接入与节点 metadata 的“状态判定来源/权威性”字段，正式拆入 `docs/exec-plans/tech-debt-tracker.md`；本计划收口为“当前 PTY fallback 修复与设计结论已完成”。
 
 ## 意外与发现
 
@@ -104,6 +103,8 @@
 
 最后才是当前仓库已经在用的 PTY 启发式。它仍有保留价值，也已经在本轮被升级为更稳的组合启发式，但依然只能作为没有更好信号时的兜底。
 
+剩余的 provider 原生事件接入与“状态来源/权威性”字段，现已显式登记到 `docs/exec-plans/tech-debt-tracker.md`，不再阻塞本计划移入 `completed/`。
+
 ## 上下文与定向
 
 当前仓库里与这个问题直接相关的代码有四处：
@@ -120,11 +121,11 @@
 
 ## 工作计划
 
-当前计划分成两层：
+本计划最终分成两层：
 
 第一层是已经落地的当前修复。它在 `src/common/agentActivityHeuristics.ts` 定义共享启发式，要求 local PTY 与 runtime supervisor 都只在真正提交后进入 `running`，并用多信号轮询而不是固定静默时间回退到 `waiting-input`。测试层用 fake provider 的 `slowspin` 覆盖 redraw/spinner 场景。
 
-第二层是后续独立特性。对 `Codex`，重点验证 `app-server` 是否能在不改变用户主要交互体验的前提下，为画布节点并行提供 `turn/started`、`turn/completed` 与线程状态变化。对 `Claude Code`，重点验证 plain interactive TTY 以外的 hooks 和 SDK/headless。只有这些权威信号面接入后，当前启发式才会退到真正的 fallback。
+第二层是已拆出的后续独立特性。对 `Codex`，重点验证 `app-server` 是否能在不改变用户主要交互体验的前提下，为画布节点并行提供 `turn/started`、`turn/completed` 与线程状态变化。对 `Claude Code`，重点验证 plain interactive TTY 以外的 hooks 和 SDK/headless。只有这些权威信号面接入后，当前启发式才会退到真正的 fallback；这部分现已登记到 `docs/exec-plans/tech-debt-tracker.md`。
 
 ## 具体步骤
 
@@ -133,7 +134,7 @@
 3. 更新 `docs/design-docs/index.md`，登记新设计文档的状态与关联计划。
 4. 在 `tests/vscode-smoke/fixtures/fake-agent-provider` 增加可控的 spinner/通知输出，让 smoke 能稳定复现“有持续活动但暂无换行”的误判场景。
 5. 在 `tests/vscode-smoke/extension-tests.cjs` 增加 slow spinner 回归，证明 Agent 在工作期间保持 `running`，直到输出结束后才回到 `waiting-input`。
-6. 后续独立特性中，再做 `Codex app-server` 的最小 spike，并为 `AgentNodeMetadata` 增加“判定来源/权威性”字段。
+6. 将 `Codex app-server` 最小 spike 与 `AgentNodeMetadata` 的“判定来源/权威性”字段显式登记到 `docs/exec-plans/tech-debt-tracker.md`，作为后续独立特性继续推进。
 
 ## 验证与验收
 
@@ -151,7 +152,7 @@
 - local PTY 与 runtime supervisor/reopen 路径对同一类输出采用一致的状态回退规则。
 - `npm run typecheck`、`npm run build`、`trusted smoke` 与 `real-reopen smoke` 全部通过。
 
-后续独立特性的验收标准：
+已拆出后续工作的验收目标：
 
 - 对接入官方结构化事件的 provider，`running` 与 `waiting-input` 由 provider turn/session 信号推进，而不是由字符输出静默决定。
 - 当 provider 只有结构化输出或 hooks 时，宿主能稳定把这些信号映射到节点状态，并保留来源说明。
@@ -230,4 +231,4 @@
   - 是否支持 hooks 或 sidecar 通知
   - 若以上都不支持，是否只能退回 PTY 启发式
 
-本计划创建于 2026-04-12，并于 2026-04-13 扩展为“先把当前 CLI PTY fallback 做到可用，再把 provider 原生信号保留为后续独立特性”的执行文档。
+本计划创建于 2026-04-12，并于 2026-04-13 扩展为“先把当前 CLI PTY fallback 做到可用，再把 provider 原生信号保留为后续独立特性”的执行文档；2026-04-14 已在主实现完成后移入 `completed/`，剩余 follow-up 已拆入技术债追踪。

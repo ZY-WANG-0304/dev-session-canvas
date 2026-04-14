@@ -17,8 +17,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
-  - docs/exec-plans/active/runtime-host-backend-systemd-user.md
-updated_at: 2026-04-12
+  - docs/exec-plans/completed/runtime-host-backend-systemd-user.md
+updated_at: 2026-04-14
 ---
 
 # 运行时持久化与会话监督器设计
