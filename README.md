@@ -104,11 +104,14 @@ npm run build
 - `devSessionCanvas.runtimePersistence.enabled = false`：基线能力，不承诺真实进程跨 VS Code 生命周期持续存在
 - `devSessionCanvas.runtimePersistence.enabled = true`：已具备较多自动化与人工验证证据，尤其覆盖 `Remote SSH` real-reopen 主路径；用户可见 guarantee 取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则自动回退到 `best-effort`
 
-## 反馈与安全
+## 反馈与交流
 
 - 提 issue 前的适用范围、所需环境信息和受理边界：[`docs/support.md`](docs/support.md)
 - 问题与功能反馈：<https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
 - 安全问题：`wzy0304@outlook.com`
+- 飞书交流群：
+
+  <img src="images/lark-group-qr.png" alt="Dev Session Canvas 飞书交流群" width="240" />
 
 ## 开发与贡献
 
