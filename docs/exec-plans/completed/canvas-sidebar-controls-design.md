@@ -22,7 +22,7 @@
 - [x] (2026-03-31 11:11 +0800) 基于原型结果，把 `docs/design-docs/canvas-sidebar-controls.md` 从“比较中 / 未验证”收口为“已选定 / 验证中”。
 - [x] (2026-03-31 11:11 +0800) 在实现阶段移除画布顶角 panel，接入原生侧栏容器、`TreeView` 和命令入口。
 - [x] (2026-03-31 11:11 +0800) 完成自动化检查：`npm run typecheck` 与 `npm run build` 通过。
-- [ ] 在 `Extension Development Host` 中完成人工验证，并据此决定是否把本计划迁入 `docs/exec-plans/completed/`。
+- [x] (2026-04-14 11:15 +0800) 补记此前已完成的 `Extension Development Host` 人工验证：侧栏入口、打开画布、创建对象、重置宿主状态以及与当前画布视口的联动均符合预期；本计划可迁入 `docs/exec-plans/completed/`。
 
 ## 意外与发现
 
@@ -72,10 +72,13 @@
 - 当画布已在前台可见时，侧栏创建动作会通过 Host -> Webview 消息复用当前视口锚点。
 - `npm run typecheck` 与 `npm run build` 已通过。
 
-当前仍未完成：
+当前补记后的人工验证结论是：
 
-- 还没有完成 `Extension Development Host` 中的人工验证。
-- 还没有把本计划迁入 `completed/`，也没有基于人工验证补最终复盘。
+- `Extension Development Host` 中的侧栏入口可正常打开或定位画布。
+- 侧栏中的创建对象动作可正常触发，并复用当前前台画布的视口锚点。
+- 侧栏中的重置宿主状态动作可正常执行，没有让画布重新长出顶角 panel。
+
+本计划范围内已无剩余 blocker；后续若要继续增强侧栏密度或升级为 `WebviewView`，属于新需求而不是本计划未完成项。
 
 如果下一位协作者接手，应先做最小原型，再根据结果更新本计划的 `进度`、`意外与发现` 和 `决策记录`，然后才进入实现阶段。
 
@@ -116,7 +119,7 @@
 1. 阅读设计与工作流入口文档，确认是否需要 `ExecPlan`。
 2. 阅读 `功能体验.md`、相关规格、现有设计文档和当前 Webview 实现。
 3. 新建以下文档：
-   - `docs/exec-plans/active/canvas-sidebar-controls-design.md`
+   - `docs/exec-plans/completed/canvas-sidebar-controls-design.md`
    - `docs/product-specs/canvas-sidebar-controls.md`
    - `docs/design-docs/canvas-sidebar-controls.md`
 4. 更新以下索引和通用文档：
@@ -182,6 +185,8 @@
 - 现有 `devSessionCanvas.openCanvas` 正式命令
 - `src/panel/CanvasPanelManager.ts` 暴露给侧栏的宿主权威状态摘要，例如节点数、运行中执行单元数与 workspace trust 状态
 
-当前仍保持“不引入第二个大型 React 前端来复制侧栏”的边界。如果后续人工验证证明原生 View 路线确实不能满足需求，再把 `WebviewView` 作为升级方案写回设计文档。
+当前仍保持“不引入第二个大型 React 前端来复制侧栏”的边界。如果后续需要升级 `WebviewView`，应作为新一轮设计决策重新立项，而不是回退本计划结论。
 
-本次修订说明：2026-03-31 11:11 +0800 将本计划从纯设计阶段推进到第一版实现，新增原生侧栏入口、移除 Webview 顶角 panel，并补充自动化验证结果与剩余人工验证事项。
+本次修订说明：
+- 2026-03-31 11:11 +0800 将本计划从纯设计阶段推进到第一版实现，新增原生侧栏入口、移除 Webview 顶角 panel，并补充自动化验证结果与剩余人工验证事项。
+- 2026-04-14 11:15 +0800 补记此前已完成的人工验证结果，确认本计划范围已闭环，可迁入 `completed/`。

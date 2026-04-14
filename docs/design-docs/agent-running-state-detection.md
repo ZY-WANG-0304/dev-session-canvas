@@ -14,8 +14,8 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
-  - docs/exec-plans/active/agent-running-state-detection.md
-updated_at: 2026-04-13
+  - docs/exec-plans/completed/agent-running-state-detection.md
+updated_at: 2026-04-14
 ---
 
 # Agent 运行态判定与等待输入信号设计

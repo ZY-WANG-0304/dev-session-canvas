@@ -56,7 +56,7 @@
 
 - 产品规格：`docs/product-specs/canvas-core-collaboration-mvp.md`
 - 技术路线设计：`docs/design-docs/vscode-canvas-runtime-architecture.md`
-- 当前画布原型计划：`docs/exec-plans/active/reactflow-canvas-prototype.md`
+- 当前画布原型计划：`docs/exec-plans/completed/reactflow-canvas-prototype.md`
 
 本轮要验证的是“终端对象如何以宿主原生能力闭合最小主路径”，而不是“终端体验如何完全进入画布”。
 

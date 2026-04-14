@@ -1,0 +1,29 @@
+name: Feature Request
+description: 提交公开 Preview 阶段的功能建议
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请优先描述你的真实使用场景和当前阻碍，而不是直接给出实现方案。公开 Preview 阶段的功能请求会按主路径价值和支持成本排序。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题
+      placeholder: 当前工作流里哪里不顺，为什么现有能力不够
+    validations:
+      required: true
+  - type: textarea
+    id: desired_behavior
+    attributes:
+      label: 你希望看到什么行为
+      placeholder: 从用户视角描述结果
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 当前替代方案
+      placeholder: 目前你是如何绕过这个问题的

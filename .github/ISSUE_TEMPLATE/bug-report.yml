@@ -1,0 +1,71 @@
+name: Bug Report
+description: 报告公开 Preview 中可复现的问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先阅读 `README.md` 和 `docs/support.md`，确认问题仍落在当前公开 Preview 的支持边界内。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: Marketplace 版本号，或当前仓库提交 SHA
+      placeholder: 例如 0.1.0 / 346c4bf
+    validations:
+      required: true
+  - type: dropdown
+    id: workspace_kind
+    attributes:
+      label: 工作区类型
+      options:
+        - Remote SSH
+        - 本地磁盘工作区
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 环境信息
+      description: VS Code 版本、操作系统、架构
+      placeholder: 例如 VS Code 1.99.0 / Linux x64
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime_persistence
+    attributes:
+      label: runtimePersistence.enabled
+      options:
+        - true
+        - false
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 最小复现步骤
+      placeholder: 按顺序写出从打开工作区到问题出现的最小步骤
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图 / 诊断信息
+      description: 请尽量附上 `.debug/` 产物路径、截图或关键日志
+      placeholder: 粘贴日志片段，或给出相关文件路径

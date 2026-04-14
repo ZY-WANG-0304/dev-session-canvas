@@ -11,7 +11,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
-updated_at: 2026-04-11
+updated_at: 2026-04-14
 ---
 
 # 公开平台发布准备
@@ -58,79 +58,86 @@ updated_at: 2026-04-11
 
 ### 5.2 `Open VSX`
 
-`Open VSX` 保留为后续补充渠道，但不与首发里程碑绑定。原因是它引入了额外的 namespace / token 管理与渠道同步问题，而当前仓库连第一条公开发布主线都还未收口。
+`Open VSX` 保留为后续补充渠道，但不与当前首个公开 `Marketplace Preview` 绑定。原因是它引入了额外的 namespace / token 管理与渠道同步问题，而当前仓库虽然已经完成首条公开发布主线的仓库内收口，但尚未实际执行首发发布。
 
 ## 6. 当前现状
 
-截至 2026-04-11，仓库里已经成立的事实如下：
+截至 2026-04-14，仓库里已经成立的事实如下：
 
 - `package.json` 具备基础扩展元数据，且仍标记为 `preview: true`。
-- README 与 `docs/publish-readiness.md` 正在切换到“公开 Preview 准备”口径。
+- `README.md` 已明确写成“产品已处于公开 Preview 阶段”；发布执行与对外口径已收口到 `docs/public-preview-release-playbook.md`。
 - 许可证已选定为 `Apache-2.0`。
 - `repository`、`homepage` 和 `bugs` 已切换到公开 GitHub 地址。
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
-- 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `7.07 MB`、`82 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
+- `scripts/package-vsix.mjs` 当前会在打包阶段显式传入 `--readme-path README.marketplace.md`，确保后续 `publish --packagePath` 上传的现成 VSIX 已内嵌 Marketplace 专用 README，而不是依赖发布时重新替换。
+- 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
+- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 验证，可在干净目录内稳定产出约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 packaged-payload smoke。
+- 当前候选 release head 也已再次通过隔离 `clean checkout` 验证，说明这轮瘦身后的最小 Preview 工件已经固定到可追溯提交。
 - 仓库已补上 `validate:clean-checkout:vsix` 隔离验证入口，可在 `/tmp` 下准备 clean checkout 验证，不必直接扰动当前工作树。
 - 当前对外分发主路径已确定为 `Visual Studio Marketplace Preview`，而不是手动分发 `.vsix`。
+- `node-pty` 依赖包已完成第二轮收口，VSIX 当前只保留运行时 `lib/*.js`、所需 `prebuilds` 原生文件，以及运行时仍会解析的 `package.json` / `LICENSE`。
+- `scripts/run-vscode-vsix-smoke.mjs` 现会在 packaged-payload smoke 前显式校验：VSIX 不再携带 `.github/`，以及 `node-pty` 的 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 或 `.pdb`。
+- `remote-ssh-real-reopen` blocker 已修复：当前通过 storage fallback 扫描同一 canonical workspace id 下的 sibling slots，兼容 `workspaceStorage/<id>` 与 `workspaceStorage/<id>-N` 之间的槽位漂移，恢复链路不再依赖 reopen 时恰好复用原 slot。
+- 当前首发主路径已完成一轮人工验收，用户反馈为“人工验收没发现问题”。
+- 已补齐 GitHub issue 模板与 `docs/support.md`，普通反馈、安全问题和 Preview 支持边界已有固定入口。
 
-## 7. 阻塞项与所需工作
+## 7. 剩余 release-day 动作与后续跟踪
 
-### 7.1 发布包治理是第一 blocker
+### 7.1 发布包治理已收口到当前 PR head，但最终发布引用仍需复核
 
-当前仓库已经完成第一轮发布包治理，但还没有形成“与开发和测试工作树彻底解耦、且在干净环境下重复验证过”的公开发布包。
+当前仓库已经完成第二轮发布包治理。当前本地工作树与当前候选 release head 的发布包都已显著收紧，并完成了 clean-checkout 复核；剩余问题只在于最终对外发布若不直接使用当前已验证的 git ref，仍需对最终发布引用补最后一轮复核。
 
 本地证据：
 
 - 第一轮收口前，仓库内曾出现约 `293 MB` 的 VSIX，并把 `.debug/playwright/`、`.debug/vscode-smoke/` 等调试缓存一起打入包内。
-- 当前工作树在补齐 `.vscodeignore` 和打包脚本后，`npm run package:vsix` 已可稳定产出约 `7.07 MB`、`82 files` 的 VSIX。
-- 当前 `npm run test:vsix-smoke` 已再次通过，说明收口后的 packaged payload 仍能独立启动并跑通 trusted smoke。
-- 但当前 VSIX 里的 `node-pty` 依赖仍包含 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/` 等超出严格最小运行集的内容；这些内容未必全部必须带入公开发布工件。
+- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出约 `1.90 MB`、`43 files` 的 VSIX。
+- 当前 `npm run test:vsix-smoke` 已再次通过，说明第二轮收口后的 packaged payload 仍能独立启动并跑通 trusted smoke。
+- 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`、`binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
+- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `1.90 MB`、`43 files`；基于当前候选 release head 的 release-head 证据也已同步更新到同一版本的最小工件。
 
-因此，若要公开发布，必须先补齐以下工作：
+因此，当前只需保持以下约束与 release-day 动作：
 
 - 保持当前 `.debug/`、`.playwright-browsers/`、测试 artifacts、core dump、截图草稿等路径继续留在发布包外，不让后续改动把它们重新带回工件。
-- 在干净 checkout 上验证 `npm run package:vsix` 可稳定成功，而不是只在当前 worktree 成立。
-- 继续判断 `node-pty` 当前带入的 `scripts/`、`src/`、`third_party/`、`typings/` 等依赖级 payload 是否还能进一步收紧；若要继续收口，应以“不破坏 packaged-payload smoke”为前提。
-- 为 VSIX 产物建立尺寸和内容检查，确保发布包不再随着本地调试状态漂移。
+- 若真正对外发布使用的是后续 merge commit、tag 或其他最终 release ref，发布前再对该 git ref 重跑一次 `validate:clean-checkout:vsix`，避免把当前候选 release head 的证据直接等同于最终发布输入。
+- 保持 packaged-payload smoke 的内容守卫，确保 `node-pty` 的源码、脚本、PDB 与重复依赖不会重新随着后续改动回流到 VSIX。
 
-### 7.2 公开元数据与法律口径仍需继续收口
+### 7.2 公开元数据与法律口径已收口，当前只需一致性复核
 
-当前仓库的部分公开元数据已经落地，但对外发布口径仍未完全收口：
+当前仓库的公开元数据和对外发布口径已经完成当前轮次收口：
 
-- README、CHANGELOG 与 SECURITY 已完成第一轮公开 Preview 收口，但仍需继续压缩内部协作语境。
-- 当前尚未补齐 issue 模板、发布说明和公开支持边界。
+- README、CHANGELOG、SECURITY、issue 模板与 `docs/support.md` 已完成第一轮公开 Preview 收口，普通反馈、安全问题和 Preview 支持边界已有固定入口。
+- 当前已补齐 `README.marketplace.md` 与 `docs/public-preview-release-playbook.md`，把 Marketplace listing 草案、release notes 使用口径、升级说明和回滚口径收口成正式仓库文档。
 
-若要公开发布，至少需要补齐：
+真正执行发布前，仍需完成以下复核：
 
-- 重写 README 中的分发定位、支持范围、安装升级说明和已知限制，使其适合外部用户阅读。
-- 复核 CHANGELOG、SECURITY、问题反馈入口和支持口径，确保它们与公开发布事实一致。
+- 继续按 `README.marketplace.md`、`CHANGELOG.md` 与 `docs/public-preview-release-playbook.md` 复核商店页面与仓库文档的一致性。
+- 继续复核 README、CHANGELOG、SECURITY、issue 模板和支持边界说明，确保它们与最终发布事实一致。
 
-### 7.3 渠道账号与凭证是必要条件，但不是第一 blocker
+### 7.3 渠道账号与凭证已就绪，发布前只需确认可用性
 
-若选择 `Visual Studio Marketplace`，还需要：
+当前与 `Visual Studio Marketplace` 相关的发布账号链路已经打通：
 
-- 创建或确认 `devsessioncanvas` publisher 身份。
-- 准备 Azure DevOps organization 和 Personal Access Token。
-- 用发布账号完成一次登录与最小发布演练。
+- `devsessioncanvas` publisher 已创建并确认可用。
+- Azure DevOps organization 与 Personal Access Token 已完成准备。
+- 本地 `vsce login devsessioncanvas` 已完成，当前只需在真正发布前确认登录仍然有效。
 
-若选择 `Open VSX`，还需要：
+若未来决定同步 `Open VSX`，仍需要单独补齐：
 
 - 在 `Open VSX` 上创建或认领 namespace。
 - 准备 `ovsx publish` 所需 token。
 - 决定是否与 `Visual Studio Marketplace` 保持同版本同步发布。
 
-这些工作是必要条件，但它们只应发生在“发布包治理”和“公开元数据收口”之后。否则即使拿到了 token，也只能把一个当前并不适合公开分发的包推上去。
+因此，当前 release-day 不再把账号创建视为 blocker；真正需要做的是在发布前再次确认这些凭证仍可用。
 
-### 7.4 平台支持矩阵需要从“内部验证”升级到“公开承诺”
+### 7.4 平台支持矩阵已明确，本地严格验证继续作为技术债
 
-当前验证证据最强的路径主要集中在 `Remote SSH` 开发路径、Restricted Mode 和 VSIX smoke；Linux、macOS、Windows 本地路径仍未经过严格验证。若转向公开平台，需要把当前验证证据升级为“公开支持矩阵”：
+当前验证证据最强的路径主要集中在 `Remote SSH` 开发路径、`Restricted Mode` 和 VSIX smoke；Linux、macOS、Windows 本地路径仍未经过严格验证。当前公开 `Preview` 已经把支持矩阵收口为“`Remote SSH` 主推荐路径 + 本地可尝试但未严格验证”，因此这部分不再是当前首发 blocker，而是后续技术债：
 
-- 至少明确首发支持哪些操作系统，哪些仍是 `best-effort` 或未支持。
-- 明确首发是否支持 Remote SSH、`systemd --user` 缺失场景、Windows、本地无 `codex` / `claude` CLI 的场景。
-- 对外写清 `Restricted Mode`、`Virtual Workspace` 的限制，而不是只放在内部文档里。
-- 在公开发布前，对首发承诺的平台做一轮人工验收，而不只依赖当前 smoke。
+- 继续把 Linux、macOS、Windows 本地路径写成“可尝试，但未严格验证”，而不是正式支持承诺。
+- 继续对外明确 `Restricted Mode`、`Virtual Workspace` 和 CLI 依赖等限制。
+- 若未来要把本地三平台升级为正式支持承诺，再补做严格人工验收并同步文档口径。
 
-当前建议对外口径先收敛为以下矩阵：
+当前对外口径已经收敛为以下矩阵：
 
 | 场景 / 能力 | 当前状态 | 对外口径 |
 | --- | --- | --- |
@@ -145,36 +152,43 @@ updated_at: 2026-04-11
 | `runtimePersistence.enabled = false` | 基线支持 | 不承诺真实进程跨 VS Code 生命周期持续存在 |
 | `runtimePersistence.enabled = true` | `Preview` 能力，已具备较多验证证据 | 已有 `Remote SSH` real-reopen 自动化、相关 smoke 与人工验证证据；当前用户可见 guarantee 仍取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则回退到 `best-effort` |
 
-### 7.5 发布流水线需要转成“干净环境 + 可重复”
+补充说明：截至 `2026-04-14`，`Remote SSH` 首发主路径的当前人工验收反馈为“人工验收没发现问题”；但 Linux、macOS、Windows 本地路径仍未具备可对外承诺的严格人工验收证据。
 
-当前仓库已经有本地打包脚本和 VSIX smoke，但还没形成 Marketplace 公开发布所需的收口流水线。后续应补齐：
+在当前公开 `Preview` 策略下，这组本地路径严格验收继续保留为后续技术债，而不是当前发布包治理的 blocker；对外口径应继续明确写成“可尝试，但未严格验证”。
+
+### 7.5 发布流水线继续后移，不作为当前 blocker
+
+当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口，但当前决策是不在本轮建设正式发布流水线。当前优先级是先把发布包、支持边界和首发验证收口，再决定是否把这条链路迁入 CI。
+
+当前轮次仍需保留的最小手工 gate 是：
 
 - 在干净环境中执行 `npm ci`、`npm run package:vsix`、VSIX 内容校验和 Marketplace 发布前 smoke。
 - 让 `@vscode/vsce` 成为唯一受支持的打包入口，并把当前脚本 fallback 行为纳入发布前检查。
-- 为版本号、预发布标记、release note 和发布 tag 建立固定流程。
-- 让发布动作默认从 CI 或最小化的干净工作树触发，而不是从个人调试目录直接执行。
+- 在真正点击发布前，整理一份可复核的手工发布步骤，避免临场操作漂移。
+
+若后续要继续降低人为发布风险，再把版本号、预发布标记、release note、发布 tag 与发布动作迁入 CI。
 
 ## 8. 风险与取舍
 
 - 若一开始同时承诺 `Visual Studio Marketplace` 和 `Open VSX`，会把首发收口拆成两个渠道问题，增加 namespace、token 和版本同步成本。
-- 若在许可证、公开链接和支持口径没收口前就上架，商店页面会把当前内部事实包装成外部承诺，后续回收成本更高。
+- 若后续版本在许可证、公开链接和支持口径失配时贸然上架，商店页面会把仓库内部事实包装成外部承诺，后续回收成本更高。
 - 若只解决 publisher / PAT 而不先治理发布包，公开发布过程会被包体污染、内容漂移和不可重复打包持续阻断。
 
 ## 9. 当前结论
 
 截至当前研究结论：
 
-- 当前仓库还不具备公开平台发布 readiness。
-- 第一优先级不是申请发布账号，而是形成一个干净、稳定、最小化的 Marketplace 发布工件。
+- 当前仓库已经完成公开 `Marketplace Preview` 所需的发布包治理与发布说明收口；剩余事项主要是 release-day 执行，而不是仓库内仍缺少的发布资产。
+- 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `1.90 MB` / `43 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
 - 公开发布方向已经确认：首发渠道先收敛到 `Visual Studio Marketplace`；`Open VSX` 作为后续补充渠道单独决策。
-- `Apache-2.0` 和公开 GitHub 仓库链接已经确定，但在公开发布前仍要完成四类收口：发布包治理、公开文档与支持口径、渠道账号与凭证、公开支持矩阵与发布流水线。
+- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
 
 ## 10. 验证方法
 
 本研究依赖以下证据来源：
 
-- 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/publish-readiness.md`、`LICENSE` 与打包脚本现状。
-- 本地执行 `npm run package:vsix` 与 `npm run test:vsix-smoke` 的实际结果，确认当前工作树已能稳定产出约 `7.07 MB` / `82 files` 的 VSIX，且收口后的 packaged payload 仍可启动。
+- 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/support.md`、`LICENSE` 与打包脚本现状。
+- 本地执行 `npm run package:vsix`、`npm run test:vsix-smoke` 与 `npm run validate:clean-checkout:vsix -- --ref HEAD` 的实际结果，确认当前工作树与当前候选 release head 已能稳定产出约 `1.90 MB` / `43 files` 的 VSIX，且收口后的 packaged payload 仍可启动。
 - `Visual Studio Code` 官方发布文档：<https://code.visualstudio.com/api/working-with-extensions/publishing-extension>
 - `Open VSX` 发布文档：<https://github.com/eclipse/openvsx/wiki/Publishing-Extensions>
 

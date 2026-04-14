@@ -12,7 +12,7 @@
 
 ## 进度
 
-- [x] (2026-04-11 15:43 +0800) 阅读 `docs/WORKFLOW.md`、`docs/PLANS.md`、`README.md`、`docs/publish-readiness.md` 与 `package.json`，确认当前仓库结论仍是“内部 Preview VSIX 分发”。
+- [x] (2026-04-11 15:43 +0800) 阅读 `docs/WORKFLOW.md`、`docs/PLANS.md`、`README.md`、当时的发布准备总览文档与 `package.json`，确认当前仓库结论仍是“内部 Preview VSIX 分发”。
 - [x] (2026-04-11 15:47 +0800) 检查 `.vscodeignore`、打包脚本和现有 VSIX，确认当前包内容仍混入调试与测试产物。
 - [x] (2026-04-11 15:50 +0800) 复跑 `npm run package:vsix`，确认当前工作树下打包会因 `.debug` 内的非普通文件路径失败。
 - [x] (2026-04-11 15:54 +0800) 查阅 `Visual Studio Code` 官方发布文档与 `Open VSX` 发布文档，收敛当前平台要求。
@@ -42,7 +42,7 @@
   理由：当前仓库已有 VSIX 与 `vsce` 打包基础，距离 `Visual Studio Marketplace` 最近；`Open VSX` 会引入额外的 namespace / token / 同步成本。
   日期/作者：2026-04-11 / Codex
 
-- 决策：把研究结论写入正式设计文档，而不是只追加到 `docs/publish-readiness.md`。
+- 决策：把研究结论写入正式设计文档，而不是只追加到当时的发布准备总览文档。
   理由：这是一次关于发布边界、渠道策略和 blocker 分类的设计性研究，按仓库约定应进入 `docs/design-docs/` 作为正式结论来源。
   日期/作者：2026-04-11 / Codex
 
@@ -68,7 +68,7 @@
 - `package.json`：扩展 manifest、版本号、publisher、打包脚本与依赖定义。
 - `.vscodeignore`：决定哪些文件会进入 VSIX，是当前包污染问题的第一检查点。
 - `scripts/package-vsix.mjs`：当前仓库的 VSIX 打包入口。
-- `README.md`、`CHANGELOG.md`、`LICENSE`、`docs/publish-readiness.md`：当前对分发定位、支持口径和许可证策略的事实来源。
+- `README.md`、`CHANGELOG.md`、`LICENSE` 与当时的发布准备总览文档：当前对分发定位、支持口径和许可证策略的事实来源。
 - `docs/design-docs/index.md`：新增设计文档后必须同步登记的注册表。
 
 这里的“公开平台发布”特指面向外部用户的公开扩展分发渠道，而不是继续通过内部渠道发送 `.vsix` 文件。
@@ -90,7 +90,7 @@
     sed -n '1,220p' docs/WORKFLOW.md
     sed -n '1,260p' docs/PLANS.md
     sed -n '1,260p' package.json
-    sed -n '1,260p' docs/publish-readiness.md
+    sed -n '1,260p' README.md
     sed -n '1,220p' LICENSE
     sed -n '1,240p' .vscodeignore
     du -sh dev-session-canvas-0.0.1.vsix .debug .playwright-browsers dist node_modules

@@ -60,7 +60,7 @@
 
 - 新安装的 VSIX manifest 身份为 `devsessioncanvas.dev-session-canvas`。
 - 当前实现中不再注册旧 `opencove.*` 命令，也不再兼容读取旧配置键和旧 workspace 状态键。
-- README 与 `docs/publish-readiness.md` 已明确写出内部分发下的“一次性卸载旧扩展，再安装新包”要求。
+- README 与当时的发布准备总览文档已明确写出内部分发下的“一次性卸载旧扩展，再安装新包”要求。
 - 当前设计文档与设计索引能把后来者指向本计划，而不是把上一阶段兼容迁移误读为当前仓库事实。
 
 ## 证据与备注
@@ -74,5 +74,5 @@
     src/common/extensionIdentity.ts:
     - 只保留当前正式命名，不再导出 LEGACY_* 常量
 
-    README.md / docs/publish-readiness.md:
+    README.md / 当时的发布准备总览文档:
     - 已补充从旧 opencove 预览包迁移到当前包时的卸载 / 重装说明
