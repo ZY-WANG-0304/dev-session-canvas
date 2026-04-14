@@ -16,6 +16,7 @@ const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'f
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
 const debugRoot = path.join(projectRoot, '.debug', 'vscode-vsix-smoke');
 const unpackRoot = path.join(debugRoot, 'packaged-extension');
+const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
 
 async function main() {
   if (process.platform !== 'linux') {
@@ -81,6 +82,7 @@ async function resolveLatestVsixPath() {
 async function validatePackagedExtension(packagedExtensionPath) {
   const requiredPaths = [
     'package.json',
+    'readme.md',
     path.join('dist', 'extension.js'),
     path.join('dist', 'webview.js'),
     path.join('dist', 'webview.css'),
@@ -99,6 +101,7 @@ async function validatePackagedExtension(packagedExtensionPath) {
 
   const forbiddenPaths = [
     '.github',
+    path.join('images', 'lark-group-qr.png'),
     path.join('node_modules', 'node-pty', 'binding.gyp'),
     path.join('node_modules', 'node-pty', 'scripts'),
     path.join('node_modules', 'node-pty', 'src'),
@@ -124,6 +127,12 @@ async function validatePackagedExtension(packagedExtensionPath) {
     throw new Error(
       `打包产物仍包含调试冗余文件：${unexpectedDebugFiles.slice(0, 10).join(', ')}`
     );
+  }
+
+  const packagedReadmePath = path.join(packagedExtensionPath, 'readme.md');
+  const packagedReadmeContents = await fs.readFile(packagedReadmePath, 'utf8');
+  if (!packagedReadmeContents.includes(marketplaceReadmeMarker)) {
+    throw new Error('打包产物中的 README 未命中 Marketplace README 标记，当前 VSIX 可能仍在携带仓库根 README。');
   }
 }
 

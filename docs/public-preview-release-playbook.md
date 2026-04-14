@@ -14,6 +14,8 @@
 
 当前 listing 统一使用 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。
 
+当前 `npm run package:vsix` 会在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。
+
 这样做的原因是：
 
 - 仓库 `README.md` 仍需要描述公开 `Preview` 阶段下的开发者语境与源码开发入口
@@ -96,11 +98,10 @@
 
 在版本号、最终 git ref 与 VSIX 产物都已锁定后，使用本地 `@vscode/vsce` 执行：
 
+注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`。
+
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.1.0.vsix \
-      --readme-path README.marketplace.md \
-      --changelog-path CHANGELOG.md \
-      --githubBranch main
+      --packagePath dev-session-canvas-0.1.0.vsix
 
 若最终版本号不是 `0.1.0`，应先同步更新命令中的 VSIX 文件名。
 

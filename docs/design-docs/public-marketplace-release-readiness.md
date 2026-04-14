@@ -69,6 +69,7 @@ updated_at: 2026-04-14
 - 许可证已选定为 `Apache-2.0`。
 - `repository`、`homepage` 和 `bugs` 已切换到公开 GitHub 地址。
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
+- `scripts/package-vsix.mjs` 当前会在打包阶段显式传入 `--readme-path README.marketplace.md`，确保后续 `publish --packagePath` 上传的现成 VSIX 已内嵌 Marketplace 专用 README，而不是依赖发布时重新替换。
 - 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
 - 当前 `working tree` 快照已再次通过隔离 `clean checkout` 验证，可在干净目录内稳定产出约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 packaged-payload smoke。
 - 当前候选 release head 也已再次通过隔离 `clean checkout` 验证，说明这轮瘦身后的最小 Preview 工件已经固定到可追溯提交。

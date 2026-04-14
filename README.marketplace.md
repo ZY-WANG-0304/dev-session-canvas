@@ -1,5 +1,7 @@
 # Dev Session Canvas
 
+<!-- dev-session-canvas-marketplace-readme -->
+
 在 VS Code 中用一张画布同时管理多个开发会话。`Agent`、`Terminal` 与 `Note` 节点并排可见，适合需要并行推进多条执行任务的开发者。当前为公开 `Preview` 版本。
 
 ## 核心功能

@@ -33,7 +33,7 @@ tsconfig.json
 .env
 .env.*
 *.md
-!README.md
+!README.marketplace.md
 !CHANGELOG.md
 *.log
 core
@@ -53,3 +53,4 @@ images/dev-session-canvas-activitybar-v1.svg
 images/dev-session-canvas-icon-v1.svg
 images/dev-session-canvas-icon-v3.svg
 images/dev-session-canvas-icon.svg
+images/lark-group-qr.png
