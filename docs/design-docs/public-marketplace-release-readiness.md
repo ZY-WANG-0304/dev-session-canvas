@@ -58,7 +58,7 @@ updated_at: 2026-04-14
 
 ### 5.2 `Open VSX`
 
-`Open VSX` 保留为后续补充渠道，但不与首发里程碑绑定。原因是它引入了额外的 namespace / token 管理与渠道同步问题，而当前仓库连第一条公开发布主线都还未收口。
+`Open VSX` 保留为后续补充渠道，但不与当前首个公开 `Marketplace Preview` 绑定。原因是它引入了额外的 namespace / token 管理与渠道同步问题，而当前仓库虽然已经完成首条公开发布主线的仓库内收口，但尚未实际执行首发发布。
 
 ## 6. 当前现状
 
@@ -80,7 +80,7 @@ updated_at: 2026-04-14
 - 当前首发主路径已完成一轮人工验收，用户反馈为“人工验收没发现问题”。
 - 已补齐 GitHub issue 模板与 `docs/support.md`，普通反馈、安全问题和 Preview 支持边界已有固定入口。
 
-## 7. 阻塞项与所需工作
+## 7. 剩余 release-day 动作与后续跟踪
 
 ### 7.1 发布包治理已收口到当前 PR head，但最终发布引用仍需复核
 
@@ -94,50 +94,49 @@ updated_at: 2026-04-14
 - 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`、`binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
 - 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `1.90 MB`、`43 files`；基于当前候选 release head 的 release-head 证据也已同步更新到同一版本的最小工件。
 
-因此，若要公开发布，必须先补齐以下工作：
+因此，当前只需保持以下约束与 release-day 动作：
 
 - 保持当前 `.debug/`、`.playwright-browsers/`、测试 artifacts、core dump、截图草稿等路径继续留在发布包外，不让后续改动把它们重新带回工件。
 - 若真正对外发布使用的是后续 merge commit、tag 或其他最终 release ref，发布前再对该 git ref 重跑一次 `validate:clean-checkout:vsix`，避免把当前候选 release head 的证据直接等同于最终发布输入。
 - 保持 packaged-payload smoke 的内容守卫，确保 `node-pty` 的源码、脚本、PDB 与重复依赖不会重新随着后续改动回流到 VSIX。
 
-### 7.2 公开元数据与法律口径仍需继续收口
+### 7.2 公开元数据与法律口径已收口，当前只需一致性复核
 
-当前仓库的部分公开元数据已经落地，但对外发布口径仍未完全收口：
+当前仓库的公开元数据和对外发布口径已经完成当前轮次收口：
 
 - README、CHANGELOG、SECURITY、issue 模板与 `docs/support.md` 已完成第一轮公开 Preview 收口，普通反馈、安全问题和 Preview 支持边界已有固定入口。
 - 当前已补齐 `README.marketplace.md` 与 `docs/public-preview-release-playbook.md`，把 Marketplace listing 草案、release notes 使用口径、升级说明和回滚口径收口成正式仓库文档。
 
-若要公开发布，至少需要补齐：
+真正执行发布前，仍需完成以下复核：
 
 - 继续按 `README.marketplace.md`、`CHANGELOG.md` 与 `docs/public-preview-release-playbook.md` 复核商店页面与仓库文档的一致性。
 - 继续复核 README、CHANGELOG、SECURITY、issue 模板和支持边界说明，确保它们与最终发布事实一致。
 
-### 7.3 渠道账号与凭证是必要条件，但不是第一 blocker
+### 7.3 渠道账号与凭证已就绪，发布前只需确认可用性
 
-若选择 `Visual Studio Marketplace`，还需要：
+当前与 `Visual Studio Marketplace` 相关的发布账号链路已经打通：
 
-- 创建或确认 `devsessioncanvas` publisher 身份。
-- 准备 Azure DevOps organization 和 Personal Access Token。
-- 用发布账号完成一次登录与最小发布演练。
+- `devsessioncanvas` publisher 已创建并确认可用。
+- Azure DevOps organization 与 Personal Access Token 已完成准备。
+- 本地 `vsce login devsessioncanvas` 已完成，当前只需在真正发布前确认登录仍然有效。
 
-若选择 `Open VSX`，还需要：
+若未来决定同步 `Open VSX`，仍需要单独补齐：
 
 - 在 `Open VSX` 上创建或认领 namespace。
 - 准备 `ovsx publish` 所需 token。
 - 决定是否与 `Visual Studio Marketplace` 保持同版本同步发布。
 
-这些工作是必要条件，但它们只应发生在“发布包治理”和“公开元数据收口”之后。否则即使拿到了 token，也只能把一个当前并不适合公开分发的包推上去。
+因此，当前 release-day 不再把账号创建视为 blocker；真正需要做的是在发布前再次确认这些凭证仍可用。
 
-### 7.4 平台支持矩阵需要从“内部验证”升级到“公开承诺”
+### 7.4 平台支持矩阵已明确，本地严格验证继续作为技术债
 
-当前验证证据最强的路径主要集中在 `Remote SSH` 开发路径、Restricted Mode 和 VSIX smoke；Linux、macOS、Windows 本地路径仍未经过严格验证。若转向公开平台，需要把当前验证证据升级为“公开支持矩阵”：
+当前验证证据最强的路径主要集中在 `Remote SSH` 开发路径、`Restricted Mode` 和 VSIX smoke；Linux、macOS、Windows 本地路径仍未经过严格验证。当前公开 `Preview` 已经把支持矩阵收口为“`Remote SSH` 主推荐路径 + 本地可尝试但未严格验证”，因此这部分不再是当前首发 blocker，而是后续技术债：
 
-- 至少明确首发支持哪些操作系统，哪些仍是 `best-effort` 或未支持。
-- 明确首发是否支持 Remote SSH、`systemd --user` 缺失场景、Windows、本地无 `codex` / `claude` CLI 的场景。
-- 对外写清 `Restricted Mode`、`Virtual Workspace` 的限制，而不是只放在内部文档里。
-- 在公开发布前，对首发承诺的平台做一轮人工验收，而不只依赖当前 smoke。
+- 继续把 Linux、macOS、Windows 本地路径写成“可尝试，但未严格验证”，而不是正式支持承诺。
+- 继续对外明确 `Restricted Mode`、`Virtual Workspace` 和 CLI 依赖等限制。
+- 若未来要把本地三平台升级为正式支持承诺，再补做严格人工验收并同步文档口径。
 
-当前建议对外口径先收敛为以下矩阵：
+当前对外口径已经收敛为以下矩阵：
 
 | 场景 / 能力 | 当前状态 | 对外口径 |
 | --- | --- | --- |
@@ -156,7 +155,7 @@ updated_at: 2026-04-14
 
 在当前公开 `Preview` 策略下，这组本地路径严格验收继续保留为后续技术债，而不是当前发布包治理的 blocker；对外口径应继续明确写成“可尝试，但未严格验证”。
 
-### 7.5 发布流水线当前后移，不作为本轮 blocker
+### 7.5 发布流水线继续后移，不作为当前 blocker
 
 当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口，但当前决策是不在本轮建设正式发布流水线。当前优先级是先把发布包、支持边界和首发验证收口，再决定是否把这条链路迁入 CI。
 
@@ -171,7 +170,7 @@ updated_at: 2026-04-14
 ## 8. 风险与取舍
 
 - 若一开始同时承诺 `Visual Studio Marketplace` 和 `Open VSX`，会把首发收口拆成两个渠道问题，增加 namespace、token 和版本同步成本。
-- 若在许可证、公开链接和支持口径没收口前就上架，商店页面会把当前内部事实包装成外部承诺，后续回收成本更高。
+- 若后续版本在许可证、公开链接和支持口径失配时贸然上架，商店页面会把仓库内部事实包装成外部承诺，后续回收成本更高。
 - 若只解决 publisher / PAT 而不先治理发布包，公开发布过程会被包体污染、内容漂移和不可重复打包持续阻断。
 
 ## 9. 当前结论
