@@ -30,6 +30,7 @@
 - [x] (2026-04-14 04:40 +0800) 发现新增的 `.github/ISSUE_TEMPLATE` 也被一起打进 VSIX；随后把 `.github/**` 加入排除并扩展 packaged-payload 守卫，最终 worktree 工件收敛到 `43 files` / `1.90 MB`。
 - [x] (2026-04-14 04:45 +0800) 基于当前 `working tree` 快照再次执行 `npm run validate:clean-checkout:vsix -- --source working-tree`，确认隔离目录内也能稳定产出 `43 files` / `1.90 MB` 的 VSIX，并通过 packaged-payload smoke。
 - [x] (2026-04-14 07:56 +0800) 基于当时最新的候选 release head 再次执行 `npm run validate:clean-checkout:vsix -- --ref HEAD`，确认 `1.90 MB` / `43 files` 版本的最小 Preview 工件已经固定到可追溯提交，并再次通过 packaged-payload smoke。
+- [x] (2026-04-14 10:48 +0800) 处理 review blocker：storage fallback 改为搜索同一 canonical workspace id 下的 sibling slots，不再只回退到无后缀槽位；同时修复 `CONTRIBUTING.md` 中两处编码回归，并补齐 `extensionStoragePaths` 的 sibling-slot 回归测试。
 
 ## 意外与发现
 
@@ -115,7 +116,7 @@
 - `.vscodeignore` 已完成第二轮 `node-pty` 依赖级瘦身，当前 VSIX 进一步缩到 `46 files` / `1.90 MB`，且 packaged-payload smoke 现在会显式阻止 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 回流。
 - `.vscodeignore` 已继续排除 `.github/**`，当前 VSIX 最终收敛到 `43 files` / `1.90 MB`，且 packaged-payload smoke 也会阻止 `.github/` 重新回流。
 - GitHub issue 模板与 `docs/support.md` 已补齐，公开 Preview 的普通反馈、安全问题和支持边界说明不再缺入口。
-- 发布准备文档已同步记录：`remote-ssh-real-reopen` blocker 已修复、当前人工验收无新增问题，以及“发布流水线本轮暂不建设”的当前决策。
+- 发布准备文档已同步记录：`remote-ssh-real-reopen` blocker 已修复为同 canonical workspace id 下的 sibling-slot 搜索、当前人工验收无新增问题，以及“发布流水线本轮暂不建设”的当前决策。
 
 本轮仍保留三项后续工作：
 

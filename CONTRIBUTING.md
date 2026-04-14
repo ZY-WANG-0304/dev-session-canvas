@@ -76,7 +76,7 @@ npm run package:vsix
 
 ## 首次准备 Debug Profile
 
-首次在��机做 F5 调试前，需要一次性准备本地 profile。Remote-SSH 窗口里的远端任务无法修改本机 VS Code profile，所以这一步必须在本地完成。
+首次在本机做 F5 调试前，需要一次性准备本地 profile。Remote-SSH 窗口里的远端任务无法修改本机 VS Code profile，所以这一步必须在本地完成。
 
 推荐用本机终端执行：
 
@@ -145,7 +145,7 @@ npm run validate:clean-checkout:vsix -- --ref HEAD --skip-vsix-smoke
 
 说明：
 
-- `test:smoke` 按顺序启动 `trusted`、`restricted`、本地 `real-reopen` 和 `remote-ssh-real-reopen` 四类真实 VS Code Electron 场景。Remote-SSH 场景仅在 Linux 上启用：runner 先启动临时用���态 `sshd`，再让 `Remote-SSH` 扩展通过真实 SSH 协议连接同机远端，验证远端 Extension Development Host 下的 runtime persistence setup / verify 两阶段。可信与受限场景覆盖扩展激活、打开画布、真实 Webview DOM 交互、Note 编辑、provider 切换后重启、删除按钮、`Agent` / `Terminal` 执行生命周期、live session 切面 / reload 竞态、故障注入与 PTY 边界。
+- `test:smoke` 按顺序启动 `trusted`、`restricted`、本地 `real-reopen` 和 `remote-ssh-real-reopen` 四类真实 VS Code Electron 场景。Remote-SSH 场景仅在 Linux 上启用：runner 先启动临时用户态 `sshd`，再让 `Remote-SSH` 扩展通过真实 SSH 协议连接同机远端，验证远端 Extension Development Host 下的 runtime persistence setup / verify 两阶段。可信与受限场景覆盖扩展激活、打开画布、真实 Webview DOM 交互、Note 编辑、provider 切换后重启、删除按钮、`Agent` / `Terminal` 执行生命周期、live session 切面 / reload 竞态、故障注入与 PTY 边界。
 - `test:webview` 在 Playwright 中直接加载真实 `dist/webview.js` bundle，通过假 `acquireVsCodeApi()` 运行 Webview UI 测试与截图回归；已覆盖截图基线、Task 状态更新、Note 编辑、删除按钮、provider 切换和错误 toast。
 - `test:vsix-smoke` 仅在 Linux 上运行。先执行 `npm run package:vsix`，再解包最新 `.vsix`，验证打包后的运行时文件是否齐全，并用解包产物跑一遍 trusted smoke。该入口验证的是打包内容完整性，不是三平台安装矩阵的替代品。
 - `validate:clean-checkout:vsix` 在 `/tmp` 下创建隔离目录，默认从 `git archive HEAD` 导出 clean checkout，再执行 `npm ci`、`npm run package:vsix`，并可按需继续执行 `npm run test:vsix-smoke`。适用于工作树正在被修改但需要提前准备发布验证的场景。

@@ -28,7 +28,7 @@
 - 仓库根目录已切换到 `Apache-2.0` 许可证，为公开发布提供明确的开源许可口径。
 - `README.md` 与 `CHANGELOG.md` 已补齐发布准备说明与当前限制。
 - 已补齐 `docs/support.md` 和 GitHub issue 模板，普通反馈、安全问题与 Preview 支持边界已有固定入口。
-- `remote-ssh-real-reopen` blocker 已于 `2026-04-14` 修复：当前通过 storage fallback 兼容 `workspaceStorage/<id>-N` 槽位漂移，恢复链路不再依赖 reopen 时恰好拿到同一个 storage slot。
+- `remote-ssh-real-reopen` blocker 已于 `2026-04-14` 修复：当前通过 storage fallback 扫描同一 canonical workspace id 下的 sibling slots，兼容 `workspaceStorage/<id>` 与 `workspaceStorage/<id>-N` 之间的槽位漂移，恢复链路不再依赖 reopen 时恰好拿到同一个 storage slot。
 - 当前首发主路径已完成一轮人工验收，用户反馈为“人工验收没发现问题”；当前记录主要覆盖 `Remote SSH` / 调试 profile / 恢复主路径，而不是三平台本地严格验收。
 - `Visual Studio Marketplace` 发布账号链路已打通：`Azure DevOps organization`、`Marketplace publisher`、`PAT` 与本地 `vsce login devsessioncanvas` 已完成。
 

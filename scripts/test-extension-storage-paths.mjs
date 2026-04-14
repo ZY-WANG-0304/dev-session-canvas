@@ -25,9 +25,12 @@ try {
   const stablePath =
     '/home/users/example/.vscode-server/data/User/workspaceStorage/' +
     '33709ceba1e836bc24c67b57ee72421c/devsessioncanvas.dev-session-canvas';
-  const indexedPath =
+  const indexedPathOne =
     '/home/users/example/.vscode-server/data/User/workspaceStorage/' +
     '33709ceba1e836bc24c67b57ee72421c-1/devsessioncanvas.dev-session-canvas';
+  const indexedPathTwo =
+    '/home/users/example/.vscode-server/data/User/workspaceStorage/' +
+    '33709ceba1e836bc24c67b57ee72421c-2/devsessioncanvas.dev-session-canvas';
 
   const unchangedResult = resolvePreferredExtensionStoragePath(stablePath, {
     pathExists: () => false
@@ -36,28 +39,55 @@ try {
   assert.equal(unchangedResult.resolvedPath, stablePath);
   assert.equal(unchangedResult.recoveryReason, undefined);
 
-  const snapshotFallbackResult = resolvePreferredExtensionStoragePath(indexedPath, {
+  const snapshotFallbackResult = resolvePreferredExtensionStoragePath(indexedPathOne, {
     pathExists: (candidatePath) => candidatePath === path.join(stablePath, 'canvas-state.json')
   });
-  assert.equal(snapshotFallbackResult.currentPath, indexedPath);
+  assert.equal(snapshotFallbackResult.currentPath, indexedPathOne);
   assert.equal(snapshotFallbackResult.resolvedPath, stablePath);
   assert.equal(snapshotFallbackResult.recoveryReason, 'workspace-storage-slot-fallback');
 
-  const runtimeRegistryFallbackResult = resolvePreferredExtensionStoragePath(indexedPath, {
+  const runtimeRegistryFallbackResult = resolvePreferredExtensionStoragePath(indexedPathOne, {
     pathExists: (candidatePath) =>
       candidatePath === path.join(stablePath, 'runtime-supervisor', 'registry.json')
   });
   assert.equal(runtimeRegistryFallbackResult.resolvedPath, stablePath);
 
-  const agentRuntimeFallbackResult = resolvePreferredExtensionStoragePath(indexedPath, {
+  const agentRuntimeFallbackResult = resolvePreferredExtensionStoragePath(indexedPathOne, {
     pathExists: (candidatePath) => candidatePath === path.join(stablePath, 'agent-runtime')
   });
   assert.equal(agentRuntimeFallbackResult.resolvedPath, stablePath);
 
-  const preferCurrentIndexedPathResult = resolvePreferredExtensionStoragePath(indexedPath, {
-    pathExists: (candidatePath) => candidatePath === path.join(indexedPath, 'canvas-state.json')
+  const siblingSlotFallbackResult = resolvePreferredExtensionStoragePath(indexedPathTwo, {
+    pathExists: (candidatePath) => candidatePath === path.join(indexedPathOne, 'canvas-state.json'),
+    listDirectoryEntries: () => ['33709ceba1e836bc24c67b57ee72421c', '33709ceba1e836bc24c67b57ee72421c-1']
   });
-  assert.equal(preferCurrentIndexedPathResult.resolvedPath, indexedPath);
+  assert.equal(siblingSlotFallbackResult.resolvedPath, indexedPathOne);
+  assert.equal(siblingSlotFallbackResult.recoveryReason, 'workspace-storage-slot-fallback');
+
+  const canonicalToIndexedFallbackResult = resolvePreferredExtensionStoragePath(stablePath, {
+    pathExists: (candidatePath) =>
+      candidatePath === path.join(indexedPathOne, 'runtime-supervisor', 'registry.json'),
+    listDirectoryEntries: () => ['33709ceba1e836bc24c67b57ee72421c', '33709ceba1e836bc24c67b57ee72421c-1']
+  });
+  assert.equal(canonicalToIndexedFallbackResult.resolvedPath, indexedPathOne);
+  assert.equal(canonicalToIndexedFallbackResult.recoveryReason, 'workspace-storage-slot-fallback');
+
+  const nearestSiblingWithRecoverableStateResult = resolvePreferredExtensionStoragePath(indexedPathTwo, {
+    pathExists: (candidatePath) =>
+      candidatePath === path.join(stablePath, 'canvas-state.json') ||
+      candidatePath === path.join(indexedPathOne, 'canvas-state.json'),
+    listDirectoryEntries: () => [
+      '33709ceba1e836bc24c67b57ee72421c',
+      '33709ceba1e836bc24c67b57ee72421c-1',
+      '33709ceba1e836bc24c67b57ee72421c-2'
+    ]
+  });
+  assert.equal(nearestSiblingWithRecoverableStateResult.resolvedPath, indexedPathOne);
+
+  const preferCurrentIndexedPathResult = resolvePreferredExtensionStoragePath(indexedPathOne, {
+    pathExists: (candidatePath) => candidatePath === path.join(indexedPathOne, 'canvas-state.json')
+  });
+  assert.equal(preferCurrentIndexedPathResult.resolvedPath, indexedPathOne);
   assert.equal(preferCurrentIndexedPathResult.recoveryReason, undefined);
 
   const unrelatedPath = '/home/users/example/.config/dev-session-canvas';
