@@ -65,7 +65,7 @@ updated_at: 2026-04-14
 截至 2026-04-14，仓库里已经成立的事实如下：
 
 - `package.json` 具备基础扩展元数据，且仍标记为 `preview: true`。
-- README 与 `docs/publish-readiness.md` 已明确写成“产品已处于公开 Preview 阶段，当前继续收口分发链路”的口径。
+- `README.md` 已明确写成“产品已处于公开 Preview 阶段”；发布执行与对外口径已收口到 `docs/public-preview-release-playbook.md`。
 - 许可证已选定为 `Apache-2.0`。
 - `repository`、`homepage` 和 `bugs` 已切换到公开 GitHub 地址。
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
@@ -105,11 +105,11 @@ updated_at: 2026-04-14
 当前仓库的部分公开元数据已经落地，但对外发布口径仍未完全收口：
 
 - README、CHANGELOG、SECURITY、issue 模板与 `docs/support.md` 已完成第一轮公开 Preview 收口，普通反馈、安全问题和 Preview 支持边界已有固定入口。
-- 当前仍未补齐 Marketplace listing、release notes、升级说明和回滚口径。
+- 当前已补齐 `README.marketplace.md` 与 `docs/public-preview-release-playbook.md`，把 Marketplace listing 草案、release notes 使用口径、升级说明和回滚口径收口成正式仓库文档。
 
 若要公开发布，至少需要补齐：
 
-- 准备 Marketplace listing、release notes、升级说明和回滚口径，确保商店页面与仓库文档一致。
+- 继续按 `README.marketplace.md`、`CHANGELOG.md` 与 `docs/public-preview-release-playbook.md` 复核商店页面与仓库文档的一致性。
 - 继续复核 README、CHANGELOG、SECURITY、issue 模板和支持边界说明，确保它们与最终发布事实一致。
 
 ### 7.3 渠道账号与凭证是必要条件，但不是第一 blocker
@@ -154,6 +154,8 @@ updated_at: 2026-04-14
 
 补充说明：截至 `2026-04-14`，`Remote SSH` 首发主路径的当前人工验收反馈为“人工验收没发现问题”；但 Linux、macOS、Windows 本地路径仍未具备可对外承诺的严格人工验收证据。
 
+在当前公开 `Preview` 策略下，这组本地路径严格验收继续保留为后续技术债，而不是当前发布包治理的 blocker；对外口径应继续明确写成“可尝试，但未严格验证”。
+
 ### 7.5 发布流水线当前后移，不作为本轮 blocker
 
 当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口，但当前决策是不在本轮建设正式发布流水线。当前优先级是先把发布包、支持边界和首发验证收口，再决定是否把这条链路迁入 CI。
@@ -176,16 +178,16 @@ updated_at: 2026-04-14
 
 截至当前研究结论：
 
-- 当前仓库已经接近公开 `Marketplace Preview` readiness，但还没有完全收口到“可立即点击发布”。
-- 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `1.90 MB` / `43 files` 工件证据都已固定，下一步应转向平台支持矩阵、本地严格验收与最终发布说明收口。
+- 当前仓库已经完成公开 `Marketplace Preview` 所需的发布包治理与发布说明收口；剩余事项主要是 release-day 执行，而不是仓库内仍缺少的发布资产。
+- 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `1.90 MB` / `43 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
 - 公开发布方向已经确认：首发渠道先收敛到 `Visual Studio Marketplace`；`Open VSX` 作为后续补充渠道单独决策。
-- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明与渠道账号都已经确定；在公开发布前仍要完成三类收口：最终发布 git ref 的 clean-checkout 复核（若发布输入继续变化）、平台支持矩阵的本地路径验证，以及最终的 listing / release notes / 升级与回滚口径。
+- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
 
 ## 10. 验证方法
 
 本研究依赖以下证据来源：
 
-- 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/publish-readiness.md`、`LICENSE` 与打包脚本现状。
+- 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/support.md`、`LICENSE` 与打包脚本现状。
 - 本地执行 `npm run package:vsix`、`npm run test:vsix-smoke` 与 `npm run validate:clean-checkout:vsix -- --ref HEAD` 的实际结果，确认当前工作树与当前候选 release head 已能稳定产出约 `1.90 MB` / `43 files` 的 VSIX，且收口后的 packaged payload 仍可启动。
 - `Visual Studio Code` 官方发布文档：<https://code.visualstudio.com/api/working-with-extensions/publishing-extension>
 - `Open VSX` 发布文档：<https://github.com/eclipse/openvsx/wiki/Publishing-Extensions>

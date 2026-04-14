@@ -16,7 +16,7 @@
 - [x] (2026-04-11 22:44 +0800) 新建本计划，记录本轮实现范围、验证目标与剩余 blocker。
 - [x] (2026-04-11 22:45 +0800) 收紧 `.vscodeignore`，排除 `.debug/`、`.playwright-browsers/`、`tests/`、截图草稿、core dump 等非发布内容。
 - [x] (2026-04-11 22:48 +0800) 把打包工具链从旧 `vsce` 包名迁移到 `@vscode/vsce`，并同步 `scripts/package-vsix.mjs` 中的错误提示与本地 fallback 路径。
-- [x] (2026-04-11 22:52 +0800) 更新 `CONTRIBUTING.md`、`docs/publish-readiness.md` 与相关正式文档，反映“Marketplace Preview + VSIX 仅作发布工件”的当前事实，并记录本轮已完成与未完成项。
+- [x] (2026-04-11 22:52 +0800) 更新 `CONTRIBUTING.md`、发布准备总览文档与相关正式文档，反映“Marketplace Preview + VSIX 仅作发布工件”的当前事实，并记录本轮已完成与未完成项。
 - [x] (2026-04-11 22:48 +0800) 运行 `npm run package:vsix`，确认当前工作树已可稳定产出约 `7.07 MB`、`82 files` 的 VSIX。
 - [x] (2026-04-11 22:48 +0800) 运行 `npm run test:vsix-smoke`，确认收口后的 packaged payload 仍可独立启动并跑通 trusted smoke。
 - [x] (2026-04-11 23:02 +0800) 补上 `validate:clean-checkout:vsix` 隔离验证入口和文档说明，为后续 clean-checkout 验证做准备，不直接扰动当前工作树。
@@ -31,6 +31,9 @@
 - [x] (2026-04-14 04:45 +0800) 基于当前 `working tree` 快照再次执行 `npm run validate:clean-checkout:vsix -- --source working-tree`，确认隔离目录内也能稳定产出 `43 files` / `1.90 MB` 的 VSIX，并通过 packaged-payload smoke。
 - [x] (2026-04-14 07:56 +0800) 基于当时最新的候选 release head 再次执行 `npm run validate:clean-checkout:vsix -- --ref HEAD`，确认 `1.90 MB` / `43 files` 版本的最小 Preview 工件已经固定到可追溯提交，并再次通过 packaged-payload smoke。
 - [x] (2026-04-14 10:48 +0800) 处理 review blocker：storage fallback 改为搜索同一 canonical workspace id 下的 sibling slots，不再只回退到无后缀槽位；同时修复 `CONTRIBUTING.md` 中两处编码回归，并补齐 `extensionStoragePaths` 的 sibling-slot 回归测试。
+- [x] (2026-04-14 11:40 +0800) 新增 `README.marketplace.md` 与 `docs/public-preview-release-playbook.md`，把 Marketplace listing 草案、release notes 使用口径、升级说明、回滚口径和手工发布步骤收口成正式仓库文档。
+- [x] (2026-04-14 11:40 +0800) 明确 Linux/macOS/Windows 本地路径继续保留为“可尝试，但未严格验证”的 `Preview` 边界，相关严格人工验收继续留在技术债跟踪，不再阻塞当前发布包治理收口。
+- [x] (2026-04-14 11:40 +0800) 将最终 git ref 的隔离验证与 `vsce publish` 执行收口到 release-day checklist；本计划范围内已无剩余 blocker，可迁入 `docs/exec-plans/completed/`。
 
 ## 意外与发现
 
@@ -103,13 +106,25 @@
   理由：用户已明确要求当前先不建发布流水线；现阶段优先把包体、支持边界和最终发布说明收口，比先搭 CI 更直接降低当前发布风险。
   日期/作者：2026-04-14 / Codex
 
+- 决策：Marketplace 发布页不再直接复用仓库根目录 `README.md`，而使用独立的 `README.marketplace.md`。
+  理由：仓库 `README.md` 仍需保留“当前仓库处于公开 Preview 收口期”的开发者语境；Marketplace 页面需要一份对外已发布语气的独立文案，避免出现发布后立即失真的措辞。
+  日期/作者：2026-04-14 / Codex
+
+- 决策：首个公开 `Preview` 不以额外截图为 blocker；若发布当天来不及补截图，可直接使用当前 icon、gallery banner 与 listing 文案完成首发。
+  理由：Marketplace 截图属于加分项，不是当前发布包治理的必要前置条件；继续把截图资产当成 blocker 只会让计划范围从“发布包治理”滑向“发布运营素材制作”。
+  日期/作者：2026-04-14 / Codex
+
+- 决策：Linux、macOS、Windows 本地路径的严格人工验收继续保留为技术债，不再阻塞当前公开 `Preview` 首发。
+  理由：当前对外支持矩阵已经明确把 `Remote SSH` 收口为主推荐路径，并把本地路径写成“可尝试，但未严格验证”；只要不把这些路径误写成正式支持承诺，它们就不再构成本计划的 blocker。
+  日期/作者：2026-04-14 / Codex
+
 ## 结果与复盘
 
 本轮已经完成以下收口：
 
 - `.vscodeignore` 已能挡住 `.debug/`、`.playwright-browsers/`、`tests/`、`test-results/`、截图草稿与未使用图标变体。
 - 发布工具链已切换到 `@vscode/vsce`，并修复了当前环境下 `.bin/vsce` 缺失导致的误报。
-- `CONTRIBUTING.md`、`docs/publish-readiness.md` 与设计文档已同步成“Marketplace Preview + VSIX 仅作发布工件”的当前口径。
+- `CONTRIBUTING.md`、发布准备总览文档与设计文档已同步成“Marketplace Preview + VSIX 仅作发布工件”的当前口径。
 - 当前工作树 `npm run package:vsix` 与 `npm run test:vsix-smoke` 均已通过，说明这轮收口没有破坏 packaged payload 主路径。
 - 已补上 `validate:clean-checkout:vsix` 隔离验证入口，后续可在不打扰当前工作树的前提下继续推进 clean-checkout 验证。
 - 当前本地 `working tree` 快照、版本已切到 `0.1.0` 的 release head `346c4bf`，以及当前候选 release head 都已经通过隔离 `clean checkout` 打包与 packaged-payload smoke，说明“当前待发布工作树”“上一轮公开基线 ref”和“当前候选发布提交”三层验证都已建立。
@@ -117,12 +132,15 @@
 - `.vscodeignore` 已继续排除 `.github/**`，当前 VSIX 最终收敛到 `43 files` / `1.90 MB`，且 packaged-payload smoke 也会阻止 `.github/` 重新回流。
 - GitHub issue 模板与 `docs/support.md` 已补齐，公开 Preview 的普通反馈、安全问题和支持边界说明不再缺入口。
 - 发布准备文档已同步记录：`remote-ssh-real-reopen` blocker 已修复为同 canonical workspace id 下的 sibling-slot 搜索、当前人工验收无新增问题，以及“发布流水线本轮暂不建设”的当前决策。
+- 已新增 `README.marketplace.md` 与 `docs/public-preview-release-playbook.md`，把 Marketplace listing 草案、release notes 使用口径、升级说明、回滚口径和手工发布步骤收口为正式仓库资产。
 
-本轮仍保留三项后续工作：
+本计划范围内已无剩余 blocker。
 
-- 当前候选发布提交的隔离验证已经补齐；若真正对外发布使用的是后续 merge commit、tag 或其他最终 release ref，发布前仍需对该 git ref 再执行一次 `npm run validate:clean-checkout:vsix`。
-- Linux、macOS、Windows 本地路径仍缺严格人工验收证据；当前首发主路径人工验收完成，并不自动代表本地三平台矩阵已经收口。
-- Marketplace listing、release notes、升级说明与回滚口径仍待定稿；这些内容需要在真正点击发布前补齐。
+真正点击发布当天仍需执行的动作，现已全部收口到 `docs/public-preview-release-playbook.md`：
+
+- 若最终发布输入不再是当前候选 release head，则在最终 git ref 上再跑一轮隔离 `clean checkout` 验证。
+- 按 playbook 复核最终版本号、截图策略、`README.marketplace.md` 与 `CHANGELOG.md`。
+- 使用本地已登录的 `@vscode/vsce` 执行发布，并完成发布后验证。
 
 ## 上下文与定向
 
@@ -132,7 +150,7 @@
 - `package.json` 与 `package-lock.json`：记录 `@vscode/vsce` 依赖与发布脚本元数据。
 - `scripts/package-vsix.mjs`：仓库的 VSIX 打包入口，需要继续兼容本地 `vsce` 可执行文件，但应把工具来源表述更新为 `@vscode/vsce`。
 - `CONTRIBUTING.md`：开发者入口，当前还保留旧的内部 VSIX 表述。
-- `docs/publish-readiness.md` 与 `docs/design-docs/public-marketplace-release-readiness.md`：正式记录当前发布准备状态和 blocker 分类，完成后需要同步新的验证结论。
+- `docs/public-preview-release-playbook.md` 与 `docs/design-docs/public-marketplace-release-readiness.md`：当前正式记录 release-day 执行口径与 blocker 分类，后续继续发布时需要同步新的验证结论。
 
 这里的“发布包收口”特指：让 VSIX 只包含扩展实际运行需要的文件集，并让文档明确 `.vsix` 是 Marketplace 上传工件，不是普通用户安装路径。
 
@@ -226,4 +244,4 @@
 - `unzip`：检查 VSIX 文件内容。
 - `npm`：安装与锁定依赖。
 
-本计划创建于 2026-04-11，用于把公开 Marketplace Preview 的讨论收口为实际可验证的发布包治理动作。
+本计划创建于 2026-04-11，用于把公开 Marketplace Preview 的讨论收口为实际可验证的发布包治理动作；2026-04-14 已在发布资产收口后移入 `completed/`，剩余事项全部改为 release-day checklist 执行。

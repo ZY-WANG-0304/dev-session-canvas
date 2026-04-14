@@ -16,10 +16,10 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/agent-cli-launch-context-and-resume.md
-  - docs/exec-plans/active/agent-running-state-detection.md
+  - docs/exec-plans/completed/agent-cli-launch-context-and-resume.md
+  - docs/exec-plans/completed/agent-running-state-detection.md
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
-updated_at: 2026-04-13
+updated_at: 2026-04-14
 ---
 
 # 执行节点生命周期、恢复与自动启动设计

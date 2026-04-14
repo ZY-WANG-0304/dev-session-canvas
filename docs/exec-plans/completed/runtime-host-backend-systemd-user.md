@@ -24,6 +24,7 @@
 - [x] 2026-04-11 10:15+08:00 收口 `systemd-user-real-reopen` 本机 blocker：smoke runtime 现在显式提供短 `XDG_STATE_HOME`，systemd / legacy supervisor 都改为显式 Node exec + `ELECTRON_RUN_AS_NODE=1` 环境，`systemd-user` 启动前会预建 `WorkingDirectory`；`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` 已在本机跑绿。
 - [x] 2026-04-11 12:05+08:00 修复 reopen/reset 竞态：`resetState()` 改为等待 runtime supervisor 清理完成，live-runtime attach/create 结果按节点级 token 去重并忽略陈旧异步完成，新增 runtime supervisor 测试探针后，`trusted`、`real-reopen` 与全量 `npm test` 已跑绿。
 - [x] 2026-04-11 16:20+08:00 收口 review 新 blocker：Restricted Mode 下“持久化关闭仍保活”和“删除 history-only 节点遗留后台 runtime”都已修复；host-boundary teardown 现在会先强制 flush 本地会话最后状态，新增 `trusted` / `restricted` smoke 覆盖并再次跑绿。
+- [x] 2026-04-14 11:09+08:00 将真实长断开人工验收、Remote SSH nightly / self-hosted 自动化与 macOS `launchd` backend 三项后续工作显式拆入 `docs/exec-plans/tech-debt-tracker.md`，本计划移入 `completed/`。
 
 ## 意外与发现
 
@@ -64,11 +65,11 @@
 - 当前 detached launcher 被保留成 `legacy-detached` fallback；当 `systemd --user` 不可用、无法启动或路径解析失败时，宿主会自动回退到它，并把 guarantee 显式标成 `best-effort`。
 - 共享协议、supervisor registry/snapshot、节点 metadata 和 Webview 都已经能携带并展示 `runtimeBackend` / `runtimeGuarantee`，用户不再只能靠环境猜测自己拿到的是哪条路径。
 
-当前仍保留两项后续工作：
+剩余后续工作已显式拆入 `docs/exec-plans/tech-debt-tracker.md`：
 
-- 真实 Linux / `Remote SSH` 长断开手工验证还没在本地执行；因此设计文档仍保持 `验证中`，没有把 `systemd-user` 路线提前写成“已验证”。
+- 真实 Linux / `Remote SSH` 长断开人工验收尚未执行；因此设计文档仍保持 `验证中`，没有把 `systemd-user` 路线提前写成“已验证”。
 - macOS 的正式强保证 backend 仍未实现；当前仍停留在 `legacy-detached` fallback，后续需要单独收口 `launchd` 方案。
-- 真实 Remote SSH 长断开自动化仍未接入 PR 级 runner；目前已经把这项需求明确登记到 `docs/exec-plans/tech-debt-tracker.md`，计划放到 nightly / self-hosted。
+- 真实 Remote SSH 长断开自动化仍未接入 PR 级 runner，后续计划放到 nightly / self-hosted。
 
 ## 上下文与定向
 
@@ -197,4 +198,4 @@
 
 如果某个接口最终没有这些名字，也必须提供等价语义，并在最终复盘中说明替代关系。
 
-本计划创建于 2026-04-10，用于把运行时持久化从“单一路径 + 过强文档口径”收口为“backend 分层 + 明确保证等级”。
+本计划创建于 2026-04-10，用于把运行时持久化从“单一路径 + 过强文档口径”收口为“backend 分层 + 明确保证等级”；2026-04-14 已在主路径收口后移入 `completed/`，剩余 follow-up 已拆入技术债追踪。

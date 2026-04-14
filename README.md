@@ -2,7 +2,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入 `Preview` 阶段，仓库仍在推进公开分发与发布收口。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，仓库内的发布资产与对外口径已基本收口；当前待执行的是 release-day 发布与发布后复核。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ## 适合谁
 
@@ -39,24 +39,28 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。工作重点是平台兼容性收口、恢复链路验证，以及发布说明与版本收口。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是平台兼容性收口、恢复链路验证，以及按 Marketplace `Preview` 口径继续迭代，而不是继续补齐一套新的发布准备方案。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
 - 版本定位为 `Preview`，尚未达到稳定正式版。
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
-- 公开发布主渠道以 `Visual Studio Marketplace` 为目标；是否同步 `Open VSX` 延后决策。
+- 公开发布主渠道已收口为 `Visual Studio Marketplace`；是否同步 `Open VSX` 延后决策。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
-具体清单见 `docs/publish-readiness.md`。
+相关入口：
+
+- 发布执行手册：[`docs/public-preview-release-playbook.md`](docs/public-preview-release-playbook.md)
+- 公开支持边界：[`docs/support.md`](docs/support.md)
+- 设计结论与发布判断：[`docs/design-docs/public-marketplace-release-readiness.md`](docs/design-docs/public-marketplace-release-readiness.md)
 
 ## Preview 分发
 
 对外分发目标是通过 `Visual Studio Marketplace` 发布。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
-- Marketplace 上架前，仍需补齐发布包治理、发布账号和最终发布验证
+- 当前仓库内的发布资产已收口；真正上架前仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
 - `Open VSX` 不是本次 `Preview` 的首发路径
 
 ## 源码编译与开发安装
@@ -82,7 +86,7 @@ npm run build
 
 - 仍处于 `Preview`，不应按稳定生产工具看待。
 - 不支持 `Virtual Workspace`。
-- 公开发布链路仍在准备中，目标分发主路径为 `Visual Studio Marketplace`。
+- 公开 `Preview` 的分发主路径已收口到 `Visual Studio Marketplace`，但 release-day 仍需手工执行与复核。
 - 验证覆盖主要集中在 `Remote SSH` 路径；Linux、macOS、Windows 本地路径尚未经过严格验证。
 - 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。
 
