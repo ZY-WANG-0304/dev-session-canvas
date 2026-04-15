@@ -18,7 +18,8 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-and-supervisor-design.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
   - docs/exec-plans/completed/runtime-host-backend-systemd-user.md
-updated_at: 2026-04-14
+  - docs/exec-plans/active/runtime-terminal-state-restore.md
+updated_at: 2026-04-15
 ---
 
 # 运行时持久化与会话监督器设计
@@ -42,6 +43,18 @@ updated_at: 2026-04-14
 - 会话监督器（session supervisor，也可以理解成 daemon）：一个独立于 VSCode 扩展宿主的辅助进程，部署位置跟随 workspace 所在侧。它负责长期持有 `Agent` / `Terminal` 子进程、保存会话登记和日志，并在 VSCode 重新打开后允许扩展重新附着。
 - `snapshot-only`：关闭 VSCode 后不承诺真实进程继续存在，但会恢复关闭前的节点、状态、日志摘要和恢复入口。
 - `live-runtime`：关闭 VSCode 后，真实 `Agent` / `Terminal` 进程仍可继续存在；下次打开 VSCode 时扩展应优先重新附着到这些 live 会话。
+
+本轮还固定三层生命周期术语，避免把“恢复”写成一个模糊词：
+
+- `保活隐藏`
+  - Webview 只是 hidden，没有被 dispose。
+  - 这一路径强调切回手感，不应丢 live xterm，也不应因为一次 visibility restore 就改写当前 viewport 行数。
+- `同宿主重建`
+  - Webview 被 dispose 后重新创建，但 extension host 或 runtime supervisor 仍活着。
+  - 这一路径应从宿主内存里的权威 terminal state 恢复，并尽量保住与 live xterm 对齐的 scrollback 历史。
+- `跨宿主恢复`
+  - VS Code reload、extension host 重启，或需要从 supervisor / 落盘快照重新恢复的场景。
+  - 这一路径同样以宿主 terminal state 为源，只是来源可能从内存换成 registry / snapshot 文件。
 
 ## 3. 目标
 
@@ -140,7 +153,7 @@ updated_at: 2026-04-14
 
 1. 对象图与画布状态
    - 继续由 extension host 持有。
-   - 包括节点 ID、标题、位置、尺寸、生命周期摘要、最近输出摘要和最小恢复元数据。
+   - 包括节点 ID、标题、位置、尺寸、生命周期摘要、最近输出摘要、终端尺寸与 serialized terminal state 等最小恢复元数据。
 2. 会话注册表与持久化日志
    - 不再塞进 `workspaceState`。
    - 应放到独立的本地持久化目录，由监督器和扩展共同理解。
@@ -154,6 +167,14 @@ updated_at: 2026-04-14
    - 必须由独立会话监督器持有，不能再依赖 extension host 直接拥有。
 
 这三层里，第一层永远存在；第二层在两档模式下都需要；第三层只在 `live-runtime` 中被正式承诺。
+
+对 `Agent` / `Terminal` 而言，画布或 Webview 被重建后的“当前屏幕恢复”现在有一条更正式的结论：宿主应优先恢复 serialized terminal state，而不是把最后几千字符 raw tail 当作权威终端状态。`recentOutput` 仍保留，但只用于摘要与兼容 fallback。
+
+scrollback 预算也在这里固定下来：
+
+- live xterm、宿主 `SerializedTerminalStateTracker`、跨 host 落盘 snapshot 现在统一对齐 `terminal.integrated.scrollback`。
+- 当前不使用 `terminal.integrated.persistentSessionScrollback` 去主动缩小 Canvas 自己的 terminal state；原因不是忽略 VS Code 原生语义，而是本产品的验收标准更偏向“切回画布后尽量保住 live xterm 的历史”，不能再接受把恢复历史主动压回几十或几百行。
+- 为控制体积，完整 serialized terminal state 继续写入主 snapshot / registry；`workspaceState` 只保留去掉 serialized terminal state 的轻量兜底。
 
 ### 6.3 会话监督器职责
 
@@ -261,6 +282,9 @@ updated_at: 2026-04-14
 - 风险：用户容易把“恢复快照”误解成“还是原来的 live 进程”。
   当前缓解：正式把产品语义拆成两档，并要求宿主状态能表达附着态差异。
 
+- 风险：如果 Webview 重建后立即按当前容器尺寸 destructive `fit()`，alternate-buffer / 全屏重绘型 CLI 的顶部行会被裁掉，导致“恢复了会话但屏幕不对”。
+  当前缓解：宿主改为持有 serialized terminal state，Webview snapshot hydrate 时优先保持宿主记录的终端尺寸与画面；保活场景下的 `fit + refresh` 继续由 visibility restore 路径负责。
+
 - 风险：Remote 场景里，“VSCode 关闭”与“远端扩展宿主是否还活着”并不总是同一件事。
   当前缓解：当前设计仍把 Remote SSH 纳入 `live-runtime` 目标范围，但 detached launcher 已不再被视作最终充分条件；正式主路径改为远端 `systemd-user` backend，原 detached 路线只保留为 fallback。Dev Container / Codespaces 继续留在后续范围。
 
@@ -290,6 +314,7 @@ updated_at: 2026-04-14
 - 已经被本地验证覆盖的行为包括：
   - detached supervisor 路径下的 `Agent` / `Terminal` 启动与重新附着
   - 关闭期间新增输出在短链路重连后可见
+  - Webview 重建后基于 serialized terminal state 的终端当前屏幕恢复
   - `重连中` / `历史恢复` UI 语义
   - 关闭运行时持久化开关后，不再自动重连既有 live-runtime
   - Remote-SSH Extension Development Host 下基于 detached 路线的 real-reopen 自动化

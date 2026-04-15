@@ -1,7 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { SerializeAddon } from '@xterm/addon-serialize';
+import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
+
+const { Terminal: HeadlessTerminal } = xtermHeadless;
 
 const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
@@ -1118,6 +1122,60 @@ test('incoming host error shows a toast in the harness', async ({ page }) => {
 });
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore prefers serialized terminal state after rebuild`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const fixture = createFullscreenSerializedFixture();
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      fixture.output,
+      fixture.cols,
+      fixture.rows
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: fixture.cols,
+      rows: fixture.rows,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: fixture.cols,
+      rows: fixture.rows,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await dragTerminalSelection(page, {
+      nodeId,
+      row: 1,
+      startCol: 1,
+      endCol: fixture.expectedSelection.length
+    });
+
+    await expect
+      .poll(async () => {
+        const probeNode = await readProbeNode(page, nodeId, 20);
+        return probeNode?.terminalSelectionText ?? null;
+      })
+      .toBe(fixture.expectedSelection);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const outputLine = '0123456789ABCDEFGHIJKLMNO';
@@ -1159,6 +1217,148 @@ for (const executionKind of ['agent', 'terminal']) {
         return probeNode?.terminalSelectionText ?? null;
       })
       .toBe(outputLine.slice(selectionRange.startCol - 1, selectionRange.endCol));
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore keeps configured scrollback history after rebuild`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const configuredScrollback = 240;
+    const output = createScrollableTerminalOutput(220);
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      output,
+      96,
+      28,
+      configuredScrollback
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    const bottomProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY > 120 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-219'))
+    );
+
+    expect(bottomProbe.terminalVisibleLines.some((line) => line.includes('ROW-219'))).toBe(true);
+
+    await performTestDomAction(page, {
+      kind: 'scrollTerminalViewport',
+      nodeId,
+      lines: -400
+    });
+    const restoredTopProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        probeNode?.terminalViewportY === 0 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-000'))
+    );
+
+    expect(restoredTopProbe.terminalVisibleLines.some((line) => line.includes('ROW-000'))).toBe(true);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore still responds to wheel scrolling after rebuild`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const configuredScrollback = 240;
+    const output = createScrollableTerminalOutput(220);
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      output,
+      96,
+      28,
+      configuredScrollback
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    const bottomProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY > 120 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-219'))
+    );
+    const bottomViewportY = bottomProbe.terminalViewportY;
+
+    const wheelProbe = await scrollTerminalViewport(
+      page,
+      nodeId,
+      -1600,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY <= bottomViewportY - 12 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-180')),
+      10
+    );
+
+    expect(wheelProbe.terminalViewportY).toBeLessThan(bottomViewportY);
+    expect(wheelProbe.terminalVisibleLines.some((line) => line.includes('ROW-180'))).toBe(true);
   });
 }
 
@@ -1388,6 +1588,7 @@ function createRuntimeContext(overrides = {}) {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
+    terminalScrollback: 1000,
     ...overrides
   };
 }
@@ -1495,14 +1696,14 @@ async function waitForExecutionTerminalReady(page, nodeId) {
   return readyNode;
 }
 
-async function scrollTerminalViewport(page, nodeId, deltaY, predicate) {
+async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttempts = 4) {
   const screen = nodeById(page, nodeId).locator('.xterm-screen');
   await expect(screen).toBeVisible();
   const box = await screen.boundingBox();
 
   expect(box).not.toBeNull();
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(0, deltaY);
     await settleWebview(page, 2);
@@ -1524,7 +1725,8 @@ async function dispatchExecutionSnapshot(
     output,
     cols = 96,
     rows = 28,
-    liveSession = true
+    liveSession = true,
+    serializedTerminalState
   }
 ) {
   await page.evaluate(
@@ -1540,9 +1742,52 @@ async function dispatchExecutionSnapshot(
       output,
       cols,
       rows,
-      liveSession
+      liveSession,
+      serializedTerminalState
     }
   );
+}
+
+async function createSerializedTerminalStateFromOutput(output, cols = 96, rows = 28, scrollback = 1000) {
+  const terminal = new HeadlessTerminal({
+    allowProposedApi: true,
+    cols,
+    rows,
+    scrollback
+  });
+  const serializeAddon = new SerializeAddon();
+  terminal.loadAddon(serializeAddon);
+
+  await new Promise((resolve) => {
+    terminal.write(output, () => resolve());
+  });
+
+  const serializedTerminalState = {
+    format: 'xterm-serialize-v1',
+    data: serializeAddon.serialize({
+      scrollback,
+      excludeAltBuffer: false,
+      excludeModes: false
+    }),
+    viewportY: terminal.buffer.active.viewportY >= 0 ? terminal.buffer.active.viewportY : undefined
+  };
+  terminal.dispose();
+  serializeAddon.dispose();
+  return serializedTerminalState;
+}
+
+function createFullscreenSerializedFixture(cols = 96, rows = 28) {
+  const visibleLines = Array.from({ length: rows }, (_, index) => {
+    const rowNumber = String(index + 1).padStart(2, '0');
+    return `SERIALIZED-ROW-${rowNumber} viewport restore verification`;
+  });
+
+  return {
+    cols,
+    rows,
+    output: `\u001b[?1049h\u001b[2J\u001b[H${visibleLines.join('\r\n')}`,
+    expectedSelection: visibleLines[0]
+  };
 }
 
 async function settleWebview(page, frameCount = 2) {
