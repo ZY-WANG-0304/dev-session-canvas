@@ -36,6 +36,7 @@ import {
   type RuntimeSupervisorResizeSessionParams,
   type RuntimeSupervisorSessionSnapshot,
   type RuntimeSupervisorStopSessionParams,
+  type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import {
@@ -209,6 +210,10 @@ class RuntimeSupervisorServer {
           this.resizeSession(request.params);
           this.writeOkResponse(socket, request.id);
           return;
+        case 'updateSessionScrollback':
+          await this.updateSessionScrollback(request.params);
+          this.writeOkResponse(socket, request.id);
+          return;
         case 'stopSession':
           this.stopSession(request.params);
           this.writeOkResponse(socket, request.id);
@@ -351,6 +356,19 @@ class RuntimeSupervisorServer {
       session.process?.resize(params.cols, params.rows);
     }
     this.emitSessionState(session);
+  }
+
+  private async updateSessionScrollback(params: RuntimeSupervisorUpdateSessionScrollbackParams): Promise<void> {
+    const session = this.requireLiveSession(params.sessionId);
+    const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
+    if (session.scrollback === scrollback) {
+      return;
+    }
+
+    session.scrollback = scrollback;
+    await session.terminalStateTracker.setScrollback(scrollback);
+    this.emitSessionState(session);
+    this.schedulePersist();
   }
 
   private stopSession(params: RuntimeSupervisorStopSessionParams): void {

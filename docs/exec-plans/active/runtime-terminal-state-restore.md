@@ -28,6 +28,7 @@
 - [x] (2026-04-15 17:40 +0800) 收口 review 暴露的回归：`host/visibilityRestored` 改为仅做 non-destructive redraw，不再无条件 `fit()` 改写当前 viewport 行数；重新执行 `npm run build`、`npm run typecheck`、`npm run test:webview`，并完成 1 次沙箱内与 2 次沙箱外 trusted smoke 通过验证。
 - [x] (2026-04-15 18:42 +0800) 把 live xterm、宿主 serialized terminal state tracker、runtime supervisor snapshot 与落盘快照统一到 `terminal.integrated.scrollback`，移除 `4000` / `80` 私有预算，并把 `workspaceState` 改成只保留去掉 serialized terminal state 的轻量兜底。
 - [x] (2026-04-15 19:43 +0800) 保留直接调用 `xterm.scrollLines()` 的确定性 scrollback 回归，同时新增基于真实 `wheel` 事件的 Webview 重建后滚动验证；重新执行定向 `snapshot restore` 用例与全量 `npm run test:webview`。
+- [x] (2026-04-15 23:36 +0800) 收口最新 review blocker：运行中修改 `terminal.integrated.scrollback` 时，同步刷新 local tracker 与 runtime supervisor live session 的 scrollback 预算，再发布 `host/stateUpdated`；补 live-runtime reload smoke 覆盖“会话已在运行后再改 scrollback”的恢复语义。
 
 ## 意外与发现
 
@@ -54,6 +55,9 @@
 
 - 观察：当前实现里 live embedded xterm 的 scrollback 预算写死为 `4000`，serialized terminal state 的预算写死为 `80`；这会让“同宿主真实重建”和“跨 host 落盘恢复”在 scrollback 深度上再次退化成两个不同实现。
   证据：2026-04-15 18 点前的代码检查显示 `src/webview/main.tsx` 仍使用 `scrollback: 4000`，而 `src/common/serializedTerminalState.ts` 用 `80` 作为 serialize / headless buffer 的固定预算。
+
+- 观察：即使把四层 scrollback 预算统一到 `terminal.integrated.scrollback`，只要 active session 在配置变更时没有同步刷新宿主 tracker / supervisor session，live xterm 与 host-boundary 恢复语义仍会再次分叉。
+  证据：2026-04-15 21:49 +0800 的 review comment 明确指出 `CanvasPanelManager` 配置变更路径此前只发 `host/stateUpdated`，`src/webview/main.tsx` 会更新 live xterm 的 `terminal.options.scrollback`，但 local `SerializedTerminalStateTracker` 与 `runtimeSupervisorMain` 中的会话 scrollback 仍停留在启动时旧值；这与代码检查结果一致。
 
 ## 决策记录
 
@@ -85,21 +89,25 @@
   理由：用户明确要求“即使 Webview 真被销毁重建，往上滚也要尽量接近 live xterm 的完整历史”，并进一步要求“持久化落盘也应该尽量保住”；继续把 Canvas 自己的 terminal state 主动缩到 `persistentSessionScrollback` 或仓库私有常量，会直接违背这条验收标准。
   日期/作者：2026-04-15 / Codex
 
+- 决策：运行中修改 `terminal.integrated.scrollback` 时，宿主必须先把配置变化同步到现存 local / supervisor live session，再向 Webview 广播新的 runtime context。
+  理由：如果只刷新 Webview 里的 live xterm，而不刷新宿主 tracker / supervisor session，用户会看到“当前画面遵循新配置、但 reload/reattach/落盘恢复仍按旧预算截断”的不一致行为；这与本轮设计结论直接冲突。
+  日期/作者：2026-04-15 / Codex
+
 ## 结果与复盘
 
 本轮已经交付两条互补修复线，并在收尾阶段把同一宿主区域的标签切换体验统一到了 Editor / Panel 两种承载面：
 
 - Editor `WebviewPanel` 与 Panel `WebviewView` 两条承载面都启用了 `retainContextWhenHidden`；两者从隐藏恢复到可见时，宿主都会额外发送 `visibilityRestored`，前端对现存 xterm 执行 non-destructive redraw，而不是再用 `fit()` 改写当前 viewport。
 - local PTY 与 runtime supervisor 会话都改为维护 serialized terminal state，并通过宿主 snapshot 发到 Webview；前端恢复执行节点时优先 hydrate 该状态，而不是 `reset() + tail replay`。
+- 运行中修改 `terminal.integrated.scrollback` 时，`CanvasPanelManager` 现在会先同步刷新所有 live execution session：local 会话直接重建 host-side tracker，supervisor 会话通过 runtime supervisor 协议更新远端 session scrollback，并在必要时刷新本地附着态后再发 `host/stateUpdated`。这样 live xterm、宿主 tracker、runtime registry snapshot、reload/reattach 与落盘恢复重新收敛到同一预算。
 
 验证结果如下：
 
 - `npm run typecheck` 通过。
-- `npm run build` 通过。
-- `npm run test:webview` 通过 32 条回归；其中 scrollback 恢复相关新增了两层自动化：
+- `npm run test:webview` 通过 32 条回归；命令内已包含 `npm run build`。其中 scrollback 恢复相关新增了两层自动化：
   1. 继续保留直接调用 `xterm.scrollLines()` 的确定性断言，稳定验证“恢复后仍能回到最早历史行”。
   2. 新增基于真实 `wheel` 事件的 Playwright 回归，验证“Webview 重建后 restored xterm 仍响应真实滚轮滚动并能看到更早历史行”。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 在本轮修复后完成 3 次通过验证：1 次沙箱内直接通过，2 次沙箱外重跑继续通过，新增的 Editor / Panel 标签切换断言都已覆盖并通过。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 在最新 head 再次通过；这次因执行机 `/tmp` 已满，改用仓库内 `TMPDIR` 并在沙箱外运行同一 smoke，新增的“live-runtime 会话启动后再修改 scrollback”断言通过。
 - 重复验证里还额外命中过 1 次 Electron 自身的 `sandbox_host_linux.cc:41` / `SIGTRAP`；该失败没有生成 `failure-webview-probe.json` 等断言 artifact，因此记录为当前执行环境噪声，而不是本次 viewport 回归复发。
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 通过，说明真实 VS Code 窗口重开下的重新附着 / 历史恢复链路已闭合，且不再出现 `allowProposedApi` 运行时错误。
 - 后续补充的 VS Code smoke 继续覆盖了 Editor 区域切到普通文本编辑器、再切回画布时的 visibility restore 与 viewport 保持断言。

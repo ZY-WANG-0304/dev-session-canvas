@@ -347,14 +347,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (
-          !event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider) &&
-          !event.affectsConfiguration('terminal.integrated.scrollback')
-        ) {
+        const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
+        const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
+        if (!defaultAgentProviderChanged && !terminalScrollbackChanged) {
           return;
         }
 
-        this.postState('host/stateUpdated');
+        void this.handleRuntimeConfigurationChanged({
+          defaultAgentProviderChanged,
+          terminalScrollbackChanged
+        });
       })
     );
 
@@ -1114,6 +1116,85 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       vscode.workspace.getConfiguration('terminal.integrated').get<number>('scrollback'),
       DEFAULT_TERMINAL_SCROLLBACK
     );
+  }
+
+  private async handleRuntimeConfigurationChanged(options: {
+    defaultAgentProviderChanged: boolean;
+    terminalScrollbackChanged: boolean;
+  }): Promise<void> {
+    if (options.terminalScrollbackChanged) {
+      try {
+        await this.refreshLiveExecutionSessionScrollback(this.getTerminalScrollback());
+      } catch (error) {
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message: error instanceof Error ? error.message : '同步运行中终端 scrollback 配置失败。'
+          }
+        });
+        return;
+      }
+    }
+
+    if (options.defaultAgentProviderChanged || options.terminalScrollbackChanged) {
+      this.postState('host/stateUpdated');
+    }
+  }
+
+  private async refreshLiveExecutionSessionScrollback(scrollback: number): Promise<void> {
+    const operations: Array<Promise<void>> = [];
+    for (const [nodeId, session] of this.agentSessions.entries()) {
+      operations.push(this.refreshManagedExecutionSessionScrollback('agent', nodeId, session, scrollback));
+    }
+    for (const [nodeId, session] of this.terminalSessions.entries()) {
+      operations.push(this.refreshManagedExecutionSessionScrollback('terminal', nodeId, session, scrollback));
+    }
+
+    const results = await Promise.allSettled(operations);
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (rejected?.status === 'rejected') {
+      throw rejected.reason;
+    }
+  }
+
+  private async refreshManagedExecutionSessionScrollback(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    session: ManagedExecutionSession,
+    scrollback: number
+  ): Promise<void> {
+    if (session.terminalStateTracker.getScrollback() === scrollback) {
+      return;
+    }
+
+    if (session.owner === 'supervisor') {
+      const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+      const operation = this.getRuntimeSupervisorClientForKind(backendKind).then((client) =>
+        client.updateSessionScrollback({
+          sessionId: session.runtimeSessionId,
+          scrollback
+        })
+      );
+      this.trackRuntimeSupervisorOperation(operation);
+      await operation;
+
+      const refreshedSession = this.getExecutionSessions(kind).get(nodeId);
+      if (
+        refreshedSession?.owner === 'supervisor' &&
+        refreshedSession.terminalStateTracker.getScrollback() !== scrollback
+      ) {
+        await refreshedSession.terminalStateTracker.setScrollback(scrollback);
+        this.flushLiveExecutionState(kind, nodeId, {
+          postState: false
+        });
+      }
+      return;
+    }
+
+    await session.terminalStateTracker.setScrollback(scrollback);
+    this.flushLiveExecutionState(kind, nodeId, {
+      postState: false
+    });
   }
 
   private isRuntimePersistenceEnabled(): boolean {
@@ -4349,7 +4430,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private flushLiveExecutionState(kind: ExecutionNodeKind, nodeId: string): void {
+  private flushLiveExecutionState(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    options: { postState?: boolean } = {}
+  ): void {
     const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
       return;
@@ -4398,7 +4483,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       })
     });
     this.persistState();
-    this.postState('host/stateUpdated');
+    if (options.postState !== false) {
+      this.postState('host/stateUpdated');
+    }
   }
 
   private async postExecutionSnapshot(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
