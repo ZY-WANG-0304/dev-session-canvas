@@ -1,3 +1,5 @@
+import type { SerializedTerminalState } from './serializedTerminalState';
+
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
 
@@ -59,6 +61,7 @@ export interface ExecutionSessionMetadata {
   lastExitMessage?: string;
   lastCols?: number;
   lastRows?: number;
+  serializedTerminalState?: SerializedTerminalState;
 }
 
 export interface AgentNodeMetadata extends ExecutionSessionMetadata {
@@ -297,6 +300,9 @@ export type HostToWebviewMessage =
       type: 'host/themeChanged';
     }
   | {
+      type: 'host/visibilityRestored';
+    }
+  | {
       type: 'host/error';
       payload: {
         message: string;
@@ -311,6 +317,7 @@ export type HostToWebviewMessage =
         cols: number;
         rows: number;
         liveSession: boolean;
+        serializedTerminalState?: SerializedTerminalState;
       };
     }
   | {

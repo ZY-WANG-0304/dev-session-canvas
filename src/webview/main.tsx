@@ -38,6 +38,7 @@ import type {
   WebviewProbeSnapshot,
   WebviewToHostMessage
 } from '../common/protocol';
+import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import {
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -111,6 +112,7 @@ type ExecutionHostEvent =
       cols: number;
       rows: number;
       liveSession: boolean;
+      serializedTerminalState?: SerializedTerminalState;
     }
   | {
       type: 'output';
@@ -158,7 +160,7 @@ const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionEventTarget = new EventTarget();
-const executionTerminalRegistry = new Map<string, Terminal>();
+const executionTerminalRegistry = new Map<string, { terminal: Terminal; fitAddon: FitAddon }>();
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
@@ -341,6 +343,9 @@ function App(): JSX.Element {
         case 'host/themeChanged':
           scheduleEmbeddedTerminalAppearanceRefresh();
           break;
+        case 'host/visibilityRestored':
+          scheduleExecutionTerminalVisibilityRestore();
+          break;
         case 'host/executionSnapshot':
           emitExecutionHostEvent({
             type: 'snapshot',
@@ -349,7 +354,8 @@ function App(): JSX.Element {
             output: message.payload.output,
             cols: message.payload.cols,
             rows: message.payload.rows,
-            liveSession: message.payload.liveSession
+            liveSession: message.payload.liveSession,
+            serializedTerminalState: message.payload.serializedTerminalState
           });
           break;
         case 'host/executionOutput':
@@ -849,7 +855,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
-    executionTerminalRegistry.set(id, terminal);
+    executionTerminalRegistry.set(id, {
+      terminal,
+      fitAddon
+    });
 
     const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
     const mouseService = internalCore?._mouseService;
@@ -984,21 +993,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       }
 
       if (detail.type === 'snapshot') {
-        terminal.reset();
-        if (detail.output) {
-          terminal.write(detail.output);
-        }
-        window.requestAnimationFrame(() => {
-          fitAddonRef.current?.fit();
-          if (terminal.cols > 0 && terminal.rows > 0) {
-            terminalSizeRef.current = {
-              cols: terminal.cols,
-              rows: terminal.rows
-            };
-            data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
-          }
-        });
-        terminal.scrollToBottom();
+        restoreExecutionTerminalSnapshot(terminal, detail);
+        terminalSizeRef.current = {
+          cols: terminal.cols,
+          rows: terminal.rows
+        };
         return;
       }
 
@@ -1204,7 +1203,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
-    executionTerminalRegistry.set(id, terminal);
+    executionTerminalRegistry.set(id, {
+      terminal,
+      fitAddon
+    });
 
     const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
     const mouseService = internalCore?._mouseService;
@@ -1339,21 +1341,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       }
 
       if (detail.type === 'snapshot') {
-        terminal.reset();
-        if (detail.output) {
-          terminal.write(detail.output);
-        }
-        window.requestAnimationFrame(() => {
-          fitAddonRef.current?.fit();
-          if (terminal.cols > 0 && terminal.rows > 0) {
-            terminalSizeRef.current = {
-              cols: terminal.cols,
-              rows: terminal.rows
-            };
-            data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
-          }
-        });
-        terminal.scrollToBottom();
+        restoreExecutionTerminalSnapshot(terminal, detail);
+        terminalSizeRef.current = {
+          cols: terminal.cols,
+          rows: terminal.rows
+        };
         return;
       }
 
@@ -2390,6 +2382,55 @@ function emitExecutionHostEvent(detail: ExecutionHostEvent): void {
   executionEventTarget.dispatchEvent(new CustomEvent<ExecutionHostEvent>(EXECUTION_EVENT_NAME, { detail }));
 }
 
+function restoreExecutionTerminalSnapshot(
+  terminal: Terminal,
+  detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>
+): void {
+  const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
+  const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
+
+  if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
+    terminal.resize(restoreCols, restoreRows);
+  }
+
+  terminal.reset();
+  const finishRestore = (): void => {
+    window.requestAnimationFrame(() => {
+      if (terminal.rows > 0) {
+        terminal.refresh(0, terminal.rows - 1);
+      }
+    });
+  };
+
+  if (detail.serializedTerminalState) {
+    terminal.write(detail.serializedTerminalState.data, finishRestore);
+    return;
+  }
+
+  if (detail.output) {
+    terminal.write(detail.output, () => {
+      terminal.scrollToBottom();
+      finishRestore();
+    });
+    return;
+  }
+
+  finishRestore();
+}
+
+function scheduleExecutionTerminalVisibilityRestore(): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      for (const { terminal, fitAddon } of executionTerminalRegistry.values()) {
+        fitAddon.fit();
+        if (terminal.rows > 0) {
+          terminal.refresh(0, terminal.rows - 1);
+        }
+      }
+    });
+  });
+}
+
 function scheduleEmbeddedTerminalAppearanceRefresh(): void {
   if (embeddedTerminalAppearanceRefreshScheduled) {
     return;
@@ -2407,7 +2448,7 @@ function scheduleEmbeddedTerminalAppearanceRefresh(): void {
 function refreshAllEmbeddedTerminalAppearances(): void {
   const appearance = readEmbeddedTerminalAppearance();
   syncEmbeddedTerminalCssVariables(appearance);
-  for (const terminal of executionTerminalRegistry.values()) {
+  for (const { terminal } of executionTerminalRegistry.values()) {
     applyEmbeddedTerminalAppearance(terminal, appearance);
   }
 }
@@ -2552,14 +2593,14 @@ function readProbeExecutionTerminalState(
   }
 
   return {
-    terminalSelectionText: terminal.getSelection(),
-    terminalCols: terminal.cols > 0 ? terminal.cols : undefined,
-    terminalRows: terminal.rows > 0 ? terminal.rows : undefined,
+    terminalSelectionText: terminal.terminal.getSelection(),
+    terminalCols: terminal.terminal.cols > 0 ? terminal.terminal.cols : undefined,
+    terminalRows: terminal.terminal.rows > 0 ? terminal.terminal.rows : undefined,
     terminalViewportY:
-      terminal.buffer.active.viewportY >= 0 ? terminal.buffer.active.viewportY : undefined,
-    terminalTextareaLeft: readProbeNumericStyleValue(terminal.textarea?.style.left),
-    terminalTextareaTop: readProbeNumericStyleValue(terminal.textarea?.style.top),
-    terminalTheme: readProbeTerminalTheme(terminal.options.theme)
+      terminal.terminal.buffer.active.viewportY >= 0 ? terminal.terminal.buffer.active.viewportY : undefined,
+    terminalTextareaLeft: readProbeNumericStyleValue(terminal.terminal.textarea?.style.left),
+    terminalTextareaTop: readProbeNumericStyleValue(terminal.terminal.textarea?.style.top),
+    terminalTheme: readProbeTerminalTheme(terminal.terminal.options.theme)
   };
 }
 

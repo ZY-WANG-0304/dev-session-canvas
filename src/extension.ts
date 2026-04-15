@@ -80,7 +80,11 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager),
+    vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    }),
     vscode.window.registerWebviewPanelSerializer(CanvasPanelManager.viewType, panelManager)
   );
 
