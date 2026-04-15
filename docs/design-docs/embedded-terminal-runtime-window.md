@@ -17,6 +17,7 @@ related_plans:
   - docs/exec-plans/completed/embedded-terminal-runtime-window.md
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
+  - docs/exec-plans/completed/terminal-output-flood-input-responsiveness.md
 updated_at: 2026-04-16
 ---
 
@@ -123,6 +124,7 @@ updated_at: 2026-04-16
 - 执行节点的滚动语义必须保持和标准终端一致：用户一旦向上滚动进入历史查看，增量输出、spinner/redraw、主题刷新与 visibility redraw 都不应主动 `scrollToBottom()`；只有用户自己回到底部，或显式触发“滚到底部”命令时，视图才恢复跟随最新输出。
 - 当前恢复语义面向“尽量保住与 live xterm 对齐的 scrollback 历史”；仍不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
 - 运行中 resize 现在通过 PTY 后端原生能力处理，不再通过 stdin 注入 `stty`。
+- 高频输出现在也属于正式运行时边界的一部分：宿主侧增量输出允许继续按小时间窗批量合并，但 Webview 不得再在 `window.message` 回调里同步广播到所有执行节点并立刻 `terminal.write()`。标准做法是按节点维护独立输出控制器，把连续 `host/executionOutput` 先入队，再以异步批量 drain 写入 `xterm.js`，让输入与画布交互始终有机会先进入主线程。
 
 ## 7. 风险与取舍
 
@@ -156,6 +158,7 @@ updated_at: 2026-04-16
 6. 活跃会话期间调整节点尺寸后，终端行列同步生效。
 7. 未信任 workspace 时，终端创建与输入路径被正确禁用。
 8. 用户向上滚动查看历史后，增量输出、spinner/redraw 与 `host/visibilityRestored` 这类纯视图刷新都不会把 viewport 强制拉回底部；用户滚回底部后，最新输出会再次自动跟随。
+9. 一个或多个 `Terminal` 节点执行高频持续输出命令时，当前终端的 `Ctrl-C`、其他执行节点输入、至少一种画布内 DOM 交互，以及在压力期间新建并启动额外执行节点，都仍能在命令进行期间完成，而不是等输出结束后再排队执行。
 
 ## 9. 当前验证状态
 
