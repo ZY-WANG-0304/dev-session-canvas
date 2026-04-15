@@ -45,6 +45,7 @@ const HOST_BOUNDARY_FLUSH_TERMINAL_MARKER = 'HOST_BOUNDARY_TERMINAL_FLUSH';
 const EDITOR_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_EDITOR_TAB_SWITCH';
 const PANEL_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_PANEL_TAB_SWITCH';
 const TERMINAL_SCROLLBACK_PERSIST_MARKER = 'DEV_SESSION_CANVAS_SCROLLBACK_PERSIST';
+const LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER = 'DEV_SESSION_CANVAS_LIVE_RUNTIME_SCROLLBACK_PERSIST';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
@@ -248,6 +249,7 @@ async function runTrustedSmoke() {
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
+  await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(terminalNode.id);
   await verifyLiveRuntimeReconnectFallbackToResume(agentNode.id, terminalNode.id);
   await verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNode.id, terminalNode.id);
   await verifyLiveRuntimeResumeExitClassification(agentNode.id);
@@ -1231,10 +1233,11 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
 async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNodeId) {
   const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
   const originalScrollback = terminalConfiguration.get('scrollback', 1000);
+  const initialScrollback = originalScrollback === 80 ? 60 : 80;
   const configuredScrollback = originalScrollback === 240 ? 320 : 240;
 
   await clearHostMessages();
-  await setTerminalIntegratedScrollback(configuredScrollback);
+  await setTerminalIntegratedScrollback(initialScrollback);
 
   try {
     await waitForHostMessages(
@@ -1242,7 +1245,7 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
         messages.some(
           (message) =>
             message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === configuredScrollback
+            message.payload.runtime?.terminalScrollback === initialScrollback
         ),
       20000
     );
@@ -1264,6 +1267,18 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
       'editor'
     );
     await waitForTerminalLive(terminalNodeId);
+
+    await clearHostMessages();
+    await setTerminalIntegratedScrollback(configuredScrollback);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === configuredScrollback
+        ),
+      20000
+    );
 
     await dispatchWebviewMessage(
       {
@@ -2465,6 +2480,184 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
     assert.strictEqual(terminalNode.status, 'closed');
   } finally {
     await setRuntimePersistenceEnabled(false);
+  }
+}
+
+async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(terminalNodeId) {
+  const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
+  const originalScrollback = terminalConfiguration.get('scrollback', 1000);
+  const initialScrollback = originalScrollback === 80 ? 60 : 80;
+  const configuredScrollback = originalScrollback === 240 ? 320 : 240;
+
+  await setRuntimePersistenceEnabled(true);
+  await clearHostMessages();
+  await setTerminalIntegratedScrollback(initialScrollback);
+
+  try {
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === initialScrollback
+        ),
+      20000
+    );
+
+    await ensureTerminalStopped(terminalNodeId);
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/startExecutionSession',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          cols: 92,
+          rows: 28
+        }
+      },
+      'editor'
+    );
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentNode?.metadata?.terminal?.liveSession &&
+          currentNode.metadata.terminal.attachmentState === 'attached-live' &&
+          currentNode.metadata.terminal.persistenceMode === 'live-runtime' &&
+          currentNode.metadata.terminal.runtimeSessionId &&
+          currentNode.status === 'live'
+      );
+    }, 20000);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+    const runtimeSessionId = terminalNode.metadata.terminal.runtimeSessionId;
+    assert.ok(runtimeSessionId, 'Live-runtime terminal should expose a runtimeSessionId.');
+
+    await clearHostMessages();
+    await setTerminalIntegratedScrollback(configuredScrollback);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === configuredScrollback
+        ),
+      20000
+    );
+
+    await waitForRuntimeSupervisorState((runtimeState) => {
+      return listRuntimeSupervisorSessions(runtimeState).some(
+        (session) => session.sessionId === runtimeSessionId && session.scrollback === configuredScrollback
+      );
+    }, 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          data:
+            'i=1; while [ $i -le 220 ]; do printf \'' +
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d live runtime scrollback verification\\r\\n` +
+            '\' "$i"; i=$((i+1)); done\r'
+        }
+      },
+      'editor'
+    );
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentNode?.metadata?.terminal?.recentOutput?.includes(
+          `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+        )
+      );
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(
+      terminalNode.metadata.terminal.recentOutput.includes(
+        `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+      )
+    );
+
+    const runtimeState = await waitForRuntimeSupervisorState((currentRuntimeState) => {
+      return listRuntimeSupervisorSessions(currentRuntimeState).some(
+        (session) =>
+          session.sessionId === runtimeSessionId &&
+          session.scrollback === configuredScrollback &&
+          typeof session.serializedTerminalState?.data === 'string' &&
+          session.serializedTerminalState.data.includes(
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`
+          ) &&
+          session.serializedTerminalState.data.includes(
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+          )
+      );
+    }, 20000);
+    assert.ok(
+      listRuntimeSupervisorSessions(runtimeState).some(
+        (session) =>
+          session.sessionId === runtimeSessionId &&
+          session.scrollback === configuredScrollback &&
+          typeof session.serializedTerminalState?.data === 'string' &&
+          session.serializedTerminalState.data.includes(
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`
+          ) &&
+          session.serializedTerminalState.data.includes(
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+          )
+      ),
+      'Expected runtime supervisor snapshots to retain the updated terminal scrollback history.'
+    );
+
+    snapshot = await simulateRuntimeReload();
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'reattaching');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentNode?.metadata?.terminal?.liveSession &&
+          currentNode.metadata.terminal.attachmentState === 'attached-live' &&
+          currentNode.metadata.terminal.runtimeSessionId === runtimeSessionId &&
+          typeof currentNode.metadata.terminal.serializedTerminalState?.data === 'string' &&
+          currentNode.metadata.terminal.serializedTerminalState.data.includes(
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`
+          ) &&
+          currentNode.metadata.terminal.serializedTerminalState.data.includes(
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+          )
+      );
+    }, 20000);
+
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    const serializedData = terminalNode.metadata.terminal.serializedTerminalState?.data ?? '';
+    assert.ok(
+      serializedData.includes(`${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`),
+      'Reloaded live-runtime terminal should keep the earliest line allowed by the updated scrollback.'
+    );
+    assert.ok(
+      serializedData.includes(`${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`),
+      'Reloaded live-runtime terminal should keep the latest line after scrollback reconfiguration.'
+    );
+
+    await ensureTerminalStopped(terminalNodeId);
+  } finally {
+    await clearHostMessages();
+    await setRuntimePersistenceEnabled(false);
+    await setTerminalIntegratedScrollback(originalScrollback);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === originalScrollback
+        ),
+      20000
+    );
   }
 }
 

@@ -12,6 +12,7 @@ import type {
   RuntimeSupervisorResizeSessionParams,
   RuntimeSupervisorSessionSnapshot,
   RuntimeSupervisorStopSessionParams,
+  RuntimeSupervisorUpdateSessionScrollbackParams,
   RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import type { RuntimeHostBackend } from './runtimeHostBackend';
@@ -80,6 +81,10 @@ export class RuntimeSupervisorClient {
     await this.request('resizeSession', params);
   }
 
+  public async updateSessionScrollback(params: RuntimeSupervisorUpdateSessionScrollbackParams): Promise<void> {
+    await this.request('updateSessionScrollback', params);
+  }
+
   public async stopSession(params: RuntimeSupervisorStopSessionParams): Promise<void> {
     await this.request('stopSession', params);
   }
@@ -106,6 +111,7 @@ export class RuntimeSupervisorClient {
       | 'attachSession'
       | 'writeInput'
       | 'resizeSession'
+      | 'updateSessionScrollback'
       | 'stopSession'
       | 'deleteSession',
     params:
@@ -113,6 +119,7 @@ export class RuntimeSupervisorClient {
       | RuntimeSupervisorAttachSessionParams
       | RuntimeSupervisorWriteInputParams
       | RuntimeSupervisorResizeSessionParams
+      | RuntimeSupervisorUpdateSessionScrollbackParams
       | RuntimeSupervisorStopSessionParams
       | RuntimeSupervisorDeleteSessionParams
   ): Promise<T>;

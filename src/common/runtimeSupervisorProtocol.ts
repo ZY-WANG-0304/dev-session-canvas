@@ -83,6 +83,11 @@ export interface RuntimeSupervisorResizeSessionParams {
   rows: number;
 }
 
+export interface RuntimeSupervisorUpdateSessionScrollbackParams {
+  sessionId: string;
+  scrollback: number;
+}
+
 export interface RuntimeSupervisorStopSessionParams {
   sessionId: string;
 }
@@ -120,6 +125,12 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'resizeSession';
       params: RuntimeSupervisorResizeSessionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'updateSessionScrollback';
+      params: RuntimeSupervisorUpdateSessionScrollbackParams;
     }
   | {
       type: 'request';

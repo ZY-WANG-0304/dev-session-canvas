@@ -56,9 +56,9 @@ export function cloneSerializedTerminalState(
 }
 
 export class SerializedTerminalStateTracker {
-  private readonly terminal: HeadlessTerminal;
-  private readonly serializeAddon = new SerializeAddon();
-  private readonly scrollback: number;
+  private terminal: HeadlessTerminal;
+  private serializeAddon: SerializeAddon;
+  private scrollback: number;
   private operationChain: Promise<void> = Promise.resolve();
   private cachedState: SerializedTerminalState = {
     format: SERIALIZED_TERMINAL_STATE_FORMAT,
@@ -67,13 +67,9 @@ export class SerializedTerminalStateTracker {
 
   public constructor(cols: number, rows: number, options: SerializedTerminalStateTrackerOptions = {}) {
     this.scrollback = normalizeTerminalScrollback(options.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
-    this.terminal = new HeadlessTerminal({
-      allowProposedApi: true,
-      cols,
-      rows,
-      scrollback: this.scrollback
-    });
-    this.terminal.loadAddon(this.serializeAddon as never);
+    const runtime = this.createRuntime(cols, rows, this.scrollback);
+    this.terminal = runtime.terminal;
+    this.serializeAddon = runtime.serializeAddon;
     this.refreshCachedState();
 
     const normalizedInitialState = normalizeSerializedTerminalState(options.initialState);
@@ -106,6 +102,28 @@ export class SerializedTerminalStateTracker {
     });
   }
 
+  public getScrollback(): number {
+    return this.scrollback;
+  }
+
+  public async setScrollback(scrollback: number): Promise<void> {
+    const normalizedScrollback = normalizeTerminalScrollback(scrollback, DEFAULT_TERMINAL_SCROLLBACK);
+    if (normalizedScrollback === this.scrollback) {
+      await this.operationChain;
+      return;
+    }
+
+    this.enqueueOperation(async () => {
+      const currentState = this.serializeState();
+      const cols = this.terminal.cols;
+      const rows = this.terminal.rows;
+      this.replaceRuntime(cols, rows, normalizedScrollback);
+      await this.hydrateSerializedState(currentState);
+    });
+
+    await this.operationChain;
+  }
+
   public getSerializedState(): SerializedTerminalState {
     return cloneSerializedTerminalState(this.cachedState) ?? {
       format: SERIALIZED_TERMINAL_STATE_FORMAT,
@@ -119,8 +137,7 @@ export class SerializedTerminalStateTracker {
   }
 
   public dispose(): void {
-    this.terminal.dispose();
-    this.serializeAddon.dispose();
+    this.disposeRuntime();
   }
 
   private enqueueOperation(operation: () => Promise<void> | void): void {
@@ -138,8 +155,53 @@ export class SerializedTerminalStateTracker {
     this.refreshCachedState();
   }
 
+  private async hydrateSerializedState(state: SerializedTerminalState): Promise<void> {
+    if (!state.data) {
+      this.refreshCachedState();
+      return;
+    }
+
+    await this.writeInternal(state.data);
+  }
+
   private refreshCachedState(): void {
     this.cachedState = this.serializeState();
+  }
+
+  private replaceRuntime(cols: number, rows: number, scrollback: number): void {
+    this.disposeRuntime();
+    const runtime = this.createRuntime(cols, rows, scrollback);
+    this.terminal = runtime.terminal;
+    this.serializeAddon = runtime.serializeAddon;
+    this.scrollback = scrollback;
+    this.refreshCachedState();
+  }
+
+  private createRuntime(
+    cols: number,
+    rows: number,
+    scrollback: number
+  ): {
+    terminal: HeadlessTerminal;
+    serializeAddon: SerializeAddon;
+  } {
+    const terminal = new HeadlessTerminal({
+      allowProposedApi: true,
+      cols,
+      rows,
+      scrollback
+    });
+    const serializeAddon = new SerializeAddon();
+    terminal.loadAddon(serializeAddon as never);
+    return {
+      terminal,
+      serializeAddon
+    };
+  }
+
+  private disposeRuntime(): void {
+    this.terminal.dispose();
+    this.serializeAddon.dispose();
   }
 
   private serializeState(): SerializedTerminalState {
