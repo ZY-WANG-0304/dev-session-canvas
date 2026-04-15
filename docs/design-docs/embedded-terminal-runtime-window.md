@@ -104,7 +104,7 @@ updated_at: 2026-04-15
 
 同时必须明确记录两个边界：
 
-- Panel `WebviewView` 主路径现在显式启用 `retainContextWhenHidden`，把同一 Panel 标签切换下的 Webview 保活视为体验优化，而不是唯一正确性前提。
+- Panel `WebviewView` 与 Editor `WebviewPanel` 两条主承载面路径现在都显式启用 `retainContextWhenHidden`，把同一宿主标签切换下的 Webview 保活视为体验优化，而不是唯一正确性前提。
 - 活跃会话的宿主权威恢复源不再只是最近一段 raw output tail，而是摘要、最近输出、尺寸与可序列化 terminal state 的组合；其中 `recentOutput` 只保留给摘要与兼容 fallback，不再承担画面恢复职责。
 - Webview 隐藏再显示时，现存 xterm 会显式执行 `fit + refresh`；如果 Webview 被销毁并重建，则应按宿主 snapshot 中的 serialized terminal state hydrate，再继续接 live output。
 - 当前恢复语义面向“运行时当前屏幕”，不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
@@ -134,7 +134,7 @@ updated_at: 2026-04-15
 1. 在宿主 shell 里验证 `node-pty` 确实给子 shell 分配了真实 TTY。
 2. `npm run build` 和 `npm run typecheck` 通过。
 3. 在 Linux / macOS 的 `Extension Development Host` 中，新建 `Terminal` 节点后可直接在节点内输入并看到实时输出。
-4. 同一个 Panel 区域内切到其他标签再切回后，画布中的终端节点仍保持原 live 会话，且现存 xterm 会完成 `fit + refresh`。
+4. 不论主画布当前承载在 Panel 还是 Editor，同一宿主区域内切到其他标签再切回后，画布中的终端节点仍保持原 live 会话，且现存 xterm 会完成 `fit + refresh`。
 5. 如果 Webview 被销毁并重建，执行节点仍能基于宿主 serialized terminal state 恢复当前可见屏幕，而不是只重放尾部日志。
 6. 活跃会话期间调整节点尺寸后，终端行列同步生效。
 7. 未信任 workspace 时，终端创建与输入路径被正确禁用。
@@ -142,6 +142,7 @@ updated_at: 2026-04-15
 ## 9. 当前验证状态
 
 - 已完成宿主 smoke test，确认当前 Linux 环境下 `node-pty` 启动的子 shell 具备真实 TTY 语义。
-- 已完成代码级实现，并通过 `npm run build`、`npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs`。
+- 已完成代码级实现，并通过 `npm run build`、`npm run typecheck`、`npm run test:webview`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs`。
 - Playwright harness 已新增“serialized terminal state 恢复优先于 raw tail replay”的回归；真实 VS Code `real-reopen` smoke 已覆盖窗口重开后的重新附着与历史恢复链路。
+- 真实 VS Code `trusted` smoke 已覆盖 Editor 区域切到普通文本编辑器再切回画布、以及 Panel 区域切到原生 Terminal 再切回画布时的可见内容保持与 `visibility restore` 断言。
 - 当前 shell 环境没有可直接启动 `Extension Development Host` 的 `code`/`cursor`/`codium` CLI，也没有 macOS / Windows 本地人工验证证据；文档状态继续保持为“验证中”。

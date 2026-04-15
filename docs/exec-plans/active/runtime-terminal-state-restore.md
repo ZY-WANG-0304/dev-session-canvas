@@ -1,4 +1,4 @@
-# Panel 标签切换下的终端状态恢复与保活
+# Editor / Panel 标签切换下的终端状态恢复与保活
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-这次变更要解决用户在同一个 Panel 区域内，从 `Dev Session Canvas` 标签切到 `Terminal` 标签，再切回画布时，`Agent` / `Terminal` 节点上半部分变空白的问题。完成后，用户在 Panel 标签间切换时，画布中的 `Codex`、`Claude Code` 和普通终端节点都不应因为 Webview 隐藏/恢复而失去可见内容；即使 Webview 被销毁并重建，节点也应基于宿主权威的终端状态恢复出正确画面，而不是只重放尾部日志。
+这次变更要解决用户在同一个宿主区域内切走主画布标签、再切回时，`Agent` / `Terminal` 节点上半部分变空白的问题。最初复现发生在 Panel 区域内从 `Dev Session Canvas` 切到 `Terminal` 再切回；后续又确认 Editor 区域切到普通文本编辑器再切回画布也需要同样的切换手感。完成后，用户在 Editor / Panel 两种承载面上做同一区域标签切换时，画布中的 `Codex`、`Claude Code` 和普通终端节点都不应因为 Webview 隐藏/恢复而失去可见内容；即使 Webview 被销毁并重建，节点也应基于宿主权威的终端状态恢复出正确画面，而不是只重放尾部日志。
 
 用户可见的验收标准分两层。第一层是同一 VS Code 会话内的标签切换：切走再切回后，原来的终端画面仍在，输入和滚动继续可用。第二层是 Webview 被重建后的恢复：宿主重新发起 bootstrap 和 execution snapshot 后，重建出来的 xterm 仍能恢复当前可见屏幕，而不是只剩底部几行或整块空白。
 
@@ -22,6 +22,9 @@
 - [x] (2026-04-15 10:56 +0800) 补 Playwright harness 与 VS Code smoke 回归，覆盖 Panel 标签切换恢复与 Webview 重建后终端画面仍可见的断言。
 - [x] (2026-04-15 11:03 +0800) 运行 `npm run typecheck`、`npm run test:webview` 和针对本问题的 smoke / 额外验证，记录结果。
 - [x] (2026-04-15 11:09 +0800) 完成后把仍未收口的风险登记到 `docs/exec-plans/tech-debt-tracker.md`。
+- [x] (2026-04-15 15:51 +0800) 在 Editor `WebviewPanel` 创建路径补齐 `retainContextWhenHidden`，并让 Editor 可见性恢复时与 Panel 一样发送 `host/visibilityRestored`。
+- [x] (2026-04-15 15:51 +0800) 扩展 VS Code smoke，覆盖 Editor 区域切到普通文本编辑器再切回画布后的终端 viewport 保持与 live 会话继续可用。
+- [x] (2026-04-15 16:04 +0800) 重新执行 `npm run build`、`npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，确认 Editor / Panel 两条标签切换路径都通过自动化验证。
 
 ## 意外与发现
 
@@ -50,6 +53,10 @@
   理由：用户偏好“标签切换手感”；即使第 2 步落地后，保活仍能减少 Webview 重建、降低重新 attach 与 repaint 抖动。
   日期/作者：2026-04-15 / Codex
 
+- 决策：把同一宿主区域内的标签切换体验统一收口到 Editor / Panel 两种 surface，而不是只修 Panel。
+  理由：用户已经明确要求 Editor 也要有和 Panel 一样的切换手感；当前 serialized terminal state 的正式恢复路径本来就是 surface 无关的，剩余差异只在 Webview 保活与 visibility restore 事件上。
+  日期/作者：2026-04-15 / Codex
+
 - 决策：正式恢复语义不再依赖 raw tail，而是由宿主维护可序列化的 terminal state，并让 Webview 从该状态 hydrate xterm。
   理由：Codex、Claude Code 与普通全屏/重绘型 TUI 的当前屏幕是终端状态，不是最后几千字符日志；只有宿主权威 terminal state 才能把“同屏可见内容”恢复成确定行为。
   日期/作者：2026-04-15 / Codex
@@ -60,16 +67,19 @@
 
 ## 结果与复盘
 
-本轮已经交付两条互补修复线：
+本轮已经交付两条互补修复线，并在收尾阶段把同一宿主区域的标签切换体验统一到了 Editor / Panel 两种承载面：
 
-- Panel `WebviewView` 注册层启用了 `retainContextWhenHidden`，同一 Panel 标签切换不再默认依赖 Webview 销毁重建；Webview 从隐藏恢复到可见时，宿主会额外发送 `visibilityRestored`，前端对现存 xterm 执行 `fit + refresh`。
+- Editor `WebviewPanel` 与 Panel `WebviewView` 两条承载面都启用了 `retainContextWhenHidden`；两者从隐藏恢复到可见时，宿主都会额外发送 `visibilityRestored`，前端对现存 xterm 执行 `fit + refresh`。
 - local PTY 与 runtime supervisor 会话都改为维护 serialized terminal state，并通过宿主 snapshot 发到 Webview；前端恢复执行节点时优先 hydrate 该状态，而不是 `reset() + tail replay`。
 
 验证结果如下：
 
 - `npm run typecheck` 通过。
+- `npm run build` 通过。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，新增的 Editor / Panel 标签切换断言都已覆盖并通过。
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 通过，说明真实 VS Code 窗口重开下的重新附着 / 历史恢复链路已闭合，且不再出现 `allowProposedApi` 运行时错误。
 - `npm run test:webview` 在沙箱外通过 28 条回归；新增的两条 Playwright 用例明确覆盖“Webview 重建后 serialized terminal state 恢复优先于 raw tail replay”。
+- 后续补充的 VS Code smoke 继续覆盖了 Editor 区域切到普通文本编辑器、再切回画布时的 visibility restore 与 viewport 保持断言。
 
 本轮留下的一项技术债已登记到 `docs/exec-plans/tech-debt-tracker.md`：当 snapshot 记录尺寸与当前容器尺寸漂移时，xterm alternate-buffer hydrate 仍缺更强的无损重绘语义。当前实现优先保证“不要恢复成空白或错画面”，而不是承诺任意尺寸漂移下都能完全无损复原。
 
@@ -77,7 +87,7 @@
 
 这次改动涉及四个区域。
 
-第一类是扩展注册与 Webview 生命周期。`src/extension.ts` 负责注册 Panel `WebviewViewProvider`；`src/panel/CanvasPanelManager.ts` 负责 editor/panel 两类 surface 的 reveal、attach、visibility 事件和宿主消息。当前 Panel 路径使用 `registerWebviewViewProvider(...)`，但没有传 `webviewOptions.retainContextWhenHidden`。这意味着在同一 Panel 中切到 `Terminal` 标签时，`Dev Session Canvas` 对应的 `WebviewView` 可能被 VS Code 回收并在切回时重建。
+第一类是扩展注册与 Webview 生命周期。`src/extension.ts` 负责注册 Panel `WebviewViewProvider`；`src/panel/CanvasPanelManager.ts` 负责 editor/panel 两类 surface 的 reveal、attach、visibility 事件和宿主消息。本轮收口后，Panel `WebviewView` 通过扩展注册启用 `retainContextWhenHidden`，Editor `WebviewPanel` 则在创建时启用同一选项；两条路径都需要在重新可见时显式向 Webview 发送 visibility restore 消息，避免只依赖容器尺寸变化来触发 xterm 重绘。
 
 第二类是终端运行时与恢复边界。`src/panel/CanvasPanelManager.ts` 当前为本地 PTY 会话维护 `ManagedExecutionSession.buffer`，并把 `buffer` 裁到最后 `6000` 字符；`src/supervisor/runtimeSupervisorMain.ts` 对 supervisor 持有的 live runtime 也同样只保留最后 `6000` 字符输出。`postExecutionSnapshot()` 再把这段字符串发给 Webview。这里的“snapshot”实际上是 raw output tail，不是终端帧缓冲状态。
 
@@ -85,19 +95,19 @@
 
 第四类是自动化验证。`tests/playwright/webview-harness.spec.mjs` 当前已能直接加载真实 `dist/webview.js` 并向 Webview 注入 `host/executionSnapshot`；`tests/vscode-smoke/extension-tests.cjs` 当前只断言 `host/executionSnapshot` 是否发出，以及 `recentOutput` / `liveSession` 等宿主元数据，尚未断言“重建后的 xterm 屏幕真实可见”。
 
-本文里“terminal state”指可以重建当前终端可见内容的权威状态，不等于 `recentOutput` 摘要，也不等于最后一段 ANSI 文本 tail。“Panel 标签切换”特指同一个工作台 Panel 中，在 `Terminal` 标签和 `Dev Session Canvas` 标签之间来回切换，而不是 panel/editor surface 切换。
+本文里“terminal state”指可以重建当前终端可见内容的权威状态，不等于 `recentOutput` 摘要，也不等于最后一段 ANSI 文本 tail。“同一宿主区域标签切换”指用户不切换 surface，只是在 Panel 内 `Terminal` / `Dev Session Canvas` 标签之间，或在 Editor Group 内普通文本编辑器 / 画布标签之间来回切换。
 
 ## 工作计划
 
-先补正式文档。`docs/design-docs/embedded-terminal-runtime-window.md` 需要把“活跃会话原始 buffer 当前只保留在宿主内存里”升级成新的正式结论：Panel 标签切换路径保留 `retainContextWhenHidden` 以保证体验；当 Webview 被销毁重建时，宿主应维护可序列化的 terminal state 作为恢复源。`docs/design-docs/runtime-persistence-and-session-supervisor.md` 需要同步记录 supervisor 路径不再只保留 raw tail，而要维持可恢复的 terminal state。`docs/design-docs/index.md` 也要同步更新时间和关联计划。
+先补正式文档。`docs/design-docs/embedded-terminal-runtime-window.md` 需要把“活跃会话原始 buffer 当前只保留在宿主内存里”升级成新的正式结论：Editor / Panel 两条同一区域标签切换路径都保留 `retainContextWhenHidden` 以保证体验；当 Webview 被销毁重建时，宿主应维护可序列化的 terminal state 作为恢复源。`docs/design-docs/runtime-persistence-and-session-supervisor.md` 需要同步记录 supervisor 路径不再只保留 raw tail，而要维持可恢复的 terminal state。`docs/design-docs/index.md` 也要同步更新时间和关联计划。
 
-然后改注册与可见性恢复。`src/extension.ts` 要在 `registerWebviewViewProvider()` 上声明 `webviewOptions.retainContextWhenHidden = true`。`CanvasPanelManager` 需要在 Panel `visible=true` 时向 Webview 发一个显式消息，告诉前端“当前 Webview 从隐藏恢复到可见”；Webview 收到后应对现存 xterm 执行 `fitAddon.fit()` 与 `terminal.refresh(...)`，避免只靠 `ResizeObserver` 等待容器尺寸变化。
+然后改注册与可见性恢复。`src/extension.ts` 继续在 `registerWebviewViewProvider()` 上声明 Panel `webviewOptions.retainContextWhenHidden = true`。`CanvasPanelManager` 需要补齐 Editor `WebviewPanel` 的 `retainContextWhenHidden`，并在 Editor / Panel 两条 surface 都于 `visible=true` 时向 Webview 发一个显式消息，告诉前端“当前 Webview 从隐藏恢复到可见”；Webview 收到后应对现存 xterm 执行 `fitAddon.fit()` 与 `terminal.refresh(...)`，避免只靠 `ResizeObserver` 等待容器尺寸变化。
 
 接着改宿主权威 terminal state。为避免把这次实现绑定在 Webview 内部状态上，terminal state 要由宿主持有，并同时覆盖 local PTY 与 runtime supervisor 两条链路。最直接的路线是在宿主引入 `@xterm/headless` 和 `@xterm/addon-serialize`，每个执行会话都维护一个 headless xterm；所有 PTY 输出除了继续流向 live Webview，也同步写入 headless xterm。需要持久化或发 snapshot 时，不再发 raw tail，而是发由宿主生成的可恢复 terminal state。对 supervisor 路径，同样要在 `src/supervisor/runtimeSupervisorMain.ts` 中维护并持久化这一状态，而不是只存 `output` 字符串。
 
 随后调整 Webview 恢复协议。`src/common/protocol.ts` 和相关 host/webview 消息要扩展 execution snapshot 的 payload，使之能承载 terminal state。`src/webview/main.tsx` 恢复时应优先使用 terminal state hydrate；只有在旧数据或兼容路径下才 fallback 到 raw output。为了让新旧状态都可共存，协议层需要保留向后兼容策略，直到所有写入路径都稳定切到新的 terminal state。
 
-最后补测试。Playwright harness 要加一条明确回归：给节点注入一段全屏/重绘型 ANSI 输出，模拟 Webview 重建后再次 bootstrap/snapshot，断言恢复后的 xterm 仍可选择出原可见行。VS Code smoke 要补一条 Panel 标签切换场景，至少证明“切到 Terminal 标签再切回 Dev Session Canvas 后，执行节点仍能保持可见内容与 live input”；若 smoke 层直接操作原生 Panel 标签成本过高，则要用最接近真实生命周期的宿主/visibility 测试命令补足这条证据。
+最后补测试。Playwright harness 要加一条明确回归：给节点注入一段全屏/重绘型 ANSI 输出，模拟 Webview 重建后再次 bootstrap/snapshot，断言恢复后的 xterm 仍可选择出原可见行。VS Code smoke 要同时覆盖 Panel 标签切换场景和 Editor 标签切换场景，至少证明“切走同一区域标签再切回后，执行节点仍能保持可见内容与 live input”；若 smoke 层直接操作原生标签成本过高，则要用最接近真实生命周期的宿主/visibility 测试命令补足这条证据。
 
 ## 具体步骤
 
@@ -105,9 +115,9 @@
    在仓库根目录修改 `docs/design-docs/embedded-terminal-runtime-window.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md`、`docs/design-docs/index.md`，并把本计划加入相关文档 frontmatter 的 `related_plans`。
 
 2. 更新扩展注册与宿主消息：
-   在 `src/extension.ts` 为 `registerWebviewViewProvider()` 加 `webviewOptions.retainContextWhenHidden`。
+   在 `src/extension.ts` 为 `registerWebviewViewProvider()` 保留 `webviewOptions.retainContextWhenHidden`。
    在 `src/common/protocol.ts` 定义新的宿主可见性恢复消息与 terminal state snapshot 结构。
-   在 `src/panel/CanvasPanelManager.ts` 发出 panel visibility restore 消息，并调整 execution snapshot 结构。
+   在 `src/panel/CanvasPanelManager.ts` 为 Editor / Panel 两条 surface 发出 visibility restore 消息，并调整 execution snapshot 结构。
 
 3. 更新 terminal state 存储：
    视实现需要修改 `package.json` / `package-lock.json` 引入 xterm 相关依赖。
@@ -126,13 +136,13 @@
        npm run test:webview
        npm run test:smoke -- --grep <若需要限制场景则记录具体命令>
 
-   如果完整 `test:smoke` 代价过高，至少保留与 Panel 标签切换、Webview 恢复和执行节点相关的命令与结果。
+   如果完整 `test:smoke` 代价过高，至少保留与 Editor / Panel 标签切换、Webview 恢复和执行节点相关的命令与结果。
 
 ## 验证与验收
 
 需要同时验证两类场景。
 
-第一类是体验层。手动或 smoke 驱动在同一个 Panel 区域中打开 `Dev Session Canvas`，启动至少一个 `Agent` 节点和一个 `Terminal` 节点，切到 `Terminal` 标签再切回 `Dev Session Canvas`。预期节点内终端画面不再变成“上半部分空白、底部只剩尾巴”，输入仍然进入原 live session。
+第一类是体验层。手动或 smoke 驱动在同一个宿主区域中打开 `Dev Session Canvas`，启动至少一个 `Agent` 节点和一个 `Terminal` 节点；对 Panel 路径，切到 `Terminal` 标签再切回 `Dev Session Canvas`；对 Editor 路径，切到普通文本编辑器再切回画布。预期节点内终端画面不再变成“上半部分空白、底部只剩尾巴”，输入仍然进入原 live session。
 
 第二类是恢复层。通过 Playwright harness 向 `host/executionSnapshot` 注入一段全屏/重绘型 ANSI 输出，并模拟一次 Webview 重建或重新 bootstrap。预期恢复后的 xterm 仍能通过 probe/selection 读到原可见行；同一断言在旧的 `tail replay` 路径下应失败，在新实现下通过。
 
@@ -140,7 +150,7 @@
 
 - `npm run typecheck` 通过。
 - `npm run test:webview` 通过，并新增至少一条会在旧实现下失败的新回归。
-- 至少一条真实 VS Code smoke 或等价宿主级验证覆盖 Panel 可见性恢复，证明不是只有浏览器 harness 通过。
+- 至少一条真实 VS Code smoke 或等价宿主级验证覆盖 Editor / Panel 可见性恢复，证明不是只有浏览器 harness 通过。
 
 ## 幂等性与恢复
 
@@ -162,7 +172,7 @@
 
 ## 接口与依赖
 
-本轮预计至少会触达以下接口与依赖：
+本轮实际触达了以下接口与依赖：
 
 - `src/extension.ts`
   - `vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager, { webviewOptions: { retainContextWhenHidden: true } })`
@@ -173,7 +183,7 @@
 
 - `src/panel/CanvasPanelManager.ts`
   - 扩展 `ManagedExecutionSession`，让会话保存可恢复 terminal state，而不只是 `buffer`。
-  - 在 Panel visibility 恢复时向 Webview 发消息。
+  - 在 Editor / Panel visibility 恢复时向 Webview 发消息。
   - 在 `postExecutionSnapshot()` 中优先发送 terminal state。
 
 - `src/supervisor/runtimeSupervisorMain.ts`
@@ -184,12 +194,11 @@
   - 现存终端实例接收 visibility restore 消息后执行 `fit + refresh`。
   - execution snapshot 恢复逻辑优先从 terminal state hydrate。
 
-- 依赖
-  - 预计新增 `@xterm/headless`
-  - 预计新增 `@xterm/addon-serialize`
+- `src/common/serializedTerminalState.ts`
+  - 实际复用了仓库内已有的 serialized terminal state 能力，没有再引入新的 `xterm headless` 依赖。
 
 如果依赖接入后发现无法稳定承载当前恢复语义，必须在 `意外与发现` 中记录，并在 `决策记录` 中明确是否改回“更有限但可验证”的方案，而不能默默退回到 raw tail replay。
 
 ---
 
-本次创建说明：2026-04-15 新增本计划，用于覆盖 Panel 标签切换下的终端空白恢复问题；之所以单独起计划，是因为本轮同时触达 `WebviewView` 生命周期、宿主/监督器状态持久化、协议扩展与自动化验证，属于显著跨模块改动。
+本次创建说明：2026-04-15 新增本计划，用于覆盖同一宿主区域标签切换下的终端空白恢复问题；之所以单独起计划，是因为本轮同时触达 `WebviewView` / `WebviewPanel` 生命周期、宿主/监督器状态持久化、协议扩展与自动化验证，属于显著跨模块改动。
