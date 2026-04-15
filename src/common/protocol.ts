@@ -179,6 +179,12 @@ export type WebviewDomAction =
       nodeId: string;
       lines: number;
       delayMs?: number;
+    }
+  | {
+      kind: 'sendExecutionInput';
+      nodeId: string;
+      data: string;
+      delayMs?: number;
     };
 
 export type WebviewToHostMessage =
@@ -697,6 +703,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'scrollTerminalViewport') {
     return typeof value.lines === 'number' && Number.isInteger(value.lines);
+  }
+
+  if (value.kind === 'sendExecutionInput') {
+    return typeof value.data === 'string';
   }
 
   return false;
