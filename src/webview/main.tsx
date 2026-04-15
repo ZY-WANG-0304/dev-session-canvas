@@ -21,7 +21,6 @@ import 'reactflow/dist/style.css';
 import '@xterm/xterm/css/xterm.css';
 import './styles.css';
 
-import { EXECUTION_EVENT_NAME } from '../common/extensionIdentity';
 import type {
   AgentProviderKind,
   CanvasNodeKind,
@@ -128,6 +127,15 @@ type ExecutionHostEvent =
       message: string;
     };
 
+interface ExecutionTerminalController {
+  applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
+  enqueueOutput(chunk: string): void;
+  showExit(message: string): void;
+  refreshVisibleRows(): void;
+  flushPendingOutput(): void;
+  dispose(): void;
+}
+
 type MouseCoords = [number, number] | undefined;
 interface MouseReportCoords {
   col: number;
@@ -160,8 +168,16 @@ interface XtermCoreWithMouseInternals {
 const vscode = acquireVsCodeApi<LocalUiState>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
-const executionEventTarget = new EventTarget();
-const executionTerminalRegistry = new Map<string, { terminal: Terminal; fitAddon: FitAddon }>();
+const executionTerminalRegistry = new Map<
+  string,
+  {
+    terminal: Terminal;
+    fitAddon: FitAddon;
+    controller: ExecutionTerminalController;
+  }
+>();
+const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
+let executionTerminalDrainFrame: number | undefined;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
@@ -351,7 +367,7 @@ function App(): JSX.Element {
           scheduleExecutionTerminalVisibilityRestore();
           break;
         case 'host/executionSnapshot':
-          emitExecutionHostEvent({
+          routeExecutionTerminalSnapshot({
             type: 'snapshot',
             nodeId: message.payload.nodeId,
             kind: message.payload.kind,
@@ -363,7 +379,7 @@ function App(): JSX.Element {
           });
           break;
         case 'host/executionOutput':
-          emitExecutionHostEvent({
+          queueExecutionTerminalOutput({
             type: 'output',
             nodeId: message.payload.nodeId,
             kind: message.payload.kind,
@@ -371,7 +387,7 @@ function App(): JSX.Element {
           });
           break;
         case 'host/executionExit':
-          emitExecutionHostEvent({
+          routeExecutionTerminalExit({
             type: 'exit',
             nodeId: message.payload.nodeId,
             kind: message.payload.kind,
@@ -819,8 +835,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       agentMetadata.pendingLaunch === 'resume');
   const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const xtermRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
   const zoomRef = useRef(zoom);
@@ -857,11 +871,13 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
+    const controller = createExecutionTerminalController(terminal);
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     executionTerminalRegistry.set(id, {
       terminal,
-      fitAddon
+      fitAddon,
+      controller
     });
 
     const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
@@ -935,8 +951,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
     };
 
-    xtermRef.current = terminal;
-    fitAddonRef.current = fitAddon;
     window.requestAnimationFrame(fitTerminal);
 
     const resizeObserver = new ResizeObserver(() => {
@@ -950,12 +964,19 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'agent', input));
     const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+    const resizeDisposable = terminal.onResize(({ cols, rows }) => {
+      terminalSizeRef.current = {
+        cols,
+        rows
+      };
+    });
 
     data.onAttachExecution?.(id, 'agent');
 
     return () => {
       dataDisposable.dispose();
       selectionDisposable.dispose();
+      resizeDisposable.dispose();
       resizeObserver.disconnect();
       terminalElement?.removeEventListener('contextmenu', handleContextMenu);
       terminalElement?.removeEventListener('auxclick', handleAuxClick);
@@ -971,10 +992,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
+      controller.dispose();
       executionTerminalRegistry.delete(id);
       terminal.dispose();
-      xtermRef.current = null;
-      fitAddonRef.current = null;
     };
   }, [id]);
 
@@ -983,42 +1003,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data.onAttachExecution?.(id, 'agent');
     }
   }, [agentMetadata.liveSession, id]);
-
-  useEffect(() => {
-    const listener = (event: Event): void => {
-      const detail = (event as CustomEvent<ExecutionHostEvent>).detail;
-      if (detail.nodeId !== id || detail.kind !== 'agent') {
-        return;
-      }
-
-      const terminal = xtermRef.current;
-      if (!terminal) {
-        return;
-      }
-
-      if (detail.type === 'snapshot') {
-        restoreExecutionTerminalSnapshot(terminal, detail);
-        terminalSizeRef.current = {
-          cols: terminal.cols,
-          rows: terminal.rows
-        };
-        return;
-      }
-
-      if (detail.type === 'output') {
-        // Let xterm keep its native "follow only when already at bottom" behavior.
-        terminal.write(detail.chunk);
-        return;
-      }
-
-      terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
-    };
-
-    executionEventTarget.addEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
-    return () => {
-      executionEventTarget.removeEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
-    };
-  }, [id]);
 
   const startAgent = (resume = resumeRequested): void => {
     data.onSelectNode?.(id);
@@ -1175,8 +1159,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const displayStatus = data.status;
   const reattaching = displayStatus === 'reattaching';
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const xtermRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
   const autoLaunchRef = useRef<string | null>(null);
   const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
@@ -1204,11 +1186,13 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
+    const controller = createExecutionTerminalController(terminal);
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     executionTerminalRegistry.set(id, {
       terminal,
-      fitAddon
+      fitAddon,
+      controller
     });
 
     const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
@@ -1282,8 +1266,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
     };
 
-    xtermRef.current = terminal;
-    fitAddonRef.current = fitAddon;
     window.requestAnimationFrame(fitTerminal);
 
     const resizeObserver = new ResizeObserver(() => {
@@ -1297,12 +1279,19 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
     const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'terminal', input));
     const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+    const resizeDisposable = terminal.onResize(({ cols, rows }) => {
+      terminalSizeRef.current = {
+        cols,
+        rows
+      };
+    });
 
     data.onAttachExecution?.(id, 'terminal');
 
     return () => {
       dataDisposable.dispose();
       selectionDisposable.dispose();
+      resizeDisposable.dispose();
       resizeObserver.disconnect();
       terminalElement?.removeEventListener('contextmenu', handleContextMenu);
       terminalElement?.removeEventListener('auxclick', handleAuxClick);
@@ -1318,10 +1307,9 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
+      controller.dispose();
       executionTerminalRegistry.delete(id);
       terminal.dispose();
-      xtermRef.current = null;
-      fitAddonRef.current = null;
     };
   }, [id]);
 
@@ -1330,42 +1318,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data.onAttachExecution?.(id, 'terminal');
     }
   }, [id, terminalMetadata.liveSession]);
-
-  useEffect(() => {
-    const listener = (event: Event): void => {
-      const detail = (event as CustomEvent<ExecutionHostEvent>).detail;
-      if (detail.nodeId !== id || detail.kind !== 'terminal') {
-        return;
-      }
-
-      const terminal = xtermRef.current;
-      if (!terminal) {
-        return;
-      }
-
-      if (detail.type === 'snapshot') {
-        restoreExecutionTerminalSnapshot(terminal, detail);
-        terminalSizeRef.current = {
-          cols: terminal.cols,
-          rows: terminal.rows
-        };
-        return;
-      }
-
-      if (detail.type === 'output') {
-        // Let xterm keep its native "follow only when already at bottom" behavior.
-        terminal.write(detail.chunk);
-        return;
-      }
-
-      terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
-    };
-
-    executionEventTarget.addEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
-    return () => {
-      executionEventTarget.removeEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
-    };
-  }, [id]);
 
   const startTerminal = (): void => {
     data.onSelectNode?.(id);
@@ -2380,8 +2332,100 @@ function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }
 
-function emitExecutionHostEvent(detail: ExecutionHostEvent): void {
-  executionEventTarget.dispatchEvent(new CustomEvent<ExecutionHostEvent>(EXECUTION_EVENT_NAME, { detail }));
+function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void {
+  executionTerminalRegistry.get(detail.nodeId)?.controller.applySnapshot(detail);
+}
+
+function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type: 'output' }>): void {
+  executionTerminalRegistry.get(detail.nodeId)?.controller.enqueueOutput(detail.chunk);
+}
+
+function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
+  executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message);
+}
+
+function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController): void {
+  pendingExecutionTerminalDrains.add(controller);
+  if (executionTerminalDrainFrame !== undefined) {
+    return;
+  }
+
+  executionTerminalDrainFrame = window.requestAnimationFrame(() => {
+    executionTerminalDrainFrame = undefined;
+    const controllers = Array.from(pendingExecutionTerminalDrains);
+    pendingExecutionTerminalDrains.clear();
+    for (const currentController of controllers) {
+      currentController.flushPendingOutput();
+    }
+    if (pendingExecutionTerminalDrains.size > 0) {
+      const remainingControllers = Array.from(pendingExecutionTerminalDrains);
+      pendingExecutionTerminalDrains.clear();
+      for (const currentController of remainingControllers) {
+        scheduleExecutionTerminalDrain(currentController);
+      }
+    }
+  });
+}
+
+function createExecutionTerminalController(terminal: Terminal): ExecutionTerminalController {
+  let pendingOutput = '';
+  let disposed = false;
+
+  const controller: ExecutionTerminalController = {
+    applySnapshot(detail) {
+      if (disposed) {
+        return;
+      }
+
+      pendingOutput = '';
+      pendingExecutionTerminalDrains.delete(controller);
+      restoreExecutionTerminalSnapshot(terminal, detail);
+    },
+    enqueueOutput(chunk) {
+      if (disposed || !chunk) {
+        return;
+      }
+
+      pendingOutput += chunk;
+      scheduleExecutionTerminalDrain(controller);
+    },
+    showExit(message) {
+      if (disposed) {
+        return;
+      }
+
+      controller.flushPendingOutput();
+      terminal.writeln(`\r\n[Dev Session Canvas] ${message}`);
+    },
+    refreshVisibleRows() {
+      if (disposed) {
+        return;
+      }
+
+      controller.flushPendingOutput();
+      if (terminal.rows > 0) {
+        terminal.refresh(0, terminal.rows - 1);
+      }
+    },
+    flushPendingOutput() {
+      if (disposed || pendingOutput.length === 0) {
+        return;
+      }
+
+      const chunk = pendingOutput;
+      pendingOutput = '';
+      // Keep the host message callback lightweight by deferring real terminal writes
+      // to a batched drain step. xterm will continue to apply its own async parser queue.
+      terminal.write(chunk);
+    },
+    dispose() {
+      disposed = true;
+      pendingOutput = '';
+      pendingExecutionTerminalDrains.delete(controller);
+    }
+  };
+
+  return controller;
 }
 
 function restoreExecutionTerminalSnapshot(
@@ -2422,10 +2466,8 @@ function restoreExecutionTerminalSnapshot(
 function scheduleExecutionTerminalVisibilityRestore(): void {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      for (const { terminal } of executionTerminalRegistry.values()) {
-        if (terminal.rows > 0) {
-          terminal.refresh(0, terminal.rows - 1);
-        }
+      for (const { controller } of executionTerminalRegistry.values()) {
+        controller.refreshVisibleRows();
       }
     });
   });
@@ -2688,6 +2730,16 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         }
 
         entry.terminal.scrollLines(action.lines);
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'sendExecutionInput': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        entry.terminal.input(action.data);
         await waitForDomActionFlush();
         break;
       }
