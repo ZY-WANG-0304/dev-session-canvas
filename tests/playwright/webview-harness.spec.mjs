@@ -1440,6 +1440,118 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(
+    `${executionKind} keeps a scrolled-back viewport locked across output, spinner redraw, and host refresh`,
+    async ({ page }) => {
+      const nodeId = `${executionKind}-zoom`;
+      const output = createScrollableTerminalOutput(160);
+
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState(executionKind));
+      await waitForExecutionTerminalReady(page, nodeId);
+      await dispatchExecutionSnapshot(page, {
+        nodeId,
+        kind: executionKind,
+        output,
+        cols: 96,
+        rows: 28,
+        liveSession: true
+      });
+      await settleWebview(page, 4);
+
+      const bottomProbe = await waitForProbeNodeMatch(
+        page,
+        nodeId,
+        (probeNode) =>
+          typeof probeNode?.terminalViewportY === 'number' &&
+          probeNode.terminalViewportY > 100 &&
+          probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-159'))
+      );
+      const scrolledProbe = await scrollTerminalViewport(
+        page,
+        nodeId,
+        -1800,
+        (probeNode) =>
+          typeof probeNode?.terminalViewportY === 'number' &&
+          probeNode.terminalViewportY <= bottomProbe.terminalViewportY - 12 &&
+          probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-120')),
+        10
+      );
+      const lockedViewportY = scrolledProbe.terminalViewportY;
+      const lockedAnchorLine =
+        scrolledProbe.terminalVisibleLines.find((line) => line.includes('ROW-12')) ??
+        scrolledProbe.terminalVisibleLines.find((line) => line.includes('ROW-11')) ??
+        null;
+
+      expect(lockedAnchorLine).not.toBeNull();
+
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'FOLLOW-SHOULD-STAY-HIDDEN\r\n'
+      });
+      await settleWebview(page, 4);
+
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: '\rSPINNER-TICK'
+      });
+      await settleWebview(page, 4);
+
+      const updatedState = createLiveExecutionNodeState(executionKind);
+      updatedState.updatedAt = '2026-04-16T12:00:00.000Z';
+      updatedState.nodes[0].summary = 'Host rerender while viewport is intentionally locked in history.';
+      await updateHostState(page, updatedState);
+      await settleWebview(page, 4);
+
+      await dispatchVisibilityRestored(page);
+      await settleWebview(page, 6);
+
+      const lockedProbe = await waitForProbeNodeMatch(
+        page,
+        nodeId,
+        (probeNode) =>
+          probeNode?.terminalViewportY === lockedViewportY &&
+          probeNode.terminalVisibleLines?.includes(lockedAnchorLine)
+      );
+
+      expect(lockedProbe.terminalVisibleLines.includes('FOLLOW-SHOULD-STAY-HIDDEN')).toBe(false);
+      expect(lockedProbe.terminalVisibleLines.includes('SPINNER-TICK')).toBe(false);
+
+      await performTestDomAction(page, {
+        kind: 'scrollTerminalViewport',
+        nodeId,
+        lines: 9999
+      });
+      const resumedBottomProbe = await waitForProbeNodeMatch(
+        page,
+        nodeId,
+        (probeNode) =>
+          typeof probeNode?.terminalViewportY === 'number' &&
+          probeNode.terminalViewportY > lockedViewportY &&
+          probeNode.terminalVisibleLines?.some((line) => line.includes('FOLLOW-SHOULD-STAY-HIDDEN'))
+      );
+
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'FOLLOW-RESUMED\r\n'
+      });
+      await settleWebview(page, 4);
+
+      const followedProbe = await waitForProbeNodeMatch(
+        page,
+        nodeId,
+        (probeNode) => probeNode?.terminalVisibleLines?.some((line) => line.includes('FOLLOW-RESUMED'))
+      );
+
+      expect(followedProbe.terminalViewportY).toBeGreaterThanOrEqual(resumedBottomProbe.terminalViewportY);
+    }
+  );
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} right click keeps xterm textarea aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
 
@@ -1607,6 +1719,14 @@ async function dispatchThemeChanged(page) {
   });
 }
 
+async function dispatchVisibilityRestored(page) {
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/visibilityRestored'
+    });
+  });
+}
+
 async function readPersistedUiState(page) {
   return page.evaluate(() => {
     return window.__devSessionCanvasHarness.getPersistedState();
@@ -1744,6 +1864,22 @@ async function dispatchExecutionSnapshot(
       rows,
       liveSession,
       serializedTerminalState
+    }
+  );
+}
+
+async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
+  await page.evaluate(
+    (payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionOutput',
+        payload
+      });
+    },
+    {
+      nodeId,
+      kind,
+      chunk
     }
   );
 }

@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/embedded-terminal-runtime-window.md
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-04-15
+updated_at: 2026-04-16
 ---
 
 # Terminal 节点嵌入式会话窗口设计
@@ -120,6 +120,7 @@ updated_at: 2026-04-15
 - 活跃会话的宿主权威恢复源不再只是最近一段 raw output tail，而是摘要、最近输出、尺寸与可序列化 terminal state 的组合；其中 `recentOutput` 只保留给摘要与兼容 fallback，不再承担画面恢复职责。
 - live xterm、宿主 `SerializedTerminalStateTracker` 与落盘快照现在统一对齐 `terminal.integrated.scrollback`，不再分别硬编码 `4000` / `80`。当前不使用 `terminal.integrated.persistentSessionScrollback` 去主动缩小画布侧 snapshot，因为这会直接损失用户切回画布后可继续上滚的 live 历史。
 - Webview 隐藏再显示时，现存 xterm 会显式执行 non-destructive redraw，不再在这条保活路径上主动 `fit()` 改写行数；如果 Webview 被销毁并重建，则应按宿主 snapshot 中的 serialized terminal state hydrate，再继续接 live output。
+- 执行节点的滚动语义必须保持和标准终端一致：用户一旦向上滚动进入历史查看，增量输出、spinner/redraw、主题刷新与 visibility redraw 都不应主动 `scrollToBottom()`；只有用户自己回到底部，或显式触发“滚到底部”命令时，视图才恢复跟随最新输出。
 - 当前恢复语义面向“尽量保住与 live xterm 对齐的 scrollback 历史”；仍不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
 - 运行中 resize 现在通过 PTY 后端原生能力处理，不再通过 stdin 注入 `stty`。
 
@@ -154,6 +155,7 @@ updated_at: 2026-04-15
 5. 如果 Webview 被销毁并重建，执行节点仍能基于宿主 serialized terminal state 恢复当前可见屏幕，并保住与 `terminal.integrated.scrollback` 对齐的 scrollback 历史，而不是只重放尾部日志。
 6. 活跃会话期间调整节点尺寸后，终端行列同步生效。
 7. 未信任 workspace 时，终端创建与输入路径被正确禁用。
+8. 用户向上滚动查看历史后，增量输出、spinner/redraw 与 `host/visibilityRestored` 这类纯视图刷新都不会把 viewport 强制拉回底部；用户滚回底部后，最新输出会再次自动跟随。
 
 ## 9. 当前验证状态
 
@@ -161,4 +163,5 @@ updated_at: 2026-04-15
 - 已完成代码级实现，并通过 `npm run build`、`npm run typecheck`、`npm run test:webview`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs`。
 - Playwright harness 已新增“serialized terminal state 恢复优先于 raw tail replay”的回归；真实 VS Code `real-reopen` smoke 已覆盖窗口重开后的重新附着与历史恢复链路。
 - 真实 VS Code `trusted` smoke 已覆盖 Editor 区域切到普通文本编辑器再切回画布、以及 Panel 区域切到原生 Terminal 再切回画布时的可见内容保持与 `visibility restore` 断言。
+- 2026-04-16 已补 Playwright 回归，覆盖 Agent / Terminal 在用户上滚后遇到增量输出、spinner/redraw 与 `host/visibilityRestored` 时仍保持历史 viewport，不再被强制拉回底部；滚回底部后跟随输出恢复。
 - 当前 shell 环境没有可直接启动 `Extension Development Host` 的 `code`/`cursor`/`codium` CLI，也没有 macOS / Windows 本地人工验证证据；文档状态继续保持为“验证中”。
