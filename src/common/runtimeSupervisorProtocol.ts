@@ -8,6 +8,7 @@ import type {
   TerminalNodeStatus,
   AgentNodeStatus
 } from './protocol';
+import type { SerializedTerminalState } from './serializedTerminalState';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
@@ -40,7 +41,9 @@ export interface RuntimeSupervisorSessionSnapshot {
   cwd: string;
   cols: number;
   rows: number;
+  scrollback: number;
   output: string;
+  serializedTerminalState?: SerializedTerminalState;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -57,6 +60,7 @@ export interface RuntimeSupervisorCreateSessionParams {
   sessionId?: string;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
+  scrollback: number;
   provider?: AgentProviderKind;
   resumeStrategy?: AgentResumeStrategy;
   resumeSessionId?: string;
@@ -77,6 +81,11 @@ export interface RuntimeSupervisorResizeSessionParams {
   sessionId: string;
   cols: number;
   rows: number;
+}
+
+export interface RuntimeSupervisorUpdateSessionScrollbackParams {
+  sessionId: string;
+  scrollback: number;
 }
 
 export interface RuntimeSupervisorStopSessionParams {
@@ -116,6 +125,12 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'resizeSession';
       params: RuntimeSupervisorResizeSessionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'updateSessionScrollback';
+      params: RuntimeSupervisorUpdateSessionScrollbackParams;
     }
   | {
       type: 'request';

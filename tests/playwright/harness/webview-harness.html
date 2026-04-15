@@ -36,7 +36,10 @@
           dispatchHostMessage(message) {
             window.postMessage(message, '*');
           },
-          bootstrap(state, runtime = { workspaceTrusted: true, surfaceLocation: 'panel' }) {
+          bootstrap(
+            state,
+            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000 }
+          ) {
             this.dispatchHostMessage({
               type: 'host/bootstrap',
               payload: {
@@ -45,7 +48,10 @@
               }
             });
           },
-          update(state, runtime = { workspaceTrusted: true, surfaceLocation: 'panel' }) {
+          update(
+            state,
+            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000 }
+          ) {
             this.dispatchHostMessage({
               type: 'host/stateUpdated',
               payload: {

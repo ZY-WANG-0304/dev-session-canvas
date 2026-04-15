@@ -22,6 +22,8 @@ import {
   type TerminalNodeStatus
 } from '../common/protocol';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
+import { SerializedTerminalStateTracker } from '../common/serializedTerminalState';
+import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   deserializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorAttachSessionParams,
@@ -34,6 +36,7 @@ import {
   type RuntimeSupervisorResizeSessionParams,
   type RuntimeSupervisorSessionSnapshot,
   type RuntimeSupervisorStopSessionParams,
+  type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import {
@@ -66,7 +69,9 @@ interface SupervisorSession {
   cwd: string;
   cols: number;
   rows: number;
+  scrollback: number;
   output: string;
+  terminalStateTracker: SerializedTerminalStateTracker;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -205,6 +210,10 @@ class RuntimeSupervisorServer {
           this.resizeSession(request.params);
           this.writeOkResponse(socket, request.id);
           return;
+        case 'updateSessionScrollback':
+          await this.updateSessionScrollback(request.params);
+          this.writeOkResponse(socket, request.id);
+          return;
         case 'stopSession':
           this.stopSession(request.params);
           this.writeOkResponse(socket, request.id);
@@ -244,6 +253,7 @@ class RuntimeSupervisorServer {
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
     const startedAtMs = Date.now();
     const process = createExecutionSessionProcess(launchSpec);
+    const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
     const session: SupervisorSession = {
       sessionId,
       kind: params.kind,
@@ -257,7 +267,11 @@ class RuntimeSupervisorServer {
       cwd: params.launchSpec.cwd,
       cols: params.launchSpec.cols,
       rows: params.launchSpec.rows,
+      scrollback,
       output: '',
+      terminalStateTracker: new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
+        scrollback
+      }),
       displayLabel: params.displayLabel,
       launchMode: params.launchMode,
       provider: params.provider,
@@ -337,10 +351,24 @@ class RuntimeSupervisorServer {
     const session = this.requireSession(params.sessionId);
     session.cols = params.cols;
     session.rows = params.rows;
+    session.terminalStateTracker.resize(params.cols, params.rows);
     if (session.live) {
       session.process?.resize(params.cols, params.rows);
     }
     this.emitSessionState(session);
+  }
+
+  private async updateSessionScrollback(params: RuntimeSupervisorUpdateSessionScrollbackParams): Promise<void> {
+    const session = this.requireLiveSession(params.sessionId);
+    const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
+    if (session.scrollback === scrollback) {
+      return;
+    }
+
+    session.scrollback = scrollback;
+    await session.terminalStateTracker.setScrollback(scrollback);
+    this.emitSessionState(session);
+    this.schedulePersist();
   }
 
   private stopSession(params: RuntimeSupervisorStopSessionParams): void {
@@ -372,6 +400,7 @@ class RuntimeSupervisorServer {
       }
 
       session.output = appendOutputTail(session.output, chunk);
+      session.terminalStateTracker.write(chunk);
       if (session.kind === 'agent') {
         if (
           session.lifecycle === 'starting' ||
@@ -569,7 +598,9 @@ class RuntimeSupervisorServer {
       cwd: session.cwd,
       cols: session.cols,
       rows: session.rows,
+      scrollback: session.scrollback,
       output: session.output,
+      serializedTerminalState: session.terminalStateTracker.getSerializedState(),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
@@ -662,6 +693,7 @@ class RuntimeSupervisorServer {
 
     session.process = undefined;
     session.live = false;
+    session.terminalStateTracker.dispose();
   }
 
   private schedulePersist(): void {
@@ -710,6 +742,7 @@ class RuntimeSupervisorServer {
     const lastExitMessage =
       snapshot.lastExitMessage ||
       '会话监督器未保留原 live runtime，已仅恢复历史结果。';
+    const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
 
     return {
       ...snapshot,
@@ -727,6 +760,12 @@ class RuntimeSupervisorServer {
       lastExitMessage,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      scrollback,
+      terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
+        scrollback,
+        initialState: snapshot.serializedTerminalState,
+        initialOutput: snapshot.output
+      }),
       process: undefined,
       outputSubscription: undefined,
       exitSubscription: undefined,

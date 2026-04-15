@@ -1,3 +1,5 @@
+import type { SerializedTerminalState } from './serializedTerminalState';
+
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
 
@@ -59,6 +61,7 @@ export interface ExecutionSessionMetadata {
   lastExitMessage?: string;
   lastCols?: number;
   lastRows?: number;
+  serializedTerminalState?: SerializedTerminalState;
 }
 
 export interface AgentNodeMetadata extends ExecutionSessionMetadata {
@@ -108,6 +111,7 @@ export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
   defaultAgentProvider: AgentProviderKind;
+  terminalScrollback: number;
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -127,6 +131,7 @@ export interface WebviewProbeNodeSnapshot {
   terminalCols?: number;
   terminalRows?: number;
   terminalViewportY?: number;
+  terminalVisibleLines?: string[];
   terminalTextareaLeft?: number;
   terminalTextareaTop?: number;
   terminalTheme?: WebviewProbeTerminalThemeSnapshot;
@@ -167,6 +172,12 @@ export type WebviewDomAction =
       kind: 'clickNodeActionButton';
       nodeId: string;
       label: '删除' | '启动' | '停止' | '重启' | '恢复';
+      delayMs?: number;
+    }
+  | {
+      kind: 'scrollTerminalViewport';
+      nodeId: string;
+      lines: number;
       delayMs?: number;
     };
 
@@ -297,6 +308,9 @@ export type HostToWebviewMessage =
       type: 'host/themeChanged';
     }
   | {
+      type: 'host/visibilityRestored';
+    }
+  | {
       type: 'host/error';
       payload: {
         message: string;
@@ -311,6 +325,7 @@ export type HostToWebviewMessage =
         cols: number;
         rows: number;
         liveSession: boolean;
+        serializedTerminalState?: SerializedTerminalState;
       };
     }
   | {
@@ -680,6 +695,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
       );
   }
 
+  if (value.kind === 'scrollTerminalViewport') {
+    return typeof value.lines === 'number' && Number.isInteger(value.lines);
+  }
+
   return false;
 }
 
@@ -713,6 +732,9 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
       (typeof value.terminalViewportY === 'number' &&
         Number.isInteger(value.terminalViewportY) &&
         value.terminalViewportY >= 0)) &&
+    (value.terminalVisibleLines === undefined ||
+      (Array.isArray(value.terminalVisibleLines) &&
+        value.terminalVisibleLines.every((line) => typeof line === 'string'))) &&
     (value.terminalTextareaLeft === undefined ||
       (typeof value.terminalTextareaLeft === 'number' && Number.isFinite(value.terminalTextareaLeft))) &&
     (value.terminalTextareaTop === undefined ||
