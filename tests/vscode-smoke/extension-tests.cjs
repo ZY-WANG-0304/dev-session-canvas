@@ -44,6 +44,7 @@ const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
 const HOST_BOUNDARY_FLUSH_TERMINAL_MARKER = 'HOST_BOUNDARY_TERMINAL_FLUSH';
 const EDITOR_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_EDITOR_TAB_SWITCH';
 const PANEL_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_PANEL_TAB_SWITCH';
+const TERMINAL_SCROLLBACK_PERSIST_MARKER = 'DEV_SESSION_CANVAS_SCROLLBACK_PERSIST';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
@@ -176,6 +177,7 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await verifyRuntimeContextRefreshesDefaultAgentProvider();
+  await verifyRuntimeContextRefreshesTerminalScrollback();
   await verifyCreateNodeCommandQuickPick();
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -233,6 +235,7 @@ async function runTrustedSmoke() {
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
   await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);
   await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);
@@ -372,6 +375,47 @@ async function verifyRuntimeContextRefreshesDefaultAgentProvider() {
           (message) =>
             message.type === 'host/stateUpdated' &&
             message.payload.runtime?.defaultAgentProvider === originalProvider
+        ),
+      20000
+    );
+  }
+}
+
+async function verifyRuntimeContextRefreshesTerminalScrollback() {
+  const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
+  const originalScrollback = terminalConfiguration.get('scrollback', 1000);
+  const updatedScrollback = originalScrollback === 240 ? 320 : 240;
+
+  await clearHostMessages();
+  await setTerminalIntegratedScrollback(updatedScrollback);
+
+  try {
+    const hostMessages = await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === updatedScrollback
+        ),
+      20000
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/stateUpdated' &&
+          message.payload.runtime?.terminalScrollback === updatedScrollback
+      ),
+      'Expected host to push an updated runtime context after changing terminal.integrated.scrollback.'
+    );
+  } finally {
+    await clearHostMessages();
+    await setTerminalIntegratedScrollback(originalScrollback);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === originalScrollback
         ),
       20000
     );
@@ -1182,6 +1226,121 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.lastCols, 100);
   assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
+}
+
+async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNodeId) {
+  const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
+  const originalScrollback = terminalConfiguration.get('scrollback', 1000);
+  const configuredScrollback = originalScrollback === 240 ? 320 : 240;
+
+  await clearHostMessages();
+  await setTerminalIntegratedScrollback(configuredScrollback);
+
+  try {
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === configuredScrollback
+        ),
+      20000
+    );
+
+    await ensureTerminalStopped(terminalNodeId);
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/startExecutionSession',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          cols: 92,
+          rows: 28
+        }
+      },
+      'editor'
+    );
+    await waitForTerminalLive(terminalNodeId);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          data:
+            'i=1; while [ $i -le 220 ]; do printf \'' +
+            `${TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d persisted scrollback verification\\r\\n` +
+            '\' "$i"; i=$((i+1)); done\r'
+        }
+      },
+      'editor'
+    );
+
+    await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentNode?.metadata?.terminal?.recentOutput?.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`)
+      );
+    }, 20000);
+
+    const reloadedSnapshot = await simulateRuntimeReload();
+    const reloadedTerminal = findNodeById(reloadedSnapshot, terminalNodeId);
+    const serializedData = reloadedTerminal.metadata.terminal.serializedTerminalState?.data ?? '';
+    assert.ok(
+      serializedData.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`),
+      'Persisted serialized terminal state should keep the earliest configured scrollback line.'
+    );
+    assert.ok(
+      serializedData.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`),
+      'Persisted serialized terminal state should keep the latest configured scrollback line.'
+    );
+
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
+
+    const hostMessages = await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/executionSnapshot' &&
+            message.payload.kind === 'terminal' &&
+            message.payload.nodeId === terminalNodeId &&
+            typeof message.payload.serializedTerminalState?.data === 'string' &&
+            message.payload.serializedTerminalState.data.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`) &&
+            message.payload.serializedTerminalState.data.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`)
+        ),
+      10000
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) =>
+          message.type === 'host/executionSnapshot' &&
+          message.payload.kind === 'terminal' &&
+          message.payload.nodeId === terminalNodeId &&
+          typeof message.payload.serializedTerminalState?.data === 'string' &&
+          message.payload.serializedTerminalState.data.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`) &&
+          message.payload.serializedTerminalState.data.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`)
+      ),
+      'Expected reload-time execution snapshot to retain the configured terminal scrollback history.'
+    );
+  } finally {
+    await clearHostMessages();
+    await setTerminalIntegratedScrollback(originalScrollback);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === originalScrollback
+        ),
+      20000
+    );
+  }
 }
 
 async function verifyPanelTerminalTabSwitchPreservesViewport(terminalNodeId) {
@@ -3288,6 +3447,12 @@ async function setDefaultAgentProvider(provider) {
   await vscode.workspace
     .getConfiguration()
     .update('devSessionCanvas.agent.defaultProvider', provider, vscode.ConfigurationTarget.Global);
+}
+
+async function setTerminalIntegratedScrollback(scrollback) {
+  await vscode.workspace
+    .getConfiguration('terminal.integrated')
+    .update('scrollback', scrollback, vscode.ConfigurationTarget.Global);
 }
 
 async function setWorkbenchColorTheme(themeName) {

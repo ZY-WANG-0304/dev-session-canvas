@@ -111,6 +111,7 @@ export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
   defaultAgentProvider: AgentProviderKind;
+  terminalScrollback: number;
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -171,6 +172,12 @@ export type WebviewDomAction =
       kind: 'clickNodeActionButton';
       nodeId: string;
       label: '删除' | '启动' | '停止' | '重启' | '恢复';
+      delayMs?: number;
+    }
+  | {
+      kind: 'scrollTerminalViewport';
+      nodeId: string;
+      lines: number;
       delayMs?: number;
     };
 
@@ -686,6 +693,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
         value.label === '重启' ||
         value.label === '恢复'
       );
+  }
+
+  if (value.kind === 'scrollTerminalViewport') {
+    return typeof value.lines === 'number' && Number.isInteger(value.lines);
   }
 
   return false;
