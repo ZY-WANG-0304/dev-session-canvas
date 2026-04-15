@@ -1006,13 +1006,12 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       }
 
       if (detail.type === 'output') {
+        // Let xterm keep its native "follow only when already at bottom" behavior.
         terminal.write(detail.chunk);
-        terminal.scrollToBottom();
         return;
       }
 
       terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
-      terminal.scrollToBottom();
     };
 
     executionEventTarget.addEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
@@ -1354,13 +1353,12 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       }
 
       if (detail.type === 'output') {
+        // Let xterm keep its native "follow only when already at bottom" behavior.
         terminal.write(detail.chunk);
-        terminal.scrollToBottom();
         return;
       }
 
       terminal.writeln(`\r\n[Dev Session Canvas] ${detail.message}`);
-      terminal.scrollToBottom();
     };
 
     executionEventTarget.addEventListener(EXECUTION_EVENT_NAME, listener as EventListener);
@@ -2413,7 +2411,6 @@ function restoreExecutionTerminalSnapshot(
 
   if (detail.output) {
     terminal.write(detail.output, () => {
-      terminal.scrollToBottom();
       finishRestore();
     });
     return;
