@@ -2421,8 +2421,7 @@ function restoreExecutionTerminalSnapshot(
 function scheduleExecutionTerminalVisibilityRestore(): void {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      for (const { terminal, fitAddon } of executionTerminalRegistry.values()) {
-        fitAddon.fit();
+      for (const { terminal } of executionTerminalRegistry.values()) {
         if (terminal.rows > 0) {
           terminal.refresh(0, terminal.rows - 1);
         }

@@ -106,7 +106,7 @@ updated_at: 2026-04-15
 
 - Panel `WebviewView` 与 Editor `WebviewPanel` 两条主承载面路径现在都显式启用 `retainContextWhenHidden`，把同一宿主标签切换下的 Webview 保活视为体验优化，而不是唯一正确性前提。
 - 活跃会话的宿主权威恢复源不再只是最近一段 raw output tail，而是摘要、最近输出、尺寸与可序列化 terminal state 的组合；其中 `recentOutput` 只保留给摘要与兼容 fallback，不再承担画面恢复职责。
-- Webview 隐藏再显示时，现存 xterm 会显式执行 `fit + refresh`；如果 Webview 被销毁并重建，则应按宿主 snapshot 中的 serialized terminal state hydrate，再继续接 live output。
+- Webview 隐藏再显示时，现存 xterm 会显式执行 non-destructive redraw，不再在这条保活路径上主动 `fit()` 改写行数；如果 Webview 被销毁并重建，则应按宿主 snapshot 中的 serialized terminal state hydrate，再继续接 live output。
 - 当前恢复语义面向“运行时当前屏幕”，不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
 - 运行中 resize 现在通过 PTY 后端原生能力处理，不再通过 stdin 注入 `stty`。
 
@@ -118,8 +118,8 @@ updated_at: 2026-04-15
 - 风险：如果 Webview 重建时仍靠 raw tail replay，`Codex`、`Claude Code` 这类 alternate-buffer / 全屏重绘型 CLI 会出现上半部分空白或只剩底部尾巴。
   当前缓解：local PTY 与 supervisor 两条路径都改为维护 serialized terminal state，Webview 恢复时优先 hydrate 该状态；`recentOutput` 仅保留为摘要和 fallback。
 
-- 风险：serialized terminal snapshot 一旦在 hydrate 后立刻被更小尺寸的 `fit()` 改写，xterm alternate buffer 会直接裁掉顶部行。
-  当前缓解：snapshot hydrate 现在优先保持宿主记录的终端尺寸与当前屏幕画面，把非破坏性的 `fit + refresh` 留给保活后的 visibility 恢复路径；更强的“尺寸漂移下无损重绘”已登记技术债。
+- 风险：serialized terminal snapshot 一旦在 hydrate 后立刻被更小尺寸的 `fit()` 改写，xterm alternate buffer 会直接裁掉顶部行；同样，保活后的 visibility restore 如果无条件 `fit()`，也会把 retain 下的现存 viewport 改写成更少行数。
+  当前缓解：snapshot hydrate 现在优先保持宿主记录的终端尺寸与当前屏幕画面；保活后的 visibility restore 只做 non-destructive redraw，不再主动 `fit()`；更强的“尺寸漂移下无损重绘”已登记技术债。
 
 - 风险：`node-pty` 路线会引入原生模块与扩展打包约束。
   当前缓解：构建脚本已把 `node-pty` 设为 external，并依赖其预编译产物；当前先以 `build` / `typecheck` / Linux smoke test 证明基本可行。
@@ -134,7 +134,7 @@ updated_at: 2026-04-15
 1. 在宿主 shell 里验证 `node-pty` 确实给子 shell 分配了真实 TTY。
 2. `npm run build` 和 `npm run typecheck` 通过。
 3. 在 Linux / macOS 的 `Extension Development Host` 中，新建 `Terminal` 节点后可直接在节点内输入并看到实时输出。
-4. 不论主画布当前承载在 Panel 还是 Editor，同一宿主区域内切到其他标签再切回后，画布中的终端节点仍保持原 live 会话，且现存 xterm 会完成 `fit + refresh`。
+4. 不论主画布当前承载在 Panel 还是 Editor，同一宿主区域内切到其他标签再切回后，画布中的终端节点仍保持原 live 会话，且现存 xterm 会完成 non-destructive redraw，不会把当前 viewport 行数改写掉。
 5. 如果 Webview 被销毁并重建，执行节点仍能基于宿主 serialized terminal state 恢复当前可见屏幕，而不是只重放尾部日志。
 6. 活跃会话期间调整节点尺寸后，终端行列同步生效。
 7. 未信任 workspace 时，终端创建与输入路径被正确禁用。
