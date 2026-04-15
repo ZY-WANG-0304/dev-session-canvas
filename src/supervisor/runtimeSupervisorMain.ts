@@ -22,6 +22,7 @@ import {
   type TerminalNodeStatus
 } from '../common/protocol';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
+import { SerializedTerminalStateTracker } from '../common/serializedTerminalState';
 import {
   deserializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorAttachSessionParams,
@@ -67,6 +68,7 @@ interface SupervisorSession {
   cols: number;
   rows: number;
   output: string;
+  terminalStateTracker: SerializedTerminalStateTracker;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -258,6 +260,7 @@ class RuntimeSupervisorServer {
       cols: params.launchSpec.cols,
       rows: params.launchSpec.rows,
       output: '',
+      terminalStateTracker: new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows),
       displayLabel: params.displayLabel,
       launchMode: params.launchMode,
       provider: params.provider,
@@ -337,6 +340,7 @@ class RuntimeSupervisorServer {
     const session = this.requireSession(params.sessionId);
     session.cols = params.cols;
     session.rows = params.rows;
+    session.terminalStateTracker.resize(params.cols, params.rows);
     if (session.live) {
       session.process?.resize(params.cols, params.rows);
     }
@@ -372,6 +376,7 @@ class RuntimeSupervisorServer {
       }
 
       session.output = appendOutputTail(session.output, chunk);
+      session.terminalStateTracker.write(chunk);
       if (session.kind === 'agent') {
         if (
           session.lifecycle === 'starting' ||
@@ -570,6 +575,7 @@ class RuntimeSupervisorServer {
       cols: session.cols,
       rows: session.rows,
       output: session.output,
+      serializedTerminalState: session.terminalStateTracker.getSerializedState(),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
@@ -662,6 +668,7 @@ class RuntimeSupervisorServer {
 
     session.process = undefined;
     session.live = false;
+    session.terminalStateTracker.dispose();
   }
 
   private schedulePersist(): void {
@@ -727,6 +734,12 @@ class RuntimeSupervisorServer {
       lastExitMessage,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      terminalStateTracker: new SerializedTerminalStateTracker(
+        snapshot.cols,
+        snapshot.rows,
+        snapshot.serializedTerminalState,
+        snapshot.output
+      ),
       process: undefined,
       outputSubscription: undefined,
       exitSubscription: undefined,

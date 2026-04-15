@@ -8,6 +8,7 @@ import type {
   TerminalNodeStatus,
   AgentNodeStatus
 } from './protocol';
+import type { SerializedTerminalState } from './serializedTerminalState';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
@@ -41,6 +42,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   cols: number;
   rows: number;
   output: string;
+  serializedTerminalState?: SerializedTerminalState;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;

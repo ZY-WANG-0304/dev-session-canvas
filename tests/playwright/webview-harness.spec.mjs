@@ -1,7 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { SerializeAddon } from '@xterm/addon-serialize';
+import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
+
+const { Terminal: HeadlessTerminal } = xtermHeadless;
 
 const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
@@ -1118,6 +1122,60 @@ test('incoming host error shows a toast in the harness', async ({ page }) => {
 });
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore prefers serialized terminal state after rebuild`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const fixture = createFullscreenSerializedFixture();
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      fixture.output,
+      fixture.cols,
+      fixture.rows
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: fixture.cols,
+      rows: fixture.rows,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: fixture.cols,
+      rows: fixture.rows,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await dragTerminalSelection(page, {
+      nodeId,
+      row: 1,
+      startCol: 1,
+      endCol: fixture.expectedSelection.length
+    });
+
+    await expect
+      .poll(async () => {
+        const probeNode = await readProbeNode(page, nodeId, 20);
+        return probeNode?.terminalSelectionText ?? null;
+      })
+      .toBe(fixture.expectedSelection);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const outputLine = '0123456789ABCDEFGHIJKLMNO';
@@ -1524,7 +1582,8 @@ async function dispatchExecutionSnapshot(
     output,
     cols = 96,
     rows = 28,
-    liveSession = true
+    liveSession = true,
+    serializedTerminalState
   }
 ) {
   await page.evaluate(
@@ -1540,9 +1599,52 @@ async function dispatchExecutionSnapshot(
       output,
       cols,
       rows,
-      liveSession
+      liveSession,
+      serializedTerminalState
     }
   );
+}
+
+async function createSerializedTerminalStateFromOutput(output, cols = 96, rows = 28) {
+  const terminal = new HeadlessTerminal({
+    allowProposedApi: true,
+    cols,
+    rows,
+    scrollback: 80
+  });
+  const serializeAddon = new SerializeAddon();
+  terminal.loadAddon(serializeAddon);
+
+  await new Promise((resolve) => {
+    terminal.write(output, () => resolve());
+  });
+
+  const serializedTerminalState = {
+    format: 'xterm-serialize-v1',
+    data: serializeAddon.serialize({
+      scrollback: 80,
+      excludeAltBuffer: false,
+      excludeModes: false
+    }),
+    viewportY: terminal.buffer.active.viewportY >= 0 ? terminal.buffer.active.viewportY : undefined
+  };
+  terminal.dispose();
+  serializeAddon.dispose();
+  return serializedTerminalState;
+}
+
+function createFullscreenSerializedFixture(cols = 96, rows = 28) {
+  const visibleLines = Array.from({ length: rows }, (_, index) => {
+    const rowNumber = String(index + 1).padStart(2, '0');
+    return `SERIALIZED-ROW-${rowNumber} viewport restore verification`;
+  });
+
+  return {
+    cols,
+    rows,
+    output: `\u001b[?1049h\u001b[2J\u001b[H${visibleLines.join('\r\n')}`,
+    expectedSelection: visibleLines[0]
+  };
 }
 
 async function settleWebview(page, frameCount = 2) {
