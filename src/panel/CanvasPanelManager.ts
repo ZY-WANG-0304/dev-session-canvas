@@ -272,6 +272,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     editor: false,
     panel: false
   };
+  private readonly pendingVisibilityRestore: Record<CanvasSurfaceLocation, boolean> = {
+    editor: false,
+    panel: false
+  };
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
   private readonly runtimeSessionBindings = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
@@ -817,7 +821,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         CanvasPanelManager.viewType,
         EXTENSION_DISPLAY_NAME,
         vscode.ViewColumn.One,
-        this.getWebviewOptions()
+        this.getEditorWebviewPanelOptions()
       );
       this.attachEditorPanel(panel);
       this.ensureActiveSurfaceRendered('editor');
@@ -856,6 +860,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.editorPanel = undefined;
           this.surfaceMode.editor = undefined;
           this.surfaceReady.editor = false;
+          this.pendingVisibilityRestore.editor = false;
           this.recordDiagnosticEvent('surface/disposed', {
             surface: 'editor'
           });
@@ -874,6 +879,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           surface: 'editor',
           visible: panel.visible
         });
+        if (!panel.visible) {
+          this.pendingVisibilityRestore.editor = true;
+        }
+        this.maybePostVisibilityRestored('editor');
         this.notifySidebarStateChanged();
       },
       null,
@@ -911,6 +920,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.panelView = undefined;
           this.surfaceMode.panel = undefined;
           this.surfaceReady.panel = false;
+          this.pendingVisibilityRestore.panel = false;
           this.recordDiagnosticEvent('surface/disposed', {
             surface: 'panel'
           });
@@ -929,11 +939,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           surface: 'panel',
           visible: webviewView.visible
         });
-        if (webviewView.visible && this.activeSurface === 'panel' && this.surfaceReady.panel) {
-          this.postMessage({
-            type: 'host/visibilityRestored'
-          });
+        if (!webviewView.visible) {
+          this.pendingVisibilityRestore.panel = true;
         }
+        this.maybePostVisibilityRestored('panel');
         this.notifySidebarStateChanged();
       },
       null,
@@ -955,11 +964,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.notifySidebarStateChanged();
   }
 
-  private getWebviewOptions(): vscode.WebviewOptions & vscode.WebviewPanelOptions {
+  private getWebviewOptions(): vscode.WebviewOptions {
     return {
       enableScripts: true,
       enableCommandUris: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')]
+    };
+  }
+
+  private getEditorWebviewPanelOptions(): vscode.WebviewOptions & vscode.WebviewPanelOptions {
+    return {
+      ...this.getWebviewOptions(),
+      retainContextWhenHidden: true
     };
   }
 
@@ -2114,6 +2130,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.panelView.visible ? 'visible' : 'hidden';
   }
 
+  private maybePostVisibilityRestored(surface: CanvasSurfaceLocation, options?: { force?: boolean }): void {
+    if (
+      this.activeSurface !== surface ||
+      !this.surfaceReady[surface] ||
+      this.getSurfaceVisibility(surface) !== 'visible'
+    ) {
+      return;
+    }
+
+    if (!this.pendingVisibilityRestore[surface] && options?.force !== true) {
+      return;
+    }
+
+    this.pendingVisibilityRestore[surface] = false;
+    this.postMessage({
+      type: 'host/visibilityRestored'
+    });
+  }
+
   private ensureActiveSurfaceRendered(surface: CanvasSurfaceLocation): void {
     const webview = this.getSurfaceWebview(surface);
     if (!webview) {
@@ -2254,6 +2289,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       if (this.isInteractiveSurface(surface)) {
         this.postState('host/bootstrap');
+        this.maybePostVisibilityRestored(surface, {
+          force: true
+        });
       }
       return;
     }

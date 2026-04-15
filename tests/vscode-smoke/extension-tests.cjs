@@ -42,6 +42,7 @@ const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
 const HOST_BOUNDARY_FLUSH_TERMINAL_MARKER = 'HOST_BOUNDARY_TERMINAL_FLUSH';
+const EDITOR_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_EDITOR_TAB_SWITCH';
 const PANEL_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_PANEL_TAB_SWITCH';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
@@ -232,6 +233,7 @@ async function runTrustedSmoke() {
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
   await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);
   await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);
   await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);
@@ -1262,6 +1264,105 @@ async function verifyPanelTerminalTabSwitchPreservesViewport(terminalNodeId) {
   const restoredProbe = await waitForWebviewProbeOnSurface('panel', (currentProbe) => {
     const visibleLines = readProbeTerminalVisibleLines(currentProbe, terminalNodeId);
     return visibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-01`));
+  }, 10000);
+  const restoredVisibleLines = readProbeTerminalVisibleLines(restoredProbe, terminalNodeId);
+  assert.deepStrictEqual(restoredVisibleLines, baselineVisibleLines);
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const terminalNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+    return Boolean(terminalNode?.metadata?.terminal?.liveSession && terminalNode.status === 'live');
+  }, 5000);
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
+}
+
+async function verifyEditorTerminalTabSwitchPreservesViewport(terminalNodeId) {
+  await clearHostMessages();
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 92,
+        rows: 28
+      }
+    },
+    'editor'
+  );
+  let snapshot = await waitForTerminalLive(terminalNodeId);
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
+
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        data:
+          "printf '\\033[?1049h\\033[2J\\033[H'; " +
+          "i=1; while [ $i -le 18 ]; do printf '" +
+          `${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-%02d viewport restore verification\\r\\n` +
+          "' \"$i\"; i=$((i+1)); done\r"
+      }
+    },
+    'editor'
+  );
+
+  const baselineProbe = await waitForWebviewProbeOnSurface('editor', (currentProbe) => {
+    const visibleLines = readProbeTerminalVisibleLines(currentProbe, terminalNodeId);
+    return visibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-01`));
+  }, 10000);
+  const baselineVisibleLines = readProbeTerminalVisibleLines(baselineProbe, terminalNodeId);
+  assert.ok(baselineVisibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-01`)));
+  assert.ok(baselineVisibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-18`)));
+
+  await clearHostMessages();
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+  const packageJsonUri = vscode.Uri.joinPath(workspaceFolder.uri, 'package.json');
+  const packageJsonDocument = await vscode.workspace.openTextDocument(packageJsonUri);
+  await vscode.window.showTextDocument(packageJsonDocument, {
+    preview: false,
+    viewColumn: vscode.ViewColumn.One
+  });
+  assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), packageJsonUri.toString());
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.slice(diagnosticStartIndex).some(
+        (event) =>
+          event.kind === 'surface/visibilityChanged' &&
+          event.detail?.surface === 'editor' &&
+          event.detail?.visible === false
+      ),
+    10000
+  );
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.slice(diagnosticStartIndex).some(
+        (event) =>
+          event.kind === 'surface/visibilityChanged' &&
+          event.detail?.surface === 'editor' &&
+          event.detail?.visible === true
+      ),
+    10000
+  );
+
+  const hostMessages = await waitForHostMessages(
+    (messages) => messages.some((message) => message.type === 'host/visibilityRestored'),
+    5000
+  );
+  assert.ok(hostMessages.some((message) => message.type === 'host/visibilityRestored'));
+
+  const restoredProbe = await waitForWebviewProbeOnSurface('editor', (currentProbe) => {
+    const visibleLines = readProbeTerminalVisibleLines(currentProbe, terminalNodeId);
+    return visibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-01`));
   }, 10000);
   const restoredVisibleLines = readProbeTerminalVisibleLines(restoredProbe, terminalNodeId);
   assert.deepStrictEqual(restoredVisibleLines, baselineVisibleLines);
