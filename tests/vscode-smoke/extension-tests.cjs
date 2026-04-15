@@ -42,6 +42,7 @@ const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
 const HOST_BOUNDARY_FLUSH_TERMINAL_MARKER = 'HOST_BOUNDARY_TERMINAL_FLUSH';
+const PANEL_TAB_SWITCH_TERMINAL_MARKER = 'DEV_SESSION_CANVAS_PANEL_TAB_SWITCH';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
@@ -231,6 +232,7 @@ async function runTrustedSmoke() {
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);
   await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);
   await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);
   await verifyLiveSessionCutoverAndReload(terminalNode.id);
@@ -1180,6 +1182,97 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
 }
 
+async function verifyPanelTerminalTabSwitchPreservesViewport(terminalNodeId) {
+  await clearHostMessages();
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/startExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 92,
+        rows: 28
+      }
+    },
+    'panel'
+  );
+  let snapshot = await waitForTerminalLive(terminalNodeId);
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
+
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        data:
+          "printf '\\033[?1049h\\033[2J\\033[H'; " +
+          "i=1; while [ $i -le 18 ]; do printf '" +
+          `${PANEL_TAB_SWITCH_TERMINAL_MARKER}-%02d viewport restore verification\\r\\n` +
+          "' \"$i\"; i=$((i+1)); done\r"
+      }
+    },
+    'panel'
+  );
+
+  const baselineProbe = await waitForWebviewProbeOnSurface('panel', (currentProbe) => {
+    const visibleLines = readProbeTerminalVisibleLines(currentProbe, terminalNodeId);
+    return visibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-01`));
+  }, 10000);
+  const baselineVisibleLines = readProbeTerminalVisibleLines(baselineProbe, terminalNodeId);
+  assert.ok(baselineVisibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-01`)));
+  assert.ok(baselineVisibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-18`)));
+
+  await clearHostMessages();
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+  await vscode.commands.executeCommand('workbench.action.terminal.new');
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.slice(diagnosticStartIndex).some(
+        (event) =>
+          event.kind === 'surface/visibilityChanged' &&
+          event.detail?.surface === 'panel' &&
+          event.detail?.visible === false
+      ),
+    10000
+  );
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.slice(diagnosticStartIndex).some(
+        (event) =>
+          event.kind === 'surface/visibilityChanged' &&
+          event.detail?.surface === 'panel' &&
+          event.detail?.visible === true
+      ),
+    10000
+  );
+
+  const hostMessages = await waitForHostMessages(
+    (messages) => messages.some((message) => message.type === 'host/visibilityRestored'),
+    5000
+  );
+  assert.ok(hostMessages.some((message) => message.type === 'host/visibilityRestored'));
+
+  const restoredProbe = await waitForWebviewProbeOnSurface('panel', (currentProbe) => {
+    const visibleLines = readProbeTerminalVisibleLines(currentProbe, terminalNodeId);
+    return visibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-01`));
+  }, 10000);
+  const restoredVisibleLines = readProbeTerminalVisibleLines(restoredProbe, terminalNodeId);
+  assert.deepStrictEqual(restoredVisibleLines, baselineVisibleLines);
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const terminalNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+    return Boolean(terminalNode?.metadata?.terminal?.liveSession && terminalNode.status === 'live');
+  }, 5000);
+  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
+}
+
 async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   await clearHostMessages();
 
@@ -1567,22 +1660,22 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   assert.ok(findNodeById(snapshot, terminalNodeId).metadata.terminal.recentOutput.includes('TERMINAL_CONCURRENCY'));
 
   const hostMessages = await getHostMessages();
-  assert.ok(
-    hostMessages.some(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.nodeId === agentNodeId &&
-        message.payload.kind === 'agent'
-    )
+  const agentSnapshotMessage = hostMessages.find(
+    (message) =>
+      message.type === 'host/executionSnapshot' &&
+      message.payload.nodeId === agentNodeId &&
+      message.payload.kind === 'agent'
   );
-  assert.ok(
-    hostMessages.some(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.nodeId === terminalNodeId &&
-        message.payload.kind === 'terminal'
-    )
+  const terminalSnapshotMessage = hostMessages.find(
+    (message) =>
+      message.type === 'host/executionSnapshot' &&
+      message.payload.nodeId === terminalNodeId &&
+      message.payload.kind === 'terminal'
   );
+  assert.ok(agentSnapshotMessage);
+  assert.ok(terminalSnapshotMessage);
+  assert.strictEqual(agentSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
+  assert.strictEqual(terminalSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
 
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
@@ -2717,24 +2810,24 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminal
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
 
     const hostMessages = await getHostMessages();
-    assert.ok(
-      hostMessages.some(
-        (message) =>
-          message.type === 'host/executionSnapshot' &&
-          message.payload.kind === 'agent' &&
-          message.payload.nodeId === agentNodeId &&
-          message.payload.liveSession === false
-      )
+    const agentSnapshotMessage = hostMessages.find(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'agent' &&
+        message.payload.nodeId === agentNodeId &&
+        message.payload.liveSession === false
     );
-    assert.ok(
-      hostMessages.some(
-        (message) =>
-          message.type === 'host/executionSnapshot' &&
-          message.payload.kind === 'terminal' &&
-          message.payload.nodeId === terminalNodeId &&
-          message.payload.liveSession === false
-      )
+    const terminalSnapshotMessage = hostMessages.find(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'terminal' &&
+        message.payload.nodeId === terminalNodeId &&
+        message.payload.liveSession === false
     );
+    assert.ok(agentSnapshotMessage);
+    assert.ok(terminalSnapshotMessage);
+    assert.strictEqual(agentSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
+    assert.strictEqual(terminalSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
     assert.strictEqual(
       hostMessages.some(
         (message) =>
@@ -3279,6 +3372,11 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
       Math.abs(node.renderedWidth - targetSize.width) <= tolerance &&
       Math.abs(node.renderedHeight - targetSize.height) <= tolerance
   );
+}
+
+function readProbeTerminalVisibleLines(probe, nodeId) {
+  const node = probe.nodes.find((currentNode) => currentNode.nodeId === nodeId);
+  return Array.isArray(node?.terminalVisibleLines) ? node.terminalVisibleLines : [];
 }
 
 function sleep(timeoutMs) {

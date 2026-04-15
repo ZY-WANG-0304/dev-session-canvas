@@ -130,6 +130,7 @@ export interface WebviewProbeNodeSnapshot {
   terminalCols?: number;
   terminalRows?: number;
   terminalViewportY?: number;
+  terminalVisibleLines?: string[];
   terminalTextareaLeft?: number;
   terminalTextareaTop?: number;
   terminalTheme?: WebviewProbeTerminalThemeSnapshot;
@@ -720,6 +721,9 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
       (typeof value.terminalViewportY === 'number' &&
         Number.isInteger(value.terminalViewportY) &&
         value.terminalViewportY >= 0)) &&
+    (value.terminalVisibleLines === undefined ||
+      (Array.isArray(value.terminalVisibleLines) &&
+        value.terminalVisibleLines.every((line) => typeof line === 'string'))) &&
     (value.terminalTextareaLeft === undefined ||
       (typeof value.terminalTextareaLeft === 'number' && Number.isFinite(value.terminalTextareaLeft))) &&
     (value.terminalTextareaTop === undefined ||

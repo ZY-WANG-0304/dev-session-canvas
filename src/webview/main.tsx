@@ -2583,6 +2583,7 @@ function readProbeExecutionTerminalState(
   | 'terminalCols'
   | 'terminalRows'
   | 'terminalViewportY'
+  | 'terminalVisibleLines'
   | 'terminalTextareaLeft'
   | 'terminalTextareaTop'
   | 'terminalTheme'
@@ -2598,10 +2599,26 @@ function readProbeExecutionTerminalState(
     terminalRows: terminal.terminal.rows > 0 ? terminal.terminal.rows : undefined,
     terminalViewportY:
       terminal.terminal.buffer.active.viewportY >= 0 ? terminal.terminal.buffer.active.viewportY : undefined,
+    terminalVisibleLines: readProbeTerminalVisibleLines(terminal.terminal),
     terminalTextareaLeft: readProbeNumericStyleValue(terminal.terminal.textarea?.style.left),
     terminalTextareaTop: readProbeNumericStyleValue(terminal.terminal.textarea?.style.top),
     terminalTheme: readProbeTerminalTheme(terminal.terminal.options.theme)
   };
+}
+
+function readProbeTerminalVisibleLines(terminal: Terminal): string[] | undefined {
+  if (terminal.rows <= 0) {
+    return undefined;
+  }
+
+  const startLine = Math.max(0, terminal.buffer.active.viewportY);
+  const visibleLines: string[] = [];
+  for (let offset = 0; offset < terminal.rows; offset += 1) {
+    const line = terminal.buffer.active.getLine(startLine + offset);
+    visibleLines.push(line ? line.translateToString(true) : '');
+  }
+
+  return visibleLines;
 }
 
 function readProbeTerminalTheme(
