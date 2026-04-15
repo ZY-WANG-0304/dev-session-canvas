@@ -41,6 +41,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   cwd: string;
   cols: number;
   rows: number;
+  scrollback: number;
   output: string;
   serializedTerminalState?: SerializedTerminalState;
   displayLabel: string;
@@ -59,6 +60,7 @@ export interface RuntimeSupervisorCreateSessionParams {
   sessionId?: string;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
+  scrollback: number;
   provider?: AgentProviderKind;
   resumeStrategy?: AgentResumeStrategy;
   resumeSessionId?: string;

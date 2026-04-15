@@ -100,14 +100,27 @@ updated_at: 2026-04-15
 - 当前实现路线选择 `xterm.js + node-pty`：
   - Webview 使用 `xterm.js` 渲染终端前端；
   - 宿主用统一 PTY bridge 启动真实 shell，并通过消息桥传递输入输出。
-  - Linux / macOS 作为当前主支持平台；Windows 代码路径已接通，但仍待人工验证。
+- Linux / macOS 作为当前主支持平台；Windows 代码路径已接通，但仍待人工验证。
+
+为避免把不同生命周期混成一句“恢复”，这里额外固定三层术语：
+
+- `保活隐藏`
+  - Webview 只是因为标签切换而暂时 hidden，但原实例仍被 `retainContextWhenHidden` 保活。
+  - 这一路径不应丢失 live xterm、输入焦点与滚动历史；恢复动作只允许做 non-destructive redraw，不应借机重算并改写当前 viewport 行数。
+- `同宿主重建`
+  - Webview 真的被 dispose 后又 recreate，但 extension host / runtime supervisor 仍活着。
+  - 这一路径必须从宿主权威 terminal state 恢复，而不是退回 raw output tail replay。
+- `跨宿主恢复`
+  - VS Code reload、extension host 重启，或需要重新从 supervisor / 持久化快照恢复状态的场景。
+  - 这一路径仍以宿主记录的 terminal state 为恢复源，只是数据来源可能从内存换成落盘快照或 live-runtime supervisor。
 
 同时必须明确记录两个边界：
 
 - Panel `WebviewView` 与 Editor `WebviewPanel` 两条主承载面路径现在都显式启用 `retainContextWhenHidden`，把同一宿主标签切换下的 Webview 保活视为体验优化，而不是唯一正确性前提。
 - 活跃会话的宿主权威恢复源不再只是最近一段 raw output tail，而是摘要、最近输出、尺寸与可序列化 terminal state 的组合；其中 `recentOutput` 只保留给摘要与兼容 fallback，不再承担画面恢复职责。
+- live xterm、宿主 `SerializedTerminalStateTracker` 与落盘快照现在统一对齐 `terminal.integrated.scrollback`，不再分别硬编码 `4000` / `80`。当前不使用 `terminal.integrated.persistentSessionScrollback` 去主动缩小画布侧 snapshot，因为这会直接损失用户切回画布后可继续上滚的 live 历史。
 - Webview 隐藏再显示时，现存 xterm 会显式执行 non-destructive redraw，不再在这条保活路径上主动 `fit()` 改写行数；如果 Webview 被销毁并重建，则应按宿主 snapshot 中的 serialized terminal state hydrate，再继续接 live output。
-- 当前恢复语义面向“运行时当前屏幕”，不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
+- 当前恢复语义面向“尽量保住与 live xterm 对齐的 scrollback 历史”；仍不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
 - 运行中 resize 现在通过 PTY 后端原生能力处理，不再通过 stdin 注入 `stty`。
 
 ## 7. 风险与取舍
@@ -120,6 +133,9 @@ updated_at: 2026-04-15
 
 - 风险：serialized terminal snapshot 一旦在 hydrate 后立刻被更小尺寸的 `fit()` 改写，xterm alternate buffer 会直接裁掉顶部行；同样，保活后的 visibility restore 如果无条件 `fit()`，也会把 retain 下的现存 viewport 改写成更少行数。
   当前缓解：snapshot hydrate 现在优先保持宿主记录的终端尺寸与当前屏幕画面；保活后的 visibility restore 只做 non-destructive redraw，不再主动 `fit()`；更强的“尺寸漂移下无损重绘”已登记技术债。
+
+- 风险：如果用户把 `terminal.integrated.scrollback` 设得非常大，serialized terminal state 的内存与落盘体积会同步上升。
+  当前缓解：主快照文件继续保留完整 terminal state，以优先满足恢复正确性；`workspaceState` 只保留去掉 serialized terminal state 的轻量兜底，避免把所有存储都膨胀到同一量级。
 
 - 风险：`node-pty` 路线会引入原生模块与扩展打包约束。
   当前缓解：构建脚本已把 `node-pty` 设为 external，并依赖其预编译产物；当前先以 `build` / `typecheck` / Linux smoke test 证明基本可行。
@@ -135,7 +151,7 @@ updated_at: 2026-04-15
 2. `npm run build` 和 `npm run typecheck` 通过。
 3. 在 Linux / macOS 的 `Extension Development Host` 中，新建 `Terminal` 节点后可直接在节点内输入并看到实时输出。
 4. 不论主画布当前承载在 Panel 还是 Editor，同一宿主区域内切到其他标签再切回后，画布中的终端节点仍保持原 live 会话，且现存 xterm 会完成 non-destructive redraw，不会把当前 viewport 行数改写掉。
-5. 如果 Webview 被销毁并重建，执行节点仍能基于宿主 serialized terminal state 恢复当前可见屏幕，而不是只重放尾部日志。
+5. 如果 Webview 被销毁并重建，执行节点仍能基于宿主 serialized terminal state 恢复当前可见屏幕，并保住与 `terminal.integrated.scrollback` 对齐的 scrollback 历史，而不是只重放尾部日志。
 6. 活跃会话期间调整节点尺寸后，终端行列同步生效。
 7. 未信任 workspace 时，终端创建与输入路径被正确禁用。
 

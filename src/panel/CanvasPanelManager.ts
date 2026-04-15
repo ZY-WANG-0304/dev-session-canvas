@@ -55,6 +55,7 @@ import {
   cloneSerializedTerminalState,
   normalizeSerializedTerminalState
 } from '../common/serializedTerminalState';
+import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   createExecutionSessionProcess,
   type DisposableLike,
@@ -346,7 +347,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (!event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider)) {
+        if (
+          !event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider) &&
+          !event.affectsConfiguration('terminal.integrated.scrollback')
+        ) {
           return;
         }
 
@@ -1021,7 +1025,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const tempSnapshotPath = `${snapshotPath}.tmp`;
       await fs.promises.writeFile(tempSnapshotPath, serializedSnapshot, 'utf8');
       await fs.promises.rename(tempSnapshotPath, snapshotPath);
-      await this.context.workspaceState.update(STORAGE_KEYS.canvasState, snapshot.state);
+      const normalizedWorkspaceState = normalizeState(
+        snapshot.state,
+        this.getAgentCliConfig().defaultProvider
+      );
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasState,
+        stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
+      );
       await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshot.activeSurface);
       this.lastPersistedCanvasSnapshotError = undefined;
       this.lastPersistedCanvasSnapshotWrittenAt = new Date().toISOString();
@@ -1093,8 +1104,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
-      defaultAgentProvider: this.getAgentCliConfig().defaultProvider
+      defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
+      terminalScrollback: this.getTerminalScrollback()
     };
+  }
+
+  private getTerminalScrollback(): number {
+    return normalizeTerminalScrollback(
+      vscode.workspace.getConfiguration('terminal.integrated').get<number>('scrollback'),
+      DEFAULT_TERMINAL_SCROLLBACK
+    );
   }
 
   private isRuntimePersistenceEnabled(): boolean {
@@ -1695,12 +1714,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       cols: snapshot.cols,
       rows: snapshot.rows,
       buffer: snapshot.output,
-      terminalStateTracker: new SerializedTerminalStateTracker(
-        snapshot.cols,
-        snapshot.rows,
-        snapshot.serializedTerminalState,
-        snapshot.output
-      ),
+      terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
+        scrollback: snapshot.scrollback,
+        initialState: snapshot.serializedTerminalState,
+        initialOutput: snapshot.output
+      }),
       stopRequested: false,
       syncTimer: undefined,
       syncDueAtMs: undefined,
@@ -2694,6 +2712,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind: 'agent',
       displayLabel: cliSpec.label,
       launchMode,
+      scrollback: this.getTerminalScrollback(),
       provider,
       resumeStrategy: resumeContext.strategy,
       resumeSessionId: resumeContext.sessionId,
@@ -2785,6 +2804,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind: 'terminal',
       displayLabel: shellPath,
       launchMode: 'start',
+      scrollback: this.getTerminalScrollback(),
       launchSpec: serializeExecutionSessionLaunchSpec(
         this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows)
       )
@@ -2969,7 +2989,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         cols: normalizedCols,
         rows: normalizedRows,
         buffer: '',
-        terminalStateTracker: new SerializedTerminalStateTracker(normalizedCols, normalizedRows),
+        terminalStateTracker: new SerializedTerminalStateTracker(normalizedCols, normalizedRows, {
+          scrollback: this.getTerminalScrollback()
+        }),
         stopRequested: false,
         syncTimer: undefined,
         syncDueAtMs: undefined,
@@ -3610,7 +3632,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         cols: normalizedCols,
         rows: normalizedRows,
         buffer: '',
-        terminalStateTracker: new SerializedTerminalStateTracker(normalizedCols, normalizedRows),
+        terminalStateTracker: new SerializedTerminalStateTracker(normalizedCols, normalizedRows, {
+          scrollback: this.getTerminalScrollback()
+        }),
         stopRequested: false,
         syncTimer: undefined,
         syncDueAtMs: undefined,

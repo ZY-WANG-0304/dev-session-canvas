@@ -1221,6 +1221,148 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore keeps configured scrollback history after rebuild`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const configuredScrollback = 240;
+    const output = createScrollableTerminalOutput(220);
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      output,
+      96,
+      28,
+      configuredScrollback
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    const bottomProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY > 120 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-219'))
+    );
+
+    expect(bottomProbe.terminalVisibleLines.some((line) => line.includes('ROW-219'))).toBe(true);
+
+    await performTestDomAction(page, {
+      kind: 'scrollTerminalViewport',
+      nodeId,
+      lines: -400
+    });
+    const restoredTopProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        probeNode?.terminalViewportY === 0 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-000'))
+    );
+
+    expect(restoredTopProbe.terminalVisibleLines.some((line) => line.includes('ROW-000'))).toBe(true);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore still responds to wheel scrolling after rebuild`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const configuredScrollback = 240;
+    const output = createScrollableTerminalOutput(220);
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      output,
+      96,
+      28,
+      configuredScrollback
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind), createRuntimeContext({
+      terminalScrollback: configuredScrollback
+    }));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState
+    });
+    await settleWebview(page, 4);
+
+    const bottomProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY > 120 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-219'))
+    );
+    const bottomViewportY = bottomProbe.terminalViewportY;
+
+    const wheelProbe = await scrollTerminalViewport(
+      page,
+      nodeId,
+      -1600,
+      (probeNode) =>
+        typeof probeNode?.terminalViewportY === 'number' &&
+        probeNode.terminalViewportY <= bottomViewportY - 12 &&
+        probeNode.terminalVisibleLines?.some((line) => line.includes('ROW-180')),
+      10
+    );
+
+    expect(wheelProbe.terminalViewportY).toBeLessThan(bottomViewportY);
+    expect(wheelProbe.terminalVisibleLines.some((line) => line.includes('ROW-180'))).toBe(true);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} drag scroll waits for the visual edge under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const output = createScrollableTerminalOutput(80);
@@ -1446,6 +1588,7 @@ function createRuntimeContext(overrides = {}) {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
+    terminalScrollback: 1000,
     ...overrides
   };
 }
@@ -1553,14 +1696,14 @@ async function waitForExecutionTerminalReady(page, nodeId) {
   return readyNode;
 }
 
-async function scrollTerminalViewport(page, nodeId, deltaY, predicate) {
+async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttempts = 4) {
   const screen = nodeById(page, nodeId).locator('.xterm-screen');
   await expect(screen).toBeVisible();
   const box = await screen.boundingBox();
 
   expect(box).not.toBeNull();
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(0, deltaY);
     await settleWebview(page, 2);
@@ -1605,12 +1748,12 @@ async function dispatchExecutionSnapshot(
   );
 }
 
-async function createSerializedTerminalStateFromOutput(output, cols = 96, rows = 28) {
+async function createSerializedTerminalStateFromOutput(output, cols = 96, rows = 28, scrollback = 1000) {
   const terminal = new HeadlessTerminal({
     allowProposedApi: true,
     cols,
     rows,
-    scrollback: 80
+    scrollback
   });
   const serializeAddon = new SerializeAddon();
   terminal.loadAddon(serializeAddon);
@@ -1622,7 +1765,7 @@ async function createSerializedTerminalStateFromOutput(output, cols = 96, rows =
   const serializedTerminalState = {
     format: 'xterm-serialize-v1',
     data: serializeAddon.serialize({
-      scrollback: 80,
+      scrollback,
       excludeAltBuffer: false,
       excludeModes: false
     }),

@@ -39,6 +39,7 @@ import type {
   WebviewToHostMessage
 } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
+import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -299,7 +300,8 @@ const EMBEDDED_TERMINAL_DEFAULTS: Record<
 let latestRuntimeContext: CanvasRuntimeContext = {
   workspaceTrusted: false,
   surfaceLocation: 'editor',
-  defaultAgentProvider: 'codex'
+  defaultAgentProvider: 'codex',
+  terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -315,7 +317,8 @@ function App(): JSX.Element {
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
     workspaceTrusted: false,
     surfaceLocation: latestRuntimeContext.surfaceLocation,
-    defaultAgentProvider: latestRuntimeContext.defaultAgentProvider
+    defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
+    terminalScrollback: latestRuntimeContext.terminalScrollback
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -338,6 +341,7 @@ function App(): JSX.Element {
           latestRuntimeContext = message.payload.runtime;
           setHostState(message.payload.state);
           setRuntimeContext(message.payload.runtime);
+          applyEmbeddedTerminalRuntimeContext(message.payload.runtime);
           scheduleEmbeddedTerminalAppearanceRefresh();
           break;
         case 'host/themeChanged':
@@ -2680,6 +2684,16 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         button.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         break;
       }
+      case 'scrollTerminalViewport': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        entry.terminal.scrollLines(action.lines);
+        await waitForDomActionFlush();
+        break;
+      }
     }
 
     await waitForDomActionFlush();
@@ -2829,9 +2843,20 @@ function createEmbeddedTerminalOptions(): EmbeddedTerminalOptions {
     convertEol: false,
     fontFamily: appearance.fontFamily,
     fontSize: 12.5,
-    scrollback: 4000,
+    scrollback: resolveEmbeddedTerminalScrollback(),
     theme: appearance.theme
   };
+}
+
+function resolveEmbeddedTerminalScrollback(runtimeContext: CanvasRuntimeContext = latestRuntimeContext): number {
+  return normalizeTerminalScrollback(runtimeContext.terminalScrollback, DEFAULT_TERMINAL_SCROLLBACK);
+}
+
+function applyEmbeddedTerminalRuntimeContext(runtimeContext: CanvasRuntimeContext = latestRuntimeContext): void {
+  const scrollback = resolveEmbeddedTerminalScrollback(runtimeContext);
+  for (const { terminal } of executionTerminalRegistry.values()) {
+    terminal.options.scrollback = scrollback;
+  }
 }
 
 function readEmbeddedTerminalAppearance(): {

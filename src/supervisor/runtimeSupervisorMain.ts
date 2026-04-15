@@ -23,6 +23,7 @@ import {
 } from '../common/protocol';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import { SerializedTerminalStateTracker } from '../common/serializedTerminalState';
+import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   deserializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorAttachSessionParams,
@@ -67,6 +68,7 @@ interface SupervisorSession {
   cwd: string;
   cols: number;
   rows: number;
+  scrollback: number;
   output: string;
   terminalStateTracker: SerializedTerminalStateTracker;
   displayLabel: string;
@@ -246,6 +248,7 @@ class RuntimeSupervisorServer {
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
     const startedAtMs = Date.now();
     const process = createExecutionSessionProcess(launchSpec);
+    const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
     const session: SupervisorSession = {
       sessionId,
       kind: params.kind,
@@ -259,8 +262,11 @@ class RuntimeSupervisorServer {
       cwd: params.launchSpec.cwd,
       cols: params.launchSpec.cols,
       rows: params.launchSpec.rows,
+      scrollback,
       output: '',
-      terminalStateTracker: new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows),
+      terminalStateTracker: new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
+        scrollback
+      }),
       displayLabel: params.displayLabel,
       launchMode: params.launchMode,
       provider: params.provider,
@@ -574,6 +580,7 @@ class RuntimeSupervisorServer {
       cwd: session.cwd,
       cols: session.cols,
       rows: session.rows,
+      scrollback: session.scrollback,
       output: session.output,
       serializedTerminalState: session.terminalStateTracker.getSerializedState(),
       displayLabel: session.displayLabel,
@@ -717,6 +724,7 @@ class RuntimeSupervisorServer {
     const lastExitMessage =
       snapshot.lastExitMessage ||
       '会话监督器未保留原 live runtime，已仅恢复历史结果。';
+    const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
 
     return {
       ...snapshot,
@@ -734,12 +742,12 @@ class RuntimeSupervisorServer {
       lastExitMessage,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
-      terminalStateTracker: new SerializedTerminalStateTracker(
-        snapshot.cols,
-        snapshot.rows,
-        snapshot.serializedTerminalState,
-        snapshot.output
-      ),
+      scrollback,
+      terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
+        scrollback,
+        initialState: snapshot.serializedTerminalState,
+        initialOutput: snapshot.output
+      }),
       process: undefined,
       outputSubscription: undefined,
       exitSubscription: undefined,
