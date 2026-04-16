@@ -4,10 +4,10 @@
 
 ## 当前发布素材
 
-- Marketplace listing 正文：`README.marketplace.md`
+- Marketplace listing 正文：`README.marketplace.md`（引用 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
 - Marketplace listing 英文对应版：`README.marketplace.en.md`（仅作仓库内英文对应文案，不作为默认打包输入）
-- 仓库 README 默认中文：`README.md`
-- 仓库 README 英文对应版：`README.en.md`
+- 仓库 README 默认中文：`README.md`（引用 `images/marketplace/canvas-overview.gif`）
+- 仓库 README 英文对应版：`README.en.md`（引用 `images/marketplace/canvas-overview.gif`）
 - release notes：`CHANGELOG.md`
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
@@ -18,6 +18,7 @@
 当前 listing 统一使用中文默认版 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。新增的 `README.marketplace.en.md` 仅作为仓库内英文对应版本保留，不改变默认 Marketplace 打包入口。
 
 当前 `npm run package:vsix` 会在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。
+打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
 这样做的原因是：
 
@@ -86,22 +87,27 @@
 
        npm run validate:clean-checkout:vsix -- --ref <final-ref>
 
-3. 在当前仓库根目录执行：
+3. 在带 `.git` 元数据的最终 release checkout 中执行：
 
        npm run package:vsix
 
-4. 复核以下文件与当前版本事实一致：
+   若当前打包目录不含 `.git` 元数据，则改为：
+
+       DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> npm run package:vsix
+
+4. 确认打包日志已经打印当前 README 改写 ref，且没有出现相对媒体 URL 校验失败。
+5. 复核以下文件与当前版本事实一致：
    - `README.marketplace.md`
    - `CHANGELOG.md`
    - `docs/support.md`
    - `docs/SECURITY.md`
-5. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
+6. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
 
 ## 发布命令
 
 在版本号、最终 git ref 与 VSIX 产物都已锁定后，使用本地 `@vscode/vsce` 执行：
 
-注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`。
+注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
     node node_modules/@vscode/vsce/vsce publish \
       --packagePath dev-session-canvas-0.1.1.vsix
