@@ -52,6 +52,8 @@ const TERMINAL_FLOOD_AGENT_MARKER = '[fake-agent] terminal flood parallel';
 const TERMINAL_FLOOD_NEW_AGENT_MARKER = '[fake-agent] terminal flood created agent';
 const TERMINAL_FLOOD_AFTER_CTRL_C_MARKER = 'DEV_SESSION_CANVAS_AFTER_CTRL_C';
 const TERMINAL_FLOOD_SECONDARY_AFTER_CTRL_C_MARKER = 'DEV_SESSION_CANVAS_SECONDARY_AFTER_CTRL_C';
+const RESTRICTED_AGENT_SERIALIZED_MARKER = 'DEV_SESSION_CANVAS_RESTRICTED_AGENT_HISTORY';
+const RESTRICTED_TERMINAL_SERIALIZED_MARKER = 'DEV_SESSION_CANVAS_RESTRICTED_TERMINAL_HISTORY';
 const RESIZED_NODE_SIZES = {
   agent: { width: 640, height: 500 },
   terminal: { width: 620, height: 460 },
@@ -3445,6 +3447,9 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminal
               attachmentState: 'reattaching',
               liveSession: false,
               runtimeSessionId: 'restricted-agent-live-session',
+              serializedTerminalState: createSerializedTerminalStateFixture(
+                RESTRICTED_AGENT_SERIALIZED_MARKER
+              ),
               pendingLaunch: undefined
             }
           }
@@ -3462,6 +3467,9 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminal
               attachmentState: 'reattaching',
               liveSession: false,
               runtimeSessionId: 'restricted-terminal-live-session',
+              serializedTerminalState: createSerializedTerminalStateFixture(
+                RESTRICTED_TERMINAL_SERIALIZED_MARKER
+              ),
               pendingLaunch: undefined
             }
           }
@@ -3514,6 +3522,16 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminal
     assert.ok(terminalSnapshotMessage);
     assert.strictEqual(agentSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
     assert.strictEqual(terminalSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
+    assert.ok(
+      agentSnapshotMessage.payload.serializedTerminalState?.data?.includes(
+        RESTRICTED_AGENT_SERIALIZED_MARKER
+      )
+    );
+    assert.ok(
+      terminalSnapshotMessage.payload.serializedTerminalState?.data?.includes(
+        RESTRICTED_TERMINAL_SERIALIZED_MARKER
+      )
+    );
     assert.strictEqual(
       hostMessages.some(
         (message) =>
@@ -3898,6 +3916,13 @@ async function requestExecutionSnapshot(kind, nodeId, surface) {
     },
     surface
   );
+}
+
+function createSerializedTerminalStateFixture(marker) {
+  return {
+    format: 'xterm-serialize-v1',
+    data: `${marker}\r\n${marker} restored snapshot\r\n`
+  };
 }
 
 async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
