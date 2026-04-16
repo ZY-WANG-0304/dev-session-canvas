@@ -6,4 +6,3 @@ dist/
 .playwright-browsers/
 playwright-report/
 test-results/
-images/marketplace/*.mp4
