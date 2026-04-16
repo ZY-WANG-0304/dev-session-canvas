@@ -2,7 +2,20 @@
 
 <!-- dev-session-canvas-marketplace-readme -->
 
-在 VS Code 中用一张画布同时管理多个开发会话。`Agent`、`Terminal` 与 `Note` 节点并排可见，适合需要并行推进多条执行任务的开发者。当前为公开 `Preview` 版本。
+简体中文（默认） | [English](README.marketplace.en.md)
+
+Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，画布是这个工作台的主要交互载体。你可以把 `Agent`、`Terminal` 与 `Note` 节点放在同一视图中，同时管理多个开发执行会话，而不必在聊天面板、终端标签和编辑器之间来回切换。当前为公开 `Preview` 版本。
+
+![Dev Session Canvas 主画布概览](images/marketplace/canvas-overview.png)
+
+![Dev Session Canvas 动态演示](images/marketplace/canvas-overview.gif)
+
+## 产品定位
+
+- 它首先是 VS Code 内的 `AI workbench with canvas`，而不是一个只有 AI 点缀的可视化工具
+- `Visualization` 对应的是交互载体：用画布承载多个执行对象与它们的全局关系
+- `AI` 对应的是主要使用场景：面向多 Agent 协作开发，而不是单轮 chat-first 体验
+- `Other` 对应的是工作台属性：强调它与 VS Code 原生编辑器、终端和插件生态协同工作
 
 ## 核心功能
 
@@ -18,6 +31,7 @@
 - 受信任工作区，标准文件系统
 - 已安装 `codex` 或 `claude` CLI
 - 需要同时观察多个开发会话，而不想在终端标签间频繁切换
+- 需要一个 canvas 形态的 AI 工作台，而不是单一聊天面板
 
 ## 支持范围与限制
 

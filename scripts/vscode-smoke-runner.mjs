@@ -161,12 +161,15 @@ export async function ensureVSCodeExecutable(projectRoot) {
     return existingPath;
   }
 
-  const downloadResult = await downloadAndUnzipVSCode({ version: 'stable' });
+  const downloadResult = await downloadAndUnzipVSCode({
+    version: 'stable',
+    cachePath: resolveVSCodeTestCachePath(projectRoot)
+  });
   return normalizeVSCodeExecutablePath(downloadResult);
 }
 
 export async function findExistingVSCodeExecutablePath(projectRoot) {
-  const vscodeTestRoot = path.join(projectRoot, '.vscode-test');
+  const vscodeTestRoot = resolveVSCodeTestCachePath(projectRoot);
   const entries = await fs.readdir(vscodeTestRoot, { withFileTypes: true }).catch(() => []);
   const candidateDirs = entries
     .filter((entry) => entry.isDirectory() && entry.name.startsWith('vscode-'))
@@ -184,7 +187,7 @@ export async function findExistingVSCodeExecutablePath(projectRoot) {
   return undefined;
 }
 
-function buildVSCodeArgs(options) {
+export function buildVSCodeArgs(options) {
   const args = [];
   if (options.remoteAuthority) {
     args.push('--remote', options.remoteAuthority);
@@ -229,6 +232,15 @@ function buildVSCodeArgs(options) {
     args.push(`--extensionDevelopmentPath=${extensionDevelopmentPath}`);
   }
   return args;
+}
+
+function resolveVSCodeTestCachePath(projectRoot) {
+  const override = process.env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH?.trim();
+  if (override) {
+    return override;
+  }
+
+  return path.join(projectRoot, '.vscode-test');
 }
 
 function resolveVSCodeExecutablePath(installDir) {

@@ -1,5 +1,7 @@
 # DevSessionCanvas
 
+简体中文（默认） | [English](README.en.md)
+
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
 产品已进入公开 `Preview` 阶段，仓库内的发布资产与对外口径已基本收口；当前待执行的是 release-day 发布与发布后复核。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。

@@ -49,6 +49,7 @@ img_v3_*.jpg
 .gitignore
 AGENTS.md
 ARCHITECTURE.md
+images/marketplace/**
 images/dev-session-canvas-activitybar-v1.svg
 images/dev-session-canvas-icon-v1.svg
 images/dev-session-canvas-icon-v3.svg
