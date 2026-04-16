@@ -141,7 +141,9 @@ async function runSetupPhase() {
         agentNodeId: agentNode.id,
         terminalNodeId: terminalNode.id,
         agentSessionId: liveAgentNode.metadata.agent.runtimeSessionId,
-        terminalSessionId: liveTerminalNode.metadata.terminal.runtimeSessionId
+        terminalSessionId: liveTerminalNode.metadata.terminal.runtimeSessionId,
+        agentRuntimeStoragePath: liveAgentNode.metadata.agent.runtimeStoragePath,
+        terminalRuntimeStoragePath: liveTerminalNode.metadata.terminal.runtimeStoragePath
       },
       null,
       2
@@ -175,13 +177,15 @@ async function runVerifyPhase() {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === expected.agentNodeId);
     const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === expected.terminalNodeId);
     return Boolean(
-      currentAgent?.metadata?.agent?.liveSession &&
+        currentAgent?.metadata?.agent?.liveSession &&
         currentAgent.metadata.agent.attachmentState === 'attached-live' &&
         currentAgent.metadata.agent.runtimeSessionId === expected.agentSessionId &&
+        currentAgent.metadata.agent.runtimeStoragePath === expected.agentRuntimeStoragePath &&
         currentAgent.metadata.agent.recentOutput?.includes(AGENT_REOPEN_OUTPUT) &&
         currentTerminal?.metadata?.terminal?.liveSession &&
         currentTerminal.metadata.terminal.attachmentState === 'attached-live' &&
         currentTerminal.metadata.terminal.runtimeSessionId === expected.terminalSessionId &&
+        currentTerminal.metadata.terminal.runtimeStoragePath === expected.terminalRuntimeStoragePath &&
         currentTerminal.metadata.terminal.recentOutput?.includes(TERMINAL_REOPEN_OUTPUT)
     );
   }, 35000);
@@ -193,22 +197,29 @@ async function runVerifyPhase() {
     {
       sessionId: expected.agentSessionId,
       nodeId: expected.agentNodeId,
-      kind: 'agent'
+      kind: 'agent',
+      runtimeStoragePath: expected.agentRuntimeStoragePath
     },
     {
       sessionId: expected.terminalSessionId,
       nodeId: expected.terminalNodeId,
-      kind: 'terminal'
+      kind: 'terminal',
+      runtimeStoragePath: expected.terminalRuntimeStoragePath
     }
   ]);
 
   assert.strictEqual(agentNode.metadata.agent.runtimeSessionId, expected.agentSessionId);
+  assert.strictEqual(agentNode.metadata.agent.runtimeStoragePath, expected.agentRuntimeStoragePath);
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.strictEqual(agentNode.metadata.agent.attachmentState, 'attached-live');
   assert.ok(agentNode.metadata.agent.recentOutput.includes(AGENT_REOPEN_OUTPUT));
   assertExecutionRuntimeMetadata(agentNode, 'agent');
 
   assert.strictEqual(terminalNode.metadata.terminal.runtimeSessionId, expected.terminalSessionId);
+  assert.strictEqual(
+    terminalNode.metadata.terminal.runtimeStoragePath,
+    expected.terminalRuntimeStoragePath
+  );
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(TERMINAL_REOPEN_OUTPUT));
@@ -421,6 +432,7 @@ function assertExecutionRuntimeMetadata(node, kind) {
     expectedRuntimeGuarantee,
     `${kind} runtime guarantee mismatch`
   );
+  assert.ok(metadata.runtimeStoragePath, `${kind} runtime storage path mismatch`);
 }
 
 function getExpectedRuntimeRegistrySessions(runtimeSupervisorState) {
@@ -432,8 +444,26 @@ function getExpectedRuntimeRegistrySessions(runtimeSupervisorState) {
     `Unexpected runtime supervisor registry error for backend ${expectedRuntimeBackend}: ${registryState.error}`
   );
 
-  const sessions = registryState.registry?.sessions;
-  return Array.isArray(sessions) ? sessions : [];
+  const dedupedSessions = new Map();
+  const registryEntries =
+    Array.isArray(registryState.entries) && registryState.entries.length > 0
+      ? registryState.entries
+      : [registryState];
+
+  for (const entry of registryEntries) {
+    const sessions = entry?.registry?.sessions;
+    if (!Array.isArray(sessions)) {
+      continue;
+    }
+
+    for (const session of sessions) {
+      if (session?.sessionId) {
+        dedupedSessions.set(session.sessionId, session);
+      }
+    }
+  }
+
+  return Array.from(dedupedSessions.values());
 }
 
 function assertRuntimeSupervisorSessions(runtimeSupervisorState, expectedSessions) {
@@ -460,6 +490,9 @@ function assertRuntimeSupervisorSessions(runtimeSupervisorState, expectedSession
     assert.ok(binding, `Missing runtime supervisor binding for session ${expectedSession.sessionId}.`);
     assert.strictEqual(binding.nodeId, expectedSession.nodeId);
     assert.strictEqual(binding.kind, expectedSession.kind);
+    if (expectedSession.runtimeStoragePath) {
+      assert.strictEqual(binding.runtimeStoragePath, expectedSession.runtimeStoragePath);
+    }
   }
 }
 

@@ -51,6 +51,7 @@ export interface ExecutionSessionMetadata {
   attachmentState: RuntimeAttachmentState;
   runtimeBackend?: RuntimeHostBackendKind;
   runtimeGuarantee?: RuntimePersistenceGuarantee;
+  runtimeStoragePath?: string;
   liveSession: boolean;
   runtimeSessionId?: string;
   lastRuntimeError?: string;
