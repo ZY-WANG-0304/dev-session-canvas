@@ -29,7 +29,12 @@
 
 1. 当进行 Code Review 工作时，按 `docs/workflows/CODE_REVIEW.md` 进行 Code Review，并把 findings、结论和 follow-up 以 MR 评论形式发布出来。
 2. MR 更新后，必须基于最新的 MR head 进行复审；如果仍有 blocker，则继续通过评论指出。
-3. 如果 Code Review 未发现新的确定性 blocker，则按 `docs/workflows/MR_MERGE.md` 执行合并。
+3. 只有在 review 未发现新的确定性 blocker，且其他已知非阻塞问题已经从评论区沉淀到仓库文档、能被后续协作者直接追溯后，按 `docs/workflows/MR_MERGE.md` 执行合并或给出可合并结论。
+
+补充判断原则：
+
+- “可合并”不等于“除了 blocker 之外什么都不用管”。
+- 默认标准是：主路径没有新的确定性 blocker，且剩余已知问题已经 repo-local，而不是只留在评审评论里。
 
 ## 工作流文档
 
