@@ -13,6 +13,7 @@ async function main() {
     return;
   }
 
+  const vsceDocRef = resolveGitRevision(projectRoot, options.sourceMode === 'git-ref' ? options.gitRef : 'HEAD');
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-clean-checkout-'));
   const checkoutDir = path.join(tempRoot, 'repo');
   const npmCacheDir = path.join(tempRoot, 'npm-cache');
@@ -26,6 +27,7 @@ async function main() {
       ? '源内容: 当前 working tree 快照（已排除 .git、node_modules、.debug 等本地噪音）'
       : `源内容: git ref ${options.gitRef}`
   );
+  console.log(`README 改写使用的 git ref: ${vsceDocRef}`);
 
   try {
     if (options.sourceMode === 'working-tree') {
@@ -45,7 +47,9 @@ async function main() {
       NPM_CONFIG_CACHE: npmCacheDir,
       npm_config_cache: npmCacheDir,
       NPM_CONFIG_USERCONFIG: npmUserConfigPath,
-      npm_config_userconfig: npmUserConfigPath
+      npm_config_userconfig: npmUserConfigPath,
+      DEV_SESSION_CANVAS_VSCE_DOC_BRANCH: vsceDocRef,
+      DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT: projectRoot
     };
 
     runCommand(
@@ -152,9 +156,26 @@ function printHelp() {
 说明:
   - 默认从当前仓库的 git ref HEAD 导出 clean checkout。
   - 如需基于当前 working tree 的隔离快照准备验证，可传 --source working-tree。
-  - 默认会执行 npm ci、npm run package:vsix 和 npm run test:vsix-smoke。
+  - 默认会把 README 改写 ref 固定到最终 git ref，并执行 npm ci、npm run package:vsix 和 npm run test:vsix-smoke。
   - 传 --skip-vsix-smoke 可只做到 clean checkout 打包。
   - 传 --keep-temp 会保留 /tmp 下的临时目录，便于人工检查。`);
+}
+
+function resolveGitRevision(rootDir, revision) {
+  const result = spawnSync('git', ['rev-parse', revision], {
+    cwd: rootDir,
+    encoding: 'utf8'
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`无法解析 git ref ${revision}。`);
+  }
+
+  return result.stdout.trim();
 }
 
 async function exportGitRef(checkoutDir, tempRoot, gitRef) {
