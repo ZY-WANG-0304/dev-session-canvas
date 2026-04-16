@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+initial_prompt_delay_seconds="0.2"
+
+print_prompt() {
+  printf '$ '
+}
+
+echo "[fake-terminal] ready"
+sleep "$initial_prompt_delay_seconds"
+print_prompt
+
+handle_signal() {
+  echo "[fake-terminal] received signal"
+  exit 0
+}
+
+trap handle_signal TERM INT
+
+while IFS= read -r line; do
+  line="${line%$'\r'}"
+
+  if [[ -z "$line" ]]; then
+    continue
+  fi
+
+  if [[ "$line" == exit\ * ]]; then
+    exit_code="${line#exit }"
+    echo "[fake-terminal] exiting with code ${exit_code}"
+    exit "$exit_code"
+  fi
+
+  if [[ "$line" == clear-demo ]]; then
+    printf '\033[2J\033[H'
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == raw\ * ]]; then
+    printf '%s\n' "${line#raw }"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == burst\ * ]]; then
+    burst_count="${line#burst }"
+    if [[ "$burst_count" =~ ^[0-9]+$ ]]; then
+      for ((i = 1; i <= burst_count; i += 1)); do
+        printf '[fake-terminal] burst %03d\n' "$i"
+      done
+      print_prompt
+      continue
+    fi
+  fi
+
+  if [[ "$line" == sleep\ * ]]; then
+    sleep_seconds="${line#sleep }"
+    echo "[fake-terminal] sleeping ${sleep_seconds}s"
+    sleep "$sleep_seconds"
+    echo "[fake-terminal] woke after ${sleep_seconds}s"
+    print_prompt
+    continue
+  fi
+
+  echo "[fake-terminal] ${line}"
+  print_prompt
+done
