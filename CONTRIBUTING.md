@@ -52,6 +52,7 @@ npm run package:vsix
 ## 本地调试
 
 `Run Dev Session Canvas` 是仓库自带的 VS Code 调试配置，不是命令面板里的普通命令。
+仓库内的调试入口定义在隐藏文件 `.vscode/launch.json`；如果文件视图未显示 dotfiles，容易误以为“当前目录没有配置”。
 
 推荐启动方式：
 

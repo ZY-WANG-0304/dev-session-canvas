@@ -70,6 +70,7 @@ updated_at: 2026-04-16
 - `repository`、`homepage` 和 `bugs` 已切换到公开 GitHub 地址。
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
 - `scripts/package-vsix.mjs` 当前会在打包阶段显式传入 `--readme-path README.marketplace.md`，确保后续 `publish --packagePath` 上传的现成 VSIX 已内嵌 Marketplace 专用 README，而不是依赖发布时重新替换。
+- `scripts/package-vsix.mjs` 默认会把 Marketplace README 的相对资源改写到当前 `HEAD` 对应的最终 git ref；若在不含 `.git` 元数据的 clean checkout 或导出目录中打包，则必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，并在打包前校验这些相对资源能在该 ref 上解析成功。
 - 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
 - 当前 `working tree` 快照已再次通过隔离 `clean checkout` 验证，可在干净目录内稳定产出约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 packaged-payload smoke。
 - 当前候选 release head 也已再次通过隔离 `clean checkout` 验证，说明这轮瘦身后的最小 Preview 工件已经固定到可追溯提交。
@@ -98,7 +99,7 @@ updated_at: 2026-04-16
 因此，当前只需保持以下约束与 release-day 动作：
 
 - 保持当前 `.debug/`、`.playwright-browsers/`、测试 artifacts、core dump、截图草稿等路径继续留在发布包外，不让后续改动把它们重新带回工件。
-- 若真正对外发布使用的是后续 merge commit、tag 或其他最终 release ref，发布前再对该 git ref 重跑一次 `validate:clean-checkout:vsix`，避免把当前候选 release head 的证据直接等同于最终发布输入。
+- 若真正对外发布使用的是后续 merge commit、tag 或其他最终 release ref，发布前再对该 git ref 重跑一次 `validate:clean-checkout:vsix`，并确保 `package:vsix` 的 README 改写 ref 也锁定到同一个 final ref，避免把当前候选 release head 的证据直接等同于最终发布输入。
 - 保持 packaged-payload smoke 的内容守卫，确保 `node-pty` 的源码、脚本、PDB 与重复依赖不会重新随着后续改动回流到 VSIX。
 
 ### 7.2 公开元数据与法律口径已收口，当前只需一致性复核
@@ -162,7 +163,7 @@ updated_at: 2026-04-16
 
 当前轮次仍需保留的最小手工 gate 是：
 
-- 在干净环境中执行 `npm ci`、`npm run package:vsix`、VSIX 内容校验和 Marketplace 发布前 smoke。
+- 在干净环境中执行 `npm ci`、按最终 git ref 锁定 README 改写目标后的 `npm run package:vsix`、VSIX 内容校验和 Marketplace 发布前 smoke。
 - 让 `@vscode/vsce` 成为唯一受支持的打包入口，并把当前脚本 fallback 行为纳入发布前检查。
 - 在真正点击发布前，整理一份可复核的手工发布步骤，避免临场操作漂移。
 
