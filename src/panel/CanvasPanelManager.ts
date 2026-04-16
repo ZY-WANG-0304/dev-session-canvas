@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -18,7 +18,10 @@ import {
   STORAGE_KEYS,
   VIEW_IDS
 } from '../common/extensionIdentity';
-import { resolvePreferredExtensionStoragePath } from '../common/extensionStoragePaths';
+import {
+  selectPreferredExtensionStorageRecoverySource,
+  type ExtensionStorageRecoverySourceSelection
+} from '../common/extensionStoragePaths';
 import {
   type AgentNodeStatus,
   type AgentNodeMetadata,
@@ -144,6 +147,7 @@ interface ManagedExecutionSessionBase {
   resumePhaseActive: boolean;
   runtimeBackend?: RuntimeHostBackendKind;
   runtimeGuarantee?: RuntimePersistenceGuarantee;
+  runtimeStoragePath?: string;
   runtimeSessionId?: string;
   agentProvider?: AgentProviderKind;
   agentResume?: AgentResumeContext;
@@ -209,6 +213,8 @@ export interface CanvasDebugSnapshot {
 
 interface PersistedCanvasSnapshot {
   version: 1;
+  writtenAt?: string;
+  stateHash?: string;
   state?: unknown;
   activeSurface?: CanvasSurfaceLocation;
 }
@@ -231,6 +237,16 @@ interface StartExecutionSessionForTestParams {
 }
 
 interface RuntimeSupervisorRegistryForTest {
+  runtimeStoragePath?: string;
+  registryPath?: string;
+  exists: boolean;
+  registry?: unknown;
+  error?: string;
+  entries?: RuntimeSupervisorRegistryEntryForTest[];
+}
+
+interface RuntimeSupervisorRegistryEntryForTest {
+  runtimeStoragePath: string;
   registryPath?: string;
   exists: boolean;
   registry?: unknown;
@@ -241,6 +257,7 @@ interface RuntimeSupervisorDebugStateForTest {
   pendingRuntimeSupervisorOperationCount: number;
   bindings: Array<{
     runtimeSessionId: string;
+    runtimeStoragePath: string;
     nodeId: string;
     kind: ExecutionNodeKind;
   }>;
@@ -250,7 +267,14 @@ interface RuntimeSupervisorDebugStateForTest {
 interface ConnectedRuntimeSupervisorClient {
   client: RuntimeSupervisorClient;
   backend: RuntimeHostBackend;
+  runtimeStoragePath: string;
   fallbackReason?: string;
+}
+
+interface PersistedLiveRuntimeSession {
+  backendKind: RuntimeHostBackendKind;
+  sessionId: string;
+  runtimeStoragePath?: string;
 }
 
 interface StartExecutionSessionOptions {
@@ -261,9 +285,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
   public static readonly panelContainerId = VIEW_IDS.panelContainer;
+  private static readonly RECOVERABLE_STORAGE_RELATIVE_PATHS = [
+    'canvas-state.json',
+    'agent-runtime'
+  ] as const;
 
   private readonly rawExtensionStoragePath: string;
-  private readonly resolvedExtensionStoragePath: string;
+  private storageRecoverySelection!: ExtensionStorageRecoverySourceSelection;
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private state: CanvasPrototypeState;
@@ -279,7 +307,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   };
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
-  private readonly runtimeSessionBindings = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
+  private readonly runtimeSessionBindings = new Map<
+    string,
+    { nodeId: string; kind: ExecutionNodeKind; runtimeSessionId: string; runtimeStoragePath: string }
+  >();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
@@ -290,7 +321,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
   private lastPersistedCanvasSnapshotError: string | undefined;
   private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
-  private readonly runtimeSupervisorClients = new Map<RuntimeHostBackendKind, RuntimeSupervisorClient>();
+  private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
@@ -302,28 +333,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
     );
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
-    const storagePathResolution = resolvePreferredExtensionStoragePath(this.rawExtensionStoragePath, {
-      pathExists: (candidatePath) => fs.existsSync(candidatePath)
-    });
-    this.resolvedExtensionStoragePath = storagePathResolution.resolvedPath;
-    if (storagePathResolution.recoveryReason) {
-      this.recordDiagnosticEvent('storage/pathRecovered', {
-        currentPath: storagePathResolution.currentPath,
-        resolvedPath: storagePathResolution.resolvedPath,
-        reason: storagePathResolution.recoveryReason
-      });
-    }
+    this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
       nodeCount: this.state.nodes.length,
-      storagePath: this.resolvedExtensionStoragePath,
-      rawStoragePath:
-        this.resolvedExtensionStoragePath === this.rawExtensionStoragePath
+      storagePath: this.getExtensionStoragePath(),
+      recoverySourcePath:
+        this.storageRecoverySelection.sourcePath === this.storageRecoverySelection.writePath
           ? undefined
-          : this.rawExtensionStoragePath
+          : this.storageRecoverySelection.sourcePath,
+      storageSelectionBasis: this.storageRecoverySelection.selectionBasis
     });
     context.subscriptions.push(this.sidebarStateEmitter);
 
@@ -414,13 +436,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const registries: Partial<Record<RuntimeHostBackendKind, RuntimeSupervisorRegistryForTest>> = {};
     for (const backendKind of ['legacy-detached', 'systemd-user'] as const) {
-      registries[backendKind] = this.readRuntimeSupervisorRegistryForTest(backendKind);
+      registries[backendKind] = this.collectRuntimeSupervisorRegistryForTest(backendKind);
     }
 
     return {
       pendingRuntimeSupervisorOperationCount: this.pendingRuntimeSupervisorOperations.size,
-      bindings: Array.from(this.runtimeSessionBindings.entries()).map(([runtimeSessionId, binding]) => ({
-        runtimeSessionId,
+      bindings: Array.from(this.runtimeSessionBindings.values()).map((binding) => ({
+        runtimeSessionId: binding.runtimeSessionId,
+        runtimeStoragePath: binding.runtimeStoragePath,
         nodeId: binding.nodeId,
         kind: binding.kind
       })),
@@ -515,6 +538,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async reloadPersistedStateForTest(): Promise<CanvasDebugSnapshot> {
     await this.waitForPendingWorkspaceStateUpdates();
+    this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/reloaded', {
@@ -563,6 +587,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       allowRuntimeSupervisorRestart: false
     });
 
+    this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/runtimeReloaded', {
@@ -610,7 +635,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       snapshotPath,
       exists: fs.existsSync(snapshotPath),
       lastError: this.lastPersistedCanvasSnapshotError,
-      writtenAt: this.lastPersistedCanvasSnapshotWrittenAt,
+      writtenAt: snapshot?.writtenAt ?? this.lastPersistedCanvasSnapshotWrittenAt,
       snapshot: snapshot ? cloneJsonValue(snapshot) : undefined
     };
   }
@@ -989,8 +1014,115 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private refreshStorageRecoverySelection(): void {
+    this.storageRecoverySelection = selectPreferredExtensionStorageRecoverySource(this.rawExtensionStoragePath, {
+      pathExists: (candidatePath) => fs.existsSync(candidatePath)
+    });
+    this.recordStorageRecoverySelection(this.storageRecoverySelection);
+    this.initializeRecoveredStorageState(this.storageRecoverySelection);
+  }
+
+  private recordStorageRecoverySelection(selection: ExtensionStorageRecoverySourceSelection): void {
+    this.recordDiagnosticEvent('storage/slotSelected', {
+      currentPath: selection.currentPath,
+      writePath: selection.writePath,
+      sourcePath: selection.sourcePath,
+      recoveryReason: selection.recoveryReason,
+      selectionBasis: selection.selectionBasis,
+      migrationRequired: selection.migrationRequired,
+      currentSlotName: selection.currentCandidate.slotName,
+      sourceSlotName: selection.sourceCandidate.slotName,
+      sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
+      sourceWrittenAt: selection.sourceCandidate.snapshot.writtenAt,
+      sourceStateUpdatedAt: selection.sourceCandidate.snapshot.stateUpdatedAt,
+      sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp,
+      currentStateHash: selection.currentCandidate.snapshot.stateHash,
+      currentWrittenAt: selection.currentCandidate.snapshot.writtenAt,
+      currentStateUpdatedAt: selection.currentCandidate.snapshot.stateUpdatedAt,
+      currentTimestamp: selection.currentCandidate.snapshot.effectiveTimestamp
+    });
+  }
+
+  private initializeRecoveredStorageState(selection: ExtensionStorageRecoverySourceSelection): void {
+    if (!selection.migrationRequired) {
+      return;
+    }
+
+    try {
+      const migratedPaths = this.migrateRecoverableStateToCurrentSlot(selection.sourcePath, selection.writePath);
+      this.recordDiagnosticEvent('storage/stateMigratedToCurrentSlot', {
+        sourcePath: selection.sourcePath,
+        targetPath: selection.writePath,
+        copiedPaths: migratedPaths,
+        sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
+        sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('storage/stateMigrationFailed', {
+        sourcePath: selection.sourcePath,
+        targetPath: selection.writePath,
+        sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
+        message: formatUnknownError(error)
+      });
+    }
+  }
+
+  private migrateRecoverableStateToCurrentSlot(sourcePath: string, targetPath: string): string[] {
+    if (path.normalize(sourcePath) === path.normalize(targetPath)) {
+      return [];
+    }
+
+    fs.mkdirSync(targetPath, {
+      recursive: true
+    });
+
+    const copiedPaths: string[] = [];
+    for (const relativePath of CanvasPanelManager.RECOVERABLE_STORAGE_RELATIVE_PATHS) {
+      const sourceCandidatePath = path.join(sourcePath, relativePath);
+      if (!fs.existsSync(sourceCandidatePath)) {
+        continue;
+      }
+
+      const targetCandidatePath = path.join(targetPath, relativePath);
+      fs.rmSync(targetCandidatePath, {
+        recursive: true,
+        force: true
+      });
+      fs.mkdirSync(path.dirname(targetCandidatePath), {
+        recursive: true
+      });
+      const sourceStats = fs.statSync(sourceCandidatePath);
+      if (sourceStats.isDirectory()) {
+        fs.cpSync(sourceCandidatePath, targetCandidatePath, {
+          recursive: true
+        });
+      } else {
+        fs.copyFileSync(sourceCandidatePath, targetCandidatePath);
+      }
+      copiedPaths.push(relativePath);
+    }
+
+    return copiedPaths;
+  }
+
   private getExtensionStoragePath(): string {
-    return this.resolvedExtensionStoragePath;
+    return this.rawExtensionStoragePath;
+  }
+
+  private resolveRuntimeStoragePath(runtimeStoragePath: string | undefined): string {
+    return normalizeRuntimeStoragePath(runtimeStoragePath) ?? this.getExtensionStoragePath();
+  }
+
+  private getRuntimeStoragePathFromBackend(backend: RuntimeHostBackend): string {
+    return this.resolveRuntimeStoragePath(path.dirname(backend.paths.storageDir));
+  }
+
+  private buildRuntimeSupervisorClientKey(backend: RuntimeHostBackend): string {
+    return `${backend.kind}:${backend.paths.storageDir}`;
+  }
+
+  private getPersistedRuntimeStoragePath(metadata: { runtimeStoragePath?: string }): string | undefined {
+    return normalizeRuntimeStoragePath(metadata.runtimeStoragePath);
   }
 
   private getPersistedCanvasSnapshotPath(): string {
@@ -998,8 +1130,76 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private loadPersistedCanvasSnapshot(): PersistedCanvasSnapshot | undefined {
-    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+    return this.loadPersistedCanvasSnapshotFromPath(this.getPersistedCanvasSnapshotPath());
+  }
 
+  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
+    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+    const snapshotWithMetadata = this.buildPersistedCanvasSnapshot(snapshot);
+    const snapshotSummary = summarizeCanvasStateForDiagnostics(snapshotWithMetadata.state);
+    this.recordDiagnosticEvent('state/persistQueued', {
+      snapshotPath,
+      activeSurface: snapshotWithMetadata.activeSurface,
+      writePath: this.getExtensionStoragePath(),
+      snapshotWrittenAt: snapshotWithMetadata.writtenAt,
+      ...snapshotSummary
+    });
+
+    try {
+      this.writePersistedCanvasSnapshotToDisk(snapshotPath, snapshotWithMetadata);
+      this.lastPersistedCanvasSnapshotError = undefined;
+      this.lastPersistedCanvasSnapshotWrittenAt = snapshotWithMetadata.writtenAt;
+      this.recordDiagnosticEvent('state/persistWritten', {
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        writtenAt: snapshotWithMetadata.writtenAt,
+        ...snapshotSummary
+      });
+    } catch (error) {
+      const message = formatUnknownError(error);
+      this.lastPersistedCanvasSnapshotError = message;
+      this.recordDiagnosticEvent('state/persistFailed', {
+        message,
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        ...snapshotSummary
+      });
+      return Promise.reject(error);
+    }
+
+    const operation = this.pendingWorkspaceStateUpdate.then(async () => {
+      const normalizedWorkspaceState = normalizeState(
+        snapshotWithMetadata.state,
+        this.getAgentCliConfig().defaultProvider
+      );
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasState,
+        stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
+      );
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshotWithMetadata.activeSurface);
+      this.lastPersistedCanvasSnapshotError = undefined;
+    }).catch((error) => {
+      const message = formatUnknownError(error);
+      this.lastPersistedCanvasSnapshotError = message;
+      this.recordDiagnosticEvent('state/persistFailed', {
+        message,
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        ...snapshotSummary
+      });
+      throw error;
+    });
+    this.pendingWorkspaceStateUpdate = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    return operation;
+  }
+
+  private loadPersistedCanvasSnapshotFromPath(snapshotPath: string): PersistedCanvasSnapshot | undefined {
     try {
       if (!fs.existsSync(snapshotPath)) {
         return undefined;
@@ -1017,47 +1217,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
-    const operation = this.pendingWorkspaceStateUpdate.then(async () => {
-      const snapshotPath = this.getPersistedCanvasSnapshotPath();
-      const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
-      await fs.promises.mkdir(path.dirname(snapshotPath), {
-        recursive: true
-      });
-      const tempSnapshotPath = `${snapshotPath}.tmp`;
-      await fs.promises.writeFile(tempSnapshotPath, serializedSnapshot, 'utf8');
-      await fs.promises.rename(tempSnapshotPath, snapshotPath);
-      const normalizedWorkspaceState = normalizeState(
-        snapshot.state,
-        this.getAgentCliConfig().defaultProvider
-      );
-      await this.context.workspaceState.update(
-        STORAGE_KEYS.canvasState,
-        stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
-      );
-      await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshot.activeSurface);
-      this.lastPersistedCanvasSnapshotError = undefined;
-      this.lastPersistedCanvasSnapshotWrittenAt = new Date().toISOString();
-    }).catch((error) => {
-      const message = formatUnknownError(error);
-      this.lastPersistedCanvasSnapshotError = message;
-      this.recordDiagnosticEvent('state/persistFailed', {
-        message,
-        snapshotPath: this.getPersistedCanvasSnapshotPath()
-      });
-      throw error;
+  private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
+    return {
+      ...snapshot,
+      writtenAt: new Date().toISOString(),
+      stateHash: buildDiagnosticStateHash(snapshot.state)
+    };
+  }
+
+  private writePersistedCanvasSnapshotToDisk(snapshotPath: string, snapshot: PersistedCanvasSnapshot): void {
+    fs.mkdirSync(path.dirname(snapshotPath), {
+      recursive: true
     });
-    this.pendingWorkspaceStateUpdate = operation.then(
-      () => undefined,
-      () => undefined
-    );
-    return operation;
+    const tempSnapshotPath = `${snapshotPath}.tmp`;
+    const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
+    fs.writeFileSync(tempSnapshotPath, serializedSnapshot, 'utf8');
+    fs.renameSync(tempSnapshotPath, snapshotPath);
   }
 
   private loadState(): CanvasPrototypeState {
-    const rawState =
-      this.loadPersistedCanvasSnapshot()?.state ?? this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
-    return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const rawState = snapshot?.state ?? workspaceState;
+    const source = snapshot?.state !== undefined ? 'snapshot' : workspaceState !== undefined ? 'workspaceState' : 'default';
+    this.recordDiagnosticEvent('state/loadSelected', {
+      source,
+      snapshotPath: this.getPersistedCanvasSnapshotPath(),
+      storagePath: this.getExtensionStoragePath(),
+      writePath: this.storageRecoverySelection.writePath,
+      recoverySourcePath:
+        this.storageRecoverySelection.sourcePath === this.storageRecoverySelection.writePath
+          ? undefined
+          : this.storageRecoverySelection.sourcePath,
+      snapshotAvailable: snapshot !== undefined,
+      workspaceStateAvailable: workspaceState !== undefined,
+      activeSurface: snapshot?.activeSurface,
+      snapshotWrittenAt: snapshot?.writtenAt,
+      snapshotStateHash: snapshot?.stateHash,
+      ...summarizeCanvasStateForDiagnostics(rawState)
+    });
+    return hydrateRuntimeStoragePaths(
+      normalizeState(rawState, this.getAgentCliConfig().defaultProvider),
+      this.storageRecoverySelection.sourcePath
+    );
   }
 
   private loadReconciledState(): CanvasPrototypeState {
@@ -1169,7 +1371,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (session.owner === 'supervisor') {
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
-      const operation = this.getRuntimeSupervisorClientForKind(backendKind).then((client) =>
+      const operation = this.getRuntimeSupervisorClientForKind(
+        backendKind,
+        {},
+        session.runtimeStoragePath
+      ).then((client) =>
         client.updateSessionScrollback({
           sessionId: session.runtimeSessionId,
           scrollback
@@ -1217,8 +1423,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.isRuntimePersistenceEnabled();
   }
 
-  private getRuntimeHostBaseStoragePath(): string {
-    return this.getExtensionStoragePath();
+  private getRuntimeHostBaseStoragePath(runtimeStoragePath?: string): string {
+    return this.resolveRuntimeStoragePath(runtimeStoragePath);
   }
 
   private getRuntimeSupervisorScriptPath(): string {
@@ -1229,9 +1435,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return path.join(this.context.extensionUri.fsPath, 'dist', 'runtime-supervisor-launcher.js');
   }
 
-  private getRuntimeHostBackend(kind: RuntimeHostBackendKind): RuntimeHostBackend {
+  private getRuntimeHostBackend(
+    kind: RuntimeHostBackendKind,
+    runtimeStoragePath?: string
+  ): RuntimeHostBackend {
     return createRuntimeHostBackend(kind, {
-      baseStoragePath: this.getRuntimeHostBaseStoragePath(),
+      baseStoragePath: this.getRuntimeHostBaseStoragePath(runtimeStoragePath),
       extensionMode: this.context.extensionMode
     });
   }
@@ -1246,28 +1455,120 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private readRuntimeSupervisorRegistryForTest(
-    backendKind: RuntimeHostBackendKind
-  ): RuntimeSupervisorRegistryForTest {
+    backendKind: RuntimeHostBackendKind,
+    runtimeStoragePath: string
+  ): RuntimeSupervisorRegistryEntryForTest {
+    const normalizedRuntimeStoragePath = this.resolveRuntimeStoragePath(runtimeStoragePath);
     try {
-      const registryPath = this.getRuntimeHostBackend(backendKind).paths.registryPath;
+      const registryPath = this.getRuntimeHostBackend(
+        backendKind,
+        normalizedRuntimeStoragePath
+      ).paths.registryPath;
       if (!fs.existsSync(registryPath)) {
         return {
+          runtimeStoragePath: normalizedRuntimeStoragePath,
           registryPath,
           exists: false
         };
       }
 
       return {
+        runtimeStoragePath: normalizedRuntimeStoragePath,
         registryPath,
         exists: true,
         registry: JSON.parse(fs.readFileSync(registryPath, 'utf8')) as unknown
       };
     } catch (error) {
       return {
+        runtimeStoragePath: normalizedRuntimeStoragePath,
         exists: false,
         error: formatUnknownError(error)
       };
     }
+  }
+
+  private collectRuntimeSupervisorRegistryForTest(
+    backendKind: RuntimeHostBackendKind
+  ): RuntimeSupervisorRegistryForTest {
+    const entries = this.collectRuntimeSupervisorStoragePathsForTest(backendKind).map((runtimeStoragePath) =>
+      this.readRuntimeSupervisorRegistryForTest(backendKind, runtimeStoragePath)
+    );
+    const sessionsById = new Map<string, unknown>();
+    for (const entry of entries) {
+      const sessions = readRuntimeSupervisorRegistrySessionsForTest(entry.registry);
+      for (const session of sessions) {
+        if (isRecord(session) && typeof session.sessionId === 'string') {
+          sessionsById.set(session.sessionId, session);
+        }
+      }
+    }
+
+    const successfulEntries = entries.filter((entry) => entry.exists);
+    const failedEntries = entries.filter((entry) => entry.error);
+    const singleEntry = entries.length === 1 ? entries[0] : undefined;
+
+    return {
+      runtimeStoragePath: singleEntry?.runtimeStoragePath,
+      registryPath: singleEntry?.registryPath,
+      exists: successfulEntries.length > 0,
+      registry: {
+        version: 1,
+        sessions: Array.from(sessionsById.values())
+      },
+      error:
+        successfulEntries.length === 0 && failedEntries.length > 0
+          ? failedEntries
+              .map((entry) => `[${entry.runtimeStoragePath}] ${entry.error}`)
+              .join('\n')
+          : undefined,
+      entries
+    };
+  }
+
+  private collectRuntimeSupervisorStoragePathsForTest(
+    backendKind: RuntimeHostBackendKind
+  ): string[] {
+    const storagePaths = new Set<string>([this.getExtensionStoragePath()]);
+    for (const node of this.state.nodes) {
+      if (node.kind === 'agent') {
+        const metadata = ensureAgentMetadata(node);
+        if (
+          metadata.persistenceMode === 'live-runtime' &&
+          normalizeRuntimeHostBackendKind(metadata.runtimeBackend) === backendKind
+        ) {
+          storagePaths.add(
+            this.resolveRuntimeStoragePath(this.getPersistedRuntimeStoragePath(metadata))
+          );
+        }
+        continue;
+      }
+
+      if (node.kind === 'terminal') {
+        const metadata = ensureTerminalMetadata(node);
+        if (
+          metadata.persistenceMode === 'live-runtime' &&
+          normalizeRuntimeHostBackendKind(metadata.runtimeBackend) === backendKind
+        ) {
+          storagePaths.add(
+            this.resolveRuntimeStoragePath(this.getPersistedRuntimeStoragePath(metadata))
+          );
+        }
+      }
+    }
+
+    for (const session of this.agentSessions.values()) {
+      if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+        storagePaths.add(this.resolveRuntimeStoragePath(session.runtimeStoragePath));
+      }
+    }
+
+    for (const session of this.terminalSessions.values()) {
+      if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+        storagePaths.add(this.resolveRuntimeStoragePath(session.runtimeStoragePath));
+      }
+    }
+
+    return Array.from(storagePaths);
   }
 
   private disposeRuntimeSupervisorClients(): void {
@@ -1281,17 +1582,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     backend: RuntimeHostBackend,
     options: { allowRestart?: boolean } = {}
   ): Promise<RuntimeSupervisorClient> {
-    let client = this.runtimeSupervisorClients.get(backend.kind);
+    const runtimeStoragePath = this.getRuntimeStoragePathFromBackend(backend);
+    const clientKey = this.buildRuntimeSupervisorClientKey(backend);
+    let client = this.runtimeSupervisorClients.get(clientKey);
     if (!client) {
       client = new RuntimeSupervisorClient({
         backend,
         supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
         supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
-        onSessionOutput: (event) => this.handleRuntimeSupervisorOutput(event.sessionId, event.chunk),
-        onSessionState: (snapshot) => this.handleRuntimeSupervisorState(snapshot),
-        onDisconnected: (error) => this.handleRuntimeSupervisorDisconnected(backend.kind, error)
+        onSessionOutput: (event) =>
+          this.handleRuntimeSupervisorOutput(runtimeStoragePath, event.sessionId, event.chunk),
+        onSessionState: (snapshot) => this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot),
+        onDisconnected: (error) =>
+          this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
       });
-      this.runtimeSupervisorClients.set(backend.kind, client);
+      this.runtimeSupervisorClients.set(clientKey, client);
     }
 
     await client.ensureConnected(options);
@@ -1300,9 +1605,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async getRuntimeSupervisorClientForKind(
     kind: RuntimeHostBackendKind,
-    options: { allowRestart?: boolean } = {}
+    options: { allowRestart?: boolean } = {},
+    runtimeStoragePath?: string
   ): Promise<RuntimeSupervisorClient> {
-    return this.getRuntimeSupervisorClientForBackend(this.getRuntimeHostBackend(kind), options);
+    return this.getRuntimeSupervisorClientForBackend(
+      this.getRuntimeHostBackend(kind, runtimeStoragePath),
+      options
+    );
   }
 
   private async getPreferredRuntimeSupervisorClient(
@@ -1314,6 +1623,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return {
           client: await this.getRuntimeSupervisorClientForBackend(backend, options),
           backend,
+          runtimeStoragePath: this.getRuntimeStoragePathFromBackend(backend),
           fallbackReason: this.preferredRuntimeHostBackendFallbackReason
         };
       } catch {
@@ -1338,6 +1648,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return {
           client,
           backend,
+          runtimeStoragePath: this.getRuntimeStoragePathFromBackend(backend),
           fallbackReason
         };
       } catch (error) {
@@ -1354,6 +1665,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getExecutionSessionOperationKey(kind: ExecutionNodeKind, nodeId: string): string {
     return `${kind}:${nodeId}`;
+  }
+
+  private buildRuntimeSessionBindingKey(runtimeSessionId: string, runtimeStoragePath: string | undefined): string {
+    return `${this.resolveRuntimeStoragePath(runtimeStoragePath)}::${runtimeSessionId}`;
   }
 
   private beginExecutionSessionOperation(kind: ExecutionNodeKind, nodeId: string): number {
@@ -1483,7 +1798,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
-      this.bindRuntimeSession(nodeId, kind, snapshot.sessionId);
+      const node = this.requireNode(nodeId, kind);
+      const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+      this.bindRuntimeSession(
+        nodeId,
+        kind,
+        snapshot.sessionId,
+        this.getPersistedRuntimeStoragePath(metadata)
+      );
       this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, {
         postSnapshot: true,
         historyOnUnavailable: true
@@ -1548,22 +1870,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const nodesByBackend = new Map<RuntimeHostBackendKind, CanvasNodeSummary[]>();
+    const nodesByBackend = new Map<
+      string,
+      { backendKind: RuntimeHostBackendKind; runtimeStoragePath: string; nodes: CanvasNodeSummary[] }
+    >();
     for (const node of reconnectableNodes) {
       const metadata = node.kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
       const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
-      const bucket = nodesByBackend.get(backendKind);
+      const runtimeStoragePath = this.resolveRuntimeStoragePath(this.getPersistedRuntimeStoragePath(metadata));
+      const bucketKey = `${backendKind}:${runtimeStoragePath}`;
+      const bucket = nodesByBackend.get(bucketKey);
       if (bucket) {
-        bucket.push(node);
+        bucket.nodes.push(node);
       } else {
-        nodesByBackend.set(backendKind, [node]);
+        nodesByBackend.set(bucketKey, {
+          backendKind,
+          runtimeStoragePath,
+          nodes: [node]
+        });
       }
     }
 
-    for (const [backendKind, nodes] of nodesByBackend.entries()) {
+    for (const { backendKind, runtimeStoragePath, nodes } of nodesByBackend.values()) {
       let client: RuntimeSupervisorClient;
       try {
-        client = await this.getRuntimeSupervisorClientForKind(backendKind);
+        client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath);
       } catch (error) {
         const message = error instanceof Error ? error.message : '无法连接 runtime supervisor。';
         for (const node of nodes) {
@@ -1607,39 +1938,48 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private bindRuntimeSession(nodeId: string, kind: ExecutionNodeKind, runtimeSessionId: string): void {
-    for (const [boundSessionId, binding] of Array.from(this.runtimeSessionBindings.entries())) {
-      if (boundSessionId !== runtimeSessionId && binding.nodeId === nodeId && binding.kind === kind) {
-        this.runtimeSessionBindings.delete(boundSessionId);
+  private bindRuntimeSession(
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    runtimeSessionId: string,
+    runtimeStoragePath: string | undefined
+  ): void {
+    const normalizedRuntimeStoragePath = this.resolveRuntimeStoragePath(runtimeStoragePath);
+    const nextBindingKey = this.buildRuntimeSessionBindingKey(runtimeSessionId, normalizedRuntimeStoragePath);
+    for (const [bindingKey, binding] of Array.from(this.runtimeSessionBindings.entries())) {
+      if (
+        bindingKey !== nextBindingKey &&
+        binding.nodeId === nodeId &&
+        binding.kind === kind
+      ) {
+        this.runtimeSessionBindings.delete(bindingKey);
       }
     }
 
-    this.runtimeSessionBindings.set(runtimeSessionId, {
+    this.runtimeSessionBindings.set(nextBindingKey, {
       nodeId,
-      kind
+      kind,
+      runtimeSessionId,
+      runtimeStoragePath: normalizedRuntimeStoragePath
     });
   }
 
-  private collectPersistedLiveRuntimeSessions(): Array<{
-    backendKind: RuntimeHostBackendKind;
-    sessionId: string;
-  }> {
+  private collectPersistedLiveRuntimeSessions(): PersistedLiveRuntimeSession[] {
     const sessionKeys = new Set<string>();
-    const sessions: Array<{
-      backendKind: RuntimeHostBackendKind;
-      sessionId: string;
-    }> = [];
+    const sessions: PersistedLiveRuntimeSession[] = [];
     for (const node of this.state.nodes) {
       if (node.kind === 'agent') {
         const metadata = ensureAgentMetadata(node);
         if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
           const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
-          const key = `${backendKind}:${metadata.runtimeSessionId}`;
+          const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
+          const key = `${backendKind}:${runtimeStoragePath ?? ''}:${metadata.runtimeSessionId}`;
           if (!sessionKeys.has(key)) {
             sessionKeys.add(key);
             sessions.push({
               backendKind,
-              sessionId: metadata.runtimeSessionId
+              sessionId: metadata.runtimeSessionId,
+              runtimeStoragePath
             });
           }
         }
@@ -1650,12 +1990,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const metadata = ensureTerminalMetadata(node);
         if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
           const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
-          const key = `${backendKind}:${metadata.runtimeSessionId}`;
+          const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
+          const key = `${backendKind}:${runtimeStoragePath ?? ''}:${metadata.runtimeSessionId}`;
           if (!sessionKeys.has(key)) {
             sessionKeys.add(key);
             sessions.push({
               backendKind,
-              sessionId: metadata.runtimeSessionId
+              sessionId: metadata.runtimeSessionId,
+              runtimeStoragePath
             });
           }
         }
@@ -1667,13 +2009,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getPersistedLiveRuntimeSessionForNode(
     node: CanvasNodeSummary
-  ): { backendKind: RuntimeHostBackendKind; sessionId: string } | undefined {
+  ): PersistedLiveRuntimeSession | undefined {
     if (node.kind === 'agent') {
       const metadata = ensureAgentMetadata(node);
       if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
         return {
           backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
-          sessionId: metadata.runtimeSessionId
+          sessionId: metadata.runtimeSessionId,
+          runtimeStoragePath: this.getPersistedRuntimeStoragePath(metadata)
         };
       }
       return undefined;
@@ -1684,7 +2027,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId) {
         return {
           backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
-          sessionId: metadata.runtimeSessionId
+          sessionId: metadata.runtimeSessionId,
+          runtimeStoragePath: this.getPersistedRuntimeStoragePath(metadata)
         };
       }
     }
@@ -1697,13 +2041,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async deleteRuntimeSupervisorSessionStrict(
-    session: { backendKind: RuntimeHostBackendKind; sessionId: string },
+    session: PersistedLiveRuntimeSession,
     options: { allowRestart: boolean }
   ): Promise<void> {
     try {
       const client = await this.getRuntimeSupervisorClientForKind(session.backendKind, {
         allowRestart: options.allowRestart
-      });
+      }, session.runtimeStoragePath);
       await client.deleteSession({
         sessionId: session.sessionId
       });
@@ -1716,29 +2060,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async deleteRuntimeSupervisorSessions(
-    sessions: Array<{ backendKind: RuntimeHostBackendKind; sessionId: string }>,
+    sessions: PersistedLiveRuntimeSession[],
     options: { allowRestart: boolean }
   ): Promise<void> {
     if (sessions.length === 0) {
       return;
     }
 
-    const sessionsByBackend = new Map<RuntimeHostBackendKind, string[]>();
+    const sessionsByBackend = new Map<
+      string,
+      { backendKind: RuntimeHostBackendKind; runtimeStoragePath?: string; sessionIds: string[] }
+    >();
     for (const session of sessions) {
-      const bucket = sessionsByBackend.get(session.backendKind);
+      const bucketKey = `${session.backendKind}:${this.resolveRuntimeStoragePath(session.runtimeStoragePath)}`;
+      const bucket = sessionsByBackend.get(bucketKey);
       if (bucket) {
-        bucket.push(session.sessionId);
+        bucket.sessionIds.push(session.sessionId);
       } else {
-        sessionsByBackend.set(session.backendKind, [session.sessionId]);
+        sessionsByBackend.set(bucketKey, {
+          backendKind: session.backendKind,
+          runtimeStoragePath: session.runtimeStoragePath,
+          sessionIds: [session.sessionId]
+        });
       }
     }
 
-    for (const [backendKind, sessionIds] of sessionsByBackend.entries()) {
+    for (const { backendKind, runtimeStoragePath, sessionIds } of sessionsByBackend.values()) {
       let client: RuntimeSupervisorClient;
       try {
         client = await this.getRuntimeSupervisorClientForKind(backendKind, {
           allowRestart: options.allowRestart
-        });
+        }, runtimeStoragePath);
       } catch {
         continue;
       }
@@ -1772,16 +2124,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.pendingWorkspaceStateUpdate;
   }
 
-  private unbindRuntimeSession(runtimeSessionId: string | undefined): void {
+  private unbindRuntimeSession(runtimeSessionId: string | undefined, runtimeStoragePath?: string): void {
     if (!runtimeSessionId) {
       return;
     }
 
-    this.runtimeSessionBindings.delete(runtimeSessionId);
+    if (runtimeStoragePath) {
+      this.runtimeSessionBindings.delete(
+        this.buildRuntimeSessionBindingKey(runtimeSessionId, runtimeStoragePath)
+      );
+      return;
+    }
+
+    for (const [bindingKey, binding] of Array.from(this.runtimeSessionBindings.entries())) {
+      if (binding.runtimeSessionId === runtimeSessionId) {
+        this.runtimeSessionBindings.delete(bindingKey);
+      }
+    }
   }
 
   private createSupervisorExecutionSession(
-    snapshot: RuntimeSupervisorSessionSnapshot
+    snapshot: RuntimeSupervisorSessionSnapshot,
+    runtimeStoragePath: string | undefined
   ): SupervisorExecutionSession {
     return {
       sessionId: snapshot.sessionId,
@@ -1789,6 +2153,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       startedAtMs: Date.now(),
       runtimeBackend: snapshot.runtimeBackend,
       runtimeGuarantee: snapshot.runtimeGuarantee,
+      runtimeStoragePath: this.resolveRuntimeStoragePath(runtimeStoragePath),
       runtimeSessionId: snapshot.sessionId,
       shellPath: snapshot.shellPath,
       cwd: snapshot.cwd,
@@ -1831,8 +2196,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private handleRuntimeSupervisorOutput(runtimeSessionId: string, chunk: string): void {
-    const binding = this.runtimeSessionBindings.get(runtimeSessionId);
+  private handleRuntimeSupervisorOutput(
+    runtimeStoragePath: string,
+    runtimeSessionId: string,
+    chunk: string
+  ): void {
+    const binding = this.runtimeSessionBindings.get(
+      this.buildRuntimeSessionBindingKey(runtimeSessionId, runtimeStoragePath)
+    );
     if (!binding) {
       return;
     }
@@ -1848,8 +2219,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
   }
 
-  private handleRuntimeSupervisorState(snapshot: RuntimeSupervisorSessionSnapshot): void {
-    const binding = this.runtimeSessionBindings.get(snapshot.sessionId);
+  private handleRuntimeSupervisorState(
+    runtimeStoragePath: string,
+    snapshot: RuntimeSupervisorSessionSnapshot
+  ): void {
+    const binding = this.runtimeSessionBindings.get(
+      this.buildRuntimeSessionBindingKey(snapshot.sessionId, runtimeStoragePath)
+    );
     if (!binding) {
       return;
     }
@@ -1885,10 +2261,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private handleRuntimeSupervisorDisconnected(
     backendKind: RuntimeHostBackendKind,
+    runtimeStoragePath: string,
     error?: Error
   ): void {
     for (const [nodeId, session] of this.agentSessions.entries()) {
-      if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+      if (
+        session.owner === 'supervisor' &&
+        session.runtimeBackend === backendKind &&
+        this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
+      ) {
         if (this.maybeFallbackAgentLiveRuntimeToResume(nodeId, error?.message)) {
           continue;
         }
@@ -1897,7 +2278,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     for (const [nodeId, session] of this.terminalSessions.entries()) {
-      if (session.owner === 'supervisor' && session.runtimeBackend === backendKind) {
+      if (
+        session.owner === 'supervisor' &&
+        session.runtimeBackend === backendKind &&
+        this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
+      ) {
         this.markExecutionNodeAsHistoryRestored(nodeId, 'terminal', error?.message);
       }
     }
@@ -1910,10 +2295,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: { postSnapshot: boolean; historyOnUnavailable: boolean }
   ): void {
     if (snapshot.live) {
-      const existingAgentMetadata =
-        kind === 'agent' ? ensureAgentMetadata(this.requireNode(nodeId, kind)) : undefined;
+      const existingNode = this.requireNode(nodeId, kind);
+      const existingAgentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : undefined;
+      const existingRuntimeMetadata =
+        kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
+      const runtimeStoragePath = this.resolveRuntimeStoragePath(
+        this.getPersistedRuntimeStoragePath(existingRuntimeMetadata)
+      );
       this.getExecutionSessions(kind).get(nodeId)?.terminalStateTracker.dispose();
-      const session = this.createSupervisorExecutionSession(snapshot);
+      const session = this.createSupervisorExecutionSession(snapshot, runtimeStoragePath);
       this.getExecutionSessions(kind).set(nodeId, session);
       this.state = updateExecutionNode(this.state, nodeId, kind, {
         status: snapshot.lifecycle,
@@ -1926,6 +2316,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           attachmentState: 'attached-live',
           runtimeBackend: snapshot.runtimeBackend,
           runtimeGuarantee: snapshot.runtimeGuarantee,
+          runtimeStoragePath,
           liveSession: true,
           runtimeSessionId: snapshot.sessionId,
           lastRuntimeError: undefined,
@@ -1978,7 +2369,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): void {
     const existingNode = this.requireNode(nodeId, kind);
     const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
-    this.unbindRuntimeSession(snapshot.sessionId);
+    this.unbindRuntimeSession(snapshot.sessionId, currentMetadata.runtimeStoragePath);
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
     existingSession?.terminalStateTracker.dispose();
     this.getExecutionSessions(kind).delete(nodeId);
@@ -1994,6 +2385,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         attachmentState: 'history-restored',
         runtimeBackend: snapshot.runtimeBackend,
         runtimeGuarantee: snapshot.runtimeGuarantee,
+        runtimeStoragePath: currentMetadata.runtimeStoragePath,
         liveSession: false,
         runtimeSessionId: snapshot.sessionId,
         lastRuntimeError: undefined,
@@ -2038,7 +2430,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, kind);
     const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
     const runtimeSessionId = snapshot?.sessionId ?? currentMetadata.runtimeSessionId;
-    this.unbindRuntimeSession(runtimeSessionId);
+    this.unbindRuntimeSession(runtimeSessionId, currentMetadata.runtimeStoragePath);
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
     existingSession?.terminalStateTracker.dispose();
     this.getExecutionSessions(kind).delete(nodeId);
@@ -2061,6 +2453,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         attachmentState: 'history-restored',
         runtimeBackend: snapshot?.runtimeBackend ?? currentMetadata.runtimeBackend,
         runtimeGuarantee: snapshot?.runtimeGuarantee ?? currentMetadata.runtimeGuarantee,
+        runtimeStoragePath: currentMetadata.runtimeStoragePath,
         liveSession: false,
         runtimeSessionId,
         lastRuntimeError: reason,
@@ -2117,7 +2510,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
-    this.unbindRuntimeSession(metadata.runtimeSessionId);
+    this.unbindRuntimeSession(metadata.runtimeSessionId, metadata.runtimeStoragePath);
     this.getExecutionSessions('agent').delete(nodeId);
 
     this.state = updateAgentNode(this.state, nodeId, {
@@ -2726,7 +3119,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getTerminalWorkingDirectory();
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
-    const { client, backend, fallbackReason } = await this.getPreferredRuntimeSupervisorClient();
+    const { client, backend, runtimeStoragePath, fallbackReason } =
+      await this.getPreferredRuntimeSupervisorClient();
     if (fallbackReason) {
       this.recordDiagnosticEvent('runtime/backendFallback', {
         kind: 'agent',
@@ -2752,6 +3146,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         attachmentState: 'attached-live',
         runtimeBackend: backend.kind,
         runtimeGuarantee: backend.guarantee,
+        runtimeStoragePath,
         liveSession: false,
         runtimeSessionId: undefined,
         pendingLaunch: undefined,
@@ -2775,18 +3170,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (previousRuntimeSessionId) {
       const previousBackendKind =
         normalizeRuntimeHostBackendKind(existingMetadata.runtimeBackend) ?? 'legacy-detached';
+      const previousRuntimeStoragePath = this.getPersistedRuntimeStoragePath(existingMetadata);
       try {
         const previousClient =
-          previousBackendKind === backend.kind
+          previousBackendKind === backend.kind &&
+          this.resolveRuntimeStoragePath(previousRuntimeStoragePath) === runtimeStoragePath
             ? client
-            : await this.getRuntimeSupervisorClientForKind(previousBackendKind);
+            : await this.getRuntimeSupervisorClientForKind(
+                previousBackendKind,
+                {},
+                previousRuntimeStoragePath
+              );
         await previousClient.deleteSession({
           sessionId: previousRuntimeSessionId
         });
       } catch {
         // Best effort only. The new session can still start with a fresh identity.
       }
-      this.unbindRuntimeSession(previousRuntimeSessionId);
+      this.unbindRuntimeSession(previousRuntimeSessionId, existingMetadata.runtimeStoragePath);
     }
 
     const snapshot = await client.createSession({
@@ -2808,7 +3209,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.bindRuntimeSession(nodeId, 'agent', snapshot.sessionId);
+    this.bindRuntimeSession(nodeId, 'agent', snapshot.sessionId, runtimeStoragePath);
     this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
@@ -2825,7 +3226,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingMetadata = ensureTerminalMetadata(existingNode);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
-    const { client, backend, fallbackReason } = await this.getPreferredRuntimeSupervisorClient();
+    const { client, backend, runtimeStoragePath, fallbackReason } =
+      await this.getPreferredRuntimeSupervisorClient();
     if (fallbackReason) {
       this.recordDiagnosticEvent('runtime/backendFallback', {
         kind: 'terminal',
@@ -2845,6 +3247,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         attachmentState: 'attached-live',
         runtimeBackend: backend.kind,
         runtimeGuarantee: backend.guarantee,
+        runtimeStoragePath,
         liveSession: false,
         runtimeSessionId: undefined,
         pendingLaunch: undefined,
@@ -2867,18 +3270,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (previousRuntimeSessionId) {
       const previousBackendKind =
         normalizeRuntimeHostBackendKind(existingMetadata.runtimeBackend) ?? 'legacy-detached';
+      const previousRuntimeStoragePath = this.getPersistedRuntimeStoragePath(existingMetadata);
       try {
         const previousClient =
-          previousBackendKind === backend.kind
+          previousBackendKind === backend.kind &&
+          this.resolveRuntimeStoragePath(previousRuntimeStoragePath) === runtimeStoragePath
             ? client
-            : await this.getRuntimeSupervisorClientForKind(previousBackendKind);
+            : await this.getRuntimeSupervisorClientForKind(
+                previousBackendKind,
+                {},
+                previousRuntimeStoragePath
+              );
         await previousClient.deleteSession({
           sessionId: previousRuntimeSessionId
         });
       } catch {
         // Best effort only. The new session can still start with a fresh identity.
       }
-      this.unbindRuntimeSession(previousRuntimeSessionId);
+      this.unbindRuntimeSession(previousRuntimeSessionId, existingMetadata.runtimeStoragePath);
     }
 
     const snapshot = await client.createSession({
@@ -2896,7 +3305,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.bindRuntimeSession(nodeId, 'terminal', snapshot.sessionId);
+    this.bindRuntimeSession(nodeId, 'terminal', snapshot.sessionId, runtimeStoragePath);
     this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
@@ -3028,6 +3437,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             attachmentState: 'history-restored',
             runtimeBackend: currentMetadata.runtimeBackend,
             runtimeGuarantee: currentMetadata.runtimeGuarantee,
+            runtimeStoragePath: currentMetadata.runtimeStoragePath,
             liveSession: false,
             runtimeSessionId: undefined,
             shellPath: cliSpec.command,
@@ -3121,6 +3531,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           attachmentState: 'attached-live',
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
+          runtimeStoragePath: undefined,
           liveSession: true,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -3221,6 +3632,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             attachmentState: 'history-restored',
             runtimeBackend: undefined,
             runtimeGuarantee: undefined,
+            runtimeStoragePath: undefined,
             liveSession: false,
             runtimeSessionId: undefined,
             pendingLaunch: undefined,
@@ -3317,6 +3729,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           attachmentState: 'history-restored',
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
+          runtimeStoragePath: undefined,
           liveSession: false,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -3674,6 +4087,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             attachmentState: 'history-restored',
             runtimeBackend: currentMetadata.runtimeBackend,
             runtimeGuarantee: currentMetadata.runtimeGuarantee,
+            runtimeStoragePath: currentMetadata.runtimeStoragePath,
             liveSession: false,
             runtimeSessionId: undefined,
             shellPath,
@@ -3749,6 +4163,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           attachmentState: 'attached-live',
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
+          runtimeStoragePath: undefined,
           liveSession: true,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -3844,6 +4259,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             attachmentState: 'history-restored',
             runtimeBackend: undefined,
             runtimeGuarantee: undefined,
+            runtimeStoragePath: undefined,
             liveSession: false,
             runtimeSessionId: undefined,
             pendingLaunch: undefined,
@@ -3917,6 +4333,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           attachmentState: 'history-restored',
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
+          runtimeStoragePath: undefined,
           liveSession: false,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -3966,7 +4383,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
       const runtimeSessionId = metadata.runtimeSessionId as string;
       const operation = this.attachPersistedRuntimeSession(kind, nodeId, runtimeSessionId, () =>
-        this.getRuntimeSupervisorClientForKind(backendKind).then((client) =>
+        this.getRuntimeSupervisorClientForKind(
+          backendKind,
+          {},
+          this.getPersistedRuntimeStoragePath(metadata)
+        ).then((client) =>
           client.attachSession({
             sessionId: runtimeSessionId
           })
@@ -4029,7 +4450,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else {
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
       this.trackRuntimeSupervisorOperation(
-        this.getRuntimeSupervisorClientForKind(backendKind)
+        this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
           .then((client) =>
             client.writeInput({
               sessionId: session.runtimeSessionId,
@@ -4083,7 +4504,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else {
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
       this.trackRuntimeSupervisorOperation(
-        this.getRuntimeSupervisorClientForKind(backendKind)
+        this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
           .then((client) =>
             client.resizeSession({
               sessionId: session.runtimeSessionId,
@@ -4140,7 +4561,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     try {
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
-      const client = await this.getRuntimeSupervisorClientForKind(backendKind);
+      const client = await this.getRuntimeSupervisorClientForKind(
+        backendKind,
+        {},
+        session.runtimeStoragePath
+      );
       await client.stopSession({
         sessionId: session.runtimeSessionId
       });
@@ -4173,7 +4598,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       await this.deleteRuntimeSupervisorSessionStrict(
         {
           backendKind,
-          sessionId: attachedSession.runtimeSessionId
+          sessionId: attachedSession.runtimeSessionId,
+          runtimeStoragePath: attachedSession.runtimeStoragePath
         },
         {
           allowRestart: true
@@ -4193,7 +4619,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.deleteRuntimeSupervisorSessionStrict(persistedRuntimeSession, {
       allowRestart: true
     });
-    this.unbindRuntimeSession(persistedRuntimeSession.sessionId);
+    this.unbindRuntimeSession(
+      persistedRuntimeSession.sessionId,
+      persistedRuntimeSession.runtimeStoragePath
+    );
   }
 
   private async deleteNode(nodeId: string): Promise<void> {
@@ -4270,11 +4699,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.terminalStateTracker.dispose();
 
     if (session.owner === 'supervisor') {
-      this.unbindRuntimeSession(session.runtimeSessionId);
+      this.unbindRuntimeSession(session.runtimeSessionId, session.runtimeStoragePath);
       if (options.terminateProcess) {
         const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
         this.trackRuntimeSupervisorOperation(
-          this.getRuntimeSupervisorClientForKind(backendKind)
+          this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
             .then((client) =>
               client.deleteSession({
                 sessionId: session.runtimeSessionId
@@ -4459,9 +4888,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ...(session.owner === 'supervisor'
           ? {
               runtimeBackend: session.runtimeBackend,
-              runtimeGuarantee: session.runtimeGuarantee
+              runtimeGuarantee: session.runtimeGuarantee,
+              runtimeStoragePath: session.runtimeStoragePath
             }
-          : {}),
+          : {
+              runtimeStoragePath: undefined
+            }),
         liveSession: true,
         runtimeSessionId: session.runtimeSessionId,
         shellPath: session.shellPath,
@@ -4606,8 +5038,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind,
       detail: detail ? cloneJsonValue(detail) : undefined
     });
-    if (this.testDiagnosticEvents.length > 400) {
-      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length - 400);
+    if (this.testDiagnosticEvents.length > 2000) {
+      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length - 2000);
     }
   }
 
@@ -4696,6 +5128,35 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function summarizeCanvasStateForDiagnostics(rawState: unknown): Record<string, unknown> {
+  if (!isRecord(rawState)) {
+    return {
+      stateHash: buildDiagnosticStateHash(rawState)
+    };
+  }
+
+  const rawNodes = Array.isArray(rawState.nodes) ? rawState.nodes : [];
+  const nodeIds = rawNodes
+    .map((node) => (isRecord(node) && typeof node.id === 'string' ? node.id : undefined))
+    .filter((nodeId): nodeId is string => Boolean(nodeId))
+    .slice(0, 8);
+
+  return {
+    stateHash: buildDiagnosticStateHash(rawState),
+    nodeCount: rawNodes.length,
+    updatedAt: typeof rawState.updatedAt === 'string' ? rawState.updatedAt : undefined,
+    nodeIds
+  };
+}
+
+function buildDiagnosticStateHash(value: unknown): string | undefined {
+  try {
+    return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 12);
+  } catch {
+    return undefined;
+  }
 }
 
 function formatUnknownError(error: unknown): string {
@@ -5042,6 +5503,79 @@ function normalizeState(
   };
 }
 
+function readRuntimeSupervisorRegistrySessionsForTest(value: unknown): unknown[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  return Array.isArray(value.sessions) ? value.sessions : [];
+}
+
+function hydrateRuntimeStoragePaths(
+  state: CanvasPrototypeState,
+  runtimeStoragePath: string
+): CanvasPrototypeState {
+  const normalizedRuntimeStoragePath = normalizeRuntimeStoragePath(runtimeStoragePath);
+  if (!normalizedRuntimeStoragePath) {
+    return state;
+  }
+
+  let didMutate = false;
+  const nodes = state.nodes.map((node) => {
+    if (node.kind === 'agent') {
+      const metadata = ensureAgentMetadata(node);
+      if (
+        metadata.persistenceMode === 'live-runtime' &&
+        metadata.runtimeSessionId &&
+        !normalizeRuntimeStoragePath(metadata.runtimeStoragePath)
+      ) {
+        didMutate = true;
+        return {
+          ...node,
+          metadata: {
+            ...node.metadata,
+            agent: {
+              ...metadata,
+              runtimeStoragePath: normalizedRuntimeStoragePath
+            }
+          }
+        };
+      }
+      return node;
+    }
+
+    if (node.kind === 'terminal') {
+      const metadata = ensureTerminalMetadata(node);
+      if (
+        metadata.persistenceMode === 'live-runtime' &&
+        metadata.runtimeSessionId &&
+        !normalizeRuntimeStoragePath(metadata.runtimeStoragePath)
+      ) {
+        didMutate = true;
+        return {
+          ...node,
+          metadata: {
+            ...node.metadata,
+            terminal: {
+              ...metadata,
+              runtimeStoragePath: normalizedRuntimeStoragePath
+            }
+          }
+        };
+      }
+    }
+
+    return node;
+  });
+
+  return didMutate
+    ? {
+        ...state,
+        nodes
+      }
+    : state;
+}
+
 function normalizeNode(
   value: unknown,
   index: number,
@@ -5151,6 +5685,7 @@ function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMe
     attachmentState: 'history-restored',
     runtimeBackend: undefined,
     runtimeGuarantee: undefined,
+    runtimeStoragePath: undefined,
     liveSession: false,
     pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
@@ -5169,6 +5704,7 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
     attachmentState: 'history-restored',
     runtimeBackend: undefined,
     runtimeGuarantee: undefined,
+    runtimeStoragePath: undefined,
     liveSession: false,
     pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
@@ -5234,6 +5770,15 @@ function normalizeRuntimePersistenceGuarantee(
   }
 
   return undefined;
+}
+
+function normalizeRuntimeStoragePath(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized ? path.normalize(normalized) : undefined;
 }
 
 function normalizeRuntimeAttachmentState(
@@ -5382,6 +5927,7 @@ function normalizeMetadata(
       typeof agent.resumeStoragePath === 'string'
         ? agent.resumeStoragePath
         : undefined;
+    const runtimeStoragePath = normalizeRuntimeStoragePath(agent.runtimeStoragePath);
     const resumeSupported = doesAgentResumeStrategyRequireSupport(resumeStrategy);
 
     return {
@@ -5412,6 +5958,7 @@ function normalizeMetadata(
         ),
         runtimeBackend,
         runtimeGuarantee,
+        runtimeStoragePath,
         liveSession,
         runtimeSessionId,
         lastRuntimeError:
@@ -5485,6 +6032,7 @@ function normalizeMetadata(
       terminal.runtimeGuarantee,
       runtimeBackend
     );
+    const runtimeStoragePath = normalizeRuntimeStoragePath(terminal.runtimeStoragePath);
 
     return {
       terminal: {
@@ -5510,6 +6058,7 @@ function normalizeMetadata(
         ),
         runtimeBackend,
         runtimeGuarantee,
+        runtimeStoragePath,
         liveSession,
         runtimeSessionId,
         lastRuntimeError:
@@ -5635,11 +6184,13 @@ function reconcileAgentNodesInArray(
             ...(liveSession.owner === 'supervisor'
               ? {
                   runtimeBackend: liveSession.runtimeBackend,
-                  runtimeGuarantee: liveSession.runtimeGuarantee
+                  runtimeGuarantee: liveSession.runtimeGuarantee,
+                  runtimeStoragePath: liveSession.runtimeStoragePath
                 }
               : {
                   runtimeBackend: undefined,
-                  runtimeGuarantee: undefined
+                  runtimeGuarantee: undefined,
+                  runtimeStoragePath: undefined
                 }),
             liveSession: true,
             runtimeSessionId: liveSession.runtimeSessionId,
@@ -5811,11 +6362,13 @@ function reconcileTerminalNodesInArray(
             ...(liveSession.owner === 'supervisor'
               ? {
                   runtimeBackend: liveSession.runtimeBackend,
-                  runtimeGuarantee: liveSession.runtimeGuarantee
+                  runtimeGuarantee: liveSession.runtimeGuarantee,
+                  runtimeStoragePath: liveSession.runtimeStoragePath
                 }
               : {
                   runtimeBackend: undefined,
-                  runtimeGuarantee: undefined
+                  runtimeGuarantee: undefined,
+                  runtimeStoragePath: undefined
                 }),
             liveSession: true,
             runtimeSessionId: liveSession.runtimeSessionId,

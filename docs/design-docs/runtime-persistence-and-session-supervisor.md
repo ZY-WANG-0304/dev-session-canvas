@@ -19,7 +19,9 @@ related_plans:
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
   - docs/exec-plans/completed/runtime-host-backend-systemd-user.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-04-15
+  - docs/exec-plans/completed/remote-canvas-state-revert-investigation.md
+  - docs/exec-plans/completed/canvas-storage-slot-recovery-fix.md
+updated_at: 2026-04-16
 ---
 
 # 运行时持久化与会话监督器设计
@@ -291,6 +293,9 @@ scrollback 预算也在这里固定下来：
 - 风险：`Run and Debug` / `Extension Development Host` 不是安装版扩展的完全等价宿主；调试宿主可能回收 direct child 进程，导致 live-runtime 在 debug-only 场景下退化成历史恢复。
   当前缓解：监督器启动路径改为 launcher 中转，避免真正 supervisor 长期停留在调试宿主的直接进程树中；当前既有 Remote SSH + F5 的人工验证，也有 Remote-SSH Extension Development Host 的自动化 smoke 覆盖。剩余人工验证只针对调试配置入口本身，而不是产品 runtime persistence 主路径。
 
+- 风险：历史 slot 里若残留旧版或损坏的 snapshot，且缺少可比较的时间戳，跨 slot 新鲜度判断仍会退回 recoverable-state fallback，不能像完整元数据那样可靠比较“谁更新”。
+  当前缓解：当前主快照已经补上 `writtenAt` 与 `stateHash`，`workspaceStorage` 多 slot 恢复会优先按 snapshot 新鲜度选择 source；若 source 不是 current slot，当前只会把 `canvas-state.json` 迁回 current slot，并让后续主快照继续固定写回 current slot。仍处于 live-runtime 的节点不会复制 `runtime-supervisor/`；它们会把 `runtimeStoragePath` 持久化为原 source slot，直到会话自然结束或被删除。`agent-runtime/` 仍按当前实现保留迁移，但 live supervisor 的控制面已经明确改为“按会话绑定原 storage path”。测试态诊断现已包含 `storage/slotSelected`、`storage/stateMigratedToCurrentSlot`、`state/loadSelected`、`state/persistQueued` 与 `state/persistWritten`，便于直接比对 slot 选择与 `stateHash` 一致性。
+
 ## 8. 验证方法
 
 至少需要完成以下验证后，才能把本设计从“验证中”推进到 `已验证`：
@@ -318,5 +323,9 @@ scrollback 预算也在这里固定下来：
   - `重连中` / `历史恢复` UI 语义
   - 关闭运行时持久化开关后，不再自动重连既有 live-runtime
   - Remote-SSH Extension Development Host 下基于 detached 路线的 real-reopen 自动化
+  - `workspaceStorage` 多 slot 场景下按 snapshot 新鲜度选 source；主快照迁回 current slot 后继续读写，而 live-runtime 继续绑定 source slot 的 `runtimeStoragePath`
+  - 主快照写入先同步落盘，再串行更新 `workspaceState`，避免“最后一拍”只停留在异步队列中
+  - `npm run test:extension-storage-paths` 覆盖 current/sibling slot 的新鲜度比较、invalid timestamp 容错与 recoverable-state fallback
+  - `npm run test:smoke-storage-slot` 覆盖 sibling fresher snapshot 选中、`storage/slotSelected` / `state/loadSelected` `stateHash` 一致性、当前 slot 快照回写，以及恢复后 live-runtime 仍绑定原 `runtimeStoragePath`
 - 新的确认是：上述证据足以证明当前 detached 路线具备 `best-effort` 能力，但不足以继续把 Linux / `Remote SSH` 的正式强保证主路径写成“已验证”。用户已经在 `Remote SSH` 长断开场景下观察到节点仍可恢复、但 live session 会退化成历史结果的反例。
 - 因此本设计的 `validation_status` 回退到 `验证中`。后续只有在 `systemd-user` 主路径接入并完成验证后，Linux / `Remote SSH` 的正式强保证结论才可重新标为 `已验证`。
