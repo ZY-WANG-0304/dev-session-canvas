@@ -182,6 +182,7 @@
     "test:runtime-supervisor-paths": "node scripts/test-runtime-supervisor-paths.mjs",
     "test:vscode-smoke-runner-env": "node scripts/test-vscode-smoke-runner-env.mjs",
     "test:smoke": "npm run build && node scripts/run-vscode-smoke.mjs",
+    "test:smoke-storage-slot": "npm run build && node scripts/run-vscode-storage-slot-smoke.mjs",
     "validate:clean-checkout:vsix": "node scripts/run-clean-checkout-vsix-validation.mjs",
     "test:vsix-smoke": "node scripts/run-vscode-vsix-smoke.mjs",
     "test:webview": "npm run build && node scripts/run-playwright-webview.mjs",
