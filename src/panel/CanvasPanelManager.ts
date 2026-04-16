@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -18,7 +18,10 @@ import {
   STORAGE_KEYS,
   VIEW_IDS
 } from '../common/extensionIdentity';
-import { resolvePreferredExtensionStoragePath } from '../common/extensionStoragePaths';
+import {
+  selectPreferredExtensionStorageRecoverySource,
+  type ExtensionStorageRecoverySourceSelection
+} from '../common/extensionStoragePaths';
 import {
   type AgentNodeStatus,
   type AgentNodeMetadata,
@@ -209,6 +212,8 @@ export interface CanvasDebugSnapshot {
 
 interface PersistedCanvasSnapshot {
   version: 1;
+  writtenAt?: string;
+  stateHash?: string;
   state?: unknown;
   activeSurface?: CanvasSurfaceLocation;
 }
@@ -261,9 +266,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
   public static readonly panelContainerId = VIEW_IDS.panelContainer;
+  private static readonly RECOVERABLE_STORAGE_RELATIVE_PATHS = [
+    'canvas-state.json',
+    'runtime-supervisor',
+    'agent-runtime'
+  ] as const;
 
   private readonly rawExtensionStoragePath: string;
-  private readonly resolvedExtensionStoragePath: string;
+  private storageRecoverySelection!: ExtensionStorageRecoverySourceSelection;
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private state: CanvasPrototypeState;
@@ -302,28 +312,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
     );
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
-    const storagePathResolution = resolvePreferredExtensionStoragePath(this.rawExtensionStoragePath, {
-      pathExists: (candidatePath) => fs.existsSync(candidatePath)
-    });
-    this.resolvedExtensionStoragePath = storagePathResolution.resolvedPath;
-    if (storagePathResolution.recoveryReason) {
-      this.recordDiagnosticEvent('storage/pathRecovered', {
-        currentPath: storagePathResolution.currentPath,
-        resolvedPath: storagePathResolution.resolvedPath,
-        reason: storagePathResolution.recoveryReason
-      });
-    }
+    this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
       nodeCount: this.state.nodes.length,
-      storagePath: this.resolvedExtensionStoragePath,
-      rawStoragePath:
-        this.resolvedExtensionStoragePath === this.rawExtensionStoragePath
+      storagePath: this.getExtensionStoragePath(),
+      recoverySourcePath:
+        this.storageRecoverySelection.sourcePath === this.storageRecoverySelection.writePath
           ? undefined
-          : this.rawExtensionStoragePath
+          : this.storageRecoverySelection.sourcePath,
+      storageSelectionBasis: this.storageRecoverySelection.selectionBasis
     });
     context.subscriptions.push(this.sidebarStateEmitter);
 
@@ -515,6 +516,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async reloadPersistedStateForTest(): Promise<CanvasDebugSnapshot> {
     await this.waitForPendingWorkspaceStateUpdates();
+    this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/reloaded', {
@@ -563,6 +565,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       allowRuntimeSupervisorRestart: false
     });
 
+    this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.recordDiagnosticEvent('state/runtimeReloaded', {
@@ -610,7 +613,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       snapshotPath,
       exists: fs.existsSync(snapshotPath),
       lastError: this.lastPersistedCanvasSnapshotError,
-      writtenAt: this.lastPersistedCanvasSnapshotWrittenAt,
+      writtenAt: snapshot?.writtenAt ?? this.lastPersistedCanvasSnapshotWrittenAt,
       snapshot: snapshot ? cloneJsonValue(snapshot) : undefined
     };
   }
@@ -989,8 +992,99 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private refreshStorageRecoverySelection(): void {
+    this.storageRecoverySelection = selectPreferredExtensionStorageRecoverySource(this.rawExtensionStoragePath, {
+      pathExists: (candidatePath) => fs.existsSync(candidatePath)
+    });
+    this.recordStorageRecoverySelection(this.storageRecoverySelection);
+    this.initializeRecoveredStorageState(this.storageRecoverySelection);
+  }
+
+  private recordStorageRecoverySelection(selection: ExtensionStorageRecoverySourceSelection): void {
+    this.recordDiagnosticEvent('storage/slotSelected', {
+      currentPath: selection.currentPath,
+      writePath: selection.writePath,
+      sourcePath: selection.sourcePath,
+      recoveryReason: selection.recoveryReason,
+      selectionBasis: selection.selectionBasis,
+      migrationRequired: selection.migrationRequired,
+      currentSlotName: selection.currentCandidate.slotName,
+      sourceSlotName: selection.sourceCandidate.slotName,
+      sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
+      sourceWrittenAt: selection.sourceCandidate.snapshot.writtenAt,
+      sourceStateUpdatedAt: selection.sourceCandidate.snapshot.stateUpdatedAt,
+      sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp,
+      currentStateHash: selection.currentCandidate.snapshot.stateHash,
+      currentWrittenAt: selection.currentCandidate.snapshot.writtenAt,
+      currentStateUpdatedAt: selection.currentCandidate.snapshot.stateUpdatedAt,
+      currentTimestamp: selection.currentCandidate.snapshot.effectiveTimestamp
+    });
+  }
+
+  private initializeRecoveredStorageState(selection: ExtensionStorageRecoverySourceSelection): void {
+    if (!selection.migrationRequired) {
+      return;
+    }
+
+    try {
+      const migratedPaths = this.migrateRecoverableStateToCurrentSlot(selection.sourcePath, selection.writePath);
+      this.recordDiagnosticEvent('storage/stateMigratedToCurrentSlot', {
+        sourcePath: selection.sourcePath,
+        targetPath: selection.writePath,
+        copiedPaths: migratedPaths,
+        sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
+        sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('storage/stateMigrationFailed', {
+        sourcePath: selection.sourcePath,
+        targetPath: selection.writePath,
+        sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
+        message: formatUnknownError(error)
+      });
+    }
+  }
+
+  private migrateRecoverableStateToCurrentSlot(sourcePath: string, targetPath: string): string[] {
+    if (path.normalize(sourcePath) === path.normalize(targetPath)) {
+      return [];
+    }
+
+    fs.mkdirSync(targetPath, {
+      recursive: true
+    });
+
+    const copiedPaths: string[] = [];
+    for (const relativePath of CanvasPanelManager.RECOVERABLE_STORAGE_RELATIVE_PATHS) {
+      const sourceCandidatePath = path.join(sourcePath, relativePath);
+      if (!fs.existsSync(sourceCandidatePath)) {
+        continue;
+      }
+
+      const targetCandidatePath = path.join(targetPath, relativePath);
+      fs.rmSync(targetCandidatePath, {
+        recursive: true,
+        force: true
+      });
+      fs.mkdirSync(path.dirname(targetCandidatePath), {
+        recursive: true
+      });
+      const sourceStats = fs.statSync(sourceCandidatePath);
+      if (sourceStats.isDirectory()) {
+        fs.cpSync(sourceCandidatePath, targetCandidatePath, {
+          recursive: true
+        });
+      } else {
+        fs.copyFileSync(sourceCandidatePath, targetCandidatePath);
+      }
+      copiedPaths.push(relativePath);
+    }
+
+    return copiedPaths;
+  }
+
   private getExtensionStoragePath(): string {
-    return this.resolvedExtensionStoragePath;
+    return this.rawExtensionStoragePath;
   }
 
   private getPersistedCanvasSnapshotPath(): string {
@@ -998,8 +1092,76 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private loadPersistedCanvasSnapshot(): PersistedCanvasSnapshot | undefined {
-    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+    return this.loadPersistedCanvasSnapshotFromPath(this.getPersistedCanvasSnapshotPath());
+  }
 
+  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
+    const snapshotPath = this.getPersistedCanvasSnapshotPath();
+    const snapshotWithMetadata = this.buildPersistedCanvasSnapshot(snapshot);
+    const snapshotSummary = summarizeCanvasStateForDiagnostics(snapshotWithMetadata.state);
+    this.recordDiagnosticEvent('state/persistQueued', {
+      snapshotPath,
+      activeSurface: snapshotWithMetadata.activeSurface,
+      writePath: this.getExtensionStoragePath(),
+      snapshotWrittenAt: snapshotWithMetadata.writtenAt,
+      ...snapshotSummary
+    });
+
+    try {
+      this.writePersistedCanvasSnapshotToDisk(snapshotPath, snapshotWithMetadata);
+      this.lastPersistedCanvasSnapshotError = undefined;
+      this.lastPersistedCanvasSnapshotWrittenAt = snapshotWithMetadata.writtenAt;
+      this.recordDiagnosticEvent('state/persistWritten', {
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        writtenAt: snapshotWithMetadata.writtenAt,
+        ...snapshotSummary
+      });
+    } catch (error) {
+      const message = formatUnknownError(error);
+      this.lastPersistedCanvasSnapshotError = message;
+      this.recordDiagnosticEvent('state/persistFailed', {
+        message,
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        ...snapshotSummary
+      });
+      return Promise.reject(error);
+    }
+
+    const operation = this.pendingWorkspaceStateUpdate.then(async () => {
+      const normalizedWorkspaceState = normalizeState(
+        snapshotWithMetadata.state,
+        this.getAgentCliConfig().defaultProvider
+      );
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasState,
+        stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
+      );
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshotWithMetadata.activeSurface);
+      this.lastPersistedCanvasSnapshotError = undefined;
+    }).catch((error) => {
+      const message = formatUnknownError(error);
+      this.lastPersistedCanvasSnapshotError = message;
+      this.recordDiagnosticEvent('state/persistFailed', {
+        message,
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        ...snapshotSummary
+      });
+      throw error;
+    });
+    this.pendingWorkspaceStateUpdate = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    return operation;
+  }
+
+  private loadPersistedCanvasSnapshotFromPath(snapshotPath: string): PersistedCanvasSnapshot | undefined {
     try {
       if (!fs.existsSync(snapshotPath)) {
         return undefined;
@@ -1017,46 +1179,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
-    const operation = this.pendingWorkspaceStateUpdate.then(async () => {
-      const snapshotPath = this.getPersistedCanvasSnapshotPath();
-      const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
-      await fs.promises.mkdir(path.dirname(snapshotPath), {
-        recursive: true
-      });
-      const tempSnapshotPath = `${snapshotPath}.tmp`;
-      await fs.promises.writeFile(tempSnapshotPath, serializedSnapshot, 'utf8');
-      await fs.promises.rename(tempSnapshotPath, snapshotPath);
-      const normalizedWorkspaceState = normalizeState(
-        snapshot.state,
-        this.getAgentCliConfig().defaultProvider
-      );
-      await this.context.workspaceState.update(
-        STORAGE_KEYS.canvasState,
-        stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
-      );
-      await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshot.activeSurface);
-      this.lastPersistedCanvasSnapshotError = undefined;
-      this.lastPersistedCanvasSnapshotWrittenAt = new Date().toISOString();
-    }).catch((error) => {
-      const message = formatUnknownError(error);
-      this.lastPersistedCanvasSnapshotError = message;
-      this.recordDiagnosticEvent('state/persistFailed', {
-        message,
-        snapshotPath: this.getPersistedCanvasSnapshotPath()
-      });
-      throw error;
+  private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
+    return {
+      ...snapshot,
+      writtenAt: new Date().toISOString(),
+      stateHash: buildDiagnosticStateHash(snapshot.state)
+    };
+  }
+
+  private writePersistedCanvasSnapshotToDisk(snapshotPath: string, snapshot: PersistedCanvasSnapshot): void {
+    fs.mkdirSync(path.dirname(snapshotPath), {
+      recursive: true
     });
-    this.pendingWorkspaceStateUpdate = operation.then(
-      () => undefined,
-      () => undefined
-    );
-    return operation;
+    const tempSnapshotPath = `${snapshotPath}.tmp`;
+    const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
+    fs.writeFileSync(tempSnapshotPath, serializedSnapshot, 'utf8');
+    fs.renameSync(tempSnapshotPath, snapshotPath);
   }
 
   private loadState(): CanvasPrototypeState {
-    const rawState =
-      this.loadPersistedCanvasSnapshot()?.state ?? this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const rawState = snapshot?.state ?? workspaceState;
+    const source = snapshot?.state !== undefined ? 'snapshot' : workspaceState !== undefined ? 'workspaceState' : 'default';
+    this.recordDiagnosticEvent('state/loadSelected', {
+      source,
+      snapshotPath: this.getPersistedCanvasSnapshotPath(),
+      storagePath: this.getExtensionStoragePath(),
+      writePath: this.storageRecoverySelection.writePath,
+      recoverySourcePath:
+        this.storageRecoverySelection.sourcePath === this.storageRecoverySelection.writePath
+          ? undefined
+          : this.storageRecoverySelection.sourcePath,
+      snapshotAvailable: snapshot !== undefined,
+      workspaceStateAvailable: workspaceState !== undefined,
+      activeSurface: snapshot?.activeSurface,
+      snapshotWrittenAt: snapshot?.writtenAt,
+      snapshotStateHash: snapshot?.stateHash,
+      ...summarizeCanvasStateForDiagnostics(rawState)
+    });
     return normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
   }
 
@@ -4606,8 +4767,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind,
       detail: detail ? cloneJsonValue(detail) : undefined
     });
-    if (this.testDiagnosticEvents.length > 400) {
-      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length - 400);
+    if (this.testDiagnosticEvents.length > 2000) {
+      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length - 2000);
     }
   }
 
@@ -4696,6 +4857,35 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function summarizeCanvasStateForDiagnostics(rawState: unknown): Record<string, unknown> {
+  if (!isRecord(rawState)) {
+    return {
+      stateHash: buildDiagnosticStateHash(rawState)
+    };
+  }
+
+  const rawNodes = Array.isArray(rawState.nodes) ? rawState.nodes : [];
+  const nodeIds = rawNodes
+    .map((node) => (isRecord(node) && typeof node.id === 'string' ? node.id : undefined))
+    .filter((nodeId): nodeId is string => Boolean(nodeId))
+    .slice(0, 8);
+
+  return {
+    stateHash: buildDiagnosticStateHash(rawState),
+    nodeCount: rawNodes.length,
+    updatedAt: typeof rawState.updatedAt === 'string' ? rawState.updatedAt : undefined,
+    nodeIds
+  };
+}
+
+function buildDiagnosticStateHash(value: unknown): string | undefined {
+  try {
+    return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 12);
+  } catch {
+    return undefined;
+  }
 }
 
 function formatUnknownError(error: unknown): string {

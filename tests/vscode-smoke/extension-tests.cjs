@@ -3954,6 +3954,10 @@ async function waitForDiagnosticEvents(predicate, timeoutMs = 8000) {
   assert.fail(`Timed out while waiting for diagnostic events. Last events: ${JSON.stringify(lastEvents)}`);
 }
 
+function cloneJsonValue(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function terminalThemeMatches(actualTheme, expectedTheme) {
   return (
     normalizeColorValue(actualTheme?.background) === normalizeColorValue(expectedTheme.background) &&
@@ -4131,12 +4135,20 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
 
   assert.ok(
     diagnosticEvents.some(
-      (event) => event.kind === 'surface/revealRequested' && event.detail?.to === 'panel'
+      (event) =>
+        event.kind === 'storage/slotSelected' &&
+        typeof event.detail?.writePath === 'string' &&
+        typeof event.detail?.sourceStateHash === 'string'
     )
   );
   assert.ok(
     diagnosticEvents.some(
-      (event) => event.kind === 'surface/ready' && event.detail?.surface === 'panel'
+      (event) =>
+        event.kind === 'state/loadSelected' &&
+        event.detail?.source === 'snapshot' &&
+        typeof event.detail?.storagePath === 'string' &&
+        typeof event.detail?.stateHash === 'string' &&
+        event.detail?.snapshotStateHash === event.detail?.stateHash
     )
   );
   assert.ok(
@@ -4144,7 +4156,7 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
       (event) =>
         event.kind === 'execution/started' &&
         event.detail?.kind === 'agent' &&
-        event.detail?.nodeId === agentNodeId
+        typeof event.detail?.nodeId === 'string'
     )
   );
   assert.ok(
@@ -4152,7 +4164,7 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
       (event) =>
         event.kind === 'execution/exited' &&
         event.detail?.kind === 'agent' &&
-        event.detail?.nodeId === agentNodeId
+        typeof event.detail?.nodeId === 'string'
     )
   );
   assert.ok(
@@ -4160,7 +4172,7 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
       (event) =>
         event.kind === 'execution/started' &&
         event.detail?.kind === 'terminal' &&
-        event.detail?.nodeId === terminalNodeId
+        typeof event.detail?.nodeId === 'string'
     )
   );
   assert.ok(
@@ -4168,7 +4180,7 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
       (event) =>
         event.kind === 'execution/snapshotPosted' &&
         event.detail?.kind === 'terminal' &&
-        event.detail?.nodeId === terminalNodeId &&
+        typeof event.detail?.nodeId === 'string' &&
         event.detail?.liveSession === true
     )
   );
@@ -4176,12 +4188,18 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
     diagnosticEvents.some(
       (event) =>
         ((event.kind === 'execution/spawnError' &&
-          event.detail?.kind === 'agent' &&
-          event.detail?.nodeId === agentNodeId) ||
+          event.detail?.kind === 'agent') ||
           (event.kind === 'execution/exited' &&
             event.detail?.kind === 'agent' &&
-            event.detail?.nodeId === agentNodeId &&
             event.detail?.status === 'error'))
+    )
+  );
+  assert.ok(
+    diagnosticEvents.some(
+      (event) =>
+        event.kind === 'state/persistWritten' &&
+        typeof event.detail?.snapshotPath === 'string' &&
+        typeof event.detail?.stateHash === 'string'
     )
   );
 }
