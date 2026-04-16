@@ -46,7 +46,7 @@ const WINDOW_TITLE_PATTERN = /(Extension Development Host|Visual Studio Code|Cod
 const CDP_HOST = '127.0.0.1';
 const GIF_FPS = 8;
 const GIF_WIDTH = 1180;
-const SCREENSHOT_FROM_END_SECONDS = 3.2;
+const SCREENSHOT_FROM_END_SECONDS = 0.2;
 const READY_TIMEOUT_MS = 120000;
 const TEST_EXIT_TIMEOUT_MS = 240000;
 const CDP_CONNECT_TIMEOUT_MS = 30000;
@@ -102,7 +102,7 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
       'security.workspace.trust.enabled': false,
       'window.commandCenter': false,
       'editor.minimap.enabled': false,
-      'workbench.colorTheme': 'Dark Modern',
+      'workbench.colorTheme': 'Default Dark+',
       'workbench.panel.defaultLocation': 'bottom',
       'workbench.panel.opensMaximized': 'always'
     }
@@ -221,7 +221,7 @@ async function prepareDirectories() {
 function createRecordingSpec() {
   return {
     mode: 'recording',
-    theme: 'Dark Modern',
+    theme: 'Default Dark+',
     surface: 'panel',
     persistedState: createPersistedState([
       createNoteNode({

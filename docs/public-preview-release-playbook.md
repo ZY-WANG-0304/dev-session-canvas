@@ -1,13 +1,13 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口 `0.1.0` 首个公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.1.1`。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
-- Marketplace listing 正文：`README.marketplace.md`
+- Marketplace listing 正文：`README.marketplace.md`（引用 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
 - Marketplace listing 英文对应版：`README.marketplace.en.md`（仅作仓库内英文对应文案，不作为默认打包输入）
-- 仓库 README 默认中文：`README.md`
-- 仓库 README 英文对应版：`README.en.md`
+- 仓库 README 默认中文：`README.md`（引用 `images/marketplace/canvas-overview.gif`）
+- 仓库 README 英文对应版：`README.en.md`（引用 `images/marketplace/canvas-overview.gif`）
 - release notes：`CHANGELOG.md`
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
@@ -18,6 +18,7 @@
 当前 listing 统一使用中文默认版 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。新增的 `README.marketplace.en.md` 仅作为仓库内英文对应版本保留，不改变默认 Marketplace 打包入口。
 
 当前 `npm run package:vsix` 会在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。
+打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
 这样做的原因是：
 
@@ -28,12 +29,12 @@
 
 ## release notes 定稿口径
 
-当前 `0.1.0` 的 release notes 统一以 `CHANGELOG.md` 为准。发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
+当前 `0.1.1` 的 release notes 统一以 `CHANGELOG.md` 为准。发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 版本标题仍为 `0.1.0 - Public Preview`
-- 功能概览、重点收口与已知限制与当前实现一致
+- 版本标题仍为 `0.1.1 - Preview Update`
+- 重点修复、发布资产收口与已知限制与当前实现一致
 - 已包含安装/升级说明与回退建议
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -41,15 +42,15 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. `0.1.0` 是首个公开 `Preview` 版本，扩展身份为 `devsessioncanvas.dev-session-canvas`。
-2. 当前版本通过 `Visual Studio Marketplace` 常规安装；后续 `0.1.x` 更新也通过 Marketplace 常规升级获取。
+1. 当前目标版本为 `0.1.1`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.1.0` 升级到 `0.1.1` 都通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.1.x` 更新也通过 Marketplace 常规升级获取。
 3. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.1.0` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.1.1` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
 2. 关注后续 `0.1.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
@@ -59,7 +60,7 @@
 
 若发布后发现 P0 / P1 blocker，默认按以下顺序处理：
 
-1. 优先评估能否在短时间内发布 `0.1.1` hotfix。
+1. 优先评估能否在短时间内发布 `0.1.2` hotfix。
 2. 若短时间内无法修复，且当前版本会阻塞主路径使用或引发宿主崩溃，再考虑临时下架当前版本。
 3. 无论选择 hotfix 还是临时下架，都需要同步更新 GitHub issue、`docs/support.md` 与对外说明，避免用户只看到失真状态。
 
@@ -86,27 +87,32 @@
 
        npm run validate:clean-checkout:vsix -- --ref <final-ref>
 
-3. 在当前仓库根目录执行：
+3. 在带 `.git` 元数据的最终 release checkout 中执行：
 
        npm run package:vsix
 
-4. 复核以下文件与当前版本事实一致：
+   若当前打包目录不含 `.git` 元数据，则改为：
+
+       DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> npm run package:vsix
+
+4. 确认打包日志已经打印当前 README 改写 ref，且没有出现相对媒体 URL 校验失败。
+5. 复核以下文件与当前版本事实一致：
    - `README.marketplace.md`
    - `CHANGELOG.md`
    - `docs/support.md`
    - `docs/SECURITY.md`
-5. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
+6. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
 
 ## 发布命令
 
 在版本号、最终 git ref 与 VSIX 产物都已锁定后，使用本地 `@vscode/vsce` 执行：
 
-注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`。
+注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.1.0.vsix
+      --packagePath dev-session-canvas-0.1.1.vsix
 
-若最终版本号不是 `0.1.0`，应先同步更新命令中的 VSIX 文件名。
+若最终版本号不是 `0.1.1`，应先同步更新命令中的 VSIX 文件名。
 
 ## 发布后验证
 

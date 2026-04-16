@@ -6,6 +6,8 @@ DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. 
 
 The product has entered the public `Preview` phase. The repository's release assets and external messaging have largely been finalized, and the remaining work is focused on release-day publication and post-release verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
+![DevSessionCanvas Animated Demo](images/marketplace/canvas-overview.gif)
+
 ## Who It Is For
 
 - Developers who need to run multiple `Agent` or terminal sessions in parallel inside the same VS Code workspace
