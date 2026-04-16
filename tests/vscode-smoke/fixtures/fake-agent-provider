@@ -13,6 +13,15 @@ session_dir="${DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH:-}"
 session_file=""
 session_id=""
 initial_prompt_delay_seconds="0.45"
+hide_pid="${DEV_SESSION_CANVAS_FAKE_PROVIDER_HIDE_PID:-0}"
+flavor="${DEV_SESSION_CANVAS_FAKE_AGENT_FLAVOR:-generic}"
+
+prefix="[fake-agent]"
+if [[ "$flavor" == "codex" ]]; then
+  prefix="[fake-codex]"
+elif [[ "$flavor" == "claude" ]]; then
+  prefix="[fake-claude]"
+fi
 
 if [[ -n "$session_dir" ]]; then
   mkdir -p "$session_dir"
@@ -21,26 +30,34 @@ fi
 
 if [[ "$mode" == "resume" ]]; then
   if [[ -z "$session_file" || ! -f "$session_file" ]]; then
-    echo "[fake-agent] no resumable session"
+    echo "${prefix} no resumable session"
     exit 19
   fi
 
   session_id="$(cat "$session_file")"
   if [[ -z "$requested_resume_session_id" ]]; then
-    echo "[fake-agent] missing resume session id"
+    echo "${prefix} missing resume session id"
     exit 20
   fi
   if [[ "$requested_resume_session_id" != "$session_id" ]]; then
-    echo "[fake-agent] resume session mismatch expected=${session_id} actual=${requested_resume_session_id}"
+    echo "${prefix} resume session mismatch expected=${session_id} actual=${requested_resume_session_id}"
     exit 21
   fi
-  echo "[fake-agent] resumed session ${session_id} pid=$$"
+  if [[ "$hide_pid" == "1" ]]; then
+    echo "${prefix} resumed session ${session_id}"
+  else
+    echo "${prefix} resumed session ${session_id} pid=$$"
+  fi
 else
   session_id="${DEV_SESSION_CANVAS_FAKE_PROVIDER_SESSION_ID:-session-$$}"
   if [[ -n "$session_file" ]]; then
     printf '%s\n' "$session_id" > "$session_file"
   fi
-  echo "[fake-agent] ready pid=$$ session=${session_id}"
+  if [[ "$hide_pid" == "1" ]]; then
+    echo "${prefix} ready session=${session_id}"
+  else
+    echo "${prefix} ready pid=$$ session=${session_id}"
+  fi
 fi
 
 print_prompt() {
@@ -51,7 +68,7 @@ sleep "$initial_prompt_delay_seconds"
 print_prompt
 
 handle_signal() {
-  echo "[fake-agent] received signal"
+  echo "${prefix} received signal"
   exit 0
 }
 
@@ -66,7 +83,7 @@ while IFS= read -r line; do
 
   if [[ "$line" == exit\ * ]]; then
     exit_code="${line#exit }"
-    echo "[fake-agent] exiting with code ${exit_code}"
+    echo "${prefix} exiting with code ${exit_code}"
     exit "$exit_code"
   fi
 
@@ -74,7 +91,7 @@ while IFS= read -r line; do
     burst_count="${line#burst }"
     if [[ "$burst_count" =~ ^[0-9]+$ ]]; then
       for ((i = 1; i <= burst_count; i += 1)); do
-        printf '[fake-agent] burst %03d\n' "$i"
+        printf '%s burst %03d\n' "$prefix" "$i"
       done
       print_prompt
       continue
@@ -83,9 +100,9 @@ while IFS= read -r line; do
 
   if [[ "$line" == sleep\ * ]]; then
     sleep_seconds="${line#sleep }"
-    echo "[fake-agent] sleeping ${sleep_seconds}s"
+    echo "${prefix} sleeping ${sleep_seconds}s"
     sleep "$sleep_seconds"
-    echo "[fake-agent] woke after ${sleep_seconds}s"
+    echo "${prefix} woke after ${sleep_seconds}s"
     print_prompt
     continue
   fi
@@ -96,23 +113,47 @@ while IFS= read -r line; do
       frames=('-' '\\' '|' '/')
       for ((i = 1; i <= spin_count; i += 1)); do
         frame_index=$(((i - 1) % ${#frames[@]}))
-        printf '\r[fake-agent] %s slowspin %03d' "${frames[$frame_index]}" "$i"
+        printf '\r%s %s slowspin %03d' "$prefix" "${frames[$frame_index]}" "$i"
         sleep 0.55
       done
-      printf '\r[fake-agent] slowspin done %03d\n' "$spin_count"
+      printf '\r%s slowspin done %03d\n' "$prefix" "$spin_count"
       print_prompt
       continue
     fi
   fi
 
-  if [[ "$line" == notify\ * ]]; then
-    notify_message="${line#notify }"
-    printf '\033]9;%s\007' "$notify_message"
-    printf '[fake-agent] notified %s\n' "$notify_message"
+  if [[ "$line" == "写一首打油诗" ]]; then
+    echo "小站灯昏代码香"
+    sleep 0.12
+    echo "键盘敲出半行霜"
+    sleep 0.12
+    echo "若问今晚谁最忙"
+    sleep 0.12
+    echo "Code Worker 一边写诗一边扛"
     print_prompt
     continue
   fi
 
-  echo "[fake-agent] ${line}"
+  if [[ "$line" == clear-demo ]]; then
+    printf '\033[2J\033[H'
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == raw\ * ]]; then
+    printf '%s\n' "${line#raw }"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == notify\ * ]]; then
+    notify_message="${line#notify }"
+    printf '\033]9;%s\007' "$notify_message"
+    printf '%s notified %s\n' "$prefix" "$notify_message"
+    print_prompt
+    continue
+  fi
+
+  echo "${prefix} ${line}"
   print_prompt
 done

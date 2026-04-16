@@ -4,6 +4,10 @@
 
 在 VS Code 中用一张画布同时管理多个开发会话。`Agent`、`Terminal` 与 `Note` 节点并排可见，适合需要并行推进多条执行任务的开发者。当前为公开 `Preview` 版本。
 
+![Dev Session Canvas 主画布概览](images/marketplace/canvas-overview.png)
+
+![Dev Session Canvas 动态演示](images/marketplace/canvas-overview.gif)
+
 ## 核心功能
 
 - 在面板或编辑区打开主画布

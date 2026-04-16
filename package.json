@@ -186,6 +186,7 @@
     "validate:clean-checkout:vsix": "node scripts/run-clean-checkout-vsix-validation.mjs",
     "test:vsix-smoke": "node scripts/run-vscode-vsix-smoke.mjs",
     "test:webview": "npm run build && node scripts/run-playwright-webview.mjs",
+    "generate:marketplace-media": "node scripts/generate-marketplace-media.mjs",
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit"
