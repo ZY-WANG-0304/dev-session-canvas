@@ -19,11 +19,15 @@
   },
   "categories": [
     "Visualization",
+    "AI",
     "Other"
   ],
   "keywords": [
+    "ai",
     "agent",
     "canvas",
+    "workbench",
+    "multi-agent",
     "terminal",
     "note",
     "collaboration",
