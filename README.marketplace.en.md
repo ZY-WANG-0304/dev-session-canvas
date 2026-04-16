@@ -8,7 +8,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ![Dev Session Canvas Overview](images/marketplace/canvas-overview.png)
 
-![Dev Session Canvas Animated Demo](images/marketplace/canvas-overview.gif)
+<video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
 ## Product Positioning
 
@@ -48,7 +48,9 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.1.0 Highlights
+## 0.1.1 Highlights
+
+`0.1.1` is primarily a fixes-and-release-closing update. The core product highlights remain the same as the previous version:
 
 - The main canvas opens in the panel by default and can also be moved back to the editor area
 - The core `Agent` / `Terminal` / `Note` node workflow is already in place
@@ -58,8 +60,8 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ## Installation And Upgrades
 
-- This is the first public Preview release. The extension ID is `devsessioncanvas.dev-session-canvas`
-- Install through the `Visual Studio Marketplace`; later `0.1.x` updates will also be delivered through Marketplace upgrades
+- The extension ID is `devsessioncanvas.dev-session-canvas`
+- First-time installs and upgrades from `0.1.0` to `0.1.1` both go through the `Visual Studio Marketplace`; later `0.1.x` updates will also be delivered through Marketplace upgrades
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
 ## Rollback Guidance
