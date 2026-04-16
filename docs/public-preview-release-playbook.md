@@ -5,6 +5,9 @@
 ## 当前发布素材
 
 - Marketplace listing 正文：`README.marketplace.md`
+- Marketplace listing 英文对应版：`README.marketplace.en.md`（仅作仓库内英文对应文案，不作为默认打包输入）
+- 仓库 README 默认中文：`README.md`
+- 仓库 README 英文对应版：`README.en.md`
 - release notes：`CHANGELOG.md`
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
@@ -12,7 +15,7 @@
 
 ## Marketplace listing 定稿口径
 
-当前 listing 统一使用 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。
+当前 listing 统一使用中文默认版 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。新增的 `README.marketplace.en.md` 仅作为仓库内英文对应版本保留，不改变默认 Marketplace 打包入口。
 
 当前 `npm run package:vsix` 会在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。
 
