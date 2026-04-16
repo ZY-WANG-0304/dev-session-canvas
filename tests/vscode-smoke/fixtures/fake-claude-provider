@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+DEV_SESSION_CANVAS_FAKE_AGENT_FLAVOR=claude exec "${SCRIPT_DIR}/fake-agent-provider" "$@"
