@@ -519,6 +519,299 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
   await expect(terminalNode).not.toContainText('detached');
 });
 
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} renders a persistent execution help trigger with tooltip text`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const helpTrigger = nodeById(page, nodeId).locator('.execution-node-help-trigger');
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+
+    await expect(helpTrigger).toBeVisible();
+    await expect(helpTrigger).toHaveText('?');
+    await helpTrigger.hover();
+    await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
+    await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
+      '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
+    );
+  });
+
+  test(`${executionKind} dragover accepts explorer resources before payload becomes readable`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstUri = 'file:///workspace/path%20with%20space.txt';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    const dragState = await page.evaluate(
+      ({ nextNodeId, nextFirstUri }) => {
+        const nodeRoot = document.querySelector(`[data-node-id="${nextNodeId}"]`);
+        const dropTarget = nodeRoot?.querySelector('.terminal-frame');
+        if (!dropTarget) {
+          throw new Error(`Execution terminal ${nextNodeId} has no drop target.`);
+        }
+
+        const createStubDataTransfer = ({ types, getData }) => ({
+          dropEffect: 'copy',
+          effectAllowed: 'all',
+          files: [],
+          items: [],
+          types,
+          getData,
+          setData: () => {},
+          clearData: () => {},
+          setDragImage: () => {}
+        });
+        const attachDataTransfer = (event, dataTransfer) => {
+          Object.defineProperty(event, 'dataTransfer', {
+            configurable: true,
+            value: dataTransfer
+          });
+          return event;
+        };
+        const previewTransfer = createStubDataTransfer({
+          types: ['ResourceURLs'],
+          getData: () => ''
+        });
+        const dragEnter = attachDataTransfer(
+          new DragEvent('dragenter', {
+            bubbles: true,
+            cancelable: true
+          }),
+          previewTransfer
+        );
+        const dragOver = attachDataTransfer(
+          new DragEvent('dragover', {
+            bubbles: true,
+            cancelable: true
+          }),
+          previewTransfer
+        );
+
+        dropTarget.dispatchEvent(dragEnter);
+        dropTarget.dispatchEvent(dragOver);
+
+        const acceptedBeforePayloadReadable =
+          dragEnter.defaultPrevented &&
+          dragOver.defaultPrevented &&
+          dropTarget.classList.contains('is-drop-target');
+
+        const dropTransfer = createStubDataTransfer({
+          types: ['ResourceURLs'],
+          getData: (type) => (type === 'ResourceURLs' ? JSON.stringify([nextFirstUri]) : '')
+        });
+        const dropEvent = attachDataTransfer(
+          new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true
+          }),
+          dropTransfer
+        );
+        dropTarget.dispatchEvent(dropEvent);
+
+        return {
+          acceptedBeforePayloadReadable,
+          dropDefaultPrevented: dropEvent.defaultPrevented,
+          dropTargetCleared: !dropTarget.classList.contains('is-drop-target')
+        };
+      },
+      {
+        nextNodeId: nodeId,
+        nextFirstUri: firstUri
+      }
+    );
+
+    expect(dragState).toEqual({
+      acceptedBeforePayloadReadable: true,
+      dropDefaultPrevented: true,
+      dropTargetCleared: true
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const message = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === 'webview/dropExecutionResource');
+          return message
+            ? JSON.stringify({
+                type: message.type,
+                payload: message.payload
+              })
+            : null;
+        });
+      })
+      .toBe(
+        JSON.stringify({
+          type: 'webview/dropExecutionResource',
+          payload: {
+            nodeId,
+            kind: executionKind,
+            resource: {
+              source: 'resourceUrls',
+              valueKind: 'uri',
+              value: firstUri
+            }
+          }
+        })
+      );
+  });
+
+  test(`${executionKind} drag-and-drop forwards the first explorer resource to the host`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstUri = 'file:///workspace/path%20with%20space.txt';
+    const secondUri = 'file:///workspace/second-file.txt';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'dropExecutionResources',
+      nodeId,
+      source: 'resourceUrls',
+      values: [firstUri, secondUri]
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const message = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === 'webview/dropExecutionResource');
+          return message
+            ? JSON.stringify({
+                type: message.type,
+                payload: message.payload
+              })
+            : null;
+        });
+      })
+      .toBe(
+        JSON.stringify({
+          type: 'webview/dropExecutionResource',
+          payload: {
+            nodeId,
+            kind: executionKind,
+            resource: {
+              source: 'resourceUrls',
+              valueKind: 'uri',
+              value: firstUri
+            }
+          }
+        })
+      );
+
+    const dropFocusState = await page.evaluate((nextNodeId) => {
+      const nodeRoot = document.querySelector(`[data-node-id="${nextNodeId}"]`);
+      const textarea = nodeRoot?.querySelector('.xterm-helper-textarea');
+      return textarea === document.activeElement;
+    }, nodeId);
+    expect(dropFocusState).toBe(true);
+  });
+
+  test(`${executionKind} link activation posts parsed file and URL targets`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const fileLinkText = 'src/index.ts:42:10';
+    const urlLinkText = 'https://example.com/docs?q=1';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${fileLinkText}\r\nOpen ${urlLinkText}.\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: fileLinkText
+    });
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: urlLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                type: entry.type,
+                payload:
+                  entry.payload.link.linkKind === 'file'
+                    ? {
+                        nodeId: entry.payload.nodeId,
+                        kind: entry.payload.kind,
+                        link: {
+                          linkKind: entry.payload.link.linkKind,
+                          text: entry.payload.link.text,
+                          path: entry.payload.link.path,
+                          line: entry.payload.link.line,
+                          column: entry.payload.link.column,
+                          targetKind: entry.payload.link.targetKind
+                        }
+                      }
+                    : entry.payload
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            type: 'webview/openExecutionLink',
+            payload: {
+              nodeId,
+              kind: executionKind,
+              link: {
+                linkKind: 'file',
+                text: fileLinkText,
+                path: 'src/index.ts',
+                line: 42,
+                column: 10,
+                targetKind: 'file'
+              }
+            }
+          },
+          {
+            type: 'webview/openExecutionLink',
+            payload: {
+              nodeId,
+              kind: executionKind,
+              link: {
+                linkKind: 'url',
+                text: urlLinkText,
+                url: urlLinkText
+              }
+            }
+          }
+        ])
+      );
+  });
+}
+
 test('editing node titles posts updateNodeTitle for agent, terminal, and note', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createCanvasScreenshotState());
@@ -1701,6 +1994,7 @@ function createRuntimeContext(overrides = {}) {
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
     terminalScrollback: 1000,
+    editorMultiCursorModifier: 'alt',
     ...overrides
   };
 }

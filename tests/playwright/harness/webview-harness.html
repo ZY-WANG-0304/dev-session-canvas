@@ -23,6 +23,36 @@
             },
             postMessage(message) {
               postedMessages.push(message);
+              if (message?.type === 'webview/resolveExecutionFileLinks') {
+                const resolvedLinks = Array.isArray(message.payload?.candidates)
+                  ? message.payload.candidates.map((candidate) => ({
+                      candidateId: candidate.candidateId,
+                      link: {
+                        linkKind: 'file',
+                        text: candidate.text,
+                        path: candidate.path,
+                        line: candidate.line,
+                        column: candidate.column,
+                        lineEnd: candidate.lineEnd,
+                        columnEnd: candidate.columnEnd,
+                        resolvedId: `harness-${candidate.candidateId}`,
+                        targetKind: 'file'
+                      }
+                    }))
+                  : [];
+                window.postMessage(
+                  {
+                    type: 'host/executionFileLinksResolved',
+                    payload: {
+                      requestId: message.payload?.requestId,
+                      nodeId: message.payload?.nodeId,
+                      kind: message.payload?.kind,
+                      resolvedLinks
+                    }
+                  },
+                  '*'
+                );
+              }
               window.dispatchEvent(
                 new CustomEvent('dev-session-canvas:harness-post-message', {
                   detail: message
@@ -38,7 +68,7 @@
           },
           bootstrap(
             state,
-            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000 }
+            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt' }
           ) {
             this.dispatchHostMessage({
               type: 'host/bootstrap',
@@ -50,7 +80,7 @@
           },
           update(
             state,
-            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000 }
+            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt' }
           ) {
             this.dispatchHostMessage({
               type: 'host/stateUpdated',
