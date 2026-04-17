@@ -1,4 +1,10 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
+import type {
+  ExecutionTerminalFileLinkCandidate,
+  ExecutionTerminalDroppedResource,
+  ExecutionTerminalOpenLink,
+  ExecutionTerminalResolvedFileLink
+} from './executionTerminalLinks';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
@@ -113,6 +119,7 @@ export interface CanvasRuntimeContext {
   surfaceLocation: 'editor' | 'panel';
   defaultAgentProvider: AgentProviderKind;
   terminalScrollback: number;
+  editorMultiCursorModifier: 'ctrlCmd' | 'alt';
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -152,6 +159,7 @@ export interface WebviewProbeSnapshot {
   hasCanvasShell: boolean;
   hasReactFlow: boolean;
   toastMessage: string | null;
+  executionLinkTooltipText: string | null;
   nodeCount: number;
   nodes: WebviewProbeNodeSnapshot[];
 }
@@ -185,6 +193,30 @@ export type WebviewDomAction =
       kind: 'sendExecutionInput';
       nodeId: string;
       data: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'dropExecutionResources';
+      nodeId: string;
+      source: 'resourceUrls' | 'codeFiles' | 'uriList';
+      values: string[];
+      delayMs?: number;
+    }
+  | {
+      kind: 'activateExecutionLink';
+      nodeId: string;
+      text: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'hoverExecutionLink';
+      nodeId: string;
+      text: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'clearExecutionLinkHover';
+      nodeId: string;
       delayMs?: number;
     };
 
@@ -248,6 +280,31 @@ export type WebviewToHostMessage =
         nodeId: string;
         kind: ExecutionNodeKind;
         data: string;
+      };
+    }
+  | {
+      type: 'webview/dropExecutionResource';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        resource: ExecutionTerminalDroppedResource;
+      };
+    }
+  | {
+      type: 'webview/openExecutionLink';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        link: ExecutionTerminalOpenLink;
+      };
+    }
+  | {
+      type: 'webview/resolveExecutionFileLinks';
+      payload: {
+        requestId: string;
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        candidates: ExecutionTerminalFileLinkCandidate[];
       };
     }
   | {
@@ -349,6 +406,15 @@ export type HostToWebviewMessage =
         nodeId: string;
         kind: ExecutionNodeKind;
         message: string;
+      };
+    }
+  | {
+      type: 'host/executionFileLinksResolved';
+      payload: {
+        requestId: string;
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        resolvedLinks: ExecutionTerminalResolvedFileLink[];
       };
     }
   | {
@@ -493,6 +559,72 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         nodeId: payload.nodeId,
         kind: payload.kind,
         data: payload.data
+      }
+    };
+  }
+
+  if (value.type === 'webview/dropExecutionResource') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      !isExecutionTerminalDroppedResource(payload.resource)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/dropExecutionResource',
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        resource: payload.resource
+      }
+    };
+  }
+
+  if (value.type === 'webview/openExecutionLink') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      !isExecutionTerminalOpenLink(payload.link)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/openExecutionLink',
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        link: payload.link
+      }
+    };
+  }
+
+  if (value.type === 'webview/resolveExecutionFileLinks') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.requestId !== 'string' ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      !Array.isArray(payload.candidates) ||
+      !payload.candidates.every((candidate) => isExecutionTerminalFileLinkCandidate(candidate))
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/resolveExecutionFileLinks',
+      payload: {
+        requestId: payload.requestId,
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        candidates: payload.candidates
       }
     };
   }
@@ -710,7 +842,89 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
     return typeof value.data === 'string';
   }
 
+  if (value.kind === 'dropExecutionResources') {
+    return (
+      (value.source === 'resourceUrls' || value.source === 'codeFiles' || value.source === 'uriList') &&
+      Array.isArray(value.values) &&
+      value.values.every((entry) => typeof entry === 'string')
+    );
+  }
+
+  if (value.kind === 'activateExecutionLink') {
+    return typeof value.text === 'string';
+  }
+
+  if (value.kind === 'hoverExecutionLink') {
+    return typeof value.text === 'string';
+  }
+
+  if (value.kind === 'clearExecutionLinkHover') {
+    return true;
+  }
+
   return false;
+}
+
+function isExecutionTerminalDroppedResource(value: unknown): value is ExecutionTerminalDroppedResource {
+  return (
+    isRecord(value) &&
+    (value.source === 'resourceUrls' ||
+      value.source === 'codeFiles' ||
+      value.source === 'uriList' ||
+      value.source === 'files') &&
+    (value.valueKind === 'uri' || value.valueKind === 'path') &&
+    typeof value.value === 'string'
+  );
+}
+
+function isExecutionTerminalFileLinkCandidate(value: unknown): value is ExecutionTerminalFileLinkCandidate {
+  return (
+    isRecord(value) &&
+    typeof value.candidateId === 'string' &&
+    typeof value.text === 'string' &&
+    typeof value.path === 'string' &&
+    typeof value.startIndex === 'number' &&
+    Number.isInteger(value.startIndex) &&
+    value.startIndex >= 0 &&
+    typeof value.endIndexExclusive === 'number' &&
+    Number.isInteger(value.endIndexExclusive) &&
+    value.endIndexExclusive >= value.startIndex &&
+    (value.line === undefined || isPositiveInteger(value.line)) &&
+    (value.column === undefined || isPositiveInteger(value.column)) &&
+    (value.lineEnd === undefined || isPositiveInteger(value.lineEnd)) &&
+    (value.columnEnd === undefined || isPositiveInteger(value.columnEnd))
+  );
+}
+
+function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminalOpenLink {
+  if (!isRecord(value) || typeof value.text !== 'string' || typeof value.linkKind !== 'string') {
+    return false;
+  }
+
+  if (value.linkKind === 'url') {
+    return typeof value.url === 'string';
+  }
+
+  if (value.linkKind === 'file') {
+    return (
+      typeof value.path === 'string' &&
+      (value.line === undefined || isPositiveInteger(value.line)) &&
+      (value.column === undefined || isPositiveInteger(value.column)) &&
+      (value.lineEnd === undefined || isPositiveInteger(value.lineEnd)) &&
+      (value.columnEnd === undefined || isPositiveInteger(value.columnEnd)) &&
+      (value.resolvedId === undefined || typeof value.resolvedId === 'string') &&
+      (value.targetKind === undefined ||
+        value.targetKind === 'file' ||
+        value.targetKind === 'directory-in-workspace' ||
+        value.targetKind === 'directory-outside-workspace')
+    );
+  }
+
+  return false;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSnapshot {
@@ -761,6 +975,7 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
     typeof value.hasCanvasShell === 'boolean' &&
     typeof value.hasReactFlow === 'boolean' &&
     isNullableString(value.toastMessage) &&
+    isNullableString(value.executionLinkTooltipText) &&
     typeof value.nodeCount === 'number' &&
     Number.isInteger(value.nodeCount) &&
     Array.isArray(value.nodes) &&

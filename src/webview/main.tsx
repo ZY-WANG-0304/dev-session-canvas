@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -38,6 +39,12 @@ import type {
   WebviewToHostMessage
 } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
+import type {
+  ExecutionTerminalFileLinkCandidate,
+  ExecutionTerminalDroppedResource,
+  ExecutionTerminalOpenLink,
+  ExecutionTerminalResolvedFileLink
+} from '../common/executionTerminalLinks';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   estimatedCanvasNodeFootprint,
@@ -45,6 +52,10 @@ import {
   minimumCanvasNodeFootprint,
   normalizeCanvasNodeFootprint
 } from '../common/protocol';
+import {
+  setupExecutionTerminalNativeInteractions,
+  type ExecutionTerminalNativeInteractionsHandle
+} from './executionTerminalNativeInteractions';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -77,6 +88,16 @@ interface CanvasNodeData {
   ) => void;
   onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onDropExecutionResource?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    resource: ExecutionTerminalDroppedResource
+  ) => void;
+  onOpenExecutionLink?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    link: ExecutionTerminalOpenLink
+  ) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNodeTitle?: (nodeId: string, title: string) => void;
@@ -103,6 +124,21 @@ interface CanvasContextMenuState {
   flowAnchor: CanvasNodePosition;
   view: 'root' | 'agent-provider';
 }
+interface ExecutionNodeHelpContent {
+  title: string;
+  items: readonly string[];
+}
+interface FloatingTooltipPosition {
+  left: number;
+  top: number;
+}
+
+const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
+  title: '执行节点使用提示',
+  items: ['拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径']
+};
+const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
+let nextExecutionNodeHelpTooltipId = 0;
 type ExecutionHostEvent =
   | {
       type: 'snapshot';
@@ -174,6 +210,15 @@ const executionTerminalRegistry = new Map<
     terminal: Terminal;
     fitAddon: FitAddon;
     controller: ExecutionTerminalController;
+    nativeInteractions: ExecutionTerminalNativeInteractionsHandle;
+  }
+>();
+const pendingExecutionFileLinkResolutionRequests = new Map<
+  string,
+  {
+    resolve: (resolvedLinks: ExecutionTerminalResolvedFileLink[]) => void;
+    reject: (error: Error) => void;
+    timeout: number;
   }
 >();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
@@ -317,7 +362,8 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   workspaceTrusted: false,
   surfaceLocation: 'editor',
   defaultAgentProvider: 'codex',
-  terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK
+  terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
+  editorMultiCursorModifier: 'alt'
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -334,7 +380,8 @@ function App(): JSX.Element {
     workspaceTrusted: false,
     surfaceLocation: latestRuntimeContext.surfaceLocation,
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
-    terminalScrollback: latestRuntimeContext.terminalScrollback
+    terminalScrollback: latestRuntimeContext.terminalScrollback,
+    editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -394,6 +441,12 @@ function App(): JSX.Element {
             message: message.payload.message
           });
           break;
+        case 'host/executionFileLinksResolved':
+          resolvePendingExecutionFileLinkResolutionRequest(
+            message.payload.requestId,
+            message.payload.resolvedLinks
+          );
+          break;
         case 'host/error':
           setErrorMessage(message.payload.message);
           if (clearErrorTimer.current) {
@@ -421,6 +474,7 @@ function App(): JSX.Element {
       if (clearErrorTimer.current) {
         window.clearTimeout(clearErrorTimer.current);
       }
+      rejectPendingExecutionFileLinkResolutionRequests('Webview disposed before execution file links were resolved.');
     };
   }, []);
 
@@ -543,6 +597,24 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/executionInput',
         payload: { nodeId, kind, data }
+      }),
+    onDropExecutionResource: (nodeId, kind, resource) =>
+      postMessage({
+        type: 'webview/dropExecutionResource',
+        payload: {
+          nodeId,
+          kind,
+          resource
+        }
+      }),
+    onOpenExecutionLink: (nodeId, kind, link) =>
+      postMessage({
+        type: 'webview/openExecutionLink',
+        payload: {
+          nodeId,
+          kind,
+          link
+        }
       }),
     onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
@@ -834,6 +906,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       lifecycle === 'resume-failed' ||
       agentMetadata.pendingLaunch === 'resume');
   const reattaching = displayStatus === 'reattaching';
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
@@ -864,20 +937,32 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [zoom]);
 
   useEffect(() => {
+    const frame = frameRef.current;
     const container = viewportRef.current;
-    if (!container) {
+    if (!frame || !container) {
       return;
     }
 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     const controller = createExecutionTerminalController(terminal);
+    const nativeInteractions = setupExecutionTerminalNativeInteractions({
+      nodeId: id,
+      kind: 'agent',
+      terminal,
+      dropTarget: frame,
+      getRuntimeContext: () => latestRuntimeContext,
+      onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
+      onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
+      resolveFileLinks: resolveExecutionTerminalFileLinks
+    });
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     executionTerminalRegistry.set(id, {
       terminal,
       fitAddon,
-      controller
+      controller,
+      nativeInteractions
     });
 
     const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
@@ -993,6 +1078,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
       controller.dispose();
+      nativeInteractions.dispose();
       executionTerminalRegistry.delete(id);
       terminal.dispose();
     };
@@ -1063,6 +1149,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
+          <ExecutionNodeHelpTrigger help={EXECUTION_NODE_HELP_TIPS} />
           <ActionButton
             label={
               agentMetadata.liveSession
@@ -1093,6 +1180,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
       <div className="session-body">
         <div
+          ref={frameRef}
           className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'}`}
           data-node-interactive="true"
           onMouseDown={(event) => {
@@ -1158,6 +1246,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
   const reattaching = displayStatus === 'reattaching';
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const autoLaunchRef = useRef<string | null>(null);
   const zoomRef = useRef(zoom);
@@ -1179,20 +1268,32 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }, [zoom]);
 
   useEffect(() => {
+    const frame = frameRef.current;
     const container = viewportRef.current;
-    if (!container) {
+    if (!frame || !container) {
       return;
     }
 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     const controller = createExecutionTerminalController(terminal);
+    const nativeInteractions = setupExecutionTerminalNativeInteractions({
+      nodeId: id,
+      kind: 'terminal',
+      terminal,
+      dropTarget: frame,
+      getRuntimeContext: () => latestRuntimeContext,
+      onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
+      onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
+      resolveFileLinks: resolveExecutionTerminalFileLinks
+    });
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     executionTerminalRegistry.set(id, {
       terminal,
       fitAddon,
-      controller
+      controller,
+      nativeInteractions
     });
 
     const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
@@ -1308,6 +1409,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
       controller.dispose();
+      nativeInteractions.dispose();
       executionTerminalRegistry.delete(id);
       terminal.dispose();
     };
@@ -1372,6 +1474,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
+          <ExecutionNodeHelpTrigger help={EXECUTION_NODE_HELP_TIPS} />
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
@@ -1394,6 +1497,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
       <div className="session-body terminal-session-body">
         <div
+          ref={frameRef}
           className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'}`}
           data-node-interactive="true"
           onMouseDown={(event) => {
@@ -1649,6 +1753,119 @@ const nodeTypes = {
   card: CanvasCardNode
 };
 
+function ExecutionNodeHelpTrigger(props: { help: ExecutionNodeHelpContent }): JSX.Element {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const tooltipIdRef = useRef<string>('');
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
+  const visible = hovered || focused;
+
+  if (!tooltipIdRef.current) {
+    tooltipIdRef.current = `execution-node-help-tooltip-${nextExecutionNodeHelpTooltipId++}`;
+  }
+
+  useLayoutEffect(() => {
+    if (!visible) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = (): void => {
+      const button = buttonRef.current;
+      const tooltip = tooltipRef.current;
+      if (!button || !tooltip) {
+        return;
+      }
+
+      const margin = 12;
+      const gap = 8;
+      const buttonRect = button.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const maxLeft = Math.max(margin, window.innerWidth - margin - tooltipRect.width);
+      const maxTop = Math.max(margin, window.innerHeight - margin - tooltipRect.height);
+      let left = buttonRect.right - tooltipRect.width;
+      let top = buttonRect.bottom + gap;
+
+      if (top + tooltipRect.height > window.innerHeight - margin) {
+        top = buttonRect.top - tooltipRect.height - gap;
+      }
+
+      left = Math.min(Math.max(margin, left), maxLeft);
+      top = Math.min(Math.max(margin, top), maxTop);
+      setPosition({ left, top });
+    };
+
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [visible]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="execution-node-help-trigger"
+        data-node-interactive="true"
+        aria-label={EXECUTION_TERMINAL_HELP_TOOLTIP}
+        aria-describedby={visible ? tooltipIdRef.current : undefined}
+        onMouseDown={stopCanvasEvent}
+        onClick={stopCanvasEvent}
+        onKeyDown={(event) => {
+          stopCanvasEvent(event);
+          if (event.key === 'Escape') {
+            setHovered(false);
+            setFocused(false);
+            event.currentTarget.blur();
+          }
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      >
+        ?
+      </button>
+      {visible
+        ? createPortal(
+            <div
+              ref={tooltipRef}
+              id={tooltipIdRef.current}
+              role="tooltip"
+              className={`execution-node-help-tooltip${position ? ' is-visible' : ''}`}
+              style={
+                position
+                  ? {
+                      left: position.left,
+                      top: position.top
+                    }
+                  : undefined
+              }
+            >
+              <strong className="execution-node-help-tooltip-title">{props.help.title}</strong>
+              <div className="execution-node-help-tooltip-items">
+                {props.help.items.map((item, index) => (
+                  <div key={`${index}-${item}`} className="execution-node-help-tooltip-item">
+                    <span className="execution-node-help-tooltip-index">{`${index + 1}. `}</span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
 function ActionButton(props: {
   label: string;
   onClick: () => void;
@@ -1900,6 +2117,16 @@ function toFlowNodes(params: {
   ) => void;
   onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onDropExecutionResource: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    resource: ExecutionTerminalDroppedResource
+  ) => void;
+  onOpenExecutionLink: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    link: ExecutionTerminalOpenLink
+  ) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNote: (payload: {
@@ -1946,6 +2173,8 @@ function toFlowNodes(params: {
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
         onExecutionInput: params.onExecutionInput,
+        onDropExecutionResource: params.onDropExecutionResource,
+        onOpenExecutionLink: params.onOpenExecutionLink,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
@@ -2553,6 +2782,7 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
     hasCanvasShell: Boolean(document.querySelector('.canvas-shell')),
     hasReactFlow: Boolean(document.querySelector('.react-flow')),
     toastMessage: readProbeText(document.querySelector('[data-toast-kind="error"]')),
+    executionLinkTooltipText: readProbeText(document.querySelector('.execution-link-tooltip.is-visible')),
     nodeCount: nodes.length,
     nodes
   };
@@ -2740,6 +2970,76 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         }
 
         entry.terminal.input(action.data);
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'dropExecutionResources': {
+        const nodeRoot = queryNodeRoot(action.nodeId);
+        const dropTarget = nodeRoot.querySelector<HTMLElement>('.terminal-frame');
+        if (!dropTarget) {
+          throw new Error(`Execution terminal ${action.nodeId} has no drop target.`);
+        }
+
+        const dataTransfer = new DataTransfer();
+        if (action.source === 'resourceUrls') {
+          dataTransfer.setData('ResourceURLs', JSON.stringify(action.values));
+        } else if (action.source === 'codeFiles') {
+          dataTransfer.setData('CodeFiles', JSON.stringify(action.values));
+        } else {
+          dataTransfer.setData('text/uri-list', action.values.join('\n'));
+        }
+
+        dropTarget.dispatchEvent(
+          new DragEvent('dragenter', {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer
+          })
+        );
+        dropTarget.dispatchEvent(
+          new DragEvent('dragover', {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer
+          })
+        );
+        dropTarget.dispatchEvent(
+          new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer
+          })
+        );
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'activateExecutionLink': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        await entry.nativeInteractions.activateLinkForTest(action.text);
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'hoverExecutionLink': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        await entry.nativeInteractions.hoverLinkForTest(action.text);
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'clearExecutionLinkHover': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        entry.nativeInteractions.clearHoverForTest();
         await waitForDomActionFlush();
         break;
       }
@@ -3118,6 +3418,70 @@ function readCssVariableChain(
 
 function readCssVariable(styles: CSSStyleDeclaration, variableName: string, fallback: string): string {
   return readCssVariableValue(styles, variableName) ?? fallback;
+}
+
+function formatExecutionNodeHelpTooltip(help: {
+  title: string;
+  items: readonly string[];
+}): string {
+  if (help.items.length === 0) {
+    return help.title;
+  }
+
+  return `${help.title}：${help.items.map((item, index) => `${index + 1}. ${item}`).join('；')}`;
+}
+
+function resolveExecutionTerminalFileLinks(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  candidates: ExecutionTerminalFileLinkCandidate[]
+): Promise<ExecutionTerminalResolvedFileLink[]> {
+  const requestId = `execution-file-links-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      pendingExecutionFileLinkResolutionRequests.delete(requestId);
+      reject(new Error('Execution file link resolution timed out.'));
+    }, 2500);
+
+    pendingExecutionFileLinkResolutionRequests.set(requestId, {
+      resolve,
+      reject,
+      timeout
+    });
+
+    postMessage({
+      type: 'webview/resolveExecutionFileLinks',
+      payload: {
+        requestId,
+        nodeId,
+        kind,
+        candidates
+      }
+    });
+  });
+}
+
+function resolvePendingExecutionFileLinkResolutionRequest(
+  requestId: string,
+  resolvedLinks: ExecutionTerminalResolvedFileLink[]
+): void {
+  const pendingRequest = pendingExecutionFileLinkResolutionRequests.get(requestId);
+  if (!pendingRequest) {
+    return;
+  }
+
+  window.clearTimeout(pendingRequest.timeout);
+  pendingExecutionFileLinkResolutionRequests.delete(requestId);
+  pendingRequest.resolve(resolvedLinks);
+}
+
+function rejectPendingExecutionFileLinkResolutionRequests(message: string): void {
+  for (const [requestId, pendingRequest] of pendingExecutionFileLinkResolutionRequests.entries()) {
+    window.clearTimeout(pendingRequest.timeout);
+    pendingExecutionFileLinkResolutionRequests.delete(requestId);
+    pendingRequest.reject(new Error(message));
+  }
 }
 
 function postMessage(message: WebviewToHostMessage): void {
