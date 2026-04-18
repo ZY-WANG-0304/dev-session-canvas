@@ -1318,16 +1318,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     fs.renameSync(tempSnapshotPath, snapshotPath);
   }
 
+  private loadStoredRuntimePersistenceEnabled(snapshot?: PersistedCanvasSnapshot): boolean | undefined {
+    return typeof snapshot?.runtimePersistenceEnabled === 'boolean'
+      ? snapshot.runtimePersistenceEnabled
+      : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasRuntimePersistenceEnabled);
+  }
+
+  private shouldResetStateDueToRuntimePersistenceModeChange(snapshot?: PersistedCanvasSnapshot): boolean {
+    const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
+    return (
+      typeof storedRuntimePersistenceEnabled === 'boolean' &&
+      storedRuntimePersistenceEnabled !== this.appliedStartupConfiguration.runtimePersistenceEnabled
+    );
+  }
+
   private loadState(): CanvasPrototypeState {
     const snapshot = this.loadPersistedCanvasSnapshot();
     const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
-    const storedRuntimePersistenceEnabled =
-      typeof snapshot?.runtimePersistenceEnabled === 'boolean'
-        ? snapshot.runtimePersistenceEnabled
-        : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasRuntimePersistenceEnabled);
+    const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
     const resetDueToRuntimePersistenceModeChange =
-      typeof storedRuntimePersistenceEnabled === 'boolean' &&
-      storedRuntimePersistenceEnabled !== this.appliedStartupConfiguration.runtimePersistenceEnabled;
+      this.shouldResetStateDueToRuntimePersistenceModeChange(snapshot);
     const rawState = resetDueToRuntimePersistenceModeChange ? undefined : snapshot?.state ?? workspaceState;
     const source = resetDueToRuntimePersistenceModeChange
       ? 'runtimePersistenceReset'
@@ -2921,6 +2931,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private loadStoredSurface(): CanvasSurfaceLocation | undefined {
     const snapshot = this.loadPersistedCanvasSnapshot();
+    if (this.shouldResetStateDueToRuntimePersistenceModeChange(snapshot)) {
+      return this.appliedStartupConfiguration.defaultSurface;
+    }
+
     const storedSurface = this.normalizeStoredSurface(
       snapshot?.activeSurface ?? this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface)
     );

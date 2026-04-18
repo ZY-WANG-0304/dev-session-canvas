@@ -195,7 +195,9 @@ updated_at: 2026-04-18
 
 - `editor/panel` 可配置承载面实现已完成，设计结论继续保持为“支持 `editor/panel` 可配置承载面，采用单主 surface 模型”。
 - 本轮实现已改为同时持久化 `activeSurface` 与当时已应用的 `defaultSurface`；如果下一次启动发现两次 `defaultSurface` 不一致，就不再恢复旧 opposite surface，而是按当前 `defaultSurface` 收口启动 surface。
+- 当 `runtimePersistence.enabled` 在两次启动之间发生切换时，旧的 surface 恢复元数据同样视为宿主状态的一部分被整体丢弃；新窗口直接回到当前 `defaultSurface`，不再恢复上次实际工作的 opposite surface。
 - 用户已于 2026-04-18 完成手动复验，确认 `panel -> editor` 与 `editor -> panel` 两条 restart 路径都已按新的 `defaultSurface` 收口，不再恢复旧 opposite surface。
 - `npm run build` 已通过。
-- `npm run typecheck` 仍失败于仓库现存的 `src/webview/main.tsx(2561,16)` `isComposing` 类型问题，不是本次 surface 修复引入的新报错。
-- trusted smoke 已新增“reload 后旧 surface 不应恢复”的自动化断言；整套 trusted smoke 仍被无关的 `verifyLegacyTaskFiltering` 阻塞，但这不再阻止本设计基于人工复验恢复到 `已验证`。
+- `npm run typecheck` 已通过；`src/webview/main.tsx` 里原有的 `isComposing` 类型报错已在当前 head 收口。
+- trusted smoke 已新增“reload 后旧 surface 不应恢复”的自动化断言；在当前 head 上整套 trusted smoke 仍被无关的 `verifyLegacyTaskFiltering` 阻塞。
+- restricted smoke 已补跑；当前仍被无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言阻塞。两条 smoke 阻塞都不影响本设计基于人工复验继续维持 `已验证`。
