@@ -100,7 +100,8 @@
         {
           "type": "webview",
           "id": "devSessionCanvas.canvasPanel",
-          "name": "%view.canvas.panel.title%"
+          "name": "%view.canvas.panel.title%",
+          "when": "devSessionCanvas.canvas.panelViewVisible"
         }
       ]
     },
