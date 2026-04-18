@@ -14,6 +14,7 @@ body {
 }
 
 .canvas-shell {
+  position: relative;
   background: var(--vscode-editor-background);
   --canvas-node-radius: 10px;
   --canvas-node-radius-inner: 8px;
@@ -31,6 +32,19 @@ body {
 .canvas-shell .canvas-controls {
   left: 14px;
   bottom: 14px;
+  overflow: hidden;
+  border-radius: var(--canvas-widget-radius);
+  border-color: var(--vscode-widget-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  backdrop-filter: none;
+}
+
+.canvas-help-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
   overflow: hidden;
   border-radius: var(--canvas-widget-radius);
   border-color: var(--vscode-widget-border, var(--vscode-panel-border));
@@ -253,7 +267,15 @@ body {
   line-height: 1.3;
 }
 
-.window-title span {
+.window-title-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.window-title-subtitle {
+  min-width: 0;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
   white-space: nowrap;
@@ -267,30 +289,75 @@ body {
   gap: 6px;
 }
 
-.execution-node-help-trigger {
+.execution-help-trigger {
   appearance: none;
   display: inline-flex;
-  min-width: 22px;
-  min-height: 22px;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  border: 0;
   padding: 0;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 76%, var(--vscode-focusBorder) 24%);
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  background: transparent;
   color: var(--vscode-descriptionForeground);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: help;
+  font: inherit;
+  cursor: pointer;
   user-select: none;
-  opacity: 0.78;
+  transition:
+    color 120ms ease,
+    opacity 120ms ease,
+    background-color 120ms ease;
 }
 
-.execution-node-help-trigger:hover,
-.execution-node-help-trigger:focus-visible {
+.execution-help-trigger:hover,
+.execution-help-trigger:focus-visible {
   opacity: 1;
-  border-color: color-mix(in srgb, var(--vscode-focusBorder) 44%, var(--vscode-panel-border) 56%);
+  color: var(--vscode-editor-foreground);
+}
+
+.execution-help-trigger:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.execution-help-trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.execution-help-trigger-label {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.execution-help-trigger-inline {
+  min-width: 11px;
+  min-height: 11px;
+  flex: 0 0 auto;
+  align-self: center;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.execution-help-trigger-inline .execution-help-trigger-icon {
+  font-size: 11px;
+  color: inherit;
+}
+
+.canvas-help-panel .execution-help-trigger-canvas {
+  width: 100%;
+  min-height: 28px;
+  justify-content: center;
+  gap: 0;
+  padding: 0 12px;
+}
+
+.execution-help-trigger-canvas:hover,
+.execution-help-trigger-canvas:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
 }
 
 .execution-node-help-tooltip {
