@@ -85,16 +85,10 @@ export function prepareExecutionTerminalDroppedPath(
 
   const executableName = getExecutionShellBasename(shellPath);
   const lowerExecutable = shellPath.toLowerCase();
-  const hasSpace = originalPath.includes(' ');
-  const hasParens = originalPath.includes('(') || originalPath.includes(')');
   const isPowerShell = executableName === 'pwsh' || executableName === 'powershell';
 
-  if (isPowerShell && (hasSpace || originalPath.includes('\''))) {
-    return `& '${originalPath.replace(/'/g, '\'\'')}'`;
-  }
-
-  if (hasParens && isPowerShell) {
-    return `& '${originalPath}'`;
+  if (isPowerShell && shouldQuotePowerShellDroppedPath(originalPath)) {
+    return quotePowerShellDroppedPath(originalPath);
   }
 
   if (context.pathStyle === 'windows') {
@@ -103,14 +97,14 @@ export function prepareExecutionTerminalDroppedPath(
     }
 
     if (executableName === 'wsl' || lowerExecutable.includes('wsl')) {
-      return toWslPath(originalPath);
+      return prepareWindowsDroppedPathForUnixShell(originalPath);
     }
 
     if (lowerExecutable.includes('bash.exe') && !lowerExecutable.includes('git')) {
-      return toWslPath(originalPath);
+      return prepareWindowsDroppedPathForUnixShell(originalPath);
     }
 
-    return hasSpace ? `"${originalPath}"` : originalPath;
+    return originalPath.includes(' ') ? `"${originalPath}"` : originalPath;
   }
 
   return escapeNonWindowsPath(originalPath, executableName);
@@ -600,9 +594,6 @@ function escapeNonWindowsPath(pathValue: string, shellKind: string): string {
     escapedPath = escapedPath.replace(/\\/g, '\\\\');
   }
 
-  const bannedChars = /[\`\$\|\&\>\~\#\!\^\*\;\<]/g;
-  escapedPath = escapedPath.replace(bannedChars, '');
-
   const shellEscaper = selectNonWindowsShellEscaper(shellKind);
   if (escapedPath.includes('\'') && escapedPath.includes('"')) {
     return shellEscaper.bothQuotes(escapedPath);
@@ -659,6 +650,23 @@ function getExecutionShellBasename(shellPath: string): string {
     .pop()
     ?.replace(/\.exe$/i, '')
     .toLowerCase() ?? '';
+}
+
+function shouldQuotePowerShellDroppedPath(pathValue: string): boolean {
+  return /[\s'()&]/.test(pathValue);
+}
+
+function quotePowerShellDroppedPath(pathValue: string): string {
+  return `'${pathValue.replace(/'/g, '\'\'')}'`;
+}
+
+function prepareWindowsDroppedPathForUnixShell(originalPath: string): string {
+  const unixPath = toWslPath(originalPath);
+  return shouldQuoteUnixShellDroppedPath(unixPath) ? escapeNonWindowsPath(unixPath, 'bash') : unixPath;
+}
+
+function shouldQuoteUnixShellDroppedPath(pathValue: string): boolean {
+  return /[^A-Za-z0-9_./:-]/.test(pathValue);
 }
 
 function toWslPath(originalPath: string): string {
