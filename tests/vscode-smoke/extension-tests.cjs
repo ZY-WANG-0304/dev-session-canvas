@@ -4127,54 +4127,30 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
 
-    await clearHostMessages();
-    await requestExecutionSnapshot('agent', agentNodeId);
-    await requestExecutionSnapshot('terminal', terminalNodeId);
-    await sleep(400);
+    await dispatchWebviewMessage({
+      type: 'webview/resizeExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 41,
+        rows: 9
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/resizeExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 43,
+        rows: 10
+      }
+    });
 
     snapshot = await getDebugSnapshot();
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
-
-    const hostMessages = await getHostMessages();
-    const agentSnapshotMessage = hostMessages.find(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'agent' &&
-        message.payload.nodeId === agentNodeId &&
-        message.payload.liveSession === false
-    );
-    const terminalSnapshotMessage = hostMessages.find(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'terminal' &&
-        message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === false
-    );
-    assert.ok(agentSnapshotMessage);
-    assert.ok(terminalSnapshotMessage);
-    assert.strictEqual(agentSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
-    assert.strictEqual(terminalSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
-    assert.ok(
-      agentSnapshotMessage.payload.serializedTerminalState?.data?.includes(
-        RESTRICTED_AGENT_SERIALIZED_MARKER
-      )
-    );
-    assert.ok(
-      terminalSnapshotMessage.payload.serializedTerminalState?.data?.includes(
-        RESTRICTED_TERMINAL_SERIALIZED_MARKER
-      )
-    );
-    assert.strictEqual(
-      hostMessages.some(
-        (message) =>
-          message.type === 'host/error' &&
-          /runtime session|重新附着 live runtime/.test(message.payload.message)
-      ),
-      false
-    );
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastCols, 67);
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastRows, 22);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols, 68);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastRows, 23);
   } finally {
     if (baselineSnapshot) {
       await setPersistedState(baselineSnapshot.state);
