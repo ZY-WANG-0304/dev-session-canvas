@@ -11,6 +11,7 @@ const COMMAND_IDS = {
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testFlushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
+  testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
 
@@ -64,11 +65,13 @@ async function runSetupPhase() {
   await fs.rm(stateFile, { force: true });
   await configureAgentCommandOverrides();
   await setRuntimePersistenceEnabled(true);
+  let snapshot = await simulateRuntimeReload();
+  assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await openCanvasEditor();
   await createExecutionNodes();
 
-  const snapshot = await getDebugSnapshot();
+  snapshot = await getDebugSnapshot();
   const agentNode = findNodeByKind(snapshot, 'agent');
   const terminalNode = findNodeByKind(snapshot, 'terminal');
 
@@ -312,6 +315,10 @@ async function getRuntimeSupervisorState() {
 
 async function flushPersistedState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+}
+
+async function simulateRuntimeReload() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
 }
 
 async function waitForRuntimeSupervisorSettled(expectedSessionCount, timeoutMs = 15000) {
