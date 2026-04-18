@@ -108,6 +108,11 @@ updated_at: 2026-04-18
 
 - 根据当前 VSCode 源码，原生 Terminal 拖拽消费的是“第一个文件资源”，并把它交给宿主侧路径准备逻辑；当前没有源码证据支持“Explorer 拖拽默认输入 workspace 相对路径”这一说法，因此本仓库不能把它写成已确认结论。
 
+- 宿主侧拖拽路径准备仍参考 VSCode `preparePathForShell` 的平台分支，但不把“当前上游实现的所有字符串改写”直接当成产品语义照搬：
+  - PowerShell 分支只插入被正确引用的路径文本，不插入 `&` 调用运算符，避免“拖拽插入路径”退化成“准备执行该路径”。
+  - Windows 上进入 `WSL` 或非 Git Bash 分支时，路径转成 Unix 风格后仍要补 shell quoting，避免含空格文件名被拆词。
+  - POSIX 合法文件名字符必须按原值保留；宿主只做 quoting / escaping，不删除 `#`、`!`、`$`、`&` 等合法字符。
+
 - 拖拽入口在 Webview，最终输入文本准备在宿主；第二轮收口后，拖拽成功时会立即把焦点交还给当前 xterm textarea，避免拖拽后用户还要额外点一次终端才能继续输入。
 
 - 当前已确认的宿主现实约束是：从 VSCode Explorer 拖资源进入 Webview 时，VSCode 在拖拽期间默认不会把事件直接交给 Webview；当前人工观察与上游源码都指向“按住 `Shift` 时 Webview 才会重新接管拖拽事件”。这不是当前仓库的 Webview 内部解析逻辑可以单独消除的限制。
