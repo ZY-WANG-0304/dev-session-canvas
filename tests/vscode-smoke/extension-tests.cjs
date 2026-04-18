@@ -153,6 +153,8 @@ async function prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(enabled) 
 
   let snapshot = await simulateRuntimeReload();
   assert.strictEqual(snapshot.state.nodes.length, 0);
+  snapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(snapshot.activeSurface, 'editor');
 
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
@@ -178,6 +180,8 @@ async function prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode(enable
 
   let snapshot = await simulateRuntimeReload();
   assert.strictEqual(snapshot.state.nodes.length, 0);
+  snapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(snapshot.activeSurface, 'editor');
 
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
@@ -290,7 +294,7 @@ async function runTrustedSmoke() {
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
 
-  await verifyLegacyTaskFiltering();
+  await verifyPersistedStateFiltersLegacyTaskNodes();
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
@@ -1018,7 +1022,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.match(agentNode.summary, /已停止 Codex 会话/);
 }
 
-async function verifyLegacyTaskFiltering() {
+async function verifyPersistedStateFiltersLegacyTaskNodes() {
   const beforeSnapshot = await getDebugSnapshot();
   const beforeState = beforeSnapshot.state;
 
@@ -4023,6 +4027,8 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
   try {
     baselineSnapshot = await simulateRuntimeReload();
     assert.strictEqual(baselineSnapshot.state.nodes.length, 0);
+    baselineSnapshot = await ensureEditorCanvasReady();
+    assert.strictEqual(baselineSnapshot.activeSurface, 'editor');
     let snapshot = baselineSnapshot;
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
@@ -4147,6 +4153,8 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     });
 
     snapshot = await getDebugSnapshot();
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
     assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastCols, 67);
     assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastRows, 22);
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols, 68);
@@ -4563,6 +4571,12 @@ async function captureWebviewProbe(surface, timeoutMs, delayMs = 0) {
   lastWebviewProbe = probe;
   await persistLastWebviewProbe();
   return probe;
+}
+
+async function ensureEditorCanvasReady() {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  return getDebugSnapshot();
 }
 
 async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5000) {
