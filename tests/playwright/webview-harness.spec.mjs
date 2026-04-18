@@ -2023,6 +2023,64 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore eventually refits to the current smaller container`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyProbe = await waitForExecutionTerminalReady(page, nodeId);
+    const restoreCols = readyProbe.terminalCols + 12;
+    const restoreRows = readyProbe.terminalRows + 6;
+    const fixture = createFullscreenSerializedFixture(restoreCols, restoreRows);
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      fixture.output,
+      restoreCols,
+      restoreRows
+    );
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: restoreCols,
+      rows: restoreRows,
+      liveSession: true,
+      serializedTerminalState
+    });
+
+    const oversizedProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) => probeNode?.terminalCols === restoreCols && probeNode.terminalRows === restoreRows
+    );
+    expect(oversizedProbe.terminalCols).toBe(restoreCols);
+    expect(oversizedProbe.terminalRows).toBe(restoreRows);
+
+    await expect
+      .poll(
+        async () => {
+          const probeNode = await readProbeNode(page, nodeId, 20);
+          if (!probeNode) {
+            return null;
+          }
+
+          return JSON.stringify({
+            cols: probeNode.terminalCols,
+            rows: probeNode.terminalRows
+          });
+        },
+        { timeout: 4000 }
+      )
+      .toBe(
+        JSON.stringify({
+          cols: readyProbe.terminalCols,
+          rows: readyProbe.terminalRows
+        })
+      );
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} snapshot restore still responds to wheel scrolling after rebuild`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const configuredScrollback = 240;

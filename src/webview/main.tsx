@@ -916,6 +916,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
+  const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
   const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
@@ -954,6 +955,24 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       return;
     }
 
+    function cancelDeferredShrinkFit(): void {
+      if (deferredShrinkFitTimerRef.current !== undefined) {
+        window.clearTimeout(deferredShrinkFitTimerRef.current);
+        deferredShrinkFitTimerRef.current = undefined;
+      }
+    }
+
+    function scheduleDeferredShrinkFit(delayMs: number): void {
+      cancelDeferredShrinkFit();
+      deferredShrinkFitTimerRef.current = window.setTimeout(() => {
+        deferredShrinkFitTimerRef.current = undefined;
+        if (resizeFrameRef.current) {
+          window.cancelAnimationFrame(resizeFrameRef.current);
+        }
+        resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+      }, Math.max(0, delayMs));
+    }
+
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     const controller = createExecutionTerminalController(terminal, {
@@ -962,6 +981,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
           ? Date.now() + EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS
           : 0;
+        if (detail.serializedTerminalState) {
+          scheduleDeferredShrinkFit(EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS);
+        } else {
+          cancelDeferredShrinkFit();
+        }
       }
     });
     const nativeInteractions = setupExecutionTerminalNativeInteractions({
@@ -1040,7 +1064,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     terminalElement?.addEventListener('contextmenu', handleContextMenu);
     terminalElement?.addEventListener('auxclick', handleAuxClick);
 
-    const fitTerminal = (): void => {
+    function fitTerminal(): void {
       const proposedDimensions = fitAddon.proposeDimensions();
       if (!proposedDimensions) {
         return;
@@ -1051,6 +1075,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         hasAppliedSnapshot &&
         Date.now() < suppressShrinkFitUntilMs &&
         (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
+      if (shouldDeferShrinkFit) {
+        scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
+      } else {
+        cancelDeferredShrinkFit();
+      }
       if (
         !shouldDeferShrinkFit &&
         (terminal.cols !== proposedDimensions.cols || terminal.rows !== proposedDimensions.rows)
@@ -1071,7 +1100,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       }
 
       data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
-    };
+    }
 
     window.requestAnimationFrame(fitTerminal);
 
@@ -1111,6 +1140,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       if (selectionService && originalGetMouseEventScrollAmount) {
         selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
       }
+      cancelDeferredShrinkFit();
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
@@ -1296,6 +1326,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     suppressShrinkFitUntilMs: 0
   });
   const resizeFrameRef = useRef<number | undefined>(undefined);
+  const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     terminalSizeRef.current = {
@@ -1315,6 +1346,24 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       return;
     }
 
+    function cancelDeferredShrinkFit(): void {
+      if (deferredShrinkFitTimerRef.current !== undefined) {
+        window.clearTimeout(deferredShrinkFitTimerRef.current);
+        deferredShrinkFitTimerRef.current = undefined;
+      }
+    }
+
+    function scheduleDeferredShrinkFit(delayMs: number): void {
+      cancelDeferredShrinkFit();
+      deferredShrinkFitTimerRef.current = window.setTimeout(() => {
+        deferredShrinkFitTimerRef.current = undefined;
+        if (resizeFrameRef.current) {
+          window.cancelAnimationFrame(resizeFrameRef.current);
+        }
+        resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+      }, Math.max(0, delayMs));
+    }
+
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     const controller = createExecutionTerminalController(terminal, {
@@ -1323,6 +1372,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
           ? Date.now() + EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS
           : 0;
+        if (detail.serializedTerminalState) {
+          scheduleDeferredShrinkFit(EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS);
+        } else {
+          cancelDeferredShrinkFit();
+        }
       }
     });
     const nativeInteractions = setupExecutionTerminalNativeInteractions({
@@ -1401,7 +1455,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     terminalElement?.addEventListener('contextmenu', handleContextMenu);
     terminalElement?.addEventListener('auxclick', handleAuxClick);
 
-    const fitTerminal = (): void => {
+    function fitTerminal(): void {
       const proposedDimensions = fitAddon.proposeDimensions();
       if (!proposedDimensions) {
         return;
@@ -1412,6 +1466,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         hasAppliedSnapshot &&
         Date.now() < suppressShrinkFitUntilMs &&
         (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
+      if (shouldDeferShrinkFit) {
+        scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
+      } else {
+        cancelDeferredShrinkFit();
+      }
       if (
         !shouldDeferShrinkFit &&
         (terminal.cols !== proposedDimensions.cols || terminal.rows !== proposedDimensions.rows)
@@ -1432,7 +1491,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       }
 
       data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
-    };
+    }
 
     window.requestAnimationFrame(fitTerminal);
 
@@ -1472,6 +1531,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       if (selectionService && originalGetMouseEventScrollAmount) {
         selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
       }
+      cancelDeferredShrinkFit();
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
