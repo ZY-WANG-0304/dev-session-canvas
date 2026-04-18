@@ -20,6 +20,7 @@ import ReactFlow, {
 
 import 'reactflow/dist/style.css';
 import '@xterm/xterm/css/xterm.css';
+import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
 
 import type {
@@ -133,6 +134,7 @@ interface FloatingTooltipPosition {
   left: number;
   top: number;
 }
+type ExecutionHelpTriggerVariant = 'canvas' | 'inline';
 
 const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
   title: '执行节点使用提示',
@@ -799,6 +801,7 @@ function App(): JSX.Element {
 
   return (
     <div className="canvas-shell">
+      <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
       <ReactFlow
         nodes={nodes}
         edges={[]}
@@ -1144,6 +1147,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         <ChromeTitleEditor
           value={data.title}
           subtitle={agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}
+          subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
@@ -1152,7 +1156,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
-          <ExecutionNodeHelpTrigger help={EXECUTION_NODE_HELP_TIPS} />
           <ActionButton
             label={
               agentMetadata.liveSession
@@ -1468,6 +1471,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         <ChromeTitleEditor
           value={data.title}
           subtitle={terminalMetadata.shellPath}
+          subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Terminal 标题"
           className="terminal-window-title"
           onSelectNode={() => data.onSelectNode?.(id)}
@@ -1477,7 +1481,6 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           <span className={`status-pill ${statusToneClass(displayStatus)}`}>
             {humanizeStatus(displayStatus)}
           </span>
-          <ExecutionNodeHelpTrigger help={EXECUTION_NODE_HELP_TIPS} />
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
@@ -1756,7 +1759,18 @@ const nodeTypes = {
   card: CanvasCardNode
 };
 
-function ExecutionNodeHelpTrigger(props: { help: ExecutionNodeHelpContent }): JSX.Element {
+function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
+  return (
+    <div className="canvas-corner-panel canvas-help-panel">
+      <ExecutionHelpTrigger help={props.help} variant="canvas" />
+    </div>
+  );
+}
+
+function ExecutionHelpTrigger(props: {
+  help: ExecutionNodeHelpContent;
+  variant: ExecutionHelpTriggerVariant;
+}): JSX.Element {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const tooltipIdRef = useRef<string>('');
@@ -1764,6 +1778,8 @@ function ExecutionNodeHelpTrigger(props: { help: ExecutionNodeHelpContent }): JS
   const [focused, setFocused] = useState(false);
   const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
   const visible = hovered || focused;
+  const label = props.variant === 'canvas' ? '使用提示' : undefined;
+  const showGlyph = props.variant === 'inline';
 
   if (!tooltipIdRef.current) {
     tooltipIdRef.current = `execution-node-help-tooltip-${nextExecutionNodeHelpTooltipId++}`;
@@ -1815,7 +1831,7 @@ function ExecutionNodeHelpTrigger(props: { help: ExecutionNodeHelpContent }): JS
       <button
         ref={buttonRef}
         type="button"
-        className="execution-node-help-trigger"
+        className={`execution-help-trigger execution-help-trigger-${props.variant}`}
         data-node-interactive="true"
         aria-label={EXECUTION_TERMINAL_HELP_TOOLTIP}
         aria-describedby={visible ? tooltipIdRef.current : undefined}
@@ -1834,7 +1850,13 @@ function ExecutionNodeHelpTrigger(props: { help: ExecutionNodeHelpContent }): JS
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
       >
-        ?
+        {showGlyph ? (
+          <span
+            className="execution-help-trigger-icon codicon codicon-info"
+            aria-hidden="true"
+          />
+        ) : null}
+        {label ? <span className="execution-help-trigger-label">{label}</span> : null}
       </button>
       {visible
         ? createPortal(
@@ -2051,6 +2073,7 @@ function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
   subtitle?: string;
+  subtitleAccessory?: React.ReactNode;
   className?: string;
   onSelectNode?: () => void;
   onSubmit: (title: string) => void;
@@ -2099,7 +2122,12 @@ function ChromeTitleEditor(props: {
         }
         placeholder={props.placeholder}
       />
-      {props.subtitle ? <span>{props.subtitle}</span> : null}
+      {props.subtitle ? (
+        <div className="window-title-subtitle-row">
+          <span className="window-title-subtitle">{props.subtitle}</span>
+          {props.subtitleAccessory}
+        </div>
+      ) : null}
     </div>
   );
 }

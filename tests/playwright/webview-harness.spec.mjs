@@ -519,19 +519,36 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
   await expect(terminalNode).not.toContainText('detached');
 });
 
+test('canvas renders a shared execution help entry with tooltip text', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createRuntimeChromeState());
+
+  const helpTrigger = page.locator('.canvas-help-panel .execution-help-trigger-canvas');
+
+  await expect(helpTrigger).toBeVisible();
+  await expect(helpTrigger).toContainText('使用提示');
+  await helpTrigger.hover();
+  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
+  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
+    '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
+  );
+});
+
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} renders a persistent execution help trigger with tooltip text`, async ({
+  test(`${executionKind} renders an inline execution help trigger beside the subtitle`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
-    const helpTrigger = nodeById(page, nodeId).locator('.execution-node-help-trigger');
+    const node = nodeById(page, nodeId);
+    const helpTrigger = node.locator('.window-title-subtitle-row .execution-help-trigger-inline');
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
     await waitForExecutionTerminalReady(page, nodeId);
 
     await expect(helpTrigger).toBeVisible();
-    await expect(helpTrigger).toHaveText('?');
+    await expect(helpTrigger.locator('.codicon.codicon-info')).toHaveCount(1);
+    await expect(node.locator('.window-chrome-actions .execution-help-trigger')).toHaveCount(0);
     await helpTrigger.hover();
     await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
     await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
