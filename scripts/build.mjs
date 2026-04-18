@@ -51,7 +51,10 @@ const webviewConfig = {
   format: 'iife',
   outfile: 'dist/webview.js',
   platform: 'browser',
-  target: 'es2020'
+  target: 'es2020',
+  loader: {
+    '.ttf': 'file'
+  }
 };
 
 async function runBuild() {

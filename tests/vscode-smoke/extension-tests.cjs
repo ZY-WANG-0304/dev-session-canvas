@@ -1,5 +1,6 @@
 const assert = require('assert');
 const fs = require('fs/promises');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
@@ -52,6 +53,7 @@ const TERMINAL_FLOOD_AGENT_MARKER = '[fake-agent] terminal flood parallel';
 const TERMINAL_FLOOD_NEW_AGENT_MARKER = '[fake-agent] terminal flood created agent';
 const TERMINAL_FLOOD_AFTER_CTRL_C_MARKER = 'DEV_SESSION_CANVAS_AFTER_CTRL_C';
 const TERMINAL_FLOOD_SECONDARY_AFTER_CTRL_C_MARKER = 'DEV_SESSION_CANVAS_SECONDARY_AFTER_CTRL_C';
+const TERMINAL_NATIVE_DROP_MARKER = 'DEV_SESSION_CANVAS_NATIVE_DROP';
 const RESTRICTED_AGENT_SERIALIZED_MARKER = 'DEV_SESSION_CANVAS_RESTRICTED_AGENT_HISTORY';
 const RESTRICTED_TERMINAL_SERIALIZED_MARKER = 'DEV_SESSION_CANVAS_RESTRICTED_TERMINAL_HISTORY';
 const RESIZED_NODE_SIZES = {
@@ -244,6 +246,7 @@ async function runTrustedSmoke() {
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyExecutionTerminalNativeInteractions(terminalNode.id);
   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
   await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);
@@ -1237,6 +1240,423 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.lastCols, 100);
   assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
+}
+
+async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  await ensureTerminalStopped(terminalNodeId);
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const originalOpenLocalhostLinks = vscode.workspace
+    .getConfiguration('workbench')
+    .get('browser.openLocalhostLinks', false);
+
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+
+  const scratchDir = path.join(
+    workspaceFolder.uri.fsPath,
+    '.debug',
+    'vscode-smoke',
+    'execution-native-interactions'
+  );
+  const droppedFilePath = path.join(scratchDir, 'drop target file.txt');
+  const ignoredFilePath = path.join(scratchDir, 'ignored-second.txt');
+  const linkTargetPath = path.join(scratchDir, 'link-target.ts');
+
+  await fs.mkdir(scratchDir, { recursive: true });
+  await fs.writeFile(droppedFilePath, 'drop target\n', 'utf8');
+  await fs.writeFile(ignoredFilePath, 'ignored second file\n', 'utf8');
+  await fs.writeFile(
+    linkTargetPath,
+    ['export const one = 1;', 'export const two = 2;', 'export const three = 3;'].join('\n') + '\n',
+    'utf8'
+  );
+
+  let browserSmokeServer;
+  try {
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/startExecutionSession',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          cols: 92,
+          rows: 28
+        }
+      },
+      'editor'
+    );
+    await waitForTerminalLive(terminalNodeId);
+    await clearHostMessages();
+    await clearDiagnosticEvents();
+
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '${TERMINAL_NATIVE_DROP_MARKER}:%s\\n' `
+      },
+      'editor',
+      10000
+    );
+    await performWebviewDomAction(
+      {
+        kind: 'dropExecutionResources',
+        nodeId: terminalNodeId,
+        source: 'resourceUrls',
+        values: [vscode.Uri.file(droppedFilePath).toString(), vscode.Uri.file(ignoredFilePath).toString()]
+      },
+      'editor',
+      10000
+    );
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: '\r'
+      },
+      'editor',
+      10000
+    );
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(
+        currentTerminal?.metadata?.terminal?.recentOutput?.includes(
+          `${TERMINAL_NATIVE_DROP_MARKER}:${droppedFilePath}`
+        )
+      );
+    }, 20000);
+    let terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(
+      terminalNode.metadata.terminal.recentOutput.includes(`${TERMINAL_NATIVE_DROP_MARKER}:${droppedFilePath}`),
+      'Dropped resource should be inserted into the live terminal session as shell input.'
+    );
+    assert.strictEqual(
+      terminalNode.metadata.terminal.recentOutput.includes(ignoredFilePath),
+      false,
+      'Only the first dropped resource should be consumed.'
+    );
+
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/dropResourcePrepared' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.source === 'resourceUrls'
+        ),
+      10000
+    );
+
+    const relativeLinkPath = path.relative(workspaceFolder.uri.fsPath, linkTargetPath).split(path.sep).join('/');
+    const fileLinkText = `${relativeLinkPath}:2:8`;
+
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${fileLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(fileLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(fileLinkText));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: fileLinkText
+      },
+      'editor',
+      10000
+    );
+
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === fileLinkText
+        ),
+      10000
+    );
+
+    const activeEditor = await waitForActiveEditor(
+      () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.fsPath !== linkTargetPath) {
+          return false;
+        }
+
+        return editor.selection.active.line === 1 && editor.selection.active.character === 7;
+      },
+      10000
+    );
+    assert.strictEqual(activeEditor.document.uri.fsPath, linkTargetPath);
+    assert.strictEqual(activeEditor.selection.active.line, 1);
+    assert.strictEqual(activeEditor.selection.active.character, 7);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    const cwdScopedFileLinkText = 'link-target.ts:3:1';
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `cd ${JSON.stringify(scratchDir)}\r`
+      },
+      'editor',
+      10000
+    );
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${cwdScopedFileLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(cwdScopedFileLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(cwdScopedFileLinkText));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: cwdScopedFileLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === cwdScopedFileLinkText
+        ),
+      10000
+    );
+    const cwdScopedEditor = await waitForActiveEditor(
+      () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.fsPath !== linkTargetPath) {
+          return false;
+        }
+
+        return editor.selection.active.line === 2 && editor.selection.active.character === 0;
+      },
+      10000
+    );
+    assert.strictEqual(cwdScopedEditor.document.uri.fsPath, linkTargetPath);
+    assert.strictEqual(cwdScopedEditor.selection.active.line, 2);
+    assert.strictEqual(cwdScopedEditor.selection.active.character, 0);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    const missingSearchLinkText = 'missing-target.ts:9:3';
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${missingSearchLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(missingSearchLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(missingSearchLinkText));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: missingSearchLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === missingSearchLinkText &&
+            event.detail?.linkKind === 'search' &&
+            event.detail?.openerKind === 'workbench.action.quickOpen'
+        ),
+      10000
+    );
+    await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    browserSmokeServer = await createLocalBrowserSmokeServer(`Dev Session Canvas URL Smoke ${Date.now()}`);
+    await setWorkbenchBrowserOpenLocalhostLinks(true);
+
+    const urlLinkText = browserSmokeServer.url;
+    const expectedUrlTooltip = `Follow link (${describeExpectedExecutionLinkModifier()})`;
+
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${urlLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(urlLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(urlLinkText));
+
+    await performWebviewDomAction(
+      {
+        kind: 'hoverExecutionLink',
+        nodeId: terminalNodeId,
+        text: urlLinkText
+      },
+      'editor',
+      10000
+    );
+    const hoverProbe = await waitForWebviewProbe(
+      (probe) => probe.executionLinkTooltipText === expectedUrlTooltip,
+      10000
+    );
+    assert.strictEqual(hoverProbe.executionLinkTooltipText, expectedUrlTooltip);
+
+    await performWebviewDomAction(
+      {
+        kind: 'clearExecutionLinkHover',
+        nodeId: terminalNodeId
+      },
+      'editor',
+      10000
+    );
+    const clearedHoverProbe = await waitForWebviewProbe((probe) => probe.executionLinkTooltipText === null, 10000);
+    assert.strictEqual(clearedHoverProbe.executionLinkTooltipText, null);
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: urlLinkText
+      },
+      'editor',
+      10000
+    );
+
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === urlLinkText &&
+            event.detail?.linkKind === 'url' &&
+            event.detail?.openerKind === 'vscode.open' &&
+            event.detail?.targetUri === urlLinkText
+        ),
+      10000
+    );
+
+    const explicitUrlLinkText = browserSmokeServer.url.replace('/hit', '/explicit');
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '\\033]8;;%s\\a%s\\033]8;;\\a\\n' '${explicitUrlLinkText}' 'explicit-url'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes('explicit-url'));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes('explicit-url'));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: explicitUrlLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === explicitUrlLinkText &&
+            event.detail?.linkKind === 'url' &&
+            event.detail?.openerKind === 'vscode.open' &&
+            event.detail?.targetUri === explicitUrlLinkText
+        ),
+      10000
+    );
+  } finally {
+    await Promise.resolve()
+      .then(() =>
+        performWebviewDomAction(
+          {
+            kind: 'clearExecutionLinkHover',
+            nodeId: terminalNodeId
+          },
+          'editor',
+          3000
+        )
+      )
+      .catch(() => {});
+    if (browserSmokeServer) {
+      await browserSmokeServer.close();
+    }
+    await setWorkbenchBrowserOpenLocalhostLinks(originalOpenLocalhostLinks);
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  }
 }
 
 async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNodeId) {
@@ -3905,6 +4325,12 @@ async function setWorkbenchColorTheme(themeName) {
     .update('colorTheme', themeName, vscode.ConfigurationTarget.Global);
 }
 
+async function setWorkbenchBrowserOpenLocalhostLinks(enabled) {
+  await vscode.workspace
+    .getConfiguration('workbench')
+    .update('browser.openLocalhostLinks', enabled, vscode.ConfigurationTarget.Global);
+}
+
 async function requestExecutionSnapshot(kind, nodeId, surface) {
   return dispatchWebviewMessage(
     {
@@ -4063,6 +4489,94 @@ async function waitForHostMessages(predicate, timeoutMs = 8000) {
   }
 
   assert.fail(`Timed out while waiting for host messages. Last messages: ${JSON.stringify(messages)}`);
+}
+
+async function waitForActiveEditor(predicate, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let editor = vscode.window.activeTextEditor;
+
+  while (Date.now() < deadline) {
+    if (editor && predicate(editor)) {
+      return editor;
+    }
+
+    await sleep(100);
+    editor = vscode.window.activeTextEditor;
+  }
+
+  assert.fail(
+    `Timed out while waiting for active editor. Last editor: ${JSON.stringify(
+      editor
+        ? {
+            uri: editor.document.uri.toString(),
+            selection: {
+              line: editor.selection.active.line,
+              character: editor.selection.active.character
+            }
+          }
+        : null
+    )}`
+  );
+}
+
+function describeExpectedExecutionLinkModifier() {
+  const configuredModifier = vscode.workspace
+    .getConfiguration('editor')
+    .get('multiCursorModifier', 'alt');
+  if (configuredModifier === 'ctrlCmd') {
+    return process.platform === 'darwin' ? 'option + click' : 'alt + click';
+  }
+
+  return process.platform === 'darwin' ? 'cmd + click' : 'ctrl + click';
+}
+
+async function createLocalBrowserSmokeServer(title) {
+  const server = http.createServer((request, response) => {
+    response.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store'
+    });
+    response.end(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${title}:${request.url}</body></html>`
+    );
+  });
+
+  await new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve();
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(0, '127.0.0.1');
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === 'object' && typeof address.port === 'number');
+  const hostLabel = `127.0.0.1:${address.port}`;
+  const pathname = '/dev-session-canvas-url-smoke';
+
+  return {
+    title,
+    hostLabel,
+    pathname,
+    url: `http://${hostLabel}${pathname}`,
+    close: () =>
+      new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
 }
 
 function findNodeByKind(snapshot, kind) {
