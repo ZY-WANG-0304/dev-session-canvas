@@ -1,4 +1,5 @@
 import type { IBufferLine, IBufferRange, ILink, ILinkProvider, Terminal } from '@xterm/xterm';
+import LinkifyIt from 'linkify-it';
 
 import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
 import {
@@ -59,8 +60,79 @@ const URI_LIST_DATA_TRANSFER = 'text/uri-list';
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
 const EXECUTION_LINK_TOOLTIP_VISIBLE_CLASS = 'is-visible';
 const FILE_LINK_LABEL = 'Open file in editor';
+const REVEAL_DIRECTORY_LINK_LABEL = 'Reveal in Explorer';
+const OPEN_DIRECTORY_LINK_LABEL = 'Open folder';
 const URL_LINK_LABEL = 'Follow link';
-const URL_REGEX = /\bhttps?:\/\/[^\s<>"'`]+/g;
+const SEARCH_LINK_LABEL = 'Search workspace';
+const MAX_SEARCH_LINK_LINE_LENGTH = 2000;
+const MAX_SEARCH_LINK_TEXT_LENGTH = 100;
+const EXECUTION_URL_LINKIFY = new LinkifyIt()
+  .set({
+    fuzzyLink: false,
+    fuzzyEmail: false,
+    fuzzyIP: false
+  })
+  .add('vscode:', 'http:')
+  .add('vscode-insiders:', 'http:');
+const EXECUTION_FILE_LEADING_TRIM_CHARS = new Set([
+  '"',
+  '\'',
+  '`',
+  '(',
+  '[',
+  '<',
+  '：',
+  '，',
+  '；',
+  '。',
+  '！',
+  '？',
+  '、',
+  '（',
+  '【',
+  '《',
+  '〈',
+  '「',
+  '『',
+  '“',
+  '‘'
+]);
+const EXECUTION_FILE_TRAILING_PUNCTUATION_CHARS = new Set([
+  '.',
+  ',',
+  ';',
+  '!',
+  '?',
+  ':',
+  '。',
+  '，',
+  '；',
+  '！',
+  '？',
+  '：',
+  '、'
+]);
+const EXECUTION_FILE_TRAILING_QUOTE_CHARS = new Set(['"', '\'', '`', '”', '’']);
+const EXECUTION_FILE_CLOSING_WRAPPERS = new Map<string, string>([
+  [')', '('],
+  [']', '['],
+  ['）', '（'],
+  ['】', '【'],
+  ['》', '《'],
+  ['〉', '〈'],
+  ['」', '「'],
+  ['』', '『']
+]);
+const EXECUTION_EMBEDDED_MULTI_SEGMENT_ASCII_PATH_REGEX =
+  /[A-Za-z0-9._-]+(?:[\\/][A-Za-z0-9._-]+){2,}/g;
+
+interface XtermTerminalWithLinkProviders {
+  _core?: {
+    _linkProviderService?: {
+      linkProviders?: ILinkProvider[];
+    };
+  };
+}
 
 export interface ExecutionTerminalNativeInteractionsHandle {
   activateLinkForTest(linkText: string): Promise<void>;
@@ -107,10 +179,19 @@ export function setupExecutionTerminalNativeInteractions(
     hideTooltip();
   };
 
+  const previousLinkHandler = terminal.options.linkHandler;
+  terminal.options.linkHandler = createExplicitLinkHandler(options, updateTooltip);
   const fileLinkProvider = createFileLinkProvider(options, fileLinkResolutionCache, () => tooltip, updateTooltip);
   const urlLinkProvider = createUrlLinkProvider(options, () => tooltip, updateTooltip);
+  const searchLinkProvider = createSearchLinkProvider(
+    options,
+    fileLinkResolutionCache,
+    () => tooltip,
+    updateTooltip
+  );
   const fileLinkDisposable = terminal.registerLinkProvider(fileLinkProvider);
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
+  const searchLinkDisposable = terminal.registerLinkProvider(searchLinkProvider);
 
   const handleDragEnter = (event: DragEvent): void => {
     if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
@@ -170,7 +251,12 @@ export function setupExecutionTerminalNativeInteractions(
         throw new Error(`Execution link "${linkText}" was not detected.`);
       }
 
-      detectedLink.activate(createSyntheticLinkActivationEvent(options.getRuntimeContext()), detectedLink.text);
+      window.setTimeout(() => {
+        detectedLink.activate(
+          createSyntheticLinkActivationEvent(options.getRuntimeContext()),
+          detectedLink.text
+        );
+      }, 0);
     },
     async hoverLinkForTest(linkText: string): Promise<void> {
       const detectedLink = await findInteractionLinkByText(options, linkText, fileLinkResolutionCache, updateTooltip);
@@ -195,8 +281,10 @@ export function setupExecutionTerminalNativeInteractions(
     dispose(): void {
       clearHoveredLink();
       clearDropTarget();
+      terminal.options.linkHandler = previousLinkHandler;
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
+      searchLinkDisposable.dispose();
       dropTarget.removeEventListener('dragenter', handleDragEnter);
       dropTarget.removeEventListener('dragover', handleDragOver);
       dropTarget.removeEventListener('dragleave', handleDragLeave);
@@ -254,6 +342,72 @@ function createUrlLinkProvider(
   };
 }
 
+function createSearchLinkProvider(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >,
+  _readTooltip: () => ActiveTooltipState | undefined,
+  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+): ILinkProvider {
+  return {
+    provideLinks(bufferLineNumber, callback): void {
+      const context = readWrappedLineContext(options.terminal, bufferLineNumber);
+      if (!context) {
+        callback(undefined);
+        return;
+      }
+
+      void collectSearchLinks(options, context, updateTooltip, fileLinkResolutionCache)
+        .then((links) => {
+          callback(links.length > 0 ? links : undefined);
+        })
+        .catch(() => {
+          callback(undefined);
+        });
+    }
+  };
+}
+
+function createExplicitLinkHandler(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+): NonNullable<Terminal['options']['linkHandler']> {
+  return {
+    allowNonHttpProtocols: true,
+    activate: (event, text, range): void => {
+      if (!shouldActivateExecutionLink(options.getRuntimeContext(), event)) {
+        return;
+      }
+
+      const link = parseExplicitExecutionTerminalLink(text, range.start.y - 1);
+      if (!link) {
+        return;
+      }
+
+      options.onOpenLink(options.nodeId, options.kind, link);
+    },
+    hover: (event, text, range): void => {
+      const link = parseExplicitExecutionTerminalLink(text, range.start.y - 1);
+      if (!link) {
+        return;
+      }
+
+      updateTooltip(
+        createExecutionLinkTooltip(
+          event,
+          link.linkKind === 'file' ? FILE_LINK_LABEL : URL_LINK_LABEL,
+          options.getRuntimeContext()
+        )
+      );
+    },
+    leave: (): void => {
+      updateTooltip(undefined);
+    }
+  };
+}
+
 async function collectFileLinks(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
@@ -268,13 +422,35 @@ async function collectFileLinks(
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
+  const directCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
+  const fallbackCandidates = candidates.filter((candidate) => candidate.source === 'fallback');
+  const resolvedDirectLinks =
+    directCandidates.length > 0
+      ? await resolveExecutionFileLinksForContext(options, context, directCandidates, fileLinkResolutionCache)
+      : [];
+  if (resolvedDirectLinks.length > 0 || fallbackCandidates.length === 0) {
+    return mapResolvedFileLinksToInteractions(
+      options,
+      context,
+      directCandidates,
+      resolvedDirectLinks,
+      updateTooltip
+    );
+  }
+
+  const resolvedFallbackLinks = await resolveExecutionFileLinksForContext(
     options,
     context,
-    candidates,
+    fallbackCandidates,
     fileLinkResolutionCache
   );
-  return mapResolvedFileLinksToInteractions(options, context, candidates, resolvedLinks, updateTooltip);
+  return mapResolvedFileLinksToInteractions(
+    options,
+    context,
+    fallbackCandidates,
+    resolvedFallbackLinks,
+    updateTooltip
+  );
 }
 
 function collectUrlLinks(
@@ -282,34 +458,30 @@ function collectUrlLinks(
   context: WrappedLineContext,
   updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
 ): ILink[] {
-  const links: ILink[] = [];
-  URL_REGEX.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = URL_REGEX.exec(context.text)) !== null) {
-    const rawUrl = match[0];
-    const trimmedUrl = trimUrlCandidate(rawUrl);
-    if (!trimmedUrl) {
-      continue;
-    }
+  if (!EXECUTION_URL_LINKIFY.pretest(context.text)) {
+    return [];
+  }
 
-    const startColumn = match.index + 1;
-    const endColumn = match.index + trimmedUrl.length + 1;
+  const links: ILink[] = [];
+  const matches = EXECUTION_URL_LINKIFY.match(context.text) ?? [];
+  for (const match of matches) {
     links.push(
       createInteractionLink(
         options,
         context,
-        trimmedUrl,
+        match.text,
         URL_LINK_LABEL,
         {
           linkKind: 'url',
-          text: trimmedUrl,
-          url: trimmedUrl
+          text: match.text,
+          url: match.url,
+          source: 'implicit'
         },
         updateTooltip,
         {
-          startColumn,
+          startColumn: match.index + 1,
           startLineNumber: 1,
-          endColumn,
+          endColumn: match.lastIndex + 1,
           endLineNumber: 1
         }
       )
@@ -319,37 +491,249 @@ function collectUrlLinks(
   return links;
 }
 
+async function collectSearchLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >
+): Promise<ILink[]> {
+  if (context.text.length === 0 || context.text.length > MAX_SEARCH_LINK_LINE_LENGTH) {
+    return [];
+  }
+
+  const candidates = collectSearchLinkCandidates(context);
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const resolvedLinks = await resolveExecutionFileLinksForContext(
+    options,
+    context,
+    candidates,
+    fileLinkResolutionCache
+  );
+  const resolvedCandidateIds = new Set(resolvedLinks.map((resolvedLink) => resolvedLink.candidateId));
+  const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const resolvedCandidates = resolvedLinks
+    .map((resolvedLink) => candidateById.get(resolvedLink.candidateId))
+    .filter((candidate): candidate is ExecutionTerminalFileLinkCandidate => candidate !== undefined);
+  const unresolvedCandidates = selectExecutionTerminalSearchLinkCandidates(
+    candidates.filter(
+      (candidate) =>
+        !resolvedCandidateIds.has(candidate.candidateId) &&
+        !resolvedCandidates.some((resolvedCandidate) =>
+          doExecutionTerminalFileLinkCandidateRangesOverlap(candidate, resolvedCandidate)
+        )
+    )
+  );
+
+  const links: ILink[] = [];
+  for (const candidate of unresolvedCandidates) {
+    if (candidate.text.length > MAX_SEARCH_LINK_TEXT_LENGTH) {
+      continue;
+    }
+
+    links.push(
+      createInteractionLink(
+        options,
+        context,
+        candidate.text,
+        SEARCH_LINK_LABEL,
+        {
+          linkKind: 'search',
+          text: candidate.text,
+          searchText: candidate.text,
+          contextLine: context.text,
+          bufferStartLine: candidate.bufferStartLine,
+          source: 'word'
+        },
+        updateTooltip,
+        {
+          startColumn: candidate.startIndex + 1,
+          startLineNumber: 1,
+          endColumn: candidate.endIndexExclusive + 1,
+          endLineNumber: 1
+        }
+      )
+    );
+  }
+
+  return links;
+}
+
+function collectSearchLinkCandidates(context: WrappedLineContext): ExecutionTerminalFileLinkCandidate[] {
+  return selectExecutionTerminalSearchLinkCandidates(
+    collectFileLinkCandidates(context).filter(isExecutionTerminalSearchFallbackCandidate)
+  );
+}
+
+function isExecutionTerminalSearchFallbackCandidate(
+  candidate: ExecutionTerminalFileLinkCandidate
+): boolean {
+  if (candidate.source === 'detected' || candidate.source === 'refined') {
+    return true;
+  }
+
+  if (candidate.source !== 'fallback') {
+    return false;
+  }
+
+  return isExecutionTerminalSearchFallbackPathLike(candidate);
+}
+
+function isExecutionTerminalSearchFallbackPathLike(
+  candidate: ExecutionTerminalFileLinkCandidate
+): boolean {
+  if (
+    candidate.line !== undefined ||
+    candidate.column !== undefined ||
+    candidate.lineEnd !== undefined ||
+    candidate.columnEnd !== undefined
+  ) {
+    return true;
+  }
+
+  const pathValue = candidate.path.trim();
+  if (pathValue.length === 0) {
+    return false;
+  }
+
+  if (
+    pathValue.includes('/') ||
+    pathValue.includes('\\') ||
+    pathValue.startsWith('./') ||
+    pathValue.startsWith('../') ||
+    pathValue.startsWith('~/') ||
+    pathValue.startsWith('.\\') ||
+    pathValue.startsWith('..\\') ||
+    pathValue.startsWith('~\\') ||
+    pathValue.startsWith('file://') ||
+    /^[a-zA-Z]:[\\/]/.test(pathValue) ||
+    pathValue.startsWith('\\\\')
+  ) {
+    return true;
+  }
+
+  return /\.[a-zA-Z0-9_-]{1,20}$/.test(pathValue);
+}
+
+function selectExecutionTerminalSearchLinkCandidates(
+  candidates: ExecutionTerminalFileLinkCandidate[]
+): ExecutionTerminalFileLinkCandidate[] {
+  const selected: ExecutionTerminalFileLinkCandidate[] = [];
+  const sortedCandidates = [...candidates].sort(compareExecutionTerminalSearchLinkCandidates);
+  for (const candidate of sortedCandidates) {
+    if (
+      selected.some((selectedCandidate) =>
+        doExecutionTerminalFileLinkCandidateRangesOverlap(candidate, selectedCandidate)
+      )
+    ) {
+      continue;
+    }
+
+    selected.push(candidate);
+  }
+
+  return selected.sort(
+    (left, right) =>
+      left.startIndex - right.startIndex || left.endIndexExclusive - right.endIndexExclusive
+  );
+}
+
+function compareExecutionTerminalSearchLinkCandidates(
+  left: ExecutionTerminalFileLinkCandidate,
+  right: ExecutionTerminalFileLinkCandidate
+): number {
+  const priorityDifference =
+    getExecutionTerminalSearchLinkCandidatePriority(right) -
+    getExecutionTerminalSearchLinkCandidatePriority(left);
+  if (priorityDifference !== 0) {
+    return priorityDifference;
+  }
+
+  const leftLength = left.endIndexExclusive - left.startIndex;
+  const rightLength = right.endIndexExclusive - right.startIndex;
+  if (leftLength !== rightLength) {
+    return leftLength - rightLength;
+  }
+
+  return left.startIndex - right.startIndex || left.endIndexExclusive - right.endIndexExclusive;
+}
+
+function getExecutionTerminalSearchLinkCandidatePriority(
+  candidate: ExecutionTerminalFileLinkCandidate
+): number {
+  switch (candidate.source) {
+    case 'refined':
+      return 3;
+    case 'detected':
+      return 2;
+    case 'fallback':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function doExecutionTerminalFileLinkCandidateRangesOverlap(
+  left: Pick<ExecutionTerminalFileLinkCandidate, 'startIndex' | 'endIndexExclusive'>,
+  right: Pick<ExecutionTerminalFileLinkCandidate, 'startIndex' | 'endIndexExclusive'>
+): boolean {
+  return left.startIndex < right.endIndexExclusive && right.startIndex < left.endIndexExclusive;
+}
+
 function collectFileLinkCandidates(context: WrappedLineContext): ExecutionTerminalFileLinkCandidate[] {
   const detectedCandidates = dedupeDetectedPathLinks([
     ...detectExecutionTerminalPathLinks(context.text, 'posix'),
     ...detectExecutionTerminalPathLinks(context.text, 'windows')
-  ]).filter((candidate) => !/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(candidate.path) || candidate.path.startsWith('file://'));
+  ]).filter((candidate) => !isNonFileUriLikePath(candidate.path));
 
-  if (detectedCandidates.length === 0) {
-    const fallback = detectExecutionTerminalFallbackPathLink(context.text);
-    if (fallback) {
-      detectedCandidates.push(fallback);
+  const candidates: ExecutionTerminalFileLinkCandidate[] = [];
+  for (const candidate of detectedCandidates) {
+    candidates.push(toExecutionTerminalFileLinkCandidate(context, candidate, 'detected'));
+    const refinedCandidate = refineDetectedPathLinkCandidate(candidate);
+    if (refinedCandidate) {
+      candidates.push(toExecutionTerminalFileLinkCandidate(context, refinedCandidate, 'refined'));
     }
   }
 
-  return detectedCandidates.map((candidate) => ({
-    candidateId: createExecutionTerminalFileLinkCandidateId(context, candidate),
+  const fallback = detectExecutionTerminalFallbackPathLink(context.text);
+  if (fallback && !isNonFileUriLikePath(fallback.path)) {
+    candidates.push(toExecutionTerminalFileLinkCandidate(context, fallback, 'fallback'));
+  }
+
+  return dedupeExecutionTerminalFileLinkCandidates(candidates);
+}
+
+function toExecutionTerminalFileLinkCandidate(
+  context: WrappedLineContext,
+  candidate: DetectedExecutionTerminalPathLink,
+  source: ExecutionTerminalFileLinkCandidate['source']
+): ExecutionTerminalFileLinkCandidate {
+  return {
+    candidateId: createExecutionTerminalFileLinkCandidateId(context, candidate, source),
     text: candidate.text,
     path: candidate.path,
     startIndex: candidate.startIndex,
     endIndexExclusive: candidate.endIndexExclusive,
+    bufferStartLine: context.startLine,
     line: candidate.line,
     column: candidate.column,
     lineEnd: candidate.lineEnd,
-    columnEnd: candidate.columnEnd
-  }));
+    columnEnd: candidate.columnEnd,
+    source
+  };
 }
 
 function createExecutionTerminalFileLinkCandidateId(
   context: WrappedLineContext,
-  candidate: DetectedExecutionTerminalPathLink
+  candidate: DetectedExecutionTerminalPathLink,
+  source: ExecutionTerminalFileLinkCandidate['source']
 ): string {
-  return `${context.startLine}:${candidate.startIndex}:${candidate.endIndexExclusive}:${candidate.text}`;
+  return `${context.startLine}:${candidate.startIndex}:${candidate.endIndexExclusive}:${source}:${candidate.text}`;
 }
 
 async function resolveExecutionFileLinksForContext(
@@ -361,7 +745,9 @@ async function resolveExecutionFileLinksForContext(
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
-  const cacheKey = `${context.startLine}:${context.endLine}:${context.text}`;
+  const cacheKey = `${context.startLine}:${context.endLine}:${context.text}:${candidates
+    .map((candidate) => candidate.candidateId)
+    .join('|')}`;
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
   if (Array.isArray(cachedEntry)) {
     return cachedEntry;
@@ -423,7 +809,7 @@ function mapResolvedFileLinksToInteractions(
         options,
         context,
         resolvedLink.link.text,
-        FILE_LINK_LABEL,
+        labelForResolvedFileLink(resolvedLink.link.targetKind),
         resolvedLink.link,
         updateTooltip,
         {
@@ -437,6 +823,196 @@ function mapResolvedFileLinksToInteractions(
   }
 
   return links;
+}
+
+function labelForResolvedFileLink(
+  targetKind: ExecutionTerminalResolvedFileLink['link']['targetKind']
+): string {
+  if (targetKind === 'directory-in-workspace') {
+    return REVEAL_DIRECTORY_LINK_LABEL;
+  }
+
+  if (targetKind === 'directory-outside-workspace') {
+    return OPEN_DIRECTORY_LINK_LABEL;
+  }
+
+  return FILE_LINK_LABEL;
+}
+
+function parseExplicitExecutionTerminalLink(
+  text: string,
+  bufferStartLine: number
+): ExecutionTerminalOpenLink | undefined {
+  try {
+    const uri = new URL(text);
+    if (uri.protocol === 'file:') {
+      return {
+        linkKind: 'file',
+        text,
+        path: uri.toString(),
+        bufferStartLine,
+        source: 'explicit-uri'
+      };
+    }
+
+    return {
+      linkKind: 'url',
+      text,
+      url: uri.toString(),
+      source: 'explicit'
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function refineDetectedPathLinkCandidate(
+  candidate: DetectedExecutionTerminalPathLink
+): DetectedExecutionTerminalPathLink | undefined {
+  let startIndex = candidate.startIndex;
+  let endIndexExclusive = candidate.endIndexExclusive;
+  let text = candidate.text;
+  let path = candidate.path;
+  let changed = false;
+
+  while (text.length > 0 && shouldTrimLeadingExecutionFileChar(text[0])) {
+    const leadingChar = text[0];
+    text = text.slice(1);
+    startIndex += 1;
+    if (path.startsWith(leadingChar)) {
+      path = path.slice(1);
+    }
+    changed = true;
+  }
+
+  const embeddedPathOffset = findEmbeddedExecutionPathOffset(path);
+  if (embeddedPathOffset > 0) {
+    text = text.slice(embeddedPathOffset);
+    path = path.slice(embeddedPathOffset);
+    startIndex += embeddedPathOffset;
+    changed = true;
+  }
+
+  while (text.length > 0 && shouldTrimTrailingExecutionFileChar(path, text[text.length - 1])) {
+    const trailingChar = text[text.length - 1];
+    text = text.slice(0, -1);
+    endIndexExclusive -= 1;
+    if (path.endsWith(trailingChar)) {
+      path = path.slice(0, -1);
+    }
+    changed = true;
+  }
+
+  if (!changed || text.trim().length === 0 || path.trim().length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...candidate,
+    text,
+    path,
+    startIndex,
+    endIndexExclusive
+  };
+}
+
+function findEmbeddedExecutionPathOffset(pathValue: string): number {
+  EXECUTION_EMBEDDED_MULTI_SEGMENT_ASCII_PATH_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = EXECUTION_EMBEDDED_MULTI_SEGMENT_ASCII_PATH_REGEX.exec(pathValue)) !== null) {
+    if (match.index <= 0) {
+      continue;
+    }
+
+    const directPrefix = pathValue.slice(0, match.index);
+    if (isLikelyAttachedExecutionProsePrefix(directPrefix)) {
+      return match.index;
+    }
+  }
+
+  return 0;
+}
+
+function isLikelyAttachedExecutionProsePrefix(prefix: string): boolean {
+  if (prefix.length === 0 || prefix.includes('/') || prefix.includes('\\')) {
+    return false;
+  }
+
+  return /[^\x00-\x7F]/u.test(prefix) && !/[A-Za-z0-9]/.test(prefix);
+}
+
+function shouldTrimLeadingExecutionFileChar(value: string): boolean {
+  return EXECUTION_FILE_LEADING_TRIM_CHARS.has(value);
+}
+
+function shouldTrimTrailingExecutionFileChar(pathValue: string, value: string): boolean {
+  if (
+    EXECUTION_FILE_TRAILING_PUNCTUATION_CHARS.has(value) ||
+    EXECUTION_FILE_TRAILING_QUOTE_CHARS.has(value)
+  ) {
+    return true;
+  }
+
+  const openingWrapper = EXECUTION_FILE_CLOSING_WRAPPERS.get(value);
+  if (openingWrapper) {
+    if (!pathValue.endsWith(value)) {
+      return true;
+    }
+    return countExecutionFileChar(pathValue, openingWrapper) < countExecutionFileChar(pathValue, value);
+  }
+
+  return false;
+}
+
+function countExecutionFileChar(value: string, char: string): number {
+  let count = 0;
+  for (const currentChar of value) {
+    if (currentChar === char) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function isNonFileUriLikePath(pathValue: string): boolean {
+  if (pathValue.startsWith('file://')) {
+    return false;
+  }
+
+  if (/^[a-zA-Z]:[\\/]/.test(pathValue) || pathValue.startsWith('\\\\')) {
+    return false;
+  }
+
+  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(pathValue);
+}
+
+function dedupeExecutionTerminalFileLinkCandidates(
+  candidates: ExecutionTerminalFileLinkCandidate[]
+): ExecutionTerminalFileLinkCandidate[] {
+  const seen = new Set<string>();
+  const deduped: ExecutionTerminalFileLinkCandidate[] = [];
+  for (const candidate of candidates) {
+    const key = [
+      candidate.startIndex,
+      candidate.endIndexExclusive,
+      candidate.bufferStartLine,
+      candidate.source,
+      candidate.path,
+      candidate.line,
+      candidate.column,
+      candidate.lineEnd,
+      candidate.columnEnd
+    ].join(':');
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(candidate);
+  }
+
+  return deduped;
 }
 
 function createInteractionLink(
@@ -693,15 +1269,6 @@ function convertLinkRangeToBuffer(
   return bufferRange;
 }
 
-function trimUrlCandidate(value: string): string {
-  let trimmed = value;
-  while (/[),.;!?]$/.test(trimmed)) {
-    trimmed = trimmed.slice(0, -1);
-  }
-
-  return trimmed;
-}
-
 function dedupeDetectedPathLinks(
   links: DetectedExecutionTerminalPathLink[]
 ): DetectedExecutionTerminalPathLink[] {
@@ -831,23 +1398,22 @@ async function findInteractionLinkByText(
     bufferLineNumber <= options.terminal.buffer.active.length;
     bufferLineNumber += 1
   ) {
-    const context = readWrappedLineContext(options.terminal, bufferLineNumber);
-    if (!context) {
-      continue;
-    }
-
-    const fileLink = (
-      await collectFileLinks(options, context, updateTooltip, fileLinkResolutionCache)
-    ).find((link) => link.text === linkText);
-    if (fileLink) {
-      return fileLink;
-    }
-
-    const urlLink = collectUrlLinks(options, context, updateTooltip).find((link) => link.text === linkText);
-    if (urlLink) {
-      return urlLink;
+    const linkProviders = readExecutionTerminalLinkProviders(options.terminal);
+    for (const linkProvider of linkProviders) {
+      const links = await new Promise<ILink[] | undefined>((resolve) => {
+        linkProvider.provideLinks(bufferLineNumber, resolve);
+      });
+      const matchingLink = links?.find((link) => link.text === linkText);
+      if (matchingLink) {
+        return matchingLink;
+      }
     }
   }
 
   return undefined;
+}
+
+function readExecutionTerminalLinkProviders(terminal: Terminal): ILinkProvider[] {
+  const internalTerminal = terminal as unknown as XtermTerminalWithLinkProviders;
+  return internalTerminal._core?._linkProviderService?.linkProviders ?? [];
 }

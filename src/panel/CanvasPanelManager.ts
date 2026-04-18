@@ -97,12 +97,14 @@ import type {
 import {
   inferExecutionTerminalPathStyle,
   normalizeEditorMultiCursorModifier,
+  normalizeExecutionTerminalWordSeparators,
   openExecutionTerminalLink,
   prepareExecutionTerminalDroppedPath,
   resolveExecutionTerminalFileLinkCandidates,
   type OpenExecutionTerminalLinkResult,
   type ResolvedExecutionFileLink
 } from './executionTerminalNativeHelpers';
+import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
@@ -149,6 +151,7 @@ interface ManagedExecutionSessionBase {
   rows: number;
   buffer: string;
   terminalStateTracker: SerializedTerminalStateTracker;
+  lineContextTracker: ExecutionTerminalLineContextTracker;
   stopRequested: boolean;
   syncTimer: NodeJS.Timeout | undefined;
   syncDueAtMs: number | undefined;
@@ -390,14 +393,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
         const multiCursorModifierChanged = event.affectsConfiguration('editor.multiCursorModifier');
-        if (!defaultAgentProviderChanged && !terminalScrollbackChanged && !multiCursorModifierChanged) {
+        const terminalWordSeparatorsChanged = event.affectsConfiguration(
+          'terminal.integrated.wordSeparators'
+        );
+        if (
+          !defaultAgentProviderChanged &&
+          !terminalScrollbackChanged &&
+          !multiCursorModifierChanged &&
+          !terminalWordSeparatorsChanged
+        ) {
           return;
         }
 
         void this.handleRuntimeConfigurationChanged({
           defaultAgentProviderChanged,
           terminalScrollbackChanged,
-          multiCursorModifierChanged
+          multiCursorModifierChanged,
+          terminalWordSeparatorsChanged
         });
       })
     );
@@ -1334,6 +1346,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         vscode.workspace
           .getConfiguration('editor')
           .get<'ctrlCmd' | 'alt'>('multiCursorModifier')
+      ),
+      terminalWordSeparators: normalizeExecutionTerminalWordSeparators(
+        vscode.workspace.getConfiguration('terminal.integrated').get<string>('wordSeparators')
       )
     };
   }
@@ -1349,6 +1364,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     defaultAgentProviderChanged: boolean;
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
+    terminalWordSeparatorsChanged: boolean;
   }): Promise<void> {
     if (options.terminalScrollbackChanged) {
       try {
@@ -1367,7 +1383,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (
       options.defaultAgentProviderChanged ||
       options.terminalScrollbackChanged ||
-      options.multiCursorModifierChanged
+      options.multiCursorModifierChanged ||
+      options.terminalWordSeparatorsChanged
     ) {
       this.postState('host/stateUpdated');
     }
@@ -1476,6 +1493,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     cwd: string;
     pathStyle: 'windows' | 'posix';
     userHome?: string;
+    resolveCwdForBufferLine?: (bufferStartLine: number) => Promise<string | undefined>;
   } {
     const session = this.getExecutionSessions(kind).get(nodeId);
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
@@ -1492,7 +1510,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       shellPath,
       cwd,
       pathStyle: inferExecutionTerminalPathStyle(shellPath, cwd),
-      userHome: process.env.HOME ?? process.env.USERPROFILE
+      userHome: process.env.HOME ?? process.env.USERPROFILE,
+      resolveCwdForBufferLine:
+        session ? (bufferStartLine) => session.lineContextTracker.getCwdForBufferLine(bufferStartLine) : undefined
     };
   }
 
@@ -1543,6 +1563,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         refreshedSession.terminalStateTracker.getScrollback() !== scrollback
       ) {
         await refreshedSession.terminalStateTracker.setScrollback(scrollback);
+        await refreshedSession.lineContextTracker.setScrollback(scrollback);
         this.flushLiveExecutionState(kind, nodeId, {
           postState: false
         });
@@ -1551,6 +1572,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await session.terminalStateTracker.setScrollback(scrollback);
+    await session.lineContextTracker.setScrollback(scrollback);
     this.flushLiveExecutionState(kind, nodeId, {
       postState: false
     });
@@ -2318,6 +2340,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         initialState: snapshot.serializedTerminalState,
         initialOutput: snapshot.output
       }),
+      lineContextTracker: this.createExecutionTerminalLineContextTracker(
+        snapshot.cols,
+        snapshot.rows,
+        snapshot.shellPath,
+        snapshot.cwd,
+        snapshot.scrollback,
+        snapshot.output
+      ),
       stopRequested: false,
       syncTimer: undefined,
       syncDueAtMs: undefined,
@@ -2349,6 +2379,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private createExecutionTerminalLineContextTracker(
+    cols: number,
+    rows: number,
+    shellPath: string,
+    cwd: string,
+    scrollback: number,
+    initialOutput?: string
+  ): ExecutionTerminalLineContextTracker {
+    return new ExecutionTerminalLineContextTracker(cols, rows, {
+      cwd,
+      pathStyle: inferExecutionTerminalPathStyle(shellPath, cwd),
+      userHome: process.env.HOME ?? process.env.USERPROFILE,
+      scrollback,
+      initialOutput
+    });
+  }
+
+  private disposeManagedExecutionSession(session: ManagedExecutionSession | undefined): void {
+    if (!session) {
+      return;
+    }
+
+    session.terminalStateTracker.dispose();
+    session.lineContextTracker.dispose();
+  }
+
   private handleRuntimeSupervisorOutput(
     runtimeStoragePath: string,
     runtimeSessionId: string,
@@ -2368,6 +2424,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     session.buffer = appendTerminalBuffer(session.buffer, chunk);
     session.terminalStateTracker.write(chunk);
+    session.lineContextTracker.write(chunk);
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
     this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
   }
@@ -2455,7 +2512,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const runtimeStoragePath = this.resolveRuntimeStoragePath(
         this.getPersistedRuntimeStoragePath(existingRuntimeMetadata)
       );
-      this.getExecutionSessions(kind).get(nodeId)?.terminalStateTracker.dispose();
+      this.disposeManagedExecutionSession(this.getExecutionSessions(kind).get(nodeId));
       const session = this.createSupervisorExecutionSession(snapshot, runtimeStoragePath);
       this.getExecutionSessions(kind).set(nodeId, session);
       this.state = updateExecutionNode(this.state, nodeId, kind, {
@@ -2524,7 +2581,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
     this.unbindRuntimeSession(snapshot.sessionId, currentMetadata.runtimeStoragePath);
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
-    existingSession?.terminalStateTracker.dispose();
+    this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
@@ -2585,7 +2642,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const runtimeSessionId = snapshot?.sessionId ?? currentMetadata.runtimeSessionId;
     this.unbindRuntimeSession(runtimeSessionId, currentMetadata.runtimeStoragePath);
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
-    existingSession?.terminalStateTracker.dispose();
+    this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
 
     const lifecycle =
@@ -3666,6 +3723,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         terminalStateTracker: new SerializedTerminalStateTracker(normalizedCols, normalizedRows, {
           scrollback: this.getTerminalScrollback()
         }),
+        lineContextTracker: this.createExecutionTerminalLineContextTracker(
+          normalizedCols,
+          normalizedRows,
+          cliSpec.command,
+          cwd,
+          this.getTerminalScrollback()
+        ),
         stopRequested: false,
         syncTimer: undefined,
         syncDueAtMs: undefined,
@@ -3748,6 +3812,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
+        activeSession.lineContextTracker.write(text);
         if (
           activeSession.lifecycleStatus === 'starting' ||
           activeSession.lifecycleStatus === 'resuming' ||
@@ -3831,7 +3896,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lastBackendLabel: cliSpec.label
           })
         });
-        activeSession.terminalStateTracker.dispose();
+        this.disposeManagedExecutionSession(activeSession);
         this.persistState();
         this.postState('host/stateUpdated');
         this.postMessage({
@@ -4313,6 +4378,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         terminalStateTracker: new SerializedTerminalStateTracker(normalizedCols, normalizedRows, {
           scrollback: this.getTerminalScrollback()
         }),
+        lineContextTracker: this.createExecutionTerminalLineContextTracker(
+          normalizedCols,
+          normalizedRows,
+          shellPath,
+          cwd,
+          this.getTerminalScrollback()
+        ),
         stopRequested: false,
         syncTimer: undefined,
         syncDueAtMs: undefined,
@@ -4388,6 +4460,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
+        activeSession.lineContextTracker.write(text);
         if (activeSession.lifecycleStatus === 'launching') {
           activeSession.lifecycleStatus = 'live';
         }
@@ -4457,7 +4530,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             serializedTerminalState: activeSession.terminalStateTracker.getSerializedState()
           })
         });
-        activeSession.terminalStateTracker.dispose();
+        this.disposeManagedExecutionSession(activeSession);
         this.persistState();
         this.postState('host/stateUpdated');
         this.postMessage({
@@ -4628,6 +4701,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.queueExecutionStateSync('terminal', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
     }
 
+    if (kind === 'terminal') {
+      session.lineContextTracker.recordInput(data);
+    }
     if (session.owner === 'local') {
       session.process.write(data);
     } else {
@@ -4682,6 +4758,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.cols = normalizedCols;
     session.rows = normalizedRows;
     session.terminalStateTracker.resize(normalizedCols, normalizedRows);
+    session.lineContextTracker.resize(normalizedCols, normalizedRows);
     if (session.owner === 'local') {
       session.process.resize(normalizedCols, normalizedRows);
     } else {
@@ -4879,7 +4956,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
-    session.terminalStateTracker.dispose();
+    this.disposeManagedExecutionSession(session);
 
     if (session.owner === 'supervisor') {
       this.unbindRuntimeSession(session.runtimeSessionId, session.runtimeStoragePath);

@@ -3,6 +3,10 @@ export type ExecutionTerminalFileLinkTargetKind =
   | 'file'
   | 'directory-in-workspace'
   | 'directory-outside-workspace';
+export type ExecutionTerminalUrlLinkSource = 'implicit' | 'explicit';
+export type ExecutionTerminalFileLinkSource = 'detected' | 'refined' | 'fallback' | 'explicit-uri';
+export type ExecutionTerminalSearchLinkSource = 'word';
+export const DEFAULT_EXECUTION_TERMINAL_WORD_SEPARATORS = ' ()[]{}\',"`';
 export type ExecutionTerminalOpenLink =
   | {
       linkKind: 'file';
@@ -12,13 +16,24 @@ export type ExecutionTerminalOpenLink =
       column?: number;
       lineEnd?: number;
       columnEnd?: number;
+      bufferStartLine?: number;
       resolvedId?: string;
       targetKind?: ExecutionTerminalFileLinkTargetKind;
+      source?: ExecutionTerminalFileLinkSource;
     }
   | {
       linkKind: 'url';
       text: string;
       url: string;
+      source?: ExecutionTerminalUrlLinkSource;
+    }
+  | {
+      linkKind: 'search';
+      text: string;
+      searchText: string;
+      contextLine?: string;
+      bufferStartLine?: number;
+      source?: ExecutionTerminalSearchLinkSource;
     };
 
 export interface ExecutionTerminalDroppedResource {
@@ -33,10 +48,12 @@ export interface ExecutionTerminalFileLinkCandidate {
   path: string;
   startIndex: number;
   endIndexExclusive: number;
+  bufferStartLine: number;
   line?: number;
   column?: number;
   lineEnd?: number;
   columnEnd?: number;
+  source: ExecutionTerminalFileLinkSource;
 }
 
 export interface ExecutionTerminalResolvedFileLink {
@@ -49,8 +66,10 @@ export interface ExecutionTerminalResolvedFileLink {
     column?: number;
     lineEnd?: number;
     columnEnd?: number;
+    bufferStartLine?: number;
     resolvedId: string;
     targetKind: ExecutionTerminalFileLinkTargetKind;
+    source?: ExecutionTerminalFileLinkSource;
   };
 }
 
@@ -102,6 +121,12 @@ function parseIntOptional(value: string | undefined): number | undefined {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function normalizeExecutionTerminalWordSeparators(value: unknown): string {
+  return typeof value === 'string' && value.length > 0
+    ? value
+    : DEFAULT_EXECUTION_TERMINAL_WORD_SEPARATORS;
 }
 
 export function getExecutionTerminalLinkSuffix(
@@ -413,8 +438,8 @@ export interface ExecutionTerminalFallbackPathLink extends DetectedExecutionTerm
 const fallbackMatchers: RegExp[] = [
   /^ *File (?<link>"(?<path>.+)"(, line (?<line>\d+))?)/,
   /^ +FILE +(?<link>(?<path>.+)(?::(?<line>\d+)(?::(?<col>\d+))?)?)/,
-  /^(?<link>(?<path>.+)\((?<line>\d+)(?:, ?(?<col>\d+))?\)) ?:/,
-  /^(?<link>(?<path>.+):(?<line>\d+)(?::(?<col>\d+))?) ?:/,
+  /^(?<link>(?<path>.+?)\((?<line>\d+)(?:, ?(?<col>\d+))?\))(?= ?:|$)/,
+  /^(?<link>(?<path>.+?):(?<line>\d+)(?::(?<col>\d+))?)(?= ?:|$)/,
   /^(?:PS\s+)?(?<link>(?<path>[^>]+))>/,
   /^ *(?<link>(?<path>.+))/
 ];
