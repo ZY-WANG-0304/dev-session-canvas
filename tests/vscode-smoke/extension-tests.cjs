@@ -245,6 +245,7 @@ async function runTrustedSmoke() {
   await verifyRuntimeContextRefreshesTerminalScrollback();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
   await clearDiagnosticEvents();
   snapshot = await getDebugSnapshot();
@@ -294,7 +295,6 @@ async function runTrustedSmoke() {
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
 
-  await verifyPersistedStateFiltersLegacyTaskNodes();
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
@@ -1025,6 +1025,62 @@ async function verifyAgentExecutionFlow(agentNodeId) {
 async function verifyPersistedStateFiltersLegacyTaskNodes() {
   const beforeSnapshot = await getDebugSnapshot();
   const beforeState = beforeSnapshot.state;
+  const mixedBaselineState =
+    beforeState.nodes.length > 0
+      ? beforeState
+      : {
+          version: 1,
+          updatedAt: '2026-04-07T14:05:00.000Z',
+          nodes: [
+            {
+              id: 'baseline-agent-1',
+              kind: 'agent',
+              title: 'Baseline Agent',
+              status: 'idle',
+              summary: 'A retained agent node.',
+              position: { x: 40, y: 40 },
+              size: { width: 560, height: 420 },
+              metadata: {
+                agent: {
+                  provider: 'codex',
+                  lifecycle: 'idle',
+                  liveSession: false,
+                  pendingLaunch: undefined
+                }
+              }
+            },
+            {
+              id: 'baseline-terminal-1',
+              kind: 'terminal',
+              title: 'Baseline Terminal',
+              status: 'idle',
+              summary: 'A retained terminal node.',
+              position: { x: 640, y: 40 },
+              size: { width: 560, height: 420 },
+              metadata: {
+                terminal: {
+                  lifecycle: 'idle',
+                  liveSession: false,
+                  pendingLaunch: undefined
+                }
+              }
+            },
+            {
+              id: 'baseline-note-1',
+              kind: 'note',
+              title: 'Baseline Note',
+              status: 'ready',
+              summary: 'A retained note node.',
+              position: { x: 360, y: 520 },
+              size: { width: 420, height: 320 },
+              metadata: {
+                note: {
+                  content: 'Baseline note content.'
+                }
+              }
+            }
+          ]
+        };
 
   let snapshot = await setPersistedState({
     version: 1,
@@ -1050,9 +1106,9 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   snapshot = await setPersistedState({
-    ...beforeState,
+    ...mixedBaselineState,
     nodes: [
-      ...beforeState.nodes,
+      ...mixedBaselineState.nodes,
       {
         id: 'legacy-task-2',
         kind: 'task',
@@ -1072,9 +1128,14 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
   });
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    beforeState.nodes.map((node) => node.kind).sort()
+    mixedBaselineState.nodes.map((node) => node.kind).sort()
   );
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'), false);
+
+  if (beforeState !== mixedBaselineState) {
+    snapshot = await setPersistedState(beforeState);
+    assert.strictEqual(snapshot.state.nodes.length, beforeState.nodes.length);
+  }
 }
 
 async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
