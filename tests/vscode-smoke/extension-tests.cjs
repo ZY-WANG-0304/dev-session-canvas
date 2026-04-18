@@ -148,6 +148,56 @@ async function createBaseNodes() {
   });
 }
 
+async function prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(enabled) {
+  await setRuntimePersistenceEnabled(enabled);
+
+  let snapshot = await simulateRuntimeReload();
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'note');
+
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'agent').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'note').length === 1,
+    20000
+  );
+
+  return {
+    agentNode: findNodeByKind(snapshot, 'agent'),
+    terminalNode: findNodeByKind(snapshot, 'terminal'),
+    noteNode: findNodeByKind(snapshot, 'note')
+  };
+}
+
+async function prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode(enabled) {
+  await setRuntimePersistenceEnabled(enabled);
+
+  let snapshot = await simulateRuntimeReload();
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'note');
+
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'agent').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'note').length === 1,
+    20000
+  );
+
+  return {
+    agentNode: findNodeByKind(snapshot, 'agent'),
+    terminalNode: findNodeByKind(snapshot, 'terminal'),
+    noteNode: findNodeByKind(snapshot, 'note')
+  };
+}
+
 async function runTrustedSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
@@ -189,6 +239,7 @@ async function runTrustedSmoke() {
 
   await verifyRuntimeContextRefreshesDefaultAgentProvider();
   await verifyRuntimeContextRefreshesTerminalScrollback();
+  await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -260,24 +311,36 @@ async function runTrustedSmoke() {
   await verifyStandbySurfaceIgnoresMessages(noteNode.id);
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
-  await verifyLiveRuntimePersistence(agentNode.id, terminalNode.id);
-  await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(terminalNode.id);
-  await verifyLiveRuntimeReconnectFallbackToResume(agentNode.id, terminalNode.id);
-  await verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNode.id, terminalNode.id);
-  await verifyLiveRuntimeResumeExitClassification(agentNode.id);
-  await verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id);
-  await verifyDisablingRuntimePersistenceStopsReattach(agentNode.id, terminalNode.id);
-  await verifyHostBoundaryFlushesRecentLocalState(agentNode.id, terminalNode.id);
-  await verifyTrustedDiagnostics(agentNode.id, terminalNode.id);
-  await verifyRealDeleteButton(noteNode.id);
+  let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
+  await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
+  await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
+  await verifyLiveRuntimeReconnectFallbackToResume(
+    runtimePersistenceNodes.agentNode.id,
+    runtimePersistenceNodes.terminalNode.id
+  );
+  await verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(
+    runtimePersistenceNodes.agentNode.id,
+    runtimePersistenceNodes.terminalNode.id
+  );
+  await verifyLiveRuntimeResumeExitClassification(runtimePersistenceNodes.agentNode.id);
+  await verifyImmediateReloadAfterLiveRuntimeLaunch(
+    runtimePersistenceNodes.agentNode.id,
+    runtimePersistenceNodes.terminalNode.id
+  );
+
+  runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(false);
+  await verifyHostBoundaryFlushesRecentLocalState(
+    runtimePersistenceNodes.agentNode.id,
+    runtimePersistenceNodes.terminalNode.id
+  );
+  await verifyTrustedDiagnostics(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
+  await verifyRealDeleteButton(runtimePersistenceNodes.noteNode.id);
 
   snapshot = await getDebugSnapshot();
-  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === noteNode.id), false);
+  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === runtimePersistenceNodes.noteNode.id), false);
   assert.strictEqual(snapshot.state.nodes.length, 2);
 
-  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
-  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
-  assert.strictEqual(snapshot.state.nodes.length, 0);
+  await verifyRuntimePersistenceRequiresReloadAndClearsState();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -436,6 +499,56 @@ async function verifyRuntimeContextRefreshesTerminalScrollback() {
   }
 }
 
+async function verifyDefaultSurfaceRequiresReload() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalSurface =
+    configuration.get('devSessionCanvas.canvas.defaultSurface', 'panel') === 'editor' ? 'editor' : 'panel';
+  const updatedSurface = originalSurface === 'panel' ? 'editor' : 'panel';
+  const openSurface = async (surface) => {
+    await vscode.commands.executeCommand(
+      surface === 'editor' ? COMMAND_IDS.openCanvasInEditor : COMMAND_IDS.openCanvasInPanel
+    );
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, surface, 20000);
+  };
+
+  await openSurface(originalSurface);
+  await setDefaultSurface(updatedSurface);
+
+  try {
+    let snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, originalSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, originalSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, originalSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, originalSurface, 20000);
+
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, originalSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, originalSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, originalSurface);
+
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.activeSurface, updatedSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, updatedSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, updatedSurface);
+    assert.notStrictEqual(snapshot.activeSurface, originalSurface);
+    assert.notStrictEqual(snapshot.sidebar.surfaceLocation, originalSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, updatedSurface, 20000);
+
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, updatedSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, updatedSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, updatedSurface);
+  } finally {
+    await setDefaultSurface(originalSurface);
+    await simulateRuntimeReload();
+    await openSurface(originalSurface);
+  }
+}
+
 async function runRestrictedSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
@@ -584,10 +697,14 @@ async function runRestrictedSmoke() {
   const probeTerminal = probe.nodes.find((node) => node.nodeId === terminalNode.id);
   assert.strictEqual(probeAgent?.overlayTitle, 'Restricted Mode');
   assert.strictEqual(probeTerminal?.overlayTitle, 'Restricted Mode');
-  await verifyRestrictedLiveRuntimeReconnectBlocked(agentNode.id, terminalNode.id);
   await verifyRestrictedDiagnostics(agentNode.id, terminalNode.id);
-  await verifyRestrictedDisablingRuntimePersistenceCleansLiveRuntime(agentNode.id, terminalNode.id);
-  await verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNode.id, terminalNode.id);
+  await verifyRestrictedLiveRuntimeReconnectBlocked();
+  const restrictedRuntimeNodes = await prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode(true);
+  await verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(
+    restrictedRuntimeNodes.agentNode.id,
+    restrictedRuntimeNodes.terminalNode.id
+  );
+  await verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -3692,78 +3809,137 @@ async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminal
   }
 }
 
-async function verifyDisablingRuntimePersistenceStopsReattach(agentNodeId, terminalNodeId) {
+async function verifyRuntimePersistenceRequiresReloadAndClearsState() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalDefaultSurface =
+    configuration.get('devSessionCanvas.canvas.defaultSurface', 'panel') === 'editor' ? 'editor' : 'panel';
+  const runtimeResetSurface = 'panel';
+
+  if (originalDefaultSurface !== runtimeResetSurface) {
+    await setDefaultSurface(runtimeResetSurface);
+  }
   await setRuntimePersistenceEnabled(true);
 
   try {
-    await clearHostMessages();
-    await ensureAgentStopped(agentNodeId);
-    await ensureTerminalStopped(terminalNodeId);
+    let snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
 
-    await dispatchWebviewMessage({
-      type: 'webview/startExecutionSession',
-      payload: {
-        nodeId: agentNodeId,
-        kind: 'agent',
-        cols: 92,
-        rows: 28,
-        provider: 'codex'
-      }
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) =>
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'agent').length === 1 &&
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1,
+      20000
+    );
+
+    const agentNode = findNodeByKind(snapshot, 'agent');
+    const terminalNode = findNodeByKind(snapshot, 'terminal');
+
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNode.id,
+      cols: 92,
+      rows: 28,
+      provider: 'codex'
     });
-    await dispatchWebviewMessage({
-      type: 'webview/startExecutionSession',
-      payload: {
-        nodeId: terminalNodeId,
-        kind: 'terminal',
-        cols: 92,
-        rows: 28
-      }
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: terminalNode.id,
+      cols: 92,
+      rows: 28
     });
 
-    await waitForAgentLive(agentNodeId);
-    await waitForTerminalLive(terminalNodeId);
-
-    await dispatchWebviewMessage({
-      type: 'webview/executionInput',
-      payload: {
-        nodeId: agentNodeId,
-        kind: 'agent',
-        data: 'echo SHOULD_NOT_REATTACH\r'
-      }
-    });
-    await dispatchWebviewMessage({
-      type: 'webview/executionInput',
-      payload: {
-        nodeId: terminalNodeId,
-        kind: 'terminal',
-        data: 'echo SHOULD_NOT_REATTACH\r'
-      }
-    });
+    await waitForAgentLive(agentNode.id);
+    await waitForTerminalLive(terminalNode.id);
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => listLiveRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      20000
+    );
 
     await setRuntimePersistenceEnabled(false);
 
-    let snapshot = await simulateRuntimeReload();
-    let agentNode = findNodeById(snapshot, agentNodeId);
-    let terminalNode = findNodeById(snapshot, terminalNodeId);
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) => currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 2,
+      20000
+    );
+    const extraTerminalNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'terminal' && node.id !== terminalNode.id
+    );
+    assert.ok(extraTerminalNode, 'Expected a second terminal node before reload.');
 
-    assert.strictEqual(agentNode.status, 'history-restored');
-    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'history-restored');
-    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
-    assert.strictEqual(terminalNode.status, 'history-restored');
-    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'history-restored');
-    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: extraTerminalNode.id,
+      cols: 92,
+      rows: 28
+    });
 
-    await sleep(600);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminalNode = currentSnapshot.state.nodes.find((node) => node.id === extraTerminalNode.id);
+      return Boolean(
+        currentTerminalNode?.metadata?.terminal?.liveSession &&
+        currentTerminalNode?.metadata?.terminal?.persistenceMode === 'live-runtime'
+      );
+    }, 20000);
+    const currentAgentNode = findNodeById(snapshot, agentNode.id);
+    const currentTerminalNode = findNodeById(snapshot, terminalNode.id);
+    const currentExtraTerminalNode = findNodeById(snapshot, extraTerminalNode.id);
+    assert.strictEqual(currentExtraTerminalNode.metadata.terminal.persistenceMode, 'live-runtime');
+
+    const expectedRuntimeSessionIds = [
+      currentAgentNode.metadata.agent.runtimeSessionId,
+      currentTerminalNode.metadata.terminal.runtimeSessionId,
+      currentExtraTerminalNode.metadata.terminal.runtimeSessionId
+    ];
+    assert.ok(expectedRuntimeSessionIds.every(Boolean), 'Expected all live-runtime nodes to have runtimeSessionId.');
+
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => {
+        const liveSessionIds = listLiveRuntimeSupervisorSessions(runtimeSupervisorState).map((session) => session.sessionId);
+        return expectedRuntimeSessionIds.every((sessionId) => liveSessionIds.includes(sessionId));
+      },
+      20000
+    );
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
     snapshot = await getDebugSnapshot();
-    agentNode = findNodeById(snapshot, agentNodeId);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
 
-    assert.strictEqual(agentNode.status, 'history-restored');
-    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
-    assert.strictEqual(terminalNode.status, 'history-restored');
-    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.activeSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, runtimeResetSurface);
+
+    const runtimeSupervisorState = await waitForRuntimeSupervisorState(
+      (currentState) => {
+        const sessionIds = listRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
+        return (
+          currentState.bindings.length === 0 &&
+          expectedRuntimeSessionIds.every((sessionId) => !sessionIds.includes(sessionId))
+        );
+      },
+      20000
+    );
+    const remainingSessionIds = listRuntimeSupervisorSessions(runtimeSupervisorState).map((session) => session.sessionId);
+    assert.ok(expectedRuntimeSessionIds.every((sessionId) => !remainingSessionIds.includes(sessionId)));
   } finally {
     await setRuntimePersistenceEnabled(false);
+    if (originalDefaultSurface !== runtimeResetSurface) {
+      await setDefaultSurface(originalDefaultSurface);
+      await simulateRuntimeReload();
+    }
   }
 }
 
@@ -3840,75 +4016,112 @@ async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNo
   assert.match(terminalNode.metadata.terminal.recentOutput || '', new RegExp(HOST_BOUNDARY_FLUSH_TERMINAL_MARKER));
 }
 
-async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminalNodeId) {
+async function verifyRestrictedLiveRuntimeReconnectBlocked() {
   await setRuntimePersistenceEnabled(true);
+  let baselineSnapshot;
 
   try {
-    const currentSnapshot = await getDebugSnapshot();
-    const noteNode = findNodeByKind(currentSnapshot, 'note');
-    const agentNode = findNodeById(currentSnapshot, agentNodeId);
-    const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+    baselineSnapshot = await simulateRuntimeReload();
+    assert.strictEqual(baselineSnapshot.state.nodes.length, 0);
+    let snapshot = baselineSnapshot;
+
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+    const agentNodeId = 'restricted-history-agent';
+    const terminalNodeId = 'restricted-history-terminal';
 
     await clearHostMessages();
-    let snapshot = await setPersistedState({
+    snapshot = await setPersistedState({
       version: 1,
       updatedAt: '2026-04-10T09:00:00.000Z',
       nodes: [
         {
-          ...agentNode,
+          id: agentNodeId,
+          kind: 'agent',
+          title: 'Agent 1',
           status: 'reattaching',
           summary: '正在重新连接原 Agent live runtime。',
+          position: { x: 0, y: 0 },
+          size: { width: 560, height: 430 },
           metadata: {
-            ...agentNode.metadata,
             agent: {
-              ...agentNode.metadata.agent,
+              backend: 'node-pty',
               lifecycle: 'waiting-input',
+              provider: 'codex',
+              runtimeKind: 'pty-cli',
+              resumeSupported: false,
+              resumeStrategy: 'none',
+              shellPath: 'codex',
+              cwd: workspacePath,
               persistenceMode: 'live-runtime',
               attachmentState: 'reattaching',
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
               liveSession: false,
               runtimeSessionId: 'restricted-agent-live-session',
+              lastCols: 67,
+              lastRows: 22,
               serializedTerminalState: createSerializedTerminalStateFixture(
                 RESTRICTED_AGENT_SERIALIZED_MARKER
               ),
-              pendingLaunch: undefined
+              lastBackendLabel: 'Codex'
             }
           }
         },
         {
-          ...terminalNode,
+          id: terminalNodeId,
+          kind: 'terminal',
+          title: 'Terminal 2',
           status: 'reattaching',
           summary: '正在重新连接原终端 live runtime。',
+          position: { x: 680, y: 0 },
+          size: { width: 540, height: 420 },
           metadata: {
-            ...terminalNode.metadata,
             terminal: {
-              ...terminalNode.metadata.terminal,
+              backend: 'node-pty',
               lifecycle: 'live',
+              shellPath: '/bin/bash',
+              cwd: workspacePath,
               persistenceMode: 'live-runtime',
               attachmentState: 'reattaching',
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
               liveSession: false,
               runtimeSessionId: 'restricted-terminal-live-session',
+              lastCols: 68,
+              lastRows: 23,
               serializedTerminalState: createSerializedTerminalStateFixture(
                 RESTRICTED_TERMINAL_SERIALIZED_MARKER
-              ),
-              pendingLaunch: undefined
+              )
             }
           }
         },
-        noteNode
+        {
+          id: 'restricted-history-note',
+          kind: 'note',
+          title: 'Note 3',
+          status: 'ready',
+          summary: '等待记录笔记内容。',
+          position: { x: 640, y: 480 },
+          size: { width: 380, height: 400 },
+          metadata: {
+            note: {
+              content: ''
+            }
+          }
+        }
       ]
     });
 
-    snapshot = await waitForSnapshot((currentState) => {
-      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
-      const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(
-        currentAgent?.status === 'history-restored' &&
-          currentAgent.summary === '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。' &&
-          currentTerminal?.status === 'history-restored' &&
-          currentTerminal.summary === '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
-      );
-    });
-
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).summary,
+      '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。'
+    );
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).summary,
+      '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
+    );
     assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState, 'reattaching');
     assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
@@ -3922,6 +4135,8 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminal
     snapshot = await getDebugSnapshot();
     assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
 
     const hostMessages = await getHostMessages();
     const agentSnapshotMessage = hostMessages.find(
@@ -3961,54 +4176,142 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked(agentNodeId, terminal
       false
     );
   } finally {
+    if (baselineSnapshot) {
+      await setPersistedState(baselineSnapshot.state);
+    }
     await setRuntimePersistenceEnabled(false);
   }
 }
 
-async function verifyRestrictedDisablingRuntimePersistenceCleansLiveRuntime(agentNodeId, terminalNodeId) {
+async function verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalDefaultSurface =
+    configuration.get('devSessionCanvas.canvas.defaultSurface', 'panel') === 'editor' ? 'editor' : 'panel';
+  const runtimeResetSurface = 'panel';
+
+  if (originalDefaultSurface !== runtimeResetSurface) {
+    await setDefaultSurface(runtimeResetSurface);
+  }
   await setRuntimePersistenceEnabled(true);
 
   try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    let snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) =>
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'agent').length === 1 &&
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1,
+      20000
+    );
+
+    const agentNode = findNodeByKind(snapshot, 'agent');
+    const terminalNode = findNodeByKind(snapshot, 'terminal');
+
     await startExecutionSessionForTest({
       kind: 'agent',
-      nodeId: agentNodeId,
+      nodeId: agentNode.id,
       cols: 88,
       rows: 26,
       provider: 'codex'
     });
     await startExecutionSessionForTest({
       kind: 'terminal',
-      nodeId: terminalNodeId,
+      nodeId: terminalNode.id,
       cols: 88,
       rows: 26
     });
 
     await waitForRuntimeSupervisorState(
-      (runtimeSupervisorState) => listRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      (runtimeSupervisorState) => listLiveRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
       20000
     );
 
     await setRuntimePersistenceEnabled(false);
 
-    const snapshot = await simulateRuntimeReload();
-    const agentNode = findNodeById(snapshot, agentNodeId);
-    const terminalNode = findNodeById(snapshot, terminalNodeId);
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+    snapshot = await waitForSnapshot(
+      (currentSnapshot) => currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 2,
+      20000
+    );
+    const extraTerminalNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'terminal' && node.id !== terminalNode.id
+    );
+    assert.ok(extraTerminalNode, 'Expected a second restricted terminal node before reload.');
 
-    assert.strictEqual(agentNode.status, 'history-restored');
-    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'history-restored');
-    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
-    assert.strictEqual(terminalNode.status, 'history-restored');
-    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'history-restored');
-    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+    await startExecutionSessionForTest({
+      kind: 'terminal',
+      nodeId: extraTerminalNode.id,
+      cols: 88,
+      rows: 26
+    });
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminalNode = currentSnapshot.state.nodes.find((node) => node.id === extraTerminalNode.id);
+      return Boolean(
+        currentTerminalNode?.metadata?.terminal?.liveSession &&
+        currentTerminalNode?.metadata?.terminal?.persistenceMode === 'live-runtime'
+      );
+    }, 20000);
+
+    const currentAgentNode = findNodeById(snapshot, agentNode.id);
+    const currentTerminalNode = findNodeById(snapshot, terminalNode.id);
+    const currentExtraTerminalNode = findNodeById(snapshot, extraTerminalNode.id);
+    const expectedRuntimeSessionIds = [
+      currentAgentNode.metadata.agent.runtimeSessionId,
+      currentTerminalNode.metadata.terminal.runtimeSessionId,
+      currentExtraTerminalNode.metadata.terminal.runtimeSessionId
+    ];
+    assert.ok(expectedRuntimeSessionIds.every(Boolean), 'Expected restricted live-runtime nodes to have runtimeSessionId.');
+
+    await waitForRuntimeSupervisorState(
+      (runtimeSupervisorState) => {
+        const liveSessionIds = listLiveRuntimeSupervisorSessions(runtimeSupervisorState).map((session) => session.sessionId);
+        return expectedRuntimeSessionIds.every((sessionId) => liveSessionIds.includes(sessionId));
+      },
+      20000
+    );
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.activeSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, runtimeResetSurface);
 
     const runtimeSupervisorState = await waitForRuntimeSupervisorState(
-      (currentState) =>
-        listRuntimeSupervisorSessions(currentState).length === 0 && currentState.bindings.length === 0,
+      (currentState) => {
+        const sessionIds = listRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
+        return (
+          currentState.bindings.length === 0 &&
+          expectedRuntimeSessionIds.every((sessionId) => !sessionIds.includes(sessionId))
+        );
+      },
       20000
     );
-    assert.deepStrictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState), []);
+    const remainingSessionIds = listRuntimeSupervisorSessions(runtimeSupervisorState).map((session) => session.sessionId);
+    assert.ok(expectedRuntimeSessionIds.every((sessionId) => !remainingSessionIds.includes(sessionId)));
   } finally {
     await setRuntimePersistenceEnabled(false);
+    if (originalDefaultSurface !== runtimeResetSurface) {
+      await setDefaultSurface(originalDefaultSurface);
+      await simulateRuntimeReload();
+    }
   }
 }
 
@@ -4031,7 +4334,7 @@ async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, t
     });
 
     await waitForRuntimeSupervisorState(
-      (runtimeSupervisorState) => listRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
+      (runtimeSupervisorState) => listLiveRuntimeSupervisorSessions(runtimeSupervisorState).length === 2,
       20000
     );
 
@@ -4062,14 +4365,15 @@ async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, t
 
     let runtimeSupervisorState = await waitForRuntimeSupervisorState((currentState) => {
       const sessionIds = listRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
+      const liveSessionIds = listLiveRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
       return (
-        sessionIds.length === 1 &&
+        liveSessionIds.length === 1 &&
         !sessionIds.includes(agentRuntimeSessionId) &&
-        sessionIds.includes(terminalRuntimeSessionId) &&
+        liveSessionIds.includes(terminalRuntimeSessionId) &&
         currentState.bindings.length === 0
       );
     }, 20000);
-    assert.strictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState).length, 1);
+    assert.strictEqual(listLiveRuntimeSupervisorSessions(runtimeSupervisorState).length, 1);
 
     await performWebviewDomAction({
       kind: 'clickNodeActionButton',
@@ -4084,11 +4388,20 @@ async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, t
     assert.strictEqual(snapshot.state.nodes.some((node) => node.id === terminalNodeId), false);
 
     runtimeSupervisorState = await waitForRuntimeSupervisorState(
-      (currentState) =>
-        listRuntimeSupervisorSessions(currentState).length === 0 && currentState.bindings.length === 0,
+      (currentState) => {
+        const sessionIds = listRuntimeSupervisorSessions(currentState).map((session) => session.sessionId);
+        return (
+          listLiveRuntimeSupervisorSessions(currentState).length === 0 &&
+          currentState.bindings.length === 0 &&
+          !sessionIds.includes(agentRuntimeSessionId) &&
+          !sessionIds.includes(terminalRuntimeSessionId)
+        );
+      },
       20000
     );
-    assert.deepStrictEqual(listRuntimeSupervisorSessions(runtimeSupervisorState), []);
+    const remainingSessionIds = listRuntimeSupervisorSessions(runtimeSupervisorState).map((session) => session.sessionId);
+    assert.strictEqual(remainingSessionIds.includes(agentRuntimeSessionId), false);
+    assert.strictEqual(remainingSessionIds.includes(terminalRuntimeSessionId), false);
   } finally {
     await setRuntimePersistenceEnabled(false);
   }
@@ -4307,6 +4620,12 @@ async function setRuntimePersistenceEnabled(enabled) {
     .update('devSessionCanvas.runtimePersistence.enabled', enabled, vscode.ConfigurationTarget.Global);
 }
 
+async function setDefaultSurface(surface) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.canvas.defaultSurface', surface, vscode.ConfigurationTarget.Global);
+}
+
 async function setDefaultAgentProvider(provider) {
   await vscode.workspace
     .getConfiguration()
@@ -4457,6 +4776,10 @@ function listRuntimeSupervisorSessions(runtimeSupervisorState) {
   }
 
   return Array.from(dedupedSessions.values());
+}
+
+function listLiveRuntimeSupervisorSessions(runtimeSupervisorState) {
+  return listRuntimeSupervisorSessions(runtimeSupervisorState).filter((session) => session?.live === true);
 }
 
 async function waitForRuntimeSupervisorState(predicate, timeoutMs = 15000) {
