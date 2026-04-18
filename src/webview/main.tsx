@@ -2558,7 +2558,7 @@ function isImeComposingKeyboardEvent(
     keyCode?: number;
   };
 
-  return event.isComposing || nativeEvent.isComposing === true || nativeEvent.keyCode === 229;
+  return nativeEvent.isComposing === true || nativeEvent.keyCode === 229;
 }
 
 function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElement>): void {
