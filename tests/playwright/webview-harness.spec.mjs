@@ -1202,6 +1202,103 @@ test('editing node titles posts updateNodeTitle for agent, terminal, and note', 
     );
 });
 
+test('pressing Enter in the title input commits exactly one update and keeps the rendered title aligned', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const titleInput = nodeById(page, 'agent-1').locator('[data-probe-field="title"]');
+  const nextTitle = 'Agent Heading Via Enter';
+
+  await titleInput.click();
+  await titleInput.fill(nextTitle);
+  await titleInput.press('Enter');
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const titleMessages = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateNodeTitle');
+
+        return JSON.stringify(
+          titleMessages.map((entry) => ({
+            nodeId: entry.payload.nodeId,
+            title: entry.payload.title
+          }))
+        );
+      });
+    })
+    .toBe(
+      JSON.stringify([
+        {
+          nodeId: 'agent-1',
+          title: nextTitle
+        }
+      ])
+    );
+
+  await expect(titleInput).toHaveValue(nextTitle);
+  await expect
+    .poll(async () => {
+      const probeNode = await readProbeNode(page, 'agent-1', 20);
+      return probeNode ? JSON.stringify(probeNode) : null;
+    })
+    .toContain(nextTitle);
+});
+
+test('IME confirmation Enter does not submit or duplicate the title before explicit commit', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const titleInput = nodeById(page, 'agent-1').locator('[data-probe-field="title"]');
+  const nextTitle = 'Code';
+
+  await simulateImeCompositionOnTextField(page, titleInput, nextTitle);
+  await settleWebview(page, 4);
+
+  await expect(titleInput).toHaveValue(nextTitle);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateNodeTitle').length;
+      });
+    })
+    .toBe(0);
+
+  await titleInput.press('Enter');
+  await settleWebview(page, 4);
+
+  await expect(titleInput).toHaveValue(nextTitle);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const titleMessages = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateNodeTitle');
+
+        return JSON.stringify(
+          titleMessages.map((entry) => ({
+            nodeId: entry.payload.nodeId,
+            title: entry.payload.title
+          }))
+        );
+      });
+    })
+    .toBe(
+      JSON.stringify([
+        {
+          nodeId: 'agent-1',
+          title: nextTitle
+        }
+      ])
+    );
+});
+
 test('double-clicking the chrome focus region recenters the node and updates persisted viewport', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -2641,6 +2738,43 @@ async function performTestDomAction(page, action) {
       }, requestId);
     })
     .toBe('ok');
+}
+
+async function simulateImeCompositionOnTextField(page, locator, value) {
+  await locator.click();
+  await locator.evaluate((field) => {
+    field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+  });
+  await settleWebview(page, 2);
+
+  await locator.evaluate((field, nextValue) => {
+    const prototype =
+      field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+    descriptor?.set?.call(field, nextValue);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+  await settleWebview(page, 2);
+
+  await locator.evaluate((field) => {
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 229,
+        which: 229
+      })
+    );
+  });
+  await settleWebview(page, 2);
+
+  await locator.evaluate((field, nextValue) => {
+    field.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: nextValue }));
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
 }
 
 async function expectTestDomActionError(page, action, expectedSubstring) {

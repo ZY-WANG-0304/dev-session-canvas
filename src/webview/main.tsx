@@ -1694,8 +1694,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               submitNote(nextContent);
             }}
             onKeyDown={(event) =>
-              handleEditableFieldKeyDown(event, () =>
-                submitNote(event.currentTarget.value)
+              handleEditableFieldKeyDown(
+                event,
+                () => submitNote(event.currentTarget.value),
+                { isComposing }
               )
             }
             placeholder="直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。"
@@ -2086,12 +2088,24 @@ function ChromeTitleEditor(props: {
 }): JSX.Element {
   const [draft, setDraft] = useState(props.value);
   const [isEditing, setIsEditing] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
   const committedTitleRef = useRef(props.value);
+  const pendingTitleRef = useRef<string | null>(null);
+  const lastPropValueRef = useRef(props.value);
 
   useLayoutEffect(() => {
-    committedTitleRef.current = props.value;
+    const previousPropValue = lastPropValueRef.current;
+    lastPropValueRef.current = props.value;
+
+    if (pendingTitleRef.current === props.value) {
+      pendingTitleRef.current = null;
+    } else if (pendingTitleRef.current && props.value !== previousPropValue) {
+      pendingTitleRef.current = null;
+    }
+
+    committedTitleRef.current = pendingTitleRef.current ?? props.value;
     if (!isEditing) {
-      setDraft(props.value);
+      setDraft(pendingTitleRef.current ?? props.value);
     }
   }, [isEditing, props.value]);
 
@@ -2100,6 +2114,7 @@ function ChromeTitleEditor(props: {
     const nextTitle = rawValue.trim() || baselineTitle;
     setDraft(nextTitle);
     if (nextTitle !== baselineTitle) {
+      pendingTitleRef.current = nextTitle;
       committedTitleRef.current = nextTitle;
       props.onSubmit(nextTitle);
     }
@@ -2118,13 +2133,21 @@ function ChromeTitleEditor(props: {
         }}
         onMouseDown={stopCanvasEvent}
         onClick={stopCanvasEvent}
+        onCompositionStart={() => setIsComposing(true)}
+        onCompositionEnd={(event) => {
+          setIsComposing(false);
+          setDraft(event.currentTarget.value);
+        }}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={(event) => {
+          setIsComposing(false);
           setIsEditing(false);
           commitTitle(event.currentTarget.value);
         }}
         onKeyDown={(event) =>
-          handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value))
+          handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
+            isComposing
+          })
         }
         placeholder={props.placeholder}
       />
@@ -2496,9 +2519,16 @@ function statusToneClass(status: string): string {
 
 function handleEditableFieldKeyDown(
   event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-  submit: () => void
+  submit: () => void,
+  options?: {
+    isComposing?: boolean;
+  }
 ): void {
   stopCanvasEvent(event);
+
+  if (options?.isComposing || isImeComposingKeyboardEvent(event)) {
+    return;
+  }
 
   if (event.currentTarget instanceof HTMLInputElement && event.key === 'Enter') {
     event.preventDefault();
@@ -2518,6 +2548,17 @@ function handleEditableFieldKeyDown(
     event.preventDefault();
     event.currentTarget.blur();
   }
+}
+
+function isImeComposingKeyboardEvent(
+  event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+): boolean {
+  const nativeEvent = event.nativeEvent as KeyboardEvent & {
+    isComposing?: boolean;
+    keyCode?: number;
+  };
+
+  return event.isComposing || nativeEvent.isComposing === true || nativeEvent.keyCode === 229;
 }
 
 function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElement>): void {
