@@ -19,9 +19,10 @@ related_plans:
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
   - docs/exec-plans/completed/runtime-host-backend-systemd-user.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
+  - docs/exec-plans/active/canvas-config-reload-semantics.md
   - docs/exec-plans/completed/remote-canvas-state-revert-investigation.md
   - docs/exec-plans/completed/canvas-storage-slot-recovery-fix.md
-updated_at: 2026-04-16
+updated_at: 2026-04-18
 ---
 
 # 运行时持久化与会话监督器设计
@@ -139,6 +140,13 @@ updated_at: 2026-04-16
 
 配置层当前建议使用布尔开关 `devSessionCanvas.runtimePersistence.enabled`。它控制的是“是否要求真实进程跨 VSCode 生命周期继续存在”，而不是“是否做任何持久化”。无论开关开或关，对象图与关键上下文都仍然需要持久化。
 
+这个布尔开关还有两个正式语义约束：
+
+- 它只在窗口启动时读取。用户在 Settings 中修改后，当前 window 内的既有节点和后续新建节点都继续按当前已应用的模式运行；新的模式只在 `Window Reload` 或重新打开 VS Code 后生效。
+- 它是破坏性的宿主边界配置。若新窗口启动时发现“当前设置值”和“上次持久化快照写入时的设置值”不一致，宿主不再尝试沿用旧对象图，而是清空旧画布宿主状态后从空白状态启动，避免同一张画布里混入两套持久化模式。
+
+因此，Settings 描述和运行时提示都必须明确写出两点：需要 reload 才生效，以及切换该设置会在下次加载时清空已有节点状态。
+
 #### 第一版完成度目标
 
 当前明确追加一个产品约束：第一版默认目标不是“只证明技术可行”，而是尽量完整实现产品主张；只有明确记录的 blocker、外部依赖边界或暂不支持的平台，才允许收窄首版交付。
@@ -242,6 +250,8 @@ scrollback 预算也在这里固定下来：
   - 会话继续由监督器持有。
   - 扩展退出只是“暂时没有前端附着”，不是会话结束。
 
+如果用户在当前 window 中修改了 `devSessionCanvas.runtimePersistence.enabled` 后立即 reload，则当前 window 仍按旧模式完成 host-boundary 收口：只有“旧模式”和“新模式”都要求 `live-runtime` 时，才允许继续保活原 supervisor 会话。只要两边任一侧是 `snapshot-only`，reload 边界就必须终止现有 live runtime，并让下一窗口按新的正式模式重新开始。
+
 重新打开 VSCode 时：
 
 - `snapshot-only`
@@ -252,6 +262,8 @@ scrollback 预算也在这里固定下来：
   - 若监督器报告会话仍活着并完成附着，状态切回真实生命周期状态。
   - 若监督器确认不存在该会话、会话已在离线期间自然结束、监督器不可达超时，或重新附着失败，则节点进入 `历史恢复`，不再伪装成当前 live runtime。
   - 当前 backend 与 guarantee 仍需写入宿主权威状态、日志与诊断事件；节点默认 UI 不直接显示这类字段，避免把调试信息塞进主交互区。
+
+如果本次启动检测到 runtime persistence 模式与上次快照不一致，则这条“重新附着或历史恢复”的分支整体不再适用。宿主应直接丢弃旧对象图并以空白画布启动，而不是尝试把旧节点降级成 `history-restored`。这是为了避免用户把“模式切换后的全新宿主窗口”误解成“旧模式状态仍被保留，只是没有重新附着成功”。
 
 ### 6.6 UI 与状态机含义
 

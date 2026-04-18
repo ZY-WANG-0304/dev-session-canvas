@@ -49,7 +49,13 @@ export const CONFIG_KEYS = {
   terminalShellPath: 'devSessionCanvas.terminal.shellPath'
 } as const;
 
+export const CONTEXT_KEYS = {
+  panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible'
+} as const;
+
 export const STORAGE_KEYS = {
   canvasState: 'devSessionCanvas.canvas.state',
-  canvasLastSurface: 'devSessionCanvas.canvas.lastSurface'
+  canvasLastSurface: 'devSessionCanvas.canvas.lastSurface',
+  canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
+  canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled'
 } as const;
