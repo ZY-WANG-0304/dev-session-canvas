@@ -13,6 +13,7 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
+  CONTEXT_KEYS,
   CONFIG_KEYS,
   EXTENSION_DISPLAY_NAME,
   STORAGE_KEYS,
@@ -117,6 +118,7 @@ const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1000;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
 const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
+const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
@@ -234,6 +236,13 @@ interface PersistedCanvasSnapshot {
   stateHash?: string;
   state?: unknown;
   activeSurface?: CanvasSurfaceLocation;
+  defaultSurface?: CanvasSurfaceLocation;
+  runtimePersistenceEnabled?: boolean;
+}
+
+interface CanvasStartupConfiguration {
+  defaultSurface: CanvasSurfaceLocation;
+  runtimePersistenceEnabled: boolean;
 }
 
 interface PersistedCanvasStateFlushResult {
@@ -311,6 +320,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private storageRecoverySelection!: ExtensionStorageRecoverySourceSelection;
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
+  private appliedStartupConfiguration: CanvasStartupConfiguration;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
   private readonly surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>> = {};
@@ -354,10 +364,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
     );
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
+    this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
       nodeCount: this.state.nodes.length,
@@ -390,12 +402,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
+        const defaultSurfaceChanged = event.affectsConfiguration(CONFIG_KEYS.canvasDefaultSurface);
+        const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
         const multiCursorModifierChanged = event.affectsConfiguration('editor.multiCursorModifier');
         const terminalWordSeparatorsChanged = event.affectsConfiguration(
           'terminal.integrated.wordSeparators'
         );
+
+        if (defaultSurfaceChanged || runtimePersistenceChanged) {
+          void this.notifyReloadRequiredConfigurationChanged({
+            defaultSurfaceChanged,
+            runtimePersistenceChanged
+          });
+        }
+
         if (
           !defaultAgentProviderChanged &&
           !terminalScrollbackChanged &&
@@ -573,6 +595,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
+    this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/reloaded', {
       activeSurface: this.activeSurface,
       nodeCount: this.state.nodes.length
@@ -614,14 +637,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
+    const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
-      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(),
+      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       allowRuntimeSupervisorRestart: false
     });
 
+    this.applyStartupConfiguration(nextStartupConfiguration);
     this.refreshStorageRecoverySelection();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
+    this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/runtimeReloaded', {
       activeSurface: this.activeSurface,
       nodeCount: this.state.nodes.length
@@ -673,8 +699,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async prepareForDeactivation(): Promise<void> {
+    const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
-      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(),
+      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       allowRuntimeSupervisorRestart: false
     });
   }
@@ -855,6 +882,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     this.state = this.loadReconciledState();
     this.persistState();
+    if ((this.activeSurface ?? this.getConfiguredSurface()) !== 'editor') {
+      this.recordDiagnosticEvent('surface/editorRestoreSkipped', {
+        activeSurface: this.activeSurface,
+        configuredSurface: this.getConfiguredSurface()
+      });
+      webviewPanel.dispose();
+      return;
+    }
     this.attachEditorPanel(webviewPanel);
   }
 
@@ -869,6 +904,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     this.activeSurface = surface;
     this.persistActiveSurface();
+    this.applyWorkbenchContextKeys();
 
     if (surface === 'editor') {
       this.renderStandbySurface('panel');
@@ -921,6 +957,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       () => {
         if (this.editorPanel === panel) {
           this.editorPanel = undefined;
+          if (this.activeSurface === 'editor') {
+            this.activeSurface = undefined;
+            this.applyWorkbenchContextKeys();
+          }
           this.surfaceMode.editor = undefined;
           this.surfaceReady.editor = false;
           this.pendingVisibilityRestore.editor = false;
@@ -981,6 +1021,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       () => {
         if (this.panelView === webviewView) {
           this.panelView = undefined;
+          if (this.activeSurface === 'panel') {
+            this.activeSurface = undefined;
+            this.applyWorkbenchContextKeys();
+          }
           this.surfaceMode.panel = undefined;
           this.surfaceReady.panel = false;
           this.pendingVisibilityRestore.panel = false;
@@ -1211,6 +1255,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
       );
       await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshotWithMetadata.activeSurface);
+      await this.context.workspaceState.update(STORAGE_KEYS.canvasDefaultSurface, snapshotWithMetadata.defaultSurface);
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasRuntimePersistenceEnabled,
+        snapshotWithMetadata.runtimePersistenceEnabled
+      );
       this.lastPersistedCanvasSnapshotError = undefined;
     }).catch((error) => {
       const message = formatUnknownError(error);
@@ -1252,6 +1301,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
     return {
       ...snapshot,
+      defaultSurface: this.appliedStartupConfiguration.defaultSurface,
+      runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       writtenAt: new Date().toISOString(),
       stateHash: buildDiagnosticStateHash(snapshot.state)
     };
@@ -1270,8 +1321,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private loadState(): CanvasPrototypeState {
     const snapshot = this.loadPersistedCanvasSnapshot();
     const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
-    const rawState = snapshot?.state ?? workspaceState;
-    const source = snapshot?.state !== undefined ? 'snapshot' : workspaceState !== undefined ? 'workspaceState' : 'default';
+    const storedRuntimePersistenceEnabled =
+      typeof snapshot?.runtimePersistenceEnabled === 'boolean'
+        ? snapshot.runtimePersistenceEnabled
+        : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasRuntimePersistenceEnabled);
+    const resetDueToRuntimePersistenceModeChange =
+      typeof storedRuntimePersistenceEnabled === 'boolean' &&
+      storedRuntimePersistenceEnabled !== this.appliedStartupConfiguration.runtimePersistenceEnabled;
+    const rawState = resetDueToRuntimePersistenceModeChange ? undefined : snapshot?.state ?? workspaceState;
+    const source = resetDueToRuntimePersistenceModeChange
+      ? 'runtimePersistenceReset'
+      : snapshot?.state !== undefined
+        ? 'snapshot'
+        : workspaceState !== undefined
+          ? 'workspaceState'
+          : 'default';
     this.recordDiagnosticEvent('state/loadSelected', {
       source,
       snapshotPath: this.getPersistedCanvasSnapshotPath(),
@@ -1284,10 +1348,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       snapshotAvailable: snapshot !== undefined,
       workspaceStateAvailable: workspaceState !== undefined,
       activeSurface: snapshot?.activeSurface,
+      storedRuntimePersistenceEnabled,
+      appliedRuntimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      resetDueToRuntimePersistenceModeChange,
       snapshotWrittenAt: snapshot?.writtenAt,
       snapshotStateHash: snapshot?.stateHash,
       ...summarizeCanvasStateForDiagnostics(rawState)
     });
+    if (resetDueToRuntimePersistenceModeChange) {
+      this.recordDiagnosticEvent('state/runtimePersistenceReset', {
+        storedRuntimePersistenceEnabled,
+        appliedRuntimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled
+      });
+    }
     return hydrateRuntimeStoragePaths(
       normalizeState(rawState, this.getAgentCliConfig().defaultProvider),
       this.storageRecoverySelection.sourcePath
@@ -1358,6 +1431,63 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       vscode.workspace.getConfiguration('terminal.integrated').get<number>('scrollback'),
       DEFAULT_TERMINAL_SCROLLBACK
     );
+  }
+
+  private readStartupConfiguration(): CanvasStartupConfiguration {
+    return {
+      defaultSurface:
+        getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel' ? 'panel' : 'editor',
+      runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false)
+    };
+  }
+
+  private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
+    this.appliedStartupConfiguration = configuration;
+    this.applyWorkbenchContextKeys();
+  }
+
+  private applyWorkbenchContextKeys(): void {
+    void vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.panelViewVisible,
+      this.shouldShowPanelView()
+    );
+  }
+
+  private shouldShowPanelView(): boolean {
+    return this.appliedStartupConfiguration.defaultSurface === 'panel' || this.activeSurface === 'panel';
+  }
+
+  private async notifyReloadRequiredConfigurationChanged(options: {
+    defaultSurfaceChanged: boolean;
+    runtimePersistenceChanged: boolean;
+  }): Promise<void> {
+    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+      return;
+    }
+
+    if (options.runtimePersistenceChanged) {
+      const message = options.defaultSurfaceChanged
+        ? 'Default Surface 和 Runtime Persistence 的更改会在重新加载窗口后生效；其中切换 Runtime Persistence 会在下次加载时清空当前 workspace 的画布宿主状态。'
+        : 'Runtime Persistence 的更改会在重新加载窗口后生效；切换此设置会在下次加载时清空当前 workspace 的画布宿主状态。';
+      const selection = await vscode.window.showWarningMessage(message, RELOAD_WINDOW_ACTION_LABEL);
+      if (selection === RELOAD_WINDOW_ACTION_LABEL) {
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+      return;
+    }
+
+    if (!options.defaultSurfaceChanged) {
+      return;
+    }
+
+    const selection = await vscode.window.showInformationMessage(
+      'Default Surface 的更改会在重新加载窗口后生效。',
+      RELOAD_WINDOW_ACTION_LABEL
+    );
+    if (selection === RELOAD_WINDOW_ACTION_LABEL) {
+      await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
   }
 
   private async handleRuntimeConfigurationChanged(options: {
@@ -1579,7 +1709,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private isRuntimePersistenceEnabled(): boolean {
-    return getConfigurationValue<boolean>('runtimePersistenceEnabled', false);
+    return this.appliedStartupConfiguration.runtimePersistenceEnabled;
   }
 
   private getLiveRuntimeReconnectBlockReason(): LiveRuntimeReconnectBlockReason | undefined {
@@ -1594,8 +1724,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return undefined;
   }
 
-  private shouldPreserveLiveRuntimeAcrossHostBoundary(): boolean {
-    return this.isRuntimePersistenceEnabled();
+  private shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration = this.appliedStartupConfiguration): boolean {
+    return this.isRuntimePersistenceEnabled() && nextStartupConfiguration.runtimePersistenceEnabled;
   }
 
   private getRuntimeHostBaseStoragePath(runtimeStoragePath?: string): string {
@@ -2775,19 +2905,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getConfiguredSurface(): CanvasSurfaceLocation {
-    return getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel'
-      ? 'panel'
-      : 'editor';
+    return this.appliedStartupConfiguration.defaultSurface;
+  }
+
+  private normalizeStoredSurface(value: unknown): CanvasSurfaceLocation | undefined {
+    return value === 'editor' || value === 'panel' ? value : undefined;
+  }
+
+  private loadStoredDefaultSurface(snapshot?: PersistedCanvasSnapshot): CanvasSurfaceLocation | undefined {
+    return (
+      this.normalizeStoredSurface(snapshot?.defaultSurface) ??
+      this.normalizeStoredSurface(this.getStoredValue<string>(STORAGE_KEYS.canvasDefaultSurface))
+    );
   }
 
   private loadStoredSurface(): CanvasSurfaceLocation | undefined {
-    const storedSurface =
-      this.loadPersistedCanvasSnapshot()?.activeSurface ?? this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface);
-    if (storedSurface === 'editor' || storedSurface === 'panel') {
-      return storedSurface;
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    const storedSurface = this.normalizeStoredSurface(
+      snapshot?.activeSurface ?? this.getStoredValue<string>(STORAGE_KEYS.canvasLastSurface)
+    );
+    const storedDefaultSurface = this.loadStoredDefaultSurface(snapshot);
+    if (
+      storedDefaultSurface &&
+      storedDefaultSurface !== this.appliedStartupConfiguration.defaultSurface &&
+      storedSurface !== this.appliedStartupConfiguration.defaultSurface
+    ) {
+      return this.appliedStartupConfiguration.defaultSurface;
     }
 
-    return undefined;
+    return storedSurface;
   }
 
   private persistActiveSurface(): void {
@@ -2803,13 +2949,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private claimSurfaceIfNeeded(surface: CanvasSurfaceLocation): void {
-    if (!this.activeSurface || this.getSurfaceVisibility(this.activeSurface) === 'closed') {
-      this.activeSurface = surface;
-      this.persistActiveSurface();
-      this.recordDiagnosticEvent('surface/claimed', {
-        surface
-      });
+    if (this.activeSurface || this.getConfiguredSurface() !== surface) {
+      return;
     }
+
+    this.activeSurface = surface;
+    this.persistActiveSurface();
+    this.applyWorkbenchContextKeys();
+    this.recordDiagnosticEvent('surface/claimed', {
+      surface
+    });
   }
 
   private getSurfaceWebview(surface: CanvasSurfaceLocation): vscode.Webview | undefined {
