@@ -617,8 +617,8 @@ function selectNonWindowsShellEscaper(shellKind: string): {
     case 'zsh':
     case 'gitbash':
       return {
-        bothQuotes: (pathValue) => `$'${pathValue.replace(/'/g, '\\\'')}'`,
-        singleQuotes: (pathValue) => `'${pathValue.replace(/'/g, '\\\'')}'`,
+        bothQuotes: quotePosixSingleQuotedPath,
+        singleQuotes: quotePosixSingleQuotedPath,
         noSingleQuotes: (pathValue) => `'${pathValue}'`
       };
     case 'fish':
@@ -636,11 +636,15 @@ function selectNonWindowsShellEscaper(shellKind: string): {
       };
     default:
       return {
-        bothQuotes: (pathValue) => `$'${pathValue.replace(/'/g, '\\\'')}'`,
-        singleQuotes: (pathValue) => `'${pathValue.replace(/'/g, '\\\'')}'`,
+        bothQuotes: quotePosixSingleQuotedPath,
+        singleQuotes: quotePosixSingleQuotedPath,
         noSingleQuotes: (pathValue) => `'${pathValue}'`
       };
   }
+}
+
+function quotePosixSingleQuotedPath(pathValue: string): string {
+  return `'${pathValue.replace(/'/g, "'\\''")}'`;
 }
 
 function getExecutionShellBasename(shellPath: string): string {
