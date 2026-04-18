@@ -3810,11 +3810,26 @@ async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminal
 }
 
 async function verifyRuntimePersistenceRequiresReloadAndClearsState() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalDefaultSurface =
+    configuration.get('devSessionCanvas.canvas.defaultSurface', 'panel') === 'editor' ? 'editor' : 'panel';
+  const runtimeResetSurface = 'panel';
+
+  if (originalDefaultSurface !== runtimeResetSurface) {
+    await setDefaultSurface(runtimeResetSurface);
+  }
   await setRuntimePersistenceEnabled(true);
 
   try {
     let snapshot = await simulateRuntimeReload();
     assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
 
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
@@ -3895,8 +3910,17 @@ async function verifyRuntimePersistenceRequiresReloadAndClearsState() {
       20000
     );
 
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
     snapshot = await simulateRuntimeReload();
     assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.activeSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, runtimeResetSurface);
 
     const runtimeSupervisorState = await waitForRuntimeSupervisorState(
       (currentState) => {
@@ -3912,6 +3936,10 @@ async function verifyRuntimePersistenceRequiresReloadAndClearsState() {
     assert.ok(expectedRuntimeSessionIds.every((sessionId) => !remainingSessionIds.includes(sessionId)));
   } finally {
     await setRuntimePersistenceEnabled(false);
+    if (originalDefaultSurface !== runtimeResetSurface) {
+      await setDefaultSurface(originalDefaultSurface);
+      await simulateRuntimeReload();
+    }
   }
 }
 
@@ -4156,12 +4184,27 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
 }
 
 async function verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalDefaultSurface =
+    configuration.get('devSessionCanvas.canvas.defaultSurface', 'panel') === 'editor' ? 'editor' : 'panel';
+  const runtimeResetSurface = 'panel';
+
+  if (originalDefaultSurface !== runtimeResetSurface) {
+    await setDefaultSurface(runtimeResetSurface);
+  }
   await setRuntimePersistenceEnabled(true);
 
   try {
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
     let snapshot = await simulateRuntimeReload();
     assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
 
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
@@ -4239,8 +4282,17 @@ async function verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState() 
       20000
     );
 
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(snapshot.activeSurface, 'editor');
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+
     snapshot = await simulateRuntimeReload();
     assert.strictEqual(snapshot.state.nodes.length, 0);
+    assert.strictEqual(snapshot.activeSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.configuredSurface, runtimeResetSurface);
+    assert.strictEqual(snapshot.sidebar.surfaceLocation, runtimeResetSurface);
 
     const runtimeSupervisorState = await waitForRuntimeSupervisorState(
       (currentState) => {
@@ -4256,6 +4308,10 @@ async function verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState() 
     assert.ok(expectedRuntimeSessionIds.every((sessionId) => !remainingSessionIds.includes(sessionId)));
   } finally {
     await setRuntimePersistenceEnabled(false);
+    if (originalDefaultSurface !== runtimeResetSurface) {
+      await setDefaultSurface(originalDefaultSurface);
+      await simulateRuntimeReload();
+    }
   }
 }
 

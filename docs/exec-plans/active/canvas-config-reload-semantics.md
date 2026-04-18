@@ -20,6 +20,7 @@
 - [x] (2026-04-18 18:13 +0800) 补充并运行自动化验证，确认 surface / persistence 在 reload 前后行为正确，panel tab 按配置隐藏；补跑 `build`、trusted smoke、restricted smoke，并记录现存的非本任务 `typecheck` 失败。
 - [x] (2026-04-18 18:43 +0800) 用户随后手动验证暴露 `defaultSurface` 的 restart 恢复回旧 panel / secondary side bar；本轮继续补持久化 `defaultSurface`、修正 startup restore 优先级、更新 smoke 覆盖与设计文档状态。
 - [x] (2026-04-18 18:59 +0800) 用户完成手动复验，确认 `panel -> editor` 与 `editor -> panel` 的 restart 都已按新的 `defaultSurface` 收口；据此把 `canvas-surface-placement` 文档状态恢复为 `已验证`。
+- [x] (2026-04-18 19:42 +0800) 根据 PR review 修复 runtime persistence 模式切换后未丢弃旧 surface 恢复元数据的问题，补充 trusted / restricted smoke 对“回落到当前 `defaultSurface`”的断言，并同步最新验证记录。
 
 ## 意外与发现
 
@@ -33,6 +34,8 @@
   证据：删除与模式切换相关 smoke 在 trusted / restricted 两侧都要改成过滤 `live === true` 的 session 集合，否则会把历史记录误判成未清理完成。
 - 观察：仅把 `defaultSurface` 固定成“启动时读取一次”还不够；如果持久化状态只记录旧的 `activeSurface`，restart / reload 时仍会让旧 surface 覆盖新的 startup `defaultSurface`。
   证据：用户在 `panel -> editor` 后重启，画布仍显示在底部 panel / 右侧 secondary side bar；代码上 `loadStoredSurface()` 只读取 `activeSurface`，而 `deserializeWebviewPanel()` / `attachPanelView()` 会继续让旧 surface 参与恢复与抢占。
+- 观察：runtime persistence 模式切换导致的整表 reset 也必须覆盖 surface 恢复元数据；否则虽然节点被清空，但旧 `canvasLastSurface` 仍会把窗口带回上次实际工作的 opposite surface。
+  证据：review 在 `src/panel/CanvasPanelManager.ts:1328` / `src/panel/CanvasPanelManager.ts:2922` 指出，`loadState()` 已把 `rawState` 置空，但构造函数和 `simulateRuntimeReloadForTest()` 仍会继续读取旧 `canvasLastSurface`。
 
 ## 决策记录
 
@@ -54,6 +57,9 @@
 - 决策：surface startup restore 必须同时比较“上次已应用的 `defaultSurface`”与“当前 startup `defaultSurface`”；当两者不一致时，不恢复旧 opposite surface，并在 `deserializeWebviewPanel()` 直接丢弃不该恢复的 editor panel。
   理由：reload-only 语义的真正边界不是“命令默认打开位置”，而是“窗口重启后的首个承载面”；只要旧 surface 还能在恢复链路里抢回主画布，用户就会认为设置没有生效。
   日期/作者：2026-04-18 / Codex
+- 决策：runtime persistence 模式切换触发的宿主 reset 必须与对象图一起丢弃旧 surface 恢复元数据，并让启动 surface 直接回落到当前 `defaultSurface`。
+  理由：产品文案已经承诺“清空旧画布宿主状态后从空白状态启动”；若模式切换后仍恢复旧 `editor` / `panel`，用户会看到“空白但还在旧工作面”的混合状态，和正式设计不一致。
+  日期/作者：2026-04-18 / Codex
 
 ## 结果与复盘
 
@@ -64,9 +70,9 @@
 验证结果如下。
 
 - `npm run build` 通过。
-- `npm run typecheck` 失败，但失败点是仓库现存的非本任务问题：`src/webview/main.tsx(2561,16): error TS2339: Property 'isComposing' does not exist on type 'KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>'`。
-- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，按执行顺序推断新增的 `verifyDefaultSurfaceRequiresReload()` 已通过；整套 suite 随后在无关的 `verifyLegacyTaskFiltering` 断言处失败，阻塞了本轮把 `canvas-surface-placement` 标记回 `已验证`。
-- restricted smoke 本轮未重跑，因为本次 follow-up 只改动 surface 恢复路径，没有改动 runtime persistence / trust 语义。
+- `npm run typecheck` 已通过；`src/webview/main.tsx` 里原有的 `isComposing` 类型报错已收口。
+- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyLegacyTaskFiltering` 断言处失败。
+- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言处失败。
 - 用户随后完成手动复验，确认 `panel -> editor` / `editor -> panel` 的 restart 行为均符合预期；因此 surface 设计文档现已恢复为 `已验证`，trusted smoke 的遗留阻塞继续作为独立测试债处理。
 
 额外复盘：这次 follow-up 说明“reload-only 配置语义”不能只看命令入口，还必须覆盖 serializer / view restore 这类启动恢复链路。用户本地未提交文件 `.gitignore`、`tmp_task.md`、`core.14` 本轮均未触碰。
