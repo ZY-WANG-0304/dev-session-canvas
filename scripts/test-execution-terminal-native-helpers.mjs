@@ -110,11 +110,35 @@ try {
       {
         source: 'files',
         valueKind: 'path',
+        value: "C:\\repo\\it's.txt"
+      },
+      createContext('C:\\Windows\\System32\\wsl.exe', 'C:\\repo', 'windows')
+    ),
+    "'/mnt/c/repo/it'\\''s.txt'"
+  );
+
+  assert.equal(
+    prepareExecutionTerminalDroppedPath(
+      {
+        source: 'files',
+        valueKind: 'path',
         value: '/tmp/a#b!c$d&e.txt'
       },
       createContext('/bin/bash', '/tmp', 'posix')
     ),
     "'/tmp/a#b!c$d&e.txt'"
+  );
+
+  assert.equal(
+    prepareExecutionTerminalDroppedPath(
+      {
+        source: 'files',
+        valueKind: 'path',
+        value: "/tmp/it's.txt"
+      },
+      createContext('/bin/bash', '/tmp', 'posix')
+    ),
+    "'/tmp/it'\\''s.txt'"
   );
 
   console.log('executionTerminalNativeHelpers tests passed');
