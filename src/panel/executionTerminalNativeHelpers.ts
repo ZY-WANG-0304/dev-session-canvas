@@ -9,13 +9,19 @@ import type {
   ExecutionTerminalPathStyle,
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
-import { removeExecutionTerminalLinkQueryString } from '../common/executionTerminalLinks';
+import {
+  getExecutionTerminalLinkSuffix,
+  normalizeExecutionTerminalWordSeparators,
+  removeExecutionTerminalLinkQueryString,
+  removeExecutionTerminalLinkSuffix
+} from '../common/executionTerminalLinks';
 
 export interface ExecutionTerminalPathContext {
   shellPath?: string;
   cwd: string;
   pathStyle: ExecutionTerminalPathStyle;
   userHome?: string;
+  resolveCwdForBufferLine?: (bufferStartLine: number) => Promise<string | undefined> | string | undefined;
 }
 
 export interface ResolvedExecutionFileLink {
@@ -34,7 +40,8 @@ export type ExecutionTerminalHostOpenerKind =
   | 'vscode.open'
   | 'showTextDocument'
   | 'revealInExplorer'
-  | 'vscode.openFolder';
+  | 'vscode.openFolder'
+  | 'workbench.action.quickOpen';
 
 export interface OpenExecutionTerminalLinkResult {
   opened: boolean;
@@ -45,6 +52,8 @@ export interface OpenExecutionTerminalLinkResult {
 export function normalizeEditorMultiCursorModifier(value: unknown): 'ctrlCmd' | 'alt' {
   return value === 'ctrlCmd' ? 'ctrlCmd' : 'alt';
 }
+
+export { normalizeExecutionTerminalWordSeparators };
 
 export function inferExecutionTerminalPathStyle(
   shellPath: string | undefined,
@@ -116,12 +125,16 @@ export async function resolveExecutionFileLink(
     return undefined;
   }
 
+  const resolvedCwd = await resolveExecutionLinkCwd(link, context);
   const directCandidates = new Map<string, vscode.Uri>();
   if (sanitizedPath.startsWith('file://')) {
     const uri = vscode.Uri.parse(sanitizedPath);
     directCandidates.set(uri.toString(), uri);
   } else {
-    const absolutePath = resolveAbsoluteExecutionPath(sanitizedPath, context);
+    const absolutePath = resolveAbsoluteExecutionPath(sanitizedPath, {
+      ...context,
+      cwd: resolvedCwd
+    });
     if (absolutePath) {
       const uri = vscode.Uri.file(absolutePath);
       directCandidates.set(uri.toString(), uri);
@@ -135,10 +148,36 @@ export async function resolveExecutionFileLink(
     }
   }
 
+  if (link.source === 'fallback') {
+    const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context);
+    if (fallbackResolved) {
+      return fallbackResolved;
+    }
+  }
+
   return undefined;
 }
 
 export async function resolveExecutionTerminalFileLinkCandidates(
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  context: ExecutionTerminalPathContext,
+  createResolvedId: () => string
+): Promise<PreparedExecutionTerminalResolvedFileLink[]> {
+  const highConfidenceCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
+  const fallbackCandidates = candidates.filter((candidate) => candidate.source === 'fallback');
+  const resolvedHighConfidence = await resolveExecutionTerminalFileLinkCandidateGroup(
+    highConfidenceCandidates,
+    context,
+    createResolvedId
+  );
+  if (resolvedHighConfidence.length > 0 || fallbackCandidates.length === 0) {
+    return resolvedHighConfidence;
+  }
+
+  return resolveExecutionTerminalFileLinkCandidateGroup(fallbackCandidates, context, createResolvedId);
+}
+
+async function resolveExecutionTerminalFileLinkCandidateGroup(
   candidates: ExecutionTerminalFileLinkCandidate[],
   context: ExecutionTerminalPathContext,
   createResolvedId: () => string
@@ -153,7 +192,9 @@ export async function resolveExecutionTerminalFileLinkCandidates(
         line: candidate.line,
         column: candidate.column,
         lineEnd: candidate.lineEnd,
-        columnEnd: candidate.columnEnd
+        columnEnd: candidate.columnEnd,
+        bufferStartLine: candidate.bufferStartLine,
+        source: candidate.source
       },
       context
     );
@@ -171,8 +212,10 @@ export async function resolveExecutionTerminalFileLinkCandidates(
         column: candidate.column,
         lineEnd: candidate.lineEnd,
         columnEnd: candidate.columnEnd,
+        bufferStartLine: candidate.bufferStartLine,
         resolvedId: createResolvedId(),
-        targetKind: resolved.targetKind
+        targetKind: resolved.targetKind,
+        source: candidate.source
       },
       resolved
     });
@@ -196,6 +239,10 @@ export async function openExecutionTerminalLink(
     };
   }
 
+  if (link.linkKind === 'search') {
+    return openExecutionTerminalSearchLink(link, context);
+  }
+
   const cachedResolved =
     typeof link.resolvedId === 'string' ? readResolvedFileLink?.(link.resolvedId) : undefined;
   const resolved = cachedResolved ?? (await resolveExecutionFileLink(link, context));
@@ -204,6 +251,35 @@ export async function openExecutionTerminalLink(
   }
 
   return openResolvedExecutionTerminalLink(resolved);
+}
+
+async function openExecutionTerminalSearchLink(
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'search' }>,
+  context: ExecutionTerminalPathContext
+): Promise<OpenExecutionTerminalLinkResult> {
+  const quickOpenText = normalizeExecutionTerminalSearchLinkText(link, context);
+  if (!quickOpenText) {
+    return { opened: false };
+  }
+
+  for (const candidateText of collectExecutionTerminalSearchExactOpenCandidates(quickOpenText, context)) {
+    const resolved = await resolveExecutionFileLink(
+      toExecutionTerminalSearchFileLink(candidateText, link),
+      context
+    );
+    if (!resolved) {
+      continue;
+    }
+
+    return openResolvedExecutionTerminalLink(resolved);
+  }
+
+  await vscode.commands.executeCommand('workbench.action.quickOpen', quickOpenText);
+  return {
+    opened: true,
+    openerKind: 'workbench.action.quickOpen',
+    targetUri: quickOpenText
+  };
 }
 
 export async function openResolvedExecutionTerminalLink(
@@ -261,6 +337,81 @@ function sanitizeExecutionFileLinkPath(
   return trimmed;
 }
 
+function normalizeExecutionTerminalSearchLinkText(
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'search' }>,
+  context: ExecutionTerminalPathContext
+): string | undefined {
+  const pathModule = context.pathStyle === 'windows' ? path.win32 : path.posix;
+  let text = (link.searchText || link.text).trim();
+  if (!text) {
+    return undefined;
+  }
+
+  text = text.replace(/^file:\/\/\/?/, '');
+  text = pathModule.normalize(text).replace(/^(\.+[\\/])+/, '');
+  text = text.replace(/:[^\\/\d][^\d]*$/, '');
+  text = text.replace(/\.$/, '');
+
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  const pathSeparator = context.pathStyle === 'windows' ? '\\' : '/';
+  for (const workspaceFolder of workspaceFolders) {
+    if (text.substring(0, workspaceFolder.name.length + 1) === `${workspaceFolder.name}${pathSeparator}`) {
+      text = text.substring(workspaceFolder.name.length + 1);
+      break;
+    }
+  }
+
+  return text.trim() || undefined;
+}
+
+function collectExecutionTerminalSearchExactOpenCandidates(
+  normalizedText: string,
+  context: ExecutionTerminalPathContext
+): string[] {
+  const candidates = new Set<string>();
+  candidates.add(normalizedText);
+
+  const trimmedWorkspacePrefix = trimWorkspacePrefixFromExecutionTerminalSearchText(normalizedText, context.pathStyle);
+  if (trimmedWorkspacePrefix && trimmedWorkspacePrefix !== normalizedText) {
+    candidates.add(trimmedWorkspacePrefix);
+  }
+
+  return [...candidates].filter((candidate) => candidate.trim().length > 0);
+}
+
+function trimWorkspacePrefixFromExecutionTerminalSearchText(
+  candidate: string,
+  pathStyle: ExecutionTerminalPathStyle
+): string | undefined {
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  const pathSeparator = pathStyle === 'windows' ? '\\' : '/';
+  for (const workspaceFolder of workspaceFolders) {
+    if (candidate.substring(0, workspaceFolder.name.length + 1) === `${workspaceFolder.name}${pathSeparator}`) {
+      return candidate.substring(workspaceFolder.name.length + 1);
+    }
+  }
+
+  return undefined;
+}
+
+function toExecutionTerminalSearchFileLink(
+  text: string,
+  searchLink: Extract<ExecutionTerminalOpenLink, { linkKind: 'search' }>
+): Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }> {
+  const suffix = getExecutionTerminalLinkSuffix(text);
+  return {
+    linkKind: 'file',
+    text,
+    path: removeExecutionTerminalLinkSuffix(text),
+    line: suffix?.row,
+    column: suffix?.col,
+    lineEnd: suffix?.rowEnd,
+    columnEnd: suffix?.colEnd,
+    bufferStartLine: searchLink.bufferStartLine,
+    source: 'fallback'
+  };
+}
+
 function resolveAbsoluteExecutionPath(
   candidate: string,
   context: ExecutionTerminalPathContext
@@ -274,6 +425,21 @@ function resolveAbsoluteExecutionPath(
   }
 
   return joinExecutionPath(context.pathStyle, context.cwd, candidate);
+}
+
+async function resolveExecutionLinkCwd(
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
+  context: ExecutionTerminalPathContext
+): Promise<string> {
+  if (
+    link.bufferStartLine === undefined ||
+    typeof context.resolveCwdForBufferLine !== 'function'
+  ) {
+    return context.cwd;
+  }
+
+  const lineScopedCwd = await context.resolveCwdForBufferLine(link.bufferStartLine);
+  return typeof lineScopedCwd === 'string' && lineScopedCwd.trim() ? lineScopedCwd : context.cwd;
 }
 
 function normalizeExecutionPath(
@@ -320,6 +486,62 @@ async function statExecutionLinkTarget(
   }
 }
 
+async function resolveExecutionWorkspaceFallbackLink(
+  sanitizedPath: string,
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
+  context: ExecutionTerminalPathContext
+): Promise<ResolvedExecutionFileLink | undefined> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return undefined;
+  }
+
+  if (sanitizedPath.startsWith('file://') || isAbsoluteExecutionPath(sanitizedPath, context.pathStyle)) {
+    return undefined;
+  }
+
+  const normalizedSearchPath = normalizeWorkspaceSearchPath(sanitizedPath, context.pathStyle);
+  if (!normalizedSearchPath) {
+    return undefined;
+  }
+
+  const basename = path.posix.basename(normalizedSearchPath);
+  if (!basename) {
+    return undefined;
+  }
+
+  const matches = new Map<string, vscode.Uri>();
+  const maxPerWorkspace = 64;
+  for (const workspaceFolder of workspaceFolders) {
+    const candidates = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(workspaceFolder, `**/${escapeExecutionWorkspaceGlobSegment(basename)}`),
+      undefined,
+      maxPerWorkspace
+    );
+    for (const uri of candidates) {
+      const relativePath = path
+        .relative(workspaceFolder.uri.fsPath, uri.fsPath)
+        .split(path.sep)
+        .join('/');
+      if (!relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath)) {
+        continue;
+      }
+
+      matches.set(uri.toString(), uri);
+      if (matches.size > 1) {
+        return undefined;
+      }
+    }
+  }
+
+  const onlyMatch = matches.values().next().value;
+  if (!(onlyMatch instanceof vscode.Uri)) {
+    return undefined;
+  }
+
+  return statExecutionLinkTarget(onlyMatch, link);
+}
+
 function classifyExecutionFileLinkTarget(
   uri: vscode.Uri,
   fileType: vscode.FileType
@@ -329,6 +551,30 @@ function classifyExecutionFileLinkTarget(
   }
 
   return vscode.workspace.getWorkspaceFolder(uri) ? 'directory-in-workspace' : 'directory-outside-workspace';
+}
+
+function normalizeWorkspaceSearchPath(
+  candidate: string,
+  style: ExecutionTerminalPathStyle
+): string | undefined {
+  const normalized = normalizeExecutionPath(candidate, style).replace(/\\/g, '/').replace(/^\.\/+/, '');
+  if (!normalized || normalized === '.') {
+    return undefined;
+  }
+
+  return normalized.replace(/^\/+/, '');
+}
+
+function relativePathMatchesFallbackSearch(relativePath: string, normalizedSearchPath: string): boolean {
+  const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+  return (
+    normalizedRelativePath === normalizedSearchPath ||
+    normalizedRelativePath.endsWith(`/${normalizedSearchPath}`)
+  );
+}
+
+function escapeExecutionWorkspaceGlobSegment(value: string): string {
+  return value.replace(/([\*\?\[\]\{\}])/g, '[$1]');
 }
 
 function toExecutionLinkSelection(

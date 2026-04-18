@@ -45,6 +45,7 @@ import type {
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
+import { normalizeExecutionTerminalWordSeparators } from '../common/executionTerminalLinks';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   estimatedCanvasNodeFootprint,
@@ -363,7 +364,8 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   surfaceLocation: 'editor',
   defaultAgentProvider: 'codex',
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
-  editorMultiCursorModifier: 'alt'
+  editorMultiCursorModifier: 'alt',
+  terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined)
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -381,7 +383,8 @@ function App(): JSX.Element {
     surfaceLocation: latestRuntimeContext.surfaceLocation,
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
     terminalScrollback: latestRuntimeContext.terminalScrollback,
-    editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier
+    editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
+    terminalWordSeparators: latestRuntimeContext.terminalWordSeparators
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -3020,8 +3023,14 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         }
 
         await entry.nativeInteractions.activateLinkForTest(action.text);
-        await waitForDomActionFlush();
-        break;
+        postMessage({
+          type: 'webview/testDomActionResult',
+          payload: {
+            requestId,
+            ok: true
+          }
+        });
+        return;
       }
       case 'hoverExecutionLink': {
         const entry = executionTerminalRegistry.get(action.nodeId);

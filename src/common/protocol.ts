@@ -120,6 +120,7 @@ export interface CanvasRuntimeContext {
   defaultAgentProvider: AgentProviderKind;
   terminalScrollback: number;
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
+  terminalWordSeparators: string;
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -889,6 +890,13 @@ function isExecutionTerminalFileLinkCandidate(value: unknown): value is Executio
     typeof value.endIndexExclusive === 'number' &&
     Number.isInteger(value.endIndexExclusive) &&
     value.endIndexExclusive >= value.startIndex &&
+    typeof value.bufferStartLine === 'number' &&
+    Number.isInteger(value.bufferStartLine) &&
+    value.bufferStartLine >= 0 &&
+    (value.source === 'detected' ||
+      value.source === 'refined' ||
+      value.source === 'fallback' ||
+      value.source === 'explicit-uri') &&
     (value.line === undefined || isPositiveInteger(value.line)) &&
     (value.column === undefined || isPositiveInteger(value.column)) &&
     (value.lineEnd === undefined || isPositiveInteger(value.lineEnd)) &&
@@ -902,7 +910,22 @@ function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminal
   }
 
   if (value.linkKind === 'url') {
-    return typeof value.url === 'string';
+    return (
+      typeof value.url === 'string' &&
+      (value.source === undefined || value.source === 'implicit' || value.source === 'explicit')
+    );
+  }
+
+  if (value.linkKind === 'search') {
+    return (
+      typeof value.searchText === 'string' &&
+      (value.contextLine === undefined || typeof value.contextLine === 'string') &&
+      (value.bufferStartLine === undefined ||
+        (typeof value.bufferStartLine === 'number' &&
+          Number.isInteger(value.bufferStartLine) &&
+          value.bufferStartLine >= 0)) &&
+      (value.source === undefined || value.source === 'word')
+    );
   }
 
   if (value.linkKind === 'file') {
@@ -912,7 +935,16 @@ function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminal
       (value.column === undefined || isPositiveInteger(value.column)) &&
       (value.lineEnd === undefined || isPositiveInteger(value.lineEnd)) &&
       (value.columnEnd === undefined || isPositiveInteger(value.columnEnd)) &&
+      (value.bufferStartLine === undefined ||
+        (typeof value.bufferStartLine === 'number' &&
+          Number.isInteger(value.bufferStartLine) &&
+          value.bufferStartLine >= 0)) &&
       (value.resolvedId === undefined || typeof value.resolvedId === 'string') &&
+      (value.source === undefined ||
+        value.source === 'detected' ||
+        value.source === 'refined' ||
+        value.source === 'fallback' ||
+        value.source === 'explicit-uri') &&
       (value.targetKind === undefined ||
         value.targetKind === 'file' ||
         value.targetKind === 'directory-in-workspace' ||

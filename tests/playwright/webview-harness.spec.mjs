@@ -723,6 +723,7 @@ for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} link activation posts parsed file and URL targets`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const fileLinkText = 'src/index.ts:42:10';
+    const cwdScopedFileLinkText = 'link-target.ts:3:1';
     const urlLinkText = 'https://example.com/docs?q=1';
 
     await openHarness(page);
@@ -731,7 +732,7 @@ for (const executionKind of ['agent', 'terminal']) {
     await dispatchExecutionSnapshot(page, {
       nodeId,
       kind: executionKind,
-      output: `${fileLinkText}\r\nOpen ${urlLinkText}.\r\n`,
+      output: `${fileLinkText}\r\n${cwdScopedFileLinkText}\r\nOpen ${urlLinkText}.\r\n`,
       cols: 96,
       rows: 28,
       liveSession: true
@@ -743,6 +744,11 @@ for (const executionKind of ['agent', 'terminal']) {
       kind: 'activateExecutionLink',
       nodeId,
       text: fileLinkText
+    });
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: cwdScopedFileLinkText
     });
     await performTestDomAction(page, {
       kind: 'activateExecutionLink',
@@ -801,10 +807,325 @@ for (const executionKind of ['agent', 'terminal']) {
               nodeId,
               kind: executionKind,
               link: {
+                linkKind: 'file',
+                text: cwdScopedFileLinkText,
+                path: 'link-target.ts',
+                line: 3,
+                column: 1,
+                targetKind: 'file'
+              }
+            }
+          },
+          {
+            type: 'webview/openExecutionLink',
+            payload: {
+              nodeId,
+              kind: executionKind,
+              link: {
                 linkKind: 'url',
                 text: urlLinkText,
-                url: urlLinkText
+                url: urlLinkText,
+                source: 'implicit'
               }
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} unresolved file-like paths fall back to search links while plain words do not`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const searchWordText = 'xxxtest';
+    const missingPathText = 'missing-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${searchWordText}\r\n${missingPathText}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: searchWordText
+      },
+      'was not detected'
+    );
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: missingPathText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => entry.payload)
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'search',
+              text: missingPathText,
+              searchText: missingPathText,
+              contextLine: missingPathText,
+              bufferStartLine: 1,
+              source: 'word'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} trims attached CJK prose prefixes from unresolved file-like paths`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const cleanPathText =
+      'demo/web_demo/WebRTC_Demo/omni_backend_code/code/voice_chat/omni_stream.py:159';
+    const proseAttachedLine = `这里要么在${cleanPathText}`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${proseAttachedLine}\r\n`,
+      cols: 140,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: cleanPathText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => entry.payload)
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'search',
+              text: cleanPathText,
+              searchText: cleanPathText,
+              contextLine: proseAttachedLine,
+              bufferStartLine: 0,
+              source: 'word'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} trims CJK punctuation and detects multiple directory links in one Chinese sentence`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstDirectoryLinkText = 'src/webview';
+    const secondDirectoryLinkText = 'src/panel';
+    const proseLine = `开放问题： 仓库里同时有两套目录： ${firstDirectoryLinkText} 和 ${secondDirectoryLinkText}。`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${proseLine}\r\n`,
+      cols: 44,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: firstDirectoryLinkText
+    });
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: secondDirectoryLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: firstDirectoryLinkText,
+              path: firstDirectoryLinkText,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          },
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: secondDirectoryLinkText,
+              path: secondDirectoryLinkText,
+              targetKind: 'file',
+              source: 'refined'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} link activation covers additional URI schemes and OSC 8 hyperlinks`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const mailtoLinkText = 'mailto:test@example.com';
+    const vscodeLinkText = 'vscode://file/workspace/foo.ts:3:2';
+    const explicitUrlLinkText = 'https://example.com/explicit';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: [
+        `${mailtoLinkText}\r\n`,
+        `${vscodeLinkText}\r\n`,
+        `\u001b]8;;${explicitUrlLinkText}\u0007explicit label\u001b]8;;\u0007\r\n`
+      ].join(''),
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: mailtoLinkText
+    });
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: vscodeLinkText
+    });
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: explicitUrlLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => entry.payload)
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'url',
+              text: mailtoLinkText,
+              url: mailtoLinkText,
+              source: 'implicit'
+            }
+          },
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'url',
+              text: vscodeLinkText,
+              url: vscodeLinkText,
+              source: 'implicit'
+            }
+          },
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'url',
+              text: explicitUrlLinkText,
+              url: explicitUrlLinkText,
+              source: 'explicit'
             }
           }
         ])
@@ -1995,6 +2316,7 @@ function createRuntimeContext(overrides = {}) {
     defaultAgentProvider: 'codex',
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
+    terminalWordSeparators: ' ()[]{}\',"`',
     ...overrides
   };
 }
@@ -2300,6 +2622,46 @@ async function performTestDomAction(page, action) {
       }, requestId);
     })
     .toBe('ok');
+}
+
+async function expectTestDomActionError(page, action, expectedSubstring) {
+  const requestId = `playwright-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  await page.evaluate(
+    ({ nextRequestId, nextAction }) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/testDomAction',
+        payload: {
+          requestId: nextRequestId,
+          action: nextAction
+        }
+      });
+    },
+    {
+      nextRequestId: requestId,
+      nextAction: action
+    }
+  );
+
+  await expect
+    .poll(async () => {
+      return page.evaluate((nextRequestId) => {
+        const result = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find(
+            (entry) =>
+              entry.type === 'webview/testDomActionResult' &&
+              entry.payload.requestId === nextRequestId
+          );
+
+        if (!result || result.payload.ok) {
+          return null;
+        }
+
+        return result.payload.errorMessage ?? 'error';
+      }, requestId);
+    })
+    .toContain(expectedSubstring);
 }
 
 function nodeById(page, nodeId) {

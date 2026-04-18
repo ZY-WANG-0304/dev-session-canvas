@@ -1,7 +1,7 @@
 ---
 title: 执行节点的 VSCode 原生 Terminal 交互对齐
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -15,7 +15,8 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
-updated_at: 2026-04-17
+  - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
+updated_at: 2026-04-18
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
@@ -42,14 +43,14 @@ updated_at: 2026-04-17
 ## 3. 目标
 
 - 让 `Terminal` 与 `Agent` 节点都支持文件拖拽输入路径。
-- 让执行节点中的文件路径与 URL 可被识别并点击打开。
+- 让执行节点中的文件路径、URL 与原生 search fallback 都可被识别并点击打开。
 - 与 VSCode 原生 Terminal 在“入口机制、修饰键规则、宿主打开路径”上保持同类实现分层，而不是在 Webview 里另造一套终端交互系统。
 
 ## 4. 非目标
 
-- 不在本轮覆盖 git commit hash、search link 等 VSCode Terminal 还支持的其它 link type。
+- 不在本轮覆盖 git commit hash 等 VSCode Terminal 还支持的其它 link type。
 - 不在本轮承诺完全复刻 VSCode 内部 terminal hover widget 的所有像素细节，也不单独收口链接下划线的像素级一致性。
-- 不在本轮补齐基于 shell integration 的逐行真实 cwd 跟踪；相对路径解析先以节点当前宿主 cwd 为准。
+- 不在本轮把链接体系扩成“任意文本都能点击”的通用 NLP 识别器；低置信度 fallback 仍需受 workspace 与宿主 opener 约束。
 
 ## 5. 候选方案
 
@@ -98,7 +99,7 @@ updated_at: 2026-04-17
 
 - 执行节点要补齐的标准交互是：
   - Explorer/文件系统拖拽文件到终端区域后，把路径文本输入当前会话。
-  - 输出中的文件路径和 `http/https` URL 可以按 VSCode 原生 Terminal 的修饰键规则点击打开。
+  - 输出中的文件路径、URL，以及无法解析为真实文件目标的普通词条，都可以按 VSCode 原生 Terminal 的修饰键规则进入对应 opener。
 
 - 拖拽入口使用 Webview 原生 `DragEvent` / `DataTransfer`，并优先读取与 VSCode 原生 Terminal 一致的数据来源：
   - `ResourceURLs`
@@ -115,9 +116,24 @@ updated_at: 2026-04-17
 
 - 链接检测使用 xterm `registerLinkProvider`，而不是在 React 层或宿主侧扫描终端输出字符串。
 
+- `OSC 8` 显式超链接是比隐式文本猜测更高优先级的入口；当前设计收口为：
+  - Webview 侧继续使用 xterm 作为显式超链接的 buffer/交互承载。
+  - 执行节点需要显式提供 `linkHandler`，让显式 hyperlink 直接走现有的宿主打开链路，而不是退回浏览器默认确认框。
+  - 显式 `file://` URI 应按 file opener 特化；其余 URI 统一走 `vscode.open` 宿主路径。
+
+- URL 检测不再停留在 `http/https` 单正则，而是升级为成熟 URL parser 驱动的 provider；`mailto:`、`vscode://` 等 URI 也应纳入同一条宿主 opener 路径。
+
 - 文件路径链接采用“Webview 检测候选，宿主解析/验证后再注册链接”的两段式实现；未被宿主确认存在的候选不会成为可点击链接。
 
-- 相对文件路径解析当前只相对节点当前宿主 `cwd`，不再做 workspace 级搜索 fallback；这比先前仓库实现更接近 VSCode 原生 Terminal 的上下文语义。
+- VSCode 原生 Terminal 里的 `word/search link` 需要一并对齐：
+  - `search` fallback 只服务于“看起来像文件路径、但未命中 file resolver 的候选”，而不是把整行普通词条都注册成可点击链接。
+  - 宿主打开时先按与原生一致的思路尝试 exact-open；若仍无法解析到真实文件/目录，则回退到 `workbench.action.quickOpen`，把该路径词条送入顶部搜索。
+  - 因此当前仓库中的对齐语义是：“不存在的路径词条”不会成为 file link，但仍可作为 search link 触发 Quick Access；普通文本不会因为 search fallback 变成可点击链接。
+
+- 文件路径解析在第三轮收口后改为三层：
+  - 高置信度候选：优先按与输出 buffer 行对齐的 `cwd` 解析。
+  - 上下文缺失时：回退到节点当前宿主 `cwd`。
+  - 低置信度候选：仅在唯一 workspace 命中时做 fallback，不再把“找不到直接路径”直接等同于不可点。
 
 - 最终打开动作必须在宿主侧执行：
   - 文件路径：`openTextDocument` + `showTextDocument`
@@ -134,14 +150,17 @@ updated_at: 2026-04-17
 - 取舍：本轮不做 VSCode 级别的完整 link taxonomy，只先覆盖文件路径和 URL。
   原因：这是用户明确要求的两类能力，也是 VSCode Terminal 最常见的主路径。
 
-- 风险：当前仓库没有 shell integration 驱动的逐行 cwd 跟踪，相对路径链接只能按节点当前宿主 cwd 解析。
-  当前缓解：节点创建时的 cwd 就是 workspace root；常见 `src/foo.ts` 场景会成立。更复杂的“会话里多次 `cd` 后输出相对路径”留待后续增强。
+- 风险：当前仓库仍没有完整 VSCode shell integration，因此“逐行 cwd”不能照搬原生 Terminal 的全部上下文来源。
+  当前缓解：第三轮实现改为 Host 侧行上下文跟踪器，与 headless xterm 保持同一 buffer 行号语义；其优先消费显式 cwd 线索，并在没有线索时安全回退到节点当前 cwd。
 
 - 风险：Explorer 拖拽进入 Webview 的主 blocker 不是单一 `DataTransfer` type，而是 VSCode 宿主会在拖拽期间默认屏蔽 Webview 接收事件；在当前上游行为下，人工验证显示按住 `Shift` 才会把拖拽重新交给 Webview。
   当前缓解：仓库侧继续兼容 `ResourceURLs`、`CodeFiles`、`text/uri-list` 和 Chromium/Electron 文件拖拽入口，确保一旦事件进入 Webview 就能完成资源提取；同时在执行节点界面显式提示 `Explorer 拖拽请按住 Shift`。若后续需要彻底消除该限制，只能继续寻找 VSCode 宿主级能力，而不是继续在 Webview 内部补解析分支。
 
 - 风险：扩展 API 不直接暴露 VSCode 内部的 opener service。
   当前缓解：URL 打开改走 `vscode.open` 命令，这条路径最终委托 `_workbench.open`，比直接 `env.openExternal` 更接近原生 Terminal 的 opener 行为。
+
+- 风险：当前 file-like link refine 仍是启发式收口，少量“自然语言说明紧贴路径文本”的终端输出，仍可能把前缀或后缀文本一起并入 candidate，随后退化成 `search` link。
+  当前缓解：仓库已经把 `search` fallback 收窄到 unresolved file-like candidate，并补了中文前缀与中式标点裁剪回归；剩余少量误判已登记到技术债追踪，不把 file detection coverage 写成与 VSCode 原生 Terminal 完全等价。
 
 ## 8. 当前验证方法
 
@@ -150,8 +169,10 @@ updated_at: 2026-04-17
 1. 拖拽单个文件到 `Terminal` 节点后，会话收到路径文本输入。
 2. 相同行为对 `Agent` 节点也成立。
 3. 终端输出中的文件路径点击后会在编辑器中打开并跳到指定行列。
-4. `http/https` URL 点击后会进入 VSCode opener 路径。
-5. 悬停时存在修饰键提示 tooltip，且文案遵循 `editor.multiCursorModifier`；不单独要求下划线像素效果自动化收口。
+4. `OSC 8` 显式超链接、`http/https`、`mailto:`、`vscode://` URL 点击后都会进入正确的 VSCode opener 路径。
+5. 悬停时存在修饰键提示 tooltip，且文案遵循 `editor.multiCursorModifier`；文件/目录/URL 的 hover 文案与最终 opener 类型一致。
+6. cwd 变化后的相对路径会优先按对应输出上下文解析；找不到直接路径时，低置信度 fallback 至少能恢复唯一 workspace 命中的主路径文件。
+7. 不存在的文件路径词条在未命中 file resolver 时，会按原生 `search link` 语义触发 Quick Access 搜索；普通文本不会被注册成链接。
 
 ## 9. 当前验证状态
 
@@ -169,4 +190,12 @@ updated_at: 2026-04-17
 - 2026-04-17 已补齐真实宿主里的剩余自动化断言：
   - trusted smoke 现在会点击本地 `http://127.0.0.1` URL，并断言真实 VSCode Host 最终把该链接委托给 `vscode.open`，从而覆盖 URL 的宿主 opener 落点，而不依赖外部浏览器或特定 tab 形态。
   - 同一条 trusted smoke 现在会在真实 Webview 容器里触发链接 hover，并断言 tooltip 文案与 `editor.multiCursorModifier` 对齐。
-- 2026-04-17 人工复核后确认：真实 Explorer → Webview 的无修饰键拖拽仍受 VSCode 宿主限制，当前文档状态回退到 `验证中`。当前已验证的是链接打开链路，以及“Webview 已收到拖拽事件后”的资源提取与宿主写入链路；未验证的是“无需 `Shift` 的真实 Explorer 拖拽对齐”。
+- 2026-04-17 人工复核后确认：真实 Explorer → Webview 的无修饰键拖拽仍受 VSCode 宿主限制；当前产品口径已显式收口为“按住 `Shift` 时 Webview 接管拖拽”，不再把“无修饰键真实 Explorer 拖拽”写成承诺行为。
+- 2026-04-18 已完成第三轮自动化验证：
+  - `npm run typecheck` 通过。
+  - `npm run test:webview` 通过，新增覆盖 `OSC 8`、`mailto:`、`vscode://`、basename `path:line:col` 与显式 URI 打开。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，确认真实宿主中的 basename `link-target.ts:3:1`、URL opener 与 hover tooltip 都已收口。
+- 2026-04-18 已完成原生 `word/search link` 对齐验证：
+  - `npm run typecheck` 通过。
+  - `npm run test:webview` 通过，新增覆盖“不存在路径词条会回退为 `search` link，而普通文本不会被注册成 link”。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，确认真实宿主中的不存在路径词条点击后会走 `workbench.action.quickOpen`。

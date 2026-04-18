@@ -12,6 +12,7 @@
       (() => {
         const postedMessages = [];
         let persistedState = window.__devSessionCanvasHarnessInitialPersistedState ?? {};
+        let resolvedExecutionFileLinkTexts = null;
 
         window.acquireVsCodeApi = function acquireVsCodeApi() {
           return {
@@ -25,7 +26,15 @@
               postedMessages.push(message);
               if (message?.type === 'webview/resolveExecutionFileLinks') {
                 const resolvedLinks = Array.isArray(message.payload?.candidates)
-                  ? message.payload.candidates.map((candidate) => ({
+                  ? message.payload.candidates
+                      .filter((candidate) => {
+                        if (!Array.isArray(resolvedExecutionFileLinkTexts)) {
+                          return true;
+                        }
+
+                        return resolvedExecutionFileLinkTexts.includes(candidate.text);
+                      })
+                      .map((candidate) => ({
                       candidateId: candidate.candidateId,
                       link: {
                         linkKind: 'file',
@@ -35,6 +44,8 @@
                         column: candidate.column,
                         lineEnd: candidate.lineEnd,
                         columnEnd: candidate.columnEnd,
+                        bufferStartLine: candidate.bufferStartLine,
+                        source: candidate.source,
                         resolvedId: `harness-${candidate.candidateId}`,
                         targetKind: 'file'
                       }
@@ -68,7 +79,7 @@
           },
           bootstrap(
             state,
-            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt' }
+            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt', terminalWordSeparators: ' ()[]{}\',"`' }
           ) {
             this.dispatchHostMessage({
               type: 'host/bootstrap',
@@ -80,7 +91,7 @@
           },
           update(
             state,
-            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt' }
+            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt', terminalWordSeparators: ' ()[]{}\',"`' }
           ) {
             this.dispatchHostMessage({
               type: 'host/stateUpdated',
@@ -92,6 +103,9 @@
           },
           getPostedMessages() {
             return postedMessages.slice();
+          },
+          setResolvedExecutionFileLinkTexts(texts) {
+            resolvedExecutionFileLinkTexts = Array.isArray(texts) ? texts.slice() : null;
           },
           clearPostedMessages() {
             postedMessages.length = 0;

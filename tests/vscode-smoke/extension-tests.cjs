@@ -1413,6 +1413,115 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    const cwdScopedFileLinkText = 'link-target.ts:3:1';
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `cd ${JSON.stringify(scratchDir)}\r`
+      },
+      'editor',
+      10000
+    );
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${cwdScopedFileLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(cwdScopedFileLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(cwdScopedFileLinkText));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: cwdScopedFileLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === cwdScopedFileLinkText
+        ),
+      10000
+    );
+    const cwdScopedEditor = await waitForActiveEditor(
+      () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.fsPath !== linkTargetPath) {
+          return false;
+        }
+
+        return editor.selection.active.line === 2 && editor.selection.active.character === 0;
+      },
+      10000
+    );
+    assert.strictEqual(cwdScopedEditor.document.uri.fsPath, linkTargetPath);
+    assert.strictEqual(cwdScopedEditor.selection.active.line, 2);
+    assert.strictEqual(cwdScopedEditor.selection.active.character, 0);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    const missingSearchLinkText = 'missing-target.ts:9:3';
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${missingSearchLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(missingSearchLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(missingSearchLinkText));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: missingSearchLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === missingSearchLinkText &&
+            event.detail?.linkKind === 'search' &&
+            event.detail?.openerKind === 'workbench.action.quickOpen'
+        ),
+      10000
+    );
+    await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
     browserSmokeServer = await createLocalBrowserSmokeServer(`Dev Session Canvas URL Smoke ${Date.now()}`);
     await setWorkbenchBrowserOpenLocalhostLinks(true);
 
@@ -1483,6 +1592,48 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.linkKind === 'url' &&
             event.detail?.openerKind === 'vscode.open' &&
             event.detail?.targetUri === urlLinkText
+        ),
+      10000
+    );
+
+    const explicitUrlLinkText = browserSmokeServer.url.replace('/hit', '/explicit');
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '\\033]8;;%s\\a%s\\033]8;;\\a\\n' '${explicitUrlLinkText}' 'explicit-url'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes('explicit-url'));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes('explicit-url'));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: explicitUrlLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === explicitUrlLinkText &&
+            event.detail?.linkKind === 'url' &&
+            event.detail?.openerKind === 'vscode.open' &&
+            event.detail?.targetUri === explicitUrlLinkText
         ),
       10000
     );
