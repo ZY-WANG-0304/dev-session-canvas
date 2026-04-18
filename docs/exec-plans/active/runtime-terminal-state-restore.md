@@ -30,6 +30,7 @@
 - [x] (2026-04-15 19:43 +0800) 保留直接调用 `xterm.scrollLines()` 的确定性 scrollback 回归，同时新增基于真实 `wheel` 事件的 Webview 重建后滚动验证；重新执行定向 `snapshot restore` 用例与全量 `npm run test:webview`。
 - [x] (2026-04-15 23:36 +0800) 收口最新 review blocker：运行中修改 `terminal.integrated.scrollback` 时，同步刷新 local tracker 与 runtime supervisor live session 的 scrollback 预算，再发布 `host/stateUpdated`；补 live-runtime reload smoke 覆盖“会话已在运行后再改 scrollback”的恢复语义。
 - [x] (2026-04-18 22:38 +0800) follow-up 复核期间把当前工作分支重命名为 `runtime-restore-smoke-stabilization`，并收口两条残余 smoke：`simulateRuntimeReload()` 后统一显式重新打开 editor surface 并等待画布 ready，trusted smoke 中把 `verifyLegacyTaskFiltering` 更名为 `verifyPersistedStateFiltersLegacyTaskNodes`，restricted smoke 补断言验证 blocked reconnect 不会覆写历史 viewport 元数据；随后重新执行 trusted / restricted smoke，二者均通过。
+- [x] (2026-04-19 00:16 +0800) 收口最新 self-review blocker：执行节点在 serialized snapshot hydrate 后若命中 shrink-fit grace，现在会显式安排 grace 结束后的延迟 `fit()`，保证“大快照恢复到小容器”不会一直停留在旧 cols/rows；同时新增 agent / terminal 两条 Playwright 定向回归，并重新执行 `npm run typecheck` 与 trusted / restricted smoke。
 
 ## 意外与发现
 
@@ -65,6 +66,9 @@
 
 - 观察：trusted smoke 里的旧名 `verifyLegacyTaskFiltering` 已不能准确描述当前断言；它实际验证的是“持久化状态 reload 时会过滤 legacy task 节点”，而不是泛化的任务过滤逻辑。
   证据：2026-04-18 22:38 +0800 的代码复核显示，该用例只向落盘状态注入 `kind: 'task'` 的历史节点，再断言 reload 后 `snapshot.state.nodes` 里不会保留这些 legacy task 项，因此更名为 `verifyPersistedStateFiltersLegacyTaskNodes()` 后，测试名与行为重新对齐。
+
+- 观察：当前 shrink-fit grace 只会跳过当下这一次 `fit()`，如果 snapshot 恢复尺寸大于当前容器，而后续又没有新的 resize 事件，终端会一直保留旧的 cols/rows。
+  证据：2026-04-19 的 PR `#11` self-review 明确指出 `src/webview/main.tsx:1043` 与 `src/webview/main.tsx:1404` 仅抑制了 shrink-fit，却没有在 grace 结束后安排 follow-up fit；本轮新增的 “snapshot restore eventually refits to the current smaller container” Playwright 回归正是针对这条缺口。
 
 ## 决策记录
 
@@ -104,6 +108,10 @@
   理由：当前产品语义并不承诺 reload 后仍保留原交互 surface；真正需要验证的是持久化状态恢复与 reattach 行为，而不是测试夹具是否恰好沿用了之前的 editor 焦点。把 surface 准备显式化后，trusted / restricted 两侧 smoke 都能在同一前提下稳定验证真实恢复语义。
   日期/作者：2026-04-18 / Codex
 
+- 决策：保留 snapshot restore 的 shrink-fit grace，但必须同时安排一个 grace 结束后的确定性 `fit()`。
+  理由：grace 的职责是避免刚 hydrate 的 serialized terminal state 立即被较小容器裁掉；但如果不补 follow-up fit，终端尺寸就会依赖“未来恰好再来一次 resize 事件”，这不满足恢复语义的确定性要求。
+  日期/作者：2026-04-19 / Codex
+
 ## 结果与复盘
 
 本轮已经交付两条互补修复线，并在收尾阶段把同一宿主区域的标签切换体验统一到了 Editor / Panel 两种承载面：
@@ -111,10 +119,12 @@
 - Editor `WebviewPanel` 与 Panel `WebviewView` 两条承载面都启用了 `retainContextWhenHidden`；两者从隐藏恢复到可见时，宿主都会额外发送 `visibilityRestored`，前端对现存 xterm 执行 non-destructive redraw，而不是再用 `fit()` 改写当前 viewport。
 - local PTY 与 runtime supervisor 会话都改为维护 serialized terminal state，并通过宿主 snapshot 发到 Webview；前端恢复执行节点时优先 hydrate 该状态，而不是 `reset() + tail replay`。
 - 运行中修改 `terminal.integrated.scrollback` 时，`CanvasPanelManager` 现在会先同步刷新所有 live execution session：local 会话直接重建 host-side tracker，supervisor 会话通过 runtime supervisor 协议更新远端 session scrollback，并在必要时刷新本地附着态后再发 `host/stateUpdated`。这样 live xterm、宿主 tracker、runtime registry snapshot、reload/reattach 与落盘恢复重新收敛到同一预算。
+- 2026-04-19 的 follow-up review 修复补齐了恢复后的“回落到当前容器”闭环：agent / terminal 两类节点在大尺寸 serialized snapshot hydrate 后，会先保留 grace 期保护当前画面，再在 grace 结束时自动执行一次 deferred `fit()`，不再要求用户或宿主后续再触发额外 resize。
 
 验证结果如下：
 
 - `npm run typecheck` 通过。
+- `npm run test:webview -- --grep "snapshot restore eventually refits to the current smaller container"` 通过，新增的 agent / terminal 两条定向回归都在最新实现上收口。
 - `npm run test:webview` 通过 32 条回归；命令内已包含 `npm run build`。其中 scrollback 恢复相关新增了两层自动化：
   1. 继续保留直接调用 `xterm.scrollLines()` 的确定性断言，稳定验证“恢复后仍能回到最早历史行”。
   2. 新增基于真实 `wheel` 事件的 Playwright 回归，验证“Webview 重建后 restored xterm 仍响应真实滚轮滚动并能看到更早历史行”。
@@ -127,6 +137,7 @@
   2. 所有依赖 `simulateRuntimeReload()` 的 trusted / restricted 前置路径都显式重新打开 editor 画布并等待 ready，确保后续交互发生在真实可用的 surface 上。
   3. `verifyRestrictedLiveRuntimeReconnectBlocked()` 额外断言 blocked reconnect 后节点仍保持 `history-restored`，且 resize 不会覆写已恢复的 `lastCols` / `lastRows`。
 - 2026-04-18 22:35 +0800 在当前工作树重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`，两条 smoke 均通过。
+- 2026-04-19 00:16 +0800 围绕这次 deferred shrink-fit 修复再次执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`，两条 smoke 继续通过，说明补上的 follow-up `fit()` 没有破坏既有 runtime restore / reconnect 语义。
 
 本轮留下的一项技术债已登记到 `docs/exec-plans/tech-debt-tracker.md`：当 snapshot 记录尺寸与当前容器尺寸漂移时，xterm alternate-buffer hydrate 仍缺更强的无损重绘语义。当前实现优先保证“不要恢复成空白或错画面”，而不是承诺任意尺寸漂移下都能完全无损复原。
 
