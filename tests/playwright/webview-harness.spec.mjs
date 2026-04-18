@@ -1524,6 +1524,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-agent-action="show-providers"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-agent-action="show-providers"] .codicon-chevron-right')).toBeVisible();
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -1578,6 +1579,7 @@ test('right-click create menu can drill into agent providers and create claude d
   const menu = page.locator('[data-context-menu="true"]');
   await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
 
