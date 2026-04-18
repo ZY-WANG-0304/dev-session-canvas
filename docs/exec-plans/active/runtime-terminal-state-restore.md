@@ -29,6 +29,7 @@
 - [x] (2026-04-15 18:42 +0800) 把 live xterm、宿主 serialized terminal state tracker、runtime supervisor snapshot 与落盘快照统一到 `terminal.integrated.scrollback`，移除 `4000` / `80` 私有预算，并把 `workspaceState` 改成只保留去掉 serialized terminal state 的轻量兜底。
 - [x] (2026-04-15 19:43 +0800) 保留直接调用 `xterm.scrollLines()` 的确定性 scrollback 回归，同时新增基于真实 `wheel` 事件的 Webview 重建后滚动验证；重新执行定向 `snapshot restore` 用例与全量 `npm run test:webview`。
 - [x] (2026-04-15 23:36 +0800) 收口最新 review blocker：运行中修改 `terminal.integrated.scrollback` 时，同步刷新 local tracker 与 runtime supervisor live session 的 scrollback 预算，再发布 `host/stateUpdated`；补 live-runtime reload smoke 覆盖“会话已在运行后再改 scrollback”的恢复语义。
+- [x] (2026-04-18 22:38 +0800) follow-up 复核期间把当前工作分支重命名为 `runtime-restore-smoke-stabilization`，并收口两条残余 smoke：`simulateRuntimeReload()` 后统一显式重新打开 editor surface 并等待画布 ready，trusted smoke 中把 `verifyLegacyTaskFiltering` 更名为 `verifyPersistedStateFiltersLegacyTaskNodes`，restricted smoke 补断言验证 blocked reconnect 不会覆写历史 viewport 元数据；随后重新执行 trusted / restricted smoke，二者均通过。
 
 ## 意外与发现
 
@@ -58,6 +59,12 @@
 
 - 观察：即使把四层 scrollback 预算统一到 `terminal.integrated.scrollback`，只要 active session 在配置变更时没有同步刷新宿主 tracker / supervisor session，live xterm 与 host-boundary 恢复语义仍会再次分叉。
   证据：2026-04-15 21:49 +0800 的 review comment 明确指出 `CanvasPanelManager` 配置变更路径此前只发 `host/stateUpdated`，`src/webview/main.tsx` 会更新 live xterm 的 `terminal.options.scrollback`，但 local `SerializedTerminalStateTracker` 与 `runtimeSupervisorMain` 中的会话 scrollback 仍停留在启动时旧值；这与代码检查结果一致。
+
+- 观察：`runtimePersistence.enabled` 的应用语义已经收敛到“reload 后生效”；因此 smoke 在 `simulateRuntimeReload()` 之后不能再假设 editor surface 仍处于可交互状态，否则后续的 `createNode`、DOM probe 与 resize 断言会把 surface 未就绪误报成产品回归。
+  证据：2026-04-18 22:38 +0800 的复核中，`prepareTrustedBaseNodesForAppliedRuntimePersistenceMode()`、`prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode()` 与 `verifyRestrictedLiveRuntimeReconnectBlocked()` 在 reload 后补 `openCanvasInEditor` + `testWaitForCanvasReady('editor')` 后，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs` 均通过。
+
+- 观察：trusted smoke 里的旧名 `verifyLegacyTaskFiltering` 已不能准确描述当前断言；它实际验证的是“持久化状态 reload 时会过滤 legacy task 节点”，而不是泛化的任务过滤逻辑。
+  证据：2026-04-18 22:38 +0800 的代码复核显示，该用例只向落盘状态注入 `kind: 'task'` 的历史节点，再断言 reload 后 `snapshot.state.nodes` 里不会保留这些 legacy task 项，因此更名为 `verifyPersistedStateFiltersLegacyTaskNodes()` 后，测试名与行为重新对齐。
 
 ## 决策记录
 
@@ -93,6 +100,10 @@
   理由：如果只刷新 Webview 里的 live xterm，而不刷新宿主 tracker / supervisor session，用户会看到“当前画面遵循新配置、但 reload/reattach/落盘恢复仍按旧预算截断”的不一致行为；这与本轮设计结论直接冲突。
   日期/作者：2026-04-15 / Codex
 
+- 决策：把 `simulateRuntimeReload()` 之后“重新打开 editor surface 并等待 ready”固化为 smoke 前置，而不是继续依赖 reload 前的 surface 活性。
+  理由：当前产品语义并不承诺 reload 后仍保留原交互 surface；真正需要验证的是持久化状态恢复与 reattach 行为，而不是测试夹具是否恰好沿用了之前的 editor 焦点。把 surface 准备显式化后，trusted / restricted 两侧 smoke 都能在同一前提下稳定验证真实恢复语义。
+  日期/作者：2026-04-18 / Codex
+
 ## 结果与复盘
 
 本轮已经交付两条互补修复线，并在收尾阶段把同一宿主区域的标签切换体验统一到了 Editor / Panel 两种承载面：
@@ -111,6 +122,11 @@
 - 重复验证里还额外命中过 1 次 Electron 自身的 `sandbox_host_linux.cc:41` / `SIGTRAP`；该失败没有生成 `failure-webview-probe.json` 等断言 artifact，因此记录为当前执行环境噪声，而不是本次 viewport 回归复发。
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 通过，说明真实 VS Code 窗口重开下的重新附着 / 历史恢复链路已闭合，且不再出现 `allowProposedApi` 运行时错误。
 - 后续补充的 VS Code smoke 继续覆盖了 Editor 区域切到普通文本编辑器、再切回画布时的 visibility restore 与 viewport 保持断言。
+- 2026-04-18 的 follow-up 复核没有再改产品实现，只收口 smoke 夹具与断言语义：
+  1. trusted 路径把 `verifyLegacyTaskFiltering` 更名为 `verifyPersistedStateFiltersLegacyTaskNodes`，避免测试名继续暗示已不存在的通用 task 过滤语义。
+  2. 所有依赖 `simulateRuntimeReload()` 的 trusted / restricted 前置路径都显式重新打开 editor 画布并等待 ready，确保后续交互发生在真实可用的 surface 上。
+  3. `verifyRestrictedLiveRuntimeReconnectBlocked()` 额外断言 blocked reconnect 后节点仍保持 `history-restored`，且 resize 不会覆写已恢复的 `lastCols` / `lastRows`。
+- 2026-04-18 22:35 +0800 在当前工作树重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`，两条 smoke 均通过。
 
 本轮留下的一项技术债已登记到 `docs/exec-plans/tech-debt-tracker.md`：当 snapshot 记录尺寸与当前容器尺寸漂移时，xterm alternate-buffer hydrate 仍缺更强的无损重绘语义。当前实现优先保证“不要恢复成空白或错画面”，而不是承诺任意尺寸漂移下都能完全无损复原。
 
