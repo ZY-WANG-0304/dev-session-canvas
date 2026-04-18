@@ -1972,7 +1972,10 @@ const CanvasContextMenu = React.forwardRef<
             aria-label="返回上一级"
             title="返回上一级"
           >
-            {'<'}
+            <span
+              className="canvas-context-menu-icon codicon codicon-chevron-left"
+              aria-hidden="true"
+            />
           </button>
         ) : null}
         <div className="canvas-context-menu-header-copy">
@@ -2013,7 +2016,10 @@ const CanvasContextMenu = React.forwardRef<
                     aria-label="选择 Agent 类型"
                     title="选择 Agent 类型"
                   >
-                    <span aria-hidden="true">{'>'}</span>
+                    <span
+                      className="canvas-context-menu-icon codicon codicon-chevron-right"
+                      aria-hidden="true"
+                    />
                   </button>
                 </div>
               ) : (

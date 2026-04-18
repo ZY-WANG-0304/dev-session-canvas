@@ -895,6 +895,11 @@ body {
   outline: none;
 }
 
+.canvas-context-menu-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .canvas-context-menu-items {
   display: grid;
   gap: 2px;
