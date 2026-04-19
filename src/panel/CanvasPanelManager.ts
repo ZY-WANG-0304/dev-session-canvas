@@ -1745,30 +1745,42 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const activeSurface = this.activeSurface;
     const uri = vscode.Uri.file(normalizedPath);
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(document, {
       preview: false,
-      preserveFocus: false
+      preserveFocus: true
     });
+    this.refocusInteractiveSurface(activeSurface);
+  }
+
+  private refocusInteractiveSurface(surface: CanvasSurfaceLocation | undefined): void {
+    if (surface === 'panel') {
+      this.panelView?.show(false);
+      return;
+    }
+
+    if (surface === 'editor') {
+      this.editorPanel?.reveal(vscode.ViewColumn.One, false);
+    }
   }
 
   private bindAgentFileActivitySession(nodeId: string, session: AgentFileActivitySession): void {
-    this.disposeAgentFileActivitySession(nodeId);
+    this.agentFileActivitySessions.set(nodeId, session);
     session.start((event) => {
       this.handleAgentFileActivityEvent(nodeId, event);
     });
-    this.agentFileActivitySessions.set(nodeId, session);
   }
 
-  private disposeAgentFileActivitySession(nodeId: string): void {
+  private async disposeAgentFileActivitySession(nodeId: string): Promise<void> {
     const existing = this.agentFileActivitySessions.get(nodeId);
     if (!existing) {
       return;
     }
 
-    existing.dispose();
     this.agentFileActivitySessions.delete(nodeId);
+    await existing.dispose();
   }
 
   private handleAgentFileActivityEvent(nodeId: string, event: AgentFileActivityEvent): void {
@@ -2898,6 +2910,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
       summary:
@@ -2959,6 +2974,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
 
     const lifecycle =
       snapshot?.lifecycle ??
@@ -3730,7 +3748,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'agent');
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getTerminalWorkingDirectory();
-    this.disposeAgentFileActivitySession(nodeId);
+    await this.disposeAgentFileActivitySession(nodeId);
     const fileActivitySession = createAgentFileActivitySession({
       provider,
       command: cliSpec.command,
@@ -3833,12 +3851,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         )
       });
     } catch (error) {
-      fileActivitySession.dispose();
+      await fileActivitySession.dispose();
       throw error;
     }
     if (!this.shouldApplyRuntimeCreateResult('agent', nodeId, operationToken, backend.kind)) {
       this.recordIgnoredExecutionSessionOperation('agent', nodeId, 'create', snapshot.sessionId);
-      fileActivitySession.dispose();
+      await fileActivitySession.dispose();
       await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
       return;
     }
@@ -4098,7 +4116,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
-    this.disposeAgentFileActivitySession(nodeId);
+    await this.disposeAgentFileActivitySession(nodeId);
 
     try {
       cliSpec = await this.resolveAgentCli(provider);
@@ -4235,12 +4253,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.queueExecutionOutput('agent', nodeId, text);
       };
 
-      const finalize = (
+      const finalize = async (
         status: 'stopped' | 'error' | 'resume-failed',
         message: string,
         exitCode?: number,
         signal?: string
-      ): void => {
+      ): Promise<void> => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
         if (!activeSession) {
@@ -4259,7 +4277,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
         this.flushExecutionOutputImmediately('agent', nodeId);
-        this.disposeAgentFileActivitySession(nodeId);
+        await this.disposeAgentFileActivitySession(nodeId);
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
@@ -4332,18 +4350,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleSessionChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
+          void finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
+          void finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
         if (session.resumePhaseActive) {
-          finalize(
+          void finalize(
             'resume-failed',
             describeAgentResumeFailure(cliSpec, exitCode, signal, cleanedOutput),
             exitCode,
@@ -4352,7 +4370,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
-        finalize(
+        void finalize(
           'error',
           describeAgentSessionExit(cliSpec, exitCode, signal, cleanedOutput),
           exitCode,
@@ -4360,7 +4378,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         );
       });
     } catch (error) {
-      this.disposeAgentFileActivitySession(nodeId);
+      await this.disposeAgentFileActivitySession(nodeId);
       const message =
         launchMode === 'resume'
           ? describeAgentResumeSpawnError(cliSpec, error)
@@ -5400,6 +5418,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
     this.disposeManagedExecutionSession(session);
 
     if (session.owner === 'supervisor') {
@@ -6699,8 +6720,8 @@ function createAutomaticFileEdge(params: {
       id: params.edgeId,
       sourceNodeId: params.referenceNodeId,
       targetNodeId: params.agentNodeId,
-      sourceAnchor: 'left',
-      targetAnchor: 'right',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
       arrowMode: 'forward',
       owner: 'file-activity'
     };

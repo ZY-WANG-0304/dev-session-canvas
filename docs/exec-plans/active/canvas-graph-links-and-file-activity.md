@@ -29,6 +29,7 @@
 - [x] (2026-04-19 19:22 +0800) 按 Obsidian 收口标签交互语义：明确“属性编辑走上浮工具条、标签平时贴线轻显示、编辑时在标签原位切输入态”，同步微调标签视觉并补一条位置关系回归断言。
 - [x] (2026-04-19 19:36 +0800) 根据手工验收反馈进一步收口为两套独立控件：工具条改成按路径上方区域独立定位，标签显示改为贴线纯文本，标签编辑改为独立轻输入框，并同步规格与设计文档。
 - [x] (2026-04-19 19:48 +0800) 继续收口标签观感：编辑态输入框宽度改成按当前文本内容自适应，显示态为文本下方加轻量遮罩，避免出现“线从字上穿过”的观感，并补充相应的 Playwright 断言。
+- [x] (2026-04-20 00:40 +0800) 修复文件活动退出竞态：把 agent 文件活动 watcher 的关闭语义从“立即停表并删临时目录”改成“先 drain/settle，再清理”，并补一条 fake provider `readexit` 回归，覆盖“读事件刚落盘就退出”的路径。
 
 ## 意外与发现
 
@@ -38,6 +39,8 @@
   证据：官方文档说明 hooks 可监听 `PreToolUse` / `PostToolUse`，CLI 同时支持 `--settings` 参数注入临时配置。
 - 观察：VSCode Webview 没有直接给任意 workspace 文件渲染当前 file icon theme 图标的单一 API。
   证据：当前仓库和公开 API 都只有 `TreeItem` / `ThemeIcon` 等宿主控件能力；Webview 侧仍需由宿主先把主题资源解析成可显示描述。
+- 观察：文件活动 watcher 原先在 agent 退出时会立刻停掉 `fs.watch` / polling 并删除 session 临时目录；若 `Read` 事件刚 append 到 NDJSON 而 host 还未来得及 flush，就会在关闭路径里被直接吃掉，因此表现成“读不稳定、写更稳定”。
+  证据：`src/panel/agentFileActivity.ts` 旧实现里 `dispose()` 先停 watcher 再删目录；`src/panel/CanvasPanelManager.ts` 旧实现里本地 agent `onExit` 进入 `finalize()` 后立即调用 `disposeAgentFileActivitySession(nodeId)`。
 
 ## 决策记录
 
@@ -72,6 +75,8 @@
 随着实现收口，正式设计文档也已按主题拆分为 `docs/design-docs/canvas-graph-links.md` 与 `docs/design-docs/canvas-file-activity-view.md`。这样可以把“手工/自动连线模型”和“provider 文件活动投影”分别维护，减少后续继续迭代时的文档耦合。
 
 验证上，Webview 现在有针对手工 edge、文件节点和文件列表节点的独立 Playwright 覆盖；宿主 smoke 覆盖了手工 edge 生命周期、fake provider 文件活动、展示模式切换、点击打开文件，以及删除 Agent 后的文件对象清理。过程中发现一条既有 smoke 断言把“可恢复”错误地绑定到了单一瞬时 status 文案；改成检查真正的不变量后，整条 trusted smoke 恢复通过。
+
+本轮补丁没有改变文件活动的权威模型，也没有引入新的 provider 能力；它只收紧了“事件已落盘但 host 尚未消费”这段退出窗口。当前实现会在关闭 session 时额外保留一个短暂 settle 窗口，持续 drain NDJSON，再删除临时目录；trusted smoke 现已覆盖 `readexit` 这种“读事件后立即退出”的主路径。
 
 ## 上下文与定向
 
@@ -148,6 +153,10 @@
 - `npm run typecheck`：通过。
 - `npm run test:webview`：59/59 通过；同步更新了 `canvas-shell-baseline-linux.png` 基线。
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：通过。
+- 2026-04-20 增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：失败；当前卡在文件节点点击打开文件后的 panel 焦点保持断言，失败点位于 `tests/vscode-smoke/extension-tests.cjs` 的 `verifyFileActivityViewsAndOpenFiles()`，与新增 `readexit` drain 路径本身无直接冲突。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。

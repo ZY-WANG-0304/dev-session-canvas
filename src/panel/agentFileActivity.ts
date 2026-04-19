@@ -6,6 +6,9 @@ import type { AgentProviderKind, CanvasFileActivityAccessMode } from '../common/
 
 const AGENT_FILE_EVENT_STREAM_ENV_KEY = 'DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH';
 const FAKE_AGENT_PROVIDER_FILE_EVENTS_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH';
+const FILE_ACTIVITY_DRAIN_MAX_WAIT_MS = 1000;
+const FILE_ACTIVITY_DRAIN_POLL_INTERVAL_MS = 50;
+const FILE_ACTIVITY_DRAIN_SETTLE_WINDOW_MS = 200;
 
 export interface AgentFileActivityEvent {
   path: string;
@@ -17,7 +20,7 @@ export interface AgentFileActivitySession {
   extraArgs: string[];
   extraEnv: NodeJS.ProcessEnv;
   start(onEvent: (event: AgentFileActivityEvent) => void): void;
-  dispose(): void;
+  dispose(): Promise<void>;
 }
 
 interface AgentFileActivitySessionParams {
@@ -55,7 +58,7 @@ export function createAgentFileActivitySession(
     extraArgs: [],
     extraEnv: {},
     start: () => {},
-    dispose: () => {}
+    dispose: async () => {}
   };
 }
 
@@ -118,8 +121,8 @@ function createNdjsonFileActivitySession(params: {
     start(onEvent) {
       disposer.start(onEvent);
     },
-    dispose() {
-      disposer.dispose();
+    async dispose() {
+      await disposer.dispose();
       try {
         fs.rmSync(sessionRootPath, { recursive: true, force: true });
       } catch {
@@ -134,38 +137,81 @@ class NdjsonFileActivityWatcher {
   private remainder = '';
   private watcher: fs.FSWatcher | undefined;
   private pollingTimer: NodeJS.Timeout | undefined;
-  private disposed = false;
+  private onEvent: ((event: AgentFileActivityEvent) => void) | undefined;
+  private disposePromise: Promise<void> | undefined;
+  private closed = false;
 
   public constructor(private readonly eventStreamPath: string) {}
 
   public start(onEvent: (event: AgentFileActivityEvent) => void): void {
-    this.flush(onEvent);
+    this.onEvent = onEvent;
+    this.flush();
 
     try {
       this.watcher = fs.watch(this.eventStreamPath, () => {
-        this.flush(onEvent);
+        this.flush();
       });
     } catch {
       // Fall back to polling below if native watch is unavailable.
     }
 
     this.pollingTimer = setInterval(() => {
-      this.flush(onEvent);
+      this.flush();
     }, 250);
   }
 
-  public dispose(): void {
-    this.disposed = true;
+  public dispose(): Promise<void> {
+    if (!this.disposePromise) {
+      this.disposePromise = this.disposeInternal();
+    }
+
+    return this.disposePromise;
+  }
+
+  private async disposeInternal(): Promise<void> {
     this.watcher?.close();
     this.watcher = undefined;
     if (this.pollingTimer) {
       clearInterval(this.pollingTimer);
       this.pollingTimer = undefined;
     }
+
+    await this.drainPendingEvents();
+    this.closed = true;
   }
 
-  private flush(onEvent: (event: AgentFileActivityEvent) => void): void {
-    if (this.disposed || !fs.existsSync(this.eventStreamPath)) {
+  private async drainPendingEvents(): Promise<void> {
+    let lastObservedSize = this.getEventStreamSize();
+    let stableSince = Date.now();
+    const deadline = Date.now() + FILE_ACTIVITY_DRAIN_MAX_WAIT_MS;
+
+    this.flush();
+
+    while (Date.now() < deadline) {
+      await delay(FILE_ACTIVITY_DRAIN_POLL_INTERVAL_MS);
+
+      const currentSize = this.getEventStreamSize();
+      if (currentSize === undefined) {
+        break;
+      }
+
+      if (currentSize !== lastObservedSize) {
+        lastObservedSize = currentSize;
+        stableSince = Date.now();
+      }
+
+      this.flush();
+
+      if (Date.now() - stableSince >= FILE_ACTIVITY_DRAIN_SETTLE_WINDOW_MS) {
+        break;
+      }
+    }
+
+    this.flush();
+  }
+
+  private flush(): void {
+    if (this.closed || !this.onEvent || !fs.existsSync(this.eventStreamPath)) {
       return;
     }
 
@@ -197,7 +243,15 @@ class NdjsonFileActivityWatcher {
         continue;
       }
 
-      onEvent(parsed);
+      this.onEvent(parsed);
+    }
+  }
+
+  private getEventStreamSize(): number | undefined {
+    try {
+      return fs.statSync(this.eventStreamPath).size;
+    } catch {
+      return undefined;
     }
   }
 }
@@ -240,4 +294,10 @@ function shellQuote(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

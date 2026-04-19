@@ -143,6 +143,12 @@ while IFS= read -r line; do
     continue
   fi
 
+  if [[ "$line" == readexit\ * ]]; then
+    file_path="${line#readexit }"
+    emit_file_event "read" "$file_path"
+    exit 0
+  fi
+
   if [[ "$line" == write\ * ]]; then
     file_path="${line#write }"
     emit_file_event "write" "$file_path"
