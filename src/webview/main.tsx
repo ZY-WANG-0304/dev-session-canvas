@@ -4782,6 +4782,7 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
 
   return {
     documentTitle: document.title,
+    hasDocumentFocus: document.hasFocus(),
     hasCanvasShell: Boolean(document.querySelector('.canvas-shell')),
     hasReactFlow: Boolean(document.querySelector('.react-flow')),
     toastMessage: readProbeText(document.querySelector('[data-toast-kind="error"]')),

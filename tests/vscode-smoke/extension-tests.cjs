@@ -346,6 +346,7 @@ async function runTrustedSmoke() {
 
   await verifyManualEdgeLifecycle(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyFileActivityViewsAndOpenFiles();
+  await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -864,6 +865,20 @@ async function verifyFileActivityViewsAndOpenFiles() {
       'Expected agent B write-only file nodes to auto-place at or below the owning agent anchor.'
     );
 
+    const readOnlyAutoEdge = snapshot.state.edges.find(
+      (edge) => edge.owner === 'file-activity' && edge.sourceNodeId === agentOnlyFileNode.id && edge.targetNodeId === agentAId
+    );
+    const writeOnlyAutoEdge = snapshot.state.edges.find(
+      (edge) =>
+        edge.owner === 'file-activity' && edge.sourceNodeId === agentAId && edge.targetNodeId === agentOnlySecondaryFileNode.id
+    );
+    assert.ok(readOnlyAutoEdge, 'Expected read-only automatic file-activity edge to exist.');
+    assert.strictEqual(readOnlyAutoEdge.sourceAnchor, 'right');
+    assert.strictEqual(readOnlyAutoEdge.targetAnchor, 'left');
+    assert.ok(writeOnlyAutoEdge, 'Expected write-only automatic file-activity edge to exist.');
+    assert.strictEqual(writeOnlyAutoEdge.sourceAnchor, 'right');
+    assert.strictEqual(writeOnlyAutoEdge.targetAnchor, 'left');
+
     await dispatchWebviewMessage(
       {
         type: 'webview/deleteNode',
@@ -944,6 +959,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(snapshot.state.edges.some((edge) => edge.id === sharedAutoEdge.id), false);
     assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
 
+    const sentinelEditor = await prepareBackgroundOpenFocusSentinel();
+    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
@@ -953,12 +970,22 @@ async function verifyFileActivityViewsAndOpenFiles() {
       'panel',
       10000
     );
-    let activeEditor = await waitForActiveEditor(
+    await waitForVisibleEditor(
       (editor) => editor.document.uri.fsPath === agentOnlySecondaryPath,
       10000
     );
-    assert.strictEqual(activeEditor.document.uri.fsPath, agentOnlySecondaryPath);
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
+    assert.strictEqual(vscode.window.activeTextEditor?.document.uri.fsPath, sentinelEditor.document.uri.fsPath);
+    await closeVisibleEditor(agentOnlySecondaryPath);
+
+    await vscode.window.showTextDocument(sentinelEditor.document, {
+      preview: false,
+      preserveFocus: false,
+      viewColumn: vscode.ViewColumn.One
+    });
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
 
     await setFilesPresentationMode('lists');
     await setFilesPathDisplayMode('relative-path');
@@ -988,6 +1015,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].filePath, sharedPath);
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].accessMode, 'read-write');
 
+    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
@@ -997,12 +1025,13 @@ async function verifyFileActivityViewsAndOpenFiles() {
       'panel',
       10000
     );
-    activeEditor = await waitForActiveEditor(
+    await waitForVisibleEditor(
       (editor) => editor.document.uri.fsPath === sharedPath,
       10000
     );
-    assert.strictEqual(activeEditor.document.uri.fsPath, sharedPath);
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
+    assert.strictEqual(vscode.window.activeTextEditor?.document.uri.fsPath, sentinelEditor.document.uri.fsPath);
+    await closeVisibleEditor(sharedPath);
 
     await performWebviewDomAction(
       {
@@ -1068,6 +1097,140 @@ async function verifyFileActivityViewsAndOpenFiles() {
         !currentSnapshot.state.nodes.some((node) => node.id === agentAId) &&
         currentSnapshot.state.fileReferences.length === 0 &&
         currentSnapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list')
+      );
+    }, 20000);
+
+    assert.deepStrictEqual(
+      snapshot.state.nodes.map((node) => node.id).sort(),
+      baselineNodeIds
+    );
+  } finally {
+    await setFilesPresentationMode(originalPresentationMode);
+    await setFilesPathDisplayMode(originalPathDisplayMode);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  }
+}
+
+async function verifyReadExitFileActivityDrain() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalPresentationMode =
+    configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+  const originalPathDisplayMode =
+    configuration.get('devSessionCanvas.files.pathDisplayMode', 'basename') === 'relative-path'
+      ? 'relative-path'
+      : 'basename';
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+
+  const scratchDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'file-activity-read-exit');
+  const readExitPath = path.join(scratchDir, 'read-then-exit.ts');
+
+  await fs.mkdir(scratchDir, { recursive: true });
+  await fs.writeFile(readExitPath, 'export const readThenExit = true;\n', 'utf8');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+
+  const baselineSnapshot = await getDebugSnapshot();
+  const baselineNodeIds = baselineSnapshot.state.nodes.map((node) => node.id).sort();
+  const baselineAgentIds = new Set(
+    baselineSnapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id)
+  );
+
+  await setFilesPresentationMode('nodes');
+  await setFilesPathDisplayMode('basename');
+
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgents = currentSnapshot.state.nodes.filter((node) => node.kind === 'agent');
+      return currentAgents.length === baselineAgentIds.size + 1;
+    }, 20000);
+
+    const [agentId] = snapshot.state.nodes
+      .filter((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id))
+      .map((node) => node.id);
+    assert.ok(agentId, 'Expected a dedicated read-exit file-activity agent.');
+
+    await waitForAgentLive(agentId);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: agentId,
+          kind: 'agent',
+          data: `readexit ${readExitPath}\r`
+        }
+      },
+      'panel'
+    );
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentId);
+      const fileReference = currentSnapshot.state.fileReferences.find(
+        (currentReference) => currentReference.filePath === readExitPath
+      );
+      const fileNode = currentSnapshot.state.nodes.find(
+        (node) => node.kind === 'file' && node.metadata?.file?.filePath === readExitPath
+      );
+      return Boolean(
+        currentAgent?.status === 'stopped' &&
+          !currentAgent.metadata?.agent?.liveSession &&
+          fileReference?.owners.some((owner) => owner.nodeId === agentId && owner.accessMode === 'read') &&
+          fileNode
+      );
+    }, 20000);
+
+    const readExitFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === readExitPath
+    );
+    assert.ok(readExitFileNode, 'Expected read-then-exit file node to persist after the agent stops.');
+    assert.ok(
+      snapshot.state.edges.some(
+        (edge) =>
+          edge.owner === 'file-activity' &&
+          edge.sourceNodeId === readExitFileNode.id &&
+          edge.targetNodeId === agentId
+      ),
+      'Expected read-only file activity edge to survive a rapid agent exit.'
+    );
+
+    snapshot = await reloadPersistedState();
+    assert.ok(
+      snapshot.state.fileReferences.some(
+        (reference) =>
+          reference.filePath === readExitPath &&
+          reference.owners.some((owner) => owner.nodeId === agentId && owner.accessMode === 'read')
+      ),
+      'Expected read-then-exit file reference to persist across reload.'
+    );
+    assert.ok(
+      snapshot.state.nodes.some(
+        (node) => node.kind === 'file' && node.metadata?.file?.filePath === readExitPath
+      ),
+      'Expected read-then-exit file node to persist across reload.'
+    );
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/deleteNode',
+        payload: {
+          nodeId: agentId
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        !currentSnapshot.state.nodes.some((node) => node.id === agentId) &&
+        !currentSnapshot.state.fileReferences.some((reference) => reference.filePath === readExitPath) &&
+        !currentSnapshot.state.nodes.some(
+          (node) => node.kind === 'file' && node.metadata?.file?.filePath === readExitPath
+        )
       );
     }, 20000);
 
@@ -5437,6 +5600,67 @@ async function waitForActiveEditor(predicate, timeoutMs = 8000) {
         : null
     )}`
   );
+}
+
+async function waitForVisibleEditor(predicate, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let editors = vscode.window.visibleTextEditors;
+
+  while (Date.now() < deadline) {
+    const matched = editors.find((editor) => predicate(editor));
+    if (matched) {
+      return matched;
+    }
+
+    await sleep(100);
+    editors = vscode.window.visibleTextEditors;
+  }
+
+  assert.fail(
+    `Timed out while waiting for visible editor. Last editors: ${JSON.stringify(
+      editors.map((editor) => ({
+        uri: editor.document.uri.toString(),
+        selection: {
+          line: editor.selection.active.line,
+          character: editor.selection.active.character
+        }
+      }))
+    )}`
+  );
+}
+
+async function prepareBackgroundOpenFocusSentinel() {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+  const sentinelUri = vscode.Uri.joinPath(
+    workspaceFolder.uri,
+    '.debug',
+    'vscode-smoke',
+    'file-open-focus-sentinel.txt'
+  );
+  await fs.mkdir(path.dirname(sentinelUri.fsPath), { recursive: true });
+  await fs.writeFile(sentinelUri.fsPath, 'focus sentinel\n', 'utf8');
+  const document = await vscode.workspace.openTextDocument(sentinelUri);
+  const editor = await vscode.window.showTextDocument(document, {
+    preview: false,
+    preserveFocus: false,
+    viewColumn: vscode.ViewColumn.One
+  });
+  return editor;
+}
+
+async function closeVisibleEditor(targetPath) {
+  const visibleEditor = vscode.window.visibleTextEditors.find((editor) => editor.document.uri.fsPath === targetPath);
+  if (!visibleEditor) {
+    return;
+  }
+
+  await vscode.window.showTextDocument(visibleEditor.document, {
+    preview: false,
+    preserveFocus: false,
+    viewColumn: visibleEditor.viewColumn
+  });
+  await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
 }
 
 function describeExpectedExecutionLinkModifier() {

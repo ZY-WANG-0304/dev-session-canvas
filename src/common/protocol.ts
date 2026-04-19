@@ -251,6 +251,7 @@ export interface WebviewProbeTerminalThemeSnapshot {
 
 export interface WebviewProbeSnapshot {
   documentTitle: string;
+  hasDocumentFocus: boolean;
   hasCanvasShell: boolean;
   hasReactFlow: boolean;
   toastMessage: string | null;
@@ -1294,6 +1295,7 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
   return (
     isRecord(value) &&
     typeof value.documentTitle === 'string' &&
+    typeof value.hasDocumentFocus === 'boolean' &&
     typeof value.hasCanvasShell === 'boolean' &&
     typeof value.hasReactFlow === 'boolean' &&
     isNullableString(value.toastMessage) &&
