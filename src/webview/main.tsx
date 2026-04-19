@@ -89,12 +89,9 @@ interface LocalUiState {
   viewport?: Viewport;
 }
 
-interface CanvasEdgeContextMenuState {
+interface EdgeLabelEditorState {
   edgeId: string;
-  screenX: number;
-  screenY: number;
-  arrowMode: CanvasEdgeArrowMode;
-  label?: string;
+  draft: string;
 }
 
 interface CanvasNodeData {
@@ -146,6 +143,16 @@ type CanvasFlowNode = Node<CanvasNodeData>;
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
+  isLabelEditing?: boolean;
+  labelDraft?: string;
+  isArrowMenuOpen?: boolean;
+  onStartLabelEdit?: () => void;
+  onChangeLabelDraft?: (value: string) => void;
+  onSubmitLabelEdit?: () => void;
+  onCancelLabelEdit?: () => void;
+  onToggleArrowMenu?: () => void;
+  onSetArrowMode?: (arrowMode: CanvasEdgeArrowMode) => void;
+  onDeleteEdge?: () => void;
 }
 
 type CanvasFlowEdge = Edge<CanvasEdgeData>;
@@ -482,13 +489,13 @@ function App(): JSX.Element {
     viewport: initialPersistedState.viewport
   }));
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
+  const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
+  const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
-  const [edgeContextMenu, setEdgeContextMenu] = useState<CanvasEdgeContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
-  const edgeContextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
 
   useEffect(() => {
@@ -617,7 +624,14 @@ function App(): JSX.Element {
         : current
     );
     setSelectedEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
+    setEdgeLabelEditor((current) => (current && !validEdgeIds.has(current.edgeId) ? null : current));
+    setEdgeArrowMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
   }, [hostState]);
+
+  useEffect(() => {
+    setEdgeLabelEditor((current) => (current && current.edgeId !== selectedEdgeId ? null : current));
+    setEdgeArrowMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
+  }, [selectedEdgeId]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
   const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
@@ -626,13 +640,13 @@ function App(): JSX.Element {
     setContextMenu(null);
   };
 
-  const closeEdgeContextMenu = (): void => {
-    setEdgeContextMenu(null);
+  const closeEdgeArrowMenu = (): void => {
+    setEdgeArrowMenuEdgeId(undefined);
   };
 
   const closeFloatingMenus = (): void => {
     closePaneContextMenu();
-    closeEdgeContextMenu();
+    closeEdgeArrowMenu();
   };
 
   const deleteNode = (nodeId: string): void => {
@@ -654,8 +668,9 @@ function App(): JSX.Element {
   };
 
   const deleteEdge = (edgeId: string): void => {
+    setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
+    setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
     setSelectedEdgeId((current) => (current === edgeId ? undefined : current));
-    closeEdgeContextMenu();
     postMessage({
       type: 'webview/deleteEdge',
       payload: {
@@ -664,11 +679,49 @@ function App(): JSX.Element {
     });
   };
 
-  const requestEdgeLabelEdit = (edgeId: string): void => {
+  const startEdgeLabelEdit = (edgeId: string): void => {
+    const edge = hostState?.edges.find((candidate) => candidate.id === edgeId && candidate.owner === 'user');
+    if (!edge) {
+      return;
+    }
+
+    closePaneContextMenu();
+    setSelectedEdgeId(edgeId);
+    setEdgeArrowMenuEdgeId(undefined);
+    setEdgeLabelEditor({
+      edgeId,
+      draft: edge.label ?? ''
+    });
+  };
+
+  const submitEdgeLabelEdit = (edgeId: string): void => {
+    setEdgeLabelEditor((current) => {
+      if (!current || current.edgeId !== edgeId) {
+        return current;
+      }
+
+      postMessage({
+        type: 'webview/updateEdge',
+        payload: {
+          edgeId,
+          label: current.draft
+        }
+      });
+      return null;
+    });
+  };
+
+  const cancelEdgeLabelEdit = (edgeId: string): void => {
+    setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
+  };
+
+  const setEdgeArrowMode = (edgeId: string, arrowMode: CanvasEdgeArrowMode): void => {
+    setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
     postMessage({
-      type: 'webview/requestEdgeLabelEdit',
+      type: 'webview/updateEdge',
       payload: {
-        edgeId
+        edgeId,
+        arrowMode
       }
     });
   };
@@ -711,7 +764,7 @@ function App(): JSX.Element {
         return;
       }
 
-      closeEdgeContextMenu();
+      closeEdgeArrowMenu();
       setSelectedEdgeId(undefined);
       setLocalUiState((current) => ({
         ...current,
@@ -802,7 +855,29 @@ function App(): JSX.Element {
     onDeleteNode: deleteNode
   });
   const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
-  const edges = toFlowEdges(hostState?.edges ?? [], selectedEdgeId);
+  const edges = toFlowEdges({
+    edges: hostState?.edges ?? [],
+    selectedEdgeId,
+    edgeLabelEditor,
+    edgeArrowMenuEdgeId,
+    onStartLabelEdit: startEdgeLabelEdit,
+    onChangeLabelDraft: (edgeId, value) =>
+      setEdgeLabelEditor((current) =>
+        current && current.edgeId === edgeId
+          ? {
+              ...current,
+              draft: value
+            }
+          : current
+      ),
+    onSubmitLabelEdit: submitEdgeLabelEdit,
+    onCancelLabelEdit: cancelEdgeLabelEdit,
+    onToggleArrowMenu: (edgeId) => {
+      setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : edgeId));
+    },
+    onSetArrowMode: setEdgeArrowMode,
+    onDeleteEdge: deleteEdge
+  });
 
   useEffect(() => {
     setNodeLayoutDrafts((current) => pruneCanvasNodeLayoutDrafts(baseNodes, current));
@@ -882,7 +957,7 @@ function App(): JSX.Element {
     });
 
     setSelectedEdgeId(undefined);
-    closeEdgeContextMenu();
+    closeEdgeArrowMenu();
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: undefined
@@ -928,15 +1003,12 @@ function App(): JSX.Element {
   }, [deleteEdge, localUiState.selectedNodeId, selectedEdgeId]);
 
   useEffect(() => {
-    if (!contextMenu && !edgeContextMenu) {
+    if (!contextMenu) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent): void => {
-      if (
-        event.target instanceof globalThis.Node &&
-        (contextMenuRef.current?.contains(event.target) || edgeContextMenuRef.current?.contains(event.target))
-      ) {
+      if (event.target instanceof globalThis.Node && contextMenuRef.current?.contains(event.target)) {
         return;
       }
 
@@ -958,7 +1030,32 @@ function App(): JSX.Element {
       window.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [contextMenu, edgeContextMenu]);
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!edgeArrowMenuEdgeId && !edgeLabelEditor) {
+      return;
+    }
+
+    const handleWindowKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      if (edgeLabelEditor) {
+        cancelEdgeLabelEdit(edgeLabelEditor.edgeId);
+        return;
+      }
+
+      closeEdgeArrowMenu();
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [cancelEdgeLabelEdit, closeEdgeArrowMenu, edgeArrowMenuEdgeId, edgeLabelEditor]);
 
   const handleConnect = (connection: Connection): void => {
     const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
@@ -987,7 +1084,7 @@ function App(): JSX.Element {
     }
 
     closePaneContextMenu();
-    closeEdgeContextMenu();
+    closeEdgeArrowMenu();
     setSelectedEdgeId(edge.id);
     setLocalUiState((current) => ({
       ...current,
@@ -1002,7 +1099,7 @@ function App(): JSX.Element {
     }
 
     setSelectedEdgeId(edge.id);
-    requestEdgeLabelEdit(edge.id);
+    startEdgeLabelEdit(edge.id);
   };
 
   const handleEdgeContextMenu: EdgeMouseHandler = (event, edge) => {
@@ -1013,18 +1110,12 @@ function App(): JSX.Element {
     }
 
     closePaneContextMenu();
+    closeEdgeArrowMenu();
     setSelectedEdgeId(edge.id);
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: undefined
     }));
-    setEdgeContextMenu({
-      edgeId: edge.id,
-      screenX: event.clientX,
-      screenY: event.clientY,
-      arrowMode: edge.data.arrowMode,
-      label: typeof edge.label === 'string' ? edge.label : undefined
-    });
   };
 
   return (
@@ -1102,34 +1193,6 @@ function App(): JSX.Element {
             setContextMenu((current) => (current ? { ...current, view: 'root' } : current))
           }
           onClose={closePaneContextMenu}
-        />
-      ) : null}
-
-      {edgeContextMenu ? (
-        <CanvasEdgeContextMenu
-          ref={edgeContextMenuRef}
-          screenX={edgeContextMenu.screenX}
-          screenY={edgeContextMenu.screenY}
-          arrowMode={edgeContextMenu.arrowMode}
-          label={edgeContextMenu.label}
-          onSetArrowMode={(arrowMode) => {
-            postMessage({
-              type: 'webview/updateEdge',
-              payload: {
-                edgeId: edgeContextMenu.edgeId,
-                arrowMode
-              }
-            });
-            closeEdgeContextMenu();
-          }}
-          onEditLabel={() => {
-            closeEdgeContextMenu();
-            requestEdgeLabelEdit(edgeContextMenu.edgeId);
-          }}
-          onDelete={() => {
-            deleteEdge(edgeContextMenu.edgeId);
-          }}
-          onClose={closeEdgeContextMenu}
         />
       ) : null}
 
@@ -2629,99 +2692,27 @@ const CanvasContextMenu = React.forwardRef<
   );
 });
 
-const CanvasEdgeContextMenu = React.forwardRef<
-  HTMLDivElement,
+const CANVAS_EDGE_ARROW_MENU_ITEMS: ReadonlyArray<{
+  arrowMode: CanvasEdgeArrowMode;
+  label: string;
+  icon: string;
+}> = [
   {
-    screenX: number;
-    screenY: number;
-    arrowMode: CanvasEdgeArrowMode;
-    label?: string;
-    onSetArrowMode: (arrowMode: CanvasEdgeArrowMode) => void;
-    onEditLabel: () => void;
-    onDelete: () => void;
-    onClose: () => void;
+    arrowMode: 'none',
+    label: '无箭头',
+    icon: 'remove'
+  },
+  {
+    arrowMode: 'forward',
+    label: '单向箭头',
+    icon: 'arrow-right'
+  },
+  {
+    arrowMode: 'both',
+    label: '双向箭头',
+    icon: 'arrow-both'
   }
->(function CanvasEdgeContextMenu(props, ref): JSX.Element {
-  const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
-
-  return (
-    <div
-      ref={ref}
-      className="canvas-context-menu edge-context-menu"
-      data-context-menu="edge"
-      style={{
-        left: position.x,
-        top: position.y
-      }}
-      onMouseDown={stopCanvasEvent}
-      onClick={stopCanvasEvent}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        stopCanvasEvent(event);
-      }}
-    >
-      <div className="canvas-context-menu-header">
-        <div className="canvas-context-menu-header-copy">
-          <strong>编辑连线</strong>
-          <span>{props.label ? `当前标签：${props.label}` : '当前连线还没有标签。'}</span>
-        </div>
-      </div>
-      <div className="canvas-context-menu-items">
-        {[
-          {
-            arrowMode: 'none' as const,
-            label: '无箭头',
-            description: '移除方向箭头'
-          },
-          {
-            arrowMode: 'forward' as const,
-            label: '单向箭头',
-            description: '保留起点到终点的单向关系'
-          },
-          {
-            arrowMode: 'both' as const,
-            label: '双向箭头',
-            description: '表达双向关联'
-          }
-        ].map((item) => (
-          <button
-            key={item.arrowMode}
-            type="button"
-            className="canvas-context-menu-item"
-            onClick={() => props.onSetArrowMode(item.arrowMode)}
-          >
-            <span
-              className="canvas-context-menu-swatch"
-              style={{ backgroundColor: item.arrowMode === props.arrowMode ? '#38bdf8' : '#64748b' }}
-              aria-hidden="true"
-            />
-            <span className="canvas-context-menu-copy">
-              <strong>{item.label}</strong>
-              <span>{item.description}</span>
-            </span>
-          </button>
-        ))}
-        <button type="button" className="canvas-context-menu-item" onClick={props.onEditLabel}>
-          <span className="canvas-context-menu-swatch" style={{ backgroundColor: '#a78bfa' }} aria-hidden="true" />
-          <span className="canvas-context-menu-copy">
-            <strong>编辑标签</strong>
-            <span>双击连线也可以直接编辑标签</span>
-          </span>
-        </button>
-        <button type="button" className="canvas-context-menu-item" onClick={props.onDelete}>
-          <span className="canvas-context-menu-swatch" style={{ backgroundColor: '#ef4444' }} aria-hidden="true" />
-          <span className="canvas-context-menu-copy">
-            <strong>删除连线</strong>
-            <span>也可以选中后按 Delete</span>
-          </span>
-        </button>
-      </div>
-      <button type="button" className="canvas-context-menu-dismiss" onClick={props.onClose}>
-        取消
-      </button>
-    </div>
-  );
-});
+];
 
 function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -2735,6 +2726,30 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   const owner = props.data?.owner ?? 'user';
   const arrowMode = props.data?.arrowMode ?? 'none';
   const labelText = typeof props.label === 'string' ? props.label : undefined;
+  const isEditable = owner === 'user';
+  const isLabelEditing = props.data?.isLabelEditing === true;
+  const labelDraft = props.data?.labelDraft ?? '';
+  const isArrowMenuOpen = props.data?.isArrowMenuOpen === true;
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const commitLabelOnBlurRef = useRef(true);
+
+  useLayoutEffect(() => {
+    if (!isLabelEditing || !inputRef.current) {
+      return;
+    }
+
+    commitLabelOnBlurRef.current = true;
+    inputRef.current.focus();
+    inputRef.current.select();
+  }, [isLabelEditing]);
+
+  const arrowIcon = resolveCanvasEdgeArrowIcon(arrowMode);
+  const labelTransform = {
+    transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`
+  };
+  const toolbarTransform = {
+    transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 12}px)`
+  };
 
   return (
     <>
@@ -2755,13 +2770,130 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
         data-edge-selected={props.selected ? 'true' : 'false'}
       />
       <path d={edgePath} fill="none" className="canvas-edge-hitbox" />
-      {labelText ? (
+      {props.selected && isEditable ? (
+        <EdgeLabelRenderer>
+          <div
+            className="canvas-edge-toolbar-anchor"
+            data-edge-toolbar-anchor="true"
+            style={toolbarTransform}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              stopCanvasEvent(event);
+            }}
+          >
+            {isArrowMenuOpen ? (
+              <div
+                className="canvas-edge-arrow-menu"
+                data-edge-arrow-menu="true"
+                data-edge-arrow-menu-edge-id={props.id}
+              >
+                {CANVAS_EDGE_ARROW_MENU_ITEMS.map((item) => (
+                  <button
+                    key={item.arrowMode}
+                    type="button"
+                    className={`canvas-edge-arrow-menu-item ${item.arrowMode === arrowMode ? 'is-active' : ''}`}
+                    data-edge-arrow-mode={item.arrowMode}
+                    onClick={() => props.data?.onSetArrowMode?.(item.arrowMode)}
+                  >
+                    <span className={`canvas-edge-toolbar-icon codicon codicon-${item.icon}`} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div
+              className="canvas-edge-toolbar"
+              data-edge-toolbar="true"
+              data-edge-toolbar-edge-id={props.id}
+            >
+              <button
+                type="button"
+                className={`canvas-edge-toolbar-button ${isArrowMenuOpen ? 'is-active' : ''}`}
+                title="切换箭头模式"
+                aria-label="切换箭头模式"
+                aria-haspopup="menu"
+                aria-expanded={isArrowMenuOpen}
+                onClick={() => props.data?.onToggleArrowMenu?.()}
+              >
+                <span className={`canvas-edge-toolbar-icon codicon codicon-${arrowIcon}`} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="canvas-edge-toolbar-button"
+                title="编辑标签"
+                aria-label="编辑标签"
+                onClick={() => props.data?.onStartLabelEdit?.()}
+              >
+                <span className="canvas-edge-toolbar-icon codicon codicon-edit" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="canvas-edge-toolbar-button danger"
+                title="删除连线"
+                aria-label="删除连线"
+                onClick={() => props.data?.onDeleteEdge?.()}
+              >
+                <span className="canvas-edge-toolbar-icon codicon codicon-trash" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+      {isLabelEditing ? (
+        <EdgeLabelRenderer>
+          <div
+            className="canvas-edge-label-editor-shell"
+            style={labelTransform}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              stopCanvasEvent(event);
+            }}
+          >
+            <input
+              ref={inputRef}
+              type="text"
+              className="canvas-edge-label-editor"
+              data-edge-label-editor="true"
+              data-edge-label-editor-edge-id={props.id}
+              value={labelDraft}
+              placeholder="添加关系标签"
+              maxLength={120}
+              onChange={(event) => props.data?.onChangeLabelDraft?.(event.target.value)}
+              onKeyDown={(event) => {
+                stopCanvasEvent(event);
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  props.data?.onSubmitLabelEdit?.();
+                  return;
+                }
+
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  commitLabelOnBlurRef.current = false;
+                  props.data?.onCancelLabelEdit?.();
+                }
+              }}
+              onBlur={() => {
+                if (!commitLabelOnBlurRef.current) {
+                  commitLabelOnBlurRef.current = true;
+                  return;
+                }
+
+                props.data?.onSubmitLabelEdit?.();
+              }}
+            />
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+      {labelText && !isLabelEditing ? (
         <EdgeLabelRenderer>
           <div
             className={`canvas-edge-label owner-${owner} ${props.selected ? 'is-selected' : ''}`}
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`
-            }}
+            style={labelTransform}
           >
             {labelText}
           </div>
@@ -2939,10 +3071,24 @@ function toFlowNodes(params: {
   });
 }
 
-function toFlowEdges(edges: CanvasEdgeSummary[], selectedEdgeId: string | undefined): CanvasFlowEdge[] {
-  return edges.map((edge) => {
-    const isSelected = edge.id === selectedEdgeId;
+function toFlowEdges(params: {
+  edges: CanvasEdgeSummary[];
+  selectedEdgeId: string | undefined;
+  edgeLabelEditor: EdgeLabelEditorState | null;
+  edgeArrowMenuEdgeId: string | undefined;
+  onStartLabelEdit: (edgeId: string) => void;
+  onChangeLabelDraft: (edgeId: string, value: string) => void;
+  onSubmitLabelEdit: (edgeId: string) => void;
+  onCancelLabelEdit: (edgeId: string) => void;
+  onToggleArrowMenu: (edgeId: string) => void;
+  onSetArrowMode: (edgeId: string, arrowMode: CanvasEdgeArrowMode) => void;
+  onDeleteEdge: (edgeId: string) => void;
+}): CanvasFlowEdge[] {
+  return params.edges.map((edge) => {
+    const isSelected = edge.id === params.selectedEdgeId;
     const strokeColor = isSelected ? 'var(--vscode-focusBorder)' : 'var(--vscode-descriptionForeground)';
+    const isLabelEditing = params.edgeLabelEditor?.edgeId === edge.id;
+    const isArrowMenuOpen = params.edgeArrowMenuEdgeId === edge.id;
 
     return {
       id: edge.id,
@@ -2958,7 +3104,17 @@ function toFlowEdges(edges: CanvasEdgeSummary[], selectedEdgeId: string | undefi
       zIndex: edge.owner === 'user' ? 6 : 2,
       data: {
         owner: edge.owner,
-        arrowMode: edge.arrowMode
+        arrowMode: edge.arrowMode,
+        isLabelEditing,
+        labelDraft: isLabelEditing ? params.edgeLabelEditor?.draft ?? '' : undefined,
+        isArrowMenuOpen,
+        onStartLabelEdit: () => params.onStartLabelEdit(edge.id),
+        onChangeLabelDraft: (value) => params.onChangeLabelDraft(edge.id, value),
+        onSubmitLabelEdit: () => params.onSubmitLabelEdit(edge.id),
+        onCancelLabelEdit: () => params.onCancelLabelEdit(edge.id),
+        onToggleArrowMenu: () => params.onToggleArrowMenu(edge.id),
+        onSetArrowMode: (arrowMode) => params.onSetArrowMode(edge.id, arrowMode),
+        onDeleteEdge: () => params.onDeleteEdge(edge.id)
       },
       style: {
         stroke: strokeColor,
@@ -3447,6 +3603,17 @@ function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x
 
 function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
+}
+
+function resolveCanvasEdgeArrowIcon(arrowMode: CanvasEdgeArrowMode): string {
+  switch (arrowMode) {
+    case 'both':
+      return 'arrow-both';
+    case 'forward':
+      return 'arrow-right';
+    default:
+      return 'remove';
+  }
 }
 
 function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void {
