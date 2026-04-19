@@ -960,6 +960,15 @@ body {
   min-width: 0;
 }
 
+.file-list-node {
+  overflow: hidden;
+}
+
+.file-list-node .window-chrome {
+  border-top-left-radius: calc(var(--canvas-node-radius) - 1px);
+  border-top-right-radius: calc(var(--canvas-node-radius) - 1px);
+}
+
 .file-list-title-text {
   min-width: 0;
   overflow: hidden;

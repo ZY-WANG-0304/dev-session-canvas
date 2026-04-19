@@ -467,6 +467,9 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
   const suppressedFileActivityEdgeIds = state && Array.isArray(state.suppressedFileActivityEdgeIds)
     ? state.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
     : [];
+  const suppressedAutomaticFileArtifactNodeIds = state && Array.isArray(state.suppressedAutomaticFileArtifactNodeIds)
+    ? state.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+    : [];
 
   return {
     version: 1,
@@ -474,7 +477,8 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
     nodes,
     edges,
     fileReferences,
-    suppressedFileActivityEdgeIds
+    suppressedFileActivityEdgeIds,
+    suppressedAutomaticFileArtifactNodeIds
   };
 }
 
@@ -2244,6 +2248,11 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const deleteFileList = (): void => {
+    data.onSelectNode?.(id);
+    data.onDeleteNode?.(id);
+  };
+
   return (
     <div
       className={`canvas-node file-list-node kind-file-list ${data.selected ? 'is-selected' : ''}`}
@@ -2260,7 +2269,17 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
             <span className="window-title-subtitle">{data.summary}</span>
           </div>
         </div>
-        <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+        <div className="window-chrome-actions">
+          <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+          <ActionButton
+            label="删除"
+            tone="danger"
+            onClick={deleteFileList}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+        </div>
       </div>
       <div className="file-list-body object-surface">
         {fileListMetadata.entries.length === 0 ? (
@@ -2881,6 +2900,7 @@ type CanvasEdgeGeometry = {
   labelY: number;
   toolbarX: number;
   toolbarY: number;
+  toolbarPlacement: 'above' | 'below';
 };
 type CanvasEdgeVisibleSegment = {
   key: string;
@@ -2889,6 +2909,20 @@ type CanvasEdgeVisibleSegment = {
   markerEnd?: string;
   isProbeSegment: boolean;
 };
+type CanvasRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+const CANVAS_EDGE_TOOLBAR_WIDTH = 106;
+const CANVAS_EDGE_TOOLBAR_HEIGHT = 28;
+const CANVAS_EDGE_TOOLBAR_GAP = 18;
+const CANVAS_EDGE_LABEL_CLEARANCE_X = 8;
+const CANVAS_EDGE_LABEL_CLEARANCE_Y = 6;
+const CANVAS_EDGE_ENDPOINT_CLEARANCE_RADIUS = 34;
+const CANVAS_EDGE_TOOLBAR_T_OFFSETS = [0, -0.14, 0.14, -0.28, 0.28, -0.4, 0.4] as const;
 
 function resolveCanvasPointForPosition(position: Position): CanvasPoint {
   switch (position) {
@@ -2942,6 +2976,60 @@ function interpolateCanvasPoint(start: CanvasPoint, end: CanvasPoint, t: number)
   return {
     x: start.x + (end.x - start.x) * t,
     y: start.y + (end.y - start.y) * t
+  };
+}
+
+function clampCanvasEdgeToolbarT(value: number): number {
+  return Math.max(0.08, Math.min(0.92, value));
+}
+
+function buildCanvasRectFromCenter(center: CanvasPoint, size: CanvasSize): CanvasRect {
+  return {
+    left: center.x - size.width / 2,
+    top: center.y - size.height / 2,
+    right: center.x + size.width / 2,
+    bottom: center.y + size.height / 2
+  };
+}
+
+function expandCanvasRect(rect: CanvasRect, paddingX: number, paddingY: number): CanvasRect {
+  return {
+    left: rect.left - paddingX,
+    top: rect.top - paddingY,
+    right: rect.right + paddingX,
+    bottom: rect.bottom + paddingY
+  };
+}
+
+function doCanvasRectsIntersect(left: CanvasRect, right: CanvasRect): boolean {
+  return !(
+    left.right <= right.left ||
+    left.left >= right.right ||
+    left.bottom <= right.top ||
+    left.top >= right.bottom
+  );
+}
+
+function distanceFromCanvasPointToRect(point: CanvasPoint, rect: CanvasRect): number {
+  const clampedX = Math.max(rect.left, Math.min(point.x, rect.right));
+  const clampedY = Math.max(rect.top, Math.min(point.y, rect.bottom));
+  return Math.hypot(point.x - clampedX, point.y - clampedY);
+}
+
+function buildCanvasEdgeToolbarRect(
+  anchor: CanvasPoint,
+  placement: 'above' | 'below'
+): CanvasRect {
+  const top =
+    placement === 'above'
+      ? anchor.y - CANVAS_EDGE_TOOLBAR_GAP - CANVAS_EDGE_TOOLBAR_HEIGHT
+      : anchor.y + CANVAS_EDGE_TOOLBAR_GAP;
+
+  return {
+    left: anchor.x - CANVAS_EDGE_TOOLBAR_WIDTH / 2,
+    top,
+    right: anchor.x + CANVAS_EDGE_TOOLBAR_WIDTH / 2,
+    bottom: top + CANVAS_EDGE_TOOLBAR_HEIGHT
   };
 }
 
@@ -3137,38 +3225,64 @@ function resolveCanvasBezierControlPoint(
   }
 }
 
-function resolveCanvasEdgeToolbarPoint(
-  start: CanvasPoint,
-  control1: CanvasPoint,
-  control2: CanvasPoint,
-  end: CanvasPoint,
-  fallbackPoint: CanvasPoint
-): CanvasPoint {
-  const samples: CanvasPoint[] = [];
-  for (let step = 3; step <= 17; step += 1) {
-    samples.push(sampleCanvasCubicPoint(start, control1, control2, end, step / 20));
+function resolveCanvasEdgeToolbarPlacement(params: {
+  curve: CanvasCubicCurve;
+  labelT: number;
+  labelPoint: CanvasPoint;
+  labelVisualSize: CanvasSize | null;
+}): { point: CanvasPoint; placement: 'above' | 'below' } {
+  const { curve, labelT, labelPoint, labelVisualSize } = params;
+  const candidateTs = [...new Set(CANVAS_EDGE_TOOLBAR_T_OFFSETS.map((offset) => clampCanvasEdgeToolbarT(labelT + offset)))];
+  const labelRect = labelVisualSize
+    ? expandCanvasRect(
+        buildCanvasRectFromCenter(
+          {
+            x: labelPoint.x,
+            y: labelPoint.y - 2
+          },
+          labelVisualSize
+        ),
+        CANVAS_EDGE_LABEL_CLEARANCE_X,
+        CANVAS_EDGE_LABEL_CLEARANCE_Y
+      )
+    : null;
+
+  let bestCandidate: { point: CanvasPoint; placement: 'above' | 'below'; score: number } | null = null;
+
+  for (const t of candidateTs) {
+    const point = sampleCanvasCubicPoint(curve.start, curve.control1, curve.control2, curve.end, t);
+    for (const placement of ['above', 'below'] as const) {
+      const toolbarRect = buildCanvasEdgeToolbarRect(point, placement);
+      const labelPenalty =
+        labelRect && doCanvasRectsIntersect(toolbarRect, labelRect)
+          ? 10_000
+          : 0;
+      const endpointPenalty =
+        Math.max(
+          0,
+          CANVAS_EDGE_ENDPOINT_CLEARANCE_RADIUS - distanceFromCanvasPointToRect(curve.start, toolbarRect)
+        ) +
+        Math.max(
+          0,
+          CANVAS_EDGE_ENDPOINT_CLEARANCE_RADIUS - distanceFromCanvasPointToRect(curve.end, toolbarRect)
+        );
+      const score =
+        labelPenalty +
+        endpointPenalty * 1_000 +
+        Math.abs(t - labelT) * 100 +
+        (placement === 'above' ? 0 : 12);
+
+      if (!bestCandidate || score < bestCandidate.score) {
+        bestCandidate = {
+          point,
+          placement,
+          score
+        };
+      }
+    }
   }
 
-  const minY = Math.min(...samples.map((point) => point.y));
-  const maxY = Math.max(...samples.map((point) => point.y));
-  if (maxY - minY < 12) {
-    return {
-      x: fallbackPoint.x,
-      y: fallbackPoint.y - 22
-    };
-  }
-
-  return samples.reduce((bestPoint, point) => {
-    if (point.y < bestPoint.y) {
-      return point;
-    }
-
-    if (Math.abs(point.y - bestPoint.y) < 2 && Math.abs(point.x - fallbackPoint.x) < Math.abs(bestPoint.x - fallbackPoint.x)) {
-      return point;
-    }
-
-    return bestPoint;
-  });
+  return bestCandidate ?? { point: labelPoint, placement: 'above' };
 }
 
 function createCanvasCubicEdgeGeometry(
@@ -3176,11 +3290,17 @@ function createCanvasCubicEdgeGeometry(
   control1: CanvasPoint,
   control2: CanvasPoint,
   end: CanvasPoint,
-  labelT = 0.5
+  labelT = 0.5,
+  labelVisualSize: CanvasSize | null = null
 ): CanvasEdgeGeometry {
   const curve = { start, control1, control2, end };
   const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, labelT);
-  const toolbarPoint = resolveCanvasEdgeToolbarPoint(start, control1, control2, end, labelPoint);
+  const toolbar = resolveCanvasEdgeToolbarPlacement({
+    curve,
+    labelT,
+    labelPoint,
+    labelVisualSize
+  });
 
   return {
     curve,
@@ -3188,8 +3308,9 @@ function createCanvasCubicEdgeGeometry(
     labelT,
     labelX: labelPoint.x,
     labelY: labelPoint.y,
-    toolbarX: toolbarPoint.x,
-    toolbarY: toolbarPoint.y
+    toolbarX: toolbar.point.x,
+    toolbarY: toolbar.point.y,
+    toolbarPlacement: toolbar.placement
   };
 }
 
@@ -3199,6 +3320,8 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): Can
   const sourceVector = resolveCanvasPointForPosition(props.sourcePosition);
   const targetVector = resolveCanvasPointForPosition(props.targetPosition);
   const sameAnchor = props.sourcePosition === props.targetPosition;
+  const labelText = typeof props.label === 'string' ? props.label : undefined;
+  const labelVisualSize = labelText ? estimateCanvasEdgeLabelVisualSize(labelText) : null;
 
   if (sameAnchor) {
     const outwardDistance = 68;
@@ -3206,7 +3329,7 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): Can
     const tangent = perpendicularCanvasPoint(sourceVector);
     const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), tangent, -spreadDistance);
     const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), tangent, spreadDistance);
-    return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.72);
+    return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.72, labelVisualSize);
   }
 
   const chordLength = Math.hypot(end.x - start.x, end.y - start.y);
@@ -3222,7 +3345,7 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): Can
   const bendDistance = Math.max(28, outwardDistance * 0.7);
   const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), bendDirection, bendDistance);
   const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), bendDirection, bendDistance);
-  return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.5);
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.5, labelVisualSize);
 }
 
 function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): CanvasEdgeGeometry {
@@ -3235,8 +3358,10 @@ function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): CanvasEdgeG
   const curvature = 0.25;
   const control1 = resolveCanvasBezierControlPoint(start, props.sourcePosition, end, curvature);
   const control2 = resolveCanvasBezierControlPoint(end, props.targetPosition, start, curvature);
+  const labelText = typeof props.label === 'string' ? props.label : undefined;
+  const labelVisualSize = labelText ? estimateCanvasEdgeLabelVisualSize(labelText) : null;
 
-  return createCanvasCubicEdgeGeometry(start, control1, control2, end);
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.5, labelVisualSize);
 }
 
 function estimateCanvasEdgeLabelVisualSize(label: string): CanvasSize {
@@ -3352,7 +3477,7 @@ function createCanvasEdgeVisibleSegments(params: {
 }
 
 function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
-  const { curve, edgePath, labelT, labelX, labelY, toolbarX, toolbarY } = createCanvasEdgeGeometry(props);
+  const { curve, edgePath, labelT, labelX, labelY, toolbarX, toolbarY, toolbarPlacement } = createCanvasEdgeGeometry(props);
   const owner = props.data?.owner ?? 'user';
   const arrowMode = props.data?.arrowMode ?? 'none';
   const labelText = typeof props.label === 'string' ? props.label : undefined;
@@ -3430,7 +3555,9 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
     strokeColor
   );
   const toolbarStyle = createCanvasEdgeOverlayStyle(
-    `translate(-50%, -100%) translate(${toolbarX}px, ${toolbarY - 12}px)`,
+    toolbarPlacement === 'above'
+      ? `translate(-50%, -100%) translate(${toolbarX}px, ${toolbarY - CANVAS_EDGE_TOOLBAR_GAP}px)`
+      : `translate(-50%, 0) translate(${toolbarX}px, ${toolbarY + CANVAS_EDGE_TOOLBAR_GAP}px)`,
     strokeColor
   );
   const visibleEdgeSegments = createCanvasEdgeVisibleSegments({
@@ -4358,6 +4485,14 @@ function shouldDeleteSelectedNodeFromKeyboard(event: KeyboardEvent): boolean {
 
 function isDeleteShortcutBlockedTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const selectedFileNodeAction = target.closest<HTMLElement>('.file-node-action');
+  if (
+    selectedFileNodeAction &&
+    selectedFileNodeAction.closest('[data-node-kind="file"][data-node-selected="true"]')
+  ) {
     return false;
   }
 

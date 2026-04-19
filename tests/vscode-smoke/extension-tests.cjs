@@ -800,20 +800,92 @@ async function verifyFileActivityViewsAndOpenFiles() {
     const agentOnlySecondaryFileNode = snapshot.state.nodes.find(
       (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
     );
+    const agentBOnlyFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentBOnlyPath
+    );
     const sharedFileNode = snapshot.state.nodes.find(
       (node) => node.kind === 'file' && node.metadata?.file?.filePath === sharedPath
     );
+    const agentANode = snapshot.state.nodes.find((node) => node.id === agentAId);
+    const agentBNode = snapshot.state.nodes.find((node) => node.id === agentBId);
     assert.ok(agentOnlyFileNode, 'Expected agent-only file node to exist.');
     assert.ok(agentOnlySecondaryFileNode, 'Expected second agent-only file node to exist.');
+    assert.ok(agentBOnlyFileNode, 'Expected agent B file node to exist.');
     assert.ok(sharedFileNode, 'Expected shared file node to exist.');
+    assert.ok(agentANode, 'Expected agent A node to exist.');
+    assert.ok(agentBNode, 'Expected agent B node to exist.');
     assert.deepStrictEqual(agentOnlyFileNode.metadata.file.ownerNodeIds, [agentAId]);
     assert.deepStrictEqual(agentOnlySecondaryFileNode.metadata.file.ownerNodeIds, [agentAId]);
+    assert.deepStrictEqual(agentBOnlyFileNode.metadata.file.ownerNodeIds, [agentBId]);
     assert.deepStrictEqual(sharedFileNode.metadata.file.ownerNodeIds.slice().sort(), [agentAId, agentBId].sort());
     assert.notDeepStrictEqual(
       agentOnlyFileNode.position,
       agentOnlySecondaryFileNode.position,
       'Expected same-agent single-file nodes to receive distinct automatic positions.'
     );
+    assert.ok(
+      !rectanglesOverlap(agentOnlyFileNode, agentOnlySecondaryFileNode),
+      'Expected same-agent single-file nodes to avoid overlapping when auto-placed.'
+    );
+
+    const agentACenterX = agentANode.position.x + agentANode.size.width / 2;
+    const agentBCenterX = agentBNode.position.x + agentBNode.size.width / 2;
+    const agentAAnchorY = agentANode.position.y + agentANode.size.height / 3;
+    const agentBAnchorY = agentBNode.position.y + agentBNode.size.height / 3;
+    const agentOnlyCenterX = agentOnlyFileNode.position.x + agentOnlyFileNode.size.width / 2;
+    const agentOnlyCenterY = agentOnlyFileNode.position.y + agentOnlyFileNode.size.height / 2;
+    const agentOnlySecondaryCenterX = agentOnlySecondaryFileNode.position.x + agentOnlySecondaryFileNode.size.width / 2;
+    const agentOnlySecondaryCenterY = agentOnlySecondaryFileNode.position.y + agentOnlySecondaryFileNode.size.height / 2;
+    const agentBOnlyCenterX = agentBOnlyFileNode.position.x + agentBOnlyFileNode.size.width / 2;
+    const agentBOnlyCenterY = agentBOnlyFileNode.position.y + agentBOnlyFileNode.size.height / 2;
+
+    assert.ok(
+      agentOnlyCenterX < agentACenterX,
+      'Expected read-only file nodes to auto-place to the left of the owning agent.'
+    );
+    assert.ok(
+      agentOnlyCenterY <= agentAAnchorY,
+      'Expected read-only file nodes to auto-place at or above the owning agent anchor.'
+    );
+    assert.ok(
+      agentOnlySecondaryCenterX > agentACenterX,
+      'Expected write-only file nodes to auto-place to the right of the owning agent.'
+    );
+    assert.ok(
+      agentOnlySecondaryCenterY >= agentAAnchorY,
+      'Expected write-only file nodes to auto-place at or below the owning agent anchor.'
+    );
+    assert.ok(
+      agentBOnlyCenterX > agentBCenterX,
+      'Expected agent B write-only file nodes to auto-place to the right of the owning agent.'
+    );
+    assert.ok(
+      agentBOnlyCenterY >= agentBAnchorY,
+      'Expected agent B write-only file nodes to auto-place at or below the owning agent anchor.'
+    );
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/deleteNode',
+        payload: {
+          nodeId: agentOnlyFileNode.id
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 3 &&
+        !currentSnapshot.state.nodes.some((node) => node.id === agentOnlyFileNode.id) &&
+        currentSnapshot.state.fileReferences.some((currentReference) => currentReference.filePath === agentOnlyPath)
+      );
+    }, 20000);
+    assert.strictEqual(
+      snapshot.state.nodes.some((node) => node.id === agentOnlyFileNode.id),
+      false,
+      'Expected manually deleted single-file nodes to stay hidden while file references remain.'
+    );
+
     assert.ok(
       snapshot.state.edges.some(
         (edge) => edge.owner === 'file-activity' && edge.targetNodeId === sharedFileNode.id && edge.sourceNodeId === agentAId
@@ -875,17 +947,17 @@ async function verifyFileActivityViewsAndOpenFiles() {
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
-        nodeId: agentOnlyFileNode.id,
-        filePath: agentOnlyPath
+        nodeId: agentOnlySecondaryFileNode.id,
+        filePath: agentOnlySecondaryPath
       },
       'panel',
       10000
     );
     let activeEditor = await waitForActiveEditor(
-      (editor) => editor.document.uri.fsPath === agentOnlyPath,
+      (editor) => editor.document.uri.fsPath === agentOnlySecondaryPath,
       10000
     );
-    assert.strictEqual(activeEditor.document.uri.fsPath, agentOnlyPath);
+    assert.strictEqual(activeEditor.document.uri.fsPath, agentOnlySecondaryPath);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
 
     await setFilesPresentationMode('lists');
@@ -931,6 +1003,28 @@ async function verifyFileActivityViewsAndOpenFiles() {
     );
     assert.strictEqual(activeEditor.document.uri.fsPath, sharedPath);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+
+    await performWebviewDomAction(
+      {
+        kind: 'clickNodeActionButton',
+        nodeId: sharedListNode.id,
+        label: '删除'
+      },
+      'panel',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file-list').length === 2 &&
+        !currentSnapshot.state.nodes.some((node) => node.id === sharedListNode.id) &&
+        currentSnapshot.state.fileReferences.some((currentReference) => currentReference.filePath === sharedPath)
+      );
+    }, 20000);
+    assert.strictEqual(
+      snapshot.state.nodes.some((node) => node.id === sharedListNode.id),
+      false,
+      'Expected manually deleted file-list nodes to stay hidden while file references remain.'
+    );
 
     await dispatchWebviewMessage(
       {
@@ -5671,6 +5765,15 @@ async function safeGet(loader) {
   } catch {
     return undefined;
   }
+}
+
+function rectanglesOverlap(left, right) {
+  return (
+    left.position.x < right.position.x + right.size.width &&
+    left.position.x + left.size.width > right.position.x &&
+    left.position.y < right.position.y + right.size.height &&
+    left.position.y + left.size.height > right.position.y
+  );
 }
 
 function formatError(error) {
