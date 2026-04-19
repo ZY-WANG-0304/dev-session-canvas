@@ -6,3 +6,6 @@ dist/
 .playwright-browsers/
 playwright-report/
 test-results/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json

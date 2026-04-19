@@ -141,6 +141,7 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
   items: ['拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径']
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
+const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
 let nextExecutionNodeHelpTooltipId = 0;
 type ExecutionHostEvent =
   | {
@@ -915,11 +916,16 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
+  const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
   const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
     cols: agentMetadata.lastCols ?? 96,
     rows: agentMetadata.lastRows ?? 28
+  });
+  const snapshotRestoreRef = useRef({
+    hasAppliedSnapshot: false,
+    suppressShrinkFitUntilMs: 0
   });
   const terminalFlagsRef = useRef({
     liveSession: agentMetadata.liveSession
@@ -949,9 +955,39 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       return;
     }
 
+    function cancelDeferredShrinkFit(): void {
+      if (deferredShrinkFitTimerRef.current !== undefined) {
+        window.clearTimeout(deferredShrinkFitTimerRef.current);
+        deferredShrinkFitTimerRef.current = undefined;
+      }
+    }
+
+    function scheduleDeferredShrinkFit(delayMs: number): void {
+      cancelDeferredShrinkFit();
+      deferredShrinkFitTimerRef.current = window.setTimeout(() => {
+        deferredShrinkFitTimerRef.current = undefined;
+        if (resizeFrameRef.current) {
+          window.cancelAnimationFrame(resizeFrameRef.current);
+        }
+        resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+      }, Math.max(0, delayMs));
+    }
+
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
-    const controller = createExecutionTerminalController(terminal);
+    const controller = createExecutionTerminalController(terminal, {
+      onSnapshotApplied: (detail) => {
+        snapshotRestoreRef.current.hasAppliedSnapshot = true;
+        snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
+          ? Date.now() + EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS
+          : 0;
+        if (detail.serializedTerminalState) {
+          scheduleDeferredShrinkFit(EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS);
+        } else {
+          cancelDeferredShrinkFit();
+        }
+      }
+    });
     const nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
       kind: 'agent',
@@ -1028,19 +1064,43 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     terminalElement?.addEventListener('contextmenu', handleContextMenu);
     terminalElement?.addEventListener('auxclick', handleAuxClick);
 
-    const fitTerminal = (): void => {
-      fitAddon.fit();
+    function fitTerminal(): void {
+      const proposedDimensions = fitAddon.proposeDimensions();
+      if (!proposedDimensions) {
+        return;
+      }
+
+      const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
+      const shouldDeferShrinkFit =
+        hasAppliedSnapshot &&
+        Date.now() < suppressShrinkFitUntilMs &&
+        (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
+      if (shouldDeferShrinkFit) {
+        scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
+      } else {
+        cancelDeferredShrinkFit();
+      }
+      if (
+        !shouldDeferShrinkFit &&
+        (terminal.cols !== proposedDimensions.cols || terminal.rows !== proposedDimensions.rows)
+      ) {
+        fitAddon.fit();
+      }
       terminalSizeRef.current = {
         cols: terminal.cols,
         rows: terminal.rows
       };
+
+      if (!snapshotRestoreRef.current.hasAppliedSnapshot) {
+        return;
+      }
 
       if (terminal.cols <= 0 || terminal.rows <= 0) {
         return;
       }
 
       data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
-    };
+    }
 
     window.requestAnimationFrame(fitTerminal);
 
@@ -1080,6 +1140,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       if (selectionService && originalGetMouseEventScrollAmount) {
         selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
       }
+      cancelDeferredShrinkFit();
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
@@ -1260,7 +1321,12 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     cols: terminalMetadata.lastCols ?? 96,
     rows: terminalMetadata.lastRows ?? 28
   });
+  const snapshotRestoreRef = useRef({
+    hasAppliedSnapshot: false,
+    suppressShrinkFitUntilMs: 0
+  });
   const resizeFrameRef = useRef<number | undefined>(undefined);
+  const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     terminalSizeRef.current = {
@@ -1280,9 +1346,39 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       return;
     }
 
+    function cancelDeferredShrinkFit(): void {
+      if (deferredShrinkFitTimerRef.current !== undefined) {
+        window.clearTimeout(deferredShrinkFitTimerRef.current);
+        deferredShrinkFitTimerRef.current = undefined;
+      }
+    }
+
+    function scheduleDeferredShrinkFit(delayMs: number): void {
+      cancelDeferredShrinkFit();
+      deferredShrinkFitTimerRef.current = window.setTimeout(() => {
+        deferredShrinkFitTimerRef.current = undefined;
+        if (resizeFrameRef.current) {
+          window.cancelAnimationFrame(resizeFrameRef.current);
+        }
+        resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+      }, Math.max(0, delayMs));
+    }
+
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
-    const controller = createExecutionTerminalController(terminal);
+    const controller = createExecutionTerminalController(terminal, {
+      onSnapshotApplied: (detail) => {
+        snapshotRestoreRef.current.hasAppliedSnapshot = true;
+        snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
+          ? Date.now() + EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS
+          : 0;
+        if (detail.serializedTerminalState) {
+          scheduleDeferredShrinkFit(EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS);
+        } else {
+          cancelDeferredShrinkFit();
+        }
+      }
+    });
     const nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
       kind: 'terminal',
@@ -1359,19 +1455,43 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     terminalElement?.addEventListener('contextmenu', handleContextMenu);
     terminalElement?.addEventListener('auxclick', handleAuxClick);
 
-    const fitTerminal = (): void => {
-      fitAddon.fit();
+    function fitTerminal(): void {
+      const proposedDimensions = fitAddon.proposeDimensions();
+      if (!proposedDimensions) {
+        return;
+      }
+
+      const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
+      const shouldDeferShrinkFit =
+        hasAppliedSnapshot &&
+        Date.now() < suppressShrinkFitUntilMs &&
+        (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
+      if (shouldDeferShrinkFit) {
+        scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
+      } else {
+        cancelDeferredShrinkFit();
+      }
+      if (
+        !shouldDeferShrinkFit &&
+        (terminal.cols !== proposedDimensions.cols || terminal.rows !== proposedDimensions.rows)
+      ) {
+        fitAddon.fit();
+      }
       terminalSizeRef.current = {
         cols: terminal.cols,
         rows: terminal.rows
       };
+
+      if (!snapshotRestoreRef.current.hasAppliedSnapshot) {
+        return;
+      }
 
       if (terminal.cols <= 0 || terminal.rows <= 0) {
         return;
       }
 
       data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
-    };
+    }
 
     window.requestAnimationFrame(fitTerminal);
 
@@ -1411,6 +1531,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       if (selectionService && originalGetMouseEventScrollAmount) {
         selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
       }
+      cancelDeferredShrinkFit();
       if (resizeFrameRef.current) {
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
@@ -2674,7 +2795,12 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
   });
 }
 
-function createExecutionTerminalController(terminal: Terminal): ExecutionTerminalController {
+function createExecutionTerminalController(
+  terminal: Terminal,
+  options?: {
+    onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+  }
+): ExecutionTerminalController {
   let pendingOutput = '';
   let disposed = false;
 
@@ -2686,6 +2812,7 @@ function createExecutionTerminalController(terminal: Terminal): ExecutionTermina
 
       pendingOutput = '';
       pendingExecutionTerminalDrains.delete(controller);
+      options?.onSnapshotApplied?.(detail);
       restoreExecutionTerminalSnapshot(terminal, detail);
     },
     enqueueOutput(chunk) {

@@ -1888,20 +1888,17 @@ for (const executionKind of ['agent', 'terminal']) {
       serializedTerminalState
     });
     await settleWebview(page, 4);
-
-    await dragTerminalSelection(page, {
+    const restoredVisibleProbe = await waitForProbeNodeMatch(
+      page,
       nodeId,
-      row: 1,
-      startCol: 1,
-      endCol: fixture.expectedSelection.length
-    });
-
-    await expect
-      .poll(async () => {
-        const probeNode = await readProbeNode(page, nodeId, 20);
-        return probeNode?.terminalSelectionText ?? null;
-      })
-      .toBe(fixture.expectedSelection);
+      (probeNode) =>
+        probeNode?.terminalViewportY === 0 &&
+        fixture.visibleLines
+          .slice(0, 3)
+          .every((line, index) => probeNode?.terminalVisibleLines?.[index] === line)
+    );
+    expect(restoredVisibleProbe.terminalViewportY).toBe(0);
+    expect(restoredVisibleProbe.terminalVisibleLines.slice(0, 3)).toEqual(fixture.visibleLines.slice(0, 3));
   });
 }
 
@@ -2019,6 +2016,64 @@ for (const executionKind of ['agent', 'terminal']) {
     );
 
     expect(restoredTopProbe.terminalVisibleLines.some((line) => line.includes('ROW-000'))).toBe(true);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} snapshot restore eventually refits to the current smaller container`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyProbe = await waitForExecutionTerminalReady(page, nodeId);
+    const restoreCols = readyProbe.terminalCols + 12;
+    const restoreRows = readyProbe.terminalRows + 6;
+    const fixture = createFullscreenSerializedFixture(restoreCols, restoreRows);
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      fixture.output,
+      restoreCols,
+      restoreRows
+    );
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: restoreCols,
+      rows: restoreRows,
+      liveSession: true,
+      serializedTerminalState
+    });
+
+    const oversizedProbe = await waitForProbeNodeMatch(
+      page,
+      nodeId,
+      (probeNode) => probeNode?.terminalCols === restoreCols && probeNode.terminalRows === restoreRows
+    );
+    expect(oversizedProbe.terminalCols).toBe(restoreCols);
+    expect(oversizedProbe.terminalRows).toBe(restoreRows);
+
+    await expect
+      .poll(
+        async () => {
+          const probeNode = await readProbeNode(page, nodeId, 20);
+          if (!probeNode) {
+            return null;
+          }
+
+          return JSON.stringify({
+            cols: probeNode.terminalCols,
+            rows: probeNode.terminalRows
+          });
+        },
+        { timeout: 4000 }
+      )
+      .toBe(
+        JSON.stringify({
+          cols: readyProbe.terminalCols,
+          rows: readyProbe.terminalRows
+        })
+      );
   });
 }
 
@@ -2654,7 +2709,7 @@ function createFullscreenSerializedFixture(cols = 96, rows = 28) {
     cols,
     rows,
     output: `\u001b[?1049h\u001b[2J\u001b[H${visibleLines.join('\r\n')}`,
-    expectedSelection: visibleLines[0]
+    visibleLines
   };
 }
 
