@@ -725,6 +725,128 @@ test('file nodes render file metadata and open the target file through the host 
   });
 });
 
+test('edge label text color follows the rendered edge color', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user',
+      color: '4',
+      label: '写入'
+    }
+  ];
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+
+  const edgeLabelText = page.locator(
+    '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+  );
+  await expect(edgeLabelText).toContainText('写入');
+
+  const coloredStyles = await page.evaluate(() => {
+    const edgeCandidates = document.querySelectorAll('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+    const edge = edgeCandidates.item(edgeCandidates.length - 1);
+    const label = document.querySelector(
+      '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+    );
+    if (!(edge instanceof SVGElement) || !(label instanceof HTMLElement)) {
+      return null;
+    }
+
+    return {
+      stroke: getComputedStyle(edge).stroke,
+      color: getComputedStyle(label).color
+    };
+  });
+  expect(coloredStyles).not.toBeNull();
+  expect(coloredStyles.color).toBe(coloredStyles.stroke);
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      color: undefined
+    }
+  ];
+  await updateHostState(page, state);
+
+  const coloredStylesSnapshot = JSON.stringify(coloredStyles);
+  await expect.poll(async () => {
+    return page.evaluate((previousSnapshot) => {
+      const edgeCandidates = document.querySelectorAll('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+      const edge = edgeCandidates.item(edgeCandidates.length - 1);
+      const label = document.querySelector(
+        '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+      );
+      if (!(edge instanceof SVGElement) || !(label instanceof HTMLElement)) {
+        return previousSnapshot;
+      }
+
+      const styles = {
+        stroke: getComputedStyle(edge).stroke,
+        color: getComputedStyle(label).color
+      };
+      return styles.stroke === styles.color ? JSON.stringify(styles) : previousSnapshot;
+    }, coloredStylesSnapshot);
+  }).not.toBe(coloredStylesSnapshot);
+
+  const defaultStyles = await page.evaluate(() => {
+    const edgeCandidates = document.querySelectorAll('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+    const edge = edgeCandidates.item(edgeCandidates.length - 1);
+    const label = document.querySelector(
+      '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+    );
+    if (!(edge instanceof SVGElement) || !(label instanceof HTMLElement)) {
+      return null;
+    }
+
+    return {
+      stroke: getComputedStyle(edge).stroke,
+      color: getComputedStyle(label).color
+    };
+  });
+  expect(defaultStyles).not.toBeNull();
+  expect(defaultStyles.color).toBe(defaultStyles.stroke);
+});
+
+test('file nodes can be dragged without triggering open file', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState());
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode).toBeVisible();
+  const fileNodeBox = await fileNode.boundingBox();
+  expect(fileNodeBox).not.toBeNull();
+
+  await clearPostedMessages(page);
+  await page.mouse.move(fileNodeBox.x + fileNodeBox.width / 2, fileNodeBox.y + fileNodeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(fileNodeBox.x + fileNodeBox.width / 2 + 120, fileNodeBox.y + fileNodeBox.height / 2 + 80, {
+    steps: 12
+  });
+  await page.mouse.up();
+  await settleWebview(page, 3);
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('file-src-main');
+  expect(moveMessage.payload.position.x).not.toBe(720);
+  expect(moveMessage.payload.position.y).not.toBe(200);
+
+  const openCount = await page.evaluate(() => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/openCanvasFile').length;
+  });
+  expect(openCount).toBe(0);
+});
+
 test('file list nodes render entries and open clicked file entries through the host message', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');

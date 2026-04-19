@@ -2131,6 +2131,17 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   if (!fileMetadata) {
     return <CanvasCardNode id={id} data={data} />;
   }
+  const fileActionPointerStateRef = useRef<{
+    pointerId: number | null;
+    originX: number;
+    originY: number;
+    dragged: boolean;
+  }>({
+    pointerId: null,
+    originX: 0,
+    originY: 0,
+    dragged: false
+  });
 
   const primaryLabel = displayFilePath(fileMetadata, data.filePathDisplayMode);
   const secondaryLabel =
@@ -2152,15 +2163,59 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
       <NodeHandles selected={data.selected} />
       <button
         type="button"
-        className="file-node-action nodrag nopan"
+        className="file-node-action nopan"
         data-node-interactive="true"
         data-file-entry-path={fileMetadata.filePath}
-        onMouseDown={stopCanvasEvent}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) {
+            return;
+          }
+
+          data.onSelectNode?.(id);
+          fileActionPointerStateRef.current = {
+            pointerId: event.pointerId,
+            originX: event.clientX,
+            originY: event.clientY,
+            dragged: false
+          };
+        }}
+        onPointerMove={(event) => {
+          const current = fileActionPointerStateRef.current;
+          if (current.pointerId !== event.pointerId || current.dragged) {
+            return;
+          }
+
+          if (Math.hypot(event.clientX - current.originX, event.clientY - current.originY) >= 4) {
+            current.dragged = true;
+          }
+        }}
+        onPointerUp={(event) => {
+          const current = fileActionPointerStateRef.current;
+          if (current.pointerId === event.pointerId) {
+            current.pointerId = null;
+          }
+        }}
+        onPointerCancel={(event) => {
+          const current = fileActionPointerStateRef.current;
+          if (current.pointerId === event.pointerId) {
+            current.pointerId = null;
+            current.dragged = false;
+          }
+        }}
         onClick={(event) => {
           stopCanvasEvent(event);
+          const current = fileActionPointerStateRef.current;
+          const shouldOpen = !current.dragged;
+          current.pointerId = null;
+          current.dragged = false;
+          if (!shouldOpen) {
+            return;
+          }
+
           data.onSelectNode?.(id);
           data.onOpenCanvasFile?.(id, fileMetadata.filePath);
         }}
+        onFocus={() => data.onSelectNode?.(id)}
       >
         {data.fileNodeDisplayMode !== 'path-only' ? (
           <span className="file-node-icon" aria-hidden="true">
@@ -3404,7 +3459,11 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
           d={segment.path}
           fill="none"
           className="canvas-edge-path"
-          style={props.style}
+          style={{
+            ...props.style,
+            stroke: strokeColor,
+            strokeWidth: props.style?.strokeWidth ?? 1.8
+          }}
           markerStart={segment.markerStart}
           markerEnd={segment.markerEnd}
           data-edge-visible-segment={segment.key}

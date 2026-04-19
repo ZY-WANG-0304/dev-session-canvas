@@ -661,11 +661,13 @@ async function verifyFileActivityViewsAndOpenFiles() {
 
   const scratchDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'file-activity');
   const agentOnlyPath = path.join(scratchDir, 'agent-a-only.md');
+  const agentOnlySecondaryPath = path.join(scratchDir, 'agent-a-second.txt');
   const sharedPath = path.join(scratchDir, 'shared.ts');
   const agentBOnlyPath = path.join(scratchDir, 'agent-b-only.json');
 
   await fs.mkdir(scratchDir, { recursive: true });
   await fs.writeFile(agentOnlyPath, '# agent a only\n', 'utf8');
+  await fs.writeFile(agentOnlySecondaryPath, 'agent a second\n', 'utf8');
   await fs.writeFile(sharedPath, 'export const shared = true;\n', 'utf8');
   await fs.writeFile(agentBOnlyPath, '{\"owner\":\"agent-b\"}\n', 'utf8');
 
@@ -722,6 +724,24 @@ async function verifyFileActivityViewsAndOpenFiles() {
         payload: {
           nodeId: agentAId,
           kind: 'agent',
+          data: `write ${agentOnlySecondaryPath}\r`
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const reference = currentSnapshot.state.fileReferences.find(
+        (currentReference) => currentReference.filePath === agentOnlySecondaryPath
+      );
+      return Boolean(reference && reference.owners.some((owner) => owner.nodeId === agentAId && owner.accessMode === 'write'));
+    }, 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: agentAId,
+          kind: 'agent',
           data: `readwrite ${sharedPath}\r`
         }
       },
@@ -770,20 +790,30 @@ async function verifyFileActivityViewsAndOpenFiles() {
       );
     }, 20000);
 
-    assert.strictEqual(snapshot.state.fileReferences.length, 3);
-    assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'file').length, 3);
+    assert.strictEqual(snapshot.state.fileReferences.length, 4);
+    assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'file').length, 4);
     assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'file-list').length, 0);
 
     const agentOnlyFileNode = snapshot.state.nodes.find(
       (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlyPath
     );
+    const agentOnlySecondaryFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+    );
     const sharedFileNode = snapshot.state.nodes.find(
       (node) => node.kind === 'file' && node.metadata?.file?.filePath === sharedPath
     );
     assert.ok(agentOnlyFileNode, 'Expected agent-only file node to exist.');
+    assert.ok(agentOnlySecondaryFileNode, 'Expected second agent-only file node to exist.');
     assert.ok(sharedFileNode, 'Expected shared file node to exist.');
     assert.deepStrictEqual(agentOnlyFileNode.metadata.file.ownerNodeIds, [agentAId]);
+    assert.deepStrictEqual(agentOnlySecondaryFileNode.metadata.file.ownerNodeIds, [agentAId]);
     assert.deepStrictEqual(sharedFileNode.metadata.file.ownerNodeIds.slice().sort(), [agentAId, agentBId].sort());
+    assert.notDeepStrictEqual(
+      agentOnlyFileNode.position,
+      agentOnlySecondaryFileNode.position,
+      'Expected same-agent single-file nodes to receive distinct automatic positions.'
+    );
     assert.ok(
       snapshot.state.edges.some(
         (edge) => edge.owner === 'file-activity' && edge.targetNodeId === sharedFileNode.id && edge.sourceNodeId === agentAId
@@ -880,7 +910,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.ok(agentAListNode, 'Expected agent A file list node to exist.');
     assert.ok(agentBListNode, 'Expected agent B file list node to exist.');
     assert.ok(sharedListNode, 'Expected shared file list node to exist.');
-    assert.strictEqual(agentAListNode.metadata.fileList.entries.length, 1);
+    assert.strictEqual(agentAListNode.metadata.fileList.entries.length, 2);
     assert.strictEqual(agentBListNode.metadata.fileList.entries.length, 1);
     assert.strictEqual(sharedListNode.metadata.fileList.entries.length, 1);
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].filePath, sharedPath);
@@ -927,7 +957,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.ok(survivingListNode, 'Expected agent A file list node to absorb the remaining files.');
     assert.deepStrictEqual(
       survivingListNode.metadata.fileList.entries.map((entry) => entry.filePath).sort(),
-      [agentOnlyPath, sharedPath].sort()
+      [agentOnlyPath, agentOnlySecondaryPath, sharedPath].sort()
     );
 
     await dispatchWebviewMessage(
