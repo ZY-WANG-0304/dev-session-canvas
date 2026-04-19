@@ -453,6 +453,15 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   expect(editorBox).not.toBeNull();
   expect(Math.abs(editorBox.x + editorBox.width / 2 - (labelBox.x + labelBox.width / 2))).toBeLessThanOrEqual(4);
   expect(Math.abs(editorBox.y + editorBox.height / 2 - (labelBox.y + labelBox.height / 2))).toBeLessThanOrEqual(4);
+  await edgeLabelEditor.fill('很长的关系标签');
+  await settleWebview(page, 1);
+  const longEditorBox = await edgeLabelEditor.boundingBox();
+  expect(longEditorBox).not.toBeNull();
+  await edgeLabelEditor.fill('短');
+  await settleWebview(page, 1);
+  const shortEditorBox = await edgeLabelEditor.boundingBox();
+  expect(shortEditorBox).not.toBeNull();
+  expect(shortEditorBox.width).toBeLessThan(longEditorBox.width - 20);
   await edgeLabelEditor.fill('协作关系');
   await edgeLabelEditor.press('Escape');
   await settleWebview(page, 2);

@@ -3061,7 +3061,9 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   const isArrowMenuOpen = props.data?.isArrowMenuOpen === true;
   const isColorMenuOpen = props.data?.isColorMenuOpen === true;
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const labelEditorMeasureRef = useRef<HTMLSpanElement | null>(null);
   const commitLabelOnBlurRef = useRef(true);
+  const [labelEditorWidth, setLabelEditorWidth] = useState<number | null>(null);
 
   useLayoutEffect(() => {
     if (!isLabelEditing || !inputRef.current) {
@@ -3072,6 +3074,15 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
     inputRef.current.focus();
     inputRef.current.select();
   }, [isLabelEditing]);
+
+  useLayoutEffect(() => {
+    if (!isLabelEditing || !labelEditorMeasureRef.current) {
+      return;
+    }
+
+    const measuredWidth = Math.ceil(labelEditorMeasureRef.current.getBoundingClientRect().width);
+    setLabelEditorWidth(Math.max(18, Math.min(220, measuredWidth + 2)));
+  }, [isLabelEditing, labelDraft]);
 
   const arrowIcon = resolveCanvasEdgeArrowIcon(arrowMode);
   const labelStyle = createCanvasEdgeOverlayStyle(
@@ -3230,6 +3241,9 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               stopCanvasEvent(event);
             }}
           >
+            <span ref={labelEditorMeasureRef} className="canvas-edge-label-editor-measure" aria-hidden="true">
+              {labelDraft || '添加关系标签'}
+            </span>
             <input
               ref={inputRef}
               type="text"
@@ -3239,6 +3253,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               value={labelDraft}
               placeholder="添加关系标签"
               maxLength={120}
+              style={labelEditorWidth ? { width: `${labelEditorWidth}px` } : undefined}
               onChange={(event) => props.data?.onChangeLabelDraft?.(event.target.value)}
               onKeyDown={(event) => {
                 stopCanvasEvent(event);
@@ -3283,7 +3298,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               props.data?.onStartLabelEdit?.();
             }}
           >
-            {labelText}
+            <span className="canvas-edge-label-text">{labelText}</span>
           </div>
         </EdgeLabelRenderer>
       ) : null}

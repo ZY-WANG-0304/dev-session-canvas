@@ -410,7 +410,7 @@ body {
 }
 
 .canvas-edge-label-editor {
-  width: clamp(56px, 10vw, 160px);
+  width: 18px;
   min-height: 18px;
   border: 0;
   background: transparent;
@@ -421,6 +421,16 @@ body {
   font-size: 11px;
   font-weight: 600;
   text-align: center;
+}
+
+.canvas-edge-label-editor-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .canvas-edge-label-editor::placeholder {
@@ -456,19 +466,32 @@ body {
 .canvas-edge-label {
   position: absolute;
   pointer-events: all;
-  display: inline-block;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 8px;
   border: 0;
   background: transparent;
+  cursor: pointer;
+}
+
+.canvas-edge-label::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+}
+
+.canvas-edge-label-text {
+  position: relative;
+  z-index: 1;
   color: var(--vscode-editor-foreground);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.1;
   white-space: nowrap;
-  cursor: pointer;
-  text-shadow:
-    0 1px 2px color-mix(in srgb, var(--vscode-editor-background) 86%, transparent),
-    0 0 1px color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
+  text-shadow: 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 80%, transparent);
 }
 
 .compact-node {
