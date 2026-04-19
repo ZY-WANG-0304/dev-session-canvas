@@ -201,6 +201,7 @@ export interface CanvasPrototypeState {
   edges: CanvasEdgeSummary[];
   fileReferences: CanvasFileReferenceSummary[];
   suppressedFileActivityEdgeIds: string[];
+  suppressedAutomaticFileArtifactNodeIds: string[];
 }
 
 export interface CanvasRuntimeContext {

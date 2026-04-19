@@ -725,6 +725,24 @@ test('file nodes render file metadata and open the target file through the host 
   });
 });
 
+test('selected file nodes can be deleted with the Delete key', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState());
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await fileNode.locator('.file-node-action').click();
+  await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+
+  await clearPostedMessages(page);
+  await page.keyboard.press('Delete');
+
+  const message = await waitForPostedMessageByType(page, 'webview/deleteNode');
+  expect(message.payload).toEqual({
+    nodeId: 'file-src-main'
+  });
+});
+
 test('edge label text color follows the rendered edge color', async ({ page }) => {
   const state = createCanvasScreenshotState();
   state.edges = [
@@ -815,6 +833,102 @@ test('edge label text color follows the rendered edge color', async ({ page }) =
   expect(defaultStyles.color).toBe(defaultStyles.stroke);
 });
 
+test('edge toolbar keeps top endpoints and labels unobstructed', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.nodes = state.nodes.map((node) => {
+    if (node.id === 'note-1') {
+      return {
+        ...node,
+        position: { x: 430, y: 20 }
+      };
+    }
+
+    if (node.id === 'agent-1') {
+      return {
+        ...node,
+        position: { x: 430, y: 360 }
+      };
+    }
+
+    if (node.id === 'terminal-1') {
+      return {
+        ...node,
+        position: { x: 760, y: 220 }
+      };
+    }
+
+    return node;
+  });
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'note-1',
+      sourceAnchor: 'top',
+      targetAnchor: 'bottom',
+      arrowMode: 'forward',
+      owner: 'user',
+      label: '你好'
+    }
+  ];
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+
+  const edgeToolbar = page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]');
+  await expect(edgeToolbar).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]');
+    const label = document.querySelector('[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"]');
+    const sourceHandle = document.querySelector('[data-node-id="agent-1"] .canvas-node-handle.anchor-top');
+    const targetHandle = document.querySelector('[data-node-id="note-1"] .canvas-node-handle.anchor-bottom');
+    if (!(toolbar instanceof HTMLElement) || !(label instanceof HTMLElement) || !(sourceHandle instanceof HTMLElement) || !(targetHandle instanceof HTMLElement)) {
+      return null;
+    }
+
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom
+      };
+    };
+    const intersects = (left, right) => {
+      return !(
+        left.right <= right.left ||
+        left.left >= right.right ||
+        left.bottom <= right.top ||
+        left.top >= right.bottom
+      );
+    };
+
+    const toolbarRect = toRect(toolbar);
+    const labelRect = toRect(label);
+    const sourceHandleRect = toRect(sourceHandle);
+    const targetHandleRect = toRect(targetHandle);
+
+    return {
+      toolbarOverlapsLabel: intersects(toolbarRect, labelRect),
+      toolbarOverlapsSourceHandle: intersects(toolbarRect, sourceHandleRect),
+      toolbarOverlapsTargetHandle: intersects(toolbarRect, targetHandleRect)
+    };
+  });
+
+  expect(layout).not.toBeNull();
+  expect(layout.toolbarOverlapsLabel).toBe(false);
+  expect(layout.toolbarOverlapsSourceHandle).toBe(false);
+  expect(layout.toolbarOverlapsTargetHandle).toBe(false);
+});
+
 test('file nodes can be dragged without triggering open file', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -867,6 +981,24 @@ test('file list nodes render entries and open clicked file entries through the h
   expect(message.payload).toEqual({
     nodeId: 'file-list-shared',
     filePath: '/workspace/src/shared.ts'
+  });
+});
+
+test('file list nodes expose a delete button that posts deleteNode', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'file-list-shared',
+    label: '删除'
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/deleteNode');
+  expect(message.payload).toEqual({
+    nodeId: 'file-list-shared'
   });
 });
 

@@ -232,6 +232,7 @@ interface CanvasTestDiagnosticEvent {
 
 export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
+type NodePlacementPreference = 'left-up' | 'right-down';
 
 export interface CanvasSidebarState {
   canvasSurface: 'closed' | 'hidden' | 'visible';
@@ -5328,16 +5329,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (node.kind === 'file' || node.kind === 'file-list') {
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: '文件节点和文件列表节点由系统自动维护，请通过删除引用它们的 Agent 或调整文件过滤配置来清理。'
-        }
-      });
-      return;
-    }
-
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
       try {
@@ -5356,6 +5347,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const nextState =
       node.kind === 'agent'
         ? removeAgentFileReferences(deleteCanvasNode(this.state, nodeId), nodeId)
+        : node.kind === 'file' || node.kind === 'file-list'
+          ? {
+              ...deleteCanvasNode(this.state, nodeId),
+              suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
+                this.state.suppressedAutomaticFileArtifactNodeIds,
+                nodeId
+              )
+            }
         : deleteCanvasNode(this.state, nodeId);
     this.state = this.reconcileCanvasFileArtifacts(nextState);
     this.persistState();
@@ -5830,7 +5829,8 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     nodes: [],
     edges: [],
     fileReferences: [],
-    suppressedFileActivityEdgeIds: []
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
   };
 }
 
@@ -5987,20 +5987,24 @@ function createNodePosition(sequence: number): CanvasNodePosition {
 function resolveNewNodePosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
-  anchor: CanvasNodePosition
+  anchor: CanvasNodePosition,
+  preference: NodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const normalizedAnchor = snapCanvasPosition(anchor);
 
-  for (const candidate of buildPlacementCandidates(normalizedAnchor)) {
+  for (const candidate of buildPlacementCandidates(normalizedAnchor, preference)) {
     if (!doesPlacementCollide(existingNodes, kind, candidate)) {
       return candidate;
     }
   }
 
-  return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor);
+  return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor, preference);
 }
 
-function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePosition[] {
+function buildPlacementCandidates(
+  anchor: CanvasNodePosition,
+  preference: NodePlacementPreference
+): CanvasNodePosition[] {
   const offsets: Array<{ dx: number; dy: number; distance: number; backwardBias: number }> = [];
 
   for (let dx = -NODE_PLACEMENT_SEARCH_RADIUS; dx <= NODE_PLACEMENT_SEARCH_RADIUS; dx += 1) {
@@ -6015,12 +6019,39 @@ function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePositio
   }
 
   offsets.sort((left, right) => {
+    const leftHorizontalRank = resolvePlacementAxisRank(left.dx, preference === 'left-up' ? 'negative' : 'positive');
+    const rightHorizontalRank = resolvePlacementAxisRank(right.dx, preference === 'left-up' ? 'negative' : 'positive');
+    const leftVerticalRank = resolvePlacementAxisRank(left.dy, preference === 'left-up' ? 'negative' : 'positive');
+    const rightVerticalRank = resolvePlacementAxisRank(right.dy, preference === 'left-up' ? 'negative' : 'positive');
+    const leftPreferenceRank = leftHorizontalRank + leftVerticalRank;
+    const rightPreferenceRank = rightHorizontalRank + rightVerticalRank;
+
+    if (leftPreferenceRank !== rightPreferenceRank) {
+      return leftPreferenceRank - rightPreferenceRank;
+    }
+
+    if (leftHorizontalRank !== rightHorizontalRank) {
+      return leftHorizontalRank - rightHorizontalRank;
+    }
+
+    if (leftVerticalRank !== rightVerticalRank) {
+      return leftVerticalRank - rightVerticalRank;
+    }
+
     if (left.distance !== right.distance) {
       return left.distance - right.distance;
     }
 
     if (left.backwardBias !== right.backwardBias) {
       return left.backwardBias - right.backwardBias;
+    }
+
+    if (Math.abs(left.dy) !== Math.abs(right.dy)) {
+      return Math.abs(left.dy) - Math.abs(right.dy);
+    }
+
+    if (Math.abs(left.dx) !== Math.abs(right.dx)) {
+      return Math.abs(left.dx) - Math.abs(right.dx);
     }
 
     if (left.dy !== right.dy) {
@@ -6038,6 +6069,15 @@ function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePositio
   );
 }
 
+function resolvePlacementAxisRank(value: number, preferredSign: 'negative' | 'positive'): number {
+  if (value === 0) {
+    return 1;
+  }
+
+  const matchesPreferred = preferredSign === 'negative' ? value < 0 : value > 0;
+  return matchesPreferred ? 0 : 2;
+}
+
 function doesPlacementCollide(
   existingNodes: CanvasNodeSummary[],
   nextKind: CanvasNodeKind,
@@ -6053,7 +6093,8 @@ function doesPlacementCollide(
 function fallbackPlacementPosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
-  normalizedAnchor: CanvasNodePosition
+  normalizedAnchor: CanvasNodePosition,
+  preference: NodePlacementPreference
 ): CanvasNodePosition {
   if (existingNodes.length === 0) {
     return normalizedAnchor;
@@ -6064,19 +6105,33 @@ function fallbackPlacementPosition(
       const rect = createPlacementRect(node.position, node.size);
       return {
         maxRight: Math.max(current.maxRight, rect.right),
-        minTop: Math.min(current.minTop, rect.top)
+        minLeft: Math.min(current.minLeft, rect.left),
+        minTop: Math.min(current.minTop, rect.top),
+        maxBottom: Math.max(current.maxBottom, rect.bottom)
       };
     },
     {
       maxRight: Number.NEGATIVE_INFINITY,
-      minTop: Number.POSITIVE_INFINITY
+      minLeft: Number.POSITIVE_INFINITY,
+      minTop: Number.POSITIVE_INFINITY,
+      maxBottom: Number.NEGATIVE_INFINITY
     }
   );
   const nextFootprint = estimatedCanvasNodeFootprint(kind);
 
+  if (preference === 'left-up') {
+    return snapCanvasPosition({
+      x: bounds.minLeft - nextFootprint.width - NODE_PLACEMENT_PADDING,
+      y: Math.min(
+        bounds.minTop - nextFootprint.height - NODE_PLACEMENT_PADDING,
+        normalizedAnchor.y - Math.round(nextFootprint.height / 3)
+      )
+    });
+  }
+
   return snapCanvasPosition({
     x: bounds.maxRight + NODE_PLACEMENT_PADDING,
-    y: Math.max(bounds.minTop, normalizedAnchor.y - Math.round(nextFootprint.height / 3))
+    y: Math.max(bounds.maxBottom - Math.round(nextFootprint.height / 2), normalizedAnchor.y)
   });
 }
 
@@ -6221,6 +6276,7 @@ function rebuildCanvasFileArtifacts(
         reference.owners.length > 0 &&
         shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
     );
+  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(fileReferences);
   const automaticArtifacts =
     options.view.presentationMode === 'lists'
       ? buildAutomaticFileListArtifacts(fileReferences, manualNodes, agentNodesById, existingAutoNodes)
@@ -6231,7 +6287,11 @@ function rebuildCanvasFileArtifacts(
           existingAutoNodes,
           options.view.pathDisplayMode
         );
-  const projectedNodes = [...manualNodes, ...automaticArtifacts.nodes];
+  const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
+  const projectedNodes = [
+    ...manualNodes,
+    ...automaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
+  ];
   const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
   const automaticEdgeIds = new Set(automaticArtifacts.edges.map((edge) => edge.id));
   const suppressedFileActivityEdgeIds = new Set(state.suppressedFileActivityEdgeIds);
@@ -6255,6 +6315,9 @@ function rebuildCanvasFileArtifacts(
     fileReferences,
     suppressedFileActivityEdgeIds: Array.from(suppressedFileActivityEdgeIds).filter(
       (edgeId) => automaticEdgeIds.has(edgeId) || userEdges.some((edge) => edge.id === edgeId)
+    ),
+    suppressedAutomaticFileArtifactNodeIds: Array.from(suppressedAutomaticFileArtifactNodeIds).filter(
+      (nodeId) => automaticArtifactNodeIds.has(nodeId)
     )
   };
 }
@@ -6273,9 +6336,21 @@ function buildAutomaticFileNodeArtifacts(
   for (const reference of sortFileReferences(fileReferences)) {
     const nodeId = buildFileNodeId(reference.id);
     const existingNode = existingAutoNodes.get(nodeId);
-    const anchor = resolveFileReferencePlacementAnchor(reference, agentNodesById, singleOwnerFileCounts);
+    const placementPreference = resolveFileReferencePlacementPreference(reference);
+    const anchor = resolveFileReferencePlacementAnchor(
+      reference,
+      agentNodesById,
+      singleOwnerFileCounts,
+      placementPreference
+    );
     const occupiedNodes = [...manualNodes, ...nodes];
-    const position = resolveAutomaticArtifactPosition(occupiedNodes, 'file', anchor, existingNode);
+    const position = resolveAutomaticArtifactPosition(
+      occupiedNodes,
+      'file',
+      anchor,
+      existingNode,
+      placementPreference
+    );
     const title = buildFileDisplayLabel(reference, pathDisplayMode);
     nodes.push({
       id: nodeId,
@@ -6454,47 +6529,86 @@ function buildAgentFileListNodeId(agentNodeId: string): string {
   return `file-list-agent-${agentNodeId}`;
 }
 
+function collectAutomaticFileArtifactNodeIds(
+  fileReferences: CanvasFileReferenceSummary[]
+): Set<string> {
+  const nodeIds = new Set<string>();
+  const uniqueAgentFileListOwnerIds = new Set<string>();
+  let hasSharedFileList = false;
+
+  for (const reference of fileReferences) {
+    nodeIds.add(buildFileNodeId(reference.id));
+    if (reference.owners.length > 1) {
+      hasSharedFileList = true;
+      continue;
+    }
+
+    const [owner] = reference.owners;
+    if (owner) {
+      uniqueAgentFileListOwnerIds.add(owner.nodeId);
+    }
+  }
+
+  for (const ownerNodeId of uniqueAgentFileListOwnerIds) {
+    nodeIds.add(buildAgentFileListNodeId(ownerNodeId));
+  }
+
+  if (hasSharedFileList) {
+    nodeIds.add('file-list-shared');
+  }
+
+  return nodeIds;
+}
+
 function resolveAutomaticArtifactPosition(
   occupiedNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
   anchor: CanvasNodePosition,
-  existingNode?: CanvasNodeSummary
+  existingNode?: CanvasNodeSummary,
+  preference: NodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const existingPosition = existingNode?.position;
-  if (existingPosition && !doesPlacementCollide(occupiedNodes, kind, existingPosition)) {
+  if (
+    existingPosition &&
+    !doesPlacementCollide(occupiedNodes, kind, existingPosition) &&
+    doesPlacementRespectPreference(existingPosition, kind, anchor, preference)
+  ) {
     return existingPosition;
   }
 
-  return resolveNewNodePosition(occupiedNodes, kind, anchor);
+  return resolveNewNodePosition(occupiedNodes, kind, anchor, preference);
 }
 
 function resolveFileReferencePlacementAnchor(
   reference: CanvasFileReferenceSummary,
   agentNodesById: Map<string, CanvasNodeSummary>,
-  singleOwnerFileCounts: Map<string, number>
+  singleOwnerFileCounts: Map<string, number>,
+  preference: NodePlacementPreference
 ): CanvasNodePosition {
-  const baseAnchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file');
+  const baseAnchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file', preference);
   if (reference.owners.length !== 1) {
     return baseAnchor;
   }
 
   const [owner] = reference.owners;
-  const offsetIndex = singleOwnerFileCounts.get(owner.nodeId) ?? 0;
-  singleOwnerFileCounts.set(owner.nodeId, offsetIndex + 1);
+  const countKey = `${owner.nodeId}:${preference}`;
+  const offsetIndex = singleOwnerFileCounts.get(countKey) ?? 0;
+  singleOwnerFileCounts.set(countKey, offsetIndex + 1);
   if (offsetIndex === 0) {
     return baseAnchor;
   }
 
   return snapCanvasPosition({
     x: baseAnchor.x,
-    y: baseAnchor.y + offsetIndex * NODE_PLACEMENT_STEP_Y
+    y: baseAnchor.y + (preference === 'left-up' ? -1 : 1) * offsetIndex * NODE_PLACEMENT_STEP_Y
   });
 }
 
 function resolveFileReferenceAnchor(
   reference: CanvasFileReferenceSummary,
   agentNodesById: Map<string, CanvasNodeSummary>,
-  kind: 'file' | 'file-list'
+  kind: 'file' | 'file-list',
+  preference: NodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const ownerNodes = reference.owners
     .map((owner) => agentNodesById.get(owner.nodeId))
@@ -6503,15 +6617,42 @@ function resolveFileReferenceAnchor(
     return createNodePosition(1);
   }
 
-  const averageX =
+  const averageLeft = ownerNodes.reduce((sum, node) => sum + node.position.x, 0) / ownerNodes.length;
+  const averageRight =
     ownerNodes.reduce((sum, node) => sum + node.position.x + node.size.width, 0) / ownerNodes.length;
   const averageY =
     ownerNodes.reduce((sum, node) => sum + node.position.y + node.size.height / 3, 0) / ownerNodes.length;
+  const footprint = estimatedCanvasNodeFootprint(kind);
+  const horizontalOffset = kind === 'file' ? 140 : 180;
 
   return snapCanvasPosition({
-    x: averageX + (kind === 'file' ? 140 : 180),
+    x:
+      preference === 'left-up'
+        ? averageLeft - footprint.width - horizontalOffset
+        : averageRight + horizontalOffset,
     y: averageY
   });
+}
+
+function resolveFileReferencePlacementPreference(reference: CanvasFileReferenceSummary): NodePlacementPreference {
+  return mergeAccessModes(reference.owners.map((owner) => owner.accessMode)) === 'read' ? 'left-up' : 'right-down';
+}
+
+function doesPlacementRespectPreference(
+  position: CanvasNodePosition,
+  kind: CanvasNodeKind,
+  anchor: CanvasNodePosition,
+  preference: NodePlacementPreference
+): boolean {
+  const footprint = estimatedCanvasNodeFootprint(kind);
+  const centerX = position.x + footprint.width / 2;
+  const centerY = position.y + footprint.height / 2;
+
+  if (preference === 'left-up') {
+    return centerX <= anchor.x + NODE_PLACEMENT_STEP_X && centerY <= anchor.y + NODE_PLACEMENT_STEP_Y;
+  }
+
+  return centerX >= anchor.x - NODE_PLACEMENT_STEP_X && centerY >= anchor.y - NODE_PLACEMENT_STEP_Y;
 }
 
 function resolveFileListAnchor(
@@ -6777,6 +6918,10 @@ function ensureSuppressedFileActivityEdgeId(edgeIds: string[], edgeId: string): 
   return edgeIds.includes(edgeId) ? edgeIds : [...edgeIds, edgeId];
 }
 
+function ensureSuppressedAutomaticFileArtifactNodeId(nodeIds: string[], nodeId: string): string[] {
+  return nodeIds.includes(nodeId) ? nodeIds : [...nodeIds, nodeId];
+}
+
 function recordAgentFileActivity(
   previousState: CanvasPrototypeState,
   event: AgentFileActivityEvent & { nodeId: string; relativePath?: string }
@@ -6915,6 +7060,9 @@ function normalizeState(
   const suppressedFileActivityEdgeIds = Array.isArray(value.suppressedFileActivityEdgeIds)
     ? value.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
     : [];
+  const suppressedAutomaticFileArtifactNodeIds = Array.isArray(value.suppressedAutomaticFileArtifactNodeIds)
+    ? value.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+    : [];
 
   return {
     version: 1,
@@ -6922,7 +7070,8 @@ function normalizeState(
     nodes: reconcileRuntimeNodesInArray(normalizedNodes),
     edges,
     fileReferences,
-    suppressedFileActivityEdgeIds
+    suppressedFileActivityEdgeIds,
+    suppressedAutomaticFileArtifactNodeIds
   };
 }
 
