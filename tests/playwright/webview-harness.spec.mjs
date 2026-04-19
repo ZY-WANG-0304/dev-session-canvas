@@ -332,7 +332,7 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
     );
   const edgePath = page.locator('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
   await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
-    'var(--vscode-descriptionForeground)'
+    'var(--canvas-edge-stroke-default)'
   );
 
   await performTestDomAction(page, {
@@ -341,7 +341,7 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
     edgeId: 'edge-user-1'
   });
   await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
-    'var(--vscode-focusBorder)'
+    'var(--canvas-edge-stroke-default)'
   );
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.selected ?? false).toBe(true);
   await expect(page.locator('.canvas-edge-label.is-selected')).toHaveCount(0);
@@ -371,6 +371,28 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   ];
   await updateHostState(page, state);
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.arrowMode ?? null).toBe('both');
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '设置颜色' }).click();
+  const edgeColorMenu = page.locator(
+    '[data-edge-color-menu="true"][data-edge-color-menu-edge-id="edge-user-1"]'
+  );
+  await expect(edgeColorMenu).toBeVisible();
+  await edgeColorMenu.getByRole('button', { name: '绿色' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    color: '4'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      color: '4'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe('var(--canvas-edge-color-4)');
 
   await clearPostedMessages(page);
   await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
@@ -406,6 +428,32 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   await expect(edgeLabelEditor).toHaveCount(0);
   await expect(page.locator('.canvas-edge-label')).toContainText('依赖关系');
 
+  await clearPostedMessages(page);
+  await reconnectEdgeEndpointToAnchor(page, {
+    edgeId: 'edge-user-1',
+    handleType: 'target',
+    targetNodeId: 'note-1',
+    targetAnchor: 'left'
+  });
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    sourceNodeId: 'agent-1',
+    targetNodeId: 'note-1',
+    sourceAnchor: 'right',
+    targetAnchor: 'left'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      targetNodeId: 'note-1',
+      targetAnchor: 'left'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.targetNodeId ?? null).toBe('note-1');
+
   await performTestDomAction(page, {
     kind: 'selectEdge',
     nodeId: 'agent-1',
@@ -421,6 +469,59 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   state.edges = [];
   await updateHostState(page, state);
   await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
+});
+
+test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {
+  const state = createFileNodeState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'agent-1::file-src-main'
+  });
+
+  const edgeToolbar = page.locator(
+    '[data-edge-toolbar="true"][data-edge-toolbar-edge-id="agent-1::file-src-main"]'
+  );
+  await expect(edgeToolbar).toBeVisible();
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
+  const edgeLabelEditor = page.locator(
+    '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="agent-1::file-src-main"]'
+  );
+  await expect(edgeLabelEditor).toBeVisible();
+  await edgeLabelEditor.fill('写入主文件');
+  await edgeLabelEditor.press('Enter');
+
+  let message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'agent-1::file-src-main',
+    label: '写入主文件'
+  });
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '设置颜色' }).click();
+  const edgeColorMenu = page.locator(
+    '[data-edge-color-menu="true"][data-edge-color-menu-edge-id="agent-1::file-src-main"]'
+  );
+  await edgeColorMenu.getByRole('button', { name: '紫色' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'agent-1::file-src-main',
+    color: '6'
+  });
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '删除连线' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/deleteEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'agent-1::file-src-main'
+  });
 });
 
 test('file nodes render file metadata and open the target file through the host message', async ({ page }) => {
@@ -2875,6 +2976,34 @@ async function dragConnectionBetweenAnchors(page, { sourceNodeId, sourceAnchor, 
   await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
     steps: 18
   });
+  await page.mouse.up();
+  await settleWebview(page, 3);
+}
+
+async function reconnectEdgeEndpointToAnchor(page, { edgeId, handleType, targetNodeId, targetAnchor }) {
+  const edgeUpdater = page.locator(
+    `[data-testid="rf__edge-${edgeId}"] .react-flow__edgeupdater-${handleType}`
+  );
+  const targetHandle = nodeById(page, targetNodeId).locator(`.canvas-node-handle.anchor-${targetAnchor}`);
+
+  const edgeUpdaterBox = await edgeUpdater.boundingBox();
+  const targetHandleBox = await targetHandle.boundingBox();
+
+  expect(edgeUpdaterBox).not.toBeNull();
+  expect(targetHandleBox).not.toBeNull();
+
+  await page.mouse.move(
+    edgeUpdaterBox.x + edgeUpdaterBox.width / 2,
+    edgeUpdaterBox.y + edgeUpdaterBox.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetHandleBox.x + targetHandleBox.width / 2,
+    targetHandleBox.y + targetHandleBox.height / 2,
+    {
+      steps: 18
+    }
+  );
   await page.mouse.up();
   await settleWebview(page, 3);
 }

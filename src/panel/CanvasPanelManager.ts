@@ -31,6 +31,7 @@ import {
   type CanvasCreatableNodeKind,
   type CanvasEdgeAnchor,
   type CanvasEdgeArrowMode,
+  type CanvasEdgeColor,
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
   type CanvasFileNodeDisplayMode,
@@ -3468,14 +3469,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/updateEdge':
         this.state = updateCanvasEdge(this.state, parsedMessage.payload.edgeId, {
+          sourceNodeId: parsedMessage.payload.sourceNodeId,
+          targetNodeId: parsedMessage.payload.targetNodeId,
+          sourceAnchor: parsedMessage.payload.sourceAnchor,
+          targetAnchor: parsedMessage.payload.targetAnchor,
           arrowMode: parsedMessage.payload.arrowMode,
+          color: parsedMessage.payload.color,
           label: parsedMessage.payload.label
         });
         this.persistState();
         this.postState('host/stateUpdated');
-        return;
-      case 'webview/requestEdgeLabelEdit':
-        void this.showEdgeLabelInput(parsedMessage.payload.edgeId);
         return;
       case 'webview/deleteEdge':
         this.state = deleteCanvasEdge(this.state, parsedMessage.payload.edgeId);
@@ -3507,29 +3510,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     void webview.postMessage(message);
-  }
-
-  private async showEdgeLabelInput(edgeId: string): Promise<void> {
-    const edge = this.state.edges.find((candidate) => candidate.id === edgeId && candidate.owner === 'user');
-    if (!edge) {
-      return;
-    }
-
-    const nextLabel = await vscode.window.showInputBox({
-      title: '编辑连线标签',
-      prompt: '留空可移除当前连线标签。',
-      placeHolder: '输入这条关系的说明',
-      value: edge.label ?? ''
-    });
-    if (nextLabel === undefined) {
-      return;
-    }
-
-    this.state = updateCanvasEdge(this.state, edgeId, {
-      label: nextLabel
-    });
-    this.persistState();
-    this.postState('host/stateUpdated');
   }
 
   private assertExecutionAllowed(errorMessage: string): boolean {
@@ -5849,7 +5829,8 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     updatedAt: new Date().toISOString(),
     nodes: [],
     edges: [],
-    fileReferences: []
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: []
   };
 }
 
@@ -6252,9 +6233,17 @@ function rebuildCanvasFileArtifacts(
         );
   const projectedNodes = [...manualNodes, ...automaticArtifacts.nodes];
   const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
+  const automaticEdgeIds = new Set(automaticArtifacts.edges.map((edge) => edge.id));
+  const suppressedFileActivityEdgeIds = new Set(state.suppressedFileActivityEdgeIds);
   const userEdges = state.edges.filter(
     (edge) =>
       edge.owner === 'user' &&
+      projectedNodeIds.has(edge.sourceNodeId) &&
+      projectedNodeIds.has(edge.targetNodeId)
+  );
+  const automaticEdges = automaticArtifacts.edges.filter(
+    (edge) =>
+      !suppressedFileActivityEdgeIds.has(edge.id) &&
       projectedNodeIds.has(edge.sourceNodeId) &&
       projectedNodeIds.has(edge.targetNodeId)
   );
@@ -6262,8 +6251,11 @@ function rebuildCanvasFileArtifacts(
   return {
     ...state,
     nodes: projectedNodes,
-    edges: [...userEdges, ...automaticArtifacts.edges],
-    fileReferences
+    edges: [...userEdges, ...automaticEdges],
+    fileReferences,
+    suppressedFileActivityEdgeIds: Array.from(suppressedFileActivityEdgeIds).filter(
+      (edgeId) => automaticEdgeIds.has(edgeId) || userEdges.some((edge) => edge.id === edgeId)
+    )
   };
 }
 
@@ -6628,55 +6620,130 @@ function createUserCanvasEdge(
 function updateCanvasEdge(
   previousState: CanvasPrototypeState,
   edgeId: string,
-  patch: { arrowMode?: CanvasEdgeArrowMode; label?: string }
+  patch: {
+    sourceNodeId?: string;
+    targetNodeId?: string;
+    sourceAnchor?: CanvasEdgeAnchor;
+    targetAnchor?: CanvasEdgeAnchor;
+    arrowMode?: CanvasEdgeArrowMode;
+    color?: CanvasEdgeColor;
+    label?: string;
+  }
 ): CanvasPrototypeState {
-  let didChange = false;
-  const edges = previousState.edges.map((edge) => {
-    if (edge.id !== edgeId || edge.owner !== 'user') {
-      return edge;
-    }
-
-    const nextArrowMode = patch.arrowMode ?? edge.arrowMode;
-    const nextLabel = patch.label !== undefined ? normalizeCanvasEdgeLabel(patch.label) : edge.label;
-    if (nextArrowMode === edge.arrowMode && nextLabel === edge.label) {
-      return edge;
-    }
-
-    didChange = true;
-    return {
-      ...edge,
-      arrowMode: nextArrowMode,
-      label: nextLabel
-    };
-  });
-
-  if (!didChange) {
+  const edge = previousState.edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) {
     return previousState;
   }
+
+  const patchedEdge = applyCanvasEdgePatch(edge, patch);
+  const nodeIds = new Set(previousState.nodes.map((node) => node.id));
+  if (
+    patchedEdge.sourceNodeId === patchedEdge.targetNodeId ||
+    !nodeIds.has(patchedEdge.sourceNodeId) ||
+    !nodeIds.has(patchedEdge.targetNodeId)
+  ) {
+    return previousState;
+  }
+  if (areCanvasEdgesEquivalent(edge, patchedEdge)) {
+    return previousState;
+  }
+  const nextEdge =
+    edge.owner === 'file-activity'
+      ? {
+          ...patchedEdge,
+          owner: 'user' as const
+        }
+      : patchedEdge;
 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    edges
+    edges: previousState.edges.map((candidate) => (candidate.id === edgeId ? nextEdge : candidate)),
+    suppressedFileActivityEdgeIds:
+      edge.owner === 'file-activity'
+        ? ensureSuppressedFileActivityEdgeId(previousState.suppressedFileActivityEdgeIds, edgeId)
+        : previousState.suppressedFileActivityEdgeIds
   };
 }
 
 function deleteCanvasEdge(previousState: CanvasPrototypeState, edgeId: string): CanvasPrototypeState {
-  const nextEdges = previousState.edges.filter((edge) => edge.id !== edgeId);
-  if (nextEdges.length === previousState.edges.length) {
+  const edge = previousState.edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) {
     return previousState;
   }
 
+  const nextEdges = previousState.edges.filter((edge) => edge.id !== edgeId);
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    edges: nextEdges
+    edges: nextEdges,
+    suppressedFileActivityEdgeIds:
+      edge.owner === 'file-activity' || previousState.suppressedFileActivityEdgeIds.includes(edgeId)
+        ? ensureSuppressedFileActivityEdgeId(previousState.suppressedFileActivityEdgeIds, edgeId)
+        : previousState.suppressedFileActivityEdgeIds
   };
 }
 
 function normalizeCanvasEdgeLabel(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeCanvasEdgeColor(value: CanvasEdgeColor | undefined): CanvasEdgeColor | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^[1-6]$/.test(trimmed)) {
+    return trimmed as CanvasEdgeColor;
+  }
+
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)
+    ? (trimmed as CanvasEdgeColor)
+    : undefined;
+}
+
+function applyCanvasEdgePatch(
+  edge: CanvasEdgeSummary,
+  patch: {
+    sourceNodeId?: string;
+    targetNodeId?: string;
+    sourceAnchor?: CanvasEdgeAnchor;
+    targetAnchor?: CanvasEdgeAnchor;
+    arrowMode?: CanvasEdgeArrowMode;
+    color?: CanvasEdgeColor;
+    label?: string;
+  }
+): CanvasEdgeSummary {
+  return {
+    ...edge,
+    sourceNodeId: patch.sourceNodeId ?? edge.sourceNodeId,
+    targetNodeId: patch.targetNodeId ?? edge.targetNodeId,
+    sourceAnchor: patch.sourceAnchor ?? edge.sourceAnchor,
+    targetAnchor: patch.targetAnchor ?? edge.targetAnchor,
+    arrowMode: patch.arrowMode ?? edge.arrowMode,
+    color: patch.color !== undefined ? normalizeCanvasEdgeColor(patch.color) : edge.color,
+    label: patch.label !== undefined ? normalizeCanvasEdgeLabel(patch.label) : edge.label
+  };
+}
+
+function areCanvasEdgesEquivalent(left: CanvasEdgeSummary, right: CanvasEdgeSummary): boolean {
+  return (
+    left.id === right.id &&
+    left.sourceNodeId === right.sourceNodeId &&
+    left.targetNodeId === right.targetNodeId &&
+    left.sourceAnchor === right.sourceAnchor &&
+    left.targetAnchor === right.targetAnchor &&
+    left.arrowMode === right.arrowMode &&
+    left.owner === right.owner &&
+    left.color === right.color &&
+    left.label === right.label
+  );
+}
+
+function ensureSuppressedFileActivityEdgeId(edgeIds: string[], edgeId: string): string[] {
+  return edgeIds.includes(edgeId) ? edgeIds : [...edgeIds, edgeId];
 }
 
 function recordAgentFileActivity(
@@ -6814,13 +6881,17 @@ function normalizeState(
         .map((reference) => normalizeCanvasFileReference(reference))
         .filter((reference): reference is CanvasFileReferenceSummary => reference !== null)
     : [];
+  const suppressedFileActivityEdgeIds = Array.isArray(value.suppressedFileActivityEdgeIds)
+    ? value.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
+    : [];
 
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
     nodes: reconcileRuntimeNodesInArray(normalizedNodes),
     edges,
-    fileReferences
+    fileReferences,
+    suppressedFileActivityEdgeIds
   };
 }
 
@@ -6949,6 +7020,7 @@ function normalizeCanvasEdge(value: unknown): CanvasEdgeSummary | null {
     targetAnchor: value.targetAnchor,
     arrowMode: normalizeCanvasEdgeArrowMode(value.arrowMode),
     owner: value.owner === 'file-activity' ? 'file-activity' : 'user',
+    color: typeof value.color === 'string' ? normalizeCanvasEdgeColor(value.color as CanvasEdgeColor) : undefined,
     label: typeof value.label === 'string' ? value.label : undefined
   };
 }

@@ -24,6 +24,7 @@
 - [x] (2026-04-19 16:31 +0800) 根据新增 UI 收口要求，先把关系连线规格与设计文档从“右键菜单”修订为“选中态轻量编辑台 + 双击原位标签编辑”，为后续实现和回归测试提供正式口径。
 - [x] (2026-04-19 16:41 +0800) 完成关系连线交互收口：删除旧 edge 右键菜单，改为选中态轻量编辑台、箭头模式子菜单、双击原位标签编辑，并统一使用 Workbench token 与 `codicon`。
 - [x] (2026-04-19 16:48 +0800) 根据实际 UI 观察提高连线标签可见性：增强标签背景、边框、字重和选中态对比，并重新通过 `typecheck`、Playwright Webview 与 trusted smoke。
+- [x] (2026-04-19 18:40 +0800) 按最新交互要求完成第二轮关系连线收口：默认连线与拖拽预览统一默认 token；选中态改为同色主线 + outline 反馈；引入 Obsidian 风格的 6 色预设、选中态端点重接，以及自动边的宿主持久化覆盖 / 屏蔽路径，并重新通过 `typecheck`、Playwright Webview 与 trusted smoke。
 
 ## 意外与发现
 
@@ -51,12 +52,17 @@
 - 决策：连线编辑主路径从右键菜单收口为“选中态轻量编辑台 + 双击原位标签编辑”，并保持 VSCode Workbench 风格。
   理由：右键菜单与胶囊占位会制造“可见但不可直接编辑”的错觉，也偏离当前仓库整体的 Workbench 原生化方向；选中态轻量编辑台更贴近画布中对象级操作的主路径。
   日期/作者：2026-04-19 / Codex
+- 决策：自动边继续保留文件活动事实来源，但用户一旦编辑或删除自动边，宿主会把结果持久化为覆盖 / 屏蔽状态，而不是继续把它暴露成只读投影。
+  理由：最新交互要求明确指出自动边和手工边在 UI 与功能上不再区分；若仍直接重建自动边，所有编辑都会变成伪交互。
+  日期/作者：2026-04-19 / Codex
 
 ## 结果与复盘
 
 本轮按计划落地了两层能力。第一层是用户可编辑的手工连线：宿主持久化 `CanvasEdgeSummary`，Webview 支持创建、选中、通过轻量编辑台修改箭头模式、双击原位改标签与删除。第二层是 provider 结构化文件活动：宿主持久化 `fileReferences`，再按当前配置投影成文件节点或文件列表节点，并把“点击文件”统一交还 VSCode 宿主打开编辑器。
 
-在实现收口阶段，关系连线又进一步对齐到更明确的 Workbench 风格：未命名边不再显示不可编辑的占位胶囊；选中态改为连线上方轻量编辑台；标签输入改回 Webview 原位编辑；标签本身也补强了可见性，避免在深色主题下被背景吞没。
+在实现收口阶段，关系连线又进一步对齐到更明确的 Workbench 风格：未命名边不再显示不可编辑的占位胶囊；选中态改为连线上方轻量编辑台；标签输入改回 Webview 原位编辑；默认边与拖拽预览边共用同一默认 token；选中态通过 outline 与端点 handles 提示，而不是主线换色；同时补入 Obsidian 风格的 6 色预设和端点重接。
+
+随着最新一轮需求收口，文件活动派生边也不再在用户侧暴露出“另一种只读边”语义。宿主内部仍保留文件活动事实来源，但一旦用户编辑或删除某条自动边，就把结果沉淀为持久化覆盖 / 屏蔽状态；这样 reload 与文件视图重建后，用户不会再遇到“刚改完就被自动投影打回”的问题。
 
 随着实现收口，正式设计文档也已按主题拆分为 `docs/design-docs/canvas-graph-links.md` 与 `docs/design-docs/canvas-file-activity-view.md`。这样可以把“手工/自动连线模型”和“provider 文件活动投影”分别维护，减少后续继续迭代时的文档耦合。
 
@@ -135,8 +141,11 @@
 ## 证据与备注
 
 - `npm run typecheck`：通过。
-- `npm run test:webview`：58/58 通过；同步更新了 `canvas-shell-baseline-linux.png` 基线。
+- `npm run test:webview`：59/59 通过；同步更新了 `canvas-shell-baseline-linux.png` 基线。
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：通过。
+- 本轮增量验证：
+  - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
+  - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。
 - 关键新增验证：
   - Playwright：手工 edge 创建 / 选中 / 更新 / 删除；文件节点渲染与 `webview/openCanvasFile`；文件列表节点渲染与条目打开。
   - VS Code smoke：宿主手工 edge 持久化；fake provider 文件活动生成 `fileReferences` / `file` / `file-list`；点击文件节点 / 列表条目打开编辑器；删除 Agent 清理孤立文件对象。

@@ -37,6 +37,7 @@ import type {
   AgentProviderKind,
   CanvasCreatableNodeKind,
   CanvasEdgeArrowMode,
+  CanvasEdgeColor,
   CanvasEdgeOwner,
   CanvasEdgeSummary,
   CanvasFileIconDescriptor,
@@ -58,6 +59,7 @@ import type {
   WebviewProbeSnapshot,
   WebviewToHostMessage
 } from '../common/protocol';
+import { canvasEdgePresetColors } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -143,15 +145,21 @@ type CanvasFlowNode = Node<CanvasNodeData>;
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
+  color?: CanvasEdgeColor;
+  strokeColor?: string;
   isLabelEditing?: boolean;
   labelDraft?: string;
   isArrowMenuOpen?: boolean;
+  isColorMenuOpen?: boolean;
+  onSelectEdge?: () => void;
   onStartLabelEdit?: () => void;
   onChangeLabelDraft?: (value: string) => void;
   onSubmitLabelEdit?: () => void;
   onCancelLabelEdit?: () => void;
   onToggleArrowMenu?: () => void;
   onSetArrowMode?: (arrowMode: CanvasEdgeArrowMode) => void;
+  onToggleColorMenu?: () => void;
+  onSetColor?: (color: CanvasEdgeColor | undefined) => void;
   onDeleteEdge?: () => void;
 }
 
@@ -429,8 +437,8 @@ const root = createRoot(rootElement);
 function normalizeRuntimeContext(
   runtimeContext: Partial<CanvasRuntimeContext> | undefined
 ): CanvasRuntimeContext {
-  const fileIconFontFaces = Array.isArray(runtimeContext?.fileIconFontFaces)
-    ? runtimeContext?.fileIconFontFaces ?? []
+  const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
+    ? runtimeContext.fileIconFontFaces
     : [];
 
   return {
@@ -460,13 +468,17 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
   const nodes = Array.isArray(state?.nodes) ? state?.nodes ?? [] : [];
   const edges = Array.isArray(state?.edges) ? state?.edges ?? [] : [];
   const fileReferences = Array.isArray(state?.fileReferences) ? state?.fileReferences ?? [] : [];
+  const suppressedFileActivityEdgeIds = state && Array.isArray(state.suppressedFileActivityEdgeIds)
+    ? state.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
+    : [];
 
   return {
     version: 1,
     updatedAt: typeof state?.updatedAt === 'string' ? state.updatedAt : new Date().toISOString(),
     nodes,
     edges,
-    fileReferences
+    fileReferences,
+    suppressedFileActivityEdgeIds
   };
 }
 
@@ -491,6 +503,7 @@ function App(): JSX.Element {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
   const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
   const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
+  const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -626,11 +639,13 @@ function App(): JSX.Element {
     setSelectedEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
     setEdgeLabelEditor((current) => (current && !validEdgeIds.has(current.edgeId) ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
+    setEdgeColorMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
   }, [hostState]);
 
   useEffect(() => {
     setEdgeLabelEditor((current) => (current && current.edgeId !== selectedEdgeId ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
+    setEdgeColorMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
   }, [selectedEdgeId]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
@@ -644,9 +659,18 @@ function App(): JSX.Element {
     setEdgeArrowMenuEdgeId(undefined);
   };
 
+  const closeEdgeColorMenu = (): void => {
+    setEdgeColorMenuEdgeId(undefined);
+  };
+
+  const closeEdgeMenus = (): void => {
+    closeEdgeArrowMenu();
+    closeEdgeColorMenu();
+  };
+
   const closeFloatingMenus = (): void => {
     closePaneContextMenu();
-    closeEdgeArrowMenu();
+    closeEdgeMenus();
   };
 
   const deleteNode = (nodeId: string): void => {
@@ -670,6 +694,7 @@ function App(): JSX.Element {
   const deleteEdge = (edgeId: string): void => {
     setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
+    setEdgeColorMenuEdgeId((current) => (current === edgeId ? undefined : current));
     setSelectedEdgeId((current) => (current === edgeId ? undefined : current));
     postMessage({
       type: 'webview/deleteEdge',
@@ -680,14 +705,14 @@ function App(): JSX.Element {
   };
 
   const startEdgeLabelEdit = (edgeId: string): void => {
-    const edge = hostState?.edges.find((candidate) => candidate.id === edgeId && candidate.owner === 'user');
+    const edge = hostState?.edges.find((candidate) => candidate.id === edgeId);
     if (!edge) {
       return;
     }
 
     closePaneContextMenu();
     setSelectedEdgeId(edgeId);
-    setEdgeArrowMenuEdgeId(undefined);
+    closeEdgeMenus();
     setEdgeLabelEditor({
       edgeId,
       draft: edge.label ?? ''
@@ -716,12 +741,23 @@ function App(): JSX.Element {
   };
 
   const setEdgeArrowMode = (edgeId: string, arrowMode: CanvasEdgeArrowMode): void => {
-    setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
+    closeEdgeMenus();
     postMessage({
       type: 'webview/updateEdge',
       payload: {
         edgeId,
         arrowMode
+      }
+    });
+  };
+
+  const setEdgeColor = (edgeId: string, color: CanvasEdgeColor | undefined): void => {
+    closeEdgeMenus();
+    postMessage({
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId,
+        color
       }
     });
   };
@@ -764,7 +800,7 @@ function App(): JSX.Element {
         return;
       }
 
-      closeEdgeArrowMenu();
+      closeEdgeMenus();
       setSelectedEdgeId(undefined);
       setLocalUiState((current) => ({
         ...current,
@@ -860,6 +896,16 @@ function App(): JSX.Element {
     selectedEdgeId,
     edgeLabelEditor,
     edgeArrowMenuEdgeId,
+    edgeColorMenuEdgeId,
+    onSelectEdge: (edgeId) => {
+      closePaneContextMenu();
+      closeEdgeMenus();
+      setSelectedEdgeId(edgeId);
+      setLocalUiState((current) => ({
+        ...current,
+        selectedNodeId: undefined
+      }));
+    },
     onStartLabelEdit: startEdgeLabelEdit,
     onChangeLabelDraft: (edgeId, value) =>
       setEdgeLabelEditor((current) =>
@@ -873,9 +919,15 @@ function App(): JSX.Element {
     onSubmitLabelEdit: submitEdgeLabelEdit,
     onCancelLabelEdit: cancelEdgeLabelEdit,
     onToggleArrowMenu: (edgeId) => {
+      setEdgeColorMenuEdgeId(undefined);
       setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : edgeId));
     },
     onSetArrowMode: setEdgeArrowMode,
+    onToggleColorMenu: (edgeId) => {
+      setEdgeArrowMenuEdgeId(undefined);
+      setEdgeColorMenuEdgeId((current) => (current === edgeId ? undefined : edgeId));
+    },
+    onSetColor: setEdgeColor,
     onDeleteEdge: deleteEdge
   });
 
@@ -957,7 +1009,7 @@ function App(): JSX.Element {
     });
 
     setSelectedEdgeId(undefined);
-    closeEdgeArrowMenu();
+    closeEdgeMenus();
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: undefined
@@ -1033,7 +1085,7 @@ function App(): JSX.Element {
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!edgeArrowMenuEdgeId && !edgeLabelEditor) {
+    if (!edgeArrowMenuEdgeId && !edgeColorMenuEdgeId && !edgeLabelEditor) {
       return;
     }
 
@@ -1048,14 +1100,14 @@ function App(): JSX.Element {
         return;
       }
 
-      closeEdgeArrowMenu();
+      closeEdgeMenus();
     };
 
     window.addEventListener('keydown', handleWindowKeyDown);
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [cancelEdgeLabelEdit, closeEdgeArrowMenu, edgeArrowMenuEdgeId, edgeLabelEditor]);
+  }, [cancelEdgeLabelEdit, closeEdgeMenus, edgeArrowMenuEdgeId, edgeColorMenuEdgeId, edgeLabelEditor]);
 
   const handleConnect = (connection: Connection): void => {
     const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
@@ -1077,14 +1129,32 @@ function App(): JSX.Element {
     });
   };
 
-  const handleEdgeClick: EdgeMouseHandler = (event, edge) => {
-    stopCanvasEvent(event);
-    if (edge.data?.owner !== 'user') {
+  const handleEdgeReconnect = (previousEdge: Edge, connection: Connection): void => {
+    const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
+    const targetAnchor = parseHandleAnchor(connection.targetHandle);
+    if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
       return;
     }
 
+    closeFloatingMenus();
+    setSelectedEdgeId(previousEdge.id);
+    postMessage({
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId: previousEdge.id,
+        sourceNodeId: connection.source,
+        targetNodeId: connection.target,
+        sourceAnchor,
+        targetAnchor
+      }
+    });
+  };
+
+  const handleEdgeClick: EdgeMouseHandler = (event, edge) => {
+    stopCanvasEvent(event);
+
     closePaneContextMenu();
-    closeEdgeArrowMenu();
+    closeEdgeMenus();
     setSelectedEdgeId(edge.id);
     setLocalUiState((current) => ({
       ...current,
@@ -1094,28 +1164,13 @@ function App(): JSX.Element {
 
   const handleEdgeDoubleClick: EdgeMouseHandler = (event, edge) => {
     stopCanvasEvent(event);
-    if (edge.data?.owner !== 'user') {
-      return;
-    }
-
     setSelectedEdgeId(edge.id);
     startEdgeLabelEdit(edge.id);
   };
 
-  const handleEdgeContextMenu: EdgeMouseHandler = (event, edge) => {
+  const handleEdgeContextMenu: EdgeMouseHandler = (event) => {
     event.preventDefault();
     stopCanvasEvent(event);
-    if (edge.data?.owner !== 'user') {
-      return;
-    }
-
-    closePaneContextMenu();
-    closeEdgeArrowMenu();
-    setSelectedEdgeId(edge.id);
-    setLocalUiState((current) => ({
-      ...current,
-      selectedNodeId: undefined
-    }));
   };
 
   return (
@@ -1139,7 +1194,12 @@ function App(): JSX.Element {
         onConnect={handleConnect}
         onEdgeClick={handleEdgeClick}
         onEdgeDoubleClick={handleEdgeDoubleClick}
+        onReconnect={handleEdgeReconnect}
         onEdgeContextMenu={handleEdgeContextMenu}
+        connectionLineStyle={{
+          stroke: 'var(--canvas-edge-stroke-default)',
+          strokeWidth: 2
+        }}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onMoveStart={handleMoveStart}
@@ -2714,6 +2774,58 @@ const CANVAS_EDGE_ARROW_MENU_ITEMS: ReadonlyArray<{
   }
 ];
 
+const CANVAS_EDGE_COLOR_MENU_ITEMS: ReadonlyArray<{
+  color?: CanvasEdgeColor;
+  label: string;
+}> = [
+  {
+    label: '默认颜色'
+  },
+  {
+    color: '1',
+    label: '红色'
+  },
+  {
+    color: '2',
+    label: '橙色'
+  },
+  {
+    color: '3',
+    label: '黄色'
+  },
+  {
+    color: '4',
+    label: '绿色'
+  },
+  {
+    color: '5',
+    label: '青色'
+  },
+  {
+    color: '6',
+    label: '紫色'
+  }
+];
+
+function isCanvasEdgePresetColor(value: string | undefined): value is (typeof canvasEdgePresetColors)[number] {
+  return typeof value === 'string' && canvasEdgePresetColors.includes(value as (typeof canvasEdgePresetColors)[number]);
+}
+
+function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {
+  if (!color) {
+    return 'var(--canvas-edge-stroke-default)';
+  }
+
+  return isCanvasEdgePresetColor(color) ? `var(--canvas-edge-color-${color})` : color;
+}
+
+function createCanvasEdgeOverlayStyle(transform: string, accentColor: string): React.CSSProperties {
+  return {
+    transform,
+    ['--canvas-edge-accent' as string]: accentColor
+  } as React.CSSProperties;
+}
+
 function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: props.sourceX,
@@ -2726,10 +2838,12 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   const owner = props.data?.owner ?? 'user';
   const arrowMode = props.data?.arrowMode ?? 'none';
   const labelText = typeof props.label === 'string' ? props.label : undefined;
-  const isEditable = owner === 'user';
+  const edgeColor = props.data?.color;
+  const strokeColor = props.data?.strokeColor ?? resolveCanvasEdgeStrokeColor(edgeColor);
   const isLabelEditing = props.data?.isLabelEditing === true;
   const labelDraft = props.data?.labelDraft ?? '';
   const isArrowMenuOpen = props.data?.isArrowMenuOpen === true;
+  const isColorMenuOpen = props.data?.isColorMenuOpen === true;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const commitLabelOnBlurRef = useRef(true);
 
@@ -2744,19 +2858,23 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   }, [isLabelEditing]);
 
   const arrowIcon = resolveCanvasEdgeArrowIcon(arrowMode);
-  const labelTransform = {
-    transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`
-  };
-  const toolbarTransform = {
-    transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 12}px)`
-  };
+  const labelCenterY = labelY - 10;
+  const labelStyle = createCanvasEdgeOverlayStyle(
+    `translate(-50%, -50%) translate(${labelX}px, ${labelCenterY}px)`,
+    strokeColor
+  );
+  const toolbarStyle = createCanvasEdgeOverlayStyle(
+    `translate(-50%, -100%) translate(${labelX}px, ${labelCenterY - 18}px)`,
+    strokeColor
+  );
 
   return (
     <>
+      <path d={edgePath} fill="none" className={`canvas-edge-outline ${props.selected ? 'is-selected' : ''}`} />
       <path
         d={edgePath}
         fill="none"
-        className={`canvas-edge-path owner-${owner} ${props.selected ? 'is-selected' : ''}`}
+        className="canvas-edge-path"
         style={props.style}
         markerStart={props.markerStart}
         markerEnd={props.markerEnd}
@@ -2766,16 +2884,17 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
         data-edge-target={props.target}
         data-edge-owner={owner}
         data-edge-arrow-mode={arrowMode}
+        data-edge-color={edgeColor}
         data-edge-label={labelText}
         data-edge-selected={props.selected ? 'true' : 'false'}
       />
       <path d={edgePath} fill="none" className="canvas-edge-hitbox" />
-      {props.selected && isEditable ? (
+      {props.selected ? (
         <EdgeLabelRenderer>
           <div
             className="canvas-edge-toolbar-anchor"
             data-edge-toolbar-anchor="true"
-            style={toolbarTransform}
+            style={toolbarStyle}
             onMouseDown={stopCanvasEvent}
             onClick={stopCanvasEvent}
             onContextMenu={(event) => {
@@ -2803,6 +2922,34 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
                 ))}
               </div>
             ) : null}
+            {isColorMenuOpen ? (
+              <div
+                className="canvas-edge-arrow-menu"
+                data-edge-color-menu="true"
+                data-edge-color-menu-edge-id={props.id}
+              >
+                {CANVAS_EDGE_COLOR_MENU_ITEMS.map((item) => {
+                  const itemStrokeColor = resolveCanvasEdgeStrokeColor(item.color);
+                  const isActive = item.color === undefined ? edgeColor === undefined : item.color === edgeColor;
+                  return (
+                    <button
+                      key={item.color ?? 'default'}
+                      type="button"
+                      className={`canvas-edge-arrow-menu-item ${isActive ? 'is-active' : ''}`}
+                      data-edge-color-option={item.color ?? 'default'}
+                      onClick={() => props.data?.onSetColor?.(item.color)}
+                    >
+                      <span
+                        className="canvas-edge-color-swatch"
+                        aria-hidden="true"
+                        style={createCanvasEdgeOverlayStyle('none', itemStrokeColor)}
+                      />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             <div
               className="canvas-edge-toolbar"
               data-edge-toolbar="true"
@@ -2818,6 +2965,21 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
                 onClick={() => props.data?.onToggleArrowMenu?.()}
               >
                 <span className={`canvas-edge-toolbar-icon codicon codicon-${arrowIcon}`} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={`canvas-edge-toolbar-button ${isColorMenuOpen ? 'is-active' : ''}`}
+                title="设置颜色"
+                aria-label="设置颜色"
+                aria-haspopup="menu"
+                aria-expanded={isColorMenuOpen}
+                onClick={() => props.data?.onToggleColorMenu?.()}
+              >
+                <span
+                  className="canvas-edge-toolbar-icon codicon codicon-symbol-color"
+                  aria-hidden="true"
+                  style={{ color: strokeColor }}
+                />
               </button>
               <button
                 type="button"
@@ -2845,7 +3007,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
         <EdgeLabelRenderer>
           <div
             className="canvas-edge-label-editor-shell"
-            style={labelTransform}
+            style={labelStyle}
             onMouseDown={stopCanvasEvent}
             onClick={stopCanvasEvent}
             onContextMenu={(event) => {
@@ -2892,8 +3054,17 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
       {labelText && !isLabelEditing ? (
         <EdgeLabelRenderer>
           <div
-            className={`canvas-edge-label owner-${owner} ${props.selected ? 'is-selected' : ''}`}
-            style={labelTransform}
+            className={`canvas-edge-label ${props.selected ? 'is-selected' : ''}`}
+            style={labelStyle}
+            onMouseDown={stopCanvasEvent}
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              props.data?.onSelectEdge?.();
+            }}
+            onDoubleClick={(event) => {
+              stopCanvasEvent(event);
+              props.data?.onStartLabelEdit?.();
+            }}
           >
             {labelText}
           </div>
@@ -3076,19 +3247,24 @@ function toFlowEdges(params: {
   selectedEdgeId: string | undefined;
   edgeLabelEditor: EdgeLabelEditorState | null;
   edgeArrowMenuEdgeId: string | undefined;
+  edgeColorMenuEdgeId: string | undefined;
+  onSelectEdge: (edgeId: string) => void;
   onStartLabelEdit: (edgeId: string) => void;
   onChangeLabelDraft: (edgeId: string, value: string) => void;
   onSubmitLabelEdit: (edgeId: string) => void;
   onCancelLabelEdit: (edgeId: string) => void;
   onToggleArrowMenu: (edgeId: string) => void;
   onSetArrowMode: (edgeId: string, arrowMode: CanvasEdgeArrowMode) => void;
+  onToggleColorMenu: (edgeId: string) => void;
+  onSetColor: (edgeId: string, color: CanvasEdgeColor | undefined) => void;
   onDeleteEdge: (edgeId: string) => void;
 }): CanvasFlowEdge[] {
   return params.edges.map((edge) => {
     const isSelected = edge.id === params.selectedEdgeId;
-    const strokeColor = isSelected ? 'var(--vscode-focusBorder)' : 'var(--vscode-descriptionForeground)';
+    const strokeColor = resolveCanvasEdgeStrokeColor(edge.color);
     const isLabelEditing = params.edgeLabelEditor?.edgeId === edge.id;
     const isArrowMenuOpen = params.edgeArrowMenuEdgeId === edge.id;
+    const isColorMenuOpen = params.edgeColorMenuEdgeId === edge.id;
 
     return {
       id: edge.id,
@@ -3098,27 +3274,34 @@ function toFlowEdges(params: {
       sourceHandle: edge.sourceAnchor,
       targetHandle: edge.targetAnchor,
       label: edge.label,
-      selectable: edge.owner === 'user',
-      focusable: edge.owner === 'user',
+      selectable: true,
+      focusable: true,
       selected: isSelected,
-      zIndex: edge.owner === 'user' ? 6 : 2,
+      reconnectable: isSelected,
+      zIndex: 6,
       data: {
         owner: edge.owner,
         arrowMode: edge.arrowMode,
+        color: edge.color,
+        strokeColor,
         isLabelEditing,
         labelDraft: isLabelEditing ? params.edgeLabelEditor?.draft ?? '' : undefined,
         isArrowMenuOpen,
+        isColorMenuOpen,
+        onSelectEdge: () => params.onSelectEdge(edge.id),
         onStartLabelEdit: () => params.onStartLabelEdit(edge.id),
         onChangeLabelDraft: (value) => params.onChangeLabelDraft(edge.id, value),
         onSubmitLabelEdit: () => params.onSubmitLabelEdit(edge.id),
         onCancelLabelEdit: () => params.onCancelLabelEdit(edge.id),
         onToggleArrowMenu: () => params.onToggleArrowMenu(edge.id),
         onSetArrowMode: (arrowMode) => params.onSetArrowMode(edge.id, arrowMode),
+        onToggleColorMenu: () => params.onToggleColorMenu(edge.id),
+        onSetColor: (color) => params.onSetColor(edge.id, color),
         onDeleteEdge: () => params.onDeleteEdge(edge.id)
       },
       style: {
         stroke: strokeColor,
-        strokeWidth: edge.owner === 'file-activity' ? 1.6 : 2
+        strokeWidth: 1.8
       },
       markerStart:
         edge.arrowMode === 'both'
@@ -3914,6 +4097,7 @@ function readWebviewProbeEdgeSnapshot(element: HTMLElement): WebviewProbeEdgeSna
     targetNodeId,
     arrowMode,
     owner,
+    color: element.dataset.edgeColor ?? null,
     label: element.dataset.edgeLabel ?? null,
     selected: element.dataset.edgeSelected === 'true'
   };
