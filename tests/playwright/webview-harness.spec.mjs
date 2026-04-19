@@ -437,17 +437,27 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   ];
   await updateHostState(page, state);
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.label ?? null).toBe('依赖关系');
-  await expect(page.locator('.canvas-edge-label')).toContainText('依赖关系');
+  const edgeLabel = page.locator('[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"]');
+  await expect(edgeLabel).toContainText('依赖关系');
+  const toolbarBox = await edgeToolbar.boundingBox();
+  const labelBox = await edgeLabel.boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect(labelBox).not.toBeNull();
+  expect(toolbarBox.y + toolbarBox.height).toBeLessThan(labelBox.y + 2);
 
   await clearPostedMessages(page);
   await edgePath.dblclick({ force: true });
   await expect(edgeLabelEditor).toBeVisible();
   await expect(edgeLabelEditor).toHaveValue('依赖关系');
+  const editorBox = await edgeLabelEditor.boundingBox();
+  expect(editorBox).not.toBeNull();
+  expect(Math.abs(editorBox.x + editorBox.width / 2 - (labelBox.x + labelBox.width / 2))).toBeLessThanOrEqual(4);
+  expect(Math.abs(editorBox.y + editorBox.height / 2 - (labelBox.y + labelBox.height / 2))).toBeLessThanOrEqual(4);
   await edgeLabelEditor.fill('协作关系');
   await edgeLabelEditor.press('Escape');
   await settleWebview(page, 2);
   await expect(edgeLabelEditor).toHaveCount(0);
-  await expect(page.locator('.canvas-edge-label')).toContainText('依赖关系');
+  await expect(edgeLabel).toContainText('依赖关系');
 
   await clearPostedMessages(page);
   await reconnectEdgeEndpointToAnchor(page, {
