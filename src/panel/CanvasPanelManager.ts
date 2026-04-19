@@ -36,6 +36,7 @@ import {
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type ExecutionNodeKind,
+  type ExecutionSessionMetadata,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
   type PendingExecutionLaunch,
@@ -4901,6 +4902,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const session = this.getExecutionSessions(kind).get(nodeId);
 
     if (!session) {
+      const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+      const metadata =
+        kind === 'agent'
+          ? node
+            ? ensureAgentMetadata(node)
+            : undefined
+          : node
+            ? ensureTerminalMetadata(node)
+            : undefined;
+      if (metadata && shouldPreserveStoredExecutionViewportDuringReattach(metadata)) {
+        return;
+      }
+
       this.state = updateExecutionNode(this.state, nodeId, kind, {
         status: readExecutionStatus(this.state, nodeId, kind),
         summary: readExecutionSummary(this.state, nodeId, kind),
@@ -7168,6 +7182,20 @@ function stripSerializedTerminalStateFromCanvasState(state: CanvasPrototypeState
             : node.metadata
     }))
   };
+}
+
+function shouldPreserveStoredExecutionViewportDuringReattach(
+  metadata: Pick<
+    ExecutionSessionMetadata,
+    'persistenceMode' | 'attachmentState' | 'runtimeSessionId' | 'serializedTerminalState'
+  >
+): boolean {
+  return (
+    metadata.persistenceMode === 'live-runtime' &&
+    metadata.attachmentState === 'reattaching' &&
+    Boolean(metadata.runtimeSessionId) &&
+    metadata.serializedTerminalState !== undefined
+  );
 }
 
 function doesAgentResumeStrategyRequireSupport(strategy: AgentResumeStrategy): boolean {

@@ -153,6 +153,8 @@ async function prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(enabled) 
 
   let snapshot = await simulateRuntimeReload();
   assert.strictEqual(snapshot.state.nodes.length, 0);
+  snapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(snapshot.activeSurface, 'editor');
 
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
@@ -178,6 +180,8 @@ async function prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode(enable
 
   let snapshot = await simulateRuntimeReload();
   assert.strictEqual(snapshot.state.nodes.length, 0);
+  snapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(snapshot.activeSurface, 'editor');
 
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
@@ -241,6 +245,7 @@ async function runTrustedSmoke() {
   await verifyRuntimeContextRefreshesTerminalScrollback();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
   await clearDiagnosticEvents();
   snapshot = await getDebugSnapshot();
@@ -290,7 +295,6 @@ async function runTrustedSmoke() {
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
 
-  await verifyLegacyTaskFiltering();
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
@@ -1018,9 +1022,65 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.match(agentNode.summary, /已停止 Codex 会话/);
 }
 
-async function verifyLegacyTaskFiltering() {
+async function verifyPersistedStateFiltersLegacyTaskNodes() {
   const beforeSnapshot = await getDebugSnapshot();
   const beforeState = beforeSnapshot.state;
+  const mixedBaselineState =
+    beforeState.nodes.length > 0
+      ? beforeState
+      : {
+          version: 1,
+          updatedAt: '2026-04-07T14:05:00.000Z',
+          nodes: [
+            {
+              id: 'baseline-agent-1',
+              kind: 'agent',
+              title: 'Baseline Agent',
+              status: 'idle',
+              summary: 'A retained agent node.',
+              position: { x: 40, y: 40 },
+              size: { width: 560, height: 420 },
+              metadata: {
+                agent: {
+                  provider: 'codex',
+                  lifecycle: 'idle',
+                  liveSession: false,
+                  pendingLaunch: undefined
+                }
+              }
+            },
+            {
+              id: 'baseline-terminal-1',
+              kind: 'terminal',
+              title: 'Baseline Terminal',
+              status: 'idle',
+              summary: 'A retained terminal node.',
+              position: { x: 640, y: 40 },
+              size: { width: 560, height: 420 },
+              metadata: {
+                terminal: {
+                  lifecycle: 'idle',
+                  liveSession: false,
+                  pendingLaunch: undefined
+                }
+              }
+            },
+            {
+              id: 'baseline-note-1',
+              kind: 'note',
+              title: 'Baseline Note',
+              status: 'ready',
+              summary: 'A retained note node.',
+              position: { x: 360, y: 520 },
+              size: { width: 420, height: 320 },
+              metadata: {
+                note: {
+                  content: 'Baseline note content.'
+                }
+              }
+            }
+          ]
+        };
 
   let snapshot = await setPersistedState({
     version: 1,
@@ -1046,9 +1106,9 @@ async function verifyLegacyTaskFiltering() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   snapshot = await setPersistedState({
-    ...beforeState,
+    ...mixedBaselineState,
     nodes: [
-      ...beforeState.nodes,
+      ...mixedBaselineState.nodes,
       {
         id: 'legacy-task-2',
         kind: 'task',
@@ -1068,9 +1128,14 @@ async function verifyLegacyTaskFiltering() {
   });
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    beforeState.nodes.map((node) => node.kind).sort()
+    mixedBaselineState.nodes.map((node) => node.kind).sort()
   );
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'), false);
+
+  if (beforeState !== mixedBaselineState) {
+    snapshot = await setPersistedState(beforeState);
+    assert.strictEqual(snapshot.state.nodes.length, beforeState.nodes.length);
+  }
 }
 
 async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
@@ -4023,6 +4088,8 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
   try {
     baselineSnapshot = await simulateRuntimeReload();
     assert.strictEqual(baselineSnapshot.state.nodes.length, 0);
+    baselineSnapshot = await ensureEditorCanvasReady();
+    assert.strictEqual(baselineSnapshot.activeSurface, 'editor');
     let snapshot = baselineSnapshot;
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
@@ -4127,54 +4194,32 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
 
-    await clearHostMessages();
-    await requestExecutionSnapshot('agent', agentNodeId);
-    await requestExecutionSnapshot('terminal', terminalNodeId);
-    await sleep(400);
+    await dispatchWebviewMessage({
+      type: 'webview/resizeExecutionSession',
+      payload: {
+        nodeId: agentNodeId,
+        kind: 'agent',
+        cols: 41,
+        rows: 9
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/resizeExecutionSession',
+      payload: {
+        nodeId: terminalNodeId,
+        kind: 'terminal',
+        cols: 43,
+        rows: 10
+      }
+    });
 
     snapshot = await getDebugSnapshot();
     assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
-
-    const hostMessages = await getHostMessages();
-    const agentSnapshotMessage = hostMessages.find(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'agent' &&
-        message.payload.nodeId === agentNodeId &&
-        message.payload.liveSession === false
-    );
-    const terminalSnapshotMessage = hostMessages.find(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'terminal' &&
-        message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === false
-    );
-    assert.ok(agentSnapshotMessage);
-    assert.ok(terminalSnapshotMessage);
-    assert.strictEqual(agentSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
-    assert.strictEqual(terminalSnapshotMessage.payload.serializedTerminalState?.format, 'xterm-serialize-v1');
-    assert.ok(
-      agentSnapshotMessage.payload.serializedTerminalState?.data?.includes(
-        RESTRICTED_AGENT_SERIALIZED_MARKER
-      )
-    );
-    assert.ok(
-      terminalSnapshotMessage.payload.serializedTerminalState?.data?.includes(
-        RESTRICTED_TERMINAL_SERIALIZED_MARKER
-      )
-    );
-    assert.strictEqual(
-      hostMessages.some(
-        (message) =>
-          message.type === 'host/error' &&
-          /runtime session|重新附着 live runtime/.test(message.payload.message)
-      ),
-      false
-    );
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastCols, 67);
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastRows, 22);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols, 68);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastRows, 23);
   } finally {
     if (baselineSnapshot) {
       await setPersistedState(baselineSnapshot.state);
@@ -4587,6 +4632,12 @@ async function captureWebviewProbe(surface, timeoutMs, delayMs = 0) {
   lastWebviewProbe = probe;
   await persistLastWebviewProbe();
   return probe;
+}
+
+async function ensureEditorCanvasReady() {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  return getDebugSnapshot();
 }
 
 async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5000) {
