@@ -439,6 +439,7 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.label ?? null).toBe('依赖关系');
   const edgeLabel = page.locator('[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"]');
   await expect(edgeLabel).toContainText('依赖关系');
+  await expect.poll(async () => edgeLabelIsProtected(page, 'edge-user-1')).toBe(true);
   const toolbarBox = await edgeToolbar.boundingBox();
   const labelBox = await edgeLabel.boundingBox();
   expect(toolbarBox).not.toBeNull();
@@ -509,6 +510,84 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   state.edges = [];
   await updateHostState(page, state);
   await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
+});
+
+test('edge label IME confirmation does not submit before explicit commit', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+
+  const edgeToolbar = page.locator(
+    '[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]'
+  );
+  await expect(edgeToolbar).toBeVisible();
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
+  const edgeLabelEditor = page.locator(
+    '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="edge-user-1"]'
+  );
+  await expect(edgeLabelEditor).toBeVisible();
+
+  const nextLabel = '依赖关系';
+  await simulateImeCompositionOnTextField(page, edgeLabelEditor, nextLabel);
+  await settleWebview(page, 4);
+
+  await expect(edgeLabelEditor).toBeFocused();
+  await expect(edgeLabelEditor).toHaveValue(nextLabel);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateEdge').length;
+      });
+    })
+    .toBe(0);
+
+  await edgeLabelEditor.press('Enter');
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const edgeMessages = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateEdge');
+
+        return JSON.stringify(
+          edgeMessages.map((entry) => ({
+            edgeId: entry.payload.edgeId,
+            label: entry.payload.label
+          }))
+        );
+      });
+    })
+    .toBe(
+      JSON.stringify([
+        {
+          edgeId: 'edge-user-1',
+          label: nextLabel
+        }
+      ])
+    );
 });
 
 test('self loop edges can be created and rendered', async ({ page }) => {
@@ -2973,6 +3052,60 @@ async function readProbeNode(page, nodeId, delayMs = 0) {
 async function readProbeEdge(page, edgeId, delayMs = 0) {
   const snapshot = await requestWebviewProbe(page, delayMs);
   return snapshot.edges.find((edge) => edge.edgeId === edgeId) ?? null;
+}
+
+async function edgeLabelIsProtected(page, edgeId) {
+  return page.evaluate((nextEdgeId) => {
+    const label = document.querySelector(
+      `[data-edge-label="true"][data-edge-label-edge-id="${nextEdgeId}"]`
+    );
+    if (!label) {
+      return null;
+    }
+
+    const paths = Array.from(
+      document.querySelectorAll(`[data-edge-visible-segment][data-edge-id="${nextEdgeId}"]`)
+    );
+    if (paths.length === 0) {
+      return null;
+    }
+
+    const labelRect = label.getBoundingClientRect();
+    const sampleXs = [0.08, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.92];
+    const sampleYs = [0.18, 0.34, 0.5, 0.66, 0.82];
+
+    const intersectsStroke = sampleXs.some((xRatio) =>
+      sampleYs.some((yRatio) => {
+        const screenX = labelRect.left + labelRect.width * xRatio;
+        const screenY = labelRect.top + labelRect.height * yRatio;
+
+        return paths.some((candidate) => {
+          if (!(candidate instanceof SVGGeometryElement) || typeof candidate.isPointInStroke !== 'function') {
+            return false;
+          }
+
+          const matrix = candidate.getScreenCTM();
+          if (!matrix) {
+            return false;
+          }
+
+          const localPoint = new DOMPoint(screenX, screenY).matrixTransform(matrix.inverse());
+          return candidate.isPointInStroke(localPoint);
+        });
+      })
+    );
+
+    if (!intersectsStroke) {
+      return true;
+    }
+
+    if (label.dataset.edgeLabelMask !== 'true') {
+      return false;
+    }
+
+    const maskStyle = getComputedStyle(label, '::before');
+    return maskStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' || maskStyle.boxShadow !== 'none';
+  }, edgeId);
 }
 
 async function waitForPostedMessageByType(page, type) {

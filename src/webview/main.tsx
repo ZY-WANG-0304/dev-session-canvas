@@ -92,7 +92,6 @@ interface LocalUiState {
 
 interface EdgeLabelEditorState {
   edgeId: string;
-  draft: string;
 }
 
 interface CanvasNodeData {
@@ -147,13 +146,11 @@ interface CanvasEdgeData {
   color?: CanvasEdgeColor;
   strokeColor?: string;
   isLabelEditing?: boolean;
-  labelDraft?: string;
   isArrowMenuOpen?: boolean;
   isColorMenuOpen?: boolean;
   onSelectEdge?: () => void;
   onStartLabelEdit?: () => void;
-  onChangeLabelDraft?: (value: string) => void;
-  onSubmitLabelEdit?: () => void;
+  onSubmitLabelEdit?: (value: string) => void;
   onCancelLabelEdit?: () => void;
   onToggleArrowMenu?: () => void;
   onSetArrowMode?: (arrowMode: CanvasEdgeArrowMode) => void;
@@ -712,13 +709,10 @@ function App(): JSX.Element {
     closePaneContextMenu();
     setSelectedEdgeId(edgeId);
     closeEdgeMenus();
-    setEdgeLabelEditor({
-      edgeId,
-      draft: edge.label ?? ''
-    });
+    setEdgeLabelEditor({ edgeId });
   };
 
-  const submitEdgeLabelEdit = (edgeId: string): void => {
+  const submitEdgeLabelEdit = (edgeId: string, label: string): void => {
     setEdgeLabelEditor((current) => {
       if (!current || current.edgeId !== edgeId) {
         return current;
@@ -728,7 +722,7 @@ function App(): JSX.Element {
         type: 'webview/updateEdge',
         payload: {
           edgeId,
-          label: current.draft
+          label
         }
       });
       return null;
@@ -906,15 +900,6 @@ function App(): JSX.Element {
       }));
     },
     onStartLabelEdit: startEdgeLabelEdit,
-    onChangeLabelDraft: (edgeId, value) =>
-      setEdgeLabelEditor((current) =>
-        current && current.edgeId === edgeId
-          ? {
-              ...current,
-              draft: value
-            }
-          : current
-      ),
     onSubmitLabelEdit: submitEdgeLabelEdit,
     onCancelLabelEdit: cancelEdgeLabelEdit,
     onToggleArrowMenu: (edgeId) => {
@@ -2826,6 +2811,29 @@ function createCanvasEdgeOverlayStyle(transform: string, accentColor: string): R
 }
 
 type CanvasPoint = { x: number; y: number };
+type CanvasSize = { width: number; height: number };
+type CanvasCubicCurve = {
+  start: CanvasPoint;
+  control1: CanvasPoint;
+  control2: CanvasPoint;
+  end: CanvasPoint;
+};
+type CanvasEdgeGeometry = {
+  curve: CanvasCubicCurve;
+  edgePath: string;
+  labelT: number;
+  labelX: number;
+  labelY: number;
+  toolbarX: number;
+  toolbarY: number;
+};
+type CanvasEdgeVisibleSegment = {
+  key: string;
+  path: string;
+  markerStart?: string;
+  markerEnd?: string;
+  isProbeSegment: boolean;
+};
 
 function resolveCanvasPointForPosition(position: Position): CanvasPoint {
   switch (position) {
@@ -2871,6 +2879,17 @@ function buildCanvasCubicPath(start: CanvasPoint, control1: CanvasPoint, control
   return `M ${start.x},${start.y} C ${control1.x},${control1.y} ${control2.x},${control2.y} ${end.x},${end.y}`;
 }
 
+function buildCanvasCurvePath(curve: CanvasCubicCurve): string {
+  return buildCanvasCubicPath(curve.start, curve.control1, curve.control2, curve.end);
+}
+
+function interpolateCanvasPoint(start: CanvasPoint, end: CanvasPoint, t: number): CanvasPoint {
+  return {
+    x: start.x + (end.x - start.x) * t,
+    y: start.y + (end.y - start.y) * t
+  };
+}
+
 function sampleCanvasCubicPoint(
   start: CanvasPoint,
   control1: CanvasPoint,
@@ -2888,6 +2907,140 @@ function sampleCanvasCubicPoint(
     x: inverseT3 * start.x + 3 * inverseT2 * t * control1.x + 3 * inverseT * t2 * control2.x + t3 * end.x,
     y: inverseT3 * start.y + 3 * inverseT2 * t * control1.y + 3 * inverseT * t2 * control2.y + t3 * end.y
   };
+}
+
+function sampleCanvasCubicTangent(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  t: number
+): CanvasPoint {
+  const inverseT = 1 - t;
+
+  return {
+    x:
+      3 * inverseT * inverseT * (control1.x - start.x) +
+      6 * inverseT * t * (control2.x - control1.x) +
+      3 * t * t * (end.x - control2.x),
+    y:
+      3 * inverseT * inverseT * (control1.y - start.y) +
+      6 * inverseT * t * (control2.y - control1.y) +
+      3 * t * t * (end.y - control2.y)
+  };
+}
+
+function splitCanvasCubicCurve(curve: CanvasCubicCurve, t: number): { left: CanvasCubicCurve; right: CanvasCubicCurve } {
+  const startControl = interpolateCanvasPoint(curve.start, curve.control1, t);
+  const controlBridge = interpolateCanvasPoint(curve.control1, curve.control2, t);
+  const endControl = interpolateCanvasPoint(curve.control2, curve.end, t);
+  const leftInner = interpolateCanvasPoint(startControl, controlBridge, t);
+  const rightInner = interpolateCanvasPoint(controlBridge, endControl, t);
+  const splitPoint = interpolateCanvasPoint(leftInner, rightInner, t);
+
+  return {
+    left: {
+      start: curve.start,
+      control1: startControl,
+      control2: leftInner,
+      end: splitPoint
+    },
+    right: {
+      start: splitPoint,
+      control1: rightInner,
+      control2: endControl,
+      end: curve.end
+    }
+  };
+}
+
+function sliceCanvasCubicCurve(curve: CanvasCubicCurve, fromT: number, toT: number): CanvasCubicCurve | null {
+  const safeFromT = Math.max(0, Math.min(1, fromT));
+  const safeToT = Math.max(0, Math.min(1, toT));
+  if (safeToT - safeFromT <= 0.001) {
+    return null;
+  }
+
+  if (safeFromT <= 0.001 && safeToT >= 0.999) {
+    return curve;
+  }
+
+  if (safeFromT <= 0.001) {
+    return splitCanvasCubicCurve(curve, safeToT).left;
+  }
+
+  if (safeToT >= 0.999) {
+    return splitCanvasCubicCurve(curve, safeFromT).right;
+  }
+
+  const { right } = splitCanvasCubicCurve(curve, safeFromT);
+  const relativeT = (safeToT - safeFromT) / (1 - safeFromT);
+  return splitCanvasCubicCurve(right, relativeT).left;
+}
+
+function createCanvasCubicArcTable(
+  curve: CanvasCubicCurve,
+  extraTs: number[] = []
+): Array<{ t: number; length: number; point: CanvasPoint }> {
+  const sampleCount = 96;
+  const ts = new Set<number>([0, 1, ...extraTs.map((value) => Math.max(0, Math.min(1, value)))]);
+  for (let index = 1; index < sampleCount; index += 1) {
+    ts.add(index / sampleCount);
+  }
+
+  const sortedTs = [...ts].sort((left, right) => left - right);
+  let accumulatedLength = 0;
+
+  return sortedTs.map((t, index) => {
+    const point = sampleCanvasCubicPoint(curve.start, curve.control1, curve.control2, curve.end, t);
+    if (index > 0) {
+      const previousT = sortedTs[index - 1] ?? 0;
+      const previousPoint = sampleCanvasCubicPoint(curve.start, curve.control1, curve.control2, curve.end, previousT);
+      accumulatedLength += Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y);
+    }
+
+    return {
+      t,
+      point,
+      length: accumulatedLength
+    };
+  });
+}
+
+function resolveCanvasTForArcLength(
+  samples: Array<{ t: number; length: number; point: CanvasPoint }>,
+  targetLength: number
+): number {
+  if (samples.length === 0) {
+    return 0;
+  }
+
+  if (targetLength <= 0) {
+    return samples[0]?.t ?? 0;
+  }
+
+  const totalLength = samples[samples.length - 1]?.length ?? 0;
+  if (targetLength >= totalLength) {
+    return samples[samples.length - 1]?.t ?? 1;
+  }
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const current = samples[index];
+    const previous = samples[index - 1];
+    if (!current || !previous || current.length < targetLength) {
+      continue;
+    }
+
+    const span = current.length - previous.length;
+    if (span <= 0.001) {
+      return current.t;
+    }
+
+    const ratio = (targetLength - previous.length) / span;
+    return previous.t + (current.t - previous.t) * ratio;
+  }
+
+  return samples[samples.length - 1]?.t ?? 1;
 }
 
 function calculateCanvasBezierControlOffset(distance: number, curvature: number): number {
@@ -2968,18 +3121,16 @@ function createCanvasCubicEdgeGeometry(
   control1: CanvasPoint,
   control2: CanvasPoint,
   end: CanvasPoint,
-  labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, 0.5)
-): {
-  edgePath: string;
-  labelX: number;
-  labelY: number;
-  toolbarX: number;
-  toolbarY: number;
-} {
+  labelT = 0.5
+): CanvasEdgeGeometry {
+  const curve = { start, control1, control2, end };
+  const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, labelT);
   const toolbarPoint = resolveCanvasEdgeToolbarPoint(start, control1, control2, end, labelPoint);
 
   return {
-    edgePath: buildCanvasCubicPath(start, control1, control2, end),
+    curve,
+    edgePath: buildCanvasCurvePath(curve),
+    labelT,
     labelX: labelPoint.x,
     labelY: labelPoint.y,
     toolbarX: toolbarPoint.x,
@@ -2987,13 +3138,7 @@ function createCanvasCubicEdgeGeometry(
   };
 }
 
-function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
-  edgePath: string;
-  labelX: number;
-  labelY: number;
-  toolbarX: number;
-  toolbarY: number;
-} {
+function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): CanvasEdgeGeometry {
   const start = { x: props.sourceX, y: props.sourceY };
   const end = { x: props.targetX, y: props.targetY };
   const sourceVector = resolveCanvasPointForPosition(props.sourcePosition);
@@ -3006,9 +3151,7 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
     const tangent = perpendicularCanvasPoint(sourceVector);
     const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), tangent, -spreadDistance);
     const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), tangent, spreadDistance);
-    const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, 0.72);
-
-    return createCanvasCubicEdgeGeometry(start, control1, control2, end, labelPoint);
+    return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.72);
   }
 
   const chordLength = Math.hypot(end.x - start.x, end.y - start.y);
@@ -3024,18 +3167,10 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
   const bendDistance = Math.max(28, outwardDistance * 0.7);
   const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), bendDirection, bendDistance);
   const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), bendDirection, bendDistance);
-  const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, 0.5);
-
-  return createCanvasCubicEdgeGeometry(start, control1, control2, end, labelPoint);
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.5);
 }
 
-function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
-  edgePath: string;
-  labelX: number;
-  labelY: number;
-  toolbarX: number;
-  toolbarY: number;
-} {
+function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): CanvasEdgeGeometry {
   if (props.source === props.target) {
     return createCanvasSameNodeEdgeGeometry(props);
   }
@@ -3049,21 +3184,145 @@ function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
   return createCanvasCubicEdgeGeometry(start, control1, control2, end);
 }
 
+function estimateCanvasEdgeLabelVisualSize(label: string): CanvasSize {
+  let glyphUnits = 0;
+
+  for (const character of label) {
+    if (/\s/.test(character)) {
+      glyphUnits += 0.45;
+      continue;
+    }
+
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isWideGlyph = codePoint >= 0x1100;
+    glyphUnits += isWideGlyph ? 1.7 : 0.96;
+  }
+
+  return {
+    width: Math.max(12, Math.ceil(glyphUnits * 7 + 8)),
+    height: 18
+  };
+}
+
+function createCanvasEdgeVisibleSegments(params: {
+  curve: CanvasCubicCurve;
+  edgePath: string;
+  labelT: number;
+  labelVisualSize: CanvasSize | null;
+  markerStart?: string;
+  markerEnd?: string;
+}): CanvasEdgeVisibleSegment[] {
+  const { curve, edgePath, labelT, labelVisualSize, markerStart, markerEnd } = params;
+  if (!labelVisualSize) {
+    return [
+      {
+        key: 'full',
+        path: edgePath,
+        markerStart,
+        markerEnd,
+        isProbeSegment: true
+      }
+    ];
+  }
+
+  const tangent = normalizeCanvasPoint(
+    sampleCanvasCubicTangent(curve.start, curve.control1, curve.control2, curve.end, labelT)
+  );
+  const knockoutWidth = labelVisualSize.width + 4;
+  const knockoutHeight = labelVisualSize.height + 4;
+  const projectedGap = Math.abs(tangent.x) * knockoutWidth + Math.abs(tangent.y) * knockoutHeight + 2;
+  const samples = createCanvasCubicArcTable(curve, [labelT]);
+  const labelArcSample = samples.find((sample) => Math.abs(sample.t - labelT) < 0.0001);
+  const labelLength = labelArcSample?.length;
+  const totalLength = samples[samples.length - 1]?.length ?? 0;
+
+  if (labelLength === undefined || totalLength <= projectedGap + 4) {
+    return [
+      {
+        key: 'full',
+        path: edgePath,
+        markerStart,
+        markerEnd,
+        isProbeSegment: true
+      }
+    ];
+  }
+
+  const halfGap = projectedGap / 2;
+  const startT = resolveCanvasTForArcLength(samples, Math.max(0, labelLength - halfGap));
+  const endT = resolveCanvasTForArcLength(samples, Math.min(totalLength, labelLength + halfGap));
+  const segments = [
+    {
+      key: 'leading',
+      fromT: 0,
+      toT: startT
+    },
+    {
+      key: 'trailing',
+      fromT: endT,
+      toT: 1
+    }
+  ].reduce<CanvasEdgeVisibleSegment[]>((items, segment) => {
+    const slicedCurve = sliceCanvasCubicCurve(curve, segment.fromT, segment.toT);
+    if (!slicedCurve) {
+      return items;
+    }
+
+    items.push({
+      key: segment.key,
+      path: buildCanvasCurvePath(slicedCurve),
+      markerStart: segment.fromT <= 0.001 ? markerStart : undefined,
+      markerEnd: segment.toT >= 0.999 ? markerEnd : undefined,
+      isProbeSegment: false
+    });
+    return items;
+  }, []);
+
+  const normalizedSegments = segments.map((segment, index) => ({
+    ...segment,
+    isProbeSegment: index === 0
+  }));
+
+  return normalizedSegments.length > 0
+    ? normalizedSegments
+    : [
+        {
+          key: 'full',
+          path: edgePath,
+          markerStart,
+          markerEnd,
+          isProbeSegment: true
+        }
+      ];
+}
+
 function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
-  const { edgePath, labelX, labelY, toolbarX, toolbarY } = createCanvasEdgeGeometry(props);
+  const { curve, edgePath, labelT, labelX, labelY, toolbarX, toolbarY } = createCanvasEdgeGeometry(props);
   const owner = props.data?.owner ?? 'user';
   const arrowMode = props.data?.arrowMode ?? 'none';
   const labelText = typeof props.label === 'string' ? props.label : undefined;
   const edgeColor = props.data?.color;
   const strokeColor = props.data?.strokeColor ?? resolveCanvasEdgeStrokeColor(edgeColor);
   const isLabelEditing = props.data?.isLabelEditing === true;
-  const labelDraft = props.data?.labelDraft ?? '';
   const isArrowMenuOpen = props.data?.isArrowMenuOpen === true;
   const isColorMenuOpen = props.data?.isColorMenuOpen === true;
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const labelSurfaceRef = useRef<HTMLDivElement | null>(null);
   const labelEditorMeasureRef = useRef<HTMLSpanElement | null>(null);
   const commitLabelOnBlurRef = useRef(true);
+  const [labelDraft, setLabelDraft] = useState(labelText ?? '');
+  const [isComposing, setIsComposing] = useState(false);
   const [labelEditorWidth, setLabelEditorWidth] = useState<number | null>(null);
+  const [labelVisualSize, setLabelVisualSize] = useState<CanvasSize | null>(null);
+
+  useEffect(() => {
+    if (isLabelEditing) {
+      return;
+    }
+
+    setLabelDraft(labelText ?? '');
+    setIsComposing(false);
+  }, [isLabelEditing, labelText]);
 
   useLayoutEffect(() => {
     if (!isLabelEditing || !inputRef.current) {
@@ -3071,6 +3330,8 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
     }
 
     commitLabelOnBlurRef.current = true;
+    setIsComposing(false);
+    setLabelDraft(labelText ?? '');
     inputRef.current.focus();
     inputRef.current.select();
   }, [isLabelEditing]);
@@ -3084,6 +3345,30 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
     setLabelEditorWidth(Math.max(18, Math.min(220, measuredWidth + 2)));
   }, [isLabelEditing, labelDraft]);
 
+  useLayoutEffect(() => {
+    if (isLabelEditing || !labelText || !labelSurfaceRef.current) {
+      setLabelVisualSize((current) => (current ? null : current));
+      return;
+    }
+
+    const element = labelSurfaceRef.current;
+    const updateLabelVisualSize = (): void => {
+      const rect = element.getBoundingClientRect();
+      const nextSize = {
+        width: Math.ceil(rect.width),
+        height: Math.ceil(rect.height)
+      };
+      setLabelVisualSize((current) =>
+        current && current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+      );
+    };
+
+    updateLabelVisualSize();
+    const resizeObserver = new ResizeObserver(updateLabelVisualSize);
+    resizeObserver.observe(element);
+    return () => resizeObserver.disconnect();
+  }, [isLabelEditing, labelText]);
+
   const arrowIcon = resolveCanvasEdgeArrowIcon(arrowMode);
   const labelStyle = createCanvasEdgeOverlayStyle(
     `translate(-50%, -50%) translate(${labelX}px, ${labelY - 2}px)`,
@@ -3093,28 +3378,54 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
     `translate(-50%, -100%) translate(${toolbarX}px, ${toolbarY - 12}px)`,
     strokeColor
   );
+  const visibleEdgeSegments = createCanvasEdgeVisibleSegments({
+    curve,
+    edgePath,
+    labelT,
+    labelVisualSize: labelText && !isLabelEditing ? labelVisualSize ?? estimateCanvasEdgeLabelVisualSize(labelText) : null,
+    markerStart: props.markerStart,
+    markerEnd: props.markerEnd
+  });
+  const labelNeedsMask = Boolean(labelText && !isLabelEditing && visibleEdgeSegments.length < 2);
 
   return (
     <>
-      <path d={edgePath} fill="none" className={`canvas-edge-outline ${props.selected ? 'is-selected' : ''}`} />
+      {visibleEdgeSegments.map((segment) => (
+        <path
+          key={`outline-${segment.key}`}
+          d={segment.path}
+          fill="none"
+          className={`canvas-edge-outline ${props.selected ? 'is-selected' : ''}`}
+        />
+      ))}
+      {visibleEdgeSegments.map((segment) => (
+        <path
+          key={`path-${segment.key}`}
+          d={segment.path}
+          fill="none"
+          className="canvas-edge-path"
+          style={props.style}
+          markerStart={segment.markerStart}
+          markerEnd={segment.markerEnd}
+          data-edge-visible-segment={segment.key}
+          data-edge-probe={segment.isProbeSegment ? 'true' : undefined}
+          data-edge-id={props.id}
+          data-edge-source={props.source}
+          data-edge-target={props.target}
+          data-edge-owner={owner}
+          data-edge-arrow-mode={arrowMode}
+          data-edge-color={edgeColor}
+          data-edge-label={labelText}
+          data-edge-selected={props.selected ? 'true' : 'false'}
+        />
+      ))}
       <path
         d={edgePath}
         fill="none"
-        className="canvas-edge-path"
-        style={props.style}
-        markerStart={props.markerStart}
-        markerEnd={props.markerEnd}
-        data-edge-probe="true"
+        className="canvas-edge-hitbox"
+        data-edge-hitbox="true"
         data-edge-id={props.id}
-        data-edge-source={props.source}
-        data-edge-target={props.target}
-        data-edge-owner={owner}
-        data-edge-arrow-mode={arrowMode}
-        data-edge-color={edgeColor}
-        data-edge-label={labelText}
-        data-edge-selected={props.selected ? 'true' : 'false'}
       />
-      <path d={edgePath} fill="none" className="canvas-edge-hitbox" />
       {props.selected ? (
         <EdgeLabelRenderer>
           <div
@@ -3254,28 +3565,41 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               placeholder="添加关系标签"
               maxLength={120}
               style={labelEditorWidth ? { width: `${labelEditorWidth}px` } : undefined}
-              onChange={(event) => props.data?.onChangeLabelDraft?.(event.target.value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={(event) => {
+                setIsComposing(false);
+                setLabelDraft(event.currentTarget.value);
+              }}
+              onChange={(event) => setLabelDraft(event.target.value)}
               onKeyDown={(event) => {
                 stopCanvasEvent(event);
+
+                if (isComposing || isImeComposingKeyboardEvent(event)) {
+                  return;
+                }
+
                 if (event.key === 'Enter') {
                   event.preventDefault();
-                  props.data?.onSubmitLabelEdit?.();
+                  commitLabelOnBlurRef.current = false;
+                  props.data?.onSubmitLabelEdit?.(event.currentTarget.value);
                   return;
                 }
 
                 if (event.key === 'Escape') {
                   event.preventDefault();
                   commitLabelOnBlurRef.current = false;
+                  setIsComposing(false);
                   props.data?.onCancelLabelEdit?.();
                 }
               }}
-              onBlur={() => {
+              onBlur={(event) => {
+                setIsComposing(false);
                 if (!commitLabelOnBlurRef.current) {
                   commitLabelOnBlurRef.current = true;
                   return;
                 }
 
-                props.data?.onSubmitLabelEdit?.();
+                props.data?.onSubmitLabelEdit?.(event.currentTarget.value);
               }}
             />
           </div>
@@ -3284,9 +3608,11 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
       {labelText && !isLabelEditing ? (
         <EdgeLabelRenderer>
           <div
-            className="canvas-edge-label"
+            ref={labelSurfaceRef}
+            className={`canvas-edge-label ${labelNeedsMask ? 'needs-mask' : ''}`}
             data-edge-label="true"
             data-edge-label-edge-id={props.id}
+            data-edge-label-mask={labelNeedsMask ? 'true' : undefined}
             style={labelStyle}
             onMouseDown={stopCanvasEvent}
             onClick={(event) => {
@@ -3482,8 +3808,7 @@ function toFlowEdges(params: {
   edgeColorMenuEdgeId: string | undefined;
   onSelectEdge: (edgeId: string) => void;
   onStartLabelEdit: (edgeId: string) => void;
-  onChangeLabelDraft: (edgeId: string, value: string) => void;
-  onSubmitLabelEdit: (edgeId: string) => void;
+  onSubmitLabelEdit: (edgeId: string, value: string) => void;
   onCancelLabelEdit: (edgeId: string) => void;
   onToggleArrowMenu: (edgeId: string) => void;
   onSetArrowMode: (edgeId: string, arrowMode: CanvasEdgeArrowMode) => void;
@@ -3517,13 +3842,11 @@ function toFlowEdges(params: {
         color: edge.color,
         strokeColor,
         isLabelEditing,
-        labelDraft: isLabelEditing ? params.edgeLabelEditor?.draft ?? '' : undefined,
         isArrowMenuOpen,
         isColorMenuOpen,
         onSelectEdge: () => params.onSelectEdge(edge.id),
         onStartLabelEdit: () => params.onStartLabelEdit(edge.id),
-        onChangeLabelDraft: (value) => params.onChangeLabelDraft(edge.id, value),
-        onSubmitLabelEdit: () => params.onSubmitLabelEdit(edge.id),
+        onSubmitLabelEdit: (value) => params.onSubmitLabelEdit(edge.id, value),
         onCancelLabelEdit: () => params.onCancelLabelEdit(edge.id),
         onToggleArrowMenu: () => params.onToggleArrowMenu(edge.id),
         onSetArrowMode: (arrowMode) => params.onSetArrowMode(edge.id, arrowMode),
@@ -4656,7 +4979,7 @@ function queryNodeField(nodeId: string, fieldName: string): Element {
 }
 
 function queryEdgeSelectionTarget(edgeId: string): Element {
-  const edge = document.querySelector(`[data-edge-probe="true"][data-edge-id="${edgeId}"]`);
+  const edge = document.querySelector(`[data-edge-hitbox="true"][data-edge-id="${edgeId}"]`);
   if (!edge) {
     throw new Error(`未找到连线 ${edgeId}。`);
   }
