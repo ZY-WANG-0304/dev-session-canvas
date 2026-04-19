@@ -79,7 +79,18 @@
           },
           bootstrap(
             state,
-            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt', terminalWordSeparators: ' ()[]{}\',"`' }
+            runtime = {
+              workspaceTrusted: true,
+              surfaceLocation: 'panel',
+              defaultAgentProvider: 'codex',
+              terminalScrollback: 1000,
+              editorMultiCursorModifier: 'alt',
+              terminalWordSeparators: ' ()[]{}\',"`',
+              filePresentationMode: 'nodes',
+              fileNodeDisplayMode: 'icon-path',
+              filePathDisplayMode: 'basename',
+              fileIconFontFaces: []
+            }
           ) {
             this.dispatchHostMessage({
               type: 'host/bootstrap',
@@ -91,7 +102,18 @@
           },
           update(
             state,
-            runtime = { workspaceTrusted: true, surfaceLocation: 'panel', defaultAgentProvider: 'codex', terminalScrollback: 1000, editorMultiCursorModifier: 'alt', terminalWordSeparators: ' ()[]{}\',"`' }
+            runtime = {
+              workspaceTrusted: true,
+              surfaceLocation: 'panel',
+              defaultAgentProvider: 'codex',
+              terminalScrollback: 1000,
+              editorMultiCursorModifier: 'alt',
+              terminalWordSeparators: ' ()[]{}\',"`',
+              filePresentationMode: 'nodes',
+              fileNodeDisplayMode: 'icon-path',
+              filePathDisplayMode: 'basename',
+              fileIconFontFaces: []
+            }
           ) {
             this.dispatchHostMessage({
               type: 'host/stateUpdated',

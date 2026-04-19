@@ -18,5 +18,10 @@
   "configuration.agent.defaultProvider.description": "新建 Agent 节点时默认使用的 CLI provider。",
   "configuration.agent.codexCommand.description": "启动 Codex CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。",
   "configuration.agent.claudeCommand.description": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。",
-  "configuration.terminal.shellPath.description": "嵌入式 Terminal 节点启动 shell 时使用的命令路径。留空时默认读取 `SHELL`（Linux/macOS）或 `COMSPEC`（Windows）。"
+  "configuration.terminal.shellPath.description": "嵌入式 Terminal 节点启动 shell 时使用的命令路径。留空时默认读取 `SHELL`（Linux/macOS）或 `COMSPEC`（Windows）。",
+  "configuration.files.presentationMode.description": "Agent 文件活动的默认展示方式。`nodes` 会把文件显示为独立节点；`lists` 会按 Agent 与共享关系收口成文件列表节点。",
+  "configuration.files.includeGlobs.description": "文件活动 include 过滤规则。留空表示不过滤；有值时，只有匹配任一 glob 的文件才会生成文件节点或文件列表条目。",
+  "configuration.files.excludeGlobs.description": "文件活动 exclude 过滤规则。匹配任一 glob 的文件不会生成文件节点或文件列表条目。",
+  "configuration.files.nodeDisplayMode.description": "文件节点的显示模式。默认同时显示图标和路径。",
+  "configuration.files.pathDisplayMode.description": "文件节点与文件列表条目的路径显示口径。默认只显示文件名。"
 }

@@ -173,6 +173,55 @@
           "default": "",
           "scope": "machine",
           "markdownDescription": "%configuration.terminal.shellPath.description%"
+        },
+        "devSessionCanvas.files.presentationMode": {
+          "type": "string",
+          "enum": [
+            "nodes",
+            "lists"
+          ],
+          "default": "nodes",
+          "scope": "window",
+          "markdownDescription": "%configuration.files.presentationMode.description%"
+        },
+        "devSessionCanvas.files.includeGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "%configuration.files.includeGlobs.description%"
+        },
+        "devSessionCanvas.files.excludeGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "%configuration.files.excludeGlobs.description%"
+        },
+        "devSessionCanvas.files.nodeDisplayMode": {
+          "type": "string",
+          "enum": [
+            "icon-path",
+            "icon-only",
+            "path-only"
+          ],
+          "default": "icon-path",
+          "scope": "window",
+          "markdownDescription": "%configuration.files.nodeDisplayMode.description%"
+        },
+        "devSessionCanvas.files.pathDisplayMode": {
+          "type": "string",
+          "enum": [
+            "basename",
+            "relative-path"
+          ],
+          "default": "basename",
+          "scope": "window",
+          "markdownDescription": "%configuration.files.pathDisplayMode.description%"
         }
       }
     }
