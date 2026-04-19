@@ -159,7 +159,7 @@ interface CanvasEdgeData {
   onToggleArrowMenu?: () => void;
   onSetArrowMode?: (arrowMode: CanvasEdgeArrowMode) => void;
   onToggleColorMenu?: () => void;
-  onSetColor?: (color: CanvasEdgeColor | undefined) => void;
+  onSetColor?: (color: CanvasEdgeColor | null) => void;
   onDeleteEdge?: () => void;
 }
 
@@ -751,7 +751,7 @@ function App(): JSX.Element {
     });
   };
 
-  const setEdgeColor = (edgeId: string, color: CanvasEdgeColor | undefined): void => {
+  const setEdgeColor = (edgeId: string, color: CanvasEdgeColor | null): void => {
     closeEdgeMenus();
     postMessage({
       type: 'webview/updateEdge',
@@ -2826,7 +2826,128 @@ function createCanvasEdgeOverlayStyle(transform: string, accentColor: string): R
   } as React.CSSProperties;
 }
 
-function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
+type CanvasPoint = { x: number; y: number };
+
+function resolveCanvasPointForPosition(position: Position): CanvasPoint {
+  switch (position) {
+    case Position.Top:
+      return { x: 0, y: -1 };
+    case Position.Right:
+      return { x: 1, y: 0 };
+    case Position.Bottom:
+      return { x: 0, y: 1 };
+    case Position.Left:
+    default:
+      return { x: -1, y: 0 };
+  }
+}
+
+function addCanvasPoint(base: CanvasPoint, offset: CanvasPoint, scale = 1): CanvasPoint {
+  return {
+    x: base.x + offset.x * scale,
+    y: base.y + offset.y * scale
+  };
+}
+
+function perpendicularCanvasPoint(point: CanvasPoint): CanvasPoint {
+  return {
+    x: -point.y,
+    y: point.x
+  };
+}
+
+function normalizeCanvasPoint(point: CanvasPoint): CanvasPoint {
+  const magnitude = Math.hypot(point.x, point.y);
+  if (magnitude < 0.001) {
+    return { x: 0, y: -1 };
+  }
+
+  return {
+    x: point.x / magnitude,
+    y: point.y / magnitude
+  };
+}
+
+function buildCanvasCubicPath(start: CanvasPoint, control1: CanvasPoint, control2: CanvasPoint, end: CanvasPoint): string {
+  return `M ${start.x},${start.y} C ${control1.x},${control1.y} ${control2.x},${control2.y} ${end.x},${end.y}`;
+}
+
+function sampleCanvasCubicPoint(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  t: number
+): CanvasPoint {
+  const inverseT = 1 - t;
+  const inverseT2 = inverseT * inverseT;
+  const inverseT3 = inverseT2 * inverseT;
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  return {
+    x: inverseT3 * start.x + 3 * inverseT2 * t * control1.x + 3 * inverseT * t2 * control2.x + t3 * end.x,
+    y: inverseT3 * start.y + 3 * inverseT2 * t * control1.y + 3 * inverseT * t2 * control2.y + t3 * end.y
+  };
+}
+
+function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
+  edgePath: string;
+  labelX: number;
+  labelY: number;
+} {
+  const start = { x: props.sourceX, y: props.sourceY };
+  const end = { x: props.targetX, y: props.targetY };
+  const sourceVector = resolveCanvasPointForPosition(props.sourcePosition);
+  const targetVector = resolveCanvasPointForPosition(props.targetPosition);
+  const sameAnchor = props.sourcePosition === props.targetPosition;
+
+  if (sameAnchor) {
+    const outwardDistance = 68;
+    const spreadDistance = 34;
+    const tangent = perpendicularCanvasPoint(sourceVector);
+    const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), tangent, -spreadDistance);
+    const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), tangent, spreadDistance);
+    const label = addCanvasPoint(start, sourceVector, outwardDistance + 14);
+
+    return {
+      edgePath: buildCanvasCubicPath(start, control1, control2, end),
+      labelX: label.x,
+      labelY: label.y
+    };
+  }
+
+  const chordLength = Math.hypot(end.x - start.x, end.y - start.y);
+  const outwardDistance = Math.max(54, chordLength * 0.8);
+  const combinedDirection = normalizeCanvasPoint({
+    x: sourceVector.x + targetVector.x,
+    y: sourceVector.y + targetVector.y
+  });
+  const bendDirection =
+    Math.abs(sourceVector.x + targetVector.x) < 0.001 && Math.abs(sourceVector.y + targetVector.y) < 0.001
+      ? perpendicularCanvasPoint(sourceVector)
+      : combinedDirection;
+  const bendDistance = Math.max(28, outwardDistance * 0.7);
+  const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), bendDirection, bendDistance);
+  const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), bendDirection, bendDistance);
+  const label = sampleCanvasCubicPoint(start, control1, control2, end, 0.5);
+
+  return {
+    edgePath: buildCanvasCubicPath(start, control1, control2, end),
+    labelX: label.x,
+    labelY: label.y
+  };
+}
+
+function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
+  edgePath: string;
+  labelX: number;
+  labelY: number;
+} {
+  if (props.source === props.target) {
+    return createCanvasSameNodeEdgeGeometry(props);
+  }
+
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: props.sourceX,
     sourceY: props.sourceY,
@@ -2835,6 +2956,16 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
     targetY: props.targetY,
     targetPosition: props.targetPosition
   });
+
+  return {
+    edgePath,
+    labelX,
+    labelY
+  };
+}
+
+function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
+  const { edgePath, labelX, labelY } = createCanvasEdgeGeometry(props);
   const owner = props.data?.owner ?? 'user';
   const arrowMode = props.data?.arrowMode ?? 'none';
   const labelText = typeof props.label === 'string' ? props.label : undefined;
@@ -2937,7 +3068,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
                       type="button"
                       className={`canvas-edge-arrow-menu-item ${isActive ? 'is-active' : ''}`}
                       data-edge-color-option={item.color ?? 'default'}
-                      onClick={() => props.data?.onSetColor?.(item.color)}
+                      onClick={() => props.data?.onSetColor?.(item.color ?? null)}
                     >
                       <span
                         className="canvas-edge-color-swatch"
@@ -3256,7 +3387,7 @@ function toFlowEdges(params: {
   onToggleArrowMenu: (edgeId: string) => void;
   onSetArrowMode: (edgeId: string, arrowMode: CanvasEdgeArrowMode) => void;
   onToggleColorMenu: (edgeId: string) => void;
-  onSetColor: (edgeId: string, color: CanvasEdgeColor | undefined) => void;
+  onSetColor: (edgeId: string, color: CanvasEdgeColor | null) => void;
   onDeleteEdge: (edgeId: string) => void;
 }): CanvasFlowEdge[] {
   return params.edges.map((edge) => {

@@ -395,6 +395,27 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe('var(--canvas-edge-color-4)');
 
   await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '设置颜色' }).click();
+  await expect(edgeColorMenu).toBeVisible();
+  await edgeColorMenu.getByRole('button', { name: '默认颜色' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    color: null
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      color: undefined
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
+    'var(--canvas-edge-stroke-default)'
+  );
+
+  await clearPostedMessages(page);
   await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
   const edgeLabelEditor = page.locator(
     '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="edge-user-1"]'
@@ -469,6 +490,65 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   state.edges = [];
   await updateHostState(page, state);
   await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
+});
+
+test('self loop edges can be created and rendered', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  await dragConnectionBetweenAnchors(page, {
+    sourceNodeId: 'agent-1',
+    sourceAnchor: 'right',
+    targetNodeId: 'agent-1',
+    targetAnchor: 'bottom'
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/createEdge');
+  expect(message.payload).toEqual({
+    sourceNodeId: 'agent-1',
+    targetNodeId: 'agent-1',
+    sourceAnchor: 'right',
+    targetAnchor: 'bottom'
+  });
+
+  state.edges = [
+    {
+      id: 'edge-self-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'agent-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'bottom',
+      arrowMode: 'forward',
+      owner: 'user',
+      label: '自环'
+    }
+  ];
+  await updateHostState(page, state);
+
+  await expect
+    .poll(async () => {
+      const edge = await readProbeEdge(page, 'edge-self-1', 20);
+      return edge
+        ? JSON.stringify({
+            sourceNodeId: edge.sourceNodeId,
+            targetNodeId: edge.targetNodeId,
+            label: edge.label
+          })
+        : null;
+    })
+    .toBe(
+      JSON.stringify({
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'agent-1',
+        label: '自环'
+      })
+    );
+  await expect(page.locator('[data-edge-probe="true"][data-edge-id="edge-self-1"]')).toBeVisible();
+  await expect(page.locator('.canvas-edge-label')).toContainText('自环');
 });
 
 test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {

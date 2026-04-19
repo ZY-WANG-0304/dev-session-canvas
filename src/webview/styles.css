@@ -262,16 +262,18 @@ body {
 
 .canvas-shell .react-flow__edgeupdater {
   cursor: crosshair;
-  fill: var(--vscode-editor-background);
-  stroke: var(--vscode-focusBorder);
-  stroke-width: 1.2;
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 10;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 120ms ease;
 }
 
 .canvas-shell .react-flow__edge.selected .react-flow__edgeupdater,
 .canvas-shell .react-flow__edge.updating .react-flow__edgeupdater {
   opacity: 1;
+  pointer-events: all;
 }
 
 .canvas-edge-outline,

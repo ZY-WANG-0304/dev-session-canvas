@@ -6603,10 +6603,7 @@ function createUserCanvasEdge(
   previousState: CanvasPrototypeState,
   edge: CanvasEdgeSummary
 ): CanvasPrototypeState {
-  if (
-    previousState.edges.some((existingEdge) => existingEdge.id === edge.id) ||
-    edge.sourceNodeId === edge.targetNodeId
-  ) {
+  if (previousState.edges.some((existingEdge) => existingEdge.id === edge.id)) {
     return previousState;
   }
 
@@ -6626,7 +6623,7 @@ function updateCanvasEdge(
     sourceAnchor?: CanvasEdgeAnchor;
     targetAnchor?: CanvasEdgeAnchor;
     arrowMode?: CanvasEdgeArrowMode;
-    color?: CanvasEdgeColor;
+    color?: CanvasEdgeColor | null;
     label?: string;
   }
 ): CanvasPrototypeState {
@@ -6637,11 +6634,7 @@ function updateCanvasEdge(
 
   const patchedEdge = applyCanvasEdgePatch(edge, patch);
   const nodeIds = new Set(previousState.nodes.map((node) => node.id));
-  if (
-    patchedEdge.sourceNodeId === patchedEdge.targetNodeId ||
-    !nodeIds.has(patchedEdge.sourceNodeId) ||
-    !nodeIds.has(patchedEdge.targetNodeId)
-  ) {
+  if (!nodeIds.has(patchedEdge.sourceNodeId) || !nodeIds.has(patchedEdge.targetNodeId)) {
     return previousState;
   }
   if (areCanvasEdgesEquivalent(edge, patchedEdge)) {
@@ -6712,10 +6705,11 @@ function applyCanvasEdgePatch(
     sourceAnchor?: CanvasEdgeAnchor;
     targetAnchor?: CanvasEdgeAnchor;
     arrowMode?: CanvasEdgeArrowMode;
-    color?: CanvasEdgeColor;
+    color?: CanvasEdgeColor | null;
     label?: string;
   }
 ): CanvasEdgeSummary {
+  const hasColorPatch = Object.prototype.hasOwnProperty.call(patch, 'color');
   return {
     ...edge,
     sourceNodeId: patch.sourceNodeId ?? edge.sourceNodeId,
@@ -6723,7 +6717,7 @@ function applyCanvasEdgePatch(
     sourceAnchor: patch.sourceAnchor ?? edge.sourceAnchor,
     targetAnchor: patch.targetAnchor ?? edge.targetAnchor,
     arrowMode: patch.arrowMode ?? edge.arrowMode,
-    color: patch.color !== undefined ? normalizeCanvasEdgeColor(patch.color) : edge.color,
+    color: hasColorPatch ? normalizeCanvasEdgeColor(patch.color ?? undefined) : edge.color,
     label: patch.label !== undefined ? normalizeCanvasEdgeLabel(patch.label) : edge.label
   };
 }
