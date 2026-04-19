@@ -315,7 +315,7 @@ body {
 
 .canvas-edge-toolbar-anchor {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   justify-items: center;
 }
 
@@ -411,14 +411,14 @@ body {
 
 .canvas-edge-label-editor {
   width: clamp(120px, 18vw, 220px);
-  min-height: 24px;
+  min-height: 20px;
   border-radius: 4px;
   border: 1px solid var(--vscode-input-border, var(--vscode-focusBorder));
   background: var(--vscode-input-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
   color: var(--vscode-input-foreground, var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground)));
-  padding: 0 8px;
+  padding: 0 6px;
   box-sizing: border-box;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
   font: inherit;
   font-size: 11px;
 }
@@ -436,45 +436,29 @@ body {
   position: absolute;
   pointer-events: all;
   display: inline-flex;
-  min-height: 20px;
+  min-height: 18px;
   align-items: center;
-  padding: 0 7px;
-  border-radius: 4px;
+  padding: 0 6px;
+  border-radius: 3px;
   border: 1px solid
     color-mix(
       in srgb,
-      var(--canvas-edge-accent) 28%,
-      var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border))) 72%
+      var(--canvas-edge-accent) 18%,
+      var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border))) 82%
     );
   background: color-mix(
     in srgb,
     var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
-      94%,
-    var(--canvas-edge-accent) 6%
+      97%,
+    var(--canvas-edge-accent) 3%
   );
   color: var(--vscode-editor-foreground);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.1;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
-}
-
-.canvas-edge-label.is-selected {
-  border-color: color-mix(
-    in srgb,
-    var(--vscode-focusBorder) 40%,
-    var(--canvas-edge-accent) 30%,
-    var(--vscode-editorWidget-border, var(--vscode-panel-border)) 30%
-  );
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
-      90%,
-    var(--canvas-edge-accent) 10%
-  );
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 14%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .compact-node {

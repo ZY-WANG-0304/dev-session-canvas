@@ -3185,7 +3185,9 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
       {labelText && !isLabelEditing ? (
         <EdgeLabelRenderer>
           <div
-            className={`canvas-edge-label ${props.selected ? 'is-selected' : ''}`}
+            className="canvas-edge-label"
+            data-edge-label="true"
+            data-edge-label-edge-id={props.id}
             style={labelStyle}
             onMouseDown={stopCanvasEvent}
             onClick={(event) => {
