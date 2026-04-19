@@ -1,132 +1,424 @@
-# DevSessionCanvas 架构说明
+# DevSessionCanvas 架构地图
 
-本文件提供当前项目的顶层架构地图，帮助协作者理解系统边界、核心领域和稳定接口。
+本文件提供仓库的顶层导航，重点回答四件事：
 
-本文件刻意保持轻量。它只记录当前已经确认的目标、边界和约束，不提前写死尚未做完设计的实现方案。
+- 当前系统整体上是如何工作的。
+- 重要代码分别放在哪里。
+- 哪些边界属于架构不变量。
+- 当你要改某类能力时，应该先从哪一层开始找。
 
-具体到 `WebviewPanel`、画布引擎、终端接入和状态持久化等技术路线时，以 `docs/design-docs/` 下的具体设计文档为准。
+本文件只记录当前已经成立的结构、边界和命名实体，不展开方案比较、细节时序或未定设计。此类内容进入 `docs/design-docs/` 与 `docs/exec-plans/`。
 
-## 1. 项目背景
+## 1. 鸟瞰视图（Bird's Eye View）
 
-当前项目的定位是面向 VSCode 的多 Agent 协作画布。它通过一张无限 2D 画布为 `Agent` 与 `Terminal` 提供全局视角，并与 VSCode 现有插件生态配合，提升 AI 开发时代的开发体验。
+从最高层看，DevSessionCanvas 是一个运行在 VSCode 内的 workspace extension。它把一张无限 2D 画布放进 VSCode 的编辑区或 panel，并把 `agent | terminal | note` 三类节点投影到这张画布上。
 
-与独立 app 不同，本项目运行在 VSCode 内，天然工作在用户当前打开的 workspace 中。因此，独立 app 里的 workspace 管理能力不属于当前范围。
+系统当前由三个协同运行时组成：
 
-## 2. 目标
+- `Extension Host`：权威状态所在位置，负责命令、Webview 生命周期、workspace trust、持久化、Agent / Terminal 启停和恢复。
+- `Webview`：负责画布渲染、节点交互、内嵌终端前端和局部 UI 状态。
+- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并把状态重新接回宿主。
 
-当前阶段的顶层目标如下：
+主路径可以概括为：
 
-- 在 VSCode 内提供一张可平移、缩放和组织对象的无限 2D 画布。
-- 在同一画布上优先承载 `Agent` 与终端这两类核心执行对象，并允许辅助协作对象按需存在。
-- 让用户能在多对象并行活动时持续看清 `Agent` / `Terminal` 的上下文、关系和整体进度。
-- 让 VSCode 的 workspace 上下文自然进入该体验，而不是再造一套独立 workspace 管理系统。
-- 让产品与 VSCode 现有插件生态协同，而不是替代已有插件能力。
+```text
+用户命令 / 侧栏动作
+  -> src/extension.ts
+  -> src/panel/CanvasPanelManager.ts
+  -> src/common/protocol.ts 定义的消息与状态
+  -> src/webview/main.tsx 渲染画布与节点
+  -> Webview 用户动作回传 Host
+  -> Host 启停 Agent / Terminal、更新权威状态、按需持久化
+  -> Host 再把最新状态广播回 Webview
+```
 
-## 3. 非目标
+执行型节点的路径在此基础上再多一层：
 
-当前顶层架构不把以下内容视为必须成立的能力：
+```text
+CanvasPanelManager
+  -> executionSessionBridge / agentCliResolver
+  -> runtimeSupervisorClient（可选）
+  -> runtimeSupervisorMain
+  -> 输出与生命周期事件回流到 Host
+  -> Host 同步到 Webview 与持久化快照
+```
 
-- 独立于 VSCode 的桌面应用能力。
-- 独立 app 形态下的 workspace 创建、切换和管理。
-- 在当前阶段追求对参考产品的像素级复刻。
-- 以纯浏览器或纯 `web extension` 形态为前提成立全部核心能力。
-- 在正式设计完成前提前锁定具体 AI provider、存储引擎或画布渲染细节。
+这意味着当前项目不是“前端自己维护数据的 Web 白板”，也不是“独立桌面 app”。它的核心架构前提始终是：**VSCode 宿主掌握 workspace 绑定状态，Webview 负责呈现与交互，长生命周期执行能力按需下沉到 supervisor。**
 
-## 4. 约束
+## 2. 当前范围与非目标
 
-当前明确的约束如下：
+当前顶层范围：
 
-- 宿主约束：系统必须运行在 VSCode 扩展机制内。
-- 运行时拓扑约束：在远程工作区中，Extension Host 可能运行在远端，而 Webview 仍运行在本机或浏览器侧。
-- 产品约束：当前优先复刻核心协作体验，而不是补齐外围管理能力。
-- 上下文约束：workspace 语义直接复用 VSCode 提供的上下文。
-- 信任约束：未信任 workspace 时，执行型能力必须可以显式降级或禁用。
-- 恢复约束：与 workspace 绑定的关键状态不能只存在于 Webview 进程内存中，必须具备恢复路径。
-- 复杂度约束：在灵活性与简单性冲突时，优先简单。
-- 文档约束：关键设计决策必须进入正式文档，复杂任务优先通过 `ExecPlan` 推进。
+- 在 VSCode 内提供单一逻辑画布，支持 `editor` / `panel` 两种承载面。
+- 在同一对象模型下支持 `agent`、`terminal`、`note` 三类节点。
+- 让执行型节点具备真实运行、状态回传、基础恢复和 workspace 绑定持久化能力。
+- 在 Trusted / Restricted、Local / Remote 场景下维持可解释的降级行为。
 
-## 5. 领域划分
+当前明确非目标：
 
-当前项目可先按以下领域理解：
+- 独立于 VSCode 的桌面应用形态。
+- 纯 web extension 或 `vscode.dev` 兼容作为当前主路径前提。
+- 多人实时协作、CRDT 或远程共享白板。
+- 在 `ARCHITECTURE.md` 中提前锁死具体 provider、UI 细节或临时实现策略。
 
-`VSCode 集成域`：负责扩展激活、命令注册、Webview 生命周期、终端 API、workspace 访问，以及 trust、storage、secrets 等宿主能力接入。
+## 3. 代码地图（Code Map）
 
-`画布交互域`：负责无限画布本身，包括平移、缩放、布局、选择、连接关系和对象可视化。
+### 仓库总览
 
-`协作对象域`：负责定义 `Agent`、终端及其他辅助协作对象的共享模型、状态、元数据和彼此关系。
+当前最重要的运行时代码与验证目录可以先这样读：
 
-`执行编排域`：负责把协作对象和实际执行能力连接起来，例如 Agent 生命周期、终端会话、任务状态推进、运行时事件流和会话映射。
+```text
+src/
+  extension.ts          扩展入口
+  common/               跨边界共享模型、协议与纯工具
+  panel/                Extension Host 侧的画布编排与执行接线
+  sidebar/              VSCode Sidebar 只读投影
+  supervisor/           独立 runtime supervisor 进程
+  webview/              React / React Flow 画布前端
+tests/
+  vscode-smoke/         宿主级 smoke 与重开恢复验证
+  playwright/           Webview DOM 与交互回归
+scripts/                build、打包、smoke、调试入口
+```
 
-`项目状态域`：负责与当前 workspace 相关的布局、会话状态、UI 临时状态与最小必要持久化之间的边界划分。
+目录名和逻辑层不总是一一对应。尤其 `src/panel/` 现在既包含 panel surface 相关代码，也承载了 Extension Host 侧的大部分运行时编排与执行基础设施；读代码时应按职责分层理解，不要被目录名误导。
 
-## 6. 运行时边界与分层
+### `src/extension.ts`
 
-当前更适合把系统理解为四个核心边界，而不是一条严格的线性分层：
+这是扩展运行时入口。
 
-`宿主集成层`：运行在 VSCode Extension Host 中，在不同 VSCode 场景下可能位于本地或远端；负责 VSCode API、命令、终端、文件、trust、storage 和 Webview 容器。
+关键命名实体：
 
-`画布呈现层`：运行在 Webview 中，负责用户可见的画布、节点和交互反馈；它可以维护局部 UI 状态，但不应成为 workspace 绑定状态的唯一权威来源。
+- `activate` / `deactivate`
+- `CanvasPanelManager`
+- `CanvasSidebarView`
+- `COMMAND_IDS` / `VIEW_IDS`
 
-`共享模型与编排层`：负责定义跨宿主与 Webview 共享的对象模型、动作、消息载荷和状态流转规则。
+这里主要负责：
 
-`适配与基础设施层`：负责日志、持久化、配置，以及把共享模型连接到具体 Agent/终端/任务实现的适配器。
+- 注册命令、树视图和 Webview provider。
+- 创建单例 `CanvasPanelManager` 并把 sidebar 接到它的状态。
+- 处理“打开画布”“创建节点”“重置状态”等顶层入口。
 
-当前允许的依赖方向是：
+架构不变量：
 
-- 宿主集成层和画布呈现层都可以依赖共享模型与编排层。
-- 适配与基础设施层可以为共享模型与宿主层提供能力。
-- 共享模型与编排层不应直接依赖 VSCode API、DOM 或具体 AI provider，也不应假设宿主与 Webview 位于同一进程或同一机器。
-- Webview 不应直接越过消息边界调用宿主能力。
+- 这里是 VSCode 激活入口，不承载画布业务规则细节。
+- 顶层命令应把具体状态变更委托给 `CanvasPanelManager`，而不是在入口处分叉维护状态。
 
-## 7. 关键稳定接口
+### `src/common/`
 
-当前应优先保持稳定的接口如下：
+这是跨 `Extension Host`、`Webview`、`Supervisor` 的共享契约层，也是当前最稳定的 API boundary。
 
-`Webview <-> Extension Host 消息边界`：传递用户动作、对象更新、同步状态和宿主能力请求；消息协议应避免泄漏过多 VSCode 或 UI 实现细节，并保留后续演进空间。
+关键命名实体：
 
-`共享对象模型 <-> 执行适配器边界`：画布对象应依赖抽象能力，而不是直接依赖具体 Agent runtime、终端实现或第三方服务；运行时对象应通过稳定引用关联到画布对象。
+- `protocol.ts`
+  - `CanvasNodeKind`
+  - `CanvasNodeSummary`
+  - `CanvasPrototypeState`
+  - `WebviewToHostMessage`
+  - `HostToWebviewMessage`
+- `runtimeSupervisorProtocol.ts`
+  - `RuntimeSupervisorSessionSnapshot`
+  - `RuntimeSupervisorRequest` / `RuntimeSupervisorEvent`
+- `serializedTerminalState.ts`
+- `runtimeSupervisorPaths.ts`
+- `extensionStoragePaths.ts`
+- `executionTerminalLinks.ts`
+- `agentActivityHeuristics.ts`
 
-`共享对象模型 <-> 持久化边界`：与 workspace 绑定的状态应能序列化、恢复和演进，但当前不预设最终存储格式。
+这里主要负责：
 
-`宿主权威状态 <-> Webview 临时状态边界`：对象图、会话映射和恢复所需状态不应与相机位置、选中态、浮层展开态等局部 UI 状态混在一起。
+- 定义节点模型、消息协议、终端快照格式和 supervisor 协议。
+- 放置宿主与前端都会用到的纯逻辑和纯数据工具。
+- 统一当前系统对“节点”“执行会话”“恢复快照”“终端链接”的命名。
 
-## 8. 横切关注点
+架构不变量：
 
-质量：核心判断标准不是对象种类有多少，而是用户是否还能看清 `Agent` / `Terminal` 全局、定位当前工作、恢复上下文。
+- `src/common/` 不应依赖 `vscode`、React、DOM、`node-pty` 或具体 CLI provider。
+- `protocol.ts` 与 `runtimeSupervisorProtocol.ts` 的变更默认是跨边界变更，必须同时检查 Host / Webview / Supervisor 三侧。
+- workspace 绑定的权威状态可以由宿主持有，但它的可序列化表达必须能落在这里定义的共享模型上。
 
-可靠性：任何导致 `Agent` 状态、终端上下文或关键协作信息无声丢失的设计都不可接受；重载、重启或远程重连后的恢复路径必须可验证。
+### `src/panel/`
 
-安全与隐私：扩展可能触达代码、终端、任务和 AI 服务，相关权限、Restricted Mode 行为、日志和凭证边界必须显式记录。
+这是 Extension Host 侧的核心编排区。虽然目录名叫 `panel`，但它实际上承载的是“宿主里的画布与执行运行时中枢”。
 
-性能：画布需要支撑多对象同时存在，不能因为对象增多就迅速失去可读性或交互流畅度；消息往返与节点渲染都应被视为性能预算的一部分。
+关键命名实体：
 
-## 9. 风险与未知项
+- `CanvasPanelManager.ts`
+  - 当前宿主权威状态中心
+  - 管理 editor / panel 两种 surface
+  - 处理节点创建、删除、移动、尺寸变更、持久化与恢复
+- `getWebviewHtml.ts`
+  - 生成 Webview HTML、资源 URI 与 CSP
+- `configuration.ts`
+  - 读取 VSCode 配置
+- `agentCliResolver.ts`
+  - 解析 `codex` / `claude` CLI 启动命令与来源
+- `executionSessionBridge.ts`
+  - 对 `node-pty` 的最小抽象
+  - 定义 `ExecutionSessionProcess`
+- `runtimeSupervisorClient.ts`
+  - 宿主与 supervisor 的 socket 客户端
+- `runtimeHostBackend.ts`
+  - 选择 `systemd-user` 或 `legacy-detached` 后端，并负责启动 supervisor
+- `executionTerminalNativeHelpers.ts`
+  - 宿主侧文件路径、URL、拖拽资源与 VSCode 原生打开行为接线
+- `executionTerminalLineContextTracker.ts`
+  - 终端输出的行上下文追踪
 
-当前仍需后续设计文档澄清的关键未知项包括：
+这里主要负责：
 
-- 原生终端代理节点能否提供足够强的画布内终端体验，还是必须引入嵌入式终端原型。
-- Agent 适配边界是否足够覆盖至少一种真实 backend，而不会在真正接入时失真。
-- 画布对象之间的连接、分组和导航模型如何定义，才能既保留全局感，又不造成噪音。
-- 当前状态分层是否足以支撑 reload、重启、远程重连后的恢复，以及后续可能的导入导出。
-- Restricted Mode 和远程工作区下，哪些动作需要进一步降级或改写体验。
+- 持有宿主权威状态，并把它同步到一个或两个 Webview surface。
+- 决定哪些状态进入 `workspaceState` / `storageUri`，哪些只留在 Webview 本地。
+- 启动和停止 Agent / Terminal，会话输出入桥、状态同步、重连和 supervisor 协作。
+- 对 workspace trust、配置、恢复模式和远程宿主差异做最终裁决。
 
-## 10. 关联文档
+架构不变量：
 
-- `AGENTS.md`
-- `docs/PRODUCT_SENSE.md`
-- `docs/DESIGN.md`
-- `docs/design-docs/vscode-canvas-runtime-architecture.md`
-- `docs/FRONTEND.md`
-- `docs/RELIABILITY.md`
-- `docs/SECURITY.md`
+- `CanvasPanelManager` 是当前 workspace 绑定画布状态的唯一权威入口；Webview 不应成为节点图和执行会话映射的唯一来源。
+- `editor` 与 `panel` 只是同一逻辑画布的两种宿主承载面，而不是两套独立状态。
+- `executionSessionBridge.ts` 是 `node-pty` 接入边界；其余层不应直接加载或控制 `node-pty`。
+- `runtimeSupervisorClient.ts` 只通过协议与 socket 和 supervisor 通信，不应假设与 supervisor 共享内存或共享对象实例。
+- trust、配置和恢复模式判断必须在宿主侧生效，不能只靠 Webview 隐藏按钮。
 
-## 11. 验证方式
+### `src/sidebar/`
 
-后续顶层架构是否成立，应至少通过以下方式验证：
+这是当前侧栏视图的只读投影层。
 
-- 在 VSCode 内完成一条最小主路径：打开画布、创建核心对象、查看状态变化，并验证 Webview 隐藏、恢复和 reload 后的关键状态保持。
-- 在包含多个 `Agent` 与终端会话的场景中，验证用户仍能保持全局可读性，并检查交互流畅度是否可接受。
-- 验证终端对象与宿主会话的映射、跳转和状态回传是否成立。
-- 在 Remote / Codespaces 与 Restricted Mode 场景下，验证核心体验不会因为宿主位置或 trust 状态变化而失真。
-- 验证产品与 VSCode 现有编辑器、终端和插件能力配合时不会互相破坏主路径。
-- 检查具体设计文档、产品规格和实现对本文件中的边界描述是否持续一致。
+关键命名实体：
+
+- `CanvasSidebarView`
+- `CanvasSidebarState`
+
+这里主要负责：
+
+- 把当前画布状态投影成 VSCode Tree View。
+- 提供“打开画布”“创建对象”“重置宿主状态”等快捷入口。
+
+架构不变量：
+
+- 侧栏不维护独立业务状态；它只消费 `CanvasPanelManager` 派生出的 `CanvasSidebarState`。
+- 任何画布真实状态都不应只存在于 sidebar 内部。
+
+### `src/webview/`
+
+这是 React / React Flow 画布前端，也是用户可见的大部分交互所在。
+
+关键命名实体：
+
+- `main.tsx`
+  - React 应用入口
+  - 维护节点渲染、选择、视口、节点编辑和内嵌终端前端
+- `executionTerminalNativeInteractions.ts`
+  - `xterm.js` 在缩放、拖拽、选择和原生交互上的前端适配
+- `styles.css`
+
+这里主要负责：
+
+- 渲染画布、节点、缩放与导航。
+- 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端。
+- 维护局部 UI 状态，例如当前选中节点、视口位置、上下文菜单和短生命周期输入态。
+- 通过 `acquireVsCodeApi()` 与宿主交换消息与 Webview 本地状态。
+
+架构不变量：
+
+- Webview 不直接访问 VSCode API、文件系统或 CLI 进程；所有宿主能力都经消息边界进入。
+- Webview 保存的是“局部 UI 状态”和“用户意图”，不是 workspace 绑定权威状态。
+- 终端前端可以持有 `xterm.js` 实例，但实际进程生命周期、持久化和恢复策略由宿主决定。
+
+### `src/supervisor/`
+
+这是 `live-runtime` 模式下的独立运行时监督进程。
+
+关键命名实体：
+
+- `runtimeSupervisorMain.ts`
+  - supervisor server
+  - 会话注册表、socket server、输出广播、空闲退出
+- `runtimeSupervisorLauncher.ts`
+
+这里主要负责：
+
+- 在宿主之外维持执行会话存活。
+- 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / write / resize / stop / delete 等请求。
+- 持久化最小会话注册表，并在宿主重连时回放当前状态。
+
+架构不变量：
+
+- supervisor 不依赖 `vscode` 或 Webview。
+- supervisor 只知道执行会话和协议，不知道 React Flow 节点、侧栏结构或具体 UI 细节。
+- `live-runtime` 是执行持久化增强层，不是所有执行路径的前提；系统必须在没有 supervisor 的情况下仍可运行。
+
+### `tests/` 与 `scripts/`
+
+这两部分不是生产架构，但对理解系统如何被验证很重要。
+
+关键命名实体：
+
+- `tests/vscode-smoke/*.cjs`
+- `tests/playwright/webview-harness.spec.mjs`
+- `scripts/run-vscode-smoke.mjs`
+- `scripts/run-playwright-webview.mjs`
+- `scripts/build.mjs`
+
+架构不变量：
+
+- `tests/` 与 `scripts/` 是验证和开发工具，不是业务真相来源。
+- 如果某条行为只在脚本里存在，而没有在 Host / Webview / Supervisor 正式边界中落地，通常说明架构还没收口。
+
+## 4. 领域划分与当前映射
+
+为保持和 `docs/design-docs/` 一致，当前顶层问题域仍使用以下命名：
+
+- `VSCode 集成域`
+  - `src/extension.ts`
+  - `src/panel/CanvasPanelManager.ts`
+  - `src/sidebar/CanvasSidebarView.ts`
+  - `src/panel/getWebviewHtml.ts`
+- `画布交互域`
+  - `src/webview/main.tsx`
+  - `src/webview/styles.css`
+  - `src/webview/executionTerminalNativeInteractions.ts`
+- `协作对象域`
+  - `src/common/protocol.ts`
+  - `CanvasNodeSummary` 及其 `agent / terminal / note` 元数据
+- `执行编排域`
+  - `src/panel/executionSessionBridge.ts`
+  - `src/panel/runtimeSupervisorClient.ts`
+  - `src/panel/runtimeHostBackend.ts`
+  - `src/supervisor/runtimeSupervisorMain.ts`
+  - `src/panel/agentCliResolver.ts`
+- `项目状态域`
+  - `CanvasPrototypeState`
+  - `serializedTerminalState.ts`
+  - `extensionStoragePaths.ts`
+  - `runtimeSupervisorPaths.ts`
+  - `CanvasPanelManager` 内的持久化与恢复逻辑
+
+这些域是理解问题的方式，不要求目录一一对应。一个目录可以跨多个域，一个域也可以分布在多个目录中。
+
+## 5. 分层与依赖方向
+
+当前更适合按逻辑边界理解系统，而不是按目录名理解：
+
+- `宿主集成层`
+  - `src/extension.ts`
+  - `src/panel/CanvasPanelManager.ts`
+  - `src/sidebar/CanvasSidebarView.ts`
+- `画布呈现层`
+  - `src/webview/*`
+- `共享模型与编排层`
+  - `src/common/protocol.ts`
+  - `src/common/runtimeSupervisorProtocol.ts`
+  - 其余 `src/common/*` 共享纯模型与纯工具
+- `适配与基础设施层`
+  - `src/panel/executionSessionBridge.ts`
+  - `src/panel/runtimeSupervisorClient.ts`
+  - `src/panel/runtimeHostBackend.ts`
+  - `src/supervisor/*`
+  - 宿主侧路径、持久化与原生交互辅助
+
+允许的依赖方向如下：
+
+```text
+宿主集成层 -> 共享模型与编排层
+宿主集成层 -> 适配与基础设施层
+画布呈现层 -> 共享模型与编排层
+适配与基础设施层 -> 共享模型与编排层
+宿主集成层 <-> 画布呈现层 仅通过消息协议通信
+```
+
+默认视为架构违例的方向：
+
+- `src/common/` 反向依赖 `vscode`、React、DOM 或 `node-pty`
+- `src/webview/` 直接操作文件系统、CLI 进程或宿主存储
+- `src/sidebar/` 维护独立业务状态
+- UI 组件直接越过宿主协议去控制 supervisor 或执行进程
+
+## 6. 当前最重要的架构不变量
+
+### 6.1 状态权威边界
+
+- workspace 绑定画布状态由宿主持有，当前中心在 `CanvasPanelManager`。
+- Webview 的 `setState()` / `getState()` 只负责局部 UI 恢复，不承担完整业务恢复。
+- `CanvasPrototypeState` 与终端序列化快照必须能独立于具体 Webview 进程存在。
+
+### 6.2 协议边界
+
+- `Webview <-> Host` 与 `Host <-> Supervisor` 都是显式协议边界。
+- 任何跨边界对象都应优先使用 `src/common/` 中的可序列化类型表达。
+- 协议一旦变化，默认需要同步消息发送方、接收方和对应测试。
+
+### 6.3 执行边界
+
+- 真实执行进程通过 `ExecutionSessionProcess` 抽象接入。
+- `agent` 和 `terminal` 都属于执行型节点，但 UI 呈现不同、生命周期规则不同。
+- supervisor 负责“会话继续活着”，宿主负责“把会话映射回画布对象并表达给用户”。
+
+### 6.4 信任与安全边界
+
+- workspace trust 会影响执行型能力是否可创建、启动或恢复。
+- 配置中的 provider 命令、shell 路径和 runtime persistence 开关都属于宿主裁决范围。
+- Webview 与 supervisor 都不应绕过宿主对 trust、路径和启动参数的约束。
+
+### 6.5 表现层边界
+
+- 画布节点的视觉表面、缩放、选择和编辑反馈属于 Webview。
+- 节点模型、生命周期、恢复模式和持久化语义不由 React 组件定义。
+- 同一个节点的“看起来怎样”与“它实际运行成什么状态”必须允许异步收敛，不能把 UI 局部状态误当成运行时真相。
+
+## 7. 横切关注点（Cross-Cutting Concerns）
+
+### 恢复与持久化
+
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者保证状态快照与 UI 恢复，后者额外保证执行会话跨 VSCode 生命周期的尽力连续性。所有恢复相关设计都应先判断自己是在改哪一层。
+
+### Remote / Local 拓扑
+
+当前扩展是 `workspace` extension。远程工作区下，Extension Host 可以在远端，而 Webview 仍在本机或浏览器侧。任何依赖“前后端同机”的实现都需要先经过这个约束检查。
+
+### 执行兼容性
+
+`node-pty`、Electron ABI、`systemd --user`、shell 路径与平台兼容性都属于架构级关注点，不只是实现细节。相关改动默认需要同时检查宿主路径、supervisor 路径和 smoke 覆盖。
+
+### 可观测性与验证
+
+当前调试与验证链路依赖：
+
+- Host 侧调试命令与 debug snapshot
+- `tests/vscode-smoke/` 的宿主场景
+- `tests/playwright/` 的 Webview 场景
+
+这意味着“是否可验证”本身也是架构约束。新的关键边界如果没有对应的可观测入口，通常说明设计还不完整。
+
+## 8. 当你要改某类问题时，先去哪里找
+
+- 改命令注册、承载面打开方式、serializer、激活入口：
+  - `src/extension.ts`
+  - `src/panel/CanvasPanelManager.ts`
+- 改节点模型、消息类型、状态字段、跨边界载荷：
+  - `src/common/protocol.ts`
+  - `src/common/runtimeSupervisorProtocol.ts`
+- 改画布 UI、节点交互、标题/内容编辑、缩放与聚焦：
+  - `src/webview/main.tsx`
+  - `src/webview/styles.css`
+- 改侧栏显示和快捷动作：
+  - `src/sidebar/CanvasSidebarView.ts`
+- 改 Agent / Terminal 启动、停止、恢复、输出桥：
+  - `src/panel/executionSessionBridge.ts`
+  - `src/panel/runtimeSupervisorClient.ts`
+  - `src/supervisor/runtimeSupervisorMain.ts`
+- 改 CLI 解析、shell 路径、运行时后端选择：
+  - `src/panel/agentCliResolver.ts`
+  - `src/panel/runtimeHostBackend.ts`
+  - `src/panel/configuration.ts`
+- 改持久化路径、storage slot、终端快照恢复：
+  - `src/common/extensionStoragePaths.ts`
+  - `src/common/runtimeSupervisorPaths.ts`
+  - `src/common/serializedTerminalState.ts`
+  - `src/panel/CanvasPanelManager.ts`
+- 补验证或定位回归：
+  - `tests/vscode-smoke/*.cjs`
+  - `tests/playwright/webview-harness.spec.mjs`
+  - `scripts/run-vscode-smoke.mjs`
+  - `scripts/run-playwright-webview.mjs`
