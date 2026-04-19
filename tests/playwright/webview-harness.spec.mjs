@@ -345,14 +345,18 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   );
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.selected ?? false).toBe(true);
   await expect(page.locator('.canvas-edge-label.is-selected')).toHaveCount(0);
-  await edgePath.click({ button: 'right', force: true });
-  await settleWebview(page, 2);
-
-  const edgeMenu = page.locator('[data-context-menu="edge"]');
-  await expect(edgeMenu).toBeVisible();
+  const edgeToolbar = page.locator(
+    '[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]'
+  );
+  await expect(edgeToolbar).toBeVisible();
 
   await clearPostedMessages(page);
-  await edgeMenu.locator('button').filter({ hasText: '双向箭头' }).click();
+  await edgeToolbar.getByRole('button', { name: '切换箭头模式' }).click();
+  const edgeArrowMenu = page.locator(
+    '[data-edge-arrow-menu="true"][data-edge-arrow-menu-edge-id="edge-user-1"]'
+  );
+  await expect(edgeArrowMenu).toBeVisible();
+  await edgeArrowMenu.getByRole('button', { name: '双向箭头' }).click();
   message = await waitForPostedMessageByType(page, 'webview/updateEdge');
   expect(message.payload).toEqual({
     edgeId: 'edge-user-1',
@@ -369,12 +373,17 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.arrowMode ?? null).toBe('both');
 
   await clearPostedMessages(page);
-  await edgePath.click({ button: 'right', force: true });
-  await settleWebview(page, 2);
-  await edgeMenu.locator('button').filter({ hasText: '编辑标签' }).click();
-  message = await waitForPostedMessageByType(page, 'webview/requestEdgeLabelEdit');
+  await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
+  const edgeLabelEditor = page.locator(
+    '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="edge-user-1"]'
+  );
+  await expect(edgeLabelEditor).toBeVisible();
+  await edgeLabelEditor.fill('依赖关系');
+  await edgeLabelEditor.press('Enter');
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
   expect(message.payload).toEqual({
-    edgeId: 'edge-user-1'
+    edgeId: 'edge-user-1',
+    label: '依赖关系'
   });
 
   state.edges = [
@@ -389,10 +398,13 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
 
   await clearPostedMessages(page);
   await edgePath.dblclick({ force: true });
-  message = await waitForPostedMessageByType(page, 'webview/requestEdgeLabelEdit');
-  expect(message.payload).toEqual({
-    edgeId: 'edge-user-1'
-  });
+  await expect(edgeLabelEditor).toBeVisible();
+  await expect(edgeLabelEditor).toHaveValue('依赖关系');
+  await edgeLabelEditor.fill('协作关系');
+  await edgeLabelEditor.press('Escape');
+  await settleWebview(page, 2);
+  await expect(edgeLabelEditor).toHaveCount(0);
+  await expect(page.locator('.canvas-edge-label')).toContainText('依赖关系');
 
   await performTestDomAction(page, {
     kind: 'selectEdge',
@@ -400,7 +412,7 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
     edgeId: 'edge-user-1'
   });
   await clearPostedMessages(page);
-  await page.keyboard.press('Delete');
+  await edgeToolbar.getByRole('button', { name: '删除连线' }).click();
   message = await waitForPostedMessageByType(page, 'webview/deleteEdge');
   expect(message.payload).toEqual({
     edgeId: 'edge-user-1'

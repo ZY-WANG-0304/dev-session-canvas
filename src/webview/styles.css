@@ -269,21 +269,150 @@ body {
   fill: none;
 }
 
+.canvas-edge-toolbar-anchor,
+.canvas-edge-label-editor-shell {
+  position: absolute;
+  z-index: 6;
+  pointer-events: all;
+}
+
+.canvas-edge-toolbar-anchor {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
+.canvas-edge-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--canvas-widget-radius-sm);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-edge-toolbar-button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+}
+
+.canvas-edge-toolbar-button:hover,
+.canvas-edge-toolbar-button:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent));
+  color: var(--vscode-editor-foreground);
+  outline: none;
+}
+
+.canvas-edge-toolbar-button.is-active {
+  background: var(--vscode-toolbar-activeBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
+  color: var(--vscode-focusBorder);
+}
+
+.canvas-edge-toolbar-button.danger {
+  color: var(--vscode-errorForeground, #ef4444);
+}
+
+.canvas-edge-arrow-menu {
+  display: grid;
+  gap: 2px;
+  min-width: 124px;
+  padding: 4px;
+  border-radius: var(--canvas-widget-radius-sm);
+  border: 1px solid var(--vscode-menu-border, var(--vscode-editorWidget-border, var(--vscode-panel-border)));
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.canvas-edge-arrow-menu-item {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.canvas-edge-arrow-menu-item:hover,
+.canvas-edge-arrow-menu-item:focus-visible,
+.canvas-edge-arrow-menu-item.is-active {
+  background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
+  outline: none;
+}
+
+.canvas-edge-toolbar-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.canvas-edge-label-editor {
+  width: clamp(120px, 18vw, 220px);
+  min-height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-focusBorder));
+  background: var(--vscode-input-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  color: var(--vscode-input-foreground, var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground)));
+  padding: 0 8px;
+  box-sizing: border-box;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  font: inherit;
+  font-size: 11px;
+}
+
+.canvas-edge-label-editor::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+.canvas-edge-label-editor:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
 .canvas-edge-label {
   position: absolute;
   pointer-events: none;
   display: inline-flex;
-  min-height: 20px;
+  min-height: 22px;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 8px;
   border-radius: var(--canvas-widget-radius-sm);
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  color: var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground));
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border))) 72%,
+      var(--vscode-descriptionForeground) 28%
+    );
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
+      92%,
+    var(--vscode-sideBar-background, var(--vscode-editor-background)) 8%
+  );
+  color: var(--vscode-editor-foreground);
   font-size: 11px;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
 }
 
 .canvas-edge-label.owner-file-activity {
@@ -291,7 +420,20 @@ body {
 }
 
 .canvas-edge-label.is-selected {
-  border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, var(--vscode-panel-border) 45%);
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-focusBorder) 68%,
+    var(--vscode-editorWidget-border, var(--vscode-panel-border)) 32%
+  );
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
+      84%,
+    var(--vscode-focusBorder) 16%
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent),
+    0 6px 16px rgba(0, 0, 0, 0.24);
 }
 
 .compact-node {
