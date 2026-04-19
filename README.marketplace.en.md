@@ -48,20 +48,19 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.1.1 Highlights
+## 0.1.2 Highlights
 
-`0.1.1` is primarily a fixes-and-release-closing update. The core product highlights remain the same as the previous version:
+`0.1.2` is primarily a fixes-and-stabilization update for interaction and restore flows:
 
-- The main canvas opens in the panel by default and can also be moved back to the editor area
-- The core `Agent` / `Terminal` / `Note` node workflow is already in place
-- Canvas interaction and session recovery built on React Flow are already implemented
-- The boundaries around `Restricted Mode` and runtime persistence are now explicit
-- Key crash issues on `Remote SSH` / `VS Code Server Node 22` have been fixed
+- `Terminal` / `Agent` nodes inside the canvas now support more terminal-native path drop insertion and link opening behavior
+- Node title editing no longer flashes old values after Enter commit or duplicates text during Chinese IME confirmation
+- The reload and restart semantics for `defaultSurface` and `runtimePersistence.enabled` are now aligned, so switching between `panel` and `editor` no longer restores a stale opposite surface
+- Viewport preservation during runtime restore reattach is more stable, making the main restore path more consistent
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.1.0` to `0.1.1` both go through the `Visual Studio Marketplace`; later `0.1.x` updates will also be delivered through Marketplace upgrades
+- First-time installs and upgrades from `0.1.1` to `0.1.2` both go through the `Visual Studio Marketplace`; later `0.1.x` updates will also be delivered through Marketplace upgrades
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
 ## Rollback Guidance
