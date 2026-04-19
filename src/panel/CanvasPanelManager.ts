@@ -6268,14 +6268,14 @@ function buildAutomaticFileNodeArtifacts(
 ): { nodes: CanvasNodeSummary[]; edges: CanvasEdgeSummary[] } {
   const nodes: CanvasNodeSummary[] = [];
   const edges: CanvasEdgeSummary[] = [];
+  const singleOwnerFileCounts = new Map<string, number>();
 
   for (const reference of sortFileReferences(fileReferences)) {
     const nodeId = buildFileNodeId(reference.id);
     const existingNode = existingAutoNodes.get(nodeId);
-    const anchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file');
-    const position = existingNode?.position
-      ? existingNode.position
-      : resolveNewNodePosition([...manualNodes, ...nodes], 'file', anchor);
+    const anchor = resolveFileReferencePlacementAnchor(reference, agentNodesById, singleOwnerFileCounts);
+    const occupiedNodes = [...manualNodes, ...nodes];
+    const position = resolveAutomaticArtifactPosition(occupiedNodes, 'file', anchor, existingNode);
     const title = buildFileDisplayLabel(reference, pathDisplayMode);
     nodes.push({
       id: nodeId,
@@ -6452,6 +6452,43 @@ function buildFileNodeId(fileReferenceId: string): string {
 
 function buildAgentFileListNodeId(agentNodeId: string): string {
   return `file-list-agent-${agentNodeId}`;
+}
+
+function resolveAutomaticArtifactPosition(
+  occupiedNodes: CanvasNodeSummary[],
+  kind: CanvasNodeKind,
+  anchor: CanvasNodePosition,
+  existingNode?: CanvasNodeSummary
+): CanvasNodePosition {
+  const existingPosition = existingNode?.position;
+  if (existingPosition && !doesPlacementCollide(occupiedNodes, kind, existingPosition)) {
+    return existingPosition;
+  }
+
+  return resolveNewNodePosition(occupiedNodes, kind, anchor);
+}
+
+function resolveFileReferencePlacementAnchor(
+  reference: CanvasFileReferenceSummary,
+  agentNodesById: Map<string, CanvasNodeSummary>,
+  singleOwnerFileCounts: Map<string, number>
+): CanvasNodePosition {
+  const baseAnchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file');
+  if (reference.owners.length !== 1) {
+    return baseAnchor;
+  }
+
+  const [owner] = reference.owners;
+  const offsetIndex = singleOwnerFileCounts.get(owner.nodeId) ?? 0;
+  singleOwnerFileCounts.set(owner.nodeId, offsetIndex + 1);
+  if (offsetIndex === 0) {
+    return baseAnchor;
+  }
+
+  return snapCanvasPosition({
+    x: baseAnchor.x,
+    y: baseAnchor.y + offsetIndex * NODE_PLACEMENT_STEP_Y
+  });
 }
 
 function resolveFileReferenceAnchor(
