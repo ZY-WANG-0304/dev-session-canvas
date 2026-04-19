@@ -474,7 +474,7 @@ export type WebviewToHostMessage =
         sourceAnchor?: CanvasEdgeAnchor;
         targetAnchor?: CanvasEdgeAnchor;
         arrowMode?: CanvasEdgeArrowMode;
-        color?: CanvasEdgeColor;
+        color?: CanvasEdgeColor | null;
         label?: string;
       };
     }
@@ -862,7 +862,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.sourceAnchor !== undefined && !isCanvasEdgeAnchor(payload.sourceAnchor)) ||
       (payload.targetAnchor !== undefined && !isCanvasEdgeAnchor(payload.targetAnchor)) ||
       (payload.arrowMode !== undefined && !isCanvasEdgeArrowMode(payload.arrowMode)) ||
-      (payload.color !== undefined && !isCanvasEdgeColor(payload.color)) ||
+      (payload.color !== undefined && payload.color !== null && !isCanvasEdgeColor(payload.color)) ||
       (payload.label !== undefined && typeof payload.label !== 'string')
     ) {
       return null;
@@ -877,7 +877,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         sourceAnchor: isCanvasEdgeAnchor(payload.sourceAnchor) ? payload.sourceAnchor : undefined,
         targetAnchor: isCanvasEdgeAnchor(payload.targetAnchor) ? payload.targetAnchor : undefined,
         arrowMode: isCanvasEdgeArrowMode(payload.arrowMode) ? payload.arrowMode : undefined,
-        color: isCanvasEdgeColor(payload.color) ? payload.color : undefined,
+        color: payload.color === null ? null : isCanvasEdgeColor(payload.color) ? payload.color : undefined,
         label: typeof payload.label === 'string' ? payload.label : undefined
       }
     };
