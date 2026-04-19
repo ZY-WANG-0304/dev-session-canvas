@@ -185,7 +185,11 @@ type ExecutionHelpTriggerVariant = 'canvas' | 'inline';
 
 const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
   title: '执行节点使用提示',
-  items: ['拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径']
+  items: [
+    '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
+    'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
+    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）'
+  ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
