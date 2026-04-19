@@ -15,6 +15,7 @@ session_id=""
 initial_prompt_delay_seconds="0.45"
 hide_pid="${DEV_SESSION_CANVAS_FAKE_PROVIDER_HIDE_PID:-0}"
 flavor="${DEV_SESSION_CANVAS_FAKE_AGENT_FLAVOR:-generic}"
+file_event_stream="${DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH:-}"
 
 prefix="[fake-agent]"
 if [[ "$flavor" == "codex" ]]; then
@@ -64,6 +65,42 @@ print_prompt() {
   printf '> '
 }
 
+normalize_event_path() {
+  local candidate="$1"
+  if [[ -z "$candidate" ]]; then
+    return
+  fi
+
+  if command -v realpath >/dev/null 2>&1; then
+    realpath -m "$candidate"
+    return
+  fi
+
+  if [[ "$candidate" == /* ]]; then
+    printf '%s\n' "$candidate"
+    return
+  fi
+
+  printf '%s\n' "${PWD%/}/$candidate"
+}
+
+emit_file_event() {
+  local access_mode="$1"
+  local raw_path="$2"
+  local normalized_path
+
+  if [[ -z "$file_event_stream" || -z "$access_mode" || -z "$raw_path" ]]; then
+    return
+  fi
+
+  normalized_path="$(normalize_event_path "$raw_path")"
+  mkdir -p "$(dirname "$file_event_stream")"
+  printf '{"path":"%s","accessMode":"%s","timestamp":"%s"}\n' \
+    "${normalized_path//\"/\\\"}" \
+    "$access_mode" \
+    "$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" >> "$file_event_stream"
+}
+
 sleep "$initial_prompt_delay_seconds"
 print_prompt
 
@@ -96,6 +133,30 @@ while IFS= read -r line; do
       print_prompt
       continue
     fi
+  fi
+
+  if [[ "$line" == read\ * ]]; then
+    file_path="${line#read }"
+    emit_file_event "read" "$file_path"
+    echo "${prefix} read ${file_path}"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == write\ * ]]; then
+    file_path="${line#write }"
+    emit_file_event "write" "$file_path"
+    echo "${prefix} write ${file_path}"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == readwrite\ * ]]; then
+    file_path="${line#readwrite }"
+    emit_file_event "read-write" "$file_path"
+    echo "${prefix} readwrite ${file_path}"
+    print_prompt
+    continue
   fi
 
   if [[ "$line" == sleep\ * ]]; then

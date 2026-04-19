@@ -276,6 +276,182 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   });
 });
 
+test('manual edges can be created, selected, edited, and deleted', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  await dragConnectionBetweenAnchors(page, {
+    sourceNodeId: 'agent-1',
+    sourceAnchor: 'right',
+    targetNodeId: 'terminal-1',
+    targetAnchor: 'left'
+  });
+
+  let message = await waitForPostedMessageByType(page, 'webview/createEdge');
+  expect(message.payload).toEqual({
+    sourceNodeId: 'agent-1',
+    targetNodeId: 'terminal-1',
+    sourceAnchor: 'right',
+    targetAnchor: 'left'
+  });
+
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await updateHostState(page, state);
+
+  await expect
+    .poll(async () => {
+      const edge = await readProbeEdge(page, 'edge-user-1', 20);
+      return edge
+        ? JSON.stringify({
+            arrowMode: edge.arrowMode,
+            label: edge.label,
+            selected: edge.selected
+          })
+        : null;
+    })
+    .toBe(
+      JSON.stringify({
+        arrowMode: 'forward',
+        label: null,
+        selected: false
+      })
+    );
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.selected ?? false).toBe(true);
+  await expect(page.locator('.canvas-edge-label.is-selected')).toHaveCount(0);
+
+  const edgePath = page.locator('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+  await edgePath.click({ button: 'right', force: true });
+  await settleWebview(page, 2);
+
+  const edgeMenu = page.locator('[data-context-menu="edge"]');
+  await expect(edgeMenu).toBeVisible();
+
+  await clearPostedMessages(page);
+  await edgeMenu.locator('button').filter({ hasText: '双向箭头' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    arrowMode: 'both'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      arrowMode: 'both'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.arrowMode ?? null).toBe('both');
+
+  await clearPostedMessages(page);
+  await edgePath.click({ button: 'right', force: true });
+  await settleWebview(page, 2);
+  await edgeMenu.locator('button').filter({ hasText: '编辑标签' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/requestEdgeLabelEdit');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      label: '依赖关系'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.label ?? null).toBe('依赖关系');
+  await expect(page.locator('.canvas-edge-label')).toContainText('依赖关系');
+
+  await clearPostedMessages(page);
+  await edgePath.dblclick({ force: true });
+  message = await waitForPostedMessageByType(page, 'webview/requestEdgeLabelEdit');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1'
+  });
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+  await clearPostedMessages(page);
+  await page.keyboard.press('Delete');
+  message = await waitForPostedMessageByType(page, 'webview/deleteEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1'
+  });
+
+  state.edges = [];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
+});
+
+test('file nodes render file metadata and open the target file through the host message', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState());
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode.locator('.file-node-copy strong')).toContainText('main.ts');
+  await expect(fileNode.locator('.file-node-copy span')).toContainText('src/main.ts');
+  await expect(fileNode.locator('.file-node-icon .codicon-symbol-file')).toHaveCount(1);
+  await expect.poll(async () => (await readProbeEdge(page, 'agent-1::file-src-main', 20))?.owner ?? null).toBe(
+    'file-activity'
+  );
+
+  await clearPostedMessages(page);
+  await fileNode.locator('.file-node-action').click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({
+    nodeId: 'file-src-main',
+    filePath: '/workspace/src/main.ts'
+  });
+});
+
+test('file list nodes render entries and open clicked file entries through the host message', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await expect(fileListNode.locator('.file-list-title-text')).toContainText('共享文件');
+  await expect(fileListNode.locator('.file-list-entry')).toHaveCount(2);
+  await expect(fileListNode.locator('.file-list-entry').first()).toContainText('src/shared.ts');
+  await expect(fileListNode.locator('.file-list-entry').first().locator('.file-access-badge')).toContainText('读写');
+  await expect(fileListNode.locator('.file-list-entry').nth(1).locator('.file-access-badge')).toContainText('写');
+  await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(2);
+
+  await clearPostedMessages(page);
+  await fileListNode.locator('.file-list-entry').filter({ hasText: 'src/shared.ts' }).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({
+    nodeId: 'file-list-shared',
+    filePath: '/workspace/src/shared.ts'
+  });
+});
+
 test('embedded xterm theme follows workbench theme changes for agent and terminal nodes', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -2421,7 +2597,7 @@ async function bootstrap(page, state, runtime = createRuntimeContext()) {
   await page.evaluate(({ nextState, nextRuntime }) => {
     window.__devSessionCanvasHarness.clearPostedMessages();
     window.__devSessionCanvasHarness.bootstrap(nextState, nextRuntime);
-  }, { nextState: state, nextRuntime: runtime });
+  }, { nextState: normalizeCanvasState(state), nextRuntime: runtime });
 }
 
 async function updateHostState(page, state, runtime = createRuntimeContext()) {
@@ -2433,7 +2609,7 @@ async function updateHostState(page, state, runtime = createRuntimeContext()) {
         runtime: nextRuntime
       }
     });
-  }, { nextState: state, nextRuntime: runtime });
+  }, { nextState: normalizeCanvasState(state), nextRuntime: runtime });
 }
 
 async function applyWorkbenchTheme(page, themeName) {
@@ -2488,7 +2664,19 @@ function createRuntimeContext(overrides = {}) {
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
+    filePresentationMode: 'nodes',
+    fileNodeDisplayMode: 'icon-path',
+    filePathDisplayMode: 'basename',
+    fileIconFontFaces: [],
     ...overrides
+  };
+}
+
+function normalizeCanvasState(state) {
+  return {
+    ...state,
+    edges: Array.isArray(state?.edges) ? state.edges : [],
+    fileReferences: Array.isArray(state?.fileReferences) ? state.fileReferences : []
   };
 }
 
@@ -2565,6 +2753,35 @@ async function readProbeNode(page, nodeId, delayMs = 0) {
   return snapshot.nodes.find((node) => node.nodeId === nodeId) ?? null;
 }
 
+async function readProbeEdge(page, edgeId, delayMs = 0) {
+  const snapshot = await requestWebviewProbe(page, delayMs);
+  return snapshot.edges.find((edge) => edge.edgeId === edgeId) ?? null;
+}
+
+async function waitForPostedMessageByType(page, type) {
+  let matchedMessage = null;
+
+  await expect
+    .poll(async () => {
+      const message = await page.evaluate((nextType) => {
+        return (
+          window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === nextType) ?? null
+        );
+      }, type);
+      if (!message) {
+        return null;
+      }
+
+      matchedMessage = message;
+      return 'matched';
+    })
+    .toBe('matched');
+
+  return matchedMessage;
+}
+
 async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
   let matchedNode = null;
 
@@ -2622,6 +2839,27 @@ async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttemp
   }
 
   throw new Error(`Failed to scroll terminal viewport for node ${nodeId}.`);
+}
+
+async function dragConnectionBetweenAnchors(page, { sourceNodeId, sourceAnchor, targetNodeId, targetAnchor }) {
+  const sourceHandle = nodeById(page, sourceNodeId).locator(`.canvas-node-handle.anchor-${sourceAnchor}`);
+  const targetHandle = nodeById(page, targetNodeId).locator(`.canvas-node-handle.anchor-${targetAnchor}`);
+
+  await nodeById(page, sourceNodeId).hover();
+
+  const sourceBox = await sourceHandle.boundingBox();
+  const targetBox = await targetHandle.boundingBox();
+
+  expect(sourceBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 18
+  });
+  await page.mouse.up();
+  await settleWebview(page, 3);
 }
 
 async function dispatchExecutionSnapshot(
@@ -2939,6 +3177,230 @@ function createCanvasScreenshotState() {
   };
 }
 
+function createFileNodeState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-19T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 120 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-src-main',
+        kind: 'file',
+        title: 'main.ts',
+        status: 'linked',
+        summary: 'src/main.ts',
+        position: { x: 720, y: 200 },
+        size: sizeFor('file'),
+        metadata: {
+          file: {
+            fileId: 'file-src-main',
+            filePath: '/workspace/src/main.ts',
+            relativePath: 'src/main.ts',
+            ownerNodeIds: ['agent-1'],
+            icon: {
+              kind: 'codicon',
+              id: 'symbol-file'
+            }
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-src-main',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-src-main',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'file-src-main',
+        filePath: '/workspace/src/main.ts',
+        relativePath: 'src/main.ts',
+        updatedAt: '2026-04-19T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createFileListState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-19T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 120 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'agent-2',
+        kind: 'agent',
+        title: 'Agent 2',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 520 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-list-shared',
+        kind: 'file-list',
+        title: '共享文件',
+        status: 'linked',
+        summary: '共 2 个共享文件',
+        position: { x: 720, y: 280 },
+        size: sizeFor('file-list'),
+        metadata: {
+          fileList: {
+            scope: 'shared',
+            entries: [
+              {
+                fileId: 'shared-src-shared',
+                filePath: '/workspace/src/shared.ts',
+                relativePath: 'src/shared.ts',
+                accessMode: 'read-write',
+                ownerNodeIds: ['agent-1', 'agent-2'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              },
+              {
+                fileId: 'shared-docs-workflow',
+                filePath: '/workspace/docs/WORKFLOW.md',
+                relativePath: 'docs/WORKFLOW.md',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1', 'agent-2'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'markdown'
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-list-shared',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'both',
+        owner: 'file-activity'
+      },
+      {
+        id: 'agent-2::file-list-shared',
+        sourceNodeId: 'agent-2',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'shared-src-shared',
+        filePath: '/workspace/src/shared.ts',
+        relativePath: 'src/shared.ts',
+        updatedAt: '2026-04-19T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read-write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          },
+          {
+            nodeId: 'agent-2',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-docs-workflow',
+        filePath: '/workspace/docs/WORKFLOW.md',
+        relativePath: 'docs/WORKFLOW.md',
+        updatedAt: '2026-04-19T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          },
+          {
+            nodeId: 'agent-2',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
 function createAgentNodeState(provider = 'codex') {
   const backendLabel = provider === 'claude' ? 'Claude Code CLI' : 'Codex CLI';
   const shellPath = provider === 'claude' ? 'claude' : 'codex';
@@ -3196,6 +3658,10 @@ function sizeFor(kind) {
       return { width: 540, height: 420 };
     case 'note':
       return { width: 380, height: 400 };
+    case 'file':
+      return { width: 220, height: 84 };
+    case 'file-list':
+      return { width: 320, height: 220 };
     default:
       throw new Error(`Unsupported kind ${kind}`);
   }

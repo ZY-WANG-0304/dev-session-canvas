@@ -46,7 +46,12 @@ export const CONFIG_KEYS = {
   agentDefaultProvider: 'devSessionCanvas.agent.defaultProvider',
   agentCodexCommand: 'devSessionCanvas.agent.codexCommand',
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
-  terminalShellPath: 'devSessionCanvas.terminal.shellPath'
+  terminalShellPath: 'devSessionCanvas.terminal.shellPath',
+  filesPresentationMode: 'devSessionCanvas.files.presentationMode',
+  filesIncludeGlobs: 'devSessionCanvas.files.includeGlobs',
+  filesExcludeGlobs: 'devSessionCanvas.files.excludeGlobs',
+  filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
+  filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode'
 } as const;
 
 export const CONTEXT_KEYS = {

@@ -4,9 +4,10 @@ import { locateCodexSessionId } from './common/codexSessionIdLocator';
 import { COMMAND_IDS, CONFIG_KEYS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import {
   isAgentProviderKind,
-  isCanvasNodeKind,
+  isCanvasCreatableNodeKind,
   isWebviewDomAction,
   type AgentProviderKind,
+  type CanvasCreatableNodeKind,
   type CanvasNodeKind
 } from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
@@ -16,7 +17,7 @@ let activePanelManager: CanvasPanelManager | undefined;
 let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
 
 type CreateNodeRequest = {
-  kind: CanvasNodeKind;
+  kind: CanvasCreatableNodeKind;
   agentProvider?: AgentProviderKind;
 };
 
@@ -101,7 +102,9 @@ function registerCommand(context: vscode.ExtensionContext, commandId: string, ha
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 }
 
-async function promptCreateNodeRequest(creatableKinds: CanvasNodeKind[]): Promise<CreateNodeRequest | undefined> {
+async function promptCreateNodeRequest(
+  creatableKinds: CanvasCreatableNodeKind[]
+): Promise<CreateNodeRequest | undefined> {
   const picked = await showQuickPickWithTestOverride(
     buildCreateNodeQuickPickItems(creatableKinds, getDefaultAgentProvider()),
     {
@@ -113,7 +116,7 @@ async function promptCreateNodeRequest(creatableKinds: CanvasNodeKind[]): Promis
 }
 
 function buildCreateNodeQuickPickItems(
-  creatableKinds: CanvasNodeKind[],
+  creatableKinds: CanvasCreatableNodeKind[],
   defaultAgentProvider: AgentProviderKind
 ): CreateNodeQuickPickItem[] {
   const items: CreateNodeQuickPickItem[] = [];
@@ -212,7 +215,7 @@ function getDefaultAgentProvider(): AgentProviderKind {
   return configuredProvider === 'claude' ? 'claude' : 'codex';
 }
 
-function humanizeNodeKind(kind: CanvasNodeKind): string {
+function humanizeNodeKind(kind: CanvasCreatableNodeKind): string {
   switch (kind) {
     case 'agent':
       return 'Agent';
@@ -223,7 +226,7 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
   }
 }
 
-function describeNodeKind(kind: CanvasNodeKind): string {
+function describeNodeKind(kind: CanvasCreatableNodeKind): string {
   switch (kind) {
     case 'agent':
       return '画布中的 Codex / Claude Code 会话窗口';
@@ -390,7 +393,7 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       return queuedQuickPickSelectionIds.slice();
     }),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown, agentProvider?: unknown) => {
-      if (!isCanvasNodeKind(kind)) {
+      if (!isCanvasCreatableNodeKind(kind)) {
         throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');
       }
 

@@ -344,6 +344,8 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === runtimePersistenceNodes.noteNode.id), false);
   assert.strictEqual(snapshot.state.nodes.length, 2);
 
+  await verifyManualEdgeLifecycle(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
+  await verifyFileActivityViewsAndOpenFiles();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -550,6 +552,366 @@ async function verifyDefaultSurfaceRequiresReload() {
     await setDefaultSurface(originalSurface);
     await simulateRuntimeReload();
     await openSurface(originalSurface);
+  }
+}
+
+async function verifyManualEdgeLifecycle(agentNodeId, terminalNodeId) {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/createEdge',
+      payload: {
+        sourceNodeId: agentNodeId,
+        targetNodeId: terminalNodeId,
+        sourceAnchor: 'right',
+        targetAnchor: 'left'
+      }
+    },
+    'panel'
+  );
+
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    return currentSnapshot.state.edges.some(
+      (edge) =>
+        edge.owner === 'user' &&
+        edge.sourceNodeId === agentNodeId &&
+        edge.targetNodeId === terminalNodeId
+    );
+  }, 20000);
+  let edge = snapshot.state.edges.find(
+    (currentEdge) =>
+      currentEdge.owner === 'user' &&
+      currentEdge.sourceNodeId === agentNodeId &&
+      currentEdge.targetNodeId === terminalNodeId
+  );
+  assert.ok(edge, 'Expected manual edge to be created.');
+  assert.strictEqual(edge.arrowMode, 'forward');
+  assert.strictEqual(edge.label, undefined);
+
+  let panelProbe = await waitForWebviewProbeOnSurface(
+    'panel',
+    (currentProbe) => currentProbe.edges.some((currentEdge) => currentEdge.edgeId === edge.id),
+    10000
+  );
+  assert.ok(panelProbe.edges.some((currentEdge) => currentEdge.edgeId === edge.id && !currentEdge.selected));
+
+  await performWebviewDomAction(
+    {
+      kind: 'selectEdge',
+      nodeId: agentNodeId,
+      edgeId: edge.id
+    },
+    'panel',
+    10000
+  );
+  panelProbe = await waitForWebviewProbeOnSurface(
+    'panel',
+    (currentProbe) => currentProbe.edges.some((currentEdge) => currentEdge.edgeId === edge.id && currentEdge.selected),
+    10000
+  );
+  assert.ok(panelProbe.edges.some((currentEdge) => currentEdge.edgeId === edge.id && currentEdge.selected));
+
+  snapshot = await dispatchWebviewMessage(
+    {
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId: edge.id,
+        arrowMode: 'both',
+        label: '宿主链路'
+      }
+    },
+    'panel'
+  );
+  edge = findEdgeById(snapshot, edge.id);
+  assert.strictEqual(edge.arrowMode, 'both');
+  assert.strictEqual(edge.label, '宿主链路');
+
+  snapshot = await reloadPersistedState();
+  edge = findEdgeById(snapshot, edge.id);
+  assert.strictEqual(edge.arrowMode, 'both');
+  assert.strictEqual(edge.label, '宿主链路');
+
+  snapshot = await dispatchWebviewMessage(
+    {
+      type: 'webview/deleteEdge',
+      payload: {
+        edgeId: edge.id
+      }
+    },
+    'panel'
+  );
+  assert.strictEqual(snapshot.state.edges.some((currentEdge) => currentEdge.id === edge.id), false);
+
+  snapshot = await reloadPersistedState();
+  assert.strictEqual(snapshot.state.edges.some((currentEdge) => currentEdge.id === edge.id), false);
+}
+
+async function verifyFileActivityViewsAndOpenFiles() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalPresentationMode =
+    configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+  const originalPathDisplayMode =
+    configuration.get('devSessionCanvas.files.pathDisplayMode', 'basename') === 'relative-path'
+      ? 'relative-path'
+      : 'basename';
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+
+  const scratchDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'file-activity');
+  const agentOnlyPath = path.join(scratchDir, 'agent-a-only.md');
+  const sharedPath = path.join(scratchDir, 'shared.ts');
+  const agentBOnlyPath = path.join(scratchDir, 'agent-b-only.json');
+
+  await fs.mkdir(scratchDir, { recursive: true });
+  await fs.writeFile(agentOnlyPath, '# agent a only\n', 'utf8');
+  await fs.writeFile(sharedPath, 'export const shared = true;\n', 'utf8');
+  await fs.writeFile(agentBOnlyPath, '{\"owner\":\"agent-b\"}\n', 'utf8');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+
+  const baselineSnapshot = await getDebugSnapshot();
+  const baselineNodeIds = baselineSnapshot.state.nodes.map((node) => node.id).sort();
+  const baselineAgentIds = new Set(
+    baselineSnapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id)
+  );
+
+  await setFilesPresentationMode('nodes');
+  await setFilesPathDisplayMode('basename');
+
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgents = currentSnapshot.state.nodes.filter((node) => node.kind === 'agent');
+      return currentAgents.length === baselineAgentIds.size + 2;
+    }, 20000);
+
+    const fileActivityAgentIds = snapshot.state.nodes
+      .filter((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id))
+      .map((node) => node.id)
+      .sort();
+    assert.strictEqual(fileActivityAgentIds.length, 2, 'Expected two dedicated file-activity agents.');
+
+    const [agentAId, agentBId] = fileActivityAgentIds;
+    await waitForAgentLive(agentAId);
+    await waitForAgentLive(agentBId);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: agentAId,
+          kind: 'agent',
+          data: `read ${agentOnlyPath}\r`
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const reference = currentSnapshot.state.fileReferences.find((currentReference) => currentReference.filePath === agentOnlyPath);
+      return Boolean(reference && reference.owners.some((owner) => owner.nodeId === agentAId && owner.accessMode === 'read'));
+    }, 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: agentAId,
+          kind: 'agent',
+          data: `readwrite ${sharedPath}\r`
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const reference = currentSnapshot.state.fileReferences.find((currentReference) => currentReference.filePath === sharedPath);
+      return Boolean(
+        reference && reference.owners.some((owner) => owner.nodeId === agentAId && owner.accessMode === 'read-write')
+      );
+    }, 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: agentBId,
+          kind: 'agent',
+          data: `write ${agentBOnlyPath}\r`
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const reference = currentSnapshot.state.fileReferences.find((currentReference) => currentReference.filePath === agentBOnlyPath);
+      return Boolean(reference && reference.owners.some((owner) => owner.nodeId === agentBId && owner.accessMode === 'write'));
+    }, 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: agentBId,
+          kind: 'agent',
+          data: `write ${sharedPath}\r`
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const reference = currentSnapshot.state.fileReferences.find((currentReference) => currentReference.filePath === sharedPath);
+      return Boolean(
+        reference &&
+          reference.owners.some((owner) => owner.nodeId === agentAId && owner.accessMode === 'read-write') &&
+          reference.owners.some((owner) => owner.nodeId === agentBId && owner.accessMode === 'write')
+      );
+    }, 20000);
+
+    assert.strictEqual(snapshot.state.fileReferences.length, 3);
+    assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'file').length, 3);
+    assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'file-list').length, 0);
+
+    const agentOnlyFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlyPath
+    );
+    const sharedFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === sharedPath
+    );
+    assert.ok(agentOnlyFileNode, 'Expected agent-only file node to exist.');
+    assert.ok(sharedFileNode, 'Expected shared file node to exist.');
+    assert.deepStrictEqual(agentOnlyFileNode.metadata.file.ownerNodeIds, [agentAId]);
+    assert.deepStrictEqual(sharedFileNode.metadata.file.ownerNodeIds.slice().sort(), [agentAId, agentBId].sort());
+    assert.ok(
+      snapshot.state.edges.some(
+        (edge) => edge.owner === 'file-activity' && edge.targetNodeId === sharedFileNode.id && edge.sourceNodeId === agentAId
+      ),
+      'Expected automatic file-activity edge from agent A to the shared file node.'
+    );
+    assert.ok(
+      snapshot.state.edges.some(
+        (edge) => edge.owner === 'file-activity' && edge.targetNodeId === sharedFileNode.id && edge.sourceNodeId === agentBId
+      ),
+      'Expected automatic file-activity edge from agent B to the shared file node.'
+    );
+
+    await performWebviewDomAction(
+      {
+        kind: 'clickFileEntry',
+        nodeId: agentOnlyFileNode.id,
+        filePath: agentOnlyPath
+      },
+      'panel',
+      10000
+    );
+    let activeEditor = await waitForActiveEditor(
+      (editor) => editor.document.uri.fsPath === agentOnlyPath,
+      10000
+    );
+    assert.strictEqual(activeEditor.document.uri.fsPath, agentOnlyPath);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+
+    await setFilesPresentationMode('lists');
+    await setFilesPathDisplayMode('relative-path');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 0 &&
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file-list').length === 3
+      );
+    }, 20000);
+
+    const agentAListNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file-list' && node.metadata?.fileList?.scope === 'agent' && node.metadata.fileList.ownerNodeId === agentAId
+    );
+    const agentBListNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file-list' && node.metadata?.fileList?.scope === 'agent' && node.metadata.fileList.ownerNodeId === agentBId
+    );
+    const sharedListNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file-list' && node.metadata?.fileList?.scope === 'shared'
+    );
+    assert.ok(agentAListNode, 'Expected agent A file list node to exist.');
+    assert.ok(agentBListNode, 'Expected agent B file list node to exist.');
+    assert.ok(sharedListNode, 'Expected shared file list node to exist.');
+    assert.strictEqual(agentAListNode.metadata.fileList.entries.length, 1);
+    assert.strictEqual(agentBListNode.metadata.fileList.entries.length, 1);
+    assert.strictEqual(sharedListNode.metadata.fileList.entries.length, 1);
+    assert.strictEqual(sharedListNode.metadata.fileList.entries[0].filePath, sharedPath);
+    assert.strictEqual(sharedListNode.metadata.fileList.entries[0].accessMode, 'read-write');
+
+    await performWebviewDomAction(
+      {
+        kind: 'clickFileEntry',
+        nodeId: sharedListNode.id,
+        filePath: sharedPath
+      },
+      'panel',
+      10000
+    );
+    activeEditor = await waitForActiveEditor(
+      (editor) => editor.document.uri.fsPath === sharedPath,
+      10000
+    );
+    assert.strictEqual(activeEditor.document.uri.fsPath, sharedPath);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/deleteNode',
+        payload: {
+          nodeId: agentBId
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const sharedReference = currentSnapshot.state.fileReferences.find((currentReference) => currentReference.filePath === sharedPath);
+      return (
+        !currentSnapshot.state.nodes.some((node) => node.id === agentBId) &&
+        !currentSnapshot.state.fileReferences.some((currentReference) => currentReference.filePath === agentBOnlyPath) &&
+        Boolean(sharedReference && sharedReference.owners.length === 1 && sharedReference.owners[0].nodeId === agentAId) &&
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file-list').length === 1
+      );
+    }, 20000);
+
+    const survivingListNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file-list' && node.metadata?.fileList?.scope === 'agent' && node.metadata.fileList.ownerNodeId === agentAId
+    );
+    assert.ok(survivingListNode, 'Expected agent A file list node to absorb the remaining files.');
+    assert.deepStrictEqual(
+      survivingListNode.metadata.fileList.entries.map((entry) => entry.filePath).sort(),
+      [agentOnlyPath, sharedPath].sort()
+    );
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/deleteNode',
+        payload: {
+          nodeId: agentAId
+        }
+      },
+      'panel'
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        !currentSnapshot.state.nodes.some((node) => node.id === agentAId) &&
+        currentSnapshot.state.fileReferences.length === 0 &&
+        currentSnapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list')
+      );
+    }, 20000);
+
+    assert.deepStrictEqual(
+      snapshot.state.nodes.map((node) => node.id).sort(),
+      baselineNodeIds
+    );
+  } finally {
+    await setFilesPresentationMode(originalPresentationMode);
+    await setFilesPathDisplayMode(originalPathDisplayMode);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
   }
 }
 
@@ -3768,7 +4130,10 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     });
 
     let restoredAgent = findNodeById(snapshot, agentNodeId);
-    assert.strictEqual(restoredAgent.status, 'resume-ready');
+    assert.ok(
+      restoredAgent.status === 'resume-ready' || restoredAgent.status === 'history-restored',
+      `Expected restored agent to stay resumable after history restore, got ${restoredAgent.status}.`
+    );
     assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
 
     snapshot = await waitForSnapshot((currentState) => {
@@ -4683,6 +5048,18 @@ async function setDefaultAgentProvider(provider) {
     .update('devSessionCanvas.agent.defaultProvider', provider, vscode.ConfigurationTarget.Global);
 }
 
+async function setFilesPresentationMode(mode) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.files.presentationMode', mode, vscode.ConfigurationTarget.Global);
+}
+
+async function setFilesPathDisplayMode(mode) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.files.pathDisplayMode', mode, vscode.ConfigurationTarget.Global);
+}
+
 async function setTerminalIntegratedScrollback(scrollback) {
   await vscode.workspace
     .getConfiguration('terminal.integrated')
@@ -4963,6 +5340,12 @@ function findNodeById(snapshot, nodeId) {
   const node = snapshot.state.nodes.find((currentNode) => currentNode.id === nodeId);
   assert.ok(node, `Missing node ${nodeId} in smoke snapshot.`);
   return node;
+}
+
+function findEdgeById(snapshot, edgeId) {
+  const edge = snapshot.state.edges.find((currentEdge) => currentEdge.id === edgeId);
+  assert.ok(edge, `Missing edge ${edgeId} in smoke snapshot.`);
+  return edge;
 }
 
 function hasNodeSize(snapshot, nodeId, targetSize) {

@@ -215,6 +215,85 @@ body {
   border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
 }
 
+.canvas-node.kind-file {
+  border-color: color-mix(in srgb, #f59e0b 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
+}
+
+.canvas-node.kind-file-list {
+  border-color: color-mix(in srgb, #f97316 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
+}
+
+.canvas-node-handle {
+  width: 10px;
+  height: 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 78%, var(--vscode-editor-background) 22%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-focusBorder) 18%);
+  opacity: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background-color 120ms ease;
+}
+
+.canvas-node:hover .canvas-node-handle,
+.canvas-node.is-selected .canvas-node-handle,
+.canvas-node-handle.connectingto,
+.canvas-node-handle.connectingfrom {
+  opacity: 1;
+}
+
+.canvas-node-handle:hover {
+  transform: scale(1.08);
+  background: var(--vscode-focusBorder);
+}
+
+.canvas-edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.canvas-edge-path.owner-file-activity {
+  stroke-dasharray: 6 5;
+  opacity: 0.82;
+}
+
+.canvas-edge-path.is-selected {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent));
+}
+
+.canvas-edge-hitbox {
+  stroke: transparent;
+  stroke-width: 22px;
+  fill: none;
+}
+
+.canvas-edge-label {
+  position: absolute;
+  pointer-events: none;
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: var(--canvas-widget-radius-sm);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground));
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.canvas-edge-label.owner-file-activity {
+  color: var(--vscode-descriptionForeground);
+}
+
+.canvas-edge-label.is-selected {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, var(--vscode-panel-border) 45%);
+}
+
 .compact-node {
   justify-content: space-between;
   padding: 14px 14px 12px;
@@ -589,6 +668,172 @@ body {
   min-height: 0;
   gap: 0;
   padding: 0;
+}
+
+.file-node {
+  overflow: hidden;
+}
+
+.file-node-action {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 14px 16px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.file-node-action:hover,
+.file-node-action:focus-visible {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+  outline: none;
+}
+
+.file-node-icon,
+.file-list-entry-icon {
+  display: inline-flex;
+  width: 22px;
+  min-width: 22px;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--vscode-symbolIcon-fileForeground, var(--vscode-icon-foreground, var(--vscode-editor-foreground)));
+}
+
+.file-node-copy,
+.file-list-entry-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.file-node-copy strong,
+.file-list-entry-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.file-node-copy span,
+.file-list-entry-copy span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.file-node-copy-icon-only {
+  justify-items: center;
+}
+
+.file-list-title {
+  min-width: 0;
+}
+
+.file-list-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.file-list-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+}
+
+.file-list-empty {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 82%, transparent);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.file-list-entries {
+  width: 100%;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+}
+
+.file-list-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.file-list-entry:hover,
+.file-list-entry:focus-visible {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 28%, var(--vscode-panel-border) 72%);
+  outline: none;
+}
+
+.file-access-badge {
+  display: inline-flex;
+  min-width: 32px;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.file-access-badge.mode-read {
+  background: color-mix(in srgb, #38bdf8 14%, transparent);
+  color: color-mix(in srgb, #38bdf8 78%, var(--vscode-editor-foreground) 22%);
+}
+
+.file-access-badge.mode-write {
+  background: color-mix(in srgb, #f97316 14%, transparent);
+  color: color-mix(in srgb, #f97316 78%, var(--vscode-editor-foreground) 22%);
+}
+
+.file-access-badge.mode-read-write {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  color: color-mix(in srgb, #22c55e 78%, var(--vscode-editor-foreground) 22%);
+}
+
+.file-icon-image {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.file-icon-font {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .note-window-title {

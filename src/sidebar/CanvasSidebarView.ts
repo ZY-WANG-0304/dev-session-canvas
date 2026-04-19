@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { COMMAND_IDS, EXTENSION_DISPLAY_NAME } from '../common/extensionIdentity';
-import type { CanvasNodeKind } from '../common/protocol';
+import type { CanvasCreatableNodeKind } from '../common/protocol';
 import { type CanvasSidebarState, CanvasPanelManager } from '../panel/CanvasPanelManager';
 
 interface CanvasSidebarEntry {
@@ -184,11 +184,11 @@ function getOpenCanvasCommand(state: CanvasSidebarState): vscode.Command {
   };
 }
 
-function describeCreatableKinds(kinds: CanvasNodeKind[]): string {
+function describeCreatableKinds(kinds: CanvasCreatableNodeKind[]): string {
   return kinds.map(humanizeNodeKind).join(' · ');
 }
 
-function humanizeNodeKind(kind: CanvasNodeKind): string {
+function humanizeNodeKind(kind: CanvasCreatableNodeKind): string {
   switch (kind) {
     case 'agent':
       return 'Agent';

@@ -7,10 +7,20 @@ import ReactFlow, {
   applyNodeChanges,
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
+  EdgeLabelRenderer,
+  Handle,
+  MarkerType,
   MiniMap,
   NodeResizer,
+  Position,
+  getBezierPath,
   useViewport,
+  type Connection,
+  type Edge,
+  type EdgeMouseHandler,
+  type EdgeProps,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -25,6 +35,13 @@ import './styles.css';
 
 import type {
   AgentProviderKind,
+  CanvasCreatableNodeKind,
+  CanvasEdgeArrowMode,
+  CanvasEdgeOwner,
+  CanvasEdgeSummary,
+  CanvasFileIconDescriptor,
+  CanvasFileNodeDisplayMode,
+  CanvasFilePathDisplayMode,
   CanvasNodeKind,
   CanvasNodeFootprint,
   CanvasNodeMetadata,
@@ -33,8 +50,10 @@ import type {
   CanvasNodeSummary,
   CanvasPrototypeState,
   ExecutionNodeKind,
+  FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
+  WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
   WebviewToHostMessage
@@ -70,6 +89,14 @@ interface LocalUiState {
   viewport?: Viewport;
 }
 
+interface CanvasEdgeContextMenuState {
+  edgeId: string;
+  screenX: number;
+  screenY: number;
+  arrowMode: CanvasEdgeArrowMode;
+  label?: string;
+}
+
 interface CanvasNodeData {
   kind: CanvasNodeKind;
   title: string;
@@ -78,8 +105,11 @@ interface CanvasNodeData {
   selected: boolean;
   workspaceTrusted: boolean;
   size: CanvasNodeFootprint;
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
+  onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -113,6 +143,12 @@ interface CanvasNodeData {
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
+interface CanvasEdgeData {
+  owner: CanvasEdgeOwner;
+  arrowMode: CanvasEdgeArrowMode;
+}
+
+type CanvasFlowEdge = Edge<CanvasEdgeData>;
 type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type EmbeddedTerminalTheme = NonNullable<EmbeddedTerminalOptions['theme']>;
 type WorkbenchThemeKind = 'light' | 'dark' | 'hcDark' | 'hcLight';
@@ -368,7 +404,11 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   defaultAgentProvider: 'codex',
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
   editorMultiCursorModifier: 'alt',
-  terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined)
+  terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
+  filePresentationMode: 'nodes',
+  fileNodeDisplayMode: 'icon-path',
+  filePathDisplayMode: 'basename',
+  fileIconFontFaces: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -379,6 +419,50 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
+function normalizeRuntimeContext(
+  runtimeContext: Partial<CanvasRuntimeContext> | undefined
+): CanvasRuntimeContext {
+  const fileIconFontFaces = Array.isArray(runtimeContext?.fileIconFontFaces)
+    ? runtimeContext?.fileIconFontFaces ?? []
+    : [];
+
+  return {
+    workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
+    surfaceLocation: runtimeContext?.surfaceLocation === 'editor' ? 'editor' : 'panel',
+    defaultAgentProvider: runtimeContext?.defaultAgentProvider === 'claude' ? 'claude' : 'codex',
+    terminalScrollback:
+      typeof runtimeContext?.terminalScrollback === 'number'
+        ? runtimeContext.terminalScrollback
+        : DEFAULT_TERMINAL_SCROLLBACK,
+    editorMultiCursorModifier: runtimeContext?.editorMultiCursorModifier === 'ctrlCmd' ? 'ctrlCmd' : 'alt',
+    terminalWordSeparators:
+      typeof runtimeContext?.terminalWordSeparators === 'string'
+        ? runtimeContext.terminalWordSeparators
+        : normalizeExecutionTerminalWordSeparators(undefined),
+    filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
+    fileNodeDisplayMode:
+      runtimeContext?.fileNodeDisplayMode === 'icon-only' || runtimeContext?.fileNodeDisplayMode === 'path-only'
+        ? runtimeContext.fileNodeDisplayMode
+        : 'icon-path',
+    filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
+    fileIconFontFaces
+  };
+}
+
+function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | null | undefined): CanvasPrototypeState {
+  const nodes = Array.isArray(state?.nodes) ? state?.nodes ?? [] : [];
+  const edges = Array.isArray(state?.edges) ? state?.edges ?? [] : [];
+  const fileReferences = Array.isArray(state?.fileReferences) ? state?.fileReferences ?? [] : [];
+
+  return {
+    version: 1,
+    updatedAt: typeof state?.updatedAt === 'string' ? state.updatedAt : new Date().toISOString(),
+    nodes,
+    edges,
+    fileReferences
+  };
+}
+
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
@@ -387,17 +471,24 @@ function App(): JSX.Element {
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
     terminalScrollback: latestRuntimeContext.terminalScrollback,
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
-    terminalWordSeparators: latestRuntimeContext.terminalWordSeparators
+    terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
+    filePresentationMode: latestRuntimeContext.filePresentationMode,
+    fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
+    filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
+    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
     viewport: initialPersistedState.viewport
   }));
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
+  const [edgeContextMenu, setEdgeContextMenu] = useState<CanvasEdgeContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const edgeContextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
 
   useEffect(() => {
@@ -407,10 +498,14 @@ function App(): JSX.Element {
       switch (message.type) {
         case 'host/bootstrap':
         case 'host/stateUpdated':
-          latestRuntimeContext = message.payload.runtime;
-          setHostState(message.payload.state);
-          setRuntimeContext(message.payload.runtime);
-          applyEmbeddedTerminalRuntimeContext(message.payload.runtime);
+          {
+            const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
+            const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+            latestRuntimeContext = normalizedRuntime;
+            setHostState(normalizedState);
+            setRuntimeContext(normalizedRuntime);
+            applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+          }
           scheduleEmbeddedTerminalAppearanceRefresh();
           break;
         case 'host/themeChanged':
@@ -489,6 +584,10 @@ function App(): JSX.Element {
   }, [runtimeContext]);
 
   useEffect(() => {
+    return applyFileIconFontFaces(runtimeContext.fileIconFontFaces);
+  }, [runtimeContext.fileIconFontFaces]);
+
+  useEffect(() => {
     ensureEmbeddedTerminalThemeObservers();
     scheduleEmbeddedTerminalAppearanceRefresh();
 
@@ -508,6 +607,7 @@ function App(): JSX.Element {
     }
 
     const validNodeIds = new Set(hostState.nodes.map((node) => node.id));
+    const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
     setLocalUiState((current) =>
       current.selectedNodeId && !validNodeIds.has(current.selectedNodeId)
         ? {
@@ -516,10 +616,24 @@ function App(): JSX.Element {
           }
         : current
     );
+    setSelectedEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
-  const creatableKinds: CanvasNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
+  const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
+
+  const closePaneContextMenu = (): void => {
+    setContextMenu(null);
+  };
+
+  const closeEdgeContextMenu = (): void => {
+    setEdgeContextMenu(null);
+  };
+
+  const closeFloatingMenus = (): void => {
+    closePaneContextMenu();
+    closeEdgeContextMenu();
+  };
 
   const deleteNode = (nodeId: string): void => {
     setLocalUiState((current) =>
@@ -530,6 +644,7 @@ function App(): JSX.Element {
           }
         : current
     );
+    closeFloatingMenus();
     postMessage({
       type: 'webview/deleteNode',
       payload: {
@@ -538,8 +653,24 @@ function App(): JSX.Element {
     });
   };
 
-  const closeContextMenu = (): void => {
-    setContextMenu(null);
+  const deleteEdge = (edgeId: string): void => {
+    setSelectedEdgeId((current) => (current === edgeId ? undefined : current));
+    closeEdgeContextMenu();
+    postMessage({
+      type: 'webview/deleteEdge',
+      payload: {
+        edgeId
+      }
+    });
+  };
+
+  const requestEdgeLabelEdit = (edgeId: string): void => {
+    postMessage({
+      type: 'webview/requestEdgeLabelEdit',
+      payload: {
+        edgeId
+      }
+    });
   };
 
   const focusNodeInViewport = (nodeId: string): void => {
@@ -560,7 +691,8 @@ function App(): JSX.Element {
     }
 
     const viewport = reactFlowInstance.getViewport();
-    closeContextMenu();
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: nodeId,
@@ -572,16 +704,28 @@ function App(): JSX.Element {
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
     workspaceTrusted,
+    fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
+    filePathDisplayMode: runtimeContext.filePathDisplayMode,
     onSelectNode: (nodeId) => {
       if (localUiState.selectedNodeId === nodeId) {
         return;
       }
 
+      closeEdgeContextMenu();
+      setSelectedEdgeId(undefined);
       setLocalUiState((current) => ({
         ...current,
         selectedNodeId: nodeId
       }));
     },
+    onOpenCanvasFile: (nodeId, filePath) =>
+      postMessage({
+        type: 'webview/openCanvasFile',
+        payload: {
+          nodeId,
+          filePath
+        }
+      }),
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
@@ -658,6 +802,7 @@ function App(): JSX.Element {
     onDeleteNode: deleteNode
   });
   const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+  const edges = toFlowEdges(hostState?.edges ?? [], selectedEdgeId);
 
   useEffect(() => {
     setNodeLayoutDrafts((current) => pruneCanvasNodeLayoutDrafts(baseNodes, current));
@@ -672,7 +817,8 @@ function App(): JSX.Element {
       return;
     }
 
-    closeContextMenu();
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
     updateLocalUiState({
       ...localUiState,
       selectedNodeId: node.id
@@ -680,11 +826,12 @@ function App(): JSX.Element {
   };
 
   const handlePaneClick = (): void => {
-    closeContextMenu();
-    if (!localUiState.selectedNodeId) {
+    closeFloatingMenus();
+    if (!localUiState.selectedNodeId && !selectedEdgeId) {
       return;
     }
 
+    setSelectedEdgeId(undefined);
     updateLocalUiState({
       ...localUiState,
       selectedNodeId: undefined
@@ -717,7 +864,7 @@ function App(): JSX.Element {
   };
 
   const handleMoveStart = (): void => {
-    closeContextMenu();
+    closeFloatingMenus();
   };
 
   const handlePaneContextMenu = (event: React.MouseEvent): void => {
@@ -734,6 +881,8 @@ function App(): JSX.Element {
       y: event.clientY
     });
 
+    setSelectedEdgeId(undefined);
+    closeEdgeContextMenu();
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: undefined
@@ -750,8 +899,9 @@ function App(): JSX.Element {
   };
 
   useEffect(() => {
-    const selectedNodeId = localUiState.selectedNodeId;
-    if (!selectedNodeId) {
+    const currentSelectedNodeId = localUiState.selectedNodeId;
+    const currentSelectedEdgeId = selectedEdgeId;
+    if (!currentSelectedNodeId && !currentSelectedEdgeId) {
       return;
     }
 
@@ -761,26 +911,36 @@ function App(): JSX.Element {
       }
 
       event.preventDefault();
-      deleteNode(selectedNodeId);
+      if (currentSelectedEdgeId) {
+        deleteEdge(currentSelectedEdgeId);
+        return;
+      }
+
+      if (currentSelectedNodeId) {
+        deleteNode(currentSelectedNodeId);
+      }
     };
 
     window.addEventListener('keydown', handleWindowKeyDown);
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [localUiState.selectedNodeId]);
+  }, [deleteEdge, localUiState.selectedNodeId, selectedEdgeId]);
 
   useEffect(() => {
-    if (!contextMenu) {
+    if (!contextMenu && !edgeContextMenu) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent): void => {
-      if (event.target instanceof globalThis.Node && contextMenuRef.current?.contains(event.target)) {
+      if (
+        event.target instanceof globalThis.Node &&
+        (contextMenuRef.current?.contains(event.target) || edgeContextMenuRef.current?.contains(event.target))
+      ) {
         return;
       }
 
-      closeContextMenu();
+      closeFloatingMenus();
     };
 
     const handleWindowKeyDown = (event: KeyboardEvent): void => {
@@ -789,7 +949,7 @@ function App(): JSX.Element {
       }
 
       event.preventDefault();
-      closeContextMenu();
+      closeFloatingMenus();
     };
 
     window.addEventListener('pointerdown', handlePointerDown, true);
@@ -798,15 +958,84 @@ function App(): JSX.Element {
       window.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [contextMenu]);
+  }, [contextMenu, edgeContextMenu]);
+
+  const handleConnect = (connection: Connection): void => {
+    const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
+    const targetAnchor = parseHandleAnchor(connection.targetHandle);
+    if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
+      return;
+    }
+
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    postMessage({
+      type: 'webview/createEdge',
+      payload: {
+        sourceNodeId: connection.source,
+        targetNodeId: connection.target,
+        sourceAnchor,
+        targetAnchor
+      }
+    });
+  };
+
+  const handleEdgeClick: EdgeMouseHandler = (event, edge) => {
+    stopCanvasEvent(event);
+    if (edge.data?.owner !== 'user') {
+      return;
+    }
+
+    closePaneContextMenu();
+    closeEdgeContextMenu();
+    setSelectedEdgeId(edge.id);
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: undefined
+    }));
+  };
+
+  const handleEdgeDoubleClick: EdgeMouseHandler = (event, edge) => {
+    stopCanvasEvent(event);
+    if (edge.data?.owner !== 'user') {
+      return;
+    }
+
+    setSelectedEdgeId(edge.id);
+    requestEdgeLabelEdit(edge.id);
+  };
+
+  const handleEdgeContextMenu: EdgeMouseHandler = (event, edge) => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+    if (edge.data?.owner !== 'user') {
+      return;
+    }
+
+    closePaneContextMenu();
+    setSelectedEdgeId(edge.id);
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: undefined
+    }));
+    setEdgeContextMenu({
+      edgeId: edge.id,
+      screenX: event.clientX,
+      screenY: event.clientY,
+      arrowMode: edge.data.arrowMode,
+      label: typeof edge.label === 'string' ? edge.label : undefined
+    });
+  };
 
   return (
     <div className="canvas-shell">
       <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
       <ReactFlow
         nodes={nodes}
-        edges={[]}
+        edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        connectionMode={ConnectionMode.Loose}
         fitView={!localUiState.viewport}
         fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
         defaultViewport={localUiState.viewport}
@@ -816,6 +1045,10 @@ function App(): JSX.Element {
           reactFlowRef.current = instance;
         }}
         onNodesChange={handleNodesChange}
+        onConnect={handleConnect}
+        onEdgeClick={handleEdgeClick}
+        onEdgeDoubleClick={handleEdgeDoubleClick}
+        onEdgeContextMenu={handleEdgeContextMenu}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onMoveStart={handleMoveStart}
@@ -860,7 +1093,7 @@ function App(): JSX.Element {
               resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
               agentProvider
             );
-            closeContextMenu();
+            closePaneContextMenu();
           }}
           onShowAgentProviders={() =>
             setContextMenu((current) => (current ? { ...current, view: 'agent-provider' } : current))
@@ -868,7 +1101,35 @@ function App(): JSX.Element {
           onBack={() =>
             setContextMenu((current) => (current ? { ...current, view: 'root' } : current))
           }
-          onClose={closeContextMenu}
+          onClose={closePaneContextMenu}
+        />
+      ) : null}
+
+      {edgeContextMenu ? (
+        <CanvasEdgeContextMenu
+          ref={edgeContextMenuRef}
+          screenX={edgeContextMenu.screenX}
+          screenY={edgeContextMenu.screenY}
+          arrowMode={edgeContextMenu.arrowMode}
+          label={edgeContextMenu.label}
+          onSetArrowMode={(arrowMode) => {
+            postMessage({
+              type: 'webview/updateEdge',
+              payload: {
+                edgeId: edgeContextMenu.edgeId,
+                arrowMode
+              }
+            });
+            closeEdgeContextMenu();
+          }}
+          onEditLabel={() => {
+            closeEdgeContextMenu();
+            requestEdgeLabelEdit(edgeContextMenu.edgeId);
+          }}
+          onDelete={() => {
+            deleteEdge(edgeContextMenu.edgeId);
+          }}
+          onClose={closeEdgeContextMenu}
         />
       ) : null}
 
@@ -881,7 +1142,7 @@ function App(): JSX.Element {
   );
 
   function createNode(
-    kind: CanvasNodeKind,
+    kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
     agentProvider?: AgentProviderKind
   ): void {
@@ -1204,6 +1465,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
@@ -1588,6 +1850,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
@@ -1684,6 +1947,37 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
   );
 }
 
+function NodeHandles(props: { selected: boolean }): JSX.Element {
+  return (
+    <>
+      <Handle
+        id="top"
+        type="source"
+        position={Position.Top}
+        className={`canvas-node-handle anchor-top ${props.selected ? 'is-selected' : ''}`}
+      />
+      <Handle
+        id="right"
+        type="source"
+        position={Position.Right}
+        className={`canvas-node-handle anchor-right ${props.selected ? 'is-selected' : ''}`}
+      />
+      <Handle
+        id="bottom"
+        type="source"
+        position={Position.Bottom}
+        className={`canvas-node-handle anchor-bottom ${props.selected ? 'is-selected' : ''}`}
+      />
+      <Handle
+        id="left"
+        type="source"
+        position={Position.Left}
+        className={`canvas-node-handle anchor-left ${props.selected ? 'is-selected' : ''}`}
+      />
+    </>
+  );
+}
+
 function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
   const minimum = minimumCanvasNodeFootprint(data.kind);
 
@@ -1722,6 +2016,135 @@ function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id'
         );
       }}
     />
+  );
+}
+
+function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const fileMetadata = data.metadata?.file;
+  if (!fileMetadata) {
+    return <CanvasCardNode id={id} data={data} />;
+  }
+
+  const primaryLabel = displayFilePath(fileMetadata, data.filePathDisplayMode);
+  const secondaryLabel =
+    data.filePathDisplayMode === 'basename'
+      ? fileMetadata.relativePath ?? fileMetadata.filePath
+      : fileMetadata.filePath !== primaryLabel
+        ? fileMetadata.filePath
+        : undefined;
+  const ownerCount = fileMetadata.ownerNodeIds.length;
+
+  return (
+    <div
+      className={`canvas-node file-node kind-file ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
+      <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
+      <button
+        type="button"
+        className="file-node-action nodrag nopan"
+        data-node-interactive="true"
+        data-file-entry-path={fileMetadata.filePath}
+        onMouseDown={stopCanvasEvent}
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          data.onSelectNode?.(id);
+          data.onOpenCanvasFile?.(id, fileMetadata.filePath);
+        }}
+      >
+        {data.fileNodeDisplayMode !== 'path-only' ? (
+          <span className="file-node-icon" aria-hidden="true">
+            {renderFileIcon(fileMetadata.icon, primaryLabel)}
+          </span>
+        ) : null}
+        {data.fileNodeDisplayMode !== 'icon-only' ? (
+          <span className="file-node-copy">
+            <strong title={primaryLabel}>{primaryLabel}</strong>
+            <span>{secondaryLabel ?? `${ownerCount} 个 Agent 引用`}</span>
+          </span>
+        ) : (
+          <span className="file-node-copy file-node-copy-icon-only">
+            <strong>{ownerCount}</strong>
+            <span>引用</span>
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const fileListMetadata = data.metadata?.fileList;
+  if (!fileListMetadata) {
+    return <CanvasCardNode id={id} data={data} />;
+  }
+
+  return (
+    <div
+      className={`canvas-node file-list-node kind-file-list ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
+      <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
+      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
+        <div className="window-title file-list-title">
+          <strong className="file-list-title-text">{data.title}</strong>
+          <div className="window-title-subtitle-row">
+            <span className="window-title-subtitle">{data.summary}</span>
+          </div>
+        </div>
+        <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+      </div>
+      <div className="file-list-body object-surface">
+        {fileListMetadata.entries.length === 0 ? (
+          <div className="file-list-empty">当前还没有可显示的文件活动。</div>
+        ) : (
+          <div className="file-list-entries">
+            {fileListMetadata.entries.map((entry) => {
+              const label = displayFilePath(entry, data.filePathDisplayMode);
+              const secondary =
+                data.filePathDisplayMode === 'basename'
+                  ? entry.relativePath ?? entry.filePath
+                  : entry.filePath !== label
+                    ? entry.filePath
+                    : undefined;
+
+              return (
+                <button
+                  key={`${entry.fileId}-${entry.filePath}`}
+                  type="button"
+                  className="file-list-entry nodrag nopan"
+                  data-node-interactive="true"
+                  data-file-entry-path={entry.filePath}
+                  onMouseDown={stopCanvasEvent}
+                  onClick={(event) => {
+                    stopCanvasEvent(event);
+                    data.onSelectNode?.(id);
+                    data.onOpenCanvasFile?.(id, entry.filePath);
+                  }}
+                >
+                  <span className="file-list-entry-icon" aria-hidden="true">
+                    {renderFileIcon(entry.icon, label)}
+                  </span>
+                  <span className="file-list-entry-copy">
+                    <strong title={label}>{label}</strong>
+                    <span>{secondary ?? `${entry.ownerNodeIds.length} 个 Agent 引用`}</span>
+                  </span>
+                  <span className={`file-access-badge mode-${entry.accessMode}`}>
+                    {humanizeFileAccessMode(entry.accessMode)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1768,6 +2191,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
@@ -1841,6 +2265,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
@@ -1879,7 +2304,13 @@ const nodeTypes = {
   agent: AgentSessionNode,
   terminal: TerminalSessionNode,
   note: NoteEditableNode,
+  file: FileNode,
+  'file-list': FileListNode,
   card: CanvasCardNode
+};
+
+const edgeTypes = {
+  canvas: CanvasEdge
 };
 
 function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
@@ -2057,9 +2488,9 @@ const CanvasContextMenu = React.forwardRef<
     screenX: number;
     screenY: number;
     view: 'root' | 'agent-provider';
-    kinds: CanvasNodeKind[];
+    kinds: CanvasCreatableNodeKind[];
     defaultAgentProvider: AgentProviderKind;
-    onCreate: (kind: CanvasNodeKind, agentProvider?: AgentProviderKind) => void;
+    onCreate: (kind: CanvasCreatableNodeKind, agentProvider?: AgentProviderKind) => void;
     onShowAgentProviders: () => void;
     onBack: () => void;
     onClose: () => void;
@@ -2198,6 +2629,148 @@ const CanvasContextMenu = React.forwardRef<
   );
 });
 
+const CanvasEdgeContextMenu = React.forwardRef<
+  HTMLDivElement,
+  {
+    screenX: number;
+    screenY: number;
+    arrowMode: CanvasEdgeArrowMode;
+    label?: string;
+    onSetArrowMode: (arrowMode: CanvasEdgeArrowMode) => void;
+    onEditLabel: () => void;
+    onDelete: () => void;
+    onClose: () => void;
+  }
+>(function CanvasEdgeContextMenu(props, ref): JSX.Element {
+  const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
+
+  return (
+    <div
+      ref={ref}
+      className="canvas-context-menu edge-context-menu"
+      data-context-menu="edge"
+      style={{
+        left: position.x,
+        top: position.y
+      }}
+      onMouseDown={stopCanvasEvent}
+      onClick={stopCanvasEvent}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        stopCanvasEvent(event);
+      }}
+    >
+      <div className="canvas-context-menu-header">
+        <div className="canvas-context-menu-header-copy">
+          <strong>编辑连线</strong>
+          <span>{props.label ? `当前标签：${props.label}` : '当前连线还没有标签。'}</span>
+        </div>
+      </div>
+      <div className="canvas-context-menu-items">
+        {[
+          {
+            arrowMode: 'none' as const,
+            label: '无箭头',
+            description: '移除方向箭头'
+          },
+          {
+            arrowMode: 'forward' as const,
+            label: '单向箭头',
+            description: '保留起点到终点的单向关系'
+          },
+          {
+            arrowMode: 'both' as const,
+            label: '双向箭头',
+            description: '表达双向关联'
+          }
+        ].map((item) => (
+          <button
+            key={item.arrowMode}
+            type="button"
+            className="canvas-context-menu-item"
+            onClick={() => props.onSetArrowMode(item.arrowMode)}
+          >
+            <span
+              className="canvas-context-menu-swatch"
+              style={{ backgroundColor: item.arrowMode === props.arrowMode ? '#38bdf8' : '#64748b' }}
+              aria-hidden="true"
+            />
+            <span className="canvas-context-menu-copy">
+              <strong>{item.label}</strong>
+              <span>{item.description}</span>
+            </span>
+          </button>
+        ))}
+        <button type="button" className="canvas-context-menu-item" onClick={props.onEditLabel}>
+          <span className="canvas-context-menu-swatch" style={{ backgroundColor: '#a78bfa' }} aria-hidden="true" />
+          <span className="canvas-context-menu-copy">
+            <strong>编辑标签</strong>
+            <span>双击连线也可以直接编辑标签</span>
+          </span>
+        </button>
+        <button type="button" className="canvas-context-menu-item" onClick={props.onDelete}>
+          <span className="canvas-context-menu-swatch" style={{ backgroundColor: '#ef4444' }} aria-hidden="true" />
+          <span className="canvas-context-menu-copy">
+            <strong>删除连线</strong>
+            <span>也可以选中后按 Delete</span>
+          </span>
+        </button>
+      </div>
+      <button type="button" className="canvas-context-menu-dismiss" onClick={props.onClose}>
+        取消
+      </button>
+    </div>
+  );
+});
+
+function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    sourcePosition: props.sourcePosition,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    targetPosition: props.targetPosition
+  });
+  const owner = props.data?.owner ?? 'user';
+  const arrowMode = props.data?.arrowMode ?? 'none';
+  const labelText = typeof props.label === 'string' ? props.label : undefined;
+
+  return (
+    <>
+      <path
+        d={edgePath}
+        fill="none"
+        className={`canvas-edge-path owner-${owner} ${props.selected ? 'is-selected' : ''}`}
+        style={props.style}
+        markerStart={props.markerStart}
+        markerEnd={props.markerEnd}
+        data-edge-probe="true"
+        data-edge-id={props.id}
+        data-edge-source={props.source}
+        data-edge-target={props.target}
+        data-edge-owner={owner}
+        data-edge-arrow-mode={arrowMode}
+        data-edge-label={labelText}
+        data-edge-selected={props.selected ? 'true' : 'false'}
+      />
+      <path d={edgePath} fill="none" className="canvas-edge-hitbox" />
+      {labelText ? (
+        <EdgeLabelRenderer>
+          <div
+            className={`canvas-edge-label owner-${owner} ${props.selected ? 'is-selected' : ''}`}
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`
+            }}
+          >
+            {labelText}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
@@ -2286,7 +2859,10 @@ function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
   workspaceTrusted: boolean;
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
   onSelectNode: (nodeId: string) => void;
+  onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -2323,14 +2899,7 @@ function toFlowNodes(params: {
 
     return {
       id: node.id,
-      type:
-        node.kind === 'agent'
-          ? 'agent'
-          : node.kind === 'terminal'
-            ? 'terminal'
-            : node.kind === 'note'
-              ? 'note'
-              : 'card',
+      type: node.kind === 'agent' || node.kind === 'terminal' || node.kind === 'note' || node.kind === 'file' || node.kind === 'file-list' ? node.kind : 'card',
       position: node.position,
       draggable: true,
       selected: node.id === params.selectedNodeId,
@@ -2348,8 +2917,11 @@ function toFlowNodes(params: {
         selected: node.id === params.selectedNodeId,
         workspaceTrusted: params.workspaceTrusted,
         size,
+        fileNodeDisplayMode: params.fileNodeDisplayMode,
+        filePathDisplayMode: params.filePathDisplayMode,
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
+        onOpenCanvasFile: params.onOpenCanvasFile,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
@@ -2365,6 +2937,49 @@ function toFlowNodes(params: {
       }
     };
   });
+}
+
+function toFlowEdges(edges: CanvasEdgeSummary[], selectedEdgeId: string | undefined): CanvasFlowEdge[] {
+  return edges.map((edge) => ({
+    id: edge.id,
+    type: 'canvas',
+    source: edge.sourceNodeId,
+    target: edge.targetNodeId,
+    sourceHandle: edge.sourceAnchor,
+    targetHandle: edge.targetAnchor,
+    label: edge.label,
+    selectable: edge.owner === 'user',
+    focusable: edge.owner === 'user',
+    selected: edge.id === selectedEdgeId,
+    zIndex: edge.owner === 'user' ? 6 : 2,
+    data: {
+      owner: edge.owner,
+      arrowMode: edge.arrowMode
+    },
+    style: {
+      stroke:
+        edge.owner === 'file-activity'
+          ? 'color-mix(in srgb, var(--vscode-descriptionForeground) 72%, transparent)'
+          : 'color-mix(in srgb, var(--vscode-focusBorder) 78%, var(--vscode-editor-foreground) 22%)',
+      strokeWidth: edge.owner === 'file-activity' ? 1.6 : 2
+    },
+    markerStart:
+      edge.arrowMode === 'both'
+        ? {
+            type: MarkerType.ArrowClosed,
+            width: 16,
+            height: 16
+          }
+        : undefined,
+    markerEnd:
+      edge.arrowMode === 'forward' || edge.arrowMode === 'both'
+        ? {
+            type: MarkerType.ArrowClosed,
+            width: 16,
+            height: 16
+          }
+        : undefined
+  }));
 }
 
 function applyCanvasNodeLayoutDrafts(
@@ -2482,7 +3097,7 @@ function footprintsEqual(
 }
 
 function resolveCreateNodePreferredPosition(
-  kind: CanvasNodeKind,
+  kind: CanvasCreatableNodeKind,
   reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null
 ): CanvasNodePosition | undefined {
   if (!reactFlowInstance || !reactFlowInstance.viewportInitialized) {
@@ -2498,7 +3113,7 @@ function resolveCreateNodePreferredPosition(
 }
 
 function resolveCreateNodePreferredPositionFromFlowAnchor(
-  kind: CanvasNodeKind,
+  kind: CanvasCreatableNodeKind,
   flowAnchor: CanvasNodePosition
 ): CanvasNodePosition {
   const footprint = estimatedCanvasNodeFootprint(kind);
@@ -2509,6 +3124,49 @@ function resolveCreateNodePreferredPositionFromFlowAnchor(
   };
 }
 
+function parseHandleAnchor(handleId: string | null | undefined): CanvasEdgeSummary['sourceAnchor'] | undefined {
+  return handleId === 'top' || handleId === 'right' || handleId === 'bottom' || handleId === 'left'
+    ? handleId
+    : undefined;
+}
+
+function displayFilePath(
+  value: Pick<FileListNodeEntrySummary, 'filePath' | 'relativePath'>,
+  mode: CanvasFilePathDisplayMode
+): string {
+  return mode === 'relative-path' ? value.relativePath ?? value.filePath : basename(value.filePath);
+}
+
+function basename(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  return segments[segments.length - 1] || filePath;
+}
+
+function renderFileIcon(icon: CanvasFileIconDescriptor | undefined, fallbackLabel: string): JSX.Element {
+  if (!icon || icon.kind === 'codicon') {
+    const codiconId = icon?.kind === 'codicon' ? icon.id : 'file';
+    return <span className={`codicon codicon-${codiconId}`} title={fallbackLabel} />;
+  }
+
+  if (icon.kind === 'image') {
+    return <img className="file-icon-image" src={icon.src} alt="" />;
+  }
+
+  return (
+    <span
+      className="file-icon-font"
+      style={{
+        fontFamily: icon.fontFamily,
+        color: icon.color
+      }}
+      title={fallbackLabel}
+    >
+      {icon.character}
+    </span>
+  );
+}
+
 function colorForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
@@ -2517,6 +3175,10 @@ function colorForKind(kind: CanvasNodeKind): string {
       return '#38bdf8';
     case 'note':
       return '#a78bfa';
+    case 'file':
+      return '#f59e0b';
+    case 'file-list':
+      return '#f97316';
   }
 }
 
@@ -2536,6 +3198,10 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
       return 'Terminal';
     case 'note':
       return 'Note';
+    case 'file':
+      return 'File';
+    case 'file-list':
+      return 'File List';
   }
 }
 
@@ -2547,6 +3213,10 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
       return '新建一个嵌入式终端窗口';
     case 'note':
       return '新建一个可编辑的笔记节点';
+    case 'file':
+      return '自动生成的文件节点';
+    case 'file-list':
+      return '自动生成的文件列表节点';
   }
 }
 
@@ -2568,6 +3238,8 @@ function providerLabel(provider: AgentProviderKind): string {
 
 function humanizeStatus(status: string): string {
   switch (status) {
+    case 'linked':
+      return '已关联';
     case 'idle':
       return '空闲';
     case 'launching':
@@ -2613,6 +3285,8 @@ function humanizeStatus(status: string): string {
 
 function statusToneClass(status: string): string {
   switch (status) {
+    case 'linked':
+      return 'tone-success';
     case 'launching':
     case 'starting':
     case 'resuming':
@@ -2635,6 +3309,17 @@ function statusToneClass(status: string): string {
       return 'tone-error';
     default:
       return 'tone-idle';
+  }
+}
+
+function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
+  switch (accessMode) {
+    case 'read':
+      return '读';
+    case 'write':
+      return '写';
+    case 'read-write':
+      return '读写';
   }
 }
 
@@ -2981,6 +3666,12 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
   const nodes = nodeElements
     .map((element) => readWebviewProbeNodeSnapshot(element))
     .filter((node): node is WebviewProbeNodeSnapshot => node !== null);
+  const edgeElements = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-edge-probe="true"][data-edge-id][data-edge-source][data-edge-target]')
+  );
+  const edges = edgeElements
+    .map((element) => readWebviewProbeEdgeSnapshot(element))
+    .filter((edge): edge is WebviewProbeSnapshot['edges'][number] => edge !== null);
 
   return {
     documentTitle: document.title,
@@ -2989,7 +3680,9 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
     toastMessage: readProbeText(document.querySelector('[data-toast-kind="error"]')),
     executionLinkTooltipText: readProbeText(document.querySelector('.execution-link-tooltip.is-visible')),
     nodeCount: nodes.length,
-    nodes
+    nodes,
+    edgeCount: edges.length,
+    edges
   };
 }
 
@@ -3007,10 +3700,14 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     nodeId,
     kind: nodeKind,
     chromeTitle:
-      readProbeText(element.querySelector('.window-title strong, .node-topline strong')) ??
+      readProbeText(
+        element.querySelector('.window-title strong, .node-topline strong, .file-node-copy strong, .file-list-title-text')
+      ) ??
       readProbeFieldValue(element, 'title') ??
       null,
-    chromeSubtitle: readProbeText(element.querySelector('.window-title span, .node-topline span')),
+    chromeSubtitle: readProbeText(
+      element.querySelector('.window-title span, .node-topline span, .file-node-copy span')
+    ),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     selected: element.dataset.nodeSelected === 'true',
     renderedWidth: footprint.width,
@@ -3020,6 +3717,34 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
     ...readProbeExecutionTerminalState(nodeId)
+  };
+}
+
+function readWebviewProbeEdgeSnapshot(element: HTMLElement): WebviewProbeEdgeSnapshot | null {
+  const edgeId = element.dataset.edgeId;
+  const sourceNodeId = element.dataset.edgeSource;
+  const targetNodeId = element.dataset.edgeTarget;
+  const arrowMode = element.dataset.edgeArrowMode;
+  const owner = element.dataset.edgeOwner;
+
+  if (
+    !edgeId ||
+    !sourceNodeId ||
+    !targetNodeId ||
+    (arrowMode !== 'none' && arrowMode !== 'forward' && arrowMode !== 'both') ||
+    (owner !== 'user' && owner !== 'file-activity')
+  ) {
+    return null;
+  }
+
+  return {
+    edgeId,
+    sourceNodeId,
+    targetNodeId,
+    arrowMode,
+    owner,
+    label: element.dataset.edgeLabel ?? null,
+    selected: element.dataset.edgeSelected === 'true'
   };
 }
 
@@ -3254,6 +3979,18 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'selectEdge': {
+        const target = queryEdgeSelectionTarget(action.edgeId);
+        dispatchSyntheticMouseClick(target);
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'clickFileEntry': {
+        const target = queryFileEntryButton(action.nodeId, action.filePath);
+        dispatchSyntheticMouseClick(target);
+        await waitForDomActionFlush();
+        break;
+      }
     }
 
     await waitForDomActionFlush();
@@ -3331,6 +4068,27 @@ function queryNodeField(nodeId: string, fieldName: string): Element {
   return field;
 }
 
+function queryEdgeSelectionTarget(edgeId: string): Element {
+  const edge = document.querySelector(`[data-edge-probe="true"][data-edge-id="${edgeId}"]`);
+  if (!edge) {
+    throw new Error(`未找到连线 ${edgeId}。`);
+  }
+
+  return edge;
+}
+
+function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  const target = Array.from(nodeRoot.querySelectorAll<HTMLElement>('[data-file-entry-path]')).find(
+    (candidate) => candidate.dataset.fileEntryPath === filePath
+  );
+  if (!target) {
+    throw new Error(`未找到节点 ${nodeId} 上对应 ${filePath} 的文件条目。`);
+  }
+
+  return target;
+}
+
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
@@ -3355,7 +4113,7 @@ function setControlledFieldValue(
   descriptor?.set?.call(element, value);
 }
 
-function dispatchSyntheticMouseClick(target: HTMLElement): void {
+function dispatchSyntheticMouseClick(target: Element): void {
   const eventInit = {
     bubbles: true,
     cancelable: true,
@@ -3417,6 +4175,31 @@ function applyEmbeddedTerminalRuntimeContext(runtimeContext: CanvasRuntimeContex
   for (const { terminal } of executionTerminalRegistry.values()) {
     terminal.options.scrollback = scrollback;
   }
+}
+
+function applyFileIconFontFaces(fontFaces: CanvasRuntimeContext['fileIconFontFaces']): () => void {
+  const styleId = 'dev-session-canvas-file-icon-font-faces';
+  const existing = document.head.querySelector<HTMLStyleElement>(`#${styleId}`);
+  if (!fontFaces.length) {
+    existing?.remove();
+    return () => {};
+  }
+
+  const styleElement = existing ?? document.createElement('style');
+  styleElement.id = styleId;
+  styleElement.textContent = fontFaces
+    .map(
+      (fontFace) =>
+        `@font-face { font-family: '${fontFace.fontFamily}'; src: url('${fontFace.src}') format('${fontFace.format ?? 'woff'}'); font-weight: ${fontFace.fontWeight ?? 'normal'}; font-style: ${fontFace.fontStyle ?? 'normal'}; }`
+    )
+    .join('\n');
+  if (!styleElement.parentElement) {
+    document.head.appendChild(styleElement);
+  }
+
+  return () => {
+    styleElement.remove();
+  };
 }
 
 function readEmbeddedTerminalAppearance(): {
