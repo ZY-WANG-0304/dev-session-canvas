@@ -114,11 +114,28 @@
 
 若最终版本号不是 `0.1.2`，应先同步更新命令中的 VSIX 文件名。
 
+## publish 后补 tag
+
+`publish` 成功后，应立即给这次实际发布所对应的 commit 打上 `vX.Y.Z` 形式的 lightweight tag，并把该 tag 推送到远端仓库；只在本地打 tag 不算完成。不要等到后续 hotfix、README 修订或其他提交出现后再补打，避免 tag 漂移到错误提交。
+
+若当前 shell 所在的就是本次发布对应 commit，可直接执行：
+
+    git tag v0.1.2
+    git push origin v0.1.2
+
+若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
+
+    git tag v0.1.2 <final-ref-or-sha>
+    git push origin v0.1.2
+
+若最终版本号不是 `0.1.2`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+
 ## 发布后验证
 
 发布完成后至少执行以下复核：
 
-1. 打开 Marketplace 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
-2. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
-3. 在干净 profile 中安装刚发布的版本，验证扩展可成功激活并能打开主画布。
-4. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace` 与本地 CLI 依赖等限制仍被正确表达，没有被商店页误读成稳定版承诺。
+1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit。
+2. 打开 Marketplace 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
+3. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
+4. 在干净 profile 中安装刚发布的版本，验证扩展可成功激活并能打开主画布。
+5. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace` 与本地 CLI 依赖等限制仍被正确表达，没有被商店页误读成稳定版承诺。
