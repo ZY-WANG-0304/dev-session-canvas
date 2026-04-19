@@ -15,7 +15,6 @@ import ReactFlow, {
   MiniMap,
   NodeResizer,
   Position,
-  getBezierPath,
   useViewport,
   type Connection,
   type Edge,
@@ -2891,10 +2890,109 @@ function sampleCanvasCubicPoint(
   };
 }
 
+function calculateCanvasBezierControlOffset(distance: number, curvature: number): number {
+  if (distance >= 0) {
+    return distance * 0.5;
+  }
+
+  return curvature * 25 * Math.sqrt(-distance);
+}
+
+function resolveCanvasBezierControlPoint(
+  current: CanvasPoint,
+  currentPosition: Position,
+  target: CanvasPoint,
+  curvature: number
+): CanvasPoint {
+  switch (currentPosition) {
+    case Position.Left:
+      return {
+        x: current.x - calculateCanvasBezierControlOffset(current.x - target.x, curvature),
+        y: current.y
+      };
+    case Position.Right:
+      return {
+        x: current.x + calculateCanvasBezierControlOffset(target.x - current.x, curvature),
+        y: current.y
+      };
+    case Position.Top:
+      return {
+        x: current.x,
+        y: current.y - calculateCanvasBezierControlOffset(current.y - target.y, curvature)
+      };
+    case Position.Bottom:
+    default:
+      return {
+        x: current.x,
+        y: current.y + calculateCanvasBezierControlOffset(target.y - current.y, curvature)
+      };
+  }
+}
+
+function resolveCanvasEdgeToolbarPoint(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  fallbackPoint: CanvasPoint
+): CanvasPoint {
+  const samples: CanvasPoint[] = [];
+  for (let step = 3; step <= 17; step += 1) {
+    samples.push(sampleCanvasCubicPoint(start, control1, control2, end, step / 20));
+  }
+
+  const minY = Math.min(...samples.map((point) => point.y));
+  const maxY = Math.max(...samples.map((point) => point.y));
+  if (maxY - minY < 12) {
+    return {
+      x: fallbackPoint.x,
+      y: fallbackPoint.y - 22
+    };
+  }
+
+  return samples.reduce((bestPoint, point) => {
+    if (point.y < bestPoint.y) {
+      return point;
+    }
+
+    if (Math.abs(point.y - bestPoint.y) < 2 && Math.abs(point.x - fallbackPoint.x) < Math.abs(bestPoint.x - fallbackPoint.x)) {
+      return point;
+    }
+
+    return bestPoint;
+  });
+}
+
+function createCanvasCubicEdgeGeometry(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, 0.5)
+): {
+  edgePath: string;
+  labelX: number;
+  labelY: number;
+  toolbarX: number;
+  toolbarY: number;
+} {
+  const toolbarPoint = resolveCanvasEdgeToolbarPoint(start, control1, control2, end, labelPoint);
+
+  return {
+    edgePath: buildCanvasCubicPath(start, control1, control2, end),
+    labelX: labelPoint.x,
+    labelY: labelPoint.y,
+    toolbarX: toolbarPoint.x,
+    toolbarY: toolbarPoint.y
+  };
+}
+
 function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
   edgePath: string;
   labelX: number;
   labelY: number;
+  toolbarX: number;
+  toolbarY: number;
 } {
   const start = { x: props.sourceX, y: props.sourceY };
   const end = { x: props.targetX, y: props.targetY };
@@ -2908,13 +3006,9 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
     const tangent = perpendicularCanvasPoint(sourceVector);
     const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), tangent, -spreadDistance);
     const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), tangent, spreadDistance);
-    const label = addCanvasPoint(start, sourceVector, outwardDistance + 14);
+    const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, 0.72);
 
-    return {
-      edgePath: buildCanvasCubicPath(start, control1, control2, end),
-      labelX: label.x,
-      labelY: label.y
-    };
+    return createCanvasCubicEdgeGeometry(start, control1, control2, end, labelPoint);
   }
 
   const chordLength = Math.hypot(end.x - start.x, end.y - start.y);
@@ -2930,42 +3024,33 @@ function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
   const bendDistance = Math.max(28, outwardDistance * 0.7);
   const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), bendDirection, bendDistance);
   const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), bendDirection, bendDistance);
-  const label = sampleCanvasCubicPoint(start, control1, control2, end, 0.5);
+  const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, 0.5);
 
-  return {
-    edgePath: buildCanvasCubicPath(start, control1, control2, end),
-    labelX: label.x,
-    labelY: label.y
-  };
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end, labelPoint);
 }
 
 function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): {
   edgePath: string;
   labelX: number;
   labelY: number;
+  toolbarX: number;
+  toolbarY: number;
 } {
   if (props.source === props.target) {
     return createCanvasSameNodeEdgeGeometry(props);
   }
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX: props.sourceX,
-    sourceY: props.sourceY,
-    sourcePosition: props.sourcePosition,
-    targetX: props.targetX,
-    targetY: props.targetY,
-    targetPosition: props.targetPosition
-  });
+  const start = { x: props.sourceX, y: props.sourceY };
+  const end = { x: props.targetX, y: props.targetY };
+  const curvature = 0.25;
+  const control1 = resolveCanvasBezierControlPoint(start, props.sourcePosition, end, curvature);
+  const control2 = resolveCanvasBezierControlPoint(end, props.targetPosition, start, curvature);
 
-  return {
-    edgePath,
-    labelX,
-    labelY
-  };
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end);
 }
 
 function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
-  const { edgePath, labelX, labelY } = createCanvasEdgeGeometry(props);
+  const { edgePath, labelX, labelY, toolbarX, toolbarY } = createCanvasEdgeGeometry(props);
   const owner = props.data?.owner ?? 'user';
   const arrowMode = props.data?.arrowMode ?? 'none';
   const labelText = typeof props.label === 'string' ? props.label : undefined;
@@ -2989,13 +3074,12 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   }, [isLabelEditing]);
 
   const arrowIcon = resolveCanvasEdgeArrowIcon(arrowMode);
-  const labelCenterY = labelY - 10;
   const labelStyle = createCanvasEdgeOverlayStyle(
-    `translate(-50%, -50%) translate(${labelX}px, ${labelCenterY}px)`,
+    `translate(-50%, -50%) translate(${labelX}px, ${labelY - 2}px)`,
     strokeColor
   );
   const toolbarStyle = createCanvasEdgeOverlayStyle(
-    `translate(-50%, -100%) translate(${labelX}px, ${labelCenterY - 18}px)`,
+    `translate(-50%, -100%) translate(${toolbarX}px, ${toolbarY - 12}px)`,
     strokeColor
   );
 

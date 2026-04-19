@@ -315,7 +315,7 @@ body {
 
 .canvas-edge-toolbar-anchor {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   justify-items: center;
 }
 
@@ -410,17 +410,17 @@ body {
 }
 
 .canvas-edge-label-editor {
-  width: clamp(120px, 18vw, 220px);
-  min-height: 20px;
-  border-radius: 4px;
-  border: 1px solid var(--vscode-input-border, var(--vscode-focusBorder));
-  background: var(--vscode-input-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  width: clamp(56px, 10vw, 160px);
+  min-height: 18px;
+  border: 0;
+  background: transparent;
   color: var(--vscode-input-foreground, var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground)));
-  padding: 0 6px;
+  padding: 0;
   box-sizing: border-box;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
   font: inherit;
   font-size: 11px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .canvas-edge-label-editor::placeholder {
@@ -428,37 +428,47 @@ body {
 }
 
 .canvas-edge-label-editor:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
+  outline: none;
+}
+
+.canvas-edge-label-editor-shell {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid
+    var(--vscode-input-border, color-mix(in srgb, var(--vscode-focusBorder) 32%, var(--vscode-panel-border) 68%));
+  background: color-mix(
+    in srgb,
+    var(--vscode-input-background, var(--vscode-editorWidget-background, var(--vscode-editor-background))) 94%,
+    var(--canvas-edge-accent) 6%
+  );
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-edge-label-editor-shell:focus-within {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 .canvas-edge-label {
   position: absolute;
   pointer-events: all;
-  display: inline-flex;
-  min-height: 18px;
-  align-items: center;
-  padding: 0 6px;
-  border-radius: 3px;
-  border: 1px solid
-    color-mix(
-      in srgb,
-      var(--canvas-edge-accent) 18%,
-      var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border))) 82%
-    );
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
-      97%,
-    var(--canvas-edge-accent) 3%
-  );
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--vscode-editor-foreground);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.1;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  text-shadow:
+    0 1px 2px color-mix(in srgb, var(--vscode-editor-background) 86%, transparent),
+    0 0 1px color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
 }
 
 .compact-node {
