@@ -469,29 +469,47 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 8px;
+  padding: 1px 4px;
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
-.canvas-edge-label::before {
+.canvas-edge-label.needs-mask {
+  isolation: isolate;
+}
+
+.canvas-edge-label.needs-mask::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+  inset: -1px -3px;
+  z-index: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 96%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 88%, transparent),
+    0 0 6px 2px color-mix(in srgb, var(--vscode-editor-background) 76%, transparent);
 }
 
 .canvas-edge-label-text {
-  position: relative;
-  z-index: 1;
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   color: var(--vscode-editor-foreground);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.1;
   white-space: nowrap;
-  text-shadow: 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 80%, transparent);
+  text-shadow:
+    0 0 1px var(--vscode-editor-background),
+    0 0 4px color-mix(in srgb, var(--vscode-editor-background) 84%, transparent);
+}
+
+.canvas-edge-label.needs-mask .canvas-edge-label-text {
+  position: relative;
+  z-index: 1;
 }
 
 .compact-node {
