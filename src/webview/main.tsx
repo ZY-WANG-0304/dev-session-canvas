@@ -2940,46 +2940,50 @@ function toFlowNodes(params: {
 }
 
 function toFlowEdges(edges: CanvasEdgeSummary[], selectedEdgeId: string | undefined): CanvasFlowEdge[] {
-  return edges.map((edge) => ({
-    id: edge.id,
-    type: 'canvas',
-    source: edge.sourceNodeId,
-    target: edge.targetNodeId,
-    sourceHandle: edge.sourceAnchor,
-    targetHandle: edge.targetAnchor,
-    label: edge.label,
-    selectable: edge.owner === 'user',
-    focusable: edge.owner === 'user',
-    selected: edge.id === selectedEdgeId,
-    zIndex: edge.owner === 'user' ? 6 : 2,
-    data: {
-      owner: edge.owner,
-      arrowMode: edge.arrowMode
-    },
-    style: {
-      stroke:
-        edge.owner === 'file-activity'
-          ? 'color-mix(in srgb, var(--vscode-descriptionForeground) 72%, transparent)'
-          : 'color-mix(in srgb, var(--vscode-focusBorder) 78%, var(--vscode-editor-foreground) 22%)',
-      strokeWidth: edge.owner === 'file-activity' ? 1.6 : 2
-    },
-    markerStart:
-      edge.arrowMode === 'both'
-        ? {
-            type: MarkerType.ArrowClosed,
-            width: 16,
-            height: 16
-          }
-        : undefined,
-    markerEnd:
-      edge.arrowMode === 'forward' || edge.arrowMode === 'both'
-        ? {
-            type: MarkerType.ArrowClosed,
-            width: 16,
-            height: 16
-          }
-        : undefined
-  }));
+  return edges.map((edge) => {
+    const isSelected = edge.id === selectedEdgeId;
+    const strokeColor = isSelected ? 'var(--vscode-focusBorder)' : 'var(--vscode-descriptionForeground)';
+
+    return {
+      id: edge.id,
+      type: 'canvas',
+      source: edge.sourceNodeId,
+      target: edge.targetNodeId,
+      sourceHandle: edge.sourceAnchor,
+      targetHandle: edge.targetAnchor,
+      label: edge.label,
+      selectable: edge.owner === 'user',
+      focusable: edge.owner === 'user',
+      selected: isSelected,
+      zIndex: edge.owner === 'user' ? 6 : 2,
+      data: {
+        owner: edge.owner,
+        arrowMode: edge.arrowMode
+      },
+      style: {
+        stroke: strokeColor,
+        strokeWidth: edge.owner === 'file-activity' ? 1.6 : 2
+      },
+      markerStart:
+        edge.arrowMode === 'both'
+          ? {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: strokeColor
+            }
+          : undefined,
+      markerEnd:
+        edge.arrowMode === 'forward' || edge.arrowMode === 'both'
+          ? {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: strokeColor
+            }
+          : undefined
+    };
+  });
 }
 
 function applyCanvasNodeLayoutDrafts(

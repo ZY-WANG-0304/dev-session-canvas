@@ -330,16 +330,21 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
         selected: false
       })
     );
+  const edgePath = page.locator('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
+    'var(--vscode-descriptionForeground)'
+  );
 
   await performTestDomAction(page, {
     kind: 'selectEdge',
     nodeId: 'agent-1',
     edgeId: 'edge-user-1'
   });
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
+    'var(--vscode-focusBorder)'
+  );
   await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.selected ?? false).toBe(true);
   await expect(page.locator('.canvas-edge-label.is-selected')).toHaveCount(0);
-
-  const edgePath = page.locator('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
   await edgePath.click({ button: 'right', force: true });
   await settleWebview(page, 2);
 
