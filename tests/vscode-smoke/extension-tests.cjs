@@ -797,6 +797,51 @@ async function verifyFileActivityViewsAndOpenFiles() {
       'Expected automatic file-activity edge from agent B to the shared file node.'
     );
 
+    let sharedAutoEdge = snapshot.state.edges.find(
+      (edge) => edge.owner === 'file-activity' && edge.targetNodeId === sharedFileNode.id && edge.sourceNodeId === agentAId
+    );
+    assert.ok(sharedAutoEdge, 'Expected agent A shared file edge to exist before customization.');
+
+    snapshot = await dispatchWebviewMessage(
+      {
+        type: 'webview/updateEdge',
+        payload: {
+          edgeId: sharedAutoEdge.id,
+          label: '共享写入',
+          color: '5'
+        }
+      },
+      'panel'
+    );
+    sharedAutoEdge = findEdgeById(snapshot, sharedAutoEdge.id);
+    assert.strictEqual(sharedAutoEdge.owner, 'user');
+    assert.strictEqual(sharedAutoEdge.label, '共享写入');
+    assert.strictEqual(sharedAutoEdge.color, '5');
+    assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
+
+    snapshot = await reloadPersistedState();
+    sharedAutoEdge = findEdgeById(snapshot, sharedAutoEdge.id);
+    assert.strictEqual(sharedAutoEdge.owner, 'user');
+    assert.strictEqual(sharedAutoEdge.label, '共享写入');
+    assert.strictEqual(sharedAutoEdge.color, '5');
+    assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
+
+    snapshot = await dispatchWebviewMessage(
+      {
+        type: 'webview/deleteEdge',
+        payload: {
+          edgeId: sharedAutoEdge.id
+        }
+      },
+      'panel'
+    );
+    assert.strictEqual(snapshot.state.edges.some((edge) => edge.id === sharedAutoEdge.id), false);
+    assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
+
+    snapshot = await reloadPersistedState();
+    assert.strictEqual(snapshot.state.edges.some((edge) => edge.id === sharedAutoEdge.id), false);
+    assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
+
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',

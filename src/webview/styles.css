@@ -20,6 +20,13 @@ body {
   --canvas-node-radius-inner: 8px;
   --canvas-widget-radius: 8px;
   --canvas-widget-radius-sm: 6px;
+  --canvas-edge-stroke-default: var(--vscode-descriptionForeground);
+  --canvas-edge-color-1: #d16969;
+  --canvas-edge-color-2: #d19a66;
+  --canvas-edge-color-3: #cca700;
+  --canvas-edge-color-4: #4fa36c;
+  --canvas-edge-color-5: #4fa7b8;
+  --canvas-edge-color-6: #a77dc2;
 }
 
 .canvas-corner-panel {
@@ -248,19 +255,47 @@ body {
   background: var(--vscode-focusBorder);
 }
 
+.canvas-shell .react-flow__connection-path {
+  stroke: var(--canvas-edge-stroke-default);
+  stroke-width: 2;
+}
+
+.canvas-shell .react-flow__edgeupdater {
+  cursor: crosshair;
+  fill: var(--vscode-editor-background);
+  stroke: var(--vscode-focusBorder);
+  stroke-width: 1.2;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.canvas-shell .react-flow__edge.selected .react-flow__edgeupdater,
+.canvas-shell .react-flow__edge.updating .react-flow__edgeupdater {
+  opacity: 1;
+}
+
+.canvas-edge-outline,
 .canvas-edge-path {
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
 }
 
-.canvas-edge-path.owner-file-activity {
-  stroke-dasharray: 6 5;
-  opacity: 0.82;
+.canvas-edge-outline {
+  stroke: color-mix(in srgb, var(--vscode-focusBorder) 46%, transparent);
+  stroke-width: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
 
-.canvas-edge-path.is-selected {
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent));
+.react-flow__edge:hover .canvas-edge-outline,
+.react-flow__edge.selected .canvas-edge-outline,
+.react-flow__edge.updating .canvas-edge-outline {
+  opacity: 1;
+}
+
+.canvas-edge-path {
+  transition: stroke 120ms ease;
 }
 
 .canvas-edge-hitbox {
@@ -272,7 +307,7 @@ body {
 .canvas-edge-toolbar-anchor,
 .canvas-edge-label-editor-shell {
   position: absolute;
-  z-index: 6;
+  z-index: 7;
   pointer-events: all;
 }
 
@@ -286,11 +321,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
-  border-radius: var(--canvas-widget-radius-sm);
+  padding: 1px;
+  border-radius: 5px;
   border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
 .canvas-edge-toolbar-button {
@@ -327,7 +362,7 @@ body {
 .canvas-edge-arrow-menu {
   display: grid;
   gap: 2px;
-  min-width: 124px;
+  min-width: 128px;
   padding: 4px;
   border-radius: var(--canvas-widget-radius-sm);
   border: 1px solid var(--vscode-menu-border, var(--vscode-editorWidget-border, var(--vscode-panel-border)));
@@ -364,6 +399,14 @@ body {
   line-height: 1;
 }
 
+.canvas-edge-color-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--canvas-edge-accent) 62%, var(--vscode-panel-border) 38%);
+  background: var(--canvas-edge-accent);
+}
+
 .canvas-edge-label-editor {
   width: clamp(120px, 18vw, 220px);
   min-height: 24px;
@@ -389,51 +432,47 @@ body {
 
 .canvas-edge-label {
   position: absolute;
-  pointer-events: none;
+  pointer-events: all;
   display: inline-flex;
-  min-height: 22px;
+  min-height: 20px;
   align-items: center;
-  padding: 0 8px;
-  border-radius: var(--canvas-widget-radius-sm);
+  padding: 0 7px;
+  border-radius: 4px;
   border: 1px solid
     color-mix(
       in srgb,
-      var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border))) 72%,
-      var(--vscode-descriptionForeground) 28%
+      var(--canvas-edge-accent) 28%,
+      var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border))) 72%
     );
   background: color-mix(
     in srgb,
     var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
-      92%,
-    var(--vscode-sideBar-background, var(--vscode-editor-background)) 8%
+      94%,
+    var(--canvas-edge-accent) 6%
   );
   color: var(--vscode-editor-foreground);
   font-size: 11px;
-  font-weight: 500;
-  line-height: 1;
+  font-weight: 600;
+  line-height: 1.1;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
-}
-
-.canvas-edge-label.owner-file-activity {
-  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 
 .canvas-edge-label.is-selected {
   border-color: color-mix(
     in srgb,
-    var(--vscode-focusBorder) 68%,
-    var(--vscode-editorWidget-border, var(--vscode-panel-border)) 32%
+    var(--vscode-focusBorder) 40%,
+    var(--canvas-edge-accent) 30%,
+    var(--vscode-editorWidget-border, var(--vscode-panel-border)) 30%
   );
   background: color-mix(
     in srgb,
     var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))
-      84%,
-    var(--vscode-focusBorder) 16%
+      90%,
+    var(--canvas-edge-accent) 10%
   );
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent),
-    0 6px 16px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 14%, transparent);
 }
 
 .compact-node {

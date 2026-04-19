@@ -12,6 +12,9 @@ export type ExecutionNodeKind = 'agent' | 'terminal';
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
 export type CanvasEdgeOwner = 'user' | 'file-activity';
+export const canvasEdgePresetColors = ['1', '2', '3', '4', '5', '6'] as const;
+export type CanvasEdgePresetColor = (typeof canvasEdgePresetColors)[number];
+export type CanvasEdgeColor = CanvasEdgePresetColor | `#${string}`;
 export type CanvasFileActivityAccessMode = 'read' | 'write' | 'read-write';
 export type CanvasFilePresentationMode = 'nodes' | 'lists';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
@@ -173,6 +176,7 @@ export interface CanvasEdgeSummary {
   targetAnchor: CanvasEdgeAnchor;
   arrowMode: CanvasEdgeArrowMode;
   owner: CanvasEdgeOwner;
+  color?: CanvasEdgeColor;
   label?: string;
 }
 
@@ -196,6 +200,7 @@ export interface CanvasPrototypeState {
   nodes: CanvasNodeSummary[];
   edges: CanvasEdgeSummary[];
   fileReferences: CanvasFileReferenceSummary[];
+  suppressedFileActivityEdgeIds: string[];
 }
 
 export interface CanvasRuntimeContext {
@@ -261,6 +266,7 @@ export interface WebviewProbeEdgeSnapshot {
   targetNodeId: string;
   arrowMode: CanvasEdgeArrowMode;
   owner: CanvasEdgeOwner;
+  color: string | null;
   label: string | null;
   selected: boolean;
 }
@@ -463,14 +469,13 @@ export type WebviewToHostMessage =
       type: 'webview/updateEdge';
       payload: {
         edgeId: string;
+        sourceNodeId?: string;
+        targetNodeId?: string;
+        sourceAnchor?: CanvasEdgeAnchor;
+        targetAnchor?: CanvasEdgeAnchor;
         arrowMode?: CanvasEdgeArrowMode;
+        color?: CanvasEdgeColor;
         label?: string;
-      };
-    }
-  | {
-      type: 'webview/requestEdgeLabelEdit';
-      payload: {
-        edgeId: string;
       };
     }
   | {
@@ -852,7 +857,12 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (
       !payload ||
       typeof payload.edgeId !== 'string' ||
+      (payload.sourceNodeId !== undefined && typeof payload.sourceNodeId !== 'string') ||
+      (payload.targetNodeId !== undefined && typeof payload.targetNodeId !== 'string') ||
+      (payload.sourceAnchor !== undefined && !isCanvasEdgeAnchor(payload.sourceAnchor)) ||
+      (payload.targetAnchor !== undefined && !isCanvasEdgeAnchor(payload.targetAnchor)) ||
       (payload.arrowMode !== undefined && !isCanvasEdgeArrowMode(payload.arrowMode)) ||
+      (payload.color !== undefined && !isCanvasEdgeColor(payload.color)) ||
       (payload.label !== undefined && typeof payload.label !== 'string')
     ) {
       return null;
@@ -862,22 +872,13 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/updateEdge',
       payload: {
         edgeId: payload.edgeId,
+        sourceNodeId: typeof payload.sourceNodeId === 'string' ? payload.sourceNodeId : undefined,
+        targetNodeId: typeof payload.targetNodeId === 'string' ? payload.targetNodeId : undefined,
+        sourceAnchor: isCanvasEdgeAnchor(payload.sourceAnchor) ? payload.sourceAnchor : undefined,
+        targetAnchor: isCanvasEdgeAnchor(payload.targetAnchor) ? payload.targetAnchor : undefined,
         arrowMode: isCanvasEdgeArrowMode(payload.arrowMode) ? payload.arrowMode : undefined,
+        color: isCanvasEdgeColor(payload.color) ? payload.color : undefined,
         label: typeof payload.label === 'string' ? payload.label : undefined
-      }
-    };
-  }
-
-  if (value.type === 'webview/requestEdgeLabelEdit') {
-    const payload = isRecord(value.payload) ? value.payload : null;
-    if (!payload || typeof payload.edgeId !== 'string') {
-      return null;
-    }
-
-    return {
-      type: 'webview/requestEdgeLabelEdit',
-      payload: {
-        edgeId: payload.edgeId
       }
     };
   }
@@ -1061,6 +1062,17 @@ function isCanvasEdgeArrowMode(value: unknown): value is CanvasEdgeArrowMode {
 
 function isCanvasEdgeOwner(value: unknown): value is CanvasEdgeOwner {
   return value === 'user' || value === 'file-activity';
+}
+
+function isCanvasEdgePresetColor(value: unknown): value is CanvasEdgePresetColor {
+  return typeof value === 'string' && canvasEdgePresetColors.includes(value as CanvasEdgePresetColor);
+}
+
+function isCanvasEdgeColor(value: unknown): value is CanvasEdgeColor {
+  return (
+    isCanvasEdgePresetColor(value) ||
+    (typeof value === 'string' && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value))
+  );
 }
 
 export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
@@ -1271,6 +1283,7 @@ function isWebviewProbeEdgeSnapshot(value: unknown): value is WebviewProbeEdgeSn
     typeof value.targetNodeId === 'string' &&
     isCanvasEdgeArrowMode(value.arrowMode) &&
     isCanvasEdgeOwner(value.owner) &&
+    isNullableString(value.color) &&
     isNullableString(value.label) &&
     typeof value.selected === 'boolean'
   );
