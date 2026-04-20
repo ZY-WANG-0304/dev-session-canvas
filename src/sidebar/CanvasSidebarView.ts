@@ -1,200 +1,176 @@
 import * as vscode from 'vscode';
 
-import { COMMAND_IDS, EXTENSION_DISPLAY_NAME } from '../common/extensionIdentity';
-import type { CanvasCreatableNodeKind } from '../common/protocol';
 import { type CanvasSidebarState, CanvasPanelManager } from '../panel/CanvasPanelManager';
 
-interface CanvasSidebarEntry {
-  id: string;
-  label: string;
-  description?: string;
-  tooltip?: string;
-  command?: vscode.Command;
-  icon?: vscode.ThemeIcon;
+type CanvasSidebarSection = 'summary' | 'filters';
+
+const FILTER_CONTEXT_VALUES = {
+  includeEmpty: 'canvasSidebarIncludeFilterEmpty',
+  includeValue: 'canvasSidebarIncludeFilterValue',
+  excludeEmpty: 'canvasSidebarExcludeFilterEmpty',
+  excludeValue: 'canvasSidebarExcludeFilterValue'
+} as const;
+
+class CanvasSidebarItem extends vscode.TreeItem {
+  public constructor(
+    id: string,
+    label: string,
+    options?: {
+      description?: string;
+      tooltip?: string;
+      contextValue?: string;
+    }
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.id = id;
+    this.description = options?.description;
+    this.tooltip = options?.tooltip;
+    this.contextValue = options?.contextValue;
+  }
 }
 
-export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarEntry>, vscode.Disposable {
-  private readonly didChangeTreeDataEmitter = new vscode.EventEmitter<CanvasSidebarEntry | undefined>();
+export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarItem>, vscode.Disposable {
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  public readonly onDidChangeTreeData = this.changeEmitter.event;
+
   private readonly stateSubscription: vscode.Disposable;
 
-  public readonly onDidChangeTreeData = this.didChangeTreeDataEmitter.event;
-
-  public constructor(private readonly panelManager: CanvasPanelManager) {
+  public constructor(
+    private readonly panelManager: CanvasPanelManager,
+    private readonly section: CanvasSidebarSection
+  ) {
     this.stateSubscription = this.panelManager.onDidChangeSidebarState(() => {
-      this.didChangeTreeDataEmitter.fire(undefined);
+      this.changeEmitter.fire();
     });
   }
 
   public dispose(): void {
+    this.changeEmitter.dispose();
     this.stateSubscription.dispose();
-    this.didChangeTreeDataEmitter.dispose();
   }
 
-  public getTreeItem(element: CanvasSidebarEntry): vscode.TreeItem {
-    const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
-    item.id = element.id;
-    item.description = element.description;
-    item.tooltip = element.tooltip;
-    item.command = element.command;
-    item.iconPath = element.icon;
-    return item;
+  public getTreeItem(element: CanvasSidebarItem): vscode.TreeItem {
+    return element;
   }
 
-  public getChildren(element?: CanvasSidebarEntry): CanvasSidebarEntry[] {
+  public getChildren(element?: CanvasSidebarItem): CanvasSidebarItem[] {
     if (element) {
       return [];
     }
 
-    return buildSidebarEntries(this.panelManager.getSidebarState());
+    const state = this.panelManager.getSidebarState();
+    return this.section === 'filters' ? buildFilterItems(state) : buildSummaryItems(state);
   }
 }
 
-function buildSidebarEntries(state: CanvasSidebarState): CanvasSidebarEntry[] {
-  const surfaceTooltip = describeSurfaceLocationTooltip(state.surfaceLocation);
-
+function buildFilterItems(state: CanvasSidebarState): CanvasSidebarItem[] {
   return [
-    {
-      id: 'action-open-canvas',
-      label: state.canvasSurface === 'closed' ? '打开画布' : '定位画布',
-      description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
-      tooltip:
-        state.canvasSurface === 'visible'
-          ? `${EXTENSION_DISPLAY_NAME} 画布已在当前${humanizeSurfaceLocation(state.surfaceLocation)}可见。${surfaceTooltip}`
-          : state.canvasSurface === 'hidden'
-            ? `${EXTENSION_DISPLAY_NAME} 画布当前位于${humanizeSurfaceLocation(state.surfaceLocation)}，但不在前台。${surfaceTooltip}`
-            : `当前还没有在${humanizeSurfaceLocation(state.surfaceLocation)}打开 ${EXTENSION_DISPLAY_NAME} 画布。${surfaceTooltip}`,
-      command: getOpenCanvasCommand(state),
-      icon: new vscode.ThemeIcon('layout')
-    },
-    {
-      id: 'action-create-node',
-      label: '创建对象',
-      description: describeCreatableKinds(state.creatableKinds),
-      tooltip: '创建一个新的 Agent、Terminal 或 Note 节点。',
-      command: {
-        command: COMMAND_IDS.createNode,
-        title: `${EXTENSION_DISPLAY_NAME}: 创建对象`
-      },
-      icon: new vscode.ThemeIcon('add')
-    },
-    {
-      id: 'action-reset-state',
-      label: '重置宿主状态',
-      description:
-        state.runningExecutionCount > 0 ? `会停止 ${state.runningExecutionCount} 个运行中会话` : '清空当前画布节点',
-      tooltip: '清空当前 workspace 绑定的画布对象，并停止运行中的 Agent / Terminal 会话。',
-      command: {
-        command: COMMAND_IDS.resetCanvasState,
-        title: `${EXTENSION_DISPLAY_NAME}: 重置画布状态`
-      },
-      icon: new vscode.ThemeIcon('discard')
-    },
-    {
-      id: 'status-canvas-surface',
-      label: '画布状态',
-      description: describeSurfaceState(state.surfaceLocation, state.canvasSurface),
-      tooltip: `当前 ${EXTENSION_DISPLAY_NAME} 主画布在 VSCode ${humanizeSurfaceLocation(state.surfaceLocation)}中的状态。${surfaceTooltip}`,
-      icon: new vscode.ThemeIcon('browser')
-    },
-    {
-      id: 'status-default-surface',
-      label: '默认承载面',
-      description: humanizeSurfaceLocation(state.configuredSurface),
-      tooltip: `${EXTENSION_DISPLAY_NAME}: 打开画布 命令会按这个宿主承载面打开主画布。${describeSurfaceLocationTooltip(state.configuredSurface)}`,
-      icon: new vscode.ThemeIcon('layout-panel')
-    },
-    {
-      id: 'status-node-count',
-      label: '节点总数',
-      description: String(state.nodeCount),
-      tooltip: `当前 workspace 绑定的画布中共有 ${state.nodeCount} 个节点。`,
-      icon: new vscode.ThemeIcon('symbol-number')
-    },
-    {
-      id: 'status-execution-count',
-      label: '运行中会话',
-      description: String(state.runningExecutionCount),
-      tooltip:
-        state.runningExecutionCount > 0
-          ? `当前有 ${state.runningExecutionCount} 个执行型节点处于运行中。`
-          : '当前没有运行中的 Agent 或 Terminal 会话。',
-      icon: new vscode.ThemeIcon('pulse')
-    },
-    {
-      id: 'status-workspace-trust',
-      label: 'Workspace 信任',
-      description: state.workspaceTrusted ? '已信任' : '未信任',
-      tooltip:
-        state.workspaceTrusted
-          ? '当前 workspace 已受信任，可创建和运行执行型对象。'
-          : '当前 workspace 未受信任，Agent 和 Terminal 创建入口会降级隐藏。',
-      icon: new vscode.ThemeIcon(state.workspaceTrusted ? 'verified' : 'warning')
-    }
+    new CanvasSidebarItem('files/include', 'Files to Include', {
+      description: summarizeFilterGlobs('include', state.fileFilters.includeGlobs),
+      tooltip: buildFilterTooltip('include', state.fileFilters.includeGlobs),
+      contextValue:
+        state.fileFilters.includeGlobs.length > 0 ? FILTER_CONTEXT_VALUES.includeValue : FILTER_CONTEXT_VALUES.includeEmpty
+    }),
+    new CanvasSidebarItem('files/exclude', 'Files to Exclude', {
+      description: summarizeFilterGlobs('exclude', state.fileFilters.excludeGlobs),
+      tooltip: buildFilterTooltip('exclude', state.fileFilters.excludeGlobs),
+      contextValue:
+        state.fileFilters.excludeGlobs.length > 0 ? FILTER_CONTEXT_VALUES.excludeValue : FILTER_CONTEXT_VALUES.excludeEmpty
+    })
   ];
 }
 
-function humanizeCanvasSurface(surface: CanvasSidebarState['canvasSurface']): string {
-  switch (surface) {
-    case 'visible':
-      return '已打开';
-    case 'hidden':
-      return '可定位';
+function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
+  return [
+    new CanvasSidebarItem('summary/canvas-surface', '画布状态', {
+      description: formatCanvasSurfaceSummary(state),
+      tooltip: buildCanvasSurfaceTooltip(state)
+    }),
+    new CanvasSidebarItem('summary/default-surface', '默认承载面', {
+      description: formatSurfaceLabel(state.configuredSurface),
+      tooltip:
+        `当前默认承载面：${formatSurfaceLabel(state.configuredSurface)}。\n` +
+        'Panel 路线的实际工作台位置由 VS Code 记住，可能位于底部 Panel 或 Secondary Sidebar。'
+    }),
+    new CanvasSidebarItem('summary/node-count', '节点总数', {
+      description: String(state.nodeCount),
+      tooltip: `当前画布中共有 ${state.nodeCount} 个节点。`
+    }),
+    new CanvasSidebarItem('summary/running-executions', '运行中会话', {
+      description: String(state.runningExecutionCount),
+      tooltip: `当前正在运行的 Agent / Terminal 会话总数：${state.runningExecutionCount}。`
+    }),
+    new CanvasSidebarItem('summary/workspace-trust', 'Workspace Trust', {
+      description: state.workspaceTrusted ? '已信任' : 'Restricted Mode',
+      tooltip: state.workspaceTrusted
+        ? '当前 workspace 已受信任，所有对象类型都可按各自能力创建。'
+        : '当前 workspace 处于 Restricted Mode；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
+    }),
+    new CanvasSidebarItem('summary/creatable-kinds', '可创建对象', {
+      description: formatCreatableKinds(state),
+      tooltip: `当前允许创建的对象类型：${formatCreatableKinds(state)}。`
+    })
+  ];
+}
+
+function summarizeFilterGlobs(kind: 'include' | 'exclude', globs: readonly string[]): string {
+  if (globs.length === 0) {
+    return kind === 'include' ? '全部文件' : '未设置';
+  }
+
+  const visibleGlobs = globs.slice(0, 2).join(', ');
+  return globs.length > 2 ? `${visibleGlobs}, +${globs.length - 2}` : visibleGlobs;
+}
+
+function buildFilterTooltip(kind: 'include' | 'exclude', globs: readonly string[]): string {
+  const title = kind === 'include' ? 'Files to Include' : 'Files to Exclude';
+  const value =
+    globs.length > 0 ? globs.join(', ') : kind === 'include' ? '未设置；默认不过滤任何文件。' : '未设置；默认不排除文件。';
+
+  return `${title}\n当前值：${value}\n只影响文件对象与自动边的显示投影，不会修改 fileReferences。`;
+}
+
+function formatCanvasSurfaceSummary(state: CanvasSidebarState): string {
+  switch (state.canvasSurface) {
     case 'closed':
       return '未打开';
+    case 'hidden':
+      return `${formatSurfaceLabel(state.surfaceLocation)}（已隐藏）`;
+    case 'visible':
+      return formatSurfaceLabel(state.surfaceLocation);
   }
 }
 
-function describeSurfaceState(
-  location: CanvasSidebarState['surfaceLocation'],
-  surface: CanvasSidebarState['canvasSurface']
-): string {
-  return `${humanizeSurfaceLocation(location)} · ${humanizeCanvasSurface(surface)}`;
+function buildCanvasSurfaceTooltip(state: CanvasSidebarState): string {
+  switch (state.canvasSurface) {
+    case 'closed':
+      return `当前还没有打开画布；执行“打开画布”时会按默认承载面 ${formatSurfaceLabel(state.configuredSurface)} 打开。`;
+    case 'hidden':
+      return `画布实例当前位于 ${formatSurfaceLabel(state.surfaceLocation)} 路线，但不在前台。`;
+    case 'visible':
+      return `画布当前正在 ${formatSurfaceLabel(state.surfaceLocation)} 路线显示。`;
+  }
 }
 
-function humanizeSurfaceLocation(location: CanvasSidebarState['surfaceLocation']): string {
-  return location === 'panel' ? '工作台视图' : '编辑区';
+function formatSurfaceLabel(surface: CanvasSidebarState['surfaceLocation']): string {
+  return surface === 'panel' ? 'Panel' : 'Editor';
 }
 
-function describeSurfaceLocationTooltip(location: CanvasSidebarState['surfaceLocation']): string {
-  if (location !== 'panel') {
-    return '';
+function formatCreatableKinds(state: CanvasSidebarState): string {
+  if (state.creatableKinds.length === 0) {
+    return '无';
   }
 
-  return ' 该 panel route 的 view 可由用户放在底部 Panel 或 Secondary Sidebar，位置由 VSCode 原生记住。';
-}
-
-function getOpenCanvasCommand(state: CanvasSidebarState): vscode.Command {
-  if (state.canvasSurface === 'closed') {
-    return {
-      command: COMMAND_IDS.openCanvas,
-      title: `${EXTENSION_DISPLAY_NAME}: 打开画布`
-    };
-  }
-
-  if (state.surfaceLocation === 'panel') {
-    return {
-      command: COMMAND_IDS.openCanvasInPanel,
-      title: `${EXTENSION_DISPLAY_NAME}: 在面板打开画布`
-    };
-  }
-
-  return {
-    command: COMMAND_IDS.openCanvasInEditor,
-    title: `${EXTENSION_DISPLAY_NAME}: 在编辑区打开画布`
-  };
-}
-
-function describeCreatableKinds(kinds: CanvasCreatableNodeKind[]): string {
-  return kinds.map(humanizeNodeKind).join(' · ');
-}
-
-function humanizeNodeKind(kind: CanvasCreatableNodeKind): string {
-  switch (kind) {
-    case 'agent':
-      return 'Agent';
-    case 'terminal':
-      return 'Terminal';
-    case 'note':
-      return 'Note';
-  }
+  return state.creatableKinds
+    .map((kind) => {
+      switch (kind) {
+        case 'agent':
+          return 'Agent';
+        case 'terminal':
+          return 'Terminal';
+        case 'note':
+          return 'Note';
+      }
+    })
+    .join(', ');
 }

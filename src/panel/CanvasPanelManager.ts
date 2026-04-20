@@ -234,6 +234,11 @@ export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
 type NodePlacementPreference = 'left-up' | 'right-down';
 
+interface CanvasFileFilterState {
+  includeGlobs: string[];
+  excludeGlobs: string[];
+}
+
 export interface CanvasSidebarState {
   canvasSurface: 'closed' | 'hidden' | 'visible';
   surfaceLocation: CanvasSurfaceLocation;
@@ -242,6 +247,7 @@ export interface CanvasSidebarState {
   runningExecutionCount: number;
   workspaceTrusted: boolean;
   creatableKinds: CanvasCreatableNodeKind[];
+  fileFilters: CanvasFileFilterState;
 }
 
 export interface CanvasDebugSnapshot {
@@ -257,6 +263,7 @@ interface PersistedCanvasSnapshot {
   writtenAt?: string;
   stateHash?: string;
   state?: unknown;
+  fileFilterState?: unknown;
   activeSurface?: CanvasSurfaceLocation;
   defaultSurface?: CanvasSurfaceLocation;
   runtimePersistenceEnabled?: boolean;
@@ -351,6 +358,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
+  private fileFilterState: CanvasFileFilterState;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
   private readonly surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>> = {};
@@ -397,6 +405,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.refreshStorageRecoverySelection();
+    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
@@ -437,8 +446,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
-        const filesIncludeGlobsChanged = event.affectsConfiguration(CONFIG_KEYS.filesIncludeGlobs);
-        const filesExcludeGlobsChanged = event.affectsConfiguration(CONFIG_KEYS.filesExcludeGlobs);
         const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
         const filesPathDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPathDisplayMode);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
@@ -458,8 +465,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         if (
           !defaultAgentProviderChanged &&
           !filesPresentationModeChanged &&
-          !filesIncludeGlobsChanged &&
-          !filesExcludeGlobsChanged &&
           !filesNodeDisplayModeChanged &&
           !filesPathDisplayModeChanged &&
           !terminalScrollbackChanged &&
@@ -473,8 +478,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this.handleRuntimeConfigurationChanged({
           defaultAgentProviderChanged,
           filesPresentationModeChanged,
-          filesIncludeGlobsChanged,
-          filesExcludeGlobsChanged,
           filesNodeDisplayModeChanged,
           filesPathDisplayModeChanged,
           terminalScrollbackChanged,
@@ -518,8 +521,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
-      creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note']
+      creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note'],
+      fileFilters: cloneJsonValue(this.fileFilterState)
     };
+  }
+
+  public getCanvasFileFilterState(): CanvasFileFilterState {
+    return cloneJsonValue(this.fileFilterState);
   }
 
   public getDebugSnapshot(): CanvasDebugSnapshot {
@@ -1139,6 +1147,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    const storedFilterState =
+      snapshot?.fileFilterState ?? this.getStoredValue<CanvasFileFilterState | undefined>(STORAGE_KEYS.canvasFileFilterState);
+    if (storedFilterState !== undefined) {
+      return normalizeCanvasFileFilterState(storedFilterState);
+    }
+
+    return {
+      includeGlobs: readLegacyCanvasFileFilterGlobs('include'),
+      excludeGlobs: readLegacyCanvasFileFilterGlobs('exclude')
+    };
+  }
+
   private refreshStorageRecoverySelection(): void {
     this.storageRecoverySelection = selectPreferredExtensionStorageRecoverySource(this.rawExtensionStoragePath, {
       pathExists: (candidatePath) => fs.existsSync(candidatePath)
@@ -1309,6 +1331,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         STORAGE_KEYS.canvasRuntimePersistenceEnabled,
         snapshotWithMetadata.runtimePersistenceEnabled
       );
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasFileFilterState,
+        normalizeCanvasFileFilterState(snapshotWithMetadata.fileFilterState)
+      );
       this.lastPersistedCanvasSnapshotError = undefined;
     }).catch((error) => {
       const message = formatUnknownError(error);
@@ -1350,6 +1376,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
     return {
       ...snapshot,
+      fileFilterState: this.fileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       writtenAt: new Date().toISOString(),
@@ -1509,25 +1536,47 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
     const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
     const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
-    const includeGlobs = vscode.workspace
-      .getConfiguration()
-      .get<string[]>(CONFIG_KEYS.filesIncludeGlobs, [])
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .map((value) => value.trim());
-    const excludeGlobs = vscode.workspace
-      .getConfiguration()
-      .get<string[]>(CONFIG_KEYS.filesExcludeGlobs, [])
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .map((value) => value.trim());
 
     return {
       presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
-      includeGlobs,
-      excludeGlobs,
+      includeGlobs: this.fileFilterState.includeGlobs,
+      excludeGlobs: this.fileFilterState.excludeGlobs,
       nodeDisplayMode:
         nodeDisplayMode === 'icon-only' || nodeDisplayMode === 'path-only' ? nodeDisplayMode : 'icon-path',
       pathDisplayMode: pathDisplayMode === 'relative-path' ? 'relative-path' : 'basename'
     };
+  }
+
+  public updateCanvasFileFilterState(kind: 'include' | 'exclude', globs: readonly string[]): void {
+    const normalizedGlobs = normalizeCanvasFileFilterGlobs(globs);
+    const nextState: CanvasFileFilterState =
+      kind === 'include'
+        ? {
+            ...this.fileFilterState,
+            includeGlobs: normalizedGlobs
+          }
+        : {
+            ...this.fileFilterState,
+            excludeGlobs: normalizedGlobs
+          };
+
+    if (
+      areStringArraysEqual(nextState.includeGlobs, this.fileFilterState.includeGlobs) &&
+      areStringArraysEqual(nextState.excludeGlobs, this.fileFilterState.excludeGlobs)
+    ) {
+      return;
+    }
+
+    this.fileFilterState = nextState;
+    this.recordDiagnosticEvent('fileView/filterUpdated', {
+      kind,
+      includeGlobs: nextState.includeGlobs,
+      excludeGlobs: nextState.excludeGlobs
+    });
+    this.state = this.reconcileCanvasFileArtifacts(this.state);
+    this.persistState();
+    this.postState('host/stateUpdated');
+    this.notifySidebarStateChanged();
   }
 
   private readStartupConfiguration(): CanvasStartupConfiguration {
@@ -1590,8 +1639,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
     filesPresentationModeChanged: boolean;
-    filesIncludeGlobsChanged: boolean;
-    filesExcludeGlobsChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
     filesPathDisplayModeChanged: boolean;
     terminalScrollbackChanged: boolean;
@@ -1615,8 +1662,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       options.filesPresentationModeChanged ||
-      options.filesIncludeGlobsChanged ||
-      options.filesExcludeGlobsChanged ||
       options.filesNodeDisplayModeChanged ||
       options.filesPathDisplayModeChanged ||
       options.workbenchIconThemeChanged
@@ -1628,8 +1673,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (
       options.defaultAgentProviderChanged ||
       options.filesPresentationModeChanged ||
-      options.filesIncludeGlobsChanged ||
-      options.filesExcludeGlobsChanged ||
       options.filesNodeDisplayModeChanged ||
       options.filesPathDisplayModeChanged ||
       options.terminalScrollbackChanged ||
@@ -1748,10 +1791,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const activeSurface = this.activeSurface;
     const uri = vscode.Uri.file(normalizedPath);
     const document = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(document, {
-      preview: false,
-      preserveFocus: true
-    });
+    const showOptions: vscode.TextDocumentShowOptions =
+      activeSurface === 'editor'
+        ? {
+            preview: false,
+            preserveFocus: true,
+            viewColumn: vscode.ViewColumn.Beside
+          }
+        : {
+            preview: false,
+            preserveFocus: true
+          };
+    await vscode.window.showTextDocument(document, showOptions);
     this.refocusInteractiveSurface(activeSurface);
   }
 
@@ -6287,22 +6338,31 @@ function rebuildCanvasFileArtifacts(
   const agentNodesById = new Map(
     manualNodes.filter((node) => node.kind === 'agent').map((node) => [node.id, node] as const)
   );
-  const fileReferences = state.fileReferences
+  const authoritativeFileReferences = state.fileReferences
     .map((reference) => ({
       ...reference,
       owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
     }))
-    .filter(
-      (reference) =>
-        reference.owners.length > 0 &&
-        shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
-    );
-  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(fileReferences);
+    .filter((reference) => reference.owners.length > 0);
+  const projectedFileReferences = authoritativeFileReferences.filter((reference) =>
+    shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
+  );
+  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(authoritativeFileReferences);
+  const allAutomaticArtifacts =
+    options.view.presentationMode === 'lists'
+      ? buildAutomaticFileListArtifacts(authoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
+      : buildAutomaticFileNodeArtifacts(
+          authoritativeFileReferences,
+          manualNodes,
+          agentNodesById,
+          existingAutoNodes,
+          options.view.pathDisplayMode
+        );
   const automaticArtifacts =
     options.view.presentationMode === 'lists'
-      ? buildAutomaticFileListArtifacts(fileReferences, manualNodes, agentNodesById, existingAutoNodes)
+      ? buildAutomaticFileListArtifacts(projectedFileReferences, manualNodes, agentNodesById, existingAutoNodes)
       : buildAutomaticFileNodeArtifacts(
-          fileReferences,
+          projectedFileReferences,
           manualNodes,
           agentNodesById,
           existingAutoNodes,
@@ -6314,7 +6374,7 @@ function rebuildCanvasFileArtifacts(
     ...automaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
   ];
   const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
-  const automaticEdgeIds = new Set(automaticArtifacts.edges.map((edge) => edge.id));
+  const automaticEdgeIds = new Set(allAutomaticArtifacts.edges.map((edge) => edge.id));
   const suppressedFileActivityEdgeIds = new Set(state.suppressedFileActivityEdgeIds);
   const userEdges = state.edges.filter(
     (edge) =>
@@ -6333,7 +6393,7 @@ function rebuildCanvasFileArtifacts(
     ...state,
     nodes: projectedNodes,
     edges: [...userEdges, ...automaticEdges],
-    fileReferences,
+    fileReferences: authoritativeFileReferences,
     suppressedFileActivityEdgeIds: Array.from(suppressedFileActivityEdgeIds).filter(
       (edgeId) => automaticEdgeIds.has(edgeId) || userEdges.some((edge) => edge.id === edgeId)
     ),
@@ -6751,6 +6811,45 @@ function mergeAccessModes(accessModes: CanvasFileActivityAccessMode[]): CanvasFi
     return 'read-write';
   }
   return hasWrite ? 'write' : 'read';
+}
+
+function normalizeCanvasFileFilterGlobs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function normalizeCanvasFileFilterState(value: unknown): CanvasFileFilterState {
+  if (!isRecord(value)) {
+    return {
+      includeGlobs: [],
+      excludeGlobs: []
+    };
+  }
+
+  return {
+    includeGlobs: normalizeCanvasFileFilterGlobs(value.includeGlobs),
+    excludeGlobs: normalizeCanvasFileFilterGlobs(value.excludeGlobs)
+  };
+}
+
+function areStringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function readLegacyCanvasFileFilterGlobs(kind: 'include' | 'exclude'): string[] {
+  const key =
+    kind === 'include' ? 'devSessionCanvas.files.includeGlobs' : 'devSessionCanvas.files.excludeGlobs';
+  return normalizeCanvasFileFilterGlobs(vscode.workspace.getConfiguration().get<unknown>(key));
 }
 
 function shouldIncludeFileReference(

@@ -6,7 +6,11 @@ export const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   createNode: 'devSessionCanvas.createNode',
-  resetCanvasState: 'devSessionCanvas.resetCanvasState'
+  resetCanvasState: 'devSessionCanvas.resetCanvasState',
+  editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
+  editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
+  clearFileIncludeFilter: 'devSessionCanvas.clearFileIncludeFilter',
+  clearFileExcludeFilter: 'devSessionCanvas.clearFileExcludeFilter'
 } as const;
 
 export const TEST_COMMAND_IDS = {
@@ -35,6 +39,7 @@ export const TEST_COMMAND_IDS = {
 export const VIEW_IDS = {
   activityBarContainer: 'devSessionCanvas',
   sidebarTree: 'devSessionCanvas.sidebar',
+  sidebarFilters: 'devSessionCanvas.sidebarFilters',
   editorWebviewPanel: 'devSessionCanvas.canvas',
   panelWebviewView: 'devSessionCanvas.canvasPanel',
   panelContainer: 'devSessionCanvasPanel'
@@ -48,8 +53,6 @@ export const CONFIG_KEYS = {
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
-  filesIncludeGlobs: 'devSessionCanvas.files.includeGlobs',
-  filesExcludeGlobs: 'devSessionCanvas.files.excludeGlobs',
   filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
   filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode'
 } as const;
@@ -62,5 +65,6 @@ export const STORAGE_KEYS = {
   canvasState: 'devSessionCanvas.canvas.state',
   canvasLastSurface: 'devSessionCanvas.canvas.lastSurface',
   canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
-  canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled'
+  canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled',
+  canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState'
 } as const;

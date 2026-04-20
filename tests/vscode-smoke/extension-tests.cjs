@@ -11,6 +11,8 @@ const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   createNode: 'devSessionCanvas.createNode',
+  editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
+  editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
@@ -878,6 +880,109 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.ok(writeOnlyAutoEdge, 'Expected write-only automatic file-activity edge to exist.');
     assert.strictEqual(writeOnlyAutoEdge.sourceAnchor, 'right');
     assert.strictEqual(writeOnlyAutoEdge.targetAnchor, 'left');
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    await waitForWebviewProbeOnSurface('editor', (probe) => probe.hasDocumentFocus === true, 10000);
+
+    await performWebviewDomAction(
+      {
+        kind: 'clickFileEntry',
+        nodeId: agentOnlySecondaryFileNode.id,
+        filePath: agentOnlySecondaryPath
+      },
+      'editor',
+      10000
+    );
+    let editorSurfaceFileEditor = await waitForVisibleEditor(
+      (editor) => editor.document.uri.fsPath === agentOnlySecondaryPath,
+      10000
+    );
+    assert.strictEqual(
+      editorSurfaceFileEditor.viewColumn,
+      vscode.ViewColumn.Two,
+      'Expected editor-surface file opens to create a split editor group when none exists.'
+    );
+    let editorSurfaceProbe = await captureWebviewProbe('editor', 2000);
+    assert.ok(
+      editorSurfaceProbe.hasCanvasShell && editorSurfaceProbe.hasReactFlow,
+      'Expected editor-surface canvas to remain mounted after opening a file beside it.'
+    );
+    await closeVisibleEditor(agentOnlySecondaryPath);
+
+    const editorSurfaceSentinel = await prepareBackgroundOpenFocusSentinel(
+      vscode.ViewColumn.Two,
+      'file-open-editor-surface-sentinel.txt'
+    );
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    await waitForWebviewProbeOnSurface('editor', (probe) => probe.hasDocumentFocus === true, 10000);
+
+    await performWebviewDomAction(
+      {
+        kind: 'clickFileEntry',
+        nodeId: sharedFileNode.id,
+        filePath: sharedPath
+      },
+      'editor',
+      10000
+    );
+    editorSurfaceFileEditor = await waitForVisibleEditor((editor) => editor.document.uri.fsPath === sharedPath, 10000);
+    assert.strictEqual(
+      editorSurfaceFileEditor.viewColumn,
+      vscode.ViewColumn.Two,
+      'Expected editor-surface file opens to reuse the existing split editor group.'
+    );
+    editorSurfaceProbe = await captureWebviewProbe('editor', 2000);
+    assert.ok(
+      editorSurfaceProbe.hasCanvasShell && editorSurfaceProbe.hasReactFlow,
+      'Expected editor-surface canvas to remain mounted after reusing the split editor group.'
+    );
+    await closeVisibleEditor(sharedPath);
+    await closeVisibleEditor(editorSurfaceSentinel.document.uri.fsPath);
+
+    await setFileIncludeFilterGlobs(['**/*.ts', '**/*.json']);
+    await setFileExcludeFilterGlobs(['**/agent-b-only.json']);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const projectedFileNodes = currentSnapshot.state.nodes.filter((node) => node.kind === 'file');
+      return (
+        currentSnapshot.state.fileReferences.length === 4 &&
+        currentSnapshot.sidebar.fileFilters.includeGlobs.length === 2 &&
+        currentSnapshot.sidebar.fileFilters.excludeGlobs.length === 1 &&
+        projectedFileNodes.length === 1 &&
+        projectedFileNodes[0]?.metadata?.file?.filePath === sharedPath
+      );
+    }, 20000);
+    assert.ok(
+      snapshot.state.fileReferences.some((reference) => reference.filePath === agentBOnlyPath),
+      'Expected fileReferences to keep excluded files as authoritative state.'
+    );
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, ['**/*.ts', '**/*.json']);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, ['**/agent-b-only.json']);
+
+    snapshot = await reloadPersistedState();
+    assert.strictEqual(snapshot.state.fileReferences.length, 4);
+    assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'file').length, 1);
+    assert.ok(
+      snapshot.state.nodes.some((node) => node.kind === 'file' && node.metadata?.file?.filePath === sharedPath),
+      'Expected file projection filters to survive reload without mutating fileReferences.'
+    );
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, ['**/*.ts', '**/*.json']);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, ['**/agent-b-only.json']);
+
+    await setFileIncludeFilterGlobs([]);
+    await setFileExcludeFilterGlobs([]);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.fileReferences.length === 4 &&
+        currentSnapshot.sidebar.fileFilters.includeGlobs.length === 0 &&
+        currentSnapshot.sidebar.fileFilters.excludeGlobs.length === 0 &&
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4
+      );
+    }, 20000);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
     await dispatchWebviewMessage(
       {
@@ -5392,6 +5497,14 @@ async function setFilesPathDisplayMode(mode) {
     .update('devSessionCanvas.files.pathDisplayMode', mode, vscode.ConfigurationTarget.Global);
 }
 
+async function setFileIncludeFilterGlobs(globs) {
+  await vscode.commands.executeCommand(COMMAND_IDS.editFileIncludeFilter, globs);
+}
+
+async function setFileExcludeFilterGlobs(globs) {
+  await vscode.commands.executeCommand(COMMAND_IDS.editFileExcludeFilter, globs);
+}
+
 async function setTerminalIntegratedScrollback(scrollback) {
   await vscode.workspace
     .getConfiguration('terminal.integrated')
@@ -5629,14 +5742,17 @@ async function waitForVisibleEditor(predicate, timeoutMs = 8000) {
   );
 }
 
-async function prepareBackgroundOpenFocusSentinel() {
+async function prepareBackgroundOpenFocusSentinel(
+  viewColumn = vscode.ViewColumn.One,
+  relativePath = 'file-open-focus-sentinel.txt'
+) {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
   const sentinelUri = vscode.Uri.joinPath(
     workspaceFolder.uri,
     '.debug',
     'vscode-smoke',
-    'file-open-focus-sentinel.txt'
+    relativePath
   );
   await fs.mkdir(path.dirname(sentinelUri.fsPath), { recursive: true });
   await fs.writeFile(sentinelUri.fsPath, 'focus sentinel\n', 'utf8');
@@ -5644,7 +5760,7 @@ async function prepareBackgroundOpenFocusSentinel() {
   const editor = await vscode.window.showTextDocument(document, {
     preview: false,
     preserveFocus: false,
-    viewColumn: vscode.ViewColumn.One
+    viewColumn
   });
   return editor;
 }
