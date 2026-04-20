@@ -512,6 +512,7 @@ function App(): JSX.Element {
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
+  const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
 
@@ -537,6 +538,7 @@ function App(): JSX.Element {
           break;
         case 'host/visibilityRestored':
           scheduleExecutionTerminalVisibilityRestore();
+          scheduleCanvasShellFocusRestore(canvasShellRef.current);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -1166,7 +1168,7 @@ function App(): JSX.Element {
   };
 
   return (
-    <div className="canvas-shell">
+    <div ref={canvasShellRef} className="canvas-shell" tabIndex={-1}>
       <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
       <ReactFlow
         nodes={nodes}
@@ -4694,6 +4696,30 @@ function scheduleExecutionTerminalVisibilityRestore(): void {
     window.requestAnimationFrame(() => {
       for (const { controller } of executionTerminalRegistry.values()) {
         controller.refreshVisibleRows();
+      }
+    });
+  });
+}
+
+function scheduleCanvasShellFocusRestore(shell: HTMLDivElement | null): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (!shell || !shell.isConnected) {
+        return;
+      }
+
+      try {
+        window.focus();
+      } catch {
+        // Ignore focus failures and fall through to the root element focus attempt.
+      }
+
+      try {
+        shell.focus({
+          preventScroll: true
+        });
+      } catch {
+        shell.focus();
       }
     });
   });
