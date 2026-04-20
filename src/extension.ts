@@ -11,6 +11,7 @@ import {
   type CanvasNodeKind
 } from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
 let activePanelManager: CanvasPanelManager | undefined;
@@ -36,14 +37,18 @@ interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
   activePanelManager = panelManager;
-  const sidebarSummaryView = new CanvasSidebarView(panelManager, 'summary');
-  const sidebarFilterView = new CanvasSidebarView(panelManager, 'filters');
+  const sidebarSummaryView = new CanvasSidebarView(panelManager);
+  const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
 
   context.subscriptions.push(
     sidebarSummaryView,
-    sidebarFilterView,
+    sidebarActionsView,
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
-    vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarFilters, sidebarFilterView)
+    vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    })
   );
 
   registerCommand(context, COMMAND_IDS.openCanvas, async () => {

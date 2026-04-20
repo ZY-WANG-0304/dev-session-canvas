@@ -72,8 +72,8 @@
   - 若文件被多个 Agent 共享，则系统会额外生成共享文件列表节点，并从相关 Agent 自动连线过去。
   - 点击文件列表中的文件条目，会在 VSCode 编辑区打开文件；若画布当前在编辑区承载面，打开动作必须落到独立 editor group。
 - 过滤与生命周期：
-  - 支持 `include` / `exclude` glob 过滤文件对象投影；过滤控件位于 sidebar 的原生 `文件过滤` section 中，直接显示 `Files to Include` / `Files to Exclude` 两个条目。
-  - 过滤编辑通过原生 item action 触发宿主输入框完成，而不是在 sidebar 内自绘 Search 风格 textbox。
+  - 支持 `include` / `exclude` glob 过滤文件对象投影；过滤控件位于 sidebar 的 `常用操作` section 中，直接显示 `files to include` / `files to exclude` 两个输入框。
+  - 过滤编辑在 sidebar 内就地完成，不再通过单独菜单或弹出输入框完成。
   - `include` / `exclude` 只影响文件节点 / 文件列表节点 / 自动边的显示投影，不修改 `fileReferences` 权威状态。
   - 删除 Agent 节点后，系统移除该 Agent 的文件引用；没有剩余引用的文件节点 / 文件列表节点自动清理。
 
@@ -133,7 +133,7 @@
 - 文件节点可点击并在 VSCode 编辑区打开对应文件；当画布位于编辑区时，目标文件会在独立 editor group 中打开。
 - 切换到文件列表节点模式后，系统会把 Agent 文件活动收口为列表节点；多个 Agent 共享的文件会单独进入共享文件列表节点。
 - 文件列表中的每个文件条目都能明确标出读 / 写 / 读写关系，并支持点击打开。
-- `include` / `exclude` sidebar 过滤会以原生 TreeView 条目 + item action 的形态影响文件对象与自动边的显示结果，但不会删改 `fileReferences`。
+- `include` / `exclude` sidebar 过滤会以常用操作区中的内嵌输入框形态影响文件对象与自动边的显示结果，但不会删改 `fileReferences`。
 - 删除 Agent 节点后，如果某文件不再被任何 Agent 引用，则对应文件节点 / 文件列表节点会被自动清理；若仍被其他 Agent 引用，则继续保留。
 - `Codex` 在当前版本不会凭空出现“自动文件活动已支持”的假象；没有事件就不生成自动文件对象。
 

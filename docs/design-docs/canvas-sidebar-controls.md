@@ -32,7 +32,7 @@ updated_at: 2026-04-20
 
 这个过渡态解决了“遮挡”和“重复详情”问题，但还没有回答 `功能体验.md` 第 2 条提出的新目标：画布区域只保留左下角和右下角的必要控件，左上角和右上角的内容不再留在画布里，而是以极简风格进入 VSCode 左侧 SideBar。
 
-随着文件活动视图把 `include` / `exclude` 过滤也迁入 sidebar，问题又出现了第二层：如果为了追求“像搜索视图”而在 sidebar 里整块自绘 `WebviewView`，整体观感会重新偏离 VSCode 原生 Sidebar。用户最新一轮反馈明确要求参考 VSCode 官方 Sidebars / Views / Tree View / Webviews 文档，把 sidebar 收口回常见的原生 section 风格。
+随着文件活动视图把 `include` / `exclude` 过滤也迁入 sidebar，问题又出现了第二层：如果为了追求“像搜索视图”而在 sidebar 里整块自绘 `WebviewView`，整体观感会重新偏离 VSCode 原生 Sidebar。用户最新一轮反馈一方面要求参考 VSCode 官方 Sidebars / Views / Tree View / Webviews 文档，把 sidebar 收口回常见的原生 section 风格；另一方面又明确要求 `include` / `exclude` 必须直接以内嵌输入框形式出现在 sidebar 中，而不是再走弹出输入框。
 
 因此，本轮要解决的问题不再是“右侧固定区要不要显示详情”，而是“哪些东西仍然属于画布，哪些东西已经应该交给宿主侧栏承载”。
 
@@ -86,7 +86,7 @@ updated_at: 2026-04-20
 
 - 在 VSCode Activity Bar / Primary Sidebar 中提供一个 Dev Session Canvas 侧栏容器。
 - 侧栏内部使用少量原生 view section，而不是单一大 view 或自绘 dashboard。
-- 优先使用原生 View 能力，例如 `TreeView`、view title toolbar、item context action 和命令入口，而不是先做 `WebviewView`。
+- 优先使用原生 View 能力，例如 `TreeView`、view title toolbar、item context action 和命令入口；只有在原生 View 无法表达所需交互时，才局部引入最小 `WebviewView`。
 - 画布内移除顶角 panel，只留下左下角导航控件和右下角全局定位控件。
 
 优点：
@@ -94,14 +94,14 @@ updated_at: 2026-04-20
 - 最接近“以极简风格作成 VSCode 左侧 SideBar”的目标。
 - 更符合 VSCode 的宿主语境。用户会把它理解成工作台中的一个原生侧栏，而不是另一个嵌套应用。
 - 可以把创建对象、打开画布和重置状态收口成宿主级入口，减少画布固定 chrome。
-- `概览` / `文件过滤` 两个 section 更接近 Source Control、Run and Debug、Extensions 等常见 sidebar 结构。
+- `概览` / `常用操作` 两个 section 更接近 Source Control、Run and Debug、Extensions 等常见 sidebar 结构。
 - 当前查核的 VSCode 官方 UX 指南更支持“Activity Bar 对应真实 views”，也更强调谨慎使用 `WebviewView`。
 
 风险：
 
 - 原生 View 的布局表达力弱于自定义 Webview，信息密度必须进一步克制。
 - 如果保留过多直接动作，view title toolbar 会显得拥挤。
-- VSCode 扩展 API 没有给侧栏 view 暴露搜索视图那种原生 inline textbox，因此过滤编辑交互必须接受“条目展示 + 宿主输入框编辑”的实现边界。
+- VSCode 扩展 API 没有给侧栏 `TreeView` 暴露搜索视图那种原生 inline textbox；如果产品要求必须使用内嵌输入框，就只能把这部分交互独立收口到最小 `WebviewView`。
 - 需要宿主提供一个面向侧栏的最小状态摘要，而不是让侧栏直接依赖画布 Webview 内部状态。
 
 ### 5.3 使用侧栏 `WebviewView` 承载迁出的内容
@@ -141,8 +141,8 @@ updated_at: 2026-04-20
 
 ## 6. 风险与取舍
 
-- 取舍：当前从“单一原生侧栏 View”进一步收口为“少量原生 view section”，而不是继续坚持一个 view 塞下所有内容。
-  原因：用户提供的 VSCode 参考图和官方 UX 指南都更接近 section 化 sidebar；把状态、过滤和动作硬塞进单个 view，只会重新长成不自然的自定义列表。
+- 取舍：当前从“两个原生 TreeView section”进一步收口为“概览 TreeView + 常用操作 WebviewView”的混合侧栏，而不是继续坚持所有内容都必须在 TreeView 里表达。
+  原因：用户最新要求明确指出 `include` / `exclude` 需要直接以内嵌输入框出现；而 VSCode 扩展 API 又不支持在 TreeView 里局部嵌入文本框。因此最小妥协方案是只把必须用输入框表达的常用操作区做成克制的 `WebviewView`，其余状态摘要继续保留原生 TreeView。
 
 - 风险：如果创建入口收口为一个主动作加对象类型选择，会比四个直接按钮多一步。
   当前缓解：这是有意换来的简洁度；只要创建入口足够稳定可达，这个额外一步是可接受的。
@@ -150,8 +150,8 @@ updated_at: 2026-04-20
 - 风险：VSCode 允许用户把侧栏移动到右侧或 Secondary Sidebar。
   当前缓解：文档只定义“默认入口在主侧栏”，同时要求命令入口始终保留，避免把体验绑定到绝对左侧坐标。
 
-- 风险：如果侧栏展示对象列表、选中详情或长段说明，就会偏离“极简”和“非空间信息迁出”的初衷。
-  当前缓解：规格明确限制侧栏只承载打开、创建、恢复、文件过滤和最小状态摘要。
+- 风险：一旦把 `WebviewView` 用成新的 mini dashboard，侧栏又会重新偏离 VSCode 原生质感。
+  当前缓解：当前只把“必须要有 inline 输入框”的常用操作区交给 `WebviewView`，并明确限制它只承载打开、创建、恢复和 `include` / `exclude`；状态摘要仍然保持在原生 TreeView。
 
 ## 7. 当前结论
 
@@ -165,33 +165,33 @@ updated_at: 2026-04-20
 - 左上角和右上角不再承载说明、统计、创建和恢复入口。
 - 画布上的长段辅助说明、更新时间和验证范围文案都不再常驻。
 
-### 7.2 默认使用两个原生侧栏 View section 组成宿主入口
+### 7.2 默认使用两个 sidebar section 组成宿主入口
 
 - 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 容器。
-- 该容器当前收口为两个原生 view section：
-  - `概览`：展示画布状态摘要，并承载全局动作。
-  - `文件过滤`：展示 `Files to Include` / `Files to Exclude` 两个原生条目。
-- 两个 section 都继续使用原生 `TreeView` 承载，而不是 `WebviewView`。
-- 这样既保留了最小信息密度，也更贴近 VSCode 常见 sidebar section 风格。
+- 该容器当前收口为两个 section：
+  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要。
+  - `常用操作`：使用最小 `WebviewView` 承载三个高频操作按钮与 `include` / `exclude` 输入框。
+- 这样既保留了大部分 sidebar 的原生结构，也把必须以内嵌输入框表达的交互隔离在最小范围内。
 
-### 7.3 全局动作进入 view title toolbar，而不是树项大按钮
+### 7.3 全局动作进入常用操作区，而不是树项大按钮或分散 toolbar
 
-- `概览` view title toolbar 承载：
-  - 打开画布
-  - 创建对象
-  - 重置宿主状态（进入 overflow 更合适）
-- 树项本身优先展示状态，不承担“大按钮式入口”职责。
-- 这样可以避免把 TreeView 伪装成按钮墙，也符合官方对 view title actions 的推荐用法。
+- `常用操作` section 统一承载：
+  - 打开画布 / 定位画布
+  - 创建节点
+  - 重置画布状态
+- 为了兼顾主路径可读性与高频回点效率，`常用操作` 的 view title 行尾部可补一排原生风格的 icon-only 快捷入口；它们只复用同一组动作，不引入新的语义或额外状态。
+- `概览` 树项本身优先展示状态，不再承担动作入口职责。
+- 这样可以避免把 TreeView 伪装成按钮墙，也避免把同一组操作拆散在 view title toolbar 与别处。
 
-### 7.4 文件过滤以原生条目展示，编辑通过 item action + 宿主输入框完成
+### 7.4 `include` / `exclude` 以最小 Webview 输入框展示
 
-- `文件过滤` section 只展示两个固定条目：
-  - `Files to Include`
-  - `Files to Exclude`
-- 条目直接显示当前 glob 摘要，hover 可看到完整值与“只影响投影、不改 `fileReferences`”说明。
-- 编辑入口放在 item inline/context action；动作触发后仍使用宿主 `showInputBox` 收集 glob。
-- 若当前过滤非空，可提供单独的 `clear` action。
-- 本轮明确放弃在 sidebar 内继续自绘搜索视图式 textbox，因为那会重新把原生 sidebar 做成一块 web app。
+- `常用操作` section 内直接显示两个输入框：
+  - `files to include`
+  - `files to exclude`
+- 输入框使用 VSCode 主题 token、输入框边框和最小按钮样式，尽量贴近宿主原生控件观感，不额外包裹卡片式 chrome。
+- 输入框在 blur / Enter 时提交，右侧提供轻量清空入口。
+- 过滤仍然只影响文件对象与自动边的显示投影，不会修改 `fileReferences`。
+- 这是本轮唯一保留 `WebviewView` 的理由：扩展 API 没有提供可在 TreeView 中局部嵌入文本框的官方能力。
 
 ### 7.5 创建入口优先集中，而不是平铺四个常驻大按钮
 
@@ -206,24 +206,24 @@ updated_at: 2026-04-20
 
 ### 7.7 当前实现边界
 
-- Extension Host 当前提供一个原生侧栏容器，并在其中放置 `概览` / `文件过滤` 两个 `TreeView` section。
+- Extension Host 当前提供一个原生侧栏容器，并在其中放置 `概览 TreeView` 与 `常用操作 WebviewView` 两个 section。
 - Webview 顶部的左上角 hero 与右上角 actions panel 已移除，画布中只保留底角控件和节点本体。
-- 当画布已在前台可见时，侧栏中的“创建对象”会通过 Host -> Webview 消息复用当前视口锚点；当画布尚未就绪时，宿主退回到默认锚点 + 避碰搜索。
-- 文件过滤当前以原生 tree item 展示；编辑通过 view item action 打开宿主输入框，不再在 sidebar 内渲染自定义 HTML 输入区域。
+- 当画布已在前台可见时，侧栏中的“创建节点”会通过 Host -> Webview 消息复用当前视口锚点；当画布尚未就绪时，宿主退回到默认锚点 + 避碰搜索。
+- `常用操作` 区域当前是一个最小 `WebviewView`：内容区只承载三个高频按钮和两个输入框；对应的快捷 icon 按钮放在该 view 的标题行尾部，不承担状态摘要、选中详情或说明卡片。
 
 ## 8. 验证方法
 
 至少需要完成以下验证，才能把当前实现从“验证中”推进到“已验证”：
 
-1. 在 VSCode `Extension Development Host` 中手动验证两个原生 sidebar section 的结构、密度和交互是否足够贴近常见 VSCode Sidebar。
+1. 在 VSCode `Extension Development Host` 中手动验证 `概览 TreeView + 常用操作 WebviewView` 的结构、密度和交互是否仍然贴近常见 VSCode Sidebar，而没有长成新的 mini dashboard。
 2. 手动验证画布在移除顶角 panel 后，左上角和右上角确实回归为空白工作面，而不是被替代性浮层继续占据。
 3. 在窄编辑器宽度下对比新旧方案，确认画布顶部可用空间明显增加。
 4. 在 workspace 未受信任场景下，确认侧栏能正确禁用或降级执行型入口。
-5. 验证 `Files to Include` / `Files to Exclude` 条目在 hover、编辑、清空和 reload 后都保持原生 sidebar 语义，而不是表现成自绘网页控件。
+5. 验证 `files to include` / `files to exclude` 输入框在输入、失焦、Enter、清空和 reload 后都保持稳定，且整体观感与 VSCode 输入控件 token 对齐。
 6. 验证当用户折叠、移动或离开侧栏时，命令入口仍能完成打开画布、创建对象和重置状态。
 
 ## 9. 当前验证状态
 
-- 2026-04-20 已按最新 UX 反馈把 sidebar 从自绘 `WebviewView` 收口回原生 views/tree sections。
+- 2026-04-20 已按最新 UX 反馈进一步收口为“概览原生 TreeView + 常用操作最小 WebviewView”的混合侧栏。
 - 自动化检查已完成：`npm run typecheck` 与 `npm run build` 通过。
 - 当前尚未在 `Extension Development Host` 中完成这一轮人工验证，因此继续保持“验证中”。
