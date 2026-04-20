@@ -39,6 +39,7 @@
 - [x] (2026-04-20 10:54 +0800) 在 `常用操作` 区尾部补一排 VSCode 风格的快捷 icon 按钮，分别复用打开/定位画布、创建节点和重置画布状态，不引入新命令语义；同步回写 sidebar 设计与规格文档。
 - [x] (2026-04-20 11:00 +0800) 根据最新位置反馈，把快捷 icon 从 `WebviewView` 内容区移到 `常用操作` view title 行尾部，改用原生 `view/title` action 承载，并同步修正文档口径。
 - [x] (2026-04-20 11:07 +0800) 根据最新反馈把 `概览` 中的“画布状态”从承载面信息改回纯状态语义：仅显示“已打开 / 未打开”，不再把 `Panel / Editor` 直接作为状态值暴露；同步修正规格文档中的旧表述。
+- [x] (2026-04-20 12:20 +0800) 按最新 review blocker 收窄画布焦点恢复：`openCanvasInEditor` / `revealSurface('editor')` 继续显式把 document focus 交还给 editor-surface webview；文件打开链路改为按消息来源 surface 处理，避免 panel 内点击文件误走 editor route 语义。
 
 ## 意外与发现
 
@@ -210,6 +211,11 @@
 - 2026-04-20 概览画布状态语义修正验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
+- 2026-04-20 review blocker 焦点修复增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+  - `git diff --check`：通过。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过，但失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）。当前 failure artifact 不再出现先前 review blocker 指向的 `editor` focus 超时或 panel sentinel active editor 断言失败。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。

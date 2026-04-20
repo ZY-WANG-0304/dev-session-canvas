@@ -970,7 +970,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       if (this.editorPanel) {
         this.ensureActiveSurfaceRendered('editor');
-        this.editorPanel.reveal(vscode.ViewColumn.One);
+        await this.refocusInteractiveSurface('editor');
         this.notifySidebarStateChanged();
         return;
       }
@@ -983,6 +983,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
       this.attachEditorPanel(panel);
       this.ensureActiveSurfaceRendered('editor');
+      await this.refocusInteractiveSurface('editor');
       this.notifySidebarStateChanged();
       return;
     }
@@ -993,7 +994,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (this.panelView) {
       this.ensureActiveSurfaceRendered('panel');
-      this.panelView.show(false);
+      await this.refocusInteractiveSurface('panel');
       this.notifySidebarStateChanged();
       return;
     }
@@ -1784,17 +1785,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private async openCanvasFile(filePath: string): Promise<void> {
+  private async openCanvasFile(filePath: string, sourceSurface: CanvasSurfaceLocation): Promise<void> {
     const normalizedPath = normalizeTrackedFilePath(filePath);
     if (!normalizedPath) {
       return;
     }
 
-    const activeSurface = this.activeSurface;
     const uri = vscode.Uri.file(normalizedPath);
     const document = await vscode.workspace.openTextDocument(uri);
     const showOptions: vscode.TextDocumentShowOptions =
-      activeSurface === 'editor'
+      sourceSurface === 'editor'
         ? {
             preview: false,
             preserveFocus: true,
@@ -1805,17 +1805,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             preserveFocus: true
           };
     await vscode.window.showTextDocument(document, showOptions);
-    this.refocusInteractiveSurface(activeSurface);
+    if (sourceSurface === 'editor') {
+      await this.refocusInteractiveSurface('editor');
+    }
   }
 
-  private refocusInteractiveSurface(surface: CanvasSurfaceLocation | undefined): void {
+  private async refocusInteractiveSurface(surface: CanvasSurfaceLocation | undefined): Promise<void> {
     if (surface === 'panel') {
       this.panelView?.show(false);
+      this.maybePostVisibilityRestored('panel', {
+        force: true
+      });
       return;
     }
 
     if (surface === 'editor') {
       this.editorPanel?.reveal(vscode.ViewColumn.One, false);
+      for (const command of ['workbench.action.focusActiveEditorGroup', 'workbench.action.focusFirstEditorGroup']) {
+        try {
+          await vscode.commands.executeCommand(command);
+          break;
+        } catch {
+          continue;
+        }
+      }
+      this.maybePostVisibilityRestored('editor', {
+        force: true
+      });
     }
   }
 
@@ -3558,7 +3574,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/openCanvasFile':
-        void this.openCanvasFile(parsedMessage.payload.filePath);
+        void this.openCanvasFile(parsedMessage.payload.filePath, sourceSurface);
         return;
       case 'webview/resetDemoState':
         void this.resetState().catch((error) => {
