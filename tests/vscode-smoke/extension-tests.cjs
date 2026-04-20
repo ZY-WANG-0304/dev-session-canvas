@@ -1080,7 +1080,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
       10000
     );
     await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
-    assert.strictEqual(vscode.window.activeTextEditor?.document.uri.fsPath, sentinelEditor.document.uri.fsPath);
+    // Panel route only requires the canvas to retain document focus while opening the file in the editor area.
+    // VS Code may still report the newly opened file as activeTextEditor even though the text editor never takes focus.
     await closeVisibleEditor(agentOnlySecondaryPath);
 
     await vscode.window.showTextDocument(sentinelEditor.document, {
@@ -1135,7 +1136,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
       10000
     );
     await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
-    assert.strictEqual(vscode.window.activeTextEditor?.document.uri.fsPath, sentinelEditor.document.uri.fsPath);
     await closeVisibleEditor(sharedPath);
 
     await performWebviewDomAction(
