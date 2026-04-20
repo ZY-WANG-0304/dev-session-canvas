@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-controls-design.md
   - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-04-20
+updated_at: 2026-04-21
 ---
 
 # 画布外层控件侧栏化设计
@@ -169,7 +169,7 @@ updated_at: 2026-04-20
 
 - 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 容器。
 - 该容器当前收口为两个 section：
-  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要。
+  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要，并在标题行尾部提供一个设置快捷入口，直接跳转到本扩展设置。
   - `常用操作`：使用最小 `WebviewView` 承载三个高频操作按钮与 `include` / `exclude` 输入框。
 - 这样既保留了大部分 sidebar 的原生结构，也把必须以内嵌输入框表达的交互隔离在最小范围内。
 
@@ -186,8 +186,8 @@ updated_at: 2026-04-20
 ### 7.4 `include` / `exclude` 以最小 Webview 输入框展示
 
 - `常用操作` section 内直接显示两个输入框：
-  - `files to include`
-  - `files to exclude`
+  - `包含文件`
+  - `排除文件`
 - 输入框使用 VSCode 主题 token、输入框边框和最小按钮样式，尽量贴近宿主原生控件观感，不额外包裹卡片式 chrome。
 - 输入框在 blur / Enter 时提交，右侧提供轻量清空入口。
 - 过滤仍然只影响文件对象与自动边的显示投影，不会修改 `fileReferences`。
@@ -210,6 +210,7 @@ updated_at: 2026-04-20
 - Webview 顶部的左上角 hero 与右上角 actions panel 已移除，画布中只保留底角控件和节点本体。
 - 当画布已在前台可见时，侧栏中的“创建节点”会通过 Host -> Webview 消息复用当前视口锚点；当画布尚未就绪时，宿主退回到默认锚点 + 避碰搜索。
 - `常用操作` 区域当前是一个最小 `WebviewView`：内容区只承载三个高频按钮和两个输入框；对应的快捷 icon 按钮放在该 view 的标题行尾部，不承担状态摘要、选中详情或说明卡片。
+- `概览` 视图标题行尾部额外提供一个 gear 按钮，作为进入扩展设置的稳定捷径，不把设置入口挤进状态树项本身。
 
 ## 8. 验证方法
 
@@ -219,7 +220,7 @@ updated_at: 2026-04-20
 2. 手动验证画布在移除顶角 panel 后，左上角和右上角确实回归为空白工作面，而不是被替代性浮层继续占据。
 3. 在窄编辑器宽度下对比新旧方案，确认画布顶部可用空间明显增加。
 4. 在 workspace 未受信任场景下，确认侧栏能正确禁用或降级执行型入口。
-5. 验证 `files to include` / `files to exclude` 输入框在输入、失焦、Enter、清空和 reload 后都保持稳定，且整体观感与 VSCode 输入控件 token 对齐。
+5. 验证 `包含文件` / `排除文件` 输入框在输入、失焦、Enter、清空和 reload 后都保持稳定，且整体观感与 VSCode 输入控件 token 对齐。
 6. 验证当用户折叠、移动或离开侧栏时，命令入口仍能完成打开画布、创建对象和重置状态。
 
 ## 9. 当前验证状态

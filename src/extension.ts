@@ -63,6 +63,13 @@ export function activate(context: vscode.ExtensionContext): void {
     await panelManager.revealInPanel();
   });
 
+  registerCommand(context, COMMAND_IDS.openSettings, async () => {
+    await vscode.commands.executeCommand(
+      'workbench.action.openSettings',
+      '@ext:devsessioncanvas.dev-session-canvas devSessionCanvas'
+    );
+  });
+
   registerCommand(context, COMMAND_IDS.createNode, async () => {
     const createRequest = await promptCreateNodeRequest(panelManager.getSidebarState().creatableKinds);
     if (!createRequest) {
@@ -281,8 +288,8 @@ async function updateCanvasFileFilterFromCommand(
     title: `${EXTENSION_DISPLAY_NAME}: 编辑文件 ${kind === 'include' ? 'Include' : 'Exclude'} 过滤`,
     prompt:
       kind === 'include'
-        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改 fileReferences。'
-        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改 fileReferences。',
+        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改文件引用。'
+        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改文件引用。',
     placeHolder: kind === 'include' ? '例如 src/**/*.ts, docs/**/*.md' : '例如 **/dist/**, **/*.snap',
     value: currentGlobs.join(', ')
   });

@@ -17,6 +17,7 @@ export type CanvasEdgePresetColor = (typeof canvasEdgePresetColors)[number];
 export type CanvasEdgeColor = CanvasEdgePresetColor | `#${string}`;
 export type CanvasFileActivityAccessMode = 'read' | 'write' | 'read-write';
 export type CanvasFilePresentationMode = 'nodes' | 'lists';
+export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
 export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
 
@@ -212,6 +213,7 @@ export interface CanvasRuntimeContext {
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
   terminalWordSeparators: string;
   filePresentationMode: CanvasFilePresentationMode;
+  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileIconFontFaces: CanvasFileIconFontFace[];
@@ -1389,6 +1391,81 @@ export function minimumCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFoot
         height: 180
       };
   }
+}
+
+export function estimateMinimalFileNodeFootprint(
+  primaryLabel: string,
+  displayMode: CanvasFileNodeDisplayMode
+): CanvasNodeFootprint {
+  const textWidth = estimateCanvasLabelWidth(primaryLabel, 12);
+
+  switch (displayMode) {
+    case 'icon-only':
+      return {
+        width: 28,
+        height: 24
+      };
+    case 'path-only':
+      return {
+        width: Math.max(32, Math.ceil(textWidth + 14)),
+        height: 22
+      };
+    default:
+      return {
+        width: Math.max(64, Math.min(480, Math.ceil(textWidth + 33))),
+        height: 24
+      };
+  }
+}
+
+function estimateCanvasLabelWidth(text: string, fontSizePx: number): number {
+  let widthUnits = 0;
+
+  for (const character of text) {
+    if (character === ' ') {
+      widthUnits += 0.34;
+      continue;
+    }
+
+    if ('il.,:;|!'.includes(character)) {
+      widthUnits += 0.32;
+      continue;
+    }
+
+    if ('[](){}\'`'.includes(character)) {
+      widthUnits += 0.38;
+      continue;
+    }
+
+    if ('-_/\\'.includes(character)) {
+      widthUnits += 0.46;
+      continue;
+    }
+
+    if (character >= '0' && character <= '9') {
+      widthUnits += 0.58;
+      continue;
+    }
+
+    if (character >= 'A' && character <= 'Z') {
+      widthUnits += 0.68;
+      continue;
+    }
+
+    if ('mwMW@#%&'.includes(character)) {
+      widthUnits += 0.82;
+      continue;
+    }
+
+    if (character.charCodeAt(0) > 0x7f) {
+      widthUnits += 0.96;
+      continue;
+    }
+
+    widthUnits += 0.6;
+  }
+
+  return Math.max(0, widthUnits * fontSizePx);
 }
 
 export function normalizeCanvasNodeFootprint(

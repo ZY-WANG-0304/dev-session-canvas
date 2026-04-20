@@ -34,6 +34,7 @@ import {
   type CanvasEdgeColor,
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
+  type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
   type CanvasFilePresentationMode,
@@ -41,6 +42,7 @@ import {
   type CanvasFileReferenceOwnerSummary,
   type CanvasFileReferenceSummary,
   type CanvasFileIconFontFace,
+  type FileNodeMetadata,
   type FileListNodeEntrySummary,
   type CanvasNodeFootprint,
   type CanvasNodeKind,
@@ -63,6 +65,7 @@ import {
   type WebviewDomAction,
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
+  estimateMinimalFileNodeFootprint,
   estimatedCanvasNodeFootprint,
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
@@ -279,6 +282,7 @@ interface CanvasFileViewConfiguration {
   presentationMode: CanvasFilePresentationMode;
   includeGlobs: string[];
   excludeGlobs: string[];
+  displayStyle: CanvasFileNodeDisplayStyle;
   nodeDisplayMode: CanvasFileNodeDisplayMode;
   pathDisplayMode: CanvasFilePathDisplayMode;
 }
@@ -447,6 +451,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
+        const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
         const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
         const filesPathDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPathDisplayMode);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
@@ -466,6 +471,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         if (
           !defaultAgentProviderChanged &&
           !filesPresentationModeChanged &&
+          !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
           !filesPathDisplayModeChanged &&
           !terminalScrollbackChanged &&
@@ -479,6 +485,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this.handleRuntimeConfigurationChanged({
           defaultAgentProviderChanged,
           filesPresentationModeChanged,
+          fileNodeDisplayStyleChanged,
           filesNodeDisplayModeChanged,
           filesPathDisplayModeChanged,
           terminalScrollbackChanged,
@@ -1522,6 +1529,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         vscode.workspace.getConfiguration('terminal.integrated').get<string>('wordSeparators')
       ),
       filePresentationMode: fileConfiguration.presentationMode,
+      fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
       fileIconFontFaces: []
@@ -1537,6 +1545,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
     const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
+    const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
     const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
     const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
 
@@ -1544,6 +1553,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
       includeGlobs: this.fileFilterState.includeGlobs,
       excludeGlobs: this.fileFilterState.excludeGlobs,
+      displayStyle: displayStyle === 'card' ? 'card' : 'minimal',
       nodeDisplayMode:
         nodeDisplayMode === 'icon-only' || nodeDisplayMode === 'path-only' ? nodeDisplayMode : 'icon-path',
       pathDisplayMode: pathDisplayMode === 'relative-path' ? 'relative-path' : 'basename'
@@ -1617,8 +1627,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (options.runtimePersistenceChanged) {
       const message = options.defaultSurfaceChanged
-        ? 'Default Surface 和 Runtime Persistence 的更改会在重新加载窗口后生效；其中切换 Runtime Persistence 会在下次加载时清空当前 workspace 的画布宿主状态。'
-        : 'Runtime Persistence 的更改会在重新加载窗口后生效；切换此设置会在下次加载时清空当前 workspace 的画布宿主状态。';
+        ? '默认承载面和运行时持久化的更改会在重新加载窗口后生效；其中切换运行时持久化会在下次加载时清空当前工作区的画布宿主状态。'
+        : '运行时持久化的更改会在重新加载窗口后生效；切换此设置会在下次加载时清空当前工作区的画布宿主状态。';
       const selection = await vscode.window.showWarningMessage(message, RELOAD_WINDOW_ACTION_LABEL);
       if (selection === RELOAD_WINDOW_ACTION_LABEL) {
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
@@ -1642,6 +1652,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
     filesPresentationModeChanged: boolean;
+    fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
     filesPathDisplayModeChanged: boolean;
     terminalScrollbackChanged: boolean;
@@ -1665,6 +1676,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       options.filesPresentationModeChanged ||
+      options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
       options.filesPathDisplayModeChanged ||
       options.workbenchIconThemeChanged
@@ -1676,6 +1688,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (
       options.defaultAgentProviderChanged ||
       options.filesPresentationModeChanged ||
+      options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
       options.filesPathDisplayModeChanged ||
       options.terminalScrollbackChanged ||
@@ -3456,7 +3469,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.state,
           parsedMessage.payload.nodeId,
           parsedMessage.payload.position,
-          parsedMessage.payload.size
+          parsedMessage.payload.size,
+          this.getCanvasFileViewConfiguration()
         );
         this.persistState();
         this.postState('host/stateUpdated');
@@ -6287,14 +6301,15 @@ function resizeNode(
   previousState: CanvasPrototypeState,
   nodeId: string,
   position: CanvasNodePosition,
-  size: CanvasNodeFootprint
+  size: CanvasNodeFootprint,
+  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
 ): CanvasPrototypeState {
   const targetNode = previousState.nodes.find((node) => node.id === nodeId);
   if (!targetNode) {
     return previousState;
   }
 
-  const normalizedSize = normalizeCanvasNodeFootprint(targetNode.kind, size);
+  const normalizedSize = normalizeCanvasNodeFootprintForPersistence(targetNode, size, view);
   const normalizedPosition = {
     x: Math.round(position.x),
     y: Math.round(position.y)
@@ -6342,6 +6357,33 @@ function deleteCanvasNode(previousState: CanvasPrototypeState, nodeId: string): 
   };
 }
 
+function normalizeCanvasNodeFootprintForPersistence(
+  node: Pick<CanvasNodeSummary, 'kind' | 'metadata'>,
+  value: unknown,
+  view?: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+): CanvasNodeFootprint {
+  if (node.kind !== 'file' || view?.displayStyle !== 'minimal') {
+    return normalizeCanvasNodeFootprint(node.kind, value);
+  }
+
+  const fallback = resolveMinimalFileNodeFootprint(node.metadata?.file, view);
+  if (
+    !isRecord(value) ||
+    typeof value.width !== 'number' ||
+    !Number.isFinite(value.width) ||
+    typeof value.height !== 'number' ||
+    !Number.isFinite(value.height)
+  ) {
+    return fallback;
+  }
+
+  const minimum = resolveMinimalFileNodeFootprint(node.metadata?.file, view);
+  return {
+    width: Math.max(minimum.width, Math.round(value.width)),
+    height: Math.max(minimum.height, Math.round(value.height))
+  };
+}
+
 function rebuildCanvasFileArtifacts(
   state: CanvasPrototypeState,
   options: { view: CanvasFileViewConfiguration }
@@ -6374,7 +6416,11 @@ function rebuildCanvasFileArtifacts(
           manualNodes,
           agentNodesById,
           existingAutoNodes,
-          options.view.pathDisplayMode
+          {
+            displayStyle: options.view.displayStyle,
+            nodeDisplayMode: options.view.nodeDisplayMode,
+            pathDisplayMode: options.view.pathDisplayMode
+          }
         );
   const automaticArtifacts =
     options.view.presentationMode === 'lists'
@@ -6384,7 +6430,11 @@ function rebuildCanvasFileArtifacts(
           manualNodes,
           agentNodesById,
           existingAutoNodes,
-          options.view.pathDisplayMode
+          {
+            displayStyle: options.view.displayStyle,
+            nodeDisplayMode: options.view.nodeDisplayMode,
+            pathDisplayMode: options.view.pathDisplayMode
+          }
         );
   const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
   const projectedNodes = [
@@ -6426,7 +6476,7 @@ function buildAutomaticFileNodeArtifacts(
   manualNodes: CanvasNodeSummary[],
   agentNodesById: Map<string, CanvasNodeSummary>,
   existingAutoNodes: Map<string, CanvasNodeSummary>,
-  pathDisplayMode: CanvasFilePathDisplayMode
+  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
 ): { nodes: CanvasNodeSummary[]; edges: CanvasEdgeSummary[] } {
   const nodes: CanvasNodeSummary[] = [];
   const edges: CanvasEdgeSummary[] = [];
@@ -6450,7 +6500,7 @@ function buildAutomaticFileNodeArtifacts(
       existingNode,
       placementPreference
     );
-    const title = buildFileDisplayLabel(reference, pathDisplayMode);
+    const title = buildFileDisplayLabel(reference, view.pathDisplayMode);
     nodes.push({
       id: nodeId,
       kind: 'file',
@@ -6458,7 +6508,7 @@ function buildAutomaticFileNodeArtifacts(
       status: 'linked',
       summary: reference.relativePath ?? reference.filePath,
       position,
-      size: existingNode?.size ?? estimatedCanvasNodeFootprint('file'),
+      size: resolveAutomaticFileNodeSize(reference, existingNode, view),
       metadata: {
         file: {
           fileId: reference.id,
@@ -6487,6 +6537,113 @@ function buildAutomaticFileNodeArtifacts(
   }
 
   return { nodes, edges };
+}
+
+function resolveAutomaticFileNodeSize(
+  reference: CanvasFileReferenceSummary,
+  existingNode: CanvasNodeSummary | undefined,
+  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+): CanvasNodeFootprint {
+  const preferredSize = estimateAutomaticFileNodeFootprint(reference, view);
+  if (!existingNode?.size) {
+    return preferredSize;
+  }
+
+  return isKnownAutomaticFileNodeDefaultSize(reference, existingNode.size) ? preferredSize : existingNode.size;
+}
+
+function isKnownAutomaticFileNodeDefaultSize(
+  reference: CanvasFileReferenceSummary,
+  size: CanvasNodeFootprint
+): boolean {
+  const knownSizes: CanvasNodeFootprint[] = [estimatedCanvasNodeFootprint('file')];
+  const displayModes: CanvasFileNodeDisplayMode[] = ['icon-path', 'icon-only', 'path-only'];
+  const pathModes: CanvasFilePathDisplayMode[] = ['basename', 'relative-path'];
+
+  for (const nodeDisplayMode of displayModes) {
+    for (const pathDisplayMode of pathModes) {
+      const view = {
+        displayStyle: 'minimal' as const,
+        nodeDisplayMode,
+        pathDisplayMode
+      };
+      knownSizes.push(
+        estimateAutomaticFileNodeFootprint(reference, view),
+        estimateLegacyAutomaticFileNodeFootprint(reference, view)
+      );
+    }
+  }
+
+  return knownSizes.some(
+    (candidate) => candidate.width === size.width && candidate.height === size.height
+  );
+}
+
+function estimateAutomaticFileNodeFootprint(
+  reference: CanvasFileReferenceSummary,
+  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+): CanvasNodeFootprint {
+  if (view.displayStyle === 'card') {
+    return estimatedCanvasNodeFootprint('file');
+  }
+
+  return resolveMinimalFileNodeFootprint(
+    {
+      filePath: reference.filePath,
+      relativePath: reference.relativePath
+    },
+    view
+  );
+}
+
+function estimateLegacyAutomaticFileNodeFootprint(
+  reference: CanvasFileReferenceSummary,
+  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+): CanvasNodeFootprint {
+  if (view.displayStyle === 'card') {
+    return estimatedCanvasNodeFootprint('file');
+  }
+
+  const primaryLabel = buildFileDisplayLabel(reference, view.pathDisplayMode);
+  const textWidth = Math.max(
+    measureApproximateCanvasTextWidth(primaryLabel, 12, 0.62),
+    0
+  );
+
+  switch (view.nodeDisplayMode) {
+    case 'icon-only':
+      return {
+        width: 28,
+        height: 24
+      };
+    case 'path-only':
+      return {
+        width: Math.max(32, Math.min(320, Math.ceil(textWidth + 12))),
+        height: 22
+      };
+    default:
+      return {
+        width: Math.max(64, Math.min(360, Math.ceil(textWidth + 36))),
+        height: 24
+      };
+  }
+}
+
+function measureApproximateCanvasTextWidth(text: string, fontSizePx: number, widthFactor: number): number {
+  return Math.max(0, text.length) * fontSizePx * widthFactor;
+}
+
+function resolveMinimalFileNodeFootprint(
+  metadata: Pick<FileNodeMetadata, 'filePath' | 'relativePath'> | undefined,
+  view: Pick<CanvasFileViewConfiguration, 'nodeDisplayMode' | 'pathDisplayMode'>
+): CanvasNodeFootprint {
+  const primaryLabel = metadata
+    ? view.pathDisplayMode === 'relative-path'
+      ? metadata.relativePath ?? metadata.filePath
+      : path.basename(metadata.relativePath ?? metadata.filePath)
+    : '';
+
+  return estimateMinimalFileNodeFootprint(primaryLabel, view.nodeDisplayMode);
 }
 
 function buildAutomaticFileListArtifacts(
@@ -6667,11 +6824,7 @@ function resolveAutomaticArtifactPosition(
   preference: NodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const existingPosition = existingNode?.position;
-  if (
-    existingPosition &&
-    !doesPlacementCollide(occupiedNodes, kind, existingPosition) &&
-    doesPlacementRespectPreference(existingPosition, kind, anchor, preference)
-  ) {
+  if (existingPosition) {
     return existingPosition;
   }
 
@@ -7307,7 +7460,13 @@ function normalizeNode(
         ? value.summary
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
-    size: normalizeCanvasNodeFootprint(value.kind, value.size),
+    size: normalizeCanvasNodeFootprintForPersistence(
+      {
+        kind: value.kind,
+        metadata: undefined
+      },
+      value.size
+    ),
     metadata: normalizeMetadata(
       value.kind,
       value.id,

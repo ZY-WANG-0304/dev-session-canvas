@@ -1,7 +1,7 @@
 ---
 title: 画布关系连线设计
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - 画布交互域
   - 协作对象域
@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/canvas-graph-links-and-file-activity.md
 related_plans:
   - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-04-19
+updated_at: 2026-04-20
 ---
 
 # 画布关系连线设计
@@ -175,3 +175,5 @@ updated_at: 2026-04-19
   - 手工连线在 reload 后保持。
   - 删除节点后，相关失效边被正确清理。
   - 文件活动派生边在被用户编辑或删除后，reload 与后续文件视图重建不会立刻丢失覆盖结果。
+
+截至 2026-04-20，本方案已通过 `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 验证；其中 Playwright 已覆盖手工边创建、编辑、删除、自环和端点重接，trusted smoke 已覆盖宿主持久化、reload 恢复以及自动边覆盖结果的保留。

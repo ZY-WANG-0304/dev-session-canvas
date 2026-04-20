@@ -295,7 +295,7 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       <div class="fields">
         <div class="field-group">
-          <label class="field-label" for="include-input">files to include</label>
+          <label class="field-label" for="include-input">包含文件</label>
           <div class="input-wrap">
             <input
               id="include-input"
@@ -304,12 +304,12 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
               spellcheck="false"
               placeholder="例如 src/**/*.ts, docs/**/*.md"
             />
-            <button class="field-clear" type="button" data-clear-kind="include" aria-label="清空 files to include">&times;</button>
+            <button class="field-clear" type="button" data-clear-kind="include" aria-label="清空包含文件">&times;</button>
           </div>
         </div>
 
         <div class="field-group">
-          <label class="field-label" for="exclude-input">files to exclude</label>
+          <label class="field-label" for="exclude-input">排除文件</label>
           <div class="input-wrap">
             <input
               id="exclude-input"
@@ -318,11 +318,11 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
               spellcheck="false"
               placeholder="例如 **/dist/**, **/*.snap"
             />
-            <button class="field-clear" type="button" data-clear-kind="exclude" aria-label="清空 files to exclude">&times;</button>
+            <button class="field-clear" type="button" data-clear-kind="exclude" aria-label="清空排除文件">&times;</button>
           </div>
         </div>
 
-        <div class="field-hint">只影响文件对象与自动边的显示投影，不会修改 fileReferences。</div>
+        <div class="field-hint">只影响文件对象与自动边的显示投影，不会修改文件引用。</div>
       </div>
     </div>
 

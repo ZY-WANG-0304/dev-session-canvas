@@ -5,6 +5,7 @@ export const COMMAND_IDS = {
   openCanvas: 'devSessionCanvas.openCanvas',
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
+  openSettings: 'devSessionCanvas.openSettings',
   createNode: 'devSessionCanvas.createNode',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
@@ -53,6 +54,7 @@ export const CONFIG_KEYS = {
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
+  fileNodeDisplayStyle: 'devSessionCanvas.fileNode.displayStyle',
   filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
   filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode'
 } as const;
