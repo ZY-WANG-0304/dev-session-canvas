@@ -17,7 +17,7 @@ related_specs:
   - docs/product-specs/canvas-graph-links-and-file-activity.md
 related_plans:
   - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-04-19
+updated_at: 2026-04-20
 ---
 
 # 画布文件活动视图设计
@@ -43,7 +43,7 @@ updated_at: 2026-04-19
 
 - 引入以 provider 结构化事件为唯一来源的文件活动模型。
 - 在默认文件节点模式和可切换的文件列表模式之间，复用同一份文件活动源数据。
-- 让文件对象继续遵守 VSCode 宿主边界：打开文件走宿主、图标尽量复用当前 file icon theme、无法确认的 provider 能力不伪装成已支持。
+- 让文件对象继续遵守 VSCode 宿主边界：打开文件走宿主、编辑区承载面下在独立 editor group 打开、图标能力按实际实现写清楚、无法确认的 provider 能力不伪装成已支持。
 
 ## 4. 非目标
 
@@ -88,8 +88,8 @@ updated_at: 2026-04-19
 - 风险：自动文件对象在展示模式切换时需要重建节点集合。
   当前缓解：文件活动本身单独持久化为引用状态，文件节点 / 文件列表节点视图由宿主根据当前配置重建；第一轮只保证当前启用模式的布局连续性，不把隐藏模式的布局保持当作硬性承诺。
 
-- 风险：当前 VSCode Webview 没有直接暴露“给任意文件路径渲染当前 file icon theme 图标”的单一 API。
-  当前缓解：宿主读取当前启用的 file icon theme contribution 与主题 JSON，尽量把图标资源转成 webview-safe URI 或字体描述；若解析失败，明确回退到通用文件图标，而不是显示空白。
+- 风险：当前 VSCode Webview 没有直接暴露“给任意文件路径渲染当前 file icon theme 图标”的单一 API，而本轮实现也还没有补完整的 theme 解析层。
+  当前缓解：当前版本只提供有限的“常见扩展名 -> `codicon`”映射，并在其余情况回退到通用文件图标；文档显式保持这一现状，不把完整复用当前 file icon theme 写成已实现。
 
 - 风险：共享文件列表节点需要在“按 Agent 聚合”和“按共享文件聚合”之间取舍。
   当前缓解：第一轮采用“Agent 专属列表节点 + 单独共享列表节点”的双层收口，避免同一文件在多个 Agent 列表里重复出现。
@@ -117,7 +117,9 @@ updated_at: 2026-04-19
 
 - 默认配置 `files.presentationMode = nodes` 时，宿主把每个文件引用投影成一个 `file` 节点，并自动生成 `Agent -> 文件` 关系线。
 - 配置切到 `lists` 时，宿主不再保留 `file` 节点，而是为每个 Agent 生成一个 `file-list` 节点；若有共享文件，则额外生成一个共享 `file-list` 节点。
-- 这些自动节点与自动连线在每次文件引用更新、Agent 删除、文件过滤配置变化或展示模式变化后统一重建。
+- `include` / `exclude` 过滤从 settings 页面迁到 sidebar 的原生 `文件过滤` section；过滤状态单独持久化为视图状态，不写回 `fileReferences`。
+- 该 section 只展示 `Files to Include` / `Files to Exclude` 两个 TreeView 条目；编辑通过 item action 打开宿主输入框完成，而不是在 sidebar 内自绘搜索框。
+- 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。
 
 自动边复用关系连线设计里的通用 edge 模型，但不开放人工编辑。
 
@@ -155,16 +157,20 @@ updated_at: 2026-04-19
 
 Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打开文件”动作都通过消息交回宿主。
 
-### 7.6 文件图标尽量复用当前 VSCode File Icon Theme
+宿主侧打开文件时遵守以下规则：
 
-宿主侧新增 file icon theme 解析层：
+- 当画布承载在 panel route 时，直接在现有编辑区打开目标文件，并保持画布焦点。
+- 当画布承载在编辑区时，目标文件必须在相邻 editor group 中打开；若当前没有 split editor，则先隐式创建相邻 group，再打开目标文件。
+- 打开完成后，宿主会把交互焦点拉回当前画布，避免文件点击把用户直接带离画布。
 
-- 从 `workbench.iconTheme` 读取当前主题 ID。
-- 在 `vscode.extensions.all` 中查找贡献该 icon theme 的扩展及其主题 JSON。
-- 将能直接映射到文件名 / 扩展名的图标资源转为 webview-safe 描述，再放入节点 metadata。
-- 如果解析不到图标，Webview 回退到通用文件图标。
+### 7.6 文件图标当前只提供有限 codicon 映射
 
-这条路径的目标是“尽量遵守当前 file icon theme”，而不是在 Webview 里重新发明一套独立图标规则。
+当前实现没有完成 file icon theme 解析层。宿主只做两件事：
+
+- 对少量常见扩展名映射固定 `codicon`。
+- 其余文件统一回退到通用文件图标。
+
+完整复用当前 VSCode File Icon Theme 保留为后续技术债，不在本轮实现口径内。
 
 ### 7.7 生命周期规则
 
@@ -173,7 +179,7 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
 - 删除 Agent 节点时，移除该 Agent 在文件活动引用中的所有 ownership。
 - 若某文件不再有任何 Agent ownership，则删除对应文件引用，并在当前展示模式下移除相关自动节点 / 自动连线。
 - 若某文件仍被其他 Agent 引用，则只删除失效的那部分 ownership，保留该文件对象。
-- 切换 include/exclude 或展示模式后，宿主按当前配置重建文件视图。
+- 编辑 sidebar `Files to Include` / `Files to Exclude` 条目或切换展示模式后，宿主按当前配置重建文件视图，但 `fileReferences` 保持不变。
 
 ## 8. 验证方法
 
@@ -181,6 +187,6 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
   - 文件节点 / 文件列表节点在不同展示模式下能正确渲染与发送打开文件消息。
 - VSCode smoke：
   - `Claude` 或 `fake-agent-provider` 文件活动事件进入宿主后，状态与自动节点 / 自动边按预期变化。
-  - 点击文件节点或文件列表条目后，VSCode 会在编辑区打开目标文件。
+  - 点击文件节点或文件列表条目后，VSCode 会在编辑区打开目标文件；若画布位于编辑区，目标文件进入独立 editor group。
   - 删除 Agent 节点后，文件生命周期规则正确生效。
-  - 切换 include/exclude 或展示模式后，宿主会按当前配置重建文件视图。
+  - 调整 sidebar `Files to Include` / `Files to Exclude` 条目或展示模式后，宿主会按当前配置重建文件视图，且不会改写 `fileReferences`。

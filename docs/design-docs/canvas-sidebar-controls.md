@@ -1,7 +1,7 @@
 ---
 title: 画布外层控件侧栏化设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -15,7 +15,8 @@ related_specs:
   - docs/product-specs/canvas-sidebar-controls.md
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-controls-design.md
-updated_at: 2026-04-14
+  - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
+updated_at: 2026-04-20
 ---
 
 # 画布外层控件侧栏化设计
@@ -30,6 +31,8 @@ updated_at: 2026-04-14
 - 保留左上角 hero 与右上角操作区作为较克制的过渡态
 
 这个过渡态解决了“遮挡”和“重复详情”问题，但还没有回答 `功能体验.md` 第 2 条提出的新目标：画布区域只保留左下角和右下角的必要控件，左上角和右上角的内容不再留在画布里，而是以极简风格进入 VSCode 左侧 SideBar。
+
+随着文件活动视图把 `include` / `exclude` 过滤也迁入 sidebar，问题又出现了第二层：如果为了追求“像搜索视图”而在 sidebar 里整块自绘 `WebviewView`，整体观感会重新偏离 VSCode 原生 Sidebar。用户最新一轮反馈明确要求参考 VSCode 官方 Sidebars / Views / Tree View / Webviews 文档，把 sidebar 收口回常见的原生 section 风格。
 
 因此，本轮要解决的问题不再是“右侧固定区要不要显示详情”，而是“哪些东西仍然属于画布，哪些东西已经应该交给宿主侧栏承载”。
 
@@ -54,7 +57,8 @@ updated_at: 2026-04-14
 - 不在本轮重新设计节点本体的字段或会话窗口布局。
 - 不在本轮把选中节点详情、连续输出或正文内容重新搬到侧栏。
 - 不在本轮把画布改造成侧栏中的窄视图。
-- 不在本轮设计多 view、多 tab 或复杂工作台编排。
+- 不在本轮设计 dashboard 式信息墙、多列编排或一整块自绘 mini app。
+- 不在本轮继续复制 VSCode Search 视图的私有输入框外观，强行在 sidebar 里模拟同款 textbox。
 
 ## 5. 候选方案
 
@@ -76,13 +80,13 @@ updated_at: 2026-04-14
 - 即便视觉更轻，它依旧持续占用顶部工作面，和“只保留左下角/右下角必要控件”的目标不一致。
 - 用户要的是画布变干净，而不是把 panel 变得更小。
 
-### 5.2 使用原生侧栏 View 承载全局动作与极简状态
+### 5.2 使用多个原生侧栏 View section 承载全局动作、状态与过滤
 
 特点：
 
-- 在 VSCode Activity Bar / Primary Sidebar 中新增一个 Dev Session Canvas 侧栏容器或视图入口。
-- 侧栏中只保留一个最小 view，不拆成多个 tab。
-- 优先使用原生 View 能力，例如 `TreeView`、`WelcomeView`、view title toolbar 和命令入口，而不是先做 `WebviewView`。
+- 在 VSCode Activity Bar / Primary Sidebar 中提供一个 Dev Session Canvas 侧栏容器。
+- 侧栏内部使用少量原生 view section，而不是单一大 view 或自绘 dashboard。
+- 优先使用原生 View 能力，例如 `TreeView`、view title toolbar、item context action 和命令入口，而不是先做 `WebviewView`。
 - 画布内移除顶角 panel，只留下左下角导航控件和右下角全局定位控件。
 
 优点：
@@ -90,12 +94,14 @@ updated_at: 2026-04-14
 - 最接近“以极简风格作成 VSCode 左侧 SideBar”的目标。
 - 更符合 VSCode 的宿主语境。用户会把它理解成工作台中的一个原生侧栏，而不是另一个嵌套应用。
 - 可以把创建对象、打开画布和重置状态收口成宿主级入口，减少画布固定 chrome。
-- 当前查核的 VSCode 官方 UX 指南更支持“Activity Bar 对应真实视图”，也更强调谨慎使用 `WebviewView`。
+- `概览` / `文件过滤` 两个 section 更接近 Source Control、Run and Debug、Extensions 等常见 sidebar 结构。
+- 当前查核的 VSCode 官方 UX 指南更支持“Activity Bar 对应真实 views”，也更强调谨慎使用 `WebviewView`。
 
 风险：
 
 - 原生 View 的布局表达力弱于自定义 Webview，信息密度必须进一步克制。
 - 如果保留过多直接动作，view title toolbar 会显得拥挤。
+- VSCode 扩展 API 没有给侧栏 view 暴露搜索视图那种原生 inline textbox，因此过滤编辑交互必须接受“条目展示 + 宿主输入框编辑”的实现边界。
 - 需要宿主提供一个面向侧栏的最小状态摘要，而不是让侧栏直接依赖画布 Webview 内部状态。
 
 ### 5.3 使用侧栏 `WebviewView` 承载迁出的内容
@@ -135,8 +141,8 @@ updated_at: 2026-04-14
 
 ## 6. 风险与取舍
 
-- 取舍：优先选择“单一原生侧栏 View”，而不是“四个侧栏大按钮”或“另一个 Webview 面板”。
-  原因：真正的目标是减少固定 chrome，而不是在别处复制一块新的固定面板。
+- 取舍：当前从“单一原生侧栏 View”进一步收口为“少量原生 view section”，而不是继续坚持一个 view 塞下所有内容。
+  原因：用户提供的 VSCode 参考图和官方 UX 指南都更接近 section 化 sidebar；把状态、过滤和动作硬塞进单个 view，只会重新长成不自然的自定义列表。
 
 - 风险：如果创建入口收口为一个主动作加对象类型选择，会比四个直接按钮多一步。
   当前缓解：这是有意换来的简洁度；只要创建入口足够稳定可达，这个额外一步是可接受的。
@@ -145,7 +151,7 @@ updated_at: 2026-04-14
   当前缓解：文档只定义“默认入口在主侧栏”，同时要求命令入口始终保留，避免把体验绑定到绝对左侧坐标。
 
 - 风险：如果侧栏展示对象列表、选中详情或长段说明，就会偏离“极简”和“非空间信息迁出”的初衷。
-  当前缓解：规格明确限制侧栏只承载打开、创建、恢复和最小状态摘要。
+  当前缓解：规格明确限制侧栏只承载打开、创建、恢复、文件过滤和最小状态摘要。
 
 ## 7. 当前结论
 
@@ -159,50 +165,65 @@ updated_at: 2026-04-14
 - 左上角和右上角不再承载说明、统计、创建和恢复入口。
 - 画布上的长段辅助说明、更新时间和验证范围文案都不再常驻。
 
-### 7.2 默认使用单一原生侧栏 View 作为宿主入口
+### 7.2 默认使用两个原生侧栏 View section 组成宿主入口
 
-- 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 入口。
-- 该入口下只保留一个最小 view，不拆分多个子视图。
-- 第一版已使用原生 `TreeView` 承载，而不是 `WebviewView`。
-- 侧栏动作收口为：
-  - 打开或定位画布
+- 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 容器。
+- 该容器当前收口为两个原生 view section：
+  - `概览`：展示画布状态摘要，并承载全局动作。
+  - `文件过滤`：展示 `Files to Include` / `Files to Exclude` 两个原生条目。
+- 两个 section 都继续使用原生 `TreeView` 承载，而不是 `WebviewView`。
+- 这样既保留了最小信息密度，也更贴近 VSCode 常见 sidebar section 风格。
+
+### 7.3 全局动作进入 view title toolbar，而不是树项大按钮
+
+- `概览` view title toolbar 承载：
+  - 打开画布
   - 创建对象
-  - 重置宿主状态
-- 侧栏状态收口为：
-  - workspace trust
-  - 画布是否可定位
-  - 节点总数
-  - 必要的执行状态摘要
+  - 重置宿主状态（进入 overflow 更合适）
+- 树项本身优先展示状态，不承担“大按钮式入口”职责。
+- 这样可以避免把 TreeView 伪装成按钮墙，也符合官方对 view title actions 的推荐用法。
 
-### 7.3 创建入口优先集中，而不是平铺四个常驻大按钮
+### 7.4 文件过滤以原生条目展示，编辑通过 item action + 宿主输入框完成
+
+- `文件过滤` section 只展示两个固定条目：
+  - `Files to Include`
+  - `Files to Exclude`
+- 条目直接显示当前 glob 摘要，hover 可看到完整值与“只影响投影、不改 `fileReferences`”说明。
+- 编辑入口放在 item inline/context action；动作触发后仍使用宿主 `showInputBox` 收集 glob。
+- 若当前过滤非空，可提供单独的 `clear` action。
+- 本轮明确放弃在 sidebar 内继续自绘搜索视图式 textbox，因为那会重新把原生 sidebar 做成一块 web app。
+
+### 7.5 创建入口优先集中，而不是平铺四个常驻大按钮
 
 - 第一版已把“创建对象”收口为一个稳定入口，再通过原生 QuickPick 选择 `Agent`、`Terminal`、`Note`。
 - 这样可以避免侧栏一打开就被四个常驻动作按钮占满，也更符合“极简侧栏”的目标。
 - 是否需要保留个别高频对象的快捷入口，留待后续人工验证与使用反馈再决定。
 
-### 7.4 与现有正式文档的关系
+### 7.6 与现有正式文档的关系
 
 - `docs/design-docs/canvas-feedback-polish.md` 中关于“顶角 panel 作为过渡态存在”的结论，已被本主题文档接管。
 - 旧文档仍保留“空画布”“底角控件不受遮挡”“新增节点默认避碰”这三项结论，但不再作为画布外层 chrome 的当前有效来源。
 
-### 7.5 当前实现边界
+### 7.7 当前实现边界
 
-- Extension Host 新增了一个原生侧栏容器和单一 `TreeView`，用于展示最小状态并承载打开、创建和重置入口。
+- Extension Host 当前提供一个原生侧栏容器，并在其中放置 `概览` / `文件过滤` 两个 `TreeView` section。
 - Webview 顶部的左上角 hero 与右上角 actions panel 已移除，画布中只保留底角控件和节点本体。
 - 当画布已在前台可见时，侧栏中的“创建对象”会通过 Host -> Webview 消息复用当前视口锚点；当画布尚未就绪时，宿主退回到默认锚点 + 避碰搜索。
+- 文件过滤当前以原生 tree item 展示；编辑通过 view item action 打开宿主输入框，不再在 sidebar 内渲染自定义 HTML 输入区域。
 
 ## 8. 验证方法
 
 至少需要完成以下验证，才能把当前实现从“验证中”推进到“已验证”：
 
-1. 在 VSCode `Extension Development Host` 中手动验证原生侧栏确实足以表达“打开画布 + 创建对象 + 重置状态 + 最小状态摘要”。
+1. 在 VSCode `Extension Development Host` 中手动验证两个原生 sidebar section 的结构、密度和交互是否足够贴近常见 VSCode Sidebar。
 2. 手动验证画布在移除顶角 panel 后，左上角和右上角确实回归为空白工作面，而不是被替代性浮层继续占据。
 3. 在窄编辑器宽度下对比新旧方案，确认画布顶部可用空间明显增加。
 4. 在 workspace 未受信任场景下，确认侧栏能正确禁用或降级执行型入口。
-5. 验证当用户折叠、移动或离开侧栏时，命令入口仍能完成打开画布、创建对象和重置状态。
+5. 验证 `Files to Include` / `Files to Exclude` 条目在 hover、编辑、清空和 reload 后都保持原生 sidebar 语义，而不是表现成自绘网页控件。
+6. 验证当用户折叠、移动或离开侧栏时，命令入口仍能完成打开画布、创建对象和重置状态。
 
 ## 9. 当前验证状态
 
-- 第一版实现已落地，当前采用“自定义 Activity Bar 容器 + 原生 `TreeView` + 单一创建入口 + QuickPick 选型”的组合。
+- 2026-04-20 已按最新 UX 反馈把 sidebar 从自绘 `WebviewView` 收口回原生 views/tree sections。
 - 自动化检查已完成：`npm run typecheck` 与 `npm run build` 通过。
 - 当前尚未在 `Extension Development Host` 中完成这一轮人工验证，因此继续保持“验证中”。

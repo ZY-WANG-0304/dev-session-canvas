@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { locateCodexSessionId } from './common/codexSessionIdLocator';
-import { COMMAND_IDS, CONFIG_KEYS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
+import { COMMAND_IDS, CONFIG_KEYS, EXTENSION_DISPLAY_NAME, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import {
   isAgentProviderKind,
   isCanvasCreatableNodeKind,
@@ -36,11 +36,14 @@ interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
   activePanelManager = panelManager;
-  const sidebarView = new CanvasSidebarView(panelManager);
+  const sidebarSummaryView = new CanvasSidebarView(panelManager, 'summary');
+  const sidebarFilterView = new CanvasSidebarView(panelManager, 'filters');
 
   context.subscriptions.push(
-    sidebarView,
-    vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarView)
+    sidebarSummaryView,
+    sidebarFilterView,
+    vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
+    vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarFilters, sidebarFilterView)
   );
 
   registerCommand(context, COMMAND_IDS.openCanvas, async () => {
@@ -79,6 +82,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
     await panelManager.resetState();
   });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.editFileIncludeFilter, async (value?: unknown) => {
+      await updateCanvasFileFilterFromCommand(panelManager, 'include', value);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.editFileExcludeFilter, async (value?: unknown) => {
+      await updateCanvasFileFilterFromCommand(panelManager, 'exclude', value);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.clearFileIncludeFilter, () => {
+      panelManager.updateCanvasFileFilterState('include', []);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.clearFileExcludeFilter, () => {
+      panelManager.updateCanvasFileFilterState('exclude', []);
+    })
+  );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager, {
@@ -239,6 +257,61 @@ function describeNodeKind(kind: CanvasCreatableNodeKind): string {
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+async function updateCanvasFileFilterFromCommand(
+  panelManager: CanvasPanelManager,
+  kind: 'include' | 'exclude',
+  value?: unknown
+): Promise<void> {
+  const providedGlobs = parseCanvasFileFilterCommandValue(value);
+  if (providedGlobs) {
+    panelManager.updateCanvasFileFilterState(kind, providedGlobs);
+    return;
+  }
+
+  const currentState = panelManager.getCanvasFileFilterState();
+  const currentGlobs = kind === 'include' ? currentState.includeGlobs : currentState.excludeGlobs;
+  const input = await vscode.window.showInputBox({
+    title: `${EXTENSION_DISPLAY_NAME}: 编辑文件 ${kind === 'include' ? 'Include' : 'Exclude'} 过滤`,
+    prompt:
+      kind === 'include'
+        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改 fileReferences。'
+        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改 fileReferences。',
+    placeHolder: kind === 'include' ? '例如 src/**/*.ts, docs/**/*.md' : '例如 **/dist/**, **/*.snap',
+    value: currentGlobs.join(', ')
+  });
+  if (input === undefined) {
+    return;
+  }
+
+  panelManager.updateCanvasFileFilterState(kind, splitCanvasFileFilterInput(input));
+}
+
+function parseCanvasFileFilterCommandValue(value: unknown): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    return splitCanvasFileFilterInput(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  return undefined;
+}
+
+function splitCanvasFileFilterInput(value: string): string[] {
+  return value
+    .split(/[,\n，；;]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function registerTestCommands(context: vscode.ExtensionContext, panelManager: CanvasPanelManager): void {

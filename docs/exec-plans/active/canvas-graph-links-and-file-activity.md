@@ -30,6 +30,11 @@
 - [x] (2026-04-19 19:36 +0800) 根据手工验收反馈进一步收口为两套独立控件：工具条改成按路径上方区域独立定位，标签显示改为贴线纯文本，标签编辑改为独立轻输入框，并同步规格与设计文档。
 - [x] (2026-04-19 19:48 +0800) 继续收口标签观感：编辑态输入框宽度改成按当前文本内容自适应，显示态为文本下方加轻量遮罩，避免出现“线从字上穿过”的观感，并补充相应的 Playwright 断言。
 - [x] (2026-04-20 00:40 +0800) 修复文件活动退出竞态：把 agent 文件活动 watcher 的关闭语义从“立即停表并删临时目录”改成“先 drain/settle，再清理”，并补一条 fake provider `readexit` 回归，覆盖“读事件刚落盘就退出”的路径。
+- [x] (2026-04-20 03:40 +0800) 按 review 收口文件活动视图：编辑区点击文件改为落到独立 editor group；`include` / `exclude` 从 settings 迁到 sidebar 持久化视图状态，并确保过滤只影响投影、不回写 `fileReferences`；同步修正文档并登记 file icon theme 技术债。
+- [x] (2026-04-20 08:36 +0800) 按最新 UX 要求把 sidebar 过滤控件从 TreeView 文本项切到内嵌 Webview 输入框，交互改成贴近 VSCode Search 视图的 include/exclude 编辑体验，并同步规格与设计文档。
+- [x] (2026-04-20 09:05 +0800) 重新调研 VSCode 官方 `Sidebars`、`Views`、`Tree View` 与 `Webviews` 文档，并结合用户提供的 Source Control / Run and Debug / Extensions 参考图，确认 sidebar 需要放弃 `WebviewView` 模拟，改回原生 section 化实现。
+- [x] (2026-04-20 09:05 +0800) 完成 sidebar 重构与文档回写：把单一 sidebar `WebviewView` 改为 `概览` / `文件过滤` 两个原生 `TreeView` section；过滤入口改为 `Files to Include` / `Files to Exclude` 条目 + item action + 宿主输入框。
+- [x] (2026-04-20 09:05 +0800) 重新执行 `npm run typecheck` 与 `npm run build`，确认本轮 sidebar redesign 通过基础自动化校验。
 
 ## 意外与发现
 
@@ -39,8 +44,12 @@
   证据：官方文档说明 hooks 可监听 `PreToolUse` / `PostToolUse`，CLI 同时支持 `--settings` 参数注入临时配置。
 - 观察：VSCode Webview 没有直接给任意 workspace 文件渲染当前 file icon theme 图标的单一 API。
   证据：当前仓库和公开 API 都只有 `TreeItem` / `ThemeIcon` 等宿主控件能力；Webview 侧仍需由宿主先把主题资源解析成可显示描述。
+- 观察：当前实现实际只提供少量基于扩展名的固定 `codicon` 映射，并没有完成“复用当前 VSCode File Icon Theme”的宿主解析层。
+  证据：`src/panel/CanvasPanelManager.ts` 当前只通过 `createDefaultFileIconDescriptor()` 对少量扩展名返回固定 `codicon`，没有读取 icon theme contribution 或主题 JSON。
 - 观察：文件活动 watcher 原先在 agent 退出时会立刻停掉 `fs.watch` / polling 并删除 session 临时目录；若 `Read` 事件刚 append 到 NDJSON 而 host 还未来得及 flush，就会在关闭路径里被直接吃掉，因此表现成“读不稳定、写更稳定”。
   证据：`src/panel/agentFileActivity.ts` 旧实现里 `dispose()` 先停 watcher 再删目录；`src/panel/CanvasPanelManager.ts` 旧实现里本地 agent `onExit` 进入 `finalize()` 后立即调用 `disposeAgentFileActivitySession(nodeId)`。
+- 观察：即使在颜色、间距和 token 上尽量贴近 VSCode，整块自绘 sidebar `WebviewView` 仍然会和 Source Control、Run and Debug、Extensions 这些原生 sidebar section 形成明显观感断层。
+  证据：2026-04-20 用户提供的参考图直接要求对齐常见 sidebar 风格；同日复查 VSCode 官方 `Sidebars` / `Views` / `Webviews` 指南后，也确认 sidebar 区域应优先使用原生 view / tree，而不是继续模拟宿主控件。
 
 ## 决策记录
 
@@ -54,9 +63,18 @@
 - 决策：第一轮自动文件活动正式支持 `Claude` 与 `fake-agent-provider`，`Codex` 保留 no-op adapter。
   理由：当前只有 Claude hooks 路线具备已确认的 provider 原生结构化工具事件；Codex 在本仓库里尚无同等证据。
   日期/作者：2026-04-19 / Codex
-- 决策：文件图标优先解析当前 file icon theme，失败时回退到通用文件图标，而不是阻塞整个功能。
-  理由：用户需求明确要求复用 VSCode Icon Theme，但 Webview 无单一现成 API；采用“尽量复用 + 明确回退”比发明一套固定私有图标更符合 VSCode 语境。
-  日期/作者：2026-04-19 / Codex
+- 决策：`include` / `exclude` 过滤迁到 sidebar 持久化视图状态，并且只影响文件对象投影，不写回 `fileReferences`。
+  理由：`fileReferences` 是文件活动权威状态；如果把过滤后的结果回写进去，就会把纯视图控制误当成事实来源，和本轮状态分层目标冲突。
+  日期/作者：2026-04-20 / Codex
+- 决策：sidebar 从单一 `WebviewView` 收口为两个原生 `TreeView` section：`概览` 负责动作与状态摘要，`文件过滤` 负责展示和编辑 `Files to Include` / `Files to Exclude`。
+  理由：VSCode 官方 `Sidebars` / `Views` / `Tree View` 指南与用户提供的原生参考图都表明，sidebar 区域应优先使用原生 section 化视图；继续在这里自绘整块 webview，只会放大和宿主 Sidebar 的 UI/UX 偏差。
+  日期/作者：2026-04-20 / Codex
+- 决策：`include` / `exclude` 不再追求 Search 视图式内嵌 textbox 克隆，而改为“TreeView 条目展示 + item action 打开宿主 `showInputBox`”。
+  理由：扩展 API 没有提供 Search 视图那种原生 inline input；强行自绘会重新把 sidebar 做成 mini web app，并破坏原生 sidebar 质感。
+  日期/作者：2026-04-20 / Codex
+- 决策：本轮不把“完整复用当前 VSCode File Icon Theme”写成已实现；当前只保留有限的扩展名 `codicon` 映射，并把完整 theme parity 记为技术债。
+  理由：review 已确认现有代码还没有真正的 theme 解析层；继续沿用“已实现”表述会造成正式文档漂移。
+  日期/作者：2026-04-20 / Codex
 - 决策：连线编辑主路径从右键菜单收口为“选中态轻量编辑台 + 双击原位标签编辑”，并保持 VSCode Workbench 风格。
   理由：右键菜单与胶囊占位会制造“可见但不可直接编辑”的错觉，也偏离当前仓库整体的 Workbench 原生化方向；选中态轻量编辑台更贴近画布中对象级操作的主路径。
   日期/作者：2026-04-19 / Codex
@@ -77,6 +95,12 @@
 验证上，Webview 现在有针对手工 edge、文件节点和文件列表节点的独立 Playwright 覆盖；宿主 smoke 覆盖了手工 edge 生命周期、fake provider 文件活动、展示模式切换、点击打开文件，以及删除 Agent 后的文件对象清理。过程中发现一条既有 smoke 断言把“可恢复”错误地绑定到了单一瞬时 status 文案；改成检查真正的不变量后，整条 trusted smoke 恢复通过。
 
 本轮补丁没有改变文件活动的权威模型，也没有引入新的 provider 能力；它只收紧了“事件已落盘但 host 尚未消费”这段退出窗口。当前实现会在关闭 session 时额外保留一个短暂 settle 窗口，持续 drain NDJSON，再删除临时目录；trusted smoke 现已覆盖 `readexit` 这种“读事件后立即退出”的主路径。
+
+按 review 收口后，文件活动视图又补上两条宿主边界。第一条是“编辑区点击文件不覆盖画布组”：当画布承载在编辑区时，文件打开统一走相邻 editor group；如果当前没有 split editor，就由宿主隐式创建一列再打开。第二条是“过滤不改真相”：`include` / `exclude` 不再暴露为 settings，而是迁到 sidebar 作为持久化视图状态；宿主现在只用它裁剪文件节点 / 文件列表节点 / 自动边的显示投影，`fileReferences` 继续保留完整权威数据。
+
+在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；但结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃。当前实现已经收口为两个原生 section：`概览` 用 view title toolbar 承载打开画布、创建对象和重置状态；`文件过滤` 用原生 TreeView 条目展示 `Files to Include` / `Files to Exclude`，编辑则通过 item action 打开宿主输入框完成。这样既保留“过滤不改真相”的状态分层，也把 sidebar 的 UI/UX 收回到更接近 VSCode 常见侧栏的宿主风格。
+
+同时，本轮把文件图标口径从“尽量复用当前 file icon theme”改回与代码一致的事实描述：当前实现只有少量常见扩展名对应的固定 `codicon`，其余统一回退到通用文件图标。完整 file icon theme parity 已登记为技术债，避免后续协作者被文档误导。
 
 ## 上下文与定向
 
@@ -157,6 +181,9 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：失败；当前卡在文件节点点击打开文件后的 panel 焦点保持断言，失败点位于 `tests/vscode-smoke/extension-tests.cjs` 的 `verifyFileActivityViewsAndOpenFiles()`，与新增 `readexit` drain 路径本身无直接冲突。
+- 2026-04-20 sidebar redesign 增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。
