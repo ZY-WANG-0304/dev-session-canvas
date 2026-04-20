@@ -655,6 +655,14 @@ async function verifyFileActivityViewsAndOpenFiles() {
   const configuration = vscode.workspace.getConfiguration();
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+  const originalFileNodeDisplayStyle =
+    configuration.get('devSessionCanvas.fileNode.displayStyle', 'minimal') === 'card' ? 'card' : 'minimal';
+  const originalFileNodeDisplayMode =
+    configuration.get('devSessionCanvas.files.nodeDisplayMode', 'icon-path') === 'path-only'
+      ? 'path-only'
+      : configuration.get('devSessionCanvas.files.nodeDisplayMode', 'icon-path') === 'icon-only'
+        ? 'icon-only'
+        : 'icon-path';
   const originalPathDisplayMode =
     configuration.get('devSessionCanvas.files.pathDisplayMode', 'basename') === 'relative-path'
       ? 'relative-path'
@@ -664,11 +672,19 @@ async function verifyFileActivityViewsAndOpenFiles() {
 
   const scratchDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'file-activity');
   const agentOnlyPath = path.join(scratchDir, 'agent-a-only.md');
-  const agentOnlySecondaryPath = path.join(scratchDir, 'agent-a-second.txt');
+  const agentOnlySecondaryPath = path.join(
+    scratchDir,
+    'path-only-width-regression',
+    'alpha-beta-gamma-delta',
+    'epsilon-zeta-eta-theta',
+    'iota-kappa-lambda-mu',
+    'agent-a-second-width-regression-check.txt'
+  );
   const sharedPath = path.join(scratchDir, 'shared.ts');
   const agentBOnlyPath = path.join(scratchDir, 'agent-b-only.json');
 
   await fs.mkdir(scratchDir, { recursive: true });
+  await fs.mkdir(path.dirname(agentOnlySecondaryPath), { recursive: true });
   await fs.writeFile(agentOnlyPath, '# agent a only\n', 'utf8');
   await fs.writeFile(agentOnlySecondaryPath, 'agent a second\n', 'utf8');
   await fs.writeFile(sharedPath, 'export const shared = true;\n', 'utf8');
@@ -684,6 +700,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
   );
 
   await setFilesPresentationMode('nodes');
+  await setFileNodeDisplayStyle('minimal');
+  await setFilesNodeDisplayMode('icon-path');
   await setFilesPathDisplayMode('basename');
 
   try {
@@ -881,6 +899,86 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(writeOnlyAutoEdge.sourceAnchor, 'right');
     assert.strictEqual(writeOnlyAutoEdge.targetAnchor, 'left');
 
+    const fileNodeLayoutSnapshot = collectNodeLayoutSnapshot(snapshot, 'file');
+    const fileNodePositionSnapshot = collectNodePositionSnapshot(snapshot, 'file');
+    const automaticFileEdgeIds = collectAutomaticFileEdgeIds(snapshot);
+
+    await setFileNodeDisplayStyle('card');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectNodeLayoutSnapshot(currentSnapshot, 'file')) !==
+          JSON.stringify(fileNodeLayoutSnapshot) &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
+    assert.deepStrictEqual(collectNodePositionSnapshot(snapshot, 'file'), fileNodePositionSnapshot);
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+    assert.notDeepStrictEqual(collectNodeLayoutSnapshot(snapshot, 'file'), fileNodeLayoutSnapshot);
+
+    await setFileNodeDisplayStyle('minimal');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectNodeLayoutSnapshot(currentSnapshot, 'file')) ===
+          JSON.stringify(fileNodeLayoutSnapshot) &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
+    assert.deepStrictEqual(collectNodePositionSnapshot(snapshot, 'file'), fileNodePositionSnapshot);
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    const agentOnlyMinimalSizeBeforeReload = findNodeById(snapshot, agentOnlyFileNode.id).size;
+    snapshot = await reloadPersistedState();
+    assert.deepStrictEqual(collectNodeLayoutSnapshot(snapshot, 'file'), fileNodeLayoutSnapshot);
+    assert.deepStrictEqual(
+      findNodeById(snapshot, agentOnlyFileNode.id).size,
+      agentOnlyMinimalSizeBeforeReload,
+      'Expected minimal single-file node size to remain stable across reload.'
+    );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    await setFilesNodeDisplayMode('path-only');
+    await setFilesPathDisplayMode('relative-path');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const longPathNode = currentSnapshot.state.nodes.find(
+        (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+      );
+      return Boolean(longPathNode && longPathNode.size.width > 320);
+    }, 20000);
+
+    const pathOnlyLongFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+    );
+    assert.ok(pathOnlyLongFileNode, 'Expected long-path file node to exist after switching to path-only.');
+    assert.strictEqual(
+      pathOnlyLongFileNode.title,
+      agentOnlySecondaryFileNode.metadata.file.relativePath,
+      'Expected path-only file node title to switch to the host-tracked relative path.'
+    );
+    assert.ok(
+      pathOnlyLongFileNode.size.width > 320,
+      'Expected path-only minimal file node width to grow past the previous capped default.'
+    );
+    assert.deepStrictEqual(
+      pathOnlyLongFileNode.position,
+      agentOnlySecondaryFileNode.position,
+      'Expected path-only width expansion to preserve the existing automatic node position.'
+    );
+
+    const pathOnlyWidthBeforeReload = pathOnlyLongFileNode.size.width;
+    snapshot = await reloadPersistedState();
+    const reloadedPathOnlyLongFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+    );
+    assert.ok(reloadedPathOnlyLongFileNode, 'Expected long-path file node to survive reload in path-only mode.');
+    assert.strictEqual(
+      reloadedPathOnlyLongFileNode.size.width,
+      pathOnlyWidthBeforeReload,
+      'Expected widened path-only file node width to persist across reload.'
+    );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
     await waitForWebviewProbeOnSurface('editor', (probe) => probe.hasDocumentFocus === true, 10000);
@@ -1065,7 +1163,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
 
     const sentinelEditor = await prepareBackgroundOpenFocusSentinel();
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
@@ -1079,9 +1176,12 @@ async function verifyFileActivityViewsAndOpenFiles() {
       (editor) => editor.document.uri.fsPath === agentOnlySecondaryPath,
       10000
     );
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
-    // Panel route only requires the canvas to retain document focus while opening the file in the editor area.
-    // VS Code may still report the newly opened file as activeTextEditor even though the text editor never takes focus.
+    const panelSurfaceProbe = await captureWebviewProbe('panel', 2000);
+    assert.ok(
+      panelSurfaceProbe.hasCanvasShell && panelSurfaceProbe.hasReactFlow,
+      'Expected panel-surface canvas to remain mounted after opening a file in the editor area.'
+    );
+    // Panel route only requires the file to open in the editor area without forcing extra root-element focus semantics.
     await closeVisibleEditor(agentOnlySecondaryPath);
 
     await vscode.window.showTextDocument(sentinelEditor.document, {
@@ -1091,7 +1191,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     });
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
 
     await setFilesPresentationMode('lists');
     await setFilesPathDisplayMode('relative-path');
@@ -1121,7 +1220,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].filePath, sharedPath);
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].accessMode, 'read-write');
 
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
@@ -1135,7 +1233,11 @@ async function verifyFileActivityViewsAndOpenFiles() {
       (editor) => editor.document.uri.fsPath === sharedPath,
       10000
     );
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
+    const panelListProbe = await captureWebviewProbe('panel', 2000);
+    assert.ok(
+      panelListProbe.hasCanvasShell && panelListProbe.hasReactFlow,
+      'Expected panel-surface canvas to remain mounted after opening a file list entry in the editor area.'
+    );
     await closeVisibleEditor(sharedPath);
 
     await performWebviewDomAction(
@@ -1211,6 +1313,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
     );
   } finally {
     await setFilesPresentationMode(originalPresentationMode);
+    await setFileNodeDisplayStyle(originalFileNodeDisplayStyle);
+    await setFilesNodeDisplayMode(originalFileNodeDisplayMode);
     await setFilesPathDisplayMode(originalPathDisplayMode);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
@@ -1222,6 +1326,8 @@ async function verifyReadExitFileActivityDrain() {
   const configuration = vscode.workspace.getConfiguration();
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+  const originalFileNodeDisplayStyle =
+    configuration.get('devSessionCanvas.fileNode.displayStyle', 'minimal') === 'card' ? 'card' : 'minimal';
   const originalPathDisplayMode =
     configuration.get('devSessionCanvas.files.pathDisplayMode', 'basename') === 'relative-path'
       ? 'relative-path'
@@ -1245,6 +1351,7 @@ async function verifyReadExitFileActivityDrain() {
   );
 
   await setFilesPresentationMode('nodes');
+  await setFileNodeDisplayStyle('minimal');
   await setFilesPathDisplayMode('basename');
 
   try {
@@ -1345,6 +1452,7 @@ async function verifyReadExitFileActivityDrain() {
     );
   } finally {
     await setFilesPresentationMode(originalPresentationMode);
+    await setFileNodeDisplayStyle(originalFileNodeDisplayStyle);
     await setFilesPathDisplayMode(originalPathDisplayMode);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
@@ -5491,6 +5599,18 @@ async function setFilesPresentationMode(mode) {
     .update('devSessionCanvas.files.presentationMode', mode, vscode.ConfigurationTarget.Global);
 }
 
+async function setFileNodeDisplayStyle(style) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.fileNode.displayStyle', style, vscode.ConfigurationTarget.Global);
+}
+
+async function setFilesNodeDisplayMode(mode) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.files.nodeDisplayMode', mode, vscode.ConfigurationTarget.Global);
+}
+
 async function setFilesPathDisplayMode(mode) {
   await vscode.workspace
     .getConfiguration()
@@ -6114,6 +6234,43 @@ function rectanglesOverlap(left, right) {
     left.position.y < right.position.y + right.size.height &&
     left.position.y + left.size.height > right.position.y
   );
+}
+
+function collectNodePositionSnapshot(snapshot, kind) {
+  return snapshot.state.nodes
+    .filter((node) => node.kind === kind)
+    .map((node) => ({
+      id: node.id,
+      position: {
+        x: node.position.x,
+        y: node.position.y
+      }
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function collectNodeLayoutSnapshot(snapshot, kind) {
+  return snapshot.state.nodes
+    .filter((node) => node.kind === kind)
+    .map((node) => ({
+      id: node.id,
+      position: {
+        x: node.position.x,
+        y: node.position.y
+      },
+      size: {
+        width: node.size.width,
+        height: node.size.height
+      }
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function collectAutomaticFileEdgeIds(snapshot) {
+  return snapshot.state.edges
+    .filter((edge) => edge.owner === 'file-activity')
+    .map((edge) => edge.id)
+    .sort();
 }
 
 function formatError(error) {

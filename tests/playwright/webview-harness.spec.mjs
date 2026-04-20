@@ -22,6 +22,12 @@ const WORKBENCH_THEME_VARS = {
     '--vscode-panel-border': '#454545',
     '--vscode-widget-border': '#454545',
     '--vscode-focusBorder': '#0078d4',
+    '--vscode-list-hoverBackground': '#2a2d2e',
+    '--vscode-list-hoverForeground': '#cccccc',
+    '--vscode-list-activeSelectionBackground': '#04395e',
+    '--vscode-list-activeSelectionForeground': '#ffffff',
+    '--vscode-list-inactiveSelectionBackground': '#37373d',
+    '--vscode-list-inactiveSelectionForeground': '#cccccc',
     '--vscode-descriptionForeground': '#9d9d9d',
     '--vscode-icon-foreground': '#c5c5c5',
     '--vscode-button-background': '#0e639c',
@@ -70,6 +76,12 @@ const WORKBENCH_THEME_VARS = {
     '--vscode-panel-border': '#c8c8c8',
     '--vscode-widget-border': '#c8c8c8',
     '--vscode-focusBorder': '#005fb8',
+    '--vscode-list-hoverBackground': '#f0f0f0',
+    '--vscode-list-hoverForeground': '#1f1f1f',
+    '--vscode-list-activeSelectionBackground': '#cce8ff',
+    '--vscode-list-activeSelectionForeground': '#1f1f1f',
+    '--vscode-list-inactiveSelectionBackground': '#e5ebf1',
+    '--vscode-list-inactiveSelectionForeground': '#1f1f1f',
     '--vscode-descriptionForeground': '#616161',
     '--vscode-icon-foreground': '#424242',
     '--vscode-button-background': '#005fb8',
@@ -702,14 +714,15 @@ test('file activity edges expose the same toolbar actions as manual edges', asyn
   });
 });
 
-test('file nodes render file metadata and open the target file through the host message', async ({ page }) => {
+test('minimal file nodes render only the primary label and open the target file through the host message', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
-  await bootstrap(page, createFileNodeState());
+  await bootstrap(page, createFileNodeState(), createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
 
   const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode).toHaveClass(/display-style-minimal/);
   await expect(fileNode.locator('.file-node-copy strong')).toContainText('main.ts');
-  await expect(fileNode.locator('.file-node-copy span')).toContainText('src/main.ts');
+  await expect(fileNode.locator('.file-node-copy span')).toHaveCount(0);
   await expect(fileNode.locator('.file-node-icon .codicon-symbol-file')).toHaveCount(1);
   await expect.poll(async () => (await readProbeEdge(page, 'agent-1::file-src-main', 20))?.owner ?? null).toBe(
     'file-activity'
@@ -723,6 +736,327 @@ test('file nodes render file metadata and open the target file through the host 
     nodeId: 'file-src-main',
     filePath: '/workspace/src/main.ts'
   });
+});
+
+test('card file nodes do not fall back to owner counts when no secondary path label exists', async ({ page }) => {
+  const state = createFileNodeState();
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-src-main' && node.metadata?.file
+      ? {
+          ...node,
+          metadata: {
+            ...node.metadata,
+            file: {
+              ...node.metadata.file,
+              relativePath: undefined
+            }
+          }
+        }
+      : node
+  );
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      fileNodeDisplayStyle: 'card',
+      filePathDisplayMode: 'relative-path'
+    })
+  );
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode).toHaveClass(/display-style-card/);
+  await expect(fileNode.locator('.file-node-copy strong')).toContainText('/workspace/src/main.ts');
+  await expect(fileNode.locator('.file-node-copy span')).toHaveCount(0);
+  await expect(fileNode).not.toContainText('1 个 Agent 引用');
+});
+
+test('minimal file nodes keep a compact, tight border around the rendered content', async ({ page }) => {
+  const state = createFileNodeState();
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-src-main'
+      ? {
+          ...node,
+          size: { width: 150, height: 48 }
+        }
+      : node
+  );
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state, createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode.locator('.file-node-action')).toHaveClass(/file-node-action-minimal/);
+  const styles = await page.evaluate(() => {
+    const root = document.querySelector('[data-node-id="file-src-main"]');
+    const action = root?.querySelector('.file-node-action');
+    const icon = root?.querySelector('.file-node-icon');
+    if (!(root instanceof HTMLElement) || !(action instanceof HTMLElement) || !(icon instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rootStyles = getComputedStyle(root);
+    const actionStyles = getComputedStyle(action);
+    const iconStyles = getComputedStyle(icon);
+    return {
+      boxShadow: rootStyles.boxShadow,
+      paddingTop: actionStyles.paddingTop,
+      paddingRight: actionStyles.paddingRight,
+      paddingBottom: actionStyles.paddingBottom,
+      paddingLeft: actionStyles.paddingLeft,
+      iconWidth: iconStyles.width,
+      iconFontSize: iconStyles.fontSize
+    };
+  });
+  expect(styles).not.toBeNull();
+  expect(styles.boxShadow).toBe('none');
+  expect(styles.paddingTop).toBe('3px');
+  expect(styles.paddingRight).toBe('6px');
+  expect(styles.paddingBottom).toBe('3px');
+  expect(styles.paddingLeft).toBe('6px');
+  expect(styles.iconWidth).toBe('14px');
+  expect(styles.iconFontSize).toBe('14px');
+});
+
+test('minimal path-only file nodes fit the label without reserving an empty trailing grid column', async ({ page }) => {
+  const state = createFileNodeState();
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-src-main'
+      ? {
+          ...node,
+          title: 'arch_10.md',
+          size: { width: 1, height: 1 },
+          metadata: {
+            ...node.metadata,
+            file: {
+              ...node.metadata.file,
+              filePath: '/workspace/docs/arch_10.md',
+              relativePath: 'docs/arch_10.md'
+            }
+          }
+        }
+      : node
+  );
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      fileNodeDisplayStyle: 'minimal',
+      fileNodeDisplayMode: 'path-only',
+      filePathDisplayMode: 'basename'
+    })
+  );
+
+  const metrics = await page.evaluate(() => {
+    const root = document.querySelector('[data-node-id="file-src-main"]');
+    const action = root?.querySelector('.file-node-action');
+    const label = root?.querySelector('.file-node-copy strong');
+    if (!(root instanceof HTMLElement) || !(action instanceof HTMLElement) || !(label instanceof HTMLElement)) {
+      return null;
+    }
+
+    const actionStyles = getComputedStyle(action);
+    const paddingLeft = Number.parseFloat(actionStyles.paddingLeft);
+    const paddingRight = Number.parseFloat(actionStyles.paddingRight);
+    return {
+      rootWidth: root.offsetWidth,
+      actionWidth: action.clientWidth,
+      labelWidth: label.clientWidth,
+      slack: action.clientWidth - paddingLeft - paddingRight - label.clientWidth,
+      gridTemplateColumns: actionStyles.gridTemplateColumns,
+      scrollWidth: label.scrollWidth,
+      clientWidth: label.clientWidth
+    };
+  });
+
+  expect(metrics).not.toBeNull();
+  expect(metrics.gridTemplateColumns).not.toContain('1fr');
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.slack).toBeLessThan(8);
+});
+
+test('minimal icon-path file nodes keep a tight right edge around the icon and basename', async ({ page }) => {
+  const state = createFileNodeState();
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-src-main'
+      ? {
+          ...node,
+          title: 'arch_10.md',
+          size: { width: 1, height: 1 },
+          metadata: {
+            ...node.metadata,
+            file: {
+              ...node.metadata.file,
+              filePath: '/workspace/docs/arch_10.md',
+              relativePath: 'docs/arch_10.md'
+            }
+          }
+        }
+      : node
+  );
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      fileNodeDisplayStyle: 'minimal',
+      fileNodeDisplayMode: 'icon-path',
+      filePathDisplayMode: 'basename'
+    })
+  );
+
+  const metrics = await page.evaluate(() => {
+    const root = document.querySelector('[data-node-id="file-src-main"]');
+    const action = root?.querySelector('.file-node-action');
+    const icon = root?.querySelector('.file-node-icon');
+    const label = root?.querySelector('.file-node-copy strong');
+    if (
+      !(root instanceof HTMLElement) ||
+      !(action instanceof HTMLElement) ||
+      !(icon instanceof HTMLElement) ||
+      !(label instanceof HTMLElement)
+    ) {
+      return null;
+    }
+
+    const actionStyles = getComputedStyle(action);
+    const paddingLeft = Number.parseFloat(actionStyles.paddingLeft);
+    const paddingRight = Number.parseFloat(actionStyles.paddingRight);
+    const gap = Number.parseFloat(actionStyles.columnGap);
+    return {
+      rootWidth: root.offsetWidth,
+      slack: action.clientWidth - paddingLeft - paddingRight - icon.offsetWidth - gap - label.clientWidth,
+      gridTemplateColumns: actionStyles.gridTemplateColumns,
+      scrollWidth: label.scrollWidth,
+      clientWidth: label.clientWidth
+    };
+  });
+
+  expect(metrics).not.toBeNull();
+  expect(metrics.gridTemplateColumns).not.toContain('1fr');
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.slack).toBeLessThan(10);
+});
+
+test('minimal file nodes keep a content-fitting minimum size when manually resized', async ({ page }) => {
+  const state = createFileNodeState();
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-src-main'
+      ? {
+          ...node,
+          size: { width: 96, height: 32 }
+        }
+      : node
+  );
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state, createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
+  await performTestDomAction(page, {
+    kind: 'selectNode',
+    nodeId: 'file-src-main'
+  });
+  await clearPostedMessages(page);
+
+  const fileNode = nodeById(page, 'file-src-main');
+  const handle = fileNode.locator('.canvas-node-resize-handle.bottom.right');
+  await expect(handle).toBeVisible();
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2,
+    handleBox.y + handleBox.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2 - 128,
+    handleBox.y + handleBox.height / 2 - 24,
+    { steps: 12 }
+  );
+  await page.mouse.up();
+
+  let nextLayout = null;
+  await expect
+    .poll(async () => {
+      const layout = await page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/resizeNode' && entry.payload.nodeId === 'file-src-main');
+
+        return message
+          ? {
+              position: message.payload.position,
+              size: message.payload.size
+            }
+          : null;
+      });
+      if (!layout) {
+        return null;
+      }
+
+      nextLayout = layout;
+      return 'matched';
+    })
+    .toBe('matched');
+
+  expect(nextLayout.size.width).toBeGreaterThanOrEqual(98);
+  expect(nextLayout.size.height).toBeGreaterThanOrEqual(24);
+  expect(nextLayout.size.width).toBeLessThanOrEqual(104);
+  expect(nextLayout.size.height).toBeLessThanOrEqual(28);
+
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-src-main'
+      ? {
+          ...node,
+          position: nextLayout.position,
+          size: nextLayout.size
+        }
+      : node
+  );
+  await updateHostState(page, state, createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
+
+  const probeNode = await waitForProbeNodeMatch(
+    page,
+    'file-src-main',
+    (node) =>
+      typeof node?.renderedWidth === 'number' &&
+      typeof node?.renderedHeight === 'number' &&
+      node.renderedWidth >= 98 &&
+      node.renderedHeight >= 24
+  );
+  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(98);
+  expect(probeNode.renderedHeight).toBeGreaterThanOrEqual(24);
+
+  const labelFits = await page.evaluate(() => {
+    const label = document.querySelector('[data-node-id="file-src-main"] .file-node-copy strong');
+    if (!(label instanceof HTMLElement)) {
+      return null;
+    }
+
+    return label.scrollWidth <= label.clientWidth;
+  });
+  expect(labelFits).toBe(true);
+});
+
+test('file nodes do not add a hover overlay to their clickable surface', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState(), createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
+
+  const action = nodeById(page, 'file-src-main').locator('.file-node-action');
+  await action.hover();
+
+  const backgroundColor = await action.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(backgroundColor).toBe('rgba(0, 0, 0, 0)');
 });
 
 test('selected file nodes can be deleted with the Delete key', async ({ page }) => {
@@ -967,15 +1301,100 @@ test('file list nodes render entries and open clicked file entries through the h
   await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
 
   const fileListNode = nodeById(page, 'file-list-shared');
+  await expect(fileListNode).toHaveClass(/display-style-minimal/);
   await expect(fileListNode.locator('.file-list-title-text')).toContainText('共享文件');
   await expect(fileListNode.locator('.file-list-entry')).toHaveCount(2);
   await expect(fileListNode.locator('.file-list-entry').first()).toContainText('src/shared.ts');
-  await expect(fileListNode.locator('.file-list-entry').first().locator('.file-access-badge')).toContainText('读写');
-  await expect(fileListNode.locator('.file-list-entry').nth(1).locator('.file-access-badge')).toContainText('写');
+  await expect(fileListNode.locator('.file-list-entry').first().locator('.file-access-indicator')).toContainText('RW');
+  await expect(fileListNode.locator('.file-list-entry').nth(1).locator('.file-access-indicator')).toContainText('W');
+  const secondEntryBorderTopWidth = await page.evaluate(() => {
+    const entry = document.querySelector('[data-node-id="file-list-shared"] .file-list-entry:nth-of-type(2)');
+    return entry instanceof HTMLElement ? getComputedStyle(entry).borderTopWidth : null;
+  });
+  expect(secondEntryBorderTopWidth).toBe('0px');
   await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(2);
 
   await clearPostedMessages(page);
   await fileListNode.locator('.file-list-entry').filter({ hasText: 'src/shared.ts' }).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({
+    nodeId: 'file-list-shared',
+    filePath: '/workspace/src/shared.ts'
+  });
+});
+
+test('file list entries follow VS Code list hover, active selection, and inactive selection colors', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
+
+  const entry = nodeById(page, 'file-list-shared').locator('.file-list-entry').filter({ hasText: 'src/shared.ts' });
+  const readEntryVisualState = async () =>
+    page.evaluate(() => {
+      const target = Array.from(document.querySelectorAll('[data-node-id="file-list-shared"] .file-list-entry')).find((candidate) =>
+        candidate.textContent?.includes('src/shared.ts')
+      );
+      if (!(target instanceof HTMLElement)) {
+        return null;
+      }
+
+      const styles = getComputedStyle(target);
+      return {
+        backgroundColor: styles.backgroundColor,
+        color: styles.color,
+        selected: target.dataset.fileEntrySelected ?? null,
+        selectionTone: target.dataset.fileEntrySelectionTone ?? null
+      };
+    });
+
+  await entry.hover();
+  await expect.poll(readEntryVisualState).toEqual({
+    backgroundColor: 'rgb(42, 45, 46)',
+    color: 'rgb(204, 204, 204)',
+    selected: 'false',
+    selectionTone: null
+  });
+
+  await clearPostedMessages(page);
+  await entry.click();
+  await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  await expect.poll(readEntryVisualState).toEqual({
+    backgroundColor: 'rgb(4, 57, 94)',
+    color: 'rgb(255, 255, 255)',
+    selected: 'true',
+    selectionTone: 'active'
+  });
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new FocusEvent('blur'));
+  });
+  await expect.poll(readEntryVisualState).toEqual({
+    backgroundColor: 'rgb(55, 55, 61)',
+    color: 'rgb(204, 204, 204)',
+    selected: 'true',
+    selectionTone: 'inactive'
+  });
+});
+
+test('minimal file list nodes can switch between list and tree views', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await expect(fileListNode.locator('[data-file-list-view-mode="list"]')).toHaveClass(/is-active/);
+  await expect(fileListNode.locator('.file-tree-folder-row')).toHaveCount(0);
+
+  await fileListNode.locator('[data-file-list-view-mode="tree"]').click();
+  await expect(fileListNode.locator('[data-file-list-view-mode="tree"]')).toHaveClass(/is-active/);
+  await expect(fileListNode.locator('.file-tree-folder-row')).toHaveCount(2);
+  await expect(fileListNode.locator('.file-tree-folder-row').filter({ hasText: 'src' })).toHaveCount(1);
+  await expect(fileListNode.locator('.file-tree-folder-row').filter({ hasText: 'docs' })).toHaveCount(1);
+  await expect(fileListNode.locator('.file-list-entry').filter({ hasText: 'shared.ts' }).locator('.file-access-indicator')).toContainText('RW');
+
+  await clearPostedMessages(page);
+  await fileListNode.locator('.file-list-entry').filter({ hasText: 'shared.ts' }).click();
 
   const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
   expect(message.payload).toEqual({
@@ -1000,6 +1419,98 @@ test('file list nodes expose a delete button that posts deleteNode', async ({ pa
   expect(message.payload).toEqual({
     nodeId: 'file-list-shared'
   });
+});
+
+test('selected file list nodes scroll their file list without zooming the canvas', async ({ page }) => {
+  const state = createFileListState();
+  state.nodes = state.nodes.map((node) =>
+    node.id === 'file-list-shared' && node.metadata?.fileList
+      ? {
+          ...node,
+          size: { width: 320, height: 136 },
+          metadata: {
+            ...node.metadata,
+            fileList: {
+              ...node.metadata.fileList,
+              entries: Array.from({ length: 18 }, (_, index) => ({
+                fileId: `shared-entry-${index}`,
+                filePath: `/workspace/src/generated/file-${index}.ts`,
+                relativePath: `src/generated/file-${index}.ts`,
+                accessMode:
+                  index % 3 === 0 ? 'read' : index % 3 === 1 ? 'write' : 'read-write',
+                ownerNodeIds: ['agent-1', 'agent-2'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              }))
+            }
+          }
+        }
+      : node
+  );
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      filePresentationMode: 'lists',
+      filePathDisplayMode: 'relative-path',
+      fileNodeDisplayStyle: 'minimal'
+    })
+  );
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await fileListNode.locator('.file-list-title-text').click();
+  await expect(fileListNode).toHaveAttribute('data-node-selected', 'true');
+
+  const listViewport = fileListNode.locator('.file-list-entries.minimal');
+  await expect(listViewport).toBeVisible();
+
+  const beforeScroll = await page.evaluate(() => {
+    const scroller = document.querySelector('[data-node-id="file-list-shared"] .file-list-entries.minimal');
+    const viewport = document.querySelector('.react-flow__viewport');
+    if (!(scroller instanceof HTMLElement) || !(viewport instanceof HTMLElement)) {
+      return null;
+    }
+
+    return {
+      scrollTop: scroller.scrollTop,
+      transform: viewport.style.transform
+    };
+  });
+  expect(beforeScroll).not.toBeNull();
+
+  const box = await listViewport.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height - 8, 24));
+  await page.mouse.wheel(0, 320);
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const scroller = document.querySelector('[data-node-id="file-list-shared"] .file-list-entries.minimal');
+        return scroller instanceof HTMLElement ? scroller.scrollTop : null;
+      });
+    })
+    .toBeGreaterThan(beforeScroll.scrollTop);
+
+  const afterScroll = await page.evaluate(() => {
+    const scroller = document.querySelector('[data-node-id="file-list-shared"] .file-list-entries.minimal');
+    const viewport = document.querySelector('.react-flow__viewport');
+    if (!(scroller instanceof HTMLElement) || !(viewport instanceof HTMLElement)) {
+      return null;
+    }
+
+    return {
+      scrollTop: scroller.scrollTop,
+      transform: viewport.style.transform
+    };
+  });
+  expect(afterScroll).not.toBeNull();
+  expect(afterScroll.transform).toBe(beforeScroll.transform);
 });
 
 test('embedded xterm theme follows workbench theme changes for agent and terminal nodes', async ({ page }) => {
@@ -2577,6 +3088,37 @@ test('incoming host error shows a toast in the harness', async ({ page }) => {
   );
 });
 
+test('visibility restore does not move focus onto the canvas shell', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState(), createRuntimeContext({ surfaceLocation: 'panel' }));
+
+  const beforeRestore = await page.evaluate(() => {
+    const sentinel = document.createElement('button');
+    sentinel.type = 'button';
+    sentinel.id = 'focus-sentinel';
+    sentinel.textContent = 'focus sentinel';
+    document.body.appendChild(sentinel);
+    sentinel.focus();
+    return {
+      activeElementId: document.activeElement instanceof HTMLElement ? document.activeElement.id : null
+    };
+  });
+  expect(beforeRestore.activeElementId).toBe('focus-sentinel');
+
+  await dispatchVisibilityRestored(page);
+  await settleWebview(page, 4);
+
+  const afterRestore = await page.evaluate(() => {
+    return {
+      activeElementId: document.activeElement instanceof HTMLElement ? document.activeElement.id : null,
+      activeElementIsCanvasShell:
+        document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('canvas-shell')
+    };
+  });
+  expect(afterRestore.activeElementId).toBe('focus-sentinel');
+  expect(afterRestore.activeElementIsCanvasShell).toBe(false);
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} snapshot restore prefers serialized terminal state after rebuild`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -3215,6 +3757,7 @@ function createRuntimeContext(overrides = {}) {
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
     filePresentationMode: 'nodes',
+    fileNodeDisplayStyle: 'minimal',
     fileNodeDisplayMode: 'icon-path',
     filePathDisplayMode: 'basename',
     fileIconFontFaces: [],

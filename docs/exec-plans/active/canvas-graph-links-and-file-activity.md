@@ -12,6 +12,12 @@
 
 ## 进度
 
+- [x] (2026-04-20 14:18 +0800) 重新读取最新“文件节点 / 文件列表节点 UI 简化”需求、`docs/WORKFLOW.md`、`docs/PLANS.md` 与现有实现，确认本轮属于现有文件活动视图的正式迭代，不新建计划，直接在当前 `ExecPlan` 上继续维护“卡片 / 极简”双风格、文件列表 `list/tree` 切换与配置收口。
+- [x] (2026-04-20 14:18 +0800) 更新产品规格与设计文档，把 `devSessionCanvas.fileNode.displayStyle`、`card/minimal` 风格语义、文件列表极简 `列表视图 / 树形视图`、以及文件节点极简自适应尺寸规则写成正式口径。
+- [x] (2026-04-20 14:18 +0800) 扩展共享协议、扩展设置与宿主配置监听，把文件节点显示风格接入 `CanvasRuntimeContext`，并确保切换风格时只重建文件节点 / 文件列表节点视觉投影，不改变位置与连线关系。
+- [x] (2026-04-20 14:18 +0800) 实现 Webview 的极简文件节点与文件列表节点：文件节点收口为贴内容边框；文件列表节点改成接近 VSCode Changes 的单行文件视图，并支持头部 `list/tree` 切换。
+- [x] (2026-04-20 14:18 +0800) 补充 Playwright 与 VS Code smoke，覆盖风格切换、极简文件列表 `list/tree` 切换、读写标识显示，以及风格切换后节点位置 / 连线稳定性。
+- [x] (2026-04-20 15:01 +0800) 排查风格切换后共享文件节点位置漂移，确认根因不是 `src` 逻辑而是 `dist/extension.js` 仍保留旧版“碰撞时重算位置”分支；重新构建扩展产物后，trusted smoke 恢复通过。
 - [x] (2026-04-19 10:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`ARCHITECTURE.md`、`docs/product-specs/index.md`、当前需求说明和核心实现，确认这次改动需要独立 `ExecPlan`、产品规格和设计文档；其中需求重点包括通用连线能力、文件节点 / 文件列表节点能力，以及文件活动必须来自 provider 结构化事件而非 PTY 文本推断。
 - [x] (2026-04-19 10:56 +0800) 从远端 `origin/main` 切出主题分支 `canvas-links-and-file-nodes`，保留用户工作树中已有未跟踪文件。
 - [x] (2026-04-19 11:28 +0800) 明确正式范围：通用连线完整落地；文件活动走 provider 结构化事件；`Claude` / `fake-agent-provider` 提供第一轮自动文件活动，`Codex` 先保留 no-op 适配并写入文档。
@@ -33,7 +39,7 @@
 - [x] (2026-04-20 03:40 +0800) 按 review 收口文件活动视图：编辑区点击文件改为落到独立 editor group；`include` / `exclude` 从 settings 迁到 sidebar 持久化视图状态，并确保过滤只影响投影、不回写 `fileReferences`；同步修正文档并登记 file icon theme 技术债。
 - [x] (2026-04-20 08:36 +0800) 按最新 UX 要求把 sidebar 过滤控件从 TreeView 文本项切到内嵌 Webview 输入框，交互改成贴近 VSCode Search 视图的 include/exclude 编辑体验，并同步规格与设计文档。
 - [x] (2026-04-20 09:05 +0800) 重新调研 VSCode 官方 `Sidebars`、`Views`、`Tree View` 与 `Webviews` 文档，并结合用户提供的 Source Control / Run and Debug / Extensions 参考图，确认 sidebar 需要放弃 `WebviewView` 模拟，改回原生 section 化实现。
-- [x] (2026-04-20 09:05 +0800) 完成 sidebar 重构与文档回写：把单一 sidebar `WebviewView` 改为 `概览` / `文件过滤` 两个原生 `TreeView` section；过滤入口改为 `Files to Include` / `Files to Exclude` 条目 + item action + 宿主输入框。
+- [x] (2026-04-20 09:05 +0800) 完成 sidebar 重构与文档回写：把单一 sidebar `WebviewView` 改为 `概览` / `文件过滤` 两个原生 `TreeView` section；过滤入口改为 `包含文件` / `排除文件` 条目 + item action + 宿主输入框。
 - [x] (2026-04-20 09:05 +0800) 重新执行 `npm run typecheck` 与 `npm run build`，确认本轮 sidebar redesign 通过基础自动化校验。
 - [x] (2026-04-20 10:34 +0800) 根据最新交互要求再次收口 sidebar：概览保留原生 `TreeView`，移除“可创建对象”并补充 `Runtime Persistence` 状态；第二块改为最小 `WebviewView` 的 `常用操作` 区，直接承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 内嵌输入框。
 - [x] (2026-04-20 10:54 +0800) 在 `常用操作` 区尾部补一排 VSCode 风格的快捷 icon 按钮，分别复用打开/定位画布、创建节点和重置画布状态，不引入新命令语义；同步回写 sidebar 设计与规格文档。
@@ -41,6 +47,7 @@
 - [x] (2026-04-20 11:07 +0800) 根据最新反馈把 `概览` 中的“画布状态”从承载面信息改回纯状态语义：仅显示“已打开 / 未打开”，不再把 `Panel / Editor` 直接作为状态值暴露；同步修正规格文档中的旧表述。
 - [x] (2026-04-20 12:20 +0800) 按最新 review blocker 收窄画布焦点恢复：`openCanvasInEditor` / `revealSurface('editor')` 继续显式把 document focus 交还给 editor-surface webview；文件打开链路改为按消息来源 surface 处理，避免 panel 内点击文件误走 editor route 语义。
 - [x] (2026-04-20 13:44 +0800) 按最新产品语义修正 trusted smoke：panel route 点击文件的正确不变量是“文件在编辑区打开 + 画布继续保有 document focus”，而不是把旧 sentinel 文件固定成 `activeTextEditor`；因此删除两处过度约束的断言，并保留对真实交互语义的校验。
+- [x] (2026-04-20 18:41 +0800) 按用户澄清回退 panel 文件打开的过度焦点实现：目标语义只是“在编辑区打开文件且不主动把文本光标切进文件”，而不是强制让 `.canvas-shell` 保有焦点；因此移除 Webview 根元素 `tabIndex/.focus()` 路径，并同步修正设计文档、Playwright 回归与 trusted smoke 断言。
 
 ## 意外与发现
 
@@ -58,8 +65,17 @@
   证据：2026-04-20 用户提供的参考图直接要求对齐常见 sidebar 风格；同日复查 VSCode 官方 `Sidebars` / `Views` / `Webviews` 指南后，也确认 sidebar 区域应优先使用原生 view / tree，而不是继续模拟宿主控件。
 - 观察：在遵循官方 Sidebar / Views 指南的前提下，如果产品要求 `include` / `exclude` 必须直接以内嵌输入框形式出现在 sidebar 中，那么只靠 `TreeView` 无法满足，因为扩展 API 没有提供可在 TreeView 里局部嵌入 textbox 的能力。
   证据：本轮实现检查中，现有扩展 API 仍只有 Tree item、view title actions、context actions 等原生入口；没有可用于 Search 视图那种 inline input 的 TreeView 扩展点。用户也明确拒绝继续使用“点击编辑后弹出菜单”的交互。
+- 观察：VS Code smoke 实际加载的是 `package.json#main` 指向的 `dist/extension.js`，而不是 `src/panel/CanvasPanelManager.ts`。当 `src` 已修正“风格切换复用旧位置”但未重新构建时，smoke 仍会执行旧版“碰撞或偏好不满足时重算位置”的逻辑，表现成文件节点在切换 `minimal -> card` 时漂移。
+  证据：`package.json` 的 `main` 指向 `./dist/extension.js`；失败时 `dist/extension.js` 的 `resolveAutomaticArtifactPosition()` 仍包含 `!doesPlacementCollide(...) && doesPlacementRespectPreference(...)` 判断，而重新执行 `npm run build` 后该逻辑与 `src` 同步，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 恢复通过。
 
 ## 决策记录
+
+- 决策：新增全局配置 `devSessionCanvas.fileNode.displayStyle`，同时控制文件节点与文件列表节点使用 `card` 还是 `minimal` 风格，默认值设为 `minimal`。
+  理由：这次需求关注的是“文件对象视觉表达”的统一收口，而不是再次拆出两套互相独立的配置；用一个总开关可以让用户在现有卡片风格和新的极简风格之间稳定切换，同时保持宿主的文件活动投影模型不变。
+  日期/作者：2026-04-20 / Codex
+- 决策：文件列表节点的 `列表视图 / 树形视图` 切换先作为 Webview 本地 UI 状态保存，并按节点 ID 持久化到 webview state，而不写回宿主权威画布状态。
+  理由：该切换只影响单个文件列表节点内部的呈现结构，不改变 `fileReferences`、节点位置、边关系或其他宿主绑定真相；把它留在 Webview 本地状态更符合当前架构对“局部 UI 状态 vs workspace 权威状态”的分层。
+  日期/作者：2026-04-20 / Codex
 
 - 决策：把文件活动建模成独立 `fileReferences` 权威状态，再由宿主投影成文件节点或文件列表节点。
   理由：这样可以避免展示模式切换时把自动生成节点误当成事实来源，也能让生命周期和持久化围绕统一数据模型收口。
@@ -74,7 +90,7 @@
 - 决策：`include` / `exclude` 过滤迁到 sidebar 持久化视图状态，并且只影响文件对象投影，不写回 `fileReferences`。
   理由：`fileReferences` 是文件活动权威状态；如果把过滤后的结果回写进去，就会把纯视图控制误当成事实来源，和本轮状态分层目标冲突。
   日期/作者：2026-04-20 / Codex
-- 决策：sidebar 从单一 `WebviewView` 收口为两个原生 `TreeView` section：`概览` 负责动作与状态摘要，`文件过滤` 负责展示和编辑 `Files to Include` / `Files to Exclude`。
+- 决策：sidebar 从单一 `WebviewView` 收口为两个原生 `TreeView` section：`概览` 负责动作与状态摘要，`文件过滤` 负责展示和编辑 `包含文件` / `排除文件`。
   理由：VSCode 官方 `Sidebars` / `Views` / `Tree View` 指南与用户提供的原生参考图都表明，sidebar 区域应优先使用原生 section 化视图；继续在这里自绘整块 webview，只会放大和宿主 Sidebar 的 UI/UX 偏差。
   日期/作者：2026-04-20 / Codex
 - 决策：在用户进一步要求 `include` / `exclude` 直接以内嵌输入框出现在 sidebar 后，sidebar 最终收口为“概览 TreeView + 常用操作 WebviewView”的混合结构。
@@ -128,6 +144,10 @@
 
 第三处是 `src/webview/main.tsx` 与 `src/webview/styles.css`。这里要补四向 handles、自定义 edge UI、文件节点 / 文件列表节点渲染、文件点击回传以及针对自动边与手工边的交互边界。
 
+当前增量收口主要落在这两处文件活动 UI：`card` 风格保留现状；`minimal` 风格需要在不改动宿主文件活动真相的前提下，把文件节点收成贴内容边框，把文件列表节点收成接近 VSCode Source Control Changes 的单行列表，并在节点头部提供 `list/tree` 切换。
+
+本轮最后一个阻塞点不是设计或宿主状态模型本身，而是构建产物同步。`src` 中用于保持自动文件节点位置稳定的逻辑已经改成优先复用旧位置，但 smoke 仍加载旧版 `dist/extension.js`，导致共享文件节点在风格切换时被误判为需要重新放置。补上 `npm run build` 后，源码与运行产物重新对齐，位置稳定性验证恢复通过。
+
 第四处是测试与辅助 provider。`tests/playwright/webview-harness.spec.mjs` 负责 Webview 图交互；`tests/vscode-smoke/extension-tests.cjs` 负责真实宿主与打开文件路径；`tests/vscode-smoke/fixtures/fake-agent-provider` 需要补结构化文件事件输出。
 
 ## 工作计划
@@ -162,6 +182,7 @@
 
     - `src/webview/main.tsx`
     - `src/webview/styles.css`
+    - 补 `file list` 极简 `list/tree` 视图切换与本地状态持久化
 
 5. 更新测试与 fixture：
 
@@ -183,6 +204,8 @@
 - 宿主层：模拟支持文件事件的 Agent 上报读写文件，确认自动文件对象和自动边进入权威状态。
 - VSCode 打开链路：点击文件节点或文件列表条目后，真实编辑器打开对应文件。
 - 生命周期：删除 Agent 节点后，不再被任何 Agent 引用的文件对象被清理；仍有引用的文件对象保留。
+- 文件风格切换：切换 `devSessionCanvas.fileNode.displayStyle` 后，文件节点 / 文件列表节点样式应在不改动位置与边关系的前提下切换为 `card` 或 `minimal`。
+- 文件列表极简视图：在 `minimal` 风格下，文件列表节点头部的 `列表视图 / 树形视图` 可切换行式列表与目录树视图，且条目点击打开文件的行为保持不变。
 
 ## 幂等性与恢复
 
@@ -228,6 +251,11 @@
 - 关键新增验证：
   - Playwright：手工 edge 创建 / 选中 / 更新 / 删除；文件节点渲染与 `webview/openCanvasFile`；文件列表节点渲染与条目打开。
   - VS Code smoke：宿主手工 edge 持久化；fake provider 文件活动生成 `fileReferences` / `file` / `file-list`；点击文件节点 / 列表条目打开编辑器；删除 Agent 清理孤立文件对象。
+- 2026-04-20 文件活动 UI 极简化增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+  - `npm run test:webview`：通过；覆盖 `minimal` 文件节点紧贴内容边框、文件列表节点 `列表视图 / 树形视图` 切换，以及 `R/W` 尾标显示。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：通过；覆盖 `devSessionCanvas.fileNode.displayStyle` 切换后自动文件节点位置与文件活动边 ID 稳定。
 
 ## 接口与依赖
 
@@ -252,3 +280,5 @@
 ---
 
 本次创建说明：2026-04-19 新增本计划，用于覆盖通用连线、文件节点和文件列表节点相关功能；其中包含文件节点 / 文件列表节点显示收口，以及文件活动必须通过 provider 结构化事件接入宿主的要求。之所以独立起计划，是因为改动同时涉及正式规格、设计决策、共享协议、provider 结构化事件接线、宿主持久化、Webview UI 与自动化验证。
+
+本次变更说明：2026-04-20 在原计划上继续追加“文件节点 / 文件列表节点 UI 简化与显示风格配置”范围。之所以不新开计划，是因为这次改动直接建立在既有文件活动视图能力上，仍然共用同一套 `fileReferences`、自动节点重建、配置监听与验证路径；新增的是视觉表达与局部 UI 状态，而不是另一套独立功能面。

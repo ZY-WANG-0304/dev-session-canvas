@@ -48,6 +48,7 @@
     "onCommand:devSessionCanvas.openCanvas",
     "onCommand:devSessionCanvas.openCanvasInEditor",
     "onCommand:devSessionCanvas.openCanvasInPanel",
+    "onCommand:devSessionCanvas.openSettings",
     "onCommand:devSessionCanvas.createNode",
     "onCommand:devSessionCanvas.resetCanvasState",
     "onView:devSessionCanvas.sidebar",
@@ -126,6 +127,11 @@
         "title": "%command.openCanvasInPanel.title%"
       },
       {
+        "command": "devSessionCanvas.openSettings",
+        "title": "%command.openSettings.title%",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "devSessionCanvas.createNode",
         "title": "%command.createNode.title%",
         "icon": "$(add)"
@@ -142,6 +148,11 @@
           "command": "devSessionCanvas.openCanvas",
           "when": "view == devSessionCanvas.sidebarFilters",
           "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.openSettings",
+          "when": "view == devSessionCanvas.sidebar",
+          "group": "navigation@99"
         },
         {
           "command": "devSessionCanvas.createNode",
@@ -211,6 +222,16 @@
           "default": "nodes",
           "scope": "window",
           "markdownDescription": "%configuration.files.presentationMode.description%"
+        },
+        "devSessionCanvas.fileNode.displayStyle": {
+          "type": "string",
+          "enum": [
+            "card",
+            "minimal"
+          ],
+          "default": "minimal",
+          "scope": "window",
+          "markdownDescription": "%configuration.fileNode.displayStyle.description%"
         },
         "devSessionCanvas.files.nodeDisplayMode": {
           "type": "string",
