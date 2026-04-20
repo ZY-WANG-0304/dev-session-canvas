@@ -6,8 +6,19 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
 
-export type CanvasNodeKind = 'agent' | 'terminal' | 'note';
+export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
+export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
+export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
+export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
+export type CanvasEdgeOwner = 'user' | 'file-activity';
+export const canvasEdgePresetColors = ['1', '2', '3', '4', '5', '6'] as const;
+export type CanvasEdgePresetColor = (typeof canvasEdgePresetColors)[number];
+export type CanvasEdgeColor = CanvasEdgePresetColor | `#${string}`;
+export type CanvasFileActivityAccessMode = 'read' | 'write' | 'read-write';
+export type CanvasFilePresentationMode = 'nodes' | 'lists';
+export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
+export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
 
 export interface CanvasNodePosition {
   x: number;
@@ -91,10 +102,59 @@ export interface NoteNodeMetadata {
   content: string;
 }
 
+export interface CanvasFileIconFontFace {
+  fontFamily: string;
+  src: string;
+  format?: string;
+  fontWeight?: string;
+  fontStyle?: string;
+}
+
+export type CanvasFileIconDescriptor =
+  | {
+      kind: 'codicon';
+      id: string;
+    }
+  | {
+      kind: 'image';
+      src: string;
+    }
+  | {
+      kind: 'font';
+      fontFamily: string;
+      character: string;
+      color?: string;
+    };
+
+export interface FileNodeMetadata {
+  fileId: string;
+  filePath: string;
+  relativePath?: string;
+  icon?: CanvasFileIconDescriptor;
+  ownerNodeIds: string[];
+}
+
+export interface FileListNodeEntrySummary {
+  fileId: string;
+  filePath: string;
+  relativePath?: string;
+  accessMode: CanvasFileActivityAccessMode;
+  ownerNodeIds: string[];
+  icon?: CanvasFileIconDescriptor;
+}
+
+export interface FileListNodeMetadata {
+  scope: 'agent' | 'shared';
+  ownerNodeId?: string;
+  entries: FileListNodeEntrySummary[];
+}
+
 export interface CanvasNodeMetadata {
   agent?: AgentNodeMetadata;
   terminal?: TerminalNodeMetadata;
   note?: NoteNodeMetadata;
+  file?: FileNodeMetadata;
+  fileList?: FileListNodeMetadata;
 }
 
 export interface CanvasNodeSummary {
@@ -108,10 +168,40 @@ export interface CanvasNodeSummary {
   metadata?: CanvasNodeMetadata;
 }
 
+export interface CanvasEdgeSummary {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  sourceAnchor: CanvasEdgeAnchor;
+  targetAnchor: CanvasEdgeAnchor;
+  arrowMode: CanvasEdgeArrowMode;
+  owner: CanvasEdgeOwner;
+  color?: CanvasEdgeColor;
+  label?: string;
+}
+
+export interface CanvasFileReferenceOwnerSummary {
+  nodeId: string;
+  accessMode: CanvasFileActivityAccessMode;
+  updatedAt: string;
+}
+
+export interface CanvasFileReferenceSummary {
+  id: string;
+  filePath: string;
+  relativePath?: string;
+  updatedAt: string;
+  owners: CanvasFileReferenceOwnerSummary[];
+}
+
 export interface CanvasPrototypeState {
   version: 1;
   updatedAt: string;
   nodes: CanvasNodeSummary[];
+  edges: CanvasEdgeSummary[];
+  fileReferences: CanvasFileReferenceSummary[];
+  suppressedFileActivityEdgeIds: string[];
+  suppressedAutomaticFileArtifactNodeIds: string[];
 }
 
 export interface CanvasRuntimeContext {
@@ -121,6 +211,10 @@ export interface CanvasRuntimeContext {
   terminalScrollback: number;
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
   terminalWordSeparators: string;
+  filePresentationMode: CanvasFilePresentationMode;
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
+  fileIconFontFaces: CanvasFileIconFontFace[];
 }
 
 export interface WebviewProbeNodeSnapshot {
@@ -157,12 +251,26 @@ export interface WebviewProbeTerminalThemeSnapshot {
 
 export interface WebviewProbeSnapshot {
   documentTitle: string;
+  hasDocumentFocus: boolean;
   hasCanvasShell: boolean;
   hasReactFlow: boolean;
   toastMessage: string | null;
   executionLinkTooltipText: string | null;
   nodeCount: number;
   nodes: WebviewProbeNodeSnapshot[];
+  edgeCount: number;
+  edges: WebviewProbeEdgeSnapshot[];
+}
+
+export interface WebviewProbeEdgeSnapshot {
+  edgeId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  arrowMode: CanvasEdgeArrowMode;
+  owner: CanvasEdgeOwner;
+  color: string | null;
+  label: string | null;
+  selected: boolean;
 }
 
 export type WebviewDomAction =
@@ -219,6 +327,18 @@ export type WebviewDomAction =
       kind: 'clearExecutionLinkHover';
       nodeId: string;
       delayMs?: number;
+    }
+  | {
+      kind: 'selectEdge';
+      nodeId: string;
+      edgeId: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'clickFileEntry';
+      nodeId: string;
+      filePath: string;
+      delayMs?: number;
     };
 
 export type WebviewToHostMessage =
@@ -228,7 +348,7 @@ export type WebviewToHostMessage =
   | {
       type: 'webview/createDemoNode';
       payload: {
-        kind: CanvasNodeKind;
+        kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
         agentProvider?: AgentProviderKind;
       };
@@ -339,6 +459,41 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/createEdge';
+      payload: {
+        sourceNodeId: string;
+        targetNodeId: string;
+        sourceAnchor: CanvasEdgeAnchor;
+        targetAnchor: CanvasEdgeAnchor;
+      };
+    }
+  | {
+      type: 'webview/updateEdge';
+      payload: {
+        edgeId: string;
+        sourceNodeId?: string;
+        targetNodeId?: string;
+        sourceAnchor?: CanvasEdgeAnchor;
+        targetAnchor?: CanvasEdgeAnchor;
+        arrowMode?: CanvasEdgeArrowMode;
+        color?: CanvasEdgeColor | null;
+        label?: string;
+      };
+    }
+  | {
+      type: 'webview/deleteEdge';
+      payload: {
+        edgeId: string;
+      };
+    }
+  | {
+      type: 'webview/openCanvasFile';
+      payload: {
+        nodeId: string;
+        filePath: string;
+      };
+    }
+  | {
       type: 'webview/testProbeResult';
       payload: {
         requestId: string;
@@ -421,7 +576,7 @@ export type HostToWebviewMessage =
   | {
       type: 'host/requestCreateNode';
       payload: {
-        kind: CanvasNodeKind;
+        kind: CanvasCreatableNodeKind;
         agentProvider?: AgentProviderKind;
       };
     }
@@ -440,11 +595,19 @@ export type HostToWebviewMessage =
       };
     };
 
-const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note'];
+const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 'file-list'];
+const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
+}
+
+export function isCanvasCreatableNodeKind(value: unknown): value is CanvasCreatableNodeKind {
+  return (
+    typeof value === 'string' &&
+    canvasCreatableNodeKinds.includes(value as CanvasCreatableNodeKind)
+  );
 }
 
 export function isAgentProviderKind(value: unknown): value is AgentProviderKind {
@@ -668,6 +831,89 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/createEdge') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.sourceNodeId !== 'string' ||
+      typeof payload.targetNodeId !== 'string' ||
+      !isCanvasEdgeAnchor(payload.sourceAnchor) ||
+      !isCanvasEdgeAnchor(payload.targetAnchor)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/createEdge',
+      payload: {
+        sourceNodeId: payload.sourceNodeId,
+        targetNodeId: payload.targetNodeId,
+        sourceAnchor: payload.sourceAnchor,
+        targetAnchor: payload.targetAnchor
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateEdge') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.edgeId !== 'string' ||
+      (payload.sourceNodeId !== undefined && typeof payload.sourceNodeId !== 'string') ||
+      (payload.targetNodeId !== undefined && typeof payload.targetNodeId !== 'string') ||
+      (payload.sourceAnchor !== undefined && !isCanvasEdgeAnchor(payload.sourceAnchor)) ||
+      (payload.targetAnchor !== undefined && !isCanvasEdgeAnchor(payload.targetAnchor)) ||
+      (payload.arrowMode !== undefined && !isCanvasEdgeArrowMode(payload.arrowMode)) ||
+      (payload.color !== undefined && payload.color !== null && !isCanvasEdgeColor(payload.color)) ||
+      (payload.label !== undefined && typeof payload.label !== 'string')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId: payload.edgeId,
+        sourceNodeId: typeof payload.sourceNodeId === 'string' ? payload.sourceNodeId : undefined,
+        targetNodeId: typeof payload.targetNodeId === 'string' ? payload.targetNodeId : undefined,
+        sourceAnchor: isCanvasEdgeAnchor(payload.sourceAnchor) ? payload.sourceAnchor : undefined,
+        targetAnchor: isCanvasEdgeAnchor(payload.targetAnchor) ? payload.targetAnchor : undefined,
+        arrowMode: isCanvasEdgeArrowMode(payload.arrowMode) ? payload.arrowMode : undefined,
+        color: payload.color === null ? null : isCanvasEdgeColor(payload.color) ? payload.color : undefined,
+        label: typeof payload.label === 'string' ? payload.label : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/deleteEdge') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.edgeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/deleteEdge',
+      payload: {
+        edgeId: payload.edgeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/openCanvasFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.filePath !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/openCanvasFile',
+      payload: {
+        nodeId: payload.nodeId,
+        filePath: payload.filePath
+      }
+    };
+  }
+
   if (value.type === 'webview/testProbeResult') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
@@ -762,7 +1008,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
-      !isCanvasNodeKind(payload.kind) ||
+      !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider))
     ) {
@@ -805,6 +1051,29 @@ function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {
     typeof value.height === 'number' &&
     Number.isFinite(value.height) &&
     value.height > 0
+  );
+}
+
+function isCanvasEdgeAnchor(value: unknown): value is CanvasEdgeAnchor {
+  return value === 'top' || value === 'right' || value === 'bottom' || value === 'left';
+}
+
+function isCanvasEdgeArrowMode(value: unknown): value is CanvasEdgeArrowMode {
+  return value === 'none' || value === 'forward' || value === 'both';
+}
+
+function isCanvasEdgeOwner(value: unknown): value is CanvasEdgeOwner {
+  return value === 'user' || value === 'file-activity';
+}
+
+function isCanvasEdgePresetColor(value: unknown): value is CanvasEdgePresetColor {
+  return typeof value === 'string' && canvasEdgePresetColors.includes(value as CanvasEdgePresetColor);
+}
+
+function isCanvasEdgeColor(value: unknown): value is CanvasEdgeColor {
+  return (
+    isCanvasEdgePresetColor(value) ||
+    (typeof value === 'string' && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value))
   );
 }
 
@@ -861,6 +1130,14 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'clearExecutionLinkHover') {
     return true;
+  }
+
+  if (value.kind === 'selectEdge') {
+    return typeof value.edgeId === 'string';
+  }
+
+  if (value.kind === 'clickFileEntry') {
+    return typeof value.filePath === 'string';
   }
 
   return false;
@@ -1000,10 +1277,25 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
   );
 }
 
+function isWebviewProbeEdgeSnapshot(value: unknown): value is WebviewProbeEdgeSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.edgeId === 'string' &&
+    typeof value.sourceNodeId === 'string' &&
+    typeof value.targetNodeId === 'string' &&
+    isCanvasEdgeArrowMode(value.arrowMode) &&
+    isCanvasEdgeOwner(value.owner) &&
+    isNullableString(value.color) &&
+    isNullableString(value.label) &&
+    typeof value.selected === 'boolean'
+  );
+}
+
 function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
   return (
     isRecord(value) &&
     typeof value.documentTitle === 'string' &&
+    typeof value.hasDocumentFocus === 'boolean' &&
     typeof value.hasCanvasShell === 'boolean' &&
     typeof value.hasReactFlow === 'boolean' &&
     isNullableString(value.toastMessage) &&
@@ -1011,7 +1303,11 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
     typeof value.nodeCount === 'number' &&
     Number.isInteger(value.nodeCount) &&
     Array.isArray(value.nodes) &&
-    value.nodes.every((node) => isWebviewProbeNodeSnapshot(node))
+    value.nodes.every((node) => isWebviewProbeNodeSnapshot(node)) &&
+    typeof value.edgeCount === 'number' &&
+    Number.isInteger(value.edgeCount) &&
+    Array.isArray(value.edges) &&
+    value.edges.every((edge) => isWebviewProbeEdgeSnapshot(edge))
   );
 }
 
@@ -1052,6 +1348,16 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
         width: 380,
         height: 400
       };
+    case 'file':
+      return {
+        width: 220,
+        height: 84
+      };
+    case 'file-list':
+      return {
+        width: 320,
+        height: 220
+      };
   }
 }
 
@@ -1071,6 +1377,16 @@ export function minimumCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFoot
       return {
         width: 320,
         height: 280
+      };
+    case 'file':
+      return {
+        width: 180,
+        height: 72
+      };
+    case 'file-list':
+      return {
+        width: 260,
+        height: 180
       };
   }
 }

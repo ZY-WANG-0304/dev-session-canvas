@@ -276,6 +276,732 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   });
 });
 
+test('manual edges can be created, selected, edited, and deleted', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  await dragConnectionBetweenAnchors(page, {
+    sourceNodeId: 'agent-1',
+    sourceAnchor: 'right',
+    targetNodeId: 'terminal-1',
+    targetAnchor: 'left'
+  });
+
+  let message = await waitForPostedMessageByType(page, 'webview/createEdge');
+  expect(message.payload).toEqual({
+    sourceNodeId: 'agent-1',
+    targetNodeId: 'terminal-1',
+    sourceAnchor: 'right',
+    targetAnchor: 'left'
+  });
+
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await updateHostState(page, state);
+
+  await expect
+    .poll(async () => {
+      const edge = await readProbeEdge(page, 'edge-user-1', 20);
+      return edge
+        ? JSON.stringify({
+            arrowMode: edge.arrowMode,
+            label: edge.label,
+            selected: edge.selected
+          })
+        : null;
+    })
+    .toBe(
+      JSON.stringify({
+        arrowMode: 'forward',
+        label: null,
+        selected: false
+      })
+    );
+  const edgePath = page.locator('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
+    'var(--canvas-edge-stroke-default)'
+  );
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
+    'var(--canvas-edge-stroke-default)'
+  );
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.selected ?? false).toBe(true);
+  await expect(page.locator('.canvas-edge-label.is-selected')).toHaveCount(0);
+  const edgeToolbar = page.locator(
+    '[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]'
+  );
+  await expect(edgeToolbar).toBeVisible();
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '切换箭头模式' }).click();
+  const edgeArrowMenu = page.locator(
+    '[data-edge-arrow-menu="true"][data-edge-arrow-menu-edge-id="edge-user-1"]'
+  );
+  await expect(edgeArrowMenu).toBeVisible();
+  await edgeArrowMenu.getByRole('button', { name: '双向箭头' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    arrowMode: 'both'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      arrowMode: 'both'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.arrowMode ?? null).toBe('both');
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '设置颜色' }).click();
+  const edgeColorMenu = page.locator(
+    '[data-edge-color-menu="true"][data-edge-color-menu-edge-id="edge-user-1"]'
+  );
+  await expect(edgeColorMenu).toBeVisible();
+  await edgeColorMenu.getByRole('button', { name: '绿色' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    color: '4'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      color: '4'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe('var(--canvas-edge-color-4)');
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '设置颜色' }).click();
+  await expect(edgeColorMenu).toBeVisible();
+  await edgeColorMenu.getByRole('button', { name: '默认颜色' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    color: null
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      color: undefined
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => edgePath.evaluate((node) => node.style.stroke)).toBe(
+    'var(--canvas-edge-stroke-default)'
+  );
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
+  const edgeLabelEditor = page.locator(
+    '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="edge-user-1"]'
+  );
+  await expect(edgeLabelEditor).toBeVisible();
+  await edgeLabelEditor.fill('依赖关系');
+  await edgeLabelEditor.press('Enter');
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    label: '依赖关系'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      label: '依赖关系'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.label ?? null).toBe('依赖关系');
+  const edgeLabel = page.locator('[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"]');
+  await expect(edgeLabel).toContainText('依赖关系');
+  await expect.poll(async () => edgeLabelIsProtected(page, 'edge-user-1')).toBe(true);
+  const toolbarBox = await edgeToolbar.boundingBox();
+  const labelBox = await edgeLabel.boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect(labelBox).not.toBeNull();
+  expect(toolbarBox.y + toolbarBox.height).toBeLessThan(labelBox.y + 2);
+
+  await clearPostedMessages(page);
+  await edgePath.dblclick({ force: true });
+  await expect(edgeLabelEditor).toBeVisible();
+  await expect(edgeLabelEditor).toHaveValue('依赖关系');
+  const editorBox = await edgeLabelEditor.boundingBox();
+  expect(editorBox).not.toBeNull();
+  expect(Math.abs(editorBox.x + editorBox.width / 2 - (labelBox.x + labelBox.width / 2))).toBeLessThanOrEqual(4);
+  expect(Math.abs(editorBox.y + editorBox.height / 2 - (labelBox.y + labelBox.height / 2))).toBeLessThanOrEqual(4);
+  await edgeLabelEditor.fill('很长的关系标签');
+  await settleWebview(page, 1);
+  const longEditorBox = await edgeLabelEditor.boundingBox();
+  expect(longEditorBox).not.toBeNull();
+  await edgeLabelEditor.fill('短');
+  await settleWebview(page, 1);
+  const shortEditorBox = await edgeLabelEditor.boundingBox();
+  expect(shortEditorBox).not.toBeNull();
+  expect(shortEditorBox.width).toBeLessThan(longEditorBox.width - 20);
+  await edgeLabelEditor.fill('协作关系');
+  await edgeLabelEditor.press('Escape');
+  await settleWebview(page, 2);
+  await expect(edgeLabelEditor).toHaveCount(0);
+  await expect(edgeLabel).toContainText('依赖关系');
+
+  await clearPostedMessages(page);
+  await reconnectEdgeEndpointToAnchor(page, {
+    edgeId: 'edge-user-1',
+    handleType: 'target',
+    targetNodeId: 'note-1',
+    targetAnchor: 'left'
+  });
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1',
+    sourceNodeId: 'agent-1',
+    targetNodeId: 'note-1',
+    sourceAnchor: 'right',
+    targetAnchor: 'left'
+  });
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      targetNodeId: 'note-1',
+      targetAnchor: 'left'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-user-1', 20))?.targetNodeId ?? null).toBe('note-1');
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '删除连线' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/deleteEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'edge-user-1'
+  });
+
+  state.edges = [];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
+});
+
+test('edge label IME confirmation does not submit before explicit commit', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+
+  const edgeToolbar = page.locator(
+    '[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]'
+  );
+  await expect(edgeToolbar).toBeVisible();
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
+  const edgeLabelEditor = page.locator(
+    '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="edge-user-1"]'
+  );
+  await expect(edgeLabelEditor).toBeVisible();
+
+  const nextLabel = '依赖关系';
+  await simulateImeCompositionOnTextField(page, edgeLabelEditor, nextLabel);
+  await settleWebview(page, 4);
+
+  await expect(edgeLabelEditor).toBeFocused();
+  await expect(edgeLabelEditor).toHaveValue(nextLabel);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateEdge').length;
+      });
+    })
+    .toBe(0);
+
+  await edgeLabelEditor.press('Enter');
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const edgeMessages = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/updateEdge');
+
+        return JSON.stringify(
+          edgeMessages.map((entry) => ({
+            edgeId: entry.payload.edgeId,
+            label: entry.payload.label
+          }))
+        );
+      });
+    })
+    .toBe(
+      JSON.stringify([
+        {
+          edgeId: 'edge-user-1',
+          label: nextLabel
+        }
+      ])
+    );
+});
+
+test('self loop edges can be created and rendered', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  await dragConnectionBetweenAnchors(page, {
+    sourceNodeId: 'agent-1',
+    sourceAnchor: 'right',
+    targetNodeId: 'agent-1',
+    targetAnchor: 'bottom'
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/createEdge');
+  expect(message.payload).toEqual({
+    sourceNodeId: 'agent-1',
+    targetNodeId: 'agent-1',
+    sourceAnchor: 'right',
+    targetAnchor: 'bottom'
+  });
+
+  state.edges = [
+    {
+      id: 'edge-self-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'agent-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'bottom',
+      arrowMode: 'forward',
+      owner: 'user',
+      label: '自环'
+    }
+  ];
+  await updateHostState(page, state);
+
+  await expect
+    .poll(async () => {
+      const edge = await readProbeEdge(page, 'edge-self-1', 20);
+      return edge
+        ? JSON.stringify({
+            sourceNodeId: edge.sourceNodeId,
+            targetNodeId: edge.targetNodeId,
+            label: edge.label
+          })
+        : null;
+    })
+    .toBe(
+      JSON.stringify({
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'agent-1',
+        label: '自环'
+      })
+    );
+  await expect(page.locator('[data-edge-probe="true"][data-edge-id="edge-self-1"]')).toBeVisible();
+  await expect(page.locator('.canvas-edge-label')).toContainText('自环');
+});
+
+test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {
+  const state = createFileNodeState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'agent-1::file-src-main'
+  });
+
+  const edgeToolbar = page.locator(
+    '[data-edge-toolbar="true"][data-edge-toolbar-edge-id="agent-1::file-src-main"]'
+  );
+  await expect(edgeToolbar).toBeVisible();
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '编辑标签' }).click();
+  const edgeLabelEditor = page.locator(
+    '[data-edge-label-editor="true"][data-edge-label-editor-edge-id="agent-1::file-src-main"]'
+  );
+  await expect(edgeLabelEditor).toBeVisible();
+  await edgeLabelEditor.fill('写入主文件');
+  await edgeLabelEditor.press('Enter');
+
+  let message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'agent-1::file-src-main',
+    label: '写入主文件'
+  });
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '设置颜色' }).click();
+  const edgeColorMenu = page.locator(
+    '[data-edge-color-menu="true"][data-edge-color-menu-edge-id="agent-1::file-src-main"]'
+  );
+  await edgeColorMenu.getByRole('button', { name: '紫色' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/updateEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'agent-1::file-src-main',
+    color: '6'
+  });
+
+  await clearPostedMessages(page);
+  await edgeToolbar.getByRole('button', { name: '删除连线' }).click();
+  message = await waitForPostedMessageByType(page, 'webview/deleteEdge');
+  expect(message.payload).toEqual({
+    edgeId: 'agent-1::file-src-main'
+  });
+});
+
+test('file nodes render file metadata and open the target file through the host message', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState());
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode.locator('.file-node-copy strong')).toContainText('main.ts');
+  await expect(fileNode.locator('.file-node-copy span')).toContainText('src/main.ts');
+  await expect(fileNode.locator('.file-node-icon .codicon-symbol-file')).toHaveCount(1);
+  await expect.poll(async () => (await readProbeEdge(page, 'agent-1::file-src-main', 20))?.owner ?? null).toBe(
+    'file-activity'
+  );
+
+  await clearPostedMessages(page);
+  await fileNode.locator('.file-node-action').click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({
+    nodeId: 'file-src-main',
+    filePath: '/workspace/src/main.ts'
+  });
+});
+
+test('selected file nodes can be deleted with the Delete key', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState());
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await fileNode.locator('.file-node-action').click();
+  await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+
+  await clearPostedMessages(page);
+  await page.keyboard.press('Delete');
+
+  const message = await waitForPostedMessageByType(page, 'webview/deleteNode');
+  expect(message.payload).toEqual({
+    nodeId: 'file-src-main'
+  });
+});
+
+test('edge label text color follows the rendered edge color', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user',
+      color: '4',
+      label: '写入'
+    }
+  ];
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+
+  const edgeLabelText = page.locator(
+    '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+  );
+  await expect(edgeLabelText).toContainText('写入');
+
+  const coloredStyles = await page.evaluate(() => {
+    const edgeCandidates = document.querySelectorAll('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+    const edge = edgeCandidates.item(edgeCandidates.length - 1);
+    const label = document.querySelector(
+      '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+    );
+    if (!(edge instanceof SVGElement) || !(label instanceof HTMLElement)) {
+      return null;
+    }
+
+    return {
+      stroke: getComputedStyle(edge).stroke,
+      color: getComputedStyle(label).color
+    };
+  });
+  expect(coloredStyles).not.toBeNull();
+  expect(coloredStyles.color).toBe(coloredStyles.stroke);
+
+  state.edges = [
+    {
+      ...state.edges[0],
+      color: undefined
+    }
+  ];
+  await updateHostState(page, state);
+
+  const coloredStylesSnapshot = JSON.stringify(coloredStyles);
+  await expect.poll(async () => {
+    return page.evaluate((previousSnapshot) => {
+      const edgeCandidates = document.querySelectorAll('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+      const edge = edgeCandidates.item(edgeCandidates.length - 1);
+      const label = document.querySelector(
+        '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+      );
+      if (!(edge instanceof SVGElement) || !(label instanceof HTMLElement)) {
+        return previousSnapshot;
+      }
+
+      const styles = {
+        stroke: getComputedStyle(edge).stroke,
+        color: getComputedStyle(label).color
+      };
+      return styles.stroke === styles.color ? JSON.stringify(styles) : previousSnapshot;
+    }, coloredStylesSnapshot);
+  }).not.toBe(coloredStylesSnapshot);
+
+  const defaultStyles = await page.evaluate(() => {
+    const edgeCandidates = document.querySelectorAll('[data-edge-probe="true"][data-edge-id="edge-user-1"]');
+    const edge = edgeCandidates.item(edgeCandidates.length - 1);
+    const label = document.querySelector(
+      '[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"] .canvas-edge-label-text'
+    );
+    if (!(edge instanceof SVGElement) || !(label instanceof HTMLElement)) {
+      return null;
+    }
+
+    return {
+      stroke: getComputedStyle(edge).stroke,
+      color: getComputedStyle(label).color
+    };
+  });
+  expect(defaultStyles).not.toBeNull();
+  expect(defaultStyles.color).toBe(defaultStyles.stroke);
+});
+
+test('edge toolbar keeps top endpoints and labels unobstructed', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.nodes = state.nodes.map((node) => {
+    if (node.id === 'note-1') {
+      return {
+        ...node,
+        position: { x: 430, y: 20 }
+      };
+    }
+
+    if (node.id === 'agent-1') {
+      return {
+        ...node,
+        position: { x: 430, y: 360 }
+      };
+    }
+
+    if (node.id === 'terminal-1') {
+      return {
+        ...node,
+        position: { x: 760, y: 220 }
+      };
+    }
+
+    return node;
+  });
+  state.edges = [
+    {
+      id: 'edge-user-1',
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'note-1',
+      sourceAnchor: 'top',
+      targetAnchor: 'bottom',
+      arrowMode: 'forward',
+      owner: 'user',
+      label: '你好'
+    }
+  ];
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'agent-1',
+    edgeId: 'edge-user-1'
+  });
+
+  const edgeToolbar = page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]');
+  await expect(edgeToolbar).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-user-1"]');
+    const label = document.querySelector('[data-edge-label="true"][data-edge-label-edge-id="edge-user-1"]');
+    const sourceHandle = document.querySelector('[data-node-id="agent-1"] .canvas-node-handle.anchor-top');
+    const targetHandle = document.querySelector('[data-node-id="note-1"] .canvas-node-handle.anchor-bottom');
+    if (!(toolbar instanceof HTMLElement) || !(label instanceof HTMLElement) || !(sourceHandle instanceof HTMLElement) || !(targetHandle instanceof HTMLElement)) {
+      return null;
+    }
+
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom
+      };
+    };
+    const intersects = (left, right) => {
+      return !(
+        left.right <= right.left ||
+        left.left >= right.right ||
+        left.bottom <= right.top ||
+        left.top >= right.bottom
+      );
+    };
+
+    const toolbarRect = toRect(toolbar);
+    const labelRect = toRect(label);
+    const sourceHandleRect = toRect(sourceHandle);
+    const targetHandleRect = toRect(targetHandle);
+
+    return {
+      toolbarOverlapsLabel: intersects(toolbarRect, labelRect),
+      toolbarOverlapsSourceHandle: intersects(toolbarRect, sourceHandleRect),
+      toolbarOverlapsTargetHandle: intersects(toolbarRect, targetHandleRect)
+    };
+  });
+
+  expect(layout).not.toBeNull();
+  expect(layout.toolbarOverlapsLabel).toBe(false);
+  expect(layout.toolbarOverlapsSourceHandle).toBe(false);
+  expect(layout.toolbarOverlapsTargetHandle).toBe(false);
+});
+
+test('file nodes can be dragged without triggering open file', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileNodeState());
+
+  const fileNode = nodeById(page, 'file-src-main');
+  await expect(fileNode).toBeVisible();
+  const fileNodeBox = await fileNode.boundingBox();
+  expect(fileNodeBox).not.toBeNull();
+
+  await clearPostedMessages(page);
+  await page.mouse.move(fileNodeBox.x + fileNodeBox.width / 2, fileNodeBox.y + fileNodeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(fileNodeBox.x + fileNodeBox.width / 2 + 120, fileNodeBox.y + fileNodeBox.height / 2 + 80, {
+    steps: 12
+  });
+  await page.mouse.up();
+  await settleWebview(page, 3);
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('file-src-main');
+  expect(moveMessage.payload.position.x).not.toBe(720);
+  expect(moveMessage.payload.position.y).not.toBe(200);
+
+  const openCount = await page.evaluate(() => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/openCanvasFile').length;
+  });
+  expect(openCount).toBe(0);
+});
+
+test('file list nodes render entries and open clicked file entries through the host message', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await expect(fileListNode.locator('.file-list-title-text')).toContainText('共享文件');
+  await expect(fileListNode.locator('.file-list-entry')).toHaveCount(2);
+  await expect(fileListNode.locator('.file-list-entry').first()).toContainText('src/shared.ts');
+  await expect(fileListNode.locator('.file-list-entry').first().locator('.file-access-badge')).toContainText('读写');
+  await expect(fileListNode.locator('.file-list-entry').nth(1).locator('.file-access-badge')).toContainText('写');
+  await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(2);
+
+  await clearPostedMessages(page);
+  await fileListNode.locator('.file-list-entry').filter({ hasText: 'src/shared.ts' }).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({
+    nodeId: 'file-list-shared',
+    filePath: '/workspace/src/shared.ts'
+  });
+});
+
+test('file list nodes expose a delete button that posts deleteNode', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, createFileListState(), createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' }));
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'file-list-shared',
+    label: '删除'
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/deleteNode');
+  expect(message.payload).toEqual({
+    nodeId: 'file-list-shared'
+  });
+});
+
 test('embedded xterm theme follows workbench theme changes for agent and terminal nodes', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -2421,7 +3147,7 @@ async function bootstrap(page, state, runtime = createRuntimeContext()) {
   await page.evaluate(({ nextState, nextRuntime }) => {
     window.__devSessionCanvasHarness.clearPostedMessages();
     window.__devSessionCanvasHarness.bootstrap(nextState, nextRuntime);
-  }, { nextState: state, nextRuntime: runtime });
+  }, { nextState: normalizeCanvasState(state), nextRuntime: runtime });
 }
 
 async function updateHostState(page, state, runtime = createRuntimeContext()) {
@@ -2433,7 +3159,7 @@ async function updateHostState(page, state, runtime = createRuntimeContext()) {
         runtime: nextRuntime
       }
     });
-  }, { nextState: state, nextRuntime: runtime });
+  }, { nextState: normalizeCanvasState(state), nextRuntime: runtime });
 }
 
 async function applyWorkbenchTheme(page, themeName) {
@@ -2488,7 +3214,19 @@ function createRuntimeContext(overrides = {}) {
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
+    filePresentationMode: 'nodes',
+    fileNodeDisplayMode: 'icon-path',
+    filePathDisplayMode: 'basename',
+    fileIconFontFaces: [],
     ...overrides
+  };
+}
+
+function normalizeCanvasState(state) {
+  return {
+    ...state,
+    edges: Array.isArray(state?.edges) ? state.edges : [],
+    fileReferences: Array.isArray(state?.fileReferences) ? state.fileReferences : []
   };
 }
 
@@ -2565,6 +3303,89 @@ async function readProbeNode(page, nodeId, delayMs = 0) {
   return snapshot.nodes.find((node) => node.nodeId === nodeId) ?? null;
 }
 
+async function readProbeEdge(page, edgeId, delayMs = 0) {
+  const snapshot = await requestWebviewProbe(page, delayMs);
+  return snapshot.edges.find((edge) => edge.edgeId === edgeId) ?? null;
+}
+
+async function edgeLabelIsProtected(page, edgeId) {
+  return page.evaluate((nextEdgeId) => {
+    const label = document.querySelector(
+      `[data-edge-label="true"][data-edge-label-edge-id="${nextEdgeId}"]`
+    );
+    if (!label) {
+      return null;
+    }
+
+    const paths = Array.from(
+      document.querySelectorAll(`[data-edge-visible-segment][data-edge-id="${nextEdgeId}"]`)
+    );
+    if (paths.length === 0) {
+      return null;
+    }
+
+    const labelRect = label.getBoundingClientRect();
+    const sampleXs = [0.08, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.92];
+    const sampleYs = [0.18, 0.34, 0.5, 0.66, 0.82];
+
+    const intersectsStroke = sampleXs.some((xRatio) =>
+      sampleYs.some((yRatio) => {
+        const screenX = labelRect.left + labelRect.width * xRatio;
+        const screenY = labelRect.top + labelRect.height * yRatio;
+
+        return paths.some((candidate) => {
+          if (!(candidate instanceof SVGGeometryElement) || typeof candidate.isPointInStroke !== 'function') {
+            return false;
+          }
+
+          const matrix = candidate.getScreenCTM();
+          if (!matrix) {
+            return false;
+          }
+
+          const localPoint = new DOMPoint(screenX, screenY).matrixTransform(matrix.inverse());
+          return candidate.isPointInStroke(localPoint);
+        });
+      })
+    );
+
+    if (!intersectsStroke) {
+      return true;
+    }
+
+    if (label.dataset.edgeLabelMask !== 'true') {
+      return false;
+    }
+
+    const maskStyle = getComputedStyle(label, '::before');
+    return maskStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' || maskStyle.boxShadow !== 'none';
+  }, edgeId);
+}
+
+async function waitForPostedMessageByType(page, type) {
+  let matchedMessage = null;
+
+  await expect
+    .poll(async () => {
+      const message = await page.evaluate((nextType) => {
+        return (
+          window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === nextType) ?? null
+        );
+      }, type);
+      if (!message) {
+        return null;
+      }
+
+      matchedMessage = message;
+      return 'matched';
+    })
+    .toBe('matched');
+
+  return matchedMessage;
+}
+
 async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
   let matchedNode = null;
 
@@ -2622,6 +3443,55 @@ async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttemp
   }
 
   throw new Error(`Failed to scroll terminal viewport for node ${nodeId}.`);
+}
+
+async function dragConnectionBetweenAnchors(page, { sourceNodeId, sourceAnchor, targetNodeId, targetAnchor }) {
+  const sourceHandle = nodeById(page, sourceNodeId).locator(`.canvas-node-handle.anchor-${sourceAnchor}`);
+  const targetHandle = nodeById(page, targetNodeId).locator(`.canvas-node-handle.anchor-${targetAnchor}`);
+
+  await nodeById(page, sourceNodeId).hover();
+
+  const sourceBox = await sourceHandle.boundingBox();
+  const targetBox = await targetHandle.boundingBox();
+
+  expect(sourceBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 18
+  });
+  await page.mouse.up();
+  await settleWebview(page, 3);
+}
+
+async function reconnectEdgeEndpointToAnchor(page, { edgeId, handleType, targetNodeId, targetAnchor }) {
+  const edgeUpdater = page.locator(
+    `[data-testid="rf__edge-${edgeId}"] .react-flow__edgeupdater-${handleType}`
+  );
+  const targetHandle = nodeById(page, targetNodeId).locator(`.canvas-node-handle.anchor-${targetAnchor}`);
+
+  const edgeUpdaterBox = await edgeUpdater.boundingBox();
+  const targetHandleBox = await targetHandle.boundingBox();
+
+  expect(edgeUpdaterBox).not.toBeNull();
+  expect(targetHandleBox).not.toBeNull();
+
+  await page.mouse.move(
+    edgeUpdaterBox.x + edgeUpdaterBox.width / 2,
+    edgeUpdaterBox.y + edgeUpdaterBox.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetHandleBox.x + targetHandleBox.width / 2,
+    targetHandleBox.y + targetHandleBox.height / 2,
+    {
+      steps: 18
+    }
+  );
+  await page.mouse.up();
+  await settleWebview(page, 3);
 }
 
 async function dispatchExecutionSnapshot(
@@ -2939,6 +3809,230 @@ function createCanvasScreenshotState() {
   };
 }
 
+function createFileNodeState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-19T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 120 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-src-main',
+        kind: 'file',
+        title: 'main.ts',
+        status: 'linked',
+        summary: 'src/main.ts',
+        position: { x: 720, y: 200 },
+        size: sizeFor('file'),
+        metadata: {
+          file: {
+            fileId: 'file-src-main',
+            filePath: '/workspace/src/main.ts',
+            relativePath: 'src/main.ts',
+            ownerNodeIds: ['agent-1'],
+            icon: {
+              kind: 'codicon',
+              id: 'symbol-file'
+            }
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-src-main',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-src-main',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'file-src-main',
+        filePath: '/workspace/src/main.ts',
+        relativePath: 'src/main.ts',
+        updatedAt: '2026-04-19T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createFileListState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-19T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 120 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'agent-2',
+        kind: 'agent',
+        title: 'Agent 2',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 520 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-list-shared',
+        kind: 'file-list',
+        title: '共享文件',
+        status: 'linked',
+        summary: '共 2 个共享文件',
+        position: { x: 720, y: 280 },
+        size: sizeFor('file-list'),
+        metadata: {
+          fileList: {
+            scope: 'shared',
+            entries: [
+              {
+                fileId: 'shared-src-shared',
+                filePath: '/workspace/src/shared.ts',
+                relativePath: 'src/shared.ts',
+                accessMode: 'read-write',
+                ownerNodeIds: ['agent-1', 'agent-2'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              },
+              {
+                fileId: 'shared-docs-workflow',
+                filePath: '/workspace/docs/WORKFLOW.md',
+                relativePath: 'docs/WORKFLOW.md',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1', 'agent-2'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'markdown'
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-list-shared',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'both',
+        owner: 'file-activity'
+      },
+      {
+        id: 'agent-2::file-list-shared',
+        sourceNodeId: 'agent-2',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'shared-src-shared',
+        filePath: '/workspace/src/shared.ts',
+        relativePath: 'src/shared.ts',
+        updatedAt: '2026-04-19T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read-write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          },
+          {
+            nodeId: 'agent-2',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-docs-workflow',
+        filePath: '/workspace/docs/WORKFLOW.md',
+        relativePath: 'docs/WORKFLOW.md',
+        updatedAt: '2026-04-19T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          },
+          {
+            nodeId: 'agent-2',
+            accessMode: 'write',
+            updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
 function createAgentNodeState(provider = 'codex') {
   const backendLabel = provider === 'claude' ? 'Claude Code CLI' : 'Codex CLI';
   const shellPath = provider === 'claude' ? 'claude' : 'codex';
@@ -3196,6 +4290,10 @@ function sizeFor(kind) {
       return { width: 540, height: 420 };
     case 'note':
       return { width: 380, height: 400 };
+    case 'file':
+      return { width: 220, height: 84 };
+    case 'file-list':
+      return { width: 320, height: 220 };
     default:
       throw new Error(`Unsupported kind ${kind}`);
   }

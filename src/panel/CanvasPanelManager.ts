@@ -28,6 +28,20 @@ import {
   type AgentNodeMetadata,
   type AgentProviderKind,
   type AgentResumeStrategy,
+  type CanvasCreatableNodeKind,
+  type CanvasEdgeAnchor,
+  type CanvasEdgeArrowMode,
+  type CanvasEdgeColor,
+  type CanvasEdgeSummary,
+  type CanvasFileActivityAccessMode,
+  type CanvasFileNodeDisplayMode,
+  type CanvasFilePathDisplayMode,
+  type CanvasFilePresentationMode,
+  type CanvasFileIconDescriptor,
+  type CanvasFileReferenceOwnerSummary,
+  type CanvasFileReferenceSummary,
+  type CanvasFileIconFontFace,
+  type FileListNodeEntrySummary,
   type CanvasNodeFootprint,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
@@ -50,6 +64,7 @@ import {
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   estimatedCanvasNodeFootprint,
+  isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   isExecutionNodeKind,
   normalizeCanvasNodeFootprint,
@@ -107,6 +122,11 @@ import {
   type ResolvedExecutionFileLink
 } from './executionTerminalNativeHelpers';
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
+import {
+  createAgentFileActivitySession,
+  type AgentFileActivityEvent,
+  type AgentFileActivitySession
+} from './agentFileActivity';
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
@@ -212,15 +232,23 @@ interface CanvasTestDiagnosticEvent {
 
 export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
+type NodePlacementPreference = 'left-up' | 'right-down';
+
+interface CanvasFileFilterState {
+  includeGlobs: string[];
+  excludeGlobs: string[];
+}
 
 export interface CanvasSidebarState {
   canvasSurface: 'closed' | 'hidden' | 'visible';
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
+  runtimePersistenceEnabled: boolean;
   nodeCount: number;
   runningExecutionCount: number;
   workspaceTrusted: boolean;
-  creatableKinds: CanvasNodeKind[];
+  creatableKinds: CanvasCreatableNodeKind[];
+  fileFilters: CanvasFileFilterState;
 }
 
 export interface CanvasDebugSnapshot {
@@ -236,6 +264,7 @@ interface PersistedCanvasSnapshot {
   writtenAt?: string;
   stateHash?: string;
   state?: unknown;
+  fileFilterState?: unknown;
   activeSurface?: CanvasSurfaceLocation;
   defaultSurface?: CanvasSurfaceLocation;
   runtimePersistenceEnabled?: boolean;
@@ -244,6 +273,14 @@ interface PersistedCanvasSnapshot {
 interface CanvasStartupConfiguration {
   defaultSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
+}
+
+interface CanvasFileViewConfiguration {
+  presentationMode: CanvasFilePresentationMode;
+  includeGlobs: string[];
+  excludeGlobs: string[];
+  nodeDisplayMode: CanvasFileNodeDisplayMode;
+  pathDisplayMode: CanvasFilePathDisplayMode;
 }
 
 interface PersistedCanvasStateFlushResult {
@@ -322,6 +359,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
+  private fileFilterState: CanvasFileFilterState;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
   private readonly surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>> = {};
@@ -357,6 +395,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
+  private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
@@ -367,6 +406,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.refreshStorageRecoverySelection();
+    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
@@ -406,11 +446,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const defaultSurfaceChanged = event.affectsConfiguration(CONFIG_KEYS.canvasDefaultSurface);
         const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
+        const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
+        const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
+        const filesPathDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPathDisplayMode);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
         const multiCursorModifierChanged = event.affectsConfiguration('editor.multiCursorModifier');
         const terminalWordSeparatorsChanged = event.affectsConfiguration(
           'terminal.integrated.wordSeparators'
         );
+        const workbenchIconThemeChanged = event.affectsConfiguration('workbench.iconTheme');
 
         if (defaultSurfaceChanged || runtimePersistenceChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
@@ -421,18 +465,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         if (
           !defaultAgentProviderChanged &&
+          !filesPresentationModeChanged &&
+          !filesNodeDisplayModeChanged &&
+          !filesPathDisplayModeChanged &&
           !terminalScrollbackChanged &&
           !multiCursorModifierChanged &&
-          !terminalWordSeparatorsChanged
+          !terminalWordSeparatorsChanged &&
+          !workbenchIconThemeChanged
         ) {
           return;
         }
 
         void this.handleRuntimeConfigurationChanged({
           defaultAgentProviderChanged,
+          filesPresentationModeChanged,
+          filesNodeDisplayModeChanged,
+          filesPathDisplayModeChanged,
           terminalScrollbackChanged,
           multiCursorModifierChanged,
-          terminalWordSeparatorsChanged
+          terminalWordSeparatorsChanged,
+          workbenchIconThemeChanged
         });
       })
     );
@@ -467,11 +519,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       canvasSurface,
       surfaceLocation,
       configuredSurface,
+      runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
-      creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note']
+      creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note'],
+      fileFilters: cloneJsonValue(this.fileFilterState)
     };
+  }
+
+  public getCanvasFileFilterState(): CanvasFileFilterState {
+    return cloneJsonValue(this.fileFilterState);
   }
 
   public getDebugSnapshot(): CanvasDebugSnapshot {
@@ -522,7 +580,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testDiagnosticEvents.length = 0;
   }
 
-  public createNode(kind: CanvasNodeKind, options?: { agentProvider?: AgentProviderKind }): void {
+  public createNode(kind: CanvasCreatableNodeKind, options?: { agentProvider?: AgentProviderKind }): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
@@ -540,7 +598,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public createNodeForTest(
-    kind: CanvasNodeKind,
+    kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
     options?: { agentProvider?: AgentProviderKind }
   ): void {
@@ -912,7 +970,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       if (this.editorPanel) {
         this.ensureActiveSurfaceRendered('editor');
-        this.editorPanel.reveal(vscode.ViewColumn.One);
+        await this.refocusInteractiveSurface('editor');
         this.notifySidebarStateChanged();
         return;
       }
@@ -925,6 +983,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
       this.attachEditorPanel(panel);
       this.ensureActiveSurfaceRendered('editor');
+      await this.refocusInteractiveSurface('editor');
       this.notifySidebarStateChanged();
       return;
     }
@@ -935,7 +994,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (this.panelView) {
       this.ensureActiveSurfaceRendered('panel');
-      this.panelView.show(false);
+      await this.refocusInteractiveSurface('panel');
       this.notifySidebarStateChanged();
       return;
     }
@@ -1089,6 +1148,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getStoredValue<T>(key: string): T | undefined {
     return this.context.workspaceState.get<T>(key);
+  }
+
+  private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
+    const snapshot = this.loadPersistedCanvasSnapshot();
+    const storedFilterState =
+      snapshot?.fileFilterState ?? this.getStoredValue<CanvasFileFilterState | undefined>(STORAGE_KEYS.canvasFileFilterState);
+    if (storedFilterState !== undefined) {
+      return normalizeCanvasFileFilterState(storedFilterState);
+    }
+
+    return {
+      includeGlobs: readLegacyCanvasFileFilterGlobs('include'),
+      excludeGlobs: readLegacyCanvasFileFilterGlobs('exclude')
+    };
   }
 
   private refreshStorageRecoverySelection(): void {
@@ -1261,6 +1334,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         STORAGE_KEYS.canvasRuntimePersistenceEnabled,
         snapshotWithMetadata.runtimePersistenceEnabled
       );
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasFileFilterState,
+        normalizeCanvasFileFilterState(snapshotWithMetadata.fileFilterState)
+      );
       this.lastPersistedCanvasSnapshotError = undefined;
     }).catch((error) => {
       const message = formatUnknownError(error);
@@ -1302,6 +1379,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
     return {
       ...snapshot,
+      fileFilterState: this.fileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       writtenAt: new Date().toISOString(),
@@ -1380,10 +1458,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private loadReconciledState(): CanvasPrototypeState {
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
-    return reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
-      allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
-      liveRuntimeReconnectBlockReason
-    });
+    return this.reconcileCanvasFileArtifacts(
+      reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
+        allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
+        liveRuntimeReconnectBlockReason
+      })
+    );
   }
 
   private persistState(): void {
@@ -1392,6 +1472,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       state: this.state,
       activeSurface: this.activeSurface
     }).catch(() => undefined);
+  }
+
+  private reconcileCanvasFileArtifacts(state: CanvasPrototypeState): CanvasPrototypeState {
+    return rebuildCanvasFileArtifacts(state, {
+      view: this.getCanvasFileViewConfiguration()
+    });
   }
 
   private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
@@ -1421,6 +1507,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getRuntimeContext(): CanvasRuntimeContext {
+    const fileConfiguration = this.getCanvasFileViewConfiguration();
     return {
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
@@ -1433,7 +1520,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ),
       terminalWordSeparators: normalizeExecutionTerminalWordSeparators(
         vscode.workspace.getConfiguration('terminal.integrated').get<string>('wordSeparators')
-      )
+      ),
+      filePresentationMode: fileConfiguration.presentationMode,
+      fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
+      filePathDisplayMode: fileConfiguration.pathDisplayMode,
+      fileIconFontFaces: []
     };
   }
 
@@ -1442,6 +1533,53 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       vscode.workspace.getConfiguration('terminal.integrated').get<number>('scrollback'),
       DEFAULT_TERMINAL_SCROLLBACK
     );
+  }
+
+  private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
+    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
+    const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
+    const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
+
+    return {
+      presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
+      includeGlobs: this.fileFilterState.includeGlobs,
+      excludeGlobs: this.fileFilterState.excludeGlobs,
+      nodeDisplayMode:
+        nodeDisplayMode === 'icon-only' || nodeDisplayMode === 'path-only' ? nodeDisplayMode : 'icon-path',
+      pathDisplayMode: pathDisplayMode === 'relative-path' ? 'relative-path' : 'basename'
+    };
+  }
+
+  public updateCanvasFileFilterState(kind: 'include' | 'exclude', globs: readonly string[]): void {
+    const normalizedGlobs = normalizeCanvasFileFilterGlobs(globs);
+    const nextState: CanvasFileFilterState =
+      kind === 'include'
+        ? {
+            ...this.fileFilterState,
+            includeGlobs: normalizedGlobs
+          }
+        : {
+            ...this.fileFilterState,
+            excludeGlobs: normalizedGlobs
+          };
+
+    if (
+      areStringArraysEqual(nextState.includeGlobs, this.fileFilterState.includeGlobs) &&
+      areStringArraysEqual(nextState.excludeGlobs, this.fileFilterState.excludeGlobs)
+    ) {
+      return;
+    }
+
+    this.fileFilterState = nextState;
+    this.recordDiagnosticEvent('fileView/filterUpdated', {
+      kind,
+      includeGlobs: nextState.includeGlobs,
+      excludeGlobs: nextState.excludeGlobs
+    });
+    this.state = this.reconcileCanvasFileArtifacts(this.state);
+    this.persistState();
+    this.postState('host/stateUpdated');
+    this.notifySidebarStateChanged();
   }
 
   private readStartupConfiguration(): CanvasStartupConfiguration {
@@ -1503,9 +1641,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
+    filesPresentationModeChanged: boolean;
+    filesNodeDisplayModeChanged: boolean;
+    filesPathDisplayModeChanged: boolean;
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
     terminalWordSeparatorsChanged: boolean;
+    workbenchIconThemeChanged: boolean;
   }): Promise<void> {
     if (options.terminalScrollbackChanged) {
       try {
@@ -1522,10 +1664,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (
+      options.filesPresentationModeChanged ||
+      options.filesNodeDisplayModeChanged ||
+      options.filesPathDisplayModeChanged ||
+      options.workbenchIconThemeChanged
+    ) {
+      this.state = this.reconcileCanvasFileArtifacts(this.state);
+      this.persistState();
+    }
+
+    if (
       options.defaultAgentProviderChanged ||
+      options.filesPresentationModeChanged ||
+      options.filesNodeDisplayModeChanged ||
+      options.filesPathDisplayModeChanged ||
       options.terminalScrollbackChanged ||
       options.multiCursorModifierChanged ||
-      options.terminalWordSeparatorsChanged
+      options.terminalWordSeparatorsChanged ||
+      options.workbenchIconThemeChanged
     ) {
       this.postState('host/stateUpdated');
     }
@@ -1627,6 +1783,105 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       shellPath: context.shellPath ?? null,
       cwd: context.cwd
     });
+  }
+
+  private async openCanvasFile(filePath: string, sourceSurface: CanvasSurfaceLocation): Promise<void> {
+    const normalizedPath = normalizeTrackedFilePath(filePath);
+    if (!normalizedPath) {
+      return;
+    }
+
+    const uri = vscode.Uri.file(normalizedPath);
+    const document = await vscode.workspace.openTextDocument(uri);
+    const showOptions: vscode.TextDocumentShowOptions =
+      sourceSurface === 'editor'
+        ? {
+            preview: false,
+            preserveFocus: true,
+            viewColumn: vscode.ViewColumn.Beside
+          }
+        : {
+            preview: false,
+            preserveFocus: true
+          };
+    await vscode.window.showTextDocument(document, showOptions);
+    if (sourceSurface === 'editor') {
+      await this.refocusInteractiveSurface('editor');
+    }
+  }
+
+  private async refocusInteractiveSurface(surface: CanvasSurfaceLocation | undefined): Promise<void> {
+    if (surface === 'panel') {
+      this.panelView?.show(false);
+      this.maybePostVisibilityRestored('panel', {
+        force: true
+      });
+      return;
+    }
+
+    if (surface === 'editor') {
+      this.editorPanel?.reveal(vscode.ViewColumn.One, false);
+      for (const command of ['workbench.action.focusActiveEditorGroup', 'workbench.action.focusFirstEditorGroup']) {
+        try {
+          await vscode.commands.executeCommand(command);
+          break;
+        } catch {
+          continue;
+        }
+      }
+      this.maybePostVisibilityRestored('editor', {
+        force: true
+      });
+    }
+  }
+
+  private bindAgentFileActivitySession(nodeId: string, session: AgentFileActivitySession): void {
+    this.agentFileActivitySessions.set(nodeId, session);
+    session.start((event) => {
+      this.handleAgentFileActivityEvent(nodeId, event);
+    });
+  }
+
+  private async disposeAgentFileActivitySession(nodeId: string): Promise<void> {
+    const existing = this.agentFileActivitySessions.get(nodeId);
+    if (!existing) {
+      return;
+    }
+
+    this.agentFileActivitySessions.delete(nodeId);
+    await existing.dispose();
+  }
+
+  private handleAgentFileActivityEvent(nodeId: string, event: AgentFileActivityEvent): void {
+    const relativePath = this.resolveWorkspaceRelativePath(event.path);
+    const nextState = recordAgentFileActivity(this.state, {
+      ...event,
+      nodeId,
+      relativePath
+    });
+    this.state = this.reconcileCanvasFileArtifacts(nextState);
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private resolveWorkspaceRelativePath(filePath: string): string | undefined {
+    const normalizedPath = normalizeTrackedFilePath(filePath);
+    if (!normalizedPath) {
+      return undefined;
+    }
+
+    const candidateUri = vscode.Uri.file(normalizedPath);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(candidateUri);
+    if (!workspaceFolder) {
+      return undefined;
+    }
+
+    const relativePath = path.relative(workspaceFolder.uri.fsPath, normalizedPath);
+    if (!relativePath || relativePath.startsWith('..')) {
+      return undefined;
+    }
+
+    return path.join(workspaceFolder.name, relativePath).replace(/\\/g, '/');
   }
 
   private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): {
@@ -2724,6 +2979,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
       summary:
@@ -2785,6 +3043,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
 
     const lifecycle =
       snapshot?.lifecycle ??
@@ -3281,6 +3542,40 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.persistState();
         this.postState('host/stateUpdated');
         return;
+      case 'webview/createEdge':
+        this.state = createUserCanvasEdge(this.state, {
+          id: `edge-${randomUUID()}`,
+          sourceNodeId: parsedMessage.payload.sourceNodeId,
+          targetNodeId: parsedMessage.payload.targetNodeId,
+          sourceAnchor: parsedMessage.payload.sourceAnchor,
+          targetAnchor: parsedMessage.payload.targetAnchor,
+          arrowMode: 'forward',
+          owner: 'user'
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/updateEdge':
+        this.state = updateCanvasEdge(this.state, parsedMessage.payload.edgeId, {
+          sourceNodeId: parsedMessage.payload.sourceNodeId,
+          targetNodeId: parsedMessage.payload.targetNodeId,
+          sourceAnchor: parsedMessage.payload.sourceAnchor,
+          targetAnchor: parsedMessage.payload.targetAnchor,
+          arrowMode: parsedMessage.payload.arrowMode,
+          color: parsedMessage.payload.color,
+          label: parsedMessage.payload.label
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/deleteEdge':
+        this.state = deleteCanvasEdge(this.state, parsedMessage.payload.edgeId);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/openCanvasFile':
+        void this.openCanvasFile(parsedMessage.payload.filePath, sourceSurface);
+        return;
       case 'webview/resetDemoState':
         void this.resetState().catch((error) => {
           this.postMessage({
@@ -3522,6 +3817,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'agent');
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getTerminalWorkingDirectory();
+    await this.disposeAgentFileActivitySession(nodeId);
+    const fileActivitySession = createAgentFileActivitySession({
+      provider,
+      command: cliSpec.command,
+      extensionRootPath: this.context.extensionUri.fsPath,
+      storageRootPath: path.join(this.getExtensionStoragePath(), 'agent-file-activity')
+    });
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient();
@@ -3594,26 +3896,42 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.unbindRuntimeSession(previousRuntimeSessionId, existingMetadata.runtimeStoragePath);
     }
 
-    const snapshot = await client.createSession({
-      kind: 'agent',
-      displayLabel: cliSpec.label,
-      launchMode,
-      scrollback: this.getTerminalScrollback(),
-      provider,
-      resumeStrategy: resumeContext.strategy,
-      resumeSessionId: resumeContext.sessionId,
-      resumeStoragePath: resumeContext.storagePath,
-      launchSpec: serializeExecutionSessionLaunchSpec(
-        this.buildAgentLaunchSpec(cliSpec, cwd, normalizedCols, normalizedRows, launchMode, resumeContext)
-      )
-    });
+    let snapshot: RuntimeSupervisorSessionSnapshot;
+    try {
+      snapshot = await client.createSession({
+        kind: 'agent',
+        displayLabel: cliSpec.label,
+        launchMode,
+        scrollback: this.getTerminalScrollback(),
+        provider,
+        resumeStrategy: resumeContext.strategy,
+        resumeSessionId: resumeContext.sessionId,
+        resumeStoragePath: resumeContext.storagePath,
+        launchSpec: serializeExecutionSessionLaunchSpec(
+          this.buildAgentLaunchSpec(
+            cliSpec,
+            cwd,
+            normalizedCols,
+            normalizedRows,
+            launchMode,
+            resumeContext,
+            fileActivitySession
+          )
+        )
+      });
+    } catch (error) {
+      await fileActivitySession.dispose();
+      throw error;
+    }
     if (!this.shouldApplyRuntimeCreateResult('agent', nodeId, operationToken, backend.kind)) {
       this.recordIgnoredExecutionSessionOperation('agent', nodeId, 'create', snapshot.sessionId);
+      await fileActivitySession.dispose();
       await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
       return;
     }
 
     this.bindRuntimeSession(nodeId, 'agent', snapshot.sessionId, runtimeStoragePath);
+    this.bindAgentFileActivitySession(nodeId, fileActivitySession);
     this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
@@ -3867,11 +4185,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
+    await this.disposeAgentFileActivitySession(nodeId);
 
     try {
       cliSpec = await this.resolveAgentCli(provider);
+      const fileActivitySession = createAgentFileActivitySession({
+        provider,
+        command: cliSpec.command,
+        extensionRootPath: this.context.extensionUri.fsPath,
+        storageRootPath: path.join(this.getExtensionStoragePath(), 'agent-file-activity')
+      });
       const process = createExecutionSessionProcess(
-        this.buildAgentLaunchSpec(cliSpec, cwd, normalizedCols, normalizedRows, launchMode, resumeContext)
+        this.buildAgentLaunchSpec(
+          cliSpec,
+          cwd,
+          normalizedCols,
+          normalizedRows,
+          launchMode,
+          resumeContext,
+          fileActivitySession
+        )
       );
 
       const session: LocalExecutionSession = {
@@ -3911,6 +4244,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         exitSubscription: undefined
       };
       activeSessions.set(nodeId, session);
+      this.bindAgentFileActivitySession(nodeId, fileActivitySession);
       this.recordDiagnosticEvent('execution/started', {
         kind: 'agent',
         nodeId,
@@ -3988,12 +4322,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.queueExecutionOutput('agent', nodeId, text);
       };
 
-      const finalize = (
+      const finalize = async (
         status: 'stopped' | 'error' | 'resume-failed',
         message: string,
         exitCode?: number,
         signal?: string
-      ): void => {
+      ): Promise<void> => {
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
         if (!activeSession) {
@@ -4012,6 +4346,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
         this.flushExecutionOutputImmediately('agent', nodeId);
+        await this.disposeAgentFileActivitySession(nodeId);
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
@@ -4084,18 +4419,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleSessionChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
+          void finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
+          void finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
         if (session.resumePhaseActive) {
-          finalize(
+          void finalize(
             'resume-failed',
             describeAgentResumeFailure(cliSpec, exitCode, signal, cleanedOutput),
             exitCode,
@@ -4104,7 +4439,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
-        finalize(
+        void finalize(
           'error',
           describeAgentSessionExit(cliSpec, exitCode, signal, cleanedOutput),
           exitCode,
@@ -4112,6 +4447,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         );
       });
     } catch (error) {
+      await this.disposeAgentFileActivitySession(nodeId);
       const message =
         launchMode === 'resume'
           ? describeAgentResumeSpawnError(cliSpec, error)
@@ -4363,7 +4699,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     cols: number,
     rows: number,
     launchMode: PendingExecutionLaunch,
-    resumeContext: AgentResumeContext
+    resumeContext: AgentResumeContext,
+    fileActivitySession?: AgentFileActivitySession
   ): ExecutionSessionLaunchSpec {
     const env = this.buildExecutionEnvironment();
     const args: string[] = [];
@@ -4392,6 +4729,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         throw new Error('缺少可恢复的 Codex 会话标识。');
       }
       args.push('resume', resumeContext.sessionId);
+    }
+
+    if (fileActivitySession) {
+      args.push(...fileActivitySession.extraArgs);
+      Object.assign(env, fileActivitySession.extraEnv);
     }
 
     return {
@@ -5089,7 +5431,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
-    this.state = deleteCanvasNode(this.state, nodeId);
+    const nextState =
+      node.kind === 'agent'
+        ? removeAgentFileReferences(deleteCanvasNode(this.state, nodeId), nodeId)
+        : node.kind === 'file' || node.kind === 'file-list'
+          ? {
+              ...deleteCanvasNode(this.state, nodeId),
+              suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
+                this.state.suppressedAutomaticFileArtifactNodeIds,
+                nodeId
+              )
+            }
+        : deleteCanvasNode(this.state, nodeId);
+    this.state = this.reconcileCanvasFileArtifacts(nextState);
     this.persistState();
     this.postState('host/stateUpdated');
   }
@@ -5133,6 +5487,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
     this.disposeManagedExecutionSession(session);
 
     if (session.owner === 'supervisor') {
@@ -5397,7 +5754,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private applyCreateNode(
-    kind: CanvasNodeKind,
+    kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
     options?: { bypassTrust?: boolean; agentProvider?: AgentProviderKind }
   ): void {
@@ -5559,7 +5916,11 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
   return {
     version: 1,
     updatedAt: new Date().toISOString(),
-    nodes: []
+    nodes: [],
+    edges: [],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
   };
 }
 
@@ -5654,6 +6015,10 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
       return '尚未启动嵌入式终端。';
     case 'note':
       return '等待记录笔记内容。';
+    case 'file':
+      return '最近被 Agent 访问的文件。';
+    case 'file-list':
+      return '按 Agent 聚合的文件活动列表。';
   }
 }
 
@@ -5665,6 +6030,10 @@ function defaultStatusForKind(kind: CanvasNodeKind): string {
       return 'idle';
     case 'note':
       return 'ready';
+    case 'file':
+      return 'linked';
+    case 'file-list':
+      return 'linked';
   }
 }
 
@@ -5676,7 +6045,9 @@ function createNode(
   const titlePrefix = {
     agent: 'Agent',
     terminal: 'Terminal',
-    note: 'Note'
+    note: 'Note',
+    file: 'File',
+    'file-list': 'File List'
   } satisfies Record<CanvasNodeKind, string>;
 
   const id = `${kind}-${sequence}`;
@@ -5706,20 +6077,24 @@ function createNodePosition(sequence: number): CanvasNodePosition {
 function resolveNewNodePosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
-  anchor: CanvasNodePosition
+  anchor: CanvasNodePosition,
+  preference: NodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const normalizedAnchor = snapCanvasPosition(anchor);
 
-  for (const candidate of buildPlacementCandidates(normalizedAnchor)) {
+  for (const candidate of buildPlacementCandidates(normalizedAnchor, preference)) {
     if (!doesPlacementCollide(existingNodes, kind, candidate)) {
       return candidate;
     }
   }
 
-  return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor);
+  return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor, preference);
 }
 
-function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePosition[] {
+function buildPlacementCandidates(
+  anchor: CanvasNodePosition,
+  preference: NodePlacementPreference
+): CanvasNodePosition[] {
   const offsets: Array<{ dx: number; dy: number; distance: number; backwardBias: number }> = [];
 
   for (let dx = -NODE_PLACEMENT_SEARCH_RADIUS; dx <= NODE_PLACEMENT_SEARCH_RADIUS; dx += 1) {
@@ -5734,12 +6109,39 @@ function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePositio
   }
 
   offsets.sort((left, right) => {
+    const leftHorizontalRank = resolvePlacementAxisRank(left.dx, preference === 'left-up' ? 'negative' : 'positive');
+    const rightHorizontalRank = resolvePlacementAxisRank(right.dx, preference === 'left-up' ? 'negative' : 'positive');
+    const leftVerticalRank = resolvePlacementAxisRank(left.dy, preference === 'left-up' ? 'negative' : 'positive');
+    const rightVerticalRank = resolvePlacementAxisRank(right.dy, preference === 'left-up' ? 'negative' : 'positive');
+    const leftPreferenceRank = leftHorizontalRank + leftVerticalRank;
+    const rightPreferenceRank = rightHorizontalRank + rightVerticalRank;
+
+    if (leftPreferenceRank !== rightPreferenceRank) {
+      return leftPreferenceRank - rightPreferenceRank;
+    }
+
+    if (leftHorizontalRank !== rightHorizontalRank) {
+      return leftHorizontalRank - rightHorizontalRank;
+    }
+
+    if (leftVerticalRank !== rightVerticalRank) {
+      return leftVerticalRank - rightVerticalRank;
+    }
+
     if (left.distance !== right.distance) {
       return left.distance - right.distance;
     }
 
     if (left.backwardBias !== right.backwardBias) {
       return left.backwardBias - right.backwardBias;
+    }
+
+    if (Math.abs(left.dy) !== Math.abs(right.dy)) {
+      return Math.abs(left.dy) - Math.abs(right.dy);
+    }
+
+    if (Math.abs(left.dx) !== Math.abs(right.dx)) {
+      return Math.abs(left.dx) - Math.abs(right.dx);
     }
 
     if (left.dy !== right.dy) {
@@ -5757,6 +6159,15 @@ function buildPlacementCandidates(anchor: CanvasNodePosition): CanvasNodePositio
   );
 }
 
+function resolvePlacementAxisRank(value: number, preferredSign: 'negative' | 'positive'): number {
+  if (value === 0) {
+    return 1;
+  }
+
+  const matchesPreferred = preferredSign === 'negative' ? value < 0 : value > 0;
+  return matchesPreferred ? 0 : 2;
+}
+
 function doesPlacementCollide(
   existingNodes: CanvasNodeSummary[],
   nextKind: CanvasNodeKind,
@@ -5772,7 +6183,8 @@ function doesPlacementCollide(
 function fallbackPlacementPosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
-  normalizedAnchor: CanvasNodePosition
+  normalizedAnchor: CanvasNodePosition,
+  preference: NodePlacementPreference
 ): CanvasNodePosition {
   if (existingNodes.length === 0) {
     return normalizedAnchor;
@@ -5783,19 +6195,33 @@ function fallbackPlacementPosition(
       const rect = createPlacementRect(node.position, node.size);
       return {
         maxRight: Math.max(current.maxRight, rect.right),
-        minTop: Math.min(current.minTop, rect.top)
+        minLeft: Math.min(current.minLeft, rect.left),
+        minTop: Math.min(current.minTop, rect.top),
+        maxBottom: Math.max(current.maxBottom, rect.bottom)
       };
     },
     {
       maxRight: Number.NEGATIVE_INFINITY,
-      minTop: Number.POSITIVE_INFINITY
+      minLeft: Number.POSITIVE_INFINITY,
+      minTop: Number.POSITIVE_INFINITY,
+      maxBottom: Number.NEGATIVE_INFINITY
     }
   );
   const nextFootprint = estimatedCanvasNodeFootprint(kind);
 
+  if (preference === 'left-up') {
+    return snapCanvasPosition({
+      x: bounds.minLeft - nextFootprint.width - NODE_PLACEMENT_PADDING,
+      y: Math.min(
+        bounds.minTop - nextFootprint.height - NODE_PLACEMENT_PADDING,
+        normalizedAnchor.y - Math.round(nextFootprint.height / 3)
+      )
+    });
+  }
+
   return snapCanvasPosition({
     x: bounds.maxRight + NODE_PLACEMENT_PADDING,
-    y: Math.max(bounds.minTop, normalizedAnchor.y - Math.round(nextFootprint.height / 3))
+    y: Math.max(bounds.maxBottom - Math.round(nextFootprint.height / 2), normalizedAnchor.y)
   });
 }
 
@@ -5904,11 +6330,838 @@ function deleteCanvasNode(previousState: CanvasPrototypeState, nodeId: string): 
     return previousState;
   }
 
+  const nextEdges = previousState.edges.filter(
+    (edge) => edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId
+  );
+
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    nodes: nextNodes
+    nodes: nextNodes,
+    edges: nextEdges
   };
+}
+
+function rebuildCanvasFileArtifacts(
+  state: CanvasPrototypeState,
+  options: { view: CanvasFileViewConfiguration }
+): CanvasPrototypeState {
+  const manualNodes = state.nodes.filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
+  const existingAutoNodes = new Map(
+    state.nodes
+      .filter((node) => node.kind === 'file' || node.kind === 'file-list')
+      .map((node) => [node.id, node] as const)
+  );
+  const manualNodeIds = new Set(manualNodes.map((node) => node.id));
+  const agentNodesById = new Map(
+    manualNodes.filter((node) => node.kind === 'agent').map((node) => [node.id, node] as const)
+  );
+  const authoritativeFileReferences = state.fileReferences
+    .map((reference) => ({
+      ...reference,
+      owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
+    }))
+    .filter((reference) => reference.owners.length > 0);
+  const projectedFileReferences = authoritativeFileReferences.filter((reference) =>
+    shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
+  );
+  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(authoritativeFileReferences);
+  const allAutomaticArtifacts =
+    options.view.presentationMode === 'lists'
+      ? buildAutomaticFileListArtifacts(authoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
+      : buildAutomaticFileNodeArtifacts(
+          authoritativeFileReferences,
+          manualNodes,
+          agentNodesById,
+          existingAutoNodes,
+          options.view.pathDisplayMode
+        );
+  const automaticArtifacts =
+    options.view.presentationMode === 'lists'
+      ? buildAutomaticFileListArtifacts(projectedFileReferences, manualNodes, agentNodesById, existingAutoNodes)
+      : buildAutomaticFileNodeArtifacts(
+          projectedFileReferences,
+          manualNodes,
+          agentNodesById,
+          existingAutoNodes,
+          options.view.pathDisplayMode
+        );
+  const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
+  const projectedNodes = [
+    ...manualNodes,
+    ...automaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
+  ];
+  const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
+  const automaticEdgeIds = new Set(allAutomaticArtifacts.edges.map((edge) => edge.id));
+  const suppressedFileActivityEdgeIds = new Set(state.suppressedFileActivityEdgeIds);
+  const userEdges = state.edges.filter(
+    (edge) =>
+      edge.owner === 'user' &&
+      projectedNodeIds.has(edge.sourceNodeId) &&
+      projectedNodeIds.has(edge.targetNodeId)
+  );
+  const automaticEdges = automaticArtifacts.edges.filter(
+    (edge) =>
+      !suppressedFileActivityEdgeIds.has(edge.id) &&
+      projectedNodeIds.has(edge.sourceNodeId) &&
+      projectedNodeIds.has(edge.targetNodeId)
+  );
+
+  return {
+    ...state,
+    nodes: projectedNodes,
+    edges: [...userEdges, ...automaticEdges],
+    fileReferences: authoritativeFileReferences,
+    suppressedFileActivityEdgeIds: Array.from(suppressedFileActivityEdgeIds).filter(
+      (edgeId) => automaticEdgeIds.has(edgeId) || userEdges.some((edge) => edge.id === edgeId)
+    ),
+    suppressedAutomaticFileArtifactNodeIds: Array.from(suppressedAutomaticFileArtifactNodeIds).filter(
+      (nodeId) => automaticArtifactNodeIds.has(nodeId)
+    )
+  };
+}
+
+function buildAutomaticFileNodeArtifacts(
+  fileReferences: CanvasFileReferenceSummary[],
+  manualNodes: CanvasNodeSummary[],
+  agentNodesById: Map<string, CanvasNodeSummary>,
+  existingAutoNodes: Map<string, CanvasNodeSummary>,
+  pathDisplayMode: CanvasFilePathDisplayMode
+): { nodes: CanvasNodeSummary[]; edges: CanvasEdgeSummary[] } {
+  const nodes: CanvasNodeSummary[] = [];
+  const edges: CanvasEdgeSummary[] = [];
+  const singleOwnerFileCounts = new Map<string, number>();
+
+  for (const reference of sortFileReferences(fileReferences)) {
+    const nodeId = buildFileNodeId(reference.id);
+    const existingNode = existingAutoNodes.get(nodeId);
+    const placementPreference = resolveFileReferencePlacementPreference(reference);
+    const anchor = resolveFileReferencePlacementAnchor(
+      reference,
+      agentNodesById,
+      singleOwnerFileCounts,
+      placementPreference
+    );
+    const occupiedNodes = [...manualNodes, ...nodes];
+    const position = resolveAutomaticArtifactPosition(
+      occupiedNodes,
+      'file',
+      anchor,
+      existingNode,
+      placementPreference
+    );
+    const title = buildFileDisplayLabel(reference, pathDisplayMode);
+    nodes.push({
+      id: nodeId,
+      kind: 'file',
+      title,
+      status: 'linked',
+      summary: reference.relativePath ?? reference.filePath,
+      position,
+      size: existingNode?.size ?? estimatedCanvasNodeFootprint('file'),
+      metadata: {
+        file: {
+          fileId: reference.id,
+          filePath: reference.filePath,
+          relativePath: reference.relativePath,
+          ownerNodeIds: reference.owners.map((owner) => owner.nodeId),
+          icon: createDefaultFileIconDescriptor(reference.filePath)
+        }
+      }
+    });
+
+    for (const owner of reference.owners) {
+      if (!agentNodesById.has(owner.nodeId)) {
+        continue;
+      }
+
+      edges.push(
+        createAutomaticFileEdge({
+          edgeId: `${owner.nodeId}::${nodeId}`,
+          referenceNodeId: nodeId,
+          agentNodeId: owner.nodeId,
+          accessMode: owner.accessMode
+        })
+      );
+    }
+  }
+
+  return { nodes, edges };
+}
+
+function buildAutomaticFileListArtifacts(
+  fileReferences: CanvasFileReferenceSummary[],
+  manualNodes: CanvasNodeSummary[],
+  agentNodesById: Map<string, CanvasNodeSummary>,
+  existingAutoNodes: Map<string, CanvasNodeSummary>
+): { nodes: CanvasNodeSummary[]; edges: CanvasEdgeSummary[] } {
+  const nodes: CanvasNodeSummary[] = [];
+  const edges: CanvasEdgeSummary[] = [];
+  const uniqueEntriesByAgent = new Map<string, FileListNodeEntrySummary[]>();
+  const sharedEntries: FileListNodeEntrySummary[] = [];
+
+  for (const reference of sortFileReferences(fileReferences)) {
+    const entryBase = {
+      fileId: reference.id,
+      filePath: reference.filePath,
+      relativePath: reference.relativePath,
+      ownerNodeIds: reference.owners.map((owner) => owner.nodeId),
+      icon: createDefaultFileIconDescriptor(reference.filePath)
+    };
+
+    if (reference.owners.length > 1) {
+      sharedEntries.push({
+        ...entryBase,
+        accessMode: mergeAccessModes(reference.owners.map((owner) => owner.accessMode))
+      });
+      continue;
+    }
+
+    const [owner] = reference.owners;
+    const bucket = uniqueEntriesByAgent.get(owner.nodeId) ?? [];
+    bucket.push({
+      ...entryBase,
+      accessMode: owner.accessMode
+    });
+    uniqueEntriesByAgent.set(owner.nodeId, bucket);
+  }
+
+  for (const [agentNodeId, entries] of uniqueEntriesByAgent.entries()) {
+    const agentNode = agentNodesById.get(agentNodeId);
+    if (!agentNode) {
+      continue;
+    }
+
+    const nodeId = buildAgentFileListNodeId(agentNodeId);
+    const existingNode = existingAutoNodes.get(nodeId);
+    const position = existingNode?.position
+      ? existingNode.position
+      : resolveNewNodePosition(
+          [...manualNodes, ...nodes],
+          'file-list',
+          resolveFileListAnchor(agentNode, 'agent')
+        );
+    nodes.push({
+      id: nodeId,
+      kind: 'file-list',
+      title: `${agentNode.title} 文件`,
+      status: 'linked',
+      summary: `共 ${entries.length} 个文件`,
+      position,
+      size: existingNode?.size ?? estimatedCanvasNodeFootprint('file-list'),
+      metadata: {
+        fileList: {
+          scope: 'agent',
+          ownerNodeId: agentNodeId,
+          entries
+        }
+      }
+    });
+    edges.push(
+      createAutomaticFileEdge({
+        edgeId: `${agentNodeId}::${nodeId}`,
+        referenceNodeId: nodeId,
+        agentNodeId,
+        accessMode: mergeAccessModes(entries.map((entry) => entry.accessMode))
+      })
+    );
+  }
+
+  if (sharedEntries.length > 0) {
+    const sharedNodeId = 'file-list-shared';
+    const existingNode = existingAutoNodes.get(sharedNodeId);
+    const position = existingNode?.position
+      ? existingNode.position
+      : resolveNewNodePosition(
+          [...manualNodes, ...nodes],
+          'file-list',
+          resolveSharedFileListAnchor(sharedEntries, agentNodesById)
+        );
+    nodes.push({
+      id: sharedNodeId,
+      kind: 'file-list',
+      title: '共享文件',
+      status: 'linked',
+      summary: `共 ${sharedEntries.length} 个共享文件`,
+      position,
+      size: existingNode?.size ?? estimatedCanvasNodeFootprint('file-list'),
+      metadata: {
+        fileList: {
+          scope: 'shared',
+          entries: sharedEntries
+        }
+      }
+    });
+
+    const sharedOwners = new Map<string, CanvasFileActivityAccessMode[]>();
+    for (const entry of sharedEntries) {
+      for (const ownerNodeId of entry.ownerNodeIds) {
+        const bucket = sharedOwners.get(ownerNodeId) ?? [];
+        bucket.push(entry.accessMode);
+        sharedOwners.set(ownerNodeId, bucket);
+      }
+    }
+
+    for (const [agentNodeId, accessModes] of sharedOwners.entries()) {
+      if (!agentNodesById.has(agentNodeId)) {
+        continue;
+      }
+      edges.push(
+        createAutomaticFileEdge({
+          edgeId: `${agentNodeId}::${sharedNodeId}`,
+          referenceNodeId: sharedNodeId,
+          agentNodeId,
+          accessMode: mergeAccessModes(accessModes)
+        })
+      );
+    }
+  }
+
+  return { nodes, edges };
+}
+
+function buildFileNodeId(fileReferenceId: string): string {
+  return `file-${fileReferenceId}`;
+}
+
+function buildAgentFileListNodeId(agentNodeId: string): string {
+  return `file-list-agent-${agentNodeId}`;
+}
+
+function collectAutomaticFileArtifactNodeIds(
+  fileReferences: CanvasFileReferenceSummary[]
+): Set<string> {
+  const nodeIds = new Set<string>();
+  const uniqueAgentFileListOwnerIds = new Set<string>();
+  let hasSharedFileList = false;
+
+  for (const reference of fileReferences) {
+    nodeIds.add(buildFileNodeId(reference.id));
+    if (reference.owners.length > 1) {
+      hasSharedFileList = true;
+      continue;
+    }
+
+    const [owner] = reference.owners;
+    if (owner) {
+      uniqueAgentFileListOwnerIds.add(owner.nodeId);
+    }
+  }
+
+  for (const ownerNodeId of uniqueAgentFileListOwnerIds) {
+    nodeIds.add(buildAgentFileListNodeId(ownerNodeId));
+  }
+
+  if (hasSharedFileList) {
+    nodeIds.add('file-list-shared');
+  }
+
+  return nodeIds;
+}
+
+function resolveAutomaticArtifactPosition(
+  occupiedNodes: CanvasNodeSummary[],
+  kind: CanvasNodeKind,
+  anchor: CanvasNodePosition,
+  existingNode?: CanvasNodeSummary,
+  preference: NodePlacementPreference = 'right-down'
+): CanvasNodePosition {
+  const existingPosition = existingNode?.position;
+  if (
+    existingPosition &&
+    !doesPlacementCollide(occupiedNodes, kind, existingPosition) &&
+    doesPlacementRespectPreference(existingPosition, kind, anchor, preference)
+  ) {
+    return existingPosition;
+  }
+
+  return resolveNewNodePosition(occupiedNodes, kind, anchor, preference);
+}
+
+function resolveFileReferencePlacementAnchor(
+  reference: CanvasFileReferenceSummary,
+  agentNodesById: Map<string, CanvasNodeSummary>,
+  singleOwnerFileCounts: Map<string, number>,
+  preference: NodePlacementPreference
+): CanvasNodePosition {
+  const baseAnchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file', preference);
+  if (reference.owners.length !== 1) {
+    return baseAnchor;
+  }
+
+  const [owner] = reference.owners;
+  const countKey = `${owner.nodeId}:${preference}`;
+  const offsetIndex = singleOwnerFileCounts.get(countKey) ?? 0;
+  singleOwnerFileCounts.set(countKey, offsetIndex + 1);
+  if (offsetIndex === 0) {
+    return baseAnchor;
+  }
+
+  return snapCanvasPosition({
+    x: baseAnchor.x,
+    y: baseAnchor.y + (preference === 'left-up' ? -1 : 1) * offsetIndex * NODE_PLACEMENT_STEP_Y
+  });
+}
+
+function resolveFileReferenceAnchor(
+  reference: CanvasFileReferenceSummary,
+  agentNodesById: Map<string, CanvasNodeSummary>,
+  kind: 'file' | 'file-list',
+  preference: NodePlacementPreference = 'right-down'
+): CanvasNodePosition {
+  const ownerNodes = reference.owners
+    .map((owner) => agentNodesById.get(owner.nodeId))
+    .filter((node): node is CanvasNodeSummary => Boolean(node));
+  if (ownerNodes.length === 0) {
+    return createNodePosition(1);
+  }
+
+  const averageLeft = ownerNodes.reduce((sum, node) => sum + node.position.x, 0) / ownerNodes.length;
+  const averageRight =
+    ownerNodes.reduce((sum, node) => sum + node.position.x + node.size.width, 0) / ownerNodes.length;
+  const averageY =
+    ownerNodes.reduce((sum, node) => sum + node.position.y + node.size.height / 3, 0) / ownerNodes.length;
+  const footprint = estimatedCanvasNodeFootprint(kind);
+  const horizontalOffset = kind === 'file' ? 140 : 180;
+
+  return snapCanvasPosition({
+    x:
+      preference === 'left-up'
+        ? averageLeft - footprint.width - horizontalOffset
+        : averageRight + horizontalOffset,
+    y: averageY
+  });
+}
+
+function resolveFileReferencePlacementPreference(reference: CanvasFileReferenceSummary): NodePlacementPreference {
+  return mergeAccessModes(reference.owners.map((owner) => owner.accessMode)) === 'read' ? 'left-up' : 'right-down';
+}
+
+function doesPlacementRespectPreference(
+  position: CanvasNodePosition,
+  kind: CanvasNodeKind,
+  anchor: CanvasNodePosition,
+  preference: NodePlacementPreference
+): boolean {
+  const footprint = estimatedCanvasNodeFootprint(kind);
+  const centerX = position.x + footprint.width / 2;
+  const centerY = position.y + footprint.height / 2;
+
+  if (preference === 'left-up') {
+    return centerX <= anchor.x + NODE_PLACEMENT_STEP_X && centerY <= anchor.y + NODE_PLACEMENT_STEP_Y;
+  }
+
+  return centerX >= anchor.x - NODE_PLACEMENT_STEP_X && centerY >= anchor.y - NODE_PLACEMENT_STEP_Y;
+}
+
+function resolveFileListAnchor(
+  agentNode: CanvasNodeSummary,
+  scope: 'agent' | 'shared'
+): CanvasNodePosition {
+  return snapCanvasPosition({
+    x: agentNode.position.x + agentNode.size.width + 140,
+    y: agentNode.position.y + (scope === 'shared' ? 120 : 20)
+  });
+}
+
+function resolveSharedFileListAnchor(
+  sharedEntries: FileListNodeEntrySummary[],
+  agentNodesById: Map<string, CanvasNodeSummary>
+): CanvasNodePosition {
+  const ownerNodes = Array.from(
+    new Set(sharedEntries.flatMap((entry) => entry.ownerNodeIds))
+  )
+    .map((nodeId) => agentNodesById.get(nodeId))
+    .filter((node): node is CanvasNodeSummary => Boolean(node));
+  if (ownerNodes.length === 0) {
+    return createNodePosition(1);
+  }
+
+  const averageX =
+    ownerNodes.reduce((sum, node) => sum + node.position.x + node.size.width, 0) / ownerNodes.length;
+  const averageY =
+    ownerNodes.reduce((sum, node) => sum + node.position.y + node.size.height / 2, 0) / ownerNodes.length;
+  return snapCanvasPosition({
+    x: averageX + 180,
+    y: averageY + 80
+  });
+}
+
+function createAutomaticFileEdge(params: {
+  edgeId: string;
+  referenceNodeId: string;
+  agentNodeId: string;
+  accessMode: CanvasFileActivityAccessMode;
+}): CanvasEdgeSummary {
+  if (params.accessMode === 'read') {
+    return {
+      id: params.edgeId,
+      sourceNodeId: params.referenceNodeId,
+      targetNodeId: params.agentNodeId,
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'file-activity'
+    };
+  }
+
+  return {
+    id: params.edgeId,
+    sourceNodeId: params.agentNodeId,
+    targetNodeId: params.referenceNodeId,
+    sourceAnchor: 'right',
+    targetAnchor: 'left',
+    arrowMode: params.accessMode === 'read-write' ? 'both' : 'forward',
+    owner: 'file-activity'
+  };
+}
+
+function sortFileReferences(fileReferences: CanvasFileReferenceSummary[]): CanvasFileReferenceSummary[] {
+  return [...fileReferences].sort((left, right) =>
+    (left.relativePath ?? left.filePath).localeCompare(right.relativePath ?? right.filePath)
+  );
+}
+
+function mergeAccessModes(accessModes: CanvasFileActivityAccessMode[]): CanvasFileActivityAccessMode {
+  const hasRead = accessModes.includes('read') || accessModes.includes('read-write');
+  const hasWrite = accessModes.includes('write') || accessModes.includes('read-write');
+  if (hasRead && hasWrite) {
+    return 'read-write';
+  }
+  return hasWrite ? 'write' : 'read';
+}
+
+function normalizeCanvasFileFilterGlobs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function normalizeCanvasFileFilterState(value: unknown): CanvasFileFilterState {
+  if (!isRecord(value)) {
+    return {
+      includeGlobs: [],
+      excludeGlobs: []
+    };
+  }
+
+  return {
+    includeGlobs: normalizeCanvasFileFilterGlobs(value.includeGlobs),
+    excludeGlobs: normalizeCanvasFileFilterGlobs(value.excludeGlobs)
+  };
+}
+
+function areStringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function readLegacyCanvasFileFilterGlobs(kind: 'include' | 'exclude'): string[] {
+  const key =
+    kind === 'include' ? 'devSessionCanvas.files.includeGlobs' : 'devSessionCanvas.files.excludeGlobs';
+  return normalizeCanvasFileFilterGlobs(vscode.workspace.getConfiguration().get<unknown>(key));
+}
+
+function shouldIncludeFileReference(
+  reference: CanvasFileReferenceSummary,
+  includeGlobs: string[],
+  excludeGlobs: string[]
+): boolean {
+  const candidateText = reference.relativePath ?? reference.filePath;
+  if (includeGlobs.length > 0 && !includeGlobs.some((pattern) => globPatternMatches(pattern, candidateText))) {
+    return false;
+  }
+
+  return !excludeGlobs.some((pattern) => globPatternMatches(pattern, candidateText));
+}
+
+function globPatternMatches(pattern: string, value: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '::double-star::')
+    .replace(/\*/g, '[^/]*')
+    .replace(/::double-star::/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`).test(value.replace(/\\/g, '/'));
+}
+
+function createDefaultFileIconDescriptor(filePath: string): CanvasFileIconDescriptor {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.md') {
+    return { kind: 'codicon', id: 'markdown' };
+  }
+  if (extension === '.ts' || extension === '.tsx' || extension === '.js' || extension === '.jsx') {
+    return { kind: 'codicon', id: 'symbol-file' };
+  }
+  if (extension === '.json') {
+    return { kind: 'codicon', id: 'json' };
+  }
+  return { kind: 'codicon', id: 'file' };
+}
+
+function buildFileDisplayLabel(
+  reference: Pick<CanvasFileReferenceSummary, 'relativePath' | 'filePath'>,
+  mode: CanvasFilePathDisplayMode
+): string {
+  const candidate = mode === 'relative-path' ? reference.relativePath ?? reference.filePath : path.basename(reference.filePath);
+  return candidate || reference.filePath;
+}
+
+function createUserCanvasEdge(
+  previousState: CanvasPrototypeState,
+  edge: CanvasEdgeSummary
+): CanvasPrototypeState {
+  if (previousState.edges.some((existingEdge) => existingEdge.id === edge.id)) {
+    return previousState;
+  }
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    edges: [...previousState.edges, edge]
+  };
+}
+
+function updateCanvasEdge(
+  previousState: CanvasPrototypeState,
+  edgeId: string,
+  patch: {
+    sourceNodeId?: string;
+    targetNodeId?: string;
+    sourceAnchor?: CanvasEdgeAnchor;
+    targetAnchor?: CanvasEdgeAnchor;
+    arrowMode?: CanvasEdgeArrowMode;
+    color?: CanvasEdgeColor | null;
+    label?: string;
+  }
+): CanvasPrototypeState {
+  const edge = previousState.edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) {
+    return previousState;
+  }
+
+  const patchedEdge = applyCanvasEdgePatch(edge, patch);
+  const nodeIds = new Set(previousState.nodes.map((node) => node.id));
+  if (!nodeIds.has(patchedEdge.sourceNodeId) || !nodeIds.has(patchedEdge.targetNodeId)) {
+    return previousState;
+  }
+  if (areCanvasEdgesEquivalent(edge, patchedEdge)) {
+    return previousState;
+  }
+  const nextEdge =
+    edge.owner === 'file-activity'
+      ? {
+          ...patchedEdge,
+          owner: 'user' as const
+        }
+      : patchedEdge;
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    edges: previousState.edges.map((candidate) => (candidate.id === edgeId ? nextEdge : candidate)),
+    suppressedFileActivityEdgeIds:
+      edge.owner === 'file-activity'
+        ? ensureSuppressedFileActivityEdgeId(previousState.suppressedFileActivityEdgeIds, edgeId)
+        : previousState.suppressedFileActivityEdgeIds
+  };
+}
+
+function deleteCanvasEdge(previousState: CanvasPrototypeState, edgeId: string): CanvasPrototypeState {
+  const edge = previousState.edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) {
+    return previousState;
+  }
+
+  const nextEdges = previousState.edges.filter((edge) => edge.id !== edgeId);
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    edges: nextEdges,
+    suppressedFileActivityEdgeIds:
+      edge.owner === 'file-activity' || previousState.suppressedFileActivityEdgeIds.includes(edgeId)
+        ? ensureSuppressedFileActivityEdgeId(previousState.suppressedFileActivityEdgeIds, edgeId)
+        : previousState.suppressedFileActivityEdgeIds
+  };
+}
+
+function normalizeCanvasEdgeLabel(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeCanvasEdgeColor(value: CanvasEdgeColor | undefined): CanvasEdgeColor | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^[1-6]$/.test(trimmed)) {
+    return trimmed as CanvasEdgeColor;
+  }
+
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)
+    ? (trimmed as CanvasEdgeColor)
+    : undefined;
+}
+
+function applyCanvasEdgePatch(
+  edge: CanvasEdgeSummary,
+  patch: {
+    sourceNodeId?: string;
+    targetNodeId?: string;
+    sourceAnchor?: CanvasEdgeAnchor;
+    targetAnchor?: CanvasEdgeAnchor;
+    arrowMode?: CanvasEdgeArrowMode;
+    color?: CanvasEdgeColor | null;
+    label?: string;
+  }
+): CanvasEdgeSummary {
+  const hasColorPatch = Object.prototype.hasOwnProperty.call(patch, 'color');
+  return {
+    ...edge,
+    sourceNodeId: patch.sourceNodeId ?? edge.sourceNodeId,
+    targetNodeId: patch.targetNodeId ?? edge.targetNodeId,
+    sourceAnchor: patch.sourceAnchor ?? edge.sourceAnchor,
+    targetAnchor: patch.targetAnchor ?? edge.targetAnchor,
+    arrowMode: patch.arrowMode ?? edge.arrowMode,
+    color: hasColorPatch ? normalizeCanvasEdgeColor(patch.color ?? undefined) : edge.color,
+    label: patch.label !== undefined ? normalizeCanvasEdgeLabel(patch.label) : edge.label
+  };
+}
+
+function areCanvasEdgesEquivalent(left: CanvasEdgeSummary, right: CanvasEdgeSummary): boolean {
+  return (
+    left.id === right.id &&
+    left.sourceNodeId === right.sourceNodeId &&
+    left.targetNodeId === right.targetNodeId &&
+    left.sourceAnchor === right.sourceAnchor &&
+    left.targetAnchor === right.targetAnchor &&
+    left.arrowMode === right.arrowMode &&
+    left.owner === right.owner &&
+    left.color === right.color &&
+    left.label === right.label
+  );
+}
+
+function ensureSuppressedFileActivityEdgeId(edgeIds: string[], edgeId: string): string[] {
+  return edgeIds.includes(edgeId) ? edgeIds : [...edgeIds, edgeId];
+}
+
+function ensureSuppressedAutomaticFileArtifactNodeId(nodeIds: string[], nodeId: string): string[] {
+  return nodeIds.includes(nodeId) ? nodeIds : [...nodeIds, nodeId];
+}
+
+function recordAgentFileActivity(
+  previousState: CanvasPrototypeState,
+  event: AgentFileActivityEvent & { nodeId: string; relativePath?: string }
+): CanvasPrototypeState {
+  const normalizedPath = normalizeTrackedFilePath(event.path);
+  if (!normalizedPath) {
+    return previousState;
+  }
+
+  const referenceId = buildFileReferenceId(normalizedPath);
+  const existingReference = previousState.fileReferences.find((reference) => reference.id === referenceId);
+  const nextOwner: CanvasFileReferenceOwnerSummary = {
+    nodeId: event.nodeId,
+    accessMode: event.accessMode,
+    updatedAt: event.timestamp
+  };
+
+  const nextFileReferences = existingReference
+    ? previousState.fileReferences.map((reference) =>
+        reference.id === referenceId
+          ? {
+              ...reference,
+              relativePath: event.relativePath ?? reference.relativePath,
+              updatedAt: event.timestamp,
+              owners: mergeFileReferenceOwners(reference.owners, nextOwner)
+            }
+          : reference
+      )
+    : [
+        ...previousState.fileReferences,
+        {
+          id: referenceId,
+          filePath: normalizedPath,
+          relativePath: event.relativePath,
+          updatedAt: event.timestamp,
+          owners: [nextOwner]
+        }
+      ];
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    fileReferences: nextFileReferences
+  };
+}
+
+function removeAgentFileReferences(previousState: CanvasPrototypeState, nodeId: string): CanvasPrototypeState {
+  const nextFileReferences = previousState.fileReferences
+    .map((reference) => ({
+      ...reference,
+      owners: reference.owners.filter((owner) => owner.nodeId !== nodeId)
+    }))
+    .filter((reference) => reference.owners.length > 0);
+
+  if (nextFileReferences.length === previousState.fileReferences.length) {
+    const didChange = previousState.fileReferences.some((reference) =>
+      reference.owners.some((owner) => owner.nodeId === nodeId)
+    );
+    if (!didChange) {
+      return previousState;
+    }
+  }
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    fileReferences: nextFileReferences
+  };
+}
+
+function mergeFileReferenceOwners(
+  owners: CanvasFileReferenceOwnerSummary[],
+  nextOwner: CanvasFileReferenceOwnerSummary
+): CanvasFileReferenceOwnerSummary[] {
+  let didMerge = false;
+  const nextOwners = owners.map((owner) => {
+    if (owner.nodeId !== nextOwner.nodeId) {
+      return owner;
+    }
+
+    didMerge = true;
+    return {
+      ...owner,
+      accessMode: mergeAccessModes([owner.accessMode, nextOwner.accessMode]),
+      updatedAt: nextOwner.updatedAt
+    };
+  });
+
+  return didMerge ? nextOwners : [...owners, nextOwner];
+}
+
+function buildFileReferenceId(filePath: string): string {
+  return createHash('sha256').update(filePath).digest('hex').slice(0, 16);
+}
+
+function normalizeTrackedFilePath(filePath: string): string | undefined {
+  const trimmed = filePath.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return path.normalize(trimmed);
 }
 
 function normalizeState(
@@ -5932,11 +7185,31 @@ function normalizeState(
         ? nodes
         : createDefaultState(defaultAgentProvider).nodes
     : createDefaultState(defaultAgentProvider).nodes;
+  const edges = Array.isArray(value.edges)
+    ? value.edges
+        .map((edge) => normalizeCanvasEdge(edge))
+        .filter((edge): edge is CanvasEdgeSummary => edge !== null)
+    : [];
+  const fileReferences = Array.isArray(value.fileReferences)
+    ? value.fileReferences
+        .map((reference) => normalizeCanvasFileReference(reference))
+        .filter((reference): reference is CanvasFileReferenceSummary => reference !== null)
+    : [];
+  const suppressedFileActivityEdgeIds = Array.isArray(value.suppressedFileActivityEdgeIds)
+    ? value.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
+    : [];
+  const suppressedAutomaticFileArtifactNodeIds = Array.isArray(value.suppressedAutomaticFileArtifactNodeIds)
+    ? value.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+    : [];
 
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: reconcileRuntimeNodesInArray(normalizedNodes)
+    nodes: reconcileRuntimeNodesInArray(normalizedNodes),
+    edges,
+    fileReferences,
+    suppressedFileActivityEdgeIds,
+    suppressedAutomaticFileArtifactNodeIds
   };
 }
 
@@ -6045,6 +7318,73 @@ function normalizeNode(
   };
 }
 
+function normalizeCanvasEdge(value: unknown): CanvasEdgeSummary | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.sourceNodeId !== 'string' ||
+    typeof value.targetNodeId !== 'string' ||
+    !isCanvasEdgeAnchor(value.sourceAnchor) ||
+    !isCanvasEdgeAnchor(value.targetAnchor)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    sourceNodeId: value.sourceNodeId,
+    targetNodeId: value.targetNodeId,
+    sourceAnchor: value.sourceAnchor,
+    targetAnchor: value.targetAnchor,
+    arrowMode: normalizeCanvasEdgeArrowMode(value.arrowMode),
+    owner: value.owner === 'file-activity' ? 'file-activity' : 'user',
+    color: typeof value.color === 'string' ? normalizeCanvasEdgeColor(value.color as CanvasEdgeColor) : undefined,
+    label: typeof value.label === 'string' ? value.label : undefined
+  };
+}
+
+function normalizeCanvasFileReference(value: unknown): CanvasFileReferenceSummary | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.filePath !== 'string' ||
+    !Array.isArray(value.owners)
+  ) {
+    return null;
+  }
+
+  const owners = value.owners
+    .map((owner) => normalizeCanvasFileReferenceOwner(owner))
+    .filter((owner): owner is CanvasFileReferenceOwnerSummary => owner !== null);
+  if (owners.length === 0) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    filePath: value.filePath,
+    relativePath: typeof value.relativePath === 'string' ? value.relativePath : undefined,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
+    owners
+  };
+}
+
+function normalizeCanvasFileReferenceOwner(value: unknown): CanvasFileReferenceOwnerSummary | null {
+  if (
+    !isRecord(value) ||
+    typeof value.nodeId !== 'string' ||
+    !isCanvasFileActivityAccessMode(value.accessMode)
+  ) {
+    return null;
+  }
+
+  return {
+    nodeId: value.nodeId,
+    accessMode: value.accessMode,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString()
+  };
+}
+
 function normalizePosition(value: unknown, sequence: number): CanvasNodePosition {
   if (
     isRecord(value) &&
@@ -6062,6 +7402,18 @@ function normalizePosition(value: unknown, sequence: number): CanvasNodePosition
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isCanvasEdgeAnchor(value: unknown): value is CanvasEdgeAnchor {
+  return value === 'top' || value === 'right' || value === 'bottom' || value === 'left';
+}
+
+function normalizeCanvasEdgeArrowMode(value: unknown): CanvasEdgeArrowMode {
+  return value === 'both' || value === 'forward' ? value : 'none';
+}
+
+function isCanvasFileActivityAccessMode(value: unknown): value is CanvasFileActivityAccessMode {
+  return value === 'read' || value === 'write' || value === 'read-write';
 }
 
 function capitalize(value: string): string {
@@ -6103,6 +7455,10 @@ function createNodeMetadata(
     return {
       note: createNoteMetadata()
     };
+  }
+
+  if (kind === 'file' || kind === 'file-list') {
+    return undefined;
   }
 
   return undefined;

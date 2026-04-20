@@ -1,22 +1,24 @@
 import * as vscode from 'vscode';
 
 import { locateCodexSessionId } from './common/codexSessionIdLocator';
-import { COMMAND_IDS, CONFIG_KEYS, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
+import { COMMAND_IDS, CONFIG_KEYS, EXTENSION_DISPLAY_NAME, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import {
   isAgentProviderKind,
-  isCanvasNodeKind,
+  isCanvasCreatableNodeKind,
   isWebviewDomAction,
   type AgentProviderKind,
+  type CanvasCreatableNodeKind,
   type CanvasNodeKind
 } from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
 
 let activePanelManager: CanvasPanelManager | undefined;
 let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
 
 type CreateNodeRequest = {
-  kind: CanvasNodeKind;
+  kind: CanvasCreatableNodeKind;
   agentProvider?: AgentProviderKind;
 };
 
@@ -35,11 +37,18 @@ interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
   activePanelManager = panelManager;
-  const sidebarView = new CanvasSidebarView(panelManager);
+  const sidebarSummaryView = new CanvasSidebarView(panelManager);
+  const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
 
   context.subscriptions.push(
-    sidebarView,
-    vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarView)
+    sidebarSummaryView,
+    sidebarActionsView,
+    vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
+    vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    })
   );
 
   registerCommand(context, COMMAND_IDS.openCanvas, async () => {
@@ -80,6 +89,21 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.editFileIncludeFilter, async (value?: unknown) => {
+      await updateCanvasFileFilterFromCommand(panelManager, 'include', value);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.editFileExcludeFilter, async (value?: unknown) => {
+      await updateCanvasFileFilterFromCommand(panelManager, 'exclude', value);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.clearFileIncludeFilter, () => {
+      panelManager.updateCanvasFileFilterState('include', []);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.clearFileExcludeFilter, () => {
+      panelManager.updateCanvasFileFilterState('exclude', []);
+    })
+  );
+
+  context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CanvasPanelManager.panelViewType, panelManager, {
       webviewOptions: {
         retainContextWhenHidden: true
@@ -101,7 +125,9 @@ function registerCommand(context: vscode.ExtensionContext, commandId: string, ha
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 }
 
-async function promptCreateNodeRequest(creatableKinds: CanvasNodeKind[]): Promise<CreateNodeRequest | undefined> {
+async function promptCreateNodeRequest(
+  creatableKinds: CanvasCreatableNodeKind[]
+): Promise<CreateNodeRequest | undefined> {
   const picked = await showQuickPickWithTestOverride(
     buildCreateNodeQuickPickItems(creatableKinds, getDefaultAgentProvider()),
     {
@@ -113,7 +139,7 @@ async function promptCreateNodeRequest(creatableKinds: CanvasNodeKind[]): Promis
 }
 
 function buildCreateNodeQuickPickItems(
-  creatableKinds: CanvasNodeKind[],
+  creatableKinds: CanvasCreatableNodeKind[],
   defaultAgentProvider: AgentProviderKind
 ): CreateNodeQuickPickItem[] {
   const items: CreateNodeQuickPickItem[] = [];
@@ -212,7 +238,7 @@ function getDefaultAgentProvider(): AgentProviderKind {
   return configuredProvider === 'claude' ? 'claude' : 'codex';
 }
 
-function humanizeNodeKind(kind: CanvasNodeKind): string {
+function humanizeNodeKind(kind: CanvasCreatableNodeKind): string {
   switch (kind) {
     case 'agent':
       return 'Agent';
@@ -223,7 +249,7 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
   }
 }
 
-function describeNodeKind(kind: CanvasNodeKind): string {
+function describeNodeKind(kind: CanvasCreatableNodeKind): string {
   switch (kind) {
     case 'agent':
       return '画布中的 Codex / Claude Code 会话窗口';
@@ -236,6 +262,61 @@ function describeNodeKind(kind: CanvasNodeKind): string {
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+async function updateCanvasFileFilterFromCommand(
+  panelManager: CanvasPanelManager,
+  kind: 'include' | 'exclude',
+  value?: unknown
+): Promise<void> {
+  const providedGlobs = parseCanvasFileFilterCommandValue(value);
+  if (providedGlobs) {
+    panelManager.updateCanvasFileFilterState(kind, providedGlobs);
+    return;
+  }
+
+  const currentState = panelManager.getCanvasFileFilterState();
+  const currentGlobs = kind === 'include' ? currentState.includeGlobs : currentState.excludeGlobs;
+  const input = await vscode.window.showInputBox({
+    title: `${EXTENSION_DISPLAY_NAME}: 编辑文件 ${kind === 'include' ? 'Include' : 'Exclude'} 过滤`,
+    prompt:
+      kind === 'include'
+        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改 fileReferences。'
+        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改 fileReferences。',
+    placeHolder: kind === 'include' ? '例如 src/**/*.ts, docs/**/*.md' : '例如 **/dist/**, **/*.snap',
+    value: currentGlobs.join(', ')
+  });
+  if (input === undefined) {
+    return;
+  }
+
+  panelManager.updateCanvasFileFilterState(kind, splitCanvasFileFilterInput(input));
+}
+
+function parseCanvasFileFilterCommandValue(value: unknown): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    return splitCanvasFileFilterInput(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  return undefined;
+}
+
+function splitCanvasFileFilterInput(value: string): string[] {
+  return value
+    .split(/[,\n，；;]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function registerTestCommands(context: vscode.ExtensionContext, panelManager: CanvasPanelManager): void {
@@ -390,7 +471,7 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
       return queuedQuickPickSelectionIds.slice();
     }),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown, agentProvider?: unknown) => {
-      if (!isCanvasNodeKind(kind)) {
+      if (!isCanvasCreatableNodeKind(kind)) {
         throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');
       }
 
