@@ -243,6 +243,7 @@ export interface CanvasSidebarState {
   canvasSurface: 'closed' | 'hidden' | 'visible';
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
+  runtimePersistenceEnabled: boolean;
   nodeCount: number;
   runningExecutionCount: number;
   workspaceTrusted: boolean;
@@ -518,6 +519,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       canvasSurface,
       surfaceLocation,
       configuredSurface,
+      runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,

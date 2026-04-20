@@ -28,7 +28,7 @@ updated_at: 2026-04-20
 
 - `Agent` 文件活动没有进入共享状态模型，画布无法显式投影当前代码上下文。
 - 多个 Agent 并行改代码时，用户缺少“哪些文件正在被谁使用”的统一视图。
-- `tmp.md` 已明确要求文件活动不能依赖 PTY 输出流解析，而应在 provider 层抽象结构化文件操作事件接口。
+- 当前正式需求已明确：文件活动不能依赖 PTY 输出流解析，而应在 provider 层抽象结构化文件操作事件接口。
 
 ## 2. 问题定义
 
@@ -63,7 +63,7 @@ updated_at: 2026-04-20
 
 不选原因：
 
-- 这会把“用户可见文本”误当成“文件活动真相”，与 `tmp.md` 的明确约束冲突。
+- 这会把“用户可见文本”误当成“文件活动真相”，与“文件活动必须来自 provider 结构化事件而非 PTY 文本推断”的正式约束冲突。
 - 输出里出现路径，不等于 Agent 真正读写了文件；反过来，Agent 读写文件也未必会把路径打印出来。
 - 一旦 provider UI、语言或输出格式变化，功能会立刻失真。
 
@@ -117,8 +117,8 @@ updated_at: 2026-04-20
 
 - 默认配置 `files.presentationMode = nodes` 时，宿主把每个文件引用投影成一个 `file` 节点，并自动生成 `Agent -> 文件` 关系线。
 - 配置切到 `lists` 时，宿主不再保留 `file` 节点，而是为每个 Agent 生成一个 `file-list` 节点；若有共享文件，则额外生成一个共享 `file-list` 节点。
-- `include` / `exclude` 过滤从 settings 页面迁到 sidebar 的原生 `文件过滤` section；过滤状态单独持久化为视图状态，不写回 `fileReferences`。
-- 该 section 只展示 `Files to Include` / `Files to Exclude` 两个 TreeView 条目；编辑通过 item action 打开宿主输入框完成，而不是在 sidebar 内自绘搜索框。
+- `include` / `exclude` 过滤从 settings 页面迁到 sidebar 的 `常用操作` section；过滤状态单独持久化为视图状态，不写回 `fileReferences`。
+- 由于 VSCode 扩展 API 不支持在 TreeView 中局部嵌入输入框，当前实现把 `files to include` / `files to exclude` 收口为该 section 中的最小 `WebviewView` 输入框，并保持其余状态摘要继续留在原生 TreeView。
 - 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。
 
 自动边复用关系连线设计里的通用 edge 模型，但不开放人工编辑。
@@ -179,7 +179,7 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
 - 删除 Agent 节点时，移除该 Agent 在文件活动引用中的所有 ownership。
 - 若某文件不再有任何 Agent ownership，则删除对应文件引用，并在当前展示模式下移除相关自动节点 / 自动连线。
 - 若某文件仍被其他 Agent 引用，则只删除失效的那部分 ownership，保留该文件对象。
-- 编辑 sidebar `Files to Include` / `Files to Exclude` 条目或切换展示模式后，宿主按当前配置重建文件视图，但 `fileReferences` 保持不变。
+- 编辑 sidebar `files to include` / `files to exclude` 输入框或切换展示模式后，宿主按当前配置重建文件视图，但 `fileReferences` 保持不变。
 
 ## 8. 验证方法
 
@@ -189,4 +189,4 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
   - `Claude` 或 `fake-agent-provider` 文件活动事件进入宿主后，状态与自动节点 / 自动边按预期变化。
   - 点击文件节点或文件列表条目后，VSCode 会在编辑区打开目标文件；若画布位于编辑区，目标文件进入独立 editor group。
   - 删除 Agent 节点后，文件生命周期规则正确生效。
-  - 调整 sidebar `Files to Include` / `Files to Exclude` 条目或展示模式后，宿主会按当前配置重建文件视图，且不会改写 `fileReferences`。
+  - 调整 sidebar `files to include` / `files to exclude` 输入框或展示模式后，宿主会按当前配置重建文件视图，且不会改写 `fileReferences`。

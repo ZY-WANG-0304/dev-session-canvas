@@ -12,7 +12,7 @@
 
 ## 进度
 
-- [x] (2026-04-19 10:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`ARCHITECTURE.md`、`docs/product-specs/index.md`、`tmp.md` 和核心实现，确认这次改动需要独立 `ExecPlan`、产品规格和设计文档。
+- [x] (2026-04-19 10:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`ARCHITECTURE.md`、`docs/product-specs/index.md`、当前需求说明和核心实现，确认这次改动需要独立 `ExecPlan`、产品规格和设计文档；其中需求重点包括通用连线能力、文件节点 / 文件列表节点能力，以及文件活动必须来自 provider 结构化事件而非 PTY 文本推断。
 - [x] (2026-04-19 10:56 +0800) 从远端 `origin/main` 切出主题分支 `canvas-links-and-file-nodes`，保留用户工作树中已有未跟踪文件。
 - [x] (2026-04-19 11:28 +0800) 明确正式范围：通用连线完整落地；文件活动走 provider 结构化事件；`Claude` / `fake-agent-provider` 提供第一轮自动文件活动，`Codex` 先保留 no-op 适配并写入文档。
 - [x] (2026-04-19 11:52 +0800) 新增产品规格、设计文档、执行计划，并同步 `docs/design-docs/index.md`、`docs/product-specs/index.md` 和 `docs/design-docs/core-beliefs.md`。
@@ -35,6 +35,10 @@
 - [x] (2026-04-20 09:05 +0800) 重新调研 VSCode 官方 `Sidebars`、`Views`、`Tree View` 与 `Webviews` 文档，并结合用户提供的 Source Control / Run and Debug / Extensions 参考图，确认 sidebar 需要放弃 `WebviewView` 模拟，改回原生 section 化实现。
 - [x] (2026-04-20 09:05 +0800) 完成 sidebar 重构与文档回写：把单一 sidebar `WebviewView` 改为 `概览` / `文件过滤` 两个原生 `TreeView` section；过滤入口改为 `Files to Include` / `Files to Exclude` 条目 + item action + 宿主输入框。
 - [x] (2026-04-20 09:05 +0800) 重新执行 `npm run typecheck` 与 `npm run build`，确认本轮 sidebar redesign 通过基础自动化校验。
+- [x] (2026-04-20 10:34 +0800) 根据最新交互要求再次收口 sidebar：概览保留原生 `TreeView`，移除“可创建对象”并补充 `Runtime Persistence` 状态；第二块改为最小 `WebviewView` 的 `常用操作` 区，直接承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 内嵌输入框。
+- [x] (2026-04-20 10:54 +0800) 在 `常用操作` 区尾部补一排 VSCode 风格的快捷 icon 按钮，分别复用打开/定位画布、创建节点和重置画布状态，不引入新命令语义；同步回写 sidebar 设计与规格文档。
+- [x] (2026-04-20 11:00 +0800) 根据最新位置反馈，把快捷 icon 从 `WebviewView` 内容区移到 `常用操作` view title 行尾部，改用原生 `view/title` action 承载，并同步修正文档口径。
+- [x] (2026-04-20 11:07 +0800) 根据最新反馈把 `概览` 中的“画布状态”从承载面信息改回纯状态语义：仅显示“已打开 / 未打开”，不再把 `Panel / Editor` 直接作为状态值暴露；同步修正规格文档中的旧表述。
 
 ## 意外与发现
 
@@ -50,6 +54,8 @@
   证据：`src/panel/agentFileActivity.ts` 旧实现里 `dispose()` 先停 watcher 再删目录；`src/panel/CanvasPanelManager.ts` 旧实现里本地 agent `onExit` 进入 `finalize()` 后立即调用 `disposeAgentFileActivitySession(nodeId)`。
 - 观察：即使在颜色、间距和 token 上尽量贴近 VSCode，整块自绘 sidebar `WebviewView` 仍然会和 Source Control、Run and Debug、Extensions 这些原生 sidebar section 形成明显观感断层。
   证据：2026-04-20 用户提供的参考图直接要求对齐常见 sidebar 风格；同日复查 VSCode 官方 `Sidebars` / `Views` / `Webviews` 指南后，也确认 sidebar 区域应优先使用原生 view / tree，而不是继续模拟宿主控件。
+- 观察：在遵循官方 Sidebar / Views 指南的前提下，如果产品要求 `include` / `exclude` 必须直接以内嵌输入框形式出现在 sidebar 中，那么只靠 `TreeView` 无法满足，因为扩展 API 没有提供可在 TreeView 里局部嵌入 textbox 的能力。
+  证据：本轮实现检查中，现有扩展 API 仍只有 Tree item、view title actions、context actions 等原生入口；没有可用于 Search 视图那种 inline input 的 TreeView 扩展点。用户也明确拒绝继续使用“点击编辑后弹出菜单”的交互。
 
 ## 决策记录
 
@@ -69,8 +75,14 @@
 - 决策：sidebar 从单一 `WebviewView` 收口为两个原生 `TreeView` section：`概览` 负责动作与状态摘要，`文件过滤` 负责展示和编辑 `Files to Include` / `Files to Exclude`。
   理由：VSCode 官方 `Sidebars` / `Views` / `Tree View` 指南与用户提供的原生参考图都表明，sidebar 区域应优先使用原生 section 化视图；继续在这里自绘整块 webview，只会放大和宿主 Sidebar 的 UI/UX 偏差。
   日期/作者：2026-04-20 / Codex
-- 决策：`include` / `exclude` 不再追求 Search 视图式内嵌 textbox 克隆，而改为“TreeView 条目展示 + item action 打开宿主 `showInputBox`”。
-  理由：扩展 API 没有提供 Search 视图那种原生 inline input；强行自绘会重新把 sidebar 做成 mini web app，并破坏原生 sidebar 质感。
+- 决策：在用户进一步要求 `include` / `exclude` 直接以内嵌输入框出现在 sidebar 后，sidebar 最终收口为“概览 TreeView + 常用操作 WebviewView”的混合结构。
+  理由：这是当前同时满足两条约束的最小方案：一方面保留大部分 sidebar 的原生 TreeView 风格；另一方面只把必须由 inline 输入框表达的常用操作区隔离到最小 `WebviewView`，避免重新回到整块 sidebar 自绘应用。
+  日期/作者：2026-04-20 / Codex
+- 决策：在 `常用操作` 区尾部补一排 icon-only 快捷按钮，并继续保留上方文字按钮。
+  理由：文字按钮提供明确可读的主路径，尾部 icon-only 按钮则补足 VSCode 原生 action / toolbar 的高频回点感；两者复用同一动作语义，可以提升效率而不把 sidebar 重新做成 dashboard。
+  日期/作者：2026-04-20 / Codex
+- 决策：快捷 icon 最终放在 `常用操作` view title 行尾部，而不是 `WebviewView` 内容区。
+  理由：用户明确指出按钮位置应属于“常用操作这一行的尾部”；从 VSCode 原生 Sidebar 语义看，这也应由宿主 `view/title` actions 承担，而不是继续在内容区模拟 toolbar。
   日期/作者：2026-04-20 / Codex
 - 决策：本轮不把“完整复用当前 VSCode File Icon Theme”写成已实现；当前只保留有限的扩展名 `codicon` 映射，并把完整 theme parity 记为技术债。
   理由：review 已确认现有代码还没有真正的 theme 解析层；继续沿用“已实现”表述会造成正式文档漂移。
@@ -98,7 +110,9 @@
 
 按 review 收口后，文件活动视图又补上两条宿主边界。第一条是“编辑区点击文件不覆盖画布组”：当画布承载在编辑区时，文件打开统一走相邻 editor group；如果当前没有 split editor，就由宿主隐式创建一列再打开。第二条是“过滤不改真相”：`include` / `exclude` 不再暴露为 settings，而是迁到 sidebar 作为持久化视图状态；宿主现在只用它裁剪文件节点 / 文件列表节点 / 自动边的显示投影，`fileReferences` 继续保留完整权威数据。
 
-在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；但结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃。当前实现已经收口为两个原生 section：`概览` 用 view title toolbar 承载打开画布、创建对象和重置状态；`文件过滤` 用原生 TreeView 条目展示 `Files to Include` / `Files to Exclude`，编辑则通过 item action 打开宿主输入框完成。这样既保留“过滤不改真相”的状态分层，也把 sidebar 的 UI/UX 收回到更接近 VSCode 常见侧栏的宿主风格。
+在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；随后结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃，改成两个原生 TreeView section。最后，用户进一步明确指出 `include` / `exclude` 必须直接以内嵌输入框出现在 sidebar 中，而不是再点编辑按钮。当前实现因此收口为混合结构：`概览` 保留原生 TreeView，只展示状态摘要，并新增 `Runtime Persistence` 状态；`常用操作` 改为最小 `WebviewView`，内容区承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 输入框，而对应的快捷 icon 按钮则由宿主 `view/title` action 放在该 view 标题行尾部。这样既保留“过滤不改真相”的状态分层，也把自定义 UI 限制在确实需要 inline 输入框的最小范围内。
+
+针对本轮最后一条 sidebar 文案反馈，`概览` 里的“画布状态”也进一步从“当前挂在 Panel / Editor 哪个承载面”收口回纯状态语义，只保留“已打开 / 未打开”。承载面仍然作为默认配置或宿主内部行为存在，但不再直接占用“状态”这行的描述位。
 
 同时，本轮把文件图标口径从“尽量复用当前 file icon theme”改回与代码一致的事实描述：当前实现只有少量常见扩展名对应的固定 `codicon`，其余统一回退到通用文件图标。完整 file icon theme parity 已登记为技术债，避免后续协作者被文档误导。
 
@@ -184,6 +198,18 @@
 - 2026-04-20 sidebar redesign 增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
+- 2026-04-20 常用操作区二次收口验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+- 2026-04-20 常用操作区快捷 icon 增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+- 2026-04-20 常用操作标题行位置修正验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+- 2026-04-20 概览画布状态语义修正验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。
@@ -213,4 +239,4 @@
 
 ---
 
-本次创建说明：2026-04-19 新增本计划，用于覆盖 `tmp.md` 中的通用连线、文件节点和文件列表节点功能；之所以独立起计划，是因为改动同时涉及正式规格、设计决策、共享协议、provider 结构化事件接线、宿主持久化、Webview UI 与自动化验证。
+本次创建说明：2026-04-19 新增本计划，用于覆盖通用连线、文件节点和文件列表节点相关功能；其中包含文件节点 / 文件列表节点显示收口，以及文件活动必须通过 provider 结构化事件接入宿主的要求。之所以独立起计划，是因为改动同时涉及正式规格、设计决策、共享协议、provider 结构化事件接线、宿主持久化、Webview UI 与自动化验证。

@@ -98,7 +98,8 @@
         },
         {
           "id": "devSessionCanvas.sidebarFilters",
-          "name": "%view.canvas.sidebar.filters.title%"
+          "name": "%view.canvas.sidebar.actions.title%",
+          "type": "webview"
         }
       ],
       "devSessionCanvasPanel": [
@@ -133,66 +134,24 @@
         "command": "devSessionCanvas.resetCanvasState",
         "title": "%command.resetCanvasState.title%",
         "icon": "$(discard)"
-      },
-      {
-        "command": "devSessionCanvas.editFileIncludeFilter",
-        "title": "%command.editFileIncludeFilter.title%",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "devSessionCanvas.editFileExcludeFilter",
-        "title": "%command.editFileExcludeFilter.title%",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "devSessionCanvas.clearFileIncludeFilter",
-        "title": "%command.clearFileIncludeFilter.title%",
-        "icon": "$(clear-all)"
-      },
-      {
-        "command": "devSessionCanvas.clearFileExcludeFilter",
-        "title": "%command.clearFileExcludeFilter.title%",
-        "icon": "$(clear-all)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "devSessionCanvas.openCanvas",
-          "when": "view == devSessionCanvas.sidebar",
+          "when": "view == devSessionCanvas.sidebarFilters",
           "group": "navigation@1"
         },
         {
           "command": "devSessionCanvas.createNode",
-          "when": "view == devSessionCanvas.sidebar",
+          "when": "view == devSessionCanvas.sidebarFilters",
           "group": "navigation@2"
         },
         {
           "command": "devSessionCanvas.resetCanvasState",
-          "when": "view == devSessionCanvas.sidebar",
-          "group": "canvas@9"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "devSessionCanvas.editFileIncludeFilter",
-          "when": "view == devSessionCanvas.sidebarFilters && (viewItem == canvasSidebarIncludeFilterEmpty || viewItem == canvasSidebarIncludeFilterValue)",
-          "group": "inline@1"
-        },
-        {
-          "command": "devSessionCanvas.clearFileIncludeFilter",
-          "when": "view == devSessionCanvas.sidebarFilters && viewItem == canvasSidebarIncludeFilterValue",
-          "group": "inline@2"
-        },
-        {
-          "command": "devSessionCanvas.editFileExcludeFilter",
-          "when": "view == devSessionCanvas.sidebarFilters && (viewItem == canvasSidebarExcludeFilterEmpty || viewItem == canvasSidebarExcludeFilterValue)",
-          "group": "inline@1"
-        },
-        {
-          "command": "devSessionCanvas.clearFileExcludeFilter",
-          "when": "view == devSessionCanvas.sidebarFilters && viewItem == canvasSidebarExcludeFilterValue",
-          "group": "inline@2"
+          "when": "view == devSessionCanvas.sidebarFilters",
+          "group": "navigation@3"
         }
       ]
     },

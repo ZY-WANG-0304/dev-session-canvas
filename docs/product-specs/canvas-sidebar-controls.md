@@ -17,9 +17,9 @@
 
 ## 3. 核心用户流程
 
-1. 用户在 VSCode 中打开 Dev Session Canvas 的侧栏入口，并看到两个原生 section：`概览` 和 `文件过滤`。
-2. 用户从 `概览` section 的 view title toolbar 打开或重新定位画布，或触发“创建对象”。
-3. 用户在 `文件过滤` section 里直接看到 `Files to Include` / `Files to Exclude` 当前值，并通过条目 action 编辑。
+1. 用户在 VSCode 中打开 Dev Session Canvas 的侧栏入口，并看到 `概览` 与 `常用操作` 两个 section。
+2. 用户从 `常用操作` section 直接打开或重新定位画布，或触发“创建节点”。
+3. 用户在 `常用操作` section 里直接使用 `files to include` / `files to exclude` 输入框，而不是再弹出额外菜单。
 4. 用户回到画布后，画布顶部不再显示固定说明卡片或操作区，只保留节点本体和底角导航元素。
 5. 当 workspace 未受信任、画布尚未打开或有执行型对象在运行时，用户仍能在 `概览` section 看到简短状态，并理解当前哪些动作可用、哪些动作已降级。
 
@@ -30,12 +30,12 @@
   - 左下角：导航性质控件，例如缩放和回到全局视图。
   - 右下角：全局定位性质控件，例如 MiniMap。
 - 默认提供一个 VSCode 侧栏承载面，作为以下能力的主入口：
-  - 以原生 view section 形式承载 `概览` 与 `文件过滤`
-  - 通过 `概览` view title toolbar 提供打开或定位画布、创建对象和重置宿主状态
-  - 展示最小必要状态，例如 workspace trust、画布是否可定位、节点总数，以及必要的执行状态摘要
-- 在 `文件过滤` section 中，以原生树项显示 `Files to Include` / `Files to Exclude`：
-  - 条目直接展示当前 glob 摘要
-  - 编辑通过 item action 触发宿主输入框
+  - 以 `概览` + `常用操作` 两个 section 形式承载
+  - `概览` 继续使用原生 TreeView 展示最小必要状态，例如 workspace trust、画布是否已打开、Runtime Persistence 状态、节点总数，以及必要的执行状态摘要
+  - `常用操作` 提供打开或定位画布、创建节点、重置画布状态，以及 `include` / `exclude` 输入框；其标题行尾部补一排原生风格的快捷 icon，复用同一组动作
+- 在 `常用操作` section 中，直接以内嵌输入框承载 `files to include` / `files to exclude`：
+  - 输入框默认直接显示当前 glob 值
+  - 输入框在 sidebar 内就地编辑，而不是弹出单独菜单
   - 过滤只影响文件对象与自动边的显示投影，不修改 `fileReferences`
 - 当侧栏不可见时，上述动作仍可通过命令入口到达。
 - 侧栏整体信息密度保持极简，不引入长段说明、教学大卡片或复制节点正文。
@@ -53,18 +53,21 @@
 
 ### 概览 section
 
-- 画布入口状态：未打开、可定位、不可用
+- 画布状态：已打开、未打开
 - workspace trust 状态
+- Runtime Persistence 状态
 - 当前节点总数
 - 当前执行型对象的最小摘要，例如运行中数量或受限提示
-- 允许创建的对象类型集合
 
-### 文件过滤 section
+### 常用操作 section
 
-- `Files to Include`
-- `Files to Exclude`
-- 当前 glob 摘要
-- 编辑与清空 action
+- 打开或定位画布
+- 创建节点
+- 重置画布状态
+- 与上述动作一一对应的快捷 icon 入口
+- `files to include`
+- `files to exclude`
+- 输入框就地编辑与清空
 - “只影响投影、不改权威状态”的过滤语义
 
 ### 画布 Webview
@@ -86,9 +89,10 @@
 
 - 用户打开画布后，左上角和右上角不再出现常驻 hero、统计卡片或创建/恢复 panel。
 - 左下角只保留导航性质控件，右下角只保留全局定位性质控件；这两个区域都不承载长段说明文本。
-- 用户可以从默认侧栏入口的 `概览` section 打开或定位画布，并完成创建对象与重置宿主状态。
-- 侧栏整体采用原生 VSCode view section + TreeView 风格，而不是在 sidebar 内嵌一整块自绘 `WebviewView`。
-- `Files to Include` / `Files to Exclude` 会直接显示在 `文件过滤` section 中，并通过原生 item action 进入编辑，不表现为大按钮或卡片。
+- 用户可以从默认侧栏入口的 `常用操作` section 打开或定位画布，并完成创建节点与重置画布状态。
+- `常用操作` section 的标题行尾部存在一排 icon-only 快捷按钮，按钮语义与内容区里的文字按钮一致，视觉上贴近 VSCode 原生 toolbar / action。
+- 侧栏整体采用“概览原生 TreeView + 常用操作最小 WebviewView”的混合风格；Webview 只用于承载必须存在的 inline 输入框和高频动作，不发展成 dashboard。
+- `files to include` / `files to exclude` 会直接显示在 `常用操作` section 中，并在 sidebar 内就地编辑，不再弹出单独编辑菜单。
 - 侧栏不展示选中节点的重复信息，也不复制节点正文、会话 transcript 或连续输出。
 - 当 workspace 未受信任时，侧栏会禁用、隐藏或降级执行型对象入口，并给出明确说明。
 - 在窄编辑器宽度或多运行窗口场景下，画布顶部可用空间明显大于当前“顶角 panel”方案，不再被固定大块 UI 持续占用。
