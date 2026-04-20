@@ -7,10 +7,19 @@ import ReactFlow, {
   applyNodeChanges,
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
+  EdgeLabelRenderer,
+  Handle,
+  MarkerType,
   MiniMap,
   NodeResizer,
+  Position,
   useViewport,
+  type Connection,
+  type Edge,
+  type EdgeMouseHandler,
+  type EdgeProps,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -25,6 +34,14 @@ import './styles.css';
 
 import type {
   AgentProviderKind,
+  CanvasCreatableNodeKind,
+  CanvasEdgeArrowMode,
+  CanvasEdgeColor,
+  CanvasEdgeOwner,
+  CanvasEdgeSummary,
+  CanvasFileIconDescriptor,
+  CanvasFileNodeDisplayMode,
+  CanvasFilePathDisplayMode,
   CanvasNodeKind,
   CanvasNodeFootprint,
   CanvasNodeMetadata,
@@ -33,12 +50,15 @@ import type {
   CanvasNodeSummary,
   CanvasPrototypeState,
   ExecutionNodeKind,
+  FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
+  WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
   WebviewToHostMessage
 } from '../common/protocol';
+import { canvasEdgePresetColors } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -70,6 +90,10 @@ interface LocalUiState {
   viewport?: Viewport;
 }
 
+interface EdgeLabelEditorState {
+  edgeId: string;
+}
+
 interface CanvasNodeData {
   kind: CanvasNodeKind;
   title: string;
@@ -78,8 +102,11 @@ interface CanvasNodeData {
   selected: boolean;
   workspaceTrusted: boolean;
   size: CanvasNodeFootprint;
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
+  onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -113,6 +140,26 @@ interface CanvasNodeData {
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
+interface CanvasEdgeData {
+  owner: CanvasEdgeOwner;
+  arrowMode: CanvasEdgeArrowMode;
+  color?: CanvasEdgeColor;
+  strokeColor?: string;
+  isLabelEditing?: boolean;
+  isArrowMenuOpen?: boolean;
+  isColorMenuOpen?: boolean;
+  onSelectEdge?: () => void;
+  onStartLabelEdit?: () => void;
+  onSubmitLabelEdit?: (value: string) => void;
+  onCancelLabelEdit?: () => void;
+  onToggleArrowMenu?: () => void;
+  onSetArrowMode?: (arrowMode: CanvasEdgeArrowMode) => void;
+  onToggleColorMenu?: () => void;
+  onSetColor?: (color: CanvasEdgeColor | null) => void;
+  onDeleteEdge?: () => void;
+}
+
+type CanvasFlowEdge = Edge<CanvasEdgeData>;
 type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type EmbeddedTerminalTheme = NonNullable<EmbeddedTerminalOptions['theme']>;
 type WorkbenchThemeKind = 'light' | 'dark' | 'hcDark' | 'hcLight';
@@ -138,7 +185,11 @@ type ExecutionHelpTriggerVariant = 'canvas' | 'inline';
 
 const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
   title: '执行节点使用提示',
-  items: ['拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径']
+  items: [
+    '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
+    'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
+    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）'
+  ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
@@ -368,7 +419,11 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   defaultAgentProvider: 'codex',
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
   editorMultiCursorModifier: 'alt',
-  terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined)
+  terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
+  filePresentationMode: 'nodes',
+  fileNodeDisplayMode: 'icon-path',
+  filePathDisplayMode: 'basename',
+  fileIconFontFaces: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -379,6 +434,58 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
+function normalizeRuntimeContext(
+  runtimeContext: Partial<CanvasRuntimeContext> | undefined
+): CanvasRuntimeContext {
+  const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
+    ? runtimeContext.fileIconFontFaces
+    : [];
+
+  return {
+    workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
+    surfaceLocation: runtimeContext?.surfaceLocation === 'editor' ? 'editor' : 'panel',
+    defaultAgentProvider: runtimeContext?.defaultAgentProvider === 'claude' ? 'claude' : 'codex',
+    terminalScrollback:
+      typeof runtimeContext?.terminalScrollback === 'number'
+        ? runtimeContext.terminalScrollback
+        : DEFAULT_TERMINAL_SCROLLBACK,
+    editorMultiCursorModifier: runtimeContext?.editorMultiCursorModifier === 'ctrlCmd' ? 'ctrlCmd' : 'alt',
+    terminalWordSeparators:
+      typeof runtimeContext?.terminalWordSeparators === 'string'
+        ? runtimeContext.terminalWordSeparators
+        : normalizeExecutionTerminalWordSeparators(undefined),
+    filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
+    fileNodeDisplayMode:
+      runtimeContext?.fileNodeDisplayMode === 'icon-only' || runtimeContext?.fileNodeDisplayMode === 'path-only'
+        ? runtimeContext.fileNodeDisplayMode
+        : 'icon-path',
+    filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
+    fileIconFontFaces
+  };
+}
+
+function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | null | undefined): CanvasPrototypeState {
+  const nodes = Array.isArray(state?.nodes) ? state?.nodes ?? [] : [];
+  const edges = Array.isArray(state?.edges) ? state?.edges ?? [] : [];
+  const fileReferences = Array.isArray(state?.fileReferences) ? state?.fileReferences ?? [] : [];
+  const suppressedFileActivityEdgeIds = state && Array.isArray(state.suppressedFileActivityEdgeIds)
+    ? state.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
+    : [];
+  const suppressedAutomaticFileArtifactNodeIds = state && Array.isArray(state.suppressedAutomaticFileArtifactNodeIds)
+    ? state.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+    : [];
+
+  return {
+    version: 1,
+    updatedAt: typeof state?.updatedAt === 'string' ? state.updatedAt : new Date().toISOString(),
+    nodes,
+    edges,
+    fileReferences,
+    suppressedFileActivityEdgeIds,
+    suppressedAutomaticFileArtifactNodeIds
+  };
+}
+
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
@@ -387,16 +494,25 @@ function App(): JSX.Element {
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
     terminalScrollback: latestRuntimeContext.terminalScrollback,
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
-    terminalWordSeparators: latestRuntimeContext.terminalWordSeparators
+    terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
+    filePresentationMode: latestRuntimeContext.filePresentationMode,
+    fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
+    filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
+    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
     viewport: initialPersistedState.viewport
   }));
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
+  const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
+  const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
+  const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
+  const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
 
@@ -407,10 +523,14 @@ function App(): JSX.Element {
       switch (message.type) {
         case 'host/bootstrap':
         case 'host/stateUpdated':
-          latestRuntimeContext = message.payload.runtime;
-          setHostState(message.payload.state);
-          setRuntimeContext(message.payload.runtime);
-          applyEmbeddedTerminalRuntimeContext(message.payload.runtime);
+          {
+            const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
+            const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+            latestRuntimeContext = normalizedRuntime;
+            setHostState(normalizedState);
+            setRuntimeContext(normalizedRuntime);
+            applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+          }
           scheduleEmbeddedTerminalAppearanceRefresh();
           break;
         case 'host/themeChanged':
@@ -418,6 +538,7 @@ function App(): JSX.Element {
           break;
         case 'host/visibilityRestored':
           scheduleExecutionTerminalVisibilityRestore();
+          scheduleCanvasShellFocusRestore(canvasShellRef.current);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -489,6 +610,10 @@ function App(): JSX.Element {
   }, [runtimeContext]);
 
   useEffect(() => {
+    return applyFileIconFontFaces(runtimeContext.fileIconFontFaces);
+  }, [runtimeContext.fileIconFontFaces]);
+
+  useEffect(() => {
     ensureEmbeddedTerminalThemeObservers();
     scheduleEmbeddedTerminalAppearanceRefresh();
 
@@ -508,6 +633,7 @@ function App(): JSX.Element {
     }
 
     const validNodeIds = new Set(hostState.nodes.map((node) => node.id));
+    const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
     setLocalUiState((current) =>
       current.selectedNodeId && !validNodeIds.has(current.selectedNodeId)
         ? {
@@ -516,10 +642,42 @@ function App(): JSX.Element {
           }
         : current
     );
+    setSelectedEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
+    setEdgeLabelEditor((current) => (current && !validEdgeIds.has(current.edgeId) ? null : current));
+    setEdgeArrowMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
+    setEdgeColorMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
   }, [hostState]);
 
+  useEffect(() => {
+    setEdgeLabelEditor((current) => (current && current.edgeId !== selectedEdgeId ? null : current));
+    setEdgeArrowMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
+    setEdgeColorMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
+  }, [selectedEdgeId]);
+
   const workspaceTrusted = runtimeContext.workspaceTrusted;
-  const creatableKinds: CanvasNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
+  const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
+
+  const closePaneContextMenu = (): void => {
+    setContextMenu(null);
+  };
+
+  const closeEdgeArrowMenu = (): void => {
+    setEdgeArrowMenuEdgeId(undefined);
+  };
+
+  const closeEdgeColorMenu = (): void => {
+    setEdgeColorMenuEdgeId(undefined);
+  };
+
+  const closeEdgeMenus = (): void => {
+    closeEdgeArrowMenu();
+    closeEdgeColorMenu();
+  };
+
+  const closeFloatingMenus = (): void => {
+    closePaneContextMenu();
+    closeEdgeMenus();
+  };
 
   const deleteNode = (nodeId: string): void => {
     setLocalUiState((current) =>
@@ -530,6 +688,7 @@ function App(): JSX.Element {
           }
         : current
     );
+    closeFloatingMenus();
     postMessage({
       type: 'webview/deleteNode',
       payload: {
@@ -538,8 +697,72 @@ function App(): JSX.Element {
     });
   };
 
-  const closeContextMenu = (): void => {
-    setContextMenu(null);
+  const deleteEdge = (edgeId: string): void => {
+    setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
+    setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
+    setEdgeColorMenuEdgeId((current) => (current === edgeId ? undefined : current));
+    setSelectedEdgeId((current) => (current === edgeId ? undefined : current));
+    postMessage({
+      type: 'webview/deleteEdge',
+      payload: {
+        edgeId
+      }
+    });
+  };
+
+  const startEdgeLabelEdit = (edgeId: string): void => {
+    const edge = hostState?.edges.find((candidate) => candidate.id === edgeId);
+    if (!edge) {
+      return;
+    }
+
+    closePaneContextMenu();
+    setSelectedEdgeId(edgeId);
+    closeEdgeMenus();
+    setEdgeLabelEditor({ edgeId });
+  };
+
+  const submitEdgeLabelEdit = (edgeId: string, label: string): void => {
+    setEdgeLabelEditor((current) => {
+      if (!current || current.edgeId !== edgeId) {
+        return current;
+      }
+
+      postMessage({
+        type: 'webview/updateEdge',
+        payload: {
+          edgeId,
+          label
+        }
+      });
+      return null;
+    });
+  };
+
+  const cancelEdgeLabelEdit = (edgeId: string): void => {
+    setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
+  };
+
+  const setEdgeArrowMode = (edgeId: string, arrowMode: CanvasEdgeArrowMode): void => {
+    closeEdgeMenus();
+    postMessage({
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId,
+        arrowMode
+      }
+    });
+  };
+
+  const setEdgeColor = (edgeId: string, color: CanvasEdgeColor | null): void => {
+    closeEdgeMenus();
+    postMessage({
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId,
+        color
+      }
+    });
   };
 
   const focusNodeInViewport = (nodeId: string): void => {
@@ -560,7 +783,8 @@ function App(): JSX.Element {
     }
 
     const viewport = reactFlowInstance.getViewport();
-    closeContextMenu();
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: nodeId,
@@ -572,16 +796,28 @@ function App(): JSX.Element {
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
     workspaceTrusted,
+    fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
+    filePathDisplayMode: runtimeContext.filePathDisplayMode,
     onSelectNode: (nodeId) => {
       if (localUiState.selectedNodeId === nodeId) {
         return;
       }
 
+      closeEdgeMenus();
+      setSelectedEdgeId(undefined);
       setLocalUiState((current) => ({
         ...current,
         selectedNodeId: nodeId
       }));
     },
+    onOpenCanvasFile: (nodeId, filePath) =>
+      postMessage({
+        type: 'webview/openCanvasFile',
+        payload: {
+          nodeId,
+          filePath
+        }
+      }),
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
@@ -658,6 +894,36 @@ function App(): JSX.Element {
     onDeleteNode: deleteNode
   });
   const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+  const edges = toFlowEdges({
+    edges: hostState?.edges ?? [],
+    selectedEdgeId,
+    edgeLabelEditor,
+    edgeArrowMenuEdgeId,
+    edgeColorMenuEdgeId,
+    onSelectEdge: (edgeId) => {
+      closePaneContextMenu();
+      closeEdgeMenus();
+      setSelectedEdgeId(edgeId);
+      setLocalUiState((current) => ({
+        ...current,
+        selectedNodeId: undefined
+      }));
+    },
+    onStartLabelEdit: startEdgeLabelEdit,
+    onSubmitLabelEdit: submitEdgeLabelEdit,
+    onCancelLabelEdit: cancelEdgeLabelEdit,
+    onToggleArrowMenu: (edgeId) => {
+      setEdgeColorMenuEdgeId(undefined);
+      setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : edgeId));
+    },
+    onSetArrowMode: setEdgeArrowMode,
+    onToggleColorMenu: (edgeId) => {
+      setEdgeArrowMenuEdgeId(undefined);
+      setEdgeColorMenuEdgeId((current) => (current === edgeId ? undefined : edgeId));
+    },
+    onSetColor: setEdgeColor,
+    onDeleteEdge: deleteEdge
+  });
 
   useEffect(() => {
     setNodeLayoutDrafts((current) => pruneCanvasNodeLayoutDrafts(baseNodes, current));
@@ -672,7 +938,8 @@ function App(): JSX.Element {
       return;
     }
 
-    closeContextMenu();
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
     updateLocalUiState({
       ...localUiState,
       selectedNodeId: node.id
@@ -680,11 +947,12 @@ function App(): JSX.Element {
   };
 
   const handlePaneClick = (): void => {
-    closeContextMenu();
-    if (!localUiState.selectedNodeId) {
+    closeFloatingMenus();
+    if (!localUiState.selectedNodeId && !selectedEdgeId) {
       return;
     }
 
+    setSelectedEdgeId(undefined);
     updateLocalUiState({
       ...localUiState,
       selectedNodeId: undefined
@@ -717,7 +985,7 @@ function App(): JSX.Element {
   };
 
   const handleMoveStart = (): void => {
-    closeContextMenu();
+    closeFloatingMenus();
   };
 
   const handlePaneContextMenu = (event: React.MouseEvent): void => {
@@ -734,6 +1002,8 @@ function App(): JSX.Element {
       y: event.clientY
     });
 
+    setSelectedEdgeId(undefined);
+    closeEdgeMenus();
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: undefined
@@ -750,8 +1020,9 @@ function App(): JSX.Element {
   };
 
   useEffect(() => {
-    const selectedNodeId = localUiState.selectedNodeId;
-    if (!selectedNodeId) {
+    const currentSelectedNodeId = localUiState.selectedNodeId;
+    const currentSelectedEdgeId = selectedEdgeId;
+    if (!currentSelectedNodeId && !currentSelectedEdgeId) {
       return;
     }
 
@@ -761,14 +1032,21 @@ function App(): JSX.Element {
       }
 
       event.preventDefault();
-      deleteNode(selectedNodeId);
+      if (currentSelectedEdgeId) {
+        deleteEdge(currentSelectedEdgeId);
+        return;
+      }
+
+      if (currentSelectedNodeId) {
+        deleteNode(currentSelectedNodeId);
+      }
     };
 
     window.addEventListener('keydown', handleWindowKeyDown);
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [localUiState.selectedNodeId]);
+  }, [deleteEdge, localUiState.selectedNodeId, selectedEdgeId]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -780,7 +1058,7 @@ function App(): JSX.Element {
         return;
       }
 
-      closeContextMenu();
+      closeFloatingMenus();
     };
 
     const handleWindowKeyDown = (event: KeyboardEvent): void => {
@@ -789,7 +1067,7 @@ function App(): JSX.Element {
       }
 
       event.preventDefault();
-      closeContextMenu();
+      closeFloatingMenus();
     };
 
     window.addEventListener('pointerdown', handlePointerDown, true);
@@ -800,13 +1078,104 @@ function App(): JSX.Element {
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!edgeArrowMenuEdgeId && !edgeColorMenuEdgeId && !edgeLabelEditor) {
+      return;
+    }
+
+    const handleWindowKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      if (edgeLabelEditor) {
+        cancelEdgeLabelEdit(edgeLabelEditor.edgeId);
+        return;
+      }
+
+      closeEdgeMenus();
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [cancelEdgeLabelEdit, closeEdgeMenus, edgeArrowMenuEdgeId, edgeColorMenuEdgeId, edgeLabelEditor]);
+
+  const handleConnect = (connection: Connection): void => {
+    const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
+    const targetAnchor = parseHandleAnchor(connection.targetHandle);
+    if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
+      return;
+    }
+
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    postMessage({
+      type: 'webview/createEdge',
+      payload: {
+        sourceNodeId: connection.source,
+        targetNodeId: connection.target,
+        sourceAnchor,
+        targetAnchor
+      }
+    });
+  };
+
+  const handleEdgeReconnect = (previousEdge: Edge, connection: Connection): void => {
+    const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
+    const targetAnchor = parseHandleAnchor(connection.targetHandle);
+    if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
+      return;
+    }
+
+    closeFloatingMenus();
+    setSelectedEdgeId(previousEdge.id);
+    postMessage({
+      type: 'webview/updateEdge',
+      payload: {
+        edgeId: previousEdge.id,
+        sourceNodeId: connection.source,
+        targetNodeId: connection.target,
+        sourceAnchor,
+        targetAnchor
+      }
+    });
+  };
+
+  const handleEdgeClick: EdgeMouseHandler = (event, edge) => {
+    stopCanvasEvent(event);
+
+    closePaneContextMenu();
+    closeEdgeMenus();
+    setSelectedEdgeId(edge.id);
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: undefined
+    }));
+  };
+
+  const handleEdgeDoubleClick: EdgeMouseHandler = (event, edge) => {
+    stopCanvasEvent(event);
+    setSelectedEdgeId(edge.id);
+    startEdgeLabelEdit(edge.id);
+  };
+
+  const handleEdgeContextMenu: EdgeMouseHandler = (event) => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+  };
+
   return (
-    <div className="canvas-shell">
+    <div ref={canvasShellRef} className="canvas-shell" tabIndex={-1}>
       <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
       <ReactFlow
         nodes={nodes}
-        edges={[]}
+        edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        connectionMode={ConnectionMode.Loose}
         fitView={!localUiState.viewport}
         fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
         defaultViewport={localUiState.viewport}
@@ -816,6 +1185,15 @@ function App(): JSX.Element {
           reactFlowRef.current = instance;
         }}
         onNodesChange={handleNodesChange}
+        onConnect={handleConnect}
+        onEdgeClick={handleEdgeClick}
+        onEdgeDoubleClick={handleEdgeDoubleClick}
+        onReconnect={handleEdgeReconnect}
+        onEdgeContextMenu={handleEdgeContextMenu}
+        connectionLineStyle={{
+          stroke: 'var(--canvas-edge-stroke-default)',
+          strokeWidth: 2
+        }}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onMoveStart={handleMoveStart}
@@ -860,7 +1238,7 @@ function App(): JSX.Element {
               resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
               agentProvider
             );
-            closeContextMenu();
+            closePaneContextMenu();
           }}
           onShowAgentProviders={() =>
             setContextMenu((current) => (current ? { ...current, view: 'agent-provider' } : current))
@@ -868,7 +1246,7 @@ function App(): JSX.Element {
           onBack={() =>
             setContextMenu((current) => (current ? { ...current, view: 'root' } : current))
           }
-          onClose={closeContextMenu}
+          onClose={closePaneContextMenu}
         />
       ) : null}
 
@@ -881,7 +1259,7 @@ function App(): JSX.Element {
   );
 
   function createNode(
-    kind: CanvasNodeKind,
+    kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
     agentProvider?: AgentProviderKind
   ): void {
@@ -1204,6 +1582,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
@@ -1588,6 +1967,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
@@ -1684,6 +2064,37 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
   );
 }
 
+function NodeHandles(props: { selected: boolean }): JSX.Element {
+  return (
+    <>
+      <Handle
+        id="top"
+        type="source"
+        position={Position.Top}
+        className={`canvas-node-handle anchor-top ${props.selected ? 'is-selected' : ''}`}
+      />
+      <Handle
+        id="right"
+        type="source"
+        position={Position.Right}
+        className={`canvas-node-handle anchor-right ${props.selected ? 'is-selected' : ''}`}
+      />
+      <Handle
+        id="bottom"
+        type="source"
+        position={Position.Bottom}
+        className={`canvas-node-handle anchor-bottom ${props.selected ? 'is-selected' : ''}`}
+      />
+      <Handle
+        id="left"
+        type="source"
+        position={Position.Left}
+        className={`canvas-node-handle anchor-left ${props.selected ? 'is-selected' : ''}`}
+      />
+    </>
+  );
+}
+
 function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
   const minimum = minimumCanvasNodeFootprint(data.kind);
 
@@ -1722,6 +2133,205 @@ function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id'
         );
       }}
     />
+  );
+}
+
+function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const fileMetadata = data.metadata?.file;
+  if (!fileMetadata) {
+    return <CanvasCardNode id={id} data={data} />;
+  }
+  const fileActionPointerStateRef = useRef<{
+    pointerId: number | null;
+    originX: number;
+    originY: number;
+    dragged: boolean;
+  }>({
+    pointerId: null,
+    originX: 0,
+    originY: 0,
+    dragged: false
+  });
+
+  const primaryLabel = displayFilePath(fileMetadata, data.filePathDisplayMode);
+  const secondaryLabel =
+    data.filePathDisplayMode === 'basename'
+      ? fileMetadata.relativePath ?? fileMetadata.filePath
+      : fileMetadata.filePath !== primaryLabel
+        ? fileMetadata.filePath
+        : undefined;
+  const ownerCount = fileMetadata.ownerNodeIds.length;
+
+  return (
+    <div
+      className={`canvas-node file-node kind-file ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
+      <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
+      <button
+        type="button"
+        className="file-node-action nopan"
+        data-node-interactive="true"
+        data-file-entry-path={fileMetadata.filePath}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) {
+            return;
+          }
+
+          data.onSelectNode?.(id);
+          fileActionPointerStateRef.current = {
+            pointerId: event.pointerId,
+            originX: event.clientX,
+            originY: event.clientY,
+            dragged: false
+          };
+        }}
+        onPointerMove={(event) => {
+          const current = fileActionPointerStateRef.current;
+          if (current.pointerId !== event.pointerId || current.dragged) {
+            return;
+          }
+
+          if (Math.hypot(event.clientX - current.originX, event.clientY - current.originY) >= 4) {
+            current.dragged = true;
+          }
+        }}
+        onPointerUp={(event) => {
+          const current = fileActionPointerStateRef.current;
+          if (current.pointerId === event.pointerId) {
+            current.pointerId = null;
+          }
+        }}
+        onPointerCancel={(event) => {
+          const current = fileActionPointerStateRef.current;
+          if (current.pointerId === event.pointerId) {
+            current.pointerId = null;
+            current.dragged = false;
+          }
+        }}
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          const current = fileActionPointerStateRef.current;
+          const shouldOpen = !current.dragged;
+          current.pointerId = null;
+          current.dragged = false;
+          if (!shouldOpen) {
+            return;
+          }
+
+          data.onSelectNode?.(id);
+          data.onOpenCanvasFile?.(id, fileMetadata.filePath);
+        }}
+        onFocus={() => data.onSelectNode?.(id)}
+      >
+        {data.fileNodeDisplayMode !== 'path-only' ? (
+          <span className="file-node-icon" aria-hidden="true">
+            {renderFileIcon(fileMetadata.icon, primaryLabel)}
+          </span>
+        ) : null}
+        {data.fileNodeDisplayMode !== 'icon-only' ? (
+          <span className="file-node-copy">
+            <strong title={primaryLabel}>{primaryLabel}</strong>
+            <span>{secondaryLabel ?? `${ownerCount} 个 Agent 引用`}</span>
+          </span>
+        ) : (
+          <span className="file-node-copy file-node-copy-icon-only">
+            <strong>{ownerCount}</strong>
+            <span>引用</span>
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+  const fileListMetadata = data.metadata?.fileList;
+  if (!fileListMetadata) {
+    return <CanvasCardNode id={id} data={data} />;
+  }
+
+  const deleteFileList = (): void => {
+    data.onSelectNode?.(id);
+    data.onDeleteNode?.(id);
+  };
+
+  return (
+    <div
+      className={`canvas-node file-list-node kind-file-list ${data.selected ? 'is-selected' : ''}`}
+      data-node-id={id}
+      data-node-kind={data.kind}
+      data-node-selected={data.selected ? 'true' : 'false'}
+    >
+      <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
+      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
+        <div className="window-title file-list-title">
+          <strong className="file-list-title-text">{data.title}</strong>
+          <div className="window-title-subtitle-row">
+            <span className="window-title-subtitle">{data.summary}</span>
+          </div>
+        </div>
+        <div className="window-chrome-actions">
+          <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+          <ActionButton
+            label="删除"
+            tone="danger"
+            onClick={deleteFileList}
+            className="nodrag nopan compact"
+            interactive
+            onFocus={() => data.onSelectNode?.(id)}
+          />
+        </div>
+      </div>
+      <div className="file-list-body object-surface">
+        {fileListMetadata.entries.length === 0 ? (
+          <div className="file-list-empty">当前还没有可显示的文件活动。</div>
+        ) : (
+          <div className="file-list-entries">
+            {fileListMetadata.entries.map((entry) => {
+              const label = displayFilePath(entry, data.filePathDisplayMode);
+              const secondary =
+                data.filePathDisplayMode === 'basename'
+                  ? entry.relativePath ?? entry.filePath
+                  : entry.filePath !== label
+                    ? entry.filePath
+                    : undefined;
+
+              return (
+                <button
+                  key={`${entry.fileId}-${entry.filePath}`}
+                  type="button"
+                  className="file-list-entry nodrag nopan"
+                  data-node-interactive="true"
+                  data-file-entry-path={entry.filePath}
+                  onMouseDown={stopCanvasEvent}
+                  onClick={(event) => {
+                    stopCanvasEvent(event);
+                    data.onSelectNode?.(id);
+                    data.onOpenCanvasFile?.(id, entry.filePath);
+                  }}
+                >
+                  <span className="file-list-entry-icon" aria-hidden="true">
+                    {renderFileIcon(entry.icon, label)}
+                  </span>
+                  <span className="file-list-entry-copy">
+                    <strong title={label}>{label}</strong>
+                    <span>{secondary ?? `${entry.ownerNodeIds.length} 个 Agent 引用`}</span>
+                  </span>
+                  <span className={`file-access-badge mode-${entry.accessMode}`}>
+                    {humanizeFileAccessMode(entry.accessMode)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1768,6 +2378,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
@@ -1841,6 +2452,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
+      <NodeHandles selected={data.selected} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
@@ -1879,7 +2491,13 @@ const nodeTypes = {
   agent: AgentSessionNode,
   terminal: TerminalSessionNode,
   note: NoteEditableNode,
+  file: FileNode,
+  'file-list': FileListNode,
   card: CanvasCardNode
+};
+
+const edgeTypes = {
+  canvas: CanvasEdge
 };
 
 function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
@@ -2057,9 +2675,9 @@ const CanvasContextMenu = React.forwardRef<
     screenX: number;
     screenY: number;
     view: 'root' | 'agent-provider';
-    kinds: CanvasNodeKind[];
+    kinds: CanvasCreatableNodeKind[];
     defaultAgentProvider: AgentProviderKind;
-    onCreate: (kind: CanvasNodeKind, agentProvider?: AgentProviderKind) => void;
+    onCreate: (kind: CanvasCreatableNodeKind, agentProvider?: AgentProviderKind) => void;
     onShowAgentProviders: () => void;
     onBack: () => void;
     onClose: () => void;
@@ -2198,6 +2816,1014 @@ const CanvasContextMenu = React.forwardRef<
   );
 });
 
+const CANVAS_EDGE_ARROW_MENU_ITEMS: ReadonlyArray<{
+  arrowMode: CanvasEdgeArrowMode;
+  label: string;
+  icon: string;
+}> = [
+  {
+    arrowMode: 'none',
+    label: '无箭头',
+    icon: 'remove'
+  },
+  {
+    arrowMode: 'forward',
+    label: '单向箭头',
+    icon: 'arrow-right'
+  },
+  {
+    arrowMode: 'both',
+    label: '双向箭头',
+    icon: 'arrow-both'
+  }
+];
+
+const CANVAS_EDGE_COLOR_MENU_ITEMS: ReadonlyArray<{
+  color?: CanvasEdgeColor;
+  label: string;
+}> = [
+  {
+    label: '默认颜色'
+  },
+  {
+    color: '1',
+    label: '红色'
+  },
+  {
+    color: '2',
+    label: '橙色'
+  },
+  {
+    color: '3',
+    label: '黄色'
+  },
+  {
+    color: '4',
+    label: '绿色'
+  },
+  {
+    color: '5',
+    label: '青色'
+  },
+  {
+    color: '6',
+    label: '紫色'
+  }
+];
+
+function isCanvasEdgePresetColor(value: string | undefined): value is (typeof canvasEdgePresetColors)[number] {
+  return typeof value === 'string' && canvasEdgePresetColors.includes(value as (typeof canvasEdgePresetColors)[number]);
+}
+
+function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {
+  if (!color) {
+    return 'var(--canvas-edge-stroke-default)';
+  }
+
+  return isCanvasEdgePresetColor(color) ? `var(--canvas-edge-color-${color})` : color;
+}
+
+function createCanvasEdgeOverlayStyle(transform: string, accentColor: string): React.CSSProperties {
+  return {
+    transform,
+    ['--canvas-edge-accent' as string]: accentColor
+  } as React.CSSProperties;
+}
+
+type CanvasPoint = { x: number; y: number };
+type CanvasSize = { width: number; height: number };
+type CanvasCubicCurve = {
+  start: CanvasPoint;
+  control1: CanvasPoint;
+  control2: CanvasPoint;
+  end: CanvasPoint;
+};
+type CanvasEdgeGeometry = {
+  curve: CanvasCubicCurve;
+  edgePath: string;
+  labelT: number;
+  labelX: number;
+  labelY: number;
+  toolbarX: number;
+  toolbarY: number;
+  toolbarPlacement: 'above' | 'below';
+};
+type CanvasEdgeVisibleSegment = {
+  key: string;
+  path: string;
+  markerStart?: string;
+  markerEnd?: string;
+  isProbeSegment: boolean;
+};
+type CanvasRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+const CANVAS_EDGE_TOOLBAR_WIDTH = 106;
+const CANVAS_EDGE_TOOLBAR_HEIGHT = 28;
+const CANVAS_EDGE_TOOLBAR_GAP = 18;
+const CANVAS_EDGE_LABEL_CLEARANCE_X = 8;
+const CANVAS_EDGE_LABEL_CLEARANCE_Y = 6;
+const CANVAS_EDGE_ENDPOINT_CLEARANCE_RADIUS = 34;
+const CANVAS_EDGE_TOOLBAR_T_OFFSETS = [0, -0.14, 0.14, -0.28, 0.28, -0.4, 0.4] as const;
+
+function resolveCanvasPointForPosition(position: Position): CanvasPoint {
+  switch (position) {
+    case Position.Top:
+      return { x: 0, y: -1 };
+    case Position.Right:
+      return { x: 1, y: 0 };
+    case Position.Bottom:
+      return { x: 0, y: 1 };
+    case Position.Left:
+    default:
+      return { x: -1, y: 0 };
+  }
+}
+
+function addCanvasPoint(base: CanvasPoint, offset: CanvasPoint, scale = 1): CanvasPoint {
+  return {
+    x: base.x + offset.x * scale,
+    y: base.y + offset.y * scale
+  };
+}
+
+function perpendicularCanvasPoint(point: CanvasPoint): CanvasPoint {
+  return {
+    x: -point.y,
+    y: point.x
+  };
+}
+
+function normalizeCanvasPoint(point: CanvasPoint): CanvasPoint {
+  const magnitude = Math.hypot(point.x, point.y);
+  if (magnitude < 0.001) {
+    return { x: 0, y: -1 };
+  }
+
+  return {
+    x: point.x / magnitude,
+    y: point.y / magnitude
+  };
+}
+
+function buildCanvasCubicPath(start: CanvasPoint, control1: CanvasPoint, control2: CanvasPoint, end: CanvasPoint): string {
+  return `M ${start.x},${start.y} C ${control1.x},${control1.y} ${control2.x},${control2.y} ${end.x},${end.y}`;
+}
+
+function buildCanvasCurvePath(curve: CanvasCubicCurve): string {
+  return buildCanvasCubicPath(curve.start, curve.control1, curve.control2, curve.end);
+}
+
+function interpolateCanvasPoint(start: CanvasPoint, end: CanvasPoint, t: number): CanvasPoint {
+  return {
+    x: start.x + (end.x - start.x) * t,
+    y: start.y + (end.y - start.y) * t
+  };
+}
+
+function clampCanvasEdgeToolbarT(value: number): number {
+  return Math.max(0.08, Math.min(0.92, value));
+}
+
+function buildCanvasRectFromCenter(center: CanvasPoint, size: CanvasSize): CanvasRect {
+  return {
+    left: center.x - size.width / 2,
+    top: center.y - size.height / 2,
+    right: center.x + size.width / 2,
+    bottom: center.y + size.height / 2
+  };
+}
+
+function expandCanvasRect(rect: CanvasRect, paddingX: number, paddingY: number): CanvasRect {
+  return {
+    left: rect.left - paddingX,
+    top: rect.top - paddingY,
+    right: rect.right + paddingX,
+    bottom: rect.bottom + paddingY
+  };
+}
+
+function doCanvasRectsIntersect(left: CanvasRect, right: CanvasRect): boolean {
+  return !(
+    left.right <= right.left ||
+    left.left >= right.right ||
+    left.bottom <= right.top ||
+    left.top >= right.bottom
+  );
+}
+
+function distanceFromCanvasPointToRect(point: CanvasPoint, rect: CanvasRect): number {
+  const clampedX = Math.max(rect.left, Math.min(point.x, rect.right));
+  const clampedY = Math.max(rect.top, Math.min(point.y, rect.bottom));
+  return Math.hypot(point.x - clampedX, point.y - clampedY);
+}
+
+function buildCanvasEdgeToolbarRect(
+  anchor: CanvasPoint,
+  placement: 'above' | 'below'
+): CanvasRect {
+  const top =
+    placement === 'above'
+      ? anchor.y - CANVAS_EDGE_TOOLBAR_GAP - CANVAS_EDGE_TOOLBAR_HEIGHT
+      : anchor.y + CANVAS_EDGE_TOOLBAR_GAP;
+
+  return {
+    left: anchor.x - CANVAS_EDGE_TOOLBAR_WIDTH / 2,
+    top,
+    right: anchor.x + CANVAS_EDGE_TOOLBAR_WIDTH / 2,
+    bottom: top + CANVAS_EDGE_TOOLBAR_HEIGHT
+  };
+}
+
+function sampleCanvasCubicPoint(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  t: number
+): CanvasPoint {
+  const inverseT = 1 - t;
+  const inverseT2 = inverseT * inverseT;
+  const inverseT3 = inverseT2 * inverseT;
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  return {
+    x: inverseT3 * start.x + 3 * inverseT2 * t * control1.x + 3 * inverseT * t2 * control2.x + t3 * end.x,
+    y: inverseT3 * start.y + 3 * inverseT2 * t * control1.y + 3 * inverseT * t2 * control2.y + t3 * end.y
+  };
+}
+
+function sampleCanvasCubicTangent(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  t: number
+): CanvasPoint {
+  const inverseT = 1 - t;
+
+  return {
+    x:
+      3 * inverseT * inverseT * (control1.x - start.x) +
+      6 * inverseT * t * (control2.x - control1.x) +
+      3 * t * t * (end.x - control2.x),
+    y:
+      3 * inverseT * inverseT * (control1.y - start.y) +
+      6 * inverseT * t * (control2.y - control1.y) +
+      3 * t * t * (end.y - control2.y)
+  };
+}
+
+function splitCanvasCubicCurve(curve: CanvasCubicCurve, t: number): { left: CanvasCubicCurve; right: CanvasCubicCurve } {
+  const startControl = interpolateCanvasPoint(curve.start, curve.control1, t);
+  const controlBridge = interpolateCanvasPoint(curve.control1, curve.control2, t);
+  const endControl = interpolateCanvasPoint(curve.control2, curve.end, t);
+  const leftInner = interpolateCanvasPoint(startControl, controlBridge, t);
+  const rightInner = interpolateCanvasPoint(controlBridge, endControl, t);
+  const splitPoint = interpolateCanvasPoint(leftInner, rightInner, t);
+
+  return {
+    left: {
+      start: curve.start,
+      control1: startControl,
+      control2: leftInner,
+      end: splitPoint
+    },
+    right: {
+      start: splitPoint,
+      control1: rightInner,
+      control2: endControl,
+      end: curve.end
+    }
+  };
+}
+
+function sliceCanvasCubicCurve(curve: CanvasCubicCurve, fromT: number, toT: number): CanvasCubicCurve | null {
+  const safeFromT = Math.max(0, Math.min(1, fromT));
+  const safeToT = Math.max(0, Math.min(1, toT));
+  if (safeToT - safeFromT <= 0.001) {
+    return null;
+  }
+
+  if (safeFromT <= 0.001 && safeToT >= 0.999) {
+    return curve;
+  }
+
+  if (safeFromT <= 0.001) {
+    return splitCanvasCubicCurve(curve, safeToT).left;
+  }
+
+  if (safeToT >= 0.999) {
+    return splitCanvasCubicCurve(curve, safeFromT).right;
+  }
+
+  const { right } = splitCanvasCubicCurve(curve, safeFromT);
+  const relativeT = (safeToT - safeFromT) / (1 - safeFromT);
+  return splitCanvasCubicCurve(right, relativeT).left;
+}
+
+function createCanvasCubicArcTable(
+  curve: CanvasCubicCurve,
+  extraTs: number[] = []
+): Array<{ t: number; length: number; point: CanvasPoint }> {
+  const sampleCount = 96;
+  const ts = new Set<number>([0, 1, ...extraTs.map((value) => Math.max(0, Math.min(1, value)))]);
+  for (let index = 1; index < sampleCount; index += 1) {
+    ts.add(index / sampleCount);
+  }
+
+  const sortedTs = [...ts].sort((left, right) => left - right);
+  let accumulatedLength = 0;
+
+  return sortedTs.map((t, index) => {
+    const point = sampleCanvasCubicPoint(curve.start, curve.control1, curve.control2, curve.end, t);
+    if (index > 0) {
+      const previousT = sortedTs[index - 1] ?? 0;
+      const previousPoint = sampleCanvasCubicPoint(curve.start, curve.control1, curve.control2, curve.end, previousT);
+      accumulatedLength += Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y);
+    }
+
+    return {
+      t,
+      point,
+      length: accumulatedLength
+    };
+  });
+}
+
+function resolveCanvasTForArcLength(
+  samples: Array<{ t: number; length: number; point: CanvasPoint }>,
+  targetLength: number
+): number {
+  if (samples.length === 0) {
+    return 0;
+  }
+
+  if (targetLength <= 0) {
+    return samples[0]?.t ?? 0;
+  }
+
+  const totalLength = samples[samples.length - 1]?.length ?? 0;
+  if (targetLength >= totalLength) {
+    return samples[samples.length - 1]?.t ?? 1;
+  }
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const current = samples[index];
+    const previous = samples[index - 1];
+    if (!current || !previous || current.length < targetLength) {
+      continue;
+    }
+
+    const span = current.length - previous.length;
+    if (span <= 0.001) {
+      return current.t;
+    }
+
+    const ratio = (targetLength - previous.length) / span;
+    return previous.t + (current.t - previous.t) * ratio;
+  }
+
+  return samples[samples.length - 1]?.t ?? 1;
+}
+
+function calculateCanvasBezierControlOffset(distance: number, curvature: number): number {
+  if (distance >= 0) {
+    return distance * 0.5;
+  }
+
+  return curvature * 25 * Math.sqrt(-distance);
+}
+
+function resolveCanvasBezierControlPoint(
+  current: CanvasPoint,
+  currentPosition: Position,
+  target: CanvasPoint,
+  curvature: number
+): CanvasPoint {
+  switch (currentPosition) {
+    case Position.Left:
+      return {
+        x: current.x - calculateCanvasBezierControlOffset(current.x - target.x, curvature),
+        y: current.y
+      };
+    case Position.Right:
+      return {
+        x: current.x + calculateCanvasBezierControlOffset(target.x - current.x, curvature),
+        y: current.y
+      };
+    case Position.Top:
+      return {
+        x: current.x,
+        y: current.y - calculateCanvasBezierControlOffset(current.y - target.y, curvature)
+      };
+    case Position.Bottom:
+    default:
+      return {
+        x: current.x,
+        y: current.y + calculateCanvasBezierControlOffset(target.y - current.y, curvature)
+      };
+  }
+}
+
+function resolveCanvasEdgeToolbarPlacement(params: {
+  curve: CanvasCubicCurve;
+  labelT: number;
+  labelPoint: CanvasPoint;
+  labelVisualSize: CanvasSize | null;
+}): { point: CanvasPoint; placement: 'above' | 'below' } {
+  const { curve, labelT, labelPoint, labelVisualSize } = params;
+  const candidateTs = [...new Set(CANVAS_EDGE_TOOLBAR_T_OFFSETS.map((offset) => clampCanvasEdgeToolbarT(labelT + offset)))];
+  const labelRect = labelVisualSize
+    ? expandCanvasRect(
+        buildCanvasRectFromCenter(
+          {
+            x: labelPoint.x,
+            y: labelPoint.y - 2
+          },
+          labelVisualSize
+        ),
+        CANVAS_EDGE_LABEL_CLEARANCE_X,
+        CANVAS_EDGE_LABEL_CLEARANCE_Y
+      )
+    : null;
+
+  let bestCandidate: { point: CanvasPoint; placement: 'above' | 'below'; score: number } | null = null;
+
+  for (const t of candidateTs) {
+    const point = sampleCanvasCubicPoint(curve.start, curve.control1, curve.control2, curve.end, t);
+    for (const placement of ['above', 'below'] as const) {
+      const toolbarRect = buildCanvasEdgeToolbarRect(point, placement);
+      const labelPenalty =
+        labelRect && doCanvasRectsIntersect(toolbarRect, labelRect)
+          ? 10_000
+          : 0;
+      const endpointPenalty =
+        Math.max(
+          0,
+          CANVAS_EDGE_ENDPOINT_CLEARANCE_RADIUS - distanceFromCanvasPointToRect(curve.start, toolbarRect)
+        ) +
+        Math.max(
+          0,
+          CANVAS_EDGE_ENDPOINT_CLEARANCE_RADIUS - distanceFromCanvasPointToRect(curve.end, toolbarRect)
+        );
+      const score =
+        labelPenalty +
+        endpointPenalty * 1_000 +
+        Math.abs(t - labelT) * 100 +
+        (placement === 'above' ? 0 : 12);
+
+      if (!bestCandidate || score < bestCandidate.score) {
+        bestCandidate = {
+          point,
+          placement,
+          score
+        };
+      }
+    }
+  }
+
+  return bestCandidate ?? { point: labelPoint, placement: 'above' };
+}
+
+function createCanvasCubicEdgeGeometry(
+  start: CanvasPoint,
+  control1: CanvasPoint,
+  control2: CanvasPoint,
+  end: CanvasPoint,
+  labelT = 0.5,
+  labelVisualSize: CanvasSize | null = null
+): CanvasEdgeGeometry {
+  const curve = { start, control1, control2, end };
+  const labelPoint = sampleCanvasCubicPoint(start, control1, control2, end, labelT);
+  const toolbar = resolveCanvasEdgeToolbarPlacement({
+    curve,
+    labelT,
+    labelPoint,
+    labelVisualSize
+  });
+
+  return {
+    curve,
+    edgePath: buildCanvasCurvePath(curve),
+    labelT,
+    labelX: labelPoint.x,
+    labelY: labelPoint.y,
+    toolbarX: toolbar.point.x,
+    toolbarY: toolbar.point.y,
+    toolbarPlacement: toolbar.placement
+  };
+}
+
+function createCanvasSameNodeEdgeGeometry(props: EdgeProps<CanvasEdgeData>): CanvasEdgeGeometry {
+  const start = { x: props.sourceX, y: props.sourceY };
+  const end = { x: props.targetX, y: props.targetY };
+  const sourceVector = resolveCanvasPointForPosition(props.sourcePosition);
+  const targetVector = resolveCanvasPointForPosition(props.targetPosition);
+  const sameAnchor = props.sourcePosition === props.targetPosition;
+  const labelText = typeof props.label === 'string' ? props.label : undefined;
+  const labelVisualSize = labelText ? estimateCanvasEdgeLabelVisualSize(labelText) : null;
+
+  if (sameAnchor) {
+    const outwardDistance = 68;
+    const spreadDistance = 34;
+    const tangent = perpendicularCanvasPoint(sourceVector);
+    const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), tangent, -spreadDistance);
+    const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), tangent, spreadDistance);
+    return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.72, labelVisualSize);
+  }
+
+  const chordLength = Math.hypot(end.x - start.x, end.y - start.y);
+  const outwardDistance = Math.max(54, chordLength * 0.8);
+  const combinedDirection = normalizeCanvasPoint({
+    x: sourceVector.x + targetVector.x,
+    y: sourceVector.y + targetVector.y
+  });
+  const bendDirection =
+    Math.abs(sourceVector.x + targetVector.x) < 0.001 && Math.abs(sourceVector.y + targetVector.y) < 0.001
+      ? perpendicularCanvasPoint(sourceVector)
+      : combinedDirection;
+  const bendDistance = Math.max(28, outwardDistance * 0.7);
+  const control1 = addCanvasPoint(addCanvasPoint(start, sourceVector, outwardDistance), bendDirection, bendDistance);
+  const control2 = addCanvasPoint(addCanvasPoint(end, targetVector, outwardDistance), bendDirection, bendDistance);
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.5, labelVisualSize);
+}
+
+function createCanvasEdgeGeometry(props: EdgeProps<CanvasEdgeData>): CanvasEdgeGeometry {
+  if (props.source === props.target) {
+    return createCanvasSameNodeEdgeGeometry(props);
+  }
+
+  const start = { x: props.sourceX, y: props.sourceY };
+  const end = { x: props.targetX, y: props.targetY };
+  const curvature = 0.25;
+  const control1 = resolveCanvasBezierControlPoint(start, props.sourcePosition, end, curvature);
+  const control2 = resolveCanvasBezierControlPoint(end, props.targetPosition, start, curvature);
+  const labelText = typeof props.label === 'string' ? props.label : undefined;
+  const labelVisualSize = labelText ? estimateCanvasEdgeLabelVisualSize(labelText) : null;
+
+  return createCanvasCubicEdgeGeometry(start, control1, control2, end, 0.5, labelVisualSize);
+}
+
+function estimateCanvasEdgeLabelVisualSize(label: string): CanvasSize {
+  let glyphUnits = 0;
+
+  for (const character of label) {
+    if (/\s/.test(character)) {
+      glyphUnits += 0.45;
+      continue;
+    }
+
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isWideGlyph = codePoint >= 0x1100;
+    glyphUnits += isWideGlyph ? 1.7 : 0.96;
+  }
+
+  return {
+    width: Math.max(12, Math.ceil(glyphUnits * 7 + 8)),
+    height: 18
+  };
+}
+
+function createCanvasEdgeVisibleSegments(params: {
+  curve: CanvasCubicCurve;
+  edgePath: string;
+  labelT: number;
+  labelVisualSize: CanvasSize | null;
+  markerStart?: string;
+  markerEnd?: string;
+}): CanvasEdgeVisibleSegment[] {
+  const { curve, edgePath, labelT, labelVisualSize, markerStart, markerEnd } = params;
+  if (!labelVisualSize) {
+    return [
+      {
+        key: 'full',
+        path: edgePath,
+        markerStart,
+        markerEnd,
+        isProbeSegment: true
+      }
+    ];
+  }
+
+  const tangent = normalizeCanvasPoint(
+    sampleCanvasCubicTangent(curve.start, curve.control1, curve.control2, curve.end, labelT)
+  );
+  const knockoutWidth = labelVisualSize.width + 4;
+  const knockoutHeight = labelVisualSize.height + 4;
+  const projectedGap = Math.abs(tangent.x) * knockoutWidth + Math.abs(tangent.y) * knockoutHeight + 2;
+  const samples = createCanvasCubicArcTable(curve, [labelT]);
+  const labelArcSample = samples.find((sample) => Math.abs(sample.t - labelT) < 0.0001);
+  const labelLength = labelArcSample?.length;
+  const totalLength = samples[samples.length - 1]?.length ?? 0;
+
+  if (labelLength === undefined || totalLength <= projectedGap + 4) {
+    return [
+      {
+        key: 'full',
+        path: edgePath,
+        markerStart,
+        markerEnd,
+        isProbeSegment: true
+      }
+    ];
+  }
+
+  const halfGap = projectedGap / 2;
+  const startT = resolveCanvasTForArcLength(samples, Math.max(0, labelLength - halfGap));
+  const endT = resolveCanvasTForArcLength(samples, Math.min(totalLength, labelLength + halfGap));
+  const segments = [
+    {
+      key: 'leading',
+      fromT: 0,
+      toT: startT
+    },
+    {
+      key: 'trailing',
+      fromT: endT,
+      toT: 1
+    }
+  ].reduce<CanvasEdgeVisibleSegment[]>((items, segment) => {
+    const slicedCurve = sliceCanvasCubicCurve(curve, segment.fromT, segment.toT);
+    if (!slicedCurve) {
+      return items;
+    }
+
+    items.push({
+      key: segment.key,
+      path: buildCanvasCurvePath(slicedCurve),
+      markerStart: segment.fromT <= 0.001 ? markerStart : undefined,
+      markerEnd: segment.toT >= 0.999 ? markerEnd : undefined,
+      isProbeSegment: false
+    });
+    return items;
+  }, []);
+
+  const normalizedSegments = segments.map((segment, index) => ({
+    ...segment,
+    isProbeSegment: index === 0
+  }));
+
+  return normalizedSegments.length > 0
+    ? normalizedSegments
+    : [
+        {
+          key: 'full',
+          path: edgePath,
+          markerStart,
+          markerEnd,
+          isProbeSegment: true
+        }
+      ];
+}
+
+function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
+  const { curve, edgePath, labelT, labelX, labelY, toolbarX, toolbarY, toolbarPlacement } = createCanvasEdgeGeometry(props);
+  const owner = props.data?.owner ?? 'user';
+  const arrowMode = props.data?.arrowMode ?? 'none';
+  const labelText = typeof props.label === 'string' ? props.label : undefined;
+  const edgeColor = props.data?.color;
+  const strokeColor = props.data?.strokeColor ?? resolveCanvasEdgeStrokeColor(edgeColor);
+  const isLabelEditing = props.data?.isLabelEditing === true;
+  const isArrowMenuOpen = props.data?.isArrowMenuOpen === true;
+  const isColorMenuOpen = props.data?.isColorMenuOpen === true;
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const labelSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const labelEditorMeasureRef = useRef<HTMLSpanElement | null>(null);
+  const commitLabelOnBlurRef = useRef(true);
+  const [labelDraft, setLabelDraft] = useState(labelText ?? '');
+  const [isComposing, setIsComposing] = useState(false);
+  const [labelEditorWidth, setLabelEditorWidth] = useState<number | null>(null);
+  const [labelVisualSize, setLabelVisualSize] = useState<CanvasSize | null>(null);
+
+  useEffect(() => {
+    if (isLabelEditing) {
+      return;
+    }
+
+    setLabelDraft(labelText ?? '');
+    setIsComposing(false);
+  }, [isLabelEditing, labelText]);
+
+  useLayoutEffect(() => {
+    if (!isLabelEditing || !inputRef.current) {
+      return;
+    }
+
+    commitLabelOnBlurRef.current = true;
+    setIsComposing(false);
+    setLabelDraft(labelText ?? '');
+    inputRef.current.focus();
+    inputRef.current.select();
+  }, [isLabelEditing]);
+
+  useLayoutEffect(() => {
+    if (!isLabelEditing || !labelEditorMeasureRef.current) {
+      return;
+    }
+
+    const measuredWidth = Math.ceil(labelEditorMeasureRef.current.getBoundingClientRect().width);
+    setLabelEditorWidth(Math.max(18, Math.min(220, measuredWidth + 2)));
+  }, [isLabelEditing, labelDraft]);
+
+  useLayoutEffect(() => {
+    if (isLabelEditing || !labelText || !labelSurfaceRef.current) {
+      setLabelVisualSize((current) => (current ? null : current));
+      return;
+    }
+
+    const element = labelSurfaceRef.current;
+    const updateLabelVisualSize = (): void => {
+      const rect = element.getBoundingClientRect();
+      const nextSize = {
+        width: Math.ceil(rect.width),
+        height: Math.ceil(rect.height)
+      };
+      setLabelVisualSize((current) =>
+        current && current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+      );
+    };
+
+    updateLabelVisualSize();
+    const resizeObserver = new ResizeObserver(updateLabelVisualSize);
+    resizeObserver.observe(element);
+    return () => resizeObserver.disconnect();
+  }, [isLabelEditing, labelText]);
+
+  const arrowIcon = resolveCanvasEdgeArrowIcon(arrowMode);
+  const labelStyle = createCanvasEdgeOverlayStyle(
+    `translate(-50%, -50%) translate(${labelX}px, ${labelY - 2}px)`,
+    strokeColor
+  );
+  const toolbarStyle = createCanvasEdgeOverlayStyle(
+    toolbarPlacement === 'above'
+      ? `translate(-50%, -100%) translate(${toolbarX}px, ${toolbarY - CANVAS_EDGE_TOOLBAR_GAP}px)`
+      : `translate(-50%, 0) translate(${toolbarX}px, ${toolbarY + CANVAS_EDGE_TOOLBAR_GAP}px)`,
+    strokeColor
+  );
+  const visibleEdgeSegments = createCanvasEdgeVisibleSegments({
+    curve,
+    edgePath,
+    labelT,
+    labelVisualSize: labelText && !isLabelEditing ? labelVisualSize ?? estimateCanvasEdgeLabelVisualSize(labelText) : null,
+    markerStart: props.markerStart,
+    markerEnd: props.markerEnd
+  });
+  const labelNeedsMask = Boolean(labelText && !isLabelEditing && visibleEdgeSegments.length < 2);
+
+  return (
+    <>
+      {visibleEdgeSegments.map((segment) => (
+        <path
+          key={`outline-${segment.key}`}
+          d={segment.path}
+          fill="none"
+          className={`canvas-edge-outline ${props.selected ? 'is-selected' : ''}`}
+        />
+      ))}
+      {visibleEdgeSegments.map((segment) => (
+        <path
+          key={`path-${segment.key}`}
+          d={segment.path}
+          fill="none"
+          className="canvas-edge-path"
+          style={{
+            ...props.style,
+            stroke: strokeColor,
+            strokeWidth: props.style?.strokeWidth ?? 1.8
+          }}
+          markerStart={segment.markerStart}
+          markerEnd={segment.markerEnd}
+          data-edge-visible-segment={segment.key}
+          data-edge-probe={segment.isProbeSegment ? 'true' : undefined}
+          data-edge-id={props.id}
+          data-edge-source={props.source}
+          data-edge-target={props.target}
+          data-edge-owner={owner}
+          data-edge-arrow-mode={arrowMode}
+          data-edge-color={edgeColor}
+          data-edge-label={labelText}
+          data-edge-selected={props.selected ? 'true' : 'false'}
+        />
+      ))}
+      <path
+        d={edgePath}
+        fill="none"
+        className="canvas-edge-hitbox"
+        data-edge-hitbox="true"
+        data-edge-id={props.id}
+      />
+      {props.selected ? (
+        <EdgeLabelRenderer>
+          <div
+            className="canvas-edge-toolbar-anchor"
+            data-edge-toolbar-anchor="true"
+            style={toolbarStyle}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              stopCanvasEvent(event);
+            }}
+          >
+            {isArrowMenuOpen ? (
+              <div
+                className="canvas-edge-arrow-menu"
+                data-edge-arrow-menu="true"
+                data-edge-arrow-menu-edge-id={props.id}
+              >
+                {CANVAS_EDGE_ARROW_MENU_ITEMS.map((item) => (
+                  <button
+                    key={item.arrowMode}
+                    type="button"
+                    className={`canvas-edge-arrow-menu-item ${item.arrowMode === arrowMode ? 'is-active' : ''}`}
+                    data-edge-arrow-mode={item.arrowMode}
+                    onClick={() => props.data?.onSetArrowMode?.(item.arrowMode)}
+                  >
+                    <span className={`canvas-edge-toolbar-icon codicon codicon-${item.icon}`} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {isColorMenuOpen ? (
+              <div
+                className="canvas-edge-arrow-menu"
+                data-edge-color-menu="true"
+                data-edge-color-menu-edge-id={props.id}
+              >
+                {CANVAS_EDGE_COLOR_MENU_ITEMS.map((item) => {
+                  const itemStrokeColor = resolveCanvasEdgeStrokeColor(item.color);
+                  const isActive = item.color === undefined ? edgeColor === undefined : item.color === edgeColor;
+                  return (
+                    <button
+                      key={item.color ?? 'default'}
+                      type="button"
+                      className={`canvas-edge-arrow-menu-item ${isActive ? 'is-active' : ''}`}
+                      data-edge-color-option={item.color ?? 'default'}
+                      onClick={() => props.data?.onSetColor?.(item.color ?? null)}
+                    >
+                      <span
+                        className="canvas-edge-color-swatch"
+                        aria-hidden="true"
+                        style={createCanvasEdgeOverlayStyle('none', itemStrokeColor)}
+                      />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div
+              className="canvas-edge-toolbar"
+              data-edge-toolbar="true"
+              data-edge-toolbar-edge-id={props.id}
+            >
+              <button
+                type="button"
+                className={`canvas-edge-toolbar-button ${isArrowMenuOpen ? 'is-active' : ''}`}
+                title="切换箭头模式"
+                aria-label="切换箭头模式"
+                aria-haspopup="menu"
+                aria-expanded={isArrowMenuOpen}
+                onClick={() => props.data?.onToggleArrowMenu?.()}
+              >
+                <span className={`canvas-edge-toolbar-icon codicon codicon-${arrowIcon}`} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={`canvas-edge-toolbar-button ${isColorMenuOpen ? 'is-active' : ''}`}
+                title="设置颜色"
+                aria-label="设置颜色"
+                aria-haspopup="menu"
+                aria-expanded={isColorMenuOpen}
+                onClick={() => props.data?.onToggleColorMenu?.()}
+              >
+                <span
+                  className="canvas-edge-toolbar-icon codicon codicon-symbol-color"
+                  aria-hidden="true"
+                  style={{ color: strokeColor }}
+                />
+              </button>
+              <button
+                type="button"
+                className="canvas-edge-toolbar-button"
+                title="编辑标签"
+                aria-label="编辑标签"
+                onClick={() => props.data?.onStartLabelEdit?.()}
+              >
+                <span className="canvas-edge-toolbar-icon codicon codicon-edit" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="canvas-edge-toolbar-button danger"
+                title="删除连线"
+                aria-label="删除连线"
+                onClick={() => props.data?.onDeleteEdge?.()}
+              >
+                <span className="canvas-edge-toolbar-icon codicon codicon-trash" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+      {isLabelEditing ? (
+        <EdgeLabelRenderer>
+          <div
+            className="canvas-edge-label-editor-shell"
+            style={labelStyle}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              stopCanvasEvent(event);
+            }}
+          >
+            <span ref={labelEditorMeasureRef} className="canvas-edge-label-editor-measure" aria-hidden="true">
+              {labelDraft || '添加关系标签'}
+            </span>
+            <input
+              ref={inputRef}
+              type="text"
+              className="canvas-edge-label-editor"
+              data-edge-label-editor="true"
+              data-edge-label-editor-edge-id={props.id}
+              value={labelDraft}
+              placeholder="添加关系标签"
+              maxLength={120}
+              style={labelEditorWidth ? { width: `${labelEditorWidth}px` } : undefined}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={(event) => {
+                setIsComposing(false);
+                setLabelDraft(event.currentTarget.value);
+              }}
+              onChange={(event) => setLabelDraft(event.target.value)}
+              onKeyDown={(event) => {
+                stopCanvasEvent(event);
+
+                if (isComposing || isImeComposingKeyboardEvent(event)) {
+                  return;
+                }
+
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  commitLabelOnBlurRef.current = false;
+                  props.data?.onSubmitLabelEdit?.(event.currentTarget.value);
+                  return;
+                }
+
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  commitLabelOnBlurRef.current = false;
+                  setIsComposing(false);
+                  props.data?.onCancelLabelEdit?.();
+                }
+              }}
+              onBlur={(event) => {
+                setIsComposing(false);
+                if (!commitLabelOnBlurRef.current) {
+                  commitLabelOnBlurRef.current = true;
+                  return;
+                }
+
+                props.data?.onSubmitLabelEdit?.(event.currentTarget.value);
+              }}
+            />
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+      {labelText && !isLabelEditing ? (
+        <EdgeLabelRenderer>
+          <div
+            ref={labelSurfaceRef}
+            className={`canvas-edge-label ${labelNeedsMask ? 'needs-mask' : ''}`}
+            data-edge-label="true"
+            data-edge-label-edge-id={props.id}
+            data-edge-label-mask={labelNeedsMask ? 'true' : undefined}
+            style={labelStyle}
+            onMouseDown={stopCanvasEvent}
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              props.data?.onSelectEdge?.();
+            }}
+            onDoubleClick={(event) => {
+              stopCanvasEvent(event);
+              props.data?.onStartLabelEdit?.();
+            }}
+          >
+            <span className="canvas-edge-label-text">{labelText}</span>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
@@ -2286,7 +3912,10 @@ function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
   workspaceTrusted: boolean;
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
   onSelectNode: (nodeId: string) => void;
+  onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -2323,14 +3952,7 @@ function toFlowNodes(params: {
 
     return {
       id: node.id,
-      type:
-        node.kind === 'agent'
-          ? 'agent'
-          : node.kind === 'terminal'
-            ? 'terminal'
-            : node.kind === 'note'
-              ? 'note'
-              : 'card',
+      type: node.kind === 'agent' || node.kind === 'terminal' || node.kind === 'note' || node.kind === 'file' || node.kind === 'file-list' ? node.kind : 'card',
       position: node.position,
       draggable: true,
       selected: node.id === params.selectedNodeId,
@@ -2348,8 +3970,11 @@ function toFlowNodes(params: {
         selected: node.id === params.selectedNodeId,
         workspaceTrusted: params.workspaceTrusted,
         size,
+        fileNodeDisplayMode: params.fileNodeDisplayMode,
+        filePathDisplayMode: params.filePathDisplayMode,
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
+        onOpenCanvasFile: params.onOpenCanvasFile,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
@@ -2363,6 +3988,86 @@ function toFlowNodes(params: {
         onFocusNodeInViewport: params.onFocusNodeInViewport,
         onDeleteNode: params.onDeleteNode
       }
+    };
+  });
+}
+
+function toFlowEdges(params: {
+  edges: CanvasEdgeSummary[];
+  selectedEdgeId: string | undefined;
+  edgeLabelEditor: EdgeLabelEditorState | null;
+  edgeArrowMenuEdgeId: string | undefined;
+  edgeColorMenuEdgeId: string | undefined;
+  onSelectEdge: (edgeId: string) => void;
+  onStartLabelEdit: (edgeId: string) => void;
+  onSubmitLabelEdit: (edgeId: string, value: string) => void;
+  onCancelLabelEdit: (edgeId: string) => void;
+  onToggleArrowMenu: (edgeId: string) => void;
+  onSetArrowMode: (edgeId: string, arrowMode: CanvasEdgeArrowMode) => void;
+  onToggleColorMenu: (edgeId: string) => void;
+  onSetColor: (edgeId: string, color: CanvasEdgeColor | null) => void;
+  onDeleteEdge: (edgeId: string) => void;
+}): CanvasFlowEdge[] {
+  return params.edges.map((edge) => {
+    const isSelected = edge.id === params.selectedEdgeId;
+    const strokeColor = resolveCanvasEdgeStrokeColor(edge.color);
+    const isLabelEditing = params.edgeLabelEditor?.edgeId === edge.id;
+    const isArrowMenuOpen = params.edgeArrowMenuEdgeId === edge.id;
+    const isColorMenuOpen = params.edgeColorMenuEdgeId === edge.id;
+
+    return {
+      id: edge.id,
+      type: 'canvas',
+      source: edge.sourceNodeId,
+      target: edge.targetNodeId,
+      sourceHandle: edge.sourceAnchor,
+      targetHandle: edge.targetAnchor,
+      label: edge.label,
+      selectable: true,
+      focusable: true,
+      selected: isSelected,
+      reconnectable: isSelected,
+      zIndex: 6,
+      data: {
+        owner: edge.owner,
+        arrowMode: edge.arrowMode,
+        color: edge.color,
+        strokeColor,
+        isLabelEditing,
+        isArrowMenuOpen,
+        isColorMenuOpen,
+        onSelectEdge: () => params.onSelectEdge(edge.id),
+        onStartLabelEdit: () => params.onStartLabelEdit(edge.id),
+        onSubmitLabelEdit: (value) => params.onSubmitLabelEdit(edge.id, value),
+        onCancelLabelEdit: () => params.onCancelLabelEdit(edge.id),
+        onToggleArrowMenu: () => params.onToggleArrowMenu(edge.id),
+        onSetArrowMode: (arrowMode) => params.onSetArrowMode(edge.id, arrowMode),
+        onToggleColorMenu: () => params.onToggleColorMenu(edge.id),
+        onSetColor: (color) => params.onSetColor(edge.id, color),
+        onDeleteEdge: () => params.onDeleteEdge(edge.id)
+      },
+      style: {
+        stroke: strokeColor,
+        strokeWidth: 1.8
+      },
+      markerStart:
+        edge.arrowMode === 'both'
+          ? {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: strokeColor
+            }
+          : undefined,
+      markerEnd:
+        edge.arrowMode === 'forward' || edge.arrowMode === 'both'
+          ? {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: strokeColor
+            }
+          : undefined
     };
   });
 }
@@ -2482,7 +4187,7 @@ function footprintsEqual(
 }
 
 function resolveCreateNodePreferredPosition(
-  kind: CanvasNodeKind,
+  kind: CanvasCreatableNodeKind,
   reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null
 ): CanvasNodePosition | undefined {
   if (!reactFlowInstance || !reactFlowInstance.viewportInitialized) {
@@ -2498,7 +4203,7 @@ function resolveCreateNodePreferredPosition(
 }
 
 function resolveCreateNodePreferredPositionFromFlowAnchor(
-  kind: CanvasNodeKind,
+  kind: CanvasCreatableNodeKind,
   flowAnchor: CanvasNodePosition
 ): CanvasNodePosition {
   const footprint = estimatedCanvasNodeFootprint(kind);
@@ -2509,6 +4214,49 @@ function resolveCreateNodePreferredPositionFromFlowAnchor(
   };
 }
 
+function parseHandleAnchor(handleId: string | null | undefined): CanvasEdgeSummary['sourceAnchor'] | undefined {
+  return handleId === 'top' || handleId === 'right' || handleId === 'bottom' || handleId === 'left'
+    ? handleId
+    : undefined;
+}
+
+function displayFilePath(
+  value: Pick<FileListNodeEntrySummary, 'filePath' | 'relativePath'>,
+  mode: CanvasFilePathDisplayMode
+): string {
+  return mode === 'relative-path' ? value.relativePath ?? value.filePath : basename(value.filePath);
+}
+
+function basename(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  return segments[segments.length - 1] || filePath;
+}
+
+function renderFileIcon(icon: CanvasFileIconDescriptor | undefined, fallbackLabel: string): JSX.Element {
+  if (!icon || icon.kind === 'codicon') {
+    const codiconId = icon?.kind === 'codicon' ? icon.id : 'file';
+    return <span className={`codicon codicon-${codiconId}`} title={fallbackLabel} />;
+  }
+
+  if (icon.kind === 'image') {
+    return <img className="file-icon-image" src={icon.src} alt="" />;
+  }
+
+  return (
+    <span
+      className="file-icon-font"
+      style={{
+        fontFamily: icon.fontFamily,
+        color: icon.color
+      }}
+      title={fallbackLabel}
+    >
+      {icon.character}
+    </span>
+  );
+}
+
 function colorForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
@@ -2517,6 +4265,10 @@ function colorForKind(kind: CanvasNodeKind): string {
       return '#38bdf8';
     case 'note':
       return '#a78bfa';
+    case 'file':
+      return '#f59e0b';
+    case 'file-list':
+      return '#f97316';
   }
 }
 
@@ -2536,6 +4288,10 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
       return 'Terminal';
     case 'note':
       return 'Note';
+    case 'file':
+      return 'File';
+    case 'file-list':
+      return 'File List';
   }
 }
 
@@ -2547,6 +4303,10 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
       return '新建一个嵌入式终端窗口';
     case 'note':
       return '新建一个可编辑的笔记节点';
+    case 'file':
+      return '自动生成的文件节点';
+    case 'file-list':
+      return '自动生成的文件列表节点';
   }
 }
 
@@ -2568,6 +4328,8 @@ function providerLabel(provider: AgentProviderKind): string {
 
 function humanizeStatus(status: string): string {
   switch (status) {
+    case 'linked':
+      return '已关联';
     case 'idle':
       return '空闲';
     case 'launching':
@@ -2613,6 +4375,8 @@ function humanizeStatus(status: string): string {
 
 function statusToneClass(status: string): string {
   switch (status) {
+    case 'linked':
+      return 'tone-success';
     case 'launching':
     case 'starting':
     case 'resuming':
@@ -2635,6 +4399,17 @@ function statusToneClass(status: string): string {
       return 'tone-error';
     default:
       return 'tone-idle';
+  }
+}
+
+function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
+  switch (accessMode) {
+    case 'read':
+      return '读';
+    case 'write':
+      return '写';
+    case 'read-write':
+      return '读写';
   }
 }
 
@@ -2719,6 +4494,14 @@ function isDeleteShortcutBlockedTarget(target: EventTarget | null): boolean {
     return false;
   }
 
+  const selectedFileNodeAction = target.closest<HTMLElement>('.file-node-action');
+  if (
+    selectedFileNodeAction &&
+    selectedFileNodeAction.closest('[data-node-kind="file"][data-node-selected="true"]')
+  ) {
+    return false;
+  }
+
   if (target.isContentEditable) {
     return true;
   }
@@ -2758,6 +4541,17 @@ function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x
 
 function stopCanvasEvent(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
+}
+
+function resolveCanvasEdgeArrowIcon(arrowMode: CanvasEdgeArrowMode): string {
+  switch (arrowMode) {
+    case 'both':
+      return 'arrow-both';
+    case 'forward':
+      return 'arrow-right';
+    default:
+      return 'remove';
+  }
 }
 
 function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void {
@@ -2907,6 +4701,30 @@ function scheduleExecutionTerminalVisibilityRestore(): void {
   });
 }
 
+function scheduleCanvasShellFocusRestore(shell: HTMLDivElement | null): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (!shell || !shell.isConnected) {
+        return;
+      }
+
+      try {
+        window.focus();
+      } catch {
+        // Ignore focus failures and fall through to the root element focus attempt.
+      }
+
+      try {
+        shell.focus({
+          preventScroll: true
+        });
+      } catch {
+        shell.focus();
+      }
+    });
+  });
+}
+
 function scheduleEmbeddedTerminalAppearanceRefresh(): void {
   if (embeddedTerminalAppearanceRefreshScheduled) {
     return;
@@ -2981,15 +4799,24 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
   const nodes = nodeElements
     .map((element) => readWebviewProbeNodeSnapshot(element))
     .filter((node): node is WebviewProbeNodeSnapshot => node !== null);
+  const edgeElements = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-edge-probe="true"][data-edge-id][data-edge-source][data-edge-target]')
+  );
+  const edges = edgeElements
+    .map((element) => readWebviewProbeEdgeSnapshot(element))
+    .filter((edge): edge is WebviewProbeSnapshot['edges'][number] => edge !== null);
 
   return {
     documentTitle: document.title,
+    hasDocumentFocus: document.hasFocus(),
     hasCanvasShell: Boolean(document.querySelector('.canvas-shell')),
     hasReactFlow: Boolean(document.querySelector('.react-flow')),
     toastMessage: readProbeText(document.querySelector('[data-toast-kind="error"]')),
     executionLinkTooltipText: readProbeText(document.querySelector('.execution-link-tooltip.is-visible')),
     nodeCount: nodes.length,
-    nodes
+    nodes,
+    edgeCount: edges.length,
+    edges
   };
 }
 
@@ -3007,10 +4834,14 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     nodeId,
     kind: nodeKind,
     chromeTitle:
-      readProbeText(element.querySelector('.window-title strong, .node-topline strong')) ??
+      readProbeText(
+        element.querySelector('.window-title strong, .node-topline strong, .file-node-copy strong, .file-list-title-text')
+      ) ??
       readProbeFieldValue(element, 'title') ??
       null,
-    chromeSubtitle: readProbeText(element.querySelector('.window-title span, .node-topline span')),
+    chromeSubtitle: readProbeText(
+      element.querySelector('.window-title span, .node-topline span, .file-node-copy span')
+    ),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     selected: element.dataset.nodeSelected === 'true',
     renderedWidth: footprint.width,
@@ -3020,6 +4851,35 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
     ...readProbeExecutionTerminalState(nodeId)
+  };
+}
+
+function readWebviewProbeEdgeSnapshot(element: HTMLElement): WebviewProbeEdgeSnapshot | null {
+  const edgeId = element.dataset.edgeId;
+  const sourceNodeId = element.dataset.edgeSource;
+  const targetNodeId = element.dataset.edgeTarget;
+  const arrowMode = element.dataset.edgeArrowMode;
+  const owner = element.dataset.edgeOwner;
+
+  if (
+    !edgeId ||
+    !sourceNodeId ||
+    !targetNodeId ||
+    (arrowMode !== 'none' && arrowMode !== 'forward' && arrowMode !== 'both') ||
+    (owner !== 'user' && owner !== 'file-activity')
+  ) {
+    return null;
+  }
+
+  return {
+    edgeId,
+    sourceNodeId,
+    targetNodeId,
+    arrowMode,
+    owner,
+    color: element.dataset.edgeColor ?? null,
+    label: element.dataset.edgeLabel ?? null,
+    selected: element.dataset.edgeSelected === 'true'
   };
 }
 
@@ -3254,6 +5114,18 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'selectEdge': {
+        const target = queryEdgeSelectionTarget(action.edgeId);
+        dispatchSyntheticMouseClick(target);
+        await waitForDomActionFlush();
+        break;
+      }
+      case 'clickFileEntry': {
+        const target = queryFileEntryButton(action.nodeId, action.filePath);
+        dispatchSyntheticMouseClick(target);
+        await waitForDomActionFlush();
+        break;
+      }
     }
 
     await waitForDomActionFlush();
@@ -3331,6 +5203,27 @@ function queryNodeField(nodeId: string, fieldName: string): Element {
   return field;
 }
 
+function queryEdgeSelectionTarget(edgeId: string): Element {
+  const edge = document.querySelector(`[data-edge-hitbox="true"][data-edge-id="${edgeId}"]`);
+  if (!edge) {
+    throw new Error(`未找到连线 ${edgeId}。`);
+  }
+
+  return edge;
+}
+
+function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  const target = Array.from(nodeRoot.querySelectorAll<HTMLElement>('[data-file-entry-path]')).find(
+    (candidate) => candidate.dataset.fileEntryPath === filePath
+  );
+  if (!target) {
+    throw new Error(`未找到节点 ${nodeId} 上对应 ${filePath} 的文件条目。`);
+  }
+
+  return target;
+}
+
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
@@ -3355,7 +5248,7 @@ function setControlledFieldValue(
   descriptor?.set?.call(element, value);
 }
 
-function dispatchSyntheticMouseClick(target: HTMLElement): void {
+function dispatchSyntheticMouseClick(target: Element): void {
   const eventInit = {
     bubbles: true,
     cancelable: true,
@@ -3417,6 +5310,31 @@ function applyEmbeddedTerminalRuntimeContext(runtimeContext: CanvasRuntimeContex
   for (const { terminal } of executionTerminalRegistry.values()) {
     terminal.options.scrollback = scrollback;
   }
+}
+
+function applyFileIconFontFaces(fontFaces: CanvasRuntimeContext['fileIconFontFaces']): () => void {
+  const styleId = 'dev-session-canvas-file-icon-font-faces';
+  const existing = document.head.querySelector<HTMLStyleElement>(`#${styleId}`);
+  if (!fontFaces.length) {
+    existing?.remove();
+    return () => {};
+  }
+
+  const styleElement = existing ?? document.createElement('style');
+  styleElement.id = styleId;
+  styleElement.textContent = fontFaces
+    .map(
+      (fontFace) =>
+        `@font-face { font-family: '${fontFace.fontFamily}'; src: url('${fontFace.src}') format('${fontFace.format ?? 'woff'}'); font-weight: ${fontFace.fontWeight ?? 'normal'}; font-style: ${fontFace.fontStyle ?? 'normal'}; }`
+    )
+    .join('\n');
+  if (!styleElement.parentElement) {
+    document.head.appendChild(styleElement);
+  }
+
+  return () => {
+    styleElement.remove();
+  };
 }
 
 function readEmbeddedTerminalAppearance(): {

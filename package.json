@@ -51,6 +51,7 @@
     "onCommand:devSessionCanvas.createNode",
     "onCommand:devSessionCanvas.resetCanvasState",
     "onView:devSessionCanvas.sidebar",
+    "onView:devSessionCanvas.sidebarFilters",
     "onView:devSessionCanvas.canvasPanel",
     "onWebviewPanel:devSessionCanvas.canvas"
   ],
@@ -93,7 +94,12 @@
       "devSessionCanvas": [
         {
           "id": "devSessionCanvas.sidebar",
-          "name": "%view.canvas.sidebar.title%"
+          "name": "%view.canvas.sidebar.summary.title%"
+        },
+        {
+          "id": "devSessionCanvas.sidebarFilters",
+          "name": "%view.canvas.sidebar.actions.title%",
+          "type": "webview"
         }
       ],
       "devSessionCanvasPanel": [
@@ -108,7 +114,8 @@
     "commands": [
       {
         "command": "devSessionCanvas.openCanvas",
-        "title": "%command.openCanvas.title%"
+        "title": "%command.openCanvas.title%",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "devSessionCanvas.openCanvasInEditor",
@@ -120,13 +127,34 @@
       },
       {
         "command": "devSessionCanvas.createNode",
-        "title": "%command.createNode.title%"
+        "title": "%command.createNode.title%",
+        "icon": "$(add)"
       },
       {
         "command": "devSessionCanvas.resetCanvasState",
-        "title": "%command.resetCanvasState.title%"
+        "title": "%command.resetCanvasState.title%",
+        "icon": "$(discard)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "devSessionCanvas.openCanvas",
+          "when": "view == devSessionCanvas.sidebarFilters",
+          "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.createNode",
+          "when": "view == devSessionCanvas.sidebarFilters",
+          "group": "navigation@2"
+        },
+        {
+          "command": "devSessionCanvas.resetCanvasState",
+          "when": "view == devSessionCanvas.sidebarFilters",
+          "group": "navigation@3"
+        }
+      ]
+    },
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
@@ -173,6 +201,37 @@
           "default": "",
           "scope": "machine",
           "markdownDescription": "%configuration.terminal.shellPath.description%"
+        },
+        "devSessionCanvas.files.presentationMode": {
+          "type": "string",
+          "enum": [
+            "nodes",
+            "lists"
+          ],
+          "default": "nodes",
+          "scope": "window",
+          "markdownDescription": "%configuration.files.presentationMode.description%"
+        },
+        "devSessionCanvas.files.nodeDisplayMode": {
+          "type": "string",
+          "enum": [
+            "icon-path",
+            "icon-only",
+            "path-only"
+          ],
+          "default": "icon-path",
+          "scope": "window",
+          "markdownDescription": "%configuration.files.nodeDisplayMode.description%"
+        },
+        "devSessionCanvas.files.pathDisplayMode": {
+          "type": "string",
+          "enum": [
+            "basename",
+            "relative-path"
+          ],
+          "default": "basename",
+          "scope": "window",
+          "markdownDescription": "%configuration.files.pathDisplayMode.description%"
         }
       }
     }
