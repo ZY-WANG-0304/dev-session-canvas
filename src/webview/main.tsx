@@ -105,6 +105,7 @@ interface CanvasNodeData {
   selected: boolean;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
+  strongTerminalAttentionReminderEnabled: boolean;
   size: CanvasNodeFootprint;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
@@ -113,6 +114,7 @@ interface CanvasNodeData {
   selectedFileListEntryPath?: string;
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
+  onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
@@ -428,6 +430,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   workspaceTrusted: false,
   surfaceLocation: 'editor',
   defaultAgentProvider: 'codex',
+  strongTerminalAttentionReminderEnabled: true,
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
   editorMultiCursorModifier: 'alt',
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
@@ -457,6 +460,7 @@ function normalizeRuntimeContext(
     workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
     surfaceLocation: runtimeContext?.surfaceLocation === 'editor' ? 'editor' : 'panel',
     defaultAgentProvider: runtimeContext?.defaultAgentProvider === 'claude' ? 'claude' : 'codex',
+    strongTerminalAttentionReminderEnabled: runtimeContext?.strongTerminalAttentionReminderEnabled !== false,
     terminalScrollback:
       typeof runtimeContext?.terminalScrollback === 'number'
         ? runtimeContext.terminalScrollback
@@ -505,6 +509,7 @@ function App(): JSX.Element {
     workspaceTrusted: false,
     surfaceLocation: latestRuntimeContext.surfaceLocation,
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
+    strongTerminalAttentionReminderEnabled: latestRuntimeContext.strongTerminalAttentionReminderEnabled,
     terminalScrollback: latestRuntimeContext.terminalScrollback,
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
@@ -542,6 +547,8 @@ function App(): JSX.Element {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
+  const pendingFocusNodeIdRef = useRef<string | undefined>();
+  const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
 
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
@@ -566,6 +573,9 @@ function App(): JSX.Element {
         case 'host/visibilityRestored':
           scheduleExecutionTerminalVisibilityRestore();
           scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+          break;
+        case 'host/focusNode':
+          requestNodeFocus(message.payload.nodeId);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -746,6 +756,18 @@ function App(): JSX.Element {
     setEdgeColorMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
   }, [selectedEdgeId]);
 
+  useEffect(() => {
+    const pendingNodeId = pendingFocusNodeIdRef.current;
+    if (!pendingNodeId || !hostState?.nodes.some((node) => node.id === pendingNodeId)) {
+      return;
+    }
+
+    if (focusNodeInViewport(pendingNodeId)) {
+      pendingFocusNodeIdRef.current = undefined;
+      scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+    }
+  }, [hostState, reactFlowReadyVersion]);
+
   const workspaceTrusted = runtimeContext.workspaceTrusted;
   const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
 
@@ -857,10 +879,10 @@ function App(): JSX.Element {
     });
   };
 
-  const focusNodeInViewport = (nodeId: string): void => {
+  const focusNodeInViewport = (nodeId: string): boolean => {
     const reactFlowInstance = reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
-      return;
+      return false;
     }
 
     const didFit = reactFlowInstance.fitView({
@@ -871,7 +893,7 @@ function App(): JSX.Element {
     });
 
     if (!didFit) {
-      return;
+      return false;
     }
 
     const viewport = reactFlowInstance.getViewport();
@@ -882,6 +904,39 @@ function App(): JSX.Element {
       selectedNodeId: nodeId,
       viewport
     }));
+    return true;
+  };
+
+  const requestNodeFocus = (nodeId: string): void => {
+    if (focusNodeInViewport(nodeId)) {
+      pendingFocusNodeIdRef.current = undefined;
+      scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+      return;
+    }
+
+    pendingFocusNodeIdRef.current = nodeId;
+  };
+
+  const acknowledgeNodeAttention = (nodeId: string): void => {
+    postMessage({
+      type: 'webview/selectNode',
+      payload: {
+        nodeId
+      }
+    });
+  };
+
+  const selectNode = (nodeId: string): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) =>
+      current.selectedNodeId === nodeId
+        ? current
+        : {
+            ...current,
+            selectedNodeId: nodeId
+          }
+    );
   };
 
   const setFileListViewMode = (nodeId: string, viewMode: FileListViewMode): void => {
@@ -925,23 +980,14 @@ function App(): JSX.Element {
     selectedNodeId: localUiState.selectedNodeId,
     documentHasFocus,
     workspaceTrusted,
+    strongTerminalAttentionReminderEnabled: runtimeContext.strongTerminalAttentionReminderEnabled,
     fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
-    onSelectNode: (nodeId) => {
-      if (localUiState.selectedNodeId === nodeId) {
-        return;
-      }
-
-      closeEdgeMenus();
-      setSelectedEdgeId(undefined);
-      setLocalUiState((current) => ({
-        ...current,
-        selectedNodeId: nodeId
-      }));
-    },
+    onSelectNode: selectNode,
+    onAcknowledgeNodeAttention: acknowledgeNodeAttention,
     onOpenCanvasFile: (nodeId, filePath) =>
       postMessage({
         type: 'webview/openCanvasFile',
@@ -1073,11 +1119,7 @@ function App(): JSX.Element {
     }
 
     closeFloatingMenus();
-    setSelectedEdgeId(undefined);
-    updateLocalUiState({
-      ...localUiState,
-      selectedNodeId: node.id
-    });
+    selectNode(node.id);
   };
 
   const handlePaneClick = (): void => {
@@ -1321,6 +1363,7 @@ function App(): JSX.Element {
         maxZoom={1.8}
         onInit={(instance) => {
           reactFlowRef.current = instance;
+          setReactFlowReadyVersion((current) => current + 1);
         }}
         onNodesChange={handleNodesChange}
         onConnect={handleConnect}
@@ -1429,6 +1472,15 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       lifecycle === 'resume-failed' ||
       agentMetadata.pendingLaunch === 'resume');
   const reattaching = displayStatus === 'reattaching';
+  const attentionPending = agentMetadata.attentionPending === true;
+  const attentionFlashing = attentionPending && data.strongTerminalAttentionReminderEnabled;
+  const chromeClassName = [
+    'window-chrome',
+    attentionPending ? 'has-attention' : '',
+    attentionFlashing ? 'is-attention-flashing' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
@@ -1718,10 +1770,20 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
+      onMouseDownCapture={(event) => {
+        if (event.button === 0) {
+          data.onAcknowledgeNodeAttention?.(id);
+        }
+      }}
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
-      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
+      <div
+        className={chromeClassName}
+        data-execution-attention-pending={attentionPending ? 'true' : 'false'}
+        data-execution-attention-flashing={attentionFlashing ? 'true' : 'false'}
+        onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}
+      >
         <ChromeTitleEditor
           value={data.title}
           subtitle={agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}
@@ -1731,9 +1793,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          <span className={`status-pill ${statusToneClass(displayStatus)}`}>
-            {humanizeStatus(displayStatus)}
-          </span>
+          <ExecutionAttentionStatus
+            status={displayStatus}
+            attentionPending={attentionPending}
+          />
           <ActionButton
             label={
               agentMetadata.liveSession
@@ -1830,6 +1893,15 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
   const reattaching = displayStatus === 'reattaching';
+  const attentionPending = terminalMetadata.attentionPending === true;
+  const attentionFlashing = attentionPending && data.strongTerminalAttentionReminderEnabled;
+  const chromeClassName = [
+    'window-chrome',
+    attentionPending ? 'has-attention' : '',
+    attentionFlashing ? 'is-attention-flashing' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const autoLaunchRef = useRef<string | null>(null);
@@ -2103,10 +2175,20 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
+      onMouseDownCapture={(event) => {
+        if (event.button === 0) {
+          data.onAcknowledgeNodeAttention?.(id);
+        }
+      }}
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
-      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
+      <div
+        className={chromeClassName}
+        data-execution-attention-pending={attentionPending ? 'true' : 'false'}
+        data-execution-attention-flashing={attentionFlashing ? 'true' : 'false'}
+        onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}
+      >
         <ChromeTitleEditor
           value={data.title}
           subtitle={terminalMetadata.shellPath}
@@ -2117,9 +2199,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          <span className={`status-pill ${statusToneClass(displayStatus)}`}>
-            {humanizeStatus(displayStatus)}
-          </span>
+          <ExecutionAttentionStatus
+            status={displayStatus}
+            attentionPending={attentionPending}
+          />
           <ActionButton
             label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
@@ -2189,6 +2272,27 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ExecutionAttentionStatus(props: {
+  status: string;
+  attentionPending: boolean;
+}): JSX.Element {
+  return (
+    <div className="execution-status-cluster">
+      {props.attentionPending ? (
+        <span
+          className="execution-attention-indicator codicon codicon-bell"
+          data-attention-indicator="true"
+          aria-label="未确认终端提醒"
+          title="未确认终端提醒"
+        />
+      ) : null}
+      <span className={`status-pill ${statusToneClass(props.status)}`}>
+        {humanizeStatus(props.status)}
+      </span>
     </div>
   );
 }
@@ -4385,12 +4489,14 @@ function toFlowNodes(params: {
   selectedNodeId: string | undefined;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
+  strongTerminalAttentionReminderEnabled: boolean;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   onSelectNode: (nodeId: string) => void;
+  onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
@@ -4455,6 +4561,7 @@ function toFlowNodes(params: {
         selected: node.id === params.selectedNodeId,
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
+        strongTerminalAttentionReminderEnabled: params.strongTerminalAttentionReminderEnabled,
         size,
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
@@ -4463,6 +4570,7 @@ function toFlowNodes(params: {
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
+        onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
@@ -5460,6 +5568,9 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
       element.querySelector('.window-title span, .node-topline span, .file-node-copy span')
     ),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
+    attentionIndicatorVisible: Boolean(element.querySelector('[data-attention-indicator="true"]')),
+    attentionIndicatorFlashing:
+      element.querySelector<HTMLElement>('.window-chrome')?.dataset.executionAttentionFlashing === 'true',
     selected: element.dataset.nodeSelected === 'true',
     renderedWidth: footprint.width,
     renderedHeight: footprint.height,

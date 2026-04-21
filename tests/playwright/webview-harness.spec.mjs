@@ -3901,6 +3901,7 @@ function createRuntimeContext(overrides = {}) {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
+    strongTerminalAttentionReminderEnabled: true,
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',

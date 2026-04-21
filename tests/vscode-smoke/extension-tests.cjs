@@ -41,6 +41,7 @@ const REAL_DOM_TERMINAL_TITLE = 'Terminal Title Through DOM';
 const REAL_DOM_NOTE_TITLE = 'Host Smoke Note Through DOM';
 const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview DOM.';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
+const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
@@ -303,6 +304,7 @@ async function runTrustedSmoke() {
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyExecutionAttentionNotificationBridge(agentNode.id);
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
@@ -2467,6 +2469,387 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.lastCols, 100);
   assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
+}
+
+async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalBridgeEnabled =
+    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+  const originalStrongReminderEnabled =
+    configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', true) === true;
+  const bridgeDisabledMessage = 'bridge-disabled-smoke';
+  const strongReminderDisabledMessage = 'strong-reminder-disabled-smoke';
+  const bridgeEnabledMessage = 'bridge-enabled-smoke';
+  const bridgeFocusMessage = 'bridge-focus-smoke';
+  const bridgeDuplicateMessage = 'bridge-duplicate-smoke';
+  let autoSelectNotificationMessage;
+
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  await ensureAgentStopped(agentNodeId);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+  try {
+    await ensureStrongTerminalAttentionReminderEnabled(true);
+    await ensureBridgeTerminalAttentionSignalsEnabled(false);
+
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 90,
+      rows: 28,
+      provider: 'codex'
+    });
+    let snapshot = await waitForAgentLive(agentNodeId);
+    const agentNode = findNodeById(snapshot, agentNodeId);
+    const agentLabel =
+      typeof agentNode.title === 'string' && agentNode.title.trim().length > 0
+        ? agentNode.title.trim()
+        : 'Agent';
+
+    await withInterceptedInformationMessages(
+      async (calls) => {
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeDisabledMessage}\r`
+          }
+        });
+
+        await waitForSnapshot((currentSnapshot) => {
+          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+          return Boolean(
+            currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${bridgeDisabledMessage}`) &&
+              currentNode.status === 'waiting-input'
+          );
+        }, 20000);
+
+        const disabledProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === true &&
+                currentNode.attentionIndicatorFlashing === true
+            );
+          },
+          20000
+        );
+        assert.deepStrictEqual(
+          calls.map((call) => call.message),
+          [],
+          'Bridge-disabled Agent attention signal should not raise a VS Code notification.'
+        );
+        assert.strictEqual(
+          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          true,
+          'Bridge-disabled Agent attention signal should still show the node attention icon.'
+        );
+        assert.strictEqual(
+          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
+          true,
+          'Bridge-disabled Agent attention signal should still flash the node title bar when strong reminder is enabled.'
+        );
+        assert.strictEqual(
+          (await getDiagnosticEvents()).some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' ||
+              event.kind === 'execution/attentionNotificationSuppressed'
+          ),
+          false,
+          'Bridge-disabled Agent attention signal should not emit attention-notification diagnostics.'
+        );
+
+        await performWebviewDomAction({
+          kind: 'selectNode',
+          nodeId: agentNodeId
+        });
+        const clearedAfterClickProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === false &&
+                currentNode.attentionIndicatorFlashing === false
+            );
+          },
+          20000
+        );
+        assert.strictEqual(
+          clearedAfterClickProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          false,
+          'Selecting the node should clear the attention icon.'
+        );
+
+        await ensureStrongTerminalAttentionReminderEnabled(false);
+
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${strongReminderDisabledMessage}\r`
+          }
+        });
+
+        await waitForSnapshot((currentSnapshot) => {
+          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+          return Boolean(
+            currentNode?.metadata?.agent?.recentOutput?.includes(
+              `[fake-agent] notified ${strongReminderDisabledMessage}`
+            ) &&
+              currentNode.status === 'waiting-input' &&
+              currentNode?.metadata?.agent?.attentionPending === true
+          );
+        }, 20000);
+
+        const strongReminderDisabledProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === true &&
+                currentNode.attentionIndicatorFlashing === false
+            );
+          },
+          20000
+        );
+        assert.deepStrictEqual(
+          calls.map((call) => call.message),
+          [],
+          'Strong-reminder-disabled Agent attention signal should still avoid VS Code notifications when bridge is disabled.'
+        );
+        assert.strictEqual(
+          strongReminderDisabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          true,
+          'Disabling strong reminder should not remove the attention icon.'
+        );
+        assert.strictEqual(
+          strongReminderDisabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
+          false,
+          'Disabling strong reminder should stop the title bar flashing.'
+        );
+
+        await performWebviewDomAction({
+          kind: 'selectNode',
+          nodeId: agentNodeId
+        });
+        await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === false &&
+                currentNode.attentionIndicatorFlashing === false
+            );
+          },
+          20000
+        );
+
+        await ensureStrongTerminalAttentionReminderEnabled(true);
+        await ensureBridgeTerminalAttentionSignalsEnabled(true);
+
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        const expectedAgentMessage = `Agent「${agentLabel}」: ${bridgeEnabledMessage}`;
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeEnabledMessage}\r`
+          }
+        });
+
+        const enabledDiagnostics = await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.signal === 'osc9' &&
+                event.detail?.message === expectedAgentMessage
+            ),
+          20000
+        );
+        const enabledProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === true &&
+                currentNode.attentionIndicatorFlashing === true
+            );
+          },
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [expectedAgentMessage]);
+        assert.strictEqual(
+          enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          true,
+          'Bridge-enabled Agent attention signal should still show the node attention icon.'
+        );
+        assert.ok(
+          enabledDiagnostics.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.nodeId === agentNodeId &&
+              event.detail?.signal === 'osc9' &&
+              event.detail?.message === expectedAgentMessage
+          ),
+          'Expected enabled Agent attention bridge to emit an OSC 9 notification diagnostic.'
+        );
+
+        await performWebviewDomAction({
+          kind: 'selectNode',
+          nodeId: agentNodeId
+        });
+        await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === false &&
+                currentNode.attentionIndicatorFlashing === false
+            );
+          },
+          20000
+        );
+
+        calls.length = 0;
+        autoSelectNotificationMessage = `Agent「${agentLabel}」: ${bridgeFocusMessage}`;
+        await clearHostMessages();
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeFocusMessage}\r`
+          }
+        });
+
+        const focusHostMessages = await waitForHostMessages(
+          (messages) =>
+            messages.some(
+              (message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [autoSelectNotificationMessage]);
+        assert.ok(
+          calls[0]?.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+          'Expected attention notification to expose a focus action.'
+        );
+        assert.ok(
+          focusHostMessages.some(
+            (message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId
+          ),
+          'Expected selecting the attention notification to send a focus-node host message.'
+        );
+
+        const focusProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.selected === true &&
+                currentNode.attentionIndicatorVisible === false &&
+                currentNode.attentionIndicatorFlashing === false
+            );
+          },
+          20000
+        );
+        assert.ok(focusProbe.nodes.some((node) => node.nodeId === agentNodeId && node.selected === true));
+        assert.strictEqual(
+          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          false,
+          'Focusing the node from the VS Code notification should clear the attention icon.'
+        );
+
+        calls.length = 0;
+        autoSelectNotificationMessage = undefined;
+        await clearDiagnosticEvents();
+        const expectedDuplicateMessage = `Agent「${agentLabel}」: ${bridgeDuplicateMessage}`;
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeDuplicateMessage}\r`
+          }
+        });
+        await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.message === expectedDuplicateMessage
+            ),
+          20000
+        );
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeDuplicateMessage}\r`
+          }
+        });
+
+        const duplicateDiagnostics = await waitForDiagnosticEvents(
+          (events) =>
+            events.filter(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.message === expectedDuplicateMessage
+            ).length === 1 &&
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationSuppressed' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.reason === 'cooldown' &&
+                event.detail?.signal === 'osc9'
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [expectedDuplicateMessage]);
+        assert.ok(
+          duplicateDiagnostics.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.nodeId === agentNodeId &&
+              event.detail?.reason === 'cooldown' &&
+              event.detail?.signal === 'osc9'
+          ),
+          'Expected repeated Agent attention signal to be suppressed during the cooldown window.'
+        );
+      },
+      ({ message }) =>
+        message === autoSelectNotificationMessage ? EXECUTION_ATTENTION_FOCUS_ACTION_LABEL : undefined
+    );
+  } finally {
+    await ensureAgentStopped(agentNodeId);
+    await ensureBridgeTerminalAttentionSignalsEnabled(originalBridgeEnabled);
+    await ensureStrongTerminalAttentionReminderEnabled(originalStrongReminderEnabled);
+    await clearHostMessages();
+    await clearDiagnosticEvents();
+  }
 }
 
 async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
@@ -5731,6 +6114,58 @@ async function setDefaultAgentProvider(provider) {
     .update('devSessionCanvas.agent.defaultProvider', provider, vscode.ConfigurationTarget.Global);
 }
 
+async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
+  const configuration = vscode.workspace.getConfiguration();
+  const currentEnabled =
+    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+
+  if (currentEnabled === enabled) {
+    return;
+  }
+
+  await clearDiagnosticEvents();
+  await configuration.update(
+    'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
+    enabled,
+    vscode.ConfigurationTarget.Global
+  );
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+          event.detail?.enabled === enabled
+      ),
+    20000
+  );
+}
+
+async function ensureStrongTerminalAttentionReminderEnabled(enabled) {
+  const configuration = vscode.workspace.getConfiguration();
+  const currentEnabled =
+    configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', true) === true;
+
+  if (currentEnabled === enabled) {
+    return;
+  }
+
+  await clearDiagnosticEvents();
+  await configuration.update(
+    'devSessionCanvas.notifications.strongTerminalAttentionReminder',
+    enabled,
+    vscode.ConfigurationTarget.Global
+  );
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/attentionStrongReminderConfigChanged' &&
+          event.detail?.enabled === enabled
+      ),
+    20000
+  );
+}
+
 async function setFilesPresentationMode(mode) {
   await vscode.workspace
     .getConfiguration()
@@ -5949,6 +6384,30 @@ async function waitForHostMessages(predicate, timeoutMs = 8000) {
   }
 
   assert.fail(`Timed out while waiting for host messages. Last messages: ${JSON.stringify(messages)}`);
+}
+
+async function withInterceptedInformationMessages(runIntercepted, resolveSelection) {
+  const originalShowInformationMessage = vscode.window.showInformationMessage;
+  const calls = [];
+
+  vscode.window.showInformationMessage = async (message, ...items) => {
+    calls.push({ message, items });
+    return typeof resolveSelection === 'function'
+      ? await resolveSelection({ message, items, calls })
+      : undefined;
+  };
+
+  assert.notStrictEqual(
+    vscode.window.showInformationMessage,
+    originalShowInformationMessage,
+    'Failed to intercept vscode.window.showInformationMessage.'
+  );
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.window.showInformationMessage = originalShowInformationMessage;
+  }
 }
 
 async function waitForActiveEditor(predicate, timeoutMs = 8000) {
