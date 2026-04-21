@@ -22,7 +22,7 @@
   "configuration.agent.codexCommand.description": "启动 Codex CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。",
   "configuration.agent.claudeCommand.description": "启动 Claude Code CLI 时使用的命令名或绝对路径。默认从 Extension Host 的 `PATH` 解析。",
   "configuration.terminal.shellPath.description": "嵌入式 Terminal 节点启动 shell 时使用的命令路径。留空时默认读取 `SHELL`（Linux/macOS）或 `COMSPEC`（Windows）。",
-  "configuration.files.enabled.description": "是否启用 Agent 文件活动的文件节点 / 文件列表节点功能。关闭后会停止投影文件节点、文件列表节点和对应自动关系线，但保留 `fileReferences` 作为权威状态，重新开启后可按当前状态重新投影。",
+  "configuration.files.enabled.description": "是否启用 Agent 文件活动功能。关闭后会停用文件节点、文件列表节点、文件过滤和自动文件关系，并在下次加载时清空文件活动状态。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
   "configuration.files.presentationMode.description": "Agent 文件活动的默认展示方式。`nodes` 会把文件显示为独立节点；`lists` 会按 Agent 与共享关系收口成文件列表节点。",
   "configuration.fileNode.displayStyle.description": "文件节点和文件列表节点的显示风格。`card` 保留当前卡片样式；`minimal` 使用更紧凑、接近 VS Code 原生文件列表的极简样式。",
   "configuration.files.nodeDisplayMode.description": "文件节点的显示模式。默认同时显示图标和路径。",

@@ -69,5 +69,6 @@ export const STORAGE_KEYS = {
   canvasLastSurface: 'devSessionCanvas.canvas.lastSurface',
   canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
   canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled',
+  canvasFilesFeatureEnabled: 'devSessionCanvas.canvas.filesFeatureEnabled',
   canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState'
 } as const;

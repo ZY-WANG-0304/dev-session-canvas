@@ -998,29 +998,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     );
     assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
 
-    await setFilesFeatureEnabled(false);
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      return (
-        currentSnapshot.state.fileReferences.length === 4 &&
-        currentSnapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list') &&
-        currentSnapshot.state.edges.every((edge) => edge.owner !== 'file-activity')
-      );
-    }, 20000);
-    assert.ok(
-      snapshot.state.fileReferences.some((reference) => reference.filePath === sharedPath),
-      'Expected disabling file artifacts to preserve authoritative fileReferences.'
-    );
-
-    await setFilesFeatureEnabled(true);
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      return (
-        currentSnapshot.state.fileReferences.length === 4 &&
-        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
-        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
-      );
-    }, 20000);
-    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
-
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
     await waitForWebviewProbeOnSurface('editor', (probe) => probe.hasDocumentFocus === true, 10000);
@@ -1349,6 +1326,76 @@ async function verifyFileActivityViewsAndOpenFiles() {
       );
     }, 20000);
 
+    assert.deepStrictEqual(
+      snapshot.state.nodes.map((node) => node.id).sort(),
+      baselineNodeIds
+    );
+
+    snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-21T12:30:00.000Z',
+      nodes: [...baselineSnapshot.state.nodes, agentANode, agentOnlyFileNode],
+      edges: [...baselineSnapshot.state.edges, readOnlyAutoEdge],
+      fileReferences: [
+        {
+          id: agentOnlyFileNode.metadata.file.fileId,
+          filePath: agentOnlyPath,
+          relativePath: agentOnlyFileNode.metadata.file.relativePath,
+          updatedAt: '2026-04-21T12:30:00.000Z',
+          owners: [
+            {
+              nodeId: agentAId,
+              accessMode: 'read',
+              updatedAt: '2026-04-21T12:30:00.000Z'
+            }
+          ]
+        }
+      ],
+      suppressedFileActivityEdgeIds: [],
+      suppressedAutomaticFileArtifactNodeIds: []
+    });
+    assert.ok(
+      snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
+      'Expected seeded file activity state to include the tracked file before toggling the feature switch.'
+    );
+
+    await setFilesFeatureEnabled(false);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(
+      snapshot.sidebar.filesFeatureEnabled,
+      true,
+      'Expected files feature config changes to stay pending until runtime reload.'
+    );
+    assert.ok(
+      snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
+      'Expected pending config changes to leave file activity state untouched before runtime reload.'
+    );
+
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.sidebar.filesFeatureEnabled, false);
+    assert.strictEqual(snapshot.state.fileReferences.length, 0);
+    assert.ok(snapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list'));
+    assert.ok(snapshot.state.edges.every((edge) => edge.owner !== 'file-activity'));
+
+    await setFilesFeatureEnabled(true);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(
+      snapshot.sidebar.filesFeatureEnabled,
+      false,
+      'Expected re-enabling the files feature to remain pending until the next runtime reload.'
+    );
+
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.sidebar.filesFeatureEnabled, true);
+    assert.strictEqual(
+      snapshot.state.fileReferences.length,
+      0,
+      'Expected re-enabling the files feature not to restore previously cleared fileReferences.'
+    );
+    assert.ok(snapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list'));
+    assert.ok(snapshot.state.edges.every((edge) => edge.owner !== 'file-activity'));
+
+    snapshot = await setPersistedState(baselineSnapshot.state);
     assert.deepStrictEqual(
       snapshot.state.nodes.map((node) => node.id).sort(),
       baselineNodeIds
