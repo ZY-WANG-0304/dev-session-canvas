@@ -20,6 +20,45 @@ export type CanvasFilePresentationMode = 'nodes' | 'lists';
 export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
 export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
+export const canvasStrongTerminalAttentionReminderModes = ['none', 'titleBar', 'minimap', 'both'] as const;
+export type CanvasStrongTerminalAttentionReminderMode =
+  (typeof canvasStrongTerminalAttentionReminderModes)[number];
+
+export function isCanvasStrongTerminalAttentionReminderMode(
+  value: unknown
+): value is CanvasStrongTerminalAttentionReminderMode {
+  return value === 'none' || value === 'titleBar' || value === 'minimap' || value === 'both';
+}
+
+export function normalizeCanvasStrongTerminalAttentionReminderMode(
+  value: unknown
+): CanvasStrongTerminalAttentionReminderMode {
+  if (isCanvasStrongTerminalAttentionReminderMode(value)) {
+    return value;
+  }
+
+  if (value === false) {
+    return 'none';
+  }
+
+  if (value === true) {
+    return 'both';
+  }
+
+  return 'both';
+}
+
+export function strongTerminalAttentionReminderShowsTitleBar(
+  mode: CanvasStrongTerminalAttentionReminderMode
+): boolean {
+  return mode === 'titleBar' || mode === 'both';
+}
+
+export function strongTerminalAttentionReminderPulsesMinimap(
+  mode: CanvasStrongTerminalAttentionReminderMode
+): boolean {
+  return mode === 'minimap' || mode === 'both';
+}
 
 export interface CanvasNodePosition {
   x: number;
@@ -210,7 +249,7 @@ export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
   defaultAgentProvider: AgentProviderKind;
-  strongTerminalAttentionReminderEnabled: boolean;
+  strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   terminalScrollback: number;
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
   terminalWordSeparators: string;

@@ -45,6 +45,7 @@ import {
   type CanvasFilePathDisplayMode,
   type CanvasFilePresentationMode,
   type CanvasFileIconDescriptor,
+  type CanvasStrongTerminalAttentionReminderMode,
   type CanvasFileReferenceOwnerSummary,
   type CanvasFileReferenceSummary,
   type CanvasFileIconFontFace,
@@ -76,8 +77,11 @@ import {
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   isExecutionNodeKind,
+  normalizeCanvasStrongTerminalAttentionReminderMode,
   normalizeCanvasNodeFootprint,
-  parseWebviewMessage
+  parseWebviewMessage,
+  strongTerminalAttentionReminderPulsesMinimap,
+  strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
 import {
   SerializedTerminalStateTracker,
@@ -386,7 +390,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
   private bridgeTerminalAttentionSignalsEnabled: boolean;
-  private strongTerminalAttentionReminderEnabled: boolean;
+  private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   private fileFilterState: CanvasFileFilterState;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
@@ -434,7 +438,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.bridgeTerminalAttentionSignalsEnabled = this.readBridgeTerminalAttentionSignalsEnabled();
-    this.strongTerminalAttentionReminderEnabled = this.readStrongTerminalAttentionReminderEnabled();
+    this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
@@ -1610,7 +1614,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
-      strongTerminalAttentionReminderEnabled: this.strongTerminalAttentionReminderEnabled,
+      strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
       terminalScrollback: this.getTerminalScrollback(),
       editorMultiCursorModifier: normalizeEditorMultiCursorModifier(
         vscode.workspace
@@ -1702,8 +1706,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return getConfigurationValue<boolean>('notificationBridgeTerminalAttentionSignals', true);
   }
 
-  private readStrongTerminalAttentionReminderEnabled(): boolean {
-    return getConfigurationValue<boolean>('notificationStrongTerminalAttentionReminder', true);
+  private readStrongTerminalAttentionReminderMode(): CanvasStrongTerminalAttentionReminderMode {
+    return normalizeCanvasStrongTerminalAttentionReminderMode(
+      getConfigurationValue<CanvasStrongTerminalAttentionReminderMode | boolean>(
+        'notificationStrongTerminalAttentionReminder',
+        'both'
+      )
+    );
   }
 
   private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
@@ -1790,9 +1799,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (options.strongTerminalAttentionReminderChanged) {
-      this.strongTerminalAttentionReminderEnabled = this.readStrongTerminalAttentionReminderEnabled();
+      this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
       this.recordDiagnosticEvent('execution/attentionStrongReminderConfigChanged', {
-        enabled: this.strongTerminalAttentionReminderEnabled
+        enabled: this.strongTerminalAttentionReminderMode !== 'none',
+        mode: this.strongTerminalAttentionReminderMode,
+        titleBarEnabled: strongTerminalAttentionReminderShowsTitleBar(this.strongTerminalAttentionReminderMode),
+        minimapEnabled: strongTerminalAttentionReminderPulsesMinimap(this.strongTerminalAttentionReminderMode)
       });
     }
 

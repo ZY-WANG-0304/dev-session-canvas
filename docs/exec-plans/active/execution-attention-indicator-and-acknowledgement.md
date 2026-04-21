@@ -6,9 +6,9 @@
 
 ## 目标与全局图景
 
-这次变更要把执行节点收到终端 attention signal 之后的“节点内提醒”补齐到用户可以直接观察的程度。完成后，`Agent` 和 `Terminal` 节点在收到 `BEL`、`OSC 9` 或 `OSC 777` 这类终端提醒时，会先在节点标题栏的状态控件左侧出现一个 attention icon，minimap 中对应节点也进入闪烁态；如果开启新的“强力提醒”配置，标题栏区域还会持续闪烁，直到用户点击对应节点或通过 VS Code 工作台通知的“查看节点”动作把该节点定位出来。
+这次变更要把执行节点收到终端 attention signal 之后的“节点内提醒”补齐到用户可以直接观察的程度。完成后，`Agent` 和 `Terminal` 节点在收到 `BEL`、`OSC 9` 或 `OSC 777` 这类终端提醒时，会先在节点标题栏的状态控件左侧出现一个 attention icon，minimap 中对应节点也进入闪烁态；如果开启新的“强力提醒”表面，标题栏区域和 / 或 minimap 尺寸 pulse 还会持续增强，直到用户点击对应节点或通过 VS Code 工作台通知的“查看节点”动作把该节点定位出来。
 
-这次变更还要把两条配置边界拆清楚。`devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 只负责“是否额外桥接成 VS Code 工作台通知”，不再控制节点内 icon 和闪烁。新的 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 默认开启，只控制标题栏闪烁，不控制 icon、minimap 闪烁和工作台通知。用户最终可以通过 smoke 测试和真实 Webview probe 直接看到：关闭 bridge 后，节点内提醒仍然存在；关闭强力提醒后，icon 仍然出现，minimap 仍然闪烁，但标题栏不再闪烁。
+这次变更还要把两条配置边界拆清楚。`devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 只负责“是否额外桥接成 VS Code 工作台通知”，不再控制节点内 icon 和闪烁。`devSessionCanvas.notifications.strongTerminalAttentionReminder` 改为枚举模式配置，默认值是 `both`：`none` 只保留默认 attention、`titleBar` 只增强标题栏、`minimap` 只增强 minimap 尺寸 pulse、`both` 同时增强两者。用户最终可以通过 smoke 测试和真实 Webview probe 直接看到：关闭 bridge 后，节点内提醒仍然存在；把 strong reminder 设为 `none` 后，icon 仍然出现，minimap 仍然闪烁，但标题栏不再闪烁，也不再做尺寸 pulse。
 
 ## 进度
 
@@ -22,6 +22,7 @@
 - [x] (2026-04-22 05:41 +0800) 将 minimap attention 的视觉强调从统一通知色改为节点自身颜色，保持缩略图反馈与节点主色一致。
 - [x] (2026-04-22 05:48 +0800) 加强 minimap attention pulse 的强度，提升缩略图里的可见性，让同色闪烁在 glance 下也足够明显。
 - [x] (2026-04-22 05:58 +0800) 重新定义 minimap attention 的产品边界：明暗闪烁属于默认 attention，尺寸 pulse 归属 strong reminder，并补 probe / smoke 断言两者分离。
+- [x] (2026-04-22 06:18 +0800) 将 `strongTerminalAttentionReminder` 从布尔开关改成枚举模式配置，支持 `none` / `titleBar` / `minimap` / `both`，并同步更新 smoke 断言与配置说明文案。
 
 ## 意外与发现
 
@@ -47,7 +48,7 @@
   理由：用户要求是“点击节点后 icon 消失”，不是“节点首次被选中时 icon 消失”；同一节点已经选中时再次点击，也必须被视为确认动作。
   日期/作者：2026-04-22 / Codex
 
-- 决策：保留现有 `bridgeTerminalAttentionSignals` 语义，只把它限制到 VS Code 工作台通知；节点内 icon 始终由可显示的 attention signal 驱动，闪烁单独受新的 `strongTerminalAttentionReminder` 控制。
+- 决策：保留现有 `bridgeTerminalAttentionSignals` 语义，只把它限制到 VS Code 工作台通知；节点内 icon 始终由可显示的 attention signal 驱动，而 `strongTerminalAttentionReminder` 只负责额外增强的标题栏 / minimap pulse 表面。
   理由：这正是用户本轮明确提出的配置边界，且能保持“节点内提醒”和“工作台通知”是两个互不覆盖的表面。
   日期/作者：2026-04-22 / Codex
 
@@ -76,16 +77,16 @@
 本轮已完成以下交付：
 
 - 为 `Agent` / `Terminal` 节点引入宿主权威 `attentionPending` metadata，并通过 `webview/selectNode` 与工作台通知 `查看节点` 动作统一清除。
-- 新增 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 配置，默认开启，仅控制标题栏闪烁；`devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 现在只控制 VS Code 工作台通知桥接。
-- 在执行节点标题栏状态控件左侧新增 bell icon，并让 minimap 中对应节点与 icon 共用默认 attention 状态；强力提醒开启时仅额外让标题栏区域闪烁。
-- Webview probe、Playwright harness 与 VS Code smoke 已覆盖 icon、minimap 闪烁、点击确认，以及两类配置开关解耦。
+- 将 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 改成枚举模式配置，默认值为 `both`；`devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 现在只控制 VS Code 工作台通知桥接。
+- 在执行节点标题栏状态控件左侧新增 bell icon，并让 minimap 中对应节点与 icon 共用默认 attention 状态；strong reminder 会按模式额外增强标题栏闪烁和 / 或 minimap 尺寸 pulse。
+- Webview probe、Playwright harness 与 VS Code smoke 已覆盖 icon、minimap 闪烁、点击确认，以及 bridge 开关与 strong reminder 四档模式的分层关系。
 
 本轮最终验证结果：
 
 - `npm run typecheck` 通过
 - `npm run test:execution-attention-signals` 通过
 - `npm run build` 通过
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 复跑通过（首次运行命中过一次与本变更无直接证据关联的历史恢复 smoke 超时，二次运行稳定通过）
 
 剩余风险：
 
@@ -107,11 +108,11 @@
 
 先更新设计文档，把 execution attention 的正式表面从“只有 VS Code 工作台通知”扩成“三层分离”：终端底层信号解析、宿主权威 attention 状态、可选的 VS Code 工作台通知桥接。设计文档里必须写清楚新的配置边界、点击确认规则，以及 Webview 的渲染落点，否则后续代码实现会缺乏正式口径。
 
-然后扩展共享类型与宿主逻辑。在 `ExecutionSessionMetadata` 的 agent/terminal 元数据里加一个最小 attention pending 字段，并在 `CanvasPanelManager` 里把“解析到 attention signal”拆成两段：第一段无条件更新节点 attention pending；第二段按 `bridgeTerminalAttentionSignals` 决定是否额外弹 VS Code 通知。与此同时新增新的强力提醒配置读取，并把它通过 `CanvasRuntimeContext` 传给 Webview。
+然后扩展共享类型与宿主逻辑。在 `ExecutionSessionMetadata` 的 agent/terminal 元数据里加一个最小 attention pending 字段，并在 `CanvasPanelManager` 里把“解析到 attention signal”拆成两段：第一段无条件更新节点 attention pending；第二段按 `bridgeTerminalAttentionSignals` 决定是否额外弹 VS Code 通知。与此同时把强力提醒配置读取升级为枚举模式，并把它通过 `CanvasRuntimeContext` 传给 Webview。
 
 接着补点击确认链路。Webview 只在两条路径上把“当前节点已被用户确认”传给宿主：第一条是用户显式用鼠标点击对应 execution node；第二条是用户点击 VS Code 工作台通知里的 `查看节点` 动作并由宿主完成节点聚焦。宿主收到该确认后清除 metadata 里的 attention pending，再回推状态，让 icon 和闪烁真正消失；本地选中切换、按钮 focus/点击、terminal selection change 或其它程序化 focus 都不应被视为确认。
 
-最后补 UI 与验证。Webview 标题栏把 icon 放到 status pill 左边，强力提醒开启时对 `window-chrome` 做有限范围的闪烁。Smoke 测试要直接验证 bridge 关闭时 icon/闪烁仍然存在，强力提醒关闭时只剩 icon 不闪烁，以及显式鼠标点击节点或通过 `查看节点` 聚焦都会清除 attention。
+最后补 UI 与验证。Webview 标题栏把 icon 放到 status pill 左边，按 strong reminder mode 决定是否对 `window-chrome` 做有限范围的闪烁，以及是否给 minimap 增加尺寸 pulse。Smoke 测试要直接验证 `none` / `titleBar` / `minimap` / `both` 四种模式下的 attention 分层，并确认显式鼠标点击节点或通过 `查看节点` 聚焦都会清除 attention。
 
 ## 具体步骤
 
@@ -155,7 +156,7 @@
 
 第二，当 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals=false` 时，同样的 attention signal 不再弹出 VS Code 工作台通知，但节点内 icon 与闪烁行为完全保留。
 
-第三，当 `devSessionCanvas.notifications.strongTerminalAttentionReminder=false` 时，同样的 attention signal 仍会让节点显示 attention icon，但标题栏不再闪烁；把该配置重新打开后，后续新的 attention signal 再次触发闪烁。
+第三，当 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 分别设为 `none`、`titleBar`、`minimap`、`both` 时，同样的 attention signal 会分别呈现“仅默认 attention”“标题栏增强”“minimap 尺寸增强”“两者都增强”四种可观察结果。
 
 第四，点击 VS Code 工作台通知中的 `查看节点` 动作后，画布聚焦到对应节点，同时该节点 attention icon 被清除；这证明“工作台通知聚焦”与“手动点击节点”共享同一条确认语义。
 
@@ -167,7 +168,7 @@
 
 ## 证据与备注
 
-待补本轮关键测试输出、Webview probe 结果与必要的诊断记录摘要。
+- 2026-04-22 本轮 trusted smoke 首次运行在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中过一次超时，失败快照未指向 strong reminder 枚举逻辑；随后立即复跑 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，当前先按一次性环境抖动记录。
 
 ## 接口与依赖
 
