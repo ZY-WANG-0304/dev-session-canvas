@@ -17,7 +17,7 @@ related_specs:
   - docs/product-specs/canvas-graph-links-and-file-activity.md
 related_plans:
   - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-04-20
+updated_at: 2026-04-21
 ---
 
 # 画布文件活动视图设计
@@ -106,6 +106,7 @@ updated_at: 2026-04-20
 `src/common/protocol.ts` 在当前画布权威状态中新增 `CanvasFileReferenceSummary`，把“某个文件被哪些 Agent 以什么方向访问过”独立持久化。其核心信息包括：
 
 - 规范化文件路径
+- 相对所属 workspace folder 根目录的路径；若文件不在任何 workspace 内，则该字段留空并回退到规范化绝对路径
 - 最近一次活动时间
 - 引用该文件的 Agent 集合
 - 每个 Agent 对该文件的访问方向：读 / 写 / 读写

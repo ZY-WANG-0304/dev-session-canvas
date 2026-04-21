@@ -946,6 +946,136 @@ test('minimal icon-path file nodes keep a tight right edge around the icon and b
   expect(metrics.slack).toBeLessThan(10);
 });
 
+test('minimal icon-path file nodes fit short numeric basenames without premature ellipsis', async ({ page }) => {
+  const state = createFileNodeState();
+  state.nodes = state.nodes.flatMap((node) => {
+    if (node.id !== 'file-src-main') {
+      return [node];
+    }
+
+    return [
+      {
+        ...node,
+        id: 'file-short-1',
+        title: '1.md',
+        position: { x: 720, y: 160 },
+        size: { width: 1, height: 1 },
+        metadata: {
+          ...node.metadata,
+          file: {
+            ...node.metadata.file,
+            fileId: 'file-short-1',
+            filePath: '/workspace/docs/1.md',
+            relativePath: 'docs/1.md'
+          }
+        }
+      },
+      {
+        ...node,
+        id: 'file-short-10',
+        title: '10.md',
+        position: { x: 720, y: 230 },
+        size: { width: 1, height: 1 },
+        metadata: {
+          ...node.metadata,
+          file: {
+            ...node.metadata.file,
+            fileId: 'file-short-10',
+            filePath: '/workspace/docs/10.md',
+            relativePath: 'docs/10.md'
+          }
+        }
+      },
+      {
+        ...node,
+        id: 'file-short-11',
+        title: '11.md',
+        position: { x: 720, y: 300 },
+        size: { width: 1, height: 1 },
+        metadata: {
+          ...node.metadata,
+          file: {
+            ...node.metadata.file,
+            fileId: 'file-short-11',
+            filePath: '/workspace/docs/11.md',
+            relativePath: 'docs/11.md'
+          }
+        }
+      }
+    ];
+  });
+  state.edges = [
+    state.edges[0],
+    {
+      ...state.edges[0],
+      id: 'agent-1::file-short-10',
+      targetNodeId: 'file-short-10'
+    },
+    {
+      ...state.edges[0],
+      id: 'agent-1::file-short-11',
+      targetNodeId: 'file-short-11'
+    }
+  ];
+  state.fileReferences = [
+    {
+      ...state.fileReferences[0],
+      id: 'file-short-1',
+      filePath: '/workspace/docs/1.md',
+      relativePath: 'docs/1.md'
+    },
+    {
+      ...state.fileReferences[0],
+      id: 'file-short-10',
+      filePath: '/workspace/docs/10.md',
+      relativePath: 'docs/10.md'
+    },
+    {
+      ...state.fileReferences[0],
+      id: 'file-short-11',
+      filePath: '/workspace/docs/11.md',
+      relativePath: 'docs/11.md'
+    }
+  ];
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      fileNodeDisplayStyle: 'minimal',
+      fileNodeDisplayMode: 'icon-path',
+      filePathDisplayMode: 'basename'
+    })
+  );
+
+  const metrics = await page.evaluate(() => {
+    return ['file-short-1', 'file-short-10', 'file-short-11'].map((nodeId) => {
+      const root = document.querySelector(`[data-node-id="${nodeId}"]`);
+      const label = root?.querySelector('.file-node-copy strong');
+      if (!(root instanceof HTMLElement) || !(label instanceof HTMLElement)) {
+        return null;
+      }
+
+      return {
+        nodeId,
+        renderedWidth: root.offsetWidth,
+        scrollWidth: label.scrollWidth,
+        clientWidth: label.clientWidth,
+        title: label.textContent
+      };
+    });
+  });
+
+  expect(metrics).toHaveLength(3);
+  for (const metric of metrics) {
+    expect(metric).not.toBeNull();
+    expect(metric.title).toMatch(/^\d+\.md$/);
+    expect(metric.scrollWidth).toBeLessThanOrEqual(metric.clientWidth + 1);
+  }
+});
+
 test('minimal file nodes keep a content-fitting minimum size when manually resized', async ({ page }) => {
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>
@@ -1008,9 +1138,9 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
     })
     .toBe('matched');
 
-  expect(nextLayout.size.width).toBeGreaterThanOrEqual(98);
+  expect(nextLayout.size.width).toBeLessThan(96);
+  expect(nextLayout.size.width).toBeGreaterThanOrEqual(80);
   expect(nextLayout.size.height).toBeGreaterThanOrEqual(24);
-  expect(nextLayout.size.width).toBeLessThanOrEqual(104);
   expect(nextLayout.size.height).toBeLessThanOrEqual(28);
 
   state.nodes = state.nodes.map((node) =>
@@ -1030,21 +1160,22 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
     (node) =>
       typeof node?.renderedWidth === 'number' &&
       typeof node?.renderedHeight === 'number' &&
-      node.renderedWidth >= 98 &&
+      node.renderedWidth >= 80 &&
       node.renderedHeight >= 24
   );
-  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(98);
+  expect(probeNode.renderedWidth).toBeLessThan(96);
+  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(80);
   expect(probeNode.renderedHeight).toBeGreaterThanOrEqual(24);
 
-  const labelFits = await page.evaluate(() => {
-    const label = document.querySelector('[data-node-id="file-src-main"] .file-node-copy strong');
-    if (!(label instanceof HTMLElement)) {
+  const contentRemainsVisible = await page.evaluate(() => {
+    const action = document.querySelector('[data-node-id="file-src-main"] .file-node-action');
+    if (!(action instanceof HTMLElement)) {
       return null;
     }
 
-    return label.scrollWidth <= label.clientWidth;
+    return action.scrollWidth <= action.clientWidth + 2;
   });
-  expect(labelFits).toBe(true);
+  expect(contentRemainsVisible).toBe(true);
 });
 
 test('file nodes do not add a hover overlay to their clickable surface', async ({ page }) => {

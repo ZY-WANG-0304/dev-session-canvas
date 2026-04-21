@@ -954,7 +954,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(
       pathOnlyLongFileNode.title,
       agentOnlySecondaryFileNode.metadata.file.relativePath,
-      'Expected path-only file node title to switch to the host-tracked relative path.'
+      'Expected path-only file node title to switch to the workspace-relative path.'
     );
     assert.ok(
       pathOnlyLongFileNode.size.width > 320,
@@ -976,6 +976,23 @@ async function verifyFileActivityViewsAndOpenFiles() {
       reloadedPathOnlyLongFileNode.size.width,
       pathOnlyWidthBeforeReload,
       'Expected widened path-only file node width to persist across reload.'
+    );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    await setFilesNodeDisplayMode('icon-path');
+    await setFilesPathDisplayMode('basename');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectNodeLayoutSnapshot(currentSnapshot, 'file')) ===
+          JSON.stringify(fileNodeLayoutSnapshot) &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
+    assert.deepStrictEqual(
+      collectNodeLayoutSnapshot(snapshot, 'file'),
+      fileNodeLayoutSnapshot,
+      'Expected icon-path basename file node layout to recover after returning from relative-path mode.'
     );
     assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
 
