@@ -48,6 +48,7 @@
     "onCommand:devSessionCanvas.openCanvas",
     "onCommand:devSessionCanvas.openCanvasInEditor",
     "onCommand:devSessionCanvas.openCanvasInPanel",
+    "onCommand:devSessionCanvas.openSettings",
     "onCommand:devSessionCanvas.createNode",
     "onCommand:devSessionCanvas.resetCanvasState",
     "onView:devSessionCanvas.sidebar",
@@ -126,6 +127,11 @@
         "title": "%command.openCanvasInPanel.title%"
       },
       {
+        "command": "devSessionCanvas.openSettings",
+        "title": "%command.openSettings.title%",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "devSessionCanvas.createNode",
         "title": "%command.createNode.title%",
         "icon": "$(add)"
@@ -142,6 +148,11 @@
           "command": "devSessionCanvas.openCanvas",
           "when": "view == devSessionCanvas.sidebarFilters",
           "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.openSettings",
+          "when": "view == devSessionCanvas.sidebar",
+          "group": "navigation@99"
         },
         {
           "command": "devSessionCanvas.createNode",
@@ -202,6 +213,12 @@
           "scope": "machine",
           "markdownDescription": "%configuration.terminal.shellPath.description%"
         },
+        "devSessionCanvas.files.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "%configuration.files.enabled.description%"
+        },
         "devSessionCanvas.files.presentationMode": {
           "type": "string",
           "enum": [
@@ -211,6 +228,16 @@
           "default": "nodes",
           "scope": "window",
           "markdownDescription": "%configuration.files.presentationMode.description%"
+        },
+        "devSessionCanvas.fileNode.displayStyle": {
+          "type": "string",
+          "enum": [
+            "card",
+            "minimal"
+          ],
+          "default": "minimal",
+          "scope": "window",
+          "markdownDescription": "%configuration.fileNode.displayStyle.description%"
         },
         "devSessionCanvas.files.nodeDisplayMode": {
           "type": "string",
@@ -241,10 +268,11 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:execution-terminal-native-helpers && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:execution-terminal-native-helpers && npm run test:smoke && npm run test:webview",
     "test:extension-storage-paths": "node scripts/test-extension-storage-paths.mjs",
     "test:execution-terminal-native-helpers": "node scripts/test-execution-terminal-native-helpers.mjs",
     "test:runtime-supervisor-paths": "node scripts/test-runtime-supervisor-paths.mjs",
+    "test:workspace-relative-paths": "node --no-warnings --experimental-transform-types scripts/test-workspace-relative-paths.mts",
     "test:vscode-smoke-runner-env": "node scripts/test-vscode-smoke-runner-env.mjs",
     "test:smoke": "npm run build && node scripts/run-vscode-smoke.mjs",
     "test:smoke-storage-slot": "npm run build && node scripts/run-vscode-storage-slot-smoke.mjs",

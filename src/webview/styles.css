@@ -892,15 +892,23 @@ body {
   overflow: hidden;
 }
 
+.file-node.display-style-minimal {
+  overflow: visible;
+  border-radius: 6px;
+  background: var(--vscode-editor-background);
+  box-shadow: none;
+}
+
+.file-node.display-style-minimal.is-selected {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
 .file-node-action {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   width: 100%;
-  height: 100%;
   border: 0;
-  padding: 14px 16px;
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -908,10 +916,39 @@ body {
   text-align: left;
 }
 
-.file-node-action:hover,
-.file-node-action:focus-visible {
-  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+.file-node-action-card {
+  grid-template-columns: auto minmax(0, 1fr);
+  height: 100%;
+  padding: 14px 16px;
+}
+
+.file-node-action-minimal {
+  grid-template-columns: auto auto;
+  min-height: 100%;
+  padding: 3px 6px;
+  gap: 6px;
+  justify-content: start;
+}
+
+.file-node-action-minimal.is-path-only {
+  grid-template-columns: minmax(0, auto);
+  gap: 0;
+}
+
+.file-node-action.is-icon-only {
+  grid-template-columns: auto;
+  justify-content: center;
+}
+
+.file-node-action:hover {
+  background: transparent;
   outline: none;
+}
+
+.file-node-action:focus-visible {
+  background: transparent;
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .file-node-icon,
@@ -923,6 +960,12 @@ body {
   justify-content: center;
   font-size: 18px;
   color: var(--vscode-symbolIcon-fileForeground, var(--vscode-icon-foreground, var(--vscode-editor-foreground)));
+}
+
+.file-node.display-style-minimal .file-node-icon {
+  width: 14px;
+  min-width: 14px;
+  font-size: 14px;
 }
 
 .file-node-copy,
@@ -940,6 +983,10 @@ body {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
+}
+
+.file-node.display-style-minimal .file-node-copy strong {
+  line-height: 1.15;
 }
 
 .file-node-copy span,
@@ -964,9 +1011,71 @@ body {
   overflow: hidden;
 }
 
+.file-list-node.display-style-minimal {
+  box-shadow: none;
+  background: var(--vscode-editor-background);
+}
+
+.file-list-node.display-style-minimal.is-selected {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
 .file-list-node .window-chrome {
   border-top-left-radius: calc(var(--canvas-node-radius) - 1px);
   border-top-right-radius: calc(var(--canvas-node-radius) - 1px);
+}
+
+.file-list-minimal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 90%, transparent);
+  background: color-mix(in srgb, var(--vscode-editor-background) 98%, var(--vscode-sideBar-background) 2%);
+}
+
+.file-list-minimal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.file-list-view-toggle {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 90%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 96%, var(--vscode-sideBar-background) 4%);
+}
+
+.file-list-view-toggle-button {
+  border: 0;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.file-list-view-toggle-button + .file-list-view-toggle-button {
+  border-left: 1px solid color-mix(in srgb, var(--vscode-panel-border) 90%, transparent);
+}
+
+.file-list-view-toggle-button:hover,
+.file-list-view-toggle-button:focus-visible {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+  color: var(--vscode-editor-foreground);
+  outline: none;
+}
+
+.file-list-view-toggle-button.is-active {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 14%, transparent);
+  color: var(--vscode-editor-foreground);
 }
 
 .file-list-title-text {
@@ -983,6 +1092,11 @@ body {
   flex: 1;
   min-height: 0;
   padding: 10px;
+}
+
+.file-list-body.minimal {
+  padding: 4px 0;
+  background: var(--vscode-editor-background);
 }
 
 .file-list-empty {
@@ -1003,6 +1117,10 @@ body {
   overflow: auto;
 }
 
+.file-list-entries.minimal {
+  gap: 0;
+}
+
 .file-list-entry {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1019,11 +1137,66 @@ body {
   text-align: left;
 }
 
+.file-list-entry.variant-card {
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
+}
+
+.file-list-entry.variant-minimal-list,
+.file-list-entry.variant-minimal-tree {
+  border: 0;
+  border-radius: 0;
+  padding: 6px 10px;
+  background: transparent;
+}
+
 .file-list-entry:hover,
 .file-list-entry:focus-visible {
-  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-focusBorder) 28%, var(--vscode-panel-border) 72%);
+  background: var(
+    --vscode-list-hoverBackground,
+    color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent)
+  );
+  color: var(--vscode-list-hoverForeground, inherit);
   outline: none;
+}
+
+.file-list-entry.is-selected.selection-active {
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent)
+  );
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-editor-foreground));
+}
+
+.file-list-entry.is-selected.selection-inactive {
+  background: var(
+    --vscode-list-inactiveSelectionBackground,
+    color-mix(in srgb, var(--vscode-descriptionForeground) 12%, transparent)
+  );
+  color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-editor-foreground));
+}
+
+.file-list-entry.variant-card:hover,
+.file-list-entry.variant-card:focus-visible {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 28%, var(--vscode-panel-border) 72%);
+}
+
+.file-list-entry.variant-card.is-selected.selection-active {
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-list-activeSelectionBackground, var(--vscode-focusBorder)) 48%,
+    var(--vscode-panel-border) 52%
+  );
+}
+
+.file-list-entry.variant-card.is-selected.selection-inactive {
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-list-inactiveSelectionBackground, var(--vscode-descriptionForeground)) 38%,
+    var(--vscode-panel-border) 62%
+  );
 }
 
 .file-access-badge {
@@ -1050,6 +1223,68 @@ body {
 .file-access-badge.mode-read-write {
   background: color-mix(in srgb, #22c55e 14%, transparent);
   color: color-mix(in srgb, #22c55e 78%, var(--vscode-editor-foreground) 22%);
+}
+
+.file-access-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.file-access-indicator .read {
+  color: color-mix(in srgb, #38bdf8 82%, var(--vscode-editor-foreground) 18%);
+}
+
+.file-access-indicator .write {
+  color: color-mix(in srgb, #f97316 82%, var(--vscode-editor-foreground) 18%);
+}
+
+.file-list-tree {
+  width: 100%;
+  display: grid;
+  align-content: start;
+  overflow: auto;
+}
+
+.file-tree-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 10px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.file-tree-folder-icon {
+  color: var(--vscode-symbolIcon-folderForeground, var(--vscode-descriptionForeground));
+}
+
+.file-tree-folder-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-list-entry.variant-minimal-list .file-list-entry-copy,
+.file-list-entry.variant-minimal-tree .file-list-entry-copy {
+  display: block;
+}
+
+.file-list-entry.variant-minimal-list .file-list-entry-copy span,
+.file-list-entry.variant-minimal-tree .file-list-entry-copy span {
+  display: none;
+}
+
+.file-list-entry.variant-minimal-list .file-list-entry-copy strong,
+.file-list-entry.variant-minimal-tree .file-list-entry-copy strong {
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .file-icon-image {

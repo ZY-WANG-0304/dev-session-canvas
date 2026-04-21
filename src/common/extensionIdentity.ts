@@ -5,6 +5,7 @@ export const COMMAND_IDS = {
   openCanvas: 'devSessionCanvas.openCanvas',
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
+  openSettings: 'devSessionCanvas.openSettings',
   createNode: 'devSessionCanvas.createNode',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
@@ -52,7 +53,9 @@ export const CONFIG_KEYS = {
   agentCodexCommand: 'devSessionCanvas.agent.codexCommand',
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
+  filesFeatureEnabled: 'devSessionCanvas.files.enabled',
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
+  fileNodeDisplayStyle: 'devSessionCanvas.fileNode.displayStyle',
   filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
   filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode'
 } as const;
@@ -66,5 +69,6 @@ export const STORAGE_KEYS = {
   canvasLastSurface: 'devSessionCanvas.canvas.lastSurface',
   canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
   canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled',
+  canvasFilesFeatureEnabled: 'devSessionCanvas.canvas.filesFeatureEnabled',
   canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState'
 } as const;

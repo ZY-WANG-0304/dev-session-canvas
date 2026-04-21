@@ -58,11 +58,19 @@ function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
     ),
     new CanvasSidebarItem(
       'summary/runtime-persistence',
-      'Runtime Persistence',
+      '运行时持久化',
       state.runtimePersistenceEnabled ? '已开启' : '已关闭',
       state.runtimePersistenceEnabled
-        ? '当前窗口已启用 Runtime Persistence；Agent 与 Terminal 会优先由独立 runtime host backend 持有。'
-        : '当前窗口未启用 Runtime Persistence；Agent 与 Terminal 不会保留 live runtime host。'
+        ? '当前窗口已启用运行时持久化；Agent 与 Terminal 会优先由独立 runtime host backend 持有。'
+        : '当前窗口未启用运行时持久化；Agent 与 Terminal 不会保留 live runtime host。'
+    ),
+    new CanvasSidebarItem(
+      'summary/files-feature',
+      '文件功能',
+      state.filesFeatureEnabled ? '已开启' : '已关闭',
+      state.filesFeatureEnabled
+        ? '当前窗口已启用文件活动功能；支持的 Agent 会生成文件节点、文件列表节点和相关过滤入口。'
+        : '当前窗口未启用文件活动功能；文件节点、文件列表节点、文件过滤和自动文件关系都不可用。'
     ),
     new CanvasSidebarItem(
       'summary/node-count',
@@ -78,11 +86,11 @@ function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
     ),
     new CanvasSidebarItem(
       'summary/workspace-trust',
-      'Workspace Trust',
-      state.workspaceTrusted ? '已信任' : 'Restricted Mode',
+      '工作区信任',
+      state.workspaceTrusted ? '已信任' : '受限模式',
       state.workspaceTrusted
-        ? '当前 workspace 已受信任，执行型对象可按各自能力创建和运行。'
-        : '当前 workspace 处于 Restricted Mode；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
+        ? '当前工作区已受信任，执行型对象可按各自能力创建和运行。'
+        : '当前工作区处于受限模式；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
     )
   ];
 }

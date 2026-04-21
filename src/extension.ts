@@ -63,6 +63,13 @@ export function activate(context: vscode.ExtensionContext): void {
     await panelManager.revealInPanel();
   });
 
+  registerCommand(context, COMMAND_IDS.openSettings, async () => {
+    await vscode.commands.executeCommand(
+      'workbench.action.openSettings',
+      '@ext:devsessioncanvas.dev-session-canvas devSessionCanvas'
+    );
+  });
+
   registerCommand(context, COMMAND_IDS.createNode, async () => {
     const createRequest = await promptCreateNodeRequest(panelManager.getSidebarState().creatableKinds);
     if (!createRequest) {
@@ -95,10 +102,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(COMMAND_IDS.editFileExcludeFilter, async (value?: unknown) => {
       await updateCanvasFileFilterFromCommand(panelManager, 'exclude', value);
     }),
-    vscode.commands.registerCommand(COMMAND_IDS.clearFileIncludeFilter, () => {
+    vscode.commands.registerCommand(COMMAND_IDS.clearFileIncludeFilter, async () => {
+      if (!(await ensureFilesFeatureEnabled(panelManager))) {
+        return;
+      }
       panelManager.updateCanvasFileFilterState('include', []);
     }),
-    vscode.commands.registerCommand(COMMAND_IDS.clearFileExcludeFilter, () => {
+    vscode.commands.registerCommand(COMMAND_IDS.clearFileExcludeFilter, async () => {
+      if (!(await ensureFilesFeatureEnabled(panelManager))) {
+        return;
+      }
       panelManager.updateCanvasFileFilterState('exclude', []);
     })
   );
@@ -269,6 +282,10 @@ async function updateCanvasFileFilterFromCommand(
   kind: 'include' | 'exclude',
   value?: unknown
 ): Promise<void> {
+  if (!(await ensureFilesFeatureEnabled(panelManager))) {
+    return;
+  }
+
   const providedGlobs = parseCanvasFileFilterCommandValue(value);
   if (providedGlobs) {
     panelManager.updateCanvasFileFilterState(kind, providedGlobs);
@@ -281,8 +298,8 @@ async function updateCanvasFileFilterFromCommand(
     title: `${EXTENSION_DISPLAY_NAME}: 编辑文件 ${kind === 'include' ? 'Include' : 'Exclude'} 过滤`,
     prompt:
       kind === 'include'
-        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改 fileReferences。'
-        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改 fileReferences。',
+        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改文件引用。'
+        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改文件引用。',
     placeHolder: kind === 'include' ? '例如 src/**/*.ts, docs/**/*.md' : '例如 **/dist/**, **/*.snap',
     value: currentGlobs.join(', ')
   });
@@ -291,6 +308,17 @@ async function updateCanvasFileFilterFromCommand(
   }
 
   panelManager.updateCanvasFileFilterState(kind, splitCanvasFileFilterInput(input));
+}
+
+async function ensureFilesFeatureEnabled(panelManager: CanvasPanelManager): Promise<boolean> {
+  if (panelManager.isFilesFeatureEnabled()) {
+    return true;
+  }
+
+  await vscode.window.showInformationMessage(
+    '文件功能当前已关闭；重新加载窗口并启用 `devSessionCanvas.files.enabled` 后才能使用文件活动与文件过滤。'
+  );
+  return false;
 }
 
 function parseCanvasFileFilterCommandValue(value: unknown): string[] | undefined {
