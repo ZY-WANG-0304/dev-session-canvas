@@ -653,6 +653,7 @@ async function verifyManualEdgeLifecycle(agentNodeId, terminalNodeId) {
 
 async function verifyFileActivityViewsAndOpenFiles() {
   const configuration = vscode.workspace.getConfiguration();
+  const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', true) !== false;
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
   const originalFileNodeDisplayStyle =
@@ -700,6 +701,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
   );
 
   await setFilesPresentationMode('nodes');
+  await setFilesFeatureEnabled(true);
   await setFileNodeDisplayStyle('minimal');
   await setFilesNodeDisplayMode('icon-path');
   await setFilesPathDisplayMode('basename');
@@ -994,6 +996,29 @@ async function verifyFileActivityViewsAndOpenFiles() {
       fileNodeLayoutSnapshot,
       'Expected icon-path basename file node layout to recover after returning from relative-path mode.'
     );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    await setFilesFeatureEnabled(false);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.fileReferences.length === 4 &&
+        currentSnapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list') &&
+        currentSnapshot.state.edges.every((edge) => edge.owner !== 'file-activity')
+      );
+    }, 20000);
+    assert.ok(
+      snapshot.state.fileReferences.some((reference) => reference.filePath === sharedPath),
+      'Expected disabling file artifacts to preserve authoritative fileReferences.'
+    );
+
+    await setFilesFeatureEnabled(true);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.fileReferences.length === 4 &&
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
     assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
 
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
@@ -1329,6 +1354,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
       baselineNodeIds
     );
   } finally {
+    await setFilesFeatureEnabled(originalFilesEnabled);
     await setFilesPresentationMode(originalPresentationMode);
     await setFileNodeDisplayStyle(originalFileNodeDisplayStyle);
     await setFilesNodeDisplayMode(originalFileNodeDisplayMode);
@@ -5614,6 +5640,12 @@ async function setFilesPresentationMode(mode) {
   await vscode.workspace
     .getConfiguration()
     .update('devSessionCanvas.files.presentationMode', mode, vscode.ConfigurationTarget.Global);
+}
+
+async function setFilesFeatureEnabled(enabled) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.files.enabled', enabled, vscode.ConfigurationTarget.Global);
 }
 
 async function setFileNodeDisplayStyle(style) {

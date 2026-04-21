@@ -46,6 +46,7 @@ updated_at: 2026-04-21
 - 在默认文件节点模式和可切换的文件列表模式之间，复用同一份文件活动源数据。
 - 让文件对象继续遵守 VSCode 宿主边界：打开文件走宿主、编辑区承载面下在独立 editor group 打开、图标能力按实际实现写清楚、无法确认的 provider 能力不伪装成已支持。
 - 为文件节点 / 文件列表节点补一层统一的显示风格配置，让用户可在保留当前卡片风格的同时切换到更紧凑的极简风格。
+- 为文件节点 / 文件列表节点补一个整体启停开关，让用户在需要时可以临时关闭整组文件活动投影，而不破坏权威文件活动状态。
 
 ## 4. 非目标
 
@@ -99,6 +100,9 @@ updated_at: 2026-04-21
 - 风险：如果把文件列表 `list/tree` 切换直接写进宿主权威状态，会让本来只影响节点内部显示的 UI 偏好反向污染 workspace 绑定状态模型。
   当前缓解：本轮把 `list/tree` 切换保留在 Webview 本地 UI 状态，并按节点 ID 持久化到 webview state；宿主持续只关心 `fileReferences`、自动节点重建和位置 / 边关系。
 
+- 风险：如果“关闭文件功能”直接删除 `fileReferences`，用户重新开启时会丢失当前文件活动上下文，也会把“功能可见性”误变成“权威状态删除”。
+  当前缓解：新增总开关时，只关闭文件节点 / 文件列表节点 / 自动边的投影，不删除 `fileReferences`；重新开启时基于现有权威状态重建投影。
+
 ## 7. 正式方案
 
 ### 7.1 `fileReferences` 是文件活动的权威状态
@@ -126,6 +130,9 @@ updated_at: 2026-04-21
 - `include` / `exclude` 过滤从 settings 页面迁到 sidebar 的 `常用操作` section；过滤状态单独持久化为视图状态，不写回 `fileReferences`。
 - 由于 VSCode 扩展 API 不支持在 TreeView 中局部嵌入输入框，当前实现把 `包含文件` / `排除文件` 收口为该 section 中的最小 `WebviewView` 输入框，并保持其余状态摘要继续留在原生 TreeView。
 - 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。
+- 新增全局配置 `devSessionCanvas.files.enabled`，控制文件活动投影是否启用：
+  - `true`：按当前展示模式与过滤条件投影文件节点 / 文件列表节点和自动文件活动边。
+  - `false`：宿主停止投影所有 `file` / `file-list` 自动对象及其自动边，但继续保留 `fileReferences` 作为权威状态。
 - 新增全局配置 `devSessionCanvas.fileNode.displayStyle`，由宿主读入并通过 `CanvasRuntimeContext` 传给 Webview。该配置虽然挂在 `fileNode` 名下，但实际同时控制 `file` 和 `file-list` 两类文件对象的视觉风格：
   - `card`：保留当前卡片式节点与列表节点观感。
   - `minimal`：文件节点收口为贴内容边框；文件列表节点收口为接近 VSCode Source Control Changes 的单行文件视图。
@@ -202,6 +209,7 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
 - 删除 Agent 节点时，移除该 Agent 在文件活动引用中的所有 ownership。
 - 若某文件不再有任何 Agent ownership，则删除对应文件引用，并在当前展示模式下移除相关自动节点 / 自动连线。
 - 若某文件仍被其他 Agent 引用，则只删除失效的那部分 ownership，保留该文件对象。
+- 切换 `devSessionCanvas.files.enabled` 后，宿主只切换文件活动投影是否可见；`fileReferences` 继续保留为权威状态，不因开关关闭而被删除。
 - 编辑 sidebar `包含文件` / `排除文件` 输入框或切换展示模式后，宿主按当前配置重建文件视图，但 `fileReferences` 保持不变。
 - 切换 `devSessionCanvas.fileNode.displayStyle` 后，宿主会重建文件节点 / 文件列表节点的视觉投影，但继续复用原有自动节点 ID、位置和文件活动关系线；风格切换不是另一套文件对象生命周期。
 
@@ -216,6 +224,7 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
   - 点击文件节点或文件列表条目后，VSCode 会在编辑区打开目标文件；若画布位于编辑区，目标文件进入独立 editor group。
   - 删除 Agent 节点后，文件生命周期规则正确生效。
   - 调整 sidebar `包含文件` / `排除文件` 输入框或展示模式后，宿主会按当前配置重建文件视图，且不会改写 `fileReferences`。
+  - 切换 `devSessionCanvas.files.enabled` 后，文件节点 / 文件列表节点与自动边的可见性按预期变化，且 `fileReferences` 不被改写。
   - 切换 `devSessionCanvas.fileNode.displayStyle` 后，自动文件节点 / 文件列表节点的 ID、位置和自动边关系保持稳定。
 
-截至 2026-04-20，本方案已通过 `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 验证；其中 webview 回归已覆盖极简文件节点紧贴内容边框、文件列表 `列表视图 / 树形视图` 切换和 `R/W` 尾标，trusted smoke 已覆盖风格切换后自动文件节点位置与自动边关系稳定。
+截至 2026-04-21，本方案本轮增量已通过 `npm run typecheck` 与 `npm run test:webview`。同时，`tests/vscode-smoke/extension-tests.cjs` 已补入“关闭 `devSessionCanvas.files.enabled` 后隐藏文件节点 / 文件列表节点与自动边，但保留 `fileReferences`；重新开启后恢复投影”的 trusted smoke 断言；不过完整 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 在本次执行时仍卡在既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory` 超时，因此这条增量 smoke 尚未形成新的通过证据。

@@ -3887,6 +3887,7 @@ function createRuntimeContext(overrides = {}) {
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
+    filesEnabled: true,
     filePresentationMode: 'nodes',
     fileNodeDisplayStyle: 'minimal',
     fileNodeDisplayMode: 'icon-path',

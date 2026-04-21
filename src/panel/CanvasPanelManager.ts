@@ -279,6 +279,7 @@ interface CanvasStartupConfiguration {
 }
 
 interface CanvasFileViewConfiguration {
+  enabled: boolean;
   presentationMode: CanvasFilePresentationMode;
   includeGlobs: string[];
   excludeGlobs: string[];
@@ -450,6 +451,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const defaultSurfaceChanged = event.affectsConfiguration(CONFIG_KEYS.canvasDefaultSurface);
         const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
+        const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
         const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
@@ -470,6 +472,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         if (
           !defaultAgentProviderChanged &&
+          !filesFeatureEnabledChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -484,6 +487,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         void this.handleRuntimeConfigurationChanged({
           defaultAgentProviderChanged,
+          filesFeatureEnabledChanged,
           filesPresentationModeChanged,
           fileNodeDisplayStyleChanged,
           filesNodeDisplayModeChanged,
@@ -1546,12 +1550,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
+    const enabled = getConfigurationValue<boolean>('filesFeatureEnabled', true);
     const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
     const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
     const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
     const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
 
     return {
+      enabled,
       presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
       includeGlobs: this.fileFilterState.includeGlobs,
       excludeGlobs: this.fileFilterState.excludeGlobs,
@@ -1653,6 +1659,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
+    filesFeatureEnabledChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -1677,6 +1684,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (
+      options.filesFeatureEnabledChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -1692,6 +1700,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       options.defaultAgentProviderChanged ||
+      options.filesFeatureEnabledChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -6412,6 +6421,21 @@ function rebuildCanvasFileArtifacts(
       owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
     }))
     .filter((reference) => reference.owners.length > 0);
+  if (!options.view.enabled) {
+    const userEdges = state.edges.filter(
+      (edge) =>
+        edge.owner === 'user' &&
+        manualNodeIds.has(edge.sourceNodeId) &&
+        manualNodeIds.has(edge.targetNodeId)
+    );
+
+    return {
+      ...state,
+      nodes: manualNodes,
+      edges: userEdges,
+      fileReferences: authoritativeFileReferences
+    };
+  }
   const projectedFileReferences = authoritativeFileReferences.filter((reference) =>
     shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
   );

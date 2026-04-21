@@ -213,6 +213,12 @@
           "scope": "machine",
           "markdownDescription": "%configuration.terminal.shellPath.description%"
         },
+        "devSessionCanvas.files.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "%configuration.files.enabled.description%"
+        },
         "devSessionCanvas.files.presentationMode": {
           "type": "string",
           "enum": [

@@ -17,6 +17,7 @@
 - [x] (2026-04-20 14:18 +0800) 扩展共享协议、扩展设置与宿主配置监听，把文件节点显示风格接入 `CanvasRuntimeContext`，并确保切换风格时只重建文件节点 / 文件列表节点视觉投影，不改变位置与连线关系。
 - [x] (2026-04-20 14:18 +0800) 实现 Webview 的极简文件节点与文件列表节点：文件节点收口为贴内容边框；文件列表节点改成接近 VSCode Changes 的单行文件视图，并支持头部 `list/tree` 切换。
 - [x] (2026-04-20 14:18 +0800) 补充 Playwright 与 VS Code smoke，覆盖风格切换、极简文件列表 `list/tree` 切换、读写标识显示，以及风格切换后节点位置 / 连线稳定性。
+- [x] (2026-04-21 10:20 +0800) 为文件节点 / 文件列表节点补充全局配置 `devSessionCanvas.files.enabled`，关闭时停止投影 `file` / `file-list` 自动对象与自动边，但继续保留 `fileReferences`；同步更新规格、设计文档与 smoke 断言。
 - [x] (2026-04-20 15:01 +0800) 排查风格切换后共享文件节点位置漂移，确认根因不是 `src` 逻辑而是 `dist/extension.js` 仍保留旧版“碰撞时重算位置”分支；重新构建扩展产物后，trusted smoke 恢复通过。
 - [x] (2026-04-19 10:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`ARCHITECTURE.md`、`docs/product-specs/index.md`、当前需求说明和核心实现，确认这次改动需要独立 `ExecPlan`、产品规格和设计文档；其中需求重点包括通用连线能力、文件节点 / 文件列表节点能力，以及文件活动必须来自 provider 结构化事件而非 PTY 文本推断。
 - [x] (2026-04-19 10:56 +0800) 从远端 `origin/main` 切出主题分支 `canvas-links-and-file-nodes`，保留用户工作树中已有未跟踪文件。

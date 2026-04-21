@@ -1,6 +1,6 @@
 # 画布关系连线与文件活动视图规格
 
-当前状态：已确认。2026-04-20 已按本文规格完成通用连线、provider 文件活动投影，以及文件节点 / 文件列表节点的 `card` / `minimal` 双风格收口，并通过 `npm run typecheck`、`npm run test:webview` 与 trusted smoke 验证。当前实现以正式开发质量推进，而不是一次性原型；其中 Agent 文件活动事件必须来自 provider 原生结构化事件，不能依赖 PTY 输出解析。第一轮自动文件活动覆盖 `Claude Code` 与仓库内 `fake-agent-provider` 验证路径；`Codex` 因缺少已确认的 provider 原生文件事件接口，当前只保留 no-op 适配，不把未确认能力写成已支持。
+当前状态：已确认。2026-04-21 已按本文规格完成通用连线、provider 文件活动投影、文件节点 / 文件列表节点的 `card` / `minimal` 双风格收口，以及文件对象投影总开关。当前实现以正式开发质量推进，而不是一次性原型；其中 Agent 文件活动事件必须来自 provider 原生结构化事件，不能依赖 PTY 输出解析。第一轮自动文件活动覆盖 `Claude Code` 与仓库内 `fake-agent-provider` 验证路径；`Codex` 因缺少已确认的 provider 原生文件事件接口，当前只保留 no-op 适配，不把未确认能力写成已支持。本轮已通过 `npm run typecheck` 与 `npm run test:webview`；完整 trusted smoke 在本次执行中仍受既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory` 超时阻塞，因此未把其写成本轮已确认验证结论。
 
 ## 1. 用户问题
 
@@ -27,10 +27,11 @@
 4. 当 `Agent` 通过 provider 原生结构化事件上报文件读写时，画布会自动出现对应的文件对象视图。
 5. 默认模式下，单个文件显示为独立小节点；用户可把展示模式切换成文件列表节点。
 6. 用户可通过设置 `devSessionCanvas.fileNode.displayStyle` 在 `card`（卡片风格）和 `minimal`（极简风格）之间切换；默认值为 `minimal`。
-7. 在 `minimal` 风格下，文件节点会收口成贴内容边框的紧凑对象；文件列表节点会收口成接近 VSCode Source Control Changes 的单行文件列表，并在节点头部提供 `列表视图 / 树形视图` 切换。
-8. 用户点击文件节点，或点击文件列表节点中的文件条目，VSCode 会在编辑区打开对应文件；若画布当前承载在编辑区，宿主会复用或创建相邻 editor group 打开目标文件，而不是覆盖画布所在组。
-9. 当多个 Agent 共享同一文件时，文件节点模式下保留一个共享文件节点并连到多个 Agent；文件列表模式下会额外生成共享文件列表节点。
-10. 用户删除某个 Agent 节点后，系统会移除该 Agent 的文件引用；只有仍被其他 Agent 引用的文件对象才继续保留。
+7. 用户可通过设置 `devSessionCanvas.files.enabled` 一键关闭文件节点 / 文件列表节点功能；默认值为开启。关闭后，画布不再投影文件节点、文件列表节点和对应自动关系线，但继续保留 `fileReferences` 作为权威状态。
+8. 在 `minimal` 风格下，文件节点会收口成贴内容边框的紧凑对象；文件列表节点会收口成接近 VSCode Source Control Changes 的单行文件列表，并在节点头部提供 `列表视图 / 树形视图` 切换。
+9. 用户点击文件节点，或点击文件列表节点中的文件条目，VSCode 会在编辑区打开对应文件；若画布当前承载在编辑区，宿主会复用或创建相邻 editor group 打开目标文件，而不是覆盖画布所在组。
+10. 当多个 Agent 共享同一文件时，文件节点模式下保留一个共享文件节点并连到多个 Agent；文件列表模式下会额外生成共享文件列表节点。
+11. 用户删除某个 Agent 节点后，系统会移除该 Agent 的文件引用；只有仍被其他 Agent 引用的文件对象才继续保留。
 
 ## 4. 在范围内
 
@@ -54,6 +55,9 @@
   - `Claude Code` 使用官方 hooks 路线把 `Read` / `Edit` / `Write` 工具事件转换为结构化文件活动。
   - 仓库内 `fake-agent-provider` 提供同形态测试事件，确保自动化验证可重复。
   - `Codex` 当前没有已确认的 provider 原生文件事件接口，因此本轮只保留 no-op 适配；不把“自动文件活动”验收写到 Codex 路径上。
+  - 支持全局配置 `devSessionCanvas.files.enabled`：
+    - `true`：按当前展示模式投影文件节点或文件列表节点，并显示对应自动关系线。
+    - `false`：停止投影文件节点、文件列表节点和自动关系线，但不删除 `fileReferences`。
 - 文件节点模式：
   - 默认展示模式为文件节点。
   - 同一路径的文件节点在整张画布中唯一；多个 Agent 共用同一文件时共享该节点。
@@ -146,6 +150,7 @@
 - 连线切换到预设颜色后，仍可通过“默认颜色”恢复到默认灰色 token。
 - 选中连线后按 `Delete` 键会删除该连线，而不会误删节点。
 - `Claude Code` Agent 在触发文件读写工具后，画布会实时出现对应文件对象视图；该路径不依赖终端输出文本解析。
+- 把 `devSessionCanvas.files.enabled` 从 `true` 切换为 `false` 后，文件节点 / 文件列表节点和自动文件活动边会从画布隐藏，但 `fileReferences` 仍保留；重新开启后，系统会按当前权威状态重新投影文件对象。
 - 默认文件节点模式下，同一路径只保留一个文件节点；多个 Agent 引用同一文件时，该文件节点会自动连到多个 Agent。
 - 文件活动派生的连线与手工连线在 UI 和交互入口上没有额外区分；用户修改自动边后，系统会持久化对应覆盖结果，而不是下一次重建立即回退。
 - 文件节点可点击并在 VSCode 编辑区打开对应文件；当画布位于编辑区时，目标文件会在独立 editor group 中打开。
