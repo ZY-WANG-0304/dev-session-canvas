@@ -27,6 +27,8 @@ body {
   --canvas-edge-color-4: #4fa36c;
   --canvas-edge-color-5: #4fa7b8;
   --canvas-edge-color-6: #a77dc2;
+  --execution-attention-flash-duration: 1.2s;
+  --execution-attention-flash-easing: ease-in-out;
 }
 
 .canvas-corner-panel {
@@ -142,7 +144,11 @@ body {
 }
 
 .canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
-  animation: minimap-attention-flash 0.95s ease-in-out infinite;
+  animation:
+    minimap-attention-flash
+    var(--execution-attention-flash-duration)
+    var(--execution-attention-flash-easing)
+    infinite;
 }
 
 @keyframes minimap-attention-flash {
@@ -594,7 +600,11 @@ body {
 }
 
 .window-chrome.is-attention-flashing {
-  animation: execution-attention-flash 1.2s ease-in-out infinite;
+  animation:
+    execution-attention-flash
+    var(--execution-attention-flash-duration)
+    var(--execution-attention-flash-easing)
+    infinite;
 }
 
 .window-title {
