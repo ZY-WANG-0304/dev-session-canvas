@@ -40,6 +40,7 @@ import type {
   CanvasEdgeOwner,
   CanvasEdgeSummary,
   CanvasFileIconDescriptor,
+  CanvasFileNodeDisplayStyle,
   CanvasFileNodeDisplayMode,
   CanvasFilePathDisplayMode,
   CanvasNodeKind,
@@ -88,6 +89,8 @@ declare function acquireVsCodeApi<T>(): {
 interface LocalUiState {
   selectedNodeId?: string;
   viewport?: Viewport;
+  fileListViewModes?: Record<string, FileListViewMode>;
+  selectedFileListEntries?: Record<string, string>;
 }
 
 interface EdgeLabelEditorState {
@@ -100,13 +103,19 @@ interface CanvasNodeData {
   status: string;
   summary: string;
   selected: boolean;
+  documentHasFocus: boolean;
   workspaceTrusted: boolean;
   size: CanvasNodeFootprint;
+  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  fileListViewMode: FileListViewMode;
+  selectedFileListEntryPath?: string;
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
+  onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
+  onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -140,6 +149,8 @@ interface CanvasNodeData {
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
+type FileListViewMode = 'list' | 'tree';
+type FileListEntrySelectionTone = 'active' | 'inactive';
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
@@ -421,6 +432,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   editorMultiCursorModifier: 'alt',
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
   filePresentationMode: 'nodes',
+  fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
   filePathDisplayMode: 'basename',
   fileIconFontFaces: []
@@ -455,6 +467,7 @@ function normalizeRuntimeContext(
         ? runtimeContext.terminalWordSeparators
         : normalizeExecutionTerminalWordSeparators(undefined),
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
+    fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
     fileNodeDisplayMode:
       runtimeContext?.fileNodeDisplayMode === 'icon-only' || runtimeContext?.fileNodeDisplayMode === 'path-only'
         ? runtimeContext.fileNodeDisplayMode
@@ -496,15 +509,29 @@ function App(): JSX.Element {
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
+    fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
     fileIconFontFaces: latestRuntimeContext.fileIconFontFaces
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
-    viewport: initialPersistedState.viewport
+    viewport: initialPersistedState.viewport,
+    fileListViewModes:
+      initialPersistedState.fileListViewModes && typeof initialPersistedState.fileListViewModes === 'object'
+        ? initialPersistedState.fileListViewModes
+        : undefined,
+    selectedFileListEntries:
+      initialPersistedState.selectedFileListEntries && typeof initialPersistedState.selectedFileListEntries === 'object'
+        ? Object.fromEntries(
+            Object.entries(initialPersistedState.selectedFileListEntries).filter(
+              (entry): entry is [string, string] => typeof entry[1] === 'string'
+            )
+          )
+        : undefined
   }));
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
+  const [documentHasFocus, setDocumentHasFocus] = useState<boolean>(() => document.hasFocus());
   const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
   const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
   const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
@@ -538,7 +565,7 @@ function App(): JSX.Element {
           break;
         case 'host/visibilityRestored':
           scheduleExecutionTerminalVisibilityRestore();
-          scheduleCanvasShellFocusRestore(canvasShellRef.current);
+          scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -624,6 +651,28 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    const handleFocus = (): void => {
+      setDocumentHasFocus(true);
+    };
+    const handleBlur = (): void => {
+      setDocumentHasFocus(false);
+    };
+    const handleVisibilityChange = (): void => {
+      setDocumentHasFocus(document.hasFocus());
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     vscode.setState(localUiState);
   }, [localUiState]);
 
@@ -633,15 +682,58 @@ function App(): JSX.Element {
     }
 
     const validNodeIds = new Set(hostState.nodes.map((node) => node.id));
-    const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
-    setLocalUiState((current) =>
-      current.selectedNodeId && !validNodeIds.has(current.selectedNodeId)
-        ? {
-            ...current,
-            selectedNodeId: undefined
-          }
-        : current
+    const validFileListNodeIds = new Set(
+      hostState.nodes.filter((node) => node.kind === 'file-list').map((node) => node.id)
     );
+    const validFileListEntryPathsByNodeId = new Map<string, Set<string>>(
+      hostState.nodes
+        .filter((node) => node.kind === 'file-list')
+        .map((node) => [
+          node.id,
+          new Set(node.metadata?.fileList?.entries.map((entry) => entry.filePath) ?? [])
+        ])
+    );
+    const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
+    setLocalUiState((current) => {
+      let changed = false;
+      let nextState = current;
+
+      if (current.selectedNodeId && !validNodeIds.has(current.selectedNodeId)) {
+        nextState = {
+          ...nextState,
+          selectedNodeId: undefined
+        };
+        changed = true;
+      }
+
+      const currentViewModes = current.fileListViewModes;
+      if (currentViewModes) {
+        const filteredEntries = Object.entries(currentViewModes).filter(([nodeId]) => validFileListNodeIds.has(nodeId));
+        if (filteredEntries.length !== Object.keys(currentViewModes).length) {
+          nextState = {
+            ...nextState,
+            fileListViewModes: filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
+          };
+          changed = true;
+        }
+      }
+
+      const currentSelectedFileEntries = current.selectedFileListEntries;
+      if (currentSelectedFileEntries) {
+        const filteredEntries = Object.entries(currentSelectedFileEntries).filter(([nodeId, filePath]) =>
+          validFileListEntryPathsByNodeId.get(nodeId)?.has(filePath)
+        );
+        if (filteredEntries.length !== Object.keys(currentSelectedFileEntries).length) {
+          nextState = {
+            ...nextState,
+            selectedFileListEntries: filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
+          };
+          changed = true;
+        }
+      }
+
+      return changed ? nextState : current;
+    });
     setSelectedEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
     setEdgeLabelEditor((current) => (current && !validEdgeIds.has(current.edgeId) ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
@@ -792,12 +884,52 @@ function App(): JSX.Element {
     }));
   };
 
+  const setFileListViewMode = (nodeId: string, viewMode: FileListViewMode): void => {
+    setLocalUiState((current) => {
+      const currentViewMode = current.fileListViewModes?.[nodeId] ?? 'list';
+      if (currentViewMode === viewMode) {
+        return current;
+      }
+
+      return {
+        ...current,
+        fileListViewModes: {
+          ...(current.fileListViewModes ?? {}),
+          [nodeId]: viewMode
+        }
+      };
+    });
+  };
+
+  const selectFileListEntry = (nodeId: string, filePath: string): void => {
+    closeEdgeMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => {
+      if (current.selectedNodeId === nodeId && current.selectedFileListEntries?.[nodeId] === filePath) {
+        return current;
+      }
+
+      return {
+        ...current,
+        selectedNodeId: nodeId,
+        selectedFileListEntries: {
+          ...(current.selectedFileListEntries ?? {}),
+          [nodeId]: filePath
+        }
+      };
+    });
+  };
+
   const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
+    documentHasFocus,
     workspaceTrusted,
+    fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
+    fileListViewModes: localUiState.fileListViewModes,
+    selectedFileListEntries: localUiState.selectedFileListEntries,
     onSelectNode: (nodeId) => {
       if (localUiState.selectedNodeId === nodeId) {
         return;
@@ -818,6 +950,8 @@ function App(): JSX.Element {
           filePath
         }
       }),
+    onSelectFileListEntry: selectFileListEntry,
+    onSetFileListViewMode: setFileListViewMode,
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
@@ -1168,7 +1302,11 @@ function App(): JSX.Element {
   };
 
   return (
-    <div ref={canvasShellRef} className="canvas-shell" tabIndex={-1}>
+    <div
+      ref={canvasShellRef}
+      className="canvas-shell"
+      tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
+    >
       <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
       <ReactFlow
         nodes={nodes}
@@ -2095,8 +2233,12 @@ function NodeHandles(props: { selected: boolean }): JSX.Element {
   );
 }
 
-function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
-  const minimum = minimumCanvasNodeFootprint(data.kind);
+function NodeResizeAffordance({
+  id,
+  data,
+  minimumOverride
+}: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & { minimumOverride?: CanvasNodeFootprint }): JSX.Element {
+  const minimum = minimumOverride ?? minimumCanvasNodeFootprintForDisplayStyle(data);
 
   return (
     <NodeResizer
@@ -2111,10 +2253,10 @@ function NodeResizeAffordance({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id'
         data.onSelectNode?.(id);
       }}
       onResizeEnd={(_event, params) => {
-        const nextSize = normalizeCanvasNodeFootprint(data.kind, {
-          width: params.width,
-          height: params.height
-        });
+        const nextSize = {
+          width: Math.max(minimum.width, Math.round(params.width)),
+          height: Math.max(minimum.height, Math.round(params.height))
+        };
 
         if (
           nextSize.width === data.size.width &&
@@ -2153,27 +2295,34 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     dragged: false
   });
 
+  const isMinimalStyle = data.fileNodeDisplayStyle === 'minimal';
+  const minimumFootprint = minimumCanvasNodeFootprintForDisplayStyle(data);
   const primaryLabel = displayFilePath(fileMetadata, data.filePathDisplayMode);
-  const secondaryLabel =
-    data.filePathDisplayMode === 'basename'
+  const secondaryLabel = isMinimalStyle
+    ? undefined
+    : data.filePathDisplayMode === 'basename'
       ? fileMetadata.relativePath ?? fileMetadata.filePath
       : fileMetadata.filePath !== primaryLabel
         ? fileMetadata.filePath
         : undefined;
   const ownerCount = fileMetadata.ownerNodeIds.length;
+  const showIcon = data.fileNodeDisplayMode !== 'path-only';
+  const showText = data.fileNodeDisplayMode !== 'icon-only';
 
   return (
     <div
-      className={`canvas-node file-node kind-file ${data.selected ? 'is-selected' : ''}`}
+      className={`canvas-node file-node kind-file display-style-${data.fileNodeDisplayStyle} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} minimumOverride={minimumFootprint} />
       <NodeHandles selected={data.selected} />
       <button
         type="button"
-        className="file-node-action nopan"
+        className={`file-node-action nopan ${isMinimalStyle ? 'file-node-action-minimal' : 'file-node-action-card'} ${
+          showText ? '' : 'is-icon-only'
+        } ${showText && !showIcon ? 'is-path-only' : ''}`}
         data-node-interactive="true"
         data-file-entry-path={fileMetadata.filePath}
         onPointerDown={(event) => {
@@ -2227,22 +2376,22 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
         }}
         onFocus={() => data.onSelectNode?.(id)}
       >
-        {data.fileNodeDisplayMode !== 'path-only' ? (
+        {showIcon ? (
           <span className="file-node-icon" aria-hidden="true">
             {renderFileIcon(fileMetadata.icon, primaryLabel)}
           </span>
         ) : null}
-        {data.fileNodeDisplayMode !== 'icon-only' ? (
+        {showText ? (
           <span className="file-node-copy">
             <strong title={primaryLabel}>{primaryLabel}</strong>
-            <span>{secondaryLabel ?? `${ownerCount} 个 Agent 引用`}</span>
+            {secondaryLabel ? <span>{secondaryLabel}</span> : null}
           </span>
-        ) : (
+        ) : !isMinimalStyle ? (
           <span className="file-node-copy file-node-copy-icon-only">
             <strong>{ownerCount}</strong>
             <span>引用</span>
           </span>
-        )}
+        ) : null}
       </button>
     </div>
   );
@@ -2258,81 +2407,404 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
   };
+  const isMinimalStyle = data.fileNodeDisplayStyle === 'minimal';
+  const selectionTone: FileListEntrySelectionTone =
+    data.selected && data.documentHasFocus ? 'active' : 'inactive';
 
   return (
     <div
-      className={`canvas-node file-list-node kind-file-list ${data.selected ? 'is-selected' : ''}`}
+      className={`canvas-node file-list-node kind-file-list display-style-${data.fileNodeDisplayStyle} ${
+        data.selected ? 'is-selected' : ''
+      }`}
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
-      <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
+      <div
+        className={isMinimalStyle ? 'file-list-minimal-header' : 'window-chrome'}
+        onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}
+      >
         <div className="window-title file-list-title">
           <strong className="file-list-title-text">{data.title}</strong>
           <div className="window-title-subtitle-row">
             <span className="window-title-subtitle">{data.summary}</span>
           </div>
         </div>
-        <div className="window-chrome-actions">
-          <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
-          <ActionButton
-            label="删除"
-            tone="danger"
-            onClick={deleteFileList}
-            className="nodrag nopan compact"
-            interactive
-            onFocus={() => data.onSelectNode?.(id)}
-          />
-        </div>
+        {isMinimalStyle ? (
+          <div className="file-list-minimal-toolbar">
+            <div className="file-list-view-toggle" role="group" aria-label="文件列表视图">
+              <button
+                type="button"
+                className={`file-list-view-toggle-button nodrag nopan ${
+                  data.fileListViewMode === 'list' ? 'is-active' : ''
+                }`}
+                data-node-interactive="true"
+                data-file-list-view-mode="list"
+                onMouseDown={stopCanvasEvent}
+                onClick={(event) => {
+                  stopCanvasEvent(event);
+                  data.onSelectNode?.(id);
+                  data.onSetFileListViewMode?.(id, 'list');
+                }}
+              >
+                列表视图
+              </button>
+              <button
+                type="button"
+                className={`file-list-view-toggle-button nodrag nopan ${
+                  data.fileListViewMode === 'tree' ? 'is-active' : ''
+                }`}
+                data-node-interactive="true"
+                data-file-list-view-mode="tree"
+                onMouseDown={stopCanvasEvent}
+                onClick={(event) => {
+                  stopCanvasEvent(event);
+                  data.onSelectNode?.(id);
+                  data.onSetFileListViewMode?.(id, 'tree');
+                }}
+              >
+                树形视图
+              </button>
+            </div>
+            <ActionButton
+              label="删除"
+              tone="danger"
+              onClick={deleteFileList}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          </div>
+        ) : (
+          <div className="window-chrome-actions">
+            <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+            <ActionButton
+              label="删除"
+              tone="danger"
+              onClick={deleteFileList}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          </div>
+        )}
       </div>
-      <div className="file-list-body object-surface">
+      <div
+        className={`file-list-body nowheel ${isMinimalStyle ? 'minimal' : 'object-surface'}`}
+        onWheel={stopCanvasEvent}
+      >
         {fileListMetadata.entries.length === 0 ? (
           <div className="file-list-empty">当前还没有可显示的文件活动。</div>
-        ) : (
+        ) : !isMinimalStyle ? (
           <div className="file-list-entries">
             {fileListMetadata.entries.map((entry) => {
-              const label = displayFilePath(entry, data.filePathDisplayMode);
-              const secondary =
-                data.filePathDisplayMode === 'basename'
-                  ? entry.relativePath ?? entry.filePath
-                  : entry.filePath !== label
-                    ? entry.filePath
-                    : undefined;
-
               return (
-                <button
+                <FileListEntryButton
                   key={`${entry.fileId}-${entry.filePath}`}
-                  type="button"
-                  className="file-list-entry nodrag nopan"
-                  data-node-interactive="true"
-                  data-file-entry-path={entry.filePath}
-                  onMouseDown={stopCanvasEvent}
-                  onClick={(event) => {
-                    stopCanvasEvent(event);
-                    data.onSelectNode?.(id);
-                    data.onOpenCanvasFile?.(id, entry.filePath);
-                  }}
-                >
-                  <span className="file-list-entry-icon" aria-hidden="true">
-                    {renderFileIcon(entry.icon, label)}
-                  </span>
-                  <span className="file-list-entry-copy">
-                    <strong title={label}>{label}</strong>
-                    <span>{secondary ?? `${entry.ownerNodeIds.length} 个 Agent 引用`}</span>
-                  </span>
-                  <span className={`file-access-badge mode-${entry.accessMode}`}>
-                    {humanizeFileAccessMode(entry.accessMode)}
-                  </span>
-                </button>
+                  nodeId={id}
+                  entry={entry}
+                  filePathDisplayMode={data.filePathDisplayMode}
+                  variant="card"
+                  selected={data.selectedFileListEntryPath === entry.filePath}
+                  selectionTone={selectionTone}
+                  onSelectNode={data.onSelectNode}
+                  onSelectFileListEntry={data.onSelectFileListEntry}
+                  onOpenCanvasFile={data.onOpenCanvasFile}
+                />
               );
             })}
+          </div>
+        ) : data.fileListViewMode === 'tree' ? (
+          <div className="file-list-tree" role="tree">
+            {renderFileListTree({
+              nodeId: id,
+              tree: buildFileListTree(fileListMetadata.entries),
+              selectedFilePath: data.selectedFileListEntryPath,
+              selectionTone,
+              onSelectNode: data.onSelectNode,
+              onSelectFileListEntry: data.onSelectFileListEntry,
+              onOpenCanvasFile: data.onOpenCanvasFile
+            })}
+          </div>
+        ) : (
+          <div className="file-list-entries minimal">
+            {fileListMetadata.entries.map((entry) => (
+              <FileListEntryButton
+                key={`${entry.fileId}-${entry.filePath}`}
+                nodeId={id}
+                entry={entry}
+                filePathDisplayMode={data.filePathDisplayMode}
+                variant="minimal-list"
+                selected={data.selectedFileListEntryPath === entry.filePath}
+                selectionTone={selectionTone}
+                onSelectNode={data.onSelectNode}
+                onSelectFileListEntry={data.onSelectFileListEntry}
+                onOpenCanvasFile={data.onOpenCanvasFile}
+              />
+            ))}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+interface FileListEntryButtonProps {
+  nodeId: string;
+  entry: FileListNodeEntrySummary;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
+  variant: 'card' | 'minimal-list' | 'minimal-tree';
+  selected: boolean;
+  selectionTone: FileListEntrySelectionTone;
+  treeDepth?: number;
+  forcePrimaryBasename?: boolean;
+  onSelectNode?: (nodeId: string) => void;
+  onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
+  onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
+}
+
+function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
+  const { entry, filePathDisplayMode, forcePrimaryBasename = false, treeDepth = 0, variant } = props;
+  const label = forcePrimaryBasename ? displayFilePath(entry, 'basename') : displayFilePath(entry, filePathDisplayMode);
+  const secondary =
+    variant === 'card'
+      ? filePathDisplayMode === 'basename'
+        ? entry.relativePath ?? entry.filePath
+        : entry.filePath !== label
+          ? entry.filePath
+          : undefined
+      : undefined;
+
+  return (
+    <button
+      type="button"
+      className={`file-list-entry nodrag nopan variant-${variant} ${
+        props.selected ? `is-selected selection-${props.selectionTone}` : ''
+      }`}
+      data-node-interactive="true"
+      data-file-entry-path={entry.filePath}
+      data-file-entry-selected={props.selected ? 'true' : 'false'}
+      data-file-entry-selection-tone={props.selected ? props.selectionTone : undefined}
+      style={treeDepth > 0 ? { paddingInlineStart: `${12 + treeDepth * 16}px` } : undefined}
+      onMouseDown={stopCanvasEvent}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        props.onSelectFileListEntry?.(props.nodeId, entry.filePath);
+        props.onOpenCanvasFile?.(props.nodeId, entry.filePath);
+      }}
+      onFocus={() => {
+        props.onSelectFileListEntry?.(props.nodeId, entry.filePath);
+      }}
+    >
+      <span className="file-list-entry-icon" aria-hidden="true">
+        {renderFileIcon(entry.icon, label)}
+      </span>
+      <span className="file-list-entry-copy">
+        <strong title={label}>{label}</strong>
+        {secondary ? <span>{secondary}</span> : null}
+      </span>
+      {variant === 'card' ? (
+        <span className={`file-access-badge mode-${entry.accessMode}`}>
+          {humanizeFileAccessMode(entry.accessMode)}
+        </span>
+      ) : (
+        <FileAccessIndicator accessMode={entry.accessMode} />
+      )}
+    </button>
+  );
+}
+
+function FileAccessIndicator({ accessMode }: { accessMode: FileListNodeEntrySummary['accessMode'] }): JSX.Element {
+  const showRead = accessMode === 'read' || accessMode === 'read-write';
+  const showWrite = accessMode === 'write' || accessMode === 'read-write';
+
+  return (
+    <span className="file-access-indicator" aria-label={humanizeFileAccessMode(accessMode)} title={humanizeFileAccessMode(accessMode)}>
+      {showRead ? <span className="read">R</span> : null}
+      {showWrite ? <span className="write">W</span> : null}
+    </span>
+  );
+}
+
+interface FileListTreeBranch {
+  key: string;
+  label: string;
+  children: FileListTreeBranch[];
+  entries: FileListNodeEntrySummary[];
+}
+
+interface MutableFileListTreeBranch {
+  key: string;
+  label: string;
+  children: Map<string, MutableFileListTreeBranch>;
+  entries: FileListNodeEntrySummary[];
+}
+
+function buildFileListTree(entries: readonly FileListNodeEntrySummary[]): {
+  rootEntries: FileListNodeEntrySummary[];
+  branches: FileListTreeBranch[];
+} {
+  const root = {
+    children: new Map<string, MutableFileListTreeBranch>(),
+    entries: [] as FileListNodeEntrySummary[]
+  };
+
+  for (const entry of entries) {
+    const segments = resolveFileTreeSegments(entry);
+    if (segments.length <= 1) {
+      root.entries.push(entry);
+      continue;
+    }
+
+    let currentChildren = root.children;
+    let currentBranch: MutableFileListTreeBranch | undefined;
+    let currentKey = '';
+    for (const segment of segments.slice(0, -1)) {
+      currentKey = currentKey ? `${currentKey}/${segment}` : segment;
+      currentBranch = currentChildren.get(segment);
+      if (!currentBranch) {
+        currentBranch = {
+          key: currentKey,
+          label: segment,
+          children: new Map<string, MutableFileListTreeBranch>(),
+          entries: []
+        };
+        currentChildren.set(segment, currentBranch);
+      }
+      currentChildren = currentBranch.children;
+    }
+
+    if (currentBranch) {
+      currentBranch.entries.push(entry);
+    }
+  }
+
+  return {
+    rootEntries: root.entries,
+    branches: Array.from(root.children.values()).map(materializeFileListTreeBranch)
+  };
+}
+
+function materializeFileListTreeBranch(branch: MutableFileListTreeBranch): FileListTreeBranch {
+  return {
+    key: branch.key,
+    label: branch.label,
+    children: Array.from(branch.children.values()).map(materializeFileListTreeBranch),
+    entries: branch.entries
+  };
+}
+
+function resolveFileTreeSegments(entry: Pick<FileListNodeEntrySummary, 'relativePath' | 'filePath'>): string[] {
+  const comparablePath = (entry.relativePath ?? entry.filePath).replace(/\\/g, '/').replace(/^\/+/, '');
+  const segments = comparablePath.split('/').filter(Boolean);
+  return segments.length > 0 ? segments : [displayFilePath(entry, 'basename')];
+}
+
+function renderFileListTree(params: {
+  nodeId: string;
+  tree: { rootEntries: FileListNodeEntrySummary[]; branches: FileListTreeBranch[] };
+  selectedFilePath?: string;
+  selectionTone: FileListEntrySelectionTone;
+  onSelectNode?: (nodeId: string) => void;
+  onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
+  onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
+}): JSX.Element[] {
+  const rows: JSX.Element[] = [];
+
+  for (const entry of params.tree.rootEntries) {
+    rows.push(
+      <FileListEntryButton
+        key={`root-${entry.fileId}-${entry.filePath}`}
+        nodeId={params.nodeId}
+        entry={entry}
+        filePathDisplayMode="basename"
+        variant="minimal-tree"
+        selected={params.selectedFilePath === entry.filePath}
+        selectionTone={params.selectionTone}
+        onSelectNode={params.onSelectNode}
+        onSelectFileListEntry={params.onSelectFileListEntry}
+        onOpenCanvasFile={params.onOpenCanvasFile}
+      />
+    );
+  }
+
+  rows.push(
+    ...renderFileListTreeBranches(
+      params.nodeId,
+      params.tree.branches,
+      0,
+      params.selectedFilePath,
+      params.selectionTone,
+      params.onSelectNode,
+      params.onSelectFileListEntry,
+      params.onOpenCanvasFile
+    )
+  );
+  return rows;
+}
+
+function renderFileListTreeBranches(
+  nodeId: string,
+  branches: readonly FileListTreeBranch[],
+  depth: number,
+  selectedFilePath: string | undefined,
+  selectionTone: FileListEntrySelectionTone,
+  onSelectNode: ((nodeId: string) => void) | undefined,
+  onSelectFileListEntry: ((nodeId: string, filePath: string) => void) | undefined,
+  onOpenCanvasFile: ((nodeId: string, filePath: string) => void) | undefined
+): JSX.Element[] {
+  const rows: JSX.Element[] = [];
+
+  for (const branch of branches) {
+    rows.push(
+      <div
+        key={`folder-${branch.key}`}
+        className="file-tree-folder-row"
+        role="treeitem"
+        aria-expanded="true"
+        style={{ paddingInlineStart: `${12 + depth * 16}px` }}
+      >
+        <span className="file-tree-folder-icon codicon codicon-folder" aria-hidden="true" />
+        <span className="file-tree-folder-label">{branch.label}</span>
+      </div>
+    );
+
+    for (const entry of branch.entries) {
+      rows.push(
+        <FileListEntryButton
+          key={`file-${branch.key}-${entry.fileId}-${entry.filePath}`}
+          nodeId={nodeId}
+          entry={entry}
+          filePathDisplayMode="basename"
+          variant="minimal-tree"
+          selected={selectedFilePath === entry.filePath}
+          selectionTone={selectionTone}
+          treeDepth={depth + 1}
+          forcePrimaryBasename
+          onSelectNode={onSelectNode}
+          onSelectFileListEntry={onSelectFileListEntry}
+          onOpenCanvasFile={onOpenCanvasFile}
+        />
+      );
+    }
+
+    rows.push(
+      ...renderFileListTreeBranches(
+        nodeId,
+        branch.children,
+        depth + 1,
+        selectedFilePath,
+        selectionTone,
+        onSelectNode,
+        onSelectFileListEntry,
+        onOpenCanvasFile
+      )
+    );
+  }
+
+  return rows;
 }
 
 function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
@@ -3911,11 +4383,17 @@ function ChromeTitleEditor(props: {
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
+  documentHasFocus: boolean;
   workspaceTrusted: boolean;
+  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  fileListViewModes: Record<string, FileListViewMode> | undefined;
+  selectedFileListEntries: Record<string, string> | undefined;
   onSelectNode: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
+  onSelectFileListEntry: (nodeId: string, filePath: string) => void;
+  onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -3948,7 +4426,14 @@ function toFlowNodes(params: {
   onDeleteNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
   return params.nodes.map((node) => {
-    const size = normalizeCanvasNodeFootprint(node.kind, node.size);
+    const size = normalizeCanvasNodeFootprintForDisplayStyle(
+      node.kind,
+      params.fileNodeDisplayStyle,
+      node.size,
+      node.metadata?.file,
+      params.fileNodeDisplayMode,
+      params.filePathDisplayMode
+    );
 
     return {
       id: node.id,
@@ -3968,13 +4453,19 @@ function toFlowNodes(params: {
         status: node.status,
         summary: node.summary,
         selected: node.id === params.selectedNodeId,
+        documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
         size,
+        fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
+        fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
+        selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
         onOpenCanvasFile: params.onOpenCanvasFile,
+        onSelectFileListEntry: params.onSelectFileListEntry,
+        onSetFileListViewMode: params.onSetFileListViewMode,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
@@ -4131,13 +4622,20 @@ function collectCanvasNodeLayoutDrafts(
       };
     }
 
-    const nextSize = normalizeCanvasNodeFootprint(node.data.kind, {
-      width: Number(node.style?.width ?? node.data.size.width),
-      height: Number(node.style?.height ?? node.data.size.height)
-    });
+    const normalizedNextSize = normalizeCanvasNodeFootprintForDisplayStyle(
+      node.data.kind,
+      node.data.fileNodeDisplayStyle,
+      {
+        width: Number(node.style?.width ?? node.data.size.width),
+        height: Number(node.style?.height ?? node.data.size.height)
+      },
+      node.data.metadata?.file,
+      node.data.fileNodeDisplayMode,
+      node.data.filePathDisplayMode
+    );
 
-    if (!footprintsEqual(nextSize, baseNode.data.size)) {
-      draft.size = nextSize;
+    if (!footprintsEqual(normalizedNextSize, baseNode.data.size)) {
+      draft.size = normalizedNextSize;
     }
 
     if (draft.position || draft.size) {
@@ -4411,6 +4909,118 @@ function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode
     case 'read-write':
       return '读写';
   }
+}
+
+function resolveMinimalFileNodeFootprint(
+  metadata: CanvasNodeMetadata['file'] | undefined,
+  displayMode: CanvasFileNodeDisplayMode,
+  pathDisplayMode: CanvasFilePathDisplayMode
+): CanvasNodeFootprint {
+  const primaryLabel = metadata ? displayFilePath(metadata, pathDisplayMode) : '';
+  const textWidth = measureMinimalFileNodeLabelWidth(primaryLabel);
+
+  switch (displayMode) {
+    case 'icon-only':
+      return {
+        width: 28,
+        height: 24
+      };
+    case 'path-only':
+      return {
+        width: Math.max(32, Math.ceil(textWidth + 14)),
+        height: 22
+      };
+    default:
+      return {
+        width: Math.max(64, Math.min(480, Math.ceil(textWidth + 33))),
+        height: 24
+      };
+  }
+}
+
+function measureMinimalFileNodeLabelWidth(text: string): number {
+  if (!text) {
+    return 0;
+  }
+
+  const context = getMinimalFileNodeMeasureContext();
+  if (!context || typeof document === 'undefined') {
+    let widthUnits = 0;
+    for (const character of text) {
+      if (character === ' ') {
+        widthUnits += 0.34;
+      } else if ('il.,:;|!'.includes(character)) {
+        widthUnits += 0.32;
+      } else if ('[](){}\'`'.includes(character)) {
+        widthUnits += 0.38;
+      } else if ('-_/\\'.includes(character)) {
+        widthUnits += 0.46;
+      } else if (character >= '0' && character <= '9') {
+        widthUnits += 0.58;
+      } else if (character >= 'A' && character <= 'Z') {
+        widthUnits += 0.68;
+      } else if ('mwMW@#%&'.includes(character)) {
+        widthUnits += 0.82;
+      } else if (character.charCodeAt(0) > 0x7f) {
+        widthUnits += 0.96;
+      } else {
+        widthUnits += 0.6;
+      }
+    }
+    return widthUnits * 12;
+  }
+
+  const bodyStyles = getComputedStyle(document.body);
+  const fontFamily = bodyStyles.getPropertyValue('--vscode-font-family').trim() || bodyStyles.fontFamily || 'sans-serif';
+  context.font = `600 12px ${fontFamily}`;
+  return context.measureText(text).width;
+}
+
+let minimalFileNodeMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+function getMinimalFileNodeMeasureContext(): CanvasRenderingContext2D | null {
+  if (minimalFileNodeMeasureContext !== undefined) {
+    return minimalFileNodeMeasureContext;
+  }
+
+  if (typeof document === 'undefined') {
+    minimalFileNodeMeasureContext = null;
+    return minimalFileNodeMeasureContext;
+  }
+
+  const canvas = document.createElement('canvas');
+  minimalFileNodeMeasureContext = canvas.getContext('2d');
+  return minimalFileNodeMeasureContext;
+}
+
+function minimumCanvasNodeFootprintForDisplayStyle(data: Pick<
+  CanvasNodeData,
+  'kind' | 'fileNodeDisplayStyle' | 'fileNodeDisplayMode' | 'filePathDisplayMode' | 'metadata'
+>): CanvasNodeFootprint {
+  if (data.kind === 'file' && data.fileNodeDisplayStyle === 'minimal') {
+    return resolveMinimalFileNodeFootprint(data.metadata?.file, data.fileNodeDisplayMode, data.filePathDisplayMode);
+  }
+
+  return minimumCanvasNodeFootprint(data.kind);
+}
+
+function normalizeCanvasNodeFootprintForDisplayStyle(
+  kind: CanvasNodeKind,
+  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle,
+  size: CanvasNodeFootprint,
+  fileMetadata?: CanvasNodeMetadata['file'],
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode = 'icon-path',
+  filePathDisplayMode: CanvasFilePathDisplayMode = 'basename'
+): CanvasNodeFootprint {
+  if (kind === 'file' && fileNodeDisplayStyle === 'minimal') {
+    const minimum = resolveMinimalFileNodeFootprint(fileMetadata, fileNodeDisplayMode, filePathDisplayMode);
+    return {
+      width: Math.max(minimum.width, Math.round(size.width)),
+      height: Math.max(minimum.height, Math.round(size.height))
+    };
+  }
+
+  return normalizeCanvasNodeFootprint(kind, size);
 }
 
 function handleEditableFieldKeyDown(
@@ -4701,7 +5311,14 @@ function scheduleExecutionTerminalVisibilityRestore(): void {
   });
 }
 
-function scheduleCanvasShellFocusRestore(shell: HTMLDivElement | null): void {
+function scheduleCanvasShellFocusRestore(
+  shell: HTMLDivElement | null,
+  surfaceLocation: CanvasRuntimeContext['surfaceLocation']
+): void {
+  if (surfaceLocation !== 'editor') {
+    return;
+  }
+
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
       if (!shell || !shell.isConnected) {

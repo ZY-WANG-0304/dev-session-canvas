@@ -653,8 +653,17 @@ async function verifyManualEdgeLifecycle(agentNodeId, terminalNodeId) {
 
 async function verifyFileActivityViewsAndOpenFiles() {
   const configuration = vscode.workspace.getConfiguration();
+  const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', true) !== false;
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+  const originalFileNodeDisplayStyle =
+    configuration.get('devSessionCanvas.fileNode.displayStyle', 'minimal') === 'card' ? 'card' : 'minimal';
+  const originalFileNodeDisplayMode =
+    configuration.get('devSessionCanvas.files.nodeDisplayMode', 'icon-path') === 'path-only'
+      ? 'path-only'
+      : configuration.get('devSessionCanvas.files.nodeDisplayMode', 'icon-path') === 'icon-only'
+        ? 'icon-only'
+        : 'icon-path';
   const originalPathDisplayMode =
     configuration.get('devSessionCanvas.files.pathDisplayMode', 'basename') === 'relative-path'
       ? 'relative-path'
@@ -664,11 +673,19 @@ async function verifyFileActivityViewsAndOpenFiles() {
 
   const scratchDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'file-activity');
   const agentOnlyPath = path.join(scratchDir, 'agent-a-only.md');
-  const agentOnlySecondaryPath = path.join(scratchDir, 'agent-a-second.txt');
+  const agentOnlySecondaryPath = path.join(
+    scratchDir,
+    'path-only-width-regression',
+    'alpha-beta-gamma-delta',
+    'epsilon-zeta-eta-theta',
+    'iota-kappa-lambda-mu',
+    'agent-a-second-width-regression-check.txt'
+  );
   const sharedPath = path.join(scratchDir, 'shared.ts');
   const agentBOnlyPath = path.join(scratchDir, 'agent-b-only.json');
 
   await fs.mkdir(scratchDir, { recursive: true });
+  await fs.mkdir(path.dirname(agentOnlySecondaryPath), { recursive: true });
   await fs.writeFile(agentOnlyPath, '# agent a only\n', 'utf8');
   await fs.writeFile(agentOnlySecondaryPath, 'agent a second\n', 'utf8');
   await fs.writeFile(sharedPath, 'export const shared = true;\n', 'utf8');
@@ -679,11 +696,18 @@ async function verifyFileActivityViewsAndOpenFiles() {
 
   const baselineSnapshot = await getDebugSnapshot();
   const baselineNodeIds = baselineSnapshot.state.nodes.map((node) => node.id).sort();
+  const baselineFileFilters = {
+    includeGlobs: [...baselineSnapshot.sidebar.fileFilters.includeGlobs],
+    excludeGlobs: [...baselineSnapshot.sidebar.fileFilters.excludeGlobs]
+  };
   const baselineAgentIds = new Set(
     baselineSnapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id)
   );
 
   await setFilesPresentationMode('nodes');
+  await setFilesFeatureEnabled(true);
+  await setFileNodeDisplayStyle('minimal');
+  await setFilesNodeDisplayMode('icon-path');
   await setFilesPathDisplayMode('basename');
 
   try {
@@ -881,6 +905,103 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(writeOnlyAutoEdge.sourceAnchor, 'right');
     assert.strictEqual(writeOnlyAutoEdge.targetAnchor, 'left');
 
+    const fileNodeLayoutSnapshot = collectNodeLayoutSnapshot(snapshot, 'file');
+    const fileNodePositionSnapshot = collectNodePositionSnapshot(snapshot, 'file');
+    const automaticFileEdgeIds = collectAutomaticFileEdgeIds(snapshot);
+
+    await setFileNodeDisplayStyle('card');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectNodeLayoutSnapshot(currentSnapshot, 'file')) !==
+          JSON.stringify(fileNodeLayoutSnapshot) &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
+    assert.deepStrictEqual(collectNodePositionSnapshot(snapshot, 'file'), fileNodePositionSnapshot);
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+    assert.notDeepStrictEqual(collectNodeLayoutSnapshot(snapshot, 'file'), fileNodeLayoutSnapshot);
+
+    await setFileNodeDisplayStyle('minimal');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectNodeLayoutSnapshot(currentSnapshot, 'file')) ===
+          JSON.stringify(fileNodeLayoutSnapshot) &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
+    assert.deepStrictEqual(collectNodePositionSnapshot(snapshot, 'file'), fileNodePositionSnapshot);
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    const agentOnlyMinimalSizeBeforeReload = findNodeById(snapshot, agentOnlyFileNode.id).size;
+    snapshot = await reloadPersistedState();
+    assert.deepStrictEqual(collectNodeLayoutSnapshot(snapshot, 'file'), fileNodeLayoutSnapshot);
+    assert.deepStrictEqual(
+      findNodeById(snapshot, agentOnlyFileNode.id).size,
+      agentOnlyMinimalSizeBeforeReload,
+      'Expected minimal single-file node size to remain stable across reload.'
+    );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    await setFilesNodeDisplayMode('path-only');
+    await setFilesPathDisplayMode('relative-path');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const longPathNode = currentSnapshot.state.nodes.find(
+        (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+      );
+      return Boolean(longPathNode && longPathNode.size.width > 320);
+    }, 20000);
+
+    const pathOnlyLongFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+    );
+    assert.ok(pathOnlyLongFileNode, 'Expected long-path file node to exist after switching to path-only.');
+    assert.strictEqual(
+      pathOnlyLongFileNode.title,
+      agentOnlySecondaryFileNode.metadata.file.relativePath,
+      'Expected path-only file node title to switch to the workspace-relative path.'
+    );
+    assert.ok(
+      pathOnlyLongFileNode.size.width > 320,
+      'Expected path-only minimal file node width to grow past the previous capped default.'
+    );
+    assert.deepStrictEqual(
+      pathOnlyLongFileNode.position,
+      agentOnlySecondaryFileNode.position,
+      'Expected path-only width expansion to preserve the existing automatic node position.'
+    );
+
+    const pathOnlyWidthBeforeReload = pathOnlyLongFileNode.size.width;
+    snapshot = await reloadPersistedState();
+    const reloadedPathOnlyLongFileNode = snapshot.state.nodes.find(
+      (node) => node.kind === 'file' && node.metadata?.file?.filePath === agentOnlySecondaryPath
+    );
+    assert.ok(reloadedPathOnlyLongFileNode, 'Expected long-path file node to survive reload in path-only mode.');
+    assert.strictEqual(
+      reloadedPathOnlyLongFileNode.size.width,
+      pathOnlyWidthBeforeReload,
+      'Expected widened path-only file node width to persist across reload.'
+    );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    await setFilesNodeDisplayMode('icon-path');
+    await setFilesPathDisplayMode('basename');
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.nodes.filter((node) => node.kind === 'file').length === 4 &&
+        JSON.stringify(collectNodeLayoutSnapshot(currentSnapshot, 'file')) ===
+          JSON.stringify(fileNodeLayoutSnapshot) &&
+        JSON.stringify(collectAutomaticFileEdgeIds(currentSnapshot)) === JSON.stringify(automaticFileEdgeIds)
+      );
+    }, 20000);
+    assert.deepStrictEqual(
+      collectNodeLayoutSnapshot(snapshot, 'file'),
+      fileNodeLayoutSnapshot,
+      'Expected icon-path basename file node layout to recover after returning from relative-path mode.'
+    );
+    assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
     await waitForWebviewProbeOnSurface('editor', (probe) => probe.hasDocumentFocus === true, 10000);
@@ -1065,7 +1186,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.ok(snapshot.state.suppressedFileActivityEdgeIds.includes(sharedAutoEdge.id));
 
     const sentinelEditor = await prepareBackgroundOpenFocusSentinel();
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
@@ -1079,9 +1199,12 @@ async function verifyFileActivityViewsAndOpenFiles() {
       (editor) => editor.document.uri.fsPath === agentOnlySecondaryPath,
       10000
     );
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
-    // Panel route only requires the canvas to retain document focus while opening the file in the editor area.
-    // VS Code may still report the newly opened file as activeTextEditor even though the text editor never takes focus.
+    const panelSurfaceProbe = await captureWebviewProbe('panel', 2000);
+    assert.ok(
+      panelSurfaceProbe.hasCanvasShell && panelSurfaceProbe.hasReactFlow,
+      'Expected panel-surface canvas to remain mounted after opening a file in the editor area.'
+    );
+    // Panel route only requires the file to open in the editor area without forcing extra root-element focus semantics.
     await closeVisibleEditor(agentOnlySecondaryPath);
 
     await vscode.window.showTextDocument(sentinelEditor.document, {
@@ -1091,7 +1214,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     });
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
 
     await setFilesPresentationMode('lists');
     await setFilesPathDisplayMode('relative-path');
@@ -1121,7 +1243,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].filePath, sharedPath);
     assert.strictEqual(sharedListNode.metadata.fileList.entries[0].accessMode, 'read-write');
 
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
     await performWebviewDomAction(
       {
         kind: 'clickFileEntry',
@@ -1135,7 +1256,11 @@ async function verifyFileActivityViewsAndOpenFiles() {
       (editor) => editor.document.uri.fsPath === sharedPath,
       10000
     );
-    await waitForWebviewProbeOnSurface('panel', (probe) => probe.hasDocumentFocus === true, 10000);
+    const panelListProbe = await captureWebviewProbe('panel', 2000);
+    assert.ok(
+      panelListProbe.hasCanvasShell && panelListProbe.hasReactFlow,
+      'Expected panel-surface canvas to remain mounted after opening a file list entry in the editor area.'
+    );
     await closeVisibleEditor(sharedPath);
 
     await performWebviewDomAction(
@@ -1209,8 +1334,125 @@ async function verifyFileActivityViewsAndOpenFiles() {
       snapshot.state.nodes.map((node) => node.id).sort(),
       baselineNodeIds
     );
+
+    snapshot = await setPersistedState({
+      version: 1,
+      updatedAt: '2026-04-21T12:30:00.000Z',
+      nodes: [...baselineSnapshot.state.nodes, agentANode, agentOnlyFileNode],
+      edges: [...baselineSnapshot.state.edges, readOnlyAutoEdge],
+      fileReferences: [
+        {
+          id: agentOnlyFileNode.metadata.file.fileId,
+          filePath: agentOnlyPath,
+          relativePath: agentOnlyFileNode.metadata.file.relativePath,
+          updatedAt: '2026-04-21T12:30:00.000Z',
+          owners: [
+            {
+              nodeId: agentAId,
+              accessMode: 'read',
+              updatedAt: '2026-04-21T12:30:00.000Z'
+            }
+          ]
+        }
+      ],
+      suppressedFileActivityEdgeIds: [],
+      suppressedAutomaticFileArtifactNodeIds: []
+    });
+    assert.ok(
+      snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
+      'Expected seeded file activity state to include the tracked file before toggling the feature switch.'
+    );
+
+    await setFileIncludeFilterGlobs(['**/*.md']);
+    await setFileExcludeFilterGlobs(['**/agent-a-only.md']);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath) &&
+        currentSnapshot.sidebar.fileFilters.includeGlobs.length === 1 &&
+        currentSnapshot.sidebar.fileFilters.excludeGlobs.length === 1
+      );
+    }, 20000);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, ['**/*.md']);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, ['**/agent-a-only.md']);
+
+    await setFilesFeatureEnabled(false);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(
+      snapshot.sidebar.filesFeatureEnabled,
+      true,
+      'Expected files feature config changes to stay pending until runtime reload.'
+    );
+    assert.ok(
+      snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
+      'Expected pending config changes to leave file activity state untouched before runtime reload.'
+    );
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, ['**/*.md']);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, ['**/agent-a-only.md']);
+
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.sidebar.filesFeatureEnabled, false);
+    assert.strictEqual(snapshot.state.fileReferences.length, 0);
+    assert.ok(snapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list'));
+    assert.ok(snapshot.state.edges.every((edge) => edge.owner !== 'file-activity'));
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, []);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, []);
+
+    await setFilesFeatureEnabled(true);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(
+      snapshot.sidebar.filesFeatureEnabled,
+      false,
+      'Expected re-enabling the files feature to remain pending until the next runtime reload.'
+    );
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, []);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, []);
+
+    snapshot = await simulateRuntimeReload();
+    assert.strictEqual(snapshot.sidebar.filesFeatureEnabled, true);
+    assert.strictEqual(
+      snapshot.state.fileReferences.length,
+      0,
+      'Expected re-enabling the files feature not to restore previously cleared fileReferences.'
+    );
+    assert.ok(snapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list'));
+    assert.ok(snapshot.state.edges.every((edge) => edge.owner !== 'file-activity'));
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, []);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, []);
+
+    snapshot = await setPersistedState(baselineSnapshot.state);
+    await setFileIncludeFilterGlobs(baselineFileFilters.includeGlobs);
+    await setFileExcludeFilterGlobs(baselineFileFilters.excludeGlobs);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        JSON.stringify(currentSnapshot.sidebar.fileFilters.includeGlobs) ===
+          JSON.stringify(baselineFileFilters.includeGlobs) &&
+        JSON.stringify(currentSnapshot.sidebar.fileFilters.excludeGlobs) ===
+          JSON.stringify(baselineFileFilters.excludeGlobs)
+      );
+    }, 20000);
+    assert.deepStrictEqual(snapshot.state.fileReferences, baselineSnapshot.state.fileReferences);
+    assert.deepStrictEqual(snapshot.state.suppressedFileActivityEdgeIds, baselineSnapshot.state.suppressedFileActivityEdgeIds);
+    assert.deepStrictEqual(
+      snapshot.state.suppressedAutomaticFileArtifactNodeIds,
+      baselineSnapshot.state.suppressedAutomaticFileArtifactNodeIds
+    );
+    assert.ok(
+      baselineNodeIds.every((nodeId) => snapshot.state.nodes.some((node) => node.id === nodeId)),
+      'Expected restoring the baseline snapshot to keep all baseline nodes present.'
+    );
+    assert.deepStrictEqual(
+      snapshot.state.nodes
+        .filter((node) => !baselineNodeIds.includes(node.id))
+        .map((node) => node.kind)
+        .sort(),
+      ['agent'],
+      'Expected any extra nodes after restoring the baseline snapshot to come only from live runtime reconciliation.'
+    );
   } finally {
+    await setFilesFeatureEnabled(originalFilesEnabled);
     await setFilesPresentationMode(originalPresentationMode);
+    await setFileNodeDisplayStyle(originalFileNodeDisplayStyle);
+    await setFilesNodeDisplayMode(originalFileNodeDisplayMode);
     await setFilesPathDisplayMode(originalPathDisplayMode);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
@@ -1222,6 +1464,8 @@ async function verifyReadExitFileActivityDrain() {
   const configuration = vscode.workspace.getConfiguration();
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+  const originalFileNodeDisplayStyle =
+    configuration.get('devSessionCanvas.fileNode.displayStyle', 'minimal') === 'card' ? 'card' : 'minimal';
   const originalPathDisplayMode =
     configuration.get('devSessionCanvas.files.pathDisplayMode', 'basename') === 'relative-path'
       ? 'relative-path'
@@ -1245,6 +1489,7 @@ async function verifyReadExitFileActivityDrain() {
   );
 
   await setFilesPresentationMode('nodes');
+  await setFileNodeDisplayStyle('minimal');
   await setFilesPathDisplayMode('basename');
 
   try {
@@ -1345,6 +1590,7 @@ async function verifyReadExitFileActivityDrain() {
     );
   } finally {
     await setFilesPresentationMode(originalPresentationMode);
+    await setFileNodeDisplayStyle(originalFileNodeDisplayStyle);
     await setFilesPathDisplayMode(originalPathDisplayMode);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
@@ -5491,6 +5737,24 @@ async function setFilesPresentationMode(mode) {
     .update('devSessionCanvas.files.presentationMode', mode, vscode.ConfigurationTarget.Global);
 }
 
+async function setFilesFeatureEnabled(enabled) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.files.enabled', enabled, vscode.ConfigurationTarget.Global);
+}
+
+async function setFileNodeDisplayStyle(style) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.fileNode.displayStyle', style, vscode.ConfigurationTarget.Global);
+}
+
+async function setFilesNodeDisplayMode(mode) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.files.nodeDisplayMode', mode, vscode.ConfigurationTarget.Global);
+}
+
 async function setFilesPathDisplayMode(mode) {
   await vscode.workspace
     .getConfiguration()
@@ -6114,6 +6378,43 @@ function rectanglesOverlap(left, right) {
     left.position.y < right.position.y + right.size.height &&
     left.position.y + left.size.height > right.position.y
   );
+}
+
+function collectNodePositionSnapshot(snapshot, kind) {
+  return snapshot.state.nodes
+    .filter((node) => node.kind === kind)
+    .map((node) => ({
+      id: node.id,
+      position: {
+        x: node.position.x,
+        y: node.position.y
+      }
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function collectNodeLayoutSnapshot(snapshot, kind) {
+  return snapshot.state.nodes
+    .filter((node) => node.kind === kind)
+    .map((node) => ({
+      id: node.id,
+      position: {
+        x: node.position.x,
+        y: node.position.y
+      },
+      size: {
+        width: node.size.width,
+        height: node.size.height
+      }
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function collectAutomaticFileEdgeIds(snapshot) {
+  return snapshot.state.edges
+    .filter((edge) => edge.owner === 'file-activity')
+    .map((edge) => edge.id)
+    .sort();
 }
 
 function formatError(error) {

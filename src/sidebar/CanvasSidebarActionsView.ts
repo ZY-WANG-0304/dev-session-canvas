@@ -277,6 +277,12 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
         line-height: 1.4;
       }
 
+      .feature-disabled {
+        color: var(--muted);
+        line-height: 1.5;
+        padding-top: 2px;
+      }
+
       .action-button:focus-visible,
       .field-input:focus-visible,
       .field-clear:focus-visible {
@@ -295,7 +301,7 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       <div class="fields">
         <div class="field-group">
-          <label class="field-label" for="include-input">files to include</label>
+          <label class="field-label" for="include-input">包含文件</label>
           <div class="input-wrap">
             <input
               id="include-input"
@@ -304,12 +310,12 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
               spellcheck="false"
               placeholder="例如 src/**/*.ts, docs/**/*.md"
             />
-            <button class="field-clear" type="button" data-clear-kind="include" aria-label="清空 files to include">&times;</button>
+            <button class="field-clear" type="button" data-clear-kind="include" aria-label="清空包含文件">&times;</button>
           </div>
         </div>
 
         <div class="field-group">
-          <label class="field-label" for="exclude-input">files to exclude</label>
+          <label class="field-label" for="exclude-input">排除文件</label>
           <div class="input-wrap">
             <input
               id="exclude-input"
@@ -318,12 +324,14 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
               spellcheck="false"
               placeholder="例如 **/dist/**, **/*.snap"
             />
-            <button class="field-clear" type="button" data-clear-kind="exclude" aria-label="清空 files to exclude">&times;</button>
+            <button class="field-clear" type="button" data-clear-kind="exclude" aria-label="清空排除文件">&times;</button>
           </div>
         </div>
 
-        <div class="field-hint">只影响文件对象与自动边的显示投影，不会修改 fileReferences。</div>
+        <div class="field-hint">只影响文件对象与自动边的显示投影，不会修改文件引用。</div>
       </div>
+
+      <div class="feature-disabled" hidden>文件功能当前已关闭。重新加载窗口并启用设置后，文件活动视图和文件过滤入口才会可用。</div>
     </div>
 
     <script nonce="${nonce}">
@@ -332,6 +340,8 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
       const includeInput = document.getElementById('include-input');
       const excludeInput = document.getElementById('exclude-input');
       const openCanvasButton = document.querySelector('.action-button[data-action="openCanvas"]');
+      const fields = document.querySelector('.fields');
+      const featureDisabledMessage = document.querySelector('.feature-disabled');
       const clearButtons = {
         include: document.querySelector('[data-clear-kind="include"]'),
         exclude: document.querySelector('[data-clear-kind="exclude"]')
@@ -361,6 +371,8 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
       function applyState(state) {
         const openCanvasLabel = currentOpenCanvasLabel(state);
         openCanvasButton.textContent = openCanvasLabel;
+        fields.hidden = !state.filesFeatureEnabled;
+        featureDisabledMessage.hidden = state.filesFeatureEnabled;
 
         const includeValue = joinGlobs(state.fileFilters.includeGlobs);
         const excludeValue = joinGlobs(state.fileFilters.excludeGlobs);

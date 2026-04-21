@@ -12,6 +12,16 @@
 
 ## 进度
 
+- [x] (2026-04-20 14:18 +0800) 重新读取最新“文件节点 / 文件列表节点 UI 简化”需求、`docs/WORKFLOW.md`、`docs/PLANS.md` 与现有实现，确认本轮属于现有文件活动视图的正式迭代，不新建计划，直接在当前 `ExecPlan` 上继续维护“卡片 / 极简”双风格、文件列表 `list/tree` 切换与配置收口。
+- [x] (2026-04-20 14:18 +0800) 更新产品规格与设计文档，把 `devSessionCanvas.fileNode.displayStyle`、`card/minimal` 风格语义、文件列表极简 `列表视图 / 树形视图`、以及文件节点极简自适应尺寸规则写成正式口径。
+- [x] (2026-04-20 14:18 +0800) 扩展共享协议、扩展设置与宿主配置监听，把文件节点显示风格接入 `CanvasRuntimeContext`，并确保切换风格时只重建文件节点 / 文件列表节点视觉投影，不改变位置与连线关系。
+- [x] (2026-04-20 14:18 +0800) 实现 Webview 的极简文件节点与文件列表节点：文件节点收口为贴内容边框；文件列表节点改成接近 VSCode Changes 的单行文件视图，并支持头部 `list/tree` 切换。
+- [x] (2026-04-20 14:18 +0800) 补充 Playwright 与 VS Code smoke，覆盖风格切换、极简文件列表 `list/tree` 切换、读写标识显示，以及风格切换后节点位置 / 连线稳定性。
+- [x] (2026-04-21 10:20 +0800) 为文件节点 / 文件列表节点补充全局配置 `devSessionCanvas.files.enabled`，先把“关闭后停用 `file` / `file-list` 投影与自动边、保留 `fileReferences`”的第一版语义接入 settings、文档与 smoke 断言。
+- [x] (2026-04-21 11:40 +0800) 按 PR review 收口 multi-root 路径回归：恢复“单根 workspace 保持纯相对路径、多根 workspace 带 workspace folder 前缀”的 `relativePath` 规则，补充宿主脚本测试与 Webview tree-view 回归，并同步修正规格 / 设计文档口径。
+- [x] (2026-04-21 12:12 +0800) 按最新需求改写 `devSessionCanvas.files.enabled` 语义：该设置改为 startup-applied 配置，与 `runtimePersistence` 一样需要 reload window 后生效；关闭后整个文件活动产品域不可用，并在下次加载时清空 `fileReferences`、文件节点 / 文件列表节点、自动文件关系与文件过滤状态；重新开启只恢复功能可用性，不恢复已清空的文件活动与过滤状态。
+- [x] (2026-04-21 13:50 +0800) 按最新 review 修复文件过滤状态残留：`files.enabled` 在 disable / re-enable 的 reload 链路里会一并清空并重写 `include` / `exclude` 持久化状态；测试 helper 也改为在模拟 reload 时重新加载并回写 startup-applied 状态，重新通过 `typecheck`、脚本测试与 Playwright，并复跑 trusted smoke 确认新增文件功能断言通过，但整套 run 仍被既有 live runtime scrollback 超时阻塞。
+- [x] (2026-04-20 15:01 +0800) 排查风格切换后共享文件节点位置漂移，确认根因不是 `src` 逻辑而是 `dist/extension.js` 仍保留旧版“碰撞时重算位置”分支；重新构建扩展产物后，trusted smoke 恢复通过。
 - [x] (2026-04-19 10:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`ARCHITECTURE.md`、`docs/product-specs/index.md`、当前需求说明和核心实现，确认这次改动需要独立 `ExecPlan`、产品规格和设计文档；其中需求重点包括通用连线能力、文件节点 / 文件列表节点能力，以及文件活动必须来自 provider 结构化事件而非 PTY 文本推断。
 - [x] (2026-04-19 10:56 +0800) 从远端 `origin/main` 切出主题分支 `canvas-links-and-file-nodes`，保留用户工作树中已有未跟踪文件。
 - [x] (2026-04-19 11:28 +0800) 明确正式范围：通用连线完整落地；文件活动走 provider 结构化事件；`Claude` / `fake-agent-provider` 提供第一轮自动文件活动，`Codex` 先保留 no-op 适配并写入文档。
@@ -33,7 +43,7 @@
 - [x] (2026-04-20 03:40 +0800) 按 review 收口文件活动视图：编辑区点击文件改为落到独立 editor group；`include` / `exclude` 从 settings 迁到 sidebar 持久化视图状态，并确保过滤只影响投影、不回写 `fileReferences`；同步修正文档并登记 file icon theme 技术债。
 - [x] (2026-04-20 08:36 +0800) 按最新 UX 要求把 sidebar 过滤控件从 TreeView 文本项切到内嵌 Webview 输入框，交互改成贴近 VSCode Search 视图的 include/exclude 编辑体验，并同步规格与设计文档。
 - [x] (2026-04-20 09:05 +0800) 重新调研 VSCode 官方 `Sidebars`、`Views`、`Tree View` 与 `Webviews` 文档，并结合用户提供的 Source Control / Run and Debug / Extensions 参考图，确认 sidebar 需要放弃 `WebviewView` 模拟，改回原生 section 化实现。
-- [x] (2026-04-20 09:05 +0800) 完成 sidebar 重构与文档回写：把单一 sidebar `WebviewView` 改为 `概览` / `文件过滤` 两个原生 `TreeView` section；过滤入口改为 `Files to Include` / `Files to Exclude` 条目 + item action + 宿主输入框。
+- [x] (2026-04-20 09:05 +0800) 完成 sidebar 重构与文档回写：把单一 sidebar `WebviewView` 改为 `概览` / `文件过滤` 两个原生 `TreeView` section；过滤入口改为 `包含文件` / `排除文件` 条目 + item action + 宿主输入框。
 - [x] (2026-04-20 09:05 +0800) 重新执行 `npm run typecheck` 与 `npm run build`，确认本轮 sidebar redesign 通过基础自动化校验。
 - [x] (2026-04-20 10:34 +0800) 根据最新交互要求再次收口 sidebar：概览保留原生 `TreeView`，移除“可创建对象”并补充 `Runtime Persistence` 状态；第二块改为最小 `WebviewView` 的 `常用操作` 区，直接承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 内嵌输入框。
 - [x] (2026-04-20 10:54 +0800) 在 `常用操作` 区尾部补一排 VSCode 风格的快捷 icon 按钮，分别复用打开/定位画布、创建节点和重置画布状态，不引入新命令语义；同步回写 sidebar 设计与规格文档。
@@ -41,6 +51,7 @@
 - [x] (2026-04-20 11:07 +0800) 根据最新反馈把 `概览` 中的“画布状态”从承载面信息改回纯状态语义：仅显示“已打开 / 未打开”，不再把 `Panel / Editor` 直接作为状态值暴露；同步修正规格文档中的旧表述。
 - [x] (2026-04-20 12:20 +0800) 按最新 review blocker 收窄画布焦点恢复：`openCanvasInEditor` / `revealSurface('editor')` 继续显式把 document focus 交还给 editor-surface webview；文件打开链路改为按消息来源 surface 处理，避免 panel 内点击文件误走 editor route 语义。
 - [x] (2026-04-20 13:44 +0800) 按最新产品语义修正 trusted smoke：panel route 点击文件的正确不变量是“文件在编辑区打开 + 画布继续保有 document focus”，而不是把旧 sentinel 文件固定成 `activeTextEditor`；因此删除两处过度约束的断言，并保留对真实交互语义的校验。
+- [x] (2026-04-20 18:41 +0800) 按用户澄清回退 panel 文件打开的过度焦点实现：目标语义只是“在编辑区打开文件且不主动把文本光标切进文件”，而不是强制让 `.canvas-shell` 保有焦点；因此移除 Webview 根元素 `tabIndex/.focus()` 路径，并同步修正设计文档、Playwright 回归与 trusted smoke 断言。
 
 ## 意外与发现
 
@@ -58,11 +69,26 @@
   证据：2026-04-20 用户提供的参考图直接要求对齐常见 sidebar 风格；同日复查 VSCode 官方 `Sidebars` / `Views` / `Webviews` 指南后，也确认 sidebar 区域应优先使用原生 view / tree，而不是继续模拟宿主控件。
 - 观察：在遵循官方 Sidebar / Views 指南的前提下，如果产品要求 `include` / `exclude` 必须直接以内嵌输入框形式出现在 sidebar 中，那么只靠 `TreeView` 无法满足，因为扩展 API 没有提供可在 TreeView 里局部嵌入 textbox 的能力。
   证据：本轮实现检查中，现有扩展 API 仍只有 Tree item、view title actions、context actions 等原生入口；没有可用于 Search 视图那种 inline input 的 TreeView 扩展点。用户也明确拒绝继续使用“点击编辑后弹出菜单”的交互。
+- 观察：VS Code smoke 实际加载的是 `package.json#main` 指向的 `dist/extension.js`，而不是 `src/panel/CanvasPanelManager.ts`。当 `src` 已修正“风格切换复用旧位置”但未重新构建时，smoke 仍会执行旧版“碰撞或偏好不满足时重算位置”的逻辑，表现成文件节点在切换 `minimal -> card` 时漂移。
+  证据：`package.json` 的 `main` 指向 `./dist/extension.js`；失败时 `dist/extension.js` 的 `resolveAutomaticArtifactPosition()` 仍包含 `!doesPlacementCollide(...) && doesPlacementRespectPreference(...)` 判断，而重新执行 `npm run build` 后该逻辑与 `src` 同步，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 恢复通过。
 
 ## 决策记录
 
-- 决策：把文件活动建模成独立 `fileReferences` 权威状态，再由宿主投影成文件节点或文件列表节点。
-  理由：这样可以避免展示模式切换时把自动生成节点误当成事实来源，也能让生命周期和持久化围绕统一数据模型收口。
+- 决策：新增全局配置 `devSessionCanvas.fileNode.displayStyle`，同时控制文件节点与文件列表节点使用 `card` 还是 `minimal` 风格，默认值设为 `minimal`。
+  理由：这次需求关注的是“文件对象视觉表达”的统一收口，而不是再次拆出两套互相独立的配置；用一个总开关可以让用户在现有卡片风格和新的极简风格之间稳定切换，同时保持宿主的文件活动投影模型不变。
+  日期/作者：2026-04-20 / Codex
+- 决策：文件列表节点的 `列表视图 / 树形视图` 切换先作为 Webview 本地 UI 状态保存，并按节点 ID 持久化到 webview state，而不写回宿主权威画布状态。
+  理由：该切换只影响单个文件列表节点内部的呈现结构，不改变 `fileReferences`、节点位置、边关系或其他宿主绑定真相；把它留在 Webview 本地状态更符合当前架构对“局部 UI 状态 vs workspace 权威状态”的分层。
+  日期/作者：2026-04-20 / Codex
+- 决策：文件活动里的 `relativePath` 在单根 workspace 下继续保持“相对当前 root 的纯相对路径”，但在多根 workspace 下统一补上 workspace folder 名称前缀。
+  理由：显示、过滤与文件列表树形分组都共用这一个字段；如果多根 workspace 仍只保留纯相对路径，会把不同 root 下的同名文件折叠成同一条展示 / 过滤路径，造成确定性的混淆回归。
+  日期/作者：2026-04-21 / Codex
+- 决策：`devSessionCanvas.files.enabled` 改为 startup-applied 配置，与 `devSessionCanvas.runtimePersistence.enabled` 一样需要 reload window 后才应用；当已应用值为 `false` 时，整个文件活动产品域不可用，并在启动恢复阶段清空文件活动状态。
+  理由：最新需求明确要求“关闭文件功能”不再只是隐藏投影，而是彻底停用文件节点、文件列表节点、自动文件关系、文件过滤与 watcher 接线；同时不再保留 `fileReferences` 作为隐藏权威状态，避免用户在关闭功能后仍然背着一份不可见的旧文件真相。
+  日期/作者：2026-04-21 / Codex
+
+- 决策：把文件活动在“文件功能开启”的前提下建模成独立 `fileReferences` 权威状态，再由宿主投影成文件节点或文件列表节点。
+  理由：这样可以避免展示模式切换时把自动生成节点误当成事实来源，也能让生命周期和持久化围绕统一数据模型收口；但如果 startup-applied 的文件功能为关闭态，宿主不应继续保留这份状态。
   日期/作者：2026-04-19 / Codex
 - 决策：自动 Agent-文件关系线不开放人工编辑。
   理由：这类边的事实来源是 provider 文件活动事件；若允许用户手改，会和宿主重建逻辑冲突。
@@ -71,10 +97,10 @@
 - 决策：第一轮自动文件活动正式支持 `Claude` 与 `fake-agent-provider`，`Codex` 保留 no-op adapter。
   理由：当前只有 Claude hooks 路线具备已确认的 provider 原生结构化工具事件；Codex 在本仓库里尚无同等证据。
   日期/作者：2026-04-19 / Codex
-- 决策：`include` / `exclude` 过滤迁到 sidebar 持久化视图状态，并且只影响文件对象投影，不写回 `fileReferences`。
-  理由：`fileReferences` 是文件活动权威状态；如果把过滤后的结果回写进去，就会把纯视图控制误当成事实来源，和本轮状态分层目标冲突。
+- 决策：`include` / `exclude` 过滤迁到 sidebar 持久化视图状态，并且只在文件功能开启时影响文件对象投影，不写回 `fileReferences`。
+  理由：在文件功能开启时，`fileReferences` 仍是文件活动权威状态；如果把过滤后的结果回写进去，就会把纯视图控制误当成事实来源，和本轮状态分层目标冲突。若文件功能关闭并 reload，则这组过滤入口与对应状态一起退出文件域。
   日期/作者：2026-04-20 / Codex
-- 决策：sidebar 从单一 `WebviewView` 收口为两个原生 `TreeView` section：`概览` 负责动作与状态摘要，`文件过滤` 负责展示和编辑 `Files to Include` / `Files to Exclude`。
+- 决策：sidebar 从单一 `WebviewView` 收口为两个原生 `TreeView` section：`概览` 负责动作与状态摘要，`文件过滤` 负责展示和编辑 `包含文件` / `排除文件`。
   理由：VSCode 官方 `Sidebars` / `Views` / `Tree View` 指南与用户提供的原生参考图都表明，sidebar 区域应优先使用原生 section 化视图；继续在这里自绘整块 webview，只会放大和宿主 Sidebar 的 UI/UX 偏差。
   日期/作者：2026-04-20 / Codex
 - 决策：在用户进一步要求 `include` / `exclude` 直接以内嵌输入框出现在 sidebar 后，sidebar 最终收口为“概览 TreeView + 常用操作 WebviewView”的混合结构。
@@ -100,6 +126,8 @@
 
 本轮按计划落地了两层能力。第一层是用户可编辑的手工连线：宿主持久化 `CanvasEdgeSummary`，Webview 支持创建、选中、通过轻量编辑台修改箭头模式、双击原位改标签与删除。第二层是 provider 结构化文件活动：宿主持久化 `fileReferences`，再按当前配置投影成文件节点或文件列表节点，并把“点击文件”统一交还 VSCode 宿主打开编辑器。
 
+随后，`devSessionCanvas.files.enabled` 的正式语义也被收口为 startup-applied 的产品域开关，而不再是“隐藏文件投影但保留权威状态”的软关闭。当前 window 修改该配置后，只会提示需要 reload；真正 reload 并应用 `false` 后，宿主会在恢复链路里跳过文件活动 watcher，清空 `fileReferences`、文件节点 / 文件列表节点、自动文件关系、文件活动 suppression 状态、sidebar 文件过滤入口和对应的 `include` / `exclude` 状态。后续重新启用时，只恢复文件域可用性，不恢复这次被清空的旧文件活动与过滤状态。
+
 在实现收口阶段，关系连线又进一步对齐到更明确的 Workbench 风格：未命名边不再显示不可编辑的占位胶囊；选中态改为连线上方轻量编辑台；标签输入改回 Webview 原位编辑；默认边与拖拽预览边共用同一默认 token；选中态通过 outline 与端点 handles 提示，而不是主线换色；同时补入 Obsidian 风格的 6 色预设和端点重接。
 
 随着最新一轮需求收口，文件活动派生边也不再在用户侧暴露出“另一种只读边”语义。宿主内部仍保留文件活动事实来源，但一旦用户编辑或删除某条自动边，就把结果沉淀为持久化覆盖 / 屏蔽状态；这样 reload 与文件视图重建后，用户不会再遇到“刚改完就被自动投影打回”的问题。
@@ -110,9 +138,9 @@
 
 本轮补丁没有改变文件活动的权威模型，也没有引入新的 provider 能力；它只收紧了“事件已落盘但 host 尚未消费”这段退出窗口。当前实现会在关闭 session 时额外保留一个短暂 settle 窗口，持续 drain NDJSON，再删除临时目录；trusted smoke 现已覆盖 `readexit` 这种“读事件后立即退出”的主路径。
 
-按 review 收口后，文件活动视图又补上两条宿主边界。第一条是“编辑区点击文件不覆盖画布组”：当画布承载在编辑区时，文件打开统一走相邻 editor group；如果当前没有 split editor，就由宿主隐式创建一列再打开。第二条是“过滤不改真相”：`include` / `exclude` 不再暴露为 settings，而是迁到 sidebar 作为持久化视图状态；宿主现在只用它裁剪文件节点 / 文件列表节点 / 自动边的显示投影，`fileReferences` 继续保留完整权威数据。
+按 review 收口后，文件活动视图又补上两条宿主边界。第一条是“编辑区点击文件不覆盖画布组”：当画布承载在编辑区时，文件打开统一走相邻 editor group；如果当前没有 split editor，就由宿主隐式创建一列再打开。第二条是“过滤不改真相，但只在文件功能开启时成立”：`include` / `exclude` 不再暴露为 settings，而是迁到 sidebar 作为持久化视图状态；宿主只在文件功能开启时用它裁剪文件节点 / 文件列表节点 / 自动边的显示投影，而不会回写 `fileReferences`。如果文件功能关闭并完成 reload，则这组过滤入口与 `fileReferences` 一起退出文件域。
 
-在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；随后结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃，改成两个原生 TreeView section。最后，用户进一步明确指出 `include` / `exclude` 必须直接以内嵌输入框出现在 sidebar 中，而不是再点编辑按钮。当前实现因此收口为混合结构：`概览` 保留原生 TreeView，只展示状态摘要，并新增 `Runtime Persistence` 状态；`常用操作` 改为最小 `WebviewView`，内容区承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 输入框，而对应的快捷 icon 按钮则由宿主 `view/title` action 放在该 view 标题行尾部。这样既保留“过滤不改真相”的状态分层，也把自定义 UI 限制在确实需要 inline 输入框的最小范围内。
+在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；随后结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃，改成两个原生 TreeView section。最后，用户进一步明确指出 `include` / `exclude` 必须直接以内嵌输入框出现在 sidebar 中，而不是再点编辑按钮。当前实现因此收口为混合结构：`概览` 保留原生 TreeView，只展示状态摘要，并新增 `Runtime Persistence` 与“文件功能”状态；`常用操作` 改为最小 `WebviewView`，内容区承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 输入框，而对应的快捷 icon 按钮则由宿主 `view/title` action 放在该 view 标题行尾部。这样既保留“文件功能开启时过滤不改真相”的状态分层，也把自定义 UI 限制在确实需要 inline 输入框的最小范围内。
 
 针对本轮最后一条 sidebar 文案反馈，`概览` 里的“画布状态”也进一步从“当前挂在 Panel / Editor 哪个承载面”收口回纯状态语义，只保留“已打开 / 未打开”。承载面仍然作为默认配置或宿主内部行为存在，但不再直接占用“状态”这行的描述位。
 
@@ -127,6 +155,10 @@
 第二处是 `src/panel/CanvasPanelManager.ts`。它是 workspace 绑定画布状态的唯一权威入口。本轮所有 edge 持久化、自动文件对象重建、provider 文件活动接线和“点击文件后打开编辑器”都必须经过这里。
 
 第三处是 `src/webview/main.tsx` 与 `src/webview/styles.css`。这里要补四向 handles、自定义 edge UI、文件节点 / 文件列表节点渲染、文件点击回传以及针对自动边与手工边的交互边界。
+
+当前增量收口主要落在这两处文件活动 UI：`card` 风格保留现状；`minimal` 风格需要在不改动宿主文件活动真相的前提下，把文件节点收成贴内容边框，把文件列表节点收成接近 VSCode Source Control Changes 的单行列表，并在节点头部提供 `list/tree` 切换。
+
+本轮最后一个阻塞点不是设计或宿主状态模型本身，而是构建产物同步。`src` 中用于保持自动文件节点位置稳定的逻辑已经改成优先复用旧位置，但 smoke 仍加载旧版 `dist/extension.js`，导致共享文件节点在风格切换时被误判为需要重新放置。补上 `npm run build` 后，源码与运行产物重新对齐，位置稳定性验证恢复通过。
 
 第四处是测试与辅助 provider。`tests/playwright/webview-harness.spec.mjs` 负责 Webview 图交互；`tests/vscode-smoke/extension-tests.cjs` 负责真实宿主与打开文件路径；`tests/vscode-smoke/fixtures/fake-agent-provider` 需要补结构化文件事件输出。
 
@@ -162,6 +194,7 @@
 
     - `src/webview/main.tsx`
     - `src/webview/styles.css`
+    - 补 `file list` 极简 `list/tree` 视图切换与本地状态持久化
 
 5. 更新测试与 fixture：
 
@@ -183,10 +216,12 @@
 - 宿主层：模拟支持文件事件的 Agent 上报读写文件，确认自动文件对象和自动边进入权威状态。
 - VSCode 打开链路：点击文件节点或文件列表条目后，真实编辑器打开对应文件。
 - 生命周期：删除 Agent 节点后，不再被任何 Agent 引用的文件对象被清理；仍有引用的文件对象保留。
+- 文件风格切换：切换 `devSessionCanvas.fileNode.displayStyle` 后，文件节点 / 文件列表节点样式应在不改动位置与边关系的前提下切换为 `card` 或 `minimal`。
+- 文件列表极简视图：在 `minimal` 风格下，文件列表节点头部的 `列表视图 / 树形视图` 可切换行式列表与目录树视图，且条目点击打开文件的行为保持不变。
 
 ## 幂等性与恢复
 
-自动文件对象必须可以根据 `fileReferences` 重建，因此在 reload、host-boundary restore 和配置切换后都要得到同一结果。若某 provider 没有文件活动支持，宿主应安全退化成“没有自动文件对象”，而不是抛错或生成假数据。
+在文件功能开启时，自动文件对象必须可以根据 `fileReferences` 重建，因此在普通 reload 与 host-boundary restore 后都要得到同一结果；如果 startup-applied 的文件功能从开启切到关闭，则下次加载必须整体清空文件域状态，而不是保留隐藏的 `fileReferences`。若某 provider 没有文件活动支持，宿主应安全退化成“没有自动文件对象”，而不是抛错或生成假数据。
 
 ## 证据与备注
 
@@ -216,18 +251,28 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `git diff --check`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过，但失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）。当前 failure artifact 不再出现先前 review blocker 指向的 `editor` focus 超时或 panel sentinel active editor 断言失败。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：当次执行的失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）；相关焦点回归在 2026-04-21 的 trusted smoke rerun 里未再复现，但整套 run 仍卡在既有 live runtime scrollback 超时。
 - 2026-04-20 panel 文件打开语义校正增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `git diff --check`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过，但 `verifyFileActivityViewsAndOpenFiles()` 已不再失败；当前 trusted smoke 失败点后移到 live runtime scrollback 历史恢复场景 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()`（`tests/vscode-smoke/extension-tests.cjs:4222`），对应断言为 `waitForRuntimeSupervisorState()` 超时。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：当次执行里 `verifyFileActivityViewsAndOpenFiles()` 已不再失败，失败点后移到 live runtime scrollback 历史恢复场景 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()`（`tests/vscode-smoke/extension-tests.cjs:4222`）；2026-04-21 的 rerun 也未再出现这条文件功能失败，但完整 trusted smoke 仍卡在同一条 live runtime scrollback 超时。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。
 - 关键新增验证：
   - Playwright：手工 edge 创建 / 选中 / 更新 / 删除；文件节点渲染与 `webview/openCanvasFile`；文件列表节点渲染与条目打开。
   - VS Code smoke：宿主手工 edge 持久化；fake provider 文件活动生成 `fileReferences` / `file` / `file-list`；点击文件节点 / 列表条目打开编辑器；删除 Agent 清理孤立文件对象。
+- 2026-04-20 文件活动 UI 极简化增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+  - `npm run test:webview`：通过；覆盖 `minimal` 文件节点紧贴内容边框、文件列表节点 `列表视图 / 树形视图` 切换，以及 `R/W` 尾标显示。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：通过；覆盖 `devSessionCanvas.fileNode.displayStyle` 切换后自动文件节点位置与文件活动边 ID 稳定。
+- 2026-04-21 `files.enabled` 语义改写增量验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+  - `npm run test:webview`：78/78 通过。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过；`verifyFileActivityViewsAndOpenFiles()` 已补上“配置变更需等 reload 才生效、reload 后清空文件域与过滤状态、重新开启不恢复旧文件状态”的断言，本轮重新执行未再出现文件功能回归，当前失败点仍是既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。
 
 ## 接口与依赖
 
@@ -252,3 +297,5 @@
 ---
 
 本次创建说明：2026-04-19 新增本计划，用于覆盖通用连线、文件节点和文件列表节点相关功能；其中包含文件节点 / 文件列表节点显示收口，以及文件活动必须通过 provider 结构化事件接入宿主的要求。之所以独立起计划，是因为改动同时涉及正式规格、设计决策、共享协议、provider 结构化事件接线、宿主持久化、Webview UI 与自动化验证。
+
+本次变更说明：2026-04-20 在原计划上继续追加“文件节点 / 文件列表节点 UI 简化与显示风格配置”范围。之所以不新开计划，是因为这次改动直接建立在既有文件活动视图能力上，仍然共用同一套 `fileReferences`、自动节点重建、配置监听与验证路径；新增的是视觉表达与局部 UI 状态，而不是另一套独立功能面。
