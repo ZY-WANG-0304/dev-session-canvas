@@ -671,8 +671,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async reloadPersistedStateForTest(): Promise<CanvasDebugSnapshot> {
     await this.waitForPendingWorkspaceStateUpdates();
     this.refreshStorageRecoverySelection();
+    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
+    this.persistState();
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/reloaded', {
       activeSurface: this.activeSurface,
@@ -723,8 +725,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.applyStartupConfiguration(nextStartupConfiguration);
     this.refreshStorageRecoverySelection();
+    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.activeSurface = this.loadStoredSurface();
+    this.persistState();
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/runtimeReloaded', {
       activeSurface: this.activeSurface,
@@ -1171,6 +1175,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
     const snapshot = this.loadPersistedCanvasSnapshot();
+    if (
+      !this.appliedStartupConfiguration.filesFeatureEnabled ||
+      this.shouldResetFileDomainDueToFilesFeatureModeChange(snapshot)
+    ) {
+      return createEmptyCanvasFileFilterState();
+    }
     const storedFilterState =
       snapshot?.fileFilterState ?? this.getStoredValue<CanvasFileFilterState | undefined>(STORAGE_KEYS.canvasFileFilterState);
     if (storedFilterState !== undefined) {
@@ -1400,9 +1410,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
+    const persistedFileFilterState = this.appliedStartupConfiguration.filesFeatureEnabled
+      ? normalizeCanvasFileFilterState(this.fileFilterState)
+      : createEmptyCanvasFileFilterState();
     return {
       ...snapshot,
-      fileFilterState: this.fileFilterState,
+      fileFilterState: persistedFileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
@@ -1691,7 +1704,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           : changedSettings[0];
       const followUps = [
         options.runtimePersistenceChanged ? '切换运行时持久化会在下次加载时清空当前工作区的画布宿主状态。' : undefined,
-        options.filesFeatureEnabledChanged ? '切换文件功能开关会在下次加载时清空文件活动状态、文件对象和自动文件关系。' : undefined
+        options.filesFeatureEnabledChanged
+          ? '切换文件功能开关会在下次加载时清空文件活动状态、文件对象、自动文件关系和文件过滤状态。'
+          : undefined
       ].filter((message): message is string => Boolean(message));
       const message = `${changeSummary}的更改会在重新加载窗口后生效；${followUps.join('')}`;
       const selection = await vscode.window.showWarningMessage(message, RELOAD_WINDOW_ACTION_LABEL);
@@ -7139,12 +7154,16 @@ function normalizeCanvasFileFilterGlobs(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function createEmptyCanvasFileFilterState(): CanvasFileFilterState {
+  return {
+    includeGlobs: [],
+    excludeGlobs: []
+  };
+}
+
 function normalizeCanvasFileFilterState(value: unknown): CanvasFileFilterState {
   if (!isRecord(value)) {
-    return {
-      includeGlobs: [],
-      excludeGlobs: []
-    };
+    return createEmptyCanvasFileFilterState();
   }
 
   return {
