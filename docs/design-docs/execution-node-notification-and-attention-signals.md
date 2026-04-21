@@ -309,8 +309,8 @@ updated_at: 2026-04-22
   - 关闭时：现有启发式与诊断层继续解析这些信号，节点内 icon 与标题栏提醒也继续生效，但不额外发 VSCode 工作台通知
   - 打开时：在节点内提醒之外，再把命中的 attention signal 桥接为 VSCode 工作台通知
 - `strongTerminalAttentionReminder`
-  - 关闭时：`Agent` 与 `Terminal` 节点仍显示 attention icon，但标题栏区域不闪烁
-  - 打开时：节点在出现未确认 attention 时，标题栏区域持续闪烁，直到用户确认该节点
+  - 关闭时：`Agent` 与 `Terminal` 节点仍显示 attention icon，minimap 中对应节点仍做同色明暗闪烁，但标题栏区域不闪烁，也不做 minimap 尺寸 pulse
+  - 打开时：节点在出现未确认 attention 时，标题栏区域持续闪烁，直到用户确认该节点；与此同时 minimap 在同色明暗闪烁之外，再额外加入尺寸 pulse
 
 这里两个开关都默认打开，是为了让执行节点里的 attention signal 在开箱即用时既能回到 VSCode 工作台，也能在画布节点内部保留显眼提醒；`BEL` 噪音仍依靠信号优先级与冷却去重控制，用户可按需分别关闭工作台通知桥接或标题栏闪烁。
 
@@ -335,8 +335,12 @@ updated_at: 2026-04-22
   - 负责在用户点击节点或使用工作台通知的 `查看节点` 动作时清除 attention pending
 
 - `src/webview/main.tsx` 与 `src/webview/styles.css`
-  - 负责把 execution node 的 attention pending 渲染成标题栏 icon
+  - 负责把 execution node 的 attention pending 渲染成标题栏 icon 与 minimap 中对应节点的闪烁态
   - 负责在 `strongTerminalAttentionReminder=true` 时把标题栏渲染为闪烁态
+  - minimap 闪烁始终由 `attentionPending` 驱动，不受 `strongTerminalAttentionReminder` 配置限制
+  - minimap 闪烁的视觉强调沿用节点自身颜色，而不是额外切到统一通知色
+  - strong reminder 关闭时，minimap 只保留同色明暗变化；strong reminder 打开时，才额外加入尺寸 pulse
+  - minimap pulse 需要明显强于静止态的 opacity / glow，否则缩略图里不够可见
   - 不自己判断终端信号，只消费宿主回推的 metadata 与 runtime context
 
 这意味着“状态启发式”“节点内提醒”和“VSCode 工作台通知”共用同一份底层解析器，但已经明确拆成三条独立支路。

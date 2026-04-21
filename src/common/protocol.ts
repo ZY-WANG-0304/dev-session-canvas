@@ -229,6 +229,9 @@ export interface WebviewProbeNodeSnapshot {
   statusText: string | null;
   attentionIndicatorVisible: boolean;
   attentionIndicatorFlashing: boolean;
+  minimapVisible: boolean;
+  minimapAttentionFlashing: boolean;
+  minimapAttentionSizePulsing: boolean;
   selected: boolean;
   renderedWidth: number;
   renderedHeight: number;
@@ -1276,6 +1279,11 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     isNullableString(value.chromeTitle) &&
     isNullableString(value.chromeSubtitle) &&
     isNullableString(value.statusText) &&
+    typeof value.attentionIndicatorVisible === 'boolean' &&
+    typeof value.attentionIndicatorFlashing === 'boolean' &&
+    typeof value.minimapVisible === 'boolean' &&
+    typeof value.minimapAttentionFlashing === 'boolean' &&
+    typeof value.minimapAttentionSizePulsing === 'boolean' &&
     typeof value.selected === 'boolean' &&
     typeof value.renderedWidth === 'number' &&
     Number.isFinite(value.renderedWidth) &&
