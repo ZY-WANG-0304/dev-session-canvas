@@ -208,7 +208,8 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
   items: [
     '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
     'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
-    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）'
+    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
+    '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需配置 Terminal Bell Notifications；Codex 需设置 notification_method 和 notification_condition'
   ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
