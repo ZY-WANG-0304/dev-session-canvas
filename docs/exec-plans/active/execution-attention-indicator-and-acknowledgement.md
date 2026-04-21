@@ -15,7 +15,7 @@
 - [x] (2026-04-22 00:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`docs/DESIGN.md` 与现有通知设计/实现，确认本任务需要独立 `ExecPlan`，并确认当前实现只覆盖 VS Code 工作台通知桥接，没有节点内未确认提醒状态。
 - [x] (2026-04-22 00:54 +0800) 检查工作树与分支状态，确认当前工作树干净，当前分支为 `main`；本轮按仓库约束直接在现有工作树推进，不回退任何用户改动。
 - [x] (2026-04-22 01:05 +0800) 补充并同步正式设计文档，明确 execution attention 的宿主权威状态、节点内 icon/闪烁语义、点击确认路径，以及两个配置项的正式边界。
-- [x] (2026-04-22 01:12 +0800) 扩展共享协议、宿主状态与配置读取，让 execution node metadata 可以承载“待确认 attention”状态，并让节点选中/聚焦路径回传确认。
+- [x] (2026-04-22 01:12 +0800) 扩展共享协议、宿主状态与配置读取，让 execution node metadata 可以承载“待确认 attention”状态，并把提醒确认收敛到显式鼠标点击节点与工作台通知 `查看节点` 两条路径。
 - [x] (2026-04-22 01:14 +0800) 更新 Webview 节点标题栏，在状态控件左侧渲染 attention icon，并在强力提醒开启时只对 execution node 标题栏做闪烁样式。
 - [x] (2026-04-22 01:28 +0800) 补充 Webview probe、smoke 测试与必要单测，验证 icon、闪烁、点击确认，以及 bridge/strong reminder 两个配置的解耦行为。
 
@@ -89,9 +89,9 @@
 
 然后扩展共享类型与宿主逻辑。在 `ExecutionSessionMetadata` 的 agent/terminal 元数据里加一个最小 attention pending 字段，并在 `CanvasPanelManager` 里把“解析到 attention signal”拆成两段：第一段无条件更新节点 attention pending；第二段按 `bridgeTerminalAttentionSignals` 决定是否额外弹 VS Code 通知。与此同时新增新的强力提醒配置读取，并把它通过 `CanvasRuntimeContext` 传给 Webview。
 
-接着补点击确认链路。Webview 在所有 execution node 的选中、点击、按钮 focus/点击和工作台通知聚焦路径上，都要把“当前节点已被用户确认”传给宿主；宿主收到该消息后清除 metadata 里的 attention pending，再回推状态，让 icon 和闪烁真正消失。
+接着补点击确认链路。Webview 只在两条路径上把“当前节点已被用户确认”传给宿主：第一条是用户显式用鼠标点击对应 execution node；第二条是用户点击 VS Code 工作台通知里的 `查看节点` 动作并由宿主完成节点聚焦。宿主收到该确认后清除 metadata 里的 attention pending，再回推状态，让 icon 和闪烁真正消失；本地选中切换、按钮 focus/点击、terminal selection change 或其它程序化 focus 都不应被视为确认。
 
-最后补 UI 与验证。Webview 标题栏把 icon 放到 status pill 左边，强力提醒开启时对 `window-chrome` 做有限范围的闪烁。Smoke 测试要直接验证 bridge 关闭时 icon/闪烁仍然存在，强力提醒关闭时只剩 icon 不闪烁，以及点击节点或通过 `查看节点` 聚焦都会清除 attention。
+最后补 UI 与验证。Webview 标题栏把 icon 放到 status pill 左边，强力提醒开启时对 `window-chrome` 做有限范围的闪烁。Smoke 测试要直接验证 bridge 关闭时 icon/闪烁仍然存在，强力提醒关闭时只剩 icon 不闪烁，以及显式鼠标点击节点或通过 `查看节点` 聚焦都会清除 attention。
 
 ## 具体步骤
 
