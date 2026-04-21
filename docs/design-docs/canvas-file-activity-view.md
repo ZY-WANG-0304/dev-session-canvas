@@ -101,7 +101,7 @@ updated_at: 2026-04-21
   当前缓解：本轮把 `list/tree` 切换保留在 Webview 本地 UI 状态，并按节点 ID 持久化到 webview state；宿主持续只关心 `fileReferences`、自动节点重建和位置 / 边关系。
 
 - 风险：如果 `devSessionCanvas.files.enabled` 仍按运行时即时开关实现，provider 文件事件接线、sidebar 文件过滤和持久化状态会继续留下“功能已关闭但文件域真相还在”的分叉语义。
-  当前缓解：把该配置抬到宿主启动配置层，语义对齐 `runtimePersistence`：配置变化只在 reload 后生效；关闭时清空 `fileReferences`、自动文件对象、自动文件边与相关 suppression 状态，并停用文件过滤入口。
+  当前缓解：把该配置抬到宿主启动配置层，语义对齐 `runtimePersistence`：配置变化只在 reload 后生效；关闭时清空 `fileReferences`、自动文件对象、自动文件边、`include` / `exclude` 过滤状态与相关 suppression 状态，并停用文件过滤入口。
 
 ## 7. 正式方案
 
@@ -132,7 +132,7 @@ updated_at: 2026-04-21
 - 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。
 - 新增全局配置 `devSessionCanvas.files.enabled`，控制文件活动投影是否启用：
   - `true`：该开关在当前窗口生效后，宿主会启动 provider 文件活动接线，记录 `fileReferences`，并按当前展示模式与过滤条件投影文件节点 / 文件列表节点和自动文件活动边。
-  - `false`：该开关需要 reload 后才生效；生效后宿主不再启动文件活动接线，也不会继续加载或保留 `fileReferences`、`file` / `file-list` 自动对象、自动文件边和对应 suppression 状态。sidebar 中的文件过滤入口也进入不可用态。
+  - `false`：该开关需要 reload 后才生效；生效后宿主不再启动文件活动接线，也不会继续加载或保留 `fileReferences`、`file` / `file-list` 自动对象、自动文件边、`include` / `exclude` 过滤状态和对应 suppression 状态。sidebar 中的文件过滤入口也进入不可用态。
 - 新增全局配置 `devSessionCanvas.fileNode.displayStyle`，由宿主读入并通过 `CanvasRuntimeContext` 传给 Webview。该配置虽然挂在 `fileNode` 名下，但实际同时控制 `file` 和 `file-list` 两类文件对象的视觉风格：
   - `card`：保留当前卡片式节点与列表节点观感。
   - `minimal`：文件节点收口为贴内容边框；文件列表节点收口为接近 VSCode Source Control Changes 的单行文件视图。
@@ -210,7 +210,7 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
 - 删除 Agent 节点时，移除该 Agent 在文件活动引用中的所有 ownership。
 - 若某文件不再有任何 Agent ownership，则删除对应文件引用，并在当前展示模式下移除相关自动节点 / 自动连线。
 - 若某文件仍被其他 Agent 引用，则只删除失效的那部分 ownership，保留该文件对象。
-- 切换 `devSessionCanvas.files.enabled` 后，当前窗口要等 reload 才应用新的文件功能状态；当开关在下次加载时为 `false`，宿主会清空 `fileReferences`、自动文件对象、自动文件边与相关 suppression 状态，并停用文件过滤入口。
+- 切换 `devSessionCanvas.files.enabled` 后，当前窗口要等 reload 才应用新的文件功能状态；当开关在下次加载时为 `false`，宿主会清空 `fileReferences`、自动文件对象、自动文件边、`include` / `exclude` 过滤状态与相关 suppression 状态，并停用文件过滤入口。
 - 编辑 sidebar `包含文件` / `排除文件` 输入框或切换展示模式后，宿主按当前配置重建文件视图，但 `fileReferences` 保持不变。
 - 切换 `devSessionCanvas.fileNode.displayStyle` 后，宿主会重建文件节点 / 文件列表节点的视觉投影，但继续复用原有自动节点 ID、位置和文件活动关系线；风格切换不是另一套文件对象生命周期。
 
@@ -225,7 +225,7 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
   - 点击文件节点或文件列表条目后，VSCode 会在编辑区打开目标文件；若画布位于编辑区，目标文件进入独立 editor group。
   - 删除 Agent 节点后，文件生命周期规则正确生效。
   - 调整 sidebar `包含文件` / `排除文件` 输入框或展示模式后，宿主会按当前配置重建文件视图，且不会改写 `fileReferences`。
-  - 修改 `devSessionCanvas.files.enabled` 后，当前窗口必须在 reload 后才切换文件功能状态；禁用后的下一次加载会清空 `fileReferences`、文件节点 / 文件列表节点、自动文件边与对应过滤入口，重新开启后也不会恢复已清空的旧文件活动状态。
+  - 修改 `devSessionCanvas.files.enabled` 后，当前窗口必须在 reload 后才切换文件功能状态；禁用后的下一次加载会清空 `fileReferences`、文件节点 / 文件列表节点、自动文件边、对应过滤入口与 `include` / `exclude` 状态，重新开启后也不会恢复已清空的旧文件活动与过滤状态。
   - 切换 `devSessionCanvas.fileNode.displayStyle` 后，自动文件节点 / 文件列表节点的 ID、位置和自动边关系保持稳定。
 
-截至 2026-04-21，本方案本轮增量已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`。其中新增脚本测试覆盖“单根保持纯相对路径、多根补 workspace folder 前缀”的宿主规则，Playwright 也补了多根同名路径在文件列表树形视图下保持分根展示的回归断言。与此同时，`tests/vscode-smoke/extension-tests.cjs` 现已把 `devSessionCanvas.files.enabled` 收口为 startup-applied 语义：改配置后当前窗口保持不变，只有在 `simulateRuntimeReload()` 后才清空文件活动状态并切换文件功能可用性；重新开启后也不会恢复已清空的旧 `fileReferences`。不过完整 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 在本次执行时仍卡在既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory` 超时，因此这条增量 smoke 尚未形成新的通过证据。
+截至 2026-04-21，本方案本轮增量已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`。其中新增脚本测试覆盖“单根保持纯相对路径、多根补 workspace folder 前缀”的宿主规则，Playwright 也补了多根同名路径在文件列表树形视图下保持分根展示的回归断言。与此同时，`tests/vscode-smoke/extension-tests.cjs` 现已把 `devSessionCanvas.files.enabled` 收口为 startup-applied 语义：改配置后当前窗口保持不变，只有在 `simulateRuntimeReload()` 后才清空文件活动与过滤状态并切换文件功能可用性；重新开启后也不会恢复已清空的旧 `fileReferences` 与 `include` / `exclude` 状态。最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 复跑里，这条文件功能链路断言已通过，但整套 trusted smoke 仍卡在既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。

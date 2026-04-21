@@ -696,6 +696,10 @@ async function verifyFileActivityViewsAndOpenFiles() {
 
   const baselineSnapshot = await getDebugSnapshot();
   const baselineNodeIds = baselineSnapshot.state.nodes.map((node) => node.id).sort();
+  const baselineFileFilters = {
+    includeGlobs: [...baselineSnapshot.sidebar.fileFilters.includeGlobs],
+    excludeGlobs: [...baselineSnapshot.sidebar.fileFilters.excludeGlobs]
+  };
   const baselineAgentIds = new Set(
     baselineSnapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id)
   );
@@ -1359,6 +1363,18 @@ async function verifyFileActivityViewsAndOpenFiles() {
       'Expected seeded file activity state to include the tracked file before toggling the feature switch.'
     );
 
+    await setFileIncludeFilterGlobs(['**/*.md']);
+    await setFileExcludeFilterGlobs(['**/agent-a-only.md']);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        currentSnapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath) &&
+        currentSnapshot.sidebar.fileFilters.includeGlobs.length === 1 &&
+        currentSnapshot.sidebar.fileFilters.excludeGlobs.length === 1
+      );
+    }, 20000);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, ['**/*.md']);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, ['**/agent-a-only.md']);
+
     await setFilesFeatureEnabled(false);
     snapshot = await getDebugSnapshot();
     assert.strictEqual(
@@ -1370,12 +1386,16 @@ async function verifyFileActivityViewsAndOpenFiles() {
       snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
       'Expected pending config changes to leave file activity state untouched before runtime reload.'
     );
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, ['**/*.md']);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, ['**/agent-a-only.md']);
 
     snapshot = await simulateRuntimeReload();
     assert.strictEqual(snapshot.sidebar.filesFeatureEnabled, false);
     assert.strictEqual(snapshot.state.fileReferences.length, 0);
     assert.ok(snapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list'));
     assert.ok(snapshot.state.edges.every((edge) => edge.owner !== 'file-activity'));
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, []);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, []);
 
     await setFilesFeatureEnabled(true);
     snapshot = await getDebugSnapshot();
@@ -1384,6 +1404,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
       false,
       'Expected re-enabling the files feature to remain pending until the next runtime reload.'
     );
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, []);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, []);
 
     snapshot = await simulateRuntimeReload();
     assert.strictEqual(snapshot.sidebar.filesFeatureEnabled, true);
@@ -1394,11 +1416,37 @@ async function verifyFileActivityViewsAndOpenFiles() {
     );
     assert.ok(snapshot.state.nodes.every((node) => node.kind !== 'file' && node.kind !== 'file-list'));
     assert.ok(snapshot.state.edges.every((edge) => edge.owner !== 'file-activity'));
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.includeGlobs, []);
+    assert.deepStrictEqual(snapshot.sidebar.fileFilters.excludeGlobs, []);
 
     snapshot = await setPersistedState(baselineSnapshot.state);
+    await setFileIncludeFilterGlobs(baselineFileFilters.includeGlobs);
+    await setFileExcludeFilterGlobs(baselineFileFilters.excludeGlobs);
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return (
+        JSON.stringify(currentSnapshot.sidebar.fileFilters.includeGlobs) ===
+          JSON.stringify(baselineFileFilters.includeGlobs) &&
+        JSON.stringify(currentSnapshot.sidebar.fileFilters.excludeGlobs) ===
+          JSON.stringify(baselineFileFilters.excludeGlobs)
+      );
+    }, 20000);
+    assert.deepStrictEqual(snapshot.state.fileReferences, baselineSnapshot.state.fileReferences);
+    assert.deepStrictEqual(snapshot.state.suppressedFileActivityEdgeIds, baselineSnapshot.state.suppressedFileActivityEdgeIds);
     assert.deepStrictEqual(
-      snapshot.state.nodes.map((node) => node.id).sort(),
-      baselineNodeIds
+      snapshot.state.suppressedAutomaticFileArtifactNodeIds,
+      baselineSnapshot.state.suppressedAutomaticFileArtifactNodeIds
+    );
+    assert.ok(
+      baselineNodeIds.every((nodeId) => snapshot.state.nodes.some((node) => node.id === nodeId)),
+      'Expected restoring the baseline snapshot to keep all baseline nodes present.'
+    );
+    assert.deepStrictEqual(
+      snapshot.state.nodes
+        .filter((node) => !baselineNodeIds.includes(node.id))
+        .map((node) => node.kind)
+        .sort(),
+      ['agent'],
+      'Expected any extra nodes after restoring the baseline snapshot to come only from live runtime reconciliation.'
     );
   } finally {
     await setFilesFeatureEnabled(originalFilesEnabled);

@@ -19,7 +19,8 @@
 - [x] (2026-04-20 14:18 +0800) 补充 Playwright 与 VS Code smoke，覆盖风格切换、极简文件列表 `list/tree` 切换、读写标识显示，以及风格切换后节点位置 / 连线稳定性。
 - [x] (2026-04-21 10:20 +0800) 为文件节点 / 文件列表节点补充全局配置 `devSessionCanvas.files.enabled`，先把“关闭后停用 `file` / `file-list` 投影与自动边、保留 `fileReferences`”的第一版语义接入 settings、文档与 smoke 断言。
 - [x] (2026-04-21 11:40 +0800) 按 PR review 收口 multi-root 路径回归：恢复“单根 workspace 保持纯相对路径、多根 workspace 带 workspace folder 前缀”的 `relativePath` 规则，补充宿主脚本测试与 Webview tree-view 回归，并同步修正规格 / 设计文档口径。
-- [x] (2026-04-21 12:12 +0800) 按最新需求改写 `devSessionCanvas.files.enabled` 语义：该设置改为 startup-applied 配置，与 `runtimePersistence` 一样需要 reload window 后生效；关闭后整个文件活动产品域不可用，并在下次加载时清空 `fileReferences`、文件节点 / 文件列表节点、自动文件关系与文件过滤状态；重新开启只恢复功能可用性，不恢复已清空的文件活动状态。
+- [x] (2026-04-21 12:12 +0800) 按最新需求改写 `devSessionCanvas.files.enabled` 语义：该设置改为 startup-applied 配置，与 `runtimePersistence` 一样需要 reload window 后生效；关闭后整个文件活动产品域不可用，并在下次加载时清空 `fileReferences`、文件节点 / 文件列表节点、自动文件关系与文件过滤状态；重新开启只恢复功能可用性，不恢复已清空的文件活动与过滤状态。
+- [x] (2026-04-21 13:50 +0800) 按最新 review 修复文件过滤状态残留：`files.enabled` 在 disable / re-enable 的 reload 链路里会一并清空并重写 `include` / `exclude` 持久化状态；测试 helper 也改为在模拟 reload 时重新加载并回写 startup-applied 状态，重新通过 `typecheck`、脚本测试与 Playwright，并复跑 trusted smoke 确认新增文件功能断言通过，但整套 run 仍被既有 live runtime scrollback 超时阻塞。
 - [x] (2026-04-20 15:01 +0800) 排查风格切换后共享文件节点位置漂移，确认根因不是 `src` 逻辑而是 `dist/extension.js` 仍保留旧版“碰撞时重算位置”分支；重新构建扩展产物后，trusted smoke 恢复通过。
 - [x] (2026-04-19 10:52 +0800) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`ARCHITECTURE.md`、`docs/product-specs/index.md`、当前需求说明和核心实现，确认这次改动需要独立 `ExecPlan`、产品规格和设计文档；其中需求重点包括通用连线能力、文件节点 / 文件列表节点能力，以及文件活动必须来自 provider 结构化事件而非 PTY 文本推断。
 - [x] (2026-04-19 10:56 +0800) 从远端 `origin/main` 切出主题分支 `canvas-links-and-file-nodes`，保留用户工作树中已有未跟踪文件。
@@ -125,7 +126,7 @@
 
 本轮按计划落地了两层能力。第一层是用户可编辑的手工连线：宿主持久化 `CanvasEdgeSummary`，Webview 支持创建、选中、通过轻量编辑台修改箭头模式、双击原位改标签与删除。第二层是 provider 结构化文件活动：宿主持久化 `fileReferences`，再按当前配置投影成文件节点或文件列表节点，并把“点击文件”统一交还 VSCode 宿主打开编辑器。
 
-随后，`devSessionCanvas.files.enabled` 的正式语义也被收口为 startup-applied 的产品域开关，而不再是“隐藏文件投影但保留权威状态”的软关闭。当前 window 修改该配置后，只会提示需要 reload；真正 reload 并应用 `false` 后，宿主会在恢复链路里跳过文件活动 watcher，清空 `fileReferences`、文件节点 / 文件列表节点、自动文件关系、文件活动 suppression 状态与 sidebar 文件过滤入口。后续重新启用时，只恢复文件域可用性，不恢复这次被清空的旧文件活动状态。
+随后，`devSessionCanvas.files.enabled` 的正式语义也被收口为 startup-applied 的产品域开关，而不再是“隐藏文件投影但保留权威状态”的软关闭。当前 window 修改该配置后，只会提示需要 reload；真正 reload 并应用 `false` 后，宿主会在恢复链路里跳过文件活动 watcher，清空 `fileReferences`、文件节点 / 文件列表节点、自动文件关系、文件活动 suppression 状态、sidebar 文件过滤入口和对应的 `include` / `exclude` 状态。后续重新启用时，只恢复文件域可用性，不恢复这次被清空的旧文件活动与过滤状态。
 
 在实现收口阶段，关系连线又进一步对齐到更明确的 Workbench 风格：未命名边不再显示不可编辑的占位胶囊；选中态改为连线上方轻量编辑台；标签输入改回 Webview 原位编辑；默认边与拖拽预览边共用同一默认 token；选中态通过 outline 与端点 handles 提示，而不是主线换色；同时补入 Obsidian 风格的 6 色预设和端点重接。
 
@@ -250,12 +251,12 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `git diff --check`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过，但失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）。当前 failure artifact 不再出现先前 review blocker 指向的 `editor` focus 超时或 panel sentinel active editor 断言失败。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：当次执行的失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）；相关焦点回归在 2026-04-21 的 trusted smoke rerun 里未再复现，但整套 run 仍卡在既有 live runtime scrollback 超时。
 - 2026-04-20 panel 文件打开语义校正增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `git diff --check`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过，但 `verifyFileActivityViewsAndOpenFiles()` 已不再失败；当前 trusted smoke 失败点后移到 live runtime scrollback 历史恢复场景 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()`（`tests/vscode-smoke/extension-tests.cjs:4222`），对应断言为 `waitForRuntimeSupervisorState()` 超时。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：当次执行里 `verifyFileActivityViewsAndOpenFiles()` 已不再失败，失败点后移到 live runtime scrollback 历史恢复场景 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()`（`tests/vscode-smoke/extension-tests.cjs:4222`）；2026-04-21 的 rerun 也未再出现这条文件功能失败，但完整 trusted smoke 仍卡在同一条 live runtime scrollback 超时。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。
@@ -271,7 +272,7 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `npm run test:webview`：78/78 通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过；`verifyFileActivityViewsAndOpenFiles()` 已补上“配置变更需等 reload 才生效、reload 后清空文件域、重新开启不恢复旧文件状态”的断言，当前 run 的最终失败点仍是既有的 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 超时，`failure-error.txt` 指向 `waitForRuntimeSupervisorState()`，未观察到新的文件功能回归失败。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过；`verifyFileActivityViewsAndOpenFiles()` 已补上“配置变更需等 reload 才生效、reload 后清空文件域与过滤状态、重新开启不恢复旧文件状态”的断言，本轮重新执行未再出现文件功能回归，当前失败点仍是既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。
 
 ## 接口与依赖
 
