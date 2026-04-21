@@ -22,8 +22,8 @@ In Visual Studio Code, there are three types of themes:
 As you can see in the illustration, Color Theme defines colors for UI components as well as for highlighting in the editor:
 
 - The `colors` mapping that controls colors for UI Components.
-- The `tokenColors` define the color and styles for highlighting in the editor. The [Syntax Highlight guide](/api/language-extensions/syntax-highlight-guide) has more information on that topic.
-- The `semanticTokenColors` mappings as well as the `semanticHighlighting` setting allow to enhance the highlighting in the editor. The [Semantic Highlight guide](/api/language-extensions/semantic-highlight-guide) explains the APIs related to that.
+- The `tokenColors` define the color and styles for highlighting in the editor. The [Syntax Highlight guide](https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide) has more information on that topic.
+- The `semanticTokenColors` mappings as well as the `semanticHighlighting` setting allow to enhance the highlighting in the editor. The [Semantic Highlight guide](https://code.visualstudio.com/api/language-extensions/semantic-highlight-guide) explains the APIs related to that.
 
 We have a [Color Theme guide](../extension-guides/color-theme.md) and a [Color Theme sample](https://github.com/microsoft/vscode-extension-samples/tree/main/theme-sample) that illustrates how to create a theme.
 
