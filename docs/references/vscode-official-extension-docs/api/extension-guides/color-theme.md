@@ -18,7 +18,7 @@ This guide will cover the different ways in which you can create themes.
 
 ## Workbench colors
 
-The easiest way to create a new workbench color theme is to start with an existing color theme and customize it. First switch to the color theme that you want to modify, then open your [settings](/docs/configure/settings) and make changes to the `workbench.colorCustomizations` setting. Changes are applied live to your VS Code instance.
+The easiest way to create a new workbench color theme is to start with an existing color theme and customize it. First switch to the color theme that you want to modify, then open your [settings](https://code.visualstudio.com/docs/configure/settings) and make changes to the `workbench.colorCustomizations` setting. Changes are applied live to your VS Code instance.
 
 The following, for example, would change the background color of the title bar:
 
@@ -36,7 +36,7 @@ A complete list of all themable colors can be found in the [color reference](../
 
 For syntax highlighting colors, there are two approaches. You can reference an existing TextMate theme (`.tmTheme` file) from the community, or you can create your own theming rules. The easiest way is to start with an existing theme and customize it, much like in the workbench colors section above.
 
-First switch to the color theme to customize and use the `editor.tokenColorCustomizations` [settings](/docs/configure/settings). Changes are applied live to your VS Code instance and no refreshing or reloading is necessary.
+First switch to the color theme to customize and use the `editor.tokenColorCustomizations` [settings](https://code.visualstudio.com/docs/configure/settings). Changes are applied live to your VS Code instance and no refreshing or reloading is necessary.
 
 For example, the following would change the color of comments within the editor:
 
@@ -48,7 +48,7 @@ For example, the following would change the color of comments within the editor:
 }
 ```
 
-The setting supports a simple model with a set of common token types such as 'comments', 'strings' and 'numbers' available. If you want to color more than that, you need to use TextMate theme rules directly, which are explained in detail in the [Syntax Highlighting guide](/api/language-extensions/syntax-highlight-guide).
+The setting supports a simple model with a set of common token types such as 'comments', 'strings' and 'numbers' available. If you want to color more than that, you need to use TextMate theme rules directly, which are explained in detail in the [Syntax Highlighting guide](https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide).
 
 ## Semantic colors
 
@@ -70,7 +70,7 @@ Enable semantic highlighting for a specific theme:
 },
 ```
 
-Themes can define theming rules for semantic tokens as described in the [Syntax Highlighting guide](/api/language-extensions/syntax-highlight-guide#semantic-theming).
+Themes can define theming rules for semantic tokens as described in the [Syntax Highlighting guide](https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide#semantic-theming).
 
 ## Create a new Color Theme
 

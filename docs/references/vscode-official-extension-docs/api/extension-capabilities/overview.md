@@ -19,7 +19,7 @@ However, we also impose [restrictions](#restrictions) upon extensions to ensure 
 
 ## Common Capabilities
 
-[Common Capabilities](./common-capabilities) are core pieces of functionality that you can use in any extension.
+[Common Capabilities](./common-capabilities.md) are core pieces of functionality that you can use in any extension.
 
 Some of these capabilities include:
 
@@ -69,7 +69,7 @@ Although we provide a listing of [language features](https://code.visualstudio.c
 
 ## Workbench Extensions
 
-[Workbench Extensions](./extending-workbench) extend the VS Code Workbench UI. Add new right-click actions to the File Explorer, or even build a custom explorer using VS Code's [TreeView](../extension-guides/tree-view.md) API. And if your extension needs a fully customized user interface, use the [Webview API](../extension-guides/webview.md) to build your own document preview or UI using standard HTML, CSS, and JavaScript.
+[Workbench Extensions](./extending-workbench.md) extend the VS Code Workbench UI. Add new right-click actions to the File Explorer, or even build a custom explorer using VS Code's [TreeView](../extension-guides/tree-view.md) API. And if your extension needs a fully customized user interface, use the [Webview API](../extension-guides/webview.md) to build your own document preview or UI using standard HTML, CSS, and JavaScript.
 
 **Extension Ideas**
 
@@ -102,7 +102,7 @@ On the other hand, VS Code also offers a set of [Debug Extension API](../referen
 <!-- Add below content back after writing ./extending-core-functionalities.md  -->
 <!-- ## Core Extensions
 
-[Core Extensions](extending-core-functionalities) are for very advanced users. These let you build a custom back end for many of VS Code's low-level functionality. For example, the `FileSystem` API can be used to support working with files over FTP or other protocols. Core extensions typically work transparently from a user's point of view.
+Core Extensions are for very advanced users. These let you build a custom back end for many of VS Code's low-level functionality. For example, the `FileSystem` API can be used to support working with files over FTP or other protocols. Core extensions typically work transparently from a user's point of view.
 
 **Extension Ideas**
 

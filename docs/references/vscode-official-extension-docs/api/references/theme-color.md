@@ -9,7 +9,7 @@ MetaDescription: Theme Color reference that lists all themable colors in Visual 
 
 # Theme Color
 
-You can customize your active Visual Studio Code [color theme](/docs/getstarted/themes) with the `workbench.colorCustomizations` user [setting](/docs/configure/settings).
+You can customize your active Visual Studio Code [color theme](https://code.visualstudio.com/docs/getstarted/themes) with the `workbench.colorCustomizations` user [setting](https://code.visualstudio.com/docs/configure/settings).
 
 ```json
 {
@@ -19,7 +19,7 @@ You can customize your active Visual Studio Code [color theme](/docs/getstarted/
 }
 ```
 
-**Note**: If you want to use an existing color theme, see [Color Themes](/docs/getstarted/themes) where you'll learn how to set the active color theme through the **Preferences: Color Theme** dropdown (`kb(workbench.action.selectTheme)`).
+**Note**: If you want to use an existing color theme, see [Color Themes](https://code.visualstudio.com/docs/getstarted/themes) where you'll learn how to set the active color theme through the **Preferences: Color Theme** dropdown (`kb(workbench.action.selectTheme)`).
 
 Theme colors are available as CSS variables in [webviews](../extension-guides/webview.md), and [an extension](https://marketplace.visualstudio.com/items?itemName=connor4312.css-theme-completions) is available which provides IntelliSense for them.
 
@@ -338,7 +338,7 @@ Editor Groups are the containers of editors. There can be many editor groups. A 
 
 ## Editor colors
 
-The most prominent editor colors are the token colors used for syntax highlighting and are based on the language grammar installed. These colors are defined by the Color Theme but can also be customized with the `editor.tokenColorCustomizations` setting. See [Customize a Color Theme](/docs/configure/themes#_customize-a-color-theme) for details on updating a Color Theme and the available token types.
+The most prominent editor colors are the token colors used for syntax highlighting and are based on the language grammar installed. These colors are defined by the Color Theme but can also be customized with the `editor.tokenColorCustomizations` setting. See [Customize a Color Theme](https://code.visualstudio.com/docs/configure/themes#_customize-a-color-theme) for details on updating a Color Theme and the available token types.
 
 All other editor colors are listed here:
 
