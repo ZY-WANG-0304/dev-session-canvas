@@ -53,6 +53,7 @@ export const CONFIG_KEYS = {
   agentCodexCommand: 'devSessionCanvas.agent.codexCommand',
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
   notificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
+  notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   filesFeatureEnabled: 'devSessionCanvas.files.enabled',
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',

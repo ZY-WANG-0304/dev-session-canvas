@@ -213,6 +213,12 @@
           "scope": "window",
           "markdownDescription": "%configuration.notifications.bridgeTerminalAttentionSignals.description%"
         },
+        "devSessionCanvas.notifications.strongTerminalAttentionReminder": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "%configuration.notifications.strongTerminalAttentionReminder.description%"
+        },
         "devSessionCanvas.terminal.shellPath": {
           "type": "string",
           "default": "",

@@ -81,6 +81,7 @@ export interface ExecutionSessionMetadata {
   lastCols?: number;
   lastRows?: number;
   serializedTerminalState?: SerializedTerminalState;
+  attentionPending: boolean;
 }
 
 export interface AgentNodeMetadata extends ExecutionSessionMetadata {
@@ -209,6 +210,7 @@ export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
   defaultAgentProvider: AgentProviderKind;
+  strongTerminalAttentionReminderEnabled: boolean;
   terminalScrollback: number;
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
   terminalWordSeparators: string;
@@ -225,6 +227,8 @@ export interface WebviewProbeNodeSnapshot {
   chromeTitle: string | null;
   chromeSubtitle: string | null;
   statusText: string | null;
+  attentionIndicatorVisible: boolean;
+  attentionIndicatorFlashing: boolean;
   selected: boolean;
   renderedWidth: number;
   renderedHeight: number;
@@ -346,6 +350,12 @@ export type WebviewDomAction =
 export type WebviewToHostMessage =
   | {
       type: 'webview/ready';
+    }
+  | {
+      type: 'webview/selectNode';
+      payload: {
+        nodeId: string;
+      };
     }
   | {
       type: 'webview/createDemoNode';
@@ -633,6 +643,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (value.type === 'webview/ready' || value.type === 'webview/resetDemoState') {
     return { type: value.type };
+  }
+
+  if (value.type === 'webview/selectNode') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/selectNode',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
   }
 
   if (
