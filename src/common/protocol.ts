@@ -533,6 +533,12 @@ export type HostToWebviewMessage =
       type: 'host/visibilityRestored';
     }
   | {
+      type: 'host/focusNode';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
       type: 'host/error';
       payload: {
         message: string;

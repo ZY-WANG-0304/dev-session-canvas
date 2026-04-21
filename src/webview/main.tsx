@@ -542,6 +542,8 @@ function App(): JSX.Element {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
+  const pendingFocusNodeIdRef = useRef<string | undefined>();
+  const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
 
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
@@ -566,6 +568,9 @@ function App(): JSX.Element {
         case 'host/visibilityRestored':
           scheduleExecutionTerminalVisibilityRestore();
           scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+          break;
+        case 'host/focusNode':
+          requestNodeFocus(message.payload.nodeId);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -746,6 +751,18 @@ function App(): JSX.Element {
     setEdgeColorMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
   }, [selectedEdgeId]);
 
+  useEffect(() => {
+    const pendingNodeId = pendingFocusNodeIdRef.current;
+    if (!pendingNodeId || !hostState?.nodes.some((node) => node.id === pendingNodeId)) {
+      return;
+    }
+
+    if (focusNodeInViewport(pendingNodeId)) {
+      pendingFocusNodeIdRef.current = undefined;
+      scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+    }
+  }, [hostState, reactFlowReadyVersion]);
+
   const workspaceTrusted = runtimeContext.workspaceTrusted;
   const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
 
@@ -857,10 +874,10 @@ function App(): JSX.Element {
     });
   };
 
-  const focusNodeInViewport = (nodeId: string): void => {
+  const focusNodeInViewport = (nodeId: string): boolean => {
     const reactFlowInstance = reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
-      return;
+      return false;
     }
 
     const didFit = reactFlowInstance.fitView({
@@ -871,7 +888,7 @@ function App(): JSX.Element {
     });
 
     if (!didFit) {
-      return;
+      return false;
     }
 
     const viewport = reactFlowInstance.getViewport();
@@ -882,6 +899,17 @@ function App(): JSX.Element {
       selectedNodeId: nodeId,
       viewport
     }));
+    return true;
+  };
+
+  const requestNodeFocus = (nodeId: string): void => {
+    if (focusNodeInViewport(nodeId)) {
+      pendingFocusNodeIdRef.current = undefined;
+      scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+      return;
+    }
+
+    pendingFocusNodeIdRef.current = nodeId;
   };
 
   const setFileListViewMode = (nodeId: string, viewMode: FileListViewMode): void => {
@@ -1321,6 +1349,7 @@ function App(): JSX.Element {
         maxZoom={1.8}
         onInit={(instance) => {
           reactFlowRef.current = instance;
+          setReactFlowReadyVersion((current) => current + 1);
         }}
         onNodesChange={handleNodesChange}
         onConnect={handleConnect}

@@ -150,6 +150,8 @@ const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
 const EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT = 140;
 const EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS = 4000;
 const EXECUTION_ATTENTION_BELL_NOTIFICATION_COOLDOWN_MS = 8000;
+const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
+const EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS = 20000;
 const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
@@ -3981,7 +3983,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       signal: signal.kind,
       message
     });
-    void vscode.window.showInformationMessage(message);
+    void this.showExecutionAttentionNotification(kind, nodeId, message);
+  }
+
+  private async showExecutionAttentionNotification(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    message: string
+  ): Promise<void> {
+    const selection = await vscode.window.showInformationMessage(message, EXECUTION_ATTENTION_FOCUS_ACTION_LABEL);
+    if (selection !== EXECUTION_ATTENTION_FOCUS_ACTION_LABEL) {
+      return;
+    }
+
+    await this.focusExecutionAttentionNode(kind, nodeId);
+  }
+
+  private async focusExecutionAttentionNode(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
+    if (!node) {
+      void vscode.window.showWarningMessage('通知对应的节点已不存在，无法定位。');
+      return;
+    }
+
+    const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
+
+    try {
+      await this.revealSurface(targetSurface);
+      await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+      this.postMessageToSurface(targetSurface, {
+        type: 'host/focusNode',
+        payload: {
+          nodeId
+        }
+      });
+    } catch {
+      void vscode.window.showWarningMessage(
+        `${kind === 'agent' ? 'Agent' : 'Terminal'}「${trimStoredTerminalText(node.title).trim() || nodeId}」暂时无法定位。`
+      );
+    }
   }
 
   private buildExecutionAttentionNotificationMessage(
