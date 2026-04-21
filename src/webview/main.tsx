@@ -5054,7 +5054,7 @@ function statusToneClass(status: string): string {
     case 'reattaching':
       return 'tone-running';
     case 'waiting-input':
-      return 'tone-success';
+      return 'tone-ready';
     case 'resume-ready':
     case 'stopping':
     case 'stopped':

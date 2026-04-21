@@ -827,6 +827,12 @@ body {
   color: color-mix(in srgb, #10b981 58%, var(--vscode-editor-foreground) 42%);
 }
 
+.tone-ready {
+  border-color: color-mix(in srgb, #3b82f6 34%, var(--vscode-panel-border) 66%);
+  background: color-mix(in srgb, #3b82f6 12%, transparent);
+  color: color-mix(in srgb, #3b82f6 66%, var(--vscode-editor-foreground) 34%);
+}
+
 .tone-idle {
   background: color-mix(in srgb, var(--vscode-editor-background) 84%, var(--vscode-sideBar-background) 16%);
   color: var(--vscode-descriptionForeground);
