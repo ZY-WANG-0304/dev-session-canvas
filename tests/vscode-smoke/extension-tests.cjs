@@ -2210,6 +2210,9 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
         noteNode.chromeTitle === 'Host Smoke Note' &&
         noteNode.chromeSubtitle === null &&
         noteNode.statusText === null &&
+        agentNode.minimapVisible === true &&
+        terminalNode.minimapVisible === true &&
+        noteNode.minimapVisible === true &&
         noteNode.titleInputValue === 'Host Smoke Note' &&
         noteNode.bodyValue === 'Exercise the real webview-to-host update path.'
     );
@@ -2535,7 +2538,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === true &&
-                currentNode.attentionIndicatorFlashing === true
+                currentNode.attentionIndicatorFlashing === true &&
+                currentNode.minimapAttentionFlashing === true
             );
           },
           20000
@@ -2554,6 +2558,16 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
           true,
           'Bridge-disabled Agent attention signal should still flash the node title bar when strong reminder is enabled.'
+        );
+        assert.strictEqual(
+          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          true,
+          'Bridge-disabled Agent attention signal should still flash the minimap node.'
+        );
+        assert.strictEqual(
+          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          true,
+          'Bridge-disabled Agent attention signal should make the minimap node pulse in size when strong reminder is enabled.'
         );
         assert.strictEqual(
           (await getDiagnosticEvents()).some(
@@ -2576,7 +2590,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false
             );
           },
           20000
@@ -2585,6 +2600,16 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           clearedAfterClickProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
           false,
           'Selecting the node should clear the attention icon.'
+        );
+        assert.strictEqual(
+          clearedAfterClickProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          false,
+          'Selecting the node should also clear the minimap attention flash.'
+        );
+        assert.strictEqual(
+          clearedAfterClickProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          false,
+          'Selecting the node should also clear the minimap size pulse.'
         );
 
         await ensureStrongTerminalAttentionReminderEnabled(false);
@@ -2618,7 +2643,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === true &&
-                currentNode.attentionIndicatorFlashing === false
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === true
             );
           },
           20000
@@ -2638,6 +2664,16 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           false,
           'Disabling strong reminder should stop the title bar flashing.'
         );
+        assert.strictEqual(
+          strongReminderDisabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          true,
+          'Disabling strong reminder should not stop the minimap attention flash.'
+        );
+        assert.strictEqual(
+          strongReminderDisabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          false,
+          'Disabling strong reminder should remove the minimap size pulse and keep only brightness changes.'
+        );
 
         await performWebviewDomAction({
           kind: 'selectNode',
@@ -2650,7 +2686,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false
             );
           },
           20000
@@ -2689,7 +2726,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === true &&
-                currentNode.attentionIndicatorFlashing === true
+                currentNode.attentionIndicatorFlashing === true &&
+                currentNode.minimapAttentionFlashing === true
             );
           },
           20000
@@ -2699,6 +2737,16 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
           true,
           'Bridge-enabled Agent attention signal should still show the node attention icon.'
+        );
+        assert.strictEqual(
+          enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          true,
+          'Bridge-enabled Agent attention signal should also flash the minimap node.'
+        );
+        assert.strictEqual(
+          enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          true,
+          'Bridge-enabled Agent attention signal should add minimap size pulsing when strong reminder is enabled.'
         );
         assert.ok(
           enabledDiagnostics.some(
@@ -2722,7 +2770,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false
             );
           },
           20000
@@ -2768,7 +2817,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
               currentNode &&
                 currentNode.selected === true &&
                 currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false
             );
           },
           20000
@@ -2778,6 +2828,16 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
           false,
           'Focusing the node from the VS Code notification should clear the attention icon.'
+        );
+        assert.strictEqual(
+          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          false,
+          'Focusing the node from the VS Code notification should also clear the minimap attention flash.'
+        );
+        assert.strictEqual(
+          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          false,
+          'Focusing the node from the VS Code notification should also clear the minimap size pulse.'
         );
 
         calls.length = 0;

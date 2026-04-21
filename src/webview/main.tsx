@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
@@ -20,6 +20,7 @@ import ReactFlow, {
   type Edge,
   type EdgeMouseHandler,
   type EdgeProps,
+  type MiniMapNodeProps,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -1390,8 +1391,10 @@ function App(): JSX.Element {
           style={{ width: 194, height: 126 }}
           pannable
           zoomable
+          nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
           nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
           nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
+          nodeComponent={CanvasMiniMapNode}
           nodeBorderRadius={4}
           nodeStrokeWidth={1.2}
           maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
@@ -2294,6 +2297,43 @@ function ExecutionAttentionStatus(props: {
         {humanizeStatus(props.status)}
       </span>
     </div>
+  );
+}
+
+function CanvasMiniMapNode(props: MiniMapNodeProps): JSX.Element {
+  const classNames = props.className.split(/\s+/).filter(Boolean);
+  const attentionPending = classNames.includes('has-attention');
+  const attentionFlashing = classNames.includes('is-attention-flashing');
+  const attentionSizePulsing = classNames.includes('has-strong-attention-reminder');
+  const style = {
+    ...(props.style ?? {}),
+    '--minimap-node-attention-color': props.color,
+    '--minimap-node-attention-stroke-color': props.strokeColor || props.color,
+    '--minimap-node-attention-scale-peak': attentionSizePulsing ? '1.16' : '1'
+  } as CSSProperties;
+
+  return (
+    <rect
+      className={['react-flow__minimap-node', props.selected ? 'selected' : '', props.className]
+        .filter(Boolean)
+        .join(' ')}
+      data-minimap-node-id={props.id}
+      data-minimap-attention-pending={attentionPending ? 'true' : 'false'}
+      data-minimap-attention-flashing={attentionFlashing ? 'true' : 'false'}
+      data-minimap-attention-size-pulsing={attentionSizePulsing ? 'true' : 'false'}
+      x={props.x}
+      y={props.y}
+      rx={props.borderRadius}
+      ry={props.borderRadius}
+      width={props.width}
+      height={props.height}
+      fill={props.color}
+      stroke={props.strokeColor}
+      strokeWidth={props.strokeWidth}
+      shapeRendering={props.shapeRendering}
+      style={style}
+      onClick={props.onClick ? (event) => props.onClick?.(event, props.id) : undefined}
+    />
   );
 }
 
@@ -4886,6 +4926,29 @@ function minimapStrokeColorForKind(kind: CanvasNodeKind): string {
   return `color-mix(in srgb, ${colorForKind(kind)} 82%, var(--vscode-editor-background) 18%)`;
 }
 
+function minimapClassNameForNode(node: Node<CanvasNodeData>): string {
+  const data = node.data;
+  if (!data || (data.kind !== 'agent' && data.kind !== 'terminal')) {
+    return '';
+  }
+
+  if (!executionAttentionPendingFromMetadata(data.metadata)) {
+    return '';
+  }
+
+  return [
+    'has-attention',
+    'is-attention-flashing',
+    data.strongTerminalAttentionReminderEnabled ? 'has-strong-attention-reminder' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function executionAttentionPendingFromMetadata(metadata: CanvasNodeMetadata | undefined): boolean {
+  return metadata?.agent?.attentionPending === true || metadata?.terminal?.attentionPending === true;
+}
+
 function humanizeNodeKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
@@ -5554,6 +5617,7 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
   }
 
   const footprint = readProbeNodeFootprint(element);
+  const minimapNode = queryMinimapNode(nodeId);
 
   return {
     nodeId,
@@ -5571,6 +5635,9 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     attentionIndicatorVisible: Boolean(element.querySelector('[data-attention-indicator="true"]')),
     attentionIndicatorFlashing:
       element.querySelector<HTMLElement>('.window-chrome')?.dataset.executionAttentionFlashing === 'true',
+    minimapVisible: minimapNode !== null,
+    minimapAttentionFlashing: minimapNode?.dataset.minimapAttentionFlashing === 'true',
+    minimapAttentionSizePulsing: minimapNode?.dataset.minimapAttentionSizePulsing === 'true',
     selected: element.dataset.nodeSelected === 'true',
     renderedWidth: footprint.width,
     renderedHeight: footprint.height,
@@ -5959,6 +6026,14 @@ function queryNodeRoot(nodeId: string): HTMLElement {
   }
 
   return nodeRoot;
+}
+
+function queryMinimapNode(nodeId: string): SVGElement | null {
+  return (
+    Array.from(document.querySelectorAll<SVGElement>('[data-minimap-node-id]')).find(
+      (candidate) => candidate.dataset.minimapNodeId === nodeId
+    ) ?? null
+  );
 }
 
 function setControlledFieldValue(

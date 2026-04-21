@@ -125,6 +125,43 @@ body {
 
 .canvas-shell .canvas-minimap .react-flow__minimap-node {
   opacity: 0.82;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease,
+    stroke 140ms ease,
+    stroke-width 140ms ease,
+    transform 140ms ease;
+}
+
+.canvas-shell .canvas-minimap .react-flow__minimap-node.has-attention {
+  opacity: 1;
+  stroke: var(--minimap-node-attention-stroke-color, currentColor);
+  stroke-width: 2.2;
+}
+
+.canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
+  animation: minimap-attention-flash 0.95s ease-in-out infinite;
+}
+
+@keyframes minimap-attention-flash {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: none;
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(var(--minimap-node-attention-scale-peak, 1));
+    filter: drop-shadow(
+        0 0 8px color-mix(in srgb, var(--minimap-node-attention-color, currentColor) 86%, transparent)
+      )
+      saturate(1.42)
+      brightness(1.16);
+  }
 }
 
 .action-button {
@@ -634,6 +671,16 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
+    animation: none;
+    opacity: 1;
+    filter: drop-shadow(
+        0 0 6px color-mix(in srgb, var(--minimap-node-attention-color, currentColor) 74%, transparent)
+      )
+      saturate(1.26)
+      brightness(1.08);
+  }
+
   .window-chrome.is-attention-flashing {
     animation: none;
     background: color-mix(in srgb, var(--window-chrome-background) 48%, var(--execution-node-attention-color) 52%);
