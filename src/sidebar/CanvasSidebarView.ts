@@ -65,6 +65,14 @@ function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
         : '当前窗口未启用运行时持久化；Agent 与 Terminal 不会保留 live runtime host。'
     ),
     new CanvasSidebarItem(
+      'summary/files-feature',
+      '文件功能',
+      state.filesFeatureEnabled ? '已开启' : '已关闭',
+      state.filesFeatureEnabled
+        ? '当前窗口已启用文件活动功能；支持的 Agent 会生成文件节点、文件列表节点和相关过滤入口。'
+        : '当前窗口未启用文件活动功能；文件节点、文件列表节点、文件过滤和自动文件关系都不可用。'
+    ),
+    new CanvasSidebarItem(
       'summary/node-count',
       '节点总数',
       String(state.nodeCount),

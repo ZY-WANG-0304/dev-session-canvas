@@ -27,7 +27,7 @@
 4. 当 `Agent` 通过 provider 原生结构化事件上报文件读写时，画布会自动出现对应的文件对象视图。
 5. 默认模式下，单个文件显示为独立小节点；用户可把展示模式切换成文件列表节点。
 6. 用户可通过设置 `devSessionCanvas.fileNode.displayStyle` 在 `card`（卡片风格）和 `minimal`（极简风格）之间切换；默认值为 `minimal`。
-7. 用户可通过设置 `devSessionCanvas.files.enabled` 一键关闭文件节点 / 文件列表节点功能；默认值为开启。关闭后，画布不再投影文件节点、文件列表节点和对应自动关系线，但继续保留 `fileReferences` 作为权威状态。
+7. 用户可通过设置 `devSessionCanvas.files.enabled` 一键关闭整个文件活动功能域；默认值为开启。该设置与 `devSessionCanvas.runtimePersistence.enabled` 一样，需要重新加载窗口后才生效。关闭后，系统不再接收或保留 `fileReferences`，画布不再提供文件节点、文件列表节点、自动文件关系线和文件过滤入口。
 8. 在 `minimal` 风格下，文件节点会收口成贴内容边框的紧凑对象；文件列表节点会收口成接近 VSCode Source Control Changes 的单行文件列表，并在节点头部提供 `列表视图 / 树形视图` 切换。
 9. 用户点击文件节点，或点击文件列表节点中的文件条目，VSCode 会在编辑区打开对应文件；若画布当前承载在编辑区，宿主会复用或创建相邻 editor group 打开目标文件，而不是覆盖画布所在组。
 10. 当多个 Agent 共享同一文件时，文件节点模式下保留一个共享文件节点并连到多个 Agent；文件列表模式下会额外生成共享文件列表节点。
@@ -56,8 +56,8 @@
   - 仓库内 `fake-agent-provider` 提供同形态测试事件，确保自动化验证可重复。
   - `Codex` 当前没有已确认的 provider 原生文件事件接口，因此本轮只保留 no-op 适配；不把“自动文件活动”验收写到 Codex 路径上。
   - 支持全局配置 `devSessionCanvas.files.enabled`：
-    - `true`：按当前展示模式投影文件节点或文件列表节点，并显示对应自动关系线。
-    - `false`：停止投影文件节点、文件列表节点和自动关系线，但不删除 `fileReferences`。
+    - `true`：在当前窗口启用文件活动功能域；支持的 provider 会记录 `fileReferences`，并按当前展示模式投影文件节点或文件列表节点，同时显示对应自动关系线。
+    - `false`：该设置在 reload window 后生效；生效后宿主不再启动文件活动接线，不再保留 `fileReferences`，并停用文件节点、文件列表节点、自动文件关系线与 sidebar 文件过滤入口。
 - 文件节点模式：
   - 默认展示模式为文件节点。
   - 同一路径的文件节点在整张画布中唯一；多个 Agent 共用同一文件时共享该节点。
@@ -75,7 +75,7 @@
     - 只显示文件路径
   - 文件路径支持两种显示口径：
     - 只显示文件名（默认）
-    - 显示相对所属 workspace folder 根目录的路径；若不在 workspace 内，则显示规范化绝对路径
+    - 显示相对所属 workspace folder 根目录的路径；若当前是多根 workspace，则在前方补上 workspace folder 名称前缀以避免同名路径冲突；若不在 workspace 内，则显示规范化绝对路径
 - 文件列表节点模式：
   - 用户可通过配置切换到文件列表节点模式。
   - 每个 Agent 会获得自己的文件列表节点，用图标和尾部读写标识标明每个文件是读、写还是读写。
@@ -93,9 +93,10 @@
     - `列表视图`：平铺所有文件条目。
     - `树形视图`：按目录结构分组显示文件条目。
 - 过滤与生命周期：
-  - 支持 `include` / `exclude` glob 过滤文件对象投影；过滤控件位于 sidebar 的 `常用操作` section 中，直接显示 `包含文件` / `排除文件` 两个输入框。
+  - 在 `devSessionCanvas.files.enabled = true` 时，支持 `include` / `exclude` glob 过滤文件对象投影；过滤控件位于 sidebar 的 `常用操作` section 中，直接显示 `包含文件` / `排除文件` 两个输入框。
   - 过滤编辑在 sidebar 内就地完成，不再通过单独菜单或弹出输入框完成。
   - `include` / `exclude` 只影响文件节点 / 文件列表节点 / 自动边的显示投影，不修改 `fileReferences` 权威状态。
+  - 当 `devSessionCanvas.files.enabled = false` 且已完成 reload 后，文件过滤入口不可用，也不会保留上一轮文件活动状态。
   - 删除 Agent 节点后，系统移除该 Agent 的文件引用；没有剩余引用的文件节点 / 文件列表节点自动清理。
 
 ## 5. 不在范围内
@@ -150,7 +151,7 @@
 - 连线切换到预设颜色后，仍可通过“默认颜色”恢复到默认灰色 token。
 - 选中连线后按 `Delete` 键会删除该连线，而不会误删节点。
 - `Claude Code` Agent 在触发文件读写工具后，画布会实时出现对应文件对象视图；该路径不依赖终端输出文本解析。
-- 把 `devSessionCanvas.files.enabled` 从 `true` 切换为 `false` 后，文件节点 / 文件列表节点和自动文件活动边会从画布隐藏，但 `fileReferences` 仍保留；重新开启后，系统会按当前权威状态重新投影文件对象。
+- 修改 `devSessionCanvas.files.enabled` 后，当前窗口要在 reload 后才切换到新的文件功能状态；当 `true -> false` 时，下次加载会清空 `fileReferences`、文件节点 / 文件列表节点、自动文件活动边与文件过滤入口；当 `false -> true` 时，只恢复功能可用性，不恢复之前已清空的文件活动状态。
 - 默认文件节点模式下，同一路径只保留一个文件节点；多个 Agent 引用同一文件时，该文件节点会自动连到多个 Agent。
 - 文件活动派生的连线与手工连线在 UI 和交互入口上没有额外区分；用户修改自动边后，系统会持久化对应覆盖结果，而不是下一次重建立即回退。
 - 文件节点可点击并在 VSCode 编辑区打开对应文件；当画布位于编辑区时，目标文件会在独立 editor group 中打开。
@@ -161,7 +162,7 @@
 - `minimal` 风格下，文件列表中的每个文件条目都能以单行明确标出彩色 `R` / `W` 关系，并支持点击打开。
 - `minimal` 风格下，文件列表节点支持 `列表视图 / 树形视图` 切换，两种视图都保持相同的打开文件行为。
 - 文件列表条目在 hover / active selected / inactive selected 三态下分别使用 VSCode list 对应 token，而不是统一复用 `focusBorder` 蒙层。
-- `include` / `exclude` sidebar 过滤会以常用操作区中的内嵌输入框形态影响文件对象与自动边的显示结果，但不会删改 `fileReferences`。
+- 在文件功能开启时，`include` / `exclude` sidebar 过滤会以常用操作区中的内嵌输入框形态影响文件对象与自动边的显示结果，但不会删改 `fileReferences`；在文件功能关闭并 reload 后，这组入口不会继续显示为可用状态。
 - 删除 Agent 节点后，如果某文件不再被任何 Agent 引用，则对应文件节点 / 文件列表节点会被自动清理；若仍被其他 Agent 引用，则继续保留。
 - `Codex` 在当前版本不会凭空出现“自动文件活动已支持”的假象；没有事件就不生成自动文件对象。
 

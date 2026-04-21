@@ -79,6 +79,7 @@ import {
   normalizeSerializedTerminalState
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
+import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
 import {
   createExecutionSessionProcess,
   type DisposableLike,
@@ -247,6 +248,7 @@ export interface CanvasSidebarState {
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
+  filesFeatureEnabled: boolean;
   nodeCount: number;
   runningExecutionCount: number;
   workspaceTrusted: boolean;
@@ -271,11 +273,13 @@ interface PersistedCanvasSnapshot {
   activeSurface?: CanvasSurfaceLocation;
   defaultSurface?: CanvasSurfaceLocation;
   runtimePersistenceEnabled?: boolean;
+  filesFeatureEnabled?: boolean;
 }
 
 interface CanvasStartupConfiguration {
   defaultSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
+  filesFeatureEnabled: boolean;
 }
 
 interface CanvasFileViewConfiguration {
@@ -463,16 +467,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         );
         const workbenchIconThemeChanged = event.affectsConfiguration('workbench.iconTheme');
 
-        if (defaultSurfaceChanged || runtimePersistenceChanged) {
+        if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
             defaultSurfaceChanged,
-            runtimePersistenceChanged
+            runtimePersistenceChanged,
+            filesFeatureEnabledChanged
           });
         }
 
         if (
           !defaultAgentProviderChanged &&
-          !filesFeatureEnabledChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -487,7 +491,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         void this.handleRuntimeConfigurationChanged({
           defaultAgentProviderChanged,
-          filesFeatureEnabledChanged,
           filesPresentationModeChanged,
           fileNodeDisplayStyleChanged,
           filesNodeDisplayModeChanged,
@@ -531,12 +534,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceLocation,
       configuredSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
       creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note'],
       fileFilters: cloneJsonValue(this.fileFilterState)
     };
+  }
+
+  public isFilesFeatureEnabled(): boolean {
+    return this.appliedStartupConfiguration.filesFeatureEnabled;
   }
 
   public getCanvasFileFilterState(): CanvasFileFilterState {
@@ -1346,6 +1354,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshotWithMetadata.runtimePersistenceEnabled
       );
       await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasFilesFeatureEnabled,
+        snapshotWithMetadata.filesFeatureEnabled
+      );
+      await this.context.workspaceState.update(
         STORAGE_KEYS.canvasFileFilterState,
         normalizeCanvasFileFilterState(snapshotWithMetadata.fileFilterState)
       );
@@ -1393,6 +1405,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileFilterState: this.fileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       writtenAt: new Date().toISOString(),
       stateHash: buildDiagnosticStateHash(snapshot.state)
     };
@@ -1414,6 +1427,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasRuntimePersistenceEnabled);
   }
 
+  private loadStoredFilesFeatureEnabled(snapshot?: PersistedCanvasSnapshot): boolean | undefined {
+    return typeof snapshot?.filesFeatureEnabled === 'boolean'
+      ? snapshot.filesFeatureEnabled
+      : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasFilesFeatureEnabled);
+  }
+
   private shouldResetStateDueToRuntimePersistenceModeChange(snapshot?: PersistedCanvasSnapshot): boolean {
     const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
     return (
@@ -1422,13 +1441,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private shouldResetFileDomainDueToFilesFeatureModeChange(snapshot?: PersistedCanvasSnapshot): boolean {
+    const storedFilesFeatureEnabled = this.loadStoredFilesFeatureEnabled(snapshot);
+    return (
+      typeof storedFilesFeatureEnabled === 'boolean' &&
+      storedFilesFeatureEnabled !== this.appliedStartupConfiguration.filesFeatureEnabled
+    );
+  }
+
   private loadState(): CanvasPrototypeState {
     const fileView = this.getCanvasFileViewConfiguration();
     const snapshot = this.loadPersistedCanvasSnapshot();
     const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
     const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
+    const storedFilesFeatureEnabled = this.loadStoredFilesFeatureEnabled(snapshot);
     const resetDueToRuntimePersistenceModeChange =
       this.shouldResetStateDueToRuntimePersistenceModeChange(snapshot);
+    const resetDueToFilesFeatureModeChange = this.shouldResetFileDomainDueToFilesFeatureModeChange(snapshot);
     const rawState = resetDueToRuntimePersistenceModeChange ? undefined : snapshot?.state ?? workspaceState;
     const source = resetDueToRuntimePersistenceModeChange
       ? 'runtimePersistenceReset'
@@ -1451,7 +1480,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeSurface: snapshot?.activeSurface,
       storedRuntimePersistenceEnabled,
       appliedRuntimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      storedFilesFeatureEnabled,
+      appliedFilesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       resetDueToRuntimePersistenceModeChange,
+      resetDueToFilesFeatureModeChange,
+      fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
       snapshotWrittenAt: snapshot?.writtenAt,
       snapshotStateHash: snapshot?.stateHash,
       ...summarizeCanvasStateForDiagnostics(rawState)
@@ -1462,10 +1495,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         appliedRuntimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled
       });
     }
-    return hydrateRuntimeStoragePaths(
-      normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView),
-      this.storageRecoverySelection.sourcePath
-    );
+    if (resetDueToFilesFeatureModeChange) {
+      this.recordDiagnosticEvent('state/filesFeatureReset', {
+        storedFilesFeatureEnabled,
+        appliedFilesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled
+      });
+    }
+    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView);
+    const sanitizedState =
+      this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
+        ? normalizedState
+        : clearFileDomainState(normalizedState);
+    return hydrateRuntimeStoragePaths(sanitizedState, this.storageRecoverySelection.sourcePath);
   }
 
   private loadReconciledState(): CanvasPrototypeState {
@@ -1550,14 +1591,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
-    const enabled = getConfigurationValue<boolean>('filesFeatureEnabled', true);
     const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
     const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
     const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
     const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
 
     return {
-      enabled,
+      enabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
       includeGlobs: this.fileFilterState.includeGlobs,
       excludeGlobs: this.fileFilterState.excludeGlobs,
@@ -1569,6 +1609,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public updateCanvasFileFilterState(kind: 'include' | 'exclude', globs: readonly string[]): void {
+    if (!this.isFilesFeatureEnabled()) {
+      return;
+    }
+
     const normalizedGlobs = normalizeCanvasFileFilterGlobs(globs);
     const nextState: CanvasFileFilterState =
       kind === 'include'
@@ -1604,7 +1648,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       defaultSurface:
         getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel' ? 'panel' : 'editor',
-      runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false)
+      runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false),
+      filesFeatureEnabled: getConfigurationValue<boolean>('filesFeatureEnabled', true)
     };
   }
 
@@ -1628,15 +1673,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async notifyReloadRequiredConfigurationChanged(options: {
     defaultSurfaceChanged: boolean;
     runtimePersistenceChanged: boolean;
+    filesFeatureEnabledChanged: boolean;
   }): Promise<void> {
     if (this.context.extensionMode === vscode.ExtensionMode.Test) {
       return;
     }
 
-    if (options.runtimePersistenceChanged) {
-      const message = options.defaultSurfaceChanged
-        ? '默认承载面和运行时持久化的更改会在重新加载窗口后生效；其中切换运行时持久化会在下次加载时清空当前工作区的画布宿主状态。'
-        : '运行时持久化的更改会在重新加载窗口后生效；切换此设置会在下次加载时清空当前工作区的画布宿主状态。';
+    if (options.runtimePersistenceChanged || options.filesFeatureEnabledChanged) {
+      const changedSettings = [
+        options.defaultSurfaceChanged ? '默认承载面' : undefined,
+        options.runtimePersistenceChanged ? '运行时持久化' : undefined,
+        options.filesFeatureEnabledChanged ? '文件功能开关' : undefined
+      ].filter((label): label is string => Boolean(label));
+      const changeSummary =
+        changedSettings.length > 1
+          ? `${changedSettings.slice(0, -1).join('、')}和${changedSettings[changedSettings.length - 1]}`
+          : changedSettings[0];
+      const followUps = [
+        options.runtimePersistenceChanged ? '切换运行时持久化会在下次加载时清空当前工作区的画布宿主状态。' : undefined,
+        options.filesFeatureEnabledChanged ? '切换文件功能开关会在下次加载时清空文件活动状态、文件对象和自动文件关系。' : undefined
+      ].filter((message): message is string => Boolean(message));
+      const message = `${changeSummary}的更改会在重新加载窗口后生效；${followUps.join('')}`;
       const selection = await vscode.window.showWarningMessage(message, RELOAD_WINDOW_ACTION_LABEL);
       if (selection === RELOAD_WINDOW_ACTION_LABEL) {
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
@@ -1659,7 +1716,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
-    filesFeatureEnabledChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -1684,7 +1740,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (
-      options.filesFeatureEnabledChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -1700,7 +1755,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       options.defaultAgentProviderChanged ||
-      options.filesFeatureEnabledChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -1880,6 +1934,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private handleAgentFileActivityEvent(nodeId: string, event: AgentFileActivityEvent): void {
+    if (!this.isFilesFeatureEnabled()) {
+      return;
+    }
+
     const relativePath = this.resolveWorkspaceRelativePath(event.path);
     const nextState = recordAgentFileActivity(this.state, {
       ...event,
@@ -1903,12 +1961,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    const relativePath = path.relative(workspaceFolder.uri.fsPath, normalizedPath);
-    if (!relativePath || relativePath.startsWith('..')) {
-      return undefined;
+    return resolveContainedWorkspaceRelativePath({
+      filePath: normalizedPath,
+      workspaceFolderPath: workspaceFolder.uri.fsPath,
+      workspaceFolderName: workspaceFolder.name,
+      includeWorkspaceFolderPrefix: (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+    });
+  }
+
+  private createConfiguredAgentFileActivitySession(
+    provider: AgentProviderKind,
+    command: string
+  ): AgentFileActivitySession {
+    if (!this.isFilesFeatureEnabled()) {
+      return {
+        extraArgs: [],
+        extraEnv: {},
+        start: () => {},
+        dispose: async () => {}
+      };
     }
 
-    return relativePath.replace(/\\/g, '/');
+    return createAgentFileActivitySession({
+      provider,
+      command,
+      extensionRootPath: this.context.extensionUri.fsPath,
+      storageRootPath: path.join(this.getExtensionStoragePath(), 'agent-file-activity')
+    });
   }
 
   private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): {
@@ -3846,12 +3925,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getTerminalWorkingDirectory();
     await this.disposeAgentFileActivitySession(nodeId);
-    const fileActivitySession = createAgentFileActivitySession({
-      provider,
-      command: cliSpec.command,
-      extensionRootPath: this.context.extensionUri.fsPath,
-      storageRootPath: path.join(this.getExtensionStoragePath(), 'agent-file-activity')
-    });
+    const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient();
@@ -4217,12 +4291,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     try {
       cliSpec = await this.resolveAgentCli(provider);
-      const fileActivitySession = createAgentFileActivitySession({
-        provider,
-        command: cliSpec.command,
-        extensionRootPath: this.context.extensionUri.fsPath,
-        storageRootPath: path.join(this.getExtensionStoragePath(), 'agent-file-activity')
-      });
+      const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
       const process = createExecutionSessionProcess(
         this.buildAgentLaunchSpec(
           cliSpec,
@@ -5952,6 +6021,26 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
   };
 }
 
+function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState {
+  const retainedNodes = state.nodes.filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
+  const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
+  const retainedEdges = state.edges.filter(
+    (edge) =>
+      edge.owner !== 'file-activity' &&
+      retainedNodeIds.has(edge.sourceNodeId) &&
+      retainedNodeIds.has(edge.targetNodeId)
+  );
+
+  return {
+    ...state,
+    nodes: retainedNodes,
+    edges: retainedEdges,
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
+  };
+}
+
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -6433,7 +6522,9 @@ function rebuildCanvasFileArtifacts(
       ...state,
       nodes: manualNodes,
       edges: userEdges,
-      fileReferences: authoritativeFileReferences
+      fileReferences: [],
+      suppressedFileActivityEdgeIds: [],
+      suppressedAutomaticFileArtifactNodeIds: []
     };
   }
   const projectedFileReferences = authoritativeFileReferences.filter((reference) =>

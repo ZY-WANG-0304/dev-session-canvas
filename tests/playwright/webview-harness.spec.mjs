@@ -1534,6 +1534,23 @@ test('minimal file list nodes can switch between list and tree views', async ({ 
   });
 });
 
+test('multi-root relative paths stay split by workspace folder in tree view', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    createMultiRootFileListState(),
+    createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' })
+  );
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await fileListNode.locator('[data-file-list-view-mode="tree"]').click();
+  await expect(fileListNode.locator('.file-tree-folder-row').filter({ hasText: 'workspace-a' })).toHaveCount(1);
+  await expect(fileListNode.locator('.file-tree-folder-row').filter({ hasText: 'workspace-b' })).toHaveCount(1);
+  await expect(fileListNode.locator('.file-tree-folder-row').filter({ hasText: 'src' })).toHaveCount(2);
+  await expect(fileListNode.locator('.file-list-entry').filter({ hasText: 'index.ts' })).toHaveCount(2);
+});
+
 test('file list nodes expose a delete button that posts deleteNode', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -4701,6 +4718,113 @@ function createFileListState() {
             nodeId: 'agent-2',
             accessMode: 'write',
             updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createMultiRootFileListState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-21T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 320 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace-a',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-list-shared',
+        kind: 'file-list',
+        title: '共享文件',
+        status: 'linked',
+        summary: '共 2 个共享文件',
+        position: { x: 720, y: 280 },
+        size: sizeFor('file-list'),
+        metadata: {
+          fileList: {
+            scope: 'shared',
+            entries: [
+              {
+                fileId: 'workspace-a-src-index',
+                filePath: '/workspace-a/src/index.ts',
+                relativePath: 'workspace-a/src/index.ts',
+                accessMode: 'read-write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              },
+              {
+                fileId: 'workspace-b-src-index',
+                filePath: '/workspace-b/src/index.ts',
+                relativePath: 'workspace-b/src/index.ts',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-list-shared',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'both',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'workspace-a-src-index',
+        filePath: '/workspace-a/src/index.ts',
+        relativePath: 'workspace-a/src/index.ts',
+        updatedAt: '2026-04-21T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read-write',
+            updatedAt: '2026-04-21T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'workspace-b-src-index',
+        filePath: '/workspace-b/src/index.ts',
+        relativePath: 'workspace-b/src/index.ts',
+        updatedAt: '2026-04-21T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-21T00:00:00.000Z'
           }
         ]
       }
