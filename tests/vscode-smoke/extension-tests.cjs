@@ -41,6 +41,7 @@ const REAL_DOM_TERMINAL_TITLE = 'Terminal Title Through DOM';
 const REAL_DOM_NOTE_TITLE = 'Host Smoke Note Through DOM';
 const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview DOM.';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
+const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
@@ -2476,11 +2477,15 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
     configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
   const bridgeDisabledMessage = 'bridge-disabled-smoke';
   const bridgeEnabledMessage = 'bridge-enabled-smoke';
+  const bridgeFocusMessage = 'bridge-focus-smoke';
   const bridgeDuplicateMessage = 'bridge-duplicate-smoke';
+  let autoSelectNotificationMessage;
 
   await clearHostMessages();
   await clearDiagnosticEvents();
   await ensureAgentStopped(agentNodeId);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
   try {
     await ensureBridgeTerminalAttentionSignalsEnabled(false);
@@ -2499,136 +2504,181 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
         ? agentNode.title.trim()
         : 'Agent';
 
-    await withInterceptedInformationMessages(async (calls) => {
-      await clearDiagnosticEvents();
-      await dispatchWebviewMessage({
-        type: 'webview/executionInput',
-        payload: {
-          nodeId: agentNodeId,
-          kind: 'agent',
-          data: `notify ${bridgeDisabledMessage}\r`
-        }
-      });
+    await withInterceptedInformationMessages(
+      async (calls) => {
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeDisabledMessage}\r`
+          }
+        });
 
-      await waitForSnapshot((currentSnapshot) => {
-        const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-        return Boolean(
-          currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${bridgeDisabledMessage}`) &&
-            currentNode.status === 'waiting-input'
+        await waitForSnapshot((currentSnapshot) => {
+          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+          return Boolean(
+            currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${bridgeDisabledMessage}`) &&
+              currentNode.status === 'waiting-input'
+          );
+        }, 20000);
+
+        assert.deepStrictEqual(
+          calls.map((call) => call.message),
+          [],
+          'Bridge-disabled Agent attention signal should not raise a VS Code notification.'
         );
-      }, 20000);
+        assert.strictEqual(
+          (await getDiagnosticEvents()).some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' ||
+              event.kind === 'execution/attentionNotificationSuppressed'
+          ),
+          false,
+          'Bridge-disabled Agent attention signal should not emit attention-notification diagnostics.'
+        );
 
-      assert.deepStrictEqual(
-        calls.map((call) => call.message),
-        [],
-        'Bridge-disabled Agent attention signal should not raise a VS Code notification.'
-      );
-      assert.strictEqual(
-        (await getDiagnosticEvents()).some(
-          (event) =>
-            event.kind === 'execution/attentionNotificationPosted' ||
-            event.kind === 'execution/attentionNotificationSuppressed'
-        ),
-        false,
-        'Bridge-disabled Agent attention signal should not emit attention-notification diagnostics.'
-      );
+        await ensureBridgeTerminalAttentionSignalsEnabled(true);
 
-      await ensureBridgeTerminalAttentionSignalsEnabled(true);
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        const expectedAgentMessage = `Agent「${agentLabel}」: ${bridgeEnabledMessage}`;
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeEnabledMessage}\r`
+          }
+        });
 
-      calls.length = 0;
-      await clearDiagnosticEvents();
-      const expectedAgentMessage = `Agent「${agentLabel}」: ${bridgeEnabledMessage}`;
-      await dispatchWebviewMessage({
-        type: 'webview/executionInput',
-        payload: {
-          nodeId: agentNodeId,
-          kind: 'agent',
-          data: `notify ${bridgeEnabledMessage}\r`
-        }
-      });
-
-      const enabledDiagnostics = await waitForDiagnosticEvents(
-        (events) =>
-          events.some(
+        const enabledDiagnostics = await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.signal === 'osc9' &&
+                event.detail?.message === expectedAgentMessage
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [expectedAgentMessage]);
+        assert.ok(
+          enabledDiagnostics.some(
             (event) =>
               event.kind === 'execution/attentionNotificationPosted' &&
               event.detail?.nodeId === agentNodeId &&
               event.detail?.signal === 'osc9' &&
               event.detail?.message === expectedAgentMessage
           ),
-        20000
-      );
-      assert.deepStrictEqual(calls.map((call) => call.message), [expectedAgentMessage]);
-      assert.ok(
-        enabledDiagnostics.some(
-          (event) =>
-            event.kind === 'execution/attentionNotificationPosted' &&
-            event.detail?.nodeId === agentNodeId &&
-            event.detail?.signal === 'osc9' &&
-            event.detail?.message === expectedAgentMessage
-        ),
-        'Expected enabled Agent attention bridge to emit an OSC 9 notification diagnostic.'
-      );
+          'Expected enabled Agent attention bridge to emit an OSC 9 notification diagnostic.'
+        );
 
-      calls.length = 0;
-      await clearDiagnosticEvents();
-      const expectedDuplicateMessage = `Agent「${agentLabel}」: ${bridgeDuplicateMessage}`;
-      await dispatchWebviewMessage({
-        type: 'webview/executionInput',
-        payload: {
-          nodeId: agentNodeId,
-          kind: 'agent',
-          data: `notify ${bridgeDuplicateMessage}\r`
-        }
-      });
-      await waitForDiagnosticEvents(
-        (events) =>
-          events.some(
-            (event) =>
-              event.kind === 'execution/attentionNotificationPosted' &&
-              event.detail?.nodeId === agentNodeId &&
-              event.detail?.message === expectedDuplicateMessage
+        calls.length = 0;
+        autoSelectNotificationMessage = `Agent「${agentLabel}」: ${bridgeFocusMessage}`;
+        await clearHostMessages();
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeFocusMessage}\r`
+          }
+        });
+
+        const focusHostMessages = await waitForHostMessages(
+          (messages) =>
+            messages.some(
+              (message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [autoSelectNotificationMessage]);
+        assert.ok(
+          calls[0]?.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+          'Expected attention notification to expose a focus action.'
+        );
+        assert.ok(
+          focusHostMessages.some(
+            (message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId
           ),
-        20000
-      );
-      await dispatchWebviewMessage({
-        type: 'webview/executionInput',
-        payload: {
-          nodeId: agentNodeId,
-          kind: 'agent',
-          data: `notify ${bridgeDuplicateMessage}\r`
-        }
-      });
+          'Expected selecting the attention notification to send a focus-node host message.'
+        );
 
-      const duplicateDiagnostics = await waitForDiagnosticEvents(
-        (events) =>
-          events.filter(
-            (event) =>
-              event.kind === 'execution/attentionNotificationPosted' &&
-              event.detail?.nodeId === agentNodeId &&
-              event.detail?.message === expectedDuplicateMessage
-          ).length === 1 &&
-          events.some(
+        const focusProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) =>
+            currentProbe.nodes.some((node) => node.nodeId === agentNodeId && node.selected === true),
+          20000
+        );
+        assert.ok(focusProbe.nodes.some((node) => node.nodeId === agentNodeId && node.selected === true));
+
+        calls.length = 0;
+        autoSelectNotificationMessage = undefined;
+        await clearDiagnosticEvents();
+        const expectedDuplicateMessage = `Agent「${agentLabel}」: ${bridgeDuplicateMessage}`;
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeDuplicateMessage}\r`
+          }
+        });
+        await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.message === expectedDuplicateMessage
+            ),
+          20000
+        );
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `notify ${bridgeDuplicateMessage}\r`
+          }
+        });
+
+        const duplicateDiagnostics = await waitForDiagnosticEvents(
+          (events) =>
+            events.filter(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.message === expectedDuplicateMessage
+            ).length === 1 &&
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationSuppressed' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.reason === 'cooldown' &&
+                event.detail?.signal === 'osc9'
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [expectedDuplicateMessage]);
+        assert.ok(
+          duplicateDiagnostics.some(
             (event) =>
               event.kind === 'execution/attentionNotificationSuppressed' &&
               event.detail?.nodeId === agentNodeId &&
               event.detail?.reason === 'cooldown' &&
               event.detail?.signal === 'osc9'
           ),
-        20000
-      );
-      assert.deepStrictEqual(calls.map((call) => call.message), [expectedDuplicateMessage]);
-      assert.ok(
-        duplicateDiagnostics.some(
-          (event) =>
-            event.kind === 'execution/attentionNotificationSuppressed' &&
-            event.detail?.nodeId === agentNodeId &&
-            event.detail?.reason === 'cooldown' &&
-            event.detail?.signal === 'osc9'
-        ),
-        'Expected repeated Agent attention signal to be suppressed during the cooldown window.'
-      );
-    });
+          'Expected repeated Agent attention signal to be suppressed during the cooldown window.'
+        );
+      },
+      ({ message }) =>
+        message === autoSelectNotificationMessage ? EXECUTION_ATTENTION_FOCUS_ACTION_LABEL : undefined
+    );
   } finally {
     await ensureAgentStopped(agentNodeId);
     await ensureBridgeTerminalAttentionSignalsEnabled(originalBridgeEnabled);
@@ -6145,13 +6195,15 @@ async function waitForHostMessages(predicate, timeoutMs = 8000) {
   assert.fail(`Timed out while waiting for host messages. Last messages: ${JSON.stringify(messages)}`);
 }
 
-async function withInterceptedInformationMessages(runIntercepted) {
+async function withInterceptedInformationMessages(runIntercepted, resolveSelection) {
   const originalShowInformationMessage = vscode.window.showInformationMessage;
   const calls = [];
 
   vscode.window.showInformationMessage = async (message, ...items) => {
     calls.push({ message, items });
-    return undefined;
+    return typeof resolveSelection === 'function'
+      ? await resolveSelection({ message, items, calls })
+      : undefined;
   };
 
   assert.notStrictEqual(
