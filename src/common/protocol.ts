@@ -1412,7 +1412,7 @@ export function estimateMinimalFileNodeFootprint(
       };
     default:
       return {
-        width: Math.max(64, Math.min(480, Math.ceil(textWidth + 33))),
+        width: Math.max(68, Math.min(480, Math.ceil(textWidth + 38))),
         height: 24
       };
   }
