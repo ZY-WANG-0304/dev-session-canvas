@@ -1,3 +1,5 @@
+import { parseExecutionAttentionSignals } from './executionAttentionSignals';
+
 export interface AgentActivityHeuristicState {
   lastOutputAtMs?: number;
   lastLineBoundaryAtMs?: number;
@@ -33,7 +35,6 @@ const AGENT_WAITING_INPUT_PROMPT_QUIET_MS = 220;
 const AGENT_WAITING_INPUT_NOTIFICATION_QUIET_MS = 260;
 const AGENT_WAITING_INPUT_HARD_FALLBACK_MS = 1600;
 const AGENT_WAITING_INPUT_SPINNER_GRACE_MS = 900;
-const OSC_CARRYOVER_LIMIT = 256;
 const PROMPT_TAIL_LIMIT = 256;
 
 const AGENT_SPINNER_REDRAW_PATTERN = /(?:\r(?!\n)|\u0008|\u001b\[[0-9;?]*[ABCDGHJKfhlmnrsu])/u;
@@ -67,7 +68,7 @@ export function recordAgentOutputHeuristics(
 ): AgentOutputHeuristicSnapshot {
   state.lastOutputAtMs = now;
 
-  const attentionSignals = parseAttentionSignals(chunk, state.oscCarryover);
+  const attentionSignals = parseExecutionAttentionSignals(chunk, state.oscCarryover);
   state.oscCarryover = attentionSignals.carryover;
   if (attentionSignals.notificationCount > 0) {
     state.lastNotificationAtMs = now;
@@ -165,102 +166,4 @@ export function stripTerminalControlSequences(value: string): string {
   return value
     .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
     .replace(/\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-}
-
-function parseAttentionSignals(
-  chunk: string,
-  previousCarryover: string
-): { carryover: string; notificationCount: number; bellCount: number } {
-  const source = `${previousCarryover}${chunk}`;
-  let notificationCount = 0;
-  let bellCount = 0;
-  let carryover = '';
-  let index = 0;
-
-  while (index < source.length) {
-    if (source[index] === '\u001b' && source[index + 1] === ']') {
-      const sequenceStart = index;
-      index += 2;
-
-      let identifier = '';
-      while (index < source.length && /[0-9]/.test(source[index] ?? '')) {
-        identifier += source[index];
-        index += 1;
-      }
-
-      if (index >= source.length) {
-        carryover = source.slice(sequenceStart);
-        break;
-      }
-
-      if (source[index] !== ';') {
-        index = sequenceStart + 1;
-        continue;
-      }
-
-      index += 1;
-      let terminated = false;
-      while (index < source.length) {
-        if (source[index] === '\u0007') {
-          terminated = true;
-          index += 1;
-          break;
-        }
-        if (source[index] === '\u001b' && source[index + 1] === '\\') {
-          terminated = true;
-          index += 2;
-          break;
-        }
-        index += 1;
-      }
-
-      if (!terminated) {
-        carryover = source.slice(sequenceStart);
-        break;
-      }
-
-      if (identifier === '9' || identifier === '777') {
-        notificationCount += 1;
-      }
-      continue;
-    }
-
-    if (source[index] === '\u0007') {
-      bellCount += 1;
-    }
-
-    index += 1;
-  }
-
-  if (!carryover) {
-    carryover = extractTrailingOscCarryover(source);
-  }
-
-  return {
-    carryover: trimOscCarryover(carryover),
-    notificationCount,
-    bellCount
-  };
-}
-
-function extractTrailingOscCarryover(source: string): string {
-  if (source.endsWith('\u001b')) {
-    return '\u001b';
-  }
-
-  const oscIndex = source.lastIndexOf('\u001b]');
-  if (oscIndex < 0) {
-    return '';
-  }
-
-  const candidate = source.slice(oscIndex);
-  if (candidate.includes('\u0007') || candidate.includes('\u001b\\')) {
-    return '';
-  }
-
-  return candidate;
-}
-
-function trimOscCarryover(value: string): string {
-  return value.length > OSC_CARRYOVER_LIMIT ? value.slice(-OSC_CARRYOVER_LIMIT) : value;
 }

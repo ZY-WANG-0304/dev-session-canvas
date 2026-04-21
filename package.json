@@ -207,6 +207,12 @@
           "scope": "machine",
           "markdownDescription": "%configuration.agent.claudeCommand.description%"
         },
+        "devSessionCanvas.notifications.bridgeTerminalAttentionSignals": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "%configuration.notifications.bridgeTerminalAttentionSignals.description%"
+        },
         "devSessionCanvas.terminal.shellPath": {
           "type": "string",
           "default": "",
@@ -268,8 +274,9 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:execution-terminal-native-helpers && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:execution-terminal-native-helpers && npm run test:execution-attention-signals && npm run test:smoke && npm run test:webview",
     "test:extension-storage-paths": "node scripts/test-extension-storage-paths.mjs",
+    "test:execution-attention-signals": "node scripts/test-execution-attention-signals.mjs",
     "test:execution-terminal-native-helpers": "node scripts/test-execution-terminal-native-helpers.mjs",
     "test:runtime-supervisor-paths": "node scripts/test-runtime-supervisor-paths.mjs",
     "test:workspace-relative-paths": "node --no-warnings --experimental-transform-types scripts/test-workspace-relative-paths.mts",
