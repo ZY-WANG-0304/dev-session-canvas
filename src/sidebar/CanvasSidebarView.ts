@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 
+import {
+  strongTerminalAttentionReminderPulsesMinimap,
+  strongTerminalAttentionReminderShowsTitleBar
+} from '../common/protocol';
 import { type CanvasSidebarState, CanvasPanelManager } from '../panel/CanvasPanelManager';
 
 class CanvasSidebarItem extends vscode.TreeItem {
@@ -50,13 +54,6 @@ function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
       buildCanvasSurfaceTooltip(state)
     ),
     new CanvasSidebarItem(
-      'summary/default-surface',
-      '默认承载面',
-      formatSurfaceLabel(state.configuredSurface),
-      `当前默认承载面：${formatSurfaceLabel(state.configuredSurface)}。\n` +
-        'Panel 路线的实际工作台位置由 VS Code 记住，可能位于底部 Panel 或 Secondary Sidebar。'
-    ),
-    new CanvasSidebarItem(
       'summary/runtime-persistence',
       '运行时持久化',
       state.runtimePersistenceEnabled ? '已开启' : '已关闭',
@@ -65,12 +62,16 @@ function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
         : '当前窗口未启用运行时持久化；Agent 与 Terminal 不会保留 live runtime host。'
     ),
     new CanvasSidebarItem(
+      'summary/notification-mode',
+      '通知模式',
+      formatNotificationModeSummary(state),
+      buildNotificationModeTooltip(state)
+    ),
+    new CanvasSidebarItem(
       'summary/files-feature',
       '文件功能',
-      state.filesFeatureEnabled ? '已开启' : '已关闭',
-      state.filesFeatureEnabled
-        ? '当前窗口已启用文件活动功能；支持的 Agent 会生成文件节点、文件列表节点和相关过滤入口。'
-        : '当前窗口未启用文件活动功能；文件节点、文件列表节点、文件过滤和自动文件关系都不可用。'
+      formatFilesFeatureSummary(state),
+      buildFileViewTooltip(state)
     ),
     new CanvasSidebarItem(
       'summary/node-count',
@@ -96,27 +97,126 @@ function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
 }
 
 function formatCanvasSurfaceSummary(state: CanvasSidebarState): string {
-  switch (state.canvasSurface) {
-    case 'closed':
-      return '未打开';
-    case 'hidden':
-      return '已打开';
-    case 'visible':
-      return '已打开';
-  }
+  const canvasSurfaceLabel = (() => {
+    switch (state.canvasSurface) {
+      case 'closed':
+        return '未打开';
+      case 'hidden':
+        return '已打开';
+      case 'visible':
+        return '已打开';
+    }
+  })();
+
+  return `${canvasSurfaceLabel} · ${formatSurfaceLabel(state.configuredSurface)}`;
 }
 
 function buildCanvasSurfaceTooltip(state: CanvasSidebarState): string {
+  const defaultSurfaceLine =
+    `当前默认承载面：${formatSurfaceLabel(state.configuredSurface)}。` +
+    'Panel 路线的实际工作台位置由 VS Code 记住，可能位于底部 Panel 或 Secondary Sidebar。';
+
   switch (state.canvasSurface) {
     case 'closed':
-      return `当前还没有打开画布；执行“打开画布”时会按默认承载面 ${formatSurfaceLabel(state.configuredSurface)} 打开。`;
+      return `当前还没有打开画布；执行“打开画布”时会按默认承载面 ${formatSurfaceLabel(state.configuredSurface)} 打开。\n${defaultSurfaceLine}`;
     case 'hidden':
-      return '画布已经打开，但当前不在前台；可执行“定位画布”回到当前实例。';
+      return `画布已经打开，但当前不在前台；可执行“定位画布”回到当前实例。\n${defaultSurfaceLine}`;
     case 'visible':
-      return '画布当前已经打开，并显示在前台。';
+      return `画布当前已经打开，并显示在前台。\n${defaultSurfaceLine}`;
   }
 }
 
 function formatSurfaceLabel(surface: CanvasSidebarState['surfaceLocation']): string {
   return surface === 'panel' ? 'Panel' : 'Editor';
+}
+
+function formatNotificationModeSummary(state: CanvasSidebarState): string {
+  const parts: string[] = [];
+
+  if (state.notificationBridgeEnabled) {
+    parts.push('工作台通知');
+  }
+
+  const strongReminderSurface = formatStrongReminderSurfaceSummary(state);
+  if (strongReminderSurface) {
+    parts.push(strongReminderSurface);
+  }
+
+  return parts.length > 0 ? parts.join(' + ') : '仅节点提醒';
+}
+
+function buildNotificationModeTooltip(state: CanvasSidebarState): string {
+  return [
+    '执行节点收到 BEL、OSC 9 或 OSC 777 时，节点提醒 icon 与 minimap 闪烁会始终保留。',
+    state.notificationBridgeEnabled
+      ? '当前已开启 VS Code 工作台通知桥接。'
+      : '当前未开启 VS Code 工作台通知桥接。',
+    `增强提醒模式：${formatStrongReminderModeLabel(state)}。`,
+    '',
+    '💡 通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。',
+    '• Claude Code：需配置 Terminal Bell Notifications',
+    '• Codex：需设置 notification_method 和 notification_condition'
+  ].join('\n');
+}
+
+function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string | undefined {
+  const flashesTitleBar = strongTerminalAttentionReminderShowsTitleBar(state.notificationStrongReminderMode);
+  const pulsesMinimap = strongTerminalAttentionReminderPulsesMinimap(state.notificationStrongReminderMode);
+
+  if (flashesTitleBar && pulsesMinimap) {
+    return '标题栏/Minimap 增强';
+  }
+
+  if (flashesTitleBar) {
+    return '标题栏增强';
+  }
+
+  if (pulsesMinimap) {
+    return 'Minimap 增强';
+  }
+
+  return undefined;
+}
+
+function formatStrongReminderModeLabel(state: CanvasSidebarState): string {
+  const strongReminderSurface = formatStrongReminderSurfaceSummary(state);
+  return strongReminderSurface ?? '仅默认提醒';
+}
+
+function formatFileViewSummary(state: CanvasSidebarState): string {
+  return `${formatFilePresentationLabel(state)} · ${formatFileDisplayModeLabel(state)}`;
+}
+
+function formatFilesFeatureSummary(state: CanvasSidebarState): string {
+  return `${state.filesFeatureEnabled ? '已开启' : '已关闭'} · ${formatFileViewSummary(state)}`;
+}
+
+function buildFileViewTooltip(state: CanvasSidebarState): string {
+  return [
+    state.filesFeatureEnabled
+      ? '文件功能当前已开启；以下配置会直接影响当前窗口里的文件对象投影。'
+      : '文件功能当前已关闭；以下配置会在重新启用并完成 reload 后生效。',
+    `文件节点类型：${formatFilePresentationLabel(state)}。`,
+    `显示模式：${formatFileDisplayModeLabel(state)}。`,
+    `显示风格：${formatFileNodeDisplayStyleLabel(state.fileNodeDisplayStyle)}。`
+  ].join('\n');
+}
+
+function formatFilePresentationLabel(state: CanvasSidebarState): string {
+  return state.filePresentationMode === 'lists' ? '列表节点' : '独立节点';
+}
+
+function formatFileDisplayModeLabel(state: CanvasSidebarState): string {
+  switch (state.fileNodeDisplayMode) {
+    case 'icon-only':
+      return '仅图标';
+    case 'path-only':
+      return state.filePathDisplayMode === 'relative-path' ? '仅相对路径' : '仅文件名';
+    case 'icon-path':
+      return state.filePathDisplayMode === 'relative-path' ? '图标+相对路径' : '图标+文件名';
+  }
+}
+
+function formatFileNodeDisplayStyleLabel(style: CanvasSidebarState['fileNodeDisplayStyle']): string {
+  return style === 'card' ? '卡片' : '极简';
 }
