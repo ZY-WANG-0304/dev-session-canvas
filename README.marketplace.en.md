@@ -48,9 +48,9 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.2.0 Highlights
+## 0.2.x Highlights
 
-`0.2.0` moves the canvas from “multiple execution nodes in one place” toward a more complete collaboration surface with relationships and file flow:
+The public `0.2.x` line moves the canvas from “multiple execution nodes in one place” toward a more complete collaboration surface with relationships and file flow:
 
 - Add manual relationship edges so the canvas can express task splits, dependencies, and handoffs between nodes
 - Project agent file activity into file nodes or file lists, with filtering, path display, and direct file opening from the canvas
@@ -60,7 +60,8 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.1.2` to `0.2.0` both go through the `Visual Studio Marketplace`; later `0.2.x` updates will also be delivered through Marketplace upgrades
+- First-time installs and later `0.2.x` updates all go through the `Visual Studio Marketplace`; the current `0.2.0 -> 0.2.1` update is also delivered through a normal Marketplace upgrade
+- If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
 ## Rollback Guidance
