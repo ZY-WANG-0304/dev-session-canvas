@@ -15,12 +15,10 @@ const projectRoot = process.cwd();
 const sharedRepoRoot = resolveSharedRepoRoot();
 const vscodeTestCachePath = configureVSCodeTestCache(sharedRepoRoot);
 const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'marketplace-media-tests.cjs');
+const currentNodeBinDir = path.dirname(process.execPath);
 const codexCommandPath = resolveMarketplaceCommand({
   envKey: 'DEV_SESSION_CANVAS_MARKETPLACE_CODEX_COMMAND',
-  fallbackPaths: [
-    '/home/users/ziyang01.wang-al/.local/bin/codex.bak',
-    '/home/users/ziyang01.wang-al/codex'
-  ],
+  fallbackPaths: [],
   binName: 'codex'
 });
 const claudeCommandPath = resolveMarketplaceCommand({
@@ -55,9 +53,18 @@ const AGENT_STARTUP_TIMEOUT_MS = 45000;
 const TERMINAL_STARTUP_TIMEOUT_MS = 15000;
 const EXECUTION_COMPLETION_TIMEOUT_MS = 8000;
 const EXECUTION_FALLBACK_HOLD_MS = 3000;
-const CANVAS_CONTEXT_MENU_POINT = {
-  x: 120,
-  y: 120
+const FILE_ACTIVITY_TIMEOUT_MS = 15000;
+const CANVAS_CREATION_POINT_RATIOS = {
+  terminal: {
+    x: 0.46,
+    y: 0.22
+  }
+};
+const RECORDING_LAYOUT_PRESET = {
+  note: { x: -460, y: -200 },
+  codeWorker: { x: -460, y: 360 },
+  reviewer: { x: 140, y: 360 },
+  terminal: { x: 140, y: -200 }
 };
 const CANVAS_CONTROL_OFFSETS = {
   x: 61,
@@ -108,17 +115,25 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
     }
   });
   await hydrateMarketplaceProviderRuntime(runtime);
+  const codexRuntimeCommandPath = await writeMarketplaceCommandShim({
+    runtime,
+    name: 'codex-runtime',
+    targetCommand: codexCommandPath,
+    prependPathEntries: [currentNodeBinDir]
+  });
 
   const specPath = path.join(runtime.artifactsDir, 'recording-spec.json');
   const readyPath = path.join(runtime.artifactsDir, 'recording-ready.json');
   const ackPath = path.join(runtime.artifactsDir, 'recording-started.ack');
   const donePath = path.join(runtime.artifactsDir, 'recording-done.ack');
   const statePath = path.join(runtime.artifactsDir, 'recording-state.json');
+  const controlPath = path.join(runtime.artifactsDir, 'recording-control.ndjson');
   await fs.writeFile(specPath, `${JSON.stringify(createRecordingSpec(), null, 2)}\n`, 'utf8');
   await fs.rm(readyPath, { force: true });
   await fs.rm(ackPath, { force: true });
   await fs.rm(donePath, { force: true });
   await fs.rm(statePath, { force: true });
+  await fs.rm(controlPath, { force: true });
   await fs.rm(recordingPath, { force: true });
 
   const args = buildVSCodeArgs({
@@ -143,9 +158,11 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
     DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_ACK_FILE: ackPath,
     DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_DONE_FILE: donePath,
     DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_STATE_FILE: statePath,
-    DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: codexCommandPath,
+    DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_CONTROL_FILE: controlPath,
+    DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: codexRuntimeCommandPath,
     DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: claudeCommandPath,
     DEV_SESSION_CANVAS_TEST_TERMINAL_COMMAND: terminalCommandPath,
+    PATH: prependPathEntriesToPath([currentNodeBinDir], process.env.PATH),
     TERM: 'xterm-256color'
   });
   const child = spawn(vscodeExecutablePath, args, {
@@ -185,7 +202,8 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
       workbenchSurface,
       display,
       windowGeometry: geometry,
-      stateFilePath: statePath
+      stateFilePath: statePath,
+      controlFilePath: controlPath
     });
     await stopWindowRecorder(recorder);
     recorder = undefined;
@@ -226,20 +244,20 @@ function createRecordingSpec() {
     persistedState: createPersistedState([
       createNoteNode({
         id: 'note-1',
-        title: 'README GIF 脚本',
+        title: '0.2.0 README 录制脚本',
         content: [
-          '1. 初始页面只有一个 Note 节点',
-          '2. 右键创建并启动真实 Codex Agent',
-          '3. 右键创建并启动真实 Claude Code Agent',
-          '4. 右键创建并启动真实 Terminal',
-          '5. 将 Codex 重命名为 Code Worker',
+          '1. 初始页面只保留一个 Note 节点',
+          '2. 右键创建并启动真实 Codex / Claude / Terminal',
+          '3. 将两个 Agent 重命名为 Code Worker / Reviewer',
+          '4. 在两个 Agent 之间补一条关系连线',
+          '5. 让 Reviewer 写入 .debug/release-media-demo.md，展示单文件节点',
           '6. 给 Code Worker 输入：写一首打油诗'
         ].join('\n'),
         position: { x: 0, y: 0 },
-        size: { width: 420, height: 380 }
+        size: { width: 400, height: 350 }
       })
     ]),
-    expectedNodeCount: 4,
+    expectedNodeCount: 5,
     editorMinimapEnabled: false,
     settleDelayMs: 500,
     postSetupDelayMs: 700,
@@ -250,7 +268,7 @@ function createRecordingSpec() {
 function createPersistedState(nodes) {
   return {
     version: 1,
-    updatedAt: '2026-04-16T16:30:00.000Z',
+    updatedAt: '2026-04-22T10:30:00.000Z',
     nodes
   };
 }
@@ -272,7 +290,14 @@ function createNoteNode({ id, title, content, position, size }) {
   };
 }
 
-async function runMarketplaceRecording({ canvasSurface, workbenchSurface, display, windowGeometry, stateFilePath }) {
+async function runMarketplaceRecording({
+  canvasSurface,
+  workbenchSurface,
+  display,
+  windowGeometry,
+  stateFilePath,
+  controlFilePath
+}) {
   const screenFrameBox = await getWorkbenchFrameScreenBox(workbenchSurface, windowGeometry);
 
   await delay(1200);
@@ -287,7 +312,11 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
     'initial recording state'
   );
 
-  const codexContextAnchor = await clickCanvasPanePoint(display, screenFrameBox, CANVAS_CONTEXT_MENU_POINT, 'right', {
+  const codeWorkerContextMenuPoint = {
+    x: 140,
+    y: Math.max(220, screenFrameBox.height - 220)
+  };
+  const codexContextAnchor = await clickCanvasPanePoint(display, screenFrameBox, codeWorkerContextMenuPoint, 'right', {
     canvasSurface
   });
   await delay(460);
@@ -316,13 +345,19 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
   );
   await delay(420);
 
-  const claudeContextMenuPoint = {
-    x: 120,
-    y: Math.max(140, screenFrameBox.height - 140)
+  const reviewerContextMenuPoint = {
+    x: Math.round(screenFrameBox.width * 0.42),
+    y: Math.max(220, screenFrameBox.height - 220)
   };
-  const claudeContextAnchor = await clickCanvasPanePoint(display, screenFrameBox, claudeContextMenuPoint, 'right', {
-    canvasSurface
-  });
+  const claudeContextAnchor = await clickCanvasPanePoint(
+    display,
+    screenFrameBox,
+    reviewerContextMenuPoint,
+    'right',
+    {
+      canvasSurface
+    }
+  );
   await delay(420);
   await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'root', 'show-agent-providers', {
     canvasSurface
@@ -341,22 +376,26 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
   if (!claudeNodeId) {
     throw new Error('Failed to resolve the created Claude node from the recording state.');
   }
-
   const claudeLivePromise = waitForRecordingState(
     stateFilePath,
     (payload) => Boolean(findNodeById(getRecordingNodes(payload), claudeNodeId)?.metadata?.agent?.liveSession),
     AGENT_STARTUP_TIMEOUT_MS,
     'Claude live session startup'
-  ).catch(() => undefined);
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ ok: false, error })
+  );
   await delay(420);
 
-  const terminalContextMenuPoint = {
-    x: 300,
-    y: Math.max(140, screenFrameBox.height - 140)
-  };
-  const terminalContextAnchor = await clickCanvasPanePoint(display, screenFrameBox, terminalContextMenuPoint, 'right', {
-    canvasSurface
-  });
+  const terminalContextAnchor = await clickCanvasPanePoint(
+    display,
+    screenFrameBox,
+    resolveCanvasCreationPoint(screenFrameBox, CANVAS_CREATION_POINT_RATIOS.terminal),
+    'right',
+    {
+      canvasSurface
+    }
+  );
   await delay(420);
   await clickContextMenuItem(display, screenFrameBox, terminalContextAnchor, 'root', 'create-terminal', {
     canvasSurface
@@ -412,6 +451,17 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
       count: 4
     });
   }
+  statePayload = await applyRecordingLayoutPreset({
+    controlFilePath,
+    stateFilePath,
+    positions: {
+      'note-1': RECORDING_LAYOUT_PRESET.note,
+      [codexNodeId]: RECORDING_LAYOUT_PRESET.codeWorker,
+      [claudeNodeId]: RECORDING_LAYOUT_PRESET.reviewer,
+      [terminalNodeId]: RECORDING_LAYOUT_PRESET.terminal
+    }
+  });
+  await delay(260);
   await appendInteractionLog({
     type: 'phase',
     label: 'fit-view-overview-start'
@@ -458,6 +508,7 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
     page: workbenchSurface.page,
     display,
     screenFrameBox,
+    controlFilePath,
     stateFilePath,
     viewport: deriveFocusViewportFromPayload(statePayload, screenFrameBox, codexNodeId),
     node: findNodeById(getRecordingNodes(statePayload), codexNodeId),
@@ -474,7 +525,65 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
   if (!codexLiveOutcome.ok) {
     throw codexLiveOutcome.error;
   }
+  const claudeLiveOutcome = await claudeLivePromise;
+  if (!claudeLiveOutcome.ok) {
+    throw claudeLiveOutcome.error;
+  }
   statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  statePayload = await fitCanvasToOverview({
+    canvasSurface,
+    display,
+    screenFrameBox,
+    stateFilePath,
+    statePayload
+  });
+  await delay(420);
+  statePayload = await renameNodeTitleWithNativeMouse({
+    canvasSurface,
+    page: workbenchSurface.page,
+    display,
+    screenFrameBox,
+    controlFilePath,
+    stateFilePath,
+    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
+    node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
+    nextTitle: 'Reviewer'
+  });
+  statePayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => findNodeById(getRecordingNodes(payload), claudeNodeId)?.title === 'Reviewer',
+    5000,
+    'Reviewer title update'
+  );
+  await delay(300);
+  statePayload = await createManualEdgeBetweenNodes({
+    controlFilePath,
+    stateFilePath,
+    sourceNodeId: codexNodeId,
+    sourceAnchor: 'right',
+    targetNodeId: claudeNodeId,
+    targetAnchor: 'left'
+  });
+  await delay(380);
+  const claudePrePromptOutput =
+    findNodeById(getRecordingNodes(statePayload), claudeNodeId)?.metadata?.agent?.recentOutput ?? '';
+  statePayload = await submitExecutionPromptViaRecordingControl({
+    controlFilePath,
+    stateFilePath,
+    nodeId: claudeNodeId,
+    executionKind: 'agent',
+    prompt:
+      '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
+    prePromptOutput: claudePrePromptOutput
+  });
+  const reviewerFileActivityPromise = synthesizeAgentFileActivity({
+    controlFilePath,
+    stateFilePath,
+    ownerNodeId: claudeNodeId,
+    accessMode: 'write',
+    relativePath: '.debug/release-media-demo.md',
+    filePath: path.join(projectRoot, '.debug', 'release-media-demo.md')
+  });
   await delay(280);
   const prePromptOutput = findNodeById(getRecordingNodes(statePayload), codexNodeId)?.metadata?.agent?.recentOutput ?? '';
   statePayload = await submitExecutionPromptWithNativeMouse({
@@ -482,7 +591,7 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
     display,
     screenFrameBox,
     stateFilePath,
-    viewport: deriveFocusViewportFromPayload(statePayload, screenFrameBox, codexNodeId),
+    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
     node: findRequiredNode(getRecordingNodes(statePayload), codexNodeId),
     probeNode: findProbeNodeById(statePayload, codexNodeId),
     prompt: '写一首打油诗',
@@ -517,7 +626,25 @@ async function runMarketplaceRecording({ canvasSurface, workbenchSurface, displa
     });
     await delay(EXECUTION_FALLBACK_HOLD_MS);
   }
-  await Promise.all([claudeLivePromise, terminalLivePromise]);
+  statePayload = await reviewerFileActivityPromise;
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'notifications.clearAll'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'workbench.action.closeMessages'
+  });
+  await delay(260);
+  await delay(680);
+  statePayload = await fitCanvasToOverview({
+    canvasSurface,
+    display,
+    screenFrameBox,
+    stateFilePath,
+    statePayload
+  });
+  await terminalLivePromise;
   statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
   await fitCanvasToOverview({
     canvasSurface,
@@ -761,6 +888,22 @@ async function clickCanvasPanePoint(display, screenFrameBox, point, button = 'le
 }
 
 async function clickContextMenuItem(display, screenFrameBox, anchorPoint, view, target, options = {}) {
+  if (options.canvasSurface) {
+    try {
+      await clickCanvasContextMenuItem(options.canvasSurface, target);
+      await appendInteractionLog({
+        type: 'context-menu-item-click',
+        strategy: 'dom-selector',
+        view,
+        target,
+        anchorPoint
+      });
+      return;
+    } catch {
+      // Fall back to native screen coordinates when the DOM selector path is unavailable.
+    }
+  }
+
   if (options.canvasSurface?.verified) {
     const exactPoint = await resolveScreenPointForLocator(
       options.canvasSurface,
@@ -890,6 +1033,7 @@ async function renameNodeTitleWithNativeMouse({
   page,
   display,
   screenFrameBox,
+  controlFilePath,
   stateFilePath,
   viewport,
   node,
@@ -918,7 +1062,8 @@ async function renameNodeTitleWithNativeMouse({
       strategy: 'projected-title-input'
     }))
   );
-  for (const point of candidatePoints) {
+  const maxNativeAttempts = controlFilePath ? Math.min(candidatePoints.length, 1) : candidatePoints.length;
+  for (const point of candidatePoints.slice(0, maxNativeAttempts)) {
     await appendInteractionLog({
       type: 'node-title-click',
       nodeId: node.id,
@@ -946,6 +1091,35 @@ async function renameNodeTitleWithNativeMouse({
       updated: Boolean(updatedPayload)
     });
     if (updatedPayload) {
+      await page.keyboard.press('Escape').catch(() => {});
+      return updatedPayload;
+    }
+  }
+
+  if (controlFilePath) {
+    await appendInteractionLog({
+      type: 'node-title-fallback',
+      nodeId: node.id,
+      strategy: 'recording-control'
+    });
+    await appendRecordingControlCommand(controlFilePath, {
+      type: 'performDomAction',
+      action: {
+        kind: 'setNodeTextField',
+        nodeId: node.id,
+        field: 'title',
+        value: nextTitle
+      },
+      timeoutMs: 5000
+    });
+    const updatedPayload = await waitForRecordingState(
+      stateFilePath,
+      (payload) => findNodeById(getRecordingNodes(payload), node.id)?.title === nextTitle,
+      2500,
+      `${nextTitle} title update`
+    ).catch(() => undefined);
+    if (updatedPayload) {
+      await page.keyboard.press('Escape').catch(() => {});
       return updatedPayload;
     }
   }
@@ -1034,19 +1208,7 @@ async function submitExecutionPromptWithNativeMouse({
   const rect = projectNodeRectToScreen(node, viewport, screenFrameBox);
   const zoom = viewport.zoom;
 
-  if (
-    probeNode &&
-    typeof probeNode.terminalTextareaLeft === 'number' &&
-    typeof probeNode.terminalTextareaTop === 'number'
-  ) {
-    candidatePoints.push({
-      x: rect.x + probeNode.terminalTextareaLeft + 8,
-      y: rect.y + probeNode.terminalTextareaTop + 8,
-      strategy: 'probe-terminal-textarea'
-    });
-  }
-
-  if (canvasSurface?.verified) {
+  if (canvasSurface) {
     const exactPoint = await resolveScreenPointForLocator(
       canvasSurface,
       screenFrameBox,
@@ -1058,6 +1220,18 @@ async function submitExecutionPromptWithNativeMouse({
         strategy: 'exact-terminal-frame'
       });
     }
+  }
+
+  if (
+    probeNode &&
+    typeof probeNode.terminalTextareaLeft === 'number' &&
+    typeof probeNode.terminalTextareaTop === 'number'
+  ) {
+    candidatePoints.push({
+      x: rect.x + probeNode.terminalTextareaLeft + 8,
+      y: rect.y + probeNode.terminalTextareaTop + 8,
+      strategy: 'probe-terminal-textarea'
+    });
   }
 
   candidatePoints.push(
@@ -1112,6 +1286,140 @@ async function submitExecutionPromptWithNativeMouse({
   }
 
   throw new Error(`Timed out submitting prompt to ${node.id} after native input focus attempts.`);
+}
+
+async function submitExecutionPromptViaRecordingControl({
+  controlFilePath,
+  stateFilePath,
+  nodeId,
+  executionKind,
+  prompt,
+  prePromptOutput
+}) {
+  await appendInteractionLog({
+    type: 'prompt-dispatch-start',
+    nodeId,
+    strategy: 'recording-control'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'dispatchWebviewMessage',
+    message: {
+      type: 'webview/executionInput',
+      payload: {
+        nodeId,
+        kind: executionKind,
+        data: prompt.endsWith('\r') ? prompt : `${prompt}\r`
+      }
+    }
+  });
+
+  const submittedPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => {
+      const refreshedNode = findNodeById(getRecordingNodes(payload), nodeId);
+      if (!refreshedNode) {
+        return false;
+      }
+
+      return (
+        refreshedNode.status !== 'waiting-input' ||
+        (refreshedNode.metadata?.agent?.recentOutput ?? '') !== prePromptOutput
+      );
+    },
+    5000,
+    `${nodeId} recording control prompt submission`
+  );
+  await appendInteractionLog({
+    type: 'prompt-dispatch-end',
+    nodeId,
+    strategy: 'recording-control'
+  });
+  return submittedPayload;
+}
+
+async function createManualEdgeBetweenNodes({
+  controlFilePath,
+  stateFilePath,
+  sourceNodeId,
+  sourceAnchor,
+  targetNodeId,
+  targetAnchor
+}) {
+  await appendInteractionLog({
+    type: 'manual-edge-create-start',
+    strategy: 'recording-control',
+    sourceNodeId,
+    sourceAnchor,
+    targetNodeId,
+    targetAnchor
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'dispatchWebviewMessage',
+    message: {
+      type: 'webview/createEdge',
+      payload: {
+        sourceNodeId,
+        sourceAnchor,
+        targetNodeId,
+        targetAnchor
+      }
+    }
+  });
+
+  const createdPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) =>
+      getRecordingEdges(payload).some(
+        (edge) =>
+          edge.owner === 'user' &&
+          edge.sourceNodeId === sourceNodeId &&
+          edge.targetNodeId === targetNodeId &&
+          edge.sourceAnchor === sourceAnchor &&
+          edge.targetAnchor === targetAnchor
+      ),
+    5000,
+    `${sourceNodeId} -> ${targetNodeId} manual edge`
+  );
+  await appendInteractionLog({
+    type: 'manual-edge-create-end',
+    sourceNodeId,
+    targetNodeId
+  });
+  return createdPayload;
+}
+
+async function applyRecordingLayoutPreset({ controlFilePath, stateFilePath, positions }) {
+  const latestPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => Object.keys(positions).every((nodeId) => Boolean(findNodeById(getRecordingNodes(payload), nodeId))),
+    5000,
+    'recording layout seed'
+  );
+  const nextState = buildRecordingLayoutState({
+    state: latestPayload?.debugSnapshot?.state ?? {},
+    positions
+  });
+  await appendInteractionLog({
+    type: 'layout-preset-apply',
+    positions: nextState.nodes?.map((node) => ({
+      nodeId: node.id,
+      position: node.position
+    }))
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'setPersistedState',
+    state: nextState
+  });
+  return waitForRecordingState(
+    stateFilePath,
+    (payload) =>
+      Object.entries(positions).every(([nodeId, position]) => {
+        const node = findNodeById(getRecordingNodes(payload), nodeId);
+        return Boolean(node && positionsMatch(node.position, position));
+      }),
+    5000,
+    'recording layout preset'
+  );
 }
 
 async function pasteTextWithNativeClipboard(display, text) {
@@ -1202,6 +1510,10 @@ function getRecordingNodes(payload) {
   return payload?.debugSnapshot?.state?.nodes ?? [];
 }
 
+function getRecordingEdges(payload) {
+  return payload?.debugSnapshot?.state?.edges ?? [];
+}
+
 function getRecordingProbe(payload) {
   return payload?.probeSnapshot ?? null;
 }
@@ -1216,6 +1528,15 @@ function findFirstNodeByKind(nodes, kind) {
 
 function findAgentNodeByProvider(nodes, provider) {
   return nodes.find((node) => node.kind === 'agent' && node.metadata?.agent?.provider === provider);
+}
+
+function findOwnerFileNode(nodes, ownerNodeId, targetSuffix) {
+  return nodes.find(
+    (node) =>
+      node.kind === 'file' &&
+      node.metadata?.file?.ownerNodeIds?.includes(ownerNodeId) &&
+      fileNodeContainsPath(node, targetSuffix)
+  );
 }
 
 function findNodeById(nodes, nodeId) {
@@ -1233,6 +1554,111 @@ function findRequiredNode(nodes, nodeId) {
 
 function findProbeNodeById(payload, nodeId) {
   return getRecordingProbeNodes(payload).find((node) => node.nodeId === nodeId);
+}
+
+function filePathMatchesSuffix(relativePath, filePath, targetSuffix) {
+  return (
+    relativePath === targetSuffix ||
+    relativePath.endsWith(`/${targetSuffix}`) ||
+    filePath.endsWith(`/${targetSuffix}`)
+  );
+}
+
+function fileNodeContainsPath(node, targetSuffix) {
+  if (node.kind !== 'file') {
+    return false;
+  }
+
+  const relativePath = node.metadata?.file?.relativePath ?? '';
+  const filePath = node.metadata?.file?.filePath ?? '';
+  return filePathMatchesSuffix(relativePath, filePath, targetSuffix);
+}
+
+async function synthesizeAgentFileActivity({
+  controlFilePath,
+  stateFilePath,
+  ownerNodeId,
+  accessMode,
+  relativePath,
+  filePath
+}) {
+  await delay(1800);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, 'release media demo\n', 'utf8');
+
+  const latestPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => Boolean(findNodeById(getRecordingNodes(payload), ownerNodeId)),
+    5000,
+    `${ownerNodeId} synthetic file activity seed`
+  );
+  const nextState = buildSyntheticFileActivityState({
+    state: latestPayload?.debugSnapshot?.state ?? {},
+    ownerNodeId,
+    accessMode,
+    relativePath,
+    filePath
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'setPersistedState',
+    state: nextState
+  });
+
+  return waitForRecordingState(
+    stateFilePath,
+    (payload) => {
+      const fileNode = findOwnerFileNode(getRecordingNodes(payload), ownerNodeId, 'release-media-demo.md');
+      return Boolean(fileNode);
+    },
+    FILE_ACTIVITY_TIMEOUT_MS,
+    `${ownerNodeId} synthetic file activity projection`
+  );
+}
+
+function buildSyntheticFileActivityState({ state, ownerNodeId, accessMode, relativePath, filePath }) {
+  const nextState = JSON.parse(JSON.stringify(state ?? {}));
+  const fileReferenceId = `file-ref-${ownerNodeId}-release-media-demo`;
+
+  nextState.version = 1;
+  nextState.updatedAt = new Date().toISOString();
+  nextState.nodes = (nextState.nodes ?? []).filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
+  nextState.edges = (nextState.edges ?? []).filter((edge) => edge.owner !== 'file-activity');
+  nextState.fileReferences = (nextState.fileReferences ?? []).filter((reference) => reference.id !== fileReferenceId);
+  nextState.fileReferences.push({
+    id: fileReferenceId,
+    filePath,
+    relativePath,
+    owners: [
+      {
+        nodeId: ownerNodeId,
+        accessMode
+      }
+    ]
+  });
+  nextState.suppressedFileActivityEdgeIds = nextState.suppressedFileActivityEdgeIds ?? [];
+  nextState.suppressedAutomaticFileArtifactNodeIds = nextState.suppressedAutomaticFileArtifactNodeIds ?? [];
+  return nextState;
+}
+
+function buildRecordingLayoutState({ state, positions }) {
+  const nextState = JSON.parse(JSON.stringify(state ?? {}));
+  nextState.version = 1;
+  nextState.updatedAt = new Date().toISOString();
+  nextState.nodes = (nextState.nodes ?? []).map((node) => {
+    const nextPosition = positions[node.id];
+    if (!nextPosition) {
+      return node;
+    }
+
+    return {
+      ...node,
+      position: {
+        x: Math.round(nextPosition.x / 20) * 20,
+        y: Math.round(nextPosition.y / 20) * 20
+      }
+    };
+  });
+  return nextState;
 }
 
 function computeFitViewViewport(nodes, screenFrameBox) {
@@ -1317,6 +1743,15 @@ function createViewportForBoundsAndZoom(bounds, screenFrameBox, zoom) {
   };
 }
 
+function resolveCanvasCreationPoint(screenFrameBox, ratios) {
+  const insetX = 140;
+  const insetY = 120;
+  return {
+    x: Math.round(clamp(screenFrameBox.width * ratios.x, insetX, screenFrameBox.width - insetX)),
+    y: Math.round(clamp(screenFrameBox.height * ratios.y, insetY, screenFrameBox.height - insetY))
+  };
+}
+
 function projectNodeRectToScreen(node, viewport, screenFrameBox) {
   return {
     x: screenFrameBox.x + viewport.x + node.position.x * viewport.zoom,
@@ -1328,6 +1763,10 @@ function projectNodeRectToScreen(node, viewport, screenFrameBox) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function positionsMatch(left, right) {
+  return left?.x === right?.x && left?.y === right?.y;
 }
 
 function createCandidatePoints(basePoint, offsets) {
@@ -1901,6 +2340,15 @@ async function appendInteractionLog(entry) {
   );
 }
 
+async function appendRecordingControlCommand(controlFilePath, command) {
+  if (!controlFilePath) {
+    throw new Error('Missing recording control file path.');
+  }
+
+  await fs.mkdir(path.dirname(controlFilePath), { recursive: true });
+  await fs.appendFile(controlFilePath, `${JSON.stringify(command)}\n`, 'utf8');
+}
+
 async function findFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -2065,6 +2513,48 @@ function resolveMarketplaceCommand({ envKey, fallbackPaths, binName }) {
   }
 
   throw new Error(`Missing Marketplace command for ${binName}. Set ${envKey} to a valid executable path.`);
+}
+
+async function writeMarketplaceCommandShim({ runtime, name, targetCommand, prependPathEntries = [] }) {
+  const shimDir = path.join(runtime.debugRoot, 'bin');
+  const shimPath = path.join(shimDir, `${name}.sh`);
+  const normalizedTargetCommand = targetCommand.trim();
+  const pathValue = prependPathEntriesToPath(prependPathEntries, process.env.PATH);
+
+  await fs.mkdir(shimDir, { recursive: true });
+  await fs.writeFile(
+    shimPath,
+    [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      `export PATH=${quoteShellValue(pathValue)}`,
+      `exec ${quoteShellValue(normalizedTargetCommand)} "$@"`
+    ].join('\n') + '\n',
+    'utf8'
+  );
+  await fs.chmod(shimPath, 0o755);
+  return shimPath;
+}
+
+function prependPathEntriesToPath(entries, existingPath) {
+  const seen = new Set();
+  const segments = [];
+
+  for (const entry of [...entries, ...(existingPath?.split(path.delimiter) ?? [])]) {
+    const normalizedEntry = entry?.trim();
+    if (!normalizedEntry || seen.has(normalizedEntry)) {
+      continue;
+    }
+
+    seen.add(normalizedEntry);
+    segments.push(normalizedEntry);
+  }
+
+  return segments.join(path.delimiter);
+}
+
+function quoteShellValue(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
 async function findCachedVSCodeExecutablePath(cachePath) {
