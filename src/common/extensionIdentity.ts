@@ -16,6 +16,7 @@ export const COMMAND_IDS = {
 
 export const TEST_COMMAND_IDS = {
   getDebugState: 'devSessionCanvas.__test.getDebugState',
+  getSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
   getRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   getHostMessages: 'devSessionCanvas.__test.getHostMessages',
   clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',

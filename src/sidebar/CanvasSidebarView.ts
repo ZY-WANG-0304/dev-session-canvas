@@ -15,6 +15,13 @@ class CanvasSidebarItem extends vscode.TreeItem {
   }
 }
 
+export interface CanvasSidebarSummaryItemSnapshot {
+  id: string;
+  label: string;
+  description: string;
+  tooltip: string;
+}
+
 export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarItem>, vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   public readonly onDidChangeTreeData = this.changeEmitter.event;
@@ -46,53 +53,59 @@ export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarI
 }
 
 function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
+  return getCanvasSidebarSummaryItems(state).map(
+    (item) => new CanvasSidebarItem(item.id, item.label, item.description, item.tooltip)
+  );
+}
+
+export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasSidebarSummaryItemSnapshot[] {
   return [
-    new CanvasSidebarItem(
-      'summary/canvas-surface',
-      '画布状态',
-      formatCanvasSurfaceSummary(state),
-      buildCanvasSurfaceTooltip(state)
-    ),
-    new CanvasSidebarItem(
-      'summary/runtime-persistence',
-      '运行时持久化',
-      state.runtimePersistenceEnabled ? '已开启' : '已关闭',
-      state.runtimePersistenceEnabled
+    {
+      id: 'summary/canvas-surface',
+      label: '画布状态',
+      description: formatCanvasSurfaceSummary(state),
+      tooltip: buildCanvasSurfaceTooltip(state)
+    },
+    {
+      id: 'summary/runtime-persistence',
+      label: '运行时持久化',
+      description: state.runtimePersistenceEnabled ? '已开启' : '已关闭',
+      tooltip: state.runtimePersistenceEnabled
         ? '当前窗口已启用运行时持久化；Agent 与 Terminal 会优先由独立 runtime host backend 持有。'
         : '当前窗口未启用运行时持久化；Agent 与 Terminal 不会保留 live runtime host。'
-    ),
-    new CanvasSidebarItem(
-      'summary/notification-mode',
-      '通知模式',
-      formatNotificationModeSummary(state),
-      buildNotificationModeTooltip(state)
-    ),
-    new CanvasSidebarItem(
-      'summary/files-feature',
-      '文件功能',
-      formatFilesFeatureSummary(state),
-      buildFileViewTooltip(state)
-    ),
-    new CanvasSidebarItem(
-      'summary/node-count',
-      '节点总数',
-      String(state.nodeCount),
-      `当前画布中共有 ${state.nodeCount} 个节点。`
-    ),
-    new CanvasSidebarItem(
-      'summary/running-executions',
-      '运行中会话',
-      String(state.runningExecutionCount),
-      `当前正在运行的 Agent / Terminal 会话总数：${state.runningExecutionCount}。`
-    ),
-    new CanvasSidebarItem(
-      'summary/workspace-trust',
-      '工作区信任',
-      state.workspaceTrusted ? '已信任' : '受限模式',
-      state.workspaceTrusted
+    },
+    {
+      id: 'summary/notification-mode',
+      label: '通知模式',
+      description: formatNotificationModeSummary(state),
+      tooltip: buildNotificationModeTooltip(state)
+    },
+    {
+      id: 'summary/files-feature',
+      label: '文件功能',
+      description: formatFilesFeatureSummary(state),
+      tooltip: buildFileViewTooltip(state)
+    },
+    {
+      id: 'summary/node-count',
+      label: '节点总数',
+      description: String(state.nodeCount),
+      tooltip: `当前画布中共有 ${state.nodeCount} 个节点。`
+    },
+    {
+      id: 'summary/running-executions',
+      label: '运行中会话',
+      description: String(state.runningExecutionCount),
+      tooltip: `当前正在运行的 Agent / Terminal 会话总数：${state.runningExecutionCount}。`
+    },
+    {
+      id: 'summary/workspace-trust',
+      label: '工作区信任',
+      description: state.workspaceTrusted ? '已信任' : '受限模式',
+      tooltip: state.workspaceTrusted
         ? '当前工作区已受信任，执行型对象可按各自能力创建和运行。'
         : '当前工作区处于受限模式；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
-    )
+    }
   ];
 }
 
@@ -108,26 +121,48 @@ function formatCanvasSurfaceSummary(state: CanvasSidebarState): string {
     }
   })();
 
-  return `${canvasSurfaceLabel} · ${formatSurfaceLabel(state.configuredSurface)}`;
+  return `${canvasSurfaceLabel} · ${formatSurfaceLabel(resolveCanvasSurfaceSummaryLocation(state))}`;
 }
 
 function buildCanvasSurfaceTooltip(state: CanvasSidebarState): string {
-  const defaultSurfaceLine =
-    `当前默认承载面：${formatSurfaceLabel(state.configuredSurface)}。` +
-    'Panel 路线的实际工作台位置由 VS Code 记住，可能位于底部 Panel 或 Secondary Sidebar。';
+  const defaultSurfaceLine = buildSurfaceLocationLine('当前默认承载面', state.configuredSurface);
+  const currentSurfaceLine =
+    state.canvasSurface === 'closed' || state.surfaceLocation === state.configuredSurface
+      ? undefined
+      : buildSurfaceLocationLine('当前实例承载面', state.surfaceLocation);
 
   switch (state.canvasSurface) {
     case 'closed':
       return `当前还没有打开画布；执行“打开画布”时会按默认承载面 ${formatSurfaceLabel(state.configuredSurface)} 打开。\n${defaultSurfaceLine}`;
     case 'hidden':
-      return `画布已经打开，但当前不在前台；可执行“定位画布”回到当前实例。\n${defaultSurfaceLine}`;
+      return ['画布已经打开，但当前不在前台；可执行“定位画布”回到当前实例。', currentSurfaceLine, defaultSurfaceLine]
+        .filter((line): line is string => typeof line === 'string')
+        .join('\n');
     case 'visible':
-      return `画布当前已经打开，并显示在前台。\n${defaultSurfaceLine}`;
+      return ['画布当前已经打开，并显示在前台。', currentSurfaceLine, defaultSurfaceLine]
+        .filter((line): line is string => typeof line === 'string')
+        .join('\n');
   }
 }
 
 function formatSurfaceLabel(surface: CanvasSidebarState['surfaceLocation']): string {
   return surface === 'panel' ? 'Panel' : 'Editor';
+}
+
+function resolveCanvasSurfaceSummaryLocation(state: CanvasSidebarState): CanvasSidebarState['surfaceLocation'] {
+  return state.canvasSurface === 'closed' ? state.configuredSurface : state.surfaceLocation;
+}
+
+function buildSurfaceLocationLine(
+  label: string,
+  surface: CanvasSidebarState['surfaceLocation']
+): string {
+  const prefix = `${label}：${formatSurfaceLabel(surface)}。`;
+  if (surface !== 'panel') {
+    return prefix;
+  }
+
+  return `${prefix} Panel 路线的实际工作台位置由 VS Code 记住，可能位于底部 Panel 或 Secondary Sidebar。`;
 }
 
 function formatNotificationModeSummary(state: CanvasSidebarState): string {

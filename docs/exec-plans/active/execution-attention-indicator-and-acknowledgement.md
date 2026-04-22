@@ -23,6 +23,7 @@
 - [x] (2026-04-22 05:48 +0800) 加强 minimap attention pulse 的强度，提升缩略图里的可见性，让同色闪烁在 glance 下也足够明显。
 - [x] (2026-04-22 05:58 +0800) 重新定义 minimap attention 的产品边界：明暗闪烁属于默认 attention，尺寸 pulse 归属 strong reminder，并补 probe / smoke 断言两者分离。
 - [x] (2026-04-22 06:18 +0800) 将 `strongTerminalAttentionReminder` 从布尔开关改成枚举模式配置，支持 `none` / `titleBar` / `minimap` / `both`，并同步更新 smoke 断言与配置说明文案。
+- [x] (2026-04-22 08:44 +0800) 处理 follow-up review blocker：`概览` 中 `画布状态` 在画布已打开时改为展示当前实例承载面，而不是默认承载面；补测试命令和定向 VS Code 场景，断言“默认 `Panel` + 当前实例 `Editor`”时摘要与 tooltip 一致。
 
 ## 意外与发现
 
@@ -37,6 +38,9 @@
 
 - 观察：如果把 `webview/selectNode` 绑定到所有“节点被选中”的路径，xterm 内部 selection change、控件 focus 或其它程序化选中也会被误当成“用户已确认提醒”，从而在收到 signal 后瞬间清掉 `attentionPending`。
   证据：2026-04-22 的 trusted smoke 复跑中，第二次 `notify strong-reminder-disabled-smoke` 已经被宿主解析并置位 `attentionPending=true`，但随后又被非点击路径触发的 `webview/selectNode` 立即清除；修复后将确认动作收敛为显式鼠标点击节点，smoke 恢复通过。
+
+- 观察：侧栏 `概览` 的 “画布状态” 摘要在已打开场景错误读取了 `configuredSurface`，导致“定位画布”实际跳到 `Editor` 时，TreeView 仍稳定显示成 `已打开 · Panel`。
+  证据：最新 review 明确指出 `src/sidebar/CanvasSidebarView.ts:111` 把 `state.configuredSurface` 直接拼进摘要；本地定向场景在“默认 `Panel` + 当前实例 `Editor`”路径下稳定复现。
 
 ## 决策记录
 
@@ -72,6 +76,10 @@
   理由：用户要的是“点击节点后 icon 消失”，不是“任何本地选中或 focus 变化都算确认”；如果不拆开，xterm selection change 等内部事件会把提醒误清掉。
   日期/作者：2026-04-22 / Codex
 
+- 决策：侧栏 `概览` 的 “画布状态” 在画布未打开时继续显示默认承载面，在画布已打开时改为显示当前实例承载面；tooltip 同时保留“当前实例承载面”和“当前默认承载面”的分离说明。
+  理由：用户 glance 到的摘要必须和“定位画布”实际聚焦目标一致；但默认打开位置仍然是有价值的配置语义，适合继续保留在 tooltip 中。
+  日期/作者：2026-04-22 / Codex
+
 ## 结果与复盘
 
 本轮已完成以下交付：
@@ -87,6 +95,13 @@
 - `npm run test:execution-attention-signals` 通过
 - `npm run build` 通过
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 复跑通过（首次运行命中过一次与本变更无直接证据关联的历史恢复 smoke 超时，二次运行稳定通过）
+
+review follow-up 增量验证：
+
+- `npm run typecheck` 通过
+- `npm run build` 通过
+- 基于 `scripts/vscode-smoke-runner.mjs` 的定向 VS Code 场景通过：确认“默认 `Panel` + 当前实例 `Editor`”时，侧栏 `画布状态` 显示 `已打开 · Editor`，且 tooltip 同时区分当前实例承载面与默认承载面
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 仍在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中既有超时；当前不把整套 trusted smoke 记为已通过
 
 剩余风险：
 

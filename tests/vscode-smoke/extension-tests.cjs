@@ -14,6 +14,7 @@ const COMMAND_IDS = {
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
+  testGetSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
@@ -225,9 +226,16 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.activeSurface, 'editor');
   assert.strictEqual(snapshot.sidebar.configuredSurface, 'panel');
   assert.strictEqual(snapshot.sidebar.canvasSurface, 'visible');
+  assert.strictEqual(snapshot.sidebar.surfaceLocation, 'editor');
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, true);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  const sidebarSummaryItems = await getSidebarSummaryItems();
+  const canvasSurfaceSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/canvas-surface');
+  assert.strictEqual(canvasSurfaceSummaryItem.description, '已打开 · Editor');
+  assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
+  assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
 
   await verifyCodexSessionIdLocator();
   await verifyAgentCliRelativePathCacheIsolation();
@@ -6033,6 +6041,10 @@ async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
 }
 
+async function getSidebarSummaryItems() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetSidebarSummaryItems);
+}
+
 async function getRuntimeSupervisorState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetRuntimeSupervisorState);
 }
@@ -6070,6 +6082,12 @@ async function clearHostMessages() {
 
 async function clearDiagnosticEvents() {
   await vscode.commands.executeCommand(COMMAND_IDS.testClearDiagnosticEvents);
+}
+
+function findSidebarSummaryItem(items, id) {
+  const item = Array.isArray(items) ? items.find((entry) => entry && entry.id === id) : undefined;
+  assert.ok(item, `sidebar summary item not found: ${id}`);
+  return item;
 }
 
 async function setQuickPickSelections(selectionIds) {
