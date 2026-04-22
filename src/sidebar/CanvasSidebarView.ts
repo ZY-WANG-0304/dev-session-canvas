@@ -166,18 +166,8 @@ function buildSurfaceLocationLine(
 }
 
 function formatNotificationModeSummary(state: CanvasSidebarState): string {
-  const parts: string[] = [];
-
-  if (state.notificationBridgeEnabled) {
-    parts.push('工作台通知');
-  }
-
-  const strongReminderSurface = formatStrongReminderSurfaceSummary(state);
-  if (strongReminderSurface) {
-    parts.push(strongReminderSurface);
-  }
-
-  return parts.length > 0 ? parts.join(' + ') : '仅节点提醒';
+  const bridgeStatus = state.notificationBridgeEnabled ? '已桥接' : '未桥接';
+  return `${bridgeStatus} · ${formatStrongReminderModeLabel(state)}`;
 }
 
 function buildNotificationModeTooltip(state: CanvasSidebarState): string {
@@ -199,7 +189,7 @@ function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string |
   const pulsesMinimap = strongTerminalAttentionReminderPulsesMinimap(state.notificationStrongReminderMode);
 
   if (flashesTitleBar && pulsesMinimap) {
-    return '标题栏/Minimap 增强';
+    return '标题栏+Minimap 增强';
   }
 
   if (flashesTitleBar) {
@@ -215,7 +205,7 @@ function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string |
 
 function formatStrongReminderModeLabel(state: CanvasSidebarState): string {
   const strongReminderSurface = formatStrongReminderSurfaceSummary(state);
-  return strongReminderSurface ?? '仅默认提醒';
+  return strongReminderSurface ?? '普通提醒';
 }
 
 function formatFileViewSummary(state: CanvasSidebarState): string {
