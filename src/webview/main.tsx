@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
@@ -20,6 +20,7 @@ import ReactFlow, {
   type Edge,
   type EdgeMouseHandler,
   type EdgeProps,
+  type MiniMapNodeProps,
   type ReactFlowInstance,
   type Node,
   type NodeMouseHandler,
@@ -48,6 +49,7 @@ import type {
   CanvasNodeMetadata,
   CanvasNodePosition,
   CanvasRuntimeContext,
+  CanvasStrongTerminalAttentionReminderMode,
   CanvasNodeSummary,
   CanvasPrototypeState,
   ExecutionNodeKind,
@@ -59,7 +61,12 @@ import type {
   WebviewProbeSnapshot,
   WebviewToHostMessage
 } from '../common/protocol';
-import { canvasEdgePresetColors } from '../common/protocol';
+import {
+  canvasEdgePresetColors,
+  normalizeCanvasStrongTerminalAttentionReminderMode,
+  strongTerminalAttentionReminderPulsesMinimap,
+  strongTerminalAttentionReminderShowsTitleBar
+} from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -105,7 +112,7 @@ interface CanvasNodeData {
   selected: boolean;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
-  strongTerminalAttentionReminderEnabled: boolean;
+  strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   size: CanvasNodeFootprint;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
@@ -201,7 +208,8 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
   items: [
     '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
     'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
-    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）'
+    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
+    '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需配置 Terminal Bell Notifications；Codex 需设置 notification_method 和 notification_condition'
   ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
@@ -430,7 +438,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   workspaceTrusted: false,
   surfaceLocation: 'editor',
   defaultAgentProvider: 'codex',
-  strongTerminalAttentionReminderEnabled: true,
+  strongTerminalAttentionReminderMode: 'both',
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
   editorMultiCursorModifier: 'alt',
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
@@ -455,12 +463,21 @@ function normalizeRuntimeContext(
   const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
     ? runtimeContext.fileIconFontFaces
     : [];
+  const legacyStrongTerminalAttentionReminderEnabled = runtimeContext
+    ? (
+        runtimeContext as Partial<CanvasRuntimeContext> & {
+          strongTerminalAttentionReminderEnabled?: boolean;
+        }
+      ).strongTerminalAttentionReminderEnabled
+    : undefined;
 
   return {
     workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
     surfaceLocation: runtimeContext?.surfaceLocation === 'editor' ? 'editor' : 'panel',
     defaultAgentProvider: runtimeContext?.defaultAgentProvider === 'claude' ? 'claude' : 'codex',
-    strongTerminalAttentionReminderEnabled: runtimeContext?.strongTerminalAttentionReminderEnabled !== false,
+    strongTerminalAttentionReminderMode: normalizeCanvasStrongTerminalAttentionReminderMode(
+      runtimeContext?.strongTerminalAttentionReminderMode ?? legacyStrongTerminalAttentionReminderEnabled
+    ),
     terminalScrollback:
       typeof runtimeContext?.terminalScrollback === 'number'
         ? runtimeContext.terminalScrollback
@@ -509,7 +526,7 @@ function App(): JSX.Element {
     workspaceTrusted: false,
     surfaceLocation: latestRuntimeContext.surfaceLocation,
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
-    strongTerminalAttentionReminderEnabled: latestRuntimeContext.strongTerminalAttentionReminderEnabled,
+    strongTerminalAttentionReminderMode: latestRuntimeContext.strongTerminalAttentionReminderMode,
     terminalScrollback: latestRuntimeContext.terminalScrollback,
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
@@ -980,7 +997,7 @@ function App(): JSX.Element {
     selectedNodeId: localUiState.selectedNodeId,
     documentHasFocus,
     workspaceTrusted,
-    strongTerminalAttentionReminderEnabled: runtimeContext.strongTerminalAttentionReminderEnabled,
+    strongTerminalAttentionReminderMode: runtimeContext.strongTerminalAttentionReminderMode,
     fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
@@ -1390,8 +1407,10 @@ function App(): JSX.Element {
           style={{ width: 194, height: 126 }}
           pannable
           zoomable
+          nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
           nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
           nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
+          nodeComponent={CanvasMiniMapNode}
           nodeBorderRadius={4}
           nodeStrokeWidth={1.2}
           maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
@@ -1473,7 +1492,8 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       agentMetadata.pendingLaunch === 'resume');
   const reattaching = displayStatus === 'reattaching';
   const attentionPending = agentMetadata.attentionPending === true;
-  const attentionFlashing = attentionPending && data.strongTerminalAttentionReminderEnabled;
+  const attentionFlashing =
+    attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
   const chromeClassName = [
     'window-chrome',
     attentionPending ? 'has-attention' : '',
@@ -1894,7 +1914,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   const displayStatus = data.status;
   const reattaching = displayStatus === 'reattaching';
   const attentionPending = terminalMetadata.attentionPending === true;
-  const attentionFlashing = attentionPending && data.strongTerminalAttentionReminderEnabled;
+  const attentionFlashing =
+    attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
   const chromeClassName = [
     'window-chrome',
     attentionPending ? 'has-attention' : '',
@@ -2294,6 +2315,43 @@ function ExecutionAttentionStatus(props: {
         {humanizeStatus(props.status)}
       </span>
     </div>
+  );
+}
+
+function CanvasMiniMapNode(props: MiniMapNodeProps): JSX.Element {
+  const classNames = props.className.split(/\s+/).filter(Boolean);
+  const attentionPending = classNames.includes('has-attention');
+  const attentionFlashing = classNames.includes('is-attention-flashing');
+  const attentionSizePulsing = classNames.includes('has-strong-attention-reminder');
+  const style = {
+    ...(props.style ?? {}),
+    '--minimap-node-attention-color': props.color,
+    '--minimap-node-attention-stroke-color': props.strokeColor || props.color,
+    '--minimap-node-attention-scale-peak': attentionSizePulsing ? '1.16' : '1'
+  } as CSSProperties;
+
+  return (
+    <rect
+      className={['react-flow__minimap-node', props.selected ? 'selected' : '', props.className]
+        .filter(Boolean)
+        .join(' ')}
+      data-minimap-node-id={props.id}
+      data-minimap-attention-pending={attentionPending ? 'true' : 'false'}
+      data-minimap-attention-flashing={attentionFlashing ? 'true' : 'false'}
+      data-minimap-attention-size-pulsing={attentionSizePulsing ? 'true' : 'false'}
+      x={props.x}
+      y={props.y}
+      rx={props.borderRadius}
+      ry={props.borderRadius}
+      width={props.width}
+      height={props.height}
+      fill={props.color}
+      stroke={props.strokeColor}
+      strokeWidth={props.strokeWidth}
+      shapeRendering={props.shapeRendering}
+      style={style}
+      onClick={props.onClick ? (event) => props.onClick?.(event, props.id) : undefined}
+    />
   );
 }
 
@@ -4489,7 +4547,7 @@ function toFlowNodes(params: {
   selectedNodeId: string | undefined;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
-  strongTerminalAttentionReminderEnabled: boolean;
+  strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
@@ -4561,7 +4619,7 @@ function toFlowNodes(params: {
         selected: node.id === params.selectedNodeId,
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
-        strongTerminalAttentionReminderEnabled: params.strongTerminalAttentionReminderEnabled,
+        strongTerminalAttentionReminderMode: params.strongTerminalAttentionReminderMode,
         size,
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
@@ -4886,6 +4944,31 @@ function minimapStrokeColorForKind(kind: CanvasNodeKind): string {
   return `color-mix(in srgb, ${colorForKind(kind)} 82%, var(--vscode-editor-background) 18%)`;
 }
 
+function minimapClassNameForNode(node: Node<CanvasNodeData>): string {
+  const data = node.data;
+  if (!data || (data.kind !== 'agent' && data.kind !== 'terminal')) {
+    return '';
+  }
+
+  if (!executionAttentionPendingFromMetadata(data.metadata)) {
+    return '';
+  }
+
+  return [
+    'has-attention',
+    'is-attention-flashing',
+    strongTerminalAttentionReminderPulsesMinimap(data.strongTerminalAttentionReminderMode)
+      ? 'has-strong-attention-reminder'
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function executionAttentionPendingFromMetadata(metadata: CanvasNodeMetadata | undefined): boolean {
+  return metadata?.agent?.attentionPending === true || metadata?.terminal?.attentionPending === true;
+}
+
 function humanizeNodeKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
@@ -4991,7 +5074,7 @@ function statusToneClass(status: string): string {
     case 'reattaching':
       return 'tone-running';
     case 'waiting-input':
-      return 'tone-success';
+      return 'tone-ready';
     case 'resume-ready':
     case 'stopping':
     case 'stopped':
@@ -5554,6 +5637,7 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
   }
 
   const footprint = readProbeNodeFootprint(element);
+  const minimapNode = queryMinimapNode(nodeId);
 
   return {
     nodeId,
@@ -5571,6 +5655,9 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     attentionIndicatorVisible: Boolean(element.querySelector('[data-attention-indicator="true"]')),
     attentionIndicatorFlashing:
       element.querySelector<HTMLElement>('.window-chrome')?.dataset.executionAttentionFlashing === 'true',
+    minimapVisible: minimapNode !== null,
+    minimapAttentionFlashing: minimapNode?.dataset.minimapAttentionFlashing === 'true',
+    minimapAttentionSizePulsing: minimapNode?.dataset.minimapAttentionSizePulsing === 'true',
     selected: element.dataset.nodeSelected === 'true',
     renderedWidth: footprint.width,
     renderedHeight: footprint.height,
@@ -5959,6 +6046,14 @@ function queryNodeRoot(nodeId: string): HTMLElement {
   }
 
   return nodeRoot;
+}
+
+function queryMinimapNode(nodeId: string): SVGElement | null {
+  return (
+    Array.from(document.querySelectorAll<SVGElement>('[data-minimap-node-id]')).find(
+      (candidate) => candidate.dataset.minimapNodeId === nodeId
+    ) ?? null
+  );
 }
 
 function setControlledFieldValue(

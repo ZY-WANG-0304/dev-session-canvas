@@ -14,6 +14,7 @@ const COMMAND_IDS = {
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
+  testGetSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
@@ -225,9 +226,18 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.activeSurface, 'editor');
   assert.strictEqual(snapshot.sidebar.configuredSurface, 'panel');
   assert.strictEqual(snapshot.sidebar.canvasSurface, 'visible');
+  assert.strictEqual(snapshot.sidebar.surfaceLocation, 'editor');
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, true);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  const sidebarSummaryItems = await getSidebarSummaryItems();
+  const canvasSurfaceSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/canvas-surface');
+  assert.strictEqual(canvasSurfaceSummaryItem.description, '已打开 · Editor');
+  assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
+  assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
+  const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
+  assert.strictEqual(notificationModeSummaryItem.description, '已桥接 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
   await verifyAgentCliRelativePathCacheIsolation();
@@ -2210,6 +2220,9 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
         noteNode.chromeTitle === 'Host Smoke Note' &&
         noteNode.chromeSubtitle === null &&
         noteNode.statusText === null &&
+        agentNode.minimapVisible === true &&
+        terminalNode.minimapVisible === true &&
+        noteNode.minimapVisible === true &&
         noteNode.titleInputValue === 'Host Smoke Note' &&
         noteNode.bodyValue === 'Exercise the real webview-to-host update path.'
     );
@@ -2475,10 +2488,13 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   const configuration = vscode.workspace.getConfiguration();
   const originalBridgeEnabled =
     configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
-  const originalStrongReminderEnabled =
-    configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', true) === true;
-  const bridgeDisabledMessage = 'bridge-disabled-smoke';
-  const strongReminderDisabledMessage = 'strong-reminder-disabled-smoke';
+  const originalStrongReminderMode = normalizeStrongTerminalAttentionReminderMode(
+    configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
+  );
+  const bridgeDisabledBothMessage = 'bridge-disabled-both-smoke';
+  const strongReminderNoneMessage = 'strong-reminder-none-smoke';
+  const strongReminderTitleBarMessage = 'strong-reminder-titlebar-smoke';
+  const strongReminderMinimapMessage = 'strong-reminder-minimap-smoke';
   const bridgeEnabledMessage = 'bridge-enabled-smoke';
   const bridgeFocusMessage = 'bridge-focus-smoke';
   const bridgeDuplicateMessage = 'bridge-duplicate-smoke';
@@ -2491,7 +2507,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
   try {
-    await ensureStrongTerminalAttentionReminderEnabled(true);
+    await ensureStrongTerminalAttentionReminderMode('both');
     await ensureBridgeTerminalAttentionSignalsEnabled(false);
 
     await startExecutionSessionForTest({
@@ -2510,51 +2526,121 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
 
     await withInterceptedInformationMessages(
       async (calls) => {
-        await clearDiagnosticEvents();
-        await dispatchWebviewMessage({
-          type: 'webview/executionInput',
-          payload: {
-            nodeId: agentNodeId,
-            kind: 'agent',
-            data: `notify ${bridgeDisabledMessage}\r`
-          }
-        });
-
-        await waitForSnapshot((currentSnapshot) => {
-          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-          return Boolean(
-            currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${bridgeDisabledMessage}`) &&
-              currentNode.status === 'waiting-input'
+        const clearAttentionByClick = async () => {
+          await performWebviewDomAction({
+            kind: 'selectNode',
+            nodeId: agentNodeId
+          });
+          const clearedProbe = await waitForWebviewProbeOnSurface(
+            'editor',
+            (currentProbe) => {
+              const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+              return Boolean(
+                currentNode &&
+                  currentNode.attentionIndicatorVisible === false &&
+                  currentNode.attentionIndicatorFlashing === false &&
+                  currentNode.minimapAttentionFlashing === false &&
+                  currentNode.minimapAttentionSizePulsing === false
+              );
+            },
+            20000
           );
-        }, 20000);
+          assert.strictEqual(
+            clearedProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+            false,
+            'Selecting the node should clear the attention icon.'
+          );
+          assert.strictEqual(
+            clearedProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+            false,
+            'Selecting the node should also clear the minimap attention flash.'
+          );
+          assert.strictEqual(
+            clearedProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+            false,
+            'Selecting the node should also clear the minimap size pulse.'
+          );
+        };
 
-        const disabledProbe = await waitForWebviewProbeOnSurface(
-          'editor',
-          (currentProbe) => {
-            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+        const assertAttentionSurfaceForMode = async ({
+          mode,
+          message,
+          expectedTitleBarFlashing,
+          expectedMinimapSizePulsing,
+          expectedNoNotificationMessage
+        }) => {
+          await ensureStrongTerminalAttentionReminderMode(mode);
+          calls.length = 0;
+          await clearDiagnosticEvents();
+          await dispatchWebviewMessage({
+            type: 'webview/executionInput',
+            payload: {
+              nodeId: agentNodeId,
+              kind: 'agent',
+              data: `notify ${message}\r`
+            }
+          });
+
+          await waitForSnapshot((currentSnapshot) => {
+            const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
             return Boolean(
-              currentNode &&
-                currentNode.attentionIndicatorVisible === true &&
-                currentNode.attentionIndicatorFlashing === true
+              currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${message}`) &&
+                currentNode.status === 'waiting-input' &&
+                currentNode?.metadata?.agent?.attentionPending === true
             );
-          },
-          20000
-        );
-        assert.deepStrictEqual(
-          calls.map((call) => call.message),
-          [],
-          'Bridge-disabled Agent attention signal should not raise a VS Code notification.'
-        );
-        assert.strictEqual(
-          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
-          true,
-          'Bridge-disabled Agent attention signal should still show the node attention icon.'
-        );
-        assert.strictEqual(
-          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
-          true,
-          'Bridge-disabled Agent attention signal should still flash the node title bar when strong reminder is enabled.'
-        );
+          }, 20000);
+
+          const probe = await waitForWebviewProbeOnSurface(
+            'editor',
+            (currentProbe) => {
+              const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+              return Boolean(
+                currentNode &&
+                  currentNode.attentionIndicatorVisible === true &&
+                  currentNode.attentionIndicatorFlashing === expectedTitleBarFlashing &&
+                  currentNode.minimapAttentionFlashing === true &&
+                  currentNode.minimapAttentionSizePulsing === expectedMinimapSizePulsing
+              );
+            },
+            20000
+          );
+
+          assert.deepStrictEqual(
+            calls.map((call) => call.message),
+            [],
+            expectedNoNotificationMessage
+          );
+          assert.strictEqual(
+            probe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+            true,
+            `${mode} mode should still show the node attention icon.`
+          );
+          assert.strictEqual(
+            probe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
+            expectedTitleBarFlashing,
+            `${mode} mode should ${expectedTitleBarFlashing ? 'enable' : 'disable'} title bar flashing.`
+          );
+          assert.strictEqual(
+            probe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+            true,
+            `${mode} mode should keep the minimap attention flash active.`
+          );
+          assert.strictEqual(
+            probe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+            expectedMinimapSizePulsing,
+            `${mode} mode should ${expectedMinimapSizePulsing ? 'enable' : 'disable'} the minimap size pulse.`
+          );
+          return probe;
+        };
+
+        const bothProbe = await assertAttentionSurfaceForMode({
+          mode: 'both',
+          message: bridgeDisabledBothMessage,
+          expectedTitleBarFlashing: true,
+          expectedMinimapSizePulsing: true,
+          expectedNoNotificationMessage:
+            'Bridge-disabled Agent attention signal should not raise a VS Code notification.'
+        });
         assert.strictEqual(
           (await getDiagnosticEvents()).some(
             (event) =>
@@ -2564,99 +2650,44 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           false,
           'Bridge-disabled Agent attention signal should not emit attention-notification diagnostics.'
         );
-
-        await performWebviewDomAction({
-          kind: 'selectNode',
-          nodeId: agentNodeId
-        });
-        const clearedAfterClickProbe = await waitForWebviewProbeOnSurface(
-          'editor',
-          (currentProbe) => {
-            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-            return Boolean(
-              currentNode &&
-                currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
-            );
-          },
-          20000
-        );
         assert.strictEqual(
-          clearedAfterClickProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
-          false,
-          'Selecting the node should clear the attention icon.'
-        );
-
-        await ensureStrongTerminalAttentionReminderEnabled(false);
-
-        calls.length = 0;
-        await clearDiagnosticEvents();
-        await dispatchWebviewMessage({
-          type: 'webview/executionInput',
-          payload: {
-            nodeId: agentNodeId,
-            kind: 'agent',
-            data: `notify ${strongReminderDisabledMessage}\r`
-          }
-        });
-
-        await waitForSnapshot((currentSnapshot) => {
-          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-          return Boolean(
-            currentNode?.metadata?.agent?.recentOutput?.includes(
-              `[fake-agent] notified ${strongReminderDisabledMessage}`
-            ) &&
-              currentNode.status === 'waiting-input' &&
-              currentNode?.metadata?.agent?.attentionPending === true
-          );
-        }, 20000);
-
-        const strongReminderDisabledProbe = await waitForWebviewProbeOnSurface(
-          'editor',
-          (currentProbe) => {
-            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-            return Boolean(
-              currentNode &&
-                currentNode.attentionIndicatorVisible === true &&
-                currentNode.attentionIndicatorFlashing === false
-            );
-          },
-          20000
-        );
-        assert.deepStrictEqual(
-          calls.map((call) => call.message),
-          [],
-          'Strong-reminder-disabled Agent attention signal should still avoid VS Code notifications when bridge is disabled.'
-        );
-        assert.strictEqual(
-          strongReminderDisabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          bothProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
           true,
-          'Disabling strong reminder should not remove the attention icon.'
+          'both mode should add minimap size pulsing when bridge is disabled.'
         );
-        assert.strictEqual(
-          strongReminderDisabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
-          false,
-          'Disabling strong reminder should stop the title bar flashing.'
-        );
+        await clearAttentionByClick();
 
-        await performWebviewDomAction({
-          kind: 'selectNode',
-          nodeId: agentNodeId
+        await assertAttentionSurfaceForMode({
+          mode: 'none',
+          message: strongReminderNoneMessage,
+          expectedTitleBarFlashing: false,
+          expectedMinimapSizePulsing: false,
+          expectedNoNotificationMessage:
+            'none mode should still avoid VS Code notifications when bridge is disabled.'
         });
-        await waitForWebviewProbeOnSurface(
-          'editor',
-          (currentProbe) => {
-            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-            return Boolean(
-              currentNode &&
-                currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
-            );
-          },
-          20000
-        );
+        await clearAttentionByClick();
 
-        await ensureStrongTerminalAttentionReminderEnabled(true);
+        await assertAttentionSurfaceForMode({
+          mode: 'titleBar',
+          message: strongReminderTitleBarMessage,
+          expectedTitleBarFlashing: true,
+          expectedMinimapSizePulsing: false,
+          expectedNoNotificationMessage:
+            'titleBar mode should still avoid VS Code notifications when bridge is disabled.'
+        });
+        await clearAttentionByClick();
+
+        await assertAttentionSurfaceForMode({
+          mode: 'minimap',
+          message: strongReminderMinimapMessage,
+          expectedTitleBarFlashing: false,
+          expectedMinimapSizePulsing: true,
+          expectedNoNotificationMessage:
+            'minimap mode should still avoid VS Code notifications when bridge is disabled.'
+        });
+        await clearAttentionByClick();
+
+        await ensureStrongTerminalAttentionReminderMode('both');
         await ensureBridgeTerminalAttentionSignalsEnabled(true);
 
         calls.length = 0;
@@ -2689,7 +2720,9 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
             return Boolean(
               currentNode &&
                 currentNode.attentionIndicatorVisible === true &&
-                currentNode.attentionIndicatorFlashing === true
+                currentNode.attentionIndicatorFlashing === true &&
+                currentNode.minimapAttentionFlashing === true &&
+                currentNode.minimapAttentionSizePulsing === true
             );
           },
           20000
@@ -2699,6 +2732,21 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
           true,
           'Bridge-enabled Agent attention signal should still show the node attention icon.'
+        );
+        assert.strictEqual(
+          enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorFlashing,
+          true,
+          'Bridge-enabled Agent attention signal should flash the node title bar in both mode.'
+        );
+        assert.strictEqual(
+          enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          true,
+          'Bridge-enabled Agent attention signal should also flash the minimap node.'
+        );
+        assert.strictEqual(
+          enabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          true,
+          'Bridge-enabled Agent attention signal should add minimap size pulsing in both mode.'
         );
         assert.ok(
           enabledDiagnostics.some(
@@ -2711,22 +2759,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           'Expected enabled Agent attention bridge to emit an OSC 9 notification diagnostic.'
         );
 
-        await performWebviewDomAction({
-          kind: 'selectNode',
-          nodeId: agentNodeId
-        });
-        await waitForWebviewProbeOnSurface(
-          'editor',
-          (currentProbe) => {
-            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-            return Boolean(
-              currentNode &&
-                currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
-            );
-          },
-          20000
-        );
+        await clearAttentionByClick();
 
         calls.length = 0;
         autoSelectNotificationMessage = `Agent「${agentLabel}」: ${bridgeFocusMessage}`;
@@ -2768,7 +2801,9 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
               currentNode &&
                 currentNode.selected === true &&
                 currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false &&
+                currentNode.minimapAttentionSizePulsing === false
             );
           },
           20000
@@ -2778,6 +2813,16 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
           false,
           'Focusing the node from the VS Code notification should clear the attention icon.'
+        );
+        assert.strictEqual(
+          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          false,
+          'Focusing the node from the VS Code notification should also clear the minimap attention flash.'
+        );
+        assert.strictEqual(
+          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          false,
+          'Focusing the node from the VS Code notification should also clear the minimap size pulse.'
         );
 
         calls.length = 0;
@@ -2846,7 +2891,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   } finally {
     await ensureAgentStopped(agentNodeId);
     await ensureBridgeTerminalAttentionSignalsEnabled(originalBridgeEnabled);
-    await ensureStrongTerminalAttentionReminderEnabled(originalStrongReminderEnabled);
+    await ensureStrongTerminalAttentionReminderMode(originalStrongReminderMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
   }
@@ -5998,6 +6043,10 @@ async function getDebugSnapshot() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
 }
 
+async function getSidebarSummaryItems() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetSidebarSummaryItems);
+}
+
 async function getRuntimeSupervisorState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetRuntimeSupervisorState);
 }
@@ -6035,6 +6084,12 @@ async function clearHostMessages() {
 
 async function clearDiagnosticEvents() {
   await vscode.commands.executeCommand(COMMAND_IDS.testClearDiagnosticEvents);
+}
+
+function findSidebarSummaryItem(items, id) {
+  const item = Array.isArray(items) ? items.find((entry) => entry && entry.id === id) : undefined;
+  assert.ok(item, `sidebar summary item not found: ${id}`);
+  return item;
 }
 
 async function setQuickPickSelections(selectionIds) {
@@ -6140,19 +6195,45 @@ async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
   );
 }
 
-async function ensureStrongTerminalAttentionReminderEnabled(enabled) {
-  const configuration = vscode.workspace.getConfiguration();
-  const currentEnabled =
-    configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', true) === true;
+function normalizeStrongTerminalAttentionReminderMode(value) {
+  if (value === 'none' || value === 'titleBar' || value === 'minimap' || value === 'both') {
+    return value;
+  }
 
-  if (currentEnabled === enabled) {
+  if (value === false) {
+    return 'none';
+  }
+
+  if (value === true) {
+    return 'both';
+  }
+
+  return 'both';
+}
+
+function strongTerminalAttentionReminderModeEnablesTitleBar(mode) {
+  return mode === 'titleBar' || mode === 'both';
+}
+
+function strongTerminalAttentionReminderModeEnablesMinimap(mode) {
+  return mode === 'minimap' || mode === 'both';
+}
+
+async function ensureStrongTerminalAttentionReminderMode(mode) {
+  const configuration = vscode.workspace.getConfiguration();
+  const normalizedMode = normalizeStrongTerminalAttentionReminderMode(mode);
+  const currentMode = normalizeStrongTerminalAttentionReminderMode(
+    configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
+  );
+
+  if (currentMode === normalizedMode) {
     return;
   }
 
   await clearDiagnosticEvents();
   await configuration.update(
     'devSessionCanvas.notifications.strongTerminalAttentionReminder',
-    enabled,
+    normalizedMode,
     vscode.ConfigurationTarget.Global
   );
   await waitForDiagnosticEvents(
@@ -6160,7 +6241,9 @@ async function ensureStrongTerminalAttentionReminderEnabled(enabled) {
       events.some(
         (event) =>
           event.kind === 'execution/attentionStrongReminderConfigChanged' &&
-          event.detail?.enabled === enabled
+          event.detail?.mode === normalizedMode &&
+          event.detail?.titleBarEnabled === strongTerminalAttentionReminderModeEnablesTitleBar(normalizedMode) &&
+          event.detail?.minimapEnabled === strongTerminalAttentionReminderModeEnablesMinimap(normalizedMode)
       ),
     20000
   );

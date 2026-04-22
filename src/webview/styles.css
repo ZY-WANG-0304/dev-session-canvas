@@ -27,6 +27,8 @@ body {
   --canvas-edge-color-4: #4fa36c;
   --canvas-edge-color-5: #4fa7b8;
   --canvas-edge-color-6: #a77dc2;
+  --execution-attention-flash-duration: 1.2s;
+  --execution-attention-flash-easing: ease-in-out;
 }
 
 .canvas-corner-panel {
@@ -125,6 +127,47 @@ body {
 
 .canvas-shell .canvas-minimap .react-flow__minimap-node {
   opacity: 0.82;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease,
+    stroke 140ms ease,
+    stroke-width 140ms ease,
+    transform 140ms ease;
+}
+
+.canvas-shell .canvas-minimap .react-flow__minimap-node.has-attention {
+  opacity: 1;
+  stroke: var(--minimap-node-attention-stroke-color, currentColor);
+  stroke-width: 2.2;
+}
+
+.canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
+  animation:
+    minimap-attention-flash
+    var(--execution-attention-flash-duration)
+    var(--execution-attention-flash-easing)
+    infinite;
+}
+
+@keyframes minimap-attention-flash {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: none;
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(var(--minimap-node-attention-scale-peak, 1));
+    filter: drop-shadow(
+        0 0 8px color-mix(in srgb, var(--minimap-node-attention-color, currentColor) 86%, transparent)
+      )
+      saturate(1.42)
+      brightness(1.16);
+  }
 }
 
 .action-button {
@@ -557,7 +600,11 @@ body {
 }
 
 .window-chrome.is-attention-flashing {
-  animation: execution-attention-flash 1.2s ease-in-out infinite;
+  animation:
+    execution-attention-flash
+    var(--execution-attention-flash-duration)
+    var(--execution-attention-flash-easing)
+    infinite;
 }
 
 .window-title {
@@ -634,6 +681,16 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
+    animation: none;
+    opacity: 1;
+    filter: drop-shadow(
+        0 0 6px color-mix(in srgb, var(--minimap-node-attention-color, currentColor) 74%, transparent)
+      )
+      saturate(1.26)
+      brightness(1.08);
+  }
+
   .window-chrome.is-attention-flashing {
     animation: none;
     background: color-mix(in srgb, var(--window-chrome-background) 48%, var(--execution-node-attention-color) 52%);
@@ -778,6 +835,12 @@ body {
   border-color: color-mix(in srgb, #10b981 30%, var(--vscode-panel-border) 70%);
   background: color-mix(in srgb, #10b981 10%, transparent);
   color: color-mix(in srgb, #10b981 58%, var(--vscode-editor-foreground) 42%);
+}
+
+.tone-ready {
+  border-color: color-mix(in srgb, #3b82f6 34%, var(--vscode-panel-border) 66%);
+  background: color-mix(in srgb, #3b82f6 12%, transparent);
+  color: color-mix(in srgb, #3b82f6 66%, var(--vscode-editor-foreground) 34%);
 }
 
 .tone-idle {

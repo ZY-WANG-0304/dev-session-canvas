@@ -1893,12 +1893,14 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
 
   await expect(agentNode.locator('.status-pill')).toHaveCount(1);
   await expect(agentNode.locator('.status-pill').first()).toHaveText('等待输入');
+  await expect(agentNode.locator('.status-pill').first()).toHaveClass(/tone-ready/);
   await expect(agentNode).not.toContainText('best-effort');
   await expect(agentNode).not.toContainText('systemd-user');
   await expect(agentNode).not.toContainText('detached');
 
   await expect(terminalNode.locator('.status-pill')).toHaveCount(1);
   await expect(terminalNode.locator('.status-pill').first()).toHaveText('活动');
+  await expect(terminalNode.locator('.status-pill').first()).toHaveClass(/tone-running/);
   await expect(terminalNode).not.toContainText('best-effort');
   await expect(terminalNode).not.toContainText('systemd-user');
   await expect(terminalNode).not.toContainText('detached');
@@ -3901,7 +3903,7 @@ function createRuntimeContext(overrides = {}) {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
-    strongTerminalAttentionReminderEnabled: true,
+    strongTerminalAttentionReminderMode: 'both',
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
