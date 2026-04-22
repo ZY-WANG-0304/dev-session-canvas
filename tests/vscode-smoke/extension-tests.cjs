@@ -236,6 +236,8 @@ async function runTrustedSmoke() {
   assert.strictEqual(canvasSurfaceSummaryItem.description, '已打开 · Editor');
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
+  const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
+  assert.strictEqual(notificationModeSummaryItem.description, '已桥接 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
   await verifyAgentCliRelativePathCacheIsolation();
