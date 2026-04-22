@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.1.2`。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.2.0`。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -29,12 +29,12 @@
 
 ## release notes 定稿口径
 
-当前 `0.1.2` 的 release notes 统一以 `CHANGELOG.md` 为准。发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
+当前 `0.2.0` 的 release notes 统一以 `CHANGELOG.md` 为准。发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 版本标题仍为 `0.1.2 - Preview Interaction And Restore Update`
-- 终端原生交互、标题编辑修复与 runtime restore / reload 收口与当前实现一致
+- 版本标题仍为 `0.2.0 - Preview Canvas Collaboration Update`
+- 关系连线、文件活动视图、执行提醒与侧栏概览的描述与当前实现一致
 - 已包含安装/升级说明与回退建议
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -42,25 +42,25 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.1.2`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.1.1` 升级到 `0.1.2` 都通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.1.x` 更新也通过 Marketplace 常规升级获取。
+1. 当前目标版本为 `0.2.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.1.2` 升级到 `0.2.0` 都通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.2.x` 更新也通过 Marketplace 常规升级获取。
 3. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.1.2` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.2.0` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
-2. 关注后续 `0.1.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
+2. 关注后续 `0.2.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
 3. 若确需回退，以重新安装目标版本并重新验证工作区状态为准；当前不承诺 `Preview` 版本之间的回退兼容。
 
 ### 维护者侧回滚
 
 若发布后发现 P0 / P1 blocker，默认按以下顺序处理：
 
-1. 优先评估能否在短时间内发布 `0.1.3` hotfix。
+1. 优先评估能否在短时间内发布 `0.2.1` hotfix。
 2. 若短时间内无法修复，且当前版本会阻塞主路径使用或引发宿主崩溃，再考虑临时下架当前版本。
 3. 无论选择 hotfix 还是临时下架，都需要同步更新 GitHub issue、`docs/support.md` 与对外说明，避免用户只看到失真状态。
 
@@ -110,9 +110,9 @@
 注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.1.2.vsix
+      --packagePath dev-session-canvas-0.2.0.vsix
 
-若最终版本号不是 `0.1.2`，应先同步更新命令中的 VSIX 文件名。
+若最终版本号不是 `0.2.0`，应先同步更新命令中的 VSIX 文件名。
 
 ## publish 后补 tag
 
@@ -120,15 +120,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.1.2
-    git push origin v0.1.2
+    git tag v0.2.0
+    git push origin v0.2.0
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.1.2 <final-ref-or-sha>
-    git push origin v0.1.2
+    git tag v0.2.0 <final-ref-or-sha>
+    git push origin v0.2.0
 
-若最终版本号不是 `0.1.2`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.2.0`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 

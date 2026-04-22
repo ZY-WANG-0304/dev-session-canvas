@@ -3,6 +3,9 @@
 .github/**
 .debug
 .debug/**
+.claude
+.claude/**
+.codex
 .playwright-browsers
 .playwright-browsers/**
 .git

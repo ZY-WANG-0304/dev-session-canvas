@@ -25,7 +25,9 @@ const readyFilePath = process.env.DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_READY_FIL
 const ackFilePath = process.env.DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_ACK_FILE;
 const doneFilePath = process.env.DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_DONE_FILE;
 const stateFilePath = process.env.DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_STATE_FILE;
+const controlFilePath = process.env.DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_CONTROL_FILE;
 const artifactDir = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
+let processedRecordingControlLineCount = 0;
 
 module.exports = {
   run
@@ -34,6 +36,7 @@ module.exports = {
 async function run() {
   let stateMirror;
   try {
+    processedRecordingControlLineCount = 0;
     const spec = await readRequiredJson(specFilePath, 'Marketplace media spec');
     const surface = spec.surface ?? 'panel';
     const mode = spec.mode === 'recording' ? 'recording' : 'frame';
@@ -66,7 +69,7 @@ async function run() {
         nodeCount: (await getDebugSnapshot())?.state?.nodes?.length ?? null
       });
       await waitForAck(ackFilePath, spec.captureTimeoutMs ?? 60000);
-      await waitForCompletion(doneFilePath, spec.captureTimeoutMs ?? 60000);
+      await waitForCompletion(doneFilePath, spec.captureTimeoutMs ?? 60000, surface);
     } else {
       for (const session of spec.sessions ?? []) {
         await runExecutionSession(session, surface);
@@ -170,6 +173,11 @@ async function configureWorkbench(spec) {
   await configuration.update('devSessionCanvas.agent.codexCommand', codexCommand, vscode.ConfigurationTarget.Global);
   await configuration.update('devSessionCanvas.agent.claudeCommand', claudeCommand, vscode.ConfigurationTarget.Global);
   await configuration.update('devSessionCanvas.terminal.shellPath', terminalCommand, vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.files.enabled', true, vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.files.presentationMode', 'nodes', vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.fileNode.displayStyle', 'minimal', vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.files.nodeDisplayMode', 'icon-path', vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.files.pathDisplayMode', 'relative-path', vscode.ConfigurationTarget.Global);
 }
 
 async function runExecutionSession(session, surface) {
@@ -515,7 +523,7 @@ async function waitForAck(filePath, timeoutMs) {
   throw new Error(`Timed out waiting for Marketplace media capture ack: ${filePath}`);
 }
 
-async function waitForCompletion(filePath, timeoutMs) {
+async function waitForCompletion(filePath, timeoutMs, surface) {
   if (!filePath) {
     throw new Error('Missing Marketplace media completion file path environment variable.');
   }
@@ -523,6 +531,7 @@ async function waitForCompletion(filePath, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
+    await drainRecordingControlCommands(surface);
     try {
       await fs.access(filePath);
       return;
@@ -532,6 +541,59 @@ async function waitForCompletion(filePath, timeoutMs) {
   }
 
   throw new Error(`Timed out waiting for Marketplace media automation completion: ${filePath}`);
+}
+
+async function drainRecordingControlCommands(surface) {
+  if (!controlFilePath) {
+    return;
+  }
+
+  const raw = await fs.readFile(controlFilePath, 'utf8').catch(() => '');
+  if (!raw.trim()) {
+    return;
+  }
+
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (processedRecordingControlLineCount >= lines.length) {
+    return;
+  }
+
+  for (let index = processedRecordingControlLineCount; index < lines.length; index += 1) {
+    const command = JSON.parse(lines[index]);
+    await executeRecordingControlCommand(command, surface);
+  }
+
+  processedRecordingControlLineCount = lines.length;
+}
+
+async function executeRecordingControlCommand(command, surface) {
+  switch (command?.type) {
+    case 'dispatchWebviewMessage':
+      assert.ok(command.message, 'Recording control command dispatchWebviewMessage requires a message payload.');
+      await vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, command.message, surface);
+      return;
+    case 'setPersistedState':
+      assert.ok(command.state, 'Recording control command setPersistedState requires a state payload.');
+      await vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, command.state);
+      return;
+    case 'executeCommand':
+      assert.ok(command.command, 'Recording control command executeCommand requires a command id.');
+      try {
+        await vscode.commands.executeCommand(command.command, ...(Array.isArray(command.args) ? command.args : []));
+      } catch {
+        // Best effort only. Some commands vary across VS Code builds.
+      }
+      return;
+    case 'performDomAction':
+      assert.ok(command.action, 'Recording control command performDomAction requires an action payload.');
+      await performDomAction(command.action, surface, command.timeoutMs ?? 5000);
+      return;
+    default:
+      throw new Error(`Unsupported Marketplace media recording control command: ${JSON.stringify(command)}`);
+  }
 }
 
 async function readRequiredJson(filePath, label) {
