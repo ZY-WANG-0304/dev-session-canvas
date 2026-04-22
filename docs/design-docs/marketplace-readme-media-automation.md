@@ -13,7 +13,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/marketplace-real-vscode-media-automation.md
-updated_at: 2026-04-16
+updated_at: 2026-04-22
 ---
 
 # Marketplace README 素材自动化
@@ -39,6 +39,7 @@ updated_at: 2026-04-16
 - 让素材生成成为仓库内可重复执行的脚本，而不是手工录屏。
 - 让 README 继续通过仓库内稳定路径引用这些资产。
 - 在动态素材里展示真实 `Codex` / `Claude Code` / shell 会话，而不是 fake provider。
+- 在 `0.2.0` 版本素材里显式覆盖新的主路径能力，而不继续停留在 `0.1.2` 的旧场景。
 
 ## 4. 非目标
 
@@ -58,7 +59,7 @@ updated_at: 2026-04-16
 
 ### 5.3 基于真实 VS Code smoke 场景自动录制
 
-这是本轮最终选定方案。脚本通过 `@vscode/test-electron` 启动真实 VS Code `Extension Development Host`，按默认 surface 打开画布，在同一次真实会话里先展示仅含 Note 的正常尺寸开场，再由 `scripts/` / `tests/` 中的录制编排配合原生 X11 鼠标键盘事件，依次右键创建并启动真实 `Codex` / `Claude Code` / shell，会在录制里显式展示上下文菜单、后续阶段的 `fit view`、重命名，以及双击节点标题栏触发的聚焦缩放，最后从同一段真实录屏里导出 Marketplace 用 `PNG` / `MP4` 与仓库 README 用 `GIF`。
+这是本轮最终选定方案。脚本通过 `@vscode/test-electron` 启动真实 VS Code `Extension Development Host`，按默认 surface 打开画布，在同一次真实会话里先展示仅含 Note 的正常尺寸开场，再由 `scripts/` / `tests/` 中的录制编排配合原生 X11 鼠标键盘事件，依次在目标空白区右键创建并启动真实 `Codex` / `Claude Code` / shell，会在录制里显式展示上下文菜单、阶段性的 `fit view`、重命名、节点之间的关系连线；`Reviewer` 会收到真实的写文件指令，随后录制控制通道会稳定落盘 `.debug/release-media-demo.md` 并补齐对应单文件节点，最后从同一段真实录屏里导出 Marketplace 用 `PNG` / `MP4` 与仓库 README 用 `GIF`。
 
 ## 6. 风险与取舍
 
@@ -74,9 +75,11 @@ updated_at: 2026-04-16
 - 正式 README 素材使用真实 VS Code 宿主窗口自动导出，不再使用 harness 作为最终来源。
 - 统一入口仍为 `npm run generate:marketplace-media`。
 - 同一段真实录屏统一导出三份资产：`README.marketplace.md` 使用 `images/marketplace/canvas-overview.png` 与 `images/marketplace/canvas-overview.mp4`，仓库 `README.md` / `README.en.md` 使用 `images/marketplace/canvas-overview.gif`。
-- 脚本通过真实 VS Code smoke 测试按默认 surface 打开画布，先恢复只有 `note-1` 的初始状态，并在真正开始录屏前用现有画布缩放控件把首屏从 React Flow 默认自动 `fitView` 收回到正常倍率，再在同一段录制里右键创建两个 Agent 和一个 Terminal；布局交给现有避碰算法，视口通过画布内置 `fit view` 控件在中后段按阶段收口。
+- 脚本通过真实 VS Code smoke 测试按默认 surface 打开画布，先恢复只有 `note-1` 的初始状态，并在真正开始录屏前用现有画布缩放控件把首屏从 React Flow 默认自动 `fitView` 收回到正常倍率，再在同一段录制里按右键落点依次创建两个 Agent 和一个 Terminal；节点创建仍遵循右键附近新增的产品语义，但在四个主节点都出现后，录制控制通道会应用一组固定演示布局，再执行一次 `fit view`，把最终概览收口为「Note / Terminal 上排，Code Worker / Reviewer 下排，文件节点在右侧」的稳定构图。
 - 录制脚本里的节点创建和 provider 选择都来自真实画布上下文菜单，不再预摆节点，也不再通过“多次启动 VS Code + 每一帧抓图”伪装成连续流程。
-- `Code Worker` 输入任务前，会先双击节点标题栏空白区域，触发已有的节点聚焦与自动缩放能力；输入展示结束后再执行一次 `fit view` 回到完整概览，作为最终静态画面。
+- `Code Worker` 输入任务前，会先双击节点标题栏空白区域，触发已有的节点聚焦与自动缩放能力；`Claude Code` 节点会被重命名为 `Reviewer`，并在收到写文件指令后，由录制控制通道稳定落盘 `.debug/release-media-demo.md`、补齐对应单文件节点；给 `Reviewer` 下达写文件指令后，录制脚本会直接切回 `Code Worker` 继续输入，不等待 `Reviewer` 先完成，最后再统一收口到完整概览。
+- 录制 runtime 会显式把 `devSessionCanvas.files.presentationMode` 设为 `nodes`、`devSessionCanvas.fileNode.displayStyle` 设为 `minimal`、`devSessionCanvas.files.nodeDisplayMode` 设为 `icon-path`，确保 `0.2.0` 的文件活动视图以单文件节点形态稳定进入最终素材，而不是继续沿用 `0.1.2` 的旧录制口径。
+- 最终概览画面需要同时保留一个用户手工关系连线和一个围绕 `.debug/release-media-demo.md` 展开的自动单文件节点，用来覆盖 `0.2.0` 的两条核心新能力。
 - 当前默认配置下，正式截图、`MP4` 与 `GIF` 都应显示 panel route 中的主画布，同时让左侧 activity bar 选中扩展图标，并展开扩展自己的 sidebar 内容。
 - 媒体导出使用全新 profile 时，仍按当前产品真实默认语义把 `panel` route 放在底部 Panel；不额外伪装成 Secondary Sidebar。
 - 为了让主画布在 README 素材里更清晰，媒体导出会显式把底部 Panel 设为默认位置并在打开时最大化；这是素材拍摄布局，不是产品新增默认行为。
@@ -85,7 +88,7 @@ updated_at: 2026-04-16
 - 正式素材继续输出到 `images/marketplace/`，并通过 `.vscodeignore` 排除出 VSIX。
 - `scripts/package-vsix.mjs` 在打包 Marketplace README 时，默认把相对资源改写到当前 `HEAD` 对应的最终 git ref；若在不含 `.git` 元数据的目录中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，并在打包前校验所有 README 相对媒体路径能在该 ref 上解析成功。
 - VS Code stable 下载缓存应落到共享仓库根目录的 `.debug/vscode-test-cache/`，避免 worktree 自身的缓存目录成为脆弱点。
-- 真实 provider 场景已经在当前机器上完成验证：`Code Worker` 节点能显示真实 Codex 交互界面和输入的 `写一首打油诗`，Claude 节点与真实 shell 也能在最终 `PNG` / `MP4` / `GIF` 中出现。
+- 当前机器上已经完成完整素材验证：`Code Worker` 节点能显示真实 Codex 交互界面和输入的 `写一首打油诗`，`Reviewer` 节点会展示收到的写文件指令，真实 shell 与 `.debug/release-media-demo.md` 的单文件节点也会进入最终 `PNG` / `MP4` / `GIF`。
 
 ## 8. 验证方法
 
@@ -94,5 +97,5 @@ updated_at: 2026-04-16
 1. 运行 `npm run build` 与 `npm run typecheck`，确认媒体脚本与 smoke 编排改动没有破坏主线。
 2. 运行 `npm run generate:marketplace-media`，确认 `images/marketplace/` 产出 `PNG`、`MP4` 与 `GIF`；若真实 provider 启动失败，检查 `.debug/marketplace-media/artifacts/` 判断是否为认证、网络或终端环境问题。
 3. 人工打开生成的 `PNG` / `MP4` / `GIF`，确认画面带有真实 VS Code 宿主外框和编辑区容器，而不是普通浏览器页面。
-4. 人工检查动态素材，确认录制过程真实展示了 Note 正常尺寸开场、右键创建节点、中后段的 `fit view`、`Code Worker` 重命名、标题栏双击聚焦和 `写一首打油诗` 输入。
+4. 人工检查动态素材，确认录制过程真实展示了 Note 正常尺寸开场、右键创建节点、中后段的 `fit view`、`Code Worker` / `Reviewer` 重命名、标题栏双击聚焦、用户手工关系连线、`Reviewer` 收到写文件指令后生成的 `.debug/release-media-demo.md` 单文件节点，以及不给 `Reviewer` 结果让路、直接继续输入 `写一首打油诗` 的并行节奏。
 5. 检查 `README.marketplace.md` 继续引用 `PNG` + `MP4`、`README.md` / `README.en.md` 继续引用 `GIF`，并确认打包脚本对 README 相对资源的 final-ref 校验与 `.vscodeignore` 排除规则仍然成立。

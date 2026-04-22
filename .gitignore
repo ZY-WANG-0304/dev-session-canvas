@@ -3,6 +3,7 @@ dist/
 .vscode-test/
 *.vsix
 .debug/
+.codex
 .playwright-browsers/
 playwright-report/
 test-results/

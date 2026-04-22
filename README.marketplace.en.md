@@ -48,25 +48,25 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.1.2 Highlights
+## 0.2.0 Highlights
 
-`0.1.2` is primarily a fixes-and-stabilization update for interaction and restore flows:
+`0.2.0` moves the canvas from “multiple execution nodes in one place” toward a more complete collaboration surface with relationships and file flow:
 
-- `Terminal` / `Agent` nodes inside the canvas now support more terminal-native path drop insertion and link opening behavior
-- Node title editing no longer flashes old values after Enter commit or duplicates text during Chinese IME confirmation
-- The reload and restart semantics for `defaultSurface` and `runtimePersistence.enabled` are now aligned, so switching between `panel` and `editor` no longer restores a stale opposite surface
-- Viewport preservation during runtime restore reattach is more stable, making the main restore path more consistent
+- Add manual relationship edges so the canvas can express task splits, dependencies, and handoffs between nodes
+- Project agent file activity into file nodes or file lists, with filtering, path display, and direct file opening from the canvas
+- Surface execution attention through node chrome, the minimap, and the sidebar overview so important sessions are easier to find
+- Tighten sidebar overview, file filtering, and file-activity interactions so the main path feels more complete than `0.1.2`
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.1.1` to `0.1.2` both go through the `Visual Studio Marketplace`; later `0.1.x` updates will also be delivered through Marketplace upgrades
+- First-time installs and upgrades from `0.1.2` to `0.2.0` both go through the `Visual Studio Marketplace`; later `0.2.x` updates will also be delivered through Marketplace upgrades
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.1.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.2.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
