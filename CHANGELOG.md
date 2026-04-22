@@ -1,15 +1,15 @@
 # Changelog
 
-## 0.1.2 - Preview Interaction And Restore Update
+## 0.2.0 - Preview Canvas Collaboration Update
 
-公开 `Preview` 的第二轮修复更新，聚焦执行节点交互、标题编辑稳定性，以及画布 reload / runtime restore 收口。
+公开 `Preview` 的下一轮能力迭代，聚焦关系连线、文件活动投影，以及执行提醒与侧栏概览收口。
 
 ### 本版本聚焦
 
-- 为 `Terminal` / `Agent` 节点补齐更接近原生终端的交互：支持文件拖拽插入路径、终端链接识别打开，并收口帮助提示与路径 quoting
-- 修复节点标题 Enter 提交后旧值回灌，以及中文输入法确认 Enter 导致重复显示的问题
-- 收口 `defaultSurface` 与 `runtimePersistence.enabled` 的 reload 语义，避免切换 `panel` / `editor` 或持久化模式后仍恢复旧 surface
-- 修复 runtime restore reattach 期间 viewport 被覆盖的问题，提升 trusted / restricted 路径下的恢复一致性
+- 新增用户关系连线与边编辑能力，可在画布中直接表达 `Agent` / `Terminal` / `Note` 之间的分工、依赖与 handoff
+- 新增文件活动视图：`Agent` 的读写文件可投影为文件节点或文件列表，支持路径展示、过滤与从画布直接打开文件
+- 新增执行提醒体系：节点标题栏、小地图与侧栏概览会同步呈现 attention 状态，并支持从通知快速回到对应节点
+- 收口侧栏概览、文件过滤、多根工作区语义与文件节点尺寸恢复，让 `0.2.0` 的主路径体验更完整稳定
 
 ### 推荐体验路径
 
@@ -26,13 +26,14 @@
 ### 安装与升级
 
 - 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.1.1` 升级到 `0.1.2` 都通过 `Visual Studio Marketplace` 获取
+- 首次安装与从 `0.1.2` 升级到 `0.2.0` 都通过 `Visual Studio Marketplace` 获取
+- 后续 `0.2.x` 更新同样通过 Marketplace 升级获取
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
 ### 回退建议
 
-- 若 `0.1.2` 阻塞当前工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.1.x` 修复版本，而非尝试手动降级
+- 若 `0.2.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.2.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 
 ## 0.1.1 - Preview Update
