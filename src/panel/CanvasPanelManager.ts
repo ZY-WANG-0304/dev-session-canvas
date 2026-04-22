@@ -45,6 +45,7 @@ import {
   type CanvasFilePathDisplayMode,
   type CanvasFilePresentationMode,
   type CanvasFileIconDescriptor,
+  type CanvasStrongTerminalAttentionReminderMode,
   type CanvasFileReferenceOwnerSummary,
   type CanvasFileReferenceSummary,
   type CanvasFileIconFontFace,
@@ -76,8 +77,11 @@ import {
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   isExecutionNodeKind,
+  normalizeCanvasStrongTerminalAttentionReminderMode,
   normalizeCanvasNodeFootprint,
-  parseWebviewMessage
+  parseWebviewMessage,
+  strongTerminalAttentionReminderPulsesMinimap,
+  strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
 import {
   SerializedTerminalStateTracker,
@@ -265,7 +269,13 @@ export interface CanvasSidebarState {
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
+  notificationBridgeEnabled: boolean;
+  notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
   filesFeatureEnabled: boolean;
+  filePresentationMode: CanvasFilePresentationMode;
+  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
+  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
+  filePathDisplayMode: CanvasFilePathDisplayMode;
   nodeCount: number;
   runningExecutionCount: number;
   workspaceTrusted: boolean;
@@ -386,7 +396,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
   private bridgeTerminalAttentionSignalsEnabled: boolean;
-  private strongTerminalAttentionReminderEnabled: boolean;
+  private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   private fileFilterState: CanvasFileFilterState;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
@@ -434,7 +444,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.bridgeTerminalAttentionSignalsEnabled = this.readBridgeTerminalAttentionSignalsEnabled();
-    this.strongTerminalAttentionReminderEnabled = this.readStrongTerminalAttentionReminderEnabled();
+    this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
@@ -493,6 +503,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           'terminal.integrated.wordSeparators'
         );
         const workbenchIconThemeChanged = event.affectsConfiguration('workbench.iconTheme');
+        const sidebarStateChanged =
+          defaultSurfaceChanged ||
+          runtimePersistenceChanged ||
+          filesFeatureEnabledChanged ||
+          filesPresentationModeChanged ||
+          fileNodeDisplayStyleChanged ||
+          filesNodeDisplayModeChanged ||
+          filesPathDisplayModeChanged ||
+          bridgeTerminalAttentionSignalsChanged ||
+          strongTerminalAttentionReminderChanged;
 
         if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
@@ -515,22 +535,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !terminalWordSeparatorsChanged &&
           !workbenchIconThemeChanged
         ) {
+          if (sidebarStateChanged) {
+            this.notifySidebarStateChanged();
+          }
           return;
         }
 
-        void this.handleRuntimeConfigurationChanged({
-          defaultAgentProviderChanged,
-          filesPresentationModeChanged,
-          fileNodeDisplayStyleChanged,
-          filesNodeDisplayModeChanged,
-          filesPathDisplayModeChanged,
-          bridgeTerminalAttentionSignalsChanged,
-          strongTerminalAttentionReminderChanged,
-          terminalScrollbackChanged,
-          multiCursorModifierChanged,
-          terminalWordSeparatorsChanged,
-          workbenchIconThemeChanged
-        });
+        void this
+          .handleRuntimeConfigurationChanged({
+            defaultAgentProviderChanged,
+            filesPresentationModeChanged,
+            fileNodeDisplayStyleChanged,
+            filesNodeDisplayModeChanged,
+            filesPathDisplayModeChanged,
+            bridgeTerminalAttentionSignalsChanged,
+            strongTerminalAttentionReminderChanged,
+            terminalScrollbackChanged,
+            multiCursorModifierChanged,
+            terminalWordSeparatorsChanged,
+            workbenchIconThemeChanged
+          })
+          .finally(() => {
+            if (sidebarStateChanged) {
+              this.notifySidebarStateChanged();
+            }
+          });
       })
     );
 
@@ -559,13 +588,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const configuredSurface = this.getConfiguredSurface();
     const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
     const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
+    const fileConfiguration = this.getCanvasFileViewConfiguration();
 
     return {
       canvasSurface,
       surfaceLocation,
       configuredSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      notificationBridgeEnabled: this.bridgeTerminalAttentionSignalsEnabled,
+      notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
+      filePresentationMode: fileConfiguration.presentationMode,
+      fileNodeDisplayStyle: fileConfiguration.displayStyle,
+      fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
+      filePathDisplayMode: fileConfiguration.pathDisplayMode,
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
@@ -1610,7 +1646,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
-      strongTerminalAttentionReminderEnabled: this.strongTerminalAttentionReminderEnabled,
+      strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
       terminalScrollback: this.getTerminalScrollback(),
       editorMultiCursorModifier: normalizeEditorMultiCursorModifier(
         vscode.workspace
@@ -1702,8 +1738,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return getConfigurationValue<boolean>('notificationBridgeTerminalAttentionSignals', true);
   }
 
-  private readStrongTerminalAttentionReminderEnabled(): boolean {
-    return getConfigurationValue<boolean>('notificationStrongTerminalAttentionReminder', true);
+  private readStrongTerminalAttentionReminderMode(): CanvasStrongTerminalAttentionReminderMode {
+    return normalizeCanvasStrongTerminalAttentionReminderMode(
+      getConfigurationValue<CanvasStrongTerminalAttentionReminderMode | boolean>(
+        'notificationStrongTerminalAttentionReminder',
+        'both'
+      )
+    );
   }
 
   private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
@@ -1790,9 +1831,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (options.strongTerminalAttentionReminderChanged) {
-      this.strongTerminalAttentionReminderEnabled = this.readStrongTerminalAttentionReminderEnabled();
+      this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
       this.recordDiagnosticEvent('execution/attentionStrongReminderConfigChanged', {
-        enabled: this.strongTerminalAttentionReminderEnabled
+        enabled: this.strongTerminalAttentionReminderMode !== 'none',
+        mode: this.strongTerminalAttentionReminderMode,
+        titleBarEnabled: strongTerminalAttentionReminderShowsTitleBar(this.strongTerminalAttentionReminderMode),
+        minimapEnabled: strongTerminalAttentionReminderPulsesMinimap(this.strongTerminalAttentionReminderMode)
       });
     }
 

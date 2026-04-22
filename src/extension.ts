@@ -12,7 +12,7 @@ import {
 } from './common/protocol';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
-import { CanvasSidebarView } from './sidebar/CanvasSidebarView';
+import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
 
 let activePanelManager: CanvasPanelManager | undefined;
 let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
@@ -354,6 +354,9 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
 
   context.subscriptions.push(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarSummaryItems, () =>
+      getCanvasSidebarSummaryItems(panelManager.getSidebarState())
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getRuntimeSupervisorState, () =>
       panelManager.getRuntimeSupervisorStateForTest()
     ),

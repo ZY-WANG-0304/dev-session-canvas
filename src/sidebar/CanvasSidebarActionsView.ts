@@ -154,10 +154,16 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
         --input-fg: var(--vscode-input-foreground);
         --input-border: var(--vscode-input-border, transparent);
         --placeholder: var(--vscode-input-placeholderForeground, var(--muted));
-        --button-bg: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
-        --button-fg: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-        --button-hover: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
         --button-border: color-mix(in srgb, var(--border) 72%, transparent);
+        --primary-button-bg: var(--vscode-button-background);
+        --primary-button-fg: var(--vscode-button-foreground);
+        --primary-button-hover: var(
+          --vscode-button-hoverBackground,
+          color-mix(in srgb, var(--vscode-focusBorder) 18%, var(--vscode-button-background) 82%)
+        );
+        --danger-button-bg: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent);
+        --danger-button-fg: var(--vscode-errorForeground, var(--fg));
+        --danger-button-hover: color-mix(in srgb, var(--vscode-errorForeground) 16%, transparent);
         --danger-border: color-mix(in srgb, var(--vscode-errorForeground) 34%, var(--button-border) 66%);
         --focus: var(--vscode-focusBorder);
       }
@@ -198,18 +204,40 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
         padding: 0 10px;
         border: 1px solid var(--button-border);
         border-radius: 2px;
-        background: var(--button-bg);
-        color: var(--button-fg);
-        text-align: left;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+        color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+        text-align: center;
         cursor: pointer;
       }
 
       .action-button:hover {
-        background: var(--button-hover);
+        background: var(
+          --vscode-button-secondaryHoverBackground,
+          var(--vscode-button-hoverBackground)
+        );
+      }
+
+      .action-button.is-primary {
+        border-color: transparent;
+        background: var(--primary-button-bg);
+        color: var(--primary-button-fg);
+      }
+
+      .action-button.is-primary:hover {
+        background: var(--primary-button-hover);
       }
 
       .action-button.is-danger {
         border-color: var(--danger-border);
+        background: var(--danger-button-bg);
+        color: var(--danger-button-fg);
+      }
+
+      .action-button.is-danger:hover {
+        background: var(--danger-button-hover);
       }
 
       .fields {
@@ -264,7 +292,11 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
       }
 
       .field-clear:hover {
-        background: color-mix(in srgb, var(--button-hover) 50%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)) 50%,
+          transparent
+        );
         color: var(--fg);
       }
 
@@ -292,10 +324,10 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
     </style>
   </head>
   <body>
-    <div class="shell">
+      <div class="shell">
       <div class="actions">
-        <button class="action-button" type="button" data-action="openCanvas"></button>
-        <button class="action-button" type="button" data-action="createNode">创建节点</button>
+        <button class="action-button is-primary" type="button" data-action="openCanvas"></button>
+        <button class="action-button is-primary" type="button" data-action="createNode">创建节点</button>
         <button class="action-button is-danger" type="button" data-action="resetCanvas">重置画布状态</button>
       </div>
 

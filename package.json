@@ -214,10 +214,22 @@
           "markdownDescription": "%configuration.notifications.bridgeTerminalAttentionSignals.description%"
         },
         "devSessionCanvas.notifications.strongTerminalAttentionReminder": {
-          "type": "boolean",
-          "default": true,
+          "type": "string",
+          "enum": [
+            "none",
+            "titleBar",
+            "minimap",
+            "both"
+          ],
+          "default": "both",
           "scope": "window",
-          "markdownDescription": "%configuration.notifications.strongTerminalAttentionReminder.description%"
+          "markdownDescription": "%configuration.notifications.strongTerminalAttentionReminder.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.notifications.strongTerminalAttentionReminder.none.description%",
+            "%configuration.notifications.strongTerminalAttentionReminder.titleBar.description%",
+            "%configuration.notifications.strongTerminalAttentionReminder.minimap.description%",
+            "%configuration.notifications.strongTerminalAttentionReminder.both.description%"
+          ]
         },
         "devSessionCanvas.terminal.shellPath": {
           "type": "string",

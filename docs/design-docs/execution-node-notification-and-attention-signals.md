@@ -303,16 +303,18 @@ updated_at: 2026-04-22
 
 当前口径：
 
-- 默认值：`true`
+- 默认值：`both`
 - 作用域：都为 `window`
 - `bridgeTerminalAttentionSignals`
   - 关闭时：现有启发式与诊断层继续解析这些信号，节点内 icon 与标题栏提醒也继续生效，但不额外发 VSCode 工作台通知
   - 打开时：在节点内提醒之外，再把命中的 attention signal 桥接为 VSCode 工作台通知
 - `strongTerminalAttentionReminder`
-  - 关闭时：`Agent` 与 `Terminal` 节点仍显示 attention icon，但标题栏区域不闪烁
-  - 打开时：节点在出现未确认 attention 时，标题栏区域持续闪烁，直到用户确认该节点
+  - `none`：只保留节点 attention icon 与 minimap 同色明暗闪烁，不额外开启标题栏闪烁或 minimap 尺寸 pulse
+  - `titleBar`：在默认 attention 表面之外，只额外开启标题栏闪烁
+  - `minimap`：在默认 attention 表面之外，只额外开启 minimap 尺寸 pulse
+  - `both`：同时开启标题栏闪烁和 minimap 尺寸 pulse
 
-这里两个开关都默认打开，是为了让执行节点里的 attention signal 在开箱即用时既能回到 VSCode 工作台，也能在画布节点内部保留显眼提醒；`BEL` 噪音仍依靠信号优先级与冷却去重控制，用户可按需分别关闭工作台通知桥接或标题栏闪烁。
+这里两个开关默认分别是 `true` 和 `both`，是为了让执行节点里的 attention signal 在开箱即用时既能回到 VSCode 工作台，也能在画布节点内部保留显眼提醒；`BEL` 噪音仍依靠信号优先级与冷却去重控制，用户可按需分别关闭工作台通知桥接或收窄增强提醒表面。
 
 #### 7.7.3 宿主分层
 
@@ -335,8 +337,12 @@ updated_at: 2026-04-22
   - 负责在用户点击节点或使用工作台通知的 `查看节点` 动作时清除 attention pending
 
 - `src/webview/main.tsx` 与 `src/webview/styles.css`
-  - 负责把 execution node 的 attention pending 渲染成标题栏 icon
-  - 负责在 `strongTerminalAttentionReminder=true` 时把标题栏渲染为闪烁态
+  - 负责把 execution node 的 attention pending 渲染成标题栏 icon 与 minimap 中对应节点的闪烁态
+  - 负责在 `strongTerminalAttentionReminder` 为 `titleBar` 或 `both` 时把标题栏渲染为闪烁态
+  - minimap 闪烁始终由 `attentionPending` 驱动，不受 `strongTerminalAttentionReminder` 配置限制
+  - minimap 闪烁的视觉强调沿用节点自身颜色，而不是额外切到统一通知色
+  - `none` / `titleBar` 时，minimap 只保留同色明暗变化；`minimap` / `both` 时，才额外加入尺寸 pulse
+  - minimap pulse 需要明显强于静止态的 opacity / glow，否则缩略图里不够可见
   - 不自己判断终端信号，只消费宿主回推的 metadata 与 runtime context
 
 这意味着“状态启发式”“节点内提醒”和“VSCode 工作台通知”共用同一份底层解析器，但已经明确拆成三条独立支路。
@@ -396,7 +402,8 @@ updated_at: 2026-04-22
 
 - 当 `BEL`、`OSC 9` 或 `OSC 777` 命中可显示的 notify signal 时：
   - 节点标题栏状态控件左侧出现 attention icon
-  - 若 `strongTerminalAttentionReminder=true`，标题栏区域进入闪烁态
+  - 若 `strongTerminalAttentionReminder` 为 `titleBar` 或 `both`，标题栏区域进入闪烁态
+  - 若 `strongTerminalAttentionReminder` 为 `minimap` 或 `both`，minimap 在同色明暗闪烁之外额外加入尺寸 pulse
 - 这个节点内提醒不依赖 `bridgeTerminalAttentionSignals`
 - `OSC 9 ; 4` 这类进度状态仍不进入节点内 icon/闪烁
 
