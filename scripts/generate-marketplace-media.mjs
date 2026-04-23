@@ -115,11 +115,16 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
     }
   });
   await hydrateMarketplaceProviderRuntime(runtime);
+  const runtimeLocalBinDir = path.join(runtime.homeDir, '.local', 'bin');
   const codexRuntimeCommandPath = await writeMarketplaceCommandShim({
     runtime,
     name: 'codex-runtime',
     targetCommand: codexCommandPath,
     prependPathEntries: [currentNodeBinDir]
+  });
+  const claudeRuntimeCommandPath = await prepareClaudeRuntimeCommand({
+    runtime,
+    targetCommand: claudeCommandPath
   });
 
   const specPath = path.join(runtime.artifactsDir, 'recording-spec.json');
@@ -128,6 +133,7 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
   const donePath = path.join(runtime.artifactsDir, 'recording-done.ack');
   const statePath = path.join(runtime.artifactsDir, 'recording-state.json');
   const controlPath = path.join(runtime.artifactsDir, 'recording-control.ndjson');
+  const releaseMediaDemoPath = path.join(projectRoot, '.debug', 'release-media-demo.md');
   await fs.writeFile(specPath, `${JSON.stringify(createRecordingSpec(), null, 2)}\n`, 'utf8');
   await fs.rm(readyPath, { force: true });
   await fs.rm(ackPath, { force: true });
@@ -135,6 +141,7 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
   await fs.rm(statePath, { force: true });
   await fs.rm(controlPath, { force: true });
   await fs.rm(recordingPath, { force: true });
+  await fs.rm(releaseMediaDemoPath, { force: true });
 
   const args = buildVSCodeArgs({
     workspacePath: projectRoot,
@@ -147,6 +154,7 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
     extraLaunchArgs: [
       '--new-window',
       '--force-device-scale-factor=1',
+      '--force-disable-user-env',
       `--remote-debugging-port=${cdpPort}`
     ]
   });
@@ -160,9 +168,9 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
     DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_STATE_FILE: statePath,
     DEV_SESSION_CANVAS_MARKETPLACE_MEDIA_CONTROL_FILE: controlPath,
     DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: codexRuntimeCommandPath,
-    DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: claudeCommandPath,
+    DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: claudeRuntimeCommandPath,
     DEV_SESSION_CANVAS_TEST_TERMINAL_COMMAND: terminalCommandPath,
-    PATH: prependPathEntriesToPath([currentNodeBinDir], process.env.PATH),
+    PATH: prependPathEntriesToPath([runtimeLocalBinDir, currentNodeBinDir], process.env.PATH),
     TERM: 'xterm-256color'
   });
   const child = spawn(vscodeExecutablePath, args, {
@@ -567,27 +575,60 @@ async function runMarketplaceRecording({
   await delay(380);
   const claudePrePromptOutput =
     findNodeById(getRecordingNodes(statePayload), claudeNodeId)?.metadata?.agent?.recentOutput ?? '';
-  statePayload = await submitExecutionPromptViaRecordingControl({
+  const reviewerFilePath = path.join(projectRoot, '.debug', 'release-media-demo.md');
+  statePayload = await submitExecutionPromptWithNativeMouse({
+    canvasSurface,
+    page: workbenchSurface.page,
+    display,
+    screenFrameBox,
+    stateFilePath,
+    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
+    node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
+    probeNode: findProbeNodeById(statePayload, claudeNodeId),
+    prompt: '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
+    prePromptOutput: claudePrePromptOutput
+  });
+  await waitForFileContent(
+    reviewerFilePath,
+    (content) => content.trim() === 'release media demo',
+    FILE_ACTIVITY_TIMEOUT_MS,
+    'Reviewer real file write'
+  );
+  let reviewerFileActivityPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => Boolean(findOwnerFileNode(getRecordingNodes(payload), claudeNodeId, 'release-media-demo.md')),
+    FILE_ACTIVITY_TIMEOUT_MS,
+    'Reviewer real file activity projection'
+  ).catch(() => undefined);
+  if (!reviewerFileActivityPayload) {
+    await appendInteractionLog({
+      type: 'file-activity-fallback',
+      nodeId: claudeNodeId,
+      reason: 'real-file-node-not-observed'
+    });
+    reviewerFileActivityPayload = await projectSyntheticAgentFileActivity({
+      controlFilePath,
+      stateFilePath,
+      ownerNodeId: claudeNodeId,
+      accessMode: 'write',
+      relativePath: '.debug/release-media-demo.md',
+      filePath: reviewerFilePath
+    });
+  }
+  reviewerFileActivityPayload = await restoreNodeTitleIfNeeded({
     controlFilePath,
     stateFilePath,
     nodeId: claudeNodeId,
-    executionKind: 'agent',
-    prompt:
-      '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
-    prePromptOutput: claudePrePromptOutput
+    expectedTitle: 'Reviewer',
+    statePayload: reviewerFileActivityPayload,
+    page: workbenchSurface.page
   });
-  const reviewerFileActivityPromise = synthesizeAgentFileActivity({
-    controlFilePath,
-    stateFilePath,
-    ownerNodeId: claudeNodeId,
-    accessMode: 'write',
-    relativePath: '.debug/release-media-demo.md',
-    filePath: path.join(projectRoot, '.debug', 'release-media-demo.md')
-  });
+  statePayload = reviewerFileActivityPayload;
   await delay(280);
   const prePromptOutput = findNodeById(getRecordingNodes(statePayload), codexNodeId)?.metadata?.agent?.recentOutput ?? '';
   statePayload = await submitExecutionPromptWithNativeMouse({
     canvasSurface,
+    page: workbenchSurface.page,
     display,
     screenFrameBox,
     stateFilePath,
@@ -626,7 +667,23 @@ async function runMarketplaceRecording({
     });
     await delay(EXECUTION_FALLBACK_HOLD_MS);
   }
-  statePayload = await reviewerFileActivityPromise;
+  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  statePayload = await restoreNodeTitleIfNeeded({
+    controlFilePath,
+    stateFilePath,
+    nodeId: claudeNodeId,
+    expectedTitle: 'Reviewer',
+    statePayload,
+    page: workbenchSurface.page
+  });
+  statePayload = await restoreNodeTitleIfNeeded({
+    controlFilePath,
+    stateFilePath,
+    nodeId: codexNodeId,
+    expectedTitle: 'Code Worker',
+    statePayload,
+    page: workbenchSurface.page
+  });
   await appendRecordingControlCommand(controlFilePath, {
     type: 'executeCommand',
     command: 'notifications.clearAll'
@@ -1195,6 +1252,7 @@ async function focusNodeWithNativeDoubleClick({
 
 async function submitExecutionPromptWithNativeMouse({
   canvasSurface,
+  page,
   display,
   screenFrameBox,
   stateFilePath,
@@ -1241,6 +1299,8 @@ async function submitExecutionPromptWithNativeMouse({
     }))
   );
   for (const point of candidatePoints) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await delay(60);
     await appendInteractionLog({
       type: 'prompt-focus-attempt',
       nodeId: node.id,
@@ -1262,14 +1322,7 @@ async function submitExecutionPromptWithNativeMouse({
       stateFilePath,
       (payload) => {
         const refreshedNode = findNodeById(getRecordingNodes(payload), node.id);
-        if (!refreshedNode) {
-          return false;
-        }
-
-        return (
-          refreshedNode.status !== 'waiting-input' ||
-          (refreshedNode.metadata?.agent?.recentOutput ?? '') !== prePromptOutput
-        );
+        return hasRecordedAgentPromptBeenSubmitted(refreshedNode, prePromptOutput);
       },
       5000,
       `${node.id} prompt submission`
@@ -1283,6 +1336,8 @@ async function submitExecutionPromptWithNativeMouse({
     if (submittedPayload) {
       return submittedPayload;
     }
+
+    await page.keyboard.press('Escape').catch(() => {});
   }
 
   throw new Error(`Timed out submitting prompt to ${node.id} after native input focus attempts.`);
@@ -1317,14 +1372,7 @@ async function submitExecutionPromptViaRecordingControl({
     stateFilePath,
     (payload) => {
       const refreshedNode = findNodeById(getRecordingNodes(payload), nodeId);
-      if (!refreshedNode) {
-        return false;
-      }
-
-      return (
-        refreshedNode.status !== 'waiting-input' ||
-        (refreshedNode.metadata?.agent?.recentOutput ?? '') !== prePromptOutput
-      );
+      return hasRecordedAgentPromptBeenSubmitted(refreshedNode, prePromptOutput);
     },
     5000,
     `${nodeId} recording control prompt submission`
@@ -1335,6 +1383,34 @@ async function submitExecutionPromptViaRecordingControl({
     strategy: 'recording-control'
   });
   return submittedPayload;
+}
+
+function hasRecordedAgentPromptBeenSubmitted(node, prePromptOutput) {
+  if (!node) {
+    return false;
+  }
+
+  if (node.status !== 'waiting-input') {
+    return true;
+  }
+
+  const recentOutput = String(node.metadata?.agent?.recentOutput ?? '');
+  if (node.metadata?.agent?.provider === 'claude' && isClaudePromptEditorVisible(recentOutput)) {
+    return false;
+  }
+
+  if (recentOutput === String(prePromptOutput ?? '')) {
+    return false;
+  }
+
+  return recentOutput.length > 0;
+}
+
+function isClaudePromptEditorVisible(output) {
+  const normalizedOutput = String(output ?? '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+  return normalizedOutput.includes('ctrl+gtoeditinvim');
 }
 
 async function createManualEdgeBetweenNodes({
@@ -1613,6 +1689,96 @@ async function synthesizeAgentFileActivity({
     FILE_ACTIVITY_TIMEOUT_MS,
     `${ownerNodeId} synthetic file activity projection`
   );
+}
+
+async function projectSyntheticAgentFileActivity({
+  controlFilePath,
+  stateFilePath,
+  ownerNodeId,
+  accessMode,
+  relativePath,
+  filePath
+}) {
+  const latestPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => Boolean(findNodeById(getRecordingNodes(payload), ownerNodeId)),
+    5000,
+    `${ownerNodeId} synthetic file activity seed`
+  );
+  const nextState = buildSyntheticFileActivityState({
+    state: latestPayload?.debugSnapshot?.state ?? {},
+    ownerNodeId,
+    accessMode,
+    relativePath,
+    filePath
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'setPersistedState',
+    state: nextState
+  });
+
+  return waitForRecordingState(
+    stateFilePath,
+    (payload) => {
+      const fileNode = findOwnerFileNode(getRecordingNodes(payload), ownerNodeId, 'release-media-demo.md');
+      return Boolean(fileNode);
+    },
+    FILE_ACTIVITY_TIMEOUT_MS,
+    `${ownerNodeId} synthetic file activity projection`
+  );
+}
+
+async function restoreNodeTitleIfNeeded({ controlFilePath, stateFilePath, nodeId, expectedTitle, statePayload, page }) {
+  const currentTitle = findNodeById(getRecordingNodes(statePayload), nodeId)?.title;
+  if (currentTitle === expectedTitle) {
+    return statePayload;
+  }
+
+  await appendInteractionLog({
+    type: 'node-title-restore',
+    nodeId,
+    strategy: 'recording-control',
+    from: currentTitle ?? null,
+    to: expectedTitle
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'performDomAction',
+    action: {
+      kind: 'setNodeTextField',
+      nodeId,
+      field: 'title',
+      value: expectedTitle
+    },
+    timeoutMs: 5000
+  });
+
+  const restoredPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => findNodeById(getRecordingNodes(payload), nodeId)?.title === expectedTitle,
+    2500,
+    `${expectedTitle} title restore`
+  );
+  await page?.keyboard.press('Escape').catch(() => {});
+  return restoredPayload;
+}
+
+async function waitForFileContent(filePath, predicate, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  let lastContent = '';
+
+  while (Date.now() < deadline) {
+    const currentContent = await fs.readFile(filePath, 'utf8').catch(() => undefined);
+    if (typeof currentContent === 'string') {
+      lastContent = currentContent;
+      if (predicate(currentContent)) {
+        return currentContent;
+      }
+    }
+
+    await delay(120);
+  }
+
+  throw new Error(`${label} timed out. Last content: ${JSON.stringify(lastContent)}`);
 }
 
 function buildSyntheticFileActivityState({ state, ownerNodeId, accessMode, relativePath, filePath }) {
@@ -2536,6 +2702,65 @@ async function writeMarketplaceCommandShim({ runtime, name, targetCommand, prepe
   return shimPath;
 }
 
+async function prepareClaudeRuntimeCommand({ runtime, targetCommand }) {
+  const resolvedTargetCommand = await fs.realpath(targetCommand).catch(() => targetCommand);
+  const runtimeVersionPath = path.join(
+    runtime.homeDir,
+    '.local',
+    'share',
+    'claude',
+    'versions',
+    path.basename(resolvedTargetCommand)
+  );
+  const runtimeCommandPath = path.join(runtime.homeDir, '.local', 'bin', 'claude');
+
+  // Keep the temporary HOME consistent with Claude's native install layout so
+  // the recorder does not surface "native install missing" errors in the asset.
+  await linkFileIntoRuntime({
+    sourcePath: resolvedTargetCommand,
+    destinationPath: runtimeVersionPath
+  });
+  await replaceWithSymlink({
+    targetPath: runtimeVersionPath,
+    symlinkPath: runtimeCommandPath
+  });
+
+  const launcherDir = path.join(runtime.tmpDir, 'marketplace-commands');
+  const launcherPath = path.join(launcherDir, 'claude-runtime.sh');
+  await fs.mkdir(launcherDir, { recursive: true });
+  await fs.writeFile(
+    launcherPath,
+    [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      // Marketplace recording runs in an isolated temporary HOME, so bypassing
+      // Claude edit confirmations keeps the asset deterministic without
+      // inheriting the operator\'s interactive approval flow.
+      `exec ${quoteShellValue(runtimeCommandPath)} --dangerously-skip-permissions "$@"`
+    ].join('\n') + '\n',
+    'utf8'
+  );
+  await fs.chmod(launcherPath, 0o755);
+  return launcherPath;
+}
+
+async function linkFileIntoRuntime({ sourcePath, destinationPath }) {
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.rm(destinationPath, { force: true });
+
+  try {
+    await fs.link(sourcePath, destinationPath);
+  } catch {
+    await fs.symlink(sourcePath, destinationPath);
+  }
+}
+
+async function replaceWithSymlink({ targetPath, symlinkPath }) {
+  await fs.mkdir(path.dirname(symlinkPath), { recursive: true });
+  await fs.rm(symlinkPath, { force: true });
+  await fs.symlink(path.relative(path.dirname(symlinkPath), targetPath), symlinkPath);
+}
+
 function prependPathEntriesToPath(entries, existingPath) {
   const seen = new Set();
   const segments = [];
@@ -2681,9 +2906,21 @@ async function hydrateMarketplaceProviderRuntime(runtime) {
     path.join(realHomeDir, '.claude.json'),
     path.join(runtime.homeDir, '.claude.json')
   );
-  await copyFileIfPresent(
+  await copyJsonFileIfPresent(
     path.join(realHomeDir, '.claude', 'settings.json'),
-    path.join(runtime.homeDir, '.claude', 'settings.json')
+    path.join(runtime.homeDir, '.claude', 'settings.json'),
+    (value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return value;
+      }
+
+      // Marketplace recording should not inherit user-specific Claude plugins,
+      // otherwise the temporary HOME shows install failures unrelated to DSC.
+      return {
+        ...value,
+        enabledPlugins: {}
+      };
+    }
   );
 }
 
@@ -2696,6 +2933,30 @@ async function copyFileIfPresent(sourcePath, destinationPath) {
 
   await fs.mkdir(path.dirname(destinationPath), { recursive: true });
   await fs.copyFile(sourcePath, destinationPath);
+}
+
+async function copyJsonFileIfPresent(sourcePath, destinationPath, transform) {
+  let rawContent;
+  try {
+    rawContent = await fs.readFile(sourcePath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+
+  let parsedContent;
+  try {
+    parsedContent = JSON.parse(rawContent);
+  } catch {
+    await copyFileIfPresent(sourcePath, destinationPath);
+    return;
+  }
+
+  const transformedContent = transform(parsedContent);
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.writeFile(destinationPath, `${JSON.stringify(transformedContent, null, 2)}\n`, 'utf8');
 }
 
 async function waitForFileOrChildExit(child, filePath, timeoutMs) {

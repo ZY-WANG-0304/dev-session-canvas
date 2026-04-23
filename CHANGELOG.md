@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.2.1 - Preview Hotfix Update
+
+公开 `Preview` 的一轮收口修复，聚焦升级兼容说明与 Marketplace 对外素材一致性。
+
+### 本版本聚焦
+
+- 补充从 `0.1.2` 升级到 `0.2.0` 后可能沿用旧 view layout 缓存、导致侧栏 `概览` 与 `常用操作` 暂时拆成两个图标的兼容说明，并明确恢复方式
+- 收口 Marketplace README / 录制素材生成链路，确保对外展示中的 Claude 节点真实执行，并稳定投影 `.debug/release-media-demo.md` 文件活动
+- 重新生成 Marketplace 概览截图、GIF 与 MP4，使对外素材与当前实现保持一致
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- 当前验证最充分的环境仍为 `Remote SSH`
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Linux、macOS、Windows 本地环境尚未经过严格验证
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.2.0` 升级到 `0.2.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.2.x` 更新同样通过 Marketplace 升级获取
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.2.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.2.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.2.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.2.0 - Preview Canvas Collaboration Update
 
 公开 `Preview` 的下一轮能力迭代，聚焦关系连线、文件活动投影，以及执行提醒与侧栏概览收口。
@@ -28,6 +63,7 @@
 - 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
 - 首次安装与从 `0.1.2` 升级到 `0.2.0` 都通过 `Visual Studio Marketplace` 获取
 - 后续 `0.2.x` 更新同样通过 Marketplace 升级获取
+- 从 `0.1.2` 升级到 `0.2.0` 后，如果 VS Code 沿用旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
 ### 回退建议
