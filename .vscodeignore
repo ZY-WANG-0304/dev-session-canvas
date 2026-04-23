@@ -11,6 +11,7 @@
 .git
 docs/**
 scripts/**
+!scripts/claude-file-event-hook.cjs
 src/**
 tests/**
 node_modules/**
