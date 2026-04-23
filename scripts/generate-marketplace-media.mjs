@@ -32,6 +32,10 @@ const terminalCommandPath = resolveMarketplaceCommand({
   binName: 'bash'
 });
 const debugRoot = path.join(projectRoot, '.debug', 'marketplace-media');
+const gifStoryboardRoot = path.join(debugRoot, 'gif-storyboard');
+const gifFrameDir = path.join(gifStoryboardRoot, 'frames');
+const gifManifestPath = path.join(gifStoryboardRoot, 'concat-manifest.txt');
+const gifStoryboardMetadataPath = path.join(gifStoryboardRoot, 'storyboard.json');
 const outputDir = path.join(projectRoot, 'images', 'marketplace');
 const recordingPath = path.join(debugRoot, 'canvas-overview.mp4');
 const videoPath = path.join(outputDir, 'canvas-overview.mp4');
@@ -42,8 +46,8 @@ const interactionLogPath = path.join(debugRoot, 'artifacts', 'native-input-log.n
 const DISPLAY_SIZE = { width: 1720, height: 1180 };
 const WINDOW_TITLE_PATTERN = /(Extension Development Host|Visual Studio Code|Code - OSS)/i;
 const CDP_HOST = '127.0.0.1';
-const GIF_FPS = 8;
 const GIF_WIDTH = 1180;
+const GIF_FRAME_DEFAULT_DURATION_MS = 700;
 const SCREENSHOT_FROM_END_SECONDS = 0.2;
 const READY_TIMEOUT_MS = 120000;
 const TEST_EXIT_TIMEOUT_MS = 240000;
@@ -183,10 +187,12 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
   mirrorChildOutput(child.stderr, process.stderr);
 
   let recorder;
+  let gifStoryboard;
   let browser;
   try {
     await waitForFileOrChildExit(child, readyPath, READY_TIMEOUT_MS);
     const geometry = await waitForVSCodeWindowGeometry(display, debugRoot);
+    gifStoryboard = await createGifStoryboardRecorder({ display, geometry });
     const devToolsEndpoint = await devToolsEndpointPromise;
     browser = await connectToVSCodeBrowser(devToolsEndpoint);
     await dumpCDPTopology(browser, path.join(runtime.artifactsDir, 'cdp-topology.json'));
@@ -211,7 +217,8 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
       display,
       windowGeometry: geometry,
       stateFilePath: statePath,
-      controlFilePath: controlPath
+      controlFilePath: controlPath,
+      gifStoryboard
     });
     await stopWindowRecorder(recorder);
     recorder = undefined;
@@ -226,11 +233,12 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
   } finally {
     await browser?.close().catch(() => {});
     await stopWindowRecorder(recorder);
+    await gifStoryboard?.dispose().catch(() => {});
   }
 
   await fs.access(recordingPath);
   await fs.copyFile(recordingPath, videoPath);
-  composeGifFromVideo(recordingPath, gifPath);
+  await gifStoryboard?.finalize(gifPath);
   extractScreenshotFromVideo(recordingPath, screenshotPath);
 }
 
@@ -304,7 +312,8 @@ async function runMarketplaceRecording({
   display,
   windowGeometry,
   stateFilePath,
-  controlFilePath
+  controlFilePath,
+  gifStoryboard
 }) {
   const screenFrameBox = await getWorkbenchFrameScreenBox(workbenchSurface, windowGeometry);
 
@@ -319,23 +328,43 @@ async function runMarketplaceRecording({
     5000,
     'initial recording state'
   );
+  await captureGifHold(gifStoryboard, {
+    label: 'opening-note',
+    durationMs: 900
+  });
 
   const codeWorkerContextMenuPoint = {
     x: 140,
     y: Math.max(220, screenFrameBox.height - 220)
   };
-  const codexContextAnchor = await clickCanvasPanePoint(display, screenFrameBox, codeWorkerContextMenuPoint, 'right', {
-    canvasSurface
-  });
-  await delay(460);
-  await clickContextMenuItem(display, screenFrameBox, codexContextAnchor, 'root', 'create-agent-default', {
-    canvasSurface
-  });
-  statePayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => Boolean(findAgentNodeByProvider(getRecordingNodes(payload), 'codex')),
-    10000,
-    'Codex agent creation'
+  statePayload = await captureGifScene(
+    gifStoryboard,
+    {
+      label: 'create-code-worker',
+      beforeHoldMs: 260,
+      afterHoldMs: 720
+    },
+    async () => {
+      const codexContextAnchor = await clickCanvasPanePoint(
+        display,
+        screenFrameBox,
+        codeWorkerContextMenuPoint,
+        'right',
+        {
+          canvasSurface
+        }
+      );
+      await delay(460);
+      await clickContextMenuItem(display, screenFrameBox, codexContextAnchor, 'root', 'create-agent-default', {
+        canvasSurface
+      });
+      return waitForRecordingState(
+        stateFilePath,
+        (payload) => Boolean(findAgentNodeByProvider(getRecordingNodes(payload), 'codex')),
+        10000,
+        'Codex agent creation'
+      );
+    }
   );
   const codexNodeId = findAgentNodeByProvider(getRecordingNodes(statePayload), 'codex')?.id;
   if (!codexNodeId) {
@@ -351,34 +380,44 @@ async function runMarketplaceRecording({
     () => ({ ok: true }),
     (error) => ({ ok: false, error })
   );
-  await delay(420);
+  await delay(320);
 
   const reviewerContextMenuPoint = {
     x: Math.round(screenFrameBox.width * 0.42),
     y: Math.max(220, screenFrameBox.height - 220)
   };
-  const claudeContextAnchor = await clickCanvasPanePoint(
-    display,
-    screenFrameBox,
-    reviewerContextMenuPoint,
-    'right',
+  statePayload = await captureGifScene(
+    gifStoryboard,
     {
-      canvasSurface
+      label: 'create-reviewer',
+      beforeHoldMs: 260,
+      afterHoldMs: 760
+    },
+    async () => {
+      const claudeContextAnchor = await clickCanvasPanePoint(
+        display,
+        screenFrameBox,
+        reviewerContextMenuPoint,
+        'right',
+        {
+          canvasSurface
+        }
+      );
+      await delay(420);
+      await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'root', 'show-agent-providers', {
+        canvasSurface
+      });
+      await delay(420);
+      await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'provider', 'create-agent-claude', {
+        canvasSurface
+      });
+      return waitForRecordingState(
+        stateFilePath,
+        (payload) => Boolean(findAgentNodeByProvider(getRecordingNodes(payload), 'claude')),
+        10000,
+        'Claude node creation'
+      );
     }
-  );
-  await delay(420);
-  await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'root', 'show-agent-providers', {
-    canvasSurface
-  });
-  await delay(420);
-  await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'provider', 'create-agent-claude', {
-    canvasSurface
-  });
-  statePayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => Boolean(findAgentNodeByProvider(getRecordingNodes(payload), 'claude')),
-    10000,
-    'Claude node creation'
   );
   const claudeNodeId = findAgentNodeByProvider(getRecordingNodes(statePayload), 'claude')?.id;
   if (!claudeNodeId) {
@@ -393,26 +432,36 @@ async function runMarketplaceRecording({
     () => ({ ok: true }),
     (error) => ({ ok: false, error })
   );
-  await delay(420);
+  await delay(320);
 
-  const terminalContextAnchor = await clickCanvasPanePoint(
-    display,
-    screenFrameBox,
-    resolveCanvasCreationPoint(screenFrameBox, CANVAS_CREATION_POINT_RATIOS.terminal),
-    'right',
+  statePayload = await captureGifScene(
+    gifStoryboard,
     {
-      canvasSurface
+      label: 'create-terminal',
+      beforeHoldMs: 260,
+      afterHoldMs: 720
+    },
+    async () => {
+      const terminalContextAnchor = await clickCanvasPanePoint(
+        display,
+        screenFrameBox,
+        resolveCanvasCreationPoint(screenFrameBox, CANVAS_CREATION_POINT_RATIOS.terminal),
+        'right',
+        {
+          canvasSurface
+        }
+      );
+      await delay(420);
+      await clickContextMenuItem(display, screenFrameBox, terminalContextAnchor, 'root', 'create-terminal', {
+        canvasSurface
+      });
+      return waitForRecordingState(
+        stateFilePath,
+        (payload) => Boolean(findFirstNodeByKind(getRecordingNodes(payload), 'terminal')),
+        10000,
+        'Terminal node creation'
+      );
     }
-  );
-  await delay(420);
-  await clickContextMenuItem(display, screenFrameBox, terminalContextAnchor, 'root', 'create-terminal', {
-    canvasSurface
-  });
-  statePayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => Boolean(findFirstNodeByKind(getRecordingNodes(payload), 'terminal')),
-    10000,
-    'Terminal node creation'
   );
   const terminalNodeId = findFirstNodeByKind(getRecordingNodes(statePayload), 'terminal')?.id;
   if (!terminalNodeId) {
@@ -425,7 +474,7 @@ async function runMarketplaceRecording({
     TERMINAL_STARTUP_TIMEOUT_MS,
     'Terminal live session startup'
   ).catch(() => undefined);
-  await delay(480);
+  await delay(360);
 
   if (canvasSurface?.verified) {
     await appendInteractionLog({
@@ -470,65 +519,76 @@ async function runMarketplaceRecording({
     }
   });
   await delay(260);
-  await appendInteractionLog({
-    type: 'phase',
-    label: 'fit-view-overview-start'
-  });
-  statePayload = await fitCanvasToOverview({
-    canvasSurface,
-    display,
-    screenFrameBox,
-    stateFilePath,
-    statePayload
-  });
-  await appendInteractionLog({
-    type: 'phase',
-    label: 'fit-view-overview-end'
-  });
-  await delay(700);
-  await appendInteractionLog({
-    type: 'phase',
-    label: 'focus-node-start',
-    nodeId: codexNodeId
-  });
-  statePayload = await focusNodeWithNativeDoubleClick({
-    canvasSurface,
-    display,
-    screenFrameBox,
-    stateFilePath,
-    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-    node: findNodeById(getRecordingNodes(statePayload), codexNodeId)
-  });
-  await appendInteractionLog({
-    type: 'phase',
-    label: 'focus-node-end',
-    nodeId: codexNodeId
-  });
-  await delay(950);
-  statePayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => Boolean(findProbeNodeById(payload, codexNodeId)?.selected),
-    5000,
-    'Code Worker focus state'
+  statePayload = await captureGifScene(
+    gifStoryboard,
+    {
+      label: 'overview-rename-code-worker',
+      beforeHoldMs: 280,
+      afterHoldMs: 900
+    },
+    async () => {
+      await appendInteractionLog({
+        type: 'phase',
+        label: 'fit-view-overview-start'
+      });
+      statePayload = await fitCanvasToOverview({
+        canvasSurface,
+        display,
+        screenFrameBox,
+        stateFilePath,
+        statePayload
+      });
+      await appendInteractionLog({
+        type: 'phase',
+        label: 'fit-view-overview-end'
+      });
+      await delay(700);
+      await appendInteractionLog({
+        type: 'phase',
+        label: 'focus-node-start',
+        nodeId: codexNodeId
+      });
+      statePayload = await focusNodeWithNativeDoubleClick({
+        canvasSurface,
+        display,
+        screenFrameBox,
+        stateFilePath,
+        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
+        node: findNodeById(getRecordingNodes(statePayload), codexNodeId)
+      });
+      await appendInteractionLog({
+        type: 'phase',
+        label: 'focus-node-end',
+        nodeId: codexNodeId
+      });
+      await delay(950);
+      statePayload = await waitForRecordingState(
+        stateFilePath,
+        (payload) => Boolean(findProbeNodeById(payload, codexNodeId)?.selected),
+        5000,
+        'Code Worker focus state'
+      );
+      statePayload = await renameNodeTitleWithNativeMouse({
+        canvasSurface,
+        page: workbenchSurface.page,
+        display,
+        screenFrameBox,
+        controlFilePath,
+        stateFilePath,
+        viewport: deriveFocusViewportFromPayload(statePayload, screenFrameBox, codexNodeId),
+        node: findNodeById(getRecordingNodes(statePayload), codexNodeId),
+        nextTitle: 'Code Worker'
+      });
+      statePayload = await waitForRecordingState(
+        stateFilePath,
+        (payload) => findNodeById(getRecordingNodes(payload), codexNodeId)?.title === 'Code Worker',
+        5000,
+        'Code Worker title update'
+      );
+      await delay(400);
+      return statePayload;
+    }
   );
-  statePayload = await renameNodeTitleWithNativeMouse({
-    canvasSurface,
-    page: workbenchSurface.page,
-    display,
-    screenFrameBox,
-    controlFilePath,
-    stateFilePath,
-    viewport: deriveFocusViewportFromPayload(statePayload, screenFrameBox, codexNodeId),
-    node: findNodeById(getRecordingNodes(statePayload), codexNodeId),
-    nextTitle: 'Code Worker'
-  });
-  statePayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => findNodeById(getRecordingNodes(payload), codexNodeId)?.title === 'Code Worker',
-    5000,
-    'Code Worker title update'
-  );
-  await delay(400);
   const codexLiveOutcome = await codexLiveOutcomePromise;
   if (!codexLiveOutcome.ok) {
     throw codexLiveOutcome.error;
@@ -538,56 +598,76 @@ async function runMarketplaceRecording({
     throw claudeLiveOutcome.error;
   }
   statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
-  statePayload = await fitCanvasToOverview({
-    canvasSurface,
-    display,
-    screenFrameBox,
-    stateFilePath,
-    statePayload
-  });
-  await delay(420);
-  statePayload = await renameNodeTitleWithNativeMouse({
-    canvasSurface,
-    page: workbenchSurface.page,
-    display,
-    screenFrameBox,
-    controlFilePath,
-    stateFilePath,
-    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-    node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
-    nextTitle: 'Reviewer'
-  });
-  statePayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => findNodeById(getRecordingNodes(payload), claudeNodeId)?.title === 'Reviewer',
-    5000,
-    'Reviewer title update'
+  statePayload = await captureGifScene(
+    gifStoryboard,
+    {
+      label: 'rename-reviewer-and-link',
+      beforeHoldMs: 280,
+      afterHoldMs: 860
+    },
+    async () => {
+      statePayload = await fitCanvasToOverview({
+        canvasSurface,
+        display,
+        screenFrameBox,
+        stateFilePath,
+        statePayload
+      });
+      await delay(420);
+      statePayload = await renameNodeTitleWithNativeMouse({
+        canvasSurface,
+        page: workbenchSurface.page,
+        display,
+        screenFrameBox,
+        controlFilePath,
+        stateFilePath,
+        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
+        node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
+        nextTitle: 'Reviewer'
+      });
+      statePayload = await waitForRecordingState(
+        stateFilePath,
+        (payload) => findNodeById(getRecordingNodes(payload), claudeNodeId)?.title === 'Reviewer',
+        5000,
+        'Reviewer title update'
+      );
+      await delay(300);
+      statePayload = await createManualEdgeBetweenNodes({
+        controlFilePath,
+        stateFilePath,
+        sourceNodeId: codexNodeId,
+        sourceAnchor: 'right',
+        targetNodeId: claudeNodeId,
+        targetAnchor: 'left'
+      });
+      await delay(380);
+      return statePayload;
+    }
   );
-  await delay(300);
-  statePayload = await createManualEdgeBetweenNodes({
-    controlFilePath,
-    stateFilePath,
-    sourceNodeId: codexNodeId,
-    sourceAnchor: 'right',
-    targetNodeId: claudeNodeId,
-    targetAnchor: 'left'
-  });
-  await delay(380);
   const claudePrePromptOutput =
     findNodeById(getRecordingNodes(statePayload), claudeNodeId)?.metadata?.agent?.recentOutput ?? '';
   const reviewerFilePath = path.join(projectRoot, '.debug', 'release-media-demo.md');
-  statePayload = await submitExecutionPromptWithNativeMouse({
-    canvasSurface,
-    page: workbenchSurface.page,
-    display,
-    screenFrameBox,
-    stateFilePath,
-    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-    node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
-    probeNode: findProbeNodeById(statePayload, claudeNodeId),
-    prompt: '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
-    prePromptOutput: claudePrePromptOutput
-  });
+  statePayload = await captureGifScene(
+    gifStoryboard,
+    {
+      label: 'reviewer-write-file-prompt',
+      beforeHoldMs: 260,
+      afterHoldMs: 640
+    },
+    async () =>
+      submitExecutionPromptWithNativeMouse({
+        canvasSurface,
+        page: workbenchSurface.page,
+        display,
+        screenFrameBox,
+        stateFilePath,
+        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
+        node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
+        probeNode: findProbeNodeById(statePayload, claudeNodeId),
+        prompt: '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
+        prePromptOutput: claudePrePromptOutput
+      })
+  );
   await waitForFileContent(
     reviewerFilePath,
     (content) => content.trim() === 'release media demo',
@@ -624,20 +704,32 @@ async function runMarketplaceRecording({
     page: workbenchSurface.page
   });
   statePayload = reviewerFileActivityPayload;
-  await delay(280);
-  const prePromptOutput = findNodeById(getRecordingNodes(statePayload), codexNodeId)?.metadata?.agent?.recentOutput ?? '';
-  statePayload = await submitExecutionPromptWithNativeMouse({
-    canvasSurface,
-    page: workbenchSurface.page,
-    display,
-    screenFrameBox,
-    stateFilePath,
-    viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-    node: findRequiredNode(getRecordingNodes(statePayload), codexNodeId),
-    probeNode: findProbeNodeById(statePayload, codexNodeId),
-    prompt: '写一首打油诗',
-    prePromptOutput
+  await captureGifHold(gifStoryboard, {
+    label: 'reviewer-file-node',
+    durationMs: 900
   });
+  const prePromptOutput = findNodeById(getRecordingNodes(statePayload), codexNodeId)?.metadata?.agent?.recentOutput ?? '';
+  statePayload = await captureGifScene(
+    gifStoryboard,
+    {
+      label: 'code-worker-poem-prompt',
+      beforeHoldMs: 260,
+      afterHoldMs: 640
+    },
+    async () =>
+      submitExecutionPromptWithNativeMouse({
+        canvasSurface,
+        page: workbenchSurface.page,
+        display,
+        screenFrameBox,
+        stateFilePath,
+        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
+        node: findRequiredNode(getRecordingNodes(statePayload), codexNodeId),
+        probeNode: findProbeNodeById(statePayload, codexNodeId),
+        prompt: '写一首打油诗',
+        prePromptOutput
+      })
+  );
   const completionPayload = await waitForRecordingState(
     stateFilePath,
     (payload) => {
@@ -709,7 +801,125 @@ async function runMarketplaceRecording({
     screenFrameBox,
     stateFilePath
   });
-  await delay(2400);
+  await captureGifHold(gifStoryboard, {
+    label: 'final-overview',
+    durationMs: 1200
+  });
+  await delay(1200);
+}
+
+async function captureGifScene(gifStoryboard, scene, operation) {
+  if (!gifStoryboard) {
+    return operation();
+  }
+
+  return gifStoryboard.captureScene(scene, operation);
+}
+
+async function captureGifHold(gifStoryboard, scene) {
+  if (!gifStoryboard) {
+    return undefined;
+  }
+
+  return gifStoryboard.captureFrame(scene);
+}
+
+async function createGifStoryboardRecorder({ display, geometry }) {
+  await fs.rm(gifStoryboardRoot, { recursive: true, force: true });
+  await fs.mkdir(gifFrameDir, { recursive: true });
+
+  const frames = [];
+  let frameCounter = 0;
+
+  return {
+    async captureScene(scene, operation) {
+      const {
+        label,
+        beforeHoldMs = 260,
+        afterHoldMs = GIF_FRAME_DEFAULT_DURATION_MS,
+        captureBefore = true,
+        captureAfter = true
+      } = scene;
+      if (captureBefore) {
+        await this.captureFrame({
+          label: `${label}-before`,
+          durationMs: beforeHoldMs
+        });
+      }
+
+      const result = await operation();
+      if (captureAfter) {
+        await this.captureFrame({
+          label: `${label}-after`,
+          durationMs: afterHoldMs
+        });
+      }
+
+      return result;
+    },
+    async captureFrame(scene) {
+      const {
+        label,
+        durationMs = GIF_FRAME_DEFAULT_DURATION_MS
+      } = scene;
+      const frameOrder = frameCounter + 1;
+      const frameFileName = `${String(frameOrder).padStart(2, '0')}-${sanitizeStoryboardLabel(label)}.png`;
+      const framePath = path.join(gifFrameDir, frameFileName);
+      const frameRelativePath = path.relative(projectRoot, framePath);
+
+      frameCounter += 1;
+      captureWindowFrame(display, geometry, framePath);
+      await fs.access(framePath);
+      frames.push({
+        label,
+        order: frameOrder,
+        durationMs,
+        outputPath: framePath,
+        relativeOutputPath: frameRelativePath,
+        capturedAt: new Date().toISOString()
+      });
+      await appendInteractionLog({
+        type: 'gif-frame',
+        label,
+        outputPath: frameRelativePath,
+        durationMs
+      });
+      return framePath;
+    },
+    async finalize(outputPath) {
+      if (frames.length === 0) {
+        throw new Error('GIF storyboard did not capture any frames.');
+      }
+
+      await fs.writeFile(
+        gifStoryboardMetadataPath,
+        `${JSON.stringify(
+          {
+            generatedAt: new Date().toISOString(),
+            outputWidth: GIF_WIDTH,
+            frames
+          },
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+      await composeGifFromStoryboard({
+        frames,
+        manifestPath: gifManifestPath,
+        outputPath
+      });
+    },
+    async dispose() {}
+  };
+}
+
+function sanitizeStoryboardLabel(label) {
+  return String(label)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'frame';
 }
 
 async function ensureOpeningViewport({ display, canvasSurface, screenFrameBox, stateFilePath, statePayload }) {
@@ -3043,7 +3253,13 @@ function parseVSCodeWindowGeometry(treeOutput) {
   return candidates[0];
 }
 
-async function startWindowRecorder(display, geometry, outputPath) {
+async function startWindowRecorder(display, geometry, outputPath, options = {}) {
+  const {
+    framerate = 30,
+    preset = 'veryfast',
+    crf = '18',
+    startupDelayMs = 300
+  } = options;
   const recorder = spawn(
     'ffmpeg',
     [
@@ -3056,7 +3272,7 @@ async function startWindowRecorder(display, geometry, outputPath) {
       '-draw_mouse',
       '1',
       '-framerate',
-      '30',
+      String(framerate),
       '-video_size',
       `${geometry.width}x${geometry.height}`,
       '-i',
@@ -3064,9 +3280,9 @@ async function startWindowRecorder(display, geometry, outputPath) {
       '-c:v',
       'libx264',
       '-preset',
-      'veryfast',
+      preset,
       '-crf',
-      '18',
+      crf,
       '-pix_fmt',
       'yuv420p',
       outputPath
@@ -3077,7 +3293,7 @@ async function startWindowRecorder(display, geometry, outputPath) {
     }
   );
 
-  await delay(300);
+  await delay(startupDelayMs);
   if (recorder.exitCode !== null) {
     throw new Error(`ffmpeg recorder exited early with code ${recorder.exitCode}.`);
   }
@@ -3129,18 +3345,18 @@ async function stopWindowRecorder(recorder) {
       if (recorder.exitCode === null) {
         recorder.kill('SIGINT');
       }
-    }, 2000);
+    }, 5000);
     const sigkillTimer = setTimeout(() => {
       if (recorder.exitCode === null) {
         recorder.kill('SIGKILL');
       }
-    }, 5000);
+    }, 15000);
 
     recorder.once('error', handleError);
     recorder.once('exit', handleExit);
 
     if (recorder.stdin?.writable) {
-      recorder.stdin.write('q');
+      recorder.stdin.write('q\n');
       recorder.stdin.end();
       return;
     }
@@ -3180,11 +3396,7 @@ function extractScreenshotFromVideo(inputVideoPath, outputPath) {
   }
 }
 
-function composeGifFromVideo(inputVideoPath, outputPath) {
-  const filter =
-    `fps=${GIF_FPS},scale=${GIF_WIDTH}:-1:flags=lanczos,split[s0][s1];` +
-    '[s0]palettegen=stats_mode=diff[p];' +
-    '[s1][p]paletteuse=dither=sierra2_4a';
+function captureWindowFrame(display, geometry, outputPath) {
   const result = spawnSync(
     'ffmpeg',
     [
@@ -3192,8 +3404,61 @@ function composeGifFromVideo(inputVideoPath, outputPath) {
       '-hide_banner',
       '-loglevel',
       'error',
+      '-f',
+      'x11grab',
+      '-draw_mouse',
+      '1',
+      '-video_size',
+      `${geometry.width}x${geometry.height}`,
       '-i',
-      inputVideoPath,
+      `${display}+${geometry.x},${geometry.y}`,
+      '-frames:v',
+      '1',
+      outputPath
+    ],
+    {
+      cwd: projectRoot,
+      stdio: 'inherit'
+    }
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`从真实 VS Code 窗口抓取 GIF 关键帧失败：${path.relative(projectRoot, outputPath)}`);
+  }
+}
+
+async function composeGifFromStoryboard({ frames, manifestPath, outputPath }) {
+  const manifestLines = [];
+  for (const frame of frames) {
+    manifestLines.push(`file '${path.resolve(frame.outputPath).replace(/'/g, "'\\''")}'`);
+    manifestLines.push(`duration ${(frame.durationMs / 1000).toFixed(3)}`);
+  }
+  manifestLines.push(`file '${path.resolve(frames.at(-1).outputPath).replace(/'/g, "'\\''")}'`);
+  const manifestContent = `${manifestLines.join('\n')}\n`;
+  await fs.writeFile(manifestPath, manifestContent, 'utf8');
+
+  const filter =
+    `scale=${GIF_WIDTH}:-1:flags=lanczos,split[s0][s1];` +
+    '[s0]palettegen=stats_mode=diff[p];' +
+    '[s1][p]paletteuse=dither=sierra2_4a';
+  console.log(`Composing GIF from ${frames.length} storyboard frames.`);
+  const result = spawnSync(
+    'ffmpeg',
+    [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      manifestPath,
       '-vf',
       filter,
       '-loop',
