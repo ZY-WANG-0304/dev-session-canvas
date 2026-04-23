@@ -1390,16 +1390,16 @@ function hasRecordedAgentPromptBeenSubmitted(node, prePromptOutput) {
     return false;
   }
 
-  const recentOutput = String(node.metadata?.agent?.recentOutput ?? '');
-  if (recentOutput === String(prePromptOutput ?? '')) {
-    return false;
-  }
-
   if (node.status !== 'waiting-input') {
     return true;
   }
 
+  const recentOutput = String(node.metadata?.agent?.recentOutput ?? '');
   if (node.metadata?.agent?.provider === 'claude' && isClaudePromptEditorVisible(recentOutput)) {
+    return false;
+  }
+
+  if (recentOutput === String(prePromptOutput ?? '')) {
     return false;
   }
 
