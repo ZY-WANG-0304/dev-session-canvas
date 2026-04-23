@@ -2035,6 +2035,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private bindAgentFileActivitySession(nodeId: string, session: AgentFileActivitySession): void {
     this.agentFileActivitySessions.set(nodeId, session);
     session.start((event) => {
+      // Ignore drained events from a session that has already been replaced or disposed.
+      if (this.agentFileActivitySessions.get(nodeId) !== session) {
+        return;
+      }
       this.handleAgentFileActivityEvent(nodeId, event);
     });
   }
