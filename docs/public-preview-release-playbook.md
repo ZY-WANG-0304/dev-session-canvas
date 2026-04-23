@@ -34,7 +34,7 @@
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
 - 版本标题仍为 `0.2.1 - Preview Hotfix Update`
-- 升级兼容说明、Marketplace 素材收口与 Claude 录制链路的描述与当前实现一致
+- 升级兼容说明、Marketplace 素材收口、文件活动状态一致性修复与 Claude 文件时间 hook 打包完整性的描述与当前实现一致
 - 已包含安装/升级说明与回退建议
 - 不把 `Preview` 误写成稳定正式版承诺
 
