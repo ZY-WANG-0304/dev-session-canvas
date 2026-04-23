@@ -37,6 +37,7 @@ async function main() {
 
   const packagedExtensionPath = path.join(unpackRoot, 'extension');
   await validatePackagedExtension(packagedExtensionPath);
+  const packagedExtensionTestsPath = await preparePackagedExtensionTests(packagedExtensionPath);
 
   await runVSCodeScenario({
     projectRoot,
@@ -44,7 +45,7 @@ async function main() {
     runtimeDirName: 'dsc-vscode-vsix-smoke-runtime',
     workspacePath: projectRoot,
     extensionDevelopmentPath: packagedExtensionPath,
-    extensionTestsPath,
+    extensionTestsPath: packagedExtensionTestsPath,
     disableWorkspaceTrust: true,
     extensionTestsEnv: {
       DEV_SESSION_CANVAS_SMOKE_SCENARIO: 'trusted',
@@ -134,6 +135,16 @@ async function validatePackagedExtension(packagedExtensionPath) {
   if (!packagedReadmeContents.includes(marketplaceReadmeMarker)) {
     throw new Error('打包产物中的 README 未命中 Marketplace README 标记，当前 VSIX 可能仍在携带仓库根 README。');
   }
+}
+
+async function preparePackagedExtensionTests(packagedExtensionPath) {
+  // Keep the smoke test entrypoint under the unpacked extension root so
+  // `require("vscode")` resolves to the same extension-scoped API object.
+  const testsRoot = path.join(packagedExtensionPath, '.smoke-tests');
+  const packagedTestsPath = path.join(testsRoot, path.basename(extensionTestsPath));
+  await fs.mkdir(testsRoot, { recursive: true });
+  await fs.copyFile(extensionTestsPath, packagedTestsPath);
+  return packagedTestsPath;
 }
 
 function runCommand(file, args, errorMessage) {
