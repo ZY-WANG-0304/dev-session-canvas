@@ -2,13 +2,14 @@
 
 ## 0.2.1 - Preview Hotfix Update
 
-公开 `Preview` 的一轮收口修复，聚焦升级兼容说明与 Marketplace 对外素材一致性。
+公开 `Preview` 的一轮收口修复，聚焦升级兼容说明、Marketplace 对外素材一致性，以及打包态文件活动链路补漏。
 
 ### 本版本聚焦
 
 - 补充从 `0.1.2` 升级到 `0.2.0` 后可能沿用旧 view layout 缓存、导致侧栏 `概览` 与 `常用操作` 暂时拆成两个图标的兼容说明，并明确恢复方式
-- 收口 Marketplace README / 录制素材生成链路，确保对外展示中的 Claude 节点真实执行，并稳定投影 `.debug/release-media-demo.md` 文件活动
-- 重新生成 Marketplace 概览截图、GIF 与 MP4，使对外素材与当前实现保持一致
+- 收口 Marketplace README / 录制素材生成链路，重新生成 Marketplace 概览截图、GIF 与 MP4，确保对外展示中的 Claude 节点真实执行，并稳定投影 `.debug/release-media-demo.md` 文件活动
+- 修复 `Agent` 会话已替换、释放或删除后，迟到的文件活动事件仍可能回写旧状态的问题，减少文件投影与相关状态被残留事件覆盖的风险
+- 修复 Claude 文件时间 hook 脚本 `scripts/claude-file-event-hook.cjs` 未被打包进 VSIX 的问题，确保公开发布包中的 Claude 文件活动链路与源码运行态一致
 
 ### 推荐体验路径
 
