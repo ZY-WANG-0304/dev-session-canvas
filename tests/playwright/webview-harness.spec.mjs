@@ -1884,6 +1884,214 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
+test('agent restart split button resumes by default and can start a new session', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'agent-1',
+    label: '重启'
+  });
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: true
+      })
+    );
+
+  await clearPostedMessages(page);
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-action="new-session"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: false
+      })
+    );
+});
+
+test('agent restart split button disables resume when no resumable session exists', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('button:has-text("重启")')).toBeDisabled();
+  await agentNode.locator('[data-agent-restart-toggle="true"]').click();
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeDisabled();
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeEnabled();
+});
+
+test('right-click create menu validates custom agent launch commands before creating', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
+
+  const customInput = menu.locator('[data-context-menu-custom-input="true"]');
+  const confirmButton = menu.locator('[data-context-menu-custom-confirm="true"]');
+  await expect(menu.locator('.canvas-context-menu-dismiss')).toHaveCount(0);
+  await expect(customInput).toHaveValue('codex --timeout 300 --verbose');
+
+  await customInput.fill('python not-agent');
+  await expect(confirmButton).toBeDisabled();
+  await expect(menu.locator('.canvas-context-menu-inline-error')).toContainText('codex');
+
+  await customInput.fill('codex resume session-123');
+  await expect(confirmButton).toBeEnabled();
+  await confirmButton.click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 780,
+          y: 305
+        },
+        agentProvider: 'codex',
+        agentLaunchPreset: 'custom',
+        agentCustomLaunchCommand: 'codex resume session-123'
+      })
+    );
+});
+
+test('right-click custom agent launch input ignores IME Enter before composition commits', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
+
+  const customInput = menu.locator('[data-context-menu-custom-input="true"]');
+  await simulateImeCompositionOnTextField(page, customInput, 'codex --timeout 300 --verbose --yolo');
+
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('[data-context-menu-custom-confirm="true"]')).toBeEnabled();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/createDemoNode').length
+      );
+    })
+    .toBe(0);
+
+  await customInput.press('Enter');
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 780,
+          y: 305
+        },
+        agentProvider: 'codex',
+        agentLaunchPreset: 'yolo'
+      })
+    );
+});
+
 test('execution node chrome hides runtime diagnostics and keeps agent waiting-input visible', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createRuntimeChromeState());
@@ -3038,7 +3246,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
     );
 });
 
-test('right-click create menu can drill into agent providers and create claude directly', async ({ page }) => {
+test('right-click create menu can drill into agent launch modes and create claude yolo directly', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
       viewport: {
@@ -3066,8 +3274,15 @@ test('right-click create menu can drill into agent providers and create claude d
   await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+  await menu
+    .locator('[data-context-menu-provider="claude"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-yolo"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-sandbox"]')).toBeVisible();
 
-  await menu.locator('[data-context-menu-provider="claude"]').click();
+  await menu.locator('[data-context-menu-launch-preset="launch-yolo"]').click();
 
   await expect(menu).toBeHidden();
   await expect
@@ -3087,7 +3302,8 @@ test('right-click create menu can drill into agent providers and create claude d
           x: 760,
           y: 305
         },
-        agentProvider: 'claude'
+        agentProvider: 'claude',
+        agentLaunchPreset: 'yolo'
       })
     );
 });
@@ -3134,7 +3350,9 @@ test('right-click create menu creates the default agent without opening the prov
         preferredPosition: {
           x: 800,
           y: 325
-        }
+        },
+        agentProvider: 'codex',
+        agentLaunchPreset: 'default'
       })
     );
 });
@@ -3185,7 +3403,9 @@ test('right-click create menu refreshes its default agent label after runtime co
         preferredPosition: {
           x: 730,
           y: 285
-        }
+        },
+        agentProvider: 'claude',
+        agentLaunchPreset: 'default'
       })
     );
 });
@@ -3903,6 +4123,16 @@ function createRuntimeContext(overrides = {}) {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
+    agentLaunchDefaults: {
+      codex: {
+        command: 'codex',
+        defaultArgs: '--timeout 300 --verbose'
+      },
+      claude: {
+        command: 'claude',
+        defaultArgs: '--model sonnet'
+      }
+    },
     strongTerminalAttentionReminderMode: 'both',
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
@@ -4858,6 +5088,7 @@ function createAgentNodeState(provider = 'codex') {
             cwd: '/workspace',
             liveSession: false,
             provider,
+            launchPreset: 'default',
             lastCols: 96,
             lastRows: 28,
             lastBackendLabel: backendLabel
@@ -4866,6 +5097,21 @@ function createAgentNodeState(provider = 'codex') {
       }
     ]
   };
+}
+
+function createStoppedAgentNodeState({ provider = 'codex', resumable = true } = {}) {
+  const state = createAgentNodeState(provider);
+  state.nodes[0].status = 'stopped';
+  state.nodes[0].summary = resumable ? '检测到可恢复的原会话。' : '上一次 Agent 会话已结束。';
+  state.nodes[0].metadata.agent = {
+    ...state.nodes[0].metadata.agent,
+    lifecycle: 'stopped',
+    lastExitMessage: '上一次 Agent 会话已结束。',
+    resumeStrategy: resumable ? (provider === 'claude' ? 'claude-session-id' : 'codex-session-id') : 'none',
+    resumeSessionId: resumable ? 'session-123' : undefined,
+    resumeStoragePath: resumable && provider === 'codex' ? undefined : undefined
+  };
+  return state;
 }
 
 function createMinimapContrastState() {

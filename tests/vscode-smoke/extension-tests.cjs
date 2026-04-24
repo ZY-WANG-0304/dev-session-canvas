@@ -370,26 +370,33 @@ async function verifyCreateNodeCommandQuickPick() {
   await clearHostMessages();
   await clearDiagnosticEvents();
 
-  await setQuickPickSelections(['create-agent-claude']);
+  await setQuickPickSelections(['create-agent-claude', 'agent-launch-apply-yolo', 'agent-launch-accept-current']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
   let snapshot = await waitForSnapshot((currentSnapshot) => {
     return currentSnapshot.state.nodes.some(
-      (node) => node.kind === 'agent' && node.metadata?.agent?.provider === 'claude'
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude' &&
+        node.metadata?.agent?.launchPreset === 'yolo'
     );
   }, 20000);
 
   const claudeAgentNode = snapshot.state.nodes.find(
-    (node) => node.kind === 'agent' && node.metadata?.agent?.provider === 'claude'
+    (node) =>
+      node.kind === 'agent' &&
+      node.metadata?.agent?.provider === 'claude' &&
+      node.metadata?.agent?.launchPreset === 'yolo'
   );
-  assert.ok(claudeAgentNode, 'Expected createNode command to create a Claude agent.');
+  assert.ok(claudeAgentNode, 'Expected createNode command to create a Claude agent with YOLO launch preset.');
   await waitForDiagnosticEvents(
     (events) =>
       events.some(
         (event) =>
           event.kind === 'execution/startRequested' &&
           event.detail?.nodeId === claudeAgentNode.id &&
-          event.detail?.provider === 'claude'
+          event.detail?.provider === 'claude' &&
+          event.detail?.launchPreset === 'yolo'
       ),
     20000
   );
@@ -406,7 +413,8 @@ async function verifyCreateNodeCommandQuickPick() {
     (node) =>
       node.kind === 'agent' &&
       node.id !== claudeAgentNode.id &&
-      node.metadata?.agent?.provider === 'codex'
+      node.metadata?.agent?.provider === 'codex' &&
+      node.metadata?.agent?.launchPreset === 'default'
   );
   assert.ok(codexAgentNode, 'Expected default Agent quick pick item to create a Codex agent.');
   await waitForDiagnosticEvents(
@@ -415,7 +423,8 @@ async function verifyCreateNodeCommandQuickPick() {
         (event) =>
           event.kind === 'execution/startRequested' &&
           event.detail?.nodeId === codexAgentNode.id &&
-          event.detail?.provider === 'codex'
+          event.detail?.provider === 'codex' &&
+          event.detail?.launchPreset === 'default'
       ),
     20000
   );
