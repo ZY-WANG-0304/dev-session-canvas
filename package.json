@@ -65,6 +65,8 @@
         "devSessionCanvas.agent.defaultProvider",
         "devSessionCanvas.agent.codexCommand",
         "devSessionCanvas.agent.claudeCommand",
+        "devSessionCanvas.agent.codexDefaultArgs",
+        "devSessionCanvas.agent.claudeDefaultArgs",
         "devSessionCanvas.terminal.shellPath"
       ]
     },
@@ -206,6 +208,18 @@
           "default": "claude",
           "scope": "machine",
           "markdownDescription": "%configuration.agent.claudeCommand.description%"
+        },
+        "devSessionCanvas.agent.codexDefaultArgs": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "%configuration.agent.codexDefaultArgs.description%"
+        },
+        "devSessionCanvas.agent.claudeDefaultArgs": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "%configuration.agent.claudeDefaultArgs.description%"
         },
         "devSessionCanvas.notifications.bridgeTerminalAttentionSignals": {
           "type": "boolean",

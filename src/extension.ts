@@ -6,10 +6,17 @@ import {
   isAgentProviderKind,
   isCanvasCreatableNodeKind,
   isWebviewDomAction,
+  type AgentLaunchPresetKind,
   type AgentProviderKind,
+  type AgentProviderLaunchDefaults,
   type CanvasCreatableNodeKind,
   type CanvasNodeKind
 } from './common/protocol';
+import {
+  buildAgentPresetCommandLine,
+  classifyAgentLaunchPreset,
+  validateAgentCommandLine
+} from './common/agentLaunchPresets';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
@@ -20,6 +27,8 @@ let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
 type CreateNodeRequest = {
   kind: CanvasCreatableNodeKind;
   agentProvider?: AgentProviderKind;
+  agentLaunchPreset?: AgentLaunchPresetKind;
+  agentCustomLaunchCommand?: string;
 };
 
 type CreateNodeQuickPickSelectionId =
@@ -27,7 +36,11 @@ type CreateNodeQuickPickSelectionId =
   | 'create-terminal'
   | 'create-note'
   | 'create-agent-codex'
-  | 'create-agent-claude';
+  | 'create-agent-claude'
+  | 'agent-launch-accept-current'
+  | 'agent-launch-apply-resume'
+  | 'agent-launch-apply-yolo'
+  | 'agent-launch-apply-sandbox';
 
 interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
@@ -78,7 +91,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     await panelManager.revealOrCreate();
     panelManager.createNode(createRequest.kind, {
-      agentProvider: createRequest.agentProvider
+      agentProvider: createRequest.agentProvider,
+      agentLaunchPreset: createRequest.agentLaunchPreset,
+      agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
     });
   });
 
@@ -141,14 +156,31 @@ function registerCommand(context: vscode.ExtensionContext, commandId: string, ha
 async function promptCreateNodeRequest(
   creatableKinds: CanvasCreatableNodeKind[]
 ): Promise<CreateNodeRequest | undefined> {
-  const picked = await showQuickPickWithTestOverride(
-    buildCreateNodeQuickPickItems(creatableKinds, getDefaultAgentProvider()),
-    {
-      placeHolder: '选择要创建的对象或 Agent 类型'
-    }
-  );
+  while (true) {
+    const picked = await showQuickPickWithTestOverride(
+      buildCreateNodeQuickPickItems(creatableKinds, getDefaultAgentProvider()),
+      {
+        placeHolder: '选择要创建的对象或 Agent 类型'
+      }
+    );
 
-  return picked?.request;
+    if (!picked?.request) {
+      return undefined;
+    }
+
+    if (picked.request.kind !== 'agent') {
+      return picked.request;
+    }
+
+    const launchRequest = await promptAgentLaunchRequest(picked.request.agentProvider ?? getDefaultAgentProvider());
+    if (!launchRequest) {
+      return undefined;
+    }
+    if (launchRequest === 'back') {
+      continue;
+    }
+    return launchRequest;
+  }
 }
 
 function buildCreateNodeQuickPickItems(
@@ -162,7 +194,7 @@ function buildCreateNodeQuickPickItems(
     directCreateItems.push({
       label: `Agent（默认：${providerLabel(defaultAgentProvider)}）`,
       description: '创建对象',
-      detail: '最快创建一个默认 provider 的 Agent 会话窗口',
+      detail: '下一步确认完整启动命令，并按默认 provider 创建 Agent',
       selectionId: 'create-agent-default',
       request: {
         kind: 'agent',
@@ -210,7 +242,7 @@ function buildCreateNodeQuickPickItems(
       items.push({
         label: provider === defaultAgentProvider ? `${providerLabel(provider)}（默认）` : providerLabel(provider),
         description: '按类型创建 Agent',
-        detail: `直接创建一个 ${providerLabel(provider)} 会话窗口`,
+        detail: `下一步确认完整启动命令，并创建一个 ${providerLabel(provider)} 会话窗口`,
         selectionId: provider === 'claude' ? 'create-agent-claude' : 'create-agent-codex',
         request: {
           kind: 'agent',
@@ -223,7 +255,192 @@ function buildCreateNodeQuickPickItems(
   return items;
 }
 
-async function showQuickPickWithTestOverride<T extends CreateNodeQuickPickItem>(
+interface AgentLaunchQuickPickItem extends vscode.QuickPickItem {
+  selectionId?: CreateNodeQuickPickSelectionId;
+  launchPreset?: Exclude<AgentLaunchPresetKind, 'custom'>;
+}
+
+async function promptAgentLaunchRequest(
+  provider: AgentProviderKind
+): Promise<CreateNodeRequest | 'back' | undefined> {
+  const launchDefaults = getAgentLaunchDefaults(provider);
+  const initialCommandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'default');
+  const scriptedResult = consumeQueuedAgentLaunchRequest(provider, launchDefaults, initialCommandLine);
+  if (scriptedResult !== null) {
+    return scriptedResult;
+  }
+
+  return promptAgentLaunchRequestWithQuickPick(provider, launchDefaults, initialCommandLine);
+}
+
+function consumeQueuedAgentLaunchRequest(
+  provider: AgentProviderKind,
+  launchDefaults: AgentProviderLaunchDefaults,
+  initialCommandLine: string
+): CreateNodeRequest | 'back' | undefined | null {
+  if (queuedQuickPickSelectionIds.length === 0) {
+    return null;
+  }
+
+  let commandLine = initialCommandLine;
+  while (queuedQuickPickSelectionIds.length > 0) {
+    const nextSelectionId = queuedQuickPickSelectionIds[0];
+    if (!nextSelectionId?.startsWith('agent-launch-')) {
+      break;
+    }
+
+    queuedQuickPickSelectionIds.shift();
+    if (nextSelectionId === 'agent-launch-accept-current') {
+      return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine);
+    }
+    if (nextSelectionId === 'agent-launch-apply-resume') {
+      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'resume');
+      continue;
+    }
+    if (nextSelectionId === 'agent-launch-apply-yolo') {
+      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'yolo');
+      continue;
+    }
+    if (nextSelectionId === 'agent-launch-apply-sandbox') {
+      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'sandbox');
+      continue;
+    }
+  }
+
+  return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine);
+}
+
+function promptAgentLaunchRequestWithQuickPick(
+  provider: AgentProviderKind,
+  launchDefaults: AgentProviderLaunchDefaults,
+  initialCommandLine: string
+): Promise<CreateNodeRequest | 'back' | undefined> {
+  return new Promise((resolve) => {
+    const quickPick = vscode.window.createQuickPick<AgentLaunchQuickPickItem>();
+    const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
+    let resolved = false;
+
+    const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      quickPick.hide();
+      quickPick.dispose();
+      resolve(result);
+    };
+
+    const updateTitle = (): void => {
+      const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
+      quickPick.title = validation.valid ? baseTitle : `${baseTitle} · ${validation.error}`;
+    };
+
+    quickPick.title = baseTitle;
+    quickPick.placeholder = '编辑本次创建将使用的完整启动命令；按 Enter 直接创建';
+    quickPick.matchOnDescription = true;
+    quickPick.matchOnDetail = true;
+    quickPick.value = initialCommandLine;
+    quickPick.items = buildAgentLaunchQuickPickItems(provider, launchDefaults);
+    quickPick.buttons = [vscode.QuickInputButtons.Back];
+    quickPick.ignoreFocusOut = true;
+
+    quickPick.onDidChangeSelection((items) => {
+      const selectedItem = items[0];
+      if (!selectedItem?.launchPreset) {
+        return;
+      }
+      quickPick.value = buildAgentPresetCommandLine(provider, launchDefaults, selectedItem.launchPreset);
+      quickPick.activeItems = [];
+      updateTitle();
+    });
+
+    quickPick.onDidChangeValue(() => {
+      updateTitle();
+    });
+
+    quickPick.onDidAccept(() => {
+      const activeItem = quickPick.activeItems[0];
+      if (activeItem?.launchPreset) {
+        quickPick.value = buildAgentPresetCommandLine(provider, launchDefaults, activeItem.launchPreset);
+        quickPick.activeItems = [];
+        updateTitle();
+        return;
+      }
+
+      const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
+      if (!validation.valid) {
+        updateTitle();
+        return;
+      }
+
+      finish(createAgentRequestFromCommandLine(provider, launchDefaults, quickPick.value));
+    });
+
+    quickPick.onDidTriggerButton((button) => {
+      if (button === vscode.QuickInputButtons.Back) {
+        finish('back');
+      }
+    });
+
+    quickPick.onDidHide(() => {
+      finish(undefined);
+    });
+
+    updateTitle();
+    quickPick.show();
+    quickPick.activeItems = [];
+  });
+}
+
+function buildAgentLaunchQuickPickItems(
+  provider: AgentProviderKind,
+  launchDefaults: AgentProviderLaunchDefaults
+): AgentLaunchQuickPickItem[] {
+  return [
+    {
+      label: '启动方式快捷替换',
+      kind: vscode.QuickPickItemKind.Separator,
+      alwaysShow: true
+    },
+    {
+      label: 'Resume',
+      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'resume'),
+      selectionId: 'agent-launch-apply-resume',
+      launchPreset: 'resume',
+      alwaysShow: true
+    },
+    {
+      label: 'YOLO',
+      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'yolo'),
+      selectionId: 'agent-launch-apply-yolo',
+      launchPreset: 'yolo',
+      alwaysShow: true
+    },
+    {
+      label: '沙盒',
+      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'sandbox'),
+      selectionId: 'agent-launch-apply-sandbox',
+      launchPreset: 'sandbox',
+      alwaysShow: true
+    }
+  ];
+}
+
+function createAgentRequestFromCommandLine(
+  provider: AgentProviderKind,
+  launchDefaults: AgentProviderLaunchDefaults,
+  commandLine: string
+): CreateNodeRequest {
+  const classification = classifyAgentLaunchPreset(provider, commandLine, launchDefaults);
+  return {
+    kind: 'agent',
+    agentProvider: provider,
+    agentLaunchPreset: classification.launchPreset,
+    agentCustomLaunchCommand: classification.customLaunchCommand
+  };
+}
+
+async function showQuickPickWithTestOverride<T extends vscode.QuickPickItem & { selectionId?: CreateNodeQuickPickSelectionId }>(
   items: readonly T[],
   options: vscode.QuickPickOptions
 ): Promise<T | undefined> {
@@ -249,6 +466,29 @@ function getDefaultAgentProvider(): AgentProviderKind {
     .getConfiguration()
     .get<string>(CONFIG_KEYS.agentDefaultProvider, 'codex');
   return configuredProvider === 'claude' ? 'claude' : 'codex';
+}
+
+function getAgentLaunchDefaults(provider: AgentProviderKind): AgentProviderLaunchDefaults {
+  const configuration = vscode.workspace.getConfiguration();
+  const configuredCommand = configuration
+    .get<string>(provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand, provider)
+    ?.trim();
+  const configuredDefaultArgs = configuration
+    .get<string>(
+      provider === 'claude' ? CONFIG_KEYS.agentClaudeDefaultArgs : CONFIG_KEYS.agentCodexDefaultArgs,
+      ''
+    )
+    ?.trim();
+
+  const testOverrideCommand =
+    provider === 'claude'
+      ? process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND?.trim()
+      : process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND?.trim();
+
+  return {
+    command: testOverrideCommand || configuredCommand || provider,
+    defaultArgs: configuredDefaultArgs || ''
+  };
 }
 
 function humanizeNodeKind(kind: CanvasCreatableNodeKind): string {
@@ -492,7 +732,11 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
             value !== 'create-terminal' &&
             value !== 'create-note' &&
             value !== 'create-agent-codex' &&
-            value !== 'create-agent-claude'
+            value !== 'create-agent-claude' &&
+            value !== 'agent-launch-accept-current' &&
+            value !== 'agent-launch-apply-resume' &&
+            value !== 'agent-launch-apply-yolo' &&
+            value !== 'agent-launch-apply-sandbox'
         )
       ) {
         throw new Error('测试命令 devSessionCanvas.__test.setQuickPickSelections 需要有效的 QuickPick 选择 ID 数组。');

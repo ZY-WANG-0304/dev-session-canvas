@@ -53,6 +53,8 @@ export const CONFIG_KEYS = {
   agentDefaultProvider: 'devSessionCanvas.agent.defaultProvider',
   agentCodexCommand: 'devSessionCanvas.agent.codexCommand',
   agentClaudeCommand: 'devSessionCanvas.agent.claudeCommand',
+  agentCodexDefaultArgs: 'devSessionCanvas.agent.codexDefaultArgs',
+  agentClaudeDefaultArgs: 'devSessionCanvas.agent.claudeDefaultArgs',
   notificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',

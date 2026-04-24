@@ -32,7 +32,10 @@ import {
 import {
   type AgentNodeStatus,
   type AgentNodeMetadata,
+  type AgentLaunchDefaultsByProvider,
+  type AgentLaunchPresetKind,
   type AgentProviderKind,
+  type AgentProviderLaunchDefaults,
   type AgentResumeStrategy,
   type CanvasCreatableNodeKind,
   type CanvasEdgeAnchor,
@@ -83,6 +86,10 @@ import {
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
+import {
+  buildFreshAgentCommandLine,
+  parseFullAgentCommandLine
+} from '../common/agentLaunchPresets';
 import {
   SerializedTerminalStateTracker,
   cloneSerializedTerminalState,
@@ -164,6 +171,8 @@ interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
   codexCommand: string;
   claudeCommand: string;
+  codexDefaultArgs: string;
+  claudeDefaultArgs: string;
 }
 
 interface AgentCliSpec {
@@ -179,6 +188,12 @@ interface AgentResumeContext {
   strategy: AgentResumeStrategy;
   sessionId?: string;
   storagePath?: string;
+}
+
+interface CreateAgentNodeOptions {
+  agentProvider?: AgentProviderKind;
+  agentLaunchPreset?: AgentLaunchPresetKind;
+  agentCustomLaunchCommand?: string;
 }
 
 type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
@@ -486,6 +501,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const defaultSurfaceChanged = event.affectsConfiguration(CONFIG_KEYS.canvasDefaultSurface);
         const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
+        const agentCodexCommandChanged = event.affectsConfiguration(CONFIG_KEYS.agentCodexCommand);
+        const agentClaudeCommandChanged = event.affectsConfiguration(CONFIG_KEYS.agentClaudeCommand);
+        const agentCodexDefaultArgsChanged = event.affectsConfiguration(CONFIG_KEYS.agentCodexDefaultArgs);
+        const agentClaudeDefaultArgsChanged = event.affectsConfiguration(CONFIG_KEYS.agentClaudeDefaultArgs);
         const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
@@ -524,6 +543,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         if (
           !defaultAgentProviderChanged &&
+          !agentCodexCommandChanged &&
+          !agentClaudeCommandChanged &&
+          !agentCodexDefaultArgsChanged &&
+          !agentClaudeDefaultArgsChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -544,6 +567,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this
           .handleRuntimeConfigurationChanged({
             defaultAgentProviderChanged,
+            agentCodexCommandChanged,
+            agentClaudeCommandChanged,
+            agentCodexDefaultArgsChanged,
+            agentClaudeDefaultArgsChanged,
             filesPresentationModeChanged,
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
@@ -666,27 +693,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testDiagnosticEvents.length = 0;
   }
 
-  public createNode(kind: CanvasCreatableNodeKind, options?: { agentProvider?: AgentProviderKind }): void {
+  public createNode(kind: CanvasCreatableNodeKind, options?: CreateAgentNodeOptions): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
         payload: {
           kind,
-          agentProvider: options?.agentProvider
+          agentProvider: options?.agentProvider,
+          agentLaunchPreset: options?.agentLaunchPreset,
+          agentCustomLaunchCommand: options?.agentCustomLaunchCommand
         }
       });
       return;
     }
 
     this.applyCreateNode(kind, undefined, {
-      agentProvider: options?.agentProvider
+      agentProvider: options?.agentProvider,
+      agentLaunchPreset: options?.agentLaunchPreset,
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand
     });
   }
 
   public createNodeForTest(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: { agentProvider?: AgentProviderKind }
+    options?: CreateAgentNodeOptions
   ): void {
     if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
       throw new Error('createNodeForTest 仅在测试模式下可用。');
@@ -694,7 +725,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.applyCreateNode(kind, preferredPosition, {
       bypassTrust: true,
-      agentProvider: options?.agentProvider
+      agentProvider: options?.agentProvider,
+      agentLaunchPreset: options?.agentLaunchPreset,
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand
     });
   }
 
@@ -1646,6 +1679,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
+      agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(),
       strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
       terminalScrollback: this.getTerminalScrollback(),
       editorMultiCursorModifier: normalizeEditorMultiCursorModifier(
@@ -1812,6 +1846,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
+    agentCodexCommandChanged: boolean;
+    agentClaudeCommandChanged: boolean;
+    agentCodexDefaultArgsChanged: boolean;
+    agentClaudeDefaultArgsChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -1870,6 +1908,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       options.defaultAgentProviderChanged ||
+      options.agentCodexCommandChanged ||
+      options.agentClaudeCommandChanged ||
+      options.agentCodexDefaultArgsChanged ||
+      options.agentClaudeDefaultArgsChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -3673,7 +3715,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
-          agentProvider: parsedMessage.payload.agentProvider
+          agentProvider: parsedMessage.payload.agentProvider,
+          agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
+          agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand
         });
         return;
       case 'webview/moveNode':
@@ -4227,6 +4271,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     normalizedRows: number,
     provider: AgentProviderKind,
     cliSpec: AgentCliSpec,
+    launchArgs: string[],
     resumeContext: AgentResumeContext,
     launchMode: PendingExecutionLaunch
   ): Promise<void> {
@@ -4322,6 +4367,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         launchSpec: serializeExecutionSessionLaunchSpec(
           this.buildAgentLaunchSpec(
             cliSpec,
+            launchArgs,
             cwd,
             normalizedCols,
             normalizedRows,
@@ -4456,15 +4502,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
-    this.recordDiagnosticEvent('execution/startRequested', {
-      kind: 'agent',
-      nodeId,
-      provider: requestedProvider ?? null,
-      resumeRequested,
-      cols: normalizedCols,
-      rows: normalizedRows,
-      workspaceTrusted: vscode.workspace.isTrusted
-    });
 
     if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
@@ -4525,19 +4562,78 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const currentMetadata = ensureAgentMetadata(agentNode);
     const provider = requestedProvider ?? currentMetadata.provider;
     const launchMode: PendingExecutionLaunch = resumeRequested ? 'resume' : 'start';
-    const configuredCliSpec = this.getConfiguredAgentCliSpec(provider);
+    let freshLaunch:
+      | {
+          commandLine: string;
+          requestedCommand: string;
+          launchArgs: string[];
+          launchPreset: AgentLaunchPresetKind;
+        }
+      | undefined;
+    if (launchMode === 'start') {
+      try {
+        freshLaunch = this.resolveAgentFreshLaunch(provider, currentMetadata);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '无法解析 Agent 启动命令。';
+        this.recordDiagnosticEvent('execution/startRejected', {
+          kind: 'agent',
+          nodeId,
+          reason: 'invalid-launch-command',
+          message
+        });
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: 'error',
+          summary: message,
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            provider,
+            lifecycle: 'error',
+            liveSession: false,
+            pendingLaunch: undefined,
+            lastExitMessage: message,
+            lastRuntimeError: message
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+        return;
+      }
+    }
+    this.recordDiagnosticEvent('execution/startRequested', {
+      kind: 'agent',
+      nodeId,
+      provider,
+      resumeRequested,
+      launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
+      launchCommandLine: freshLaunch?.commandLine ?? null,
+      requestedCommand: freshLaunch?.requestedCommand ?? null,
+      launchArgs: freshLaunch?.launchArgs ?? [],
+      cols: normalizedCols,
+      rows: normalizedRows,
+      workspaceTrusted: vscode.workspace.isTrusted
+    });
+    const configuredCliSpec = this.getRequestedAgentCliSpec(
+      provider,
+      freshLaunch?.requestedCommand ?? this.getAgentLaunchDefaults(provider).command
+    );
     let cliSpec = configuredCliSpec;
     const resumeContext = this.resolveAgentResumeContext(nodeId, provider, launchMode, currentMetadata);
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     if (this.isRuntimePersistenceEnabled()) {
       try {
-        cliSpec = await this.resolveAgentCli(provider);
+        cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand);
         await this.startAgentSessionWithSupervisor(
           nodeId,
           normalizedCols,
           normalizedRows,
           provider,
           cliSpec,
+          freshLaunch?.launchArgs ?? [],
           resumeContext,
           launchMode
         );
@@ -4600,11 +4696,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.disposeAgentFileActivitySession(nodeId);
 
     try {
-      cliSpec = await this.resolveAgentCli(provider);
+      cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand);
       const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
       const process = createExecutionSessionProcess(
         this.buildAgentLaunchSpec(
           cliSpec,
+          freshLaunch?.launchArgs ?? [],
           cwd,
           normalizedCols,
           normalizedRows,
@@ -4658,6 +4755,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sessionId,
         provider,
         launchMode,
+        launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
+        launchCommandLine: freshLaunch?.commandLine ?? null,
+        requestedCommand: freshLaunch?.requestedCommand ?? null,
+        launchArgs: freshLaunch?.launchArgs ?? [],
         cols: normalizedCols,
         rows: normalizedRows,
         shellPath: cliSpec.command,
@@ -4921,6 +5022,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
     const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex';
     const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude';
+    const codexDefaultArgs = getConfigurationValue<string>('agentCodexDefaultArgs', '').trim();
+    const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '').trim();
 
     const codexCommand =
       this.context.extensionMode === vscode.ExtensionMode.Test
@@ -4934,20 +5037,65 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
       codexCommand,
-      claudeCommand
+      claudeCommand,
+      codexDefaultArgs,
+      claudeDefaultArgs
     };
   }
 
-  private getConfiguredAgentCliSpec(provider: AgentProviderKind): AgentCliSpec {
+  private getAgentLaunchDefaults(provider: AgentProviderKind): AgentProviderLaunchDefaults {
     const configuration = this.getAgentCliConfig();
+    return provider === 'claude'
+      ? {
+          command: configuration.claudeCommand,
+          defaultArgs: configuration.claudeDefaultArgs
+        }
+      : {
+          command: configuration.codexCommand,
+          defaultArgs: configuration.codexDefaultArgs
+        };
+  }
+
+  private getAgentLaunchDefaultsByProvider(): AgentLaunchDefaultsByProvider {
+    return {
+      codex: this.getAgentLaunchDefaults('codex'),
+      claude: this.getAgentLaunchDefaults('claude')
+    };
+  }
+
+  private getRequestedAgentCliSpec(provider: AgentProviderKind, requestedCommand: string): AgentCliSpec {
     const label = provider === 'claude' ? 'Claude Code' : 'Codex';
-    const requestedCommand = provider === 'claude' ? configuration.claudeCommand : configuration.codexCommand;
     return {
       provider,
       label,
       requestedCommand,
       command: requestedCommand,
       resolutionSource: 'path-env'
+    };
+  }
+
+  private resolveAgentFreshLaunch(
+    provider: AgentProviderKind,
+    metadata: AgentNodeMetadata
+  ): {
+    commandLine: string;
+    requestedCommand: string;
+    launchArgs: string[];
+    launchPreset: AgentLaunchPresetKind;
+  } {
+    const defaults = this.getAgentLaunchDefaults(provider);
+    const commandLine = buildFreshAgentCommandLine(
+      provider,
+      metadata.launchPreset,
+      metadata.customLaunchCommand,
+      defaults
+    );
+    const parsed = parseFullAgentCommandLine(commandLine);
+    return {
+      commandLine,
+      requestedCommand: parsed.command,
+      launchArgs: parsed.args,
+      launchPreset: metadata.launchPreset
     };
   }
 
@@ -5000,8 +5148,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
-  private async resolveAgentCli(provider: AgentProviderKind): Promise<AgentCliSpec> {
-    const configuredSpec = this.getConfiguredAgentCliSpec(provider);
+  private async resolveAgentCli(provider: AgentProviderKind, requestedCommand?: string): Promise<AgentCliSpec> {
+    const configuredSpec = this.getRequestedAgentCliSpec(
+      provider,
+      requestedCommand?.trim() || this.getAgentLaunchDefaults(provider).command
+    );
     const workspaceCwd = this.getTerminalWorkingDirectory();
 
     try {
@@ -5103,6 +5254,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private buildAgentLaunchSpec(
     spec: AgentCliSpec,
+    launchArgs: string[],
     cwd: string,
     cols: number,
     rows: number,
@@ -5111,7 +5263,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     fileActivitySession?: AgentFileActivitySession
   ): ExecutionSessionLaunchSpec {
     const env = this.buildExecutionEnvironment();
-    const args: string[] = [];
+    const args: string[] = launchMode === 'start' ? [...launchArgs] : [];
 
     if (resumeContext.strategy === 'fake-provider') {
       if (resumeContext.sessionId) {
@@ -5127,9 +5279,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     } else if (spec.provider === 'claude') {
+      const hasExplicitClaudeSessionFlag =
+        launchArgs.includes('--session-id') || launchArgs.includes('--resume') || launchArgs.includes('--continue');
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
-      } else if (resumeContext.sessionId) {
+      } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
       }
     } else if (launchMode === 'resume') {
@@ -6165,7 +6319,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private applyCreateNode(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: { bypassTrust?: boolean; agentProvider?: AgentProviderKind }
+    options?: CreateAgentNodeOptions & { bypassTrust?: boolean }
   ): void {
     if (
       isExecutionNodeKind(kind) &&
@@ -6179,6 +6333,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state,
       kind,
       options?.agentProvider ?? this.getAgentCliConfig().defaultProvider,
+      options?.agentLaunchPreset ?? 'default',
+      options?.agentCustomLaunchCommand,
       preferredPosition
     );
     const createdNode = nextState.nodes[nextState.nodes.length - 1];
@@ -6191,6 +6347,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'starting',
           pendingLaunch: 'start',
           liveSession: false,
+          launchPreset: options?.agentLaunchPreset ?? 'default',
+          customLaunchCommand:
+            (options?.agentLaunchPreset ?? 'default') === 'custom'
+              ? options?.agentCustomLaunchCommand?.trim() || undefined
+              : undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -6413,10 +6574,12 @@ function createNextState(
   previousState: CanvasPrototypeState,
   kind: CanvasNodeKind,
   agentProvider: AgentProviderKind = 'codex',
+  agentLaunchPreset: AgentLaunchPresetKind = 'default',
+  agentCustomLaunchCommand?: string,
   preferredPosition?: CanvasNodePosition
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
-  const nextNode = createNode(kind, nextIndex, agentProvider);
+  const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
   const resolvedPosition = resolveNewNodePosition(
     previousState.nodes,
     kind,
@@ -6469,7 +6632,9 @@ function defaultStatusForKind(kind: CanvasNodeKind): string {
 function createNode(
   kind: CanvasNodeKind,
   sequence: number,
-  agentProvider: AgentProviderKind = 'codex'
+  agentProvider: AgentProviderKind = 'codex',
+  agentLaunchPreset: AgentLaunchPresetKind = 'default',
+  agentCustomLaunchCommand?: string
 ): CanvasNodeSummary {
   const titlePrefix = {
     agent: 'Agent',
@@ -6488,7 +6653,7 @@ function createNode(
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
     size: estimatedCanvasNodeFootprint(kind),
-    metadata: createNodeMetadata(kind, id, agentProvider)
+    metadata: createNodeMetadata(kind, id, agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
   };
 }
 
@@ -8060,11 +8225,13 @@ function readNextNodeSequence(nodes: CanvasNodeSummary[]): number {
 function createNodeMetadata(
   kind: CanvasNodeKind,
   nodeId: string,
-  agentProvider: AgentProviderKind = 'codex'
+  agentProvider: AgentProviderKind = 'codex',
+  agentLaunchPreset: AgentLaunchPresetKind = 'default',
+  agentCustomLaunchCommand?: string
 ): CanvasNodeMetadata | undefined {
   if (kind === 'agent') {
     return {
-      agent: createAgentMetadata(agentProvider)
+      agent: createAgentMetadata(agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
     };
   }
 
@@ -8087,11 +8254,17 @@ function createNodeMetadata(
   return undefined;
 }
 
-function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
+function createAgentMetadata(
+  provider: AgentProviderKind = 'codex',
+  launchPreset: AgentLaunchPresetKind = 'default',
+  customLaunchCommand?: string
+): AgentNodeMetadata {
   return {
     backend: 'node-pty',
     lifecycle: 'idle',
     provider,
+    launchPreset,
+    customLaunchCommand: launchPreset === 'custom' ? customLaunchCommand?.trim() || undefined : undefined,
     runtimeKind: 'pty-cli',
     resumeSupported: provider === 'claude',
     resumeStrategy: provider === 'claude' ? 'claude-session-id' : 'none',
@@ -8314,6 +8487,14 @@ function normalizeMetadata(
         ? agent.provider
         : defaultAgentProvider;
     const fallback = createAgentMetadata(provider);
+    const launchPreset =
+      agent.launchPreset === 'resume' ||
+      agent.launchPreset === 'yolo' ||
+      agent.launchPreset === 'sandbox' ||
+      agent.launchPreset === 'custom' ||
+      agent.launchPreset === 'default'
+        ? agent.launchPreset
+        : fallback.launchPreset;
     const liveSession =
       typeof agent.liveSession === 'boolean'
         ? agent.liveSession
@@ -8357,6 +8538,11 @@ function normalizeMetadata(
           agent.lifecycle
         ),
         provider,
+        launchPreset,
+        customLaunchCommand:
+          launchPreset === 'custom' && typeof agent.customLaunchCommand === 'string'
+            ? agent.customLaunchCommand.trim() || undefined
+            : undefined,
         runtimeKind: 'pty-cli',
         resumeSupported,
         resumeStrategy,

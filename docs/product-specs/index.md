@@ -10,6 +10,7 @@
 
 | 文档 | 主题 | 状态 | 依据 | 最后更新 |
 | --- | --- | --- | --- | --- |
+| `docs/product-specs/agent-launch-modes-and-restart.md` | Agent 创建前启动方式、默认启动参数与停止后重启/新会话分流 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/design-docs/execution-lifecycle-and-recovery.md` | 2026-04-24 |
 | `docs/product-specs/canvas-graph-links-and-file-activity.md` | 画布通用关系连线、Agent 文件活动投影、文件节点与文件列表节点 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-graph-links.md`、`docs/design-docs/canvas-file-activity-view.md` | 2026-04-21 |
 | `docs/product-specs/canvas-navigation-and-workbench-polish.md` | 画布导航、默认 `panel` 主路径、标题栏原生收口与空白区右键创建 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md` | 2026-04-13 |
 | `docs/product-specs/canvas-core-collaboration-mvp.md` | 画布核心协作 MVP 主路径与验收口径 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/vscode-canvas-runtime-architecture.md`、`docs/design-docs/canvas-surface-placement.md` | 2026-04-08 |
