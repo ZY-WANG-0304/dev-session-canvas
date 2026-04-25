@@ -31,6 +31,7 @@ export class ExecutionTerminalLineContextTracker {
   private readonly userHome?: string;
   private terminal: HeadlessTerminal;
   private scrollback: number;
+  private disposed = false;
   private currentCwd: string;
   private previousCwd: string | undefined;
   private readonly directoryStack: string[] = [];
@@ -40,6 +41,7 @@ export class ExecutionTerminalLineContextTracker {
   private pendingInputLine = '';
   private pendingOsc7Chunk = '';
   private operationChain: Promise<void> = Promise.resolve();
+  private readonly disposedSignal = createDeferred<void>();
 
   public constructor(cols: number, rows: number, options: ExecutionTerminalLineContextTrackerOptions) {
     this.pathStyle = options.pathStyle;
@@ -53,7 +55,7 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   public write(chunk: string): void {
-    if (!chunk) {
+    if (!chunk || this.disposed) {
       return;
     }
 
@@ -61,7 +63,7 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   public recordInput(data: string): void {
-    if (!data) {
+    if (!data || this.disposed) {
       return;
     }
 
@@ -71,7 +73,15 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   public resize(cols: number, rows: number): void {
+    if (this.disposed) {
+      return;
+    }
+
     this.enqueueOperation(async () => {
+      if (this.disposed) {
+        return;
+      }
+
       if (this.terminal.cols === cols && this.terminal.rows === rows) {
         return;
       }
@@ -81,34 +91,69 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   public async setScrollback(scrollback: number): Promise<void> {
+    if (this.disposed) {
+      await this.awaitPendingOperations();
+      return;
+    }
+
     const normalizedScrollback = normalizeTerminalScrollback(scrollback, DEFAULT_TERMINAL_SCROLLBACK);
     if (normalizedScrollback === this.scrollback) {
-      await this.operationChain;
+      await this.awaitPendingOperations();
       return;
     }
 
     this.enqueueOperation(async () => {
+      if (this.disposed) {
+        return;
+      }
+
       await this.rebuild(this.terminal.cols, this.terminal.rows, normalizedScrollback);
     });
-    await this.operationChain;
+    await this.awaitPendingOperations();
   }
 
   public async getCwdForBufferLine(bufferStartLine: number): Promise<string | undefined> {
-    await this.operationChain;
+    await this.awaitPendingOperations();
     return this.lineCwds[bufferStartLine] ?? this.currentCwd;
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this.disposedSignal.resolve();
     this.terminal.dispose();
   }
 
   private enqueueOperation(operation: () => Promise<void> | void): void {
-    this.operationChain = this.operationChain.then(() => operation()).catch(() => {});
+    this.operationChain = this.operationChain
+      .then(async () => {
+        if (this.disposed) {
+          return;
+        }
+
+        await operation();
+      })
+      .catch(() => {});
+  }
+
+  private async awaitPendingOperations(): Promise<void> {
+    await Promise.race([this.operationChain, this.disposedSignal.promise]);
   }
 
   private async writeInternal(chunk: string): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+
     const segments = this.extractReplaySegments(chunk);
     for (const segment of segments) {
+      if (this.disposed) {
+        return;
+      }
+
       if (!segment.data) {
         continue;
       }
@@ -121,6 +166,10 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   private recordInputInternal(data: string): void {
+    if (this.disposed) {
+      return;
+    }
+
     const normalized = stripTerminalInputControlSequences(data);
     for (const char of normalized) {
       if (char === '\r' || char === '\n') {
@@ -234,14 +283,26 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   private async writeSegment(segment: ReplaySegment): Promise<void> {
-    const previousLength = this.terminal.buffer.active.length;
-    const previousBaseY = this.terminal.buffer.active.baseY;
-    await new Promise<void>((resolve) => {
-      this.terminal.write(segment.data, () => resolve());
-    });
+    if (this.disposed) {
+      return;
+    }
 
-    const nextLength = this.terminal.buffer.active.length;
-    const nextBaseY = this.terminal.buffer.active.baseY;
+    const terminal = this.terminal;
+    const previousLength = terminal.buffer.active.length;
+    const previousBaseY = terminal.buffer.active.baseY;
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        terminal.write(segment.data, () => resolve());
+      }),
+      this.disposedSignal.promise
+    ]);
+
+    if (this.disposed || terminal !== this.terminal) {
+      return;
+    }
+
+    const nextLength = terminal.buffer.active.length;
+    const nextBaseY = terminal.buffer.active.baseY;
     const lengthGrowth = Math.max(0, nextLength - previousLength);
     const trimmedLines = Math.max(0, nextBaseY - previousBaseY - lengthGrowth);
     if (trimmedLines > 0) {
@@ -266,11 +327,26 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   private async rebuild(cols: number, rows: number, scrollback: number): Promise<void> {
-    this.terminal.dispose();
-    this.terminal = this.createTerminal(cols, rows, scrollback);
+    if (this.disposed) {
+      return;
+    }
+
+    const previousTerminal = this.terminal;
+    previousTerminal.dispose();
+    const nextTerminal = this.createTerminal(cols, rows, scrollback);
+    if (this.disposed) {
+      nextTerminal.dispose();
+      return;
+    }
+
+    this.terminal = nextTerminal;
     this.scrollback = scrollback;
     this.lineCwds.length = 0;
     for (const segment of this.replaySegments) {
+      if (this.disposed || this.terminal !== nextTerminal) {
+        return;
+      }
+
       await this.writeSegment(segment);
     }
   }
@@ -450,4 +526,16 @@ function parseOsc7WorkingDirectory(value: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return {
+    promise,
+    resolve
+  };
 }
