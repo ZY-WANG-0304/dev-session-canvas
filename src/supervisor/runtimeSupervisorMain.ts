@@ -51,6 +51,7 @@ import {
   locateClaudeSessionId,
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
+import { extractClaudeCommandSessionFlag } from '../common/agentLaunchPresets';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
@@ -260,6 +261,13 @@ class RuntimeSupervisorServer {
           : 'starting'
         : 'launching';
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
+    const explicitClaudeSessionFlag =
+      params.kind === 'agent' && params.provider === 'claude' && params.launchMode === 'start'
+        ? extractClaudeCommandSessionFlag(launchSpec.args ?? [])
+        : null;
+    const initialResumeSessionId = explicitClaudeSessionFlag
+      ? explicitClaudeSessionFlag.sessionId
+      : params.resumeSessionId;
     const startedAtMs = Date.now();
     const process = createExecutionSessionProcess(launchSpec);
     const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
@@ -285,7 +293,7 @@ class RuntimeSupervisorServer {
       launchMode: params.launchMode,
       provider: params.provider,
       resumeStrategy: params.resumeStrategy,
-      resumeSessionId: params.resumeSessionId,
+      resumeSessionId: initialResumeSessionId,
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,

@@ -32,6 +32,7 @@
 - [x] (2026-04-25) 按最新反馈把 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 的 VSCode 配置 scope 改成 `window`，使其可在窗口 / 工作区层直接配置与覆盖。
 - [x] (2026-04-25) 按最新反馈把 Agent 节点副标题改成显示当前节点最近一次实际启动指令，并在副标题文本被截断时通过 hover 浮窗显示完整指令；未实际启动过的节点则回退显示下一次 fresh-start 指令。
 - [x] (2026-04-25) 根据 review finding 收口宿主兜底：创建与 fresh-start 都会重新校验自定义命令首个 token 是否仍属于当前 provider，Claude 显式 session flag 识别补齐 `--flag=value`，并同步修正 smoke 断言。
+- [x] (2026-04-25) 根据最新 review finding 继续收口：provider 校验改成“仅接受当前设置值本身或标准别名”，Claude 显式 session id 会驱动 host / supervisor 的文件确认链路，右键菜单 Resume 文案也与规格重新对齐。
 
 ## 意外与发现
 
@@ -107,11 +108,16 @@
   理由：Webview 校验只能约束正常 UI 流程，不能防止伪造消息或旧 metadata 绕过；而 `--session-id=...` / `--resume=...` 是 Claude 常见写法，若宿主只识别分隔 token，会把自定义命令改坏。
   日期/作者：2026-04-25 / Codex
 
+- 决策：provider 命令校验不再接受“同 basename 的任意绝对路径”；如果设置值是绝对路径脚本，则只允许该精确 token 本身，或 provider 标准别名。与此同时，只要 Claude 启动命令里显式带了 session id，host 与 supervisor 后续都统一以这条真实 session id 做文件确认。
+  理由：规格写的是“当前设置值本身，或标准别名”，不是“同名二进制都行”；而显式 session id 若不进入后续确认链路，就会让 `--session-id=<id>` / `--resume=<id>` 这类启动方式在 stop 后错误丢失“恢复原会话”入口。
+  日期/作者：2026-04-25 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。另一个同步收口是：`agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 现在使用 `window` scope，允许在窗口 / 工作区层直接配置与覆盖。最新一轮又把 Agent 节点副标题改成显示当前节点最近一次实际启动指令，并在文本被截断时通过 hover 浮窗暴露完整指令；尚未真正启动过的节点则回退显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
 - 已更新：针对 review finding，又补上两层宿主兜底。其一，`agentCustomLaunchCommand` 现在在创建消息落盘前和 fresh-start 真正执行前都会重新按 provider 规则校验，伪造 `agentProvider: "claude"` + `node -e ...` 之类的 payload 会直接被拒绝，不会再走 resolver / spawn。其二，Claude 自定义启动里若已显式写入 `--session-id` / `--resume` / `--continue`，无论采用空格分隔还是 `--flag=value`，宿主都不会再重复追加第二份 session 参数；同时 smoke 里的 `verifyClaudeStopRestoresPreviousSignal` 也已改回与当前 stop 语义一致的断言。
+- 已更新：本轮继续补齐 review 收尾。provider 校验已经从“同 basename 也算合法”改成“只认当前设置值本身或标准别名”，避免 `/tmp/evil/claude` 之类的同名二进制绕过。Claude 的显式 session id 也不再只停留在 launch args 里：host 在构建 `resumeContext` 时会直接提取真实 session id，runtime supervisor 在 createSession 时也会用同一逻辑兜底，因此 `claude --session-id=<id>` 这类 fresh-start 能继续通过 provider transcript 文件确认，stop 后保留 `重启 | ▼`。同时，trusted smoke 里的 Claude stop 用例改成使用 PATH 中的 `claude` 标准别名，避免再和 “测试环境默认 command 指向 missing-agent-provider” 的校验规则冲突。
 
 ## 上下文与定向
 
@@ -174,6 +180,7 @@
 - 2026-04-25：本轮把 Quick Input 第二步的 smoke 回归更新为覆盖 `默认` 快捷替换项，确认仅点击该项不会创建节点。
 - 2026-04-25：本轮新增 Playwright 回归，覆盖 Agent 副标题显示最近一次实际启动指令，以及超长指令被截断时通过 hover/title 暴露完整文本。
 - 2026-04-25：本轮新增 `scripts/test-agent-launch-presets.mjs`，覆盖 provider 命令校验与 Claude `--flag=value` 显式 session flag 识别。
+- 2026-04-25：本轮把 `scripts/test-agent-launch-presets.mjs` 继续扩展为覆盖“拒绝同 basename 的其他绝对路径”和 Claude 显式 session id 解析；smoke 侧新增基于预写入 transcript 文件的 Claude 显式 session id 保留恢复上下文回归。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；提权后 trusted 场景长时间停留在 VS Code 宿主空转状态，因此已中止该轮补跑，待后续单独排查。
 
 ## 接口与依赖

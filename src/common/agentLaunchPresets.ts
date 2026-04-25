@@ -16,6 +16,11 @@ export interface AgentCommandValidationResult {
   parsed?: ParsedAgentCommandLine;
 }
 
+export interface ClaudeCommandSessionFlag {
+  flag: '--session-id' | '--resume' | '--continue';
+  sessionId?: string;
+}
+
 const WINDOWS_EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|com)$/i;
 
 export function buildAgentPresetCommandLine(
@@ -135,6 +140,34 @@ export function hasCommandLineFlag(argv: readonly string[], flag: string): boole
 
 export function hasAnyCommandLineFlag(argv: readonly string[], flags: readonly string[]): boolean {
   return flags.some((flag) => hasCommandLineFlag(argv, flag));
+}
+
+export function extractClaudeCommandSessionFlag(
+  argv: readonly string[]
+): ClaudeCommandSessionFlag | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]?.trim();
+    if (!token) {
+      continue;
+    }
+
+    const matchedFlag = matchClaudeCommandSessionFlag(token);
+    if (!matchedFlag) {
+      continue;
+    }
+
+    if (matchedFlag.sessionId !== undefined) {
+      return matchedFlag;
+    }
+
+    const nextToken = argv[index + 1]?.trim();
+    return {
+      flag: matchedFlag.flag,
+      sessionId: nextToken && !nextToken.startsWith('-') ? nextToken : undefined
+    };
+  }
+
+  return null;
 }
 
 export function createDefaultAgentLaunchDefaults(): AgentLaunchDefaultsByProvider {
@@ -275,14 +308,35 @@ function isProviderCommandMatch(
   provider: AgentProviderKind,
   configuredCommand: string
 ): boolean {
-  const candidateIdentity = normalizeCommandIdentity(candidateCommand);
-  if (!candidateIdentity) {
+  const normalizedCandidate = normalizeConfiguredCommandValue(candidateCommand);
+  if (!normalizedCandidate) {
     return false;
   }
 
-  const configuredIdentity = normalizeCommandIdentity(configuredCommand);
-  const providerIdentity = normalizeCommandIdentity(provider);
-  return candidateIdentity === configuredIdentity || candidateIdentity === providerIdentity;
+  if (normalizedCandidate === normalizeStandardProviderAlias(provider)) {
+    return true;
+  }
+
+  const normalizedConfigured = normalizeConfiguredCommandValue(configuredCommand);
+  return Boolean(normalizedConfigured && normalizedCandidate === normalizedConfigured);
+}
+
+function matchClaudeCommandSessionFlag(token: string): ClaudeCommandSessionFlag | null {
+  for (const flag of ['--session-id', '--resume', '--continue'] as const) {
+    if (token === flag) {
+      return { flag };
+    }
+
+    if (token.startsWith(`${flag}=`)) {
+      const sessionId = token.slice(flag.length + 1).trim();
+      return {
+        flag,
+        sessionId: sessionId || undefined
+      };
+    }
+  }
+
+  return null;
 }
 
 function normalizeComparableCommandLine(commandLine: string): string {
@@ -299,4 +353,17 @@ function normalizeCommandIdentity(command: string): string {
   const slashIndex = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
   const basename = slashIndex >= 0 ? trimmed.slice(slashIndex + 1) : trimmed;
   return basename.replace(WINDOWS_EXECUTABLE_SUFFIX, '').toLowerCase();
+}
+
+function normalizeConfiguredCommandValue(command: string): string {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return process.platform === 'win32' ? trimmed.replace(WINDOWS_EXECUTABLE_SUFFIX, '').toLowerCase() : trimmed;
+}
+
+function normalizeStandardProviderAlias(provider: AgentProviderKind): string {
+  return normalizeCommandIdentity(provider);
 }

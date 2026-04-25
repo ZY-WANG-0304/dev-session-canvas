@@ -5,8 +5,9 @@ const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
 
-const FAKE_CLAUDE_PROVIDER_PATH = path.join(__dirname, 'fixtures', 'fake-claude-provider');
+const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
+const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -339,6 +340,7 @@ async function runTrustedSmoke() {
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
   await verifyClaudeStopRestoresPreviousSignal();
+  await verifyClaudeExplicitSessionIdPreservesResumeContext();
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
@@ -4841,7 +4843,7 @@ async function verifyClaudeStopRestoresPreviousSignal() {
       kind: 'agent',
       agentProvider: 'claude',
       agentLaunchPreset: 'custom',
-      agentCustomLaunchCommand: FAKE_CLAUDE_PROVIDER_PATH
+      agentCustomLaunchCommand: FAKE_CLAUDE_PROVIDER_COMMAND
     }
   });
 
@@ -4850,7 +4852,7 @@ async function verifyClaudeStopRestoresPreviousSignal() {
       (node) =>
         node.kind === 'agent' &&
         node.metadata?.agent?.provider === 'claude' &&
-        node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_PATH
+        node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_COMMAND
     );
     return Boolean(currentNode);
   });
@@ -4858,7 +4860,7 @@ async function verifyClaudeStopRestoresPreviousSignal() {
     (node) =>
       node.kind === 'agent' &&
       node.metadata?.agent?.provider === 'claude' &&
-      node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_PATH
+      node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_COMMAND
   );
   assert.ok(claudeAgentNode, 'Expected a Claude agent node configured with the fake provider.');
 
@@ -4926,6 +4928,84 @@ async function verifyClaudeStopRestoresPreviousSignal() {
     (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgentNode.id),
     20000
   );
+}
+
+async function verifyClaudeExplicitSessionIdPreservesResumeContext() {
+  await clearHostMessages();
+  const transcriptFilePath = await seedClaudeSessionTranscriptFile(EXPLICIT_CLAUDE_SESSION_ID);
+
+  try {
+    await dispatchWebviewMessage({
+      type: 'webview/createDemoNode',
+      payload: {
+        kind: 'agent',
+        agentProvider: 'claude',
+        agentLaunchPreset: 'custom',
+        agentCustomLaunchCommand: `${FAKE_CLAUDE_PROVIDER_COMMAND} --session-id=${EXPLICIT_CLAUDE_SESSION_ID}`
+      }
+    });
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find(
+        (node) =>
+          node.kind === 'agent' &&
+          node.metadata?.agent?.provider === 'claude' &&
+          node.metadata?.agent?.customLaunchCommand ===
+            `${FAKE_CLAUDE_PROVIDER_COMMAND} --session-id=${EXPLICIT_CLAUDE_SESSION_ID}`
+      );
+      return Boolean(currentNode?.metadata?.agent?.liveSession);
+    });
+    const claudeAgentNode = snapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude' &&
+        node.metadata?.agent?.customLaunchCommand ===
+          `${FAKE_CLAUDE_PROVIDER_COMMAND} --session-id=${EXPLICIT_CLAUDE_SESSION_ID}`
+    );
+    assert.ok(claudeAgentNode, 'Expected a Claude agent node configured with an explicit session id.');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+      return Boolean(
+        currentAgent?.metadata?.agent?.resumeStrategy === 'claude-session-id' &&
+          currentAgent.metadata.agent.resumeSessionId === EXPLICIT_CLAUDE_SESSION_ID
+      );
+    }, 20000);
+    let explicitSessionNode = findNodeById(snapshot, claudeAgentNode.id);
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeStrategy, 'claude-session-id');
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeSessionId, EXPLICIT_CLAUDE_SESSION_ID);
+
+    await dispatchWebviewMessage({
+      type: 'webview/stopExecutionSession',
+      payload: {
+        nodeId: claudeAgentNode.id,
+        kind: 'agent'
+      }
+    });
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+      return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
+    }, 20000);
+    explicitSessionNode = findNodeById(snapshot, claudeAgentNode.id);
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeStrategy, 'claude-session-id');
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeSessionId, EXPLICIT_CLAUDE_SESSION_ID);
+
+    await ensureAgentStopped(claudeAgentNode.id);
+    await dispatchWebviewMessage({
+      type: 'webview/deleteNode',
+      payload: {
+        nodeId: claudeAgentNode.id
+      }
+    });
+    await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgentNode.id),
+      20000
+    );
+  } finally {
+    await fs.rm(transcriptFilePath, { force: true }).catch(() => undefined);
+    await fs.rmdir(path.dirname(transcriptFilePath)).catch(() => undefined);
+  }
 }
 
 async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
@@ -6459,6 +6539,17 @@ async function reloadPersistedState() {
 
 async function setPersistedState(rawState) {
   return vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, rawState);
+}
+
+async function seedClaudeSessionTranscriptFile(sessionId) {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const projectDirectoryName = workspaceCwd.replace(/[^a-zA-Z0-9]+/g, '-');
+  const transcriptDirectory = path.join(os.homedir(), '.claude', 'projects', projectDirectoryName);
+  const transcriptFilePath = path.join(transcriptDirectory, `${sessionId}.jsonl`);
+
+  await fs.mkdir(transcriptDirectory, { recursive: true });
+  await fs.writeFile(transcriptFilePath, '{}\n', 'utf8');
+  return transcriptFilePath;
 }
 
 async function simulateRuntimeReload() {

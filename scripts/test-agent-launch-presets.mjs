@@ -22,6 +22,7 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    extractClaudeCommandSessionFlag,
     hasAnyCommandLineFlag,
     validateAgentCommandLine
   } = require(outfile);
@@ -49,6 +50,17 @@ try {
   assert.equal(configuredCommandValidation.parsed.command, '/tmp/providers/claude-custom');
   assert.deepEqual(configuredCommandValidation.parsed.args, ['--session-id=session-456']);
 
+  const basenameOnlyPathValidation = validateAgentCommandLine(
+    '/tmp/evil/claude --resume=session-456',
+    'claude',
+    {
+      command: '/usr/local/bin/claude',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(basenameOnlyPathValidation.valid, false);
+  assert.equal(basenameOnlyPathValidation.error, '命令必须以当前 Claude Code 命令或 claude 开头。');
+
   const invalidProviderValidation = validateAgentCommandLine(
     'node -e "process.stdout.write(\'provider-bypass\')"',
     'claude',
@@ -63,6 +75,20 @@ try {
   assert.equal(hasAnyCommandLineFlag(['--continue=session-789'], explicitClaudeSessionFlags), true);
   assert.equal(hasAnyCommandLineFlag(['--session-identifier=session-789'], explicitClaudeSessionFlags), false);
   assert.equal(hasAnyCommandLineFlag(['--resumable'], explicitClaudeSessionFlags), false);
+
+  assert.deepEqual(extractClaudeCommandSessionFlag(['--resume=session-123']), {
+    flag: '--resume',
+    sessionId: 'session-123'
+  });
+  assert.deepEqual(extractClaudeCommandSessionFlag(['--continue', 'session-456']), {
+    flag: '--continue',
+    sessionId: 'session-456'
+  });
+  assert.deepEqual(extractClaudeCommandSessionFlag(['--resume']), {
+    flag: '--resume',
+    sessionId: undefined
+  });
+  assert.equal(extractClaudeCommandSessionFlag(['--yolo']), null);
 
   console.log('agentLaunchPresets tests passed');
 } finally {

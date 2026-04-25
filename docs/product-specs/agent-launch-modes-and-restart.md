@@ -54,6 +54,7 @@
 - 自定义启动输入约束：
   - 输入不能为空。
   - 输入的首个命令 token 必须属于当前 provider 的可接受命令（当前设置值本身，或该 provider 的标准命令别名）。
+  - “当前设置值本身”按完整 token 判断，不接受仅 basename 相同、但实际路径不同的其他二进制。
   - 宿主在接收创建消息与真正执行 fresh-start 前，都必须按同一规则重复校验；不能只依赖 Webview 侧校验。
   - 对 `Claude Code` 而言，只要自定义启动里已经显式写了 `--session-id` / `--resume` / `--continue`，无论是空格分隔还是 `--flag=value` 形式，宿主都不能再追加第二份会话参数。
   - 验证失败时，输入框进入错误态，确认动作禁用。
@@ -91,6 +92,7 @@
 - 当前节点是否存在可信的原会话恢复上下文
 - `Codex` 是否已经通过会话文件扫描或 stop-time `codex resume <session-id>` 提示拿到可信 session id；若运行中还没拿到，会在节点再次回到 `waiting-input` 时补扫一轮
 - `Claude Code` 是否已经通过候选 `session-id` 对应的 provider 会话文件落盘，或在结束输出里出现 `claude --resume <session-id>`；两者任一成立，都可以确认当前 fresh-start 会话具备恢复入口
+- 若 Claude 启动命令里已经显式给出 session 相关 flag 且带有 session id，则后续文件确认与持久化必须以这条显式 session id 为准，而不是继续使用宿主生成的候选值
 - 当前主按钮是否可执行 `Resume`
 - 下拉菜单是否展开
 - 用户本次选择的是 `Resume` 还是 `新会话`
