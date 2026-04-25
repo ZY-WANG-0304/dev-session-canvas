@@ -1918,8 +1918,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     };
   }, [restartMenuOpen]);
 
-  const showRestartSplitButton = !agentMetadata.liveSession && (resumeRequested || Boolean(agentMetadata.lastExitMessage));
+  const showRestartSplitButton = !agentMetadata.liveSession && canResumeOriginalSession;
   const actionDisabled = executionBlocked || reattaching;
+
+  useEffect(() => {
+    if (!showRestartSplitButton && restartMenuOpen) {
+      setRestartMenuOpen(false);
+    }
+  }, [restartMenuOpen, showRestartSplitButton]);
 
   return (
     <div
@@ -1967,49 +1973,45 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           ) : showRestartSplitButton ? (
             <div
               ref={restartMenuRef}
-              className="action-split-button nodrag nopan compact"
+              className="action-split-button nodrag nopan"
               data-node-interactive="true"
               data-agent-restart-menu-open={restartMenuOpen ? 'true' : 'false'}
             >
-              <button
-                type="button"
-                className="action-button primary compact interactive action-split-button-main nodrag nopan"
-                data-agent-restart-action="resume"
-                data-node-interactive="true"
+              <ActionButton
+                label="重启"
+                tone="primary"
                 disabled={actionDisabled || !canResumeOriginalSession}
+                className="compact action-split-button-main nodrag nopan"
+                interactive
                 onFocus={() => data.onSelectNode?.(id)}
-                onMouseDown={stopCanvasEvent}
-                onClick={(event) => {
-                  stopCanvasEvent(event);
+                onClick={() => {
                   startAgent(true);
                 }}
-                onKeyDown={stopCanvasEvent}
-                title={!canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话'}
-                aria-label={!canResumeOriginalSession ? '重启（无可恢复的会话）' : '重启并恢复原会话'}
-              >
-                重启
-              </button>
-              <button
-                type="button"
-                className="action-button primary compact interactive action-split-button-toggle nodrag nopan"
-                data-node-interactive="true"
-                data-agent-restart-toggle="true"
+                buttonProps={{
+                  title: !canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话',
+                  'aria-label': !canResumeOriginalSession ? '重启（无可恢复的会话）' : '重启并恢复原会话',
+                  'data-agent-restart-action': 'resume'
+                }}
+              />
+              <ActionButton
+                label={<span className="codicon codicon-chevron-down" aria-hidden="true" />}
+                tone="primary"
                 disabled={actionDisabled}
+                className="compact action-split-button-toggle nodrag nopan"
+                interactive
                 onFocus={() => data.onSelectNode?.(id)}
-                onMouseDown={stopCanvasEvent}
-                onClick={(event) => {
-                  stopCanvasEvent(event);
+                onClick={() => {
                   data.onSelectNode?.(id);
                   setRestartMenuOpen((current) => !current);
                 }}
-                onKeyDown={stopCanvasEvent}
-                aria-haspopup="menu"
-                aria-expanded={restartMenuOpen}
-                aria-label="打开重启选项"
-                title="打开重启选项"
-              >
-                <span className="codicon codicon-chevron-down" aria-hidden="true" />
-              </button>
+                buttonProps={{
+                  'data-agent-restart-toggle': 'true',
+                  'aria-haspopup': 'menu',
+                  'aria-expanded': restartMenuOpen,
+                  'aria-label': '打开重启选项',
+                  title: '打开重启选项'
+                }}
+              />
               {restartMenuOpen ? (
                 <div className="action-split-button-menu" role="menu">
                   <button
@@ -2025,7 +2027,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     }}
                     title={!canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话'}
                   >
-                    Resume 恢复原会话
+                    原会话
                   </button>
                   <button
                     type="button"
@@ -3487,13 +3489,18 @@ function ExecutionHelpTrigger(props: {
 }
 
 function ActionButton(props: {
-  label: string;
+  label: React.ReactNode;
   onClick: () => void;
   tone?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
   className?: string;
   interactive?: boolean;
   onFocus?: () => void;
+  buttonProps?: Omit<
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
+    'type' | 'className' | 'children' | 'onClick' | 'onFocus' | 'disabled'
+  > &
+    Record<`data-${string}`, string | number | boolean | undefined>;
 }): JSX.Element {
   const toneClass =
     props.tone === 'primary'
@@ -3505,10 +3512,12 @@ function ActionButton(props: {
   return (
     <button
       type="button"
+      {...props.buttonProps}
       data-node-interactive={props.interactive ? 'true' : undefined}
       className={`action-button ${toneClass} ${props.className ?? ''}`.trim()}
       disabled={props.disabled}
       onFocus={props.onFocus}
+      onPointerDown={props.interactive ? stopCanvasEvent : undefined}
       onMouseDown={props.interactive ? stopCanvasEvent : undefined}
       onClick={(event) => {
         if (props.interactive) {
@@ -3516,6 +3525,7 @@ function ActionButton(props: {
         }
         props.onClick();
       }}
+      onPointerUp={props.interactive ? stopCanvasEvent : undefined}
       onKeyDown={props.interactive ? stopCanvasEvent : undefined}
     >
       {props.label}
@@ -5866,6 +5876,25 @@ function createExecutionTerminalController(
 ): ExecutionTerminalController {
   let pendingOutput = '';
   let disposed = false;
+  let writeGeneration = 0;
+  let writeChain: Promise<void> = Promise.resolve();
+
+  const queueTerminalWrite = (writer: (done: () => void) => void): void => {
+    const generation = writeGeneration;
+    writeChain = writeChain
+      .catch(() => undefined)
+      .then(
+        () =>
+          new Promise<void>((resolve) => {
+            if (disposed || generation !== writeGeneration) {
+              resolve();
+              return;
+            }
+
+            writer(() => resolve());
+          })
+      );
+  };
 
   const controller: ExecutionTerminalController = {
     applySnapshot(detail) {
@@ -5875,8 +5904,11 @@ function createExecutionTerminalController(
 
       pendingOutput = '';
       pendingExecutionTerminalDrains.delete(controller);
+      writeGeneration += 1;
       options?.onSnapshotApplied?.(detail);
-      restoreExecutionTerminalSnapshot(terminal, detail);
+      queueTerminalWrite((done) => {
+        restoreExecutionTerminalSnapshot(terminal, detail, done);
+      });
     },
     enqueueOutput(chunk) {
       if (disposed || !chunk) {
@@ -5892,7 +5924,9 @@ function createExecutionTerminalController(
       }
 
       controller.flushPendingOutput();
-      terminal.writeln(`\r\n[Dev Session Canvas] ${message}`);
+      queueTerminalWrite((done) => {
+        terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
+      });
     },
     refreshVisibleRows() {
       if (disposed) {
@@ -5913,11 +5947,15 @@ function createExecutionTerminalController(
       pendingOutput = '';
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
-      terminal.write(chunk);
+      queueTerminalWrite((done) => {
+        terminal.write(chunk, done);
+      });
     },
     dispose() {
       disposed = true;
       pendingOutput = '';
+      writeGeneration += 1;
+      writeChain = Promise.resolve();
       pendingExecutionTerminalDrains.delete(controller);
     }
   };
@@ -5927,7 +5965,8 @@ function createExecutionTerminalController(
 
 function restoreExecutionTerminalSnapshot(
   terminal: Terminal,
-  detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>
+  detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
+  onRestored?: () => void
 ): void {
   const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
   const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
@@ -5946,18 +5985,23 @@ function restoreExecutionTerminalSnapshot(
   };
 
   if (detail.serializedTerminalState) {
-    terminal.write(detail.serializedTerminalState.data, finishRestore);
+    terminal.write(detail.serializedTerminalState.data, () => {
+      finishRestore();
+      onRestored?.();
+    });
     return;
   }
 
   if (detail.output) {
     terminal.write(detail.output, () => {
       finishRestore();
+      onRestored?.();
     });
     return;
   }
 
   finishRestore();
+  onRestored?.();
 }
 
 function scheduleExecutionTerminalVisibilityRestore(): void {

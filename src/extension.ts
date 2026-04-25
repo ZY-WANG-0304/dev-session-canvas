@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 
-import { locateCodexSessionId } from './common/codexSessionIdLocator';
+import {
+  extractClaudeResumeSessionId,
+  extractCodexResumeSessionId,
+  locateClaudeSessionId,
+  locateCodexSessionId
+} from './common/codexSessionIdLocator';
 import { COMMAND_IDS, CONFIG_KEYS, EXTENSION_DISPLAY_NAME, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import {
   isAgentProviderKind,
@@ -635,6 +640,47 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
         });
       }
     ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.locateClaudeSessionId,
+      async (cwd?: unknown, sessionId?: unknown, homeDir?: unknown, timeoutMs?: unknown) => {
+        if (typeof cwd !== 'string' || cwd.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.locateClaudeSessionId 需要有效的 cwd。');
+        }
+        if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.locateClaudeSessionId 需要有效的 sessionId。');
+        }
+
+        const normalizedHomeDir = typeof homeDir === 'string' && homeDir.trim().length > 0 ? homeDir : undefined;
+        const env = normalizedHomeDir
+          ? {
+              ...process.env,
+              HOME: normalizedHomeDir,
+              USERPROFILE: normalizedHomeDir
+            }
+          : process.env;
+
+        return locateClaudeSessionId({
+          cwd,
+          sessionId,
+          timeoutMs: typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : undefined,
+          env
+        });
+      }
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.extractCodexResumeSessionId, (output?: unknown) => {
+      if (typeof output !== 'string') {
+        throw new Error('测试命令 devSessionCanvas.__test.extractCodexResumeSessionId 需要有效的输出字符串。');
+      }
+
+      return extractCodexResumeSessionId(output);
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.extractClaudeResumeSessionId, (output?: unknown) => {
+      if (typeof output !== 'string') {
+        throw new Error('测试命令 devSessionCanvas.__test.extractClaudeResumeSessionId 需要有效的输出字符串。');
+      }
+
+      return extractClaudeResumeSessionId(output);
+    }),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getAgentCliResolutionCacheKey,
       (provider?: unknown, requestedCommand?: unknown, workspaceCwd?: unknown) => {
