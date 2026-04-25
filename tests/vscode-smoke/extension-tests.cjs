@@ -428,7 +428,7 @@ async function verifyCreateNodeCommandQuickPick() {
   );
 
   await clearDiagnosticEvents();
-  await setQuickPickSelections(['create-agent-default']);
+  await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
@@ -1407,7 +1407,20 @@ async function verifyFileActivityViewsAndOpenFiles() {
     });
     assert.ok(
       snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
-      'Expected seeded file activity state to include the tracked file before toggling the feature switch.'
+      'Expected seeded persisted state to preserve the authoritative file reference before toggling the files feature.'
+    );
+    assert.deepStrictEqual(
+      snapshot.state.nodes
+        .filter((node) => !baselineNodeIds.includes(node.id))
+        .map((node) => node.kind)
+        .sort(),
+      ['agent', 'file-list'],
+      'Expected seeded persisted state in list mode to reconcile into only the injected agent plus one projected file-list node.'
+    );
+    assert.strictEqual(
+      snapshot.state.nodes.some((node) => node.id === agentOnlyFileNode.id),
+      false,
+      'Expected list mode reconciliation to replace the seeded single-file node with a projected file-list node.'
     );
 
     await setFileIncludeFilterGlobs(['**/*.md']);
@@ -1485,15 +1498,15 @@ async function verifyFileActivityViewsAndOpenFiles() {
     );
     assert.ok(
       baselineNodeIds.every((nodeId) => snapshot.state.nodes.some((node) => node.id === nodeId)),
-      'Expected restoring the baseline snapshot to keep all baseline nodes present.'
+      'Expected restoring the baseline persisted state to keep all baseline nodes present.'
     );
     assert.deepStrictEqual(
       snapshot.state.nodes
         .filter((node) => !baselineNodeIds.includes(node.id))
-        .map((node) => node.kind)
+        .map((node) => node.id)
         .sort(),
-      ['agent'],
-      'Expected any extra nodes after restoring the baseline snapshot to come only from live runtime reconciliation.'
+      [],
+      'Expected restoring the baseline persisted state to clear any reconciled file-activity projection nodes.'
     );
   } finally {
     await setFilesFeatureEnabled(originalFilesEnabled);
@@ -2195,7 +2208,11 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
       }
     ]
   });
-  assert.strictEqual(snapshot.state.nodes.length, 0);
+  assert.strictEqual(
+    snapshot.state.nodes.length,
+    0,
+    'Expected runtime reconciliation to drop unsupported legacy task nodes from a seeded persisted state.'
+  );
 
   snapshot = await setPersistedState({
     ...mixedBaselineState,
@@ -2220,17 +2237,28 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
   });
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    mixedBaselineState.nodes.map((node) => node.kind).sort()
+    mixedBaselineState.nodes.map((node) => node.kind).sort(),
+    'Expected runtime reconciliation to project only supported node kinds from a mixed persisted state.'
   );
-  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'), false);
+  assert.strictEqual(
+    snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'),
+    false,
+    'Expected runtime reconciliation to omit legacy task nodes even when the seeded persisted state also contains supported nodes.'
+  );
 
   if (beforeState !== mixedBaselineState) {
     snapshot = await setPersistedState(beforeState);
-    assert.strictEqual(snapshot.state.nodes.length, beforeState.nodes.length);
+    assert.strictEqual(
+      snapshot.state.nodes.length,
+      beforeState.nodes.length,
+      'Expected restoring the pre-test persisted state to recover its original projected node count.'
+    );
   }
 }
 
 async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
+  const expectedAgentSubtitle =
+    findNodeById(await getDebugSnapshot(), agentNodeId).metadata?.agent?.lastLaunchCommandLine ?? null;
   let probe = await waitForWebviewProbe((currentProbe) => {
     const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
     const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
@@ -2243,7 +2271,8 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
         agentNode &&
         agentNode.kind === 'agent' &&
         typeof agentNode.chromeSubtitle === 'string' &&
-        agentNode.chromeSubtitle.includes('Codex') &&
+        agentNode.chromeSubtitle.length > 0 &&
+        (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
         typeof agentNode.titleInputValue === 'string' &&
         agentNode.titleInputValue.length > 0 &&
         terminalNode &&
@@ -2266,6 +2295,12 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(probe.hasCanvasShell, true);
   assert.strictEqual(probe.hasReactFlow, true);
   assert.strictEqual(probe.nodeCount, 3);
+  if (expectedAgentSubtitle !== null) {
+    assert.strictEqual(
+      probe.nodes.find((node) => node.nodeId === agentNodeId)?.chromeSubtitle,
+      expectedAgentSubtitle
+    );
+  }
   assert.strictEqual(
     Object.prototype.hasOwnProperty.call(
       probe.nodes.find((node) => node.nodeId === agentNodeId) ?? {},
@@ -4467,7 +4502,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   });
   assert.ok(
     snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
-    'Expected invalid-launch regression setup to seed a custom Claude node.'
+    'Expected seeded persisted state to surface the injected custom Claude node before runtime start validation runs.'
   );
 
   await clearHostMessages();
@@ -4502,7 +4537,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
         message.type === 'host/error' &&
         message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
     ),
-    'Expected host-side start validation to reject persisted cross-provider custom launch commands.'
+    'Expected host-side runtime validation to reject the invalid custom launch command restored from seeded persisted state.'
   );
 
   const invalidLaunchDiagnostics = (await getDiagnosticEvents())
@@ -4521,7 +4556,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   snapshot = await setPersistedState(stateBeforeInvalidLaunch);
   assert.ok(
     !snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
-    'Expected invalid-launch regression node to be removed after restoring the baseline state.'
+    'Expected restoring the baseline persisted state to remove the seeded invalid-launch node from runtime projection.'
   );
 
   await clearHostMessages();
@@ -5498,13 +5533,39 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
 
     const restoredAgent = findNodeById(snapshot, agentNodeId);
     const restoredTerminal = findNodeById(snapshot, terminalNodeId);
-    assert.strictEqual(restoredAgent.metadata.agent.persistenceMode, 'live-runtime');
-    assert.ok(restoredAgent.metadata.agent.runtimeSessionId);
-    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
-    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
-    assert.strictEqual(restoredTerminal.metadata.terminal.liveSession, false);
-    assert.match(restoredTerminal.summary, /runtime session/);
-    assert.match(restoredTerminal.metadata.terminal.lastRuntimeError ?? '', /runtime session/);
+    assert.strictEqual(
+      restoredAgent.metadata.agent.persistenceMode,
+      'live-runtime',
+      'Expected runtime projection to retain the live-runtime persistence mode from the seeded persisted agent state.'
+    );
+    assert.ok(
+      restoredAgent.metadata.agent.runtimeSessionId,
+      'Expected runtime reconciliation to replace the missing live runtime with a resumed runtime session id.'
+    );
+    assert.strictEqual(
+      restoredAgent.metadata.agent.resumeSupported,
+      true,
+      'Expected runtime reconciliation to upgrade the seeded fallback agent into a resume-supported state.'
+    );
+    assert.ok(
+      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
+      'Expected runtime projection to append resumed-session output after reconciling the seeded fallback agent state.'
+    );
+    assert.strictEqual(
+      restoredTerminal.metadata.terminal.liveSession,
+      false,
+      'Expected runtime projection to keep the seeded fallback terminal in history-only mode.'
+    );
+    assert.match(
+      restoredTerminal.summary,
+      /runtime session/,
+      'Expected runtime projection to explain that the seeded terminal live runtime could not be reattached.'
+    );
+    assert.match(
+      restoredTerminal.metadata.terminal.lastRuntimeError ?? '',
+      /runtime session/,
+      'Expected runtime projection to preserve the terminal runtime-reattach failure reason derived from seeded state.'
+    );
 
     const reconnectDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
     assert.ok(
@@ -5522,7 +5583,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
     await setRuntimePersistenceEnabled(false);
     if (shouldRestoreBaseline) {
       await setPersistedState(baselineSnapshot.state);
-      await waitForSnapshot((currentState) => {
+      const restoredBaselineSnapshot = await waitForSnapshot((currentState) => {
         const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
         const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
         return Boolean(
@@ -5534,6 +5595,18 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               baselineTerminal.metadata?.terminal?.recentOutput
         );
       }, 20000);
+      const restoredBaselineAgent = findNodeById(restoredBaselineSnapshot, agentNodeId);
+      const restoredBaselineTerminal = findNodeById(restoredBaselineSnapshot, terminalNodeId);
+      assert.strictEqual(
+        restoredBaselineAgent.metadata.agent.resumeSessionId,
+        baselineAgent.metadata?.agent?.resumeSessionId,
+        'Expected restoring the baseline persisted state to recover the baseline agent resume metadata after fallback runtime projection.'
+      );
+      assert.strictEqual(
+        restoredBaselineTerminal.metadata.terminal.recentOutput,
+        baselineTerminal.metadata?.terminal?.recentOutput,
+        'Expected restoring the baseline persisted state to recover the baseline terminal history projection after fallback runtime projection.'
+      );
     }
     await fs.rm(fakeStorageDir, { recursive: true, force: true });
   }
@@ -5596,9 +5669,13 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     let restoredAgent = findNodeById(snapshot, agentNodeId);
     assert.ok(
       restoredAgent.status === 'resume-ready' || restoredAgent.status === 'history-restored',
-      `Expected restored agent to stay resumable after history restore, got ${restoredAgent.status}.`
+      `Expected runtime reconciliation to keep the seeded history-restored agent resumable, got ${restoredAgent.status}.`
     );
-    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+    assert.strictEqual(
+      restoredAgent.metadata.agent.resumeSupported,
+      true,
+      'Expected runtime projection to ignore stale persisted resumeSupported=false metadata when resume context is still valid.'
+    );
 
     snapshot = await waitForSnapshot((currentState) => {
       const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
@@ -5610,8 +5687,15 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     }, 20000);
 
     restoredAgent = findNodeById(snapshot, agentNodeId);
-    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
-    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+    assert.strictEqual(
+      restoredAgent.metadata.agent.resumeSupported,
+      true,
+      'Expected resumed runtime projection to keep resume support enabled after consuming the seeded resume context.'
+    );
+    assert.ok(
+      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
+      'Expected runtime projection to resume the seeded history-restored agent through the available fallback resume context.'
+    );
 
     await ensureAgentStopped(agentNodeId);
     shouldRestoreBaseline = true;
@@ -5619,7 +5703,7 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     await setRuntimePersistenceEnabled(false);
     if (shouldRestoreBaseline) {
       await setPersistedState(baselineSnapshot.state);
-      await waitForSnapshot((currentState) => {
+      const restoredBaselineSnapshot = await waitForSnapshot((currentState) => {
         const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
         const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
         return Boolean(
@@ -5631,6 +5715,18 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
               baselineTerminal.metadata?.terminal?.recentOutput
         );
       }, 20000);
+      const restoredBaselineAgent = findNodeById(restoredBaselineSnapshot, agentNodeId);
+      const restoredBaselineTerminal = findNodeById(restoredBaselineSnapshot, terminalNodeId);
+      assert.strictEqual(
+        restoredBaselineAgent.metadata.agent.resumeSessionId,
+        baselineAgent.metadata?.agent?.resumeSessionId,
+        'Expected restoring the baseline persisted state to recover baseline agent resume metadata after consuming the seeded resume projection.'
+      );
+      assert.strictEqual(
+        restoredBaselineTerminal.metadata.terminal.recentOutput,
+        baselineTerminal.metadata?.terminal?.recentOutput,
+        'Expected restoring the baseline persisted state to recover the baseline terminal history projection after consuming the seeded resume projection.'
+      );
     }
     await fs.rm(fakeStorageDir, { recursive: true, force: true });
   }
@@ -6008,20 +6104,46 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
       ]
     });
 
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).status,
+      'history-restored',
+      'Expected runtime projection to downgrade the seeded reattaching agent into history-restored mode in an untrusted workspace.'
+    );
     assert.strictEqual(
       findNodeById(snapshot, agentNodeId).summary,
-      '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。'
+      '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。',
+      'Expected runtime projection to explain why the seeded reattaching agent stays history-only in an untrusted workspace.'
     );
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).status,
+      'history-restored',
+      'Expected runtime projection to downgrade the seeded reattaching terminal into history-restored mode in an untrusted workspace.'
+    );
     assert.strictEqual(
       findNodeById(snapshot, terminalNodeId).summary,
-      '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
+      '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。',
+      'Expected runtime projection to explain why the seeded reattaching terminal stays history-only in an untrusted workspace.'
     );
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState, 'reattaching');
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState,
+      'reattaching',
+      'Expected untrusted runtime projection to preserve the seeded agent attachment marker while blocking live reconnect.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.liveSession,
+      false,
+      'Expected untrusted runtime projection not to create a live agent session from seeded persisted state.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState,
+      'reattaching',
+      'Expected untrusted runtime projection to preserve the seeded terminal attachment marker while blocking live reconnect.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession,
+      false,
+      'Expected untrusted runtime projection not to create a live terminal session from seeded persisted state.'
+    );
 
     await dispatchWebviewMessage({
       type: 'webview/resizeExecutionSession',
@@ -6043,15 +6165,44 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     });
 
     snapshot = await getDebugSnapshot();
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastCols, 67);
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastRows, 22);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols, 68);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastRows, 23);
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).status,
+      'history-restored',
+      'Expected blocked runtime projection to keep the seeded agent in history-restored mode after ignored resize requests.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).status,
+      'history-restored',
+      'Expected blocked runtime projection to keep the seeded terminal in history-restored mode after ignored resize requests.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.lastCols,
+      67,
+      'Expected ignored resize requests not to mutate the seeded agent dimensions while only history projection is available.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.lastRows,
+      22,
+      'Expected ignored resize requests not to mutate the seeded agent dimensions while only history projection is available.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols,
+      68,
+      'Expected ignored resize requests not to mutate the seeded terminal dimensions while only history projection is available.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.lastRows,
+      23,
+      'Expected ignored resize requests not to mutate the seeded terminal dimensions while only history projection is available.'
+    );
   } finally {
     if (baselineSnapshot) {
-      await setPersistedState(baselineSnapshot.state);
+      const restoredBaselineSnapshot = await setPersistedState(baselineSnapshot.state);
+      assert.strictEqual(
+        restoredBaselineSnapshot.state.nodes.length,
+        baselineSnapshot.state.nodes.length,
+        'Expected restoring the baseline persisted state to recover the original runtime projection after the untrusted reconnect scenario.'
+      );
     }
     await setRuntimePersistenceEnabled(false);
   }

@@ -152,6 +152,7 @@ import {
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
 import {
   createAgentFileActivitySession,
+  looksLikeFakeAgentProviderCommand,
   type AgentFileActivityEvent,
   type AgentFileActivitySession
 } from './agentFileActivity';
@@ -176,6 +177,7 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
+const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
 const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
 
 interface AgentCliConfig {
@@ -807,16 +809,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
     }
 
+    // 先切换内存态，再异步同步到 workspaceState，避免旧 webview 在 await 间隙继续把已删除节点写回持久化快照。
+    this.state = this.reconcileSeededStateForTest(rawState);
+    this.recordDiagnosticEvent('state/seededForTest', {
+      nodeCount: this.state.nodes.length
+    });
+    this.notifySidebarStateChanged();
+
     await this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: rawState,
       activeSurface: this.activeSurface
     });
-    this.state = this.loadReconciledState();
-    this.recordDiagnosticEvent('state/seededForTest', {
-      nodeCount: this.state.nodes.length
-    });
-    this.notifySidebarStateChanged();
+
+    const snapshot = this.getDebugSnapshot();
 
     if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
       this.postState('host/stateUpdated');
@@ -824,7 +830,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.scheduleRestoreLiveRuntimeSessions();
 
-    return this.getDebugSnapshot();
+    return snapshot;
   }
 
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
@@ -1637,6 +1643,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
     return this.reconcileCanvasFileArtifacts(
       reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
+        allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
+        liveRuntimeReconnectBlockReason
+      })
+    );
+  }
+
+  private reconcileSeededStateForTest(rawState: unknown): CanvasPrototypeState {
+    const fileView = this.getCanvasFileViewConfiguration();
+    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView);
+    const sanitizedState = this.appliedStartupConfiguration.filesFeatureEnabled
+      ? normalizedState
+      : clearFileDomainState(normalizedState);
+    const hydratedState = hydrateRuntimeStoragePaths(
+      sanitizedState,
+      this.storageRecoverySelection.sourcePath
+    );
+    const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
+
+    return this.reconcileCanvasFileArtifacts(
+      reconcileRuntimeNodes(hydratedState, this.agentSessions, this.terminalSessions, {
         allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
         liveRuntimeReconnectBlockReason
       })
@@ -4097,6 +4123,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (session.agentProvider !== 'claude' || session.launchMode !== 'start') {
       return;
     }
+    if (!session.stopRequested) {
+      return;
+    }
 
     const previousSessionId = session.agentResume?.sessionId?.trim() ?? '';
     const previousStrategy = session.agentResume?.strategy ?? 'none';
@@ -5110,6 +5139,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
         this.finalizeAgentResumeContextFromOutput(nodeId, activeSession);
+        const finalizedResumeContext = activeSession.agentResume ?? resumeContext;
 
         sessionMap.delete(nodeId);
         this.recordDiagnosticEvent('execution/exited', {
@@ -5130,10 +5160,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             provider,
             lifecycle: status,
             runtimeKind: 'pty-cli',
-            resumeSupported: activeSession.agentResume?.supported ?? resumeContext.supported,
-            resumeStrategy: activeSession.agentResume?.strategy ?? resumeContext.strategy,
-            resumeSessionId: activeSession.agentResume?.sessionId ?? resumeContext.sessionId,
-            resumeStoragePath: activeSession.agentResume?.storagePath ?? resumeContext.storagePath,
+            resumeSupported: finalizedResumeContext.supported,
+            resumeStrategy: finalizedResumeContext.strategy,
+            resumeSessionId: finalizedResumeContext.sessionId,
+            resumeStoragePath: finalizedResumeContext.storagePath,
             lastResumeError: status === 'resume-failed' ? message : undefined,
             persistenceMode: 'snapshot-only',
             attachmentState: 'history-restored',
@@ -5525,6 +5555,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
+    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+      const commandDirectories = new Set<string>();
+      for (const command of [
+        process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
+        process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND
+      ]) {
+        const trimmedCommand = command?.trim();
+        if (!trimmedCommand) {
+          continue;
+        }
+
+        if (path.isAbsolute(trimmedCommand)) {
+          commandDirectories.add(path.dirname(trimmedCommand));
+          continue;
+        }
+
+        if (isExplicitRelativePath(trimmedCommand)) {
+          commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
+        }
+      }
+
+      if (commandDirectories.size > 0) {
+        const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+        env.PATH = Array.from(new Set([...commandDirectories, ...existingPathEntries])).join(path.delimiter);
+      }
+    }
+
     if (process.platform === 'win32') {
       env.SystemRoot = process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim() || 'C:\\Windows';
     }
@@ -5560,6 +5617,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): ExecutionSessionLaunchSpec {
     const env = this.buildExecutionEnvironment();
     const args: string[] = launchMode === 'start' ? [...launchArgs] : [];
+
+    if (looksLikeFakeAgentProviderCommand(spec.command)) {
+      env[FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY] = spec.provider;
+    }
 
     if (resumeContext.strategy === 'fake-provider') {
       if (resumeContext.sessionId) {
