@@ -129,6 +129,7 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   provider: AgentProviderKind;
   launchPreset: AgentLaunchPresetKind;
   customLaunchCommand?: string;
+  lastLaunchCommandLine?: string;
   runtimeKind: AgentRuntimeKind;
   resumeSupported: boolean;
   resumeStrategy: AgentResumeStrategy;
