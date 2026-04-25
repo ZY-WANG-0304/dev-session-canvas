@@ -89,7 +89,8 @@ import {
 import {
   buildFreshAgentCommandLine,
   formatCommandLine,
-  parseFullAgentCommandLine
+  hasAnyCommandLineFlag,
+  validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import {
   SerializedTerminalStateTracker,
@@ -5294,6 +5295,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private validateAgentFreshLaunchCommand(
+    provider: AgentProviderKind,
+    launchPreset: AgentLaunchPresetKind,
+    customLaunchCommand: string | undefined,
+    defaults: AgentProviderLaunchDefaults
+  ): {
+    commandLine: string;
+    requestedCommand: string;
+    launchArgs: string[];
+  } {
+    if (launchPreset === 'custom' && !customLaunchCommand?.trim()) {
+      throw new Error('自定义启动命令不能为空。');
+    }
+
+    const commandLine = buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
+    const validation = validateAgentCommandLine(commandLine, provider, defaults);
+    if (!validation.valid || !validation.parsed) {
+      throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
+    }
+
+    return {
+      commandLine,
+      requestedCommand: validation.parsed.command,
+      launchArgs: validation.parsed.args
+    };
+  }
+
   private resolveAgentFreshLaunch(
     provider: AgentProviderKind,
     metadata: AgentNodeMetadata
@@ -5304,17 +5332,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     launchPreset: AgentLaunchPresetKind;
   } {
     const defaults = this.getAgentLaunchDefaults(provider);
-    const commandLine = buildFreshAgentCommandLine(
+    const parsed = this.validateAgentFreshLaunchCommand(
       provider,
       metadata.launchPreset,
       metadata.customLaunchCommand,
       defaults
     );
-    const parsed = parseFullAgentCommandLine(commandLine);
     return {
-      commandLine,
-      requestedCommand: parsed.command,
-      launchArgs: parsed.args,
+      commandLine: parsed.commandLine,
+      requestedCommand: parsed.requestedCommand,
+      launchArgs: parsed.launchArgs,
       launchPreset: metadata.launchPreset
     };
   }
@@ -5525,8 +5552,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     } else if (spec.provider === 'claude') {
-      const hasExplicitClaudeSessionFlag =
-        launchArgs.includes('--session-id') || launchArgs.includes('--resume') || launchArgs.includes('--continue');
+      const hasExplicitClaudeSessionFlag = hasAnyCommandLineFlag(launchArgs, [
+        '--session-id',
+        '--resume',
+        '--continue'
+      ]);
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
       } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
@@ -6623,12 +6653,44 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const agentProvider = options?.agentProvider ?? this.getAgentCliConfig().defaultProvider;
+    const agentLaunchPreset = options?.agentLaunchPreset ?? 'default';
+    const agentCustomLaunchCommand =
+      agentLaunchPreset === 'custom' ? options?.agentCustomLaunchCommand : undefined;
+
+    if (kind === 'agent') {
+      try {
+        this.validateAgentFreshLaunchCommand(
+          agentProvider,
+          agentLaunchPreset,
+          agentCustomLaunchCommand,
+          this.getAgentLaunchDefaults(agentProvider)
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '无法创建 Agent 节点。';
+        this.recordDiagnosticEvent('node/createRejected', {
+          kind,
+          provider: agentProvider,
+          launchPreset: agentLaunchPreset,
+          commandLine: agentCustomLaunchCommand ?? null,
+          message
+        });
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+        return;
+      }
+    }
+
     const nextState = createNextState(
       this.state,
       kind,
-      options?.agentProvider ?? this.getAgentCliConfig().defaultProvider,
-      options?.agentLaunchPreset ?? 'default',
-      options?.agentCustomLaunchCommand,
+      agentProvider,
+      agentLaunchPreset,
+      agentCustomLaunchCommand,
       preferredPosition
     );
     const createdNode = nextState.nodes[nextState.nodes.length - 1];
@@ -6641,11 +6703,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'starting',
           pendingLaunch: 'start',
           liveSession: false,
-          launchPreset: options?.agentLaunchPreset ?? 'default',
+          launchPreset: agentLaunchPreset,
           customLaunchCommand:
-            (options?.agentLaunchPreset ?? 'default') === 'custom'
-              ? options?.agentCustomLaunchCommand?.trim() || undefined
-              : undefined,
+            agentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,

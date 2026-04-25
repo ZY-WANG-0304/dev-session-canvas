@@ -141,6 +141,7 @@ updated_at: 2026-04-25
 - 将 `provider + 命令路径 + 默认启动参数 + 预设` 组装为完整命令字符串
 - 将完整命令字符串解析成 `requestedCommand + argv`
 - 校验“首个 token 是否仍属于当前 provider 的允许命令集合”
+- 复用同一套校验逻辑给 Webview 与宿主，避免“前端禁止、宿主仍可执行”的分叉
 - 根据输入内容反推它属于 `default / resume / yolo / sandbox / custom` 中哪一种
 
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，还要接受当前设置值本身和该命令的 basename。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然合法。
@@ -179,7 +180,7 @@ updated_at: 2026-04-25
 `src/panel/CanvasPanelManager.ts` 中的 Agent fresh-start 路径改成：
 
 1. 从节点 metadata 取 `launchPreset/customLaunchCommand`
-2. 结合当前 provider 设置，解析出“本次新会话要执行的完整命令”
+2. 结合当前 provider 设置，重新校验并解析出“本次新会话要执行的完整命令”；若首个 token 不再属于当前 provider，或 `custom` 预设缺少有效命令，则直接拒绝启动
 3. 把首个 token 送入现有 resolver，拿到真正的可执行文件路径
 4. 将其余 token 与 provider resume/file-activity 注入逻辑拼接，生成最终 `ExecutionSessionLaunchSpec`
 
@@ -189,6 +190,7 @@ updated_at: 2026-04-25
 - 当用户点击 `新会话` 时，才走上面的 fresh-start 路径。
 - 若节点 `launchPreset = resume`，fresh-start 路径始终执行 provider 的“进入 resume 选择入口”预设命令，而不是偷偷替用户选择最近一条会话。
 - 对 `Claude Code` 的 fresh-start，会在启动时继续传入候选 `--session-id`，并主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经出现；一旦文件存在，就把该 id 升级为可恢复上下文。停止时若再读到 `claude --resume <session-id>`，宿主会把它当作后续校验/更正信号；若两者都没有，才回退成不可恢复。停止按钮当前对 Claude 已回滚到更早的 provider-specific stop signal：不再发送 `Ctrl-C`，而是直接沿用此前的终止信号路径；Codex 才继续保留单次 `Ctrl-C` + 5 秒兜底的 graceful-stop 语义。
+- 对 `Claude Code` 的 fresh-start，只要自定义命令已经显式包含 `--session-id` / `--resume` / `--continue`，宿主就不再补写候选 session 参数；这里既覆盖 `--flag value`，也覆盖 `--flag=value`。
 - 对 `Codex` 的 fresh-start，启动后仍先扫 `~/.codex/sessions/.../rollout-*.jsonl`；如果节点后来从 `running` 再次回到 `waiting-input` 且仍未拿到 session id，宿主会再触发一轮扫描，以覆盖首轮 discovery 的时序 miss。
 - 标题栏停止按钮按 provider 走不同语义：Codex 先发单次 `Ctrl-C`，若 CLI 未正常退出，再走 5 秒 graceful-stop force-kill；Claude 则沿用更早的直接终止信号路径，不等待 stop-time `Ctrl-C` 收尾。
 

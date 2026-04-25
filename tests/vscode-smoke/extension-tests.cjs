@@ -6,6 +6,7 @@ const path = require('path');
 const vscode = require('vscode');
 
 const FAKE_CLAUDE_PROVIDER_PATH = path.join(__dirname, 'fixtures', 'fake-claude-provider');
+const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -4391,6 +4392,137 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === claudeAgentNode.id), false);
 
   await clearHostMessages();
+  const nodeCountBeforeInvalidCreate = snapshot.state.nodes.length;
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'agent',
+      agentProvider: 'claude',
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: INVALID_PROVIDER_LAUNCH_COMMAND
+    }
+  });
+
+  hostMessages = await getHostMessages();
+  assert.ok(
+    hostMessages.some(
+      (message) =>
+        message.type === 'host/error' &&
+        message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+    ),
+    'Expected host-side create validation to reject cross-provider custom launch commands.'
+  );
+
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.length,
+    nodeCountBeforeInvalidCreate,
+    'Rejected create requests must not add an agent node.'
+  );
+
+  const stateBeforeInvalidLaunch = snapshot.state;
+  const invalidLaunchNodeId = 'agent-invalid-custom-launch';
+  const invalidLaunchBaselineNode = findNodeById(snapshot, agentNodeId);
+  const invalidLaunchNode = {
+    ...invalidLaunchBaselineNode,
+    id: invalidLaunchNodeId,
+    title: 'Agent Invalid Custom Launch',
+    status: 'idle',
+    summary: '尚未启动 Agent 会话。',
+    position: {
+      x: invalidLaunchBaselineNode.position.x + 340,
+      y: invalidLaunchBaselineNode.position.y + 260
+    },
+    metadata: {
+      agent: {
+        ...invalidLaunchBaselineNode.metadata.agent,
+        lifecycle: 'idle',
+        provider: 'claude',
+        launchPreset: 'custom',
+        customLaunchCommand: INVALID_PROVIDER_LAUNCH_COMMAND,
+        lastLaunchCommandLine: undefined,
+        resumeSupported: false,
+        resumeStrategy: 'none',
+        resumeSessionId: undefined,
+        resumeStoragePath: undefined,
+        liveSession: false,
+        runtimeSessionId: undefined,
+        pendingLaunch: undefined,
+        recentOutput: undefined,
+        lastExitCode: undefined,
+        lastExitSignal: undefined,
+        lastExitMessage: undefined,
+        lastRuntimeError: undefined,
+        serializedTerminalState: undefined,
+        lastBackendLabel: 'Claude Code'
+      }
+    }
+  };
+
+  snapshot = await setPersistedState({
+    ...stateBeforeInvalidLaunch,
+    nodes: [...stateBeforeInvalidLaunch.nodes, invalidLaunchNode]
+  });
+  assert.ok(
+    snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
+    'Expected invalid-launch regression setup to seed a custom Claude node.'
+  );
+
+  await clearHostMessages();
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: invalidLaunchNodeId,
+      kind: 'agent',
+      cols: 84,
+      rows: 26,
+      provider: 'claude'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === invalidLaunchNodeId);
+    return Boolean(currentNode?.status === 'error');
+  }, 20000);
+  let invalidLaunchNodeAfterStart = findNodeById(snapshot, invalidLaunchNodeId);
+  assert.strictEqual(invalidLaunchNodeAfterStart.status, 'error');
+  assert.strictEqual(
+    invalidLaunchNodeAfterStart.summary,
+    '命令必须以当前 Claude Code 命令或 claude 开头。'
+  );
+  assert.strictEqual(invalidLaunchNodeAfterStart.metadata.agent.liveSession, false);
+  assert.strictEqual(invalidLaunchNodeAfterStart.metadata.agent.pendingLaunch, undefined);
+
+  hostMessages = await getHostMessages();
+  assert.ok(
+    hostMessages.some(
+      (message) =>
+        message.type === 'host/error' &&
+        message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+    ),
+    'Expected host-side start validation to reject persisted cross-provider custom launch commands.'
+  );
+
+  const invalidLaunchDiagnostics = (await getDiagnosticEvents())
+    .slice(diagnosticStartIndex)
+    .filter((event) => event.detail?.kind === 'agent' && event.detail?.nodeId === invalidLaunchNodeId);
+  assert.ok(
+    invalidLaunchDiagnostics.some(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.reason === 'invalid-launch-command' &&
+        event.detail?.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+    ),
+    'Expected invalid custom commands to be rejected before the host resolves or executes them.'
+  );
+
+  snapshot = await setPersistedState(stateBeforeInvalidLaunch);
+  assert.ok(
+    !snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
+    'Expected invalid-launch regression node to be removed after restoring the baseline state.'
+  );
+
+  await clearHostMessages();
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: {
@@ -4767,9 +4899,9 @@ async function verifyClaudeStopRestoresPreviousSignal() {
   assert.strictEqual(stoppedAgentNode.metadata.agent.liveSession, false);
   assert.doesNotMatch(stoppedAgentNode.metadata.agent.recentOutput ?? '', /Press Ctrl-C again to exit/);
   assert.doesNotMatch(stoppedAgentNode.metadata.agent.recentOutput ?? '', /claude --resume/);
-  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeStrategy, 'fake-provider');
-  assert.ok(stoppedAgentNode.metadata.agent.resumeSessionId);
-  assert.ok(stoppedAgentNode.metadata.agent.resumeStoragePath);
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeStrategy, 'none');
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeSessionId, undefined);
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeStoragePath, undefined);
 
   const scopedDiagnostics = (await getDiagnosticEvents())
     .slice(diagnosticStartIndex)
