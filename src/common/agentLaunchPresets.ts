@@ -124,6 +124,19 @@ export function parseFullAgentCommandLine(commandLine: string): ParsedAgentComma
   };
 }
 
+export function hasCommandLineFlag(argv: readonly string[], flag: string): boolean {
+  const normalizedFlag = flag.trim();
+  if (!normalizedFlag) {
+    return false;
+  }
+
+  return argv.some((token) => token === normalizedFlag || token.startsWith(`${normalizedFlag}=`));
+}
+
+export function hasAnyCommandLineFlag(argv: readonly string[], flags: readonly string[]): boolean {
+  return flags.some((flag) => hasCommandLineFlag(argv, flag));
+}
+
 export function createDefaultAgentLaunchDefaults(): AgentLaunchDefaultsByProvider {
   return {
     codex: {
