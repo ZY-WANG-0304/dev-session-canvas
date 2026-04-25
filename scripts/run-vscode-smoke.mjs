@@ -18,8 +18,10 @@ const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
 const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'extension-tests.cjs');
 const realReopenExtensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'real-reopen-tests.cjs');
+const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
+const smokeFixturesPath = `${smokeFixturesDir}${path.delimiter}${process.env.PATH ?? ''}`;
 const fakeSystemdShimPath = path.join(
   projectRoot,
   'tests',
@@ -71,7 +73,8 @@ async function main() {
       extensionTestsEnv: {
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
-        DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath
+        DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+        PATH: smokeFixturesPath
       }
     });
     console.log(`${scenario.description} passed.`);
@@ -160,6 +163,7 @@ async function runLocalRealWindowReopenScenario(options) {
   const sharedEnv = {
     DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
     DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+    PATH: smokeFixturesPath,
     DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE: controlFilePath,
     DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND: options.expectedRuntimeBackend,
     DEV_SESSION_CANVAS_EXPECTED_RUNTIME_GUARANTEE: options.expectedRuntimeGuarantee,

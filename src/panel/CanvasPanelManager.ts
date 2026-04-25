@@ -88,8 +88,8 @@ import {
 } from '../common/protocol';
 import {
   buildFreshAgentCommandLine,
+  extractClaudeCommandSessionFlag,
   formatCommandLine,
-  hasAnyCommandLineFlag,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import {
@@ -3920,7 +3920,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     provider: AgentProviderKind,
     launchMode: PendingExecutionLaunch,
-    metadata?: AgentNodeMetadata
+    metadata?: AgentNodeMetadata,
+    launchArgs: readonly string[] = []
   ): AgentResumeContext {
     const previousProvider = metadata?.provider;
     if (provider === 'claude') {
@@ -3934,6 +3935,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           };
         }
 
+        return {
+          supported: false,
+          strategy: 'none'
+        };
+      }
+
+      const explicitClaudeSessionFlag = extractClaudeCommandSessionFlag(launchArgs);
+      if (explicitClaudeSessionFlag?.sessionId) {
+        return {
+          supported: false,
+          strategy: 'none',
+          sessionId: explicitClaudeSessionFlag.sessionId
+        };
+      }
+
+      if (explicitClaudeSessionFlag) {
         return {
           supported: false,
           strategy: 'none'
@@ -4822,7 +4839,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       freshLaunch?.requestedCommand ?? this.getAgentLaunchDefaults(provider).command
     );
     let cliSpec = configuredCliSpec;
-    const resumeContext = this.resolveAgentResumeContext(nodeId, provider, launchMode, currentMetadata);
+    const resumeContext = this.resolveAgentResumeContext(
+      nodeId,
+      provider,
+      launchMode,
+      currentMetadata,
+      freshLaunch?.launchArgs ?? []
+    );
     const displayLaunchCommandLine = this.buildAgentDisplayLaunchCommandLine({
       provider,
       requestedCommand: configuredCliSpec.requestedCommand,
@@ -5552,11 +5575,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     } else if (spec.provider === 'claude') {
-      const hasExplicitClaudeSessionFlag = hasAnyCommandLineFlag(launchArgs, [
-        '--session-id',
-        '--resume',
-        '--continue'
-      ]);
+      const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandSessionFlag(launchArgs));
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
       } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {

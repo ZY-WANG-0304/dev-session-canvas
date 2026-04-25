@@ -5506,8 +5506,8 @@ function describeAgentLaunchPreset(
   switch (preset) {
     case 'resume':
       return provider === 'claude'
-        ? `使用 ${commandLine} 继续最近一次 Claude 会话`
-        : `使用 ${commandLine} 恢复最近一次 Codex 会话`;
+        ? `使用 ${commandLine} 进入 Claude Code 自己的 resume 会话选择入口`
+        : `使用 ${commandLine} 进入 Codex 自己的 resume 会话选择入口`;
     case 'yolo':
       return `在默认启动命令基础上追加更激进的自动执行参数：${commandLine}`;
     case 'sandbox':

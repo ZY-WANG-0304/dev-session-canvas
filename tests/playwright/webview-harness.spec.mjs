@@ -3329,6 +3329,9 @@ test('right-click create menu can drill into agent launch modes and create claud
     .click();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toContainText(
+    '进入 Claude Code 自己的 resume 会话选择入口'
+  );
   await expect(menu.locator('[data-context-menu-launch-preset="launch-yolo"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-sandbox"]')).toBeVisible();
 
