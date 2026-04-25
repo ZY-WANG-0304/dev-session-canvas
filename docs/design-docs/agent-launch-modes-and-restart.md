@@ -43,6 +43,7 @@ updated_at: 2026-04-25
 
 - 让 Webview 右键菜单和宿主 Quick Input 都复用同一套 Agent 启动预设与命令校验逻辑。
 - 为每个 provider 新增默认启动参数设置，同时保留原有 provider 命令路径设置。
+- 默认启动参数设置使用 `window` scope：允许用户按当前窗口 / 工作区覆盖，而不是被限制在 machine-only 配置里。
 - 让节点 metadata 能持久化“以后启动新会话时应使用哪种预设/命令”。
 - 让停止后的 split restart 明确区分“恢复原会话”和“新会话”。
 - 保持现有 provider resolver、自动启动与节点恢复边界不被破坏。
@@ -224,5 +225,6 @@ updated_at: 2026-04-25
 - 2026-04-25：补充 provider 文件确认路径：Codex 在运行态再次回到 `waiting-input` 且尚未记录 session id 时会补扫 `~/.codex/sessions`；Claude fresh-start 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件存在性确认，并在已有文件确认时保留恢复上下文，不再被“缺少 stop-time hint”误清空。
 - 2026-04-25：已修复 VSCode Quick Input 第二步的交互回归：点击 `Resume / YOLO / 沙盒` 现在只会改写顶部完整命令输入，不再直接创建节点；脚本化 QuickPick override 也同步收口为“只有显式 `accept-current` 才创建”。
 - 2026-04-25：已给 VSCode Quick Input 第二步补回 `默认` 快捷替换项，使其和节点 metadata 的 `default` 预设一一对应；该项和 `Resume / YOLO / 沙盒` 一样，只改写顶部完整命令输入。
+- 2026-04-25：已把 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 的 VSCode 配置 scope 改成 `window`，使其可在窗口 / 工作区层直接配置和覆盖。
 - 2026-04-24：已重新运行 `npm run test:webview -- --grep "agent restart"`，当前为 `2 passed`，覆盖“可恢复时显示 split restart”与“不可恢复时退化为单个启动按钮”两条标题栏路径。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

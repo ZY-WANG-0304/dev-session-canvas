@@ -212,13 +212,13 @@
         "devSessionCanvas.agent.codexDefaultArgs": {
           "type": "string",
           "default": "",
-          "scope": "machine",
+          "scope": "window",
           "markdownDescription": "%configuration.agent.codexDefaultArgs.description%"
         },
         "devSessionCanvas.agent.claudeDefaultArgs": {
           "type": "string",
           "default": "",
-          "scope": "machine",
+          "scope": "window",
           "markdownDescription": "%configuration.agent.claudeDefaultArgs.description%"
         },
         "devSessionCanvas.notifications.bridgeTerminalAttentionSignals": {
