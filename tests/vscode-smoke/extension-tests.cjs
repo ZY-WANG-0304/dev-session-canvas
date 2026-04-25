@@ -379,10 +379,24 @@ async function verifyCreateNodeCommandQuickPick() {
   await clearHostMessages();
   await clearDiagnosticEvents();
 
+  let snapshot = await getDebugSnapshot();
+  const baselineNodeCount = snapshot.state.nodes.length;
+
+  await setQuickPickSelections(['create-agent-claude', 'agent-launch-apply-default']);
+  await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+  await sleep(200);
+
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.length,
+    baselineNodeCount,
+    'Selecting a launch preset in the second-step Quick Input should only rewrite the command, not create an Agent.'
+  );
+
   await setQuickPickSelections(['create-agent-claude', 'agent-launch-apply-yolo', 'agent-launch-accept-current']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
+  snapshot = await waitForSnapshot((currentSnapshot) => {
     return currentSnapshot.state.nodes.some(
       (node) =>
         node.kind === 'agent' &&
