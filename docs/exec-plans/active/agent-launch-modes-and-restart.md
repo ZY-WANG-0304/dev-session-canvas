@@ -17,12 +17,36 @@
 - [x] (2026-04-24 13:05Z) 实现宿主 Quick Input 两步 Agent 创建流程与测试 override。
 - [x] (2026-04-24 13:55Z) 根据实现回归继续收口 UI/UX：统一重启 split button 风格、修复自定义输入的 IME Enter 误触发、移除右键菜单冗余取消按钮，并让 Quick Input 第二步列表项在顶部完整命令输入存在时仍可见。
 - [x] (2026-04-24 14:20Z) 按新增语义对齐更新 Resume 含义：创建前 Resume 改为进入 CLI 自带 resume 选择入口，停止后的重启继续只恢复当前节点刚停止的会话。
-- [ ] 补齐 Playwright / smoke / typecheck 验证，并把最终结果回写文档。
+- [x] (2026-04-24 15:05Z) 针对 Codex 停止后重启不稳的问题，调整为“启动后继续扫文件，停止时改发 Ctrl-C 并等待 CLI 输出 `Token usage` / `codex resume <session-id>` 提示，再用于补充或校验 resume session id”。
+- [x] (2026-04-24 16:10Z) 按新增反馈补齐 Claude stop-time `claude --resume <session-id>` 校验，并把“停止后不可恢复”的标题栏动作从 disabled split restart 改成单个 `启动` 按钮。
+- [x] (2026-04-25 01:20Z) 针对“停止后 live Webview 看不到尾部 `Token usage` / resume 提示，但 reload 后又能恢复”的竞态补丁收口：host 在 `executionExit` 前补发最终 snapshot，Webview 对 output / snapshot / exit banner 做顺序化写入，并补了对应 Playwright 回归。
+- [x] (2026-04-25 01:55Z) 修复“点击停止按钮时 Codex 会被过早 force-kill、reload 后 stopped 节点又被展示成历史恢复”：把 Agent graceful-stop 超时从 4.5s 提长到 15s，并让已完成的 live-runtime 会话在落盘时回退为 `snapshot-only`。
+- [x] (2026-04-25 03:10Z) 按新增反馈继续细化 resume metadata 发现策略：Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`；Claude 新增基于候选 `session-id` 的 `~/.claude/projects/.../<session-id>.jsonl` 文件确认，并在已有文件确认时保留恢复上下文。
+- [x] (2026-04-25 03:40Z) 按新增反馈细化 stop 按钮的 provider 语义：Codex 保持单次 `Ctrl-C`，Claude 改为短间隔连续两次 `Ctrl-C`。
+- [x] (2026-04-25 05:32Z) 按最新反馈把 stop 按钮的 graceful-stop force-kill 窗口从 15s 收窄回 5s，保持 provider-specific `Ctrl-C` 次数不变。
+- [x] (2026-04-25 06:25Z) 修正 Claude stop 的第二次 `Ctrl-C` 触发条件：不再依赖固定延时，而是等 CLI 输出 `Press Ctrl-C again to exit` 后再补发，并补了 fake-provider/smoke 回归。
+- [x] (2026-04-25 06:55Z) 按最新反馈回滚 Claude stop 的双 `Ctrl-C` 方案：标题栏停止按钮重新改回单次 `Ctrl-C`，并同步收口 fake-provider / smoke / 文档。
+- [x] (2026-04-25 07:10Z) 按最新澄清继续把 Claude stop 回滚到更早版本：不再走 `Ctrl-C`，而是恢复此前的直接终止信号路径；Codex 仍保留单次 `Ctrl-C` graceful-stop。
 
 ## 意外与发现
 
 - 观察：当前仓库已经有“创建前选择 provider”的正式设计，但它把 QuickPick 定义成一步直达创建；如果不显式更新正式文档，就会和新 feature 直接冲突。
   证据：`docs/design-docs/agent-node-creation-provider-selection.md` 当前结论仍写着“顶层 QuickPick 直接创建，不再进入第二层”。
+
+- 观察：Codex 的 `codex resume <session-id>` 提示不是启动后立即可见，而是在 `Ctrl-C` 结束会话时才输出；这意味着文件扫描与退出提示分别覆盖“早期发现”和“权威校验”两个时点。
+  证据：2026-04-24 用户补充说明该提示只会在 `Ctrl-C` 结束会话时出现，并提供了对应终端截图。
+
+- 观察：Claude Code fresh-start 时传入的 `--session-id` 只是候选值；如果启动后没有真正交互，CLI 结束时可能不会给出 `claude --resume <session-id>` 提示，说明这次会话并未建立可恢复绑定。
+  证据：2026-04-24 用户补充说明 Claude “启动后没有交互时，session-id 不会生效”，并要求在结束时再核验截图中的 resume 提示。
+
+- 观察：本机 `Claude Code` 的 session transcript 会以 `<session-id>.jsonl` 形式落在 `~/.claude/projects/<project>/` 下，因此对 Claude 而言，不需要像 Codex 那样靠时间窗猜测，只要拿着候选 `session-id` 去确认对应文件是否存在即可。
+  证据：2026-04-25 本地检查 `~/.claude/projects/-home-users-ziyang01-wang-al-projects-dev-session-canvas/*.jsonl`，文件名即为 `session-id`。
+
+- 观察：用户看到“节点 stop 后没有输出 `Token usage` / `To continue this session`，但 reload 后又出现”，说明权威终态其实已经落进持久化 snapshot，问题出在 live Webview 的尾包写入时序，而不是 CLI 没正常结束。
+  证据：2026-04-25 用户补充截图说明 reload 后两行提示可见；当前实现中 reload 依赖 `serializedTerminalState` 恢复终态。
+
+- 观察：手动在 Agent terminal 里按 `Ctrl-C` 与点击标题栏“停止”走的是两条不同的退出约束；前者只写入 `^C`，后者还会启动 4.5 秒 force-kill 兜底。对 Codex 而言，这个超时可能早于 CLI 自己输出 `Token usage` / `codex resume ...` 的时点。
+  证据：代码路径中 `writeExecutionSessionInput(... '\u0003')` 不会启动 kill timer，而 `stopExecutionSession -> requestGracefulLocalAgentStop` 与 runtime supervisor 的 `stopSession -> requestGracefulAgentStop` 都会在 4.5 秒后强杀。
 
 ## 决策记录
 
@@ -38,9 +62,45 @@
   理由：用户反馈这两个入口的语义必须拆开。创建前 Resume 是“打开选择器”，节点内重启是“恢复这条节点自己的会话”，两者属于不同意图。
   日期/作者：2026-04-24 / Codex
 
+- 决策：Codex 的“恢复当前节点原会话”继续保留启动后的 `~/.codex/sessions` 扫描；当用户点击停止时，停止路径改为先向 CLI 发送 `Ctrl-C`，等待 Codex 输出 `Token usage` / `codex resume <session-id>` 提示，再把这条提示用于补充或校验 session id。
+  理由：文件扫描可以尽早让节点进入可恢复状态，但它本质上仍是启发式匹配；退出提示则来自 Codex CLI 自身，适合在停止时作为更权威的补充/校验来源。
+  日期/作者：2026-04-24 / Codex
+
+- 决策：Claude Code fresh-start 继续在启动时注入候选 `--session-id`，但 stopped 节点是否可恢复必须以后续输出里的 `claude --resume <session-id>` 提示为准；若停止后没有这条提示，则节点 UI 退化为单个 `启动` 按钮，不再显示 disabled 的 split restart。
+  理由：用户已经确认 Claude “启动时带 session-id”不等于“该 session-id 一定生效”；只有 CLI 自己在结束时回显 `claude --resume` 才能证明当前节点真的具备恢复入口。UI 也应只在确实可恢复时才暴露 `重启 | ▼`。
+  日期/作者：2026-04-24 / Codex
+
+- 决策：在保留 stop-time hint 校验的前提下，为 Claude 增加基于候选 `session-id` 的 provider 文件确认；同时，Codex 若在首次 discovery miss 后又进入 `waiting-input`，就再触发一轮文件扫描。
+  理由：Claude 的 session file 已经带着精确的 session id，不需要继续把“是否生效”完全拖到 stop-time 才知道；Codex 虽然仍只能启发式扫文件，但节点多轮 turn 之间文件落盘时序会继续变化，因此在 `running -> waiting-input` 的边界补扫一轮更稳。
+  日期/作者：2026-04-25 / Codex
+
+- 决策：针对 stop 尾包显示竞态，采用“host 先发最终 snapshot，再发 `executionExit`”与“Webview 串行化 terminal output / snapshot restore / exit banner 写入”的组合修复，而不是只补单侧兜底。
+  理由：最终 snapshot 负责校正正确性，保证不 reload 也能恢复到权威终态；Webview 串行写入负责改善实时观感，避免尾部输出、snapshot 和退出横幅互相覆盖。
+  日期/作者：2026-04-25 / Codex
+
+- 决策：针对 stop 按钮与手动 `Ctrl-C` 的语义偏差，保留“点击停止 = 先发 `^C` 再兜底 kill”的策略；当前兜底超时收口为 5 秒，并让 runtime supervisor 上已经自然结束的会话在宿主状态里降级为 `snapshot-only`，避免 reload 后被误判成 `history-restored`。
+  理由：Codex/Claude 的 stop-time 退出摘要可能明显晚于 4.5 秒；只要 CLI 还在正常收尾，就不该被按钮路径提前截断。同时，已经结束的会话不再属于“等待重连的 live runtime”，继续保留 `live-runtime` 持久化语义会让 reload 后的 badge 误导成“历史恢复”。
+  日期/作者：2026-04-25 / Codex
+
+- 决策：stop 按钮的 `Ctrl-C` 次数按 provider 区分：Codex 发一次，Claude 连续发两次。
+  理由：用户已明确要求对齐真实 CLI 交互语义；Codex 的 stop-time 信息在一次 `Ctrl-C` 后即可收尾，而 Claude 更接近“第一次中断当前执行、第二次退出会话”的交互，需要标题栏 stop 路径主动模拟连续两次 `Ctrl-C`。
+  日期/作者：2026-04-25 / Codex
+
+- 决策：Claude stop 路径的第二次 `Ctrl-C` 改成由 CLI 退出确认提示驱动，而不是固定延时盲发。
+  理由：用户提供的实际截图表明，Claude 会先打印 `Press Ctrl-C again to exit` 再真正接受第二次中断；若扩展提前把第二次 `Ctrl-C` 发出去，就会被 CLI 吞掉，最终停在确认提示上。用输出提示作为握手条件，比拍脑袋设 120ms / 300ms 更稳。
+  日期/作者：2026-04-25 / Codex
+
+- 决策：Claude stop 路径继续回滚到单次 `Ctrl-C`，不再主动模拟第二次中断。
+  理由：用户最新确认 Claude Agent 在“不靠双 `Ctrl-C` 停止”的情况下结束状态是正常的；既然双 `Ctrl-C` 方案并非必要，就应优先选择更简单、风险更小的 stop 语义，避免再被 CLI 内部的二次确认提示牵着走。
+  日期/作者：2026-04-25 / Codex
+
+- 决策：Claude stop 路径继续回滚到更早版本，直接恢复此前的终止信号实现，不再发送 `Ctrl-C`。
+  理由：用户进一步澄清目标并不是“改成像 Codex 那样一次 `Ctrl-C`”，而是“回到更早一版 Claude 自己原来的停止信号”。既然用户已经验证那条旧路径的结束状态正常，就应以该 provider-specific 语义为准，而不是强行和 Codex 对齐。
+  日期/作者：2026-04-25 / Codex
+
 ## 结果与复盘
 
-- 进行中：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。当前 `npm run test:webview -- --list` 可完成构建并列出 82 个用例，但 Playwright harness 的交互用例存在更广泛的点击超时，已影响 `agent start`、`agent restart split button` 与右键菜单用例，因此尚未拿到稳定通过结论。
+- 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
 
 ## 上下文与定向
 
@@ -72,13 +132,13 @@
    - 实现自定义启动输入与校验。
    - 实现停止后 split restart。
 4. 在 `src/extension.ts` 中重写 Agent 创建 Quick Input 第二步，并更新 test override。
-5. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中补回归。
+5. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中补回归，至少覆盖 `codex resume` / `claude --resume` 提示 parser，以及“无可信恢复上下文 => 标题栏只显示 `启动`”。
 6. 跑 `npm run typecheck`、`npm run test:webview`，再根据时间与稳定性决定是否补 `npm run test:smoke`。
 
 ## 验证与验收
 
 - 运行 `npm run typecheck`，预期通过。
-- 运行 `npm run test:webview`，预期新增的右键菜单与 split restart 用例通过。
+- 运行 `npm run test:webview`，预期新增的右键菜单、split restart，以及“不可恢复时退化为启动按钮”用例通过。
 - 如果 smoke 可跑，运行 `npm run test:smoke`，至少确认命令面板的 Agent 两步创建链路通过。
 - 若 smoke 因既有不稳定项受阻，需要在 `结果与复盘` 与最终交付说明中明确写清阻塞点和已验证范围。
 
@@ -90,8 +150,15 @@
 
 ## 证据与备注
 
+- 2026-04-24：`npm run build` 通过。
 - 2026-04-24：`npm run typecheck` 通过。
+- 2026-04-24：`node --check tests/vscode-smoke/extension-tests.cjs` 通过。
+- 2026-04-24：`bash -n tests/vscode-smoke/fixtures/fake-agent-provider` 通过。
 - 2026-04-24：`npm run test:webview` 通过，当前为 `82 passed`。
+- 2026-04-24：`npm run test:webview -- --grep "agent restart"` 通过，当前为 `2 passed`。
+- 2026-04-25：`npm run test:webview -- --grep "exit preserves buffered tail output|applies the final snapshot before rendering the exit banner|agent restart action falls back to start button when no resumable session exists"` 通过，当前为 `5 passed`。
+- 2026-04-25：`node --check tests/vscode-smoke/extension-tests.cjs` 通过（本轮新增 smoke 断言覆盖“stop 按钮保留 token usage/resume hint”与“completed live-runtime reload 后保持 stopped/closed”）。
+- 2026-04-25：本轮新增 `locateClaudeSessionId` 测试命令与 smoke 级 locator 覆盖，用于验证 `~/.claude/projects/.../<session-id>.jsonl` 文件确认路径。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；提权后 trusted 场景长时间停留在 VS Code 宿主空转状态，因此已中止该轮补跑，待后续单独排查。
 
 ## 接口与依赖

@@ -1944,15 +1944,43 @@ test('agent restart split button resumes by default and can start a new session'
     );
 });
 
-test('agent restart split button disables resume when no resumable session exists', async ({ page }) => {
+test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
+  await clearPostedMessages(page);
 
   const agentNode = nodeById(page, 'agent-1');
-  await expect(agentNode.locator('button:has-text("重启")')).toBeDisabled();
-  await agentNode.locator('[data-agent-restart-toggle="true"]').click();
-  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeDisabled();
-  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeEnabled();
+  await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
+  await expect(agentNode.locator('button:has-text("重启")')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
+
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'agent-1',
+    label: '启动'
+  });
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: false
+      })
+    );
 });
 
 test('right-click create menu validates custom agent launch commands before creating', async ({ page }) => {
@@ -3541,6 +3569,97 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} exit preserves buffered tail output before the exit banner`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const tailUsageLine = 'Token usage: input=12 output=34 total=46';
+    const tailResumeLine = 'To continue this session, run: codex resume session-tail-123';
+    const exitMessage = executionKind === 'agent' ? '已停止 Codex CLI 会话。' : '终端会话已结束。';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${tailUsageLine}\r\n${tailResumeLine}\r\n`
+    });
+    await dispatchExecutionExit(page, {
+      nodeId,
+      kind: executionKind,
+      message: exitMessage
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(tailUsageLine)) &&
+        visibleLines.some((line) => line.includes(tailResumeLine)) &&
+        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailUsageLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailResumeLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
+      true
+    );
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} applies the final snapshot before rendering the exit banner`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBufferedLine = 'STALE-BUFFERED-LINE';
+    const finalUsageLine = 'Token usage: input=18 output=52 total=70';
+    const finalResumeLine = 'To continue this session, run: codex resume session-final-456';
+    const exitMessage = executionKind === 'agent' ? '已停止 Codex CLI 会话。' : '终端会话已结束。';
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      `FINAL-PROMPT\r\n${finalUsageLine}\r\n${finalResumeLine}\r\n`
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${staleBufferedLine}\r\n`
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: false,
+      serializedTerminalState
+    });
+    await dispatchExecutionExit(page, {
+      nodeId,
+      kind: executionKind,
+      message: exitMessage
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(finalUsageLine)) &&
+        visibleLines.some((line) => line.includes(finalResumeLine)) &&
+        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
+        !visibleLines.some((line) => line.includes(staleBufferedLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalUsageLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalResumeLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
+      true
+    );
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBufferedLine))).toBe(false);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const outputLine = '0123456789ABCDEFGHIJKLMNO';
@@ -4462,6 +4581,22 @@ async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
       nodeId,
       kind,
       chunk
+    }
+  );
+}
+
+async function dispatchExecutionExit(page, { nodeId, kind, message }) {
+  await page.evaluate(
+    (payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionExit',
+        payload
+      });
+    },
+    {
+      nodeId,
+      kind,
+      message
     }
   );
 }

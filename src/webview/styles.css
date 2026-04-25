@@ -236,54 +236,38 @@ body {
 
 .action-split-button {
   position: relative;
-  display: inline-grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: inline-flex;
+  align-items: stretch;
   gap: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
   border-radius: var(--canvas-widget-radius-sm);
-  border: 1px solid color-mix(in srgb, var(--vscode-button-border, transparent) 72%, transparent);
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--vscode-button-foreground) 10%, transparent);
-}
-
-.action-split-button:focus-within {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
+  overflow: visible;
 }
 
 .action-split-button .action-button {
+  position: relative;
+  z-index: 0;
   border-radius: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  outline: none;
 }
 
-.action-split-button-main {
+.action-split-button .action-button:focus-visible {
+  z-index: 1;
+}
+
+.action-split-button .action-split-button-main {
   min-width: 0;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
-.action-split-button-toggle {
-  min-width: 24px;
-  padding-inline: 6px;
-  border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 22%, transparent);
+  border-top-left-radius: var(--canvas-widget-radius-sm);
+  border-bottom-left-radius: var(--canvas-widget-radius-sm);
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-.action-split-button .action-button:hover:not(:disabled),
-.action-split-button .action-button:focus-visible {
-  background: var(
-    --vscode-button-hoverBackground,
-    color-mix(in srgb, var(--vscode-focusBorder) 18%, var(--vscode-button-background) 82%)
-  );
-}
-
-.action-split-button .action-button:disabled {
-  background: transparent;
+.action-split-button .action-split-button-toggle {
+  min-width: 24px;
+  padding-inline: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 22%, transparent);
+  border-top-right-radius: var(--canvas-widget-radius-sm);
+  border-bottom-right-radius: var(--canvas-widget-radius-sm);
 }
 
 .action-split-button[data-agent-restart-menu-open='true'] .action-split-button-toggle {

@@ -45,11 +45,20 @@ import {
   type ExecutionSessionExitEvent,
   type ExecutionSessionProcess
 } from '../panel/executionSessionBridge';
-import { locateCodexSessionId } from '../common/codexSessionIdLocator';
+import {
+  extractClaudeResumeSessionId,
+  extractCodexResumeSessionId,
+  locateClaudeSessionId,
+  locateCodexSessionId
+} from '../common/codexSessionIdLocator';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
 const OUTPUT_TAIL_LIMIT = 6000;
+const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
+// Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
+// Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
+const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 
 interface SupervisorRegistry {
   version: 1;
@@ -301,11 +310,17 @@ class RuntimeSupervisorServer {
 
     if (
       session.kind === 'agent' &&
-      session.provider === 'codex' &&
       session.launchMode === 'start' &&
-      !session.resumeSessionId
+      (
+        (session.provider === 'codex' && !session.resumeSessionId) ||
+        (
+          session.provider === 'claude' &&
+          Boolean(session.resumeSessionId?.trim()) &&
+          session.resumeStrategy !== 'claude-session-id'
+        )
+      )
     ) {
-      void this.maybeDiscoverCodexResumeSessionId(session.sessionId);
+      void this.maybeDiscoverAgentResumeSessionIdFromFiles(session.sessionId, 'startup');
     }
 
     this.schedulePersist();
@@ -380,6 +395,15 @@ class RuntimeSupervisorServer {
       session.lifecycleTimer = undefined;
     }
     this.emitSessionState(session);
+    if (session.kind === 'agent') {
+      if (session.provider === 'claude') {
+        session.process?.kill();
+        return;
+      }
+      this.requestGracefulAgentStop(session);
+      return;
+    }
+
     session.process?.kill();
   }
 
@@ -401,6 +425,12 @@ class RuntimeSupervisorServer {
 
       session.output = appendOutputTail(session.output, chunk);
       session.terminalStateTracker.write(chunk);
+      if (session.kind === 'agent') {
+        this.maybeSyncAgentResumeSessionIdFromOutput(session, {
+          allowOverwriteExisting: session.stopRequested,
+          emitState: session.stopRequested
+        });
+      }
       if (session.kind === 'agent') {
         if (
           session.lifecycle === 'starting' ||
@@ -447,6 +477,7 @@ class RuntimeSupervisorServer {
     session.live = false;
 
     if (session.kind === 'agent') {
+      this.finalizeAgentResumeSessionIdFromOutput(session);
       if (session.stopRequested) {
         session.lifecycle = 'stopped';
         session.lastExitMessage = `已停止 ${session.displayLabel} 会话。`;
@@ -478,7 +509,29 @@ class RuntimeSupervisorServer {
     this.scheduleIdleShutdownIfNeeded();
   }
 
-  private async maybeDiscoverCodexResumeSessionId(sessionId: string): Promise<void> {
+  private async maybeDiscoverAgentResumeSessionIdFromFiles(
+    sessionId: string,
+    trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.kind !== 'agent') {
+      return;
+    }
+
+    if (session.provider === 'codex') {
+      await this.maybeDiscoverCodexResumeSessionId(sessionId, trigger);
+      return;
+    }
+
+    if (session.provider === 'claude') {
+      await this.maybeConfirmClaudeResumeSessionId(sessionId, trigger);
+    }
+  }
+
+  private async maybeDiscoverCodexResumeSessionId(
+    sessionId: string,
+    _trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (
       !session ||
@@ -511,6 +564,147 @@ class RuntimeSupervisorServer {
     current.resumeStrategy = 'codex-session-id';
     current.resumeSessionId = discoveredSessionId;
     this.emitSessionState(current);
+  }
+
+  private async maybeConfirmClaudeResumeSessionId(
+    sessionId: string,
+    _trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      session.kind !== 'agent' ||
+      session.provider !== 'claude' ||
+      session.launchMode !== 'start' ||
+      session.resumeStrategy === 'claude-session-id' ||
+      !session.resumeSessionId?.trim()
+    ) {
+      return;
+    }
+
+    const candidateSessionId = session.resumeSessionId.trim();
+    const confirmedSessionId = await locateClaudeSessionId({
+      cwd: session.cwd,
+      sessionId: candidateSessionId
+    });
+
+    const current = this.sessions.get(sessionId);
+    if (
+      !current ||
+      current.kind !== 'agent' ||
+      current.provider !== 'claude' ||
+      current.launchMode !== 'start' ||
+      !current.live ||
+      current.resumeStrategy === 'claude-session-id' ||
+      current.resumeSessionId?.trim() !== candidateSessionId ||
+      !confirmedSessionId
+    ) {
+      return;
+    }
+
+    current.resumeStrategy = 'claude-session-id';
+    current.resumeSessionId = confirmedSessionId;
+    this.emitSessionState(current);
+  }
+
+  private readAgentResumeHint(
+    session: Pick<SupervisorSession, 'kind' | 'provider' | 'launchMode' | 'output'>
+  ): { strategy: AgentResumeStrategy; sessionId: string } | null {
+    if (session.kind !== 'agent' || session.launchMode !== 'start') {
+      return null;
+    }
+
+    if (session.provider === 'codex') {
+      const sessionId = extractCodexResumeSessionId(session.output);
+      return sessionId
+        ? {
+            strategy: 'codex-session-id',
+            sessionId
+          }
+        : null;
+    }
+
+    if (session.provider === 'claude') {
+      const sessionId = extractClaudeResumeSessionId(session.output);
+      return sessionId
+        ? {
+            strategy: 'claude-session-id',
+            sessionId
+          }
+        : null;
+    }
+
+    return null;
+  }
+
+  private maybeSyncAgentResumeSessionIdFromOutput(
+    session: SupervisorSession,
+    options: { allowOverwriteExisting?: boolean; emitState?: boolean } = {}
+  ): boolean {
+    const discoveredResumeHint = this.readAgentResumeHint(session);
+    if (!discoveredResumeHint) {
+      return false;
+    }
+
+    const previousSessionId = session.resumeSessionId?.trim() ?? '';
+    const previousStrategy = session.resumeStrategy ?? 'none';
+    if (
+      previousStrategy === discoveredResumeHint.strategy &&
+      previousSessionId === discoveredResumeHint.sessionId
+    ) {
+      return false;
+    }
+
+    const hasConfirmedPreviousSessionId = previousStrategy !== 'none' && Boolean(previousSessionId);
+    if (hasConfirmedPreviousSessionId && options.allowOverwriteExisting !== true) {
+      return false;
+    }
+
+    session.resumeStrategy = discoveredResumeHint.strategy;
+    session.resumeSessionId = discoveredResumeHint.sessionId;
+    if (options.emitState !== false) {
+      this.emitSessionState(session);
+    }
+    return true;
+  }
+
+  private finalizeAgentResumeSessionIdFromOutput(session: SupervisorSession): void {
+    const discoveredResumeHint = this.readAgentResumeHint(session);
+    if (discoveredResumeHint) {
+      session.resumeStrategy = discoveredResumeHint.strategy;
+      session.resumeSessionId = discoveredResumeHint.sessionId;
+      return;
+    }
+
+    if (session.kind !== 'agent' || session.provider !== 'claude' || session.launchMode !== 'start') {
+      return;
+    }
+
+    if (session.resumeStrategy === 'claude-session-id' && session.resumeSessionId?.trim()) {
+      return;
+    }
+
+    session.resumeStrategy = 'none';
+    session.resumeSessionId = undefined;
+  }
+
+  private requestGracefulAgentStop(session: SupervisorSession): void {
+    try {
+      session.process?.write(AGENT_GRACEFUL_STOP_INPUT);
+    } catch {
+      session.process?.kill();
+      return;
+    }
+
+    session.lifecycleTimer = setTimeout(() => {
+      const current = this.sessions.get(session.sessionId);
+      if (!current || current !== session || !current.live || !current.stopRequested) {
+        return;
+      }
+
+      current.lifecycleTimer = undefined;
+      current.process?.kill();
+    }, AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS);
   }
 
   private emitSessionOutput(session: SupervisorSession, chunk: string): void {
@@ -572,6 +766,7 @@ class RuntimeSupervisorServer {
           current.resumePhaseActive = false;
         }
         current.lifecycle = 'waiting-input';
+        void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
         this.emitSessionState(current);
         return;
       }

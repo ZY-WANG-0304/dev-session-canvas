@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-04-24
+updated_at: 2026-04-25
 ---
 
 # Agent 启动方式与重启交互设计
@@ -110,6 +110,12 @@ updated_at: 2026-04-24
 - 风险：完整命令字符串需要解析与重组，若 parser 太弱会让自定义输入出现边界问题。
   当前缓解：把命令解析限制在单进程 exec 场景需要的最小 shell-like quoting 支持，并让校验与执行共用同一套 parser，避免“UI 判定能用、宿主执行却失败”的双标。
 
+- 风险：Codex 新会话的 resume session id 不是扩展创建时就能直接拿到；启动后只靠扫 `~/.codex/sessions` 做启发式匹配可能 miss 或遇到歧义，而 CLI 自己的 `codex resume <session-id>` 提示又只会在 `Ctrl-C` 结束会话时出现。
+  当前缓解：宿主仍保留启动后的文件扫描作为早期发现手段；若节点从 `running` 再次回到 `waiting-input` 时还没有拿到 session id，会再补扫一轮，避免只在首屏 prompt 前后错过文件。用户停止 Codex 会话时，停止路径会发一次 `Ctrl-C` 并等待 CLI 输出 `Token usage` 与 `codex resume <session-id>` 提示，再用这条提示对会话 id 做补充或校验，必要时覆盖启发式扫描结果。
+
+- 风险：Claude Code fresh-start 时即使扩展主动传入 `--session-id <id>`，如果用户启动后没有真正交互，这个 session id 也可能并未生效；仅凭启动时生成的 id 会把“候选 id”误当成“可信可恢复会话”。
+  当前缓解：Claude fresh-start 仍会在启动时注入候选 `--session-id`；宿主会主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经落盘，把“文件已存在”视为该 session id 已被 provider 接受的早期确认信号。停止时若又读到 `claude --resume <session-id>`，则把它当作后续校验/更正；只有文件确认与 stop-time 提示都缺失时，才清空恢复上下文。
+
 ## 7. 正式方案
 
 ### 7.1 共享模型与宿主权威状态
@@ -180,6 +186,9 @@ updated_at: 2026-04-24
 - 当用户点击停止后 split button 的主按钮或菜单里的 `Resume 恢复原会话`，且节点持有可信恢复上下文时，仍走当前显式 session resume 路径；这条路径恢复的是“当前节点前面停止的那条会话”，不依赖 `launchPreset`。
 - 当用户点击 `新会话` 时，才走上面的 fresh-start 路径。
 - 若节点 `launchPreset = resume`，fresh-start 路径始终执行 provider 的“进入 resume 选择入口”预设命令，而不是偷偷替用户选择最近一条会话。
+- 对 `Claude Code` 的 fresh-start，会在启动时继续传入候选 `--session-id`，并主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经出现；一旦文件存在，就把该 id 升级为可恢复上下文。停止时若再读到 `claude --resume <session-id>`，宿主会把它当作后续校验/更正信号；若两者都没有，才回退成不可恢复。停止按钮当前对 Claude 已回滚到更早的 provider-specific stop signal：不再发送 `Ctrl-C`，而是直接沿用此前的终止信号路径；Codex 才继续保留单次 `Ctrl-C` + 5 秒兜底的 graceful-stop 语义。
+- 对 `Codex` 的 fresh-start，启动后仍先扫 `~/.codex/sessions/.../rollout-*.jsonl`；如果节点后来从 `running` 再次回到 `waiting-input` 且仍未拿到 session id，宿主会再触发一轮扫描，以覆盖首轮 discovery 的时序 miss。
+- 标题栏停止按钮按 provider 走不同语义：Codex 先发单次 `Ctrl-C`，若 CLI 未正常退出，再走 5 秒 graceful-stop force-kill；Claude 则沿用更早的直接终止信号路径，不等待 stop-time `Ctrl-C` 收尾。
 
 ### 7.6 停止后的 split restart
 
@@ -190,7 +199,8 @@ updated_at: 2026-04-24
 
 正式规则：
 
-- 若节点没有可恢复上下文，主按钮与 `Resume` 菜单项 disabled，并通过 `title/aria-label` 给出原因。
+- 只有当节点存在可信恢复上下文时，标题栏才显示 `重启 | ▼` split button。
+- 若节点没有可恢复上下文，标题栏直接退化为单个 `启动` 按钮；不会再显示 disabled 的 split restart。
 - `新会话` 始终按节点 metadata 的 fresh-start 配置执行。
 - Webview 只表达用户意图；真正是否能 resume 仍由宿主以当前 metadata 判断。
 
@@ -208,5 +218,9 @@ updated_at: 2026-04-24
 
 - 2026-04-24：已完成正式设计收口，并把 `tmp_feature_uiux.md` 的需求吸收到仓库文档。
 - 2026-04-24：已运行 `npm run typecheck`，通过。
+- 2026-04-24：已运行 `npm run build`，通过。
 - 2026-04-24：已运行 `npm run test:webview`，当前为 `82 passed`，覆盖右键菜单 drill-in、自定义输入校验、IME Enter 防误触、去掉冗余取消按钮后的菜单路径，以及 split restart。
+- 2026-04-24：已补充 Claude stop-time `claude --resume <session-id>` 提示校验，并把“无可信恢复上下文”的停止节点 UI 改成单个 `启动` 按钮；当前已完成构建与 targeted 回归，完整 smoke 仍待补跑。
+- 2026-04-25：补充 provider 文件确认路径：Codex 在运行态再次回到 `waiting-input` 且尚未记录 session id 时会补扫 `~/.codex/sessions`；Claude fresh-start 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件存在性确认，并在已有文件确认时保留恢复上下文，不再被“缺少 stop-time hint”误清空。
+- 2026-04-24：已重新运行 `npm run test:webview -- --grep "agent restart"`，当前为 `2 passed`，覆盖“可恢复时显示 split restart”与“不可恢复时退化为单个启动按钮”两条标题栏路径。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

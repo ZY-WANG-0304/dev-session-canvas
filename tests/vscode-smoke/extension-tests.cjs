@@ -5,6 +5,8 @@ const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
 
+const FAKE_CLAUDE_PROVIDER_PATH = path.join(__dirname, 'fixtures', 'fake-claude-provider');
+
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
   openCanvas: 'devSessionCanvas.openCanvas',
@@ -21,6 +23,9 @@ const COMMAND_IDS = {
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
+  testLocateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
+  testExtractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',
+  testExtractClaudeResumeSessionId: 'devSessionCanvas.__test.extractClaudeResumeSessionId',
   testGetAgentCliResolutionCacheKey: 'devSessionCanvas.__test.getAgentCliResolutionCacheKey',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
@@ -240,6 +245,9 @@ async function runTrustedSmoke() {
   assert.strictEqual(notificationModeSummaryItem.description, '已桥接 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
+  await verifyClaudeSessionIdLocator();
+  await verifyCodexResumeCommandHintParser();
+  await verifyClaudeResumeCommandHintParser();
   await verifyAgentCliRelativePathCacheIsolation();
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
@@ -329,6 +337,7 @@ async function runTrustedSmoke() {
   await verifyStandbySurfaceIgnoresMessages(noteNode.id);
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
+  await verifyClaudeStopRestoresPreviousSignal();
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
@@ -4648,6 +4657,8 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.match(agentNode.summary, /已停止 Codex 会话/);
+  assert.match(agentNode.metadata.agent.recentOutput ?? '', /Token usage:/);
+  assert.match(agentNode.metadata.agent.recentOutput ?? '', /codex resume/);
 
   const raceDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
   const scopedDiagnostics = raceDiagnostics.filter(
@@ -4671,6 +4682,103 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
         message.payload.nodeId === agentNodeId
     ).length,
     1
+  );
+}
+
+async function verifyClaudeStopRestoresPreviousSignal() {
+  await clearHostMessages();
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'agent',
+      agentProvider: 'claude',
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: FAKE_CLAUDE_PROVIDER_PATH
+    }
+  });
+
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude' &&
+        node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_PATH
+    );
+    return Boolean(currentNode);
+  });
+  const claudeAgentNode = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'agent' &&
+      node.metadata?.agent?.provider === 'claude' &&
+      node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_PATH
+  );
+  assert.ok(claudeAgentNode, 'Expected a Claude agent node configured with the fake provider.');
+
+  await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+    return Boolean(currentAgent?.metadata?.agent?.liveSession);
+  });
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: claudeAgentNode.id,
+      kind: 'agent',
+      data: 'hello claude\r'
+    }
+  });
+
+  await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+    return Boolean(currentAgent?.metadata?.agent?.recentOutput?.includes('[fake-claude] hello claude'));
+  });
+
+  await dispatchWebviewMessage({
+    type: 'webview/stopExecutionSession',
+    payload: {
+      nodeId: claudeAgentNode.id,
+      kind: 'agent'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+    return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
+  });
+
+  const stoppedAgentNode = findNodeById(snapshot, claudeAgentNode.id);
+  assert.strictEqual(stoppedAgentNode.status, 'stopped');
+  assert.strictEqual(stoppedAgentNode.metadata.agent.liveSession, false);
+  assert.doesNotMatch(stoppedAgentNode.metadata.agent.recentOutput ?? '', /Press Ctrl-C again to exit/);
+  assert.doesNotMatch(stoppedAgentNode.metadata.agent.recentOutput ?? '', /claude --resume/);
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeStrategy, 'fake-provider');
+  assert.ok(stoppedAgentNode.metadata.agent.resumeSessionId);
+  assert.ok(stoppedAgentNode.metadata.agent.resumeStoragePath);
+
+  const scopedDiagnostics = (await getDiagnosticEvents())
+    .slice(diagnosticStartIndex)
+    .filter((event) => event.detail?.kind === 'agent' && event.detail?.nodeId === claudeAgentNode.id);
+  assert.ok(
+    scopedDiagnostics.every((event) => event.kind !== 'execution/stopSecondaryInterruptSent'),
+    'Claude stop path should no longer emit a second Ctrl-C diagnostic.'
+  );
+  assert.ok(
+    scopedDiagnostics.every((event) => event.kind !== 'execution/stopForceKilled'),
+    'Claude stop path should exit gracefully instead of falling back to force-kill.'
+  );
+
+  await ensureAgentStopped(claudeAgentNode.id);
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: claudeAgentNode.id
+    }
+  });
+  await waitForSnapshot(
+    (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgentNode.id),
+    20000
   );
 }
 
@@ -4797,6 +4905,16 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
     terminalNode = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(agentNode.status, 'stopped');
     assert.strictEqual(terminalNode.status, 'closed');
+
+    snapshot = await simulateRuntimeReload();
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(agentNode.status, 'stopped');
+    assert.strictEqual(agentNode.metadata.agent.persistenceMode, 'snapshot-only');
+    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+    assert.strictEqual(terminalNode.status, 'closed');
+    assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'snapshot-only');
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
   } finally {
     await setRuntimePersistenceEnabled(false);
   }
@@ -6014,6 +6132,72 @@ async function verifyCodexSessionIdLocator() {
   }
 }
 
+async function verifyClaudeSessionIdLocator() {
+  const matchingHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-claude-locator-'));
+  try {
+    const matchingCwd = '/tmp/dev-session-canvas-claude-match';
+    const expectedSessionId = '44444444-4444-4444-8444-444444444444';
+    const delayedWrite = sleep(180).then(() =>
+      writeClaudeProjectSessionFile({
+        homeDir: matchingHomeDir,
+        sessionId: expectedSessionId,
+        cwd: matchingCwd
+      })
+    );
+
+    const detectedSessionId = await locateClaudeSessionIdForTest({
+      cwd: matchingCwd,
+      sessionId: expectedSessionId,
+      homeDir: matchingHomeDir,
+      timeoutMs: 800
+    });
+    await delayedWrite;
+    assert.strictEqual(detectedSessionId, expectedSessionId);
+
+    const missedSessionId = await locateClaudeSessionIdForTest({
+      cwd: '/tmp/dev-session-canvas-claude-miss',
+      sessionId: '55555555-5555-4555-8555-555555555555',
+      homeDir: matchingHomeDir,
+      timeoutMs: 450
+    });
+    assert.strictEqual(missedSessionId, null);
+  } finally {
+    await fs.rm(matchingHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyCodexResumeCommandHintParser() {
+  const output = [
+    '>_ OpenAI Codex (v0.122.0)',
+    '',
+    'Tip: New Build faster with Codex.',
+    'To continue this session, run codex resume 019dbfb8-cffa-70b0-9c97-cfd69d2f4b16',
+    'ziyang01.wang-al@hobot:~/projects/dev-session-canvas$'
+  ].join('\n');
+
+  const detectedSessionId = await extractCodexResumeSessionIdForTest(output);
+  assert.strictEqual(detectedSessionId, '019dbfb8-cffa-70b0-9c97-cfd69d2f4b16');
+
+  const missedSessionId = await extractCodexResumeSessionIdForTest('Codex ended without a resume hint.');
+  assert.strictEqual(missedSessionId, null);
+}
+
+async function verifyClaudeResumeCommandHintParser() {
+  const output = [
+    'Claude Code',
+    '',
+    'Resume this session with:',
+    '  claude --resume b654f7db-1ae3-4f6d-b84d-9b4b110f3e5a',
+    ''
+  ].join('\n');
+
+  const detectedSessionId = await extractClaudeResumeSessionIdForTest(output);
+  assert.strictEqual(detectedSessionId, 'b654f7db-1ae3-4f6d-b84d-9b4b110f3e5a');
+
+  const missedSessionId = await extractClaudeResumeSessionIdForTest('Claude ended without a resume hint.');
+  assert.strictEqual(missedSessionId, null);
+}
+
 async function verifyAgentCliRelativePathCacheIsolation() {
   const workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-a-'));
   const workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-b-'));
@@ -6076,6 +6260,24 @@ async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutM
     homeDir,
     timeoutMs
   );
+}
+
+async function locateClaudeSessionIdForTest({ cwd, sessionId, homeDir, timeoutMs }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testLocateClaudeSessionId,
+    cwd,
+    sessionId,
+    homeDir,
+    timeoutMs
+  );
+}
+
+async function extractCodexResumeSessionIdForTest(output) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testExtractCodexResumeSessionId, output);
+}
+
+async function extractClaudeResumeSessionIdForTest(output) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testExtractClaudeResumeSessionId, output);
 }
 
 async function getAgentCliResolutionCacheKeyForTest({ provider, requestedCommand, workspaceCwd }) {
@@ -6726,6 +6928,26 @@ async function writeCodexRolloutSessionMeta({
     `${JSON.stringify(payload)}\n`,
     'utf8'
   );
+}
+
+async function writeClaudeProjectSessionFile({
+  homeDir,
+  sessionId,
+  cwd
+}) {
+  const projectDir = path.join(
+    homeDir,
+    '.claude',
+    'projects',
+    path.resolve(cwd).replace(/[^a-zA-Z0-9]+/g, '-')
+  );
+  await fs.mkdir(projectDir, { recursive: true });
+  const payload = {
+    cwd,
+    sessionId,
+    type: 'progress'
+  };
+  await fs.writeFile(path.join(projectDir, `${sessionId}.jsonl`), `${JSON.stringify(payload)}\n`, 'utf8');
 }
 
 function toDateDirectoryParts(timestampMs) {
