@@ -72,6 +72,7 @@ import {
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
 import {
+  buildFreshAgentCommandLine,
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
@@ -1949,7 +1950,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       >
         <ChromeTitleEditor
           value={data.title}
-          subtitle={agentMetadata.lastBackendLabel ?? `${providerLabel(provider)} CLI`}
+          subtitle={resolveAgentLaunchCommandLineForSubtitle(agentMetadata)}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
           onSelectNode={() => data.onSelectNode?.(id)}
@@ -4953,11 +4954,61 @@ function ChromeTitleEditor(props: {
       />
       {props.subtitle ? (
         <div className="window-title-subtitle-row">
-          <span className="window-title-subtitle">{props.subtitle}</span>
+          <OverflowAwareInlineText className="window-title-subtitle" text={props.subtitle} />
           {props.subtitleAccessory}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function OverflowAwareInlineText(props: { className: string; text: string }): JSX.Element {
+  const textRef = useRef<HTMLSpanElement | null>(null);
+  const [title, setTitle] = useState<string | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    if (!element) {
+      setTitle(undefined);
+      return;
+    }
+
+    let frameId: number | undefined;
+    const updateTitle = (): void => {
+      const nextTitle = element.scrollWidth > element.clientWidth + 1 ? props.text : undefined;
+      setTitle((currentTitle) => (currentTitle === nextTitle ? currentTitle : nextTitle));
+    };
+    const scheduleUpdate = (): void => {
+      if (frameId !== undefined) {
+        cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = undefined;
+        updateTitle();
+      });
+    };
+
+    updateTitle();
+    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleUpdate) : undefined;
+    resizeObserver?.observe(element);
+    if (element.parentElement) {
+      resizeObserver?.observe(element.parentElement);
+    }
+    window.addEventListener('resize', scheduleUpdate);
+
+    return () => {
+      if (frameId !== undefined) {
+        cancelAnimationFrame(frameId);
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleUpdate);
+    };
+  }, [props.text]);
+
+  return (
+    <span ref={textRef} className={props.className} title={title}>
+      {props.text}
+    </span>
   );
 }
 
@@ -5469,6 +5520,21 @@ function describeAgentLaunchPreset(
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): string {
+  const lastLaunchCommandLine = metadata.lastLaunchCommandLine?.trim();
+  if (lastLaunchCommandLine) {
+    return lastLaunchCommandLine;
+  }
+
+  const provider = metadata.provider ?? 'codex';
+  return buildFreshAgentCommandLine(
+    provider,
+    metadata.launchPreset ?? 'default',
+    metadata.customLaunchCommand,
+    latestRuntimeContext.agentLaunchDefaults[provider]
+  );
 }
 
 function canResumeAgentFromMetadataForWebview(

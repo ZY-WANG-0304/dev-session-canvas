@@ -2179,6 +2179,28 @@ for (const executionKind of ['agent', 'terminal']) {
     );
   });
 
+  if (executionKind === 'agent') {
+    test('agent subtitle shows the launch command and exposes the full command when truncated', async ({
+      page
+    }) => {
+      const state = createLiveExecutionNodeState('agent');
+      const agentNode = state.nodes[0];
+      const longLaunchCommand =
+        'codex --model gpt-5.2 --sandbox workspace-write --yolo --config very-long-command-for-subtitle-overflow';
+
+      agentNode.size = { width: 280, height: agentNode.size.height };
+      agentNode.metadata.agent.lastLaunchCommandLine = longLaunchCommand;
+
+      await openHarness(page);
+      await bootstrap(page, state);
+      await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+      const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
+      await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
+      await expect(subtitle).toContainText('codex --model gpt-5.2');
+    });
+  }
+
   test(`${executionKind} dragover accepts explorer resources before payload becomes readable`, async ({
     page
   }) => {

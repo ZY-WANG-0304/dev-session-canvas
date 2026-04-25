@@ -88,6 +88,7 @@ import {
 } from '../common/protocol';
 import {
   buildFreshAgentCommandLine,
+  formatCommandLine,
   parseFullAgentCommandLine
 } from '../common/agentLaunchPresets';
 import {
@@ -4480,6 +4481,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     normalizedRows: number,
     provider: AgentProviderKind,
     cliSpec: AgentCliSpec,
+    displayLaunchCommandLine: string,
     launchArgs: string[],
     resumeContext: AgentResumeContext,
     launchMode: PendingExecutionLaunch
@@ -4532,7 +4534,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: normalizedCols,
         lastRows: normalizedRows,
         serializedTerminalState: undefined,
-        lastBackendLabel: cliSpec.label
+        lastBackendLabel: cliSpec.label,
+        lastLaunchCommandLine: displayLaunchCommandLine
       })
     });
     this.persistState();
@@ -4813,25 +4816,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
     }
-    this.recordDiagnosticEvent('execution/startRequested', {
-      kind: 'agent',
-      nodeId,
-      provider,
-      resumeRequested,
-      launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
-      launchCommandLine: freshLaunch?.commandLine ?? null,
-      requestedCommand: freshLaunch?.requestedCommand ?? null,
-      launchArgs: freshLaunch?.launchArgs ?? [],
-      cols: normalizedCols,
-      rows: normalizedRows,
-      workspaceTrusted: vscode.workspace.isTrusted
-    });
     const configuredCliSpec = this.getRequestedAgentCliSpec(
       provider,
       freshLaunch?.requestedCommand ?? this.getAgentLaunchDefaults(provider).command
     );
     let cliSpec = configuredCliSpec;
     const resumeContext = this.resolveAgentResumeContext(nodeId, provider, launchMode, currentMetadata);
+    const displayLaunchCommandLine = this.buildAgentDisplayLaunchCommandLine({
+      provider,
+      requestedCommand: configuredCliSpec.requestedCommand,
+      launchMode,
+      freshLaunchCommandLine: freshLaunch?.commandLine,
+      resumeContext
+    });
+    this.recordDiagnosticEvent('execution/startRequested', {
+      kind: 'agent',
+      nodeId,
+      provider,
+      resumeRequested,
+      launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
+      launchCommandLine: displayLaunchCommandLine,
+      requestedCommand: freshLaunch?.requestedCommand ?? null,
+      launchArgs: freshLaunch?.launchArgs ?? [],
+      cols: normalizedCols,
+      rows: normalizedRows,
+      workspaceTrusted: vscode.workspace.isTrusted
+    });
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     if (this.isRuntimePersistenceEnabled()) {
       try {
@@ -4842,6 +4852,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           normalizedRows,
           provider,
           cliSpec,
+          displayLaunchCommandLine,
           freshLaunch?.launchArgs ?? [],
           resumeContext,
           launchMode
@@ -4886,6 +4897,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lastRows: normalizedRows,
             serializedTerminalState: undefined,
             lastBackendLabel: cliSpec.label,
+            lastLaunchCommandLine: displayLaunchCommandLine,
             lastRuntimeError: message
           })
         });
@@ -4965,7 +4977,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         provider,
         launchMode,
         launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
-        launchCommandLine: freshLaunch?.commandLine ?? null,
+        launchCommandLine: displayLaunchCommandLine,
         requestedCommand: freshLaunch?.requestedCommand ?? null,
         launchArgs: freshLaunch?.launchArgs ?? [],
         cols: normalizedCols,
@@ -5006,7 +5018,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           serializedTerminalState: undefined,
-          lastBackendLabel: cliSpec.label
+          lastBackendLabel: cliSpec.label,
+          lastLaunchCommandLine: displayLaunchCommandLine
         })
       });
       this.persistState();
@@ -5304,6 +5317,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchArgs: parsed.args,
       launchPreset: metadata.launchPreset
     };
+  }
+
+  private buildAgentDisplayLaunchCommandLine(params: {
+    provider: AgentProviderKind;
+    requestedCommand: string;
+    launchMode: PendingExecutionLaunch;
+    freshLaunchCommandLine?: string;
+    resumeContext: AgentResumeContext;
+  }): string {
+    if (params.launchMode === 'start') {
+      return params.freshLaunchCommandLine?.trim() || params.requestedCommand.trim();
+    }
+
+    if (params.provider === 'claude') {
+      return formatCommandLine(
+        params.resumeContext.sessionId
+          ? [params.requestedCommand, '--resume', params.resumeContext.sessionId]
+          : [params.requestedCommand, '--resume']
+      );
+    }
+
+    return formatCommandLine(
+      params.resumeContext.sessionId
+        ? [params.requestedCommand, 'resume', params.resumeContext.sessionId]
+        : [params.requestedCommand, 'resume']
+    );
   }
 
   private getAgentCliResolutionCacheKey(
@@ -8520,6 +8559,7 @@ function createAgentMetadata(
     provider,
     launchPreset,
     customLaunchCommand: launchPreset === 'custom' ? customLaunchCommand?.trim() || undefined : undefined,
+    lastLaunchCommandLine: undefined,
     runtimeKind: 'pty-cli',
     resumeSupported: false,
     resumeStrategy: 'none',
@@ -8798,6 +8838,12 @@ function normalizeMetadata(
           launchPreset === 'custom' && typeof agent.customLaunchCommand === 'string'
             ? agent.customLaunchCommand.trim() || undefined
             : undefined,
+        lastLaunchCommandLine:
+          typeof agent.lastLaunchCommandLine === 'string'
+            ? trimStoredTerminalText(agent.lastLaunchCommandLine)
+            : typeof agent.launchCommandLine === 'string'
+              ? trimStoredTerminalText(agent.launchCommandLine)
+              : fallback.lastLaunchCommandLine,
         runtimeKind: 'pty-cli',
         resumeSupported,
         resumeStrategy,
