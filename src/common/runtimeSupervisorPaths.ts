@@ -10,6 +10,7 @@ const SYSTEMD_CONTROL_SOCKET_FILE_NAME = 's.sock';
 const XDG_RUNTIME_SUBDIR_NAME = 'dev-session-canvas';
 const TMP_RUNTIME_DIR_PREFIX = 'dev-session-canvas-';
 const SHORT_TMP_RUNTIME_DIR_PREFIX = 'dsc-';
+const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
 const SYSTEMD_STATE_SUBDIR = path.join('dsc', 'rh');
 const SYSTEMD_HOME_SUBDIR = path.join('.dsc', 'rh');
 const SYSTEMD_USER_SERVICE_PREFIX = 'dev-session-canvas-runtime-supervisor-';
@@ -76,27 +77,40 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
 
   const tmpDir = path.resolve(options.tmpDir ?? os.tmpdir());
   for (const runtimeDir of resolvePrivateRuntimeDirCandidates(options, tmpDir)) {
-    const socketPath = path.join(runtimeDir, `supervisor-${digest}.sock`);
-    if (!isUnixSocketPathWithinLimit(socketPath)) {
-      continue;
-    }
+    for (const socketFileName of resolveLegacyRuntimePrivateSocketFileNames(digest)) {
+      const socketPath = path.join(runtimeDir, socketFileName);
+      if (!isUnixSocketPathWithinLimit(socketPath)) {
+        continue;
+      }
 
-    return {
-      storageDir,
-      runtimeDir,
-      socketPath,
-      registryPath,
-      socketLocation: 'runtime-private'
-    };
+      return {
+        storageDir,
+        runtimeDir,
+        socketPath,
+        registryPath,
+        socketLocation: 'runtime-private'
+      };
+    }
   }
 
-  return {
-    storageDir,
-    runtimeDir: tmpDir,
-    socketPath: path.join(tmpDir, `${digest}.sock`),
-    registryPath,
-    socketLocation: 'runtime-fallback'
-  };
+  for (const runtimeDir of resolveFallbackRuntimeDirCandidates(options, tmpDir)) {
+    for (const socketFileName of resolveLegacyRuntimeFallbackSocketFileNames(digest)) {
+      const socketPath = path.join(runtimeDir, socketFileName);
+      if (!isUnixSocketPathWithinLimit(socketPath)) {
+        continue;
+      }
+
+      return {
+        storageDir,
+        runtimeDir,
+        socketPath,
+        registryPath,
+        socketLocation: 'runtime-fallback'
+      };
+    }
+  }
+
+  throw new Error('无法为 legacy runtime supervisor 生成符合 Unix socket 限制的路径。');
 }
 
 export function resolveSystemdUserRuntimeSupervisorPaths(
@@ -156,6 +170,39 @@ function resolvePrivateRuntimeDirCandidates(
   candidates.push(path.join(tmpDir, `${SHORT_TMP_RUNTIME_DIR_PREFIX}${userId}`));
 
   return Array.from(new Set(candidates));
+}
+
+function resolveLegacyRuntimePrivateSocketFileNames(digest: string): string[] {
+  return Array.from(
+    new Set([
+      `supervisor-${digest}.sock`,
+      `${digest}.sock`,
+      `${digest.slice(0, SHORT_FALLBACK_SOCKET_DIGEST_LENGTH)}.sock`
+    ])
+  );
+}
+
+function resolveLegacyRuntimeFallbackSocketFileNames(digest: string): string[] {
+  return Array.from(
+    new Set([
+      `${digest}.sock`,
+      `${digest.slice(0, SHORT_FALLBACK_SOCKET_DIGEST_LENGTH)}.sock`
+    ])
+  );
+}
+
+function resolveFallbackRuntimeDirCandidates(
+  options: RuntimeSupervisorPathResolutionOptions,
+  tmpDir: string
+): string[] {
+  const candidates = [tmpDir];
+  if (process.platform !== 'win32') {
+    candidates.push('/tmp', '/private/tmp', '/var/tmp');
+  }
+
+  const homeDir = resolveHomeDirectory(options);
+  candidates.push(path.join(homeDir, '.dsc'));
+  return Array.from(new Set(candidates.map((candidate) => path.resolve(candidate))));
 }
 
 function resolveSystemdControlPath(
