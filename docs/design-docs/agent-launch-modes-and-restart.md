@@ -163,7 +163,7 @@ updated_at: 2026-04-25
 `src/extension.ts` 中的 `Dev Session Canvas: 创建节点` 命令保持两层：
 
 - 第一层：延续当前“创建对象 / 按类型创建 Agent”的分组与 provider 选择。
-- 第二层：只对 Agent 打开，顶部输入框显示完整命令，下方 `Resume / YOLO / 沙盒` 项是快捷替换器。
+- 第二层：只对 Agent 打开，顶部输入框显示完整命令，下方 `默认 / Resume / YOLO / 沙盒` 项是快捷替换器。
 
 正式规则：
 
@@ -222,5 +222,7 @@ updated_at: 2026-04-25
 - 2026-04-24：已运行 `npm run test:webview`，当前为 `82 passed`，覆盖右键菜单 drill-in、自定义输入校验、IME Enter 防误触、去掉冗余取消按钮后的菜单路径，以及 split restart。
 - 2026-04-24：已补充 Claude stop-time `claude --resume <session-id>` 提示校验，并把“无可信恢复上下文”的停止节点 UI 改成单个 `启动` 按钮；当前已完成构建与 targeted 回归，完整 smoke 仍待补跑。
 - 2026-04-25：补充 provider 文件确认路径：Codex 在运行态再次回到 `waiting-input` 且尚未记录 session id 时会补扫 `~/.codex/sessions`；Claude fresh-start 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件存在性确认，并在已有文件确认时保留恢复上下文，不再被“缺少 stop-time hint”误清空。
+- 2026-04-25：已修复 VSCode Quick Input 第二步的交互回归：点击 `Resume / YOLO / 沙盒` 现在只会改写顶部完整命令输入，不再直接创建节点；脚本化 QuickPick override 也同步收口为“只有显式 `accept-current` 才创建”。
+- 2026-04-25：已给 VSCode Quick Input 第二步补回 `默认` 快捷替换项，使其和节点 metadata 的 `default` 预设一一对应；该项和 `Resume / YOLO / 沙盒` 一样，只改写顶部完整命令输入。
 - 2026-04-24：已重新运行 `npm run test:webview -- --grep "agent restart"`，当前为 `2 passed`，覆盖“可恢复时显示 split restart”与“不可恢复时退化为单个启动按钮”两条标题栏路径。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

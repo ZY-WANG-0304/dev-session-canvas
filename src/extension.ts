@@ -43,6 +43,7 @@ type CreateNodeQuickPickSelectionId =
   | 'create-agent-codex'
   | 'create-agent-claude'
   | 'agent-launch-accept-current'
+  | 'agent-launch-apply-default'
   | 'agent-launch-apply-resume'
   | 'agent-launch-apply-yolo'
   | 'agent-launch-apply-sandbox';
@@ -298,6 +299,10 @@ function consumeQueuedAgentLaunchRequest(
     if (nextSelectionId === 'agent-launch-accept-current') {
       return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine);
     }
+    if (nextSelectionId === 'agent-launch-apply-default') {
+      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'default');
+      continue;
+    }
     if (nextSelectionId === 'agent-launch-apply-resume') {
       commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'resume');
       continue;
@@ -312,7 +317,7 @@ function consumeQueuedAgentLaunchRequest(
     }
   }
 
-  return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine);
+  return undefined;
 }
 
 function promptAgentLaunchRequestWithQuickPick(
@@ -324,15 +329,32 @@ function promptAgentLaunchRequestWithQuickPick(
     const quickPick = vscode.window.createQuickPick<AgentLaunchQuickPickItem>();
     const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
     let resolved = false;
+    let suppressNextAcceptAfterPresetSelection = false;
+    let presetSelectionAcceptResetTimer: ReturnType<typeof setTimeout> | undefined;
 
     const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
       if (resolved) {
         return;
       }
       resolved = true;
+      if (presetSelectionAcceptResetTimer) {
+        clearTimeout(presetSelectionAcceptResetTimer);
+      }
       quickPick.hide();
       quickPick.dispose();
       resolve(result);
+    };
+
+    const armPresetSelectionAcceptSuppression = (): void => {
+      suppressNextAcceptAfterPresetSelection = true;
+      if (presetSelectionAcceptResetTimer) {
+        clearTimeout(presetSelectionAcceptResetTimer);
+      }
+      // VS Code may emit onDidAccept immediately after a mouse-click selection.
+      presetSelectionAcceptResetTimer = setTimeout(() => {
+        suppressNextAcceptAfterPresetSelection = false;
+        presetSelectionAcceptResetTimer = undefined;
+      }, 0);
     };
 
     const updateTitle = (): void => {
@@ -356,6 +378,7 @@ function promptAgentLaunchRequestWithQuickPick(
       }
       quickPick.value = buildAgentPresetCommandLine(provider, launchDefaults, selectedItem.launchPreset);
       quickPick.activeItems = [];
+      armPresetSelectionAcceptSuppression();
       updateTitle();
     });
 
@@ -369,6 +392,10 @@ function promptAgentLaunchRequestWithQuickPick(
         quickPick.value = buildAgentPresetCommandLine(provider, launchDefaults, activeItem.launchPreset);
         quickPick.activeItems = [];
         updateTitle();
+        return;
+      }
+
+      if (suppressNextAcceptAfterPresetSelection) {
         return;
       }
 
@@ -405,6 +432,13 @@ function buildAgentLaunchQuickPickItems(
     {
       label: '启动方式快捷替换',
       kind: vscode.QuickPickItemKind.Separator,
+      alwaysShow: true
+    },
+    {
+      label: '默认',
+      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'default'),
+      selectionId: 'agent-launch-apply-default',
+      launchPreset: 'default',
       alwaysShow: true
     },
     {
@@ -780,6 +814,7 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
             value !== 'create-agent-codex' &&
             value !== 'create-agent-claude' &&
             value !== 'agent-launch-accept-current' &&
+            value !== 'agent-launch-apply-default' &&
             value !== 'agent-launch-apply-resume' &&
             value !== 'agent-launch-apply-yolo' &&
             value !== 'agent-launch-apply-sandbox'
