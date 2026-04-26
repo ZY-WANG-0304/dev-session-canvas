@@ -58,7 +58,7 @@ const webviewConfig = {
 };
 
 async function runBuild() {
-  await fs.rmdir('dist', { recursive: true }).catch(() => {});
+  await fs.rm('dist', { recursive: true, force: true });
 
   if (!isWatch) {
     await Promise.all([
