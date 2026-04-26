@@ -316,6 +316,49 @@ try {
     ),
     "codex 'My Dir\\'"
   );
+  const relativeTrailingSlashNoSpaceConfigPath = '.venv\\';
+  const naturalRelativeTrailingSlashNoSpaceCommandLine = 'codex --config ".venv\\"';
+  assert.deepEqual(parseCommandLine(naturalRelativeTrailingSlashNoSpaceCommandLine), {
+    argv: ['codex', '--config', relativeTrailingSlashNoSpaceConfigPath]
+  });
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--config ".venv\\"'
+      },
+      'default'
+    ),
+    'codex --config .venv\\'
+  );
+  const naturalRelativeTrailingSlashNoSpaceValidation = validateAgentCommandLine(
+    naturalRelativeTrailingSlashNoSpaceCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(naturalRelativeTrailingSlashNoSpaceValidation.valid, true);
+  assert.equal(naturalRelativeTrailingSlashNoSpaceValidation.parsed.command, 'codex');
+  assert.deepEqual(naturalRelativeTrailingSlashNoSpaceValidation.parsed.args, ['--config', relativeTrailingSlashNoSpaceConfigPath]);
+  const relativeTrailingSlashNoSpacePositionalPath = 'build\\';
+  const naturalRelativeTrailingSlashNoSpacePositionalCommandLine = 'codex "build\\"';
+  assert.deepEqual(parseCommandLine(naturalRelativeTrailingSlashNoSpacePositionalCommandLine), {
+    argv: ['codex', relativeTrailingSlashNoSpacePositionalPath]
+  });
+  const naturalRelativeTrailingSlashNoSpacePositionalValidation = validateAgentCommandLine(
+    naturalRelativeTrailingSlashNoSpacePositionalCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(naturalRelativeTrailingSlashNoSpacePositionalValidation.valid, true);
+  assert.equal(naturalRelativeTrailingSlashNoSpacePositionalValidation.parsed.command, 'codex');
+  assert.deepEqual(naturalRelativeTrailingSlashNoSpacePositionalValidation.parsed.args, [relativeTrailingSlashNoSpacePositionalPath]);
   const bracketedRelativeTrailingSlashConfigPath = '[Draft] Dir\\';
   const bracketedRelativeTrailingSlashCommandLine = 'codex --config "[Draft] Dir\\"';
   assert.deepEqual(parseCommandLine(bracketedRelativeTrailingSlashCommandLine), {
