@@ -60,7 +60,7 @@ The public `0.2.x` line moves the canvas from “multiple execution nodes in one
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and later `0.2.x` updates all go through the `Visual Studio Marketplace`; the current `0.2.0 -> 0.2.1` update is also delivered through a normal Marketplace upgrade
+- First-time installs and later `0.2.x` updates all go through the `Visual Studio Marketplace`
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
