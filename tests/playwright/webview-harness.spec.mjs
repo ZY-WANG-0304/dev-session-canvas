@@ -2120,6 +2120,43 @@ test('right-click custom agent launch input ignores IME Enter before composition
     );
 });
 
+test('right-click custom agent launch input closes before the menu backs out on Escape', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
+
+  await expect(menu.locator('[data-context-menu-custom-editor="true"]')).toBeVisible();
+  await menu.locator('[data-context-menu-custom-confirm="true"]').focus();
+  await page.keyboard.press('Escape');
+
+  await expect(menu.locator('[data-context-menu-custom-editor="true"]')).toHaveCount(0);
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+});
+
 test('execution node chrome hides runtime diagnostics and keeps agent waiting-input visible', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createRuntimeChromeState());

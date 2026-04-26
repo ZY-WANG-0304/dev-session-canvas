@@ -28,7 +28,7 @@ export function buildAgentPresetCommandLine(
   defaults: AgentProviderLaunchDefaults,
   preset: AgentLaunchPresetKind
 ): string {
-  const baseArgs = parseCommandLine(defaults.defaultArgs).argv;
+  const baseArgs = parseAgentDefaultArgsOrThrow(provider, defaults);
   const command = defaults.command.trim() || provider;
   const argv = [command, ...applyAgentPresetArgs(provider, baseArgs, preset)];
   return formatCommandLine(argv);
@@ -103,10 +103,14 @@ export function classifyAgentLaunchPreset(
   }
 
   for (const preset of ['default', 'resume', 'yolo', 'sandbox'] as const) {
-    if (normalizedInput === normalizeComparableCommandLine(buildAgentPresetCommandLine(provider, defaults, preset))) {
-      return {
-        launchPreset: preset
-      };
+    try {
+      if (normalizedInput === normalizeComparableCommandLine(buildAgentPresetCommandLine(provider, defaults, preset))) {
+        return {
+          launchPreset: preset
+        };
+      }
+    } catch {
+      // Invalid default args should not prevent an explicit custom command from being persisted as custom.
     }
   }
 
@@ -157,7 +161,10 @@ export function extractClaudeCommandSessionFlag(
     }
 
     if (matchedFlag.sessionId !== undefined) {
-      return matchedFlag;
+      return {
+        flag: matchedFlag.flag,
+        sessionId: matchedFlag.sessionId
+      };
     }
 
     const nextToken = argv[index + 1]?.trim();
@@ -192,11 +199,11 @@ export function quoteCommandToken(value: string): string {
     return '""';
   }
 
-  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
+  if (/^[A-Za-z0-9_./:@%+=,\\-]+$/.test(value)) {
     return value;
   }
 
-  return `"${value.replace(/([\\"])|\n/g, (match, escaped) => {
+  return `"${value.replace(/(")|\n/g, (match, escaped) => {
     if (match === '\n') {
       return '\\n';
     }
@@ -211,21 +218,9 @@ export function parseCommandLine(commandLine: string): {
   const argv: string[] = [];
   let current = '';
   let quote: 'single' | 'double' | undefined;
-  let escaping = false;
 
   for (let index = 0; index < commandLine.length; index += 1) {
     const character = commandLine[index];
-
-    if (escaping) {
-      current += character;
-      escaping = false;
-      continue;
-    }
-
-    if (character === '\\' && quote !== 'single') {
-      escaping = true;
-      continue;
-    }
 
     if (character === '"') {
       if (quote === 'double') {
@@ -249,6 +244,30 @@ export function parseCommandLine(commandLine: string): {
       continue;
     }
 
+    if (character === '\\') {
+      const nextCharacter = commandLine[index + 1];
+      if (quote === 'single') {
+        current += character;
+        continue;
+      }
+      if (quote === 'double') {
+        if (nextCharacter === '"') {
+          current += '"';
+          index += 1;
+          continue;
+        }
+        current += character;
+        continue;
+      }
+      if (nextCharacter && (/\s/.test(nextCharacter) || nextCharacter === '"' || nextCharacter === "'")) {
+        current += nextCharacter;
+        index += 1;
+        continue;
+      }
+      current += character;
+      continue;
+    }
+
     if (!quote && /\s/.test(character)) {
       if (current) {
         argv.push(current);
@@ -258,10 +277,6 @@ export function parseCommandLine(commandLine: string): {
     }
 
     current += character;
-  }
-
-  if (escaping) {
-    current += '\\';
   }
 
   if (quote) {
@@ -361,9 +376,42 @@ function normalizeConfiguredCommandValue(command: string): string {
     return '';
   }
 
-  return process.platform === 'win32' ? trimmed.replace(WINDOWS_EXECUTABLE_SUFFIX, '').toLowerCase() : trimmed;
+  return isWindowsCommandToken(trimmed) ? trimmed.replace(WINDOWS_EXECUTABLE_SUFFIX, '').toLowerCase() : trimmed;
 }
 
 function normalizeStandardProviderAlias(provider: AgentProviderKind): string {
   return normalizeCommandIdentity(provider);
+}
+
+function isWindowsCommandToken(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\') || trimmed.startsWith('//')) {
+    return true;
+  }
+
+  if (trimmed.includes('\\')) {
+    return true;
+  }
+
+  return !trimmed.includes('/') && WINDOWS_EXECUTABLE_SUFFIX.test(trimmed);
+}
+
+function parseAgentDefaultArgsOrThrow(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults
+): string[] {
+  const parsed = parseCommandLine(defaults.defaultArgs);
+  if (!parsed.error) {
+    return parsed.argv;
+  }
+
+  throw new Error(`${providerLabel(provider)} 默认启动参数无法解析：${parsed.error}`);
+}
+
+function providerLabel(provider: AgentProviderKind): string {
+  return provider === 'claude' ? 'Claude Code' : 'Codex';
 }

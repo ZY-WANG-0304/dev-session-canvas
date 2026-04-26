@@ -76,6 +76,7 @@ import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
+  formatCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
@@ -3561,17 +3562,30 @@ const CanvasContextMenu = React.forwardRef<
   const isNestedView = props.view !== 'root';
   const selectedAgentProvider = props.selectedAgentProvider ?? props.defaultAgentProvider;
   const selectedLaunchDefaults = props.agentLaunchDefaults[selectedAgentProvider];
+  const defaultPresetBuild = tryBuildAgentPresetCommandLine(
+    selectedAgentProvider,
+    selectedLaunchDefaults,
+    'default'
+  );
   const [customEditorOpen, setCustomEditorOpen] = useState(false);
   const [customInputIsComposing, setCustomInputIsComposing] = useState(false);
   const [customCommandLine, setCustomCommandLine] = useState(() =>
-    buildAgentPresetCommandLine(selectedAgentProvider, selectedLaunchDefaults, 'default')
+    defaultPresetBuild.commandLine ?? fallbackAgentCommandLine(selectedAgentProvider, selectedLaunchDefaults)
   );
 
   useEffect(() => {
     setCustomEditorOpen(false);
     setCustomInputIsComposing(false);
-    setCustomCommandLine(buildAgentPresetCommandLine(selectedAgentProvider, selectedLaunchDefaults, 'default'));
-  }, [selectedAgentProvider, selectedLaunchDefaults.command, selectedLaunchDefaults.defaultArgs, props.view]);
+    setCustomCommandLine(
+      defaultPresetBuild.commandLine ?? fallbackAgentCommandLine(selectedAgentProvider, selectedLaunchDefaults)
+    );
+  }, [
+    defaultPresetBuild.commandLine,
+    props.view,
+    selectedAgentProvider,
+    selectedLaunchDefaults.command,
+    selectedLaunchDefaults.defaultArgs
+  ]);
 
   const customValidation = validateAgentCommandLine(
     customCommandLine,
@@ -3604,6 +3618,18 @@ const CanvasContextMenu = React.forwardRef<
       }}
       onMouseDown={stopCanvasEvent}
       onClick={stopCanvasEvent}
+      onKeyDownCapture={(event) => {
+        if (
+          customEditorOpen &&
+          event.key === 'Escape' &&
+          !customInputIsComposing &&
+          !isImeComposingKeyboardEvent(event)
+        ) {
+          event.preventDefault();
+          stopCanvasEvent(event);
+          setCustomEditorOpen(false);
+        }
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         stopCanvasEvent(event);
@@ -3745,6 +3771,11 @@ const CanvasContextMenu = React.forwardRef<
               ))
             : (
                 <>
+                  {defaultPresetBuild.error ? (
+                    <div className="canvas-context-menu-inline-error" data-context-menu-launch-error="true">
+                      {defaultPresetBuild.error}
+                    </div>
+                  ) : null}
                   {(
                     [
                       {
@@ -3778,6 +3809,7 @@ const CanvasContextMenu = React.forwardRef<
                       type="button"
                       className="canvas-context-menu-item"
                       data-context-menu-launch-preset={item.action}
+                      disabled={Boolean(defaultPresetBuild.error)}
                       onClick={() => props.onCreate('agent', selectedAgentProvider, item.preset)}
                     >
                       <span
@@ -5502,19 +5534,22 @@ function describeAgentLaunchPreset(
   preset: Exclude<AgentLaunchPresetKind, 'custom'>,
   defaults: AgentProviderLaunchDefaults
 ): string {
-  const commandLine = buildAgentPresetCommandLine(provider, defaults, preset);
+  const commandLine = tryBuildAgentPresetCommandLine(provider, defaults, preset);
+  if (!commandLine.commandLine) {
+    return commandLine.error ?? '无法解析启动命令。';
+  }
   switch (preset) {
     case 'resume':
       return provider === 'claude'
-        ? `使用 ${commandLine} 进入 Claude Code 自己的 resume 会话选择入口`
-        : `使用 ${commandLine} 进入 Codex 自己的 resume 会话选择入口`;
+        ? `使用 ${commandLine.commandLine} 进入 Claude Code 自己的 resume 会话选择入口`
+        : `使用 ${commandLine.commandLine} 进入 Codex 自己的 resume 会话选择入口`;
     case 'yolo':
-      return `在默认启动命令基础上追加更激进的自动执行参数：${commandLine}`;
+      return `在默认启动命令基础上追加更激进的自动执行参数：${commandLine.commandLine}`;
     case 'sandbox':
-      return `在默认启动命令基础上切换到更保守的受限模式：${commandLine}`;
+      return `在默认启动命令基础上切换到更保守的受限模式：${commandLine.commandLine}`;
     case 'default':
     default:
-      return `直接使用当前设置中的默认启动命令：${commandLine}`;
+      return `直接使用当前设置中的默认启动命令：${commandLine.commandLine}`;
   }
 }
 
@@ -5529,12 +5564,42 @@ function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): 
   }
 
   const provider = metadata.provider ?? 'codex';
-  return buildFreshAgentCommandLine(
-    provider,
-    metadata.launchPreset ?? 'default',
-    metadata.customLaunchCommand,
-    latestRuntimeContext.agentLaunchDefaults[provider]
-  );
+  try {
+    return buildFreshAgentCommandLine(
+      provider,
+      metadata.launchPreset ?? 'default',
+      metadata.customLaunchCommand,
+      latestRuntimeContext.agentLaunchDefaults[provider]
+    );
+  } catch (error) {
+    return error instanceof Error ? error.message : '无法解析 Agent 启动命令。';
+  }
+}
+
+function tryBuildAgentPresetCommandLine(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults,
+  preset: Exclude<AgentLaunchPresetKind, 'custom'>
+): {
+  commandLine?: string;
+  error?: string;
+} {
+  try {
+    return {
+      commandLine: buildAgentPresetCommandLine(provider, defaults, preset)
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : '无法解析 Agent 启动命令。'
+    };
+  }
+}
+
+function fallbackAgentCommandLine(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  return formatCommandLine([defaults.command.trim() || provider]);
 }
 
 function canResumeAgentFromMetadataForWebview(
@@ -5792,7 +5857,7 @@ function handleEditableFieldKeyDown(
 }
 
 function isImeComposingKeyboardEvent(
-  event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+  event: React.KeyboardEvent<HTMLElement>
 ): boolean {
   const nativeEvent = event.nativeEvent as KeyboardEvent & {
     isComposing?: boolean;
