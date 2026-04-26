@@ -3594,6 +3594,10 @@ const CanvasContextMenu = React.forwardRef<
   );
 
   const createAgentWithCustomCommand = (): void => {
+    if (!customValidation.valid) {
+      return;
+    }
+
     const classification = classifyAgentLaunchPreset(
       selectedAgentProvider,
       customCommandLine,
@@ -3832,6 +3836,7 @@ const CanvasContextMenu = React.forwardRef<
                     type="button"
                     className="canvas-context-menu-item"
                     data-context-menu-launch-preset="launch-custom"
+                    disabled={Boolean(defaultPresetBuild.error)}
                     onClick={() => setCustomEditorOpen(true)}
                   >
                     <span

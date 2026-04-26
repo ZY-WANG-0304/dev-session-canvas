@@ -268,6 +268,21 @@ try {
   assert.deepEqual(parseCommandLine(naturalRelativeTrailingSlashCommandLine), {
     argv: ['codex', '--config', relativeTrailingSlashConfigPath]
   });
+  const naturalRelativeTrailingSlashPositionalCommandLine = 'codex "My Dir\\"';
+  assert.deepEqual(parseCommandLine(naturalRelativeTrailingSlashPositionalCommandLine), {
+    argv: ['codex', relativeTrailingSlashConfigPath]
+  });
+  const naturalRelativeTrailingSlashPositionalValidation = validateAgentCommandLine(
+    naturalRelativeTrailingSlashPositionalCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(naturalRelativeTrailingSlashPositionalValidation.valid, true);
+  assert.equal(naturalRelativeTrailingSlashPositionalValidation.parsed.command, 'codex');
+  assert.deepEqual(naturalRelativeTrailingSlashPositionalValidation.parsed.args, [relativeTrailingSlashConfigPath]);
   const naturalRelativeTrailingSlashValidation = validateAgentCommandLine(
     naturalRelativeTrailingSlashCommandLine,
     'codex',
@@ -289,6 +304,47 @@ try {
       'default'
     ),
     "codex --config 'My Dir\\'"
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '"My Dir\\"'
+      },
+      'default'
+    ),
+    "codex 'My Dir\\'"
+  );
+  const bracketedRelativeTrailingSlashConfigPath = '[Draft] Dir\\';
+  const bracketedRelativeTrailingSlashCommandLine = 'codex --config "[Draft] Dir\\"';
+  assert.deepEqual(parseCommandLine(bracketedRelativeTrailingSlashCommandLine), {
+    argv: ['codex', '--config', bracketedRelativeTrailingSlashConfigPath]
+  });
+  assert.deepEqual(parseCommandLine('codex "[Draft] Dir\\"'), {
+    argv: ['codex', bracketedRelativeTrailingSlashConfigPath]
+  });
+  const ampersandRelativeTrailingSlashConfigPath = 'R&D Dir\\';
+  const ampersandRelativeTrailingSlashCommandLine = 'codex --config "R&D Dir\\"';
+  assert.deepEqual(parseCommandLine(ampersandRelativeTrailingSlashCommandLine), {
+    argv: ['codex', '--config', ampersandRelativeTrailingSlashConfigPath]
+  });
+  assert.deepEqual(parseCommandLine('codex "R&D Dir\\"'), {
+    argv: ['codex', ampersandRelativeTrailingSlashConfigPath]
+  });
+  assert.deepEqual(parseCommandLine('codex --config="[Draft] Dir\\"'), {
+    argv: ['codex', '--config=[Draft] Dir\\']
+  });
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--config "[Draft] Dir\\"'
+      },
+      'default'
+    ),
+    "codex --config '[Draft] Dir\\'"
   );
 
   const driveRelativeTrailingSlashConfigPath = 'C:My Dir\\';
@@ -349,6 +405,20 @@ try {
   assert.deepEqual(parseCommandLine('codex --prompt "say \\"hi\\""'), {
     argv: ['codex', '--prompt', 'say "hi"']
   });
+  assert.deepEqual(parseCommandLine(String.raw`codex --prompt "a '\" "`), {
+    argv: ['codex', '--prompt', `a '" `]
+  });
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: String.raw`--prompt "a '\" "`
+      },
+      'default'
+    ),
+    String.raw`codex --prompt "a '\" "`
+  );
 
   assert.throws(
     () =>
@@ -359,20 +429,33 @@ try {
           defaultArgs: '--model "o3'
         },
         'default'
-      ),
+    ),
     /Codex 默认启动参数无法解析：双引号未闭合。/
   );
 
-  const customFreshCommandLine = buildFreshAgentCommandLine(
-    'codex',
-    'custom',
+  assert.throws(
+    () =>
+      buildFreshAgentCommandLine(
+        'codex',
+        'custom',
+        'codex --yolo',
+        {
+          command: 'codex',
+          defaultArgs: '--model "o3'
+        }
+      ),
+    /Codex 默认启动参数无法解析：双引号未闭合。/
+  );
+  const invalidDefaultsCustomValidation = validateAgentCommandLine(
     'codex --yolo',
+    'codex',
     {
       command: 'codex',
       defaultArgs: '--model "o3'
     }
   );
-  assert.equal(customFreshCommandLine, 'codex --yolo');
+  assert.equal(invalidDefaultsCustomValidation.valid, false);
+  assert.equal(invalidDefaultsCustomValidation.error, 'Codex 默认启动参数无法解析：双引号未闭合。');
 
   assert.deepEqual(
     classifyAgentLaunchPreset(
