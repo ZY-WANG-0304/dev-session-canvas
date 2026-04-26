@@ -283,6 +283,30 @@ interface CanvasTestDiagnosticEvent {
   detail?: Record<string, unknown>;
 }
 
+interface CanvasHostMessageDiagnosticRecord {
+  timestamp: string;
+  surface: CanvasSurfaceLocation | 'active';
+  delivered: boolean;
+  type: HostToWebviewMessage['type'];
+  detail?: Record<string, unknown>;
+}
+
+interface CanvasWebviewProbeDiagnosticResult {
+  surface: CanvasSurfaceLocation;
+  attached: boolean;
+  ready: boolean;
+  interactive: boolean;
+  visibility: CanvasSidebarState['canvasSurface'];
+  capturedAt?: string;
+  error?: string;
+  snapshot?: WebviewProbeSnapshot;
+}
+
+interface CanvasHostDiagnosticsDumpResult {
+  outputDir: string;
+  summaryPath: string;
+}
+
 export type CanvasSurfaceLocation = 'editor' | 'panel';
 type CanvasSurfaceMode = 'active' | 'standby';
 type NodePlacementPreference = 'left-up' | 'right-down';
@@ -444,6 +468,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     { nodeId: string; kind: ExecutionNodeKind; runtimeSessionId: string; runtimeStoragePath: string }
   >();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
+  private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
@@ -704,6 +729,127 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public clearDiagnosticEventsForTest(): void {
     this.testDiagnosticEvents.length = 0;
+  }
+
+  public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
+    await this.waitForPendingWorkspaceStateUpdates();
+
+    const capturedAt = new Date().toISOString();
+    const outputDir = path.join(
+      this.getHostDiagnosticsRootPath(),
+      'current-host-diagnostics',
+      createFileSystemSafeTimestamp(capturedAt)
+    );
+    await fs.promises.mkdir(outputDir, {
+      recursive: true
+    });
+
+    const probeResults = await Promise.all(
+      (['panel', 'editor'] as const).map((surface) => this.collectWebviewProbeDiagnostic(surface))
+    );
+    const debugSnapshot = this.getDebugSnapshot();
+    const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
+    const diagnosticEvents = cloneJsonValue(this.testDiagnosticEvents);
+    const agentCliConfig = this.getAgentCliConfig();
+    const configuredTerminalShellPath = getConfigurationValue<string>('terminalShellPath', '').trim();
+    const persistedSnapshotPath = this.getPersistedCanvasSnapshotPath();
+    const persistedSnapshot = this.loadPersistedCanvasSnapshot();
+    const summaryPath = path.join(outputDir, 'summary.json');
+
+    const summary = {
+      capturedAt,
+      extension: {
+        id: this.context.extension.id,
+        version:
+          isRecord(this.context.extension.packageJSON) && typeof this.context.extension.packageJSON.version === 'string'
+            ? this.context.extension.packageJSON.version
+            : undefined,
+        mode: describeExtensionMode(this.context.extensionMode)
+      },
+      host: {
+        platform: process.platform,
+        arch: process.arch,
+        nodeVersion: process.version,
+        electronVersion: process.versions.electron,
+        chromeVersion: process.versions.chrome,
+        vscodeVersion: vscode.version,
+        pid: process.pid
+      },
+      workspace: {
+        trusted: vscode.workspace.isTrusted,
+        folders: vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
+        outputRoot: outputDir
+      },
+      storage: {
+        extensionStoragePath: this.getExtensionStoragePath(),
+        recoverySourcePath: this.storageRecoverySelection.sourcePath,
+        recoveryWritePath: this.storageRecoverySelection.writePath,
+        recoverySelectionBasis: this.storageRecoverySelection.selectionBasis,
+        persistedCanvasSnapshotPath: persistedSnapshotPath,
+        persistedCanvasSnapshotExists: fs.existsSync(persistedSnapshotPath),
+        persistedCanvasSnapshotWrittenAt: persistedSnapshot?.writtenAt,
+        lastPersistedCanvasSnapshotError: this.lastPersistedCanvasSnapshotError
+      },
+      configuration: {
+        activeSurface: this.activeSurface,
+        surfaceMode: cloneJsonValue(this.surfaceMode),
+        surfaceReady: cloneJsonValue(this.surfaceReady),
+        defaultSurface: this.getConfiguredSurface(),
+        agentDefaultProvider: agentCliConfig.defaultProvider,
+        agentCodexCommand: agentCliConfig.codexCommand,
+        agentClaudeCommand: agentCliConfig.claudeCommand,
+        terminalShellPath: configuredTerminalShellPath || defaultTerminalShellPath(),
+        runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+        filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
+        preferredRuntimeHostBackendKind: this.preferredRuntimeHostBackendKind,
+        preferredRuntimeHostBackendFallbackReason: this.preferredRuntimeHostBackendFallbackReason
+      },
+      diagnostics: {
+        hostMessageCount: diagnosticHostMessages.length,
+        hostMessageSummary: summarizeDiagnosticHostMessages(diagnosticHostMessages),
+        diagnosticEventCount: diagnosticEvents.length,
+        latestDiagnosticKinds: diagnosticEvents.slice(-20).map((event) => event.kind)
+      },
+      runtime: {
+        runtimeSessionBindingCount: this.runtimeSessionBindings.size,
+        pendingRuntimeSupervisorOperationCount: this.pendingRuntimeSupervisorOperations.size,
+        executionSessions: {
+          agent: this.collectManagedExecutionSessionDiagnostics('agent'),
+          terminal: this.collectManagedExecutionSessionDiagnostics('terminal')
+        }
+      },
+      probes: probeResults.map((result) => ({
+        surface: result.surface,
+        attached: result.attached,
+        ready: result.ready,
+        interactive: result.interactive,
+        visibility: result.visibility,
+        capturedAt: result.capturedAt,
+        error: result.error,
+        nodeCount: result.snapshot?.nodeCount ?? null
+      }))
+    };
+
+    await Promise.all([
+      writeJsonFile(summaryPath, summary),
+      writeJsonFile(path.join(outputDir, 'debug-snapshot.json'), debugSnapshot),
+      writeJsonFile(path.join(outputDir, 'host-messages.json'), diagnosticHostMessages),
+      writeJsonFile(path.join(outputDir, 'diagnostic-events.json'), diagnosticEvents),
+      writeJsonFile(
+        path.join(outputDir, 'persisted-canvas-snapshot.json'),
+        persistedSnapshot ?? {
+          exists: false
+        }
+      ),
+      ...probeResults.map((result) =>
+        writeJsonFile(path.join(outputDir, `${result.surface}-probe.json`), result)
+      )
+    ]);
+
+    return {
+      outputDir,
+      summaryPath
+    };
   }
 
   public createNode(kind: CanvasCreatableNodeKind, options?: CreateAgentNodeOptions): void {
@@ -1027,6 +1173,120 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       });
     });
+  }
+
+  private async captureWebviewProbe(
+    surface: CanvasSurfaceLocation,
+    timeoutMs = 5000,
+    delayMs = 0
+  ): Promise<WebviewProbeSnapshot> {
+    const requestId = `probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingWebviewProbeRequests.delete(requestId);
+        reject(new Error(`等待 ${surface} Webview probe 返回超时（${timeoutMs}ms）。`));
+      }, timeoutMs);
+
+      this.pendingWebviewProbeRequests.set(requestId, {
+        surface,
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.postMessageToSurface(surface, {
+        type: 'host/testProbeRequest',
+        payload: {
+          requestId,
+          delayMs: delayMs > 0 ? delayMs : undefined
+        }
+      });
+    });
+  }
+
+  private async collectWebviewProbeDiagnostic(
+    surface: CanvasSurfaceLocation
+  ): Promise<CanvasWebviewProbeDiagnosticResult> {
+    const attached = Boolean(this.getSurfaceWebview(surface));
+    const ready = this.surfaceReady[surface];
+    const interactive = this.isInteractiveSurface(surface);
+    const visibility = this.getSurfaceVisibility(surface);
+
+    if (!attached || !ready) {
+      return {
+        surface,
+        attached,
+        ready,
+        interactive,
+        visibility,
+        error: !attached ? 'surface-not-attached' : 'surface-not-ready'
+      };
+    }
+
+    try {
+      const snapshot = await this.captureWebviewProbe(surface, 2500, 0);
+      return {
+        surface,
+        attached,
+        ready,
+        interactive,
+        visibility,
+        capturedAt: new Date().toISOString(),
+        snapshot
+      };
+    } catch (error) {
+      return {
+        surface,
+        attached,
+        ready,
+        interactive,
+        visibility,
+        capturedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  private collectManagedExecutionSessionDiagnostics(
+    kind: ExecutionNodeKind
+  ): Array<Record<string, unknown>> {
+    return Array.from(this.getExecutionSessions(kind).entries()).map(([nodeId, session]) => ({
+      nodeId,
+      kind,
+      sessionId: session.sessionId,
+      owner: session.owner,
+      startedAtMs: session.startedAtMs,
+      shellPath: session.shellPath,
+      cwd: session.cwd,
+      cols: session.cols,
+      rows: session.rows,
+      displayLabel: session.displayLabel,
+      lifecycleStatus: session.lifecycleStatus,
+      launchMode: session.launchMode,
+      resumePhaseActive: session.resumePhaseActive,
+      stopRequested: session.stopRequested,
+      bufferLength: session.buffer.length,
+      pendingOutputLength: session.pendingOutput.length,
+      runtimeBackend: session.runtimeBackend,
+      runtimeGuarantee: session.runtimeGuarantee,
+      runtimeSessionId: session.runtimeSessionId,
+      runtimeStoragePath: session.runtimeStoragePath,
+      agentProvider: session.agentProvider,
+      agentResume: session.agentResume
+        ? {
+            supported: session.agentResume.supported,
+            strategy: session.agentResume.strategy,
+            sessionId: session.agentResume.sessionId,
+            storagePath: session.agentResume.storagePath
+          }
+        : undefined
+    }));
+  }
+
+  private getHostDiagnosticsRootPath(): string {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return workspaceRoot ? path.join(workspaceRoot, '.debug') : path.join(this.getExtensionStoragePath(), 'debug');
   }
 
   public async performWebviewDomActionForTest(
@@ -1696,9 +1956,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessage(message: HostToWebviewMessage): void {
-    this.recordHostMessageForTest(message);
-
     const activeWebview = this.getActiveWebview();
+    this.recordHostMessage('active', message, Boolean(activeWebview));
     if (!activeWebview) {
       return;
     }
@@ -3722,6 +3981,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (parsedMessage.type === 'webview/runtimeDiagnostic') {
+      this.recordDiagnosticEvent('webview/runtimeDiagnostic', {
+        surface: sourceSurface,
+        ...parsedMessage.payload
+      });
+      return;
+    }
+
     if (parsedMessage.type === 'webview/ready') {
       this.surfaceReady[sourceSurface] = true;
       this.recordDiagnosticEvent('surface/ready', {
@@ -3907,9 +4174,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessageToSurface(surface: CanvasSurfaceLocation, message: HostToWebviewMessage): void {
-    this.recordHostMessageForTest(message);
-
     const webview = this.getSurfaceWebview(surface);
+    this.recordHostMessage(surface, message, Boolean(webview));
     if (!webview) {
       return;
     }
@@ -5023,62 +5289,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
       activeSessions.set(nodeId, session);
       this.bindAgentFileActivitySession(nodeId, fileActivitySession);
-      this.recordDiagnosticEvent('execution/started', {
-        kind: 'agent',
-        nodeId,
-        sessionId,
-        provider,
-        launchMode,
-        launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
-        launchCommandLine: displayLaunchCommandLine,
-        requestedCommand: freshLaunch?.requestedCommand ?? null,
-        launchArgs: freshLaunch?.launchArgs ?? [],
-        cols: normalizedCols,
-        rows: normalizedRows,
-        shellPath: cliSpec.command,
-        cwd,
-        resumeStrategy: resumeContext.strategy,
-        resumeSessionId: resumeContext.sessionId ?? null,
-        resumeStoragePath: resumeContext.storagePath ?? null
-      });
-
-      this.state = updateAgentNode(this.state, nodeId, {
-        status: lifecycleStatus,
-        summary: summarizeAgentSessionOutput('', lifecycleStatus, cliSpec.label),
-        metadata: buildAgentMetadataPatch(this.state, nodeId, {
-          provider,
-          lifecycle: lifecycleStatus,
-          runtimeKind: 'pty-cli',
-          resumeSupported: resumeContext.supported,
-          resumeStrategy: resumeContext.strategy,
-          resumeSessionId: resumeContext.sessionId,
-          resumeStoragePath: resumeContext.storagePath,
-          lastResumeError: undefined,
-          persistenceMode: 'snapshot-only',
-          attachmentState: 'attached-live',
-          runtimeBackend: undefined,
-          runtimeGuarantee: undefined,
-          runtimeStoragePath: undefined,
-          liveSession: true,
-          runtimeSessionId: undefined,
-          pendingLaunch: undefined,
-          shellPath: cliSpec.command,
-          cwd,
-          recentOutput: undefined,
-          lastExitCode: undefined,
-          lastExitSignal: undefined,
-          lastExitMessage: undefined,
-          lastCols: normalizedCols,
-          lastRows: normalizedRows,
-          serializedTerminalState: undefined,
-          lastBackendLabel: cliSpec.label,
-          lastLaunchCommandLine: displayLaunchCommandLine
-        })
-      });
-      this.persistState();
-      this.postState('host/stateUpdated');
-      this.postExecutionSnapshot('agent', nodeId);
-      void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'startup');
 
       const handleSessionChunk = (text: string): void => {
         const sessionMap = this.getExecutionSessions('agent');
@@ -5229,6 +5439,63 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           signal
         );
       });
+
+      this.recordDiagnosticEvent('execution/started', {
+        kind: 'agent',
+        nodeId,
+        sessionId,
+        provider,
+        launchMode,
+        launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
+        launchCommandLine: displayLaunchCommandLine,
+        requestedCommand: freshLaunch?.requestedCommand ?? null,
+        launchArgs: freshLaunch?.launchArgs ?? [],
+        cols: normalizedCols,
+        rows: normalizedRows,
+        shellPath: cliSpec.command,
+        cwd,
+        resumeStrategy: resumeContext.strategy,
+        resumeSessionId: resumeContext.sessionId ?? null,
+        resumeStoragePath: resumeContext.storagePath ?? null
+      });
+
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: lifecycleStatus,
+        summary: summarizeAgentSessionOutput('', lifecycleStatus, cliSpec.label),
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          provider,
+          lifecycle: lifecycleStatus,
+          runtimeKind: 'pty-cli',
+          resumeSupported: resumeContext.supported,
+          resumeStrategy: resumeContext.strategy,
+          resumeSessionId: resumeContext.sessionId,
+          resumeStoragePath: resumeContext.storagePath,
+          lastResumeError: undefined,
+          persistenceMode: 'snapshot-only',
+          attachmentState: 'attached-live',
+          runtimeBackend: undefined,
+          runtimeGuarantee: undefined,
+          runtimeStoragePath: undefined,
+          liveSession: true,
+          runtimeSessionId: undefined,
+          pendingLaunch: undefined,
+          shellPath: cliSpec.command,
+          cwd,
+          recentOutput: undefined,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          lastCols: normalizedCols,
+          lastRows: normalizedRows,
+          serializedTerminalState: undefined,
+          lastBackendLabel: cliSpec.label,
+          lastLaunchCommandLine: displayLaunchCommandLine
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postExecutionSnapshot('agent', nodeId);
+      void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'startup');
     } catch (error) {
       await this.disposeAgentFileActivitySession(nodeId);
       const message =
@@ -5823,54 +6090,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         exitSubscription: undefined
       };
       this.terminalSessions.set(nodeId, session);
-      this.recordDiagnosticEvent('execution/started', {
-        kind: 'terminal',
-        nodeId,
-        sessionId,
-        cols: normalizedCols,
-        rows: normalizedRows,
-        shellPath,
-        cwd
-      });
-
-      this.state = updateTerminalNode(this.state, nodeId, {
-        status: 'launching',
-        summary: summarizeEmbeddedTerminalOutput('', 'launching'),
-        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
-          lifecycle: 'launching',
-          persistenceMode: 'snapshot-only',
-          attachmentState: 'attached-live',
-          runtimeBackend: undefined,
-          runtimeGuarantee: undefined,
-          runtimeStoragePath: undefined,
-          liveSession: true,
-          runtimeSessionId: undefined,
-          pendingLaunch: undefined,
-          shellPath,
-          cwd,
-          lastCols: normalizedCols,
-          lastRows: normalizedRows,
-          recentOutput: undefined,
-          lastExitCode: undefined,
-          lastExitSignal: undefined,
-          lastExitMessage: undefined,
-          serializedTerminalState: undefined
-        })
-      });
-      this.persistState();
-      this.postState('host/stateUpdated');
-      this.postExecutionSnapshot('terminal', nodeId);
-
-      session.lifecycleTimer = setTimeout(() => {
-        const activeSession = this.terminalSessions.get(nodeId);
-        if (!activeSession || activeSession.lifecycleStatus !== 'launching') {
-          return;
-        }
-
-        activeSession.lifecycleTimer = undefined;
-        activeSession.lifecycleStatus = 'live';
-        this.flushLiveExecutionState('terminal', nodeId);
-      }, 160);
 
       const handleTerminalChunk = (text: string): void => {
         const activeSession = this.terminalSessions.get(nodeId);
@@ -5989,6 +6208,55 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           signal
         );
       });
+
+      this.recordDiagnosticEvent('execution/started', {
+        kind: 'terminal',
+        nodeId,
+        sessionId,
+        cols: normalizedCols,
+        rows: normalizedRows,
+        shellPath,
+        cwd
+      });
+
+      this.state = updateTerminalNode(this.state, nodeId, {
+        status: 'launching',
+        summary: summarizeEmbeddedTerminalOutput('', 'launching'),
+        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lifecycle: 'launching',
+          persistenceMode: 'snapshot-only',
+          attachmentState: 'attached-live',
+          runtimeBackend: undefined,
+          runtimeGuarantee: undefined,
+          runtimeStoragePath: undefined,
+          liveSession: true,
+          runtimeSessionId: undefined,
+          pendingLaunch: undefined,
+          shellPath,
+          cwd,
+          lastCols: normalizedCols,
+          lastRows: normalizedRows,
+          recentOutput: undefined,
+          lastExitCode: undefined,
+          lastExitSignal: undefined,
+          lastExitMessage: undefined,
+          serializedTerminalState: undefined
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postExecutionSnapshot('terminal', nodeId);
+
+      session.lifecycleTimer = setTimeout(() => {
+        const activeSession = this.terminalSessions.get(nodeId);
+        if (!activeSession || activeSession.lifecycleStatus !== 'launching') {
+          return;
+        }
+
+        activeSession.lifecycleTimer = undefined;
+        activeSession.lifecycleStatus = 'live';
+        this.flushLiveExecutionState('terminal', nodeId);
+      }, 160);
     } catch (error) {
       const message = describeEmbeddedTerminalSpawnError(shellPath, error);
       this.recordDiagnosticEvent('execution/spawnError', {
@@ -6815,6 +7083,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
   }
 
+  private recordHostMessage(
+    surface: CanvasSurfaceLocation | 'active',
+    message: HostToWebviewMessage,
+    delivered: boolean
+  ): void {
+    this.recordHostMessageDiagnostic(surface, message, delivered);
+    this.recordHostMessageForTest(message);
+  }
+
+  private recordHostMessageDiagnostic(
+    surface: CanvasSurfaceLocation | 'active',
+    message: HostToWebviewMessage,
+    delivered: boolean
+  ): void {
+    this.diagnosticHostMessages.push({
+      timestamp: new Date().toISOString(),
+      surface,
+      delivered,
+      type: message.type,
+      detail: summarizeHostMessageDetail(message)
+    });
+    if (this.diagnosticHostMessages.length > 400) {
+      this.diagnosticHostMessages.splice(0, this.diagnosticHostMessages.length - 400);
+    }
+  }
+
   private recordHostMessageForTest(message: HostToWebviewMessage): void {
     if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
       return;
@@ -6827,10 +7121,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
-      return;
-    }
-
     this.testDiagnosticEvents.push({
       timestamp: new Date().toISOString(),
       kind,
@@ -8620,6 +8910,142 @@ function normalizePosition(value: unknown, sequence: number): CanvasNodePosition
   }
 
   return createNodePosition(sequence);
+}
+
+function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<string, unknown> | undefined {
+  switch (message.type) {
+    case 'host/bootstrap':
+    case 'host/stateUpdated':
+      return {
+        nodeCount: message.payload.state.nodes.length,
+        updatedAt: message.payload.state.updatedAt,
+        surfaceLocation: message.payload.runtime.surfaceLocation,
+        workspaceTrusted: message.payload.runtime.workspaceTrusted
+      };
+    case 'host/focusNode':
+      return {
+        nodeId: message.payload.nodeId
+      };
+    case 'host/error':
+      return {
+        message: message.payload.message
+      };
+    case 'host/executionSnapshot':
+      return {
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind,
+        cols: message.payload.cols,
+        rows: message.payload.rows,
+        liveSession: message.payload.liveSession,
+        outputLength: message.payload.output.length,
+        outputPreview: summarizeDiagnosticText(message.payload.output),
+        hasSerializedTerminalState: message.payload.serializedTerminalState !== undefined
+      };
+    case 'host/executionOutput':
+      return {
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind,
+        chunkLength: message.payload.chunk.length,
+        chunkPreview: summarizeDiagnosticText(message.payload.chunk)
+      };
+    case 'host/executionExit':
+      return {
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind,
+        message: message.payload.message
+      };
+    case 'host/executionFileLinksResolved':
+      return {
+        requestId: message.payload.requestId,
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind,
+        resolvedLinkCount: message.payload.resolvedLinks.length
+      };
+    case 'host/requestCreateNode':
+      return {
+        kind: message.payload.kind,
+        agentProvider: message.payload.agentProvider
+      };
+    case 'host/testProbeRequest':
+      return {
+        requestId: message.payload.requestId,
+        delayMs: message.payload.delayMs ?? 0
+      };
+    case 'host/testDomAction':
+      return {
+        requestId: message.payload.requestId,
+        action: cloneJsonValue(message.payload.action)
+      };
+    case 'host/themeChanged':
+    case 'host/visibilityRestored':
+      return undefined;
+  }
+}
+
+function summarizeDiagnosticHostMessages(
+  messages: readonly CanvasHostMessageDiagnosticRecord[]
+): Record<string, unknown> {
+  const byType: Record<string, number> = {};
+  const bySurface: Record<string, number> = {};
+  const executionByNode: Record<string, { snapshot: number; output: number; exit: number }> = {};
+
+  for (const message of messages) {
+    byType[message.type] = (byType[message.type] ?? 0) + 1;
+    bySurface[message.surface] = (bySurface[message.surface] ?? 0) + 1;
+
+    const nodeId =
+      typeof message.detail?.nodeId === 'string' ? message.detail.nodeId : undefined;
+    if (!nodeId) {
+      continue;
+    }
+
+    const currentEntry = executionByNode[nodeId] ?? {
+      snapshot: 0,
+      output: 0,
+      exit: 0
+    };
+    if (message.type === 'host/executionSnapshot') {
+      currentEntry.snapshot += 1;
+    } else if (message.type === 'host/executionOutput') {
+      currentEntry.output += 1;
+    } else if (message.type === 'host/executionExit') {
+      currentEntry.exit += 1;
+    }
+    executionByNode[nodeId] = currentEntry;
+  }
+
+  return {
+    byType,
+    bySurface,
+    executionByNode
+  };
+}
+
+function summarizeDiagnosticText(value: string): string {
+  const normalized = stripTerminalControlSequences(value).replace(/\s+/g, ' ').trim();
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+}
+
+function describeExtensionMode(mode: vscode.ExtensionMode): 'production' | 'development' | 'test' {
+  switch (mode) {
+    case vscode.ExtensionMode.Development:
+      return 'development';
+    case vscode.ExtensionMode.Test:
+      return 'test';
+    default:
+      return 'production';
+  }
+}
+
+function createFileSystemSafeTimestamp(value: string): string {
+  return value.replace(/[:.]/g, '-');
+}
+
+async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
+  await fs.promises.mkdir(path.dirname(filePath), {
+    recursive: true
+  });
+  await fs.promises.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

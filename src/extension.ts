@@ -59,6 +59,18 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
 
+  registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
+    const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
+    const revealAction = '在资源管理器中显示';
+    const selection = await vscode.window.showInformationMessage(
+      `当前宿主诊断已写入 ${dumpResult.outputDir}`,
+      revealAction
+    );
+    if (selection === revealAction) {
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dumpResult.summaryPath));
+    }
+  });
+
   context.subscriptions.push(
     sidebarSummaryView,
     sidebarActionsView,

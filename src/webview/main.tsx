@@ -291,6 +291,7 @@ interface XtermCoreWithMouseInternals {
 }
 
 const vscode = acquireVsCodeApi<LocalUiState>();
+const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry = new Map<
@@ -310,6 +311,113 @@ const pendingExecutionFileLinkResolutionRequests = new Map<
     timeout: number;
   }
 >();
+
+type WebviewRuntimeDiagnosticPayload = Extract<
+  WebviewToHostMessage,
+  { type: 'webview/runtimeDiagnostic' }
+>['payload'];
+
+function registerRuntimeDiagnosticListeners(): void {
+  window.addEventListener('error', (event: ErrorEvent) => {
+    emitRuntimeDiagnostic({
+      source: 'window.error',
+      message: normalizeRuntimeDiagnosticMessage(event.error, event.message),
+      stack: extractRuntimeDiagnosticStack(event.error),
+      filename: typeof event.filename === 'string' && event.filename.trim() ? event.filename.trim() : undefined,
+      line: normalizeRuntimeDiagnosticCoordinate(event.lineno),
+      column: normalizeRuntimeDiagnosticCoordinate(event.colno),
+      readyState: document.readyState
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+    emitRuntimeDiagnostic({
+      source: 'window.unhandledrejection',
+      message: normalizeRuntimeDiagnosticMessage(event.reason),
+      stack: extractRuntimeDiagnosticStack(event.reason),
+      readyState: document.readyState
+    });
+  });
+}
+
+function emitRuntimeDiagnostic(payload: WebviewRuntimeDiagnosticPayload): void {
+  const diagnosticKey = JSON.stringify([
+    payload.source,
+    payload.message,
+    payload.stack ?? '',
+    payload.filename ?? '',
+    payload.line ?? 0,
+    payload.column ?? 0,
+    payload.readyState ?? ''
+  ]);
+
+  if (reportedRuntimeDiagnostics.has(diagnosticKey)) {
+    return;
+  }
+
+  if (reportedRuntimeDiagnostics.size >= 100) {
+    reportedRuntimeDiagnostics.clear();
+  }
+  reportedRuntimeDiagnostics.add(diagnosticKey);
+
+  try {
+    vscode.postMessage({
+      type: 'webview/runtimeDiagnostic',
+      payload
+    });
+  } catch {
+    // Ignore secondary failures while reporting primary webview runtime issues.
+  }
+}
+
+function normalizeRuntimeDiagnosticMessage(error: unknown, fallbackMessage?: string): string {
+  if (error instanceof Error) {
+    const preferredMessage = error.message.trim() || error.name.trim();
+    if (preferredMessage) {
+      return preferredMessage;
+    }
+  }
+
+  if (typeof error === 'string') {
+    const normalized = error.trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  if (typeof fallbackMessage === 'string') {
+    const normalized = fallbackMessage.trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  try {
+    const serialized = JSON.stringify(error);
+    return serialized === undefined ? 'Unknown webview runtime error.' : serialized;
+  } catch {
+    return String(error);
+  }
+}
+
+function extractRuntimeDiagnosticStack(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const stack = error.stack?.trim();
+  return stack ? stack : undefined;
+}
+
+function normalizeRuntimeDiagnosticCoordinate(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+
+  return Math.round(value);
+}
+
+registerRuntimeDiagnosticListeners();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
 let executionTerminalDrainFrame: number | undefined;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
