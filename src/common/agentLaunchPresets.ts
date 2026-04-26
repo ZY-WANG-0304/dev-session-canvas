@@ -29,10 +29,7 @@ export function buildAgentPresetCommandLine(
   defaults: AgentProviderLaunchDefaults,
   preset: AgentLaunchPresetKind
 ): string {
-  const baseArgs = parseAgentDefaultArgsOrThrow(provider, defaults);
-  const command = defaults.command.trim() || provider;
-  const argv = [command, ...applyAgentPresetArgs(provider, baseArgs, preset)];
-  return formatCommandLine(argv);
+  return formatCommandLine(buildAgentPresetArgv(provider, defaults, preset));
 }
 
 export function buildFreshAgentCommandLine(
@@ -96,16 +93,31 @@ export function classifyAgentLaunchPreset(
   launchPreset: AgentLaunchPresetKind;
   customLaunchCommand?: string;
 } {
-  const normalizedInput = normalizeComparableCommandLine(commandLine);
-  if (!normalizedInput) {
+  if (!commandLine.trim()) {
     return {
       launchPreset: 'default'
     };
   }
 
+  const validation = validateAgentCommandLine(commandLine, provider, defaults);
+  if (!validation.valid || !validation.parsed) {
+    return {
+      launchPreset: 'custom',
+      customLaunchCommand: commandLine.trim()
+    };
+  }
+
+  const inputArgv = [validation.parsed.command, ...validation.parsed.args];
   for (const preset of ['default', 'resume', 'yolo', 'sandbox'] as const) {
     try {
-      if (normalizedInput === normalizeComparableCommandLine(buildAgentPresetCommandLine(provider, defaults, preset))) {
+      if (
+        isEquivalentAgentCommandLine(
+          inputArgv,
+          buildAgentPresetArgv(provider, defaults, preset),
+          provider,
+          defaults.command
+        )
+      ) {
         return {
           launchPreset: preset
         };
@@ -217,8 +229,13 @@ export function parseCommandLine(commandLine: string): {
 } {
   const argv: string[] = [];
   let current = '';
+  let tokenInProgress = false;
   let quote: 'single' | 'double' | undefined;
   let doubleQuoteBackslashMode: DoubleQuotedBackslashMode = 'unknown';
+  const appendCurrent = (value: string): void => {
+    current += value;
+    tokenInProgress = true;
+  };
 
   for (let index = 0; index < commandLine.length; index += 1) {
     const character = commandLine[index];
@@ -230,8 +247,9 @@ export function parseCommandLine(commandLine: string): {
       } else if (!quote) {
         quote = 'double';
         doubleQuoteBackslashMode = 'unknown';
+        tokenInProgress = true;
       } else {
-        current += character;
+        appendCurrent(character);
       }
       continue;
     }
@@ -241,8 +259,9 @@ export function parseCommandLine(commandLine: string): {
         quote = undefined;
       } else if (!quote) {
         quote = 'single';
+        tokenInProgress = true;
       } else {
-        current += character;
+        appendCurrent(character);
       }
       continue;
     }
@@ -250,7 +269,7 @@ export function parseCommandLine(commandLine: string): {
     if (character === '\\') {
       const nextCharacter = commandLine[index + 1];
       if (quote === 'single') {
-        current += character;
+        appendCurrent(character);
         continue;
       }
       if (quote === 'double') {
@@ -269,16 +288,16 @@ export function parseCommandLine(commandLine: string): {
               followingCharacter
             )
           ) {
-            current += '\\'.repeat(backslashRunLength);
+            appendCurrent('\\'.repeat(backslashRunLength));
             quote = undefined;
             doubleQuoteBackslashMode = 'unknown';
             index += backslashRunLength;
             continue;
           }
 
-          current += '\\'.repeat(Math.floor(backslashRunLength / 2));
+          appendCurrent('\\'.repeat(Math.floor(backslashRunLength / 2)));
           if (backslashRunLength % 2 === 1) {
-            current += '"';
+            appendCurrent('"');
           } else {
             quote = undefined;
             doubleQuoteBackslashMode = 'unknown';
@@ -294,31 +313,32 @@ export function parseCommandLine(commandLine: string): {
           nextAfterBackslashes
         );
         if (doubleQuoteBackslashMode === 'legacy' && backslashRunLength % 2 === 0) {
-          current += '\\'.repeat(backslashRunLength / 2);
+          appendCurrent('\\'.repeat(backslashRunLength / 2));
         } else {
-          current += '\\'.repeat(backslashRunLength);
+          appendCurrent('\\'.repeat(backslashRunLength));
         }
         index += backslashRunLength - 1;
         continue;
       }
       if (nextCharacter && (/\s/.test(nextCharacter) || nextCharacter === '"' || nextCharacter === "'")) {
-        current += nextCharacter;
+        appendCurrent(nextCharacter);
         index += 1;
         continue;
       }
-      current += character;
+      appendCurrent(character);
       continue;
     }
 
     if (!quote && /\s/.test(character)) {
-      if (current) {
+      if (tokenInProgress) {
         argv.push(current);
         current = '';
+        tokenInProgress = false;
       }
       continue;
     }
 
-    current += character;
+    appendCurrent(character);
   }
 
   if (quote) {
@@ -328,7 +348,7 @@ export function parseCommandLine(commandLine: string): {
     };
   }
 
-  if (current) {
+  if (tokenInProgress) {
     argv.push(current);
   }
 
@@ -358,6 +378,16 @@ function applyAgentPresetArgs(
     default:
       return [...baseArgs];
   }
+}
+
+function buildAgentPresetArgv(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults,
+  preset: AgentLaunchPresetKind
+): string[] {
+  const baseArgs = parseAgentDefaultArgsOrThrow(provider, defaults);
+  const command = defaults.command.trim() || provider;
+  return [command, ...applyAgentPresetArgs(provider, baseArgs, preset)];
 }
 
 function isProviderCommandMatch(
@@ -396,9 +426,27 @@ function matchClaudeCommandSessionFlag(token: string): ClaudeCommandSessionFlag 
   return null;
 }
 
-function normalizeComparableCommandLine(commandLine: string): string {
-  const parsed = parseCommandLine(commandLine);
-  return parsed.argv.join('\u0000').trim();
+function isEquivalentAgentCommandLine(
+  inputArgv: readonly string[],
+  presetArgv: readonly string[],
+  provider: AgentProviderKind,
+  configuredCommand: string
+): boolean {
+  if (inputArgv.length === 0 || presetArgv.length === 0) {
+    return false;
+  }
+
+  const [inputCommand, ...inputArgs] = inputArgv;
+  const [presetCommand, ...presetArgs] = presetArgv;
+  return (
+    isProviderCommandMatch(inputCommand, provider, configuredCommand) &&
+    isProviderCommandMatch(presetCommand, provider, configuredCommand) &&
+    normalizeComparableArgv(inputArgs) === normalizeComparableArgv(presetArgs)
+  );
+}
+
+function normalizeComparableArgv(argv: readonly string[]): string {
+  return JSON.stringify(argv);
 }
 
 function normalizeCommandIdentity(command: string): string {
@@ -559,7 +607,29 @@ function isLikelyWindowsPathContent(value: string): boolean {
 }
 
 function isLikelyWindowsUncPath(value: string): boolean {
-  return /^\\\\[^\\/\s]+\\[^\\/\s]+(?:\\.*)?$/.test(value);
+  const segments = value.slice(2).split('\\');
+  if (segments.length < 2) {
+    return false;
+  }
+
+  const [host, share, ...pathSegments] = segments;
+  if (!host || !share) {
+    return false;
+  }
+
+  if (!/^[^\\/\s]+$/.test(host)) {
+    return false;
+  }
+
+  if (!isValidWindowsUncPathComponent(share)) {
+    return false;
+  }
+
+  return pathSegments.every((segment) => segment.length > 0 && isValidWindowsUncPathComponent(segment));
+}
+
+function isValidWindowsUncPathComponent(value: string): boolean {
+  return isValidWindowsRelativePathSegment(value);
 }
 
 function isLikelyWindowsRelativePath(value: string): boolean {
