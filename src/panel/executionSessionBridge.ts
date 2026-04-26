@@ -149,7 +149,9 @@ export function resolveExecutionSessionSpawnSpec(
 
   return {
     file: resolveWindowsCommandShell(spec.env),
-    args: ['/d', '/s', '/c', buildWindowsBatchCommandLine(spec.file, args)]
+    // Use `call` so cmd.exe treats a spaced .cmd/.bat target as a batch
+    // invocation rather than splitting the path at the first space.
+    args: ['/d', '/s', '/c', 'call', spec.file, ...args]
   };
 }
 
@@ -193,22 +195,6 @@ function resolveWindowsCommandShell(env: NodeJS.ProcessEnv): string {
     'cmd.exe'
   );
 }
-
-function buildWindowsBatchCommandLine(file: string, args: readonly string[]): string {
-  return [quoteWindowsCommandLineValue(file), ...args.map(quoteWindowsCommandLineValue)].join(' ');
-}
-
-function quoteWindowsCommandLineValue(value: string): string {
-  if (!value) {
-    return '""';
-  }
-
-  return WINDOWS_CMD_ARGUMENT_NEEDS_QUOTES.test(value)
-    ? `"${value.replace(/"/g, '\\"')}"`
-    : value;
-}
-
-const WINDOWS_CMD_ARGUMENT_NEEDS_QUOTES = /[\s"&()<>^|]/u;
 
 function isMissingRequiredModuleError(error: unknown, moduleName: string): boolean {
   if (!isRecord(error) || error.code !== 'MODULE_NOT_FOUND') {
