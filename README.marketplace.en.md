@@ -80,8 +80,8 @@ The public `0.2.x` line moves the canvas from “multiple execution nodes in one
    Set-ExecutionPolicy RemoteSigned
    ```
 3. Type `Y` to confirm the change
-4. Close and reopen VS Code terminal
-5. Run `npm -v` to verify the fix
+4. Close and reopen VS Code
+5. Try creating a `Terminal` or `Agent` node again to confirm the issue is resolved
 
 ## Rollback Guidance
 
