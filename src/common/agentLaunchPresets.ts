@@ -22,6 +22,7 @@ export interface ClaudeCommandSessionFlag {
 }
 
 const WINDOWS_EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|com)$/i;
+type DoubleQuotedBackslashMode = 'unknown' | 'legacy' | 'literal';
 
 export function buildAgentPresetCommandLine(
   provider: AgentProviderKind,
@@ -203,12 +204,7 @@ export function quoteCommandToken(value: string): string {
     return value;
   }
 
-  return `"${value.replace(/([\\"])|\n/g, (match, escaped) => {
-    if (match === '\n') {
-      return '\\n';
-    }
-    return `\\${escaped}`;
-  })}"`;
+  return quoteDoubleQuotedCommandToken(value);
 }
 
 export function parseCommandLine(commandLine: string): {
@@ -218,6 +214,7 @@ export function parseCommandLine(commandLine: string): {
   const argv: string[] = [];
   let current = '';
   let quote: 'single' | 'double' | undefined;
+  let doubleQuoteBackslashMode: DoubleQuotedBackslashMode = 'unknown';
 
   for (let index = 0; index < commandLine.length; index += 1) {
     const character = commandLine[index];
@@ -225,8 +222,10 @@ export function parseCommandLine(commandLine: string): {
     if (character === '"') {
       if (quote === 'double') {
         quote = undefined;
+        doubleQuoteBackslashMode = 'unknown';
       } else if (!quote) {
         quote = 'double';
+        doubleQuoteBackslashMode = 'unknown';
       } else {
         current += character;
       }
@@ -251,24 +250,51 @@ export function parseCommandLine(commandLine: string): {
         continue;
       }
       if (quote === 'double') {
-        if (nextCharacter === '\\') {
-          current += nextCharacter;
-          index += 1;
-          continue;
+        let backslashRunLength = 1;
+        while (commandLine[index + backslashRunLength] === '\\') {
+          backslashRunLength += 1;
         }
-        if (nextCharacter === '"') {
-          const followingCharacter = commandLine[index + 2];
-          if (shouldTreatDoubleQuoteAsWindowsPathTerminator(current, followingCharacter)) {
-            current += '\\';
+
+        const nextAfterBackslashes = commandLine[index + backslashRunLength];
+        if (nextAfterBackslashes === '"') {
+          const followingCharacter = commandLine[index + backslashRunLength + 1];
+          if (
+            backslashRunLength % 2 === 1 &&
+            shouldTreatDoubleQuoteAsWindowsPathTerminator(
+              current + '\\'.repeat(backslashRunLength),
+              followingCharacter
+            )
+          ) {
+            current += '\\'.repeat(backslashRunLength);
             quote = undefined;
-            index += 1;
+            doubleQuoteBackslashMode = 'unknown';
+            index += backslashRunLength;
             continue;
           }
-          current += '"';
-          index += 1;
+
+          current += '\\'.repeat(Math.floor(backslashRunLength / 2));
+          if (backslashRunLength % 2 === 1) {
+            current += '"';
+          } else {
+            quote = undefined;
+            doubleQuoteBackslashMode = 'unknown';
+          }
+          index += backslashRunLength;
           continue;
         }
-        current += character;
+
+        doubleQuoteBackslashMode = resolveDoubleQuotedBackslashMode(
+          doubleQuoteBackslashMode,
+          current,
+          backslashRunLength,
+          nextAfterBackslashes
+        );
+        if (doubleQuoteBackslashMode === 'legacy' && backslashRunLength % 2 === 0) {
+          current += '\\'.repeat(backslashRunLength / 2);
+        } else {
+          current += '\\'.repeat(backslashRunLength);
+        }
+        index += backslashRunLength - 1;
         continue;
       }
       if (nextCharacter && (/\s/.test(nextCharacter) || nextCharacter === '"' || nextCharacter === "'")) {
@@ -395,6 +421,77 @@ function normalizeStandardProviderAlias(provider: AgentProviderKind): string {
   return normalizeCommandIdentity(provider);
 }
 
+function quoteDoubleQuotedCommandToken(value: string): string {
+  let quoted = '"';
+  let backslashRunLength = 0;
+
+  for (const character of value) {
+    if (character === '\\') {
+      backslashRunLength += 1;
+      continue;
+    }
+
+    if (character === '\n') {
+      quoted += '\\'.repeat(backslashRunLength);
+      backslashRunLength = 0;
+      quoted += '\\n';
+      continue;
+    }
+
+    if (character === '"') {
+      quoted += '\\'.repeat(backslashRunLength * 2 + 1);
+      quoted += '"';
+      backslashRunLength = 0;
+      continue;
+    }
+
+    quoted += '\\'.repeat(backslashRunLength);
+    backslashRunLength = 0;
+    quoted += character;
+  }
+
+  quoted += '\\'.repeat(backslashRunLength * 2);
+  quoted += '"';
+  return quoted;
+}
+
+function resolveDoubleQuotedBackslashMode(
+  currentMode: DoubleQuotedBackslashMode,
+  currentValue: string,
+  backslashRunLength: number,
+  nextCharacter: string | undefined
+): DoubleQuotedBackslashMode {
+  if (currentMode !== 'unknown') {
+    return currentMode;
+  }
+
+  return shouldUseLegacyEscapedBackslashes(currentValue, backslashRunLength, nextCharacter)
+    ? 'legacy'
+    : 'literal';
+}
+
+function shouldUseLegacyEscapedBackslashes(
+  currentValue: string,
+  backslashRunLength: number,
+  nextCharacter: string | undefined
+): boolean {
+  if (backslashRunLength < 2) {
+    return false;
+  }
+
+  const trimmed = currentValue.trim();
+  if (/^[A-Za-z]:$/.test(trimmed) || /^[A-Za-z]:[^\\/]+$/.test(trimmed)) {
+    return true;
+  }
+
+  // Older formatter output escaped the leading UNC `\\` as `\\\\`.
+  if (!trimmed && backslashRunLength >= 4 && nextCharacter !== undefined && nextCharacter !== '\\') {
+    return true;
+  }
+
+  return false;
+}
+
 function shouldTreatDoubleQuoteAsWindowsPathTerminator(
   currentValue: string,
   followingCharacter: string | undefined
@@ -427,6 +524,11 @@ function isLikelyWindowsPathContent(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) {
     return false;
+  }
+
+  const withoutTrailingBackslashes = trimmed.replace(/\\+$/, '');
+  if (withoutTrailingBackslashes && withoutTrailingBackslashes !== trimmed) {
+    return isLikelyWindowsPathContent(withoutTrailingBackslashes);
   }
 
   if (trimmed.includes('/')) {

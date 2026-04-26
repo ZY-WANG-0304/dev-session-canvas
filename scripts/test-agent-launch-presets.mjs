@@ -98,6 +98,18 @@ try {
   assert.equal(quotedWindowsCodexValidation.parsed.command, 'C:\\Program Files\\Codex\\codex.exe');
   assert.deepEqual(quotedWindowsCodexValidation.parsed.args, ['--yolo']);
 
+  const legacyQuotedWindowsCodexValidation = validateAgentCommandLine(
+    '"C:\\\\Program Files\\\\Codex\\\\codex.exe" --yolo',
+    'codex',
+    {
+      command: 'C:\\Program Files\\Codex\\codex.exe',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(legacyQuotedWindowsCodexValidation.valid, true);
+  assert.equal(legacyQuotedWindowsCodexValidation.parsed.command, 'C:\\Program Files\\Codex\\codex.exe');
+  assert.deepEqual(legacyQuotedWindowsCodexValidation.parsed.args, ['--yolo']);
+
   const windowsPresetCommandLine = buildAgentPresetCommandLine(
     'codex',
     {
@@ -106,12 +118,15 @@ try {
     },
     'default'
   );
-  assert.equal(windowsPresetCommandLine, '"C:\\\\Program Files\\\\Codex\\\\codex.exe" --yolo');
+  assert.equal(windowsPresetCommandLine, '"C:\\Program Files\\Codex\\codex.exe" --yolo');
 
   const trailingSlashConfigPath = 'C:\\Users\\me\\My Dir\\';
   const formattedTrailingSlashCommandLine = formatCommandLine(['codex', '--config', trailingSlashConfigPath]);
-  assert.equal(formattedTrailingSlashCommandLine, 'codex --config "C:\\\\Users\\\\me\\\\My Dir\\\\"');
+  assert.equal(formattedTrailingSlashCommandLine, 'codex --config "C:\\Users\\me\\My Dir\\\\"');
   assert.deepEqual(parseCommandLine(formattedTrailingSlashCommandLine), {
+    argv: ['codex', '--config', trailingSlashConfigPath]
+  });
+  assert.deepEqual(parseCommandLine('codex --config "C:\\\\Users\\\\me\\\\My Dir\\\\"'), {
     argv: ['codex', '--config', trailingSlashConfigPath]
   });
 
@@ -139,7 +154,43 @@ try {
     },
     'default'
   );
-  assert.equal(presetFromNaturalWindowsArgs, 'codex --config "C:\\\\Users\\\\me\\\\My Dir\\\\"');
+  assert.equal(presetFromNaturalWindowsArgs, 'codex --config "C:\\Users\\me\\My Dir\\\\"');
+
+  const uncConfigPath = '\\\\server\\share\\My Dir\\';
+  const formattedUncCommandLine = formatCommandLine(['codex', '--config', uncConfigPath]);
+  assert.equal(formattedUncCommandLine, 'codex --config "\\\\server\\share\\My Dir\\\\"');
+  assert.deepEqual(parseCommandLine(formattedUncCommandLine), {
+    argv: ['codex', '--config', uncConfigPath]
+  });
+  assert.deepEqual(parseCommandLine('codex --config "\\\\\\\\server\\\\share\\\\My Dir\\\\"'), {
+    argv: ['codex', '--config', uncConfigPath]
+  });
+  const naturalUncCommandLine = 'codex --config "\\\\server\\share\\My Dir\\"';
+  assert.deepEqual(parseCommandLine(naturalUncCommandLine), {
+    argv: ['codex', '--config', uncConfigPath]
+  });
+  const naturalUncValidation = validateAgentCommandLine(
+    '"\\\\server\\share\\Codex\\codex.exe" --yolo',
+    'codex',
+    {
+      command: '\\\\server\\share\\Codex\\codex.exe',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(naturalUncValidation.valid, true);
+  assert.equal(naturalUncValidation.parsed.command, '\\\\server\\share\\Codex\\codex.exe');
+  assert.deepEqual(naturalUncValidation.parsed.args, ['--yolo']);
+  const legacyUncValidation = validateAgentCommandLine(
+    '"\\\\\\\\server\\\\share\\\\Codex\\\\codex.exe" --yolo',
+    'codex',
+    {
+      command: '\\\\server\\share\\Codex\\codex.exe',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(legacyUncValidation.valid, true);
+  assert.equal(legacyUncValidation.parsed.command, '\\\\server\\share\\Codex\\codex.exe');
+  assert.deepEqual(legacyUncValidation.parsed.args, ['--yolo']);
 
   const relativeTrailingSlashConfigPath = 'My Dir\\';
   const naturalRelativeTrailingSlashCommandLine = 'codex --config "My Dir\\"';
