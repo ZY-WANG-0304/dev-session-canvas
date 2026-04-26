@@ -64,6 +64,25 @@ The public `0.2.x` line moves the canvas from “multiple execution nodes in one
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
+## Usage Tips
+
+### Unable to Create Terminal and Agent Nodes on Windows
+
+**Symptom**: Only `Note` type is visible when creating nodes; `Terminal` and `Agent` node types are missing.
+
+**Cause**: Windows PowerShell execution policy restrictions prevent Node.js commands from running properly.
+
+**Solution**:
+
+1. Open PowerShell as Administrator
+2. Run the following command to set execution policy to `RemoteSigned`:
+   ```powershell
+   Set-ExecutionPolicy RemoteSigned
+   ```
+3. Type `Y` to confirm the change
+4. Close and reopen VS Code terminal
+5. Run `npm -v` to verify the fix
+
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
