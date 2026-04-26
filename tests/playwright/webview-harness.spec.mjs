@@ -2050,6 +2050,57 @@ test('right-click create menu validates custom agent launch commands before crea
     );
 });
 
+test('right-click create menu blocks custom agent launch when provider default args are invalid', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    createCanvasScreenshotState(),
+    createRuntimeContext({
+      agentLaunchDefaults: {
+        codex: {
+          command: 'codex',
+          defaultArgs: '--model "o3'
+        },
+        claude: {
+          command: 'claude',
+          defaultArgs: '--model sonnet'
+        }
+      }
+    })
+  );
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+
+  await expect(menu.locator('[data-context-menu-launch-error="true"]')).toContainText(
+    'Codex 默认启动参数无法解析：双引号未闭合。'
+  );
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeDisabled();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-custom"]')).toBeDisabled();
+  await expect(menu.locator('[data-context-menu-custom-editor="true"]')).toHaveCount(0);
+});
+
 test('right-click custom agent launch input ignores IME Enter before composition commits', async ({ page }) => {
   await openHarness(page, {
     persistedState: {

@@ -38,6 +38,8 @@ export function buildFreshAgentCommandLine(
   customLaunchCommand: string | undefined,
   defaults: AgentProviderLaunchDefaults
 ): string {
+  assertAgentDefaultArgsParsable(provider, defaults);
+
   if (launchPreset === 'custom' && customLaunchCommand?.trim()) {
     return customLaunchCommand.trim();
   }
@@ -50,6 +52,14 @@ export function validateAgentCommandLine(
   provider: AgentProviderKind,
   defaults: AgentProviderLaunchDefaults
 ): AgentCommandValidationResult {
+  const defaultArgsError = getAgentDefaultArgsParseError(provider, defaults);
+  if (defaultArgsError) {
+    return {
+      valid: false,
+      error: defaultArgsError
+    };
+  }
+
   const parsed = parseCommandLine(commandLine);
   if (parsed.error) {
     return {
@@ -123,7 +133,7 @@ export function classifyAgentLaunchPreset(
         };
       }
     } catch {
-      // Invalid default args should not prevent an explicit custom command from being persisted as custom.
+      // Preset reconstruction failures should not break persistence of an explicit command line.
     }
   }
 
@@ -232,6 +242,7 @@ export function parseCommandLine(commandLine: string): {
   let tokenInProgress = false;
   let quote: 'single' | 'double' | undefined;
   let doubleQuoteBackslashMode: DoubleQuotedBackslashMode = 'unknown';
+  let doubleQuotedTokenPrefix = '';
   const appendCurrent = (value: string): void => {
     current += value;
     tokenInProgress = true;
@@ -244,9 +255,11 @@ export function parseCommandLine(commandLine: string): {
       if (quote === 'double') {
         quote = undefined;
         doubleQuoteBackslashMode = 'unknown';
+        doubleQuotedTokenPrefix = '';
       } else if (!quote) {
         quote = 'double';
         doubleQuoteBackslashMode = 'unknown';
+        doubleQuotedTokenPrefix = current;
         tokenInProgress = true;
       } else {
         appendCurrent(character);
@@ -285,12 +298,15 @@ export function parseCommandLine(commandLine: string): {
             backslashRunLength % 2 === 1 &&
             shouldTreatDoubleQuoteAsWindowsPathTerminator(
               current + '\\'.repeat(backslashRunLength),
-              followingCharacter
+              followingCharacter,
+              argv[argv.length - 1],
+              doubleQuotedTokenPrefix
             )
           ) {
             appendCurrent('\\'.repeat(backslashRunLength));
             quote = undefined;
             doubleQuoteBackslashMode = 'unknown';
+            doubleQuotedTokenPrefix = '';
             index += backslashRunLength;
             continue;
           }
@@ -301,6 +317,7 @@ export function parseCommandLine(commandLine: string): {
           } else {
             quote = undefined;
             doubleQuoteBackslashMode = 'unknown';
+            doubleQuotedTokenPrefix = '';
           }
           index += backslashRunLength;
           continue;
@@ -385,7 +402,7 @@ function buildAgentPresetArgv(
   defaults: AgentProviderLaunchDefaults,
   preset: AgentLaunchPresetKind
 ): string[] {
-  const baseArgs = parseAgentDefaultArgsOrThrow(provider, defaults);
+  const baseArgs = assertAgentDefaultArgsParsable(provider, defaults);
   const command = defaults.command.trim() || provider;
   return [command, ...applyAgentPresetArgs(provider, baseArgs, preset)];
 }
@@ -550,13 +567,15 @@ function shouldUseLegacyEscapedBackslashes(
 
 function shouldTreatDoubleQuoteAsWindowsPathTerminator(
   currentValue: string,
-  followingCharacter: string | undefined
+  followingCharacter: string | undefined,
+  previousToken: string | undefined,
+  quotedTokenPrefix: string
 ): boolean {
   if (followingCharacter !== undefined && !/\s/.test(followingCharacter)) {
     return false;
   }
 
-  return isLikelyWindowsPathContent(currentValue);
+  return isLikelyWindowsPathContent(currentValue, previousToken, quotedTokenPrefix);
 }
 
 function isWindowsCommandToken(command: string): boolean {
@@ -576,7 +595,11 @@ function isWindowsCommandToken(command: string): boolean {
   return !trimmed.includes('/') && WINDOWS_EXECUTABLE_SUFFIX.test(trimmed);
 }
 
-function isLikelyWindowsPathContent(value: string): boolean {
+function isLikelyWindowsPathContent(
+  value: string,
+  previousToken: string | undefined,
+  quotedTokenPrefix: string
+): boolean {
   const trimmed = value.trim();
   if (!trimmed) {
     return false;
@@ -584,7 +607,7 @@ function isLikelyWindowsPathContent(value: string): boolean {
 
   const withoutTrailingBackslashes = trimmed.replace(/\\+$/, '');
   if (withoutTrailingBackslashes && withoutTrailingBackslashes !== trimmed) {
-    return isLikelyWindowsPathContent(withoutTrailingBackslashes);
+    return isLikelyWindowsPathContent(withoutTrailingBackslashes, previousToken, quotedTokenPrefix);
   }
 
   if (trimmed.includes('/')) {
@@ -600,7 +623,7 @@ function isLikelyWindowsPathContent(value: string): boolean {
   }
 
   if (!trimmed.includes('\\')) {
-    return isLikelyWindowsRelativePathSegment(trimmed);
+    return isLikelyWindowsRelativePathSegment(trimmed, previousToken, quotedTokenPrefix);
   }
 
   return isLikelyWindowsRelativePath(trimmed);
@@ -641,28 +664,109 @@ function isLikelyWindowsRelativePath(value: string): boolean {
   return segments.every((segment) => segment.length > 0 && isValidWindowsRelativePathSegment(segment));
 }
 
-function isLikelyWindowsRelativePathSegment(value: string): boolean {
+function isLikelyWindowsRelativePathSegment(
+  value: string,
+  previousToken: string | undefined,
+  quotedTokenPrefix: string
+): boolean {
   if (!/\s/.test(value)) {
     return false;
   }
 
-  return isValidWindowsRelativePathSegment(value);
+  if (!isValidWindowsRelativePathSegment(value)) {
+    return false;
+  }
+
+  // Single-segment relative paths with trailing `\"` are lexically ambiguous:
+  // they overlap with ordinary quoted prose. Keep this compatibility layer
+  // scoped to path-valued option contexts plus bare positional arguments so
+  // generic text under non-path flags still follows standard
+  // `CommandLineToArgvW` escaping rules.
+  return (
+    isBarePositionalCommandToken(previousToken, quotedTokenPrefix) ||
+    isLikelyWindowsPathFlagToken(previousToken) ||
+    isLikelyWindowsPathFlagAssignmentPrefix(quotedTokenPrefix)
+  );
 }
 
 function isValidWindowsRelativePathSegment(value: string): boolean {
   return /^[^<>:"/\\|?*]+$/.test(value);
 }
 
-function parseAgentDefaultArgsOrThrow(
+function isLikelyWindowsPathFlagAssignmentPrefix(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.endsWith('=')) {
+    return false;
+  }
+
+  return isLikelyWindowsPathFlagToken(trimmed.slice(0, -1));
+}
+
+function isBarePositionalCommandToken(previousToken: string | undefined, quotedTokenPrefix: string): boolean {
+  return !quotedTokenPrefix.trim() && !isOptionLikeCommandToken(previousToken ?? '');
+}
+
+function isLikelyWindowsPathFlagToken(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!isOptionLikeCommandToken(trimmed)) {
+    return false;
+  }
+
+  const normalized = trimmed.replace(/^-+/, '').toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return /(?:^|[-_])(config|path|paths|file|files|dir|dirs|directory|directories|cwd|root|roots|workspace|worktree)(?:$|[-_])/.test(
+    normalized
+  );
+}
+
+function isOptionLikeCommandToken(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.startsWith('-');
+}
+
+function parseAgentDefaultArgs(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults
+): {
+  args?: string[];
+  error?: string;
+} {
+  const parsed = parseCommandLine(defaults.defaultArgs);
+  if (parsed.error) {
+    return {
+      error: `${providerLabel(provider)} 默认启动参数无法解析：${parsed.error}`
+    };
+  }
+
+  return {
+    args: parsed.argv
+  };
+}
+
+function getAgentDefaultArgsParseError(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults
+): string | undefined {
+  return parseAgentDefaultArgs(provider, defaults).error;
+}
+
+function assertAgentDefaultArgsParsable(
   provider: AgentProviderKind,
   defaults: AgentProviderLaunchDefaults
 ): string[] {
-  const parsed = parseCommandLine(defaults.defaultArgs);
-  if (!parsed.error) {
-    return parsed.argv;
+  const parsed = parseAgentDefaultArgs(provider, defaults);
+  if (parsed.error) {
+    throw new Error(parsed.error);
   }
 
-  throw new Error(`${providerLabel(provider)} 默认启动参数无法解析：${parsed.error}`);
+  return parsed.args ?? [];
 }
 
 function providerLabel(provider: AgentProviderKind): string {
