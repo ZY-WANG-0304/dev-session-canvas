@@ -34,7 +34,7 @@
 - [x] (2026-04-25) 根据 review finding 收口宿主兜底：创建与 fresh-start 都会重新校验自定义命令首个 token 是否仍属于当前 provider，Claude 显式 session flag 识别补齐 `--flag=value`，并同步修正 smoke 断言。
 - [x] (2026-04-25) 根据最新 review finding 继续收口：provider 校验改成“仅接受当前设置值本身或标准别名”，Claude 显式 session id 会驱动 host / supervisor 的文件确认链路，右键菜单 Resume 文案也与规格重新对齐。
 - [x] (2026-04-26) 根据最新 review finding 继续收口命令行解析与错误呈现：共享 parser 兼容 Windows 反斜杠路径，provider 默认启动参数 parse error 改为显式上抛到 Webview / Quick Input / host，右键菜单自定义启动打开后第一次 `Escape` 也会优先收起输入区。
-- [x] (2026-04-26) 针对“不断补丁修 parser”的风险，补做了命令层方案调研并按结果收口：执行路径继续坚持结构化 `file + args[]`，共享 formatter / parser 改成以文档化 Windows quoting 为基线，同时兼容旧版全量双写反斜杠的历史文本与自然输入的 UNC / 尾部反斜杠路径。
+- [x] (2026-04-26) 针对“不断补丁修 parser”的风险，补做了命令层方案调研并按结果收口：执行路径继续坚持结构化 `file + args[]`；共享 parser 以文档化 Windows quoting 为基线，但 canonical formatter 改为优先输出单引号包裹的稳定文本，仅在必要时才退回双引号 escaping，同时兼容旧版全量双写反斜杠的历史文本与自然输入的 UNC / 尾部反斜杠路径。
 
 ## 意外与发现
 
@@ -58,6 +58,9 @@
 
 - 观察：Node / Execa 生态里的成熟执行路径都强调“直接传 `file + args[]`，不要把整段字符串再交给 shell”；而 POSIX shell quoting 与 Windows `CommandLineToArgvW` 的反斜杠/引号规则并不一致，所以继续维护一个“单一、平台无关、同时兼容自然 Windows 路径”的手写 parser 会持续引入边界 bug。
   证据：2026-04-26 本轮调研了 Node `child_process`、Execa escaping 文档、GNU Bash quoting 与微软 `CommandLineToArgvW` 规则，结论都指向“执行用结构化 argv，字符串 parser 只留在输入边界且必须显式定义语义”。
+
+- 观察：现成 shell parser 并不能直接覆盖本仓库的混合需求。以 `shell-quote` 为例，它对单引号/双引号很成熟，但会把未加引号的 `C:\tools\codex.exe` 中的 `\` 当 escape 处理，也无法把自然输入的 `"C:\Users\me\My Dir\"` 还原成尾部反斜杠路径；因此它更适合作为 canonical quoting 风格参考，而不是直接替换当前 parser。
+  证据：2026-04-26 本地对 `shell-quote` 试跑 `C:\tools\codex.exe --yolo` 与 `codex --config "C:\Users\me\My Dir\"`，前者被解析成 `C:toolscodex.exe`，后者则把结尾 `\"` 吃成字面量双引号。
 
 ## 决策记录
 
@@ -117,8 +120,8 @@
   理由：规格写的是“当前设置值本身，或标准别名”，不是“同名二进制都行”；而显式 session id 若不进入后续确认链路，就会让 `--session-id=<id>` / `--resume=<id>` 这类启动方式在 stop 后错误丢失“恢复原会话”入口。
   日期/作者：2026-04-25 / Codex
 
-- 决策：命令层不再继续朝“模拟 shell”方向打补丁，而是正式收口为“执行始终使用结构化 `file + args[]`；字符串 parser 只服务于 Settings / Quick Input / 右键菜单等文本输入边界，并以 Windows 文档化 quoting 规则为基线，同时兼容旧 formatter 的历史输出和自然输入的 Windows path”。
-  理由：这条边界和 Node / Execa 的成熟实践一致，也能解释为什么我们既要避免 shell 注入，又要继续接受用户自然写的 `C:\...` / `\\server\share\...`。相比继续扩大启发式 escape 规则，这种做法更容易形成可维护的不变量与测试矩阵。
+- 决策：命令层不再继续朝“模拟 shell”方向打补丁，而是正式收口为“执行始终使用结构化 `file + args[]`；字符串 parser 只服务于 Settings / Quick Input / 右键菜单等文本输入边界，并以 Windows 文档化 quoting 规则为基线，同时让 canonical formatter 优先产出单引号包裹的稳定文本，仅在必要时才退回双引号 escaping”。
+  理由：这条边界和 Node / Execa 的成熟实践一致，也能解释为什么我们既要避免 shell 注入，又要继续接受用户自然写的 `C:\...` / `\\server\share\...`。相比继续扩大启发式 escape 规则，采用“结构化执行 + 单引号优先 canonical 字符串 + 窄兼容层”的做法更容易形成可维护的不变量与测试矩阵。
   日期/作者：2026-04-26 / Codex
 
 ## 结果与复盘
@@ -127,7 +130,7 @@
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。另一个同步收口是：`agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 现在使用 `window` scope，允许在窗口 / 工作区层直接配置与覆盖。最新一轮又把 Agent 节点副标题改成显示当前节点最近一次实际启动指令，并在文本被截断时通过 hover 浮窗暴露完整指令；尚未真正启动过的节点则回退显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
 - 已更新：针对 review finding，又补上两层宿主兜底。其一，`agentCustomLaunchCommand` 现在在创建消息落盘前和 fresh-start 真正执行前都会重新按 provider 规则校验，伪造 `agentProvider: "claude"` + `node -e ...` 之类的 payload 会直接被拒绝，不会再走 resolver / spawn。其二，Claude 自定义启动里若已显式写入 `--session-id` / `--resume` / `--continue`，无论采用空格分隔还是 `--flag=value`，宿主都不会再重复追加第二份 session 参数；同时 smoke 里的 `verifyClaudeStopRestoresPreviousSignal` 也已改回与当前 stop 语义一致的断言。
 - 已更新：本轮继续补齐 review 收尾。provider 校验已经从“同 basename 也算合法”改成“只认当前设置值本身或标准别名”，避免 `/tmp/evil/claude` 之类的同名二进制绕过。Claude 的显式 session id 也不再只停留在 launch args 里：host 在构建 `resumeContext` 时会直接提取真实 session id，runtime supervisor 在 createSession 时也会用同一逻辑兜底，因此 `claude --session-id=<id>` 这类 fresh-start 能继续通过 provider transcript 文件确认，stop 后保留 `重启 | ▼`。同时，trusted smoke 里的 Claude stop 用例改成使用 PATH 中的 `claude` 标准别名，避免再和 “测试环境默认 command 指向 missing-agent-provider” 的校验规则冲突。
-- 已更新：本轮把“命令字符串层”正式收口成更稳定的模型：真正执行仍只走 `node-pty.spawn(file, args)`，共享 formatter 改成更接近原生 Windows 的最小转义，parser 同时接受新 canonical output、旧版“每个 `\` 都双写”的历史文本，以及自然输入的 quoted UNC / 尾部反斜杠 path。这样既修掉了 `\\server\share\...` 被误折叠成 `\server\share\...` 的回归，也减少了后续再为 Windows path 打补丁的概率。
+- 已更新：本轮把“命令字符串层”正式收口成更稳定的模型：真正执行仍只走 `node-pty.spawn(file, args)`，共享 formatter 改为优先输出单引号 canonical 文本，避免再主动生成 `"...\\\""` 这类高歧义字符串；parser 则继续接受新 canonical output、旧版“每个 `\` 都双写”的历史文本，以及自然输入的 quoted UNC / 尾部反斜杠 path。这样既修掉了 `\\server\share\...` 被误折叠成 `\server\share\...` 的回归，也收掉了 `--prompt '\\" a' -> build -> validate` 这类“扩展自己生成的命令又被自己误判”的主路径问题。
 
 ## 上下文与定向
 
@@ -194,6 +197,7 @@
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；提权后 trusted 场景长时间停留在 VS Code 宿主空转状态，因此已中止该轮补跑，待后续单独排查。
 - 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；本轮新增覆盖 Windows 路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令仍会被持久化为 `custom`。
 - 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
+- 2026-04-26：本轮继续把 canonical formatter 改成单引号优先后，已重新运行 `npm run test:agent-launch-presets`，新增覆盖 `--prompt '\\" a'` 的 build+validate 主路径，以及直接输入 `codex --prompt "\\\" a"` 的 parser/validator 回归，均通过。
 - 2026-04-26：继续排查 Playwright harness 超时后，已定位根因为共享命令校验逻辑在 Webview bundle 中直接读取 `process.platform`，导致右键菜单渲染 `CanvasContextMenu` 时抛出 `process is not defined`。修复后已重新运行 `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"`，均通过。
 - 2026-04-26：本轮继续补了 `formatCommandLine()` / `parseCommandLine()` 的 Windows 尾部反斜杠 round-trip 回归：`npm run test:agent-launch-presets`、`npm run build` 与 `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
 - 2026-04-26：本轮按“结构化 argv + Windows quoting 兼容层”再次完成验证：`npm run test:agent-launch-presets`、`npm run typecheck`、`npm run build`、`npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 与 `git diff --check` 均通过；新增回归覆盖 quoted UNC 与旧 formatter 输出兼容。

@@ -154,8 +154,9 @@ updated_at: 2026-04-26
 命令层的正式收口方式也要明确：
 
 - 实际执行路径继续保持 `node-pty.spawn(file, args)` 这类结构化 `file + args[]`，不把用户输入整段交给 shell；命令字符串只存在于 Settings / Quick Input / 右键菜单这些“人输入文本”的边界。
-- 共享 formatter / parser 以 Windows 文档化的“反斜杠 run + 双引号”语义为基线，但保留两层兼容：一是继续接受旧 formatter 产出的“每个 `\` 都被重复一次”的历史命令文本，避免升级后旧 metadata / 默认参数失效；二是继续接受用户自然输入的 Windows 路径（包括尾部 `\"` 的单段 relative path、drive-relative path 与 UNC path），不要求用户先理解底层 CLI 的严格转义规则。
-- `\\server\share\...` 这类 quoted UNC path 的前导双反斜杠必须被完整保留，不能再因为“把 `\\` 一律折叠成 `\`”而丢掉一个前导分隔符；同时，未来新生成的命令字符串应尽量使用“只在 closing quote 前双写尾部 `\`、只在 `"` 前转义”的更接近原生 Windows 规则的格式，而不是把整段路径里的每个 `\` 都重复一次。
+- 共享 parser 的核心语义以 Windows 文档化的“反斜杠 run + 双引号”规则为基线，但只把它作为双引号内的标准行为；单引号仍保留“全文字面值”的简洁语义，未加引号时的 `\` 也继续按当前仓库约定默认为字面值，避免把 `C:\tools\codex.exe` 这类输入吃坏。
+- 共享 formatter 的 canonical 输出优先选择单引号包裹“包含空白、反斜杠或双引号，但本身不含单引号”的 token，把复杂 escaping 限制在少数确实需要双引号的场景。这样 `\" a`、`C:\Users\me\My Dir\`、`\\server\share\My Dir\` 这类值都会被序列化成更稳定、可读且可 round-trip 的字符串，而不是继续生成容易和 Windows path 兼容层打架的 `"...\\\""` 形式。
+- 同时保留两层兼容：一是继续接受旧 formatter 产出的“每个 `\` 都被重复一次”的历史命令文本，避免升级后旧 metadata / 默认参数失效；二是继续接受用户自然输入的 Windows 路径（包括尾部 `\"` 的单段 relative path、drive-relative path 与 UNC path），但这条兼容只在“整个 token 真的长得像 Windows path”时触发，不再对纯 `\\` 前缀或任意字面量 `\"` 做前缀猜测。
 
 ### 7.3 右键菜单
 
