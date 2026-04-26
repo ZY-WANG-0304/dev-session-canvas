@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-04-25
+updated_at: 2026-04-26
 ---
 
 # Agent 启动方式与重启交互设计
@@ -151,6 +151,12 @@ updated_at: 2026-04-25
 - 反斜杠不能再被当成“通用 escape”。在 Windows 路径 `C:\tools\codex.exe`、`"C:\Program Files\Codex\codex.exe"` 这类输入里，`\` 默认按字面值保留；即使是用户自然输入的 `"C:\Users\me\My Dir\"`、`"My Dir\"`、`"C:My Dir\"` 这种“带空格且以反斜杠结尾”的 quoted path，也必须被当成合法路径而不是未闭合引号。只有对引号本身或未加引号的空白分隔才做最小限度转义。
 - `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 若存在未闭合引号等 parse error，必须把错误显式抛给 Webview、Quick Input 和宿主启动链路，而不是偷偷把默认参数整段丢掉后继续执行。
 
+命令层的正式收口方式也要明确：
+
+- 实际执行路径继续保持 `node-pty.spawn(file, args)` 这类结构化 `file + args[]`，不把用户输入整段交给 shell；命令字符串只存在于 Settings / Quick Input / 右键菜单这些“人输入文本”的边界。
+- 共享 formatter / parser 以 Windows 文档化的“反斜杠 run + 双引号”语义为基线，但保留两层兼容：一是继续接受旧 formatter 产出的“每个 `\` 都被重复一次”的历史命令文本，避免升级后旧 metadata / 默认参数失效；二是继续接受用户自然输入的 Windows 路径（包括尾部 `\"` 的单段 relative path、drive-relative path 与 UNC path），不要求用户先理解底层 CLI 的严格转义规则。
+- `\\server\share\...` 这类 quoted UNC path 的前导双反斜杠必须被完整保留，不能再因为“把 `\\` 一律折叠成 `\`”而丢掉一个前导分隔符；同时，未来新生成的命令字符串应尽量使用“只在 closing quote 前双写尾部 `\`、只在 `"` 前转义”的更接近原生 Windows 规则的格式，而不是把整段路径里的每个 `\` 都重复一次。
+
 ### 7.3 右键菜单
 
 `src/webview/main.tsx` 中的空白区右键菜单扩成三层：
@@ -242,4 +248,5 @@ updated_at: 2026-04-25
 - 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
 - 2026-04-26：继续排查 Playwright harness 超时后，已确认根因并非菜单交互本身，而是共享命令校验逻辑在 Webview bundle 中读取了不存在的 `process.platform`，导致 `CanvasContextMenu` 渲染时抛出 `process is not defined`。修复后 targeted `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"` 均通过。
 - 2026-04-26：已补上 Windows “带空格且以反斜杠结尾”的 quoted token round-trip 回归，确认共享 formatter / parser 不会再把 `C:\\Users\\me\\My Dir\\` 这类参数格式化成无法重新解析的命令；本轮 `npm run test:agent-launch-presets`、`npm run build` 与 targeted `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
+- 2026-04-26：本轮继续按“结构化 argv + 文档化 Windows quoting 兼容层”收口：新 formatter 改成更接近原生 Windows 的最小转义，parser 同时接受新 canonical output、旧版“全量双写反斜杠”的历史文本，以及自然输入的 quoted UNC path；已新增绝对路径 / UNC / 尾部反斜杠回归。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。
