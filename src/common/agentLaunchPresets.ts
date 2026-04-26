@@ -669,10 +669,6 @@ function isLikelyWindowsRelativePathSegment(
   previousToken: string | undefined,
   quotedTokenPrefix: string
 ): boolean {
-  if (!/\s/.test(value)) {
-    return false;
-  }
-
   if (!isValidWindowsRelativePathSegment(value)) {
     return false;
   }
