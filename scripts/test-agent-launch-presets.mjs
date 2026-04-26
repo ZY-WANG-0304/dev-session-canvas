@@ -118,11 +118,11 @@ try {
     },
     'default'
   );
-  assert.equal(windowsPresetCommandLine, '"C:\\Program Files\\Codex\\codex.exe" --yolo');
+  assert.equal(windowsPresetCommandLine, "'C:\\Program Files\\Codex\\codex.exe' --yolo");
 
   const trailingSlashConfigPath = 'C:\\Users\\me\\My Dir\\';
   const formattedTrailingSlashCommandLine = formatCommandLine(['codex', '--config', trailingSlashConfigPath]);
-  assert.equal(formattedTrailingSlashCommandLine, 'codex --config "C:\\Users\\me\\My Dir\\\\"');
+  assert.equal(formattedTrailingSlashCommandLine, "codex --config 'C:\\Users\\me\\My Dir\\'");
   assert.deepEqual(parseCommandLine(formattedTrailingSlashCommandLine), {
     argv: ['codex', '--config', trailingSlashConfigPath]
   });
@@ -154,11 +154,11 @@ try {
     },
     'default'
   );
-  assert.equal(presetFromNaturalWindowsArgs, 'codex --config "C:\\Users\\me\\My Dir\\\\"');
+  assert.equal(presetFromNaturalWindowsArgs, "codex --config 'C:\\Users\\me\\My Dir\\'");
 
   const uncConfigPath = '\\\\server\\share\\My Dir\\';
   const formattedUncCommandLine = formatCommandLine(['codex', '--config', uncConfigPath]);
-  assert.equal(formattedUncCommandLine, 'codex --config "\\\\server\\share\\My Dir\\\\"');
+  assert.equal(formattedUncCommandLine, "codex --config '\\\\server\\share\\My Dir\\'");
   assert.deepEqual(parseCommandLine(formattedUncCommandLine), {
     argv: ['codex', '--config', uncConfigPath]
   });
@@ -217,7 +217,7 @@ try {
       },
       'default'
     ),
-    'codex --config "My Dir\\\\"'
+    "codex --config 'My Dir\\'"
   );
 
   const driveRelativeTrailingSlashConfigPath = 'C:My Dir\\';
@@ -234,8 +234,46 @@ try {
       },
       'default'
     ),
-    'codex --config "C:My Dir\\\\"'
+    "codex --config 'C:My Dir\\'"
   );
+
+  const escapedPromptToken = '\\" a';
+  const escapedPromptCommandLine = String.raw`codex --prompt "\\\" a"`;
+  assert.deepEqual(parseCommandLine(escapedPromptCommandLine), {
+    argv: ['codex', '--prompt', escapedPromptToken]
+  });
+  const escapedPromptValidation = validateAgentCommandLine(
+    escapedPromptCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(escapedPromptValidation.valid, true);
+  assert.equal(escapedPromptValidation.parsed.command, 'codex');
+  assert.deepEqual(escapedPromptValidation.parsed.args, ['--prompt', escapedPromptToken]);
+
+  const escapedPromptPresetCommandLine = buildAgentPresetCommandLine(
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: String.raw`--prompt '\" a'`
+    },
+    'default'
+  );
+  assert.equal(escapedPromptPresetCommandLine, String.raw`codex --prompt '\" a'`);
+  const escapedPromptPresetValidation = validateAgentCommandLine(
+    escapedPromptPresetCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(escapedPromptPresetValidation.valid, true);
+  assert.equal(escapedPromptPresetValidation.parsed.command, 'codex');
+  assert.deepEqual(escapedPromptPresetValidation.parsed.args, ['--prompt', escapedPromptToken]);
 
   assert.deepEqual(parseCommandLine('codex --prompt "say \\"hi\\""'), {
     argv: ['codex', '--prompt', 'say "hi"']

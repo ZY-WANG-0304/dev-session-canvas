@@ -204,6 +204,10 @@ export function quoteCommandToken(value: string): string {
     return value;
   }
 
+  if (!value.includes("'") && !value.includes('\n') && !value.includes('\r')) {
+    return quoteSingleQuotedCommandToken(value);
+  }
+
   return quoteDoubleQuotedCommandToken(value);
 }
 
@@ -421,6 +425,10 @@ function normalizeStandardProviderAlias(provider: AgentProviderKind): string {
   return normalizeCommandIdentity(provider);
 }
 
+function quoteSingleQuotedCommandToken(value: string): string {
+  return `'${value}'`;
+}
+
 function quoteDoubleQuotedCommandToken(value: string): string {
   let quoted = '"';
   let backslashRunLength = 0;
@@ -535,7 +543,7 @@ function isLikelyWindowsPathContent(value: string): boolean {
     return false;
   }
 
-  if (/^[A-Za-z]:($|\\)/.test(trimmed) || trimmed.startsWith('\\\\') || trimmed.startsWith('//')) {
+  if (/^[A-Za-z]:($|\\)/.test(trimmed) || isLikelyWindowsUncPath(trimmed)) {
     return true;
   }
 
@@ -547,7 +555,20 @@ function isLikelyWindowsPathContent(value: string): boolean {
     return isLikelyWindowsRelativePathSegment(trimmed);
   }
 
-  return trimmed.split('\\').filter((segment) => segment.length > 0).length >= 2;
+  return isLikelyWindowsRelativePath(trimmed);
+}
+
+function isLikelyWindowsUncPath(value: string): boolean {
+  return /^\\\\[^\\/\s]+\\[^\\/\s]+(?:\\.*)?$/.test(value);
+}
+
+function isLikelyWindowsRelativePath(value: string): boolean {
+  const segments = value.split('\\');
+  if (segments.length < 2) {
+    return false;
+  }
+
+  return segments.every((segment) => segment.length > 0 && isValidWindowsRelativePathSegment(segment));
 }
 
 function isLikelyWindowsRelativePathSegment(value: string): boolean {
@@ -555,6 +576,10 @@ function isLikelyWindowsRelativePathSegment(value: string): boolean {
     return false;
   }
 
+  return isValidWindowsRelativePathSegment(value);
+}
+
+function isValidWindowsRelativePathSegment(value: string): boolean {
   return /^[^<>:"/\\|?*]+$/.test(value);
 }
 
