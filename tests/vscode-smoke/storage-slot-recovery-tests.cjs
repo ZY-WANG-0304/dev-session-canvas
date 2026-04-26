@@ -22,6 +22,7 @@ const COMMAND_IDS = {
 };
 const STORAGE_SLOT_RUNTIME_READY_MARKER = 'SIBLING_SLOT_RUNTIME_READY';
 const STORAGE_SLOT_RUNTIME_CONTINUE_MARKER = 'SIBLING_SLOT_RUNTIME_CONTINUE';
+const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
 
 module.exports = {
   run
@@ -623,27 +624,40 @@ function resolveLegacyRuntimeSupervisorPathsFromStorageDir(storageDir) {
 
   const tmpDir = path.resolve(os.tmpdir());
   for (const runtimeDir of resolvePrivateRuntimeDirCandidates(tmpDir)) {
-    const socketPath = path.join(runtimeDir, `supervisor-${digest}.sock`);
-    if (!isUnixSocketPathWithinLimit(socketPath)) {
-      continue;
-    }
+    for (const socketFileName of resolveLegacyRuntimePrivateSocketFileNames(digest)) {
+      const socketPath = path.join(runtimeDir, socketFileName);
+      if (!isUnixSocketPathWithinLimit(socketPath)) {
+        continue;
+      }
 
-    return {
-      storageDir: normalizedStorageDir,
-      runtimeDir,
-      socketPath,
-      registryPath,
-      socketLocation: 'runtime-private'
-    };
+      return {
+        storageDir: normalizedStorageDir,
+        runtimeDir,
+        socketPath,
+        registryPath,
+        socketLocation: 'runtime-private'
+      };
+    }
   }
 
-  return {
-    storageDir: normalizedStorageDir,
-    runtimeDir: tmpDir,
-    socketPath: path.join(tmpDir, `${digest}.sock`),
-    registryPath,
-    socketLocation: 'runtime-fallback'
-  };
+  for (const runtimeDir of resolveFallbackRuntimeDirCandidates(tmpDir)) {
+    for (const socketFileName of resolveLegacyRuntimeFallbackSocketFileNames(digest)) {
+      const socketPath = path.join(runtimeDir, socketFileName);
+      if (!isUnixSocketPathWithinLimit(socketPath)) {
+        continue;
+      }
+
+      return {
+        storageDir: normalizedStorageDir,
+        runtimeDir,
+        socketPath,
+        registryPath,
+        socketLocation: 'runtime-fallback'
+      };
+    }
+  }
+
+  throw new Error('Unable to resolve a Unix socket path for the sibling runtime supervisor.');
 }
 
 function resolvePrivateRuntimeDirCandidates(tmpDir) {
@@ -658,6 +672,39 @@ function resolvePrivateRuntimeDirCandidates(tmpDir) {
   candidates.push(path.join(tmpDir, `dsc-${userId}`));
 
   return Array.from(new Set(candidates));
+}
+
+function resolveLegacyRuntimePrivateSocketFileNames(digest) {
+  return Array.from(
+    new Set([
+      `supervisor-${digest}.sock`,
+      `${digest}.sock`,
+      `${digest.slice(0, SHORT_FALLBACK_SOCKET_DIGEST_LENGTH)}.sock`
+    ])
+  );
+}
+
+function resolveLegacyRuntimeFallbackSocketFileNames(digest) {
+  return Array.from(
+    new Set([
+      `${digest}.sock`,
+      `${digest.slice(0, SHORT_FALLBACK_SOCKET_DIGEST_LENGTH)}.sock`
+    ])
+  );
+}
+
+function resolveFallbackRuntimeDirCandidates(tmpDir) {
+  const candidates = [tmpDir];
+  if (process.platform !== 'win32') {
+    candidates.push('/tmp', '/private/tmp', '/var/tmp');
+  }
+
+  const homeDir = normalizeAbsoluteDirectory(os.homedir());
+  if (homeDir) {
+    candidates.push(path.join(homeDir, '.dsc'));
+  }
+
+  return Array.from(new Set(candidates.map((candidate) => path.resolve(candidate))));
 }
 
 function isUnixSocketPathWithinLimit(value) {

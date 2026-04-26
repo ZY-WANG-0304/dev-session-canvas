@@ -1884,6 +1884,330 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
+test('agent restart split button resumes by default and can start a new session', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'agent-1',
+    label: '重启'
+  });
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: true
+      })
+    );
+
+  await clearPostedMessages(page);
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-action="new-session"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: false
+      })
+    );
+});
+
+test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
+  await clearPostedMessages(page);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
+  await expect(agentNode.locator('button:has-text("重启")')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
+
+  await performTestDomAction(page, {
+    kind: 'clickNodeActionButton',
+    nodeId: 'agent-1',
+    label: '启动'
+  });
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: false
+      })
+    );
+});
+
+test('right-click create menu validates custom agent launch commands before creating', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
+
+  const customInput = menu.locator('[data-context-menu-custom-input="true"]');
+  const confirmButton = menu.locator('[data-context-menu-custom-confirm="true"]');
+  await expect(menu.locator('.canvas-context-menu-dismiss')).toHaveCount(0);
+  await expect(customInput).toHaveValue('codex --timeout 300 --verbose');
+
+  await customInput.fill('python not-agent');
+  await expect(confirmButton).toBeDisabled();
+  await expect(menu.locator('.canvas-context-menu-inline-error')).toContainText('codex');
+
+  await customInput.fill('codex resume session-123');
+  await expect(confirmButton).toBeEnabled();
+  await confirmButton.click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 780,
+          y: 305
+        },
+        agentProvider: 'codex',
+        agentLaunchPreset: 'custom',
+        agentCustomLaunchCommand: 'codex resume session-123'
+      })
+    );
+});
+
+test('right-click create menu blocks custom agent launch when provider default args are invalid', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    createCanvasScreenshotState(),
+    createRuntimeContext({
+      agentLaunchDefaults: {
+        codex: {
+          command: 'codex',
+          defaultArgs: '--model "o3'
+        },
+        claude: {
+          command: 'claude',
+          defaultArgs: '--model sonnet'
+        }
+      }
+    })
+  );
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+
+  await expect(menu.locator('[data-context-menu-launch-error="true"]')).toContainText(
+    'Codex 默认启动参数无法解析：双引号未闭合。'
+  );
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeDisabled();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-custom"]')).toBeDisabled();
+  await expect(menu.locator('[data-context-menu-custom-editor="true"]')).toHaveCount(0);
+});
+
+test('right-click custom agent launch input ignores IME Enter before composition commits', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
+
+  const customInput = menu.locator('[data-context-menu-custom-input="true"]');
+  await simulateImeCompositionOnTextField(page, customInput, 'codex --timeout 300 --verbose --yolo');
+
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('[data-context-menu-custom-confirm="true"]')).toBeEnabled();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((entry) => entry.type === 'webview/createDemoNode').length
+      );
+    })
+    .toBe(0);
+
+  await customInput.press('Enter');
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/createDemoNode');
+
+        return message ? JSON.stringify(message.payload) : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        kind: 'agent',
+        preferredPosition: {
+          x: 780,
+          y: 305
+        },
+        agentProvider: 'codex',
+        agentLaunchPreset: 'yolo'
+      })
+    );
+});
+
+test('right-click custom agent launch input closes before the menu backs out on Escape', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1060,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
+
+  await expect(menu.locator('[data-context-menu-custom-editor="true"]')).toBeVisible();
+  await menu.locator('[data-context-menu-custom-confirm="true"]').focus();
+  await page.keyboard.press('Escape');
+
+  await expect(menu.locator('[data-context-menu-custom-editor="true"]')).toHaveCount(0);
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+});
+
 test('execution node chrome hides runtime diagnostics and keeps agent waiting-input visible', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createRuntimeChromeState());
@@ -1942,6 +2266,28 @@ for (const executionKind of ['agent', 'terminal']) {
       '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
     );
   });
+
+  if (executionKind === 'agent') {
+    test('agent subtitle shows the launch command and exposes the full command when truncated', async ({
+      page
+    }) => {
+      const state = createLiveExecutionNodeState('agent');
+      const agentNode = state.nodes[0];
+      const longLaunchCommand =
+        'codex --model gpt-5.2 --sandbox workspace-write --yolo --config very-long-command-for-subtitle-overflow';
+
+      agentNode.size = { width: 280, height: agentNode.size.height };
+      agentNode.metadata.agent.lastLaunchCommandLine = longLaunchCommand;
+
+      await openHarness(page);
+      await bootstrap(page, state);
+      await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+      const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
+      await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
+      await expect(subtitle).toContainText('codex --model gpt-5.2');
+    });
+  }
 
   test(`${executionKind} dragover accepts explorer resources before payload becomes readable`, async ({
     page
@@ -3038,7 +3384,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
     );
 });
 
-test('right-click create menu can drill into agent providers and create claude directly', async ({ page }) => {
+test('right-click create menu can drill into agent launch modes and create claude yolo directly', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
       viewport: {
@@ -3066,8 +3412,18 @@ test('right-click create menu can drill into agent providers and create claude d
   await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+  await menu
+    .locator('[data-context-menu-provider="claude"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toContainText(
+    '进入 Claude Code 自己的 resume 会话选择入口'
+  );
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-yolo"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-launch-preset="launch-sandbox"]')).toBeVisible();
 
-  await menu.locator('[data-context-menu-provider="claude"]').click();
+  await menu.locator('[data-context-menu-launch-preset="launch-yolo"]').click();
 
   await expect(menu).toBeHidden();
   await expect
@@ -3087,7 +3443,8 @@ test('right-click create menu can drill into agent providers and create claude d
           x: 760,
           y: 305
         },
-        agentProvider: 'claude'
+        agentProvider: 'claude',
+        agentLaunchPreset: 'yolo'
       })
     );
 });
@@ -3134,7 +3491,9 @@ test('right-click create menu creates the default agent without opening the prov
         preferredPosition: {
           x: 800,
           y: 325
-        }
+        },
+        agentProvider: 'codex',
+        agentLaunchPreset: 'default'
       })
     );
 });
@@ -3185,7 +3544,9 @@ test('right-click create menu refreshes its default agent label after runtime co
         preferredPosition: {
           x: 730,
           y: 285
-        }
+        },
+        agentProvider: 'claude',
+        agentLaunchPreset: 'default'
       })
     );
 });
@@ -3317,6 +3678,97 @@ for (const executionKind of ['agent', 'terminal']) {
     );
     expect(restoredVisibleProbe.terminalViewportY).toBe(0);
     expect(restoredVisibleProbe.terminalVisibleLines.slice(0, 3)).toEqual(fixture.visibleLines.slice(0, 3));
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} exit preserves buffered tail output before the exit banner`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const tailUsageLine = 'Token usage: input=12 output=34 total=46';
+    const tailResumeLine = 'To continue this session, run: codex resume session-tail-123';
+    const exitMessage = executionKind === 'agent' ? '已停止 Codex CLI 会话。' : '终端会话已结束。';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${tailUsageLine}\r\n${tailResumeLine}\r\n`
+    });
+    await dispatchExecutionExit(page, {
+      nodeId,
+      kind: executionKind,
+      message: exitMessage
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(tailUsageLine)) &&
+        visibleLines.some((line) => line.includes(tailResumeLine)) &&
+        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailUsageLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailResumeLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
+      true
+    );
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} applies the final snapshot before rendering the exit banner`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBufferedLine = 'STALE-BUFFERED-LINE';
+    const finalUsageLine = 'Token usage: input=18 output=52 total=70';
+    const finalResumeLine = 'To continue this session, run: codex resume session-final-456';
+    const exitMessage = executionKind === 'agent' ? '已停止 Codex CLI 会话。' : '终端会话已结束。';
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      `FINAL-PROMPT\r\n${finalUsageLine}\r\n${finalResumeLine}\r\n`
+    );
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${staleBufferedLine}\r\n`
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: false,
+      serializedTerminalState
+    });
+    await dispatchExecutionExit(page, {
+      nodeId,
+      kind: executionKind,
+      message: exitMessage
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(finalUsageLine)) &&
+        visibleLines.some((line) => line.includes(finalResumeLine)) &&
+        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
+        !visibleLines.some((line) => line.includes(staleBufferedLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalUsageLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalResumeLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
+      true
+    );
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBufferedLine))).toBe(false);
   });
 }
 
@@ -3903,6 +4355,16 @@ function createRuntimeContext(overrides = {}) {
     workspaceTrusted: true,
     surfaceLocation: 'panel',
     defaultAgentProvider: 'codex',
+    agentLaunchDefaults: {
+      codex: {
+        command: 'codex',
+        defaultArgs: '--timeout 300 --verbose'
+      },
+      claude: {
+        command: 'claude',
+        defaultArgs: '--model sonnet'
+      }
+    },
     strongTerminalAttentionReminderMode: 'both',
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
@@ -4232,6 +4694,22 @@ async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
       nodeId,
       kind,
       chunk
+    }
+  );
+}
+
+async function dispatchExecutionExit(page, { nodeId, kind, message }) {
+  await page.evaluate(
+    (payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionExit',
+        payload
+      });
+    },
+    {
+      nodeId,
+      kind,
+      message
     }
   );
 }
@@ -4858,6 +5336,7 @@ function createAgentNodeState(provider = 'codex') {
             cwd: '/workspace',
             liveSession: false,
             provider,
+            launchPreset: 'default',
             lastCols: 96,
             lastRows: 28,
             lastBackendLabel: backendLabel
@@ -4866,6 +5345,21 @@ function createAgentNodeState(provider = 'codex') {
       }
     ]
   };
+}
+
+function createStoppedAgentNodeState({ provider = 'codex', resumable = true } = {}) {
+  const state = createAgentNodeState(provider);
+  state.nodes[0].status = 'stopped';
+  state.nodes[0].summary = resumable ? '检测到可恢复的原会话。' : '上一次 Agent 会话已结束。';
+  state.nodes[0].metadata.agent = {
+    ...state.nodes[0].metadata.agent,
+    lifecycle: 'stopped',
+    lastExitMessage: '上一次 Agent 会话已结束。',
+    resumeStrategy: resumable ? (provider === 'claude' ? 'claude-session-id' : 'codex-session-id') : 'none',
+    resumeSessionId: resumable ? 'session-123' : undefined,
+    resumeStoragePath: resumable && provider === 'codex' ? undefined : undefined
+  };
+  return state;
 }
 
 function createMinimapContrastState() {

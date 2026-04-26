@@ -72,6 +72,7 @@ export interface CanvasNodeFootprint {
 
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
+export type AgentLaunchPresetKind = 'default' | 'resume' | 'yolo' | 'sandbox' | 'custom';
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
@@ -126,6 +127,9 @@ export interface ExecutionSessionMetadata {
 export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   lifecycle: AgentNodeStatus;
   provider: AgentProviderKind;
+  launchPreset: AgentLaunchPresetKind;
+  customLaunchCommand?: string;
+  lastLaunchCommandLine?: string;
   runtimeKind: AgentRuntimeKind;
   resumeSupported: boolean;
   resumeStrategy: AgentResumeStrategy;
@@ -245,10 +249,21 @@ export interface CanvasPrototypeState {
   suppressedAutomaticFileArtifactNodeIds: string[];
 }
 
+export interface AgentProviderLaunchDefaults {
+  command: string;
+  defaultArgs: string;
+}
+
+export interface AgentLaunchDefaultsByProvider {
+  codex: AgentProviderLaunchDefaults;
+  claude: AgentProviderLaunchDefaults;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
   defaultAgentProvider: AgentProviderKind;
+  agentLaunchDefaults: AgentLaunchDefaultsByProvider;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   terminalScrollback: number;
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
@@ -405,6 +420,8 @@ export type WebviewToHostMessage =
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
         agentProvider?: AgentProviderKind;
+        agentLaunchPreset?: AgentLaunchPresetKind;
+        agentCustomLaunchCommand?: string;
       };
     }
   | {
@@ -638,6 +655,8 @@ export type HostToWebviewMessage =
       payload: {
         kind: CanvasCreatableNodeKind;
         agentProvider?: AgentProviderKind;
+        agentLaunchPreset?: AgentLaunchPresetKind;
+        agentCustomLaunchCommand?: string;
       };
     }
   | {
@@ -658,6 +677,7 @@ export type HostToWebviewMessage =
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 'file-list'];
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
+const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
@@ -672,6 +692,10 @@ export function isCanvasCreatableNodeKind(value: unknown): value is CanvasCreata
 
 export function isAgentProviderKind(value: unknown): value is AgentProviderKind {
   return typeof value === 'string' && agentProviderKinds.includes(value as AgentProviderKind);
+}
+
+export function isAgentLaunchPresetKind(value: unknown): value is AgentLaunchPresetKind {
+  return typeof value === 'string' && agentLaunchPresetKinds.includes(value as AgentLaunchPresetKind);
 }
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
@@ -1084,7 +1108,9 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !payload ||
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
-      (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider))
+      (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
+      (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
+      (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
     ) {
       return null;
     }
@@ -1096,7 +1122,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
           : undefined,
-        agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined
+        agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
+        agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
+        agentCustomLaunchCommand:
+          typeof payload.agentCustomLaunchCommand === 'string' ? payload.agentCustomLaunchCommand : undefined
       }
     };
   }
