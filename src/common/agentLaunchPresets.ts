@@ -203,7 +203,7 @@ export function quoteCommandToken(value: string): string {
     return value;
   }
 
-  return `"${value.replace(/(")|\n/g, (match, escaped) => {
+  return `"${value.replace(/([\\"])|\n/g, (match, escaped) => {
     if (match === '\n') {
       return '\\n';
     }
@@ -251,7 +251,19 @@ export function parseCommandLine(commandLine: string): {
         continue;
       }
       if (quote === 'double') {
+        if (nextCharacter === '\\') {
+          current += nextCharacter;
+          index += 1;
+          continue;
+        }
         if (nextCharacter === '"') {
+          const followingCharacter = commandLine[index + 2];
+          if (shouldTreatDoubleQuoteAsWindowsPathTerminator(current, followingCharacter)) {
+            current += '\\';
+            quote = undefined;
+            index += 1;
+            continue;
+          }
           current += '"';
           index += 1;
           continue;
@@ -383,6 +395,17 @@ function normalizeStandardProviderAlias(provider: AgentProviderKind): string {
   return normalizeCommandIdentity(provider);
 }
 
+function shouldTreatDoubleQuoteAsWindowsPathTerminator(
+  currentValue: string,
+  followingCharacter: string | undefined
+): boolean {
+  if (followingCharacter !== undefined && !/\s/.test(followingCharacter)) {
+    return false;
+  }
+
+  return isLikelyWindowsPathContent(currentValue);
+}
+
 function isWindowsCommandToken(command: string): boolean {
   const trimmed = command.trim();
   if (!trimmed) {
@@ -398,6 +421,39 @@ function isWindowsCommandToken(command: string): boolean {
   }
 
   return !trimmed.includes('/') && WINDOWS_EXECUTABLE_SUFFIX.test(trimmed);
+}
+
+function isLikelyWindowsPathContent(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (trimmed.includes('/')) {
+    return false;
+  }
+
+  if (/^[A-Za-z]:($|\\)/.test(trimmed) || trimmed.startsWith('\\\\') || trimmed.startsWith('//')) {
+    return true;
+  }
+
+  if (/^[A-Za-z]:[^\\/]+$/.test(trimmed)) {
+    return true;
+  }
+
+  if (!trimmed.includes('\\')) {
+    return isLikelyWindowsRelativePathSegment(trimmed);
+  }
+
+  return trimmed.split('\\').filter((segment) => segment.length > 0).length >= 2;
+}
+
+function isLikelyWindowsRelativePathSegment(value: string): boolean {
+  if (!/\s/.test(value)) {
+    return false;
+  }
+
+  return /^[^<>:"/\\|?*]+$/.test(value);
 }
 
 function parseAgentDefaultArgsOrThrow(

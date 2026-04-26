@@ -26,7 +26,9 @@ try {
     buildFreshAgentCommandLine,
     classifyAgentLaunchPreset,
     extractClaudeCommandSessionFlag,
+    formatCommandLine,
     hasAnyCommandLineFlag,
+    parseCommandLine,
     validateAgentCommandLine
   } = require(outfile);
 
@@ -104,7 +106,89 @@ try {
     },
     'default'
   );
-  assert.equal(windowsPresetCommandLine, '"C:\\Program Files\\Codex\\codex.exe" --yolo');
+  assert.equal(windowsPresetCommandLine, '"C:\\\\Program Files\\\\Codex\\\\codex.exe" --yolo');
+
+  const trailingSlashConfigPath = 'C:\\Users\\me\\My Dir\\';
+  const formattedTrailingSlashCommandLine = formatCommandLine(['codex', '--config', trailingSlashConfigPath]);
+  assert.equal(formattedTrailingSlashCommandLine, 'codex --config "C:\\\\Users\\\\me\\\\My Dir\\\\"');
+  assert.deepEqual(parseCommandLine(formattedTrailingSlashCommandLine), {
+    argv: ['codex', '--config', trailingSlashConfigPath]
+  });
+
+  const naturalTrailingSlashCommandLine = 'codex --config "C:\\Users\\me\\My Dir\\"';
+  assert.deepEqual(parseCommandLine(naturalTrailingSlashCommandLine), {
+    argv: ['codex', '--config', trailingSlashConfigPath]
+  });
+  const naturalTrailingSlashValidation = validateAgentCommandLine(
+    naturalTrailingSlashCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(naturalTrailingSlashValidation.valid, true);
+  assert.equal(naturalTrailingSlashValidation.parsed.command, 'codex');
+  assert.deepEqual(naturalTrailingSlashValidation.parsed.args, ['--config', trailingSlashConfigPath]);
+
+  const presetFromNaturalWindowsArgs = buildAgentPresetCommandLine(
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: '--config "C:\\Users\\me\\My Dir\\"'
+    },
+    'default'
+  );
+  assert.equal(presetFromNaturalWindowsArgs, 'codex --config "C:\\\\Users\\\\me\\\\My Dir\\\\"');
+
+  const relativeTrailingSlashConfigPath = 'My Dir\\';
+  const naturalRelativeTrailingSlashCommandLine = 'codex --config "My Dir\\"';
+  assert.deepEqual(parseCommandLine(naturalRelativeTrailingSlashCommandLine), {
+    argv: ['codex', '--config', relativeTrailingSlashConfigPath]
+  });
+  const naturalRelativeTrailingSlashValidation = validateAgentCommandLine(
+    naturalRelativeTrailingSlashCommandLine,
+    'codex',
+    {
+      command: 'codex',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(naturalRelativeTrailingSlashValidation.valid, true);
+  assert.equal(naturalRelativeTrailingSlashValidation.parsed.command, 'codex');
+  assert.deepEqual(naturalRelativeTrailingSlashValidation.parsed.args, ['--config', relativeTrailingSlashConfigPath]);
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--config "My Dir\\"'
+      },
+      'default'
+    ),
+    'codex --config "My Dir\\\\"'
+  );
+
+  const driveRelativeTrailingSlashConfigPath = 'C:My Dir\\';
+  const naturalDriveRelativeTrailingSlashCommandLine = 'codex --config "C:My Dir\\"';
+  assert.deepEqual(parseCommandLine(naturalDriveRelativeTrailingSlashCommandLine), {
+    argv: ['codex', '--config', driveRelativeTrailingSlashConfigPath]
+  });
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--config "C:My Dir\\"'
+      },
+      'default'
+    ),
+    'codex --config "C:My Dir\\\\"'
+  );
+
+  assert.deepEqual(parseCommandLine('codex --prompt "say \\"hi\\""'), {
+    argv: ['codex', '--prompt', 'say "hi"']
+  });
 
   assert.throws(
     () =>
