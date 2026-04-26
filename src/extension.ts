@@ -270,25 +270,34 @@ async function promptAgentLaunchRequest(
   provider: AgentProviderKind
 ): Promise<CreateNodeRequest | 'back' | undefined> {
   const launchDefaults = getAgentLaunchDefaults(provider);
-  const initialCommandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'default');
-  const scriptedResult = consumeQueuedAgentLaunchRequest(provider, launchDefaults, initialCommandLine);
+  let presetCommandLines: Record<Exclude<AgentLaunchPresetKind, 'custom'>, string>;
+  try {
+    presetCommandLines = buildAgentLaunchPresetCommandLines(provider, launchDefaults);
+  } catch (error) {
+    await vscode.window.showErrorMessage(
+      error instanceof Error ? error.message : `无法读取 ${providerLabel(provider)} 默认启动参数。`
+    );
+    return undefined;
+  }
+
+  const scriptedResult = consumeQueuedAgentLaunchRequest(provider, launchDefaults, presetCommandLines);
   if (scriptedResult !== null) {
     return scriptedResult;
   }
 
-  return promptAgentLaunchRequestWithQuickPick(provider, launchDefaults, initialCommandLine);
+  return promptAgentLaunchRequestWithQuickPick(provider, launchDefaults, presetCommandLines);
 }
 
 function consumeQueuedAgentLaunchRequest(
   provider: AgentProviderKind,
   launchDefaults: AgentProviderLaunchDefaults,
-  initialCommandLine: string
+  presetCommandLines: Record<Exclude<AgentLaunchPresetKind, 'custom'>, string>
 ): CreateNodeRequest | 'back' | undefined | null {
   if (queuedQuickPickSelectionIds.length === 0) {
     return null;
   }
 
-  let commandLine = initialCommandLine;
+  let commandLine = presetCommandLines.default;
   while (queuedQuickPickSelectionIds.length > 0) {
     const nextSelectionId = queuedQuickPickSelectionIds[0];
     if (!nextSelectionId?.startsWith('agent-launch-')) {
@@ -300,19 +309,19 @@ function consumeQueuedAgentLaunchRequest(
       return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine);
     }
     if (nextSelectionId === 'agent-launch-apply-default') {
-      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'default');
+      commandLine = presetCommandLines.default;
       continue;
     }
     if (nextSelectionId === 'agent-launch-apply-resume') {
-      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'resume');
+      commandLine = presetCommandLines.resume;
       continue;
     }
     if (nextSelectionId === 'agent-launch-apply-yolo') {
-      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'yolo');
+      commandLine = presetCommandLines.yolo;
       continue;
     }
     if (nextSelectionId === 'agent-launch-apply-sandbox') {
-      commandLine = buildAgentPresetCommandLine(provider, launchDefaults, 'sandbox');
+      commandLine = presetCommandLines.sandbox;
       continue;
     }
   }
@@ -323,7 +332,7 @@ function consumeQueuedAgentLaunchRequest(
 function promptAgentLaunchRequestWithQuickPick(
   provider: AgentProviderKind,
   launchDefaults: AgentProviderLaunchDefaults,
-  initialCommandLine: string
+  presetCommandLines: Record<Exclude<AgentLaunchPresetKind, 'custom'>, string>
 ): Promise<CreateNodeRequest | 'back' | undefined> {
   return new Promise((resolve) => {
     const quickPick = vscode.window.createQuickPick<AgentLaunchQuickPickItem>();
@@ -366,8 +375,8 @@ function promptAgentLaunchRequestWithQuickPick(
     quickPick.placeholder = '编辑本次创建将使用的完整启动命令；按 Enter 直接创建';
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = true;
-    quickPick.value = initialCommandLine;
-    quickPick.items = buildAgentLaunchQuickPickItems(provider, launchDefaults);
+    quickPick.value = presetCommandLines.default;
+    quickPick.items = buildAgentLaunchQuickPickItems(presetCommandLines);
     quickPick.buttons = [vscode.QuickInputButtons.Back];
     quickPick.ignoreFocusOut = true;
 
@@ -376,7 +385,7 @@ function promptAgentLaunchRequestWithQuickPick(
       if (!selectedItem?.launchPreset) {
         return;
       }
-      quickPick.value = buildAgentPresetCommandLine(provider, launchDefaults, selectedItem.launchPreset);
+      quickPick.value = presetCommandLines[selectedItem.launchPreset];
       quickPick.activeItems = [];
       armPresetSelectionAcceptSuppression();
       updateTitle();
@@ -389,7 +398,7 @@ function promptAgentLaunchRequestWithQuickPick(
     quickPick.onDidAccept(() => {
       const activeItem = quickPick.activeItems[0];
       if (activeItem?.launchPreset) {
-        quickPick.value = buildAgentPresetCommandLine(provider, launchDefaults, activeItem.launchPreset);
+        quickPick.value = presetCommandLines[activeItem.launchPreset];
         quickPick.activeItems = [];
         updateTitle();
         return;
@@ -425,8 +434,7 @@ function promptAgentLaunchRequestWithQuickPick(
 }
 
 function buildAgentLaunchQuickPickItems(
-  provider: AgentProviderKind,
-  launchDefaults: AgentProviderLaunchDefaults
+  presetCommandLines: Record<Exclude<AgentLaunchPresetKind, 'custom'>, string>
 ): AgentLaunchQuickPickItem[] {
   return [
     {
@@ -436,33 +444,45 @@ function buildAgentLaunchQuickPickItems(
     },
     {
       label: '默认',
-      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'default'),
+      detail: presetCommandLines.default,
       selectionId: 'agent-launch-apply-default',
       launchPreset: 'default',
       alwaysShow: true
     },
     {
       label: 'Resume',
-      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'resume'),
+      detail: presetCommandLines.resume,
       selectionId: 'agent-launch-apply-resume',
       launchPreset: 'resume',
       alwaysShow: true
     },
     {
       label: 'YOLO',
-      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'yolo'),
+      detail: presetCommandLines.yolo,
       selectionId: 'agent-launch-apply-yolo',
       launchPreset: 'yolo',
       alwaysShow: true
     },
     {
       label: '沙盒',
-      detail: buildAgentPresetCommandLine(provider, launchDefaults, 'sandbox'),
+      detail: presetCommandLines.sandbox,
       selectionId: 'agent-launch-apply-sandbox',
       launchPreset: 'sandbox',
       alwaysShow: true
     }
   ];
+}
+
+function buildAgentLaunchPresetCommandLines(
+  provider: AgentProviderKind,
+  launchDefaults: AgentProviderLaunchDefaults
+): Record<Exclude<AgentLaunchPresetKind, 'custom'>, string> {
+  return {
+    default: buildAgentPresetCommandLine(provider, launchDefaults, 'default'),
+    resume: buildAgentPresetCommandLine(provider, launchDefaults, 'resume'),
+    yolo: buildAgentPresetCommandLine(provider, launchDefaults, 'yolo'),
+    sandbox: buildAgentPresetCommandLine(provider, launchDefaults, 'sandbox')
+  };
 }
 
 function createAgentRequestFromCommandLine(

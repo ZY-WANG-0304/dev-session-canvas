@@ -22,6 +22,9 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    buildAgentPresetCommandLine,
+    buildFreshAgentCommandLine,
+    classifyAgentLaunchPreset,
     extractClaudeCommandSessionFlag,
     hasAnyCommandLineFlag,
     validateAgentCommandLine
@@ -68,6 +71,79 @@ try {
   );
   assert.equal(invalidProviderValidation.valid, false);
   assert.equal(invalidProviderValidation.error, '命令必须以当前 Claude Code 命令或 claude 开头。');
+
+  const windowsCodexValidation = validateAgentCommandLine(
+    'C:\\tools\\codex.exe --yolo',
+    'codex',
+    {
+      command: 'C:\\tools\\codex.exe',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(windowsCodexValidation.valid, true);
+  assert.equal(windowsCodexValidation.parsed.command, 'C:\\tools\\codex.exe');
+  assert.deepEqual(windowsCodexValidation.parsed.args, ['--yolo']);
+
+  const quotedWindowsCodexValidation = validateAgentCommandLine(
+    '"C:\\Program Files\\Codex\\codex.exe" --yolo',
+    'codex',
+    {
+      command: 'C:\\Program Files\\Codex\\codex.exe',
+      defaultArgs: ''
+    }
+  );
+  assert.equal(quotedWindowsCodexValidation.valid, true);
+  assert.equal(quotedWindowsCodexValidation.parsed.command, 'C:\\Program Files\\Codex\\codex.exe');
+  assert.deepEqual(quotedWindowsCodexValidation.parsed.args, ['--yolo']);
+
+  const windowsPresetCommandLine = buildAgentPresetCommandLine(
+    'codex',
+    {
+      command: 'C:\\Program Files\\Codex\\codex.exe',
+      defaultArgs: '--yolo'
+    },
+    'default'
+  );
+  assert.equal(windowsPresetCommandLine, '"C:\\Program Files\\Codex\\codex.exe" --yolo');
+
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--model "o3'
+        },
+        'default'
+      ),
+    /Codex 默认启动参数无法解析：双引号未闭合。/
+  );
+
+  const customFreshCommandLine = buildFreshAgentCommandLine(
+    'codex',
+    'custom',
+    'codex --yolo',
+    {
+      command: 'codex',
+      defaultArgs: '--model "o3'
+    }
+  );
+  assert.equal(customFreshCommandLine, 'codex --yolo');
+
+  assert.deepEqual(
+    classifyAgentLaunchPreset(
+      'codex',
+      'codex --yolo',
+      {
+        command: 'codex',
+        defaultArgs: '--model "o3'
+      }
+    ),
+    {
+      launchPreset: 'custom',
+      customLaunchCommand: 'codex --yolo'
+    }
+  );
 
   const explicitClaudeSessionFlags = ['--session-id', '--resume', '--continue'];
   assert.equal(hasAnyCommandLineFlag(['--session-id=session-789'], explicitClaudeSessionFlags), true);

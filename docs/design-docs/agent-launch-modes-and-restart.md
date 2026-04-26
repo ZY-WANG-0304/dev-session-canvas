@@ -146,6 +146,11 @@ updated_at: 2026-04-25
 
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，也不是接受“任意 basename 一样的可执行文件”；它只接受当前设置值本身，以及 provider 的标准别名。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然可以使用该精确路径，同时不会把 `/tmp/evil/claude` 这类同 basename 的其他二进制误判成合法命令。
 
+同一层 parser 还要显式承担两条约束：
+
+- 反斜杠不能再被当成“通用 escape”。在 Windows 路径 `C:\tools\codex.exe`、`"C:\Program Files\Codex\codex.exe"` 这类输入里，`\` 默认按字面值保留；只有对引号本身或未加引号的空白分隔才做最小限度转义。
+- `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 若存在未闭合引号等 parse error，必须把错误显式抛给 Webview、Quick Input 和宿主启动链路，而不是偷偷把默认参数整段丢掉后继续执行。
+
 ### 7.3 右键菜单
 
 `src/webview/main.tsx` 中的空白区右键菜单扩成三层：
@@ -159,6 +164,7 @@ updated_at: 2026-04-25
 - 根层和 provider 层的 Agent 项都采用 split button。
 - 自定义启动输入框是菜单旁的就地浮层，不进入新的全屏对话框。
 - `Escape` 优先逐层返回；只有在根层时才关闭整个菜单。
+- 自定义启动输入打开后，第一次 `Escape` 必须优先收起输入区；这条规则独立于当前焦点是否还停留在输入框里。
 - 创建动作统一发 `webview/createDemoNode`，并把 provider、launchPreset、customLaunchCommand 一次性带回宿主；不允许先创建默认 Agent 再补一次 metadata 更新。
 
 ### 7.4 VSCode Quick Input
@@ -232,4 +238,7 @@ updated_at: 2026-04-25
 - 2026-04-25：已把 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 的 VSCode 配置 scope 改成 `window`，使其可在窗口 / 工作区层直接配置和覆盖。
 - 2026-04-25：Agent 节点副标题改为显示最近一次实际启动指令；若文本被截断，hover 时通过原生 title 浮窗显示完整指令。尚未真正启动的节点则回退为显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。
 - 2026-04-24：已重新运行 `npm run test:webview -- --grep "agent restart"`，当前为 `2 passed`，覆盖“可恢复时显示 split restart”与“不可恢复时退化为单个启动按钮”两条标题栏路径。
+- 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；新增覆盖 Windows 绝对路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令的分类回退。
+- 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
+- 2026-04-26：继续排查 Playwright harness 超时后，已确认根因并非菜单交互本身，而是共享命令校验逻辑在 Webview bundle 中读取了不存在的 `process.platform`，导致 `CanvasContextMenu` 渲染时抛出 `process is not defined`。修复后 targeted `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"` 均通过。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

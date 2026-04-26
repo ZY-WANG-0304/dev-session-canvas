@@ -33,6 +33,7 @@
 - [x] (2026-04-25) 按最新反馈把 Agent 节点副标题改成显示当前节点最近一次实际启动指令，并在副标题文本被截断时通过 hover 浮窗显示完整指令；未实际启动过的节点则回退显示下一次 fresh-start 指令。
 - [x] (2026-04-25) 根据 review finding 收口宿主兜底：创建与 fresh-start 都会重新校验自定义命令首个 token 是否仍属于当前 provider，Claude 显式 session flag 识别补齐 `--flag=value`，并同步修正 smoke 断言。
 - [x] (2026-04-25) 根据最新 review finding 继续收口：provider 校验改成“仅接受当前设置值本身或标准别名”，Claude 显式 session id 会驱动 host / supervisor 的文件确认链路，右键菜单 Resume 文案也与规格重新对齐。
+- [x] (2026-04-26) 根据最新 review finding 继续收口命令行解析与错误呈现：共享 parser 兼容 Windows 反斜杠路径，provider 默认启动参数 parse error 改为显式上抛到 Webview / Quick Input / host，右键菜单自定义启动打开后第一次 `Escape` 也会优先收起输入区。
 
 ## 意外与发现
 
@@ -182,6 +183,9 @@
 - 2026-04-25：本轮新增 `scripts/test-agent-launch-presets.mjs`，覆盖 provider 命令校验与 Claude `--flag=value` 显式 session flag 识别。
 - 2026-04-25：本轮把 `scripts/test-agent-launch-presets.mjs` 继续扩展为覆盖“拒绝同 basename 的其他绝对路径”和 Claude 显式 session id 解析；smoke 侧新增基于预写入 transcript 文件的 Claude 显式 session id 保留恢复上下文回归。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；提权后 trusted 场景长时间停留在 VS Code 宿主空转状态，因此已中止该轮补跑，待后续单独排查。
+- 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；本轮新增覆盖 Windows 路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令仍会被持久化为 `custom`。
+- 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
+- 2026-04-26：继续排查 Playwright harness 超时后，已定位根因为共享命令校验逻辑在 Webview bundle 中直接读取 `process.platform`，导致右键菜单渲染 `CanvasContextMenu` 时抛出 `process is not defined`。修复后已重新运行 `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"`，均通过。
 
 ## 接口与依赖
 
