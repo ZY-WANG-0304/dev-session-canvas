@@ -148,7 +148,7 @@ updated_at: 2026-04-25
 
 同一层 parser 还要显式承担两条约束：
 
-- 反斜杠不能再被当成“通用 escape”。在 Windows 路径 `C:\tools\codex.exe`、`"C:\Program Files\Codex\codex.exe"` 这类输入里，`\` 默认按字面值保留；只有对引号本身或未加引号的空白分隔才做最小限度转义。
+- 反斜杠不能再被当成“通用 escape”。在 Windows 路径 `C:\tools\codex.exe`、`"C:\Program Files\Codex\codex.exe"` 这类输入里，`\` 默认按字面值保留；即使是用户自然输入的 `"C:\Users\me\My Dir\"`、`"My Dir\"`、`"C:My Dir\"` 这种“带空格且以反斜杠结尾”的 quoted path，也必须被当成合法路径而不是未闭合引号。只有对引号本身或未加引号的空白分隔才做最小限度转义。
 - `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 若存在未闭合引号等 parse error，必须把错误显式抛给 Webview、Quick Input 和宿主启动链路，而不是偷偷把默认参数整段丢掉后继续执行。
 
 ### 7.3 右键菜单
@@ -241,4 +241,5 @@ updated_at: 2026-04-25
 - 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；新增覆盖 Windows 绝对路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令的分类回退。
 - 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
 - 2026-04-26：继续排查 Playwright harness 超时后，已确认根因并非菜单交互本身，而是共享命令校验逻辑在 Webview bundle 中读取了不存在的 `process.platform`，导致 `CanvasContextMenu` 渲染时抛出 `process is not defined`。修复后 targeted `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"` 均通过。
+- 2026-04-26：已补上 Windows “带空格且以反斜杠结尾”的 quoted token round-trip 回归，确认共享 formatter / parser 不会再把 `C:\\Users\\me\\My Dir\\` 这类参数格式化成无法重新解析的命令；本轮 `npm run test:agent-launch-presets`、`npm run build` 与 targeted `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

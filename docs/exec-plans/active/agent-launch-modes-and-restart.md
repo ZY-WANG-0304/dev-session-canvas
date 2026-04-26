@@ -186,6 +186,9 @@
 - 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；本轮新增覆盖 Windows 路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令仍会被持久化为 `custom`。
 - 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
 - 2026-04-26：继续排查 Playwright harness 超时后，已定位根因为共享命令校验逻辑在 Webview bundle 中直接读取 `process.platform`，导致右键菜单渲染 `CanvasContextMenu` 时抛出 `process is not defined`。修复后已重新运行 `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"`，均通过。
+- 2026-04-26：本轮继续补了 `formatCommandLine()` / `parseCommandLine()` 的 Windows 尾部反斜杠 round-trip 回归：`npm run test:agent-launch-presets`、`npm run build` 与 `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
+- 2026-04-26：本轮继续补了“用户直接输入自然写法”的 Windows 尾部反斜杠回归，确认 `codex --config "C:\\Users\\me\\My Dir\\"` 与默认参数里的同类 quoted path 都能被 parser / validator 接受；`npm run test:agent-launch-presets`、`npm run typecheck`、`npm run build` 与 `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
+- 2026-04-26：本轮继续补了单段 relative / drive-relative path 的 Windows 尾部反斜杠回归，确认 `codex --config "My Dir\\"` 与 `codex --config "C:My Dir\\"` 这类自然输入也能被 parser / validator 接受，并能进入默认参数模板构造链路；`npm run test:agent-launch-presets`、`npm run typecheck`、`npm run build` 与 `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
 
 ## 接口与依赖
 
