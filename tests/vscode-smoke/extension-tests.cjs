@@ -5257,9 +5257,11 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
         payload: {
           nodeId: terminalNodeId,
           kind: 'terminal',
+          // Keep each line shorter than the embedded terminal width used by
+          // the smoke harness so scrollback assertions do not become wrap-dependent.
           data:
             'i=1; while [ $i -le 220 ]; do printf \'' +
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d live runtime scrollback verification\\r\\n` +
+            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d\\r\\n` +
             '\' "$i"; i=$((i+1)); done\r'
         }
       },
