@@ -234,6 +234,89 @@ body {
   outline-offset: 1px;
 }
 
+.action-split-button {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  flex: 0 0 auto;
+  border-radius: var(--canvas-widget-radius-sm);
+  overflow: visible;
+}
+
+.action-split-button .action-button {
+  position: relative;
+  z-index: 0;
+  border-radius: 0;
+}
+
+.action-split-button .action-button:focus-visible {
+  z-index: 1;
+}
+
+.action-split-button .action-split-button-main {
+  min-width: 0;
+  border-top-left-radius: var(--canvas-widget-radius-sm);
+  border-bottom-left-radius: var(--canvas-widget-radius-sm);
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.action-split-button .action-split-button-toggle {
+  min-width: 24px;
+  padding-inline: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 22%, transparent);
+  border-top-right-radius: var(--canvas-widget-radius-sm);
+  border-bottom-right-radius: var(--canvas-widget-radius-sm);
+}
+
+.action-split-button[data-agent-restart-menu-open='true'] .action-split-button-toggle {
+  background: var(
+    --vscode-button-hoverBackground,
+    color-mix(in srgb, var(--vscode-focusBorder) 18%, var(--vscode-button-background) 82%)
+  );
+}
+
+.action-split-button-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 18;
+  min-width: 164px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
+}
+
+.action-split-button-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.action-split-button-menu-item:hover:not(:disabled),
+.action-split-button-menu-item:focus-visible {
+  background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
+  outline: none;
+}
+
+.action-split-button-menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .canvas-node {
   --execution-node-attention-color: var(--vscode-focusBorder);
   display: flex;
@@ -1736,7 +1819,6 @@ body {
 }
 
 .canvas-context-menu-item,
-.canvas-context-menu-dismiss,
 .canvas-context-menu-item-secondary {
   display: flex;
   align-items: center;
@@ -1755,12 +1837,16 @@ body {
 .canvas-context-menu-item:hover,
 .canvas-context-menu-item:focus-visible,
 .canvas-context-menu-item-secondary:hover,
-.canvas-context-menu-item-secondary:focus-visible,
-.canvas-context-menu-dismiss:hover,
-.canvas-context-menu-dismiss:focus-visible {
+.canvas-context-menu-item-secondary:focus-visible {
   background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
   color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
   outline: none;
+}
+
+.canvas-context-menu-item:disabled,
+.canvas-context-menu-item-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .canvas-context-menu-swatch {
@@ -1792,16 +1878,74 @@ body {
   color: inherit;
 }
 
-.canvas-context-menu-dismiss {
-  justify-content: center;
-  padding-top: 4px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-panel-border)) 84%, transparent);
-  color: var(--vscode-descriptionForeground);
-}
-
 .canvas-context-menu-item-secondary {
   justify-content: center;
   min-width: 32px;
   padding-inline: 8px;
   color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-inline-editor {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-menu-border, var(--vscode-panel-border)) 84%, transparent);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 92%, transparent);
+}
+
+.canvas-context-menu-inline-editor.is-invalid {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-inputValidation-errorBorder) 30%, transparent);
+}
+
+.canvas-context-menu-inline-input {
+  width: 100%;
+  min-height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 0 8px;
+  background: var(--vscode-input-background, var(--vscode-editor-background));
+  color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.canvas-context-menu-inline-input:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.canvas-context-menu-inline-editor.is-invalid .canvas-context-menu-inline-input {
+  border-color: var(--vscode-inputValidation-errorBorder);
+}
+
+.canvas-context-menu-inline-confirm {
+  justify-self: end;
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+  font: inherit;
+}
+
+.canvas-context-menu-inline-confirm:hover:not(:disabled),
+.canvas-context-menu-inline-confirm:focus-visible {
+  background: var(--vscode-button-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 18%, var(--vscode-button-background) 82%));
+  outline: none;
+}
+
+.canvas-context-menu-inline-confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.canvas-context-menu-inline-error {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
 }

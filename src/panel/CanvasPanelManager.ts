@@ -32,7 +32,10 @@ import {
 import {
   type AgentNodeStatus,
   type AgentNodeMetadata,
+  type AgentLaunchDefaultsByProvider,
+  type AgentLaunchPresetKind,
   type AgentProviderKind,
+  type AgentProviderLaunchDefaults,
   type AgentResumeStrategy,
   type CanvasCreatableNodeKind,
   type CanvasEdgeAnchor,
@@ -84,6 +87,12 @@ import {
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
 import {
+  buildFreshAgentCommandLine,
+  extractClaudeCommandSessionFlag,
+  formatCommandLine,
+  validateAgentCommandLine
+} from '../common/agentLaunchPresets';
+import {
   SerializedTerminalStateTracker,
   cloneSerializedTerminalState,
   normalizeSerializedTerminalState
@@ -114,7 +123,12 @@ import {
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
-import { locateCodexSessionId } from '../common/codexSessionIdLocator';
+import {
+  extractClaudeResumeSessionId,
+  extractCodexResumeSessionId,
+  locateClaudeSessionId,
+  locateCodexSessionId
+} from '../common/codexSessionIdLocator';
 import {
   createRuntimeHostBackend,
   listPreferredRuntimeHostBackendKinds,
@@ -138,6 +152,7 @@ import {
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
 import {
   createAgentFileActivitySession,
+  looksLikeFakeAgentProviderCommand,
   type AgentFileActivityEvent,
   type AgentFileActivitySession
 } from './agentFileActivity';
@@ -156,14 +171,21 @@ const EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS = 4000;
 const EXECUTION_ATTENTION_BELL_NOTIFICATION_COOLDOWN_MS = 8000;
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS = 20000;
+const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
+// Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
+// Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
+const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
+const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
 const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
   codexCommand: string;
   claudeCommand: string;
+  codexDefaultArgs: string;
+  claudeDefaultArgs: string;
 }
 
 interface AgentCliSpec {
@@ -179,6 +201,12 @@ interface AgentResumeContext {
   strategy: AgentResumeStrategy;
   sessionId?: string;
   storagePath?: string;
+}
+
+interface CreateAgentNodeOptions {
+  agentProvider?: AgentProviderKind;
+  agentLaunchPreset?: AgentLaunchPresetKind;
+  agentCustomLaunchCommand?: string;
 }
 
 type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
@@ -486,6 +514,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const defaultSurfaceChanged = event.affectsConfiguration(CONFIG_KEYS.canvasDefaultSurface);
         const runtimePersistenceChanged = event.affectsConfiguration(CONFIG_KEYS.runtimePersistenceEnabled);
         const defaultAgentProviderChanged = event.affectsConfiguration(CONFIG_KEYS.agentDefaultProvider);
+        const agentCodexCommandChanged = event.affectsConfiguration(CONFIG_KEYS.agentCodexCommand);
+        const agentClaudeCommandChanged = event.affectsConfiguration(CONFIG_KEYS.agentClaudeCommand);
+        const agentCodexDefaultArgsChanged = event.affectsConfiguration(CONFIG_KEYS.agentCodexDefaultArgs);
+        const agentClaudeDefaultArgsChanged = event.affectsConfiguration(CONFIG_KEYS.agentClaudeDefaultArgs);
         const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
@@ -524,6 +556,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         if (
           !defaultAgentProviderChanged &&
+          !agentCodexCommandChanged &&
+          !agentClaudeCommandChanged &&
+          !agentCodexDefaultArgsChanged &&
+          !agentClaudeDefaultArgsChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -544,6 +580,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this
           .handleRuntimeConfigurationChanged({
             defaultAgentProviderChanged,
+            agentCodexCommandChanged,
+            agentClaudeCommandChanged,
+            agentCodexDefaultArgsChanged,
+            agentClaudeDefaultArgsChanged,
             filesPresentationModeChanged,
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
@@ -666,27 +706,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testDiagnosticEvents.length = 0;
   }
 
-  public createNode(kind: CanvasCreatableNodeKind, options?: { agentProvider?: AgentProviderKind }): void {
+  public createNode(kind: CanvasCreatableNodeKind, options?: CreateAgentNodeOptions): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
         payload: {
           kind,
-          agentProvider: options?.agentProvider
+          agentProvider: options?.agentProvider,
+          agentLaunchPreset: options?.agentLaunchPreset,
+          agentCustomLaunchCommand: options?.agentCustomLaunchCommand
         }
       });
       return;
     }
 
     this.applyCreateNode(kind, undefined, {
-      agentProvider: options?.agentProvider
+      agentProvider: options?.agentProvider,
+      agentLaunchPreset: options?.agentLaunchPreset,
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand
     });
   }
 
   public createNodeForTest(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: { agentProvider?: AgentProviderKind }
+    options?: CreateAgentNodeOptions
   ): void {
     if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
       throw new Error('createNodeForTest 仅在测试模式下可用。');
@@ -694,7 +738,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.applyCreateNode(kind, preferredPosition, {
       bypassTrust: true,
-      agentProvider: options?.agentProvider
+      agentProvider: options?.agentProvider,
+      agentLaunchPreset: options?.agentLaunchPreset,
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand
     });
   }
 
@@ -763,16 +809,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
     }
 
+    // 先切换内存态，再异步同步到 workspaceState，避免旧 webview 在 await 间隙继续把已删除节点写回持久化快照。
+    this.state = this.reconcileSeededStateForTest(rawState);
+    this.recordDiagnosticEvent('state/seededForTest', {
+      nodeCount: this.state.nodes.length
+    });
+    this.notifySidebarStateChanged();
+
     await this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: rawState,
       activeSurface: this.activeSurface
     });
-    this.state = this.loadReconciledState();
-    this.recordDiagnosticEvent('state/seededForTest', {
-      nodeCount: this.state.nodes.length
-    });
-    this.notifySidebarStateChanged();
+
+    const snapshot = this.getDebugSnapshot();
 
     if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
       this.postState('host/stateUpdated');
@@ -780,7 +830,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.scheduleRestoreLiveRuntimeSessions();
 
-    return this.getDebugSnapshot();
+    return snapshot;
   }
 
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
@@ -1599,6 +1649,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private reconcileSeededStateForTest(rawState: unknown): CanvasPrototypeState {
+    const fileView = this.getCanvasFileViewConfiguration();
+    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView);
+    const sanitizedState = this.appliedStartupConfiguration.filesFeatureEnabled
+      ? normalizedState
+      : clearFileDomainState(normalizedState);
+    const hydratedState = hydrateRuntimeStoragePaths(
+      sanitizedState,
+      this.storageRecoverySelection.sourcePath
+    );
+    const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
+
+    return this.reconcileCanvasFileArtifacts(
+      reconcileRuntimeNodes(hydratedState, this.agentSessions, this.terminalSessions, {
+        allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
+        liveRuntimeReconnectBlockReason
+      })
+    );
+  }
+
   private persistState(): void {
     void this.queuePersistedCanvasSnapshotWrite({
       version: 1,
@@ -1646,6 +1716,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
+      agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(),
       strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
       terminalScrollback: this.getTerminalScrollback(),
       editorMultiCursorModifier: normalizeEditorMultiCursorModifier(
@@ -1812,6 +1883,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
+    agentCodexCommandChanged: boolean;
+    agentClaudeCommandChanged: boolean;
+    agentCodexDefaultArgsChanged: boolean;
+    agentClaudeDefaultArgsChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -1870,6 +1945,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       options.defaultAgentProviderChanged ||
+      options.agentCodexCommandChanged ||
+      options.agentClaudeCommandChanged ||
+      options.agentCodexDefaultArgsChanged ||
+      options.agentClaudeDefaultArgsChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -2389,7 +2468,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
         onSessionOutput: (event) =>
           this.handleRuntimeSupervisorOutput(runtimeStoragePath, event.sessionId, event.chunk),
-        onSessionState: (snapshot) => this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot),
+        onSessionState: (snapshot) => {
+          void this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot);
+        },
         onDisconnected: (error) =>
           this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
       });
@@ -3048,14 +3129,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.terminalStateTracker.write(chunk);
     session.lineContextTracker.write(chunk);
     this.bridgeExecutionAttentionSignals(binding.kind, binding.nodeId, session, chunk);
+    if (binding.kind === 'agent') {
+      this.maybeSyncAgentResumeContextFromOutput(binding.nodeId, session, {
+        allowOverwriteExisting: session.stopRequested,
+        flushImmediately: session.stopRequested
+      });
+    }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
     this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
   }
 
-  private handleRuntimeSupervisorState(
+  private async handleRuntimeSupervisorState(
     runtimeStoragePath: string,
     snapshot: RuntimeSupervisorSessionSnapshot
-  ): void {
+  ): Promise<void> {
     const binding = this.runtimeSessionBindings.get(
       this.buildRuntimeSessionBindingKey(snapshot.sessionId, runtimeStoragePath)
     );
@@ -3070,14 +3157,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
 
     if (wasLive && !snapshot.live) {
-      this.postMessage({
-        type: 'host/executionExit',
-        payload: {
-          nodeId: binding.nodeId,
-          kind: binding.kind,
-          message: snapshot.lastExitMessage ?? '会话已结束。'
-        }
-      });
+      await this.postExecutionExitWithFinalSnapshot(
+        binding.kind,
+        binding.nodeId,
+        snapshot.lastExitMessage ?? '会话已结束。'
+      );
       if (
         snapshot.lifecycle === 'error' ||
         snapshot.lifecycle === 'resume-failed'
@@ -3217,13 +3301,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
           : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus)),
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
-        persistenceMode: 'live-runtime',
+        persistenceMode: 'snapshot-only',
         attachmentState: 'history-restored',
-        runtimeBackend: snapshot.runtimeBackend,
-        runtimeGuarantee: snapshot.runtimeGuarantee,
-        runtimeStoragePath: currentMetadata.runtimeStoragePath,
+        runtimeBackend: undefined,
+        runtimeGuarantee: undefined,
+        runtimeStoragePath: undefined,
         liveSession: false,
-        runtimeSessionId: snapshot.sessionId,
+        runtimeSessionId: undefined,
         lastRuntimeError: undefined,
         shellPath: snapshot.shellPath,
         cwd: snapshot.cwd,
@@ -3673,7 +3757,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
-          agentProvider: parsedMessage.payload.agentProvider
+          agentProvider: parsedMessage.payload.agentProvider,
+          agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
+          agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand
         });
         return;
       case 'webview/moveNode':
@@ -3860,7 +3946,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     provider: AgentProviderKind,
     launchMode: PendingExecutionLaunch,
-    metadata?: AgentNodeMetadata
+    metadata?: AgentNodeMetadata,
+    launchArgs: readonly string[] = []
   ): AgentResumeContext {
     const previousProvider = metadata?.provider;
     if (provider === 'claude') {
@@ -3880,9 +3967,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
       }
 
+      const explicitClaudeSessionFlag = extractClaudeCommandSessionFlag(launchArgs);
+      if (explicitClaudeSessionFlag?.sessionId) {
+        return {
+          supported: false,
+          strategy: 'none',
+          sessionId: explicitClaudeSessionFlag.sessionId
+        };
+      }
+
+      if (explicitClaudeSessionFlag) {
+        return {
+          supported: false,
+          strategy: 'none'
+        };
+      }
+
       return {
-        supported: true,
-        strategy: 'claude-session-id',
+        supported: false,
+        strategy: 'none',
         sessionId: randomUUID()
       };
     }
@@ -3932,9 +4035,139 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private readAgentResumeContextFromOutput(
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'launchMode' | 'buffer'>
+  ): AgentResumeContext | null {
+    if (session.launchMode !== 'start') {
+      return null;
+    }
+
+    const cleanedOutput = stripTerminalControlSequences(session.buffer);
+    if (session.agentProvider === 'codex') {
+      const sessionId = extractCodexResumeSessionId(cleanedOutput);
+      return sessionId
+        ? {
+            supported: true,
+            strategy: 'codex-session-id',
+            sessionId
+          }
+        : null;
+    }
+
+    if (session.agentProvider === 'claude') {
+      const sessionId = extractClaudeResumeSessionId(cleanedOutput);
+      return sessionId
+        ? {
+            supported: true,
+            strategy: 'claude-session-id',
+            sessionId
+          }
+        : null;
+    }
+
+    return null;
+  }
+
+  private maybeSyncAgentResumeContextFromOutput(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    options: { allowOverwriteExisting?: boolean; flushImmediately?: boolean } = {}
+  ): boolean {
+    const discoveredResumeContext = this.readAgentResumeContextFromOutput(session);
+    if (!discoveredResumeContext) {
+      return false;
+    }
+
+    const previousSessionId = session.agentResume?.sessionId?.trim() ?? '';
+    const previousStrategy = session.agentResume?.strategy ?? 'none';
+    if (
+      previousStrategy === discoveredResumeContext.strategy &&
+      previousSessionId === discoveredResumeContext.sessionId
+    ) {
+      return false;
+    }
+
+    const hasConfirmedPreviousSessionId = previousStrategy !== 'none' && Boolean(previousSessionId);
+    if (hasConfirmedPreviousSessionId && options.allowOverwriteExisting !== true) {
+      return false;
+    }
+
+    session.agentResume = discoveredResumeContext;
+    const provider = session.agentProvider ?? 'codex';
+    this.recordDiagnosticEvent(
+      hasConfirmedPreviousSessionId
+        ? `agent/${provider}SessionIdCorrectedFromOutputHint`
+        : `agent/${provider}SessionIdDiscoveredFromOutputHint`,
+      {
+        nodeId,
+        cwd: session.cwd,
+        previousResumeSessionId: previousSessionId || null,
+        resumeSessionId: discoveredResumeContext.sessionId ?? null,
+        startedAtMs: session.startedAtMs,
+        stopRequested: session.stopRequested
+      }
+    );
+    if (options.flushImmediately !== false) {
+      this.flushLiveExecutionState('agent', nodeId);
+    }
+    return true;
+  }
+
+  private finalizeAgentResumeContextFromOutput(nodeId: string, session: ManagedExecutionSession): void {
+    const discoveredResumeContext = this.readAgentResumeContextFromOutput(session);
+    if (discoveredResumeContext) {
+      session.agentResume = discoveredResumeContext;
+      return;
+    }
+
+    if (session.agentProvider !== 'claude' || session.launchMode !== 'start') {
+      return;
+    }
+    if (!session.stopRequested) {
+      return;
+    }
+
+    const previousSessionId = session.agentResume?.sessionId?.trim() ?? '';
+    const previousStrategy = session.agentResume?.strategy ?? 'none';
+    if (previousStrategy === 'claude-session-id' && previousSessionId) {
+      return;
+    }
+    if (previousStrategy === 'none' && !previousSessionId) {
+      return;
+    }
+
+    session.agentResume = {
+      supported: false,
+      strategy: 'none'
+    };
+    this.recordDiagnosticEvent('agent/claudeSessionIdRejectedWithoutStopHint', {
+      nodeId,
+      cwd: session.cwd,
+      previousResumeSessionId: previousSessionId || null,
+      startedAtMs: session.startedAtMs,
+      stopRequested: session.stopRequested
+    });
+  }
+
+  private async maybeDiscoverAgentResumeContextFromFiles(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
+    if (session.agentProvider === 'codex') {
+      await this.maybeDiscoverCodexResumeSessionId(nodeId, session, trigger);
+      return;
+    }
+
+    if (session.agentProvider === 'claude') {
+      await this.maybeConfirmClaudeResumeSessionId(nodeId, session, trigger);
+    }
+  }
+
   private async maybeDiscoverCodexResumeSessionId(
     nodeId: string,
-    session: ManagedExecutionSession
+    session: ManagedExecutionSession,
+    trigger: 'startup' | 'waiting-input'
   ): Promise<void> {
     if (
       session.agentProvider !== 'codex' ||
@@ -3954,11 +4187,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (currentSession.agentResume?.sessionId?.trim()) {
+      return;
+    }
+
     if (!discoveredSessionId) {
       this.recordDiagnosticEvent('agent/codexSessionIdDiscoveryMissed', {
         nodeId,
         cwd: session.cwd,
-        startedAtMs: session.startedAtMs
+        startedAtMs: session.startedAtMs,
+        trigger
       });
       return;
     }
@@ -3972,7 +4210,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeId,
       cwd: session.cwd,
       resumeSessionId: discoveredSessionId,
-      startedAtMs: session.startedAtMs
+      startedAtMs: session.startedAtMs,
+      trigger
+    });
+    this.flushLiveExecutionState('agent', nodeId);
+  }
+
+  private async maybeConfirmClaudeResumeSessionId(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
+    if (session.agentProvider !== 'claude' || session.launchMode !== 'start') {
+      return;
+    }
+
+    const candidateSessionId = session.agentResume?.sessionId?.trim() ?? '';
+    if (!candidateSessionId || session.agentResume?.strategy === 'claude-session-id') {
+      return;
+    }
+
+    const confirmedSessionId = await locateClaudeSessionId({
+      cwd: session.cwd,
+      sessionId: candidateSessionId
+    });
+
+    const currentSession = this.getExecutionSessions('agent').get(nodeId);
+    if (!currentSession || currentSession !== session) {
+      return;
+    }
+
+    const currentSessionId = currentSession.agentResume?.sessionId?.trim() ?? '';
+    if (
+      currentSession.agentProvider !== 'claude' ||
+      currentSession.launchMode !== 'start' ||
+      !currentSessionId ||
+      currentSessionId !== candidateSessionId ||
+      currentSession.agentResume?.strategy === 'claude-session-id'
+    ) {
+      return;
+    }
+
+    if (!confirmedSessionId) {
+      this.recordDiagnosticEvent('agent/claudeSessionIdFileConfirmationMissed', {
+        nodeId,
+        cwd: session.cwd,
+        resumeSessionId: candidateSessionId,
+        startedAtMs: session.startedAtMs,
+        trigger
+      });
+      return;
+    }
+
+    currentSession.agentResume = {
+      supported: true,
+      strategy: 'claude-session-id',
+      sessionId: confirmedSessionId
+    };
+    this.recordDiagnosticEvent('agent/claudeSessionIdConfirmedFromFiles', {
+      nodeId,
+      cwd: session.cwd,
+      resumeSessionId: confirmedSessionId,
+      startedAtMs: session.startedAtMs,
+      trigger
     });
     this.flushLiveExecutionState('agent', nodeId);
   }
@@ -4204,6 +4504,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           current.resumePhaseActive = false;
         }
         current.lifecycleStatus = 'waiting-input';
+        void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, current, 'waiting-input');
         this.flushLiveExecutionState('agent', nodeId);
         this.recordDiagnosticEvent('agent/waitingInputHeuristicMatched', {
           nodeId,
@@ -4227,6 +4528,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     normalizedRows: number,
     provider: AgentProviderKind,
     cliSpec: AgentCliSpec,
+    displayLaunchCommandLine: string,
+    launchArgs: string[],
     resumeContext: AgentResumeContext,
     launchMode: PendingExecutionLaunch
   ): Promise<void> {
@@ -4278,7 +4581,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: normalizedCols,
         lastRows: normalizedRows,
         serializedTerminalState: undefined,
-        lastBackendLabel: cliSpec.label
+        lastBackendLabel: cliSpec.label,
+        lastLaunchCommandLine: displayLaunchCommandLine
       })
     });
     this.persistState();
@@ -4322,6 +4626,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         launchSpec: serializeExecutionSessionLaunchSpec(
           this.buildAgentLaunchSpec(
             cliSpec,
+            launchArgs,
             cwd,
             normalizedCols,
             normalizedRows,
@@ -4456,15 +4761,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
-    this.recordDiagnosticEvent('execution/startRequested', {
-      kind: 'agent',
-      nodeId,
-      provider: requestedProvider ?? null,
-      resumeRequested,
-      cols: normalizedCols,
-      rows: normalizedRows,
-      workspaceTrusted: vscode.workspace.isTrusted
-    });
 
     if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
@@ -4525,19 +4821,92 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const currentMetadata = ensureAgentMetadata(agentNode);
     const provider = requestedProvider ?? currentMetadata.provider;
     const launchMode: PendingExecutionLaunch = resumeRequested ? 'resume' : 'start';
-    const configuredCliSpec = this.getConfiguredAgentCliSpec(provider);
+    let freshLaunch:
+      | {
+          commandLine: string;
+          requestedCommand: string;
+          launchArgs: string[];
+          launchPreset: AgentLaunchPresetKind;
+        }
+      | undefined;
+    if (launchMode === 'start') {
+      try {
+        freshLaunch = this.resolveAgentFreshLaunch(provider, currentMetadata);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '无法解析 Agent 启动命令。';
+        this.recordDiagnosticEvent('execution/startRejected', {
+          kind: 'agent',
+          nodeId,
+          reason: 'invalid-launch-command',
+          message
+        });
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: 'error',
+          summary: message,
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            provider,
+            lifecycle: 'error',
+            liveSession: false,
+            pendingLaunch: undefined,
+            lastExitMessage: message,
+            lastRuntimeError: message
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+        return;
+      }
+    }
+    const configuredCliSpec = this.getRequestedAgentCliSpec(
+      provider,
+      freshLaunch?.requestedCommand ?? this.getAgentLaunchDefaults(provider).command
+    );
     let cliSpec = configuredCliSpec;
-    const resumeContext = this.resolveAgentResumeContext(nodeId, provider, launchMode, currentMetadata);
+    const resumeContext = this.resolveAgentResumeContext(
+      nodeId,
+      provider,
+      launchMode,
+      currentMetadata,
+      freshLaunch?.launchArgs ?? []
+    );
+    const displayLaunchCommandLine = this.buildAgentDisplayLaunchCommandLine({
+      provider,
+      requestedCommand: configuredCliSpec.requestedCommand,
+      launchMode,
+      freshLaunchCommandLine: freshLaunch?.commandLine,
+      resumeContext
+    });
+    this.recordDiagnosticEvent('execution/startRequested', {
+      kind: 'agent',
+      nodeId,
+      provider,
+      resumeRequested,
+      launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
+      launchCommandLine: displayLaunchCommandLine,
+      requestedCommand: freshLaunch?.requestedCommand ?? null,
+      launchArgs: freshLaunch?.launchArgs ?? [],
+      cols: normalizedCols,
+      rows: normalizedRows,
+      workspaceTrusted: vscode.workspace.isTrusted
+    });
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     if (this.isRuntimePersistenceEnabled()) {
       try {
-        cliSpec = await this.resolveAgentCli(provider);
+        cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand);
         await this.startAgentSessionWithSupervisor(
           nodeId,
           normalizedCols,
           normalizedRows,
           provider,
           cliSpec,
+          displayLaunchCommandLine,
+          freshLaunch?.launchArgs ?? [],
           resumeContext,
           launchMode
         );
@@ -4581,6 +4950,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lastRows: normalizedRows,
             serializedTerminalState: undefined,
             lastBackendLabel: cliSpec.label,
+            lastLaunchCommandLine: displayLaunchCommandLine,
             lastRuntimeError: message
           })
         });
@@ -4600,11 +4970,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.disposeAgentFileActivitySession(nodeId);
 
     try {
-      cliSpec = await this.resolveAgentCli(provider);
+      cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand);
       const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
       const process = createExecutionSessionProcess(
         this.buildAgentLaunchSpec(
           cliSpec,
+          freshLaunch?.launchArgs ?? [],
           cwd,
           normalizedCols,
           normalizedRows,
@@ -4658,6 +5029,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sessionId,
         provider,
         launchMode,
+        launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
+        launchCommandLine: displayLaunchCommandLine,
+        requestedCommand: freshLaunch?.requestedCommand ?? null,
+        launchArgs: freshLaunch?.launchArgs ?? [],
         cols: normalizedCols,
         rows: normalizedRows,
         shellPath: cliSpec.command,
@@ -4696,13 +5071,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           serializedTerminalState: undefined,
-          lastBackendLabel: cliSpec.label
+          lastBackendLabel: cliSpec.label,
+          lastLaunchCommandLine: displayLaunchCommandLine
         })
       });
       this.persistState();
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('agent', nodeId);
-      void this.maybeDiscoverCodexResumeSessionId(nodeId, session);
+      void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'startup');
 
       const handleSessionChunk = (text: string): void => {
         const sessionMap = this.getExecutionSessions('agent');
@@ -4719,6 +5095,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
         this.bridgeExecutionAttentionSignals('agent', nodeId, activeSession, text);
+        this.maybeSyncAgentResumeContextFromOutput(nodeId, activeSession, {
+          allowOverwriteExisting: activeSession.stopRequested,
+          flushImmediately: activeSession.stopRequested
+        });
         if (
           activeSession.lifecycleStatus === 'starting' ||
           activeSession.lifecycleStatus === 'resuming' ||
@@ -4758,6 +5138,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+        this.finalizeAgentResumeContextFromOutput(nodeId, activeSession);
+        const finalizedResumeContext = activeSession.agentResume ?? resumeContext;
 
         sessionMap.delete(nodeId);
         this.recordDiagnosticEvent('execution/exited', {
@@ -4778,10 +5160,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             provider,
             lifecycle: status,
             runtimeKind: 'pty-cli',
-            resumeSupported: activeSession.agentResume?.supported ?? resumeContext.supported,
-            resumeStrategy: activeSession.agentResume?.strategy ?? resumeContext.strategy,
-            resumeSessionId: activeSession.agentResume?.sessionId ?? resumeContext.sessionId,
-            resumeStoragePath: activeSession.agentResume?.storagePath ?? resumeContext.storagePath,
+            resumeSupported: finalizedResumeContext.supported,
+            resumeStrategy: finalizedResumeContext.strategy,
+            resumeSessionId: finalizedResumeContext.sessionId,
+            resumeStoragePath: finalizedResumeContext.storagePath,
             lastResumeError: status === 'resume-failed' ? message : undefined,
             persistenceMode: 'snapshot-only',
             attachmentState: 'history-restored',
@@ -4806,14 +5188,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.disposeManagedExecutionSession(activeSession);
         this.persistState();
         this.postState('host/stateUpdated');
-        this.postMessage({
-          type: 'host/executionExit',
-          payload: {
-            nodeId,
-            kind: 'agent',
-            message
-          }
-        });
+        await this.postExecutionExitWithFinalSnapshot('agent', nodeId, message);
         if (status === 'error' || status === 'resume-failed') {
           this.postMessage({
             type: 'host/error',
@@ -4921,6 +5296,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
     const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex';
     const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude';
+    const codexDefaultArgs = getConfigurationValue<string>('agentCodexDefaultArgs', '').trim();
+    const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '').trim();
 
     const codexCommand =
       this.context.extensionMode === vscode.ExtensionMode.Test
@@ -4934,14 +5311,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       defaultProvider: defaultProvider === 'claude' ? 'claude' : 'codex',
       codexCommand,
-      claudeCommand
+      claudeCommand,
+      codexDefaultArgs,
+      claudeDefaultArgs
     };
   }
 
-  private getConfiguredAgentCliSpec(provider: AgentProviderKind): AgentCliSpec {
+  private getAgentLaunchDefaults(provider: AgentProviderKind): AgentProviderLaunchDefaults {
     const configuration = this.getAgentCliConfig();
+    return provider === 'claude'
+      ? {
+          command: configuration.claudeCommand,
+          defaultArgs: configuration.claudeDefaultArgs
+        }
+      : {
+          command: configuration.codexCommand,
+          defaultArgs: configuration.codexDefaultArgs
+        };
+  }
+
+  private getAgentLaunchDefaultsByProvider(): AgentLaunchDefaultsByProvider {
+    return {
+      codex: this.getAgentLaunchDefaults('codex'),
+      claude: this.getAgentLaunchDefaults('claude')
+    };
+  }
+
+  private getRequestedAgentCliSpec(provider: AgentProviderKind, requestedCommand: string): AgentCliSpec {
     const label = provider === 'claude' ? 'Claude Code' : 'Codex';
-    const requestedCommand = provider === 'claude' ? configuration.claudeCommand : configuration.codexCommand;
     return {
       provider,
       label,
@@ -4949,6 +5346,83 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       command: requestedCommand,
       resolutionSource: 'path-env'
     };
+  }
+
+  private validateAgentFreshLaunchCommand(
+    provider: AgentProviderKind,
+    launchPreset: AgentLaunchPresetKind,
+    customLaunchCommand: string | undefined,
+    defaults: AgentProviderLaunchDefaults
+  ): {
+    commandLine: string;
+    requestedCommand: string;
+    launchArgs: string[];
+  } {
+    if (launchPreset === 'custom' && !customLaunchCommand?.trim()) {
+      throw new Error('自定义启动命令不能为空。');
+    }
+
+    const commandLine = buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
+    const validation = validateAgentCommandLine(commandLine, provider, defaults);
+    if (!validation.valid || !validation.parsed) {
+      throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
+    }
+
+    return {
+      commandLine,
+      requestedCommand: validation.parsed.command,
+      launchArgs: validation.parsed.args
+    };
+  }
+
+  private resolveAgentFreshLaunch(
+    provider: AgentProviderKind,
+    metadata: AgentNodeMetadata
+  ): {
+    commandLine: string;
+    requestedCommand: string;
+    launchArgs: string[];
+    launchPreset: AgentLaunchPresetKind;
+  } {
+    const defaults = this.getAgentLaunchDefaults(provider);
+    const parsed = this.validateAgentFreshLaunchCommand(
+      provider,
+      metadata.launchPreset,
+      metadata.customLaunchCommand,
+      defaults
+    );
+    return {
+      commandLine: parsed.commandLine,
+      requestedCommand: parsed.requestedCommand,
+      launchArgs: parsed.launchArgs,
+      launchPreset: metadata.launchPreset
+    };
+  }
+
+  private buildAgentDisplayLaunchCommandLine(params: {
+    provider: AgentProviderKind;
+    requestedCommand: string;
+    launchMode: PendingExecutionLaunch;
+    freshLaunchCommandLine?: string;
+    resumeContext: AgentResumeContext;
+  }): string {
+    if (params.launchMode === 'start') {
+      return params.freshLaunchCommandLine?.trim() || params.requestedCommand.trim();
+    }
+
+    if (params.provider === 'claude') {
+      return formatCommandLine(
+        params.resumeContext.sessionId
+          ? [params.requestedCommand, '--resume', params.resumeContext.sessionId]
+          : [params.requestedCommand, '--resume']
+      );
+    }
+
+    return formatCommandLine(
+      params.resumeContext.sessionId
+        ? [params.requestedCommand, 'resume', params.resumeContext.sessionId]
+        : [params.requestedCommand, 'resume']
+    );
   }
 
   private getAgentCliResolutionCacheKey(
@@ -5000,8 +5474,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
-  private async resolveAgentCli(provider: AgentProviderKind): Promise<AgentCliSpec> {
-    const configuredSpec = this.getConfiguredAgentCliSpec(provider);
+  private async resolveAgentCli(provider: AgentProviderKind, requestedCommand?: string): Promise<AgentCliSpec> {
+    const configuredSpec = this.getRequestedAgentCliSpec(
+      provider,
+      requestedCommand?.trim() || this.getAgentLaunchDefaults(provider).command
+    );
     const workspaceCwd = this.getTerminalWorkingDirectory();
 
     try {
@@ -5078,6 +5555,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
+    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+      const commandDirectories = new Set<string>();
+      for (const command of [
+        process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
+        process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND
+      ]) {
+        const trimmedCommand = command?.trim();
+        if (!trimmedCommand) {
+          continue;
+        }
+
+        if (path.isAbsolute(trimmedCommand)) {
+          commandDirectories.add(path.dirname(trimmedCommand));
+          continue;
+        }
+
+        if (isExplicitRelativePath(trimmedCommand)) {
+          commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
+        }
+      }
+
+      if (commandDirectories.size > 0) {
+        const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+        env.PATH = Array.from(new Set([...commandDirectories, ...existingPathEntries])).join(path.delimiter);
+      }
+    }
+
     if (process.platform === 'win32') {
       env.SystemRoot = process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim() || 'C:\\Windows';
     }
@@ -5103,6 +5607,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private buildAgentLaunchSpec(
     spec: AgentCliSpec,
+    launchArgs: string[],
     cwd: string,
     cols: number,
     rows: number,
@@ -5111,7 +5616,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     fileActivitySession?: AgentFileActivitySession
   ): ExecutionSessionLaunchSpec {
     const env = this.buildExecutionEnvironment();
-    const args: string[] = [];
+    const args: string[] = launchMode === 'start' ? [...launchArgs] : [];
+
+    if (looksLikeFakeAgentProviderCommand(spec.command)) {
+      env[FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY] = spec.provider;
+    }
 
     if (resumeContext.strategy === 'fake-provider') {
       if (resumeContext.sessionId) {
@@ -5127,9 +5636,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     } else if (spec.provider === 'claude') {
+      const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandSessionFlag(launchArgs));
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
-      } else if (resumeContext.sessionId) {
+      } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
       }
     } else if (launchMode === 'resume') {
@@ -5383,12 +5893,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.queueExecutionOutput('terminal', nodeId, text);
       };
 
-      const finalize = (
+      const finalize = async (
         status: 'closed' | 'error',
         message: string,
         exitCode?: number,
         signal?: string
-      ): void => {
+      ): Promise<void> => {
         const activeSession = this.terminalSessions.get(nodeId);
         if (!activeSession) {
           return;
@@ -5448,14 +5958,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.disposeManagedExecutionSession(activeSession);
         this.persistState();
         this.postState('host/stateUpdated');
-        this.postMessage({
-          type: 'host/executionExit',
-          payload: {
-            nodeId,
-            kind: 'terminal',
-            message
-          }
-        });
+        await this.postExecutionExitWithFinalSnapshot('terminal', nodeId, message);
         if (status === 'error') {
           this.postMessage({
             type: 'host/error',
@@ -5469,17 +5972,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleTerminalChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          finalize('closed', '终端已停止。', exitCode, signal);
+          void finalize('closed', '终端已停止。', exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          finalize('closed', '终端会话已结束。', exitCode, signal);
+          void finalize('closed', '终端会话已结束。', exitCode, signal);
           return;
         }
 
         const cleanedOutput = stripTerminalControlSequences(session.buffer);
-        finalize(
+        void finalize(
           'error',
           describeEmbeddedTerminalExit(shellPath, exitCode, signal, cleanedOutput),
           exitCode,
@@ -5743,6 +6246,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.flushLiveExecutionState(kind, nodeId);
     if (session.owner === 'local') {
+      if (kind === 'agent') {
+        if (session.agentProvider === 'claude') {
+          session.process.kill();
+          return;
+        }
+        this.requestGracefulLocalAgentStop(nodeId, session);
+        return;
+      }
       session.process.kill();
       return;
     }
@@ -5923,6 +6434,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (options.terminateProcess) {
       session.process.kill();
     }
+  }
+
+  private requestGracefulLocalAgentStop(nodeId: string, session: LocalExecutionSession): void {
+    try {
+      session.process.write(AGENT_GRACEFUL_STOP_INPUT);
+    } catch {
+      session.process.kill();
+      return;
+    }
+
+    session.lifecycleTimer = setTimeout(() => {
+      const currentSession = this.getExecutionSessions('agent').get(nodeId);
+      if (
+        !currentSession ||
+        currentSession !== session ||
+        currentSession.owner !== 'local' ||
+        !currentSession.stopRequested
+      ) {
+        return;
+      }
+
+      currentSession.lifecycleTimer = undefined;
+      this.recordDiagnosticEvent('execution/stopForceKilled', {
+        kind: 'agent',
+        nodeId,
+        provider: currentSession.agentProvider ?? null,
+        sessionId: currentSession.sessionId,
+        waitedMs: AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS
+      });
+      currentSession.process.kill();
+    }, AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS);
   }
 
   private queueExecutionOutput(kind: ExecutionNodeKind, nodeId: string, chunk: string): void {
@@ -6162,10 +6704,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  private async postExecutionExitWithFinalSnapshot(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    message: string
+  ): Promise<void> {
+    await this.postExecutionSnapshot(kind, nodeId);
+    this.postMessage({
+      type: 'host/executionExit',
+      payload: {
+        nodeId,
+        kind,
+        message
+      }
+    });
+  }
+
   private applyCreateNode(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: { bypassTrust?: boolean; agentProvider?: AgentProviderKind }
+    options?: CreateAgentNodeOptions & { bypassTrust?: boolean }
   ): void {
     if (
       isExecutionNodeKind(kind) &&
@@ -6175,10 +6733,44 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const agentProvider = options?.agentProvider ?? this.getAgentCliConfig().defaultProvider;
+    const agentLaunchPreset = options?.agentLaunchPreset ?? 'default';
+    const agentCustomLaunchCommand =
+      agentLaunchPreset === 'custom' ? options?.agentCustomLaunchCommand : undefined;
+
+    if (kind === 'agent') {
+      try {
+        this.validateAgentFreshLaunchCommand(
+          agentProvider,
+          agentLaunchPreset,
+          agentCustomLaunchCommand,
+          this.getAgentLaunchDefaults(agentProvider)
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '无法创建 Agent 节点。';
+        this.recordDiagnosticEvent('node/createRejected', {
+          kind,
+          provider: agentProvider,
+          launchPreset: agentLaunchPreset,
+          commandLine: agentCustomLaunchCommand ?? null,
+          message
+        });
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+        return;
+      }
+    }
+
     const nextState = createNextState(
       this.state,
       kind,
-      options?.agentProvider ?? this.getAgentCliConfig().defaultProvider,
+      agentProvider,
+      agentLaunchPreset,
+      agentCustomLaunchCommand,
       preferredPosition
     );
     const createdNode = nextState.nodes[nextState.nodes.length - 1];
@@ -6191,6 +6783,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'starting',
           pendingLaunch: 'start',
           liveSession: false,
+          launchPreset: agentLaunchPreset,
+          customLaunchCommand:
+            agentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -6413,10 +7008,12 @@ function createNextState(
   previousState: CanvasPrototypeState,
   kind: CanvasNodeKind,
   agentProvider: AgentProviderKind = 'codex',
+  agentLaunchPreset: AgentLaunchPresetKind = 'default',
+  agentCustomLaunchCommand?: string,
   preferredPosition?: CanvasNodePosition
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
-  const nextNode = createNode(kind, nextIndex, agentProvider);
+  const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
   const resolvedPosition = resolveNewNodePosition(
     previousState.nodes,
     kind,
@@ -6469,7 +7066,9 @@ function defaultStatusForKind(kind: CanvasNodeKind): string {
 function createNode(
   kind: CanvasNodeKind,
   sequence: number,
-  agentProvider: AgentProviderKind = 'codex'
+  agentProvider: AgentProviderKind = 'codex',
+  agentLaunchPreset: AgentLaunchPresetKind = 'default',
+  agentCustomLaunchCommand?: string
 ): CanvasNodeSummary {
   const titlePrefix = {
     agent: 'Agent',
@@ -6488,7 +7087,7 @@ function createNode(
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
     size: estimatedCanvasNodeFootprint(kind),
-    metadata: createNodeMetadata(kind, id, agentProvider)
+    metadata: createNodeMetadata(kind, id, agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
   };
 }
 
@@ -8060,11 +8659,13 @@ function readNextNodeSequence(nodes: CanvasNodeSummary[]): number {
 function createNodeMetadata(
   kind: CanvasNodeKind,
   nodeId: string,
-  agentProvider: AgentProviderKind = 'codex'
+  agentProvider: AgentProviderKind = 'codex',
+  agentLaunchPreset: AgentLaunchPresetKind = 'default',
+  agentCustomLaunchCommand?: string
 ): CanvasNodeMetadata | undefined {
   if (kind === 'agent') {
     return {
-      agent: createAgentMetadata(agentProvider)
+      agent: createAgentMetadata(agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
     };
   }
 
@@ -8087,14 +8688,21 @@ function createNodeMetadata(
   return undefined;
 }
 
-function createAgentMetadata(provider: AgentProviderKind = 'codex'): AgentNodeMetadata {
+function createAgentMetadata(
+  provider: AgentProviderKind = 'codex',
+  launchPreset: AgentLaunchPresetKind = 'default',
+  customLaunchCommand?: string
+): AgentNodeMetadata {
   return {
     backend: 'node-pty',
     lifecycle: 'idle',
     provider,
+    launchPreset,
+    customLaunchCommand: launchPreset === 'custom' ? customLaunchCommand?.trim() || undefined : undefined,
+    lastLaunchCommandLine: undefined,
     runtimeKind: 'pty-cli',
-    resumeSupported: provider === 'claude',
-    resumeStrategy: provider === 'claude' ? 'claude-session-id' : 'none',
+    resumeSupported: false,
+    resumeStrategy: 'none',
     shellPath: defaultAgentCommand(provider),
     cwd: defaultTerminalWorkingDirectory(),
     persistenceMode: 'snapshot-only',
@@ -8314,6 +8922,14 @@ function normalizeMetadata(
         ? agent.provider
         : defaultAgentProvider;
     const fallback = createAgentMetadata(provider);
+    const launchPreset =
+      agent.launchPreset === 'resume' ||
+      agent.launchPreset === 'yolo' ||
+      agent.launchPreset === 'sandbox' ||
+      agent.launchPreset === 'custom' ||
+      agent.launchPreset === 'default'
+        ? agent.launchPreset
+        : fallback.launchPreset;
     const liveSession =
       typeof agent.liveSession === 'boolean'
         ? agent.liveSession
@@ -8357,6 +8973,17 @@ function normalizeMetadata(
           agent.lifecycle
         ),
         provider,
+        launchPreset,
+        customLaunchCommand:
+          launchPreset === 'custom' && typeof agent.customLaunchCommand === 'string'
+            ? agent.customLaunchCommand.trim() || undefined
+            : undefined,
+        lastLaunchCommandLine:
+          typeof agent.lastLaunchCommandLine === 'string'
+            ? trimStoredTerminalText(agent.lastLaunchCommandLine)
+            : typeof agent.launchCommandLine === 'string'
+              ? trimStoredTerminalText(agent.launchCommandLine)
+              : fallback.lastLaunchCommandLine,
         runtimeKind: 'pty-cli',
         resumeSupported,
         resumeStrategy,

@@ -62,7 +62,7 @@ export function createAgentFileActivitySession(
   };
 }
 
-function looksLikeFakeAgentProviderCommand(command: string): boolean {
+export function looksLikeFakeAgentProviderCommand(command: string): boolean {
   const basename = path.basename(command).toLowerCase();
   return basename.includes('fake-agent-provider') || basename.includes('fake-codex-provider') || basename.includes('fake-claude-provider');
 }

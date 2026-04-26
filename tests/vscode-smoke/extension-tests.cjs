@@ -5,6 +5,10 @@ const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
 
+const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
+const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
+const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
+
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
   openCanvas: 'devSessionCanvas.openCanvas',
@@ -21,6 +25,9 @@ const COMMAND_IDS = {
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
+  testLocateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
+  testExtractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',
+  testExtractClaudeResumeSessionId: 'devSessionCanvas.__test.extractClaudeResumeSessionId',
   testGetAgentCliResolutionCacheKey: 'devSessionCanvas.__test.getAgentCliResolutionCacheKey',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
@@ -240,6 +247,9 @@ async function runTrustedSmoke() {
   assert.strictEqual(notificationModeSummaryItem.description, '已桥接 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
+  await verifyClaudeSessionIdLocator();
+  await verifyCodexResumeCommandHintParser();
+  await verifyClaudeResumeCommandHintParser();
   await verifyAgentCliRelativePathCacheIsolation();
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
@@ -329,6 +339,8 @@ async function runTrustedSmoke() {
   await verifyStandbySurfaceIgnoresMessages(noteNode.id);
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
   await verifyStopVsQueuedExitRace(agentNode.id);
+  await verifyClaudeStopRestoresPreviousSignal();
+  await verifyClaudeExplicitSessionIdPreservesResumeContext();
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
@@ -370,32 +382,53 @@ async function verifyCreateNodeCommandQuickPick() {
   await clearHostMessages();
   await clearDiagnosticEvents();
 
-  await setQuickPickSelections(['create-agent-claude']);
+  let snapshot = await getDebugSnapshot();
+  const baselineNodeCount = snapshot.state.nodes.length;
+
+  await setQuickPickSelections(['create-agent-claude', 'agent-launch-apply-default']);
+  await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+  await sleep(200);
+
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.length,
+    baselineNodeCount,
+    'Selecting a launch preset in the second-step Quick Input should only rewrite the command, not create an Agent.'
+  );
+
+  await setQuickPickSelections(['create-agent-claude', 'agent-launch-apply-yolo', 'agent-launch-accept-current']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
+  snapshot = await waitForSnapshot((currentSnapshot) => {
     return currentSnapshot.state.nodes.some(
-      (node) => node.kind === 'agent' && node.metadata?.agent?.provider === 'claude'
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude' &&
+        node.metadata?.agent?.launchPreset === 'yolo'
     );
   }, 20000);
 
   const claudeAgentNode = snapshot.state.nodes.find(
-    (node) => node.kind === 'agent' && node.metadata?.agent?.provider === 'claude'
+    (node) =>
+      node.kind === 'agent' &&
+      node.metadata?.agent?.provider === 'claude' &&
+      node.metadata?.agent?.launchPreset === 'yolo'
   );
-  assert.ok(claudeAgentNode, 'Expected createNode command to create a Claude agent.');
+  assert.ok(claudeAgentNode, 'Expected createNode command to create a Claude agent with YOLO launch preset.');
   await waitForDiagnosticEvents(
     (events) =>
       events.some(
         (event) =>
           event.kind === 'execution/startRequested' &&
           event.detail?.nodeId === claudeAgentNode.id &&
-          event.detail?.provider === 'claude'
+          event.detail?.provider === 'claude' &&
+          event.detail?.launchPreset === 'yolo'
       ),
     20000
   );
 
   await clearDiagnosticEvents();
-  await setQuickPickSelections(['create-agent-default']);
+  await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
@@ -406,7 +439,8 @@ async function verifyCreateNodeCommandQuickPick() {
     (node) =>
       node.kind === 'agent' &&
       node.id !== claudeAgentNode.id &&
-      node.metadata?.agent?.provider === 'codex'
+      node.metadata?.agent?.provider === 'codex' &&
+      node.metadata?.agent?.launchPreset === 'default'
   );
   assert.ok(codexAgentNode, 'Expected default Agent quick pick item to create a Codex agent.');
   await waitForDiagnosticEvents(
@@ -415,7 +449,8 @@ async function verifyCreateNodeCommandQuickPick() {
         (event) =>
           event.kind === 'execution/startRequested' &&
           event.detail?.nodeId === codexAgentNode.id &&
-          event.detail?.provider === 'codex'
+          event.detail?.provider === 'codex' &&
+          event.detail?.launchPreset === 'default'
       ),
     20000
   );
@@ -1372,7 +1407,20 @@ async function verifyFileActivityViewsAndOpenFiles() {
     });
     assert.ok(
       snapshot.state.fileReferences.some((reference) => reference.filePath === agentOnlyPath),
-      'Expected seeded file activity state to include the tracked file before toggling the feature switch.'
+      'Expected seeded persisted state to preserve the authoritative file reference before toggling the files feature.'
+    );
+    assert.deepStrictEqual(
+      snapshot.state.nodes
+        .filter((node) => !baselineNodeIds.includes(node.id))
+        .map((node) => node.kind)
+        .sort(),
+      ['agent', 'file-list'],
+      'Expected seeded persisted state in list mode to reconcile into only the injected agent plus one projected file-list node.'
+    );
+    assert.strictEqual(
+      snapshot.state.nodes.some((node) => node.id === agentOnlyFileNode.id),
+      false,
+      'Expected list mode reconciliation to replace the seeded single-file node with a projected file-list node.'
     );
 
     await setFileIncludeFilterGlobs(['**/*.md']);
@@ -1450,15 +1498,15 @@ async function verifyFileActivityViewsAndOpenFiles() {
     );
     assert.ok(
       baselineNodeIds.every((nodeId) => snapshot.state.nodes.some((node) => node.id === nodeId)),
-      'Expected restoring the baseline snapshot to keep all baseline nodes present.'
+      'Expected restoring the baseline persisted state to keep all baseline nodes present.'
     );
     assert.deepStrictEqual(
       snapshot.state.nodes
         .filter((node) => !baselineNodeIds.includes(node.id))
-        .map((node) => node.kind)
+        .map((node) => node.id)
         .sort(),
-      ['agent'],
-      'Expected any extra nodes after restoring the baseline snapshot to come only from live runtime reconciliation.'
+      [],
+      'Expected restoring the baseline persisted state to clear any reconciled file-activity projection nodes.'
     );
   } finally {
     await setFilesFeatureEnabled(originalFilesEnabled);
@@ -2160,7 +2208,11 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
       }
     ]
   });
-  assert.strictEqual(snapshot.state.nodes.length, 0);
+  assert.strictEqual(
+    snapshot.state.nodes.length,
+    0,
+    'Expected runtime reconciliation to drop unsupported legacy task nodes from a seeded persisted state.'
+  );
 
   snapshot = await setPersistedState({
     ...mixedBaselineState,
@@ -2185,17 +2237,28 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
   });
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    mixedBaselineState.nodes.map((node) => node.kind).sort()
+    mixedBaselineState.nodes.map((node) => node.kind).sort(),
+    'Expected runtime reconciliation to project only supported node kinds from a mixed persisted state.'
   );
-  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'), false);
+  assert.strictEqual(
+    snapshot.state.nodes.some((node) => node.id === 'legacy-task-2'),
+    false,
+    'Expected runtime reconciliation to omit legacy task nodes even when the seeded persisted state also contains supported nodes.'
+  );
 
   if (beforeState !== mixedBaselineState) {
     snapshot = await setPersistedState(beforeState);
-    assert.strictEqual(snapshot.state.nodes.length, beforeState.nodes.length);
+    assert.strictEqual(
+      snapshot.state.nodes.length,
+      beforeState.nodes.length,
+      'Expected restoring the pre-test persisted state to recover its original projected node count.'
+    );
   }
 }
 
 async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
+  const expectedAgentSubtitle =
+    findNodeById(await getDebugSnapshot(), agentNodeId).metadata?.agent?.lastLaunchCommandLine ?? null;
   let probe = await waitForWebviewProbe((currentProbe) => {
     const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
     const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
@@ -2208,7 +2271,8 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
         agentNode &&
         agentNode.kind === 'agent' &&
         typeof agentNode.chromeSubtitle === 'string' &&
-        agentNode.chromeSubtitle.includes('Codex') &&
+        agentNode.chromeSubtitle.length > 0 &&
+        (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
         typeof agentNode.titleInputValue === 'string' &&
         agentNode.titleInputValue.length > 0 &&
         terminalNode &&
@@ -2231,6 +2295,12 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(probe.hasCanvasShell, true);
   assert.strictEqual(probe.hasReactFlow, true);
   assert.strictEqual(probe.nodeCount, 3);
+  if (expectedAgentSubtitle !== null) {
+    assert.strictEqual(
+      probe.nodes.find((node) => node.nodeId === agentNodeId)?.chromeSubtitle,
+      expectedAgentSubtitle
+    );
+  }
   assert.strictEqual(
     Object.prototype.hasOwnProperty.call(
       probe.nodes.find((node) => node.nodeId === agentNodeId) ?? {},
@@ -4359,6 +4429,137 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === claudeAgentNode.id), false);
 
   await clearHostMessages();
+  const nodeCountBeforeInvalidCreate = snapshot.state.nodes.length;
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'agent',
+      agentProvider: 'claude',
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: INVALID_PROVIDER_LAUNCH_COMMAND
+    }
+  });
+
+  hostMessages = await getHostMessages();
+  assert.ok(
+    hostMessages.some(
+      (message) =>
+        message.type === 'host/error' &&
+        message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+    ),
+    'Expected host-side create validation to reject cross-provider custom launch commands.'
+  );
+
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.length,
+    nodeCountBeforeInvalidCreate,
+    'Rejected create requests must not add an agent node.'
+  );
+
+  const stateBeforeInvalidLaunch = snapshot.state;
+  const invalidLaunchNodeId = 'agent-invalid-custom-launch';
+  const invalidLaunchBaselineNode = findNodeById(snapshot, agentNodeId);
+  const invalidLaunchNode = {
+    ...invalidLaunchBaselineNode,
+    id: invalidLaunchNodeId,
+    title: 'Agent Invalid Custom Launch',
+    status: 'idle',
+    summary: '尚未启动 Agent 会话。',
+    position: {
+      x: invalidLaunchBaselineNode.position.x + 340,
+      y: invalidLaunchBaselineNode.position.y + 260
+    },
+    metadata: {
+      agent: {
+        ...invalidLaunchBaselineNode.metadata.agent,
+        lifecycle: 'idle',
+        provider: 'claude',
+        launchPreset: 'custom',
+        customLaunchCommand: INVALID_PROVIDER_LAUNCH_COMMAND,
+        lastLaunchCommandLine: undefined,
+        resumeSupported: false,
+        resumeStrategy: 'none',
+        resumeSessionId: undefined,
+        resumeStoragePath: undefined,
+        liveSession: false,
+        runtimeSessionId: undefined,
+        pendingLaunch: undefined,
+        recentOutput: undefined,
+        lastExitCode: undefined,
+        lastExitSignal: undefined,
+        lastExitMessage: undefined,
+        lastRuntimeError: undefined,
+        serializedTerminalState: undefined,
+        lastBackendLabel: 'Claude Code'
+      }
+    }
+  };
+
+  snapshot = await setPersistedState({
+    ...stateBeforeInvalidLaunch,
+    nodes: [...stateBeforeInvalidLaunch.nodes, invalidLaunchNode]
+  });
+  assert.ok(
+    snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
+    'Expected seeded persisted state to surface the injected custom Claude node before runtime start validation runs.'
+  );
+
+  await clearHostMessages();
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: {
+      nodeId: invalidLaunchNodeId,
+      kind: 'agent',
+      cols: 84,
+      rows: 26,
+      provider: 'claude'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === invalidLaunchNodeId);
+    return Boolean(currentNode?.status === 'error');
+  }, 20000);
+  let invalidLaunchNodeAfterStart = findNodeById(snapshot, invalidLaunchNodeId);
+  assert.strictEqual(invalidLaunchNodeAfterStart.status, 'error');
+  assert.strictEqual(
+    invalidLaunchNodeAfterStart.summary,
+    '命令必须以当前 Claude Code 命令或 claude 开头。'
+  );
+  assert.strictEqual(invalidLaunchNodeAfterStart.metadata.agent.liveSession, false);
+  assert.strictEqual(invalidLaunchNodeAfterStart.metadata.agent.pendingLaunch, undefined);
+
+  hostMessages = await getHostMessages();
+  assert.ok(
+    hostMessages.some(
+      (message) =>
+        message.type === 'host/error' &&
+        message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+    ),
+    'Expected host-side runtime validation to reject the invalid custom launch command restored from seeded persisted state.'
+  );
+
+  const invalidLaunchDiagnostics = (await getDiagnosticEvents())
+    .slice(diagnosticStartIndex)
+    .filter((event) => event.detail?.kind === 'agent' && event.detail?.nodeId === invalidLaunchNodeId);
+  assert.ok(
+    invalidLaunchDiagnostics.some(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.reason === 'invalid-launch-command' &&
+        event.detail?.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+    ),
+    'Expected invalid custom commands to be rejected before the host resolves or executes them.'
+  );
+
+  snapshot = await setPersistedState(stateBeforeInvalidLaunch);
+  assert.ok(
+    !snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
+    'Expected restoring the baseline persisted state to remove the seeded invalid-launch node from runtime projection.'
+  );
+
+  await clearHostMessages();
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: {
@@ -4639,6 +4840,8 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.match(agentNode.summary, /已停止 Codex 会话/);
+  assert.match(agentNode.metadata.agent.recentOutput ?? '', /Token usage:/);
+  assert.match(agentNode.metadata.agent.recentOutput ?? '', /codex resume/);
 
   const raceDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
   const scopedDiagnostics = raceDiagnostics.filter(
@@ -4663,6 +4866,181 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
     ).length,
     1
   );
+}
+
+async function verifyClaudeStopRestoresPreviousSignal() {
+  await clearHostMessages();
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'agent',
+      agentProvider: 'claude',
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: FAKE_CLAUDE_PROVIDER_COMMAND
+    }
+  });
+
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNode = currentSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude' &&
+        node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_COMMAND
+    );
+    return Boolean(currentNode);
+  });
+  const claudeAgentNode = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'agent' &&
+      node.metadata?.agent?.provider === 'claude' &&
+      node.metadata?.agent?.customLaunchCommand === FAKE_CLAUDE_PROVIDER_COMMAND
+  );
+  assert.ok(claudeAgentNode, 'Expected a Claude agent node configured with the fake provider.');
+
+  await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+    return Boolean(currentAgent?.metadata?.agent?.liveSession);
+  });
+
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: claudeAgentNode.id,
+      kind: 'agent',
+      data: 'hello claude\r'
+    }
+  });
+
+  await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+    return Boolean(currentAgent?.metadata?.agent?.recentOutput?.includes('[fake-claude] hello claude'));
+  });
+
+  await dispatchWebviewMessage({
+    type: 'webview/stopExecutionSession',
+    payload: {
+      nodeId: claudeAgentNode.id,
+      kind: 'agent'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+    return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
+  });
+
+  const stoppedAgentNode = findNodeById(snapshot, claudeAgentNode.id);
+  assert.strictEqual(stoppedAgentNode.status, 'stopped');
+  assert.strictEqual(stoppedAgentNode.metadata.agent.liveSession, false);
+  assert.doesNotMatch(stoppedAgentNode.metadata.agent.recentOutput ?? '', /Press Ctrl-C again to exit/);
+  assert.doesNotMatch(stoppedAgentNode.metadata.agent.recentOutput ?? '', /claude --resume/);
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeStrategy, 'none');
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeSessionId, undefined);
+  assert.strictEqual(stoppedAgentNode.metadata.agent.resumeStoragePath, undefined);
+
+  const scopedDiagnostics = (await getDiagnosticEvents())
+    .slice(diagnosticStartIndex)
+    .filter((event) => event.detail?.kind === 'agent' && event.detail?.nodeId === claudeAgentNode.id);
+  assert.ok(
+    scopedDiagnostics.every((event) => event.kind !== 'execution/stopSecondaryInterruptSent'),
+    'Claude stop path should no longer emit a second Ctrl-C diagnostic.'
+  );
+  assert.ok(
+    scopedDiagnostics.every((event) => event.kind !== 'execution/stopForceKilled'),
+    'Claude stop path should exit gracefully instead of falling back to force-kill.'
+  );
+
+  await ensureAgentStopped(claudeAgentNode.id);
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: claudeAgentNode.id
+    }
+  });
+  await waitForSnapshot(
+    (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgentNode.id),
+    20000
+  );
+}
+
+async function verifyClaudeExplicitSessionIdPreservesResumeContext() {
+  await clearHostMessages();
+  const transcriptFilePath = await seedClaudeSessionTranscriptFile(EXPLICIT_CLAUDE_SESSION_ID);
+
+  try {
+    await dispatchWebviewMessage({
+      type: 'webview/createDemoNode',
+      payload: {
+        kind: 'agent',
+        agentProvider: 'claude',
+        agentLaunchPreset: 'custom',
+        agentCustomLaunchCommand: `${FAKE_CLAUDE_PROVIDER_COMMAND} --session-id=${EXPLICIT_CLAUDE_SESSION_ID}`
+      }
+    });
+
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find(
+        (node) =>
+          node.kind === 'agent' &&
+          node.metadata?.agent?.provider === 'claude' &&
+          node.metadata?.agent?.customLaunchCommand ===
+            `${FAKE_CLAUDE_PROVIDER_COMMAND} --session-id=${EXPLICIT_CLAUDE_SESSION_ID}`
+      );
+      return Boolean(currentNode?.metadata?.agent?.liveSession);
+    });
+    const claudeAgentNode = snapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'claude' &&
+        node.metadata?.agent?.customLaunchCommand ===
+          `${FAKE_CLAUDE_PROVIDER_COMMAND} --session-id=${EXPLICIT_CLAUDE_SESSION_ID}`
+    );
+    assert.ok(claudeAgentNode, 'Expected a Claude agent node configured with an explicit session id.');
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+      return Boolean(
+        currentAgent?.metadata?.agent?.resumeStrategy === 'claude-session-id' &&
+          currentAgent.metadata.agent.resumeSessionId === EXPLICIT_CLAUDE_SESSION_ID
+      );
+    }, 20000);
+    let explicitSessionNode = findNodeById(snapshot, claudeAgentNode.id);
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeStrategy, 'claude-session-id');
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeSessionId, EXPLICIT_CLAUDE_SESSION_ID);
+
+    await dispatchWebviewMessage({
+      type: 'webview/stopExecutionSession',
+      payload: {
+        nodeId: claudeAgentNode.id,
+        kind: 'agent'
+      }
+    });
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
+      return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
+    }, 20000);
+    explicitSessionNode = findNodeById(snapshot, claudeAgentNode.id);
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeStrategy, 'claude-session-id');
+    assert.strictEqual(explicitSessionNode.metadata.agent.resumeSessionId, EXPLICIT_CLAUDE_SESSION_ID);
+
+    await ensureAgentStopped(claudeAgentNode.id);
+    await dispatchWebviewMessage({
+      type: 'webview/deleteNode',
+      payload: {
+        nodeId: claudeAgentNode.id
+      }
+    });
+    await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgentNode.id),
+      20000
+    );
+  } finally {
+    await fs.rm(transcriptFilePath, { force: true }).catch(() => undefined);
+    await fs.rmdir(path.dirname(transcriptFilePath)).catch(() => undefined);
+  }
 }
 
 async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
@@ -4788,6 +5166,16 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
     terminalNode = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(agentNode.status, 'stopped');
     assert.strictEqual(terminalNode.status, 'closed');
+
+    snapshot = await simulateRuntimeReload();
+    agentNode = findNodeById(snapshot, agentNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(agentNode.status, 'stopped');
+    assert.strictEqual(agentNode.metadata.agent.persistenceMode, 'snapshot-only');
+    assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+    assert.strictEqual(terminalNode.status, 'closed');
+    assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'snapshot-only');
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
   } finally {
     await setRuntimePersistenceEnabled(false);
   }
@@ -5145,13 +5533,39 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
 
     const restoredAgent = findNodeById(snapshot, agentNodeId);
     const restoredTerminal = findNodeById(snapshot, terminalNodeId);
-    assert.strictEqual(restoredAgent.metadata.agent.persistenceMode, 'live-runtime');
-    assert.ok(restoredAgent.metadata.agent.runtimeSessionId);
-    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
-    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
-    assert.strictEqual(restoredTerminal.metadata.terminal.liveSession, false);
-    assert.match(restoredTerminal.summary, /runtime session/);
-    assert.match(restoredTerminal.metadata.terminal.lastRuntimeError ?? '', /runtime session/);
+    assert.strictEqual(
+      restoredAgent.metadata.agent.persistenceMode,
+      'live-runtime',
+      'Expected runtime projection to retain the live-runtime persistence mode from the seeded persisted agent state.'
+    );
+    assert.ok(
+      restoredAgent.metadata.agent.runtimeSessionId,
+      'Expected runtime reconciliation to replace the missing live runtime with a resumed runtime session id.'
+    );
+    assert.strictEqual(
+      restoredAgent.metadata.agent.resumeSupported,
+      true,
+      'Expected runtime reconciliation to upgrade the seeded fallback agent into a resume-supported state.'
+    );
+    assert.ok(
+      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
+      'Expected runtime projection to append resumed-session output after reconciling the seeded fallback agent state.'
+    );
+    assert.strictEqual(
+      restoredTerminal.metadata.terminal.liveSession,
+      false,
+      'Expected runtime projection to keep the seeded fallback terminal in history-only mode.'
+    );
+    assert.match(
+      restoredTerminal.summary,
+      /runtime session/,
+      'Expected runtime projection to explain that the seeded terminal live runtime could not be reattached.'
+    );
+    assert.match(
+      restoredTerminal.metadata.terminal.lastRuntimeError ?? '',
+      /runtime session/,
+      'Expected runtime projection to preserve the terminal runtime-reattach failure reason derived from seeded state.'
+    );
 
     const reconnectDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
     assert.ok(
@@ -5169,7 +5583,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
     await setRuntimePersistenceEnabled(false);
     if (shouldRestoreBaseline) {
       await setPersistedState(baselineSnapshot.state);
-      await waitForSnapshot((currentState) => {
+      const restoredBaselineSnapshot = await waitForSnapshot((currentState) => {
         const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
         const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
         return Boolean(
@@ -5181,6 +5595,18 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               baselineTerminal.metadata?.terminal?.recentOutput
         );
       }, 20000);
+      const restoredBaselineAgent = findNodeById(restoredBaselineSnapshot, agentNodeId);
+      const restoredBaselineTerminal = findNodeById(restoredBaselineSnapshot, terminalNodeId);
+      assert.strictEqual(
+        restoredBaselineAgent.metadata.agent.resumeSessionId,
+        baselineAgent.metadata?.agent?.resumeSessionId,
+        'Expected restoring the baseline persisted state to recover the baseline agent resume metadata after fallback runtime projection.'
+      );
+      assert.strictEqual(
+        restoredBaselineTerminal.metadata.terminal.recentOutput,
+        baselineTerminal.metadata?.terminal?.recentOutput,
+        'Expected restoring the baseline persisted state to recover the baseline terminal history projection after fallback runtime projection.'
+      );
     }
     await fs.rm(fakeStorageDir, { recursive: true, force: true });
   }
@@ -5243,9 +5669,13 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     let restoredAgent = findNodeById(snapshot, agentNodeId);
     assert.ok(
       restoredAgent.status === 'resume-ready' || restoredAgent.status === 'history-restored',
-      `Expected restored agent to stay resumable after history restore, got ${restoredAgent.status}.`
+      `Expected runtime reconciliation to keep the seeded history-restored agent resumable, got ${restoredAgent.status}.`
     );
-    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
+    assert.strictEqual(
+      restoredAgent.metadata.agent.resumeSupported,
+      true,
+      'Expected runtime projection to ignore stale persisted resumeSupported=false metadata when resume context is still valid.'
+    );
 
     snapshot = await waitForSnapshot((currentState) => {
       const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
@@ -5257,8 +5687,15 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     }, 20000);
 
     restoredAgent = findNodeById(snapshot, agentNodeId);
-    assert.strictEqual(restoredAgent.metadata.agent.resumeSupported, true);
-    assert.ok(restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
+    assert.strictEqual(
+      restoredAgent.metadata.agent.resumeSupported,
+      true,
+      'Expected resumed runtime projection to keep resume support enabled after consuming the seeded resume context.'
+    );
+    assert.ok(
+      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
+      'Expected runtime projection to resume the seeded history-restored agent through the available fallback resume context.'
+    );
 
     await ensureAgentStopped(agentNodeId);
     shouldRestoreBaseline = true;
@@ -5266,7 +5703,7 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     await setRuntimePersistenceEnabled(false);
     if (shouldRestoreBaseline) {
       await setPersistedState(baselineSnapshot.state);
-      await waitForSnapshot((currentState) => {
+      const restoredBaselineSnapshot = await waitForSnapshot((currentState) => {
         const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
         const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
         return Boolean(
@@ -5278,6 +5715,18 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
               baselineTerminal.metadata?.terminal?.recentOutput
         );
       }, 20000);
+      const restoredBaselineAgent = findNodeById(restoredBaselineSnapshot, agentNodeId);
+      const restoredBaselineTerminal = findNodeById(restoredBaselineSnapshot, terminalNodeId);
+      assert.strictEqual(
+        restoredBaselineAgent.metadata.agent.resumeSessionId,
+        baselineAgent.metadata?.agent?.resumeSessionId,
+        'Expected restoring the baseline persisted state to recover baseline agent resume metadata after consuming the seeded resume projection.'
+      );
+      assert.strictEqual(
+        restoredBaselineTerminal.metadata.terminal.recentOutput,
+        baselineTerminal.metadata?.terminal?.recentOutput,
+        'Expected restoring the baseline persisted state to recover the baseline terminal history projection after consuming the seeded resume projection.'
+      );
     }
     await fs.rm(fakeStorageDir, { recursive: true, force: true });
   }
@@ -5655,20 +6104,46 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
       ]
     });
 
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).status,
+      'history-restored',
+      'Expected runtime projection to downgrade the seeded reattaching agent into history-restored mode in an untrusted workspace.'
+    );
     assert.strictEqual(
       findNodeById(snapshot, agentNodeId).summary,
-      '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。'
+      '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。',
+      'Expected runtime projection to explain why the seeded reattaching agent stays history-only in an untrusted workspace.'
     );
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).status,
+      'history-restored',
+      'Expected runtime projection to downgrade the seeded reattaching terminal into history-restored mode in an untrusted workspace.'
+    );
     assert.strictEqual(
       findNodeById(snapshot, terminalNodeId).summary,
-      '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。'
+      '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。',
+      'Expected runtime projection to explain why the seeded reattaching terminal stays history-only in an untrusted workspace.'
     );
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState, 'reattaching');
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState, 'reattaching');
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.attachmentState,
+      'reattaching',
+      'Expected untrusted runtime projection to preserve the seeded agent attachment marker while blocking live reconnect.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.liveSession,
+      false,
+      'Expected untrusted runtime projection not to create a live agent session from seeded persisted state.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.attachmentState,
+      'reattaching',
+      'Expected untrusted runtime projection to preserve the seeded terminal attachment marker while blocking live reconnect.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession,
+      false,
+      'Expected untrusted runtime projection not to create a live terminal session from seeded persisted state.'
+    );
 
     await dispatchWebviewMessage({
       type: 'webview/resizeExecutionSession',
@@ -5690,15 +6165,44 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     });
 
     snapshot = await getDebugSnapshot();
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'history-restored');
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastCols, 67);
-    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastRows, 22);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols, 68);
-    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.lastRows, 23);
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).status,
+      'history-restored',
+      'Expected blocked runtime projection to keep the seeded agent in history-restored mode after ignored resize requests.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).status,
+      'history-restored',
+      'Expected blocked runtime projection to keep the seeded terminal in history-restored mode after ignored resize requests.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.lastCols,
+      67,
+      'Expected ignored resize requests not to mutate the seeded agent dimensions while only history projection is available.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, agentNodeId).metadata.agent.lastRows,
+      22,
+      'Expected ignored resize requests not to mutate the seeded agent dimensions while only history projection is available.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.lastCols,
+      68,
+      'Expected ignored resize requests not to mutate the seeded terminal dimensions while only history projection is available.'
+    );
+    assert.strictEqual(
+      findNodeById(snapshot, terminalNodeId).metadata.terminal.lastRows,
+      23,
+      'Expected ignored resize requests not to mutate the seeded terminal dimensions while only history projection is available.'
+    );
   } finally {
     if (baselineSnapshot) {
-      await setPersistedState(baselineSnapshot.state);
+      const restoredBaselineSnapshot = await setPersistedState(baselineSnapshot.state);
+      assert.strictEqual(
+        restoredBaselineSnapshot.state.nodes.length,
+        baselineSnapshot.state.nodes.length,
+        'Expected restoring the baseline persisted state to recover the original runtime projection after the untrusted reconnect scenario.'
+      );
     }
     await setRuntimePersistenceEnabled(false);
   }
@@ -6005,6 +6509,72 @@ async function verifyCodexSessionIdLocator() {
   }
 }
 
+async function verifyClaudeSessionIdLocator() {
+  const matchingHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-claude-locator-'));
+  try {
+    const matchingCwd = '/tmp/dev-session-canvas-claude-match';
+    const expectedSessionId = '44444444-4444-4444-8444-444444444444';
+    const delayedWrite = sleep(180).then(() =>
+      writeClaudeProjectSessionFile({
+        homeDir: matchingHomeDir,
+        sessionId: expectedSessionId,
+        cwd: matchingCwd
+      })
+    );
+
+    const detectedSessionId = await locateClaudeSessionIdForTest({
+      cwd: matchingCwd,
+      sessionId: expectedSessionId,
+      homeDir: matchingHomeDir,
+      timeoutMs: 800
+    });
+    await delayedWrite;
+    assert.strictEqual(detectedSessionId, expectedSessionId);
+
+    const missedSessionId = await locateClaudeSessionIdForTest({
+      cwd: '/tmp/dev-session-canvas-claude-miss',
+      sessionId: '55555555-5555-4555-8555-555555555555',
+      homeDir: matchingHomeDir,
+      timeoutMs: 450
+    });
+    assert.strictEqual(missedSessionId, null);
+  } finally {
+    await fs.rm(matchingHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyCodexResumeCommandHintParser() {
+  const output = [
+    '>_ OpenAI Codex (v0.122.0)',
+    '',
+    'Tip: New Build faster with Codex.',
+    'To continue this session, run codex resume 019dbfb8-cffa-70b0-9c97-cfd69d2f4b16',
+    'ziyang01.wang-al@hobot:~/projects/dev-session-canvas$'
+  ].join('\n');
+
+  const detectedSessionId = await extractCodexResumeSessionIdForTest(output);
+  assert.strictEqual(detectedSessionId, '019dbfb8-cffa-70b0-9c97-cfd69d2f4b16');
+
+  const missedSessionId = await extractCodexResumeSessionIdForTest('Codex ended without a resume hint.');
+  assert.strictEqual(missedSessionId, null);
+}
+
+async function verifyClaudeResumeCommandHintParser() {
+  const output = [
+    'Claude Code',
+    '',
+    'Resume this session with:',
+    '  claude --resume b654f7db-1ae3-4f6d-b84d-9b4b110f3e5a',
+    ''
+  ].join('\n');
+
+  const detectedSessionId = await extractClaudeResumeSessionIdForTest(output);
+  assert.strictEqual(detectedSessionId, 'b654f7db-1ae3-4f6d-b84d-9b4b110f3e5a');
+
+  const missedSessionId = await extractClaudeResumeSessionIdForTest('Claude ended without a resume hint.');
+  assert.strictEqual(missedSessionId, null);
+}
+
 async function verifyAgentCliRelativePathCacheIsolation() {
   const workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-a-'));
   const workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-b-'));
@@ -6069,6 +6639,24 @@ async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutM
   );
 }
 
+async function locateClaudeSessionIdForTest({ cwd, sessionId, homeDir, timeoutMs }) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testLocateClaudeSessionId,
+    cwd,
+    sessionId,
+    homeDir,
+    timeoutMs
+  );
+}
+
+async function extractCodexResumeSessionIdForTest(output) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testExtractCodexResumeSessionId, output);
+}
+
+async function extractClaudeResumeSessionIdForTest(output) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testExtractClaudeResumeSessionId, output);
+}
+
 async function getAgentCliResolutionCacheKeyForTest({ provider, requestedCommand, workspaceCwd }) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testGetAgentCliResolutionCacheKey,
@@ -6102,6 +6690,17 @@ async function reloadPersistedState() {
 
 async function setPersistedState(rawState) {
   return vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, rawState);
+}
+
+async function seedClaudeSessionTranscriptFile(sessionId) {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const projectDirectoryName = workspaceCwd.replace(/[^a-zA-Z0-9]+/g, '-');
+  const transcriptDirectory = path.join(os.homedir(), '.claude', 'projects', projectDirectoryName);
+  const transcriptFilePath = path.join(transcriptDirectory, `${sessionId}.jsonl`);
+
+  await fs.mkdir(transcriptDirectory, { recursive: true });
+  await fs.writeFile(transcriptFilePath, '{}\n', 'utf8');
+  return transcriptFilePath;
 }
 
 async function simulateRuntimeReload() {
@@ -6717,6 +7316,26 @@ async function writeCodexRolloutSessionMeta({
     `${JSON.stringify(payload)}\n`,
     'utf8'
   );
+}
+
+async function writeClaudeProjectSessionFile({
+  homeDir,
+  sessionId,
+  cwd
+}) {
+  const projectDir = path.join(
+    homeDir,
+    '.claude',
+    'projects',
+    path.resolve(cwd).replace(/[^a-zA-Z0-9]+/g, '-')
+  );
+  await fs.mkdir(projectDir, { recursive: true });
+  const payload = {
+    cwd,
+    sessionId,
+    type: 'progress'
+  };
+  await fs.writeFile(path.join(projectDir, `${sessionId}.jsonl`), `${JSON.stringify(payload)}\n`, 'utf8');
 }
 
 function toDateDirectoryParts(timestampMs) {

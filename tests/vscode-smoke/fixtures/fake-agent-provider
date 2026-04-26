@@ -15,7 +15,13 @@ session_id=""
 initial_prompt_delay_seconds="0.45"
 hide_pid="${DEV_SESSION_CANVAS_FAKE_PROVIDER_HIDE_PID:-0}"
 flavor="${DEV_SESSION_CANVAS_FAKE_AGENT_FLAVOR:-generic}"
+stop_hint_style="${DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE:-$flavor}"
 file_event_stream="${DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH:-}"
+claude_resume_requires_interaction="${DEV_SESSION_CANVAS_FAKE_CLAUDE_HINT_REQUIRES_INTERACTION:-1}"
+claude_stop_requires_double_interrupt="${DEV_SESSION_CANVAS_FAKE_CLAUDE_STOP_REQUIRES_DOUBLE_INTERRUPT:-0}"
+claude_exit_prompt_on_first_interrupt="${DEV_SESSION_CANVAS_FAKE_CLAUDE_EXIT_PROMPT_ON_FIRST_INTERRUPT:-0}"
+claude_session_confirmed=0
+claude_interrupt_count=0
 
 prefix="[fake-agent]"
 if [[ "$flavor" == "codex" ]]; then
@@ -24,33 +30,56 @@ elif [[ "$flavor" == "claude" ]]; then
   prefix="[fake-claude]"
 fi
 
+default_session_id() {
+  if [[ "$flavor" == "codex" ]]; then
+    printf '019dbfb8-cffa-70b0-9c97-%012d' "$$"
+    return
+  fi
+
+  printf 'session-%s' "$$"
+}
+
 if [[ -n "$session_dir" ]]; then
   mkdir -p "$session_dir"
   session_file="${session_dir%/}/last-session"
 fi
 
 if [[ "$mode" == "resume" ]]; then
-  if [[ -z "$session_file" || ! -f "$session_file" ]]; then
-    echo "${prefix} no resumable session"
-    exit 19
-  fi
+  if [[ "$flavor" == "codex" && -z "$session_file" ]]; then
+    if [[ -z "$requested_resume_session_id" ]]; then
+      echo "${prefix} missing resume session id"
+      exit 20
+    fi
 
-  session_id="$(cat "$session_file")"
-  if [[ -z "$requested_resume_session_id" ]]; then
-    echo "${prefix} missing resume session id"
-    exit 20
-  fi
-  if [[ "$requested_resume_session_id" != "$session_id" ]]; then
-    echo "${prefix} resume session mismatch expected=${session_id} actual=${requested_resume_session_id}"
-    exit 21
-  fi
-  if [[ "$hide_pid" == "1" ]]; then
-    echo "${prefix} resumed session ${session_id}"
+    session_id="$requested_resume_session_id"
+    if [[ "$hide_pid" == "1" ]]; then
+      echo "${prefix} resumed session ${session_id}"
+    else
+      echo "${prefix} resumed session ${session_id} pid=$$"
+    fi
   else
-    echo "${prefix} resumed session ${session_id} pid=$$"
+    if [[ -z "$session_file" || ! -f "$session_file" ]]; then
+      echo "${prefix} no resumable session"
+      exit 19
+    fi
+
+    session_id="$(cat "$session_file")"
+    if [[ -z "$requested_resume_session_id" ]]; then
+      echo "${prefix} missing resume session id"
+      exit 20
+    fi
+    if [[ "$requested_resume_session_id" != "$session_id" ]]; then
+      echo "${prefix} resume session mismatch expected=${session_id} actual=${requested_resume_session_id}"
+      exit 21
+    fi
+    if [[ "$hide_pid" == "1" ]]; then
+      echo "${prefix} resumed session ${session_id}"
+    else
+      echo "${prefix} resumed session ${session_id} pid=$$"
+    fi
   fi
 else
-  session_id="${DEV_SESSION_CANVAS_FAKE_PROVIDER_SESSION_ID:-session-$$}"
+  session_id="${DEV_SESSION_CANVAS_FAKE_PROVIDER_SESSION_ID:-$(default_session_id)}"
   if [[ -n "$session_file" ]]; then
     printf '%s\n' "$session_id" > "$session_file"
   fi
@@ -105,17 +134,39 @@ sleep "$initial_prompt_delay_seconds"
 print_prompt
 
 handle_signal() {
-  echo "${prefix} received signal"
+  local signal_name="$1"
+  if [[ "$stop_hint_style" == "codex" && "$signal_name" == "INT" ]]; then
+    echo "Token usage: total=128 input=64 output=64"
+    echo "To continue this session, run codex resume ${session_id}"
+  elif [[ "$stop_hint_style" == "claude" && "$signal_name" == "INT" ]]; then
+    claude_interrupt_count=$((claude_interrupt_count + 1))
+    if [[ "$claude_stop_requires_double_interrupt" == "1" && "$claude_interrupt_count" -lt 2 ]]; then
+      if [[ "$claude_exit_prompt_on_first_interrupt" == "1" ]]; then
+        echo "Press Ctrl-C again to exit"
+      fi
+      return
+    fi
+    if [[ "$claude_resume_requires_interaction" != "1" || "$claude_session_confirmed" == "1" ]]; then
+      echo "Resume this session with:"
+      echo "claude --resume ${session_id}"
+    fi
+  fi
+  echo "${prefix} received signal ${signal_name}"
   exit 0
 }
 
-trap handle_signal TERM INT
+trap 'handle_signal TERM' TERM
+trap 'handle_signal INT' INT
 
 while IFS= read -r line; do
   line="${line%$'\r'}"
 
   if [[ -z "$line" ]]; then
     continue
+  fi
+
+  if [[ "$flavor" == "claude" ]]; then
+    claude_session_confirmed=1
   fi
 
   if [[ "$line" == exit\ * ]]; then

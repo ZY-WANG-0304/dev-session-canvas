@@ -13,12 +13,15 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
+  - docs/product-specs/agent-launch-modes-and-restart.md
 related_plans:
   - docs/exec-plans/completed/agent-node-creation-provider-selection-implementation.md
-updated_at: 2026-04-13
+updated_at: 2026-04-24
 ---
 
 # Agent 节点创建前 provider 选择设计
+
+2026-04-24 补充：本文继续定义创建链路的第一步“先决定要创建哪种 provider 的 Agent”。凡是进入任一 Agent 入口之后的第二步完整命令确认、启动预设、自定义启动、默认启动参数，以及停止后 `重启 / 新会话` 分流，统一以 `docs/design-docs/agent-launch-modes-and-restart.md` 为准。
 
 ## 1. 背景
 
@@ -127,23 +130,23 @@ updated_at: 2026-04-13
 
 - 交互会从原来的单一“创建对象”变成“默认创建 / 显式选型”两条分流，需要把默认值表达得足够清楚，避免用户不知道自己创建的是哪一种 `Agent`。
 
-### 5.5 `QuickPick` 顶层分区，同时直接列出完整 Agent 类型列表
+### 5.5 `QuickPick` 顶层分区，同时把 provider 选择作为第二步命令确认的前置入口
 
 这是当前对 VSCode 宿主入口的最终推荐方案。
 
 核心思路：
 
-- 顶层 `QuickPick` 不再进入第二层。
-- 同一层里同时保留：
+- 顶层 `QuickPick` 仍保留：
   - 面向高频路径的“创建对象”分组
   - 面向显式 provider 选择的“按类型创建 Agent”分组
-- 所有项都直接创建，不再要求用户额外再确认一次。
+- 第一层只负责决定“是否创建 Agent，以及要用哪个 provider”。
+- 一旦用户在第一层命中任意 `Agent` 入口，再进入第二步完整命令确认；第二步的正式语义由 `docs/design-docs/agent-launch-modes-and-restart.md` 维护。
 
 选择原因：
 
 - 这更接近 VSCode 常见的“单个 QuickPick 内按语义分组展示动作”的设计。
-- 它把默认路径保持为一步，同时让非默认 provider 也是一步。
-- 与“先选 Agent 再进第二层”相比，它更快，也避免同一个 `Agent` 入口承担两种不同语义。
+- 它把“先决定 provider”与“再确认完整命令”拆成两个职责清晰的阶段，而不是让一个入口同时承担两种语义。
+- provider 数量增加时，第一层仍能保持简洁，不需要把命令预设直接摊平成顶层菜单项。
 
 ## 6. 风险与取舍
 
@@ -154,7 +157,7 @@ updated_at: 2026-04-13
   当前缓解：在所有入口显式展示“当前默认是哪个 provider”，让默认值可见而不是隐式。
 
 - 风险：Webview 右键菜单与 VSCode `QuickPick` 不再完全同构。
-  当前缓解：宿主 `QuickPick` 优先遵循 VSCode 的常见分区式动作列表；Webview 右键菜单仍保留更偏“快速创建”的结构，两者共享同一创建语义即可，不强求控件层级一致。
+  当前缓解：宿主 `QuickPick` 优先遵循 VSCode 的常见分区式动作列表；Webview 右键菜单负责多级创建与就地自定义输入。两者共享同一 provider 选择语义，但不强求控件层级完全一致。
 
 - 取舍：创建协议需要新增 `agentProvider` 初始值，而不是继续沿用“create 后再 update provider”。
   原因：这能避免错误的首次自动启动，也避免宿主权威状态出现一个短暂但错误的默认 provider 节点。
@@ -176,29 +179,31 @@ updated_at: 2026-04-13
 - 点击 `Agent` 项的主操作区时，直接按当前默认 provider 创建节点。
 - `Agent` 项同时提供一个次级展开动作（例如右侧箭头、次级按钮或同一弹层内的 drill-in），进入“选择 Agent 类型”视图。
 - “选择 Agent 类型”视图只列 provider 选项，例如 `Codex`、`Claude Code`；默认 provider 需要有明确标记。
-- 在 provider 视图中选中某项后，直接创建最终节点并关闭菜单；过程中不允许先出现一个默认 provider 的中间节点。
+- 在 provider 视图中点主操作区时，直接按该 provider 的默认启动方式创建最终节点；若点次级展开动作，则继续进入启动方式选择。后续启动方式层细节以 `docs/design-docs/agent-launch-modes-and-restart.md` 为准。
+- 无论是直接按 provider 默认创建，还是继续进入启动方式层，都不允许先出现一个默认 provider 的中间节点。
 - `Escape`、点击外部、创建完成都应关闭当前菜单；若使用 drill-in 视图，需支持返回上一级。
 
 ### 7.3 侧栏命令与 VSCode `QuickPick`
 
 - 侧栏“创建对象”和命令面板入口继续复用 VSCode `QuickPick`，不在宿主层自造菜单。
-- 顶层 `QuickPick` 直接分成两个区域，并在同一层完成创建，不再进入第二层。
+- 第一层 `QuickPick` 直接分成两个区域：
 - 第一组为 `创建对象`：
   - `Agent（默认：<provider>）`
   - `Terminal`
   - `Note`
 - 第二组为 `按类型创建 Agent`：
   - 当前支持的完整 provider 列表，例如 `Codex（默认）`、`Claude Code`
-- 第一组 `Agent（默认：<provider>）` 的职责是“最快创建一个默认 Agent”，点击后直接创建。
-- 第二组每一项的职责是“明确按 provider 创建 Agent”，点击后也直接创建。
+- 第一组 `Agent（默认：<provider>）` 的职责是“最快进入默认 provider 的 Agent 创建链路”。
+- 第二组每一项的职责是“明确按 provider 进入 Agent 创建链路”。
 - 第二组不是“其他 Agent 类型”，而是完整的 Agent 类型列表；默认 provider 在这里也要出现，避免“按类型创建”视图里缺失默认项。
-- 第一组 `Agent` 不再打开第二层；否则它会和第二组的完整列表形成重复跳转，破坏最高频路径的效率。
+- 只要用户在第一层命中任意 `Agent` 入口，都要进入第二步完整命令确认；第二步顶部输入框代表本次真正要执行的完整命令，按 Enter 直接创建。
+- 第二步的 `Resume / YOLO / 沙盒` 只负责快捷替换输入框内容，不直接创建；用户仍需以当前输入框内容为准确认。
 
-这种设计让 `QuickPick` 既保留 VSCode 常见的分区式信息组织，又把默认路径和显式 provider 选择都压缩成一步。
+这种设计让 `QuickPick` 既保留 VSCode 常见的分区式信息组织，又把 provider 选择与完整命令确认明确拆层，避免“默认 provider 选择”和“真正启动命令”混成同一步。
 
 ### 7.4 节点创建与状态写入边界
 
-- `webview/createDemoNode`、宿主侧 `createNode` 调用，以及对应的 create-node 帮助函数，都应支持一个可选的 `agentProvider` 初始值。
+- `webview/createDemoNode`、宿主侧 `createNode` 调用，以及对应的 create-node 帮助函数，都应支持一个可选的 `agentProvider` 初始值；启动方式相关字段由 `docs/design-docs/agent-launch-modes-and-restart.md` 补充定义。
 - 当 `kind !== 'agent'` 时忽略该字段；当 `kind === 'agent'` 且显式给出 provider 时，宿主在第一次落库时就写入该值。
 - 创建动作只触发一次正式节点落地；不允许通过“先创建默认 provider 节点，再发送一次 update provider”来拼出最终结果。
 - 当前自动启动语义下，节点第一次 fresh start 或 resume 使用的 provider，应直接来自这份初始 metadata。
@@ -211,14 +216,12 @@ updated_at: 2026-04-13
 
 1. 在浏览器 harness 中验证右键菜单存在两条 `Agent` 创建路径：默认快速创建与显式 provider 选择。
 2. 在浏览器 harness 或 probe 中验证显式选择 `Claude Code` 后，创建出的节点首帧 metadata 已经是 `claude`，而不是先出现 `codex` 再切换。
-3. 在真实 VSCode smoke 中验证侧栏/命令入口的分区式 `QuickPick`：第一组可直接创建默认 `Agent`、`Terminal`、`Note`，第二组可直接创建完整 provider 列表中的任一 `Agent`。
-4. 在自动启动场景下验证：从 `QuickPick` 第二组显式选择 provider 创建后，第一次启动消息就携带正确 provider。
+3. 在真实 VSCode smoke 中验证侧栏/命令入口的两层 `QuickPick`：第一层完成对象/provider 选择，第二层完成完整命令确认。
+4. 在自动启动场景下验证：从第一层显式选择 provider 后，第二层确认创建产生的第一次启动消息仍携带正确 provider。
 5. 在 Restricted Mode 下验证：新增 provider 选择能力不会绕过当前对执行型节点创建的禁用或退化逻辑。
 6. 在浏览器 harness 与真实 VSCode Webview 中验证：已创建 Agent 节点不再渲染 provider 切换控件。
 
 ## 9. 当前验证状态
 
-- 已运行 `npm run typecheck`，通过。
-- 已运行 `npm run test:webview`，新增右键菜单默认创建与 provider drill-in 用例后共 `25 passed`。
-- 已运行 `npm run test:smoke`，验证宿主 `QuickPick` 的默认 `Agent`、显式 `Claude Code` 与 `Note` 路径都可直接创建，且创建后首帧 metadata 与第一次启动记录使用正确 provider。
-- 追加验证要求：已创建 Agent 节点不再暴露 provider 下拉；浏览器 harness 与真实 VSCode Webview 都只保留只读 provider 展示，并要求启动 provider 来自节点 metadata。
+- 2026-04-13 的“创建前显式选择 provider”本身已完成验证。
+- 2026-04-24 起，宿主 `QuickPick` 在 provider 选择后新增第二步命令确认；该扩展链路的验证状态已迁移到 `docs/design-docs/agent-launch-modes-and-restart.md` 统一维护。
