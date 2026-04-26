@@ -118,9 +118,8 @@ async function validatePackagedExtension(packagedExtensionPath) {
     }
   }
 
-  const nodePtyRoot = path.join(packagedExtensionPath, 'node_modules', 'node-pty');
-  const nodePtyFiles = await listFilesRecursively(nodePtyRoot);
-  const unexpectedDebugFiles = nodePtyFiles.filter(
+  const packagedFiles = await listFilesRecursively(packagedExtensionPath);
+  const unexpectedDebugFiles = packagedFiles.filter(
     (relativePath) => relativePath.endsWith('.pdb') || relativePath.endsWith('.map')
   );
 

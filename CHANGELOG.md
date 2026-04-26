@@ -1,18 +1,31 @@
 # Changelog
 
-## 0.2.2 - Preview Hotfix Update (Draft)
+## 0.2.2 - Preview Hotfix Update
 
-当前条目用于 `0.2.2` 发布准备。具体修复项尚未最终冻结；本轮先把版本号、发布执行手册与 Marketplace 升级口径切到 `0.2.2`，避免仓库对外信息继续停留在 `0.2.1`。
+相对 `0.2.1`，`0.2.2` 主要补齐 Agent 节点的创建前启动方式、停止后恢复分流，以及相关命令解析、运行时恢复与发布链路收口。
 
-### 当前已完成的准备项
+### 本版本聚焦
 
-- 将扩展版本号、`VSIX` 文件名示例与 `git tag` 示例统一预留到 `0.2.2`
-- 将 Marketplace 安装 / 升级文案改成对整个 `0.2.x` 版本线都成立的表述，减少后续 patch release 重复改写
-- 将 `docs/public-preview-release-playbook.md` 的当前目标版本切换到 `0.2.2`，并同步下一轮 hotfix 预案为 `0.2.3`
+- 新增 Agent 创建前启动方式分流：右键菜单与命令面板现在都支持在创建前选择 `默认 / Resume / YOLO / 沙盒 / 自定义启动`，并可为 `Codex` / `Claude Code` 分别配置默认启动参数
+- 新增停止后重启分流与启动命令可见性：已停止的 Agent 会在具备可信恢复上下文时提供“恢复原会话 / 新会话”分流；节点副标题也会展示最近一次实际启动命令，便于确认当前节点的真实运行方式
+- 收口 Agent 启动命令解析、Windows 路径兼容与恢复可靠性：补强自定义启动命令校验、默认参数解析、Claude / Codex resume 上下文确认，以及 fallback runtime supervisor socket 路径过长等边界问题
+- 收口 `0.2.2` 发布链路：修复生产打包前未可靠清空 `dist/`、导致旧 `.map` sourcemap 可能混入 `VSIX` 的问题，补强 packaged-payload smoke 校验，修复 live runtime scrollback smoke 的换行伪失败，并重新生成 Marketplace 概览截图、GIF 与 MP4
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- 当前验证最充分的环境仍为 `Remote SSH`
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Linux、macOS、Windows 本地环境尚未经过严格验证
 
 ### 安装与升级
 
-- 当前发布准备目标版本为 `0.2.2`，扩展 ID 保持 `devsessioncanvas.dev-session-canvas`
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
 - 首次安装与从 `0.2.1` 升级到 `0.2.2` 将继续通过 `Visual Studio Marketplace` 获取；后续 `0.2.x` 更新同样通过 Marketplace 升级获取
 - 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.2.2` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
@@ -22,12 +35,6 @@
 - 若 `0.2.2` 阻塞当前工作流，建议先禁用或卸载扩展
 - 优先等待后续 `0.2.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
-
-### 发布前仍需补齐
-
-- 按最终修复范围补写本版本的实际 release notes
-- 在最终发布 ref 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>` 与 `npm run package:vsix`
-- 复核 Marketplace 页面、`docs/support.md` 与回退口径仍和最终发布事实一致
 
 ## 0.2.1 - Preview Hotfix Update
 
