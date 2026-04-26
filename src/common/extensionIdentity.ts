@@ -8,6 +8,7 @@ export const COMMAND_IDS = {
   openSettings: 'devSessionCanvas.openSettings',
   createNode: 'devSessionCanvas.createNode',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
+  dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   clearFileIncludeFilter: 'devSessionCanvas.clearFileIncludeFilter',

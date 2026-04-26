@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 export type ExecutionSessionBackendKind = 'node-pty';
 export const MISSING_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_MISSING';
 export const INCOMPATIBLE_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_INCOMPATIBLE';
@@ -30,6 +32,11 @@ export interface ExecutionSessionProcess {
   kill(): void;
   onData(listener: (chunk: string) => void): DisposableLike;
   onExit(listener: (event: ExecutionSessionExitEvent) => void): DisposableLike;
+}
+
+export interface ResolvedExecutionSessionSpawnSpec {
+  file: string;
+  args: string[];
 }
 
 interface NodePtyLike {
@@ -115,7 +122,8 @@ function normalizeExecutionSessionExitSignal(signal: number | string | undefined
 
 export function createExecutionSessionProcess(spec: ExecutionSessionLaunchSpec): ExecutionSessionProcess {
   const nodePty = loadNodePtyModule();
-  const pty = nodePty.spawn(spec.file, [...(spec.args ?? [])], {
+  const spawnSpec = resolveExecutionSessionSpawnSpec(spec);
+  const pty = nodePty.spawn(spawnSpec.file, spawnSpec.args, {
     name: spec.terminalName ?? (process.platform === 'win32' ? 'xterm-color' : 'xterm-256color'),
     cols: spec.cols,
     rows: spec.rows,
@@ -125,6 +133,24 @@ export function createExecutionSessionProcess(spec: ExecutionSessionLaunchSpec):
   });
 
   return new NodePtyExecutionSessionProcess(pty);
+}
+
+export function resolveExecutionSessionSpawnSpec(
+  spec: Pick<ExecutionSessionLaunchSpec, 'file' | 'args' | 'env'>,
+  platform: NodeJS.Platform = process.platform
+): ResolvedExecutionSessionSpawnSpec {
+  const args = [...(spec.args ?? [])];
+  if (!shouldUseWindowsBatchWrapper(spec.file, platform)) {
+    return {
+      file: spec.file,
+      args
+    };
+  }
+
+  return {
+    file: resolveWindowsCommandShell(spec.env),
+    args: ['/d', '/s', '/c', buildWindowsBatchCommandLine(spec.file, args)]
+  };
 }
 
 export function isMissingNodePtyDependencyError(error: unknown): boolean {
@@ -148,6 +174,41 @@ function loadNodePtyModule(): NodePtyModule {
     throw error;
   }
 }
+
+function shouldUseWindowsBatchWrapper(file: string, platform: NodeJS.Platform): boolean {
+  if (platform !== 'win32') {
+    return false;
+  }
+
+  const extension = path.extname(file).toLowerCase();
+  return extension === '.cmd' || extension === '.bat';
+}
+
+function resolveWindowsCommandShell(env: NodeJS.ProcessEnv): string {
+  return (
+    env.ComSpec?.trim() ||
+    env.COMSPEC?.trim() ||
+    process.env.ComSpec?.trim() ||
+    process.env.COMSPEC?.trim() ||
+    'cmd.exe'
+  );
+}
+
+function buildWindowsBatchCommandLine(file: string, args: readonly string[]): string {
+  return [quoteWindowsCommandLineValue(file), ...args.map(quoteWindowsCommandLineValue)].join(' ');
+}
+
+function quoteWindowsCommandLineValue(value: string): string {
+  if (!value) {
+    return '""';
+  }
+
+  return WINDOWS_CMD_ARGUMENT_NEEDS_QUOTES.test(value)
+    ? `"${value.replace(/"/g, '\\"')}"`
+    : value;
+}
+
+const WINDOWS_CMD_ARGUMENT_NEEDS_QUOTES = /[\s"&()<>^|]/u;
 
 function isMissingRequiredModuleError(error: unknown, moduleName: string): boolean {
   if (!isRecord(error) || error.code !== 'MODULE_NOT_FOUND') {
