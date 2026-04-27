@@ -36,7 +36,7 @@ export interface ExecutionSessionProcess {
 
 export interface ResolvedExecutionSessionSpawnSpec {
   file: string;
-  args: string[];
+  args: string[] | string;
 }
 
 interface NodePtyLike {
@@ -54,7 +54,7 @@ interface NodePtyLike {
 interface NodePtyModule {
   spawn(
     file: string,
-    args: string[],
+    args: string[] | string,
     options: {
       name: string;
       cols: number;
@@ -149,9 +149,9 @@ export function resolveExecutionSessionSpawnSpec(
 
   return {
     file: resolveWindowsCommandShell(spec.env),
-    // Use `call` so cmd.exe treats a spaced .cmd/.bat target as a batch
-    // invocation rather than splitting the path at the first space.
-    args: ['/d', '/s', '/c', 'call', spec.file, ...args]
+    // `cmd.exe` reparses `/c` arguments as shell syntax, so hand it one
+    // pre-escaped command string instead of an argv-style token list.
+    args: buildWindowsBatchShellArgs(spec.file, args)
   };
 }
 
@@ -194,6 +194,29 @@ function resolveWindowsCommandShell(env: NodeJS.ProcessEnv): string {
     process.env.COMSPEC?.trim() ||
     'cmd.exe'
   );
+}
+
+function buildWindowsBatchShellArgs(file: string, args: readonly string[]): string {
+  const shellCommand = [escapeWindowsCmdCommand(file), ...args.map(escapeWindowsCmdArgument)].join(
+    ' '
+  );
+  return `/d /s /c "${shellCommand}"`;
+}
+
+function escapeWindowsCmdCommand(value: string): string {
+  return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
+}
+
+function escapeWindowsCmdArgument(value: string): string {
+  let normalizedValue = `${value}`;
+
+  // Based on cross-spawn's Windows escaping, which follows cmd.exe's
+  // backslash+quote parsing rules for command-line arguments.
+  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1$/, '$1$1');
+  normalizedValue = `"${normalizedValue}"`;
+
+  return normalizedValue.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
 }
 
 function isMissingRequiredModuleError(error: unknown, moduleName: string): boolean {
@@ -307,3 +330,5 @@ function sanitizeProbeOutput(value: string): string {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
+const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
