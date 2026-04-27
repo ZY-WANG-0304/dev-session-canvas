@@ -222,7 +222,8 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
     '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
     'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
     '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
-    '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需配置 Terminal Bell Notifications；Codex 需设置 notification_method 和 notification_condition'
+    '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需配置 Terminal Bell Notifications；Codex 需设置 notification_method 和 notification_condition',
+    '部分 Windows 环境下若 workspace 已信任但仍异常地只能创建 Note 节点，可尝试以管理员身份运行 PowerShell 并执行 Set-ExecutionPolicy RemoteSigned，排查执行策略是否影响 Node.js 相关命令'
   ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
@@ -291,6 +292,7 @@ interface XtermCoreWithMouseInternals {
 }
 
 const vscode = acquireVsCodeApi<LocalUiState>();
+const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry = new Map<
@@ -310,6 +312,113 @@ const pendingExecutionFileLinkResolutionRequests = new Map<
     timeout: number;
   }
 >();
+
+type WebviewRuntimeDiagnosticPayload = Extract<
+  WebviewToHostMessage,
+  { type: 'webview/runtimeDiagnostic' }
+>['payload'];
+
+function registerRuntimeDiagnosticListeners(): void {
+  window.addEventListener('error', (event: ErrorEvent) => {
+    emitRuntimeDiagnostic({
+      source: 'window.error',
+      message: normalizeRuntimeDiagnosticMessage(event.error, event.message),
+      stack: extractRuntimeDiagnosticStack(event.error),
+      filename: typeof event.filename === 'string' && event.filename.trim() ? event.filename.trim() : undefined,
+      line: normalizeRuntimeDiagnosticCoordinate(event.lineno),
+      column: normalizeRuntimeDiagnosticCoordinate(event.colno),
+      readyState: document.readyState
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+    emitRuntimeDiagnostic({
+      source: 'window.unhandledrejection',
+      message: normalizeRuntimeDiagnosticMessage(event.reason),
+      stack: extractRuntimeDiagnosticStack(event.reason),
+      readyState: document.readyState
+    });
+  });
+}
+
+function emitRuntimeDiagnostic(payload: WebviewRuntimeDiagnosticPayload): void {
+  const diagnosticKey = JSON.stringify([
+    payload.source,
+    payload.message,
+    payload.stack ?? '',
+    payload.filename ?? '',
+    payload.line ?? 0,
+    payload.column ?? 0,
+    payload.readyState ?? ''
+  ]);
+
+  if (reportedRuntimeDiagnostics.has(diagnosticKey)) {
+    return;
+  }
+
+  if (reportedRuntimeDiagnostics.size >= 100) {
+    reportedRuntimeDiagnostics.clear();
+  }
+  reportedRuntimeDiagnostics.add(diagnosticKey);
+
+  try {
+    vscode.postMessage({
+      type: 'webview/runtimeDiagnostic',
+      payload
+    });
+  } catch {
+    // Ignore secondary failures while reporting primary webview runtime issues.
+  }
+}
+
+function normalizeRuntimeDiagnosticMessage(error: unknown, fallbackMessage?: string): string {
+  if (error instanceof Error) {
+    const preferredMessage = error.message.trim() || error.name.trim();
+    if (preferredMessage) {
+      return preferredMessage;
+    }
+  }
+
+  if (typeof error === 'string') {
+    const normalized = error.trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  if (typeof fallbackMessage === 'string') {
+    const normalized = fallbackMessage.trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  try {
+    const serialized = JSON.stringify(error);
+    return serialized === undefined ? 'Unknown webview runtime error.' : serialized;
+  } catch {
+    return String(error);
+  }
+}
+
+function extractRuntimeDiagnosticStack(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const stack = error.stack?.trim();
+  return stack ? stack : undefined;
+}
+
+function normalizeRuntimeDiagnosticCoordinate(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+
+  return Math.round(value);
+}
+
+registerRuntimeDiagnosticListeners();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
 let executionTerminalDrainFrame: number | undefined;
 const CANVAS_FIT_VIEW_PADDING = 0.05;

@@ -15,6 +15,7 @@
   "command.openSettings.title": "Dev Session Canvas: 打开设置",
   "command.createNode.title": "Dev Session Canvas: 创建节点",
   "command.resetCanvasState.title": "Dev Session Canvas: 重置画布状态",
+  "command.dumpHostDiagnostics.title": "Dev Session Canvas: 落盘当前宿主诊断",
   "configuration.title": "Dev Session Canvas",
   "configuration.canvas.defaultSurface.description": "主画布默认出现的宿主承载面。默认值为 panel；该 view 的实际工作台位置由 VS Code 记住，用户可自行移动。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
   "configuration.runtimePersistence.enabled.description": "开启后，Agent 与 Terminal 会优先改由独立的 runtime host backend 持有。Linux 本地与 Remote SSH 在 `systemd --user` 可用时提供强保证；否则会自动回退到 detached supervisor，并在日志与诊断信息中标成 best-effort。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）；切换此设置会在下次加载时清空当前 workspace 的画布宿主状态。",
