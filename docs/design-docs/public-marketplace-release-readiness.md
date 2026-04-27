@@ -11,7 +11,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
-updated_at: 2026-04-16
+updated_at: 2026-04-28
 ---
 
 # 公开平台发布准备
@@ -95,6 +95,7 @@ updated_at: 2026-04-16
 - 当前 `npm run test:vsix-smoke` 已再次通过，说明第二轮收口后的 packaged payload 仍能独立启动并跑通 trusted smoke。
 - 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`、`binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
 - 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `1.90 MB`、`43 files`；基于当前候选 release head 的 release-head 证据也已同步更新到同一版本的最小工件。
+- 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` / `Note` 主路径已补齐当前轮功能可用性验证；Windows 下使用 `Codex` 时执行节点内历史仍有无法向上翻页的已知问题。
 
 因此，当前只需保持以下约束与 release-day 动作：
 
@@ -130,22 +131,23 @@ updated_at: 2026-04-16
 
 因此，当前 release-day 不再把账号创建视为 blocker；真正需要做的是在发布前再次确认这些凭证仍可用。
 
-### 7.4 平台支持矩阵已明确，本地严格验证继续作为技术债
+### 7.4 平台支持矩阵已升级为“四条主路径已验证 + Remote SSH 继续为主推荐路径”
 
-当前验证证据最强的路径主要集中在 `Remote SSH` 开发路径、`Restricted Mode` 和 VSIX smoke；Linux、macOS、Windows 本地路径仍未经过严格验证。当前公开 `Preview` 已经把支持矩阵收口为“`Remote SSH` 主推荐路径 + 本地可尝试但未严格验证”，因此这部分不再是当前首发 blocker，而是后续技术债：
+当前验证证据最强的路径仍集中在 `Remote SSH` 开发路径、`Restricted Mode` 和 VSIX smoke；截至 `2026-04-28`，`Remote SSH` 主路径以及 Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` / `Note` 主路径都已补齐当前轮功能可用性验证。当前公开 `Preview` 的支持矩阵因此不再是“本地可尝试但未严格验证”，而是“`Remote SSH` 与桌面三平台主路径都已验证可用，其中 `Remote SSH` 仍是最推荐环境，Windows 仍保留一条显式已知限制”：
 
-- 继续把 Linux、macOS、Windows 本地路径写成“可尝试，但未严格验证”，而不是正式支持承诺。
-- 继续对外明确 `Restricted Mode`、`Virtual Workspace` 和 CLI 依赖等限制。
-- 若未来要把本地三平台升级为正式支持承诺，再补做严格人工验收并同步文档口径。
+- Linux、macOS 本地路径可以按 `Preview` 主路径写成“已验证可用”，但仍不升级成稳定版承诺。
+- Windows 本地路径可以写成“已验证可用”，同时必须显式保留“使用 `Codex` 时执行节点内历史当前无法向上翻页”的已知限制。
+- `Restricted Mode`、`Virtual Workspace`、CLI 依赖和 runtime guarantee 边界继续保持原有口径，不因为这轮桌面三平台可用性验证而被误写成全量稳定支持。
+- 后续技术债不再是“本地三平台是否可用”，而是“Windows 下 `Codex` 历史翻页问题是否收口”“跨平台自动化矩阵是否补齐”以及“更强 runtime guarantee 是否在非 Linux backend 上闭合”。
 
 当前对外口径已经收敛为以下矩阵：
 
 | 场景 / 能力 | 当前状态 | 对外口径 |
 | --- | --- | --- |
-| `Remote SSH` workspace | `Preview` 主路径 | 当前最强验证证据所在路径，可作为公开 Preview 的主推荐场景 |
-| Linux 本地 workspace | 可尝试，但未严格验证 | 可以存在代码与自动化证据，但当前不写成正式支持承诺 |
-| macOS 本地 workspace | 可尝试，但未严格验证 | 代码路径已接通，但当前没有严格验证证据 |
-| Windows 本地 workspace | 可尝试，但未严格验证 | 代码路径已接通，但当前没有严格验证证据 |
+| `Remote SSH` workspace | `Preview`，主路径已验证且验证最充分 | 当前最强验证证据所在路径，可作为公开 Preview 的主推荐场景 |
+| Linux 本地 workspace | `Preview`，主路径已验证 | 当前轮功能可用性验证已完成，但仍维持 `Preview` 口径 |
+| macOS 本地 workspace | `Preview`，主路径已验证 | 当前轮功能可用性验证已完成，但仍维持 `Preview` 口径 |
+| Windows 本地 workspace | `Preview`，主路径已验证（含已知限制） | 当前轮功能可用性验证已完成；使用 `Codex` 时执行节点内历史仍无法向上翻页 |
 | `Restricted Mode` | 有限支持 | 允许打开画布，但禁用执行型入口 |
 | `Virtual Workspace` | 不支持 | 不在当前公开 Preview 范围内 |
 | `Agent` 节点 | 依赖外部 CLI | 需要 `codex` 或 `claude` CLI 可被 Extension Host 解析 |
@@ -153,9 +155,7 @@ updated_at: 2026-04-16
 | `runtimePersistence.enabled = false` | 基线支持 | 不承诺真实进程跨 VS Code 生命周期持续存在 |
 | `runtimePersistence.enabled = true` | `Preview` 能力，已具备较多验证证据 | 已有 `Remote SSH` real-reopen 自动化、相关 smoke 与人工验证证据；当前用户可见 guarantee 仍取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则回退到 `best-effort` |
 
-补充说明：截至 `2026-04-14`，`Remote SSH` 首发主路径的当前人工验收反馈为“人工验收没发现问题”；但 Linux、macOS、Windows 本地路径仍未具备可对外承诺的严格人工验收证据。
-
-在当前公开 `Preview` 策略下，这组本地路径严格验收继续保留为后续技术债，而不是当前发布包治理的 blocker；对外口径应继续明确写成“可尝试，但未严格验证”。
+补充说明：截至 `2026-04-28`，`Remote SSH` 主路径与 Linux、macOS、Windows 本地路径的当前轮功能可用性验证都已补齐；其中 `Remote SSH` 仍是当前最强验证证据所在路径。仍需显式保留的剩余限制是 Windows 下 `Codex` 历史无法向上翻页，以及三平台自动化矩阵尚未完全补齐。
 
 ### 7.5 发布流水线继续后移，不作为当前 blocker
 
@@ -182,7 +182,7 @@ updated_at: 2026-04-16
 - 当前仓库已经完成公开 `Marketplace Preview` 所需的发布包治理与发布说明收口；剩余事项主要是 release-day 执行，而不是仓库内仍缺少的发布资产。
 - 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `1.90 MB` / `43 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
 - 公开发布方向已经确认：首发渠道先收敛到 `Visual Studio Marketplace`；`Open VSX` 作为后续补充渠道单独决策。
-- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
+- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；当前 `0.3.0` 还额外把“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制同步进了对外口径。在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
 
 ## 10. 验证方法
 
