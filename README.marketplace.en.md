@@ -68,11 +68,11 @@ The public `0.2.x` line moves the canvas from “multiple execution nodes in one
 
 ### Unable to Create Terminal and Agent Nodes on Windows
 
-**Symptom**: Only `Note` type is visible when creating nodes; `Terminal` and `Agent` node types are missing.
+**Symptom**: The workspace is trusted, but creating a node still shows only `Note`; `Terminal` and `Agent` node types are unexpectedly missing.
 
-**Cause**: Windows PowerShell execution policy restrictions prevent Node.js commands from running properly.
+**Troubleshooting**: If this still happens in a trusted workspace, check the Windows PowerShell execution policy first. In some environments, the execution policy may interfere with Node.js-related commands.
 
-**Solution**:
+**Suggested Fix**:
 
 1. Open PowerShell as Administrator
 2. Run the following command to set execution policy to `RemoteSigned`:
@@ -81,7 +81,7 @@ The public `0.2.x` line moves the canvas from “multiple execution nodes in one
    ```
 3. Type `Y` to confirm the change
 4. Close and reopen VS Code
-5. Try creating a `Terminal` or `Agent` node again to confirm the issue is resolved
+5. Try creating a `Terminal` or `Agent` node again to confirm whether the issue is resolved
 
 ## Rollback Guidance
 
