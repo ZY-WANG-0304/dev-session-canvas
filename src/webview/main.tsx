@@ -223,7 +223,7 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
     'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
     '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
     '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需配置 Terminal Bell Notifications；Codex 需设置 notification_method 和 notification_condition',
-    'Windows 环境下若 workspace 已信任但仍异常地只能创建 Note 节点，可尝试以管理员身份运行 PowerShell 并执行 Set-ExecutionPolicy RemoteSigned'
+    '部分 Windows 环境下若 workspace 已信任但仍异常地只能创建 Note 节点，可尝试以管理员身份运行 PowerShell 并执行 Set-ExecutionPolicy RemoteSigned，排查执行策略是否影响 Node.js 相关命令'
   ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
