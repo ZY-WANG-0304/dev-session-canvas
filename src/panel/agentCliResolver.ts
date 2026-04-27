@@ -104,10 +104,14 @@ export async function resolveAgentCliCommand(
   const cachedResolvedCommand = options.cachedResolvedCommand?.trim();
   if (cachedResolvedCommand) {
     attempts.push(`成功缓存: ${cachedResolvedCommand}`);
-    if (await isExecutableCandidate(cachedResolvedCommand)) {
+    const normalizedCachedResolvedCommand = await normalizeResolvedCommandCandidate(
+      cachedResolvedCommand,
+      options.env
+    );
+    if (normalizedCachedResolvedCommand) {
       return {
         requestedCommand,
-        resolvedCommand: cachedResolvedCommand,
+        resolvedCommand: normalizedCachedResolvedCommand,
         source: 'cache',
         attempts
       };
@@ -324,8 +328,11 @@ async function resolveCommandViaWindowsWhere(
       windowsHide: true
     });
     const resolved = firstNonEmptyLine(stdout);
-    if (resolved && (await isExecutableCandidate(resolved))) {
-      return resolved;
+    if (resolved) {
+      const normalizedResolved = await normalizeResolvedCommandCandidate(resolved, env);
+      if (normalizedResolved) {
+        return normalizedResolved;
+      }
     }
   } catch {
     // Best effort only.
@@ -352,8 +359,11 @@ async function resolveCommandViaWindowsPowerShell(
         }
       );
       const resolved = firstNonEmptyLine(stdout);
-      if (resolved && (await isExecutableCandidate(resolved))) {
-        return resolved;
+      if (resolved) {
+        const normalizedResolved = await normalizeResolvedCommandCandidate(resolved, env);
+        if (normalizedResolved) {
+          return normalizedResolved;
+        }
       }
     } catch {
       continue;
@@ -376,11 +386,11 @@ async function isExecutableCandidate(candidatePath: string): Promise<boolean> {
   }
 }
 
-async function resolveExplicitCommandCandidate(
+async function normalizeResolvedCommandCandidate(
   candidatePath: string,
   env: NodeJS.ProcessEnv
 ): Promise<string | undefined> {
-  for (const executableCandidate of buildExplicitCommandCandidates(candidatePath, env)) {
+  for (const executableCandidate of buildPreferredResolvedCommandCandidates(candidatePath, env)) {
     if (await isExecutableCandidate(executableCandidate)) {
       return executableCandidate;
     }
@@ -389,13 +399,21 @@ async function resolveExplicitCommandCandidate(
   return undefined;
 }
 
-function buildExplicitCommandCandidates(candidatePath: string, env: NodeJS.ProcessEnv): string[] {
+async function resolveExplicitCommandCandidate(
+  candidatePath: string,
+  env: NodeJS.ProcessEnv
+): Promise<string | undefined> {
+  return normalizeResolvedCommandCandidate(candidatePath, env);
+}
+
+function buildPreferredResolvedCommandCandidates(candidatePath: string, env: NodeJS.ProcessEnv): string[] {
   if (process.platform !== 'win32') {
     return [candidatePath];
   }
 
-  const candidates = new Set<string>([candidatePath]);
+  const candidates = new Set<string>();
   if (path.extname(candidatePath)) {
+    candidates.add(candidatePath);
     return Array.from(candidates);
   }
 
@@ -405,6 +423,8 @@ function buildExplicitCommandCandidates(candidatePath: string, env: NodeJS.Proce
     }
     candidates.add(`${candidatePath}${extension}`);
   }
+
+  candidates.add(candidatePath);
 
   return Array.from(candidates);
 }

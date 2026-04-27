@@ -565,6 +565,18 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/runtimeDiagnostic';
+      payload: {
+        source: 'window.error' | 'window.unhandledrejection';
+        message: string;
+        stack?: string;
+        filename?: string;
+        line?: number;
+        column?: number;
+        readyState?: 'loading' | 'interactive' | 'complete';
+      };
+    }
+  | {
       type: 'webview/testProbeResult';
       payload: {
         requestId: string;
@@ -1008,6 +1020,46 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       payload: {
         nodeId: payload.nodeId,
         filePath: payload.filePath
+      }
+    };
+  }
+
+  if (value.type === 'webview/runtimeDiagnostic') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      (payload.source !== 'window.error' && payload.source !== 'window.unhandledrejection') ||
+      typeof payload.message !== 'string' ||
+      (payload.stack !== undefined && typeof payload.stack !== 'string') ||
+      (payload.filename !== undefined && typeof payload.filename !== 'string') ||
+      (payload.line !== undefined && (typeof payload.line !== 'number' || !Number.isFinite(payload.line))) ||
+      (payload.column !== undefined &&
+        (typeof payload.column !== 'number' || !Number.isFinite(payload.column))) ||
+      (payload.readyState !== undefined &&
+        payload.readyState !== 'loading' &&
+        payload.readyState !== 'interactive' &&
+        payload.readyState !== 'complete')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/runtimeDiagnostic',
+      payload: {
+        source: payload.source,
+        message: payload.message,
+        stack: typeof payload.stack === 'string' ? payload.stack : undefined,
+        filename: typeof payload.filename === 'string' ? payload.filename : undefined,
+        line:
+          typeof payload.line === 'number' && Number.isFinite(payload.line) ? payload.line : undefined,
+        column:
+          typeof payload.column === 'number' && Number.isFinite(payload.column) ? payload.column : undefined,
+        readyState:
+          payload.readyState === 'loading' ||
+          payload.readyState === 'interactive' ||
+          payload.readyState === 'complete'
+            ? payload.readyState
+            : undefined
       }
     };
   }

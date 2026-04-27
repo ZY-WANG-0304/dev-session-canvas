@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 export type ExecutionSessionBackendKind = 'node-pty';
 export const MISSING_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_MISSING';
 export const INCOMPATIBLE_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_INCOMPATIBLE';
@@ -32,6 +34,11 @@ export interface ExecutionSessionProcess {
   onExit(listener: (event: ExecutionSessionExitEvent) => void): DisposableLike;
 }
 
+export interface ResolvedExecutionSessionSpawnSpec {
+  file: string;
+  args: string[] | string;
+}
+
 interface NodePtyLike {
   readonly pid: number;
   readonly process: string;
@@ -47,7 +54,7 @@ interface NodePtyLike {
 interface NodePtyModule {
   spawn(
     file: string,
-    args: string[],
+    args: string[] | string,
     options: {
       name: string;
       cols: number;
@@ -115,7 +122,8 @@ function normalizeExecutionSessionExitSignal(signal: number | string | undefined
 
 export function createExecutionSessionProcess(spec: ExecutionSessionLaunchSpec): ExecutionSessionProcess {
   const nodePty = loadNodePtyModule();
-  const pty = nodePty.spawn(spec.file, [...(spec.args ?? [])], {
+  const spawnSpec = resolveExecutionSessionSpawnSpec(spec);
+  const pty = nodePty.spawn(spawnSpec.file, spawnSpec.args, {
     name: spec.terminalName ?? (process.platform === 'win32' ? 'xterm-color' : 'xterm-256color'),
     cols: spec.cols,
     rows: spec.rows,
@@ -125,6 +133,26 @@ export function createExecutionSessionProcess(spec: ExecutionSessionLaunchSpec):
   });
 
   return new NodePtyExecutionSessionProcess(pty);
+}
+
+export function resolveExecutionSessionSpawnSpec(
+  spec: Pick<ExecutionSessionLaunchSpec, 'file' | 'args' | 'env'>,
+  platform: NodeJS.Platform = process.platform
+): ResolvedExecutionSessionSpawnSpec {
+  const args = [...(spec.args ?? [])];
+  if (!shouldUseWindowsBatchWrapper(spec.file, platform)) {
+    return {
+      file: spec.file,
+      args
+    };
+  }
+
+  return {
+    file: resolveWindowsCommandShell(spec.env),
+    // `cmd.exe` reparses `/c` arguments as shell syntax, so hand it one
+    // pre-escaped command string instead of an argv-style token list.
+    args: buildWindowsBatchShellArgs(spec.file, args)
+  };
 }
 
 export function isMissingNodePtyDependencyError(error: unknown): boolean {
@@ -147,6 +175,48 @@ function loadNodePtyModule(): NodePtyModule {
 
     throw error;
   }
+}
+
+function shouldUseWindowsBatchWrapper(file: string, platform: NodeJS.Platform): boolean {
+  if (platform !== 'win32') {
+    return false;
+  }
+
+  const extension = path.extname(file).toLowerCase();
+  return extension === '.cmd' || extension === '.bat';
+}
+
+function resolveWindowsCommandShell(env: NodeJS.ProcessEnv): string {
+  return (
+    env.ComSpec?.trim() ||
+    env.COMSPEC?.trim() ||
+    process.env.ComSpec?.trim() ||
+    process.env.COMSPEC?.trim() ||
+    'cmd.exe'
+  );
+}
+
+function buildWindowsBatchShellArgs(file: string, args: readonly string[]): string {
+  const shellCommand = [escapeWindowsCmdCommand(file), ...args.map(escapeWindowsCmdArgument)].join(
+    ' '
+  );
+  return `/d /s /c "${shellCommand}"`;
+}
+
+function escapeWindowsCmdCommand(value: string): string {
+  return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
+}
+
+function escapeWindowsCmdArgument(value: string): string {
+  let normalizedValue = `${value}`;
+
+  // Based on cross-spawn's Windows escaping, which follows cmd.exe's
+  // backslash+quote parsing rules for command-line arguments.
+  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1$/, '$1$1');
+  normalizedValue = `"${normalizedValue}"`;
+
+  return normalizedValue.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
 }
 
 function isMissingRequiredModuleError(error: unknown, moduleName: string): boolean {
@@ -260,3 +330,5 @@ function sanitizeProbeOutput(value: string): string {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
+const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
