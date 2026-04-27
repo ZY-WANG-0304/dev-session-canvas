@@ -28,7 +28,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 稳定版承诺
 - `Virtual Workspace` 支持
 - 面向所有用户的零配置开箱体验
-- 完整的三平台公开支持矩阵
+- 稳定版级别的三平台支持承诺
 - 完整的稳定版发布链路
 
 ## 运行前提
@@ -43,7 +43,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是平台兼容性收口、恢复链路验证，以及按 Marketplace `Preview` 口径继续迭代，而不是继续补齐一套新的发布准备方案。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.3.0` 收口 Windows 平台验证与支持口径、继续补强恢复链路验证，并按 Marketplace `Preview` 口径迭代，而不是继续补齐一套新的发布准备方案。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -51,6 +51,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道已收口为 `Visual Studio Marketplace`；是否同步 `Open VSX` 延后决策。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径的当前轮功能可用性验证均已完成；其中 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -91,17 +92,17 @@ npm run build
 - 仍处于 `Preview`，不应按稳定生产工具看待。
 - 不支持 `Virtual Workspace`。
 - 公开 `Preview` 的分发主路径已收口到 `Visual Studio Marketplace`，但 release-day 仍需手工执行与复核。
-- 验证覆盖主要集中在 `Remote SSH` 路径；Linux、macOS、Windows 本地路径尚未经过严格验证。
+- `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
 - 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。
 
 ## 支持矩阵
 
 | 场景 | 状态 | 用户可预期行为 |
 | --- | --- | --- |
-| `Remote SSH` workspace | `Preview` 主路径 | 验证覆盖最充分；可体验画布、`Agent`、`Terminal` 和恢复等主路径 |
-| Linux 本地 workspace | 可尝试，未严格验证 | 具备部分自动化与实现证据，但不作为 Preview 的严格支持承诺 |
-| macOS 本地 workspace | 可尝试，未严格验证 | 代码路径已接通，但缺少严格验证证据 |
-| Windows 本地 workspace | 可尝试，未严格验证 | 代码路径已接通，但缺少严格验证证据 |
+| `Remote SSH` workspace | `Preview`，主路径已验证且验证最充分 | 可体验画布、`Agent`、`Terminal` 和恢复等主路径；当前是最推荐环境 |
+| Linux 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证 |
+| macOS 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证 |
+| Windows 本地 workspace | `Preview`，主路径已验证（含已知限制） | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证；使用 `Codex` 时执行节点内历史仍无法向上翻页 |
 | `Restricted Mode` | 有限支持 | 可打开画布并查看已保存布局；`Agent` / `Terminal` 等执行型入口被禁用 |
 | `Virtual Workspace` | 不支持 | 不在 Preview 范围内 |
 
