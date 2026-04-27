@@ -1,56 +1,70 @@
 import { spawnSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 
 const projectRoot = process.cwd();
 const isWindows = process.platform === 'win32';
-const packageJsonPath = path.join(projectRoot, 'package.json');
-const vsceEntry = resolveVsceEntry(projectRoot);
-const gitValidationRoot = process.env.DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT?.trim() || projectRoot;
+const isMainModule = process.argv[1]
+  ? import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+  : false;
 
-if (!vsceEntry) {
-  console.error(
-    '未找到由 @vscode/vsce 提供的本地 vsce 可执行文件。请先在仓库根目录运行 npm install，再重新执行 npm run package:vsix。'
-  );
-  process.exit(1);
+if (isMainModule) {
+  process.exit(main());
 }
 
-const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-const readmePath = process.env.DEV_SESSION_CANVAS_VSCE_README_PATH?.trim() || 'README.marketplace.md';
-const docBranch = resolveVsceDocRef(gitValidationRoot);
-const baseUrls = resolveVsceBaseUrls(packageJson.homepage, docBranch);
-const packageArgs = ['package'];
+export function main() {
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+  const vsceEntry = resolveVsceEntry(projectRoot);
+  const gitValidationRoot =
+    process.env.DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT?.trim() || projectRoot;
 
-validateReadmeRewriteTargets({
-  projectRoot,
-  gitValidationRoot,
-  readmePath,
-  docBranch,
-  baseUrls
-});
+  if (!vsceEntry) {
+    console.error(
+      '未找到由 @vscode/vsce 提供的本地 vsce 可执行文件。请先在仓库根目录运行 npm install，再重新执行 npm run package:vsix。'
+    );
+    return 1;
+  }
 
-packageArgs.push('--readme-path', readmePath);
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+  const readmePath =
+    process.env.DEV_SESSION_CANVAS_VSCE_README_PATH?.trim() || 'README.marketplace.md';
+  const docBranch = resolveVsceDocRef(gitValidationRoot);
+  const baseUrls = resolveVsceBaseUrls(packageJson.homepage, docBranch);
+  const packageArgs = ['package'];
 
-if (baseUrls?.contentUrl) {
-  packageArgs.push('--baseContentUrl', baseUrls.contentUrl);
+  validateReadmeRewriteTargets({
+    projectRoot,
+    gitValidationRoot,
+    readmePath,
+    docBranch,
+    baseUrls
+  });
+
+  packageArgs.push('--readme-path', readmePath);
+
+  if (baseUrls?.contentUrl) {
+    packageArgs.push('--baseContentUrl', baseUrls.contentUrl);
+  }
+
+  if (baseUrls?.imagesUrl) {
+    packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
+  }
+
+  const command = resolveCommand(vsceEntry, packageArgs);
+
+  const result = spawnSync(command.file, command.args, {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    windowsVerbatimArguments: command.windowsVerbatimArguments
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result.status === null ? 1 : result.status;
 }
-
-if (baseUrls?.imagesUrl) {
-  packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
-}
-
-const command = resolveCommand(vsceEntry, packageArgs);
-
-const result = spawnSync(command.file, command.args, {
-  cwd: projectRoot,
-  stdio: 'inherit'
-});
-
-if (result.error) {
-  throw result.error;
-}
-
-process.exit(result.status === null ? 1 : result.status);
 
 function resolveVsceDocRef(gitRoot) {
   const explicitRef = process.env.DEV_SESSION_CANVAS_VSCE_DOC_BRANCH?.trim();
@@ -251,8 +265,25 @@ function resolveVsceBaseUrls(homepage, branch) {
   };
 }
 
-function quoteForWindowsCmd(value) {
-  return /[\s"]/u.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+function buildWindowsBatchShellArgs(file, args) {
+  const shellCommand = [escapeWindowsCmdCommand(file), ...args.map(escapeWindowsCmdArgument)].join(
+    ' '
+  );
+  return `/d /s /c "${shellCommand}"`;
+}
+
+function escapeWindowsCmdCommand(value) {
+  return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
+}
+
+function escapeWindowsCmdArgument(value) {
+  let normalizedValue = `${value}`;
+
+  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1$/, '$1$1');
+  normalizedValue = `"${normalizedValue}"`;
+
+  return normalizedValue.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
 }
 
 function resolveVsceEntry(rootDir) {
@@ -276,7 +307,10 @@ function resolveVsceEntry(rootDir) {
   return undefined;
 }
 
-function resolveCommand(vsceEntry, packageArgs) {
+export function resolveCommand(vsceEntry, packageArgs, options = {}) {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+
   if (vsceEntry.kind === 'node-script') {
     return {
       file: process.execPath,
@@ -284,11 +318,13 @@ function resolveCommand(vsceEntry, packageArgs) {
     };
   }
 
-  if (isWindows) {
+  if (platform === 'win32') {
     return {
-      // Windows 需要经 cmd.exe 调用 .cmd 脚本，不能像普通可执行文件一样直接 spawn。
-      file: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe',
-      args: ['/d', '/s', '/c', `"${vsceEntry.path}" ${packageArgs.map(quoteForWindowsCmd).join(' ')}`]
+      // `cmd.exe` reparses `/c` as shell syntax, so pass one fully escaped
+      // command string and mark it as verbatim for Windows process creation.
+      file: env.ComSpec || env.COMSPEC || 'cmd.exe',
+      args: [buildWindowsBatchShellArgs(vsceEntry.path, packageArgs)],
+      windowsVerbatimArguments: true
     };
   }
 
@@ -297,3 +333,5 @@ function resolveCommand(vsceEntry, packageArgs) {
     args: packageArgs
   };
 }
+
+const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;

@@ -36,28 +36,24 @@ try {
     'win32'
   );
   assert.equal(wrappedBatchSpec.file, 'C:\\Windows\\System32\\cmd.exe');
-  assert.deepEqual(wrappedBatchSpec.args, [
-    '/d',
-    '/s',
-    '/c',
-    'call',
-    'C:\\Users\\Jane Doe\\AppData\\Roaming\\npm\\codex.cmd',
-    'resume',
-    'session-123',
-    '--settings',
-    'C:\\Users\\Jane Doe\\Project Space\\settings.json'
-  ]);
+  assert.equal(
+    wrappedBatchSpec.args,
+    '/d /s /c "C:\\Users\\Jane^ Doe\\AppData\\Roaming\\npm\\codex.cmd ^"resume^" ^"session-123^" ^"--settings^" ^"C:\\Users\\Jane^ Doe\\Project^ Space\\settings.json^""'
+  );
 
   const wrappedBatSpec = resolveExecutionSessionSpawnSpec(
     {
-      file: 'C:\\tools\\provider-wrapper.bat',
-      args: ['start'],
+      file: 'C:\\tools\\A&B Space\\provider-wrapper.bat',
+      args: ['hello&world', '100%done', 'literal^caret'],
       env: {}
     },
     'win32'
   );
   assert.equal(path.win32.basename(wrappedBatSpec.file).toLowerCase(), 'cmd.exe');
-  assert.deepEqual(wrappedBatSpec.args, ['/d', '/s', '/c', 'call', 'C:\\tools\\provider-wrapper.bat', 'start']);
+  assert.equal(
+    wrappedBatSpec.args,
+    '/d /s /c "C:\\tools\\A^&B^ Space\\provider-wrapper.bat ^"hello^&world^" ^"100^%done^" ^"literal^^caret^""'
+  );
 
   const directExecutableSpec = resolveExecutionSessionSpawnSpec(
     {
@@ -84,34 +80,53 @@ try {
   assert.deepEqual(nonWindowsSpec.args, ['resume', 'session-123']);
 
   if (process.platform === 'win32') {
-    const fixtureDir = path.join(tempDir, 'fixture with spaces');
+    const fixtureDir = path.join(tempDir, 'fixture A&B space');
     await mkdir(fixtureDir, { recursive: true });
     const fixturePath = path.join(fixtureDir, 'echo-args.cmd');
+    const fixtureScriptPath = path.join(fixtureDir, 'echo-args.js');
+    await writeFile(fixtureScriptPath, 'console.log(JSON.stringify(process.argv.slice(2)));\n', 'utf8');
     await writeFile(
       fixturePath,
-      ['@echo off', 'echo arg1=%~1', 'echo arg2=%~2', 'echo arg3=%~3'].join('\r\n'),
+      ['@echo off', 'node "%~dp0echo-args.js" "%~1" "%~2" "%~3"'].join('\r\n'),
       'utf8'
     );
 
+    const commandShell = process.env.ComSpec || process.env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe';
     const runtimeWrappedSpec = resolveExecutionSessionSpawnSpec(
       {
         file: fixturePath,
-        args: ['hello world', 'C:\\Path With Spaces\\settings.json', 'plain'],
+        args: ['hello&world', 'C:\\Path With Spaces\\settings.json', 'plain'],
         env: {
-          ComSpec: 'C:\\Windows\\System32\\cmd.exe'
+          ComSpec: commandShell
         }
       },
       'win32'
     );
 
-    const runtimeResult = spawnSync(runtimeWrappedSpec.file, runtimeWrappedSpec.args, {
+    assert.equal(typeof runtimeWrappedSpec.args, 'string');
+
+    const runtimeResult = spawnSync(runtimeWrappedSpec.file, [runtimeWrappedSpec.args], {
+      cwd: fixtureDir,
+      env: {
+        ...process.env,
+        ComSpec: commandShell
+      },
       encoding: 'utf8',
-      windowsHide: true
+      windowsHide: true,
+      windowsVerbatimArguments: true
     });
+
     assert.equal(runtimeResult.status, 0, runtimeResult.stderr || runtimeResult.stdout);
-    assert.match(runtimeResult.stdout, /arg1=hello world/i);
-    assert.match(runtimeResult.stdout, /arg2=C:\\Path With Spaces\\settings\.json/i);
-    assert.match(runtimeResult.stdout, /arg3=plain/i);
+    const outputLines = runtimeResult.stdout
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    assert.ok(outputLines.length > 0, runtimeResult.stdout);
+    assert.deepEqual(JSON.parse(outputLines.at(-1)), [
+      'hello&world',
+      'C:\\Path With Spaces\\settings.json',
+      'plain'
+    ]);
   }
 
   console.log('executionSessionBridge tests passed');
