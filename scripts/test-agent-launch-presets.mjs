@@ -29,6 +29,7 @@ try {
     extractClaudeCommandSessionFlag,
     formatCommandLine,
     hasAnyCommandLineFlag,
+    matchesAgentCommandLinePreset,
     parseCommandLine,
     validateAgentCommandLine
   } = require(outfile);
@@ -162,6 +163,237 @@ try {
     ),
     {
       launchPreset: 'yolo'
+    }
+  );
+
+  const codexModeConflictDefaults = {
+    command: 'codex',
+    defaultArgs: '--model gpt-5.2 --sandbox danger-full-access'
+  };
+  assert.equal(
+    buildAgentPresetCommandLine('codex', codexModeConflictDefaults, 'yolo'),
+    'codex --model gpt-5.2 --yolo'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: 'resume --last'
+      },
+      'yolo'
+    ),
+    'codex resume --last --yolo'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 resume session-123'
+      },
+      'yolo'
+    ),
+    'codex --model gpt-5.2 resume session-123 --yolo'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request'
+      },
+      'yolo'
+    ),
+    'codex --model gpt-5.2 --yolo'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 -s=workspace-write -a=on-request'
+      },
+      'yolo'
+    ),
+    'codex --model gpt-5.2 --yolo'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: 'resume --last'
+      },
+      'resume'
+    ),
+    'codex resume'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 resume session-123'
+      },
+      'resume'
+    ),
+    'codex --model gpt-5.2 resume'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--local-provider ollama resume --last'
+      },
+      'resume'
+    ),
+    'codex --local-provider ollama resume'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --yolo'
+      },
+      'sandbox'
+    ),
+    'codex --model gpt-5.2 --sandbox workspace-write'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --full-auto'
+      },
+      'sandbox'
+    ),
+    'codex --model gpt-5.2 --sandbox workspace-write'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --dangerously-bypass-approvals-and-sandbox'
+      },
+      'sandbox'
+    ),
+    'codex --model gpt-5.2 --sandbox workspace-write'
+  );
+
+  const claudeModeConflictDefaults = {
+    command: 'claude',
+    defaultArgs: '--model sonnet --permission-mode acceptEdits'
+  };
+  assert.equal(
+    buildAgentPresetCommandLine('claude', claudeModeConflictDefaults, 'yolo'),
+    'claude --model sonnet --dangerously-skip-permissions'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'claude',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --resume session-123 --permission-mode acceptEdits'
+      },
+      'yolo'
+    ),
+    'claude --model sonnet --resume session-123 --dangerously-skip-permissions'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'claude',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --continue session-123 --dangerously-skip-permissions'
+      },
+      'sandbox'
+    ),
+    'claude --model sonnet --continue session-123 --permission-mode plan'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'claude',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --resume session-123'
+      },
+      'resume'
+    ),
+    'claude --model sonnet --resume'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'claude',
+      {
+        command: 'claude',
+        defaultArgs: '-r session-123'
+      },
+      'resume'
+    ),
+    'claude --resume'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'claude',
+      {
+        command: 'claude',
+        defaultArgs: '-c'
+      },
+      'resume'
+    ),
+    'claude --resume'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'claude',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --dangerously-skip-permissions'
+      },
+      'sandbox'
+    ),
+    'claude --model sonnet --permission-mode plan'
+  );
+  assert.equal(
+    matchesAgentCommandLinePreset(
+      'codex',
+      'codex --model gpt-5.2 --yolo',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --yolo'
+      },
+      'default'
+    ),
+    true
+  );
+  assert.equal(
+    matchesAgentCommandLinePreset(
+      'codex',
+      'codex --model gpt-5.2 --yolo',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --yolo'
+      },
+      'yolo'
+    ),
+    true
+  );
+  assert.deepEqual(
+    classifyAgentLaunchPreset(
+      'codex',
+      'codex --model gpt-5.2 --yolo',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 --yolo'
+      }
+    ),
+    {
+      launchPreset: 'default'
     }
   );
 
@@ -516,10 +748,12 @@ try {
     }
   );
 
-  const explicitClaudeSessionFlags = ['--session-id', '--resume', '--continue'];
+  const explicitClaudeSessionFlags = ['--session-id', '--resume', '--continue', '-r', '-c'];
   assert.equal(hasAnyCommandLineFlag(['--session-id=session-789'], explicitClaudeSessionFlags), true);
   assert.equal(hasAnyCommandLineFlag(['--resume=session-789'], explicitClaudeSessionFlags), true);
   assert.equal(hasAnyCommandLineFlag(['--continue=session-789'], explicitClaudeSessionFlags), true);
+  assert.equal(hasAnyCommandLineFlag(['-r', 'session-789'], explicitClaudeSessionFlags), true);
+  assert.equal(hasAnyCommandLineFlag(['-c=session-789'], explicitClaudeSessionFlags), true);
   assert.equal(hasAnyCommandLineFlag(['--session-identifier=session-789'], explicitClaudeSessionFlags), false);
   assert.equal(hasAnyCommandLineFlag(['--resumable'], explicitClaudeSessionFlags), false);
 
@@ -533,6 +767,22 @@ try {
   });
   assert.deepEqual(extractClaudeCommandSessionFlag(['--resume']), {
     flag: '--resume',
+    sessionId: undefined
+  });
+  assert.deepEqual(extractClaudeCommandSessionFlag(['-r', 'session-123']), {
+    flag: '--resume',
+    sessionId: 'session-123'
+  });
+  assert.deepEqual(extractClaudeCommandSessionFlag(['-c', 'session-456']), {
+    flag: '--continue',
+    sessionId: 'session-456'
+  });
+  assert.deepEqual(extractClaudeCommandSessionFlag(['-r=session-789']), {
+    flag: '--resume',
+    sessionId: 'session-789'
+  });
+  assert.deepEqual(extractClaudeCommandSessionFlag(['-c']), {
+    flag: '--continue',
     sessionId: undefined
   });
   assert.equal(extractClaudeCommandSessionFlag(['--yolo']), null);
