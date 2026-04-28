@@ -8,6 +8,8 @@ const vscode = require('vscode');
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
 const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
+const RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE =
+  '当前 workspace 未受信任，只能查看历史会话，不能恢复为新 Agent 节点。';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -738,6 +740,87 @@ async function verifySidebarSessionHistoryDoubleClickUi() {
       baselineSnapshot.state.nodes.length + 1,
       'Expected double-clicking a sidebar session row to create one additional Agent node.'
     );
+  } finally {
+    if (sessionFilePath) {
+      await fs.rm(sessionFilePath, { force: true });
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
+}
+
+async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const homeDir = os.homedir();
+  const codexSessionId = 'restricted-sidebar-history-123';
+  const firstUserInstruction = '受限工作区历史恢复禁用回归';
+  let sessionFilePath;
+
+  try {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
+    sessionFilePath = await writeCodexSessionFile({
+      homeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:40:00.000Z'),
+      fileSuffix: 'restricted-history',
+      userMessages: [firstUserInstruction]
+    });
+
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+    const historyItems = await getSidebarSessionHistoryItems();
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the restricted-workspace session history entry to be listed.');
+
+    const filteredSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: '历史恢复禁用'
+      },
+      10000
+    );
+    assert.ok(
+      filteredSnapshot.visibleItemIds.includes(codexItem.id),
+      'Expected the restricted-workspace session history entry to remain visible after filtering by title.'
+    );
+    assert.ok(
+      filteredSnapshot.disabledItemIds.includes(codexItem.id),
+      'Expected restricted-workspace session history rows to be disabled instead of remaining restorable.'
+    );
+    assert.strictEqual(filteredSnapshot.statusNoteText, RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE);
+
+    const baselineSnapshot = await getDebugSnapshot();
+    const doubleClickSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'doubleClickItem',
+        itemId: codexItem.id
+      },
+      10000
+    );
+    assert.ok(doubleClickSnapshot.disabledItemIds.includes(codexItem.id));
+
+    const postActionSnapshot = await getDebugSnapshot();
+    assert.strictEqual(
+      postActionSnapshot.state.nodes.length,
+      baselineSnapshot.state.nodes.length,
+      'Expected double-clicking a restricted-workspace history row not to create any Agent node.'
+    );
+    assert.ok(
+      !postActionSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.title === codexItem.title
+      ),
+      'Expected restricted-workspace history restore attempts not to materialize a new Agent node.'
+    );
+
+    await withInterceptedWarningMessages(async (calls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.showSessionHistory);
+      assert.deepStrictEqual(
+        calls.map((call) => call.message),
+        [RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE]
+      );
+    });
   } finally {
     if (sessionFilePath) {
       await fs.rm(sessionFilePath, { force: true });
@@ -2182,6 +2265,7 @@ async function runRestrictedSmoke() {
     restrictedRuntimeNodes.terminalNode.id
   );
   await verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState();
+  await verifyRestrictedSessionHistoryRestoreIsDisabled();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -7534,6 +7618,30 @@ async function withInterceptedInformationMessages(runIntercepted, resolveSelecti
     return await runIntercepted(calls);
   } finally {
     vscode.window.showInformationMessage = originalShowInformationMessage;
+  }
+}
+
+async function withInterceptedWarningMessages(runIntercepted, resolveSelection) {
+  const originalShowWarningMessage = vscode.window.showWarningMessage;
+  const calls = [];
+
+  vscode.window.showWarningMessage = async (message, ...items) => {
+    calls.push({ message, items });
+    return typeof resolveSelection === 'function'
+      ? await resolveSelection({ message, items, calls })
+      : undefined;
+  };
+
+  assert.notStrictEqual(
+    vscode.window.showWarningMessage,
+    originalShowWarningMessage,
+    'Failed to intercept vscode.window.showWarningMessage.'
+  );
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.window.showWarningMessage = originalShowWarningMessage;
   }
 }
 

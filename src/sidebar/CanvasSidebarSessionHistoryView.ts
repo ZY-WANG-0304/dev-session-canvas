@@ -33,6 +33,8 @@ export interface SidebarSessionHistoryTestSnapshot {
   rowCount: number;
   visibleItemIds: string[];
   selectedId?: string;
+  disabledItemIds: string[];
+  statusNoteText?: string;
 }
 
 export type SidebarSessionHistoryTestAction =
@@ -74,6 +76,8 @@ type SidebarSessionHistoryOutboundMessage =
       payload: {
         items: CanvasSidebarSessionHistoryItemSnapshot[];
         errorMessage?: string;
+        actionErrorMessage?: string;
+        restoreBlockedMessage?: string;
       };
     }
   | {
@@ -97,25 +101,28 @@ interface PendingSidebarSessionHistoryTestActionRequest {
 }
 
 export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvider, vscode.Disposable {
-  private readonly stateSubscription: vscode.Disposable;
+  private readonly trustSubscription: vscode.Disposable;
   private view: vscode.WebviewView | undefined;
   private items: CanvasSidebarSessionHistoryItemSnapshot[] = [];
   private errorMessage: string | undefined;
+  private actionErrorMessage: string | undefined;
   private refreshTimer: NodeJS.Timeout | undefined;
   private isWebviewReady = false;
+  private refreshSequence: Promise<CanvasSidebarSessionHistoryItemSnapshot[]> = Promise.resolve([]);
   private readonly pendingReadyRequests = new Map<string, PendingSidebarSessionHistoryReadyRequest>();
   private readonly pendingTestActionRequests = new Map<string, PendingSidebarSessionHistoryTestActionRequest>();
 
   public constructor(private readonly panelManager: CanvasPanelManager) {
-    this.stateSubscription = this.panelManager.onDidChangeSidebarState(() => {
-      this.scheduleRefresh();
+    this.trustSubscription = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      this.actionErrorMessage = undefined;
+      void this.postState();
     });
   }
 
   public dispose(): void {
     this.view = undefined;
     this.isWebviewReady = false;
-    this.stateSubscription.dispose();
+    this.trustSubscription.dispose();
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = undefined;
@@ -140,6 +147,13 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         this.rejectPendingTestActionRequests('侧栏会话历史视图已被关闭。');
       }
     });
+    webviewView.onDidChangeVisibility(() => {
+      if (!webviewView.visible) {
+        return;
+      }
+
+      this.scheduleRefresh();
+    });
 
     webviewView.webview.onDidReceiveMessage((message) => {
       void this.handleMessage(message);
@@ -147,16 +161,23 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
   }
 
   public async refresh(options?: { homeDir?: string }): Promise<CanvasSidebarSessionHistoryItemSnapshot[]> {
-    try {
-      this.items = await this.loadSessionHistoryItems(options);
-      this.errorMessage = undefined;
-    } catch (error) {
-      this.items = [];
-      this.errorMessage = error instanceof Error ? error.message : '无法读取当前 workspace 的会话历史。';
-    }
+    const runRefresh = async (): Promise<CanvasSidebarSessionHistoryItemSnapshot[]> => {
+      try {
+        this.items = await this.loadSessionHistoryItems(options);
+        this.errorMessage = undefined;
+      } catch (error) {
+        this.items = [];
+        this.errorMessage = error instanceof Error ? error.message : '无法读取当前 workspace 的会话历史。';
+      }
 
-    await this.postState();
-    return this.items;
+      this.actionErrorMessage = undefined;
+      await this.postState();
+      return this.items;
+    };
+
+    const queuedRefresh = this.refreshSequence.catch(() => this.items).then(runRefresh);
+    this.refreshSequence = queuedRefresh.catch(() => this.items);
+    return queuedRefresh;
   }
 
   public async getSessionHistoryItems(options?: { homeDir?: string }): Promise<CanvasSidebarSessionHistoryItemSnapshot[]> {
@@ -243,7 +264,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
   }
 
   private scheduleRefresh(): void {
-    if (!this.view) {
+    if (!this.view?.visible) {
       return;
     }
 
@@ -289,7 +310,9 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
       type: 'sidebarSessionHistory/state',
       payload: {
         items: this.items,
-        errorMessage: this.errorMessage
+        errorMessage: this.errorMessage,
+        actionErrorMessage: this.actionErrorMessage,
+        restoreBlockedMessage: this.panelManager.getSessionHistoryRestoreBlockReason()
       }
     };
     await this.view.webview.postMessage(message);
@@ -307,13 +330,18 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         this.resolvePendingReadyRequests();
         await this.refresh();
         return;
-      case 'sidebarSessionHistory/openSession':
-        await this.panelManager.restoreAgentSessionFromHistory({
+      case 'sidebarSessionHistory/openSession': {
+        const result = await this.panelManager.restoreAgentSessionFromHistory({
           provider: parsed.payload.provider,
           sessionId: parsed.payload.sessionId,
           title: parsed.payload.title
         });
+        if (!result.restored && result.errorMessage) {
+          this.actionErrorMessage = result.errorMessage;
+          await this.postState();
+        }
         return;
+      }
       case 'sidebarSessionHistory/testActionResult':
         this.resolvePendingTestActionRequest(parsed.payload.requestId, parsed.payload.snapshot, parsed.payload.errorMessage);
         return;
@@ -554,15 +582,22 @@ function parseSidebarSessionHistoryTestSnapshot(value: unknown): SidebarSessionH
       ? value.visibleItemIds.filter((itemId): itemId is string => typeof itemId === 'string')
       : null;
   const selectedId = 'selectedId' in value && typeof value.selectedId === 'string' ? value.selectedId : undefined;
+  const disabledItemIds =
+    'disabledItemIds' in value && Array.isArray(value.disabledItemIds)
+      ? value.disabledItemIds.filter((itemId): itemId is string => typeof itemId === 'string')
+      : null;
+  const statusNoteText = 'statusNoteText' in value && typeof value.statusNoteText === 'string' ? value.statusNoteText : undefined;
 
-  if (rowCount === null || visibleItemIds === null) {
+  if (rowCount === null || visibleItemIds === null || disabledItemIds === null) {
     return null;
   }
 
   return {
     rowCount,
     visibleItemIds,
-    selectedId
+    selectedId,
+    disabledItemIds,
+    statusNoteText
   };
 }
 
@@ -695,6 +730,21 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         display: grid;
       }
 
+      .status-note {
+        margin: 0 12px;
+        padding: 8px 10px;
+        color: var(--muted);
+        background: color-mix(in srgb, var(--focus) 10%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        line-height: 1.45;
+        display: none;
+      }
+
+      .status-note.is-visible {
+        display: block;
+      }
+
       .session-row {
         display: grid;
         gap: 6px;
@@ -711,12 +761,27 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         background: var(--list-hover);
       }
 
+      .session-row.is-disabled {
+        cursor: not-allowed;
+        opacity: 0.68;
+      }
+
+      .session-row.is-disabled:hover {
+        background: transparent;
+      }
+
       .session-row.is-selected,
       .session-row:focus-visible {
         background: var(--list-active);
         color: var(--list-active-fg);
         border-left-color: var(--focus);
         outline: none;
+      }
+
+      .session-row.is-disabled.is-selected,
+      .session-row.is-disabled:focus-visible {
+        background: transparent;
+        border-left-color: transparent;
       }
 
       .session-title-line {
@@ -785,6 +850,7 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
           <button id="searchClearButton" class="search-clear" type="button" aria-label="清空会话搜索" hidden>&times;</button>
         </div>
       </div>
+      <div id="statusNote" class="status-note" role="status" aria-live="polite"></div>
       <div id="list" class="list" role="listbox" aria-label="当前 workspace 会话历史"></div>
       <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
     </div>
@@ -795,11 +861,14 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         items: [],
         selectedId: undefined,
         query: '',
-        errorMessage: undefined
+        errorMessage: undefined,
+        actionErrorMessage: undefined,
+        restoreBlockedMessage: undefined
       };
 
       const searchInput = document.getElementById('searchInput');
       const searchClearButton = document.getElementById('searchClearButton');
+      const statusNote = document.getElementById('statusNote');
       const list = document.getElementById('list');
       const emptyState = document.getElementById('emptyState');
 
@@ -836,6 +905,10 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       }
 
       function openItem(item) {
+        if (state.restoreBlockedMessage) {
+          return;
+        }
+
         vscode.postMessage({
           type: 'sidebarSessionHistory/openSession',
           payload: {
@@ -850,7 +923,11 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         return {
           rowCount: list.querySelectorAll('[data-session-history-item-id]').length,
           visibleItemIds: getVisibleItems().map((item) => item.id),
-          selectedId: state.selectedId
+          selectedId: state.selectedId,
+          disabledItemIds: Array.from(list.querySelectorAll('.session-row.is-disabled'))
+            .map((row) => row.getAttribute('data-session-history-item-id'))
+            .filter((itemId) => typeof itemId === 'string'),
+          statusNoteText: statusNote.textContent || undefined
         };
       }
 
@@ -917,6 +994,7 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
 
       function render() {
         const visibleItems = getVisibleItems();
+        const interactionBlocked = typeof state.restoreBlockedMessage === 'string' && state.restoreBlockedMessage.length > 0;
         if (!state.selectedId || !visibleItems.some((item) => item.id === state.selectedId)) {
           state.selectedId = visibleItems[0] ? visibleItems[0].id : undefined;
         }
@@ -931,6 +1009,10 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
           row.setAttribute('role', 'option');
           row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
           row.setAttribute('aria-label', item.providerLabel + '，' + item.title + '，' + item.timestampLabel);
+          if (interactionBlocked) {
+            row.setAttribute('aria-disabled', 'true');
+            row.classList.add('is-disabled');
+          }
           if (item.id === state.selectedId) {
             row.classList.add('is-selected');
           }
@@ -972,6 +1054,21 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
 
           row.append(titleLine, time);
           list.append(row);
+        }
+
+        const statusMessage =
+          (typeof state.actionErrorMessage === 'string' && state.actionErrorMessage.length > 0
+            ? state.actionErrorMessage
+            : undefined) ??
+          (typeof state.restoreBlockedMessage === 'string' && state.restoreBlockedMessage.length > 0
+            ? state.restoreBlockedMessage
+            : undefined);
+        if (statusMessage) {
+          statusNote.textContent = statusMessage;
+          statusNote.classList.add('is-visible');
+        } else {
+          statusNote.textContent = '';
+          statusNote.classList.remove('is-visible');
         }
 
         if (state.errorMessage) {
@@ -1038,6 +1135,10 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
 
         state.items = Array.isArray(message.payload.items) ? message.payload.items : [];
         state.errorMessage = typeof message.payload.errorMessage === 'string' ? message.payload.errorMessage : undefined;
+        state.actionErrorMessage =
+          typeof message.payload.actionErrorMessage === 'string' ? message.payload.actionErrorMessage : undefined;
+        state.restoreBlockedMessage =
+          typeof message.payload.restoreBlockedMessage === 'string' ? message.payload.restoreBlockedMessage : undefined;
         setSearchQuery(state.query);
         render();
       });

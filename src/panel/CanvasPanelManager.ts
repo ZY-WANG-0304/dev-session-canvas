@@ -915,16 +915,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     provider: AgentProviderKind;
     sessionId: string;
     title?: string;
-  }): Promise<boolean> {
-    if (
-      !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止从历史会话恢复 Agent 节点。')
-    ) {
-      return false;
+  }): Promise<{ restored: boolean; errorMessage?: string }> {
+    const restoreBlockReason = this.getSessionHistoryRestoreBlockReason();
+    if (restoreBlockReason) {
+      return {
+        restored: false,
+        errorMessage: restoreBlockReason
+      };
     }
 
     const sessionId = params.sessionId.trim();
     if (!sessionId) {
-      return false;
+      return {
+        restored: false
+      };
     }
 
     const createdNode = this.applyCreateNode('agent', undefined, {
@@ -934,16 +938,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       titleOverride: params.title
     });
     if (!createdNode) {
-      return false;
+      return {
+        restored: false
+      };
     }
 
     try {
       await this.focusNodeInCanvas(createdNode.id);
-      return true;
+      return {
+        restored: true
+      };
     } catch {
       void vscode.window.showWarningMessage(`历史会话节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
-      return true;
+      return {
+        restored: true
+      };
     }
+  }
+
+  public getSessionHistoryRestoreBlockReason(): string | undefined {
+    return vscode.workspace.isTrusted ? undefined : '当前 workspace 未受信任，只能查看历史会话，不能恢复为新 Agent 节点。';
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
