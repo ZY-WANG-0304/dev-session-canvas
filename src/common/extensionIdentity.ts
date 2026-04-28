@@ -7,10 +7,15 @@ export const COMMAND_IDS = {
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   openSettings: 'devSessionCanvas.openSettings',
   createNode: 'devSessionCanvas.createNode',
+  showNodeList: 'devSessionCanvas.showNodeList',
+  showSessionHistory: 'devSessionCanvas.showSessionHistory',
+  refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
   dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
+  focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
+  restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
   clearFileIncludeFilter: 'devSessionCanvas.clearFileIncludeFilter',
   clearFileExcludeFilter: 'devSessionCanvas.clearFileExcludeFilter'
 } as const;
@@ -18,6 +23,8 @@ export const COMMAND_IDS = {
 export const TEST_COMMAND_IDS = {
   getDebugState: 'devSessionCanvas.__test.getDebugState',
   getSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
+  getSidebarNodeListItems: 'devSessionCanvas.__test.getSidebarNodeListItems',
+  getSidebarSessionHistoryItems: 'devSessionCanvas.__test.getSidebarSessionHistoryItems',
   getRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   getHostMessages: 'devSessionCanvas.__test.getHostMessages',
   clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
@@ -31,6 +38,8 @@ export const TEST_COMMAND_IDS = {
   waitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   captureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  performSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
+  performSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
   setPersistedState: 'devSessionCanvas.__test.setPersistedState',
   reloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   flushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
@@ -46,6 +55,8 @@ export const VIEW_IDS = {
   activityBarContainer: 'devSessionCanvas',
   sidebarTree: 'devSessionCanvas.sidebar',
   sidebarFilters: 'devSessionCanvas.sidebarFilters',
+  sidebarNodes: 'devSessionCanvas.sidebarNodes',
+  sidebarSessions: 'devSessionCanvas.sidebarSessions',
   editorWebviewPanel: 'devSessionCanvas.canvas',
   panelWebviewView: 'devSessionCanvas.canvasPanel',
   panelContainer: 'devSessionCanvasPanel'
