@@ -88,6 +88,7 @@ import {
 } from '../common/protocol';
 import {
   buildFreshAgentCommandLine,
+  buildAgentHistoryResumeCommandLine,
   extractClaudeCommandSessionFlag,
   formatCommandLine,
   validateAgentCommandLine
@@ -931,10 +932,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
+    let historyResumeCommandLine: string;
+    try {
+      historyResumeCommandLine = this.buildHistoryResumeCommandLine(params.provider, sessionId);
+    } catch (error) {
+      return {
+        restored: false,
+        errorMessage: error instanceof Error ? error.message : '无法解析历史恢复的 Agent 启动命令。'
+      };
+    }
+
     const createdNode = this.applyCreateNode('agent', undefined, {
       agentProvider: params.provider,
       agentLaunchPreset: 'custom',
-      agentCustomLaunchCommand: this.buildHistoryResumeCommandLine(params.provider, sessionId),
+      agentCustomLaunchCommand: historyResumeCommandLine,
       titleOverride: params.title
     });
     if (!createdNode) {
@@ -5766,10 +5777,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private buildHistoryResumeCommandLine(provider: AgentProviderKind, sessionId: string): string {
-    const requestedCommand = this.getAgentLaunchDefaults(provider).command.trim() || provider;
-    return provider === 'claude'
-      ? formatCommandLine([requestedCommand, '--resume', sessionId])
-      : formatCommandLine([requestedCommand, 'resume', sessionId]);
+    return buildAgentHistoryResumeCommandLine(
+      provider,
+      sessionId,
+      this.getAgentLaunchDefaults(provider)
+    );
   }
 
   private getAgentCliResolutionCacheKey(

@@ -1,16 +1,15 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { stripTerminalControlSequences } from '../common/agentActivityHeuristics';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
 import type { CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
+import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
 
 const SIDEBAR_NODE_DANGLING_CSI_FRAGMENT_PATTERN = /(?:^|\s)\[\?[0-9;:<>=$]*[ -/]*[@-~](?=\s|$)/g;
 const SIDEBAR_NODE_ATTENTION_TOOLTIP = '该节点当前有待处理的通知提醒。';
 const SIDEBAR_NODE_LIST_REFRESH_DEBOUNCE_MS = 75;
-const SIDEBAR_CODICON_CSS_PATH = path.resolve(__dirname, '..', 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css');
-const SIDEBAR_CODICON_RESOURCE_ROOT = vscode.Uri.file(path.dirname(SIDEBAR_CODICON_CSS_PATH));
+const SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS = ['dist', 'sidebar-codicon.css'] as const;
 
 export interface CanvasSidebarNodeItemSnapshot {
   id: string;
@@ -93,7 +92,10 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   private readonly pendingReadyRequests = new Map<string, PendingSidebarNodeListReadyRequest>();
   private readonly pendingTestActionRequests = new Map<string, PendingSidebarNodeListTestActionRequest>();
 
-  public constructor(private readonly panelManager: CanvasPanelManager) {
+  public constructor(
+    private readonly panelManager: CanvasPanelManager,
+    private readonly extensionUri: vscode.Uri
+  ) {
     this.stateSubscription = this.panelManager.onDidChangeSidebarState(() => {
       this.scheduleRefresh();
     });
@@ -116,9 +118,9 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
     this.isWebviewReady = false;
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [SIDEBAR_CODICON_RESOURCE_ROOT]
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')]
     };
-    webviewView.webview.html = buildSidebarNodeListHtml(webviewView.webview);
+    webviewView.webview.html = buildSidebarNodeListHtml(webviewView.webview, this.extensionUri);
 
     webviewView.onDidDispose(() => {
       if (this.view === webviewView) {
@@ -530,9 +532,13 @@ export function isSidebarNodeListTestAction(value: unknown): value is SidebarNod
   );
 }
 
-function buildSidebarNodeListHtml(webview: vscode.Webview): string {
+function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = createNonce();
-  const codiconCssUri = webview.asWebviewUri(vscode.Uri.file(SIDEBAR_CODICON_CSS_PATH));
+  const codiconCssUri = getVersionedWebviewResourceUri(
+    webview,
+    extensionUri,
+    ...SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS
+  );
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">

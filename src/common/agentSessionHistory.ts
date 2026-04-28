@@ -10,6 +10,8 @@ import type { AgentProviderKind } from './protocol';
 
 const FIRST_LINE_READ_CHUNK_BYTES = 4096;
 const FIRST_LINE_MAX_BYTES = 64 * 1024;
+const CLAUDE_CWD_SCAN_MAX_LINES = 160;
+const CLAUDE_CWD_SCAN_MAX_BYTES = 256 * 1024;
 const USER_INSTRUCTION_SCAN_MAX_LINES = 160;
 const USER_INSTRUCTION_SCAN_MAX_BYTES = 256 * 1024;
 const USER_INSTRUCTION_MAX_CHARS = 600;
@@ -152,19 +154,15 @@ function parseCodexSessionMeta(firstLine: string): CodexSessionMeta | null {
   }
 }
 
-function parseClaudeSessionCwd(firstLine: string | null): string | null {
-  if (!firstLine) {
+function parseClaudeSessionCwdRecord(record: unknown): string | null {
+  if (!record || typeof record !== 'object') {
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(firstLine) as {
-      cwd?: unknown;
-    };
-    return typeof parsed.cwd === 'string' && parsed.cwd.trim().length > 0 ? path.resolve(parsed.cwd) : null;
-  } catch {
-    return null;
-  }
+  const parsed = record as {
+    cwd?: unknown;
+  };
+  return typeof parsed.cwd === 'string' && parsed.cwd.trim().length > 0 ? path.resolve(parsed.cwd) : null;
 }
 
 function extractMessageContentText(content: unknown): string | null {
@@ -324,6 +322,51 @@ async function readFirstUserInstruction(
   return undefined;
 }
 
+async function readClaudeSessionCwd(filePath: string): Promise<string | null> {
+  const stream = createReadStream(filePath, { encoding: 'utf8' });
+  const lines = readline.createInterface({
+    input: stream,
+    crlfDelay: Infinity
+  });
+
+  let scannedLines = 0;
+  let scannedBytes = 0;
+
+  try {
+    for await (const rawLine of lines) {
+      scannedLines += 1;
+      scannedBytes += Buffer.byteLength(rawLine, 'utf8') + 1;
+      if (scannedLines > CLAUDE_CWD_SCAN_MAX_LINES || scannedBytes > CLAUDE_CWD_SCAN_MAX_BYTES) {
+        break;
+      }
+
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+
+      const cwd = parseClaudeSessionCwdRecord(parsed);
+      if (cwd) {
+        return cwd;
+      }
+    }
+  } catch {
+    return null;
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+
+  return null;
+}
+
 function isPathInsideWorkspace(candidatePath: string, workspaceRoot: string): boolean {
   const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
   const resolvedCandidate = path.resolve(candidatePath);
@@ -414,17 +457,12 @@ async function collectCodexSessionHistory(
   }
 }
 
-function toClaudeProjectDirectoryName(cwd: string): string {
-  return path.resolve(cwd).replace(/[^a-zA-Z0-9]+/g, '-');
-}
-
 async function collectClaudeSessionHistory(
   workspaceRoot: string,
   env: NodeJS.ProcessEnv,
   entries: Map<string, WorkspaceAgentSessionHistoryEntry>
 ): Promise<void> {
   const claudeProjectsDir = path.join(resolveHomeDirectory(env), '.claude', 'projects');
-  const workspaceDirectoryName = toClaudeProjectDirectoryName(workspaceRoot);
   const projectDirectories = await listDirectories(claudeProjectsDir);
 
   for (const projectDirectory of projectDirectories) {
@@ -437,10 +475,7 @@ async function collectClaudeSessionHistory(
       }
 
       // eslint-disable-next-line no-await-in-loop
-      const firstLine = await readFirstLine(filePath);
-      const parsedCwd = parseClaudeSessionCwd(firstLine);
-      const fallbackCwd = path.basename(projectDirectory) === workspaceDirectoryName ? path.resolve(workspaceRoot) : null;
-      const cwd = parsedCwd ?? fallbackCwd;
+      const cwd = await readClaudeSessionCwd(filePath);
       if (!cwd || !isPathInsideWorkspace(cwd, workspaceRoot)) {
         continue;
       }
