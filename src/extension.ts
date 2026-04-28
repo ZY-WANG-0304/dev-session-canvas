@@ -21,6 +21,7 @@ import {
 import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
+  matchesAgentCommandLinePreset,
   validateAgentCommandLine
 } from './common/agentLaunchPresets';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
@@ -480,6 +481,7 @@ function consumeQueuedAgentLaunchRequest(
   }
 
   let commandLine = presetCommandLines.default;
+  let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
   while (queuedQuickPickSelectionIds.length > 0) {
     const nextSelectionId = queuedQuickPickSelectionIds[0];
     if (!nextSelectionId?.startsWith('agent-launch-')) {
@@ -488,22 +490,26 @@ function consumeQueuedAgentLaunchRequest(
 
     queuedQuickPickSelectionIds.shift();
     if (nextSelectionId === 'agent-launch-accept-current') {
-      return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine);
+      return createAgentRequestFromCommandLine(provider, launchDefaults, commandLine, explicitPresetSelection);
     }
     if (nextSelectionId === 'agent-launch-apply-default') {
       commandLine = presetCommandLines.default;
+      explicitPresetSelection = 'default';
       continue;
     }
     if (nextSelectionId === 'agent-launch-apply-resume') {
       commandLine = presetCommandLines.resume;
+      explicitPresetSelection = 'resume';
       continue;
     }
     if (nextSelectionId === 'agent-launch-apply-yolo') {
       commandLine = presetCommandLines.yolo;
+      explicitPresetSelection = 'yolo';
       continue;
     }
     if (nextSelectionId === 'agent-launch-apply-sandbox') {
       commandLine = presetCommandLines.sandbox;
+      explicitPresetSelection = 'sandbox';
       continue;
     }
   }
@@ -521,6 +527,7 @@ function promptAgentLaunchRequestWithQuickPick(
     const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
     let resolved = false;
     let suppressNextAcceptAfterPresetSelection = false;
+    let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
     let presetSelectionAcceptResetTimer: ReturnType<typeof setTimeout> | undefined;
 
     const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
@@ -567,6 +574,7 @@ function promptAgentLaunchRequestWithQuickPick(
       if (!selectedItem?.launchPreset) {
         return;
       }
+      explicitPresetSelection = selectedItem.launchPreset;
       quickPick.value = presetCommandLines[selectedItem.launchPreset];
       quickPick.activeItems = [];
       armPresetSelectionAcceptSuppression();
@@ -580,6 +588,7 @@ function promptAgentLaunchRequestWithQuickPick(
     quickPick.onDidAccept(() => {
       const activeItem = quickPick.activeItems[0];
       if (activeItem?.launchPreset) {
+        explicitPresetSelection = activeItem.launchPreset;
         quickPick.value = presetCommandLines[activeItem.launchPreset];
         quickPick.activeItems = [];
         updateTitle();
@@ -596,7 +605,7 @@ function promptAgentLaunchRequestWithQuickPick(
         return;
       }
 
-      finish(createAgentRequestFromCommandLine(provider, launchDefaults, quickPick.value));
+      finish(createAgentRequestFromCommandLine(provider, launchDefaults, quickPick.value, explicitPresetSelection));
     });
 
     quickPick.onDidTriggerButton((button) => {
@@ -670,8 +679,20 @@ function buildAgentLaunchPresetCommandLines(
 function createAgentRequestFromCommandLine(
   provider: AgentProviderKind,
   launchDefaults: AgentProviderLaunchDefaults,
-  commandLine: string
+  commandLine: string,
+  explicitPresetSelection?: Exclude<AgentLaunchPresetKind, 'custom'>
 ): CreateNodeRequest {
+  if (
+    explicitPresetSelection &&
+    matchesAgentCommandLinePreset(provider, commandLine, launchDefaults, explicitPresetSelection)
+  ) {
+    return {
+      kind: 'agent',
+      agentProvider: provider,
+      agentLaunchPreset: explicitPresetSelection
+    };
+  }
+
   const classification = classifyAgentLaunchPreset(provider, commandLine, launchDefaults);
   return {
     kind: 'agent',

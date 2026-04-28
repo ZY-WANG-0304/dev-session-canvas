@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-04-26
+updated_at: 2026-04-29
 ---
 
 # Agent 启动方式与重启交互设计
@@ -144,6 +144,14 @@ updated_at: 2026-04-26
 - 复用同一套校验逻辑给 Webview 与宿主，避免“前端禁止、宿主仍可执行”的分叉
 - 根据输入内容反推它属于 `default / resume / yolo / sandbox / custom` 中哪一种
 
+这里还要额外收口一个默认参数冲突规则：对 `YOLO / 沙盒` 这类执行策略预设，命令层不能简单把预设参数盲目 append 到默认启动参数后面；它必须先剥离当前 provider 下由这些执行策略接管的那一小组、仓库已经显式文档化支持的 owned mode flags，再回填本次显式选择的预设结果。这里不是一套“对所有参数做通用归一化”的框架，而是一份有限白名单：`Codex` 当前只覆盖 `--yolo`、`--full-auto`、`--dangerously-bypass-approvals-and-sandbox`、`--sandbox` / `-s`、`--ask-for-approval` / `-a` 及其 `--flag=value` 形式；`Claude Code` 当前只覆盖 `--dangerously-skip-permissions` 与 `--permission-mode`。除此以外的潜在冲突组合，产品语义明确收口为“不要自动改写，用户改走自定义启动”。
+
+之所以要把边界收得这么窄，是因为右键菜单第三层和 Quick Input 第二层的目标只是提供一组仓库内定义、可预测的快捷预设，而不是替不同 provider 的全部 CLI 语义兜底。否则一旦把未知参数也纳入“同类模式参数”的模糊概念里，后续实现者和 reviewer 很容易误以为这里应该继续扩展成通用参数重写器。
+
+相反，`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都属于“恢复哪条会话”的语义，不应被当成与这些执行策略互斥的 owned flags 去剥离。
+
+同一个共享层里，`Resume` 预设本身还要单独走另一套归一化：它不是“保留默认参数里已有的定向 resume 目标”，而是强制收口到 provider 自己的 resume 入口。因此若默认启动参数已经写了 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`-r <session-id>`、`--continue <session-id>`、`-c <session-id>` 或 `--session-id <session-id>`，命令层在应用 `Resume` 预设前要先剥离这些更定向的会话选择片段，再回填通用的 `codex resume` / `claude --resume`。
+
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，也不是接受“任意 basename 一样的可执行文件”；它只接受当前设置值本身，以及 provider 的标准别名。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然可以使用该精确路径，同时不会把 `/tmp/evil/claude` 这类同 basename 的其他二进制误判成合法命令。
 
 同一层 parser 还要显式承担两条约束：
@@ -185,6 +193,7 @@ updated_at: 2026-04-26
 
 - Enter 始终按输入框当前值创建，不额外增加“创建”按钮。
 - 点击下方预设项只改写输入框，不直接创建。
+- 如果用户显式点击了某个预设，而最终输入框内容在语义上仍等价于该预设生成的完整命令，则节点 metadata 里的 `launchPreset` 保留这次显式选择，而不是仅靠字符串反推后回落成 `default`。
 - 第二层允许通过 Back 返回第一层。
 - 测试环境保留可脚本化 override，避免 smoke 依赖真实 Quick Input 自动化。
 
@@ -250,4 +259,5 @@ updated_at: 2026-04-26
 - 2026-04-26：继续排查 Playwright harness 超时后，已确认根因并非菜单交互本身，而是共享命令校验逻辑在 Webview bundle 中读取了不存在的 `process.platform`，导致 `CanvasContextMenu` 渲染时抛出 `process is not defined`。修复后 targeted `npm run test:webview -- --grep "right-click custom agent launch input|validates custom agent launch commands before creating"` 与 `npm run test:webview -- --grep "right-click create menu"` 均通过。
 - 2026-04-26：已补上 Windows “带空格且以反斜杠结尾”的 quoted token round-trip 回归，确认共享 formatter / parser 不会再把 `C:\\Users\\me\\My Dir\\` 这类参数格式化成无法重新解析的命令；本轮 `npm run test:agent-launch-presets`、`npm run build` 与 targeted `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
 - 2026-04-26：本轮继续按“结构化 argv + 文档化 Windows quoting 兼容层”收口：新 formatter 改成更接近原生 Windows 的最小转义，parser 同时接受新 canonical output、旧版“全量双写反斜杠”的历史文本，以及自然输入的 quoted UNC path；已新增绝对路径 / UNC / 尾部反斜杠回归。
+- 2026-04-29：本轮继续收口“显式预设 vs 默认模式参数”冲突：共享命令层改成只对白名单里的 provider-owned execution mode flags 做有限覆盖，再回填 `YOLO / 沙盒`；未知组合明确要求用户改走自定义启动。`Codex` 的 `resume` 子命令及其参数继续保留，因为它们和执行策略参数并不互斥。同时 Quick Input 第二步会在显式点击预设且最终命令仍等价时保留该 preset 的 metadata，而不是仅靠字符串反推回落成 `default`。相关回归新增覆盖右键菜单文案、命令层归一化，以及 QuickPick 在“默认命令已含 `--yolo`”场景下仍持久化 `launchPreset: 'yolo'`。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

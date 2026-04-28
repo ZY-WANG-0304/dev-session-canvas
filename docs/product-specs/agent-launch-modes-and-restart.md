@@ -46,6 +46,10 @@
   - 新增按 provider 分开的默认启动参数设置；它们只负责参数片段，不取代原有 provider 命令路径设置。
   - 这组默认启动参数设置使用 `window` scope；用户应能在窗口 / 工作区范围覆盖它们。
   - 默认启动参数同时用于“快速启动”与“自定义启动”的预填充。
+  - 当用户显式选择 `YOLO / 沙盒` 这类执行策略预设时，扩展只会覆盖仓库当前已文档化支持的少量已知冲突 flag，而不是尝试对所有 CLI 参数做通用归一化；若用户需要更复杂的参数组合，必须改走 `自定义启动`。
+  - 当前已知冲突集合仅包括：`Codex` 的 `--yolo` / `--full-auto` / `--dangerously-bypass-approvals-and-sandbox` / `--sandbox` / `-s` / `--ask-for-approval` / `-a`（以及这些长短选项的 `--flag=value` 形式），以及 `Claude Code` 的 `--dangerously-skip-permissions` / `--permission-mode`。
+  - 上述有限覆盖只作用于执行策略本身，不覆盖“恢复哪条会话”的语义：`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都不视为与 `YOLO / 沙盒` 互斥；若默认启动参数中已经显式包含它们，点击 `YOLO / 沙盒` 时应保留这些会话选择语义，只覆盖执行策略 flag。
+  - 但当用户显式选择创建前的 `Resume` 预设时，本次 fresh-start 仍统一收口为 provider 自己的 resume 选择入口：`Codex` 生成 `codex resume`，`Claude Code` 生成 `claude --resume`；默认启动参数里原本更定向的 `--last`、具体 `session-id`、`--continue` / `-c`、`--resume` / `-r` 等 resume 目标应被替换掉，而不是继续拼接。
   - 若某个 provider 的默认启动参数本身无法被命令行 parser 正常解析，右键菜单、Quick Input 与宿主 fresh-start 都必须显式报错，不能静默清空这段参数后继续启动。
 - Agent 停止后的 split restart：
   - 主按钮文案为 `重启`，语义是“优先恢复原会话”。
@@ -110,6 +114,7 @@
 - 即使有人伪造 Webview 消息或手工注入旧 metadata，只要自定义命令的首个 token 不再属于当前 provider，宿主也会在创建或启动前直接拒绝，不会去解析或执行该命令。
 - 命令面板 / 侧栏“创建节点”里的 Agent 入口会进入第二步 Quick Input；第二步顶部输入框展示完整命令，点击 `默认 / Resume / YOLO / 沙盒` 只会替换输入框内容，不会直接创建。
 - 第二步 Quick Input 不额外增加“创建”按钮；按 Enter 会按当前输入框内容创建 Agent。
+- 若用户在第二步 Quick Input 里显式点击了某个预设，且最终输入框内容仍等价于该预设对应的完整命令，则节点 metadata 中持久化的 `launchPreset` 以这次显式选择为准；不能因为该命令刚好和 `default` 文本等价，就把显式 `YOLO / 沙盒 / Resume` 降级成 `default`。
 - 通过设置修改某个 provider 的默认启动参数后，后续新的“快速启动”和“自定义启动”预填内容会同步变化。
 - Agent 节点标题下方的副标题显示该节点最近一次实际启动指令；若节点尚未真正启动，则显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。
 - 当副标题中的启动指令超出可见宽度时，鼠标悬停副标题区域会显示完整启动指令；未截断时不额外显示 hover 文案。

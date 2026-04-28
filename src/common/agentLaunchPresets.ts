@@ -138,14 +138,7 @@ export function classifyAgentLaunchPreset(
   const inputArgv = [validation.parsed.command, ...validation.parsed.args];
   for (const preset of ['default', 'resume', 'yolo', 'sandbox'] as const) {
     try {
-      if (
-        isEquivalentAgentCommandLine(
-          inputArgv,
-          buildAgentPresetArgv(provider, defaults, preset),
-          provider,
-          defaults.command
-        )
-      ) {
+      if (matchesAgentPresetArgv(inputArgv, provider, defaults, preset)) {
         return {
           launchPreset: preset
         };
@@ -172,6 +165,20 @@ export function parseFullAgentCommandLine(commandLine: string): ParsedAgentComma
     command,
     args
   };
+}
+
+export function matchesAgentCommandLinePreset(
+  provider: AgentProviderKind,
+  commandLine: string,
+  defaults: AgentProviderLaunchDefaults,
+  preset: Exclude<AgentLaunchPresetKind, 'custom'>
+): boolean {
+  const validation = validateAgentCommandLine(commandLine, provider, defaults);
+  if (!validation.valid || !validation.parsed) {
+    return false;
+  }
+
+  return matchesAgentPresetArgv([validation.parsed.command, ...validation.parsed.args], provider, defaults, preset);
 }
 
 export function hasCommandLineFlag(argv: readonly string[], flag: string): boolean {
@@ -420,9 +427,198 @@ function buildAgentPresetArgv(
   defaults: AgentProviderLaunchDefaults,
   preset: AgentLaunchPresetKind
 ): string[] {
-  const baseArgs = assertAgentDefaultArgsParsable(provider, defaults);
+  const baseArgs = normalizeAgentDefaultArgsForPreset(
+    provider,
+    assertAgentDefaultArgsParsable(provider, defaults),
+    preset
+  );
   const command = defaults.command.trim() || provider;
   return [command, ...applyAgentPresetArgs(provider, baseArgs, preset)];
+}
+
+function matchesAgentPresetArgv(
+  inputArgv: readonly string[],
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults,
+  preset: Exclude<AgentLaunchPresetKind, 'custom'>
+): boolean {
+  return isEquivalentAgentCommandLine(
+    inputArgv,
+    buildAgentPresetArgv(provider, defaults, preset),
+    provider,
+    defaults.command
+  );
+}
+
+function normalizeAgentDefaultArgsForPreset(
+  provider: AgentProviderKind,
+  baseArgs: readonly string[],
+  preset: AgentLaunchPresetKind
+): string[] {
+  if (preset === 'default' || preset === 'custom') {
+    return [...baseArgs];
+  }
+
+  if (provider === 'claude') {
+    return preset === 'resume' ? stripClaudeResumeTargetArgs(baseArgs) : stripClaudeExecutionModeArgs(baseArgs);
+  }
+
+  return preset === 'resume' ? stripCodexResumeTargetArgs(baseArgs) : stripCodexExecutionModeArgs(baseArgs);
+}
+
+function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
+  const normalizedArgs: string[] = [];
+  for (let index = 0; index < baseArgs.length; index += 1) {
+    const token = baseArgs[index];
+
+    if (
+      token === '--yolo' ||
+      token === '--full-auto' ||
+      token === '--dangerously-bypass-approvals-and-sandbox' ||
+      token.startsWith('-s=') ||
+      token.startsWith('-a=') ||
+      token.startsWith('--sandbox=') ||
+      token.startsWith('--ask-for-approval=')
+    ) {
+      continue;
+    }
+
+    if (token === '--sandbox' || token === '-s' || token === '--ask-for-approval' || token === '-a') {
+      index = skipOwnedFlagValue(baseArgs, index);
+      continue;
+    }
+
+    normalizedArgs.push(token);
+  }
+
+  return normalizedArgs;
+}
+
+function stripCodexResumeTargetArgs(baseArgs: readonly string[]): string[] {
+  const normalizedArgs: string[] = [];
+  let nextTokenIsOptionValue = false;
+  let encounteredPositional = false;
+
+  for (let index = 0; index < baseArgs.length; index += 1) {
+    const token = baseArgs[index];
+
+    if (!encounteredPositional && !nextTokenIsOptionValue && token === 'resume') {
+      break;
+    }
+
+    if (nextTokenIsOptionValue) {
+      normalizedArgs.push(token);
+      nextTokenIsOptionValue = false;
+      continue;
+    }
+
+    if (token === '--') {
+      encounteredPositional = true;
+      normalizedArgs.push(token);
+      continue;
+    }
+
+    normalizedArgs.push(token);
+    if (codexOptionConsumesFollowingValue(token)) {
+      nextTokenIsOptionValue = true;
+      continue;
+    }
+
+    if (!encounteredPositional && !isOptionLikeCommandToken(token)) {
+      encounteredPositional = true;
+    }
+  }
+
+  return normalizedArgs;
+}
+
+function stripClaudeExecutionModeArgs(baseArgs: readonly string[]): string[] {
+  const normalizedArgs: string[] = [];
+  for (let index = 0; index < baseArgs.length; index += 1) {
+    const token = baseArgs[index];
+
+    if (
+      token === '--dangerously-skip-permissions' ||
+      token.startsWith('--permission-mode=')
+    ) {
+      continue;
+    }
+
+    if (token === '--permission-mode') {
+      index = skipOwnedFlagValue(baseArgs, index);
+      continue;
+    }
+
+    normalizedArgs.push(token);
+  }
+
+  return normalizedArgs;
+}
+
+function stripClaudeResumeTargetArgs(baseArgs: readonly string[]): string[] {
+  const normalizedArgs: string[] = [];
+  for (let index = 0; index < baseArgs.length; index += 1) {
+    const token = baseArgs[index];
+
+    if (
+      token.startsWith('--session-id=') ||
+      token.startsWith('--resume=') ||
+      token.startsWith('--continue=') ||
+      token.startsWith('-r=') ||
+      token.startsWith('-c=')
+    ) {
+      continue;
+    }
+
+    if (
+      token === '--session-id' ||
+      token === '--resume' ||
+      token === '--continue' ||
+      token === '-r' ||
+      token === '-c'
+    ) {
+      index = skipOwnedFlagValue(baseArgs, index);
+      continue;
+    }
+
+    normalizedArgs.push(token);
+  }
+
+  return normalizedArgs;
+}
+
+function skipOwnedFlagValue(baseArgs: readonly string[], index: number): number {
+  const nextToken = baseArgs[index + 1];
+  if (nextToken && !isOptionLikeCommandToken(nextToken)) {
+    return index + 1;
+  }
+
+  return index;
+}
+
+function codexOptionConsumesFollowingValue(token: string): boolean {
+  return (
+    token === '-c' ||
+    token === '--config' ||
+    token === '--enable' ||
+    token === '--disable' ||
+    token === '--remote' ||
+    token === '--remote-auth-token-env' ||
+    token === '-i' ||
+    token === '--image' ||
+    token === '-m' ||
+    token === '--model' ||
+    token === '--local-provider' ||
+    token === '-p' ||
+    token === '--profile' ||
+    token === '-s' ||
+    token === '--sandbox' ||
+    token === '-C' ||
+    token === '--cd' ||
+    token === '--add-dir' ||
+    token === '-a' ||
+    token === '--ask-for-approval'
+  );
 }
 
 function isProviderCommandMatch(
@@ -444,17 +640,23 @@ function isProviderCommandMatch(
 }
 
 function matchClaudeCommandSessionFlag(token: string): ClaudeCommandSessionFlag | null {
-  for (const flag of ['--session-id', '--resume', '--continue'] as const) {
-    if (token === flag) {
-      return { flag };
-    }
+  for (const { aliases, canonicalFlag } of [
+    { aliases: ['--session-id'], canonicalFlag: '--session-id' as const },
+    { aliases: ['--resume', '-r'], canonicalFlag: '--resume' as const },
+    { aliases: ['--continue', '-c'], canonicalFlag: '--continue' as const }
+  ]) {
+    for (const alias of aliases) {
+      if (token === alias) {
+        return { flag: canonicalFlag };
+      }
 
-    if (token.startsWith(`${flag}=`)) {
-      const sessionId = token.slice(flag.length + 1).trim();
-      return {
-        flag,
-        sessionId: sessionId || undefined
-      };
+      if (token.startsWith(`${alias}=`)) {
+        const sessionId = token.slice(alias.length + 1).trim();
+        return {
+          flag: canonicalFlag,
+          sessionId: sessionId || undefined
+        };
+      }
     }
   }
 

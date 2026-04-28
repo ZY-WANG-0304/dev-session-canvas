@@ -3449,6 +3449,72 @@ test('right-click create menu can drill into agent launch modes and create claud
     );
 });
 
+test('right-click launch preset descriptions normalize conflicting default launch mode flags', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    createCanvasScreenshotState(),
+    createRuntimeContext({
+      agentLaunchDefaults: {
+        codex: {
+          command: 'codex',
+          defaultArgs: '--model gpt-5.2 resume --last --sandbox danger-full-access'
+        },
+        claude: {
+          command: 'claude',
+          defaultArgs: '--model sonnet --resume session-123 --permission-mode acceptEdits'
+        }
+      }
+    })
+  );
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1040,
+      y: 520
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
+  await menu
+    .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+
+  const yoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
+  await expect(yoloPreset).toContainText('codex --model gpt-5.2 resume --last --yolo');
+  await expect(yoloPreset).toContainText('仅覆盖当前已知的冲突模式参数');
+  await expect(yoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
+  await expect(yoloPreset).not.toContainText('danger-full-access');
+
+  const sandboxPreset = menu.locator('[data-context-menu-launch-preset="launch-sandbox"]');
+  await expect(sandboxPreset).toContainText('codex --model gpt-5.2 resume --last --sandbox workspace-write');
+  await expect(sandboxPreset).toContainText('仅覆盖当前已知的冲突模式参数');
+  await expect(sandboxPreset).not.toContainText('danger-full-access');
+
+  await menu.locator('[data-context-menu-back="true"]').click();
+  await menu
+    .locator('[data-context-menu-provider="claude"] [data-context-menu-provider-action="show-launch-modes"]')
+    .click();
+
+  const claudeYoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
+  await expect(claudeYoloPreset).toContainText(
+    'claude --model sonnet --resume session-123 --dangerously-skip-permissions'
+  );
+  await expect(claudeYoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
+  await expect(claudeYoloPreset).not.toContainText('acceptEdits');
+});
+
 test('right-click create menu creates the default agent without opening the provider list', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
