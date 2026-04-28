@@ -26,8 +26,12 @@ try {
   const homeDir = path.join(tempDir, 'home');
   const workspaceRoot = path.join(tempDir, 'workspace');
   const nestedWorkspace = path.join(workspaceRoot, 'packages', 'feature-a');
+  const collidingWorkspaceRoot = path.join(tempDir, 'workspace-collision', 'foo', 'bar');
+  const collidingWorkspaceShadow = path.join(tempDir, 'workspace-collision', 'foo-bar');
   const outsideWorkspace = path.join(tempDir, 'outside');
   await mkdir(nestedWorkspace, { recursive: true });
+  await mkdir(collidingWorkspaceRoot, { recursive: true });
+  await mkdir(collidingWorkspaceShadow, { recursive: true });
   await mkdir(outsideWorkspace, { recursive: true });
 
   const codexTimestamp = Date.parse('2026-04-27T10:00:00.000Z');
@@ -77,6 +81,7 @@ try {
     sessionId: 'claude-session-root',
     lines: [
       { type: 'progress' },
+      { type: 'progress', cwd: workspaceRoot },
       {
         type: 'user',
         message: {
@@ -136,6 +141,43 @@ try {
     ]
   });
 
+  await writeClaudeSessionFile({
+    homeDir,
+    cwd: collidingWorkspaceShadow,
+    sessionId: 'claude-session-shadow-without-cwd',
+    lines: [
+      {
+        type: 'progress'
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '这个缺少 cwd 的冲突目录会话不应泄漏到别的 workspace'
+        }
+      }
+    ]
+  });
+
+  await writeClaudeSessionFile({
+    homeDir,
+    cwd: collidingWorkspaceRoot,
+    sessionId: 'claude-session-collision-root',
+    lines: [
+      {
+        type: 'progress',
+        cwd: collidingWorkspaceRoot
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '这个带 cwd 的冲突目录会话应保留在当前 workspace'
+        }
+      }
+    ]
+  });
+
   const entries = await listWorkspaceAgentSessionHistory({
     workspaceRoot,
     env: {
@@ -162,7 +204,7 @@ try {
   assert.equal(codexEntry.firstUserInstruction, '请实现共享 codex 会话标题');
 
   const claudeRootEntry = entries.find((entry) => entry.sessionId === 'claude-session-root');
-  assert.ok(claudeRootEntry, 'Expected the workspace-root Claude session to be included via directory fallback.');
+  assert.ok(claudeRootEntry, 'Expected the workspace-root Claude session to be included via transcript cwd discovery.');
   assert.equal(claudeRootEntry.cwd, workspaceRoot);
   assert.equal(claudeRootEntry.firstUserInstruction, '写一首打油诗');
 
@@ -206,6 +248,24 @@ try {
   assert.deepEqual(
     limitedEntries.map((entry) => `${entry.provider}:${entry.sessionId}`),
     ['claude:claude-session-root', 'claude:claude-session-nested']
+  );
+
+  const collidingEntries = await listWorkspaceAgentSessionHistory({
+    workspaceRoot: collidingWorkspaceRoot,
+    env: {
+      ...process.env,
+      HOME: homeDir,
+      USERPROFILE: homeDir
+    }
+  });
+  assert.deepEqual(
+    collidingEntries.map((entry) => `${entry.provider}:${entry.sessionId}`),
+    ['claude:claude-session-collision-root']
+  );
+  assert.equal(collidingEntries[0]?.cwd, collidingWorkspaceRoot);
+  assert.equal(
+    collidingEntries[0]?.firstUserInstruction,
+    '这个带 cwd 的冲突目录会话应保留在当前 workspace'
   );
 } finally {
   await rm(tempDir, { recursive: true, force: true });

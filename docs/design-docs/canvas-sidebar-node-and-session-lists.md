@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-04-28
+updated_at: 2026-04-29
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -112,6 +112,7 @@ updated_at: 2026-04-28
   - 人类可读的状态文案，作为唯一的次级描述
   - 当节点正处于 notification 提醒中时，在该项最右侧显示通知图标
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
+- 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
 - 视觉上继续收口为 VS Code 原生 sidebar 列表质感：无卡片、无阴影、无多层装饰，只保留轻量 hover / selected 态和紧凑两行排版。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
@@ -133,9 +134,9 @@ updated_at: 2026-04-28
 当前选定以下读取路径：
 
 - `Codex`：扫描 `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`，读取首行 `session_meta` 中的 `sessionId`、`cwd` 与时间戳。
-- `Claude Code`：扫描 `~/.claude/projects/**/*.jsonl`。若文件首行 JSON 带有 `cwd`，则用它判断是否属于当前 workspace；若缺少 `cwd`，则至少保留“当前 workspace 根目录对应的 project 目录”这条精确回退路径。
+- `Claude Code`：扫描 `~/.claude/projects/**/*.jsonl`。读取 transcript 前若干行中的显式 `cwd` 作为唯一 workspace 归属依据；若整段扫描窗口内都没有可确认的 `cwd`，则直接跳过该会话，不再把 project 目录名等价成精确 workspace 回退。
 
-对应实现集中在 `src/common/agentSessionHistory.ts`，并通过 `scripts/test-sidebar-session-history.mjs` 覆盖 workspace 过滤、去重、排序、Claude 根目录回退，以及“跳过 provider 注入的 synthetic 首条 user message，提取第一条真实用户指令”。
+对应实现集中在 `src/common/agentSessionHistory.ts`，并通过 `scripts/test-sidebar-session-history.mjs` 覆盖 workspace 过滤、去重、排序、Claude 跨行 `cwd` 提取、冲突目录 fail-closed，以及“跳过 provider 注入的 synthetic 首条 user message，提取第一条真实用户指令”。
 
 过滤规则如下：
 
@@ -155,12 +156,12 @@ updated_at: 2026-04-28
 
 这样可以让侧栏标题稳定反映“这条会话最初是为了解决什么问题”，同时避免继续复用当前画布节点标题或节点副标题。
 
-### 6.5 从历史恢复时，新建一个 `Agent` 节点并写入 provider resume 命令
+### 6.5 从历史恢复时，新建一个 `Agent` 节点并写入带默认启动参数的显式 resume 命令
 
 - 双击会话历史项后，不修改当前节点，也不要求用户二次确认。
-- 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成：
-  - `codex resume <session-id>`
-  - `claude --resume <session-id>`
+- 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume 参数”的组合；例如：
+  - `codex <当前默认参数...> resume <session-id>`
+  - `claude <当前默认参数...> --resume <session-id>`
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。
 
@@ -181,7 +182,7 @@ updated_at: 2026-04-28
   当前缓解：读取逻辑只做只读扫描，并在无法确认 `cwd` 或 `sessionId` 时 fail closed，不把猜测结果显示为当前 workspace 记录。
 
 - 风险：`Claude Code` 某些 transcript 文件可能没有稳定的 `cwd` 字段。
-  当前缓解：优先读取首行 JSON 里的 `cwd`；若没有，则至少支持“当前 workspace 根目录对应 project 目录”的精确路径，不把模糊目录猜测写成已确认行为。
+  当前缓解：扫描 transcript 前若干行里的显式 `cwd`；一旦仍无法确认，就直接 fail closed，不再把 lossy 的 project 目录名映射写成精确 workspace 事实。
 
 - 风险：provider transcript 里的第一条 user message 不一定就是用户自然输入，可能混入 Harness 上下文或 suggestion-mode 包装。
   当前缓解：会话标题提取采用 fail-closed 启发式，只跳过已确认的 synthetic 前缀；一旦无法确认真实用户指令，就回退到 `provider + 短 session id`，而不是猜测标题。
@@ -205,6 +206,7 @@ updated_at: 2026-04-28
 
 ## 9. 当前验证状态
 
+- 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test-sidebar-codicon-bundle.mjs`、`node scripts/test-sidebar-session-history.mjs` 与 `node scripts/test-agent-launch-presets.mjs`。
 - 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
 - 2026-04-28 产品规格新增两条节点列表要求：次级描述只显示状态，不再显示副标题；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。
 - 2026-04-28 已按新规格更新实现：节点列表次级描述收口为“仅状态”，并先用 `resourceUri + FileDecorationProvider` 输出提醒徽标闭合主路径；这一版已经通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `node scripts/test-sidebar-session-history.mjs`。

@@ -24,6 +24,7 @@ try {
   const {
     buildAgentPresetCommandLine,
     buildFreshAgentCommandLine,
+    buildAgentHistoryResumeCommandLine,
     classifyAgentLaunchPreset,
     extractClaudeCommandSessionFlag,
     formatCommandLine,
@@ -535,6 +536,41 @@ try {
     sessionId: undefined
   });
   assert.equal(extractClaudeCommandSessionFlag(['--yolo']), null);
+
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-123',
+      {
+        command: 'codex',
+        defaultArgs: '--profile prod --sandbox workspace-write'
+      }
+    ),
+    'codex --profile prod --sandbox workspace-write resume session-codex-123'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'claude',
+      'session-claude-456',
+      {
+        command: '/opt/claude',
+        defaultArgs: '--model sonnet --permission-mode plan'
+      }
+    ),
+    '/opt/claude --model sonnet --permission-mode plan --resume session-claude-456'
+  );
+  assert.throws(
+    () =>
+      buildAgentHistoryResumeCommandLine(
+        'codex',
+        '   ',
+        {
+          command: 'codex',
+          defaultArgs: ''
+        }
+      ),
+    /恢复会话标识不能为空。/
+  );
 
   console.log('agentLaunchPresets tests passed');
 } finally {

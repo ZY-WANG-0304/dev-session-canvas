@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
-  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager);
+  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri);
   const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {

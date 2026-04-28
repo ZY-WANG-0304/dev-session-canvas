@@ -47,6 +47,24 @@ export function buildFreshAgentCommandLine(
   return buildAgentPresetCommandLine(provider, defaults, launchPreset);
 }
 
+export function buildAgentHistoryResumeCommandLine(
+  provider: AgentProviderKind,
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    throw new Error('恢复会话标识不能为空。');
+  }
+
+  const { command, args } = parseFullAgentCommandLine(
+    buildAgentPresetCommandLine(provider, defaults, 'default')
+  );
+  return provider === 'claude'
+    ? formatCommandLine([command, ...args, '--resume', normalizedSessionId])
+    : formatCommandLine([command, ...args, 'resume', normalizedSessionId]);
+}
+
 export function validateAgentCommandLine(
   commandLine: string,
   provider: AgentProviderKind,
