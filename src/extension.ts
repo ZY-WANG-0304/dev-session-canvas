@@ -15,7 +15,8 @@ import {
   type AgentProviderKind,
   type AgentProviderLaunchDefaults,
   type CanvasCreatableNodeKind,
-  type CanvasNodeKind
+  type CanvasNodeKind,
+  type CanvasNodeSummary
 } from './common/protocol';
 import {
   buildAgentPresetCommandLine,
@@ -274,7 +275,9 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
 }
 
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
-  const items = getCanvasSidebarNodeListItems(panelManager.getCanvasNodes());
+  const nodes = panelManager.getCanvasNodes();
+  const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
+  const items = getCanvasSidebarNodeListItems(nodes);
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
     return;
@@ -283,12 +286,14 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
   const picked = await vscode.window.showQuickPick<SidebarNodeQuickPickItem>(
     items.map((item) => ({
       label: item.label,
-      description: item.description,
-      detail: item.tooltip.replace(/\n/g, ' · '),
+      description: item.attentionPending ? `${item.description} · 有提醒` : item.description,
+      detail: buildSidebarNodeQuickPickDetail(nodesById.get(item.nodeId)),
       nodeId: item.nodeId
     })),
     {
-      placeHolder: '选择一个节点并定位到画布'
+      placeHolder: '选择一个节点并定位到画布',
+      matchOnDescription: true,
+      matchOnDetail: true
     }
   );
   if (!picked) {
@@ -306,11 +311,6 @@ async function showSessionHistoryQuickPick(
   panelManager: CanvasPanelManager
 ): Promise<void> {
   const restoreBlockReason = panelManager.getSessionHistoryRestoreBlockReason();
-  if (restoreBlockReason) {
-    await vscode.window.showWarningMessage(restoreBlockReason);
-    return;
-  }
-
   const items = await sidebarSessionHistoryView.getSessionHistoryItems();
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前 workspace 还没有可恢复的 Codex / Claude Code 会话。');
@@ -320,15 +320,16 @@ async function showSessionHistoryQuickPick(
   const picked = await vscode.window.showQuickPick<SidebarSessionQuickPickItem>(
     items.map((item) => ({
       label: item.title,
-      description: `${item.providerLabel} · ${item.sessionId}`,
-      detail: item.tooltip.replace(/\n/g, ' · '),
+      detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
       provider: item.provider,
       sessionId: item.sessionId,
       titleOverride: item.title
     })),
     {
-      placeHolder: '选择一条历史会话并恢复为新节点',
-      matchOnDescription: true,
+      title: restoreBlockReason,
+      placeHolder: restoreBlockReason
+        ? '当前为只读查看模式；可浏览历史会话，但不能恢复为新 Agent 节点'
+        : '选择一条历史会话并恢复为新节点',
       matchOnDetail: true
     }
   );
@@ -344,6 +345,30 @@ async function showSessionHistoryQuickPick(
   if (!result.restored && result.errorMessage) {
     await vscode.window.showWarningMessage(result.errorMessage);
   }
+}
+
+function buildSidebarNodeQuickPickDetail(node: CanvasNodeSummary | undefined): string | undefined {
+  if (!node || !isCanvasCreatableNodeKind(node.kind)) {
+    return undefined;
+  }
+
+  const parts = [humanizeNodeKind(node.kind)];
+  if (node.kind === 'agent') {
+    const provider = node.metadata?.agent?.provider;
+    const resumeSessionId = node.metadata?.agent?.resumeSessionId?.trim();
+    if (provider) {
+      parts.push(providerLabel(provider));
+    }
+    if (resumeSessionId) {
+      parts.push(resumeSessionId);
+    }
+  }
+
+  return parts.join(' · ');
+}
+
+function buildSidebarSessionQuickPickDetail(timestampLabel: string): string {
+  return timestampLabel;
 }
 
 function buildCreateNodeQuickPickItems(
