@@ -181,11 +181,14 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
 
-        await panelManager.restoreAgentSessionFromHistory({
+        const result = await panelManager.restoreAgentSessionFromHistory({
           provider,
           sessionId,
           title: typeof title === 'string' ? title : undefined
         });
+        if (!result.restored && result.errorMessage) {
+          await vscode.window.showWarningMessage(result.errorMessage);
+        }
       }
     ),
     vscode.commands.registerCommand(COMMAND_IDS.editFileIncludeFilter, async (value?: unknown) => {
@@ -302,6 +305,12 @@ async function showSessionHistoryQuickPick(
   sidebarSessionHistoryView: CanvasSidebarSessionHistoryView,
   panelManager: CanvasPanelManager
 ): Promise<void> {
+  const restoreBlockReason = panelManager.getSessionHistoryRestoreBlockReason();
+  if (restoreBlockReason) {
+    await vscode.window.showWarningMessage(restoreBlockReason);
+    return;
+  }
+
   const items = await sidebarSessionHistoryView.getSessionHistoryItems();
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前 workspace 还没有可恢复的 Codex / Claude Code 会话。');
@@ -327,11 +336,14 @@ async function showSessionHistoryQuickPick(
     return;
   }
 
-  await panelManager.restoreAgentSessionFromHistory({
+  const result = await panelManager.restoreAgentSessionFromHistory({
     provider: picked.provider,
     sessionId: picked.sessionId,
     title: picked.titleOverride
   });
+  if (!result.restored && result.errorMessage) {
+    await vscode.window.showWarningMessage(result.errorMessage);
+  }
 }
 
 function buildCreateNodeQuickPickItems(
