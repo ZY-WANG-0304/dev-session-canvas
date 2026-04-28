@@ -1,0 +1,1 @@
+export const CANVAS_ATTENTION_INDICATOR_ICON_ID = 'bell';

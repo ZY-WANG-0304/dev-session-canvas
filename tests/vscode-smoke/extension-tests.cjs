@@ -8,6 +8,8 @@ const vscode = require('vscode');
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
 const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
+const RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE =
+  '当前 workspace 未受信任，只能查看历史会话，不能恢复为新 Agent 节点。';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -15,10 +17,17 @@ const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   createNode: 'devSessionCanvas.createNode',
+  showNodeList: 'devSessionCanvas.showNodeList',
+  showSessionHistory: 'devSessionCanvas.showSessionHistory',
+  refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
+  focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
+  restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
   testGetSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
+  testGetSidebarNodeListItems: 'devSessionCanvas.__test.getSidebarNodeListItems',
+  testGetSidebarSessionHistoryItems: 'devSessionCanvas.__test.getSidebarSessionHistoryItems',
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
@@ -32,6 +41,8 @@ const COMMAND_IDS = {
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  testPerformSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
+  testPerformSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
@@ -317,12 +328,20 @@ async function runTrustedSmoke() {
     'Exercise the real webview-to-host update path.'
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
+  await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);
+  await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+    expectAgentSessionId: false
+  });
+  await verifySidebarNodeListWebviewUi(agentNode.id);
 
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
+  await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+    expectAgentSessionId: true
+  });
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyExecutionAttentionNotificationBridge(agentNode.id);
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
@@ -374,8 +393,521 @@ async function runTrustedSmoke() {
   await verifyFileActivityViewsAndOpenFiles();
   await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
+  await verifySidebarSessionHistoryRestore();
+  await verifySidebarSessionHistorySearchByTitleUi();
+  await verifySidebarSessionHistoryDoubleClickUi();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+}
+
+async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
+  const baselineSnapshot = await getDebugSnapshot();
+  const nodeItems = await getSidebarNodeListItems();
+  assert.deepStrictEqual(
+    nodeItems.map((item) => item.nodeId).sort(),
+    [agentNodeId, noteNodeId, terminalNodeId].sort()
+  );
+  assert.ok(
+    nodeItems.every((item) => !/file/i.test(item.id)),
+    'Expected sidebar node list to exclude file and file-list projections.'
+  );
+  assert.strictEqual(
+    nodeItems.find((item) => item.nodeId === agentNodeId)?.markerColor,
+    '#22c55e',
+    'Expected agent sidebar nodes to expose the shared green marker color.'
+  );
+  assert.ok(
+    nodeItems.every((item) => item.description === item.status),
+    'Expected sidebar node descriptions to show status only, without subtitle text.'
+  );
+
+  await clearHostMessages();
+  await vscode.commands.executeCommand(COMMAND_IDS.focusSidebarNode, noteNodeId);
+  const hostMessages = await getHostMessages();
+  assert.ok(
+    hostMessages.some(
+      (message) => message.type === 'host/focusNode' && message.payload?.nodeId === noteNodeId
+    ),
+    'Expected focusing a sidebar node item to forward a host/focusNode request to the active canvas surface.'
+  );
+
+  const sanitizedSummarySnapshot = await setPersistedState({
+    ...baselineSnapshot.state,
+    nodes: baselineSnapshot.state.nodes.map((node) =>
+      node.id === agentNodeId
+        ? {
+            ...node,
+            summary: '\u009b?2026| [?2026| Ready for input',
+            metadata: node.metadata?.agent
+              ? {
+                  ...node.metadata,
+                  agent: {
+                    ...node.metadata.agent,
+                    attentionPending: true
+                  }
+                }
+              : node.metadata
+          }
+        : node
+    )
+  });
+  const sanitizedNodeItems = await getSidebarNodeListItems();
+  const sanitizedAgentItem = sanitizedNodeItems.find((item) => item.nodeId === agentNodeId);
+  assert.ok(sanitizedAgentItem, 'Expected the seeded agent node to remain visible in the sidebar node list.');
+  assert.strictEqual(sanitizedAgentItem.summary, 'Ready for input');
+  assert.strictEqual(
+    sanitizedAgentItem.description,
+    sanitizedAgentItem.status,
+    'Expected sidebar node descriptions to remain status-only after summary sanitization.'
+  );
+  assert.ok(
+    !sanitizedAgentItem.tooltip.includes('[?2026|'),
+    'Expected sidebar node tooltips to hide leaked terminal control fragments.'
+  );
+  assert.strictEqual(sanitizedAgentItem.attentionPending, true);
+
+  await setPersistedState(baselineSnapshot.state);
+  assert.ok(
+    sanitizedSummarySnapshot.state.nodes.some((node) => node.id === agentNodeId),
+    'Expected seeded persisted state update to keep the target agent node present.'
+  );
+}
+
+async function verifySidebarNodeListQuickPick(
+  agentNodeId,
+  terminalNodeId,
+  noteNodeId,
+  { expectAgentSessionId }
+) {
+  const snapshot = await getDebugSnapshot();
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  const terminalNode = findNodeById(snapshot, terminalNodeId);
+  const noteNode = findNodeById(snapshot, noteNodeId);
+  const sidebarItems = await getSidebarNodeListItems();
+  const sidebarItemsByNodeId = new Map(sidebarItems.map((item) => [item.nodeId, item]));
+
+  await withInterceptedQuickPicks(async (quickPickCalls) => {
+    await vscode.commands.executeCommand(COMMAND_IDS.showNodeList);
+    assert.strictEqual(quickPickCalls.length, 1, 'Expected showNodeList to open one QuickPick.');
+
+    const [quickPickCall] = quickPickCalls;
+    const agentPickItem = quickPickCall.items.find((item) => item.nodeId === agentNodeId);
+    const terminalPickItem = quickPickCall.items.find((item) => item.nodeId === terminalNodeId);
+    const notePickItem = quickPickCall.items.find((item) => item.nodeId === noteNodeId);
+
+    assert.ok(agentPickItem, 'Expected the Agent node to appear in the node QuickPick.');
+    assert.ok(terminalPickItem, 'Expected the Terminal node to appear in the node QuickPick.');
+    assert.ok(notePickItem, 'Expected the Note node to appear in the node QuickPick.');
+
+    assert.strictEqual(agentPickItem.label, sidebarItemsByNodeId.get(agentNodeId)?.label);
+    assert.strictEqual(terminalPickItem.label, sidebarItemsByNodeId.get(terminalNodeId)?.label);
+    assert.strictEqual(notePickItem.label, sidebarItemsByNodeId.get(noteNodeId)?.label);
+
+    assert.strictEqual(
+      agentPickItem.description,
+      formatExpectedSidebarNodeQuickPickDescription(sidebarItemsByNodeId.get(agentNodeId))
+    );
+    assert.strictEqual(
+      terminalPickItem.description,
+      formatExpectedSidebarNodeQuickPickDescription(sidebarItemsByNodeId.get(terminalNodeId))
+    );
+    assert.strictEqual(
+      notePickItem.description,
+      formatExpectedSidebarNodeQuickPickDescription(sidebarItemsByNodeId.get(noteNodeId))
+    );
+
+    assert.strictEqual(
+      agentPickItem.detail,
+      buildExpectedSidebarNodeQuickPickDetail(agentNode, { expectSessionId: expectAgentSessionId })
+    );
+    assert.strictEqual(terminalPickItem.detail, buildExpectedSidebarNodeQuickPickDetail(terminalNode));
+    assert.strictEqual(notePickItem.detail, buildExpectedSidebarNodeQuickPickDetail(noteNode));
+  });
+}
+
+async function verifySidebarNodeListWebviewUi(agentNodeId) {
+  const baselineSnapshot = await getDebugSnapshot();
+  const seededSnapshot = await setPersistedState({
+    ...baselineSnapshot.state,
+    nodes: baselineSnapshot.state.nodes.map((node) =>
+      node.id === agentNodeId
+        ? {
+            ...node,
+            summary: '等待处理通知',
+            metadata: node.metadata?.agent
+              ? {
+                  ...node.metadata,
+                  agent: {
+                    ...node.metadata.agent,
+                    attentionPending: true
+                  }
+                }
+              : node.metadata
+          }
+        : node
+    )
+  });
+
+  try {
+    await clearHostMessages();
+    const actionSnapshot = await performSidebarNodeListAction(
+      {
+        kind: 'clickItem',
+        itemId: `node/${agentNodeId}`
+      },
+      10000
+    );
+    assert.ok(
+      actionSnapshot.visibleItemIds.includes(`node/${agentNodeId}`),
+      'Expected the sidebar node list UI action to target a visible node row.'
+    );
+    assert.strictEqual(
+      actionSnapshot.selectedId,
+      `node/${agentNodeId}`,
+      'Expected clicking a sidebar node row to keep that node selected in the webview list.'
+    );
+    assert.ok(
+      actionSnapshot.attentionItemIds.includes(`node/${agentNodeId}`),
+      'Expected the sidebar node list UI snapshot to report the node with a visible attention indicator.'
+    );
+
+    const hostMessages = await waitForHostMessages(
+      (messages) => messages.some((message) => message.type === 'host/focusNode' && message.payload?.nodeId === agentNodeId),
+      5000
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) => message.type === 'host/focusNode' && message.payload?.nodeId === agentNodeId
+      ),
+      'Expected clicking a sidebar node row in the webview list to forward a host/focusNode request.'
+    );
+  } finally {
+    await setPersistedState(baselineSnapshot.state);
+  }
+
+  assert.ok(
+    seededSnapshot.state.nodes.some((node) => node.id === agentNodeId),
+    'Expected the seeded sidebar node UI state to keep the target agent node present.'
+  );
+}
+
+async function verifySidebarSessionHistoryRestore() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const fakeHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-sidebar-history-'));
+  const codexSessionId = 'sidebar-codex-session-123';
+  const firstUserInstruction = '请只用这个标题恢复侧栏历史会话';
+
+  try {
+    await writeCodexSessionFile({
+      homeDir: fakeHomeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:00:00.000Z'),
+      fileSuffix: 'sidebar',
+      userMessages: [
+        '# AGENTS.md instructions for /tmp/sidebar-history\n\n<INSTRUCTIONS>\n...</INSTRUCTIONS>',
+        firstUserInstruction
+      ]
+    });
+
+    const historyItems = await getSidebarSessionHistoryItems(fakeHomeDir);
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the sidebar session history test command to list the seeded Codex session.');
+    assert.ok(
+      typeof codexItem.timestampLabel === 'string' && codexItem.timestampLabel.length > 0,
+      'Expected sidebar session history items to expose the secondary metadata line.'
+    );
+    assert.strictEqual(codexItem.title, firstUserInstruction);
+    assert.match(codexItem.timestampLabel, new RegExp(`^Codex · .+ · ${codexSessionId}$`));
+    assert.ok(
+      !(codexItem.timestampLabel.split(' · ')[1] ?? '').includes(' '),
+      'Expected sidebar session history items to use the compact relative time label in the secondary line.'
+    );
+    assert.ok(!codexItem.tooltip.includes('节点副标题：'));
+    assert.ok(
+      codexItem.searchText.includes(firstUserInstruction.toLowerCase()),
+      'Expected sidebar session history search text to include the displayed session title.'
+    );
+
+    const baselineSnapshot = await getDebugSnapshot();
+    await vscode.commands.executeCommand(
+      COMMAND_IDS.restoreSidebarSessionHistoryEntry,
+      codexItem.provider,
+      codexItem.sessionId,
+      codexItem.title
+    );
+
+    const restoredSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) =>
+          node.kind === 'agent' &&
+          node.title === codexItem.title &&
+          node.metadata?.agent?.provider === 'codex' &&
+          typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`resume ${codexSessionId}`)
+      );
+    }, 20000);
+
+    assert.strictEqual(
+      restoredSnapshot.state.nodes.length,
+      baselineSnapshot.state.nodes.length + 1,
+      'Expected restoring a sidebar history entry to create one additional Agent node.'
+    );
+
+    const restoredAgentNode = restoredSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.title === codexItem.title &&
+        node.metadata?.agent?.provider === 'codex' &&
+        typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+        node.metadata.agent.customLaunchCommand.includes(`resume ${codexSessionId}`)
+    );
+    assert.ok(restoredAgentNode, 'Expected the restored sidebar history entry to materialize as a new Codex agent node.');
+  } finally {
+    await fs.rm(fakeHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifySidebarSessionHistorySearchByTitleUi() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const homeDir = os.homedir();
+  const codexSessionId = 'sidebar-codex-ui-search-123';
+  const firstUserInstruction = '海象打油诗搜索回归';
+  let sessionFilePath;
+
+  try {
+    await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: ''
+      },
+      10000
+    );
+
+    sessionFilePath = await writeCodexSessionFile({
+      homeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:20:00.000Z'),
+      fileSuffix: 'sidebar-ui-search',
+      userMessages: [
+        '# AGENTS.md instructions for /tmp/sidebar-history-search\n\n<INSTRUCTIONS>\n...</INSTRUCTIONS>',
+        firstUserInstruction
+      ]
+    });
+
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+    const historyItems = await getSidebarSessionHistoryItems();
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the sidebar history UI search test session to appear in the session list.');
+
+    const actionSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: '打油诗搜索'
+      },
+      10000
+    );
+    assert.ok(
+      actionSnapshot.visibleItemIds.includes(codexItem.id),
+      'Expected searching by a title fragment to keep the matching session visible.'
+    );
+  } finally {
+    try {
+      await performSidebarSessionHistoryAction(
+        {
+          kind: 'filterItems',
+          query: ''
+        },
+        10000
+      );
+    } catch {}
+
+    if (sessionFilePath) {
+      await fs.rm(sessionFilePath, { force: true });
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
+}
+
+async function verifySidebarSessionHistoryDoubleClickUi() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const homeDir = os.homedir();
+  const codexSessionId = 'sidebar-codex-ui-dblclick-123';
+  const firstUserInstruction = '请通过双击在画布中恢复这个会话';
+  let sessionFilePath;
+
+  try {
+    await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: ''
+      },
+      10000
+    );
+
+    sessionFilePath = await writeCodexSessionFile({
+      homeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:30:00.000Z'),
+      fileSuffix: 'sidebar-ui-dblclick',
+      userMessages: [
+        '# AGENTS.md instructions for /tmp/sidebar-history-ui\n\n<INSTRUCTIONS>\n...</INSTRUCTIONS>',
+        firstUserInstruction
+      ]
+    });
+
+    const historyItems = await getSidebarSessionHistoryItems();
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the sidebar history UI test session to appear in the session list.');
+
+    const baselineSnapshot = await getDebugSnapshot();
+    const actionSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'doubleClickItem',
+        itemId: codexItem.id
+      },
+      10000
+    );
+    assert.ok(
+      actionSnapshot.visibleItemIds.includes(codexItem.id),
+      'Expected the UI double-click action to target a currently visible sidebar session row.'
+    );
+    assert.strictEqual(
+      actionSnapshot.selectedId,
+      codexItem.id,
+      'Expected the first click of the UI double-click action to keep the target session selected.'
+    );
+
+    const restoredSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) =>
+          node.kind === 'agent' &&
+          node.title === codexItem.title &&
+          node.metadata?.agent?.provider === 'codex' &&
+          typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`resume ${codexSessionId}`)
+      );
+    }, 20000);
+
+    assert.strictEqual(
+      restoredSnapshot.state.nodes.length,
+      baselineSnapshot.state.nodes.length + 1,
+      'Expected double-clicking a sidebar session row to create one additional Agent node.'
+    );
+  } finally {
+    if (sessionFilePath) {
+      await fs.rm(sessionFilePath, { force: true });
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
+}
+
+async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const homeDir = os.homedir();
+  const codexSessionId = 'restricted-sidebar-history-123';
+  const firstUserInstruction = '受限工作区历史恢复禁用回归';
+  let sessionFilePath;
+
+  try {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
+    sessionFilePath = await writeCodexSessionFile({
+      homeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:40:00.000Z'),
+      fileSuffix: 'restricted-history',
+      userMessages: [firstUserInstruction]
+    });
+
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+    const historyItems = await getSidebarSessionHistoryItems();
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the restricted-workspace session history entry to be listed.');
+
+    const filteredSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: '历史恢复禁用'
+      },
+      10000
+    );
+    assert.ok(
+      filteredSnapshot.visibleItemIds.includes(codexItem.id),
+      'Expected the restricted-workspace session history entry to remain visible after filtering by title.'
+    );
+    assert.ok(
+      filteredSnapshot.disabledItemIds.includes(codexItem.id),
+      'Expected restricted-workspace session history rows to be disabled instead of remaining restorable.'
+    );
+    assert.strictEqual(filteredSnapshot.statusNoteText, RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE);
+
+    const baselineSnapshot = await getDebugSnapshot();
+    const doubleClickSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'doubleClickItem',
+        itemId: codexItem.id
+      },
+      10000
+    );
+    assert.ok(doubleClickSnapshot.disabledItemIds.includes(codexItem.id));
+
+    const postActionSnapshot = await getDebugSnapshot();
+    assert.strictEqual(
+      postActionSnapshot.state.nodes.length,
+      baselineSnapshot.state.nodes.length,
+      'Expected double-clicking a restricted-workspace history row not to create any Agent node.'
+    );
+    assert.ok(
+      !postActionSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.title === codexItem.title
+      ),
+      'Expected restricted-workspace history restore attempts not to materialize a new Agent node.'
+    );
+
+    await withInterceptedWarningMessages(async (warningCalls) => {
+      await withInterceptedQuickPicks(
+        async (quickPickCalls) => {
+          await vscode.commands.executeCommand(COMMAND_IDS.showSessionHistory);
+
+          assert.strictEqual(quickPickCalls.length, 1, 'Expected restricted session history command to open one QuickPick.');
+          const [quickPickCall] = quickPickCalls;
+          const quickPickItem = quickPickCall.items.find((item) => item.sessionId === codexSessionId);
+
+          assert.ok(quickPickItem, 'Expected restricted session history QuickPick to include the matching history item.');
+          assert.strictEqual(quickPickCall.options?.title, RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE);
+          assert.match(
+            quickPickCall.options?.placeHolder ?? '',
+            /只读查看模式/,
+            'Expected restricted session history QuickPick to explain the read-only mode.'
+          );
+          assert.strictEqual(quickPickItem.description, undefined);
+          assert.match(quickPickItem.detail ?? '', /^Codex · .+ · restricted-sidebar-history-123$/);
+          assert.deepStrictEqual(
+            warningCalls.map((call) => call.message),
+            [RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE]
+          );
+        },
+        async ({ items }) => items.find((item) => item.sessionId === codexSessionId)
+      );
+    });
+  } finally {
+    if (sessionFilePath) {
+      await fs.rm(sessionFilePath, { force: true });
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
 }
 
 async function verifyCreateNodeCommandQuickPick() {
@@ -1814,6 +2346,7 @@ async function runRestrictedSmoke() {
     restrictedRuntimeNodes.terminalNode.id
   );
   await verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState();
+  await verifyRestrictedSessionHistoryRestoreIsDisabled();
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
@@ -6619,6 +7152,14 @@ async function getSidebarSummaryItems() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetSidebarSummaryItems);
 }
 
+async function getSidebarNodeListItems() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetSidebarNodeListItems);
+}
+
+async function getSidebarSessionHistoryItems(homeDir) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetSidebarSessionHistoryItems, homeDir);
+}
+
 async function getRuntimeSupervisorState() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetRuntimeSupervisorState);
 }
@@ -6694,6 +7235,48 @@ async function setPersistedState(rawState) {
   return vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, rawState);
 }
 
+async function writeCodexSessionFile({ homeDir, sessionId, cwd, timestampMs, fileSuffix, userMessages = [] }) {
+  const [year, month, day] = toDateDirectoryParts(timestampMs);
+  const sessionsDir = path.join(homeDir, '.codex', 'sessions', year, month, day);
+  await fs.mkdir(sessionsDir, { recursive: true });
+
+  const timestamp = new Date(timestampMs).toISOString();
+  const payload = {
+    timestamp,
+    type: 'session_meta',
+    payload: {
+      id: sessionId,
+      timestamp,
+      cwd,
+      originator: 'sidebar-session-history-smoke'
+    }
+  };
+
+  const lines = [JSON.stringify(payload)];
+  for (const message of userMessages) {
+    lines.push(
+      JSON.stringify({
+        timestamp,
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: message
+            }
+          ]
+        }
+      })
+    );
+  }
+
+  const filePath = path.join(sessionsDir, `rollout-${sessionId}-${fileSuffix}.jsonl`);
+  await fs.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8');
+  return filePath;
+}
+
 async function seedClaudeSessionTranscriptFile(sessionId) {
   const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
   const projectDirectoryName = workspaceCwd.replace(/[^a-zA-Z0-9]+/g, '-');
@@ -6703,6 +7286,15 @@ async function seedClaudeSessionTranscriptFile(sessionId) {
   await fs.mkdir(transcriptDirectory, { recursive: true });
   await fs.writeFile(transcriptFilePath, '{}\n', 'utf8');
   return transcriptFilePath;
+}
+
+function toDateDirectoryParts(timestampMs) {
+  const date = new Date(timestampMs);
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ];
 }
 
 async function simulateRuntimeReload() {
@@ -6732,6 +7324,22 @@ async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5
     COMMAND_IDS.testPerformWebviewDomAction,
     action,
     surface,
+    timeoutMs
+  );
+}
+
+async function performSidebarNodeListAction(action, timeoutMs = 5000) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testPerformSidebarNodeListAction,
+    action,
+    timeoutMs
+  );
+}
+
+async function performSidebarSessionHistoryAction(action, timeoutMs = 5000) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testPerformSidebarSessionHistoryAction,
+    action,
     timeoutMs
   );
 }
@@ -7092,6 +7700,80 @@ async function withInterceptedInformationMessages(runIntercepted, resolveSelecti
   } finally {
     vscode.window.showInformationMessage = originalShowInformationMessage;
   }
+}
+
+async function withInterceptedWarningMessages(runIntercepted, resolveSelection) {
+  const originalShowWarningMessage = vscode.window.showWarningMessage;
+  const calls = [];
+
+  vscode.window.showWarningMessage = async (message, ...items) => {
+    calls.push({ message, items });
+    return typeof resolveSelection === 'function'
+      ? await resolveSelection({ message, items, calls })
+      : undefined;
+  };
+
+  assert.notStrictEqual(
+    vscode.window.showWarningMessage,
+    originalShowWarningMessage,
+    'Failed to intercept vscode.window.showWarningMessage.'
+  );
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.window.showWarningMessage = originalShowWarningMessage;
+  }
+}
+
+async function withInterceptedQuickPicks(runIntercepted, resolveSelection) {
+  const originalShowQuickPick = vscode.window.showQuickPick;
+  const calls = [];
+
+  vscode.window.showQuickPick = async (items, options) => {
+    const resolvedItems = Array.isArray(items) ? items : await items;
+    calls.push({ items: resolvedItems, options });
+    return typeof resolveSelection === 'function'
+      ? await resolveSelection({ items: resolvedItems, options, calls })
+      : undefined;
+  };
+
+  assert.notStrictEqual(vscode.window.showQuickPick, originalShowQuickPick, 'Failed to intercept vscode.window.showQuickPick.');
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.window.showQuickPick = originalShowQuickPick;
+  }
+}
+
+function formatExpectedSidebarNodeQuickPickDescription(sidebarItem) {
+  if (!sidebarItem) {
+    return undefined;
+  }
+
+  return sidebarItem.attentionPending ? `${sidebarItem.description} · 有提醒` : sidebarItem.description;
+}
+
+function buildExpectedSidebarNodeQuickPickDetail(node, options = {}) {
+  if (node.kind === 'agent') {
+    const provider = node.metadata?.agent?.provider === 'claude' ? 'Claude Code' : 'Codex';
+    const sessionId = node.metadata?.agent?.resumeSessionId;
+    if (options.expectSessionId) {
+      assert.ok(sessionId, 'Expected the Agent node QuickPick detail to include a provider session id.');
+    }
+    return [ 'Agent', provider, sessionId ].filter(Boolean).join(' · ');
+  }
+
+  if (node.kind === 'terminal') {
+    return 'Terminal';
+  }
+
+  if (node.kind === 'note') {
+    return 'Note';
+  }
+
+  return undefined;
 }
 
 async function waitForActiveEditor(predicate, timeoutMs = 8000) {

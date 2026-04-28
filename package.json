@@ -50,10 +50,15 @@
     "onCommand:devSessionCanvas.openCanvasInPanel",
     "onCommand:devSessionCanvas.openSettings",
     "onCommand:devSessionCanvas.createNode",
+    "onCommand:devSessionCanvas.showNodeList",
+    "onCommand:devSessionCanvas.showSessionHistory",
+    "onCommand:devSessionCanvas.refreshSessionHistory",
     "onCommand:devSessionCanvas.resetCanvasState",
     "onCommand:devSessionCanvas.dumpHostDiagnostics",
     "onView:devSessionCanvas.sidebar",
     "onView:devSessionCanvas.sidebarFilters",
+    "onView:devSessionCanvas.sidebarNodes",
+    "onView:devSessionCanvas.sidebarSessions",
     "onView:devSessionCanvas.canvasPanel",
     "onWebviewPanel:devSessionCanvas.canvas"
   ],
@@ -104,6 +109,16 @@
           "id": "devSessionCanvas.sidebarFilters",
           "name": "%view.canvas.sidebar.actions.title%",
           "type": "webview"
+        },
+        {
+          "id": "devSessionCanvas.sidebarNodes",
+          "name": "%view.canvas.sidebar.nodes.title%",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvas.sidebarSessions",
+          "name": "%view.canvas.sidebar.sessions.title%",
+          "type": "webview"
         }
       ],
       "devSessionCanvasPanel": [
@@ -140,6 +155,21 @@
         "icon": "$(add)"
       },
       {
+        "command": "devSessionCanvas.showNodeList",
+        "title": "%command.showNodeList.title%",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "devSessionCanvas.showSessionHistory",
+        "title": "%command.showSessionHistory.title%",
+        "icon": "$(history)"
+      },
+      {
+        "command": "devSessionCanvas.refreshSessionHistory",
+        "title": "%command.refreshSessionHistory.title%",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "devSessionCanvas.resetCanvasState",
         "title": "%command.resetCanvasState.title%",
         "icon": "$(discard)"
@@ -161,6 +191,11 @@
           "command": "devSessionCanvas.openSettings",
           "when": "view == devSessionCanvas.sidebar",
           "group": "navigation@99"
+        },
+        {
+          "command": "devSessionCanvas.refreshSessionHistory",
+          "when": "view == devSessionCanvas.sidebarSessions",
+          "group": "navigation@1"
         },
         {
           "command": "devSessionCanvas.createNode",
@@ -312,16 +347,18 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:execution-terminal-native-helpers && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:agent-launch-presets && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:execution-terminal-native-helpers && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:agent-launch-presets && npm run test:sidebar-session-history && npm run test:smoke && npm run test:webview",
     "test:agent-cli-resolver": "node scripts/test-agent-cli-resolver.mjs",
     "test:agent-launch-presets": "node scripts/test-agent-launch-presets.mjs",
     "test:extension-storage-paths": "node scripts/test-extension-storage-paths.mjs",
     "test:execution-session-bridge": "node scripts/test-execution-session-bridge.mjs",
     "test:package-vsix-command": "node scripts/test-package-vsix-command.mjs",
+    "test:sidebar-codicon-bundle": "node scripts/test-sidebar-codicon-bundle.mjs",
     "test:execution-attention-signals": "node scripts/test-execution-attention-signals.mjs",
     "test:execution-terminal-line-context-tracker": "node scripts/test-execution-terminal-line-context-tracker.mjs",
     "test:execution-terminal-native-helpers": "node scripts/test-execution-terminal-native-helpers.mjs",
     "test:runtime-supervisor-paths": "node scripts/test-runtime-supervisor-paths.mjs",
+    "test:sidebar-session-history": "node scripts/test-sidebar-session-history.mjs",
     "test:workspace-relative-paths": "node --no-warnings --experimental-transform-types scripts/test-workspace-relative-paths.mts",
     "test:vscode-smoke-runner-env": "node scripts/test-vscode-smoke-runner-env.mjs",
     "test:smoke": "npm run build && node scripts/run-vscode-smoke.mjs",

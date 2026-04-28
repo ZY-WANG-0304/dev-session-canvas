@@ -45,11 +45,15 @@ const supervisorLauncherConfig = {
 };
 
 const webviewConfig = {
-  entryPoints: ['src/webview/main.tsx'],
+  entryPoints: {
+    webview: 'src/webview/main.tsx',
+    'sidebar-codicon': 'src/webview/sidebar-codicon.css'
+  },
   bundle: true,
   ...sharedConfig,
   format: 'iife',
-  outfile: 'dist/webview.js',
+  outdir: 'dist',
+  entryNames: '[name]',
   platform: 'browser',
   target: 'es2020',
   loader: {
