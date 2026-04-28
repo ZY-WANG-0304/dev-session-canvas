@@ -62,7 +62,7 @@ updated_at: 2026-04-28
 
 ## 6. 当前现状
 
-截至 2026-04-14，仓库里已经成立的事实如下：
+截至 2026-04-28，仓库里已经成立的事实如下：
 
 - `package.json` 具备基础扩展元数据，且仍标记为 `preview: true`。
 - `README.md` 已明确写成“产品已处于公开 Preview 阶段”；发布执行与对外口径已收口到 `docs/public-preview-release-playbook.md`。
@@ -71,13 +71,13 @@ updated_at: 2026-04-28
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
 - `scripts/package-vsix.mjs` 当前会在打包阶段显式传入 `--readme-path README.marketplace.md`，确保后续 `publish --packagePath` 上传的现成 VSIX 已内嵌 Marketplace 专用 README，而不是依赖发布时重新替换。
 - `scripts/package-vsix.mjs` 默认会把 Marketplace README 的相对资源改写到当前 `HEAD` 对应的最终 git ref；若在不含 `.git` 元数据的 clean checkout 或导出目录中打包，则必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，并在打包前校验这些相对资源能在该 ref 上解析成功。
-- 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
-- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 验证，可在干净目录内稳定产出约 `1.90 MB`、`43 files` 的 VSIX，并再次通过 packaged-payload smoke。
+- 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `2.14 MB`、`45 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
+- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 验证，可在干净目录内稳定产出约 `2.14 MB`、`45 files` 的 VSIX，并再次通过 packaged-payload smoke。
 - 当前候选 release head 也已再次通过隔离 `clean checkout` 验证，说明这轮瘦身后的最小 Preview 工件已经固定到可追溯提交。
 - 仓库已补上 `validate:clean-checkout:vsix` 隔离验证入口，可在 `/tmp` 下准备 clean checkout 验证，不必直接扰动当前工作树。
 - 当前对外分发主路径已确定为 `Visual Studio Marketplace Preview`，而不是手动分发 `.vsix`。
 - `node-pty` 依赖包已完成第二轮收口，VSIX 当前只保留运行时 `lib/*.js`、所需 `prebuilds` 原生文件，以及运行时仍会解析的 `package.json` / `LICENSE`。
-- `scripts/run-vscode-vsix-smoke.mjs` 现会在 packaged-payload smoke 前显式校验：VSIX 不再携带 `.github/`，以及 `node-pty` 的 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 或 `.pdb`。
+- `scripts/run-vscode-vsix-smoke.mjs` 现会在 packaged-payload smoke 前显式校验：VSIX 不再携带 `.github/`，也不再携带 `node-pty` 的 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 或 `.pdb`。
 - `remote-ssh-real-reopen` 的 storage 恢复链路已进一步修复多 slot 场景：当前实现会扫描同一 canonical workspace id 下的 sibling slots，按 snapshot 时间戳选择最新 source；若 source 不等于 current slot，只迁回 `canvas-state.json` 并由 current slot 继续写主快照，而 live-runtime 继续绑定 source slot 的 `runtimeStoragePath`。仓库已补 `scripts/test-extension-storage-paths.mjs` 与 `npm run test:smoke-storage-slot` 作为自动化回归，验证 slot 选择、主快照写回以及 `stateHash` 一致性。
 - 当前首发主路径已完成一轮人工验收，用户反馈为“人工验收没发现问题”。
 - 已补齐 GitHub issue 模板与 `docs/support.md`，普通反馈、安全问题和 Preview 支持边界已有固定入口。
@@ -91,10 +91,10 @@ updated_at: 2026-04-28
 本地证据：
 
 - 第一轮收口前，仓库内曾出现约 `293 MB` 的 VSIX，并把 `.debug/playwright/`、`.debug/vscode-smoke/` 等调试缓存一起打入包内。
-- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出约 `1.90 MB`、`43 files` 的 VSIX。
+- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出约 `2.14 MB`、`45 files` 的 VSIX。
 - 当前 `npm run test:vsix-smoke` 已再次通过，说明第二轮收口后的 packaged payload 仍能独立启动并跑通 trusted smoke。
-- 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`、`binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
-- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `1.90 MB`、`43 files`；基于当前候选 release head 的 release-head 证据也已同步更新到同一版本的最小工件。
+- 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`，以及 `node-pty` 的 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
+- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `2.14 MB`、`45 files`；基于当前候选 release head 的 release-head 证据也已同步更新到同一版本的最小工件。
 - 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` / `Note` 主路径已补齐当前轮功能可用性验证；Windows 下使用 `Codex` 时执行节点内历史仍有无法向上翻页的已知问题。
 
 因此，当前只需保持以下约束与 release-day 动作：
@@ -180,7 +180,7 @@ updated_at: 2026-04-28
 截至当前研究结论：
 
 - 当前仓库已经完成公开 `Marketplace Preview` 所需的发布包治理与发布说明收口；剩余事项主要是 release-day 执行，而不是仓库内仍缺少的发布资产。
-- 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `1.90 MB` / `43 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
+- 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `2.14 MB` / `45 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
 - 公开发布方向已经确认：首发渠道先收敛到 `Visual Studio Marketplace`；`Open VSX` 作为后续补充渠道单独决策。
 - `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；当前 `0.3.0` 还额外把“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制同步进了对外口径。在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
 
@@ -189,7 +189,7 @@ updated_at: 2026-04-28
 本研究依赖以下证据来源：
 
 - 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/support.md`、`LICENSE` 与打包脚本现状。
-- 本地执行 `npm run package:vsix`、`npm run test:vsix-smoke` 与 `npm run validate:clean-checkout:vsix -- --ref HEAD` 的实际结果，确认当前工作树与当前候选 release head 已能稳定产出约 `1.90 MB` / `43 files` 的 VSIX，且收口后的 packaged payload 仍可启动。
+- 本地执行 `npm run package:vsix`、`npm run test:vsix-smoke`，以及 `npm run validate:clean-checkout:vsix -- --ref HEAD` / `npm run validate:clean-checkout:vsix -- --ref HEAD --skip-vsix-smoke` 的实际结果，确认当前工作树与当前候选 release head 已能稳定产出约 `2.14 MB` / `45 files` 的 VSIX，且收口后的 packaged payload 仍可启动。
 - `Visual Studio Code` 官方发布文档：<https://code.visualstudio.com/api/working-with-extensions/publishing-extension>
 - `Open VSX` 发布文档：<https://github.com/eclipse/openvsx/wiki/Publishing-Extensions>
 
