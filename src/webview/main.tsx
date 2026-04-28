@@ -79,6 +79,8 @@ import {
   formatCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
+import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
+import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -2638,7 +2640,7 @@ function ExecutionAttentionStatus(props: {
     <div className="execution-status-cluster">
       {props.attentionPending ? (
         <span
-          className="execution-attention-indicator codicon codicon-bell"
+          className={`execution-attention-indicator codicon codicon-${CANVAS_ATTENTION_INDICATOR_ICON_ID}`}
           data-attention-indicator="true"
           aria-label="未确认终端提醒"
           title="未确认终端提醒"
@@ -5538,18 +5540,7 @@ function renderFileIcon(icon: CanvasFileIconDescriptor | undefined, fallbackLabe
 }
 
 function colorForKind(kind: CanvasNodeKind): string {
-  switch (kind) {
-    case 'agent':
-      return '#22c55e';
-    case 'terminal':
-      return '#38bdf8';
-    case 'note':
-      return '#a78bfa';
-    case 'file':
-      return '#f59e0b';
-    case 'file-list':
-      return '#f97316';
-  }
+  return colorForCanvasNodeKind(kind);
 }
 
 function minimapFillColorForKind(kind: CanvasNodeKind): string {

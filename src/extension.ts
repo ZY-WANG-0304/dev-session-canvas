@@ -24,6 +24,15 @@ import {
 } from './common/agentLaunchPresets';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
+import {
+  CanvasSidebarNodeListView,
+  getCanvasSidebarNodeListItems,
+  isSidebarNodeListTestAction
+} from './sidebar/CanvasSidebarNodeListView';
+import {
+  CanvasSidebarSessionHistoryView,
+  isSidebarSessionHistoryTestAction
+} from './sidebar/CanvasSidebarSessionHistoryView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
 
 let activePanelManager: CanvasPanelManager | undefined;
@@ -58,6 +67,8 @@ export function activate(context: vscode.ExtensionContext): void {
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
+  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager);
+  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
@@ -74,8 +85,20 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     sidebarSummaryView,
     sidebarActionsView,
+    sidebarNodeListView,
+    sidebarSessionHistoryView,
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
     vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    }),
+    vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarNodes, sidebarNodeListView, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    }),
+    vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarSessions, sidebarSessionHistoryView, {
       webviewOptions: {
         retainContextWhenHidden: true
       }
@@ -115,6 +138,18 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
+  registerCommand(context, COMMAND_IDS.showNodeList, async () => {
+    await showSidebarNodeListQuickPick(panelManager);
+  });
+
+  registerCommand(context, COMMAND_IDS.showSessionHistory, async () => {
+    await showSessionHistoryQuickPick(sidebarSessionHistoryView, panelManager);
+  });
+
+  registerCommand(context, COMMAND_IDS.refreshSessionHistory, async () => {
+    await sidebarSessionHistoryView.refresh();
+  });
+
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
     const confirmed = await vscode.window.showWarningMessage(
       '重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
@@ -129,6 +164,30 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.focusSidebarNode, async (nodeId?: unknown) => {
+      if (typeof nodeId !== 'string' || nodeId.trim().length === 0) {
+        return;
+      }
+
+      const focused = await panelManager.focusNodeById(nodeId);
+      if (!focused) {
+        await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+      }
+    }),
+    vscode.commands.registerCommand(
+      COMMAND_IDS.restoreSidebarSessionHistoryEntry,
+      async (provider?: unknown, sessionId?: unknown, title?: unknown) => {
+        if (!isAgentProviderKind(provider) || typeof sessionId !== 'string' || sessionId.trim().length === 0) {
+          return;
+        }
+
+        await panelManager.restoreAgentSessionFromHistory({
+          provider,
+          sessionId,
+          title: typeof title === 'string' ? title : undefined
+        });
+      }
+    ),
     vscode.commands.registerCommand(COMMAND_IDS.editFileIncludeFilter, async (value?: unknown) => {
       await updateCanvasFileFilterFromCommand(panelManager, 'include', value);
     }),
@@ -158,7 +217,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewPanelSerializer(CanvasPanelManager.viewType, panelManager)
   );
 
-  registerTestCommands(context, panelManager);
+  registerTestCommands(context, panelManager, sidebarNodeListView, sidebarSessionHistoryView);
 }
 
 export async function deactivate(): Promise<void> {
@@ -199,6 +258,80 @@ async function promptCreateNodeRequest(
     }
     return launchRequest;
   }
+}
+
+interface SidebarNodeQuickPickItem extends vscode.QuickPickItem {
+  nodeId: string;
+}
+
+interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
+  provider: AgentProviderKind;
+  sessionId: string;
+  titleOverride?: string;
+}
+
+async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
+  const items = getCanvasSidebarNodeListItems(panelManager.getCanvasNodes());
+  if (items.length === 0) {
+    await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick<SidebarNodeQuickPickItem>(
+    items.map((item) => ({
+      label: item.label,
+      description: item.description,
+      detail: item.tooltip.replace(/\n/g, ' · '),
+      nodeId: item.nodeId
+    })),
+    {
+      placeHolder: '选择一个节点并定位到画布'
+    }
+  );
+  if (!picked) {
+    return;
+  }
+
+  const focused = await panelManager.focusNodeById(picked.nodeId);
+  if (!focused) {
+    await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+  }
+}
+
+async function showSessionHistoryQuickPick(
+  sidebarSessionHistoryView: CanvasSidebarSessionHistoryView,
+  panelManager: CanvasPanelManager
+): Promise<void> {
+  const items = await sidebarSessionHistoryView.getSessionHistoryItems();
+  if (items.length === 0) {
+    await vscode.window.showInformationMessage('当前 workspace 还没有可恢复的 Codex / Claude Code 会话。');
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick<SidebarSessionQuickPickItem>(
+    items.map((item) => ({
+      label: item.title,
+      description: `${item.providerLabel} · ${item.sessionId}`,
+      detail: item.tooltip.replace(/\n/g, ' · '),
+      provider: item.provider,
+      sessionId: item.sessionId,
+      titleOverride: item.title
+    })),
+    {
+      placeHolder: '选择一条历史会话并恢复为新节点',
+      matchOnDescription: true,
+      matchOnDetail: true
+    }
+  );
+  if (!picked) {
+    return;
+  }
+
+  await panelManager.restoreAgentSessionFromHistory({
+    provider: picked.provider,
+    sessionId: picked.sessionId,
+    title: picked.titleOverride
+  });
 }
 
 function buildCreateNodeQuickPickItems(
@@ -658,7 +791,12 @@ function splitCanvasFileFilterInput(value: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-function registerTestCommands(context: vscode.ExtensionContext, panelManager: CanvasPanelManager): void {
+function registerTestCommands(
+  context: vscode.ExtensionContext,
+  panelManager: CanvasPanelManager,
+  sidebarNodeListView: CanvasSidebarNodeListView,
+  sidebarSessionHistoryView: CanvasSidebarSessionHistoryView
+): void {
   if (context.extensionMode !== vscode.ExtensionMode.Test) {
     return;
   }
@@ -667,6 +805,16 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarSummaryItems, () =>
       getCanvasSidebarSummaryItems(panelManager.getSidebarState())
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarNodeListItems, () =>
+      getCanvasSidebarNodeListItems(panelManager.getCanvasNodes())
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.getSidebarSessionHistoryItems,
+      async (homeDir?: unknown) =>
+        sidebarSessionHistoryView.getSessionHistoryItems({
+          homeDir: typeof homeDir === 'string' && homeDir.trim().length > 0 ? homeDir : undefined
+        })
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getRuntimeSupervisorState, () =>
       panelManager.getRuntimeSupervisorStateForTest()
@@ -791,6 +939,34 @@ function registerTestCommands(context: vscode.ExtensionContext, panelManager: Ca
           parseCanvasSurfaceLocation(surface),
           typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
         );
+      }
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.performSidebarNodeListAction,
+      async (action?: unknown, timeoutMs?: unknown) => {
+        if (!isSidebarNodeListTestAction(action)) {
+          throw new Error('测试命令 devSessionCanvas.__test.performSidebarNodeListAction 需要有效的侧栏 DOM 动作。');
+        }
+
+        const normalizedTimeoutMs = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000;
+        await vscode.commands.executeCommand(`workbench.view.extension.${VIEW_IDS.activityBarContainer}`);
+        await vscode.commands.executeCommand(`${VIEW_IDS.sidebarNodes}.focus`);
+        await sidebarNodeListView.waitForReady(normalizedTimeoutMs);
+        return sidebarNodeListView.performTestAction(action, normalizedTimeoutMs);
+      }
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.performSidebarSessionHistoryAction,
+      async (action?: unknown, timeoutMs?: unknown) => {
+        if (!isSidebarSessionHistoryTestAction(action)) {
+          throw new Error('测试命令 devSessionCanvas.__test.performSidebarSessionHistoryAction 需要有效的侧栏 DOM 动作。');
+        }
+
+        const normalizedTimeoutMs = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000;
+        await vscode.commands.executeCommand(`workbench.view.extension.${VIEW_IDS.activityBarContainer}`);
+        await vscode.commands.executeCommand(`${VIEW_IDS.sidebarSessions}.focus`);
+        await sidebarSessionHistoryView.waitForReady(normalizedTimeoutMs);
+        return sidebarSessionHistoryView.performTestAction(action, normalizedTimeoutMs);
       }
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.setPersistedState, (rawState?: unknown) =>

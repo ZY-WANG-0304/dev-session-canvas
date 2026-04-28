@@ -207,6 +207,7 @@ interface CreateAgentNodeOptions {
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  titleOverride?: string;
 }
 
 type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
@@ -679,6 +680,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.appliedStartupConfiguration.filesFeatureEnabled;
   }
 
+  public getCanvasNodes(): CanvasNodeSummary[] {
+    return cloneJsonValue(this.state.nodes);
+  }
+
   public getCanvasFileFilterState(): CanvasFileFilterState {
     return cloneJsonValue(this.fileFilterState);
   }
@@ -869,7 +874,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.applyCreateNode(kind, undefined, {
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
-      agentCustomLaunchCommand: options?.agentCustomLaunchCommand
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      titleOverride: options?.titleOverride
     });
   }
 
@@ -886,8 +892,58 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       bypassTrust: true,
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
-      agentCustomLaunchCommand: options?.agentCustomLaunchCommand
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      titleOverride: options?.titleOverride
     });
+  }
+
+  public async focusNodeById(nodeId: string): Promise<boolean> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) {
+      return false;
+    }
+
+    try {
+      await this.focusNodeInCanvas(nodeId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public async restoreAgentSessionFromHistory(params: {
+    provider: AgentProviderKind;
+    sessionId: string;
+    title?: string;
+  }): Promise<boolean> {
+    if (
+      !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止从历史会话恢复 Agent 节点。')
+    ) {
+      return false;
+    }
+
+    const sessionId = params.sessionId.trim();
+    if (!sessionId) {
+      return false;
+    }
+
+    const createdNode = this.applyCreateNode('agent', undefined, {
+      agentProvider: params.provider,
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: this.buildHistoryResumeCommandLine(params.provider, sessionId),
+      titleOverride: params.title
+    });
+    if (!createdNode) {
+      return false;
+    }
+
+    try {
+      await this.focusNodeInCanvas(createdNode.id);
+      return true;
+    } catch {
+      void vscode.window.showWarningMessage(`历史会话节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      return true;
+    }
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
@@ -4693,23 +4749,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
-
     try {
-      await this.revealSurface(targetSurface);
-      await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+      await this.focusNodeInCanvas(nodeId);
       this.clearExecutionAttention(kind, nodeId);
-      this.postMessageToSurface(targetSurface, {
-        type: 'host/focusNode',
-        payload: {
-          nodeId
-        }
-      });
     } catch {
       void vscode.window.showWarningMessage(
         `${kind === 'agent' ? 'Agent' : 'Terminal'}「${trimStoredTerminalText(node.title).trim() || nodeId}」暂时无法定位。`
       );
     }
+  }
+
+  private async focusNodeInCanvas(nodeId: string): Promise<void> {
+    const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
+    await this.revealSurface(targetSurface);
+    await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+    this.postMessageToSurface(targetSurface, {
+      type: 'host/focusNode',
+      payload: {
+        nodeId
+      }
+    });
   }
 
   private buildExecutionAttentionNotificationMessage(
@@ -5690,6 +5749,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? [params.requestedCommand, 'resume', params.resumeContext.sessionId]
         : [params.requestedCommand, 'resume']
     );
+  }
+
+  private buildHistoryResumeCommandLine(provider: AgentProviderKind, sessionId: string): string {
+    const requestedCommand = this.getAgentLaunchDefaults(provider).command.trim() || provider;
+    return provider === 'claude'
+      ? formatCommandLine([requestedCommand, '--resume', sessionId])
+      : formatCommandLine([requestedCommand, 'resume', sessionId]);
   }
 
   private getAgentCliResolutionCacheKey(
@@ -6992,13 +7058,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
     options?: CreateAgentNodeOptions & { bypassTrust?: boolean }
-  ): void {
+  ): CanvasNodeSummary | undefined {
     if (
       isExecutionNodeKind(kind) &&
       !options?.bypassTrust &&
       !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
     ) {
-      return;
+      return undefined;
     }
 
     const agentProvider = options?.agentProvider ?? this.getAgentCliConfig().defaultProvider;
@@ -7029,7 +7095,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             message
           }
         });
-        return;
+        return undefined;
       }
     }
 
@@ -7041,10 +7107,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentCustomLaunchCommand,
       preferredPosition
     );
-    const createdNode = nextState.nodes[nextState.nodes.length - 1];
+    const createdNodeCandidate = nextState.nodes[nextState.nodes.length - 1];
+    const createdNode =
+      createdNodeCandidate && options?.titleOverride?.trim()
+        ? {
+            ...createdNodeCandidate,
+            title: options.titleOverride.trim()
+          }
+        : createdNodeCandidate;
+    const nextStateWithOverrides =
+      createdNode && createdNode !== createdNodeCandidate
+        ? {
+            ...nextState,
+            nodes: [...nextState.nodes.slice(0, -1), createdNode]
+          }
+        : nextState;
 
     if (createdNode && createdNode.kind === 'agent') {
-      this.state = updateAgentNode(nextState, createdNode.id, {
+      this.state = updateAgentNode(nextStateWithOverrides, createdNode.id, {
         status: 'starting',
         summary: '正在等待节点尺寸就绪后启动 Agent 会话。',
         metadata: buildAgentMetadataPatch(nextState, createdNode.id, {
@@ -7062,7 +7142,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         })
       });
     } else if (createdNode && createdNode.kind === 'terminal') {
-      this.state = updateTerminalNode(nextState, createdNode.id, {
+      this.state = updateTerminalNode(nextStateWithOverrides, createdNode.id, {
         status: 'launching',
         summary: '正在等待节点尺寸就绪后启动嵌入式终端。',
         metadata: buildTerminalMetadataPatch(nextState, createdNode.id, {
@@ -7076,11 +7156,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         })
       });
     } else {
-      this.state = nextState;
+      this.state = nextStateWithOverrides;
     }
 
     this.persistState();
     this.postState('host/stateUpdated');
+    return createdNode;
   }
 
   private recordHostMessage(
