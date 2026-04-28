@@ -329,6 +329,9 @@ async function runTrustedSmoke() {
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
   await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);
+  await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+    expectAgentSessionId: false
+  });
   await verifySidebarNodeListWebviewUi(agentNode.id);
 
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
@@ -336,6 +339,9 @@ async function runTrustedSmoke() {
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
+  await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+    expectAgentSessionId: true
+  });
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyExecutionAttentionNotificationBridge(agentNode.id);
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
@@ -467,6 +473,58 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
 }
 
+async function verifySidebarNodeListQuickPick(
+  agentNodeId,
+  terminalNodeId,
+  noteNodeId,
+  { expectAgentSessionId }
+) {
+  const snapshot = await getDebugSnapshot();
+  const agentNode = findNodeById(snapshot, agentNodeId);
+  const terminalNode = findNodeById(snapshot, terminalNodeId);
+  const noteNode = findNodeById(snapshot, noteNodeId);
+  const sidebarItems = await getSidebarNodeListItems();
+  const sidebarItemsByNodeId = new Map(sidebarItems.map((item) => [item.nodeId, item]));
+
+  await withInterceptedQuickPicks(async (quickPickCalls) => {
+    await vscode.commands.executeCommand(COMMAND_IDS.showNodeList);
+    assert.strictEqual(quickPickCalls.length, 1, 'Expected showNodeList to open one QuickPick.');
+
+    const [quickPickCall] = quickPickCalls;
+    const agentPickItem = quickPickCall.items.find((item) => item.nodeId === agentNodeId);
+    const terminalPickItem = quickPickCall.items.find((item) => item.nodeId === terminalNodeId);
+    const notePickItem = quickPickCall.items.find((item) => item.nodeId === noteNodeId);
+
+    assert.ok(agentPickItem, 'Expected the Agent node to appear in the node QuickPick.');
+    assert.ok(terminalPickItem, 'Expected the Terminal node to appear in the node QuickPick.');
+    assert.ok(notePickItem, 'Expected the Note node to appear in the node QuickPick.');
+
+    assert.strictEqual(agentPickItem.label, sidebarItemsByNodeId.get(agentNodeId)?.label);
+    assert.strictEqual(terminalPickItem.label, sidebarItemsByNodeId.get(terminalNodeId)?.label);
+    assert.strictEqual(notePickItem.label, sidebarItemsByNodeId.get(noteNodeId)?.label);
+
+    assert.strictEqual(
+      agentPickItem.description,
+      formatExpectedSidebarNodeQuickPickDescription(sidebarItemsByNodeId.get(agentNodeId))
+    );
+    assert.strictEqual(
+      terminalPickItem.description,
+      formatExpectedSidebarNodeQuickPickDescription(sidebarItemsByNodeId.get(terminalNodeId))
+    );
+    assert.strictEqual(
+      notePickItem.description,
+      formatExpectedSidebarNodeQuickPickDescription(sidebarItemsByNodeId.get(noteNodeId))
+    );
+
+    assert.strictEqual(
+      agentPickItem.detail,
+      buildExpectedSidebarNodeQuickPickDetail(agentNode, { expectSessionId: expectAgentSessionId })
+    );
+    assert.strictEqual(terminalPickItem.detail, buildExpectedSidebarNodeQuickPickDetail(terminalNode));
+    assert.strictEqual(notePickItem.detail, buildExpectedSidebarNodeQuickPickDetail(noteNode));
+  });
+}
+
 async function verifySidebarNodeListWebviewUi(agentNodeId) {
   const baselineSnapshot = await getDebugSnapshot();
   const seededSnapshot = await setPersistedState({
@@ -559,10 +617,14 @@ async function verifySidebarSessionHistoryRestore() {
     assert.ok(codexItem, 'Expected the sidebar session history test command to list the seeded Codex session.');
     assert.ok(
       typeof codexItem.timestampLabel === 'string' && codexItem.timestampLabel.length > 0,
-      'Expected sidebar session history items to expose a relative timestamp label.'
+      'Expected sidebar session history items to expose the secondary metadata line.'
     );
     assert.strictEqual(codexItem.title, firstUserInstruction);
-    assert.match(codexItem.timestampLabel, new RegExp(` · ${codexSessionId}$`));
+    assert.match(codexItem.timestampLabel, new RegExp(`^Codex · .+ · ${codexSessionId}$`));
+    assert.ok(
+      !(codexItem.timestampLabel.split(' · ')[1] ?? '').includes(' '),
+      'Expected sidebar session history items to use the compact relative time label in the secondary line.'
+    );
     assert.ok(!codexItem.tooltip.includes('节点副标题：'));
     assert.ok(
       codexItem.searchText.includes(firstUserInstruction.toLowerCase()),
@@ -814,11 +876,30 @@ async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
       'Expected restricted-workspace history restore attempts not to materialize a new Agent node.'
     );
 
-    await withInterceptedWarningMessages(async (calls) => {
-      await vscode.commands.executeCommand(COMMAND_IDS.showSessionHistory);
-      assert.deepStrictEqual(
-        calls.map((call) => call.message),
-        [RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE]
+    await withInterceptedWarningMessages(async (warningCalls) => {
+      await withInterceptedQuickPicks(
+        async (quickPickCalls) => {
+          await vscode.commands.executeCommand(COMMAND_IDS.showSessionHistory);
+
+          assert.strictEqual(quickPickCalls.length, 1, 'Expected restricted session history command to open one QuickPick.');
+          const [quickPickCall] = quickPickCalls;
+          const quickPickItem = quickPickCall.items.find((item) => item.sessionId === codexSessionId);
+
+          assert.ok(quickPickItem, 'Expected restricted session history QuickPick to include the matching history item.');
+          assert.strictEqual(quickPickCall.options?.title, RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE);
+          assert.match(
+            quickPickCall.options?.placeHolder ?? '',
+            /只读查看模式/,
+            'Expected restricted session history QuickPick to explain the read-only mode.'
+          );
+          assert.strictEqual(quickPickItem.description, undefined);
+          assert.match(quickPickItem.detail ?? '', /^Codex · .+ · restricted-sidebar-history-123$/);
+          assert.deepStrictEqual(
+            warningCalls.map((call) => call.message),
+            [RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE]
+          );
+        },
+        async ({ items }) => items.find((item) => item.sessionId === codexSessionId)
       );
     });
   } finally {
@@ -7643,6 +7724,56 @@ async function withInterceptedWarningMessages(runIntercepted, resolveSelection) 
   } finally {
     vscode.window.showWarningMessage = originalShowWarningMessage;
   }
+}
+
+async function withInterceptedQuickPicks(runIntercepted, resolveSelection) {
+  const originalShowQuickPick = vscode.window.showQuickPick;
+  const calls = [];
+
+  vscode.window.showQuickPick = async (items, options) => {
+    const resolvedItems = Array.isArray(items) ? items : await items;
+    calls.push({ items: resolvedItems, options });
+    return typeof resolveSelection === 'function'
+      ? await resolveSelection({ items: resolvedItems, options, calls })
+      : undefined;
+  };
+
+  assert.notStrictEqual(vscode.window.showQuickPick, originalShowQuickPick, 'Failed to intercept vscode.window.showQuickPick.');
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.window.showQuickPick = originalShowQuickPick;
+  }
+}
+
+function formatExpectedSidebarNodeQuickPickDescription(sidebarItem) {
+  if (!sidebarItem) {
+    return undefined;
+  }
+
+  return sidebarItem.attentionPending ? `${sidebarItem.description} · 有提醒` : sidebarItem.description;
+}
+
+function buildExpectedSidebarNodeQuickPickDetail(node, options = {}) {
+  if (node.kind === 'agent') {
+    const provider = node.metadata?.agent?.provider === 'claude' ? 'Claude Code' : 'Codex';
+    const sessionId = node.metadata?.agent?.resumeSessionId;
+    if (options.expectSessionId) {
+      assert.ok(sessionId, 'Expected the Agent node QuickPick detail to include a provider session id.');
+    }
+    return [ 'Agent', provider, sessionId ].filter(Boolean).join(' · ');
+  }
+
+  if (node.kind === 'terminal') {
+    return 'Terminal';
+  }
+
+  if (node.kind === 'note') {
+    return 'Note';
+  }
+
+  return undefined;
 }
 
 async function waitForActiveEditor(predicate, timeoutMs = 8000) {

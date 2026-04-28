@@ -406,7 +406,11 @@ export function buildCanvasSidebarSessionHistoryItems(
   return entries.map((entry) => {
     const relativeCwd = resolveWorkspaceRelativeCwd(entry.cwd, workspaceRoot);
     const title = formatSessionHistoryTitle(entry);
-    const timestampLabel = `${formatRelativeTimestamp(entry.updatedAtMs)} · ${entry.sessionId}`;
+    const timestampLabel = [
+      providerLabel(entry.provider),
+      formatRelativeTimestamp(entry.updatedAtMs).replace(/\s+/g, ''),
+      entry.sessionId
+    ].join(' · ');
 
     return {
       id: `${entry.provider}:${entry.sessionId}`,
