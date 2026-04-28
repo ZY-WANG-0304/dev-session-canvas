@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
   - docs/exec-plans/completed/terminal-output-flood-input-responsiveness.md
-updated_at: 2026-04-16
+updated_at: 2026-04-28
 ---
 
 # Terminal 节点嵌入式会话窗口设计
@@ -47,7 +47,7 @@ updated_at: 2026-04-16
 
 - 不在本轮像素级复刻参考产品的全部终端视觉细节。
 - 不在本轮承诺跨扩展重载恢复完整活动终端 buffer。
-- 不在本轮把 Windows 写成“已经完成人工验证”；Linux / macOS 优先闭合，Windows 只在拿到验证证据后才升级结论。
+- 不在本轮把 Windows 写成“完全没有已知限制”的稳定支持；即使主路径已验证可用，剩余差异也必须继续显式记录。
 
 ## 5. 候选方案
 
@@ -101,7 +101,8 @@ updated_at: 2026-04-16
 - 当前实现路线选择 `xterm.js + node-pty`：
   - Webview 使用 `xterm.js` 渲染终端前端；
   - 宿主用统一 PTY bridge 启动真实 shell，并通过消息桥传递输入输出。
-- Linux / macOS 作为当前主支持平台；Windows 代码路径已接通，但仍待人工验证。
+- Linux、macOS、Windows 本地主路径都已完成当前轮功能可用性验证。
+- Windows 下使用 `Codex` 时，执行节点内历史当前仍存在无法向上翻页的已知限制；这条差异继续作为 `Preview` 已知问题保留。
 
 为避免把不同生命周期混成一句“恢复”，这里额外固定三层术语：
 
@@ -143,8 +144,8 @@ updated_at: 2026-04-16
 - 风险：`node-pty` 路线会引入原生模块与扩展打包约束。
   当前缓解：构建脚本已把 `node-pty` 设为 external，并依赖其预编译产物；当前先以 `build` / `typecheck` / Linux smoke test 证明基本可行。
 
-- 风险：Windows 与远程场景仍缺少人工验证证据。
-  当前缓解：文档状态继续保持“验证中”，不把未确认平台写成已支持。
+- 风险：Windows 本地下使用 `Codex` 时，执行节点内历史仍无法向上翻页；此外，虽然 `Remote SSH` 主路径已验证可用，但其之外的更深远程场景仍缺少同等级人工验证证据。
+  当前缓解：桌面三平台与 `Remote SSH` 主路径的功能可用性都已写成已验证结论，但 Windows `Codex` 历史翻页问题继续作为已知限制保留；文档状态仍保持“验证中”，不把剩余差异误写成已收口。
 
 ## 8. 验证方法
 
@@ -167,4 +168,6 @@ updated_at: 2026-04-16
 - Playwright harness 已新增“serialized terminal state 恢复优先于 raw tail replay”的回归；真实 VS Code `real-reopen` smoke 已覆盖窗口重开后的重新附着与历史恢复链路。
 - 真实 VS Code `trusted` smoke 已覆盖 Editor 区域切到普通文本编辑器再切回画布、以及 Panel 区域切到原生 Terminal 再切回画布时的可见内容保持与 `visibility restore` 断言。
 - 2026-04-16 已补 Playwright 回归，覆盖 Agent / Terminal 在用户上滚后遇到增量输出、spinner/redraw 与 `host/visibilityRestored` 时仍保持历史 viewport，不再被强制拉回底部；滚回底部后跟随输出恢复。
-- 当前 shell 环境没有可直接启动 `Extension Development Host` 的 `code`/`cursor`/`codium` CLI，也没有 macOS / Windows 本地人工验证证据；文档状态继续保持为“验证中”。
+- 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Terminal` / `Agent` / `Note` 主路径已补齐当前轮功能可用性验证。
+- 截至 `2026-04-28`，`Remote SSH` 主路径以及 Linux、macOS、Windows 本地 workspace 的 `Terminal` / `Agent` / `Note` 主路径都已补齐当前轮功能可用性验证。
+- Windows 下使用 `Codex` 时，执行节点内历史当前仍有无法向上翻页的已知限制；Remote SSH 之外的更深远程场景也还缺少同等级人工验证证据，因此文档状态继续保持为“验证中”。

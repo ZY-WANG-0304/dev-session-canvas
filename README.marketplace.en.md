@@ -35,8 +35,9 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ## Support Scope And Limits
 
-- `Remote SSH` is the best-validated recommended environment
-- Linux, macOS, and Windows local workspaces can be tried, but they have not been strictly validated yet
+- The `Remote SSH` main path is validated and usable, and it remains the best-validated recommended environment
+- Linux and macOS local workspaces now have functional validation for the `Preview` main path
+- Windows local workspaces now have functional validation for the `Preview` main path, with one explicit known limitation: when using `Codex`, embedded session history still cannot page upward
 - `Restricted Mode` allows the canvas to open, but disables execution entry points such as `Agent` and `Terminal`
 - `Virtual Workspace` is not supported yet
 - The extension is still in `Preview`, with no stable-release commitment
@@ -48,19 +49,19 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.2.x Highlights
+## 0.3.0 Highlights
 
-The public `0.2.x` line moves the canvas from “multiple execution nodes in one place” toward a more complete collaboration surface with relationships and file flow:
+The public `0.3.0` release focuses on Windows validation and tightening support positioning for both the desktop platforms and `Remote SSH`:
 
-- Add manual relationship edges so the canvas can express task splits, dependencies, and handoffs between nodes
-- Project agent file activity into file nodes or file lists, with filtering, path display, and direct file opening from the canvas
-- Surface execution attention through node chrome, the minimap, and the sidebar overview so important sessions are easier to find
-- Tighten sidebar overview, file filtering, and file-activity interactions so the main path feels more complete than `0.1.2`
+- Complete Windows local-workspace main-path validation and upgrade Linux, macOS, and Windows local workspaces to an explicitly “validated and usable” `Preview` position
+- Tighten Windows `cmd.exe` metacharacter escaping, batch-command space handling, and automatic resolution of common `codex` / `claude` CLI entry points
+- Make it explicit that the `Remote SSH` main path is also validated and usable, while keeping it as the most strongly validated recommended environment and moving the three desktop platforms beyond “can be tried” status
+- Explicitly retain the known Windows limitation where `Codex` sessions still cannot page upward through embedded history, rather than implying that the remaining gap is already fixed
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and later `0.2.x` updates all go through the `Visual Studio Marketplace`
+- First-time installs and upgrades from `0.2.2` to `0.3.0` all go through the `Visual Studio Marketplace`; later `0.3.x` updates follow the same Marketplace upgrade path
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -86,7 +87,7 @@ The public `0.2.x` line moves the canvas from “multiple execution nodes in one
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.2.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.3.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

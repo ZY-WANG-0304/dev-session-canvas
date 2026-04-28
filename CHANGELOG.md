@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.3.0 - Preview Desktop Support Update
+
+相对 `0.2.2`，`0.3.0` 重点收口 Windows 平台验证与支持，并同步把 macOS / Linux / Windows 本地主路径以及 `Remote SSH` 主路径的验证口径更新为“已验证功能可用”。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 完成 Windows 本地 workspace 的 `Agent`、`Terminal` 与 `Note` 主路径验证，并同步把 macOS / Linux / Windows 本地主路径及 `Remote SSH` 主路径的对外口径更新为“已验证可用”
+- 收口 Windows 启动链路与命令解析兼容性：补齐 `cmd.exe` 元字符转义、批处理命令空格参数传递、CLI 自动发现与常见 `codex` 命令入口解析
+- 明确 `Remote SSH` 主路径同样已验证可用，且仍是当前验证最充分的推荐环境；同时把该结论与桌面三平台验证结果同步回 README、Marketplace listing、支持矩阵与发布手册
+- 收口 `0.3.0` 发布材料：统一 Marketplace 文案、release notes、安装升级说明与回退口径，并显式登记 Windows 下 `Codex` 无法向上翻页的已知问题
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- macOS、Linux、Windows 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.2.2` 升级到 `0.3.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.3.x` 更新同样通过 Marketplace 升级获取
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.3.0` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.3.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.3.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.2.2 - Preview Hotfix Update
 
 相对 `0.2.1`，`0.2.2` 主要补齐 Agent 节点的创建前启动方式、停止后恢复分流，以及相关命令解析、运行时恢复与发布链路收口。
