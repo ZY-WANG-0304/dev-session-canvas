@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/agent-special-terminal.md
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
   - docs/exec-plans/completed/canvas-surface-configurable-host.md
-updated_at: 2026-04-05
+updated_at: 2026-04-28
 ---
 
 # VSCode 画布运行时与技术路线初步设计
@@ -262,11 +262,11 @@ updated_at: 2026-04-05
 - 画布上的终端对象代表一个真实的嵌入式 shell 会话窗口。
 - 节点展示标题、状态、最近输出摘要、cwd、退出信息和节点内终端前端。
 - 用户的主要输入、输出、滚动与聚焦行为都在节点内部完成。
-- 宿主负责 PTY、输入输出桥接和状态回流；当前实现使用统一 `node-pty` backend，Linux / macOS 优先，Windows 代码路径已接通但仍待人工验证。
+- 宿主负责 PTY、输入输出桥接和状态回流；当前实现使用统一 `node-pty` backend，Linux、macOS、Windows 本地主路径都已补齐当前轮功能可用性验证，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 
 `待验证路线`
 
-- 补齐 macOS / Windows / Remote SSH / Codespaces 的人工验证矩阵。
+- 继续补齐更深的 Remote SSH / Codespaces 人工验证矩阵，并收口 Windows 下 `Codex` 历史无法向上翻页的问题。
 - 验证重点不是“代码路径是否存在”，而是平台兼容性、重连恢复、权限边界、复制粘贴、滚动和性能是否可接受。
 
 ### 7.6 Agent 策略

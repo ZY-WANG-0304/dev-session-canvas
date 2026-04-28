@@ -28,7 +28,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 - A stable-release guarantee
 - `Virtual Workspace` support
 - A zero-configuration out-of-the-box experience for all users
-- A complete public support matrix across all three desktop platforms
+- A stable-release-grade support commitment across all three desktop platforms
 - A full stable-release delivery process
 
 ## Runtime Requirements
@@ -43,7 +43,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus is on platform compatibility, recovery-path verification, and continued iteration under Marketplace `Preview` messaging, rather than inventing a new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus is on closing the Windows validation and support messaging for `0.3.0`, continuing to tighten recovery-path verification, and iterating under Marketplace `Preview` positioning rather than inventing a new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -51,6 +51,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel is now `Visual Studio Marketplace`. Whether to publish to `Open VSX` remains deferred.
+- The current main path has now been functionally validated across Linux, macOS, Windows local workspaces, and `Remote SSH`. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -91,17 +92,17 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 - The product is still in `Preview` and should not be treated as a stable production tool.
 - `Virtual Workspace` is not supported.
 - The public `Preview` distribution path has been consolidated around `Visual Studio Marketplace`, but release-day publication still requires manual execution and review.
-- Verification coverage is still concentrated on the `Remote SSH` path. Linux, macOS, and Windows local paths have not yet been strictly validated.
+- The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - If the machine does not have a usable `codex` or `claude` CLI, `Agent` nodes cannot provide the full experience.
 
 ## Support Matrix
 
 | Scenario | Status | What Users Should Expect |
 | --- | --- | --- |
-| `Remote SSH` workspace | Primary `Preview` path | This path has the strongest verification coverage. Users can try the main canvas, `Agent`, `Terminal`, and recovery flows |
-| Linux local workspace | Can be tried, not strictly validated | There is partial automation and implementation evidence, but it is not covered by a strict Preview support commitment |
-| macOS local workspace | Can be tried, not strictly validated | The code path is wired up, but rigorous validation evidence is still missing |
-| Windows local workspace | Can be tried, not strictly validated | The code path is wired up, but rigorous validation evidence is still missing |
+| `Remote SSH` workspace | `Preview`, main path validated and best-validated | Users can try the main canvas, `Agent`, `Terminal`, and recovery flows; this remains the most recommended environment |
+| Linux local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path has completed this round of functional validation |
+| macOS local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path has completed this round of functional validation |
+| Windows local workspace | `Preview`, main path validated with known limitation | The local canvas, `Agent`, and `Terminal` main path has completed this round of functional validation, but embedded `Codex` history still cannot page upward |
 | `Restricted Mode` | Limited support | The canvas can be opened and saved layouts can be viewed, but execution entry points such as `Agent` and `Terminal` are disabled |
 | `Virtual Workspace` | Unsupported | Outside the Preview scope |
 
