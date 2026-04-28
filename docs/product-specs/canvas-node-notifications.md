@@ -25,44 +25,44 @@
 2. 用户切换到其他工作（编辑代码、查看文档等），画布可能不在当前可见区域
 3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）
 4. 系统捕获并解析这些信号，识别出需要用户注意的事件
-5. 系统在画布节点上显示视觉提示（节点边框闪烁、Minimap 高亮）
-6. 如果启用了强提醒模式，系统还会在 VSCode 标题栏或 Minimap 上显示额外提示
-7. 用户通过视觉提示快速定位到需要注意的节点
-8. 用户点击节点查看详情或进行交互，通知状态自动清除
+5. 系统在画布节点上显示视觉提示（节点内提醒 icon、Minimap 同色明暗闪烁）
+6. 如果启用了 VS Code 工作台通知桥接，系统还会弹出 VS Code 通知
+7. 如果启用了强提醒模式，系统还会在节点标题栏或 Minimap 上显示额外增强提示
+8. 用户通过视觉提示快速定位到需要注意的节点
+9. 用户点击节点查看详情或进行交互，通知状态自动清除
 
 ### 3.2 配置调整流程
 
 1. 用户打开 VSCode 设置（`devSessionCanvas.notifications.*`）
 2. 用户根据个人偏好调整通知行为：
-   - 启用/禁用终端注意力信号桥接
-   - 选择强提醒模式（无、标题栏、Minimap、两者都有）
+   - 启用/禁用 VS Code 工作台通知桥接
+   - 选择强提醒模式（无、节点标题栏、Minimap 尺寸脉冲、两者都有）
 3. 配置立即生效，无需重启 VSCode
 
 ## 4. 在范围内
 
-### 4.1 终端注意力信号桥接
+### 4.1 终端注意力信号解析与节点提醒
 
 - 解析并识别 `Agent` / `Terminal` 输出中的终端注意力信号：
-  - BEL (``): 传统终端响铃信号
-  - OSC 9 (`]9;...`): iTerm2 风格通知协议
-  - OSC 777 (`]777;notify;...`): 通用通知协议
+  - BEL (``): 传统终端响铃信号
+  - OSC 9 (`]9;...`): iTerm2 风格通知协议
+  - OSC 777 (`]777;notify;...`): 通用通知协议
 - 支持信号过滤规则：
-  - OSC 9 中以 `4;` 开头的消息被标记为 `ignore`，不触发通知
-  - 其他信号默认触发通知
+  - OSC 9 中以 `4;` 开头的消息被标记为 `ignore`，不触发任何提醒
+  - 其他信号默认触发节点提醒
+- 节点提醒表面（始终启用，不受配置控制）：
+  - 节点内提醒 icon 显示
+  - Minimap 对应节点的同色明暗闪烁
+  - 节点 `attentionPending` 状态标记并持久化到存储
+
+### 4.2 VS Code 工作台通知桥接
+
 - 配置项 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals`：
   - 类型：`boolean`
   - 默认值：`true`
   - 作用域：`window`
-  - 功能：控制是否启用终端注意力信号桥接
-
-### 4.2 节点视觉通知
-
-- 画布节点层面的视觉提示：
-  - 节点边框闪烁动画 (`is-attention-flashing`)
-  - 节点标记为待注意状态 (`has-attention`)
-- Minimap 层面的视觉提示：
-  - Minimap 节点高亮显示
-  - 支持根据强提醒模式配置显示不同强度的提示
+  - 功能：控制是否将终端注意力信号桥接为 VS Code 工作台通知（`vscode.window.showInformationMessage`）
+  - 关闭后：节点内提醒 icon 与 Minimap 同色闪烁仍然保留，只是不额外弹出 VS Code 工作台通知
 
 ### 4.3 强提醒模式
 
@@ -72,10 +72,10 @@
   - 默认值：`both`
   - 作用域：`window`
 - 各模式行为：
-  - `none`：仅在节点本身显示基础视觉提示
-  - `titleBar`：在 VSCode 标题栏显示闪烁提示
-  - `minimap`：在 Minimap 上显示尺寸脉冲动画 (`has-strong-attention-reminder`)
-  - `both`：同时启用标题栏和 Minimap 增强提示
+  - `none`：不额外开启增强提醒，只保留节点提醒 icon 和 Minimap 的同色明暗闪烁
+  - `titleBar`：只让执行节点标题栏进入闪烁态（`is-attention-flashing`），不给 Minimap 增加尺寸脉冲
+  - `minimap`：只让 Minimap 对应节点在同色明暗闪烁之外额外加入尺寸脉冲（`has-strong-attention-reminder`），不闪烁节点标题栏
+  - `both`：同时开启节点标题栏闪烁和 Minimap 尺寸脉冲
 
 ### 4.4 Agent 等待输入检测
 
@@ -92,24 +92,24 @@
 ### 4.5 通知状态管理
 
 - 节点通知状态自动管理：
-  - 当检测到注意力信号时，自动设置节点为待注意状态
+  - 当检测到注意力信号时，自动设置节点为待注意状态（`attentionPending: true`）
   - 当用户与节点交互时，自动清除通知状态
   - 支持手动清除通知状态
 - 状态持久化：
-  - 通知状态不持久化到存储，仅在当前会话有效
-  - 重新加载画布后通知状态重置
+  - 通知状态会持久化到存储（snapshot 和 workspace state）
+  - 重新加载画布后会从存储中恢复通知状态
+  - 用户可以在画布重新加载后继续看到之前未处理的通知
 
 ## 5. 不在范围内
 
 ### 5.1 当前阶段不做
 
-- 不支持自定义通知声音或系统级通知
+- 不支持自定义通知声音
 - 不支持通知历史记录或通知中心
 - 不支持基于通知内容的智能分类或优先级
 - 不支持跨 workspace 的通知聚合
 - 不支持通知的延迟或批量处理
 - 不支持用户自定义通知规则或过滤器
-- 不支持通知的持久化存储或恢复
 
 ### 5.2 明确排除
 
@@ -159,19 +159,19 @@ interface AgentActivityHeuristicState {
 type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap' | 'both';
 ```
 
-- 控制额外视觉提示的显示位置
-- 默认值为 `both`，同时启用标题栏和 Minimap 提示
+- 控制额外增强提醒表面的显示位置
+- 默认值为 `both`，同时启用节点标题栏闪烁和 Minimap 尺寸脉冲
 
 ### 6.4 节点通知状态
 
 - 节点级别的状态标记：
-  - `has-attention`：节点有待处理的通知
-  - `is-attention-flashing`：节点边框闪烁动画
-  - `has-strong-attention-reminder`：启用强提醒模式
+  - `has-attention`：节点有待处理的通知（始终显示）
+  - `is-attention-flashing`：节点标题栏闪烁动画（受 `strongTerminalAttentionReminderMode` 控制）
 - Minimap 节点属性：
-  - `data-minimap-attention-pending`：Minimap 节点待注意标记
-  - `data-minimap-attention-flashing`：Minimap 节点闪烁标记
-  - `data-minimap-attention-size-pulsing`：Minimap 节点尺寸脉冲标记
+  - `data-minimap-attention-pending`：Minimap 节点待注意标记（始终显示）
+  - `data-minimap-attention-flashing`：Minimap 节点同色明暗闪烁（始终显示）
+  - `data-minimap-attention-size-pulsing`：Minimap 节点尺寸脉冲标记（受 `strongTerminalAttentionReminderMode` 控制）
+  - `has-strong-attention-reminder`：CSS 类名，用于触发 Minimap 尺寸脉冲动画
 
 ## 7. 验收标准
 
@@ -179,13 +179,13 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 
 - [ ] 系统能正确解析 BEL、OSC 9、OSC 777 三种终端注意力信号
 - [ ] OSC 9 中以 `4;` 开头的消息被正确标记为 `ignore`
-- [ ] 当检测到注意力信号时，节点边框显示闪烁动画
-- [ ] Minimap 上的节点能正确显示高亮状态
-- [ ] 配置 `bridgeTerminalAttentionSignals` 为 `false` 时，不触发任何通知
-- [ ] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确工作
+- [ ] 当检测到注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁始终显示
+- [ ] 配置 `bridgeTerminalAttentionSignals` 为 `false` 时，不弹出 VS Code 工作台通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
+- [ ] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
 - [ ] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
 - [ ] 用户与节点交互后，通知状态自动清除
 - [ ] 配置变更后立即生效，无需重启 VSCode
+- [ ] 通知状态会持久化到存储，重新加载画布后能正确恢复
 
 ### 7.2 性能验收
 
@@ -207,7 +207,6 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 ### 8.1 待确认
 
 - **通知优先级**：当多个节点同时触发通知时，是否需要优先级机制？当前实现是平等对待所有通知。
-- **通知持久化**：是否需要在画布重新加载后恢复通知状态？当前实现是不持久化，重新加载后通知状态重置。
 - **自定义信号**：是否需要支持用户自定义的终端注意力信号格式？当前仅支持标准的 BEL、OSC 9、OSC 777。
 - **通知历史**：是否需要提供通知历史记录功能，让用户回溯之前的通知？当前实现是无历史记录。
 
@@ -222,7 +221,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - **智能通知**：基于通知内容的智能分类和优先级排序
 - **通知聚合**：当同一节点短时间内触发多次通知时，聚合显示
 - **自定义规则**：允许用户定义通知过滤规则和触发条件
-- **声音提示**：可选的通知声音或系统级通知
+- **声音提示**：可选的通知声音
 - **通知中心**：提供统一的通知历史和管理界面
 
 ## 9. 依据文档
@@ -233,6 +232,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - `src/common/agentActivityHeuristics.ts`：Agent 活动启发式检测实现
 - `src/panel/CanvasPanelManager.ts`：通知配置管理与状态同步
 - `src/webview/main.tsx`：通知视觉效果实现
+- `package.nls.json`：配置项说明文案
 
 ## 10. 状态
 
