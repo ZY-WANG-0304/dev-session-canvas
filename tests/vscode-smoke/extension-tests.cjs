@@ -401,7 +401,12 @@ async function runTrustedSmoke() {
 }
 
 async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
-  const baselineSnapshot = await getDebugSnapshot();
+  const baselineSnapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+    return Boolean(currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'waiting-input');
+  }, 20000);
+  const baselineAgentNode = baselineSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+  assert.ok(baselineAgentNode?.kind === 'agent', 'Expected the trusted smoke agent node to be present.');
   const nodeItems = await getSidebarNodeListItems();
   assert.deepStrictEqual(
     nodeItems.map((item) => item.nodeId).sort(),
@@ -431,28 +436,36 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
     'Expected focusing a sidebar node item to forward a host/focusNode request to the active canvas surface.'
   );
 
+  const sanitizedAgentNodeId = `${agentNodeId}-sidebar-sanitized`;
   const sanitizedSummarySnapshot = await setPersistedState({
     ...baselineSnapshot.state,
-    nodes: baselineSnapshot.state.nodes.map((node) =>
-      node.id === agentNodeId
-        ? {
-            ...node,
-            summary: '\u009b?2026| [?2026| Ready for input',
-            metadata: node.metadata?.agent
-              ? {
-                  ...node.metadata,
-                  agent: {
-                    ...node.metadata.agent,
-                    attentionPending: true
-                  }
-                }
-              : node.metadata
-          }
-        : node
-    )
+    nodes: [
+      ...baselineSnapshot.state.nodes,
+      {
+        ...baselineAgentNode,
+        id: sanitizedAgentNodeId,
+        status: 'waiting-input',
+        summary: '\u009b?2026| [?2026| Ready for input',
+        metadata: baselineAgentNode.metadata?.agent
+          ? {
+              ...baselineAgentNode.metadata,
+              agent: {
+                ...baselineAgentNode.metadata.agent,
+                lifecycle: 'waiting-input',
+                persistenceMode: 'snapshot-only',
+                attachmentState: 'history-restored',
+                liveSession: false,
+                runtimeSessionId: undefined,
+                pendingLaunch: undefined,
+                attentionPending: true
+              }
+            }
+          : baselineAgentNode.metadata
+      }
+    ]
   });
   const sanitizedNodeItems = await getSidebarNodeListItems();
-  const sanitizedAgentItem = sanitizedNodeItems.find((item) => item.nodeId === agentNodeId);
+  const sanitizedAgentItem = sanitizedNodeItems.find((item) => item.nodeId === sanitizedAgentNodeId);
   assert.ok(sanitizedAgentItem, 'Expected the seeded agent node to remain visible in the sidebar node list.');
   assert.strictEqual(sanitizedAgentItem.summary, 'Ready for input');
   assert.strictEqual(
@@ -468,7 +481,7 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
 
   await setPersistedState(baselineSnapshot.state);
   assert.ok(
-    sanitizedSummarySnapshot.state.nodes.some((node) => node.id === agentNodeId),
+    sanitizedSummarySnapshot.state.nodes.some((node) => node.id === sanitizedAgentNodeId),
     'Expected seeded persisted state update to keep the target agent node present.'
   );
 }

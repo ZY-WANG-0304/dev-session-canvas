@@ -22,6 +22,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 - Basic canvas interaction and layout built on React Flow
 - Limited capability handling under `Restricted Mode`
 - A public `Preview` release path targeting the `Visual Studio Marketplace`
+- Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
 
 ## What The Preview Does Not Include
 
@@ -43,7 +44,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus is on closing the Windows validation and support messaging for `0.3.0`, continuing to tighten recovery-path verification, and iterating under Marketplace `Preview` positioning rather than inventing a new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus is on closing the sidebar node-list and workspace session-history entry points for `0.4.0`, continuing to tighten recovery-path verification, and iterating under Marketplace `Preview` positioning rather than inventing a new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -93,6 +94,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 - `Virtual Workspace` is not supported.
 - The public `Preview` distribution path has been consolidated around `Visual Studio Marketplace`, but release-day publication still requires manual execution and review.
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
+- The sidebar `Session History` list only shows `Codex` / `Claude Code` records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively.
 - If the machine does not have a usable `codex` or `claude` CLI, `Agent` nodes cannot provide the full experience.
 
 ## Support Matrix
