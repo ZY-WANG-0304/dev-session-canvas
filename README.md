@@ -22,6 +22,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 基于 React Flow 的基础画布交互与布局
 - `Restricted Mode` 下的有限能力声明
 - 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
+- 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复新 `Agent` 节点
 
 ## Preview 不提供什么
 
@@ -43,7 +44,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.3.0` 收口 Windows 平台验证与支持口径、继续补强恢复链路验证，并按 Marketplace `Preview` 口径迭代，而不是继续补齐一套新的发布准备方案。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.4.0` 收口侧栏节点列表与工作区会话历史入口、继续补强恢复链路验证，并按 Marketplace `Preview` 口径迭代，而不是继续补齐一套新的发布准备方案。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -93,6 +94,7 @@ npm run build
 - 不支持 `Virtual Workspace`。
 - 公开 `Preview` 的分发主路径已收口到 `Visual Studio Marketplace`，但 release-day 仍需手工执行与复核。
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
+- 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的 `Codex` / `Claude Code` 记录；缺少工作目录信息的旧会话会被保守跳过。
 - 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。
 
 ## 支持矩阵
