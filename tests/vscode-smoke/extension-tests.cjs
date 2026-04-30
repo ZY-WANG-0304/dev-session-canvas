@@ -424,7 +424,12 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.ok(
     nodeItems.every((item) => item.description === item.status),
-    'Expected sidebar node descriptions to show status only, without subtitle text.'
+    'Expected sidebar node descriptions to stay aligned with the rendered second-line text.'
+  );
+  assert.match(
+    nodeItems.find((item) => item.nodeId === agentNodeId)?.status ?? '',
+    /^(Codex|Claude Code) · /,
+    'Expected Agent sidebar rows to prefix the second line with provider information.'
   );
 
   await clearHostMessages();
@@ -472,7 +477,12 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(
     sanitizedAgentItem.description,
     sanitizedAgentItem.status,
-    'Expected sidebar node descriptions to remain status-only after summary sanitization.'
+    'Expected sidebar node descriptions to remain aligned with the rendered second-line text after summary sanitization.'
+  );
+  assert.match(
+    sanitizedAgentItem.status,
+    /^(Codex|Claude Code) · 等待输入$/,
+    'Expected sanitized Agent sidebar rows to keep provider and status in the second line.'
   );
   assert.ok(
     !sanitizedAgentItem.tooltip.includes('[?2026|'),

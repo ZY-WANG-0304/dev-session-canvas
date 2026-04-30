@@ -205,7 +205,7 @@ interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
-  view: 'root' | 'agent-provider' | 'agent-launch-mode';
+  view: 'root' | 'agent-launch-mode';
   selectedAgentProvider?: AgentProviderKind;
 }
 interface ExecutionNodeHelpContent {
@@ -1420,12 +1420,6 @@ function App(): JSX.Element {
         if (current.view === 'agent-launch-mode') {
           return {
             ...current,
-            view: 'agent-provider'
-          };
-        }
-        if (current.view === 'agent-provider') {
-          return {
-            ...current,
             view: 'root',
             selectedAgentProvider: undefined
           };
@@ -1615,17 +1609,6 @@ function App(): JSX.Element {
             );
             closePaneContextMenu();
           }}
-          onShowAgentProviders={() =>
-            setContextMenu((current) =>
-              current
-                ? {
-                    ...current,
-                    view: 'agent-provider',
-                    selectedAgentProvider: undefined
-                  }
-                : current
-            )
-          }
           onShowAgentLaunchModes={(provider) =>
             setContextMenu((current) =>
               current
@@ -1641,12 +1624,6 @@ function App(): JSX.Element {
             setContextMenu((current) => {
               if (!current) {
                 return current;
-              }
-              if (current.view === 'agent-launch-mode') {
-                return {
-                  ...current,
-                  view: 'agent-provider'
-                };
               }
               return {
                 ...current,
@@ -2065,6 +2042,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           subtitle={resolveAgentLaunchCommandLineForSubtitle(agentMetadata)}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
+          className="agent-window-title"
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
@@ -3651,7 +3629,7 @@ const CanvasContextMenu = React.forwardRef<
   {
     screenX: number;
     screenY: number;
-    view: 'root' | 'agent-provider' | 'agent-launch-mode';
+    view: 'root' | 'agent-launch-mode';
     selectedAgentProvider?: AgentProviderKind;
     kinds: CanvasCreatableNodeKind[];
     defaultAgentProvider: AgentProviderKind;
@@ -3662,14 +3640,15 @@ const CanvasContextMenu = React.forwardRef<
       agentLaunchPreset?: AgentLaunchPresetKind,
       agentCustomLaunchCommand?: string
     ) => void;
-    onShowAgentProviders: () => void;
     onShowAgentLaunchModes: (provider: AgentProviderKind) => void;
     onBack: () => void;
     onClose: () => void;
   }
 >(function CanvasContextMenu(props, ref): JSX.Element {
   const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
-  const providerItems = ['codex', 'claude'] as const;
+  const providerItems = orderedAgentProviders(props.defaultAgentProvider);
+  const rootKinds = (['note', 'terminal'] as const).filter((kind) => props.kinds.includes(kind));
+  const showAgentProviders = props.kinds.includes('agent');
   const isNestedView = props.view !== 'root';
   const selectedAgentProvider = props.selectedAgentProvider ?? props.defaultAgentProvider;
   const selectedLaunchDefaults = props.agentLaunchDefaults[selectedAgentProvider];
@@ -3770,249 +3749,217 @@ const CanvasContextMenu = React.forwardRef<
           <strong>
             {props.view === 'root'
               ? '新建节点'
-              : props.view === 'agent-provider'
-                ? '选择 Agent 类型'
-                : `选择启动方式 - ${providerLabel(selectedAgentProvider)}`}
+              : `选择启动方式 - ${providerLabel(selectedAgentProvider)}`}
           </strong>
           <span>
             {props.view === 'root'
-              ? '在当前空白区域快速放置对象'
-              : props.view === 'agent-provider'
-                ? '选择创建时要绑定的 provider'
-                : '选择此 Agent 的启动方式'}
+              ? '在此位置创建节点'
+              : '选择启动方式'}
           </span>
         </div>
       </div>
       <div className="canvas-context-menu-items">
-        {props.view === 'root'
-          ? props.kinds.map((kind) =>
-              kind === 'agent' ? (
-                <div
-                  key={kind}
-                  className="canvas-context-menu-split-item"
-                  data-context-menu-kind="agent"
-                >
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item"
-                    data-context-menu-agent-action="create-default"
-                    onClick={() => props.onCreate('agent', props.defaultAgentProvider, 'default')}
+        {props.view === 'root' ? (
+          <>
+            {rootKinds.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-kind={kind}
+                onClick={() => props.onCreate(kind)}
+              >
+                <span
+                  className="canvas-context-menu-swatch"
+                  style={{ backgroundColor: colorForKind(kind) }}
+                  aria-hidden="true"
+                />
+                <span className="canvas-context-menu-copy">
+                  <strong>{humanizeNodeKind(kind)}</strong>
+                  <span>{describeContextMenuKind(kind)}</span>
+                </span>
+              </button>
+            ))}
+            {showAgentProviders
+              ? providerItems.map((provider) => (
+                  <div
+                    key={provider}
+                    className="canvas-context-menu-split-item"
+                    data-context-menu-provider={provider}
                   >
-                    <span
-                      className="canvas-context-menu-swatch"
-                      style={{ backgroundColor: colorForKind(kind) }}
-                      aria-hidden="true"
-                    />
-                    <span className="canvas-context-menu-copy">
-                      <strong>{humanizeNodeKind(kind)}</strong>
-                      <span>{describeAgentContextMenuDefault(props.defaultAgentProvider)}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item-secondary"
-                    data-context-menu-agent-action="show-providers"
-                    onClick={props.onShowAgentProviders}
-                    aria-label="选择 Agent 类型"
-                    title="选择 Agent 类型"
-                  >
-                    <span
-                      className="canvas-context-menu-icon codicon codicon-chevron-right"
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  key={kind}
-                  type="button"
-                  className="canvas-context-menu-item"
-                  data-context-menu-kind={kind}
-                  onClick={() => props.onCreate(kind)}
-                >
-                  <span
-                    className="canvas-context-menu-swatch"
-                    style={{ backgroundColor: colorForKind(kind) }}
-                    aria-hidden="true"
-                  />
-                  <span className="canvas-context-menu-copy">
-                    <strong>{humanizeNodeKind(kind)}</strong>
-                    <span>{describeContextMenuKind(kind)}</span>
-                  </span>
-                </button>
-              )
-            )
-          : props.view === 'agent-provider'
-            ? providerItems.map((provider) => (
-                <div
-                  key={provider}
-                  className="canvas-context-menu-split-item"
-                  data-context-menu-provider={provider}
-                >
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item"
-                    data-context-menu-provider-action="create-default"
-                    onClick={() => props.onCreate('agent', provider, 'default')}
-                  >
-                    <span
-                      className="canvas-context-menu-swatch"
-                      style={{ backgroundColor: colorForKind('agent') }}
-                      aria-hidden="true"
-                    />
-                    <span className="canvas-context-menu-copy">
-                      <strong>
-                        {provider === props.defaultAgentProvider
-                          ? `${providerLabel(provider)}（默认）`
-                          : providerLabel(provider)}
-                      </strong>
-                      <span>{describeAgentProviderContextMenu(provider, provider === props.defaultAgentProvider)}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item-secondary"
-                    data-context-menu-provider-action="show-launch-modes"
-                    onClick={() => props.onShowAgentLaunchModes(provider)}
-                    aria-label={`选择 ${providerLabel(provider)} 启动方式`}
-                    title={`选择 ${providerLabel(provider)} 启动方式`}
-                  >
-                    <span
-                      className="canvas-context-menu-icon codicon codicon-chevron-right"
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
-              ))
-            : (
-                <>
-                  {defaultPresetBuild.error ? (
-                    <div className="canvas-context-menu-inline-error" data-context-menu-launch-error="true">
-                      {defaultPresetBuild.error}
-                    </div>
-                  ) : null}
-                  {(
-                    [
-                      {
-                        preset: 'default',
-                        action: 'launch-default',
-                        icon: 'play'
-                      },
-                      {
-                        preset: 'resume',
-                        action: 'launch-resume',
-                        icon: 'history'
-                      },
-                      {
-                        preset: 'yolo',
-                        action: 'launch-yolo',
-                        icon: 'rocket'
-                      },
-                      {
-                        preset: 'sandbox',
-                        action: 'launch-sandbox',
-                        icon: 'shield'
-                      }
-                    ] satisfies ReadonlyArray<{
-                      preset: Exclude<AgentLaunchPresetKind, 'custom'>;
-                      action: string;
-                      icon: string;
-                    }>
-                  ).map((item) => (
                     <button
-                      key={item.preset}
                       type="button"
                       className="canvas-context-menu-item"
-                      data-context-menu-launch-preset={item.action}
-                      disabled={Boolean(defaultPresetBuild.error)}
-                      onClick={() => props.onCreate('agent', selectedAgentProvider, item.preset)}
+                      data-context-menu-provider-action="create-default"
+                      data-context-menu-agent-action={
+                        provider === props.defaultAgentProvider ? 'create-default' : undefined
+                      }
+                      onClick={() => props.onCreate('agent', provider, 'default')}
                     >
                       <span
-                        className={`canvas-context-menu-icon codicon codicon-${item.icon}`}
+                        className="canvas-context-menu-swatch"
+                        style={{ backgroundColor: colorForKind('agent') }}
                         aria-hidden="true"
                       />
                       <span className="canvas-context-menu-copy">
-                        <strong>{labelForAgentLaunchPreset(item.preset)}</strong>
-                        <span>
-                          {describeAgentLaunchPreset(
-                            selectedAgentProvider,
-                            item.preset,
-                            selectedLaunchDefaults
-                          )}
-                        </span>
+                        <strong>
+                          {provider === props.defaultAgentProvider
+                            ? `${providerLabel(provider)}（默认）`
+                            : providerLabel(provider)}
+                        </strong>
+                        <span>{describeAgentProviderContextMenu(provider)}</span>
                       </span>
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item"
-                    data-context-menu-launch-preset="launch-custom"
-                    disabled={Boolean(defaultPresetBuild.error)}
-                    onClick={() => setCustomEditorOpen(true)}
-                  >
-                    <span
-                      className="canvas-context-menu-icon codicon codicon-gear"
-                      aria-hidden="true"
-                    />
-                    <span className="canvas-context-menu-copy">
-                      <strong>自定义启动...</strong>
-                      <span>输入完整启动命令，并在确认前实时校验。</span>
-                    </span>
-                  </button>
-                  {customEditorOpen ? (
-                    <div
-                      className={`canvas-context-menu-inline-editor${customValidation.valid ? '' : ' is-invalid'}`}
-                      data-context-menu-custom-editor="true"
-                      onMouseDown={stopCanvasEvent}
-                      onClick={stopCanvasEvent}
+                    <button
+                      type="button"
+                      className="canvas-context-menu-item-secondary"
+                      data-context-menu-provider-action="show-launch-modes"
+                      onClick={() => props.onShowAgentLaunchModes(provider)}
+                      aria-label={`选择 ${providerLabel(provider)} 启动方式`}
+                      title={`选择 ${providerLabel(provider)} 启动方式`}
                     >
-                      <input
-                        type="text"
-                        className="canvas-context-menu-inline-input"
-                        data-context-menu-custom-input="true"
-                        value={customCommandLine}
-                        onChange={(event) => setCustomCommandLine(event.target.value)}
-                        onCompositionStart={() => setCustomInputIsComposing(true)}
-                        onCompositionEnd={(event) => {
-                          setCustomInputIsComposing(false);
-                          setCustomCommandLine(event.currentTarget.value);
-                        }}
-                        onKeyDown={(event) => {
-                          stopCanvasEvent(event);
-
-                          if (customInputIsComposing || isImeComposingKeyboardEvent(event)) {
-                            return;
-                          }
-
-                          if (event.key === 'Escape') {
-                            event.preventDefault();
-                            setCustomEditorOpen(false);
-                            return;
-                          }
-                          if (event.key !== 'Enter' || !customValidation.valid) {
-                            return;
-                          }
-                          event.preventDefault();
-                          createAgentWithCustomCommand();
-                        }}
-                        aria-label={`${providerLabel(selectedAgentProvider)} 自定义启动命令`}
+                      <span
+                        className="canvas-context-menu-icon codicon codicon-chevron-right"
+                        aria-hidden="true"
                       />
-                      <button
-                        type="button"
-                        className="canvas-context-menu-inline-confirm"
-                        data-context-menu-custom-confirm="true"
-                        disabled={!customValidation.valid}
-                        onClick={createAgentWithCustomCommand}
-                      >
-                        确定
-                      </button>
-                      {!customValidation.valid ? (
-                        <span className="canvas-context-menu-inline-error">{customValidation.error}</span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </>
-              )}
+                    </button>
+                  </div>
+                ))
+              : null}
+          </>
+        ) : (
+          <>
+            {defaultPresetBuild.error ? (
+              <div className="canvas-context-menu-inline-error" data-context-menu-launch-error="true">
+                {defaultPresetBuild.error}
+              </div>
+            ) : null}
+            {(
+              [
+                {
+                  preset: 'default',
+                  action: 'launch-default',
+                  icon: 'play'
+                },
+                {
+                  preset: 'resume',
+                  action: 'launch-resume',
+                  icon: 'history'
+                },
+                {
+                  preset: 'yolo',
+                  action: 'launch-yolo',
+                  icon: 'rocket'
+                },
+                {
+                  preset: 'sandbox',
+                  action: 'launch-sandbox',
+                  icon: 'shield'
+                }
+              ] satisfies ReadonlyArray<{
+                preset: Exclude<AgentLaunchPresetKind, 'custom'>;
+                action: string;
+                icon: string;
+              }>
+            ).map((item) => (
+              <button
+                key={item.preset}
+                type="button"
+                className="canvas-context-menu-item has-clamped-detail"
+                data-context-menu-launch-preset={item.action}
+                disabled={Boolean(defaultPresetBuild.error)}
+                onClick={() => props.onCreate('agent', selectedAgentProvider, item.preset)}
+              >
+                <span
+                  className={`canvas-context-menu-icon codicon codicon-${item.icon}`}
+                  aria-hidden="true"
+                />
+                <span className="canvas-context-menu-copy">
+                  <strong>{labelForAgentLaunchPreset(item.preset)}</strong>
+                  <OverflowAwareText
+                    className="canvas-context-menu-copy-detail"
+                    text={describeAgentLaunchPreset(
+                      selectedAgentProvider,
+                      item.preset,
+                      selectedLaunchDefaults
+                    )}
+                  />
+                </span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="canvas-context-menu-item has-clamped-detail"
+              data-context-menu-launch-preset="launch-custom"
+              disabled={Boolean(defaultPresetBuild.error)}
+              onClick={() => setCustomEditorOpen(true)}
+            >
+              <span
+                className="canvas-context-menu-icon codicon codicon-gear"
+                aria-hidden="true"
+              />
+              <span className="canvas-context-menu-copy">
+                <strong>自定义启动</strong>
+                <OverflowAwareText
+                  className="canvas-context-menu-copy-detail"
+                  text="输入自定义命令"
+                />
+              </span>
+            </button>
+            {customEditorOpen ? (
+              <div
+                className={`canvas-context-menu-inline-editor${customValidation.valid ? '' : ' is-invalid'}`}
+                data-context-menu-custom-editor="true"
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+              >
+                <input
+                  type="text"
+                  className="canvas-context-menu-inline-input"
+                  data-context-menu-custom-input="true"
+                  value={customCommandLine}
+                  onChange={(event) => setCustomCommandLine(event.target.value)}
+                  onCompositionStart={() => setCustomInputIsComposing(true)}
+                  onCompositionEnd={(event) => {
+                    setCustomInputIsComposing(false);
+                    setCustomCommandLine(event.currentTarget.value);
+                  }}
+                  onKeyDown={(event) => {
+                    stopCanvasEvent(event);
+
+                    if (customInputIsComposing || isImeComposingKeyboardEvent(event)) {
+                      return;
+                    }
+
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setCustomEditorOpen(false);
+                      return;
+                    }
+                    if (event.key !== 'Enter' || !customValidation.valid) {
+                      return;
+                    }
+                    event.preventDefault();
+                    createAgentWithCustomCommand();
+                  }}
+                  aria-label={`${providerLabel(selectedAgentProvider)} 自定义启动命令`}
+                />
+                <button
+                  type="button"
+                  className="canvas-context-menu-inline-confirm"
+                  data-context-menu-custom-confirm="true"
+                  disabled={!customValidation.valid}
+                  onClick={createAgentWithCustomCommand}
+                >
+                  确定
+                </button>
+                {!customValidation.valid ? (
+                  <span className="canvas-context-menu-inline-error">{customValidation.error}</span>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
@@ -5071,46 +5018,48 @@ function ChromeTitleEditor(props: {
 
   return (
     <div className={`window-title ${props.className ?? ''}`.trim()}>
-      <input
-        className="window-title-input nodrag nopan"
-        data-node-interactive="true"
-        data-probe-field="title"
-        value={draft}
-        onFocus={() => {
-          setIsEditing(true);
-          props.onSelectNode?.();
-        }}
-        onMouseDown={stopCanvasEvent}
-        onClick={stopCanvasEvent}
-        onCompositionStart={() => setIsComposing(true)}
-        onCompositionEnd={(event) => {
-          setIsComposing(false);
-          setDraft(event.currentTarget.value);
-        }}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={(event) => {
-          setIsComposing(false);
-          setIsEditing(false);
-          commitTitle(event.currentTarget.value);
-        }}
-        onKeyDown={(event) =>
-          handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
-            isComposing
-          })
-        }
-        placeholder={props.placeholder}
-      />
-      {props.subtitle ? (
-        <div className="window-title-subtitle-row">
-          <OverflowAwareInlineText className="window-title-subtitle" text={props.subtitle} />
-          {props.subtitleAccessory}
-        </div>
-      ) : null}
+      <div className="window-title-copy">
+        <input
+          className="window-title-input nodrag nopan"
+          data-node-interactive="true"
+          data-probe-field="title"
+          value={draft}
+          onFocus={() => {
+            setIsEditing(true);
+            props.onSelectNode?.();
+          }}
+          onMouseDown={stopCanvasEvent}
+          onClick={stopCanvasEvent}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={(event) => {
+            setIsComposing(false);
+            setDraft(event.currentTarget.value);
+          }}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={(event) => {
+            setIsComposing(false);
+            setIsEditing(false);
+            commitTitle(event.currentTarget.value);
+          }}
+          onKeyDown={(event) =>
+            handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
+              isComposing
+            })
+          }
+          placeholder={props.placeholder}
+        />
+        {props.subtitle ? (
+          <div className="window-title-subtitle-row">
+            <OverflowAwareText className="window-title-subtitle" text={props.subtitle} />
+            {props.subtitleAccessory}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function OverflowAwareInlineText(props: { className: string; text: string }): JSX.Element {
+function OverflowAwareText(props: { className: string; text: string; tooltipText?: string }): JSX.Element {
   const textRef = useRef<HTMLSpanElement | null>(null);
   const [title, setTitle] = useState<string | undefined>(undefined);
 
@@ -5123,7 +5072,10 @@ function OverflowAwareInlineText(props: { className: string; text: string }): JS
 
     let frameId: number | undefined;
     const updateTitle = (): void => {
-      const nextTitle = element.scrollWidth > element.clientWidth + 1 ? props.text : undefined;
+      const nextTitle =
+        element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1
+          ? props.tooltipText ?? props.text
+          : undefined;
       setTitle((currentTitle) => (currentTitle === nextTitle ? currentTitle : nextTitle));
     };
     const scheduleUpdate = (): void => {
@@ -5151,7 +5103,7 @@ function OverflowAwareInlineText(props: { className: string; text: string }): JS
       resizeObserver?.disconnect();
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [props.text]);
+  }, [props.text, props.tooltipText]);
 
   return (
     <span ref={textRef} className={props.className} title={title}>
@@ -5606,15 +5558,7 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
   }
 }
 
-function describeAgentContextMenuDefault(provider: AgentProviderKind): string {
-  return `默认：${providerLabel(provider)}，直接新建一个可运行的 Agent 会话窗口`;
-}
-
-function describeAgentProviderContextMenu(provider: AgentProviderKind, isDefault: boolean): string {
-  if (isDefault) {
-    return `按默认类型创建 ${providerLabel(provider)} Agent`;
-  }
-
+function describeAgentProviderContextMenu(provider: AgentProviderKind): string {
   return `创建一个 ${providerLabel(provider)} Agent 会话窗口`;
 }
 
@@ -5645,21 +5589,24 @@ function describeAgentLaunchPreset(
   }
   switch (preset) {
     case 'resume':
-      return provider === 'claude'
-        ? `使用 ${commandLine.commandLine} 进入 Claude Code 自己的 resume 会话选择入口`
-        : `使用 ${commandLine.commandLine} 进入 Codex 自己的 resume 会话选择入口`;
+      return `恢复之前的会话：${commandLine.commandLine}`;
     case 'yolo':
-      return `按 YOLO 预设仅覆盖当前已知的冲突模式参数；更复杂的参数组合请改用自定义启动：${commandLine.commandLine}`;
+      return `自动批准执行模式：${commandLine.commandLine}`;
     case 'sandbox':
-      return `按沙盒预设仅覆盖当前已知的冲突模式参数；更复杂的参数组合请改用自定义启动：${commandLine.commandLine}`;
+      return `受限权限安全模式：${commandLine.commandLine}`;
     case 'default':
     default:
-      return `直接使用当前设置中的默认启动命令：${commandLine.commandLine}`;
+      return `使用默认配置：${commandLine.commandLine}`;
   }
 }
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function orderedAgentProviders(defaultProvider: AgentProviderKind): AgentProviderKind[] {
+  const secondaryProvider: AgentProviderKind = defaultProvider === 'codex' ? 'claude' : 'codex';
+  return [defaultProvider, secondaryProvider];
 }
 
 function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): string {

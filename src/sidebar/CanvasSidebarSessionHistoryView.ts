@@ -452,6 +452,8 @@ function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string
   return relativePath.startsWith('..') || path.isAbsolute(relativePath) ? cwd : relativePath.replace(/\\/g, '/');
 }
 
+const MAX_SESSION_HISTORY_TITLE_CHARS = 256;
+
 function shortSessionId(sessionId: string): string {
   return sessionId.length <= 12 ? sessionId : sessionId.slice(0, 12);
 }
@@ -468,11 +470,11 @@ function formatSessionHistoryTitle(entry: WorkspaceAgentSessionHistoryEntry): st
   }
 
   const normalizedLine = firstLine.replace(/\s+/g, ' ').trim();
-  if (normalizedLine.length <= 72) {
+  if (normalizedLine.length <= MAX_SESSION_HISTORY_TITLE_CHARS) {
     return normalizedLine;
   }
 
-  return `${normalizedLine.slice(0, 71).trimEnd()}…`;
+  return `${normalizedLine.slice(0, MAX_SESSION_HISTORY_TITLE_CHARS - 1).trimEnd()}…`;
 }
 
 function providerLabel(provider: AgentProviderKind): string {
