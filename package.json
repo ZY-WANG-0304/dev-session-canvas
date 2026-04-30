@@ -294,7 +294,7 @@
         },
         "devSessionCanvas.files.enabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "window",
           "markdownDescription": "%configuration.files.enabled.description%"
         },

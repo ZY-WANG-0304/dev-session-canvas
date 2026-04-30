@@ -2141,7 +2141,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       defaultSurface:
         getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel' ? 'panel' : 'editor',
       runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false),
-      filesFeatureEnabled: getConfigurationValue<boolean>('filesFeatureEnabled', true)
+      filesFeatureEnabled: getConfigurationValue<boolean>('filesFeatureEnabled', false)
     };
   }
 
