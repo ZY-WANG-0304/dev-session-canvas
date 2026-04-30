@@ -409,12 +409,12 @@ function applyAgentPresetArgs(
       return provider === 'claude' ? [...baseArgs, '--resume'] : [...baseArgs, 'resume'];
     case 'yolo':
       return provider === 'claude'
-        ? [...baseArgs, '--dangerously-skip-permissions']
-        : [...baseArgs, '--yolo'];
+        ? ['--dangerously-skip-permissions', ...baseArgs]
+        : ['--yolo', ...baseArgs];
     case 'sandbox':
       return provider === 'claude'
-        ? [...baseArgs, '--permission-mode', 'plan']
-        : [...baseArgs, '--sandbox', 'workspace-write'];
+        ? ['--permission-mode', 'plan', ...baseArgs]
+        : ['--sandbox', 'workspace-write', ...baseArgs];
     case 'custom':
     case 'default':
     default:
@@ -475,8 +475,8 @@ function buildAgentResumeArgv(
   if (provider === 'claude') {
     const normalizedArgs = stripClaudeResumeTargetArgs(baseArgs);
     return explicitSessionId
-      ? [...normalizedArgs, '--resume', explicitSessionId]
-      : [...normalizedArgs, '--resume'];
+      ? ['--resume', explicitSessionId, ...normalizedArgs]
+      : ['--resume', ...normalizedArgs];
   }
 
   return buildCodexResumeArgv(baseArgs, explicitSessionId);
@@ -518,8 +518,8 @@ function buildCodexResumeArgv(baseArgs: readonly string[], explicitSessionId?: s
       })
     : [];
   return explicitSessionId
-    ? [...leadingArgs, 'resume', ...normalizedResumeArgs, explicitSessionId]
-    : [...leadingArgs, 'resume', ...normalizedResumeArgs];
+    ? ['resume', ...leadingArgs, ...normalizedResumeArgs, explicitSessionId]
+    : ['resume', ...leadingArgs, ...normalizedResumeArgs];
 }
 
 function splitCodexResumeArgs(baseArgs: readonly string[]): {
@@ -754,12 +754,84 @@ function isEquivalentAgentCommandLine(
   return (
     isProviderCommandMatch(inputCommand, provider, configuredCommand) &&
     isProviderCommandMatch(presetCommand, provider, configuredCommand) &&
-    normalizeComparableArgv(inputArgs) === normalizeComparableArgv(presetArgs)
+    normalizeComparableArgv(inputArgs, provider) === normalizeComparableArgv(presetArgs, provider)
   );
 }
 
-function normalizeComparableArgv(argv: readonly string[]): string {
-  return JSON.stringify(argv);
+function normalizeComparableArgv(argv: readonly string[], provider: AgentProviderKind): string {
+  return JSON.stringify(
+    provider === 'claude' ? canonicalizeClaudeComparableArgv(argv) : canonicalizeCodexComparableArgv(argv)
+  );
+}
+
+function canonicalizeCodexComparableArgv(argv: readonly string[]): string[] {
+  const resumeTokenIndex = argv.indexOf('resume');
+  const resumeToken = resumeTokenIndex >= 0 ? argv[resumeTokenIndex] : undefined;
+  const argvWithoutResume = resumeTokenIndex >= 0 ? argv.filter((_, index) => index !== resumeTokenIndex) : [...argv];
+  const extracted: string[] = [];
+  const remaining: string[] = [];
+
+  for (let index = 0; index < argvWithoutResume.length; index += 1) {
+    const token = argvWithoutResume[index];
+
+    if (
+      token === '--yolo' ||
+      token === '--full-auto' ||
+      token === '--dangerously-bypass-approvals-and-sandbox' ||
+      token.startsWith('-s=') ||
+      token.startsWith('-a=') ||
+      token.startsWith('--sandbox=') ||
+      token.startsWith('--ask-for-approval=')
+    ) {
+      extracted.push(token);
+      continue;
+    }
+
+    if (token === '--sandbox' || token === '-s' || token === '--ask-for-approval' || token === '-a') {
+      extracted.push(token);
+      const nextToken = argvWithoutResume[index + 1];
+      if (nextToken && !isOptionLikeCommandToken(nextToken)) {
+        extracted.push(nextToken);
+        index += 1;
+      }
+      continue;
+    }
+
+    remaining.push(token);
+  }
+
+  return [...(resumeToken ? [resumeToken] : []), ...extracted, ...remaining];
+}
+
+function canonicalizeClaudeComparableArgv(argv: readonly string[]): string[] {
+  const resumeTokenIndex = argv.findIndex((token) => token === '--resume' || token === '-r');
+  const resumeToken = resumeTokenIndex >= 0 ? argv[resumeTokenIndex] : undefined;
+  const argvWithoutResume = resumeTokenIndex >= 0 ? argv.filter((_, index) => index !== resumeTokenIndex) : [...argv];
+  const extracted: string[] = [];
+  const remaining: string[] = [];
+
+  for (let index = 0; index < argvWithoutResume.length; index += 1) {
+    const token = argvWithoutResume[index];
+
+    if (token === '--dangerously-skip-permissions' || token.startsWith('--permission-mode=')) {
+      extracted.push(token);
+      continue;
+    }
+
+    if (token === '--permission-mode') {
+      extracted.push(token);
+      const nextToken = argvWithoutResume[index + 1];
+      if (nextToken && !isOptionLikeCommandToken(nextToken)) {
+        extracted.push(nextToken);
+        index += 1;
+      }
+      continue;
+    }
+
+    remaining.push(token);
+  }
+
+  return [...(resumeToken ? [resumeToken] : []), ...extracted, ...remaining];
 }
 
 function normalizeCommandIdentity(command: string): string {

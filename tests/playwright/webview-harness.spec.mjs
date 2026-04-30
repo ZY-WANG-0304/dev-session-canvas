@@ -2006,7 +2006,6 @@ test('right-click create menu validates custom agent launch commands before crea
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2088,7 +2087,6 @@ test('right-click create menu blocks custom agent launch when provider default a
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2124,7 +2122,6 @@ test('right-click custom agent launch input ignores IME Enter before composition
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2193,7 +2190,6 @@ test('right-click custom agent launch input closes before the menu backs out on 
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2286,6 +2282,24 @@ for (const executionKind of ['agent', 'terminal']) {
       const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
       await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
       await expect(subtitle).toContainText('codex --model gpt-5.2');
+    });
+
+    test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {
+      const state = createLiveExecutionNodeState('agent');
+      state.nodes[0].size = {
+        width: 960,
+        height: state.nodes[0].size.height
+      };
+
+      await openHarness(page);
+      await bootstrap(page, state);
+      await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+      const titleWidth = await nodeById(page, 'agent-zoom')
+        .locator('.agent-window-title .window-title-copy')
+        .evaluate((element) => Math.round(element.getBoundingClientRect().width));
+
+      expect(titleWidth).toBeLessThanOrEqual(340);
     });
   }
 
@@ -3350,11 +3364,26 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
 
   const menu = page.locator('[data-context-menu="true"]');
   await expect(menu).toBeVisible();
-  await expect(menu.locator('[data-context-menu-kind="agent"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
-  await expect(menu.locator('[data-context-menu-agent-action="show-providers"]')).toBeVisible();
-  await expect(menu.locator('[data-context-menu-agent-action="show-providers"] .codicon-chevron-right')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"] .codicon-chevron-right')).toBeVisible();
+  await expect(
+    menu.locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="create-default"]')
+  ).toContainText('Codex（默认）');
+  await expect
+    .poll(async () =>
+      menu
+        .locator('.canvas-context-menu-items > *')
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) =>
+              element.getAttribute('data-context-menu-kind') ?? element.getAttribute('data-context-menu-provider')
+          )
+        )
+    )
+    .toEqual(['note', 'terminal', 'codex', 'claude']);
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -3407,14 +3436,13 @@ test('right-click create menu can drill into agent launch modes and create claud
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
-  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
-  await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
   await menu
     .locator('[data-context-menu-provider="claude"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
+  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toContainText(
@@ -3486,19 +3514,22 @@ test('right-click launch preset descriptions normalize conflicting default launc
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
 
   const yoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
-  await expect(yoloPreset).toContainText('codex --model gpt-5.2 resume --last --yolo');
+  await expect(yoloPreset).toContainText('codex --yolo --model gpt-5.2 resume --last');
   await expect(yoloPreset).toContainText('仅覆盖当前已知的冲突模式参数');
   await expect(yoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
   await expect(yoloPreset).not.toContainText('danger-full-access');
+  await expect(yoloPreset.locator('.canvas-context-menu-copy-detail')).toHaveAttribute(
+    'title',
+    /codex --yolo --model gpt-5\.2 resume --last/
+  );
 
   const sandboxPreset = menu.locator('[data-context-menu-launch-preset="launch-sandbox"]');
-  await expect(sandboxPreset).toContainText('codex --model gpt-5.2 resume --last --sandbox workspace-write');
+  await expect(sandboxPreset).toContainText('codex --sandbox workspace-write --model gpt-5.2 resume --last');
   await expect(sandboxPreset).toContainText('仅覆盖当前已知的冲突模式参数');
   await expect(sandboxPreset).not.toContainText('danger-full-access');
 
@@ -3509,7 +3540,7 @@ test('right-click launch preset descriptions normalize conflicting default launc
 
   const claudeYoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
   await expect(claudeYoloPreset).toContainText(
-    'claude --model sonnet --resume session-123 --dangerously-skip-permissions'
+    'claude --dangerously-skip-permissions --model sonnet --resume session-123'
   );
   await expect(claudeYoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
   await expect(claudeYoloPreset).not.toContainText('acceptEdits');
@@ -3589,7 +3620,7 @@ test('right-click create menu refreshes its default agent label after runtime co
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await expect(menu.locator('[data-context-menu-agent-action="create-default"]')).toContainText('默认：Claude Code');
+  await expect(menu.locator('[data-context-menu-agent-action="create-default"]')).toContainText('Claude Code（默认）');
 
   await menu.locator('[data-context-menu-agent-action="create-default"]').click();
 

@@ -146,7 +146,9 @@ updated_at: 2026-04-30
 
 这里还要额外收口一个默认参数冲突规则：对 `YOLO / 沙盒` 这类执行策略预设，命令层不能简单把预设参数盲目 append 到默认启动参数后面；它必须先剥离当前 provider 下由这些执行策略接管的那一小组、仓库已经显式文档化支持的 owned mode flags，再回填本次显式选择的预设结果。这里不是一套“对所有参数做通用归一化”的框架，而是一份有限白名单：`Codex` 当前只覆盖 `--yolo`、`--full-auto`、`--dangerously-bypass-approvals-and-sandbox`、`--sandbox` / `-s`、`--ask-for-approval` / `-a` 及其 `--flag=value` 形式；`Claude Code` 当前只覆盖 `--dangerously-skip-permissions` 与 `--permission-mode`。除此以外的潜在冲突组合，产品语义明确收口为“不要自动改写，用户改走自定义启动”。
 
-之所以要把边界收得这么窄，是因为右键菜单第三层和 Quick Input 第二层的目标只是提供一组仓库内定义、可预测的快捷预设，而不是替不同 provider 的全部 CLI 语义兜底。否则一旦把未知参数也纳入“同类模式参数”的模糊概念里，后续实现者和 reviewer 很容易误以为这里应该继续扩展成通用参数重写器。
+同时，模式参数的插入位置也继续收口：当 `Resume / YOLO / 沙盒` 需要把本次显式选择写回完整命令时，应尽量把对应 argv 前置到命令前部，而不是继续堆在默认参数尾部。这样右键菜单、Quick Input 与节点副标题里展示出来的最终命令能更快暴露“这次到底是默认 / Resume / YOLO / 沙盒哪一种模式”，而不会把关键模式信息埋在超长命令尾部。
+
+之所以要把边界收得这么窄，是因为右键菜单的启动方式层和 Quick Input 第二层的目标只是提供一组仓库内定义、可预测的快捷预设，而不是替不同 provider 的全部 CLI 语义兜底。否则一旦把未知参数也纳入“同类模式参数”的模糊概念里，后续实现者和 reviewer 很容易误以为这里应该继续扩展成通用参数重写器。
 
 相反，`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都属于“恢复哪条会话”的语义，不应被当成与这些执行策略互斥的 owned flags 去剥离。
 
@@ -170,18 +172,19 @@ updated_at: 2026-04-30
 
 ### 7.3 右键菜单
 
-`src/webview/main.tsx` 中的空白区右键菜单扩成三层：
+`src/webview/main.tsx` 中的空白区右键菜单当前收口为两层：
 
-1. 根层：`Agent / Terminal / Note`
-2. provider 层：`Codex / Claude Code`
-3. 启动方式层：`快速启动 / Resume / YOLO / 沙盒 / 自定义启动`
+1. 根层：`Note / Terminal / provider 列表`
+2. 启动方式层：`快速启动 / Resume / YOLO / 沙盒 / 自定义启动`
 
 正式规则：
 
-- 根层和 provider 层的 Agent 项都采用 split button。
+- 根层不再保留单独的泛化 `Agent` 项；provider 选择直接并入根层，默认 provider 排在第一位，仅通过 `（默认）` 文案标识。
+- provider 行继续采用 split button：主按钮直接创建该 provider 的默认 Agent，次按钮进入启动方式层。
 - 自定义启动输入框是菜单旁的就地浮层，不进入新的全屏对话框。
-- `Escape` 优先逐层返回；只有在根层时才关闭整个菜单。
+- `Escape` 优先从启动方式层返回根层；只有在根层时才关闭整个菜单。
 - 自定义启动输入打开后，第一次 `Escape` 必须优先收起输入区；这条规则独立于当前焦点是否还停留在输入框里。
+- 启动方式层每条说明文案都应被限制在固定可读高度内；超长内容改为省略号截断，并在 hover 时通过原生 title 暴露完整指令。
 - 创建动作统一发 `webview/createDemoNode`，并把 provider、launchPreset、customLaunchCommand 一次性带回宿主；不允许先创建默认 Agent 再补一次 metadata 更新。
 
 ### 7.4 VSCode Quick Input
@@ -262,4 +265,5 @@ updated_at: 2026-04-30
 - 2026-04-26：已补上 Windows “带空格且以反斜杠结尾”的 quoted token round-trip 回归，确认共享 formatter / parser 不会再把 `C:\\Users\\me\\My Dir\\` 这类参数格式化成无法重新解析的命令；本轮 `npm run test:agent-launch-presets`、`npm run build` 与 targeted `npm run test:webview -- --grep "right-click create menu|right-click custom agent launch input"` 均通过。
 - 2026-04-26：本轮继续按“结构化 argv + 文档化 Windows quoting 兼容层”收口：新 formatter 改成更接近原生 Windows 的最小转义，parser 同时接受新 canonical output、旧版“全量双写反斜杠”的历史文本，以及自然输入的 quoted UNC path；已新增绝对路径 / UNC / 尾部反斜杠回归。
 - 2026-04-29：本轮继续收口“显式预设 vs 默认模式参数”冲突：共享命令层改成只对白名单里的 provider-owned execution mode flags 做有限覆盖，再回填 `YOLO / 沙盒`；未知组合明确要求用户改走自定义启动。`Codex` 的 `resume` 子命令及其参数继续保留，因为它们和执行策略参数并不互斥。同时 Quick Input 第二步会在显式点击预设且最终命令仍等价时保留该 preset 的 metadata，而不是仅靠字符串反推回落成 `default`。相关回归新增覆盖右键菜单文案、命令层归一化，以及 QuickPick 在“默认命令已含 `--yolo`”场景下仍持久化 `launchPreset: 'yolo'`。
+- 2026-04-30：按最新 UI polish 继续收口右键菜单与节点标题栏：根层右键菜单改成 `Note / Terminal / provider 列表`，默认 provider 排在第一位；启动方式说明区新增固定高度与 hover 完整命令；Agent 节点标题/副标题在宽节点上改成固定可读上限；共享命令层把显式 `Resume / YOLO / 沙盒` argv 尽量前置到命令前部。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。

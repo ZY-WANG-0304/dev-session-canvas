@@ -696,6 +696,16 @@ body {
   gap: 2px;
 }
 
+.window-title-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.agent-window-title .window-title-copy {
+  width: min(100%, 340px);
+}
+
 .window-title-input {
   width: 100%;
   min-width: 0;
@@ -1834,6 +1844,10 @@ body {
   text-align: left;
 }
 
+.canvas-context-menu-item.has-clamped-detail {
+  align-items: flex-start;
+}
+
 .canvas-context-menu-item:hover,
 .canvas-context-menu-item:focus-visible,
 .canvas-context-menu-item-secondary:hover,
@@ -1871,6 +1885,16 @@ body {
   font-size: 11px;
   line-height: 1.35;
   color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-copy-detail {
+  display: -webkit-box;
+  max-width: 100%;
+  max-height: calc(1.35em * 2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .canvas-context-menu-item:hover .canvas-context-menu-copy span,
