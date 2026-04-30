@@ -3608,9 +3608,8 @@ test('right-click launch preset descriptions normalize conflicting default launc
   await expect(yoloPreset).toContainText('codex --yolo --model gpt-5.2 resume --last');
   await expect(yoloPreset).toContainText('自动批准执行模式：');
   await expect(yoloPreset).not.toContainText('danger-full-access');
-  await expect(yoloPreset.locator('.canvas-context-menu-copy-detail')).toHaveAttribute(
-    'title',
-    /codex --yolo --model gpt-5\.2 resume --last/
+  await expect(yoloPreset.locator('.canvas-context-menu-copy-detail')).toContainText(
+    'codex --yolo --model gpt-5.2 resume --last'
   );
 
   const sandboxPreset = menu.locator('[data-context-menu-launch-preset="launch-sandbox"]');
