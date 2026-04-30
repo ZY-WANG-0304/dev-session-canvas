@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-04-29
+updated_at: 2026-04-30
 ---
 
 # Agent 启动方式与重启交互设计
@@ -151,6 +151,8 @@ updated_at: 2026-04-29
 相反，`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都属于“恢复哪条会话”的语义，不应被当成与这些执行策略互斥的 owned flags 去剥离。
 
 同一个共享层里，`Resume` 预设本身还要单独走另一套归一化：它不是“保留默认参数里已有的定向 resume 目标”，而是强制收口到 provider 自己的 resume 入口。因此若默认启动参数已经写了 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`-r <session-id>`、`--continue <session-id>`、`-c <session-id>` 或 `--session-id <session-id>`，命令层在应用 `Resume` 预设前要先剥离这些更定向的会话选择片段，再回填通用的 `codex resume` / `claude --resume`。
+
+这里还要继续细分两类场景：一类是“没有显式目标 session-id 的 Resume 预设”，它进入 provider 自己的 picker / resume 入口，因此像 `Codex --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数仍可保留；另一类是“已经持有明确 session-id 的显式恢复命令”，例如侧栏历史会话恢复。这时命令层不能再把上述选择阶段参数继续带到 `codex resume <session-id>` 后面，否则会把“已明确目标的恢复”错误混成“仍在影响 picker 行为”的命令。显式目标恢复在 Codex 侧应只保留 `--model`、`--sandbox`、`--ask-for-approval` 等对 `resume <session-id>` 本身仍有效的参数，同时剥离 `--all`、`--include-non-interactive`、`--last` 与旧的目标 session 片段。
 
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，也不是接受“任意 basename 一样的可执行文件”；它只接受当前设置值本身，以及 provider 的标准别名。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然可以使用该精确路径，同时不会把 `/tmp/evil/claude` 这类同 basename 的其他二进制误判成合法命令。
 

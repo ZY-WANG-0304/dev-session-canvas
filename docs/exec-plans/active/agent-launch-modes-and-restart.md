@@ -220,6 +220,7 @@
 - 2026-04-29：继续按 review 收口 formal spec 文案：正式产品规格、设计文档与右键菜单说明文案已明确改成“只覆盖仓库当前已知的一小组冲突模式参数；更复杂组合请走自定义启动”，避免后续协作者把现状误读成通用参数归一化框架。相关 Playwright 断言已同步覆盖这段用户可见文案。
 - 2026-04-29：继续补齐 Resume 归一化的 CLI 边界：Codex 侧把 `--local-provider <value>` 也纳入“会吞掉后一个 token”的已知官方选项集合，避免 `resume --last` 被误留；Claude 侧把 `-r` / `-c` 短别名也纳入 resume target stripping。相关命令层回归已补到 `scripts/test-agent-launch-presets.mjs`。
 - 2026-04-29：继续修补 Claude 短别名在实际启动链路中的分叉：`extractClaudeCommandSessionFlag()` 现在会把 `-r` / `-c` 及其 `-r=<id>` / `-c=<id>` 形式统一映射回 canonical flag，确保 host 的 resumeContext 推导、launchSpec 拼装和 runtime supervisor 的初始 session id 识别都不会再额外补写一份 `--session-id`。相关提取器回归已补到 `scripts/test-agent-launch-presets.mjs`。
+- 2026-04-30：按 PR30 最新 review 继续收口 `Resume` / history restore 的命令拼装：Codex 侧不再在遇到 `resume` 后直接截断整个尾部，而是只剥离 `--last` / 旧 session target，并保留 `--sandbox`、`--ask-for-approval`、`--model` 等对 `codex resume` 仍有效的参数。随后又根据产品规格补充更严格的 explicit-session-id 边界：创建前 `Resume` 预设仍可保留 `--all` / `--include-non-interactive` 这类 picker 修饰，但历史会话恢复这类已知目标 `session-id` 的命令会主动剥离它们，避免把“显式恢复某条会话”与“继续影响 picker / --last 选择范围”混在一起。相关回归已补到 `scripts/test-agent-launch-presets.mjs`。
 
 ## 接口与依赖
 

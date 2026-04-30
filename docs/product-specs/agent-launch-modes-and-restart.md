@@ -50,6 +50,7 @@
   - 当前已知冲突集合仅包括：`Codex` 的 `--yolo` / `--full-auto` / `--dangerously-bypass-approvals-and-sandbox` / `--sandbox` / `-s` / `--ask-for-approval` / `-a`（以及这些长短选项的 `--flag=value` 形式），以及 `Claude Code` 的 `--dangerously-skip-permissions` / `--permission-mode`。
   - 上述有限覆盖只作用于执行策略本身，不覆盖“恢复哪条会话”的语义：`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都不视为与 `YOLO / 沙盒` 互斥；若默认启动参数中已经显式包含它们，点击 `YOLO / 沙盒` 时应保留这些会话选择语义，只覆盖执行策略 flag。
   - 但当用户显式选择创建前的 `Resume` 预设时，本次 fresh-start 仍统一收口为 provider 自己的 resume 选择入口：`Codex` 生成 `codex resume`，`Claude Code` 生成 `claude --resume`；默认启动参数里原本更定向的 `--last`、具体 `session-id`、`--continue` / `-c`、`--resume` / `-r` 等 resume 目标应被替换掉，而不是继续拼接。
+  - 若恢复路径已经持有明确的目标 `session-id`（例如历史会话列表恢复），生成的显式 resume 命令必须进一步剥离只影响 resume picker / `--last` 选择范围的参数，而不能把它们继续带到显式目标恢复里；对 `Codex`，至少包括 `--all` 与 `--include-non-interactive`。与此同时，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 resume 仍有效的参数应继续保留。
   - 若某个 provider 的默认启动参数本身无法被命令行 parser 正常解析，右键菜单、Quick Input 与宿主 fresh-start 都必须显式报错，不能静默清空这段参数后继续启动。
 - Agent 停止后的 split restart：
   - 主按钮文案为 `重启`，语义是“优先恢复原会话”。
