@@ -5649,9 +5649,9 @@ function describeAgentLaunchPreset(
         ? `使用 ${commandLine.commandLine} 进入 Claude Code 自己的 resume 会话选择入口`
         : `使用 ${commandLine.commandLine} 进入 Codex 自己的 resume 会话选择入口`;
     case 'yolo':
-      return `在默认启动命令基础上追加更激进的自动执行参数：${commandLine.commandLine}`;
+      return `按 YOLO 预设仅覆盖当前已知的冲突模式参数；更复杂的参数组合请改用自定义启动：${commandLine.commandLine}`;
     case 'sandbox':
-      return `在默认启动命令基础上切换到更保守的受限模式：${commandLine.commandLine}`;
+      return `按沙盒预设仅覆盖当前已知的冲突模式参数；更复杂的参数组合请改用自定义启动：${commandLine.commandLine}`;
     case 'default':
     default:
       return `直接使用当前设置中的默认启动命令：${commandLine.commandLine}`;

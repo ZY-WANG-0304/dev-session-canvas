@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-04-29
+updated_at: 2026-04-30
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -162,6 +162,7 @@ updated_at: 2026-04-29
 - 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume 参数”的组合；例如：
   - `codex <当前默认参数...> resume <session-id>`
   - `claude <当前默认参数...> --resume <session-id>`
+- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` 仍有效的参数继续保留。
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。
 

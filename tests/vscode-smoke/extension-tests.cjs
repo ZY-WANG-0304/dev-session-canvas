@@ -279,6 +279,7 @@ async function runTrustedSmoke() {
   await verifyRuntimeContextRefreshesTerminalScrollback();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -1015,6 +1016,82 @@ async function verifyCreateNodeCommandQuickPick() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+}
+
+async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalCodexDefaultArgs = configuration.get('devSessionCanvas.agent.codexDefaultArgs', '');
+  const conflictingCodexDefaultArgs = '--model gpt-5.2 --yolo';
+
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  await setAgentDefaultArgs('codex', conflictingCodexDefaultArgs);
+
+  try {
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.agentLaunchDefaults?.codex?.defaultArgs === conflictingCodexDefaultArgs
+        ),
+      20000
+    );
+
+    await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+    let snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+    assert.strictEqual(snapshot.state.nodes.length, 0);
+
+    await setQuickPickSelections(['create-agent-default', 'agent-launch-apply-yolo', 'agent-launch-accept-current']);
+    await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) =>
+          node.kind === 'agent' &&
+          node.metadata?.agent?.provider === 'codex' &&
+          node.metadata?.agent?.launchPreset === 'yolo'
+      );
+    }, 20000);
+
+    const codexAgentNode = snapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.metadata?.agent?.provider === 'codex' &&
+        node.metadata?.agent?.launchPreset === 'yolo'
+    );
+    assert.ok(
+      codexAgentNode,
+      'Expected explicit YOLO preset selection to stay persisted even when the default Codex command line already contains --yolo.'
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/startRequested' &&
+            event.detail?.nodeId === codexAgentNode.id &&
+            event.detail?.provider === 'codex' &&
+            event.detail?.launchPreset === 'yolo'
+        ),
+      20000
+    );
+  } finally {
+    await clearHostMessages();
+    await setAgentDefaultArgs('codex', originalCodexDefaultArgs);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.agentLaunchDefaults?.codex?.defaultArgs === originalCodexDefaultArgs
+        ),
+      20000
+    );
+    await clearDiagnosticEvents();
+    await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+    const snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+    assert.strictEqual(snapshot.state.nodes.length, 0);
+  }
 }
 
 async function verifyRuntimeContextRefreshesDefaultAgentProvider() {
@@ -7389,6 +7466,16 @@ async function setDefaultAgentProvider(provider) {
   await vscode.workspace
     .getConfiguration()
     .update('devSessionCanvas.agent.defaultProvider', provider, vscode.ConfigurationTarget.Global);
+}
+
+async function setAgentDefaultArgs(provider, defaultArgs) {
+  await vscode.workspace
+    .getConfiguration()
+    .update(
+      provider === 'claude' ? 'devSessionCanvas.agent.claudeDefaultArgs' : 'devSessionCanvas.agent.codexDefaultArgs',
+      defaultArgs,
+      vscode.ConfigurationTarget.Global
+    );
 }
 
 async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
