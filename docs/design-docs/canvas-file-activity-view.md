@@ -131,6 +131,7 @@ updated_at: 2026-04-21
 - 由于 VSCode 扩展 API 不支持在 TreeView 中局部嵌入输入框，当前实现把 `包含文件` / `排除文件` 收口为该 section 中的最小 `WebviewView` 输入框，并保持其余状态摘要继续留在原生 TreeView。
 - 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。
 - 新增全局配置 `devSessionCanvas.files.enabled`，控制文件活动投影是否启用：
+  - 默认值为 `false`；用户显式开启并 reload 当前窗口后，文件活动产品域才会真正接线生效。
   - `true`：该开关在当前窗口生效后，宿主会启动 provider 文件活动接线，记录 `fileReferences`，并按当前展示模式与过滤条件投影文件节点 / 文件列表节点和自动文件活动边。
   - `false`：该开关需要 reload 后才生效；生效后宿主不再启动文件活动接线，也不会继续加载或保留 `fileReferences`、`file` / `file-list` 自动对象、自动文件边、`include` / `exclude` 过滤状态和对应 suppression 状态。sidebar 中的文件过滤入口也进入不可用态。
 - 新增全局配置 `devSessionCanvas.fileNode.displayStyle`，由宿主读入并通过 `CanvasRuntimeContext` 传给 Webview。该配置虽然挂在 `fileNode` 名下，但实际同时控制 `file` 和 `file-list` 两类文件对象的视觉风格：

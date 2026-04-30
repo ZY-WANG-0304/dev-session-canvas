@@ -234,6 +234,44 @@ try {
     claudeRootSidebarItem.searchText.includes('写一首打油诗'),
     'Expected sidebar session history search text to include the displayed session title.'
   );
+  const longerInstructionWithinLimit = 'long-session-title-segment-'.repeat(5);
+  const longerInstructionSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'codex',
+        sessionId: 'codex-session-long-title',
+        cwd: workspaceRoot,
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: longerInstructionWithinLimit
+      }
+    ],
+    workspaceRoot
+  )[0];
+  assert.equal(
+    longerInstructionSidebarItem?.title,
+    longerInstructionWithinLimit,
+    'Expected session history titles longer than the old cutoff to remain intact before the new cap.'
+  );
+  const veryLongInstruction = 'very-long-session-title-segment-'.repeat(9);
+  const veryLongInstructionSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'claude',
+        sessionId: 'claude-session-very-long-title',
+        cwd: workspaceRoot,
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: veryLongInstruction
+      }
+    ],
+    workspaceRoot
+  )[0];
+  assert.equal(veryLongInstructionSidebarItem?.title.length, 256);
+  assert.ok(
+    veryLongInstructionSidebarItem?.title.endsWith('…'),
+    'Expected extremely long session history titles to stay bounded with an ellipsis.'
+  );
 
   const limitedEntries = await listWorkspaceAgentSessionHistory({
     workspaceRoot,

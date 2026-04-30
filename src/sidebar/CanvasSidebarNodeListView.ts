@@ -331,10 +331,11 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
       const statusLabel = humanizeStatus(node.status);
+      const secondLine = buildSidebarNodeSecondaryText(node, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
       const attentionPending = canvasNodeAttentionPending(node.metadata);
-      const description = statusLabel;
-      const tooltipLines = [label, `${humanizeNodeKind(node.kind)} · ${statusLabel}`];
+      const description = secondLine;
+      const tooltipLines = [label, `${humanizeNodeKind(node.kind)} · ${secondLine}`];
       if (summary) {
         tooltipLines.push(summary);
       } else {
@@ -351,12 +352,20 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         label,
         description,
         tooltip: tooltipLines.join('\n'),
-        status: statusLabel,
+        status: secondLine,
         summary,
         markerColor: colorForCanvasNodeKind(node.kind),
         attentionPending
       } satisfies CanvasSidebarNodeItemSnapshot;
     });
+}
+
+function buildSidebarNodeSecondaryText(node: CanvasNodeSummary, statusLabel: string): string {
+  if (node.kind !== 'agent') {
+    return statusLabel;
+  }
+
+  return `${humanizeAgentProvider(node.metadata?.agent?.provider)} · ${statusLabel}`;
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {
@@ -376,6 +385,10 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
 
 function fallbackNodeLabel(kind: CanvasNodeKind, nodeId: string): string {
   return `${humanizeNodeKind(kind)} · ${nodeId}`;
+}
+
+function humanizeAgentProvider(provider: 'codex' | 'claude' | undefined): string {
+  return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
 function humanizeStatus(status: string): string {

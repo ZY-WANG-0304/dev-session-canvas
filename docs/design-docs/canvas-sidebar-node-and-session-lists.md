@@ -109,7 +109,7 @@ updated_at: 2026-04-30
 - 每个节点项显示：
   - 节点对应颜色的图标形圆点标记
   - 节点标题
-  - 人类可读的状态文案，作为唯一的次级描述
+  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `provider · 状态`，其余节点继续只显示状态
   - 当节点正处于 notification 提醒中时，在该项最右侧显示通知图标
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
 - 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
@@ -160,9 +160,9 @@ updated_at: 2026-04-30
 
 - 双击会话历史项后，不修改当前节点，也不要求用户二次确认。
 - 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume 参数”的组合；例如：
-  - `codex <当前默认参数...> resume <session-id>`
-  - `claude <当前默认参数...> --resume <session-id>`
-- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` 仍有效的参数继续保留。
+  - `codex resume <当前仍有效的默认参数...> <session-id>`
+  - `claude --resume <session-id> <当前仍有效的默认参数...>`
+- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` 仍有效的参数继续保留；而 `resume` / `--resume` 这类模式 argv 本身则尽量前置到命令前部。
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。
 
@@ -210,6 +210,7 @@ updated_at: 2026-04-30
 - 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test-sidebar-codicon-bundle.mjs`、`node scripts/test-sidebar-session-history.mjs` 与 `node scripts/test-agent-launch-presets.mjs`。
 - 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
 - 2026-04-28 产品规格新增两条节点列表要求：次级描述只显示状态，不再显示副标题；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。
+- 2026-04-30：节点列表的次级描述继续保持紧凑，但对 `Agent` 节点改成显示 `provider · 状态`，以便在侧栏里更快区分 `Codex` / `Claude Code` 会话；对应 smoke 断言同步收口。
 - 2026-04-28 已按新规格更新实现：节点列表次级描述收口为“仅状态”，并先用 `resourceUri + FileDecorationProvider` 输出提醒徽标闭合主路径；这一版已经通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `node scripts/test-sidebar-session-history.mjs`。
 - 2026-04-28 会话历史列表已按最新视觉要求改成“两行原生列表”样式：首行显示 provider 图标和标题，次行显示相对更新时间；详情信息继续留在 tooltip 和搜索文本中；并已通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `node scripts/test-sidebar-session-history.mjs`。
 - 2026-04-28 会话历史列表已进一步按最新规格收口：标题改为 provider 历史中的第一条真实用户指令，第二行改为“相对时间 + sessionId”，tooltip 移除画布节点标题/副标题；后续再补搜索体验时，搜索范围调整为“匹配会话标题 + provider / sessionId / 工作目录”，不再沿用“不匹配标题”的旧口径。

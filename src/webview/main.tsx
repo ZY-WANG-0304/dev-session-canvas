@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
@@ -112,6 +112,7 @@ interface LocalUiState {
   viewport?: Viewport;
   fileListViewModes?: Record<string, FileListViewMode>;
   selectedFileListEntries?: Record<string, string>;
+  collapsedFileListTreeBranches?: Record<string, string[]>;
 }
 
 interface EdgeLabelEditorState {
@@ -133,12 +134,14 @@ interface CanvasNodeData {
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
+  collapsedFileListTreeBranchKeys?: string[];
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
+  onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -174,6 +177,8 @@ interface CanvasNodeData {
 type CanvasFlowNode = Node<CanvasNodeData>;
 type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
+const FILE_TREE_BASE_PADDING_PX = 8;
+const FILE_TREE_DEPTH_STEP_PX = 12;
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
@@ -205,7 +210,7 @@ interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
-  view: 'root' | 'agent-provider' | 'agent-launch-mode';
+  view: 'root' | 'agent-launch-mode';
   selectedAgentProvider?: AgentProviderKind;
 }
 interface ExecutionNodeHelpContent {
@@ -696,6 +701,17 @@ function App(): JSX.Element {
               (entry): entry is [string, string] => typeof entry[1] === 'string'
             )
           )
+        : undefined,
+    collapsedFileListTreeBranches:
+      initialPersistedState.collapsedFileListTreeBranches &&
+      typeof initialPersistedState.collapsedFileListTreeBranches === 'object'
+        ? Object.fromEntries(
+            Object.entries(initialPersistedState.collapsedFileListTreeBranches).flatMap(([nodeId, branchKeys]) =>
+              Array.isArray(branchKeys)
+                ? [[nodeId, branchKeys.filter((branchKey): branchKey is string => typeof branchKey === 'string')]]
+                : []
+            )
+          )
         : undefined
   }));
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
@@ -872,6 +888,14 @@ function App(): JSX.Element {
           new Set(node.metadata?.fileList?.entries.map((entry) => entry.filePath) ?? [])
         ])
     );
+    const validFileListTreeBranchKeysByNodeId = new Map<string, Set<string>>(
+      hostState.nodes
+        .filter((node) => node.kind === 'file-list')
+        .map((node) => [
+          node.id,
+          collectFileListTreeBranchKeys(buildFileListTree(node.metadata?.fileList?.entries ?? []).branches)
+        ])
+    );
     const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
     setLocalUiState((current) => {
       let changed = false;
@@ -906,6 +930,36 @@ function App(): JSX.Element {
           nextState = {
             ...nextState,
             selectedFileListEntries: filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
+          };
+          changed = true;
+        }
+      }
+
+      const currentCollapsedBranches = current.collapsedFileListTreeBranches;
+      if (currentCollapsedBranches) {
+        const filteredEntries: Array<[string, string[]]> = [];
+        for (const [nodeId, branchKeys] of Object.entries(currentCollapsedBranches)) {
+          const validBranchKeys = validFileListTreeBranchKeysByNodeId.get(nodeId);
+          if (!validBranchKeys || !Array.isArray(branchKeys)) {
+            continue;
+          }
+
+          const nextBranchKeys = branchKeys.filter((branchKey) => validBranchKeys.has(branchKey));
+          if (nextBranchKeys.length > 0) {
+            filteredEntries.push([nodeId, nextBranchKeys]);
+          }
+        }
+        const collapsedBranchesChanged =
+          filteredEntries.length !== Object.keys(currentCollapsedBranches).length ||
+          filteredEntries.some(
+            ([nodeId, nextBranchKeys]) =>
+              nextBranchKeys.length !== (Array.isArray(currentCollapsedBranches[nodeId]) ? currentCollapsedBranches[nodeId].length : 0)
+          );
+        if (collapsedBranchesChanged) {
+          nextState = {
+            ...nextState,
+            collapsedFileListTreeBranches:
+              filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
           };
           changed = true;
         }
@@ -1125,6 +1179,33 @@ function App(): JSX.Element {
     });
   };
 
+  const toggleFileListTreeBranch = (nodeId: string, branchKey: string): void => {
+    closeEdgeMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => {
+      const nextNodeBranchKeys = new Set(current.collapsedFileListTreeBranches?.[nodeId] ?? []);
+      if (nextNodeBranchKeys.has(branchKey)) {
+        nextNodeBranchKeys.delete(branchKey);
+      } else {
+        nextNodeBranchKeys.add(branchKey);
+      }
+
+      const nextCollapsedBranches = { ...(current.collapsedFileListTreeBranches ?? {}) };
+      if (nextNodeBranchKeys.size > 0) {
+        nextCollapsedBranches[nodeId] = Array.from(nextNodeBranchKeys).sort();
+      } else {
+        delete nextCollapsedBranches[nodeId];
+      }
+
+      return {
+        ...current,
+        selectedNodeId: nodeId,
+        collapsedFileListTreeBranches:
+          Object.keys(nextCollapsedBranches).length > 0 ? nextCollapsedBranches : undefined
+      };
+    });
+  };
+
   const selectFileListEntry = (nodeId: string, filePath: string): void => {
     closeEdgeMenus();
     setSelectedEdgeId(undefined);
@@ -1155,6 +1236,7 @@ function App(): JSX.Element {
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
+    collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
     onSelectNode: selectNode,
     onAcknowledgeNodeAttention: acknowledgeNodeAttention,
     onOpenCanvasFile: (nodeId, filePath) =>
@@ -1167,6 +1249,7 @@ function App(): JSX.Element {
       }),
     onSelectFileListEntry: selectFileListEntry,
     onSetFileListViewMode: setFileListViewMode,
+    onToggleFileListTreeBranch: toggleFileListTreeBranch,
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
@@ -1420,12 +1503,6 @@ function App(): JSX.Element {
         if (current.view === 'agent-launch-mode') {
           return {
             ...current,
-            view: 'agent-provider'
-          };
-        }
-        if (current.view === 'agent-provider') {
-          return {
-            ...current,
             view: 'root',
             selectedAgentProvider: undefined
           };
@@ -1615,17 +1692,6 @@ function App(): JSX.Element {
             );
             closePaneContextMenu();
           }}
-          onShowAgentProviders={() =>
-            setContextMenu((current) =>
-              current
-                ? {
-                    ...current,
-                    view: 'agent-provider',
-                    selectedAgentProvider: undefined
-                  }
-                : current
-            )
-          }
           onShowAgentLaunchModes={(provider) =>
             setContextMenu((current) =>
               current
@@ -1641,12 +1707,6 @@ function App(): JSX.Element {
             setContextMenu((current) => {
               if (!current) {
                 return current;
-              }
-              if (current.view === 'agent-launch-mode') {
-                return {
-                  ...current,
-                  view: 'agent-provider'
-                };
               }
               return {
                 ...current,
@@ -2065,6 +2125,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           subtitle={resolveAgentLaunchCommandLineForSubtitle(agentMetadata)}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
+          className="agent-window-title"
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
@@ -2900,6 +2961,8 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const fileListTree = useMemo(() => buildFileListTree(fileListMetadata.entries), [fileListMetadata.entries]);
+
   const deleteFileList = (): void => {
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
@@ -3017,10 +3080,12 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
           <div className="file-list-tree" role="tree">
             {renderFileListTree({
               nodeId: id,
-              tree: buildFileListTree(fileListMetadata.entries),
+              tree: fileListTree,
               selectedFilePath: data.selectedFileListEntryPath,
               selectionTone,
+              collapsedBranchKeys: new Set(data.collapsedFileListTreeBranchKeys ?? []),
               onSelectNode: data.onSelectNode,
+              onToggleBranch: data.onToggleFileListTreeBranch,
               onSelectFileListEntry: data.onSelectFileListEntry,
               onOpenCanvasFile: data.onOpenCanvasFile
             })}
@@ -3073,6 +3138,7 @@ function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
           ? entry.filePath
           : undefined
       : undefined;
+  const treeRowStyle = variant === 'minimal-tree' ? fileTreeRowPaddingStyle(treeDepth) : undefined;
 
   return (
     <button
@@ -3084,7 +3150,9 @@ function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
       data-file-entry-path={entry.filePath}
       data-file-entry-selected={props.selected ? 'true' : 'false'}
       data-file-entry-selection-tone={props.selected ? props.selectionTone : undefined}
-      style={treeDepth > 0 ? { paddingInlineStart: `${12 + treeDepth * 16}px` } : undefined}
+      data-file-tree-item-type={variant === 'minimal-tree' ? 'file' : undefined}
+      data-file-tree-label={variant === 'minimal-tree' ? label : undefined}
+      style={treeRowStyle}
       onMouseDown={stopCanvasEvent}
       onClick={(event) => {
         stopCanvasEvent(event);
@@ -3095,6 +3163,7 @@ function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
         props.onSelectFileListEntry?.(props.nodeId, entry.filePath);
       }}
     >
+      {variant === 'minimal-tree' ? <span className="file-tree-disclosure-spacer" aria-hidden="true" /> : null}
       <span className="file-list-entry-icon" aria-hidden="true">
         {renderFileIcon(entry.icon, label)}
       </span>
@@ -3139,6 +3208,32 @@ interface MutableFileListTreeBranch {
   entries: FileListNodeEntrySummary[];
 }
 
+function fileTreeRowPaddingStyle(depth: number): CSSProperties {
+  return {
+    paddingInlineStart: `${FILE_TREE_BASE_PADDING_PX + depth * FILE_TREE_DEPTH_STEP_PX}px`
+  };
+}
+
+function compareFileTreeLabels(left: string, right: string): number {
+  return left.localeCompare(right, undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+}
+
+function compareFileTreeEntries(left: FileListNodeEntrySummary, right: FileListNodeEntrySummary): number {
+  const leftLabel = displayFilePath(left, 'basename');
+  const rightLabel = displayFilePath(right, 'basename');
+  const byLabel = compareFileTreeLabels(leftLabel, rightLabel);
+  if (byLabel !== 0) {
+    return byLabel;
+  }
+
+  const leftPath = left.relativePath ?? left.filePath;
+  const rightPath = right.relativePath ?? right.filePath;
+  return compareFileTreeLabels(leftPath, rightPath);
+}
+
 function buildFileListTree(entries: readonly FileListNodeEntrySummary[]): {
   rootEntries: FileListNodeEntrySummary[];
   branches: FileListTreeBranch[];
@@ -3179,8 +3274,10 @@ function buildFileListTree(entries: readonly FileListNodeEntrySummary[]): {
   }
 
   return {
-    rootEntries: root.entries,
-    branches: Array.from(root.children.values()).map(materializeFileListTreeBranch)
+    rootEntries: [...root.entries].sort(compareFileTreeEntries),
+    branches: Array.from(root.children.values())
+      .map(materializeFileListTreeBranch)
+      .sort((left, right) => compareFileTreeLabels(left.label, right.label))
   };
 }
 
@@ -3188,8 +3285,10 @@ function materializeFileListTreeBranch(branch: MutableFileListTreeBranch): FileL
   return {
     key: branch.key,
     label: branch.label,
-    children: Array.from(branch.children.values()).map(materializeFileListTreeBranch),
-    entries: branch.entries
+    children: Array.from(branch.children.values())
+      .map(materializeFileListTreeBranch)
+      .sort((left, right) => compareFileTreeLabels(left.label, right.label)),
+    entries: [...branch.entries].sort(compareFileTreeEntries)
   };
 }
 
@@ -3199,16 +3298,46 @@ function resolveFileTreeSegments(entry: Pick<FileListNodeEntrySummary, 'relative
   return segments.length > 0 ? segments : [displayFilePath(entry, 'basename')];
 }
 
+function collectFileListTreeBranchKeys(branches: readonly FileListTreeBranch[]): Set<string> {
+  const branchKeys = new Set<string>();
+
+  for (const branch of branches) {
+    branchKeys.add(branch.key);
+    for (const nestedBranchKey of collectFileListTreeBranchKeys(branch.children)) {
+      branchKeys.add(nestedBranchKey);
+    }
+  }
+
+  return branchKeys;
+}
+
 function renderFileListTree(params: {
   nodeId: string;
   tree: { rootEntries: FileListNodeEntrySummary[]; branches: FileListTreeBranch[] };
   selectedFilePath?: string;
   selectionTone: FileListEntrySelectionTone;
+  collapsedBranchKeys: ReadonlySet<string>;
   onSelectNode?: (nodeId: string) => void;
+  onToggleBranch?: (nodeId: string, branchKey: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
 }): JSX.Element[] {
   const rows: JSX.Element[] = [];
+
+  rows.push(
+    ...renderFileListTreeBranches(
+      params.nodeId,
+      params.tree.branches,
+      0,
+      params.selectedFilePath,
+      params.selectionTone,
+      params.collapsedBranchKeys,
+      params.onSelectNode,
+      params.onToggleBranch,
+      params.onSelectFileListEntry,
+      params.onOpenCanvasFile
+    )
+  );
 
   for (const entry of params.tree.rootEntries) {
     rows.push(
@@ -3226,19 +3355,6 @@ function renderFileListTree(params: {
       />
     );
   }
-
-  rows.push(
-    ...renderFileListTreeBranches(
-      params.nodeId,
-      params.tree.branches,
-      0,
-      params.selectedFilePath,
-      params.selectionTone,
-      params.onSelectNode,
-      params.onSelectFileListEntry,
-      params.onOpenCanvasFile
-    )
-  );
   return rows;
 }
 
@@ -3248,24 +3364,66 @@ function renderFileListTreeBranches(
   depth: number,
   selectedFilePath: string | undefined,
   selectionTone: FileListEntrySelectionTone,
+  collapsedBranchKeys: ReadonlySet<string>,
   onSelectNode: ((nodeId: string) => void) | undefined,
+  onToggleBranch: ((nodeId: string, branchKey: string) => void) | undefined,
   onSelectFileListEntry: ((nodeId: string, filePath: string) => void) | undefined,
   onOpenCanvasFile: ((nodeId: string, filePath: string) => void) | undefined
 ): JSX.Element[] {
   const rows: JSX.Element[] = [];
 
   for (const branch of branches) {
+    const isExpanded = !collapsedBranchKeys.has(branch.key);
     rows.push(
-      <div
+      <button
         key={`folder-${branch.key}`}
+        type="button"
         className="file-tree-folder-row"
-        role="treeitem"
-        aria-expanded="true"
-        style={{ paddingInlineStart: `${12 + depth * 16}px` }}
+        data-node-interactive="true"
+        data-file-tree-item-type="folder"
+        data-file-tree-label={branch.label}
+        data-file-tree-branch-key={branch.key}
+        data-file-tree-expanded={isExpanded ? 'true' : 'false'}
+        aria-expanded={isExpanded}
+        style={fileTreeRowPaddingStyle(depth)}
+        onMouseDown={stopCanvasEvent}
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          onToggleBranch?.(nodeId, branch.key);
+        }}
+        onFocus={() => onSelectNode?.(nodeId)}
       >
-        <span className="file-tree-folder-icon codicon codicon-folder" aria-hidden="true" />
+        <span
+          className={`file-tree-folder-disclosure codicon ${
+            isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
+          }`}
+          aria-hidden="true"
+        />
+        <span
+          className={`file-tree-folder-icon codicon ${isExpanded ? 'codicon-folder-opened' : 'codicon-folder'}`}
+          aria-hidden="true"
+        />
         <span className="file-tree-folder-label">{branch.label}</span>
-      </div>
+      </button>
+    );
+
+    if (!isExpanded) {
+      continue;
+    }
+
+    rows.push(
+      ...renderFileListTreeBranches(
+        nodeId,
+        branch.children,
+        depth + 1,
+        selectedFilePath,
+        selectionTone,
+        collapsedBranchKeys,
+        onSelectNode,
+        onToggleBranch,
+        onSelectFileListEntry,
+        onOpenCanvasFile
+      )
     );
 
     for (const entry of branch.entries) {
@@ -3286,19 +3444,6 @@ function renderFileListTreeBranches(
         />
       );
     }
-
-    rows.push(
-      ...renderFileListTreeBranches(
-        nodeId,
-        branch.children,
-        depth + 1,
-        selectedFilePath,
-        selectionTone,
-        onSelectNode,
-        onSelectFileListEntry,
-        onOpenCanvasFile
-      )
-    );
   }
 
   return rows;
@@ -3651,7 +3796,7 @@ const CanvasContextMenu = React.forwardRef<
   {
     screenX: number;
     screenY: number;
-    view: 'root' | 'agent-provider' | 'agent-launch-mode';
+    view: 'root' | 'agent-launch-mode';
     selectedAgentProvider?: AgentProviderKind;
     kinds: CanvasCreatableNodeKind[];
     defaultAgentProvider: AgentProviderKind;
@@ -3662,14 +3807,15 @@ const CanvasContextMenu = React.forwardRef<
       agentLaunchPreset?: AgentLaunchPresetKind,
       agentCustomLaunchCommand?: string
     ) => void;
-    onShowAgentProviders: () => void;
     onShowAgentLaunchModes: (provider: AgentProviderKind) => void;
     onBack: () => void;
     onClose: () => void;
   }
 >(function CanvasContextMenu(props, ref): JSX.Element {
   const position = resolveContextMenuScreenPosition(props.screenX, props.screenY);
-  const providerItems = ['codex', 'claude'] as const;
+  const providerItems = orderedAgentProviders(props.defaultAgentProvider);
+  const rootKinds = (['note', 'terminal'] as const).filter((kind) => props.kinds.includes(kind));
+  const showAgentProviders = props.kinds.includes('agent');
   const isNestedView = props.view !== 'root';
   const selectedAgentProvider = props.selectedAgentProvider ?? props.defaultAgentProvider;
   const selectedLaunchDefaults = props.agentLaunchDefaults[selectedAgentProvider];
@@ -3770,249 +3916,217 @@ const CanvasContextMenu = React.forwardRef<
           <strong>
             {props.view === 'root'
               ? '新建节点'
-              : props.view === 'agent-provider'
-                ? '选择 Agent 类型'
-                : `选择启动方式 - ${providerLabel(selectedAgentProvider)}`}
+              : `选择启动方式 - ${providerLabel(selectedAgentProvider)}`}
           </strong>
           <span>
             {props.view === 'root'
-              ? '在当前空白区域快速放置对象'
-              : props.view === 'agent-provider'
-                ? '选择创建时要绑定的 provider'
-                : '选择此 Agent 的启动方式'}
+              ? '在此位置创建节点'
+              : '选择启动方式'}
           </span>
         </div>
       </div>
       <div className="canvas-context-menu-items">
-        {props.view === 'root'
-          ? props.kinds.map((kind) =>
-              kind === 'agent' ? (
-                <div
-                  key={kind}
-                  className="canvas-context-menu-split-item"
-                  data-context-menu-kind="agent"
-                >
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item"
-                    data-context-menu-agent-action="create-default"
-                    onClick={() => props.onCreate('agent', props.defaultAgentProvider, 'default')}
+        {props.view === 'root' ? (
+          <>
+            {rootKinds.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-kind={kind}
+                onClick={() => props.onCreate(kind)}
+              >
+                <span
+                  className="canvas-context-menu-swatch"
+                  style={{ backgroundColor: colorForKind(kind) }}
+                  aria-hidden="true"
+                />
+                <span className="canvas-context-menu-copy">
+                  <strong>{humanizeNodeKind(kind)}</strong>
+                  <span>{describeContextMenuKind(kind)}</span>
+                </span>
+              </button>
+            ))}
+            {showAgentProviders
+              ? providerItems.map((provider) => (
+                  <div
+                    key={provider}
+                    className="canvas-context-menu-split-item"
+                    data-context-menu-provider={provider}
                   >
-                    <span
-                      className="canvas-context-menu-swatch"
-                      style={{ backgroundColor: colorForKind(kind) }}
-                      aria-hidden="true"
-                    />
-                    <span className="canvas-context-menu-copy">
-                      <strong>{humanizeNodeKind(kind)}</strong>
-                      <span>{describeAgentContextMenuDefault(props.defaultAgentProvider)}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item-secondary"
-                    data-context-menu-agent-action="show-providers"
-                    onClick={props.onShowAgentProviders}
-                    aria-label="选择 Agent 类型"
-                    title="选择 Agent 类型"
-                  >
-                    <span
-                      className="canvas-context-menu-icon codicon codicon-chevron-right"
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  key={kind}
-                  type="button"
-                  className="canvas-context-menu-item"
-                  data-context-menu-kind={kind}
-                  onClick={() => props.onCreate(kind)}
-                >
-                  <span
-                    className="canvas-context-menu-swatch"
-                    style={{ backgroundColor: colorForKind(kind) }}
-                    aria-hidden="true"
-                  />
-                  <span className="canvas-context-menu-copy">
-                    <strong>{humanizeNodeKind(kind)}</strong>
-                    <span>{describeContextMenuKind(kind)}</span>
-                  </span>
-                </button>
-              )
-            )
-          : props.view === 'agent-provider'
-            ? providerItems.map((provider) => (
-                <div
-                  key={provider}
-                  className="canvas-context-menu-split-item"
-                  data-context-menu-provider={provider}
-                >
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item"
-                    data-context-menu-provider-action="create-default"
-                    onClick={() => props.onCreate('agent', provider, 'default')}
-                  >
-                    <span
-                      className="canvas-context-menu-swatch"
-                      style={{ backgroundColor: colorForKind('agent') }}
-                      aria-hidden="true"
-                    />
-                    <span className="canvas-context-menu-copy">
-                      <strong>
-                        {provider === props.defaultAgentProvider
-                          ? `${providerLabel(provider)}（默认）`
-                          : providerLabel(provider)}
-                      </strong>
-                      <span>{describeAgentProviderContextMenu(provider, provider === props.defaultAgentProvider)}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item-secondary"
-                    data-context-menu-provider-action="show-launch-modes"
-                    onClick={() => props.onShowAgentLaunchModes(provider)}
-                    aria-label={`选择 ${providerLabel(provider)} 启动方式`}
-                    title={`选择 ${providerLabel(provider)} 启动方式`}
-                  >
-                    <span
-                      className="canvas-context-menu-icon codicon codicon-chevron-right"
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
-              ))
-            : (
-                <>
-                  {defaultPresetBuild.error ? (
-                    <div className="canvas-context-menu-inline-error" data-context-menu-launch-error="true">
-                      {defaultPresetBuild.error}
-                    </div>
-                  ) : null}
-                  {(
-                    [
-                      {
-                        preset: 'default',
-                        action: 'launch-default',
-                        icon: 'play'
-                      },
-                      {
-                        preset: 'resume',
-                        action: 'launch-resume',
-                        icon: 'history'
-                      },
-                      {
-                        preset: 'yolo',
-                        action: 'launch-yolo',
-                        icon: 'rocket'
-                      },
-                      {
-                        preset: 'sandbox',
-                        action: 'launch-sandbox',
-                        icon: 'shield'
-                      }
-                    ] satisfies ReadonlyArray<{
-                      preset: Exclude<AgentLaunchPresetKind, 'custom'>;
-                      action: string;
-                      icon: string;
-                    }>
-                  ).map((item) => (
                     <button
-                      key={item.preset}
                       type="button"
                       className="canvas-context-menu-item"
-                      data-context-menu-launch-preset={item.action}
-                      disabled={Boolean(defaultPresetBuild.error)}
-                      onClick={() => props.onCreate('agent', selectedAgentProvider, item.preset)}
+                      data-context-menu-provider-action="create-default"
+                      data-context-menu-agent-action={
+                        provider === props.defaultAgentProvider ? 'create-default' : undefined
+                      }
+                      onClick={() => props.onCreate('agent', provider, 'default')}
                     >
                       <span
-                        className={`canvas-context-menu-icon codicon codicon-${item.icon}`}
+                        className="canvas-context-menu-swatch"
+                        style={{ backgroundColor: colorForKind('agent') }}
                         aria-hidden="true"
                       />
                       <span className="canvas-context-menu-copy">
-                        <strong>{labelForAgentLaunchPreset(item.preset)}</strong>
-                        <span>
-                          {describeAgentLaunchPreset(
-                            selectedAgentProvider,
-                            item.preset,
-                            selectedLaunchDefaults
-                          )}
-                        </span>
+                        <strong>
+                          {provider === props.defaultAgentProvider
+                            ? `${providerLabel(provider)}（默认）`
+                            : providerLabel(provider)}
+                        </strong>
+                        <span>{describeAgentProviderContextMenu(provider)}</span>
                       </span>
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="canvas-context-menu-item"
-                    data-context-menu-launch-preset="launch-custom"
-                    disabled={Boolean(defaultPresetBuild.error)}
-                    onClick={() => setCustomEditorOpen(true)}
-                  >
-                    <span
-                      className="canvas-context-menu-icon codicon codicon-gear"
-                      aria-hidden="true"
-                    />
-                    <span className="canvas-context-menu-copy">
-                      <strong>自定义启动...</strong>
-                      <span>输入完整启动命令，并在确认前实时校验。</span>
-                    </span>
-                  </button>
-                  {customEditorOpen ? (
-                    <div
-                      className={`canvas-context-menu-inline-editor${customValidation.valid ? '' : ' is-invalid'}`}
-                      data-context-menu-custom-editor="true"
-                      onMouseDown={stopCanvasEvent}
-                      onClick={stopCanvasEvent}
+                    <button
+                      type="button"
+                      className="canvas-context-menu-item-secondary"
+                      data-context-menu-provider-action="show-launch-modes"
+                      onClick={() => props.onShowAgentLaunchModes(provider)}
+                      aria-label={`选择 ${providerLabel(provider)} 启动方式`}
+                      title={`选择 ${providerLabel(provider)} 启动方式`}
                     >
-                      <input
-                        type="text"
-                        className="canvas-context-menu-inline-input"
-                        data-context-menu-custom-input="true"
-                        value={customCommandLine}
-                        onChange={(event) => setCustomCommandLine(event.target.value)}
-                        onCompositionStart={() => setCustomInputIsComposing(true)}
-                        onCompositionEnd={(event) => {
-                          setCustomInputIsComposing(false);
-                          setCustomCommandLine(event.currentTarget.value);
-                        }}
-                        onKeyDown={(event) => {
-                          stopCanvasEvent(event);
-
-                          if (customInputIsComposing || isImeComposingKeyboardEvent(event)) {
-                            return;
-                          }
-
-                          if (event.key === 'Escape') {
-                            event.preventDefault();
-                            setCustomEditorOpen(false);
-                            return;
-                          }
-                          if (event.key !== 'Enter' || !customValidation.valid) {
-                            return;
-                          }
-                          event.preventDefault();
-                          createAgentWithCustomCommand();
-                        }}
-                        aria-label={`${providerLabel(selectedAgentProvider)} 自定义启动命令`}
+                      <span
+                        className="canvas-context-menu-icon codicon codicon-chevron-right"
+                        aria-hidden="true"
                       />
-                      <button
-                        type="button"
-                        className="canvas-context-menu-inline-confirm"
-                        data-context-menu-custom-confirm="true"
-                        disabled={!customValidation.valid}
-                        onClick={createAgentWithCustomCommand}
-                      >
-                        确定
-                      </button>
-                      {!customValidation.valid ? (
-                        <span className="canvas-context-menu-inline-error">{customValidation.error}</span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </>
-              )}
+                    </button>
+                  </div>
+                ))
+              : null}
+          </>
+        ) : (
+          <>
+            {defaultPresetBuild.error ? (
+              <div className="canvas-context-menu-inline-error" data-context-menu-launch-error="true">
+                {defaultPresetBuild.error}
+              </div>
+            ) : null}
+            {(
+              [
+                {
+                  preset: 'default',
+                  action: 'launch-default',
+                  icon: 'play'
+                },
+                {
+                  preset: 'resume',
+                  action: 'launch-resume',
+                  icon: 'history'
+                },
+                {
+                  preset: 'yolo',
+                  action: 'launch-yolo',
+                  icon: 'rocket'
+                },
+                {
+                  preset: 'sandbox',
+                  action: 'launch-sandbox',
+                  icon: 'shield'
+                }
+              ] satisfies ReadonlyArray<{
+                preset: Exclude<AgentLaunchPresetKind, 'custom'>;
+                action: string;
+                icon: string;
+              }>
+            ).map((item) => (
+              <button
+                key={item.preset}
+                type="button"
+                className="canvas-context-menu-item has-clamped-detail"
+                data-context-menu-launch-preset={item.action}
+                disabled={Boolean(defaultPresetBuild.error)}
+                onClick={() => props.onCreate('agent', selectedAgentProvider, item.preset)}
+              >
+                <span
+                  className={`canvas-context-menu-icon codicon codicon-${item.icon}`}
+                  aria-hidden="true"
+                />
+                <span className="canvas-context-menu-copy">
+                  <strong>{labelForAgentLaunchPreset(item.preset)}</strong>
+                  <OverflowAwareText
+                    className="canvas-context-menu-copy-detail"
+                    text={describeAgentLaunchPreset(
+                      selectedAgentProvider,
+                      item.preset,
+                      selectedLaunchDefaults
+                    )}
+                  />
+                </span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="canvas-context-menu-item has-clamped-detail"
+              data-context-menu-launch-preset="launch-custom"
+              disabled={Boolean(defaultPresetBuild.error)}
+              onClick={() => setCustomEditorOpen(true)}
+            >
+              <span
+                className="canvas-context-menu-icon codicon codicon-gear"
+                aria-hidden="true"
+              />
+              <span className="canvas-context-menu-copy">
+                <strong>自定义启动</strong>
+                <OverflowAwareText
+                  className="canvas-context-menu-copy-detail"
+                  text="输入自定义命令"
+                />
+              </span>
+            </button>
+            {customEditorOpen ? (
+              <div
+                className={`canvas-context-menu-inline-editor${customValidation.valid ? '' : ' is-invalid'}`}
+                data-context-menu-custom-editor="true"
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+              >
+                <input
+                  type="text"
+                  className="canvas-context-menu-inline-input"
+                  data-context-menu-custom-input="true"
+                  value={customCommandLine}
+                  onChange={(event) => setCustomCommandLine(event.target.value)}
+                  onCompositionStart={() => setCustomInputIsComposing(true)}
+                  onCompositionEnd={(event) => {
+                    setCustomInputIsComposing(false);
+                    setCustomCommandLine(event.currentTarget.value);
+                  }}
+                  onKeyDown={(event) => {
+                    stopCanvasEvent(event);
+
+                    if (customInputIsComposing || isImeComposingKeyboardEvent(event)) {
+                      return;
+                    }
+
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setCustomEditorOpen(false);
+                      return;
+                    }
+                    if (event.key !== 'Enter' || !customValidation.valid) {
+                      return;
+                    }
+                    event.preventDefault();
+                    createAgentWithCustomCommand();
+                  }}
+                  aria-label={`${providerLabel(selectedAgentProvider)} 自定义启动命令`}
+                />
+                <button
+                  type="button"
+                  className="canvas-context-menu-inline-confirm"
+                  data-context-menu-custom-confirm="true"
+                  disabled={!customValidation.valid}
+                  onClick={createAgentWithCustomCommand}
+                >
+                  确定
+                </button>
+                {!customValidation.valid ? (
+                  <span className="canvas-context-menu-inline-error">{customValidation.error}</span>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
@@ -5071,46 +5185,48 @@ function ChromeTitleEditor(props: {
 
   return (
     <div className={`window-title ${props.className ?? ''}`.trim()}>
-      <input
-        className="window-title-input nodrag nopan"
-        data-node-interactive="true"
-        data-probe-field="title"
-        value={draft}
-        onFocus={() => {
-          setIsEditing(true);
-          props.onSelectNode?.();
-        }}
-        onMouseDown={stopCanvasEvent}
-        onClick={stopCanvasEvent}
-        onCompositionStart={() => setIsComposing(true)}
-        onCompositionEnd={(event) => {
-          setIsComposing(false);
-          setDraft(event.currentTarget.value);
-        }}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={(event) => {
-          setIsComposing(false);
-          setIsEditing(false);
-          commitTitle(event.currentTarget.value);
-        }}
-        onKeyDown={(event) =>
-          handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
-            isComposing
-          })
-        }
-        placeholder={props.placeholder}
-      />
-      {props.subtitle ? (
-        <div className="window-title-subtitle-row">
-          <OverflowAwareInlineText className="window-title-subtitle" text={props.subtitle} />
-          {props.subtitleAccessory}
-        </div>
-      ) : null}
+      <div className="window-title-copy">
+        <input
+          className="window-title-input nodrag nopan"
+          data-node-interactive="true"
+          data-probe-field="title"
+          value={draft}
+          onFocus={() => {
+            setIsEditing(true);
+            props.onSelectNode?.();
+          }}
+          onMouseDown={stopCanvasEvent}
+          onClick={stopCanvasEvent}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={(event) => {
+            setIsComposing(false);
+            setDraft(event.currentTarget.value);
+          }}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={(event) => {
+            setIsComposing(false);
+            setIsEditing(false);
+            commitTitle(event.currentTarget.value);
+          }}
+          onKeyDown={(event) =>
+            handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
+              isComposing
+            })
+          }
+          placeholder={props.placeholder}
+        />
+        {props.subtitle ? (
+          <div className="window-title-subtitle-row">
+            <OverflowAwareText className="window-title-subtitle" text={props.subtitle} />
+            {props.subtitleAccessory}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function OverflowAwareInlineText(props: { className: string; text: string }): JSX.Element {
+function OverflowAwareText(props: { className: string; text: string; tooltipText?: string }): JSX.Element {
   const textRef = useRef<HTMLSpanElement | null>(null);
   const [title, setTitle] = useState<string | undefined>(undefined);
 
@@ -5123,7 +5239,10 @@ function OverflowAwareInlineText(props: { className: string; text: string }): JS
 
     let frameId: number | undefined;
     const updateTitle = (): void => {
-      const nextTitle = element.scrollWidth > element.clientWidth + 1 ? props.text : undefined;
+      const nextTitle =
+        element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1
+          ? props.tooltipText ?? props.text
+          : undefined;
       setTitle((currentTitle) => (currentTitle === nextTitle ? currentTitle : nextTitle));
     };
     const scheduleUpdate = (): void => {
@@ -5151,7 +5270,7 @@ function OverflowAwareInlineText(props: { className: string; text: string }): JS
       resizeObserver?.disconnect();
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [props.text]);
+  }, [props.text, props.tooltipText]);
 
   return (
     <span ref={textRef} className={props.className} title={title}>
@@ -5171,11 +5290,13 @@ function toFlowNodes(params: {
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
+  collapsedFileListTreeBranches: Record<string, string[]> | undefined;
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
+  onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -5244,12 +5365,14 @@ function toFlowNodes(params: {
         filePathDisplayMode: params.filePathDisplayMode,
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
+        collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
+        onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,
@@ -5606,15 +5729,7 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
   }
 }
 
-function describeAgentContextMenuDefault(provider: AgentProviderKind): string {
-  return `默认：${providerLabel(provider)}，直接新建一个可运行的 Agent 会话窗口`;
-}
-
-function describeAgentProviderContextMenu(provider: AgentProviderKind, isDefault: boolean): string {
-  if (isDefault) {
-    return `按默认类型创建 ${providerLabel(provider)} Agent`;
-  }
-
+function describeAgentProviderContextMenu(provider: AgentProviderKind): string {
   return `创建一个 ${providerLabel(provider)} Agent 会话窗口`;
 }
 
@@ -5645,21 +5760,24 @@ function describeAgentLaunchPreset(
   }
   switch (preset) {
     case 'resume':
-      return provider === 'claude'
-        ? `使用 ${commandLine.commandLine} 进入 Claude Code 自己的 resume 会话选择入口`
-        : `使用 ${commandLine.commandLine} 进入 Codex 自己的 resume 会话选择入口`;
+      return `选择历史会话：${commandLine.commandLine}`;
     case 'yolo':
-      return `按 YOLO 预设仅覆盖当前已知的冲突模式参数；更复杂的参数组合请改用自定义启动：${commandLine.commandLine}`;
+      return `自动批准执行模式：${commandLine.commandLine}`;
     case 'sandbox':
-      return `按沙盒预设仅覆盖当前已知的冲突模式参数；更复杂的参数组合请改用自定义启动：${commandLine.commandLine}`;
+      return `受限权限安全模式：${commandLine.commandLine}`;
     case 'default':
     default:
-      return `直接使用当前设置中的默认启动命令：${commandLine.commandLine}`;
+      return `使用默认配置：${commandLine.commandLine}`;
   }
 }
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function orderedAgentProviders(defaultProvider: AgentProviderKind): AgentProviderKind[] {
+  const secondaryProvider: AgentProviderKind = defaultProvider === 'codex' ? 'claude' : 'codex';
+  return [defaultProvider, secondaryProvider];
 }
 
 function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): string {

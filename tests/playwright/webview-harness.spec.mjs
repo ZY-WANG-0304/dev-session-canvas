@@ -1534,6 +1534,54 @@ test('minimal file list nodes can switch between list and tree views', async ({ 
   });
 });
 
+test('minimal file list tree view supports explorer-style ordering and collapsible folders', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    createExplorerLikeFileListState(),
+    createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' })
+  );
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await fileListNode.locator('[data-file-list-view-mode="tree"]').click();
+
+  const readTreeRows = async () =>
+    fileListNode.locator('.file-list-tree > [data-file-tree-item-type]').evaluateAll((elements) =>
+      elements.map((element) => ({
+        type: element.getAttribute('data-file-tree-item-type'),
+        label: element.getAttribute('data-file-tree-label'),
+        expanded: element.getAttribute('data-file-tree-expanded')
+      }))
+    );
+
+  await expect.poll(readTreeRows).toEqual([
+    { type: 'folder', label: 'docs', expanded: 'true' },
+    { type: 'file', label: 'guide.md', expanded: null },
+    { type: 'folder', label: 'src', expanded: 'true' },
+    { type: 'folder', label: 'webview', expanded: 'true' },
+    { type: 'file', label: 'main.tsx', expanded: null },
+    { type: 'file', label: 'extension.ts', expanded: null },
+    { type: 'file', label: 'README.md', expanded: null }
+  ]);
+
+  await fileListNode.locator('[data-file-tree-branch-key="src"]').click();
+  await expect(fileListNode.locator('[data-file-tree-branch-key="src"]')).toHaveAttribute('data-file-tree-expanded', 'false');
+  await expect(fileListNode.locator('.file-list-entry').filter({ hasText: 'extension.ts' })).toHaveCount(0);
+  await expect(fileListNode.locator('.file-list-entry').filter({ hasText: 'main.tsx' })).toHaveCount(0);
+  await expect.poll(readTreeRows).toEqual([
+    { type: 'folder', label: 'docs', expanded: 'true' },
+    { type: 'file', label: 'guide.md', expanded: null },
+    { type: 'folder', label: 'src', expanded: 'false' },
+    { type: 'file', label: 'README.md', expanded: null }
+  ]);
+
+  const persistedState = await readPersistedUiState(page);
+  expect(persistedState.collapsedFileListTreeBranches).toEqual({
+    'file-list-shared': ['src']
+  });
+});
+
 test('multi-root relative paths stay split by workspace folder in tree view', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -1944,6 +1992,44 @@ test('agent restart split button resumes by default and can start a new session'
     );
 });
 
+test('agent restart split menu keeps option width close to the label copy', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
+
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
+
+  const metrics = await page.evaluate(() => {
+    const items = Array.from(
+      document.querySelectorAll('[data-node-id="agent-1"] .action-split-button-menu-item')
+    );
+    if (items.length === 0 || !items.every((item) => item instanceof HTMLElement)) {
+      return null;
+    }
+
+    return items.map((item) => {
+      const styles = getComputedStyle(item);
+      const range = document.createRange();
+      range.selectNodeContents(item);
+      const textWidth = range.getBoundingClientRect().width;
+      return {
+        label: item.textContent?.trim() ?? '',
+        slack:
+          item.clientWidth -
+          Number.parseFloat(styles.paddingLeft) -
+          Number.parseFloat(styles.paddingRight) -
+          textWidth,
+        whiteSpace: styles.whiteSpace
+      };
+    });
+  });
+
+  expect(metrics).not.toBeNull();
+  for (const metric of metrics) {
+    expect(metric.whiteSpace).toBe('nowrap');
+    expect(metric.slack).toBeLessThan(20);
+  }
+});
+
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
@@ -2006,7 +2092,6 @@ test('right-click create menu validates custom agent launch commands before crea
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2088,7 +2173,6 @@ test('right-click create menu blocks custom agent launch when provider default a
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2124,7 +2208,6 @@ test('right-click custom agent launch input ignores IME Enter before composition
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2193,7 +2276,6 @@ test('right-click custom agent launch input closes before the menu backs out on 
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
@@ -2286,6 +2368,24 @@ for (const executionKind of ['agent', 'terminal']) {
       const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
       await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
       await expect(subtitle).toContainText('codex --model gpt-5.2');
+    });
+
+    test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {
+      const state = createLiveExecutionNodeState('agent');
+      state.nodes[0].size = {
+        width: 960,
+        height: state.nodes[0].size.height
+      };
+
+      await openHarness(page);
+      await bootstrap(page, state);
+      await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+      const titleWidth = await nodeById(page, 'agent-zoom')
+        .locator('.agent-window-title .window-title-copy')
+        .evaluate((element) => Math.round(element.getBoundingClientRect().width));
+
+      expect(titleWidth).toBeLessThanOrEqual(340);
     });
   }
 
@@ -3350,11 +3450,26 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
 
   const menu = page.locator('[data-context-menu="true"]');
   await expect(menu).toBeVisible();
-  await expect(menu.locator('[data-context-menu-kind="agent"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
-  await expect(menu.locator('[data-context-menu-agent-action="show-providers"]')).toBeVisible();
-  await expect(menu.locator('[data-context-menu-agent-action="show-providers"] .codicon-chevron-right')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"] .codicon-chevron-right')).toBeVisible();
+  await expect(
+    menu.locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="create-default"]')
+  ).toContainText('Codex（默认）');
+  await expect
+    .poll(async () =>
+      menu
+        .locator('.canvas-context-menu-items > *')
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) =>
+              element.getAttribute('data-context-menu-kind') ?? element.getAttribute('data-context-menu-provider')
+          )
+        )
+    )
+    .toEqual(['note', 'terminal', 'codex', 'claude']);
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -3407,18 +3522,17 @@ test('right-click create menu can drill into agent launch modes and create claud
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
-  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
-  await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
   await menu
     .locator('[data-context-menu-provider="claude"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
+  await expect(menu.locator('[data-context-menu-back="true"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-back="true"] .codicon-chevron-left')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toContainText(
-    '进入 Claude Code 自己的 resume 会话选择入口'
+    '选择历史会话：claude --resume'
   );
   await expect(menu.locator('[data-context-menu-launch-preset="launch-yolo"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-sandbox"]')).toBeVisible();
@@ -3486,20 +3600,21 @@ test('right-click launch preset descriptions normalize conflicting default launc
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await menu.locator('[data-context-menu-agent-action="show-providers"]').click();
   await menu
     .locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="show-launch-modes"]')
     .click();
 
   const yoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
-  await expect(yoloPreset).toContainText('codex --model gpt-5.2 resume --last --yolo');
-  await expect(yoloPreset).toContainText('仅覆盖当前已知的冲突模式参数');
-  await expect(yoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
+  await expect(yoloPreset).toContainText('codex --yolo --model gpt-5.2 resume --last');
+  await expect(yoloPreset).toContainText('自动批准执行模式：');
   await expect(yoloPreset).not.toContainText('danger-full-access');
+  await expect(yoloPreset.locator('.canvas-context-menu-copy-detail')).toContainText(
+    'codex --yolo --model gpt-5.2 resume --last'
+  );
 
   const sandboxPreset = menu.locator('[data-context-menu-launch-preset="launch-sandbox"]');
-  await expect(sandboxPreset).toContainText('codex --model gpt-5.2 resume --last --sandbox workspace-write');
-  await expect(sandboxPreset).toContainText('仅覆盖当前已知的冲突模式参数');
+  await expect(sandboxPreset).toContainText('codex --sandbox workspace-write --model gpt-5.2 resume --last');
+  await expect(sandboxPreset).toContainText('受限权限安全模式：');
   await expect(sandboxPreset).not.toContainText('danger-full-access');
 
   await menu.locator('[data-context-menu-back="true"]').click();
@@ -3509,9 +3624,9 @@ test('right-click launch preset descriptions normalize conflicting default launc
 
   const claudeYoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
   await expect(claudeYoloPreset).toContainText(
-    'claude --model sonnet --resume session-123 --dangerously-skip-permissions'
+    'claude --dangerously-skip-permissions --model sonnet --resume session-123'
   );
-  await expect(claudeYoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
+  await expect(claudeYoloPreset).toContainText('自动批准执行模式：');
   await expect(claudeYoloPreset).not.toContainText('acceptEdits');
 });
 
@@ -3589,7 +3704,7 @@ test('right-click create menu refreshes its default agent label after runtime co
   });
 
   const menu = page.locator('[data-context-menu="true"]');
-  await expect(menu.locator('[data-context-menu-agent-action="create-default"]')).toContainText('默认：Claude Code');
+  await expect(menu.locator('[data-context-menu-agent-action="create-default"]')).toContainText('Claude Code（默认）');
 
   await menu.locator('[data-context-menu-agent-action="create-default"]').click();
 
@@ -5265,6 +5380,161 @@ function createFileListState() {
             nodeId: 'agent-2',
             accessMode: 'write',
             updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createExplorerLikeFileListState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-30T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 120 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-list-shared',
+        kind: 'file-list',
+        title: '共享文件',
+        status: 'linked',
+        summary: '共 4 个共享文件',
+        position: { x: 720, y: 280 },
+        size: sizeFor('file-list'),
+        metadata: {
+          fileList: {
+            scope: 'shared',
+            entries: [
+              {
+                fileId: 'shared-src-webview-main',
+                filePath: '/workspace/src/webview/main.tsx',
+                relativePath: 'src/webview/main.tsx',
+                accessMode: 'read-write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'code'
+                }
+              },
+              {
+                fileId: 'shared-root-readme',
+                filePath: '/workspace/README.md',
+                relativePath: 'README.md',
+                accessMode: 'read',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'markdown'
+                }
+              },
+              {
+                fileId: 'shared-src-extension',
+                filePath: '/workspace/src/extension.ts',
+                relativePath: 'src/extension.ts',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              },
+              {
+                fileId: 'shared-docs-guide',
+                filePath: '/workspace/docs/guide.md',
+                relativePath: 'docs/guide.md',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'markdown'
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-list-shared',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'both',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'shared-src-webview-main',
+        filePath: '/workspace/src/webview/main.tsx',
+        relativePath: 'src/webview/main.tsx',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read-write',
+            updatedAt: '2026-04-30T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-root-readme',
+        filePath: '/workspace/README.md',
+        relativePath: 'README.md',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read',
+            updatedAt: '2026-04-30T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-src-extension',
+        filePath: '/workspace/src/extension.ts',
+        relativePath: 'src/extension.ts',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-30T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-docs-guide',
+        filePath: '/workspace/docs/guide.md',
+        relativePath: 'docs/guide.md',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-30T00:00:00.000Z'
           }
         ]
       }
