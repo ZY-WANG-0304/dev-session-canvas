@@ -23,9 +23,9 @@
 ## 3. 核心用户流程
 
 1. 用户在画布空白区右键，进入 `新建节点` 菜单。
-2. 若直接点击 `Agent` 主按钮，则按默认 provider 和默认启动参数快速创建 Agent。
-3. 若展开 `Agent`，先选 provider，再选 `快速启动 / Resume / YOLO / 沙盒 / 自定义启动`。
-4. 若选择 `自定义启动`，用户在菜单旁输入完整启动命令；创建动作以当前输入框内容为准。
+2. 第一屏直接显示 `Note`、`Terminal`，以及按当前默认 provider 优先排序的 provider 列表；默认 provider 只在名称后追加 `（默认）` 标识，不再单独保留一个泛化的 `Agent` 顶层项。
+3. 点击某个 provider 主按钮时，按该 provider 的默认启动方式直接创建 Agent；点击同一行次按钮时，才进入 `快速启动 / Resume / YOLO / 沙盒 / 自定义启动`。
+4. 若选择 `自定义启动`，用户在菜单内就地输入完整启动命令；创建动作以当前输入框内容为准。
 5. 无论来自右键菜单还是命令面板，创建前的 `Resume` 都表示“让 CLI 进入自己的 resume 会话选择入口”：`Codex` 对应 `codex resume`，`Claude Code` 对应 `claude --resume`；它不是直接替用户恢复最近一条会话。
 6. 若通过命令面板或侧栏“创建节点”入口创建 Agent，先选对象/provider，再进入带输入框的第二步 Quick Input；输入框展示完整命令，下方 `默认 / Resume / YOLO / 沙盒` 列表只负责快捷替换，不直接创建。
 7. Agent 停止后，只有在节点仍持有可信的原会话恢复上下文时，标题栏才显示 `重启 | ▼` split button；否则直接退化成单个 `启动` 按钮。这里的“恢复原会话”始终指当前节点前面停止的那条会话，而不是 provider 最近一次全局会话。
@@ -33,10 +33,11 @@
 ## 4. 在范围内
 
 - 画布空白区右键菜单中的 Agent 多级创建：
-  - 顶层仍保持 `Agent / Terminal / Note` 三类对象。
-  - `Agent` 顶层项采用 split button：主按钮直接创建默认 Agent，次按钮进入 provider 选择。
-  - provider 选择层对 `Codex` / `Claude Code` 同样采用 split button：主按钮直接按该 provider 的默认启动方式创建，次按钮进入启动方式选择。
+  - 顶层改成 `Note / Terminal / provider 列表`；不再保留单独的泛化 `Agent` 顶层项。
+  - provider 列表按“默认 provider 在前，其余 provider 按既定顺序排后”显示；默认 provider 只通过 `（默认）` 文案标识。
+  - `Codex` / `Claude Code` 行仍采用 split button：主按钮直接按该 provider 的默认启动方式创建，次按钮进入启动方式选择。
   - 启动方式层至少提供 `快速启动`、`Resume`、`YOLO`、`沙盒`、`自定义启动`。
+  - 启动方式层的每个说明区都必须有固定上限；默认启动命令过长时以 `...` 截断，且 hover 时显示完整指令。
 - VSCode Quick Input 创建链路：
   - 第一层仍保持“创建对象 + 按类型创建 Agent”的现有语义分组。
   - 只要用户在第一层选中任意 `Agent` 入口，第二层必须进入“完整启动命令编辑”界面。
@@ -47,6 +48,7 @@
   - 这组默认启动参数设置使用 `window` scope；用户应能在窗口 / 工作区范围覆盖它们。
   - 默认启动参数同时用于“快速启动”与“自定义启动”的预填充。
   - 当用户显式选择 `YOLO / 沙盒` 这类执行策略预设时，扩展只会覆盖仓库当前已文档化支持的少量已知冲突 flag，而不是尝试对所有 CLI 参数做通用归一化；若用户需要更复杂的参数组合，必须改走 `自定义启动`。
+  - 对 `Resume / YOLO / 沙盒` 这类显式模式参数，生成出来的 argv 应尽量前置到命令前部，而不是简单追加到整条命令末尾。
   - 当前已知冲突集合仅包括：`Codex` 的 `--yolo` / `--full-auto` / `--dangerously-bypass-approvals-and-sandbox` / `--sandbox` / `-s` / `--ask-for-approval` / `-a`（以及这些长短选项的 `--flag=value` 形式），以及 `Claude Code` 的 `--dangerously-skip-permissions` / `--permission-mode`。
   - 上述有限覆盖只作用于执行策略本身，不覆盖“恢复哪条会话”的语义：`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都不视为与 `YOLO / 沙盒` 互斥；若默认启动参数中已经显式包含它们，点击 `YOLO / 沙盒` 时应保留这些会话选择语义，只覆盖执行策略 flag。
   - 但当用户显式选择创建前的 `Resume` 预设时，本次 fresh-start 仍统一收口为 provider 自己的 resume 选择入口：`Codex` 生成 `codex resume`，`Claude Code` 生成 `claude --resume`；默认启动参数里原本更定向的 `--last`、具体 `session-id`、`--continue` / `-c`、`--resume` / `-r` 等 resume 目标应被替换掉，而不是继续拼接。
@@ -104,14 +106,16 @@
 - 下拉菜单是否展开
 - 用户本次选择的是 `Resume` 还是 `新会话`
 - Agent 节点副标题是否显示本节点最近一次实际启动指令；当副标题被截断时，hover 需要显示完整指令
+- Agent 节点标题与副标题在宽节点上是否仍保持固定可读宽度上限，而不是随节点尺寸无限拉长
 
 ## 7. 验收标准
 
-- 在画布空白区右键后，用户仍先看到 `Agent / Terminal / Note`；其中 `Agent` 可直接快速创建，也可逐级进入 provider 与启动方式选择。
-- 在 provider 选择层点击 `Codex` 或 `Claude Code` 主按钮时，会直接创建该 provider 的默认启动 Agent，而不会额外打开第三层。
+- 在画布空白区右键后，用户先看到 `Note / Terminal / provider 列表`；默认 provider 排在 provider 列表第一位，并仅用 `（默认）` 标识。
+- 点击根层中的 `Codex` 或 `Claude Code` 主按钮时，会直接创建该 provider 的默认启动 Agent，而不会额外打开启动方式层。
 - 在启动方式层点击 `YOLO` 或 `沙盒` 时，创建出的 Agent 会持久化对应的新会话启动预设，而不是只影响一次性 UI。
 - 在启动方式层点击 `Resume` 时，创建出的 Agent 会以 provider 的 resume 选择入口启动；用户随后在 CLI 内自己选择要恢复哪条会话。
 - 在启动方式层点击 `自定义启动` 时，会打开就地输入框；输入框预填“provider 命令 + 默认启动参数”，输入非法命令时不能确认创建。
+- 启动方式层中任何过长的默认命令或说明都不会把菜单撑高到不可控；超长内容以 `...` 截断，并在 hover 时显示完整指令。
 - 即使有人伪造 Webview 消息或手工注入旧 metadata，只要自定义命令的首个 token 不再属于当前 provider，宿主也会在创建或启动前直接拒绝，不会去解析或执行该命令。
 - 命令面板 / 侧栏“创建节点”里的 Agent 入口会进入第二步 Quick Input；第二步顶部输入框展示完整命令，点击 `默认 / Resume / YOLO / 沙盒` 只会替换输入框内容，不会直接创建。
 - 第二步 Quick Input 不额外增加“创建”按钮；按 Enter 会按当前输入框内容创建 Agent。
@@ -119,6 +123,7 @@
 - 通过设置修改某个 provider 的默认启动参数后，后续新的“快速启动”和“自定义启动”预填内容会同步变化。
 - Agent 节点标题下方的副标题显示该节点最近一次实际启动指令；若节点尚未真正启动，则显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。
 - 当副标题中的启动指令超出可见宽度时，鼠标悬停副标题区域会显示完整启动指令；未截断时不额外显示 hover 文案。
+- 即使用户把 Agent 节点拖得更宽，标题与副标题仍维持固定可读宽度上限，不会跟着无限拉长。
 - 停止后的 Agent 节点标题栏显示 split button；主按钮默认恢复原会话，下拉菜单允许改成“新会话”。
 - 当节点缺少可恢复上下文时，标题栏只显示单个 `启动` 按钮，不再显示 disabled 的 `重启 | ▼` split button；也不会偷偷改成恢复 provider 的最近会话。
 - 对 `Claude Code` 的 fresh-start，如果启动后已根据候选 `session-id` 确认 provider 会话文件存在，即使 stop-time 没再额外打印 resume 提示，节点也应继续保留“恢复原会话”入口；只有既没有文件确认也没有 stop-time 提示时，才退化为单个 `启动` 按钮。

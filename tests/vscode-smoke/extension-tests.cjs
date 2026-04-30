@@ -424,7 +424,12 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.ok(
     nodeItems.every((item) => item.description === item.status),
-    'Expected sidebar node descriptions to show status only, without subtitle text.'
+    'Expected sidebar node descriptions to stay aligned with the rendered second-line text.'
+  );
+  assert.match(
+    nodeItems.find((item) => item.nodeId === agentNodeId)?.status ?? '',
+    /^(Codex|Claude Code) · /,
+    'Expected Agent sidebar rows to prefix the second line with provider information.'
   );
 
   await clearHostMessages();
@@ -472,7 +477,12 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(
     sanitizedAgentItem.description,
     sanitizedAgentItem.status,
-    'Expected sidebar node descriptions to remain status-only after summary sanitization.'
+    'Expected sidebar node descriptions to remain aligned with the rendered second-line text after summary sanitization.'
+  );
+  assert.match(
+    sanitizedAgentItem.status,
+    /^(Codex|Claude Code) · 等待输入$/,
+    'Expected sanitized Agent sidebar rows to keep provider and status in the second line.'
   );
   assert.ok(
     !sanitizedAgentItem.tooltip.includes('[?2026|'),
@@ -1322,7 +1332,7 @@ async function verifyManualEdgeLifecycle(agentNodeId, terminalNodeId) {
 
 async function verifyFileActivityViewsAndOpenFiles() {
   const configuration = vscode.workspace.getConfiguration();
-  const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', true) !== false;
+  const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', false) === true;
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
   const originalFileNodeDisplayStyle =
@@ -1360,10 +1370,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
   await fs.writeFile(sharedPath, 'export const shared = true;\n', 'utf8');
   await fs.writeFile(agentBOnlyPath, '{\"owner\":\"agent-b\"}\n', 'utf8');
 
-  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
-  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
-
-  const baselineSnapshot = await getDebugSnapshot();
+  let snapshot = await ensureFilesFeatureEnabledForSmoke('panel');
+  const baselineSnapshot = snapshot;
   const baselineNodeIds = baselineSnapshot.state.nodes.map((node) => node.id).sort();
   const baselineFileFilters = {
     includeGlobs: [...baselineSnapshot.sidebar.fileFilters.includeGlobs],
@@ -1374,7 +1382,6 @@ async function verifyFileActivityViewsAndOpenFiles() {
   );
 
   await setFilesPresentationMode('nodes');
-  await setFilesFeatureEnabled(true);
   await setFileNodeDisplayStyle('minimal');
   await setFilesNodeDisplayMode('icon-path');
   await setFilesPathDisplayMode('basename');
@@ -1383,7 +1390,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
 
-    let snapshot = await waitForSnapshot((currentSnapshot) => {
+    snapshot = await waitForSnapshot((currentSnapshot) => {
       const currentAgents = currentSnapshot.state.nodes.filter((node) => node.kind === 'agent');
       return currentAgents.length === baselineAgentIds.size + 2;
     }, 20000);
@@ -1670,6 +1677,66 @@ async function verifyFileActivityViewsAndOpenFiles() {
       'Expected icon-path basename file node layout to recover after returning from relative-path mode.'
     );
     assert.deepStrictEqual(collectAutomaticFileEdgeIds(snapshot), automaticFileEdgeIds);
+
+    snapshot = await dispatchWebviewMessage(
+      {
+        type: 'webview/moveNode',
+        payload: {
+          id: agentOnlySecondaryFileNode.id,
+          position: {
+            x: agentANode.position.x - agentOnlySecondaryFileNode.size.width - 260,
+            y: agentOnlySecondaryFileNode.position.y + 220
+          }
+        }
+      },
+      'panel'
+    );
+    const movedWriteOnlyFileNode = findNodeById(snapshot, agentOnlySecondaryFileNode.id);
+    const movedWriteOnlyAutoEdge = findEdgeById(snapshot, writeOnlyAutoEdge.id);
+    assert.ok(
+      movedWriteOnlyFileNode.position.x + movedWriteOnlyFileNode.size.width / 2 < agentACenterX,
+      'Expected moved write-only file node to end up on the left side of the owning agent.'
+    );
+    assert.strictEqual(
+      movedWriteOnlyAutoEdge.sourceAnchor,
+      'left',
+      'Expected automatic write edge to switch to the left source anchor when the file node moves to the left of the agent.'
+    );
+    assert.strictEqual(
+      movedWriteOnlyAutoEdge.targetAnchor,
+      'right',
+      'Expected automatic write edge to switch to the right target anchor when the file node moves to the left of the agent.'
+    );
+
+    snapshot = await dispatchWebviewMessage(
+      {
+        type: 'webview/moveNode',
+        payload: {
+          id: agentOnlyFileNode.id,
+          position: {
+            x: agentANode.position.x + agentANode.size.width + 260,
+            y: Math.max(0, agentOnlyFileNode.position.y - 180)
+          }
+        }
+      },
+      'panel'
+    );
+    const movedReadOnlyFileNode = findNodeById(snapshot, agentOnlyFileNode.id);
+    const movedReadOnlyAutoEdge = findEdgeById(snapshot, readOnlyAutoEdge.id);
+    assert.ok(
+      movedReadOnlyFileNode.position.x + movedReadOnlyFileNode.size.width / 2 > agentACenterX,
+      'Expected moved read-only file node to end up on the right side of the owning agent.'
+    );
+    assert.strictEqual(
+      movedReadOnlyAutoEdge.sourceAnchor,
+      'left',
+      'Expected automatic read edge to switch to the left source anchor when the file node moves to the right of the agent.'
+    );
+    assert.strictEqual(
+      movedReadOnlyAutoEdge.targetAnchor,
+      'right',
+      'Expected automatic read edge to switch to the right target anchor when the file node moves to the right of the agent.'
+    );
 
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
@@ -2161,10 +2228,8 @@ async function verifyReadExitFileActivityDrain() {
   await fs.mkdir(scratchDir, { recursive: true });
   await fs.writeFile(readExitPath, 'export const readThenExit = true;\n', 'utf8');
 
-  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
-  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
-
-  const baselineSnapshot = await getDebugSnapshot();
+  let snapshot = await ensureFilesFeatureEnabledForSmoke('panel');
+  const baselineSnapshot = snapshot;
   const baselineNodeIds = baselineSnapshot.state.nodes.map((node) => node.id).sort();
   const baselineAgentIds = new Set(
     baselineSnapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id)
@@ -2177,7 +2242,7 @@ async function verifyReadExitFileActivityDrain() {
   try {
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
 
-    let snapshot = await waitForSnapshot((currentSnapshot) => {
+    snapshot = await waitForSnapshot((currentSnapshot) => {
       const currentAgents = currentSnapshot.state.nodes.filter((node) => node.kind === 'agent');
       return currentAgents.length === baselineAgentIds.size + 1;
     }, 20000);
@@ -2880,6 +2945,13 @@ async function verifyPersistedStateFiltersLegacyTaskNodes() {
 }
 
 async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
+  const editorReadySnapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(
+    editorReadySnapshot.activeSurface,
+    'editor',
+    'Expected the real webview probe check to run against the editor surface.'
+  );
+
   const expectedAgentSubtitle =
     findNodeById(await getDebugSnapshot(), agentNodeId).metadata?.agent?.lastLaunchCommandLine ?? null;
   let probe = await waitForWebviewProbe((currentProbe) => {
@@ -7407,6 +7479,34 @@ async function ensureEditorCanvasReady() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
   return getDebugSnapshot();
+}
+
+async function ensureFilesFeatureEnabledForSmoke(surface = 'panel') {
+  const configuredFilesEnabled =
+    vscode.workspace.getConfiguration().get('devSessionCanvas.files.enabled', false) === true;
+  if (!configuredFilesEnabled) {
+    await setFilesFeatureEnabled(true);
+  }
+
+  let snapshot = await getDebugSnapshot();
+  if (!snapshot.sidebar.filesFeatureEnabled) {
+    snapshot = await simulateRuntimeReload();
+  }
+
+  if (surface === 'editor') {
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  } else {
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  }
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, surface, 20000);
+
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.sidebar.filesFeatureEnabled,
+    true,
+    'Expected files feature to be enabled before exercising file-activity smoke coverage.'
+  );
+  return snapshot;
 }
 
 async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5000) {

@@ -404,11 +404,7 @@ async function runMarketplaceRecording({
         }
       );
       await delay(420);
-      await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'root', 'show-agent-providers', {
-        canvasSurface
-      });
-      await delay(420);
-      await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'provider', 'create-agent-claude', {
+      await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'root', 'create-agent-claude', {
         canvasSurface
       });
       return waitForRecordingState(
@@ -1215,15 +1211,17 @@ function resolveRootMenuItemPoint(screenFrameBox, anchorPoint, target) {
 
   switch (target) {
     case 'create-agent-default':
-      return { x: menu.x + 96, y: menu.y + 60 };
-    case 'show-agent-providers':
-      return { x: menu.x + 244, y: menu.y + 60 };
+      return { x: menu.x + 124, y: menu.y + 148 };
+    case 'create-agent-codex':
+      return { x: menu.x + 124, y: menu.y + 148 };
+    case 'create-agent-claude':
+      return { x: menu.x + 124, y: menu.y + 190 };
     case 'create-terminal':
-      return { x: menu.x + 124, y: menu.y + 132 };
+      return { x: menu.x + 124, y: menu.y + 104 };
     case 'create-note':
-      return { x: menu.x + 124, y: menu.y + 172 };
+      return { x: menu.x + 124, y: menu.y + 60 };
     case 'dismiss':
-      return { x: menu.x + 124, y: menu.y + 212 };
+      return { x: menu.x + 124, y: menu.y + 232 };
     default:
       throw new Error(`Unsupported root context menu target: ${target}`);
   }
@@ -1231,22 +1229,13 @@ function resolveRootMenuItemPoint(screenFrameBox, anchorPoint, target) {
 
 function resolveRootMenuItemCandidatePoints(screenFrameBox, anchorPoint, target) {
   const point = resolveRootMenuItemPoint(screenFrameBox, anchorPoint, target);
-  const offsets =
-    target === 'show-agent-providers'
-      ? [
-          [0, 0],
-          [-4, 0],
-          [4, 0],
-          [0, -4],
-          [0, 4]
-        ]
-      : [
-          [0, 0],
-          [0, -6],
-          [0, 6],
-          [-8, 0],
-          [8, 0]
-        ];
+  const offsets = [
+    [0, 0],
+    [0, -6],
+    [0, 6],
+    [-8, 0],
+    [8, 0]
+  ];
   return createCandidatePoints(point, offsets);
 }
 
@@ -2394,12 +2383,10 @@ function resolveCanvasContextMenuItemSelector(target) {
   switch (target) {
     case 'create-agent-default':
       return '[data-context-menu-agent-action="create-default"]';
-    case 'show-agent-providers':
-      return '[data-context-menu-agent-action="show-providers"]';
     case 'create-agent-codex':
-      return '[data-context-menu-provider="codex"]';
+      return '[data-context-menu-provider="codex"] [data-context-menu-provider-action="create-default"]';
     case 'create-agent-claude':
-      return '[data-context-menu-provider="claude"]';
+      return '[data-context-menu-provider="claude"] [data-context-menu-provider-action="create-default"]';
     case 'create-terminal':
       return '[data-context-menu-kind="terminal"]';
     case 'create-note':

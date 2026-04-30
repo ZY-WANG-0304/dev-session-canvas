@@ -172,7 +172,7 @@ try {
   };
   assert.equal(
     buildAgentPresetCommandLine('codex', codexModeConflictDefaults, 'yolo'),
-    'codex --model gpt-5.2 --yolo'
+    'codex --yolo --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -183,7 +183,7 @@ try {
       },
       'yolo'
     ),
-    'codex resume --last --yolo'
+    'codex --yolo resume --last'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -194,7 +194,7 @@ try {
       },
       'yolo'
     ),
-    'codex --model gpt-5.2 resume session-123 --yolo'
+    'codex --yolo --model gpt-5.2 resume session-123'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -205,7 +205,7 @@ try {
       },
       'yolo'
     ),
-    'codex --model gpt-5.2 --yolo'
+    'codex --yolo --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -216,7 +216,7 @@ try {
       },
       'yolo'
     ),
-    'codex --model gpt-5.2 --yolo'
+    'codex --yolo --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -249,7 +249,7 @@ try {
       },
       'resume'
     ),
-    'codex --model gpt-5.2 resume'
+    'codex resume --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -260,7 +260,7 @@ try {
       },
       'resume'
     ),
-    'codex --model gpt-5.2 resume --all --include-non-interactive --sandbox workspace-write'
+    'codex resume --model gpt-5.2 --all --include-non-interactive --sandbox workspace-write'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -271,7 +271,7 @@ try {
       },
       'resume'
     ),
-    'codex --local-provider ollama resume'
+    'codex resume --local-provider ollama'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -282,7 +282,7 @@ try {
       },
       'sandbox'
     ),
-    'codex --model gpt-5.2 --sandbox workspace-write'
+    'codex --sandbox workspace-write --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -293,7 +293,7 @@ try {
       },
       'sandbox'
     ),
-    'codex --model gpt-5.2 --sandbox workspace-write'
+    'codex --sandbox workspace-write --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -304,7 +304,7 @@ try {
       },
       'sandbox'
     ),
-    'codex --model gpt-5.2 --sandbox workspace-write'
+    'codex --sandbox workspace-write --model gpt-5.2'
   );
 
   const claudeModeConflictDefaults = {
@@ -313,7 +313,7 @@ try {
   };
   assert.equal(
     buildAgentPresetCommandLine('claude', claudeModeConflictDefaults, 'yolo'),
-    'claude --model sonnet --dangerously-skip-permissions'
+    'claude --dangerously-skip-permissions --model sonnet'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -324,7 +324,7 @@ try {
       },
       'yolo'
     ),
-    'claude --model sonnet --resume session-123 --dangerously-skip-permissions'
+    'claude --dangerously-skip-permissions --model sonnet --resume session-123'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -335,7 +335,7 @@ try {
       },
       'sandbox'
     ),
-    'claude --model sonnet --continue session-123 --permission-mode plan'
+    'claude --permission-mode plan --model sonnet --continue session-123'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -346,7 +346,7 @@ try {
       },
       'resume'
     ),
-    'claude --model sonnet --resume'
+    'claude --resume --model sonnet'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -379,7 +379,7 @@ try {
       },
       'sandbox'
     ),
-    'claude --model sonnet --permission-mode plan'
+    'claude --permission-mode plan --model sonnet'
   );
   assert.equal(
     matchesAgentCommandLinePreset(
@@ -417,6 +417,30 @@ try {
     {
       launchPreset: 'default'
     }
+  );
+  assert.equal(
+    matchesAgentCommandLinePreset(
+      'codex',
+      'codex --model gpt-5.2 resume',
+      {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 resume session-old'
+      },
+      'resume'
+    ),
+    true
+  );
+  assert.equal(
+    matchesAgentCommandLinePreset(
+      'claude',
+      'claude --model sonnet --resume',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --resume session-old'
+      },
+      'resume'
+    ),
+    true
   );
 
   const trailingSlashConfigPath = 'C:\\Users\\me\\My Dir\\';
@@ -818,7 +842,7 @@ try {
         defaultArgs: '--profile prod --sandbox workspace-write'
       }
     ),
-    'codex --profile prod --sandbox workspace-write resume session-codex-123'
+    'codex resume --profile prod --sandbox workspace-write session-codex-123'
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(
@@ -829,7 +853,7 @@ try {
         defaultArgs: '--model gpt-5.2 resume --all --include-non-interactive session-old --sandbox workspace-write'
       }
     ),
-    'codex --model gpt-5.2 resume --sandbox workspace-write session-codex-789'
+    'codex resume --model gpt-5.2 --sandbox workspace-write session-codex-789'
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(
@@ -840,7 +864,7 @@ try {
         defaultArgs: '--model sonnet --permission-mode plan'
       }
     ),
-    '/opt/claude --model sonnet --permission-mode plan --resume session-claude-456'
+    '/opt/claude --resume session-claude-456 --model sonnet --permission-mode plan'
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(
@@ -851,7 +875,7 @@ try {
         defaultArgs: '--resume session-old --permission-mode plan'
       }
     ),
-    'claude --permission-mode plan --resume session-claude-789'
+    'claude --resume session-claude-789 --permission-mode plan'
   );
   assert.throws(
     () =>

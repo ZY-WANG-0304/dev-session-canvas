@@ -83,6 +83,7 @@ import {
   normalizeCanvasStrongTerminalAttentionReminderMode,
   normalizeCanvasNodeFootprint,
   parseWebviewMessage,
+  resolveHorizontalCanvasEdgeAnchors,
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
@@ -2141,7 +2142,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       defaultSurface:
         getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel' ? 'panel' : 'editor',
       runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false),
-      filesFeatureEnabled: getConfigurationValue<boolean>('filesFeatureEnabled', true)
+      filesFeatureEnabled: getConfigurationValue<boolean>('filesFeatureEnabled', false)
     };
   }
 
@@ -4111,17 +4112,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
         return;
       case 'webview/moveNode':
-        this.state = moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position);
+        this.state = this.reconcileCanvasFileArtifacts(
+          moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position)
+        );
         this.persistState();
         this.postState('host/stateUpdated');
         return;
       case 'webview/resizeNode':
-        this.state = resizeNode(
-          this.state,
-          parsedMessage.payload.nodeId,
-          parsedMessage.payload.position,
-          parsedMessage.payload.size,
-          this.getCanvasFileViewConfiguration()
+        this.state = this.reconcileCanvasFileArtifacts(
+          resizeNode(
+            this.state,
+            parsedMessage.payload.nodeId,
+            parsedMessage.payload.position,
+            parsedMessage.payload.size,
+            this.getCanvasFileViewConfiguration()
+          )
         );
         this.persistState();
         this.postState('host/stateUpdated');
@@ -7935,7 +7940,7 @@ function buildAutomaticFileNodeArtifacts(
       placementPreference
     );
     const title = buildFileDisplayLabel(reference, view.pathDisplayMode);
-    nodes.push({
+    const fileNode: CanvasNodeSummary = {
       id: nodeId,
       kind: 'file',
       title,
@@ -7956,18 +7961,20 @@ function buildAutomaticFileNodeArtifacts(
           icon: createDefaultFileIconDescriptor(reference.filePath)
         }
       }
-    });
+    };
+    nodes.push(fileNode);
 
     for (const owner of reference.owners) {
-      if (!agentNodesById.has(owner.nodeId)) {
+      const agentNode = agentNodesById.get(owner.nodeId);
+      if (!agentNode) {
         continue;
       }
 
       edges.push(
         createAutomaticFileEdge({
           edgeId: `${owner.nodeId}::${nodeId}`,
-          referenceNodeId: nodeId,
-          agentNodeId: owner.nodeId,
+          referenceNode: fileNode,
+          agentNode,
           accessMode: owner.accessMode
         })
       );
@@ -8150,7 +8157,7 @@ function buildAutomaticFileListArtifacts(
           'file-list',
           resolveFileListAnchor(agentNode, 'agent')
         );
-    nodes.push({
+    const fileListNode: CanvasNodeSummary = {
       id: nodeId,
       kind: 'file-list',
       title: `${agentNode.title} 文件`,
@@ -8165,12 +8172,13 @@ function buildAutomaticFileListArtifacts(
           entries
         }
       }
-    });
+    };
+    nodes.push(fileListNode);
     edges.push(
       createAutomaticFileEdge({
         edgeId: `${agentNodeId}::${nodeId}`,
-        referenceNodeId: nodeId,
-        agentNodeId,
+        referenceNode: fileListNode,
+        agentNode,
         accessMode: mergeAccessModes(entries.map((entry) => entry.accessMode))
       })
     );
@@ -8186,7 +8194,7 @@ function buildAutomaticFileListArtifacts(
           'file-list',
           resolveSharedFileListAnchor(sharedEntries, agentNodesById)
         );
-    nodes.push({
+    const sharedNode: CanvasNodeSummary = {
       id: sharedNodeId,
       kind: 'file-list',
       title: '共享文件',
@@ -8200,7 +8208,8 @@ function buildAutomaticFileListArtifacts(
           entries: sharedEntries
         }
       }
-    });
+    };
+    nodes.push(sharedNode);
 
     const sharedOwners = new Map<string, CanvasFileActivityAccessMode[]>();
     for (const entry of sharedEntries) {
@@ -8212,14 +8221,15 @@ function buildAutomaticFileListArtifacts(
     }
 
     for (const [agentNodeId, accessModes] of sharedOwners.entries()) {
-      if (!agentNodesById.has(agentNodeId)) {
+      const agentNode = agentNodesById.get(agentNodeId);
+      if (!agentNode) {
         continue;
       }
       edges.push(
         createAutomaticFileEdge({
           edgeId: `${agentNodeId}::${sharedNodeId}`,
-          referenceNodeId: sharedNodeId,
-          agentNodeId,
+          referenceNode: sharedNode,
+          agentNode,
           accessMode: mergeAccessModes(accessModes)
         })
       );
@@ -8394,29 +8404,42 @@ function resolveSharedFileListAnchor(
 
 function createAutomaticFileEdge(params: {
   edgeId: string;
-  referenceNodeId: string;
-  agentNodeId: string;
+  referenceNode: CanvasNodeSummary;
+  agentNode: CanvasNodeSummary;
   accessMode: CanvasFileActivityAccessMode;
 }): CanvasEdgeSummary {
+  const arrowMode = params.accessMode === 'read-write' ? 'both' : 'forward';
   if (params.accessMode === 'read') {
-    return {
-      id: params.edgeId,
-      sourceNodeId: params.referenceNodeId,
-      targetNodeId: params.agentNodeId,
-      sourceAnchor: 'right',
-      targetAnchor: 'left',
-      arrowMode: 'forward',
-      owner: 'file-activity'
-    };
+    return createAutomaticFileEdgeSummary(
+      params.edgeId,
+      params.referenceNode,
+      params.agentNode,
+      arrowMode
+    );
   }
 
+  return createAutomaticFileEdgeSummary(
+    params.edgeId,
+    params.agentNode,
+    params.referenceNode,
+    arrowMode
+  );
+}
+
+function createAutomaticFileEdgeSummary(
+  edgeId: string,
+  sourceNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
+  targetNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
+  arrowMode: CanvasEdgeSummary['arrowMode']
+): CanvasEdgeSummary {
+  const anchors = resolveHorizontalCanvasEdgeAnchors(sourceNode, targetNode);
   return {
-    id: params.edgeId,
-    sourceNodeId: params.agentNodeId,
-    targetNodeId: params.referenceNodeId,
-    sourceAnchor: 'right',
-    targetAnchor: 'left',
-    arrowMode: params.accessMode === 'read-write' ? 'both' : 'forward',
+    id: edgeId,
+    sourceNodeId: sourceNode.id,
+    targetNodeId: targetNode.id,
+    sourceAnchor: anchors.sourceAnchor,
+    targetAnchor: anchors.targetAnchor,
+    arrowMode,
     owner: 'file-activity'
   };
 }

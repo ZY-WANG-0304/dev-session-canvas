@@ -1521,6 +1521,30 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
   }
 }
 
+export function resolveHorizontalCanvasEdgeAnchors(
+  sourceNode: Pick<CanvasNodeSummary, 'position' | 'size'>,
+  targetNode: Pick<CanvasNodeSummary, 'position' | 'size'>
+): Pick<CanvasEdgeSummary, 'sourceAnchor' | 'targetAnchor'> {
+  const sourceLeft = sourceNode.position.x;
+  const sourceRight = sourceNode.position.x + sourceNode.size.width;
+  const targetLeft = targetNode.position.x;
+  const targetRight = targetNode.position.x + targetNode.size.width;
+  const rightToLeftDistance = Math.abs(sourceRight - targetLeft);
+  const leftToRightDistance = Math.abs(sourceLeft - targetRight);
+
+  if (rightToLeftDistance <= leftToRightDistance) {
+    return {
+      sourceAnchor: 'right',
+      targetAnchor: 'left'
+    };
+  }
+
+  return {
+    sourceAnchor: 'left',
+    targetAnchor: 'right'
+  };
+}
+
 export function minimumCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFootprint {
   switch (kind) {
     case 'agent':

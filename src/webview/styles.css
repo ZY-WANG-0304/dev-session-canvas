@@ -282,8 +282,8 @@ body {
   top: calc(100% + 4px);
   right: 0;
   z-index: 18;
-  min-width: 164px;
-  display: grid;
+  display: inline-flex;
+  flex-direction: column;
   gap: 2px;
   padding: 6px;
   border-radius: 8px;
@@ -296,13 +296,14 @@ body {
   width: 100%;
   border: 0;
   border-radius: 6px;
-  padding: 7px 8px;
+  padding: 7px 10px;
   background: transparent;
   color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
   cursor: pointer;
   font: inherit;
   font-size: 11px;
   text-align: left;
+  white-space: nowrap;
 }
 
 .action-split-button-menu-item:hover:not(:disabled),
@@ -694,6 +695,16 @@ body {
   min-width: 0;
   display: grid;
   gap: 2px;
+}
+
+.window-title-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.agent-window-title .window-title-copy {
+  width: min(100%, 340px);
 }
 
 .window-title-input {
@@ -1352,6 +1363,11 @@ body {
   background: transparent;
 }
 
+.file-list-entry.variant-minimal-tree {
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
 .file-list-entry:hover,
 .file-list-entry:focus-visible {
   background: var(
@@ -1450,14 +1466,38 @@ body {
 }
 
 .file-tree-folder-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
   min-height: 28px;
-  padding: 4px 10px;
+  padding: 6px 10px;
+  background: transparent;
   color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font: inherit;
   font-size: 11px;
   font-weight: 600;
+  text-align: left;
+}
+
+.file-tree-folder-row:hover,
+.file-tree-folder-row:focus-visible {
+  background: var(
+    --vscode-list-hoverBackground,
+    color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent)
+  );
+  color: var(--vscode-list-hoverForeground, inherit);
+  outline: none;
+}
+
+.file-tree-folder-disclosure {
+  color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground));
+  font-size: 12px;
+  justify-self: center;
 }
 
 .file-tree-folder-icon {
@@ -1469,6 +1509,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-tree-disclosure-spacer {
+  width: 16px;
+  height: 16px;
 }
 
 .file-list-entry.variant-minimal-list .file-list-entry-copy,
@@ -1834,6 +1879,10 @@ body {
   text-align: left;
 }
 
+.canvas-context-menu-item.has-clamped-detail {
+  align-items: flex-start;
+}
+
 .canvas-context-menu-item:hover,
 .canvas-context-menu-item:focus-visible,
 .canvas-context-menu-item-secondary:hover,
@@ -1871,6 +1920,16 @@ body {
   font-size: 11px;
   line-height: 1.35;
   color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-copy-detail {
+  display: -webkit-box;
+  max-width: 100%;
+  max-height: calc(1.35em * 2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .canvas-context-menu-item:hover .canvas-context-menu-copy span,
