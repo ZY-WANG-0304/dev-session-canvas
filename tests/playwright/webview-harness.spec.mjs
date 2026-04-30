@@ -3499,6 +3499,124 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
     );
 });
 
+test('manually created nodes recenter without zooming when they already fully fit in view', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  const initialState = createNoteNodeState();
+  await bootstrap(page, initialState);
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 850,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-kind="note"]').click();
+
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  expect(createPayload).toMatchObject({
+    kind: 'note',
+    preferredPosition: {
+      x: 660,
+      y: 300
+    }
+  });
+
+  const nextState = createNoteNodeState();
+  nextState.nodes.push(createManualNoteNode('note-2', createPayload.preferredPosition));
+  await updateHostState(page, nextState);
+  await settleWebview(page, 6);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).toBe('note-2');
+  expect(afterState.viewport.zoom).toBeCloseTo(1, 5);
+
+  const viewportSize = page.viewportSize();
+  const noteBox = await nodeById(page, 'note-2').boundingBox();
+  expect(viewportSize).not.toBeNull();
+  expect(noteBox).not.toBeNull();
+  expect(noteBox.x).toBeGreaterThanOrEqual(-2);
+  expect(noteBox.y).toBeGreaterThanOrEqual(-2);
+  expect(noteBox.x + noteBox.width).toBeLessThanOrEqual(viewportSize.width + 2);
+  expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(viewportSize.height + 2);
+  expect(Math.abs(noteBox.x + noteBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(18);
+  expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
+});
+
+test('manually created nodes can zoom to fit before recentering when the node overflows the viewport', async ({ page }) => {
+  await page.setViewportSize({
+    width: 960,
+    height: 540
+  });
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1.8
+      }
+    }
+  });
+  const initialState = createEmptyCanvasState();
+  await bootstrap(page, initialState);
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 700,
+      y: 420
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-kind="terminal"]').click();
+
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  expect(createPayload).toMatchObject({
+    kind: 'terminal',
+    preferredPosition: {
+      x: 119,
+      y: 23
+    }
+  });
+
+  const nextState = createEmptyCanvasState();
+  nextState.nodes.push(createManualTerminalNode('terminal-1', createPayload.preferredPosition));
+  await updateHostState(page, nextState);
+  await settleWebview(page, 6);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).toBe('terminal-1');
+  expect(afterState.viewport.zoom).toBeLessThan(1.8);
+  expect(afterState.viewport.zoom).toBeGreaterThanOrEqual(0.55);
+  expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
+
+  const viewportSize = page.viewportSize();
+  const noteBox = await nodeById(page, 'terminal-1').boundingBox();
+  expect(viewportSize).not.toBeNull();
+  expect(noteBox).not.toBeNull();
+  expect(noteBox.x).toBeGreaterThanOrEqual(-2);
+  expect(noteBox.y).toBeGreaterThanOrEqual(-2);
+  expect(noteBox.x + noteBox.width).toBeLessThanOrEqual(viewportSize.width + 2);
+  expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(viewportSize.height + 2);
+  expect(Math.abs(noteBox.x + noteBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(18);
+  expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
+});
+
 test('right-click create menu can drill into agent launch modes and create claude yolo directly', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -5098,6 +5216,77 @@ async function expectTestDomActionError(page, action, expectedSubstring) {
 
 function nodeById(page, nodeId) {
   return page.locator(`[data-node-id="${nodeId}"]`);
+}
+
+async function waitForCreateDemoNodePayload(page) {
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .some((entry) => entry.type === 'webview/createDemoNode')
+      );
+    })
+    .toBe(true);
+
+  return page.evaluate(() => {
+    const message = window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .find((entry) => entry.type === 'webview/createDemoNode');
+
+    if (!message) {
+      throw new Error('Expected a pending webview/createDemoNode message.');
+    }
+
+    return message.payload;
+  });
+}
+
+function createManualNoteNode(nodeId, position) {
+  return {
+    id: nodeId,
+    kind: 'note',
+    title: 'Note 2',
+    status: 'ready',
+    summary: '等待记录笔记内容。',
+    position,
+    size: sizeFor('note'),
+    metadata: {
+      note: {
+        content: ''
+      }
+    }
+  };
+}
+
+function createManualTerminalNode(nodeId, position) {
+  return {
+    id: nodeId,
+    kind: 'terminal',
+    title: 'Terminal 2',
+    status: 'draft',
+    summary: '尚未启动嵌入式终端。',
+    position,
+    size: sizeFor('terminal'),
+    metadata: {
+      terminal: {
+        backend: 'node-pty',
+        shellPath: '/bin/bash',
+        cwd: '/workspace',
+        liveSession: false,
+        lastCols: 96,
+        lastRows: 28
+      }
+    }
+  };
+}
+
+function createEmptyCanvasState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-06T00:00:00.000Z',
+    nodes: []
+  };
 }
 
 function createCanvasScreenshotState() {
