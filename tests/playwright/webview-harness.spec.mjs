@@ -1534,6 +1534,54 @@ test('minimal file list nodes can switch between list and tree views', async ({ 
   });
 });
 
+test('minimal file list tree view supports explorer-style ordering and collapsible folders', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(
+    page,
+    createExplorerLikeFileListState(),
+    createRuntimeContext({ filePresentationMode: 'lists', filePathDisplayMode: 'relative-path' })
+  );
+
+  const fileListNode = nodeById(page, 'file-list-shared');
+  await fileListNode.locator('[data-file-list-view-mode="tree"]').click();
+
+  const readTreeRows = async () =>
+    fileListNode.locator('.file-list-tree > [data-file-tree-item-type]').evaluateAll((elements) =>
+      elements.map((element) => ({
+        type: element.getAttribute('data-file-tree-item-type'),
+        label: element.getAttribute('data-file-tree-label'),
+        expanded: element.getAttribute('data-file-tree-expanded')
+      }))
+    );
+
+  await expect.poll(readTreeRows).toEqual([
+    { type: 'folder', label: 'docs', expanded: 'true' },
+    { type: 'file', label: 'guide.md', expanded: null },
+    { type: 'folder', label: 'src', expanded: 'true' },
+    { type: 'folder', label: 'webview', expanded: 'true' },
+    { type: 'file', label: 'main.tsx', expanded: null },
+    { type: 'file', label: 'extension.ts', expanded: null },
+    { type: 'file', label: 'README.md', expanded: null }
+  ]);
+
+  await fileListNode.locator('[data-file-tree-branch-key="src"]').click();
+  await expect(fileListNode.locator('[data-file-tree-branch-key="src"]')).toHaveAttribute('data-file-tree-expanded', 'false');
+  await expect(fileListNode.locator('.file-list-entry').filter({ hasText: 'extension.ts' })).toHaveCount(0);
+  await expect(fileListNode.locator('.file-list-entry').filter({ hasText: 'main.tsx' })).toHaveCount(0);
+  await expect.poll(readTreeRows).toEqual([
+    { type: 'folder', label: 'docs', expanded: 'true' },
+    { type: 'file', label: 'guide.md', expanded: null },
+    { type: 'folder', label: 'src', expanded: 'false' },
+    { type: 'file', label: 'README.md', expanded: null }
+  ]);
+
+  const persistedState = await readPersistedUiState(page);
+  expect(persistedState.collapsedFileListTreeBranches).toEqual({
+    'file-list-shared': ['src']
+  });
+});
+
 test('multi-root relative paths stay split by workspace folder in tree view', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -5296,6 +5344,161 @@ function createFileListState() {
             nodeId: 'agent-2',
             accessMode: 'write',
             updatedAt: '2026-04-19T00:00:00.000Z'
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createExplorerLikeFileListState() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-30T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Agent 1',
+        status: 'draft',
+        summary: '尚未启动 Agent 会话。',
+        position: { x: 80, y: 120 },
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: false,
+            provider: 'codex',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
+        }
+      },
+      {
+        id: 'file-list-shared',
+        kind: 'file-list',
+        title: '共享文件',
+        status: 'linked',
+        summary: '共 4 个共享文件',
+        position: { x: 720, y: 280 },
+        size: sizeFor('file-list'),
+        metadata: {
+          fileList: {
+            scope: 'shared',
+            entries: [
+              {
+                fileId: 'shared-src-webview-main',
+                filePath: '/workspace/src/webview/main.tsx',
+                relativePath: 'src/webview/main.tsx',
+                accessMode: 'read-write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'code'
+                }
+              },
+              {
+                fileId: 'shared-root-readme',
+                filePath: '/workspace/README.md',
+                relativePath: 'README.md',
+                accessMode: 'read',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'markdown'
+                }
+              },
+              {
+                fileId: 'shared-src-extension',
+                filePath: '/workspace/src/extension.ts',
+                relativePath: 'src/extension.ts',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'symbol-file'
+                }
+              },
+              {
+                fileId: 'shared-docs-guide',
+                filePath: '/workspace/docs/guide.md',
+                relativePath: 'docs/guide.md',
+                accessMode: 'write',
+                ownerNodeIds: ['agent-1'],
+                icon: {
+                  kind: 'codicon',
+                  id: 'markdown'
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    edges: [
+      {
+        id: 'agent-1::file-list-shared',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-list-shared',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'both',
+        owner: 'file-activity'
+      }
+    ],
+    fileReferences: [
+      {
+        id: 'shared-src-webview-main',
+        filePath: '/workspace/src/webview/main.tsx',
+        relativePath: 'src/webview/main.tsx',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read-write',
+            updatedAt: '2026-04-30T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-root-readme',
+        filePath: '/workspace/README.md',
+        relativePath: 'README.md',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'read',
+            updatedAt: '2026-04-30T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-src-extension',
+        filePath: '/workspace/src/extension.ts',
+        relativePath: 'src/extension.ts',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-30T00:00:00.000Z'
+          }
+        ]
+      },
+      {
+        id: 'shared-docs-guide',
+        filePath: '/workspace/docs/guide.md',
+        relativePath: 'docs/guide.md',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        owners: [
+          {
+            nodeId: 'agent-1',
+            accessMode: 'write',
+            updatedAt: '2026-04-30T00:00:00.000Z'
           }
         ]
       }
