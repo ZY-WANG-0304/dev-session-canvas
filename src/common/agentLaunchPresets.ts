@@ -57,12 +57,12 @@ export function buildAgentHistoryResumeCommandLine(
     throw new Error('恢复会话标识不能为空。');
   }
 
-  const { command, args } = parseFullAgentCommandLine(
-    buildAgentPresetCommandLine(provider, defaults, 'default')
-  );
-  return provider === 'claude'
-    ? formatCommandLine([command, ...args, '--resume', normalizedSessionId])
-    : formatCommandLine([command, ...args, 'resume', normalizedSessionId]);
+  const command = defaults.command.trim() || provider;
+  const baseArgs = assertAgentDefaultArgsParsable(provider, defaults);
+  return formatCommandLine([
+    command,
+    ...buildAgentResumeArgv(provider, baseArgs, normalizedSessionId)
+  ]);
 }
 
 export function validateAgentCommandLine(
@@ -427,13 +427,14 @@ function buildAgentPresetArgv(
   defaults: AgentProviderLaunchDefaults,
   preset: AgentLaunchPresetKind
 ): string[] {
-  const baseArgs = normalizeAgentDefaultArgsForPreset(
-    provider,
-    assertAgentDefaultArgsParsable(provider, defaults),
-    preset
-  );
+  const baseArgs = assertAgentDefaultArgsParsable(provider, defaults);
   const command = defaults.command.trim() || provider;
-  return [command, ...applyAgentPresetArgs(provider, baseArgs, preset)];
+  if (preset === 'resume') {
+    return [command, ...buildAgentResumeArgv(provider, baseArgs)];
+  }
+
+  const normalizedArgs = normalizeAgentDefaultArgsForPreset(provider, baseArgs, preset);
+  return [command, ...applyAgentPresetArgs(provider, normalizedArgs, preset)];
 }
 
 function matchesAgentPresetArgv(
@@ -455,15 +456,30 @@ function normalizeAgentDefaultArgsForPreset(
   baseArgs: readonly string[],
   preset: AgentLaunchPresetKind
 ): string[] {
-  if (preset === 'default' || preset === 'custom') {
+  if (preset === 'default' || preset === 'custom' || preset === 'resume') {
     return [...baseArgs];
   }
 
   if (provider === 'claude') {
-    return preset === 'resume' ? stripClaudeResumeTargetArgs(baseArgs) : stripClaudeExecutionModeArgs(baseArgs);
+    return stripClaudeExecutionModeArgs(baseArgs);
   }
 
-  return preset === 'resume' ? stripCodexResumeTargetArgs(baseArgs) : stripCodexExecutionModeArgs(baseArgs);
+  return stripCodexExecutionModeArgs(baseArgs);
+}
+
+function buildAgentResumeArgv(
+  provider: AgentProviderKind,
+  baseArgs: readonly string[],
+  explicitSessionId?: string
+): string[] {
+  if (provider === 'claude') {
+    const normalizedArgs = stripClaudeResumeTargetArgs(baseArgs);
+    return explicitSessionId
+      ? [...normalizedArgs, '--resume', explicitSessionId]
+      : [...normalizedArgs, '--resume'];
+  }
+
+  return buildCodexResumeArgv(baseArgs, explicitSessionId);
 }
 
 function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
@@ -494,17 +510,72 @@ function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
   return normalizedArgs;
 }
 
-function stripCodexResumeTargetArgs(baseArgs: readonly string[]): string[] {
-  const normalizedArgs: string[] = [];
+function buildCodexResumeArgv(baseArgs: readonly string[], explicitSessionId?: string): string[] {
+  const { leadingArgs, resumeArgs } = splitCodexResumeArgs(baseArgs);
+  const normalizedResumeArgs = resumeArgs
+    ? stripCodexResumeSelectionArgs(resumeArgs, {
+        explicitTarget: explicitSessionId !== undefined
+      })
+    : [];
+  return explicitSessionId
+    ? [...leadingArgs, 'resume', ...normalizedResumeArgs, explicitSessionId]
+    : [...leadingArgs, 'resume', ...normalizedResumeArgs];
+}
+
+function splitCodexResumeArgs(baseArgs: readonly string[]): {
+  leadingArgs: string[];
+  resumeArgs?: string[];
+} {
   let nextTokenIsOptionValue = false;
   let encounteredPositional = false;
 
   for (let index = 0; index < baseArgs.length; index += 1) {
     const token = baseArgs[index];
 
-    if (!encounteredPositional && !nextTokenIsOptionValue && token === 'resume') {
-      break;
+    if (nextTokenIsOptionValue) {
+      nextTokenIsOptionValue = false;
+      continue;
     }
+
+    if (token === '--') {
+      encounteredPositional = true;
+      continue;
+    }
+
+    if (!encounteredPositional && token === 'resume') {
+      return {
+        leadingArgs: [...baseArgs.slice(0, index)],
+        resumeArgs: [...baseArgs.slice(index + 1)]
+      };
+    }
+
+    if (codexOptionConsumesFollowingValue(token)) {
+      nextTokenIsOptionValue = true;
+      continue;
+    }
+
+    if (!encounteredPositional && !isOptionLikeCommandToken(token)) {
+      encounteredPositional = true;
+    }
+  }
+
+  return {
+    leadingArgs: [...baseArgs]
+  };
+}
+
+function stripCodexResumeSelectionArgs(
+  resumeArgs: readonly string[],
+  options?: {
+    explicitTarget?: boolean;
+  }
+): string[] {
+  const normalizedArgs: string[] = [];
+  let nextTokenIsOptionValue = false;
+  const explicitTarget = options?.explicitTarget ?? false;
+
+  for (let index = 0; index < resumeArgs.length; index += 1) {
+    const token = resumeArgs[index];
 
     if (nextTokenIsOptionValue) {
       normalizedArgs.push(token);
@@ -513,19 +584,24 @@ function stripCodexResumeTargetArgs(baseArgs: readonly string[]): string[] {
     }
 
     if (token === '--') {
-      encounteredPositional = true;
-      normalizedArgs.push(token);
+      break;
+    }
+
+    if (token === '--last') {
+      continue;
+    }
+
+    if (explicitTarget && (token === '--all' || token === '--include-non-interactive')) {
+      continue;
+    }
+
+    if (!isOptionLikeCommandToken(token)) {
       continue;
     }
 
     normalizedArgs.push(token);
     if (codexOptionConsumesFollowingValue(token)) {
       nextTokenIsOptionValue = true;
-      continue;
-    }
-
-    if (!encounteredPositional && !isOptionLikeCommandToken(token)) {
-      encounteredPositional = true;
     }
   }
 
