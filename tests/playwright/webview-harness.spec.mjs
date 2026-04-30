@@ -1992,6 +1992,44 @@ test('agent restart split button resumes by default and can start a new session'
     );
 });
 
+test('agent restart split menu keeps option width close to the label copy', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
+
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
+
+  const metrics = await page.evaluate(() => {
+    const items = Array.from(
+      document.querySelectorAll('[data-node-id="agent-1"] .action-split-button-menu-item')
+    );
+    if (items.length === 0 || !items.every((item) => item instanceof HTMLElement)) {
+      return null;
+    }
+
+    return items.map((item) => {
+      const styles = getComputedStyle(item);
+      const range = document.createRange();
+      range.selectNodeContents(item);
+      const textWidth = range.getBoundingClientRect().width;
+      return {
+        label: item.textContent?.trim() ?? '',
+        slack:
+          item.clientWidth -
+          Number.parseFloat(styles.paddingLeft) -
+          Number.parseFloat(styles.paddingRight) -
+          textWidth,
+        whiteSpace: styles.whiteSpace
+      };
+    });
+  });
+
+  expect(metrics).not.toBeNull();
+  for (const metric of metrics) {
+    expect(metric.whiteSpace).toBe('nowrap');
+    expect(metric.slack).toBeLessThan(20);
+  }
+});
+
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
