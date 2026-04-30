@@ -3532,7 +3532,7 @@ test('right-click create menu can drill into agent launch modes and create claud
   await expect(menu.locator('[data-context-menu-launch-preset="launch-default"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-resume"]')).toContainText(
-    '进入 Claude Code 自己的 resume 会话选择入口'
+    '选择历史会话：claude --resume'
   );
   await expect(menu.locator('[data-context-menu-launch-preset="launch-yolo"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-launch-preset="launch-sandbox"]')).toBeVisible();
@@ -3606,8 +3606,7 @@ test('right-click launch preset descriptions normalize conflicting default launc
 
   const yoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
   await expect(yoloPreset).toContainText('codex --yolo --model gpt-5.2 resume --last');
-  await expect(yoloPreset).toContainText('仅覆盖当前已知的冲突模式参数');
-  await expect(yoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
+  await expect(yoloPreset).toContainText('自动批准执行模式：');
   await expect(yoloPreset).not.toContainText('danger-full-access');
   await expect(yoloPreset.locator('.canvas-context-menu-copy-detail')).toHaveAttribute(
     'title',
@@ -3616,7 +3615,7 @@ test('right-click launch preset descriptions normalize conflicting default launc
 
   const sandboxPreset = menu.locator('[data-context-menu-launch-preset="launch-sandbox"]');
   await expect(sandboxPreset).toContainText('codex --sandbox workspace-write --model gpt-5.2 resume --last');
-  await expect(sandboxPreset).toContainText('仅覆盖当前已知的冲突模式参数');
+  await expect(sandboxPreset).toContainText('受限权限安全模式：');
   await expect(sandboxPreset).not.toContainText('danger-full-access');
 
   await menu.locator('[data-context-menu-back="true"]').click();
@@ -3628,7 +3627,7 @@ test('right-click launch preset descriptions normalize conflicting default launc
   await expect(claudeYoloPreset).toContainText(
     'claude --dangerously-skip-permissions --model sonnet --resume session-123'
   );
-  await expect(claudeYoloPreset).toContainText('更复杂的参数组合请改用自定义启动');
+  await expect(claudeYoloPreset).toContainText('自动批准执行模式：');
   await expect(claudeYoloPreset).not.toContainText('acceptEdits');
 });
 

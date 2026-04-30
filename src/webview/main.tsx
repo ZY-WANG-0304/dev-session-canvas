@@ -5760,7 +5760,7 @@ function describeAgentLaunchPreset(
   }
   switch (preset) {
     case 'resume':
-      return `恢复之前的会话：${commandLine.commandLine}`;
+      return `选择历史会话：${commandLine.commandLine}`;
     case 'yolo':
       return `自动批准执行模式：${commandLine.commandLine}`;
     case 'sandbox':
