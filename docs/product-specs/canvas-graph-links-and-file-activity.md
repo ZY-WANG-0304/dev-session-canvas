@@ -27,7 +27,7 @@
 4. 当 `Agent` 通过 provider 原生结构化事件上报文件读写时，画布会自动出现对应的文件对象视图。
 5. 默认模式下，单个文件显示为独立小节点；用户可把展示模式切换成文件列表节点。
 6. 用户可通过设置 `devSessionCanvas.fileNode.displayStyle` 在 `card`（卡片风格）和 `minimal`（极简风格）之间切换；默认值为 `minimal`。
-7. 用户可通过设置 `devSessionCanvas.files.enabled` 一键关闭整个文件活动功能域；默认值为开启。该设置与 `devSessionCanvas.runtimePersistence.enabled` 一样，需要重新加载窗口后才生效。关闭后，系统不再接收或保留 `fileReferences`，画布不再提供文件节点、文件列表节点、自动文件关系线和文件过滤入口，上一轮 `include` / `exclude` 过滤状态也会一起清空。
+7. 用户可通过设置 `devSessionCanvas.files.enabled` 一键开启或关闭整个文件活动功能域；默认值为关闭。该设置与 `devSessionCanvas.runtimePersistence.enabled` 一样，需要重新加载窗口后才生效。关闭后，系统不再接收或保留 `fileReferences`，画布不再提供文件节点、文件列表节点、自动文件关系线和文件过滤入口，上一轮 `include` / `exclude` 过滤状态也会一起清空。
 8. 在 `minimal` 风格下，文件节点会收口成贴内容边框的紧凑对象；文件列表节点会收口成接近 VSCode Source Control Changes 的单行文件列表，并在节点头部提供 `列表视图 / 树形视图` 切换。
 9. 用户点击文件节点，或点击文件列表节点中的文件条目，VSCode 会在编辑区打开对应文件；若画布当前承载在编辑区，宿主会复用或创建相邻 editor group 打开目标文件，而不是覆盖画布所在组。
 10. 当多个 Agent 共享同一文件时，文件节点模式下保留一个共享文件节点并连到多个 Agent；文件列表模式下会额外生成共享文件列表节点。

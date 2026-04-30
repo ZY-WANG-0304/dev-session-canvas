@@ -1332,7 +1332,7 @@ async function verifyManualEdgeLifecycle(agentNodeId, terminalNodeId) {
 
 async function verifyFileActivityViewsAndOpenFiles() {
   const configuration = vscode.workspace.getConfiguration();
-  const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', true) !== false;
+  const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', false) === true;
   const originalPresentationMode =
     configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
   const originalFileNodeDisplayStyle =
