@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
@@ -112,6 +112,7 @@ interface LocalUiState {
   viewport?: Viewport;
   fileListViewModes?: Record<string, FileListViewMode>;
   selectedFileListEntries?: Record<string, string>;
+  collapsedFileListTreeBranches?: Record<string, string[]>;
 }
 
 interface EdgeLabelEditorState {
@@ -133,12 +134,14 @@ interface CanvasNodeData {
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
+  collapsedFileListTreeBranchKeys?: string[];
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
+  onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -174,6 +177,8 @@ interface CanvasNodeData {
 type CanvasFlowNode = Node<CanvasNodeData>;
 type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
+const FILE_TREE_BASE_PADDING_PX = 8;
+const FILE_TREE_DEPTH_STEP_PX = 12;
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
@@ -696,6 +701,17 @@ function App(): JSX.Element {
               (entry): entry is [string, string] => typeof entry[1] === 'string'
             )
           )
+        : undefined,
+    collapsedFileListTreeBranches:
+      initialPersistedState.collapsedFileListTreeBranches &&
+      typeof initialPersistedState.collapsedFileListTreeBranches === 'object'
+        ? Object.fromEntries(
+            Object.entries(initialPersistedState.collapsedFileListTreeBranches).flatMap(([nodeId, branchKeys]) =>
+              Array.isArray(branchKeys)
+                ? [[nodeId, branchKeys.filter((branchKey): branchKey is string => typeof branchKey === 'string')]]
+                : []
+            )
+          )
         : undefined
   }));
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
@@ -872,6 +888,14 @@ function App(): JSX.Element {
           new Set(node.metadata?.fileList?.entries.map((entry) => entry.filePath) ?? [])
         ])
     );
+    const validFileListTreeBranchKeysByNodeId = new Map<string, Set<string>>(
+      hostState.nodes
+        .filter((node) => node.kind === 'file-list')
+        .map((node) => [
+          node.id,
+          collectFileListTreeBranchKeys(buildFileListTree(node.metadata?.fileList?.entries ?? []).branches)
+        ])
+    );
     const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
     setLocalUiState((current) => {
       let changed = false;
@@ -906,6 +930,36 @@ function App(): JSX.Element {
           nextState = {
             ...nextState,
             selectedFileListEntries: filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
+          };
+          changed = true;
+        }
+      }
+
+      const currentCollapsedBranches = current.collapsedFileListTreeBranches;
+      if (currentCollapsedBranches) {
+        const filteredEntries: Array<[string, string[]]> = [];
+        for (const [nodeId, branchKeys] of Object.entries(currentCollapsedBranches)) {
+          const validBranchKeys = validFileListTreeBranchKeysByNodeId.get(nodeId);
+          if (!validBranchKeys || !Array.isArray(branchKeys)) {
+            continue;
+          }
+
+          const nextBranchKeys = branchKeys.filter((branchKey) => validBranchKeys.has(branchKey));
+          if (nextBranchKeys.length > 0) {
+            filteredEntries.push([nodeId, nextBranchKeys]);
+          }
+        }
+        const collapsedBranchesChanged =
+          filteredEntries.length !== Object.keys(currentCollapsedBranches).length ||
+          filteredEntries.some(
+            ([nodeId, nextBranchKeys]) =>
+              nextBranchKeys.length !== (Array.isArray(currentCollapsedBranches[nodeId]) ? currentCollapsedBranches[nodeId].length : 0)
+          );
+        if (collapsedBranchesChanged) {
+          nextState = {
+            ...nextState,
+            collapsedFileListTreeBranches:
+              filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
           };
           changed = true;
         }
@@ -1125,6 +1179,33 @@ function App(): JSX.Element {
     });
   };
 
+  const toggleFileListTreeBranch = (nodeId: string, branchKey: string): void => {
+    closeEdgeMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => {
+      const nextNodeBranchKeys = new Set(current.collapsedFileListTreeBranches?.[nodeId] ?? []);
+      if (nextNodeBranchKeys.has(branchKey)) {
+        nextNodeBranchKeys.delete(branchKey);
+      } else {
+        nextNodeBranchKeys.add(branchKey);
+      }
+
+      const nextCollapsedBranches = { ...(current.collapsedFileListTreeBranches ?? {}) };
+      if (nextNodeBranchKeys.size > 0) {
+        nextCollapsedBranches[nodeId] = Array.from(nextNodeBranchKeys).sort();
+      } else {
+        delete nextCollapsedBranches[nodeId];
+      }
+
+      return {
+        ...current,
+        selectedNodeId: nodeId,
+        collapsedFileListTreeBranches:
+          Object.keys(nextCollapsedBranches).length > 0 ? nextCollapsedBranches : undefined
+      };
+    });
+  };
+
   const selectFileListEntry = (nodeId: string, filePath: string): void => {
     closeEdgeMenus();
     setSelectedEdgeId(undefined);
@@ -1155,6 +1236,7 @@ function App(): JSX.Element {
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
+    collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
     onSelectNode: selectNode,
     onAcknowledgeNodeAttention: acknowledgeNodeAttention,
     onOpenCanvasFile: (nodeId, filePath) =>
@@ -1167,6 +1249,7 @@ function App(): JSX.Element {
       }),
     onSelectFileListEntry: selectFileListEntry,
     onSetFileListViewMode: setFileListViewMode,
+    onToggleFileListTreeBranch: toggleFileListTreeBranch,
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
@@ -2878,6 +2961,8 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const fileListTree = useMemo(() => buildFileListTree(fileListMetadata.entries), [fileListMetadata.entries]);
+
   const deleteFileList = (): void => {
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
@@ -2995,10 +3080,12 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
           <div className="file-list-tree" role="tree">
             {renderFileListTree({
               nodeId: id,
-              tree: buildFileListTree(fileListMetadata.entries),
+              tree: fileListTree,
               selectedFilePath: data.selectedFileListEntryPath,
               selectionTone,
+              collapsedBranchKeys: new Set(data.collapsedFileListTreeBranchKeys ?? []),
               onSelectNode: data.onSelectNode,
+              onToggleBranch: data.onToggleFileListTreeBranch,
               onSelectFileListEntry: data.onSelectFileListEntry,
               onOpenCanvasFile: data.onOpenCanvasFile
             })}
@@ -3051,6 +3138,7 @@ function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
           ? entry.filePath
           : undefined
       : undefined;
+  const treeRowStyle = variant === 'minimal-tree' ? fileTreeRowPaddingStyle(treeDepth) : undefined;
 
   return (
     <button
@@ -3062,7 +3150,9 @@ function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
       data-file-entry-path={entry.filePath}
       data-file-entry-selected={props.selected ? 'true' : 'false'}
       data-file-entry-selection-tone={props.selected ? props.selectionTone : undefined}
-      style={treeDepth > 0 ? { paddingInlineStart: `${12 + treeDepth * 16}px` } : undefined}
+      data-file-tree-item-type={variant === 'minimal-tree' ? 'file' : undefined}
+      data-file-tree-label={variant === 'minimal-tree' ? label : undefined}
+      style={treeRowStyle}
       onMouseDown={stopCanvasEvent}
       onClick={(event) => {
         stopCanvasEvent(event);
@@ -3073,6 +3163,7 @@ function FileListEntryButton(props: FileListEntryButtonProps): JSX.Element {
         props.onSelectFileListEntry?.(props.nodeId, entry.filePath);
       }}
     >
+      {variant === 'minimal-tree' ? <span className="file-tree-disclosure-spacer" aria-hidden="true" /> : null}
       <span className="file-list-entry-icon" aria-hidden="true">
         {renderFileIcon(entry.icon, label)}
       </span>
@@ -3117,6 +3208,32 @@ interface MutableFileListTreeBranch {
   entries: FileListNodeEntrySummary[];
 }
 
+function fileTreeRowPaddingStyle(depth: number): CSSProperties {
+  return {
+    paddingInlineStart: `${FILE_TREE_BASE_PADDING_PX + depth * FILE_TREE_DEPTH_STEP_PX}px`
+  };
+}
+
+function compareFileTreeLabels(left: string, right: string): number {
+  return left.localeCompare(right, undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+}
+
+function compareFileTreeEntries(left: FileListNodeEntrySummary, right: FileListNodeEntrySummary): number {
+  const leftLabel = displayFilePath(left, 'basename');
+  const rightLabel = displayFilePath(right, 'basename');
+  const byLabel = compareFileTreeLabels(leftLabel, rightLabel);
+  if (byLabel !== 0) {
+    return byLabel;
+  }
+
+  const leftPath = left.relativePath ?? left.filePath;
+  const rightPath = right.relativePath ?? right.filePath;
+  return compareFileTreeLabels(leftPath, rightPath);
+}
+
 function buildFileListTree(entries: readonly FileListNodeEntrySummary[]): {
   rootEntries: FileListNodeEntrySummary[];
   branches: FileListTreeBranch[];
@@ -3157,8 +3274,10 @@ function buildFileListTree(entries: readonly FileListNodeEntrySummary[]): {
   }
 
   return {
-    rootEntries: root.entries,
-    branches: Array.from(root.children.values()).map(materializeFileListTreeBranch)
+    rootEntries: [...root.entries].sort(compareFileTreeEntries),
+    branches: Array.from(root.children.values())
+      .map(materializeFileListTreeBranch)
+      .sort((left, right) => compareFileTreeLabels(left.label, right.label))
   };
 }
 
@@ -3166,8 +3285,10 @@ function materializeFileListTreeBranch(branch: MutableFileListTreeBranch): FileL
   return {
     key: branch.key,
     label: branch.label,
-    children: Array.from(branch.children.values()).map(materializeFileListTreeBranch),
-    entries: branch.entries
+    children: Array.from(branch.children.values())
+      .map(materializeFileListTreeBranch)
+      .sort((left, right) => compareFileTreeLabels(left.label, right.label)),
+    entries: [...branch.entries].sort(compareFileTreeEntries)
   };
 }
 
@@ -3177,16 +3298,46 @@ function resolveFileTreeSegments(entry: Pick<FileListNodeEntrySummary, 'relative
   return segments.length > 0 ? segments : [displayFilePath(entry, 'basename')];
 }
 
+function collectFileListTreeBranchKeys(branches: readonly FileListTreeBranch[]): Set<string> {
+  const branchKeys = new Set<string>();
+
+  for (const branch of branches) {
+    branchKeys.add(branch.key);
+    for (const nestedBranchKey of collectFileListTreeBranchKeys(branch.children)) {
+      branchKeys.add(nestedBranchKey);
+    }
+  }
+
+  return branchKeys;
+}
+
 function renderFileListTree(params: {
   nodeId: string;
   tree: { rootEntries: FileListNodeEntrySummary[]; branches: FileListTreeBranch[] };
   selectedFilePath?: string;
   selectionTone: FileListEntrySelectionTone;
+  collapsedBranchKeys: ReadonlySet<string>;
   onSelectNode?: (nodeId: string) => void;
+  onToggleBranch?: (nodeId: string, branchKey: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
 }): JSX.Element[] {
   const rows: JSX.Element[] = [];
+
+  rows.push(
+    ...renderFileListTreeBranches(
+      params.nodeId,
+      params.tree.branches,
+      0,
+      params.selectedFilePath,
+      params.selectionTone,
+      params.collapsedBranchKeys,
+      params.onSelectNode,
+      params.onToggleBranch,
+      params.onSelectFileListEntry,
+      params.onOpenCanvasFile
+    )
+  );
 
   for (const entry of params.tree.rootEntries) {
     rows.push(
@@ -3204,19 +3355,6 @@ function renderFileListTree(params: {
       />
     );
   }
-
-  rows.push(
-    ...renderFileListTreeBranches(
-      params.nodeId,
-      params.tree.branches,
-      0,
-      params.selectedFilePath,
-      params.selectionTone,
-      params.onSelectNode,
-      params.onSelectFileListEntry,
-      params.onOpenCanvasFile
-    )
-  );
   return rows;
 }
 
@@ -3226,24 +3364,66 @@ function renderFileListTreeBranches(
   depth: number,
   selectedFilePath: string | undefined,
   selectionTone: FileListEntrySelectionTone,
+  collapsedBranchKeys: ReadonlySet<string>,
   onSelectNode: ((nodeId: string) => void) | undefined,
+  onToggleBranch: ((nodeId: string, branchKey: string) => void) | undefined,
   onSelectFileListEntry: ((nodeId: string, filePath: string) => void) | undefined,
   onOpenCanvasFile: ((nodeId: string, filePath: string) => void) | undefined
 ): JSX.Element[] {
   const rows: JSX.Element[] = [];
 
   for (const branch of branches) {
+    const isExpanded = !collapsedBranchKeys.has(branch.key);
     rows.push(
-      <div
+      <button
         key={`folder-${branch.key}`}
+        type="button"
         className="file-tree-folder-row"
-        role="treeitem"
-        aria-expanded="true"
-        style={{ paddingInlineStart: `${12 + depth * 16}px` }}
+        data-node-interactive="true"
+        data-file-tree-item-type="folder"
+        data-file-tree-label={branch.label}
+        data-file-tree-branch-key={branch.key}
+        data-file-tree-expanded={isExpanded ? 'true' : 'false'}
+        aria-expanded={isExpanded}
+        style={fileTreeRowPaddingStyle(depth)}
+        onMouseDown={stopCanvasEvent}
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          onToggleBranch?.(nodeId, branch.key);
+        }}
+        onFocus={() => onSelectNode?.(nodeId)}
       >
-        <span className="file-tree-folder-icon codicon codicon-folder" aria-hidden="true" />
+        <span
+          className={`file-tree-folder-disclosure codicon ${
+            isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'
+          }`}
+          aria-hidden="true"
+        />
+        <span
+          className={`file-tree-folder-icon codicon ${isExpanded ? 'codicon-folder-opened' : 'codicon-folder'}`}
+          aria-hidden="true"
+        />
         <span className="file-tree-folder-label">{branch.label}</span>
-      </div>
+      </button>
+    );
+
+    if (!isExpanded) {
+      continue;
+    }
+
+    rows.push(
+      ...renderFileListTreeBranches(
+        nodeId,
+        branch.children,
+        depth + 1,
+        selectedFilePath,
+        selectionTone,
+        collapsedBranchKeys,
+        onSelectNode,
+        onToggleBranch,
+        onSelectFileListEntry,
+        onOpenCanvasFile
+      )
     );
 
     for (const entry of branch.entries) {
@@ -3264,19 +3444,6 @@ function renderFileListTreeBranches(
         />
       );
     }
-
-    rows.push(
-      ...renderFileListTreeBranches(
-        nodeId,
-        branch.children,
-        depth + 1,
-        selectedFilePath,
-        selectionTone,
-        onSelectNode,
-        onSelectFileListEntry,
-        onOpenCanvasFile
-      )
-    );
   }
 
   return rows;
@@ -5123,11 +5290,13 @@ function toFlowNodes(params: {
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
+  collapsedFileListTreeBranches: Record<string, string[]> | undefined;
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
+  onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -5196,12 +5365,14 @@ function toFlowNodes(params: {
         filePathDisplayMode: params.filePathDisplayMode,
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
+        collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
+        onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onAttachExecution: params.onAttachExecution,

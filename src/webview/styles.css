@@ -1362,6 +1362,11 @@ body {
   background: transparent;
 }
 
+.file-list-entry.variant-minimal-tree {
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
 .file-list-entry:hover,
 .file-list-entry:focus-visible {
   background: var(
@@ -1460,14 +1465,38 @@ body {
 }
 
 .file-tree-folder-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
   min-height: 28px;
-  padding: 4px 10px;
+  padding: 6px 10px;
+  background: transparent;
   color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font: inherit;
   font-size: 11px;
   font-weight: 600;
+  text-align: left;
+}
+
+.file-tree-folder-row:hover,
+.file-tree-folder-row:focus-visible {
+  background: var(
+    --vscode-list-hoverBackground,
+    color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent)
+  );
+  color: var(--vscode-list-hoverForeground, inherit);
+  outline: none;
+}
+
+.file-tree-folder-disclosure {
+  color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground));
+  font-size: 12px;
+  justify-self: center;
 }
 
 .file-tree-folder-icon {
@@ -1479,6 +1508,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-tree-disclosure-spacer {
+  width: 16px;
+  height: 16px;
 }
 
 .file-list-entry.variant-minimal-list .file-list-entry-copy,
