@@ -163,6 +163,7 @@ updated_at: 2026-05-01
 
 - 单行 path 检测必须对齐原生 Terminal 的 local link parser，包括后缀 `:line:col`、括号风格行列号、`File "..."` 与其它原生 fallback matcher 主路径。
 - 当普通单行解析失败时，仍需保留原生 local detector 的 fallback matcher 行为与 styled segment fallback，而不是继续使用当前仓库私有的 CJK / prose refine 作为主方案。
+- local detector 不得再对 `src/foo.`、`[src/foo]` 这类原始解析失败的文本做“去掉结尾标点 / wrapper 后重试”的仓库私有 refine；这类文本若仍可点击，只能来自原生低置信 word/search 语义，而不是被重新提升成 file link。
 - 跨行链接必须补齐原生 multiline detector 主路径，至少覆盖：
   - ripgrep / eslint 类“上一行路径、下一行 `16:5`”格式。
   - git diff hunk header 类原生已支持场景。
@@ -175,6 +176,7 @@ updated_at: 2026-05-01
 - URI detector 的结果范围与 file opener 分流应对齐原生 Terminal；这意味着对 `file://`、普通 URI 以及带 line/col 后缀的 file URI，应遵循原生的区分方式。
 - word detector 的切词规则必须受 `terminal.integrated.wordSeparators` 控制，并处于最低优先级。
 - search link 的打开逻辑不再是“仓库判断为 file-like 才给 search”，而是与原生 Terminal 一样：先尝试 exact-open，再回退到 Quick Access 搜索。
+- 当 low-confidence word link 所在整行能解析出 `foo:10`、`"foo", line 10` 这类路径后缀时，search opener 必须保留该 `line[:column]` 信息，再进入 exact-open / Quick Access；不能把它降成只搜索 `foo`。
 - 若原生 Terminal 对普通词条暴露 search link，而当前仓库没有，那应以原生行为为准。
 
 ### 7.6 hover、修饰键与 opener 行为

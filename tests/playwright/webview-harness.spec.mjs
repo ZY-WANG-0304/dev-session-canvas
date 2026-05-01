@@ -2734,6 +2734,80 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
+  test(`${executionKind} multiline links do not reuse stale previous-path cache after snapshot redraw`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathLineText = 'link-target.ts';
+    const secondPathLineText = 'other-link-target.ts';
+    const lineNumberLinkText = '2:8';
+    const resultLineText = `  ${lineNumberLinkText}  export const two = 2;`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [lineNumberLinkText]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${firstPathLineText}\r\n${resultLineText}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: lineNumberLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const linkEvents = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/openExecutionLink')
+            .map((entry) => entry.payload.link.path);
+          return JSON.stringify(linkEvents);
+        });
+      })
+      .toBe(JSON.stringify([firstPathLineText]));
+
+    await clearPostedMessages(page);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${secondPathLineText}\r\n${resultLineText}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: lineNumberLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const linkEvents = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/openExecutionLink')
+            .map((entry) => entry.payload.link.path);
+          return JSON.stringify(linkEvents);
+        });
+      })
+      .toBe(JSON.stringify([secondPathLineText]));
+  });
+
   test(`${executionKind} word links match plain words and unresolved file-like paths as search links`, async ({
     page
   }) => {
@@ -2891,6 +2965,83 @@ for (const executionKind of ['agent', 'terminal']) {
       },
       'was not detected'
     );
+  });
+
+  test(`${executionKind} does not promote trimmed wrapper or punctuation candidates into file links`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const wrappedDirectoryLinkText = 'src/webview';
+    const trailingDirectoryLinkText = 'src/panel';
+    const wrappedLineText = `[${wrappedDirectoryLinkText}]`;
+    const trailingLineText = `${trailingDirectoryLinkText}.`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${wrappedLineText}\r\n${trailingLineText}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: wrappedDirectoryLinkText
+    });
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: trailingDirectoryLinkText
+      },
+      'was not detected'
+    );
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: trailingLineText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                text: entry.payload.link.text,
+                linkKind: entry.payload.link.linkKind,
+                source: entry.payload.link.source
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            text: wrappedDirectoryLinkText,
+            linkKind: 'search',
+            source: 'word'
+          },
+          {
+            text: trailingLineText,
+            linkKind: 'search',
+            source: 'word'
+          }
+        ])
+      );
   });
 
   test(`${executionKind} keeps native punctuation behavior for directory links in Chinese prose`, async ({

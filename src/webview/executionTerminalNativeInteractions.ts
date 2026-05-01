@@ -91,7 +91,6 @@ const EXECUTION_URL_LINKIFY = new LinkifyIt()
   })
   .add('vscode:', 'http:')
   .add('vscode-insiders:', 'http:');
-const EXECUTION_LOCAL_LINK_SPECIAL_END_CHAR_REGEX = /[\[\]"'\.]$/;
 const EXECUTION_MULTILINE_LINE_NUMBER_PREFIX_MATCHERS: RegExp[] = [
   /^ *(?<link>(?<line>\d+):(?<col>\d+)?)/
 ];
@@ -111,6 +110,7 @@ export interface ExecutionTerminalNativeInteractionsHandle {
   activateLinkForTest(linkText: string): Promise<void>;
   hoverLinkForTest(linkText: string): Promise<void>;
   clearHoverForTest(): void;
+  invalidateLinkResolutionCache(): void;
   dispose(): void;
 }
 
@@ -265,6 +265,10 @@ export function setupExecutionTerminalNativeInteractions(
       hoveredLink = detectedLink;
     },
     clearHoverForTest(): void {
+      clearHoveredLink();
+    },
+    invalidateLinkResolutionCache(): void {
+      fileLinkResolutionCache.clear();
       clearHoveredLink();
     },
     dispose(): void {
@@ -724,9 +728,6 @@ function collectFileLinkCandidates(
   const candidates: ExecutionTerminalFileLinkCandidate[] = [];
   for (const candidate of detectedCandidates) {
     candidates.push(toExecutionTerminalFileLinkCandidate(context, candidate, 'detected'));
-    for (const trimmedCandidate of trimDetectedPathLinkCandidateEnds(candidate)) {
-      candidates.push(toExecutionTerminalFileLinkCandidate(context, trimmedCandidate, 'refined'));
-    }
   }
 
   const fallback = detectExecutionTerminalFallbackPathLink(context.text);
@@ -858,9 +859,7 @@ async function resolveExecutionFileLinksForContext(
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
-  const cacheKey = `${context.startLine}:${context.endLine}:${context.text}:${candidates
-    .map((candidate) => candidate.candidateId)
-    .join('|')}`;
+  const cacheKey = createExecutionFileLinkResolutionCacheKey(context, candidates);
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
   if (Array.isArray(cachedEntry)) {
     return cachedEntry;
@@ -883,6 +882,29 @@ async function resolveExecutionFileLinksForContext(
     });
   fileLinkResolutionCache.set(cacheKey, request);
   return request;
+}
+
+function createExecutionFileLinkResolutionCacheKey(
+  context: WrappedLineContext,
+  candidates: ExecutionTerminalFileLinkCandidate[]
+): string {
+  return `${context.startLine}:${context.endLine}:${context.text}:${candidates
+    .map((candidate) =>
+      [
+        candidate.candidateId,
+        candidate.text,
+        candidate.path,
+        candidate.startIndex,
+        candidate.endIndexExclusive,
+        candidate.bufferStartLine,
+        candidate.line ?? '',
+        candidate.column ?? '',
+        candidate.lineEnd ?? '',
+        candidate.columnEnd ?? '',
+        candidate.source
+      ].join(':')
+    )
+    .join('|')}`;
 }
 
 function trimExecutionFileLinkResolutionCache(
@@ -1006,42 +1028,6 @@ function parseExplicitExecutionTerminalLink(
   } catch {
     return undefined;
   }
-}
-
-function trimDetectedPathLinkCandidateEnds(
-  candidate: DetectedExecutionTerminalPathLink
-): DetectedExecutionTerminalPathLink[] {
-  if (
-    candidate.line !== undefined ||
-    candidate.column !== undefined ||
-    candidate.lineEnd !== undefined ||
-    candidate.columnEnd !== undefined
-  ) {
-    return [];
-  }
-
-  let endIndexExclusive = candidate.endIndexExclusive;
-  let text = candidate.text;
-  let path = candidate.path;
-  const trimmedCandidates: DetectedExecutionTerminalPathLink[] = [];
-  let previousPath = path;
-  let nextPath = previousPath.replace(EXECUTION_LOCAL_LINK_SPECIAL_END_CHAR_REGEX, '');
-  while (nextPath !== previousPath) {
-    const trimmedChars = previousPath.length - nextPath.length;
-    text = text.slice(0, Math.max(0, text.length - trimmedChars));
-    endIndexExclusive -= trimmedChars;
-    if (text.trim().length > 0 && nextPath.trim().length > 0) {
-      trimmedCandidates.push({
-        ...candidate,
-        text,
-        path: nextPath,
-        endIndexExclusive
-      });
-    }
-    previousPath = nextPath;
-    nextPath = previousPath.replace(EXECUTION_LOCAL_LINK_SPECIAL_END_CHAR_REGEX, '');
-  }
-  return trimmedCandidates;
 }
 
 function findPreviousMultilinePath(terminal: Terminal, startLine: number): string | undefined {
