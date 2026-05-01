@@ -219,6 +219,7 @@ interface PendingNodeViewportFocusRequest {
   mode: NodeViewportFocusMode;
 }
 interface PendingManualNodeCreateRequest {
+  requestId: string;
   kind: CanvasCreatableNodeKind;
   preferredPosition?: CanvasNodePosition;
   agentProvider?: AgentProviderKind;
@@ -808,7 +809,9 @@ function App(): JSX.Element {
           );
           break;
         case 'host/error':
-          pendingManualCreateRequestRef.current = undefined;
+          if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
+            pendingManualCreateRequestRef.current = undefined;
+          }
           setErrorMessage(message.payload.message);
           if (clearErrorTimer.current) {
             window.clearTimeout(clearErrorTimer.current);
@@ -1820,9 +1823,11 @@ function App(): JSX.Element {
     agentLaunchPreset?: AgentLaunchPresetKind,
     agentCustomLaunchCommand?: string
   ): void {
+    const requestId = createManualNodeCreateRequestId();
     const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
     const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
     pendingManualCreateRequestRef.current = {
+      requestId,
       kind,
       preferredPosition,
       agentProvider: resolvedAgentProvider,
@@ -1833,6 +1838,7 @@ function App(): JSX.Element {
     postMessage({
       type: 'webview/createDemoNode',
       payload: {
+        requestId,
         kind,
         preferredPosition:
           preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current),
@@ -1958,6 +1964,10 @@ function doesNodeMatchPendingManualCreateRequest(
 
 function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
   return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+
+function createManualNodeCreateRequestId(): string {
+  return `create-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {

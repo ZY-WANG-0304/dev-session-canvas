@@ -417,6 +417,7 @@ export type WebviewToHostMessage =
   | {
       type: 'webview/createDemoNode';
       payload: {
+        requestId?: string;
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
         agentProvider?: AgentProviderKind;
@@ -623,6 +624,7 @@ export type HostToWebviewMessage =
       type: 'host/error';
       payload: {
         message: string;
+        createRequestId?: string;
       };
     }
   | {
@@ -1158,6 +1160,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
+      (payload.requestId !== undefined && typeof payload.requestId !== 'string') ||
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
@@ -1170,6 +1173,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     return {
       type: 'webview/createDemoNode',
       payload: {
+        requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
         kind: payload.kind,
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition

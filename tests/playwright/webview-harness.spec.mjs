@@ -2112,28 +2112,16 @@ test('right-click create menu validates custom agent launch commands before crea
   await confirmButton.click();
 
   await expect(menu).toBeHidden();
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/createDemoNode');
-
-        return message ? JSON.stringify(message.payload) : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        kind: 'agent',
-        preferredPosition: {
-          x: 780,
-          y: 305
-        },
-        agentProvider: 'codex',
-        agentLaunchPreset: 'custom',
-        agentCustomLaunchCommand: 'codex resume session-123'
-      })
-    );
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'agent',
+    preferredPosition: {
+      x: 780,
+      y: 305
+    },
+    agentProvider: 'codex',
+    agentLaunchPreset: 'custom',
+    agentCustomLaunchCommand: 'codex resume session-123'
+  });
 });
 
 test('right-click create menu blocks custom agent launch when provider default args are invalid', async ({ page }) => {
@@ -2232,27 +2220,15 @@ test('right-click custom agent launch input ignores IME Enter before composition
   await customInput.press('Enter');
 
   await expect(menu).toBeHidden();
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/createDemoNode');
-
-        return message ? JSON.stringify(message.payload) : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        kind: 'agent',
-        preferredPosition: {
-          x: 780,
-          y: 305
-        },
-        agentProvider: 'codex',
-        agentLaunchPreset: 'yolo'
-      })
-    );
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'agent',
+    preferredPosition: {
+      x: 780,
+      y: 305
+    },
+    agentProvider: 'codex',
+    agentLaunchPreset: 'yolo'
+  });
 });
 
 test('right-click custom agent launch input closes before the menu backs out on Escape', async ({ page }) => {
@@ -3491,29 +3467,13 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await menu.locator('[data-context-menu-kind="note"]').click();
 
   await expect(menu).toBeHidden();
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/createDemoNode');
-
-        if (!message) {
-          return null;
-        }
-
-        return JSON.stringify(message.payload);
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        kind: 'note',
-        preferredPosition: {
-          x: 910,
-          y: 360
-        }
-      })
-    );
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 910,
+      y: 360
+    }
+  });
 });
 
 test('manually created nodes recenter without zooming when they already fully fit in view', async ({ page }) => {
@@ -3634,6 +3594,103 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
 });
 
+test('unrelated host errors do not cancel pending manual node centering', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  const initialState = createNoteNodeState();
+  await bootstrap(page, initialState);
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 850,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-kind="note"]').click();
+
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  const nextState = createNoteNodeState();
+  nextState.nodes.push(createManualNoteNode('note-2', createPayload.preferredPosition));
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/error',
+      payload: {
+        message: '运行中终端 scrollback 同步失败。'
+      }
+    });
+  });
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveText('运行中终端 scrollback 同步失败。');
+
+  await updateHostState(page, nextState);
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).toBe('note-2');
+});
+
+test('create-scoped host errors cancel the matching pending manual create request', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  const initialState = createNoteNodeState();
+  await bootstrap(page, initialState);
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 850,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-kind="note"]').click();
+
+  const createPayload = await waitForCreateDemoNodePayload(page, {
+    includeRequestId: true
+  });
+  const nextState = createNoteNodeState();
+  nextState.nodes.push(createManualNoteNode('note-2', createPayload.preferredPosition));
+
+  await page.evaluate((createRequestId) => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/error',
+      payload: {
+        message: '创建节点失败。',
+        createRequestId
+      }
+    });
+  }, createPayload.requestId);
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveText('创建节点失败。');
+
+  await updateHostState(page, nextState);
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).not.toBe('note-2');
+});
+
 test('right-click create menu can drill into agent launch modes and create claude yolo directly', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -3675,27 +3732,15 @@ test('right-click create menu can drill into agent launch modes and create claud
   await menu.locator('[data-context-menu-launch-preset="launch-yolo"]').click();
 
   await expect(menu).toBeHidden();
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/createDemoNode');
-
-        return message ? JSON.stringify(message.payload) : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        kind: 'agent',
-        preferredPosition: {
-          x: 760,
-          y: 305
-        },
-        agentProvider: 'claude',
-        agentLaunchPreset: 'yolo'
-      })
-    );
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'agent',
+    preferredPosition: {
+      x: 760,
+      y: 305
+    },
+    agentProvider: 'claude',
+    agentLaunchPreset: 'yolo'
+  });
 });
 
 test('right-click launch preset descriptions normalize conflicting default launch mode flags', async ({ page }) => {
@@ -3791,27 +3836,15 @@ test('right-click create menu creates the default agent without opening the prov
   await menu.locator('[data-context-menu-agent-action="create-default"]').click();
 
   await expect(menu).toBeHidden();
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/createDemoNode');
-
-        return message ? JSON.stringify(message.payload) : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        kind: 'agent',
-        preferredPosition: {
-          x: 800,
-          y: 325
-        },
-        agentProvider: 'codex',
-        agentLaunchPreset: 'default'
-      })
-    );
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'agent',
+    preferredPosition: {
+      x: 800,
+      y: 325
+    },
+    agentProvider: 'codex',
+    agentLaunchPreset: 'default'
+  });
 });
 
 test('right-click create menu refreshes its default agent label after runtime context changes', async ({ page }) => {
@@ -3844,27 +3877,15 @@ test('right-click create menu refreshes its default agent label after runtime co
   await menu.locator('[data-context-menu-agent-action="create-default"]').click();
 
   await expect(menu).toBeHidden();
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/createDemoNode');
-
-        return message ? JSON.stringify(message.payload) : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        kind: 'agent',
-        preferredPosition: {
-          x: 730,
-          y: 285
-        },
-        agentProvider: 'claude',
-        agentLaunchPreset: 'default'
-      })
-    );
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'agent',
+    preferredPosition: {
+      x: 730,
+      y: 285
+    },
+    agentProvider: 'claude',
+    agentLaunchPreset: 'default'
+  });
 });
 
 test('agent start message uses the node metadata provider', async ({ page }) => {
@@ -5247,7 +5268,7 @@ function nodeById(page, nodeId) {
   return page.locator(`[data-node-id="${nodeId}"]`);
 }
 
-async function waitForCreateDemoNodePayload(page) {
+async function waitForCreateDemoNodePayload(page, options = {}) {
   await expect
     .poll(async () => {
       return page.evaluate(() =>
@@ -5258,7 +5279,7 @@ async function waitForCreateDemoNodePayload(page) {
     })
     .toBe(true);
 
-  return page.evaluate(() => {
+  const payload = await page.evaluate(() => {
     const message = window.__devSessionCanvasHarness
       .getPostedMessages()
       .find((entry) => entry.type === 'webview/createDemoNode');
@@ -5269,6 +5290,19 @@ async function waitForCreateDemoNodePayload(page) {
 
     return message.payload;
   });
+
+  return options.includeRequestId === true
+    ? payload
+    : normalizeCreateDemoNodePayloadForAssertion(payload);
+}
+
+function normalizeCreateDemoNodePayloadForAssertion(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+
+  const { requestId: _requestId, ...rest } = payload;
+  return rest;
 }
 
 function createManualNoteNode(nodeId, position) {

@@ -206,6 +206,7 @@ interface AgentResumeContext {
 }
 
 interface CreateAgentNodeOptions {
+  requestId?: string;
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
@@ -4106,6 +4107,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
+          requestId: parsedMessage.payload.requestId,
           agentProvider: parsedMessage.payload.agentProvider,
           agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
           agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand
@@ -7093,8 +7095,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (
       isExecutionNodeKind(kind) &&
       !options?.bypassTrust &&
-      !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。')
+      !vscode.workspace.isTrusted
     ) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。',
+          createRequestId: options?.requestId
+        }
+      });
       return undefined;
     }
 
@@ -7123,7 +7132,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessage({
           type: 'host/error',
           payload: {
-            message
+            message,
+            createRequestId: options?.requestId
           }
         });
         return undefined;
