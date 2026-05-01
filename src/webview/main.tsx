@@ -213,6 +213,20 @@ interface CanvasContextMenuState {
   view: 'root' | 'agent-launch-mode';
   selectedAgentProvider?: AgentProviderKind;
 }
+type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
+interface PendingNodeViewportFocusRequest {
+  nodeId: string;
+  mode: NodeViewportFocusMode;
+}
+interface PendingManualNodeCreateRequest {
+  requestId: string;
+  knownNodeIdsSnapshot: ReadonlySet<string>;
+  kind: CanvasCreatableNodeKind;
+  preferredPosition?: CanvasNodePosition;
+  agentProvider?: AgentProviderKind;
+  agentLaunchPreset?: AgentLaunchPresetKind;
+  agentCustomLaunchCommand?: string;
+}
 interface ExecutionNodeHelpContent {
   title: string;
   items: readonly string[];
@@ -432,6 +446,8 @@ const CANVAS_FIT_VIEW_PADDING = 0.05;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
+const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
+const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
 const EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR = '--canvas-embedded-terminal-foreground';
 const TERMINAL_BACKGROUND_FALLBACKS: Record<'editor' | 'panel', string[]> = {
@@ -726,7 +742,10 @@ function App(): JSX.Element {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
-  const pendingFocusNodeIdRef = useRef<string | undefined>();
+  const pendingFocusRequestRef = useRef<PendingNodeViewportFocusRequest | undefined>();
+  const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
+  const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
+  const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
 
   useEffect(() => {
@@ -739,6 +758,7 @@ function App(): JSX.Element {
           {
             const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
             const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+            latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
             latestRuntimeContext = normalizedRuntime;
             setHostState(normalizedState);
             setRuntimeContext(normalizedRuntime);
@@ -791,6 +811,9 @@ function App(): JSX.Element {
           );
           break;
         case 'host/error':
+          if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
+            pendingManualCreateRequestRef.current = undefined;
+          }
           setErrorMessage(message.payload.message);
           if (clearErrorTimer.current) {
             window.clearTimeout(clearErrorTimer.current);
@@ -980,16 +1003,43 @@ function App(): JSX.Element {
   }, [selectedEdgeId]);
 
   useEffect(() => {
-    const pendingNodeId = pendingFocusNodeIdRef.current;
-    if (!pendingNodeId || !hostState?.nodes.some((node) => node.id === pendingNodeId)) {
+    return () => {
+      if (pendingViewportSyncTimeoutRef.current !== undefined) {
+        window.clearTimeout(pendingViewportSyncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const pendingFocusRequest = pendingFocusRequestRef.current;
+    if (!pendingFocusRequest || !hostState?.nodes.some((node) => node.id === pendingFocusRequest.nodeId)) {
       return;
     }
 
-    if (focusNodeInViewport(pendingNodeId)) {
-      pendingFocusNodeIdRef.current = undefined;
+    if (focusNodeInViewport(pendingFocusRequest.nodeId, pendingFocusRequest.mode)) {
+      pendingFocusRequestRef.current = undefined;
       scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
     }
   }, [hostState, reactFlowReadyVersion]);
+
+  useEffect(() => {
+    if (!hostState) {
+      return;
+    }
+
+    const pendingManualCreateRequest = pendingManualCreateRequestRef.current;
+    if (pendingManualCreateRequest) {
+      const createdNode = resolvePendingManualNodeCreateTarget(
+        hostState.nodes,
+        pendingManualCreateRequest.knownNodeIdsSnapshot,
+        pendingManualCreateRequest
+      );
+      if (createdNode) {
+        requestNodeFocus(createdNode.id, 'center-no-extra-zoom-if-visible');
+        pendingManualCreateRequestRef.current = undefined;
+      }
+    }
+  }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
   const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
@@ -1102,42 +1152,54 @@ function App(): JSX.Element {
     });
   };
 
-  const focusNodeInViewport = (nodeId: string): boolean => {
+  const focusNodeInViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
     const reactFlowInstance = reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
       return false;
     }
 
-    const didFit = reactFlowInstance.fitView({
-      nodes: [{ id: nodeId }],
-      padding: NODE_FOCUS_VIEW_PADDING,
-      maxZoom: NODE_FOCUS_MAX_ZOOM,
-      minZoom: NODE_FOCUS_MIN_ZOOM
-    });
+    const didFocus =
+      mode === 'center-no-extra-zoom-if-visible'
+        ? centerNodeInViewportWithoutExtraZoomIfPossible(
+            reactFlowInstance,
+            canvasShellRef.current,
+            hostState,
+            nodeId,
+            NODE_FOCUS_ANIMATION_DURATION_MS
+          )
+        : reactFlowInstance.fitView({
+            nodes: [{ id: nodeId }],
+            padding: NODE_FOCUS_VIEW_PADDING,
+            maxZoom: NODE_FOCUS_MAX_ZOOM,
+            minZoom: NODE_FOCUS_MIN_ZOOM,
+            duration: NODE_FOCUS_ANIMATION_DURATION_MS
+          });
 
-    if (!didFit) {
+    if (!didFocus) {
       return false;
     }
 
-    const viewport = reactFlowInstance.getViewport();
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
     setLocalUiState((current) => ({
       ...current,
-      selectedNodeId: nodeId,
-      viewport
+      selectedNodeId: nodeId
     }));
+    scheduleFocusedViewportPersistence();
     return true;
   };
 
-  const requestNodeFocus = (nodeId: string): void => {
-    if (focusNodeInViewport(nodeId)) {
-      pendingFocusNodeIdRef.current = undefined;
+  const requestNodeFocus = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): void => {
+    if (focusNodeInViewport(nodeId, mode)) {
+      pendingFocusRequestRef.current = undefined;
       scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
       return;
     }
 
-    pendingFocusNodeIdRef.current = nodeId;
+    pendingFocusRequestRef.current = {
+      nodeId,
+      mode
+    };
   };
 
   const acknowledgeNodeAttention = (nodeId: string): void => {
@@ -1406,14 +1468,40 @@ function App(): JSX.Element {
   };
 
   const handleMoveEnd = (_event: MouseEvent | TouchEvent | null, viewport: Viewport): void => {
-    updateLocalUiState({
-      ...localUiState,
+    clearPendingViewportPersistenceTimeout();
+    setLocalUiState((current) => ({
+      ...current,
       viewport
-    });
+    }));
   };
 
   const handleMoveStart = (): void => {
     closeFloatingMenus();
+  };
+
+  const clearPendingViewportPersistenceTimeout = (): void => {
+    if (pendingViewportSyncTimeoutRef.current === undefined) {
+      return;
+    }
+
+    window.clearTimeout(pendingViewportSyncTimeoutRef.current);
+    pendingViewportSyncTimeoutRef.current = undefined;
+  };
+
+  const scheduleFocusedViewportPersistence = (): void => {
+    clearPendingViewportPersistenceTimeout();
+    pendingViewportSyncTimeoutRef.current = window.setTimeout(() => {
+      pendingViewportSyncTimeoutRef.current = undefined;
+      const viewport = reactFlowRef.current?.getViewport();
+      if (!viewport) {
+        return;
+      }
+
+      setLocalUiState((current) => ({
+        ...current,
+        viewport
+      }));
+    }, NODE_FOCUS_ANIMATION_DURATION_MS + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
   };
 
   const handlePaneContextMenu = (event: React.MouseEvent): void => {
@@ -1734,18 +1822,153 @@ function App(): JSX.Element {
     agentLaunchPreset?: AgentLaunchPresetKind,
     agentCustomLaunchCommand?: string
   ): void {
+    const requestId = createManualNodeCreateRequestId();
+    const resolvedPreferredPosition =
+      preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
+    const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
+    const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
+    pendingManualCreateRequestRef.current = {
+      requestId,
+      knownNodeIdsSnapshot: new Set(latestHostNodeIdsRef.current),
+      kind,
+      preferredPosition: resolvedPreferredPosition,
+      agentProvider: resolvedAgentProvider,
+      agentLaunchPreset: resolvedAgentLaunchPreset,
+      agentCustomLaunchCommand:
+        resolvedAgentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined
+    };
     postMessage({
       type: 'webview/createDemoNode',
       payload: {
+        requestId,
         kind,
-        preferredPosition:
-          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current),
+        preferredPosition: resolvedPreferredPosition,
         agentProvider,
         agentLaunchPreset,
         agentCustomLaunchCommand
       }
     });
   }
+}
+
+function centerNodeInViewportWithoutExtraZoomIfPossible(
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData>,
+  canvasShellElement: HTMLDivElement | null,
+  hostState: CanvasPrototypeState | null,
+  nodeId: string,
+  durationMs: number
+): boolean {
+  const targetNode = hostState?.nodes.find((candidate) => candidate.id === nodeId);
+  if (!targetNode) {
+    return false;
+  }
+
+  const currentViewport = reactFlowInstance.getViewport();
+  if (isCanvasNodeFullyVisible(targetNode, currentViewport, canvasShellElement)) {
+    const footprint = normalizeCanvasNodeFootprint(targetNode.kind, targetNode.size);
+    reactFlowInstance.setCenter(
+      targetNode.position.x + footprint.width / 2,
+      targetNode.position.y + footprint.height / 2,
+      {
+        zoom: currentViewport.zoom,
+        duration: durationMs
+      }
+    );
+    return true;
+  }
+
+  return reactFlowInstance.fitView({
+    nodes: [{ id: nodeId }],
+    padding: NODE_FOCUS_VIEW_PADDING,
+    maxZoom: NODE_FOCUS_MAX_ZOOM,
+    minZoom: NODE_FOCUS_MIN_ZOOM,
+    duration: durationMs
+  });
+}
+
+function isCanvasNodeFullyVisible(
+  node: CanvasNodeSummary,
+  viewport: Viewport,
+  canvasShellElement: HTMLDivElement | null
+): boolean {
+  const footprint = normalizeCanvasNodeFootprint(node.kind, node.size);
+  const viewportWidth = Math.max(1, canvasShellElement?.clientWidth ?? window.innerWidth);
+  const viewportHeight = Math.max(1, canvasShellElement?.clientHeight ?? window.innerHeight);
+  const left = node.position.x * viewport.zoom + viewport.x;
+  const top = node.position.y * viewport.zoom + viewport.y;
+  const right = (node.position.x + footprint.width) * viewport.zoom + viewport.x;
+  const bottom = (node.position.y + footprint.height) * viewport.zoom + viewport.y;
+
+  return left >= 0 && top >= 0 && right <= viewportWidth && bottom <= viewportHeight;
+}
+
+function resolvePendingManualNodeCreateTarget(
+  nodes: CanvasNodeSummary[],
+  knownNodeIds: ReadonlySet<string>,
+  request: PendingManualNodeCreateRequest
+): CanvasNodeSummary | undefined {
+  const createdNodes = nodes.filter(
+    (node) => !knownNodeIds.has(node.id) && doesNodeMatchPendingManualCreateRequest(node, request)
+  );
+  if (createdNodes.length === 0) {
+    return undefined;
+  }
+
+  if (!request.preferredPosition) {
+    return createdNodes[createdNodes.length - 1];
+  }
+
+  let bestCandidate = createdNodes[0];
+  let bestDistance = canvasPositionDistance(bestCandidate.position, request.preferredPosition);
+  for (const candidate of createdNodes.slice(1)) {
+    const distance = canvasPositionDistance(candidate.position, request.preferredPosition);
+    if (distance < bestDistance) {
+      bestCandidate = candidate;
+      bestDistance = distance;
+    }
+  }
+
+  return bestCandidate;
+}
+
+function doesNodeMatchPendingManualCreateRequest(
+  node: CanvasNodeSummary,
+  request: PendingManualNodeCreateRequest
+): boolean {
+  if (node.kind !== request.kind) {
+    return false;
+  }
+
+  if (node.kind !== 'agent') {
+    return true;
+  }
+
+  const agentMetadata = node.metadata?.agent;
+  if (!agentMetadata) {
+    return false;
+  }
+
+  if (request.agentProvider && agentMetadata.provider !== request.agentProvider) {
+    return false;
+  }
+
+  if (request.agentLaunchPreset && agentMetadata.launchPreset !== request.agentLaunchPreset) {
+    return false;
+  }
+
+  if (request.agentLaunchPreset === 'custom') {
+    return (request.agentCustomLaunchCommand ?? '') === (agentMetadata.customLaunchCommand ?? '');
+  }
+
+  return true;
+}
+
+function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
+  return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+
+function createManualNodeCreateRequestId(): string {
+  return `create-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
