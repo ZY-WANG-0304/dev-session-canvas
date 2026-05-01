@@ -444,6 +444,8 @@ const CANVAS_FIT_VIEW_PADDING = 0.05;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
+const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
+const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
 const EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR = '--canvas-embedded-terminal-foreground';
 const TERMINAL_BACKGROUND_FALLBACKS: Record<'editor' | 'panel', string[]> = {
@@ -741,6 +743,7 @@ function App(): JSX.Element {
   const pendingFocusRequestRef = useRef<PendingNodeViewportFocusRequest | undefined>();
   const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
   const knownHostNodeIdsRef = useRef<Set<string>>(new Set());
+  const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
 
   useEffect(() => {
@@ -995,6 +998,14 @@ function App(): JSX.Element {
   }, [selectedEdgeId]);
 
   useEffect(() => {
+    return () => {
+      if (pendingViewportSyncTimeoutRef.current !== undefined) {
+        window.clearTimeout(pendingViewportSyncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const pendingFocusRequest = pendingFocusRequestRef.current;
     if (!pendingFocusRequest || !hostState?.nodes.some((node) => node.id === pendingFocusRequest.nodeId)) {
       return;
@@ -1151,27 +1162,28 @@ function App(): JSX.Element {
             reactFlowInstance,
             canvasShellRef.current,
             hostState,
-            nodeId
+            nodeId,
+            NODE_FOCUS_ANIMATION_DURATION_MS
           )
         : reactFlowInstance.fitView({
             nodes: [{ id: nodeId }],
             padding: NODE_FOCUS_VIEW_PADDING,
             maxZoom: NODE_FOCUS_MAX_ZOOM,
-            minZoom: NODE_FOCUS_MIN_ZOOM
+            minZoom: NODE_FOCUS_MIN_ZOOM,
+            duration: NODE_FOCUS_ANIMATION_DURATION_MS
           });
 
     if (!didFocus) {
       return false;
     }
 
-    const viewport = reactFlowInstance.getViewport();
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
     setLocalUiState((current) => ({
       ...current,
-      selectedNodeId: nodeId,
-      viewport
+      selectedNodeId: nodeId
     }));
+    scheduleFocusedViewportPersistence();
     return true;
   };
 
@@ -1454,14 +1466,40 @@ function App(): JSX.Element {
   };
 
   const handleMoveEnd = (_event: MouseEvent | TouchEvent | null, viewport: Viewport): void => {
-    updateLocalUiState({
-      ...localUiState,
+    clearPendingViewportPersistenceTimeout();
+    setLocalUiState((current) => ({
+      ...current,
       viewport
-    });
+    }));
   };
 
   const handleMoveStart = (): void => {
     closeFloatingMenus();
+  };
+
+  const clearPendingViewportPersistenceTimeout = (): void => {
+    if (pendingViewportSyncTimeoutRef.current === undefined) {
+      return;
+    }
+
+    window.clearTimeout(pendingViewportSyncTimeoutRef.current);
+    pendingViewportSyncTimeoutRef.current = undefined;
+  };
+
+  const scheduleFocusedViewportPersistence = (): void => {
+    clearPendingViewportPersistenceTimeout();
+    pendingViewportSyncTimeoutRef.current = window.setTimeout(() => {
+      pendingViewportSyncTimeoutRef.current = undefined;
+      const viewport = reactFlowRef.current?.getViewport();
+      if (!viewport) {
+        return;
+      }
+
+      setLocalUiState((current) => ({
+        ...current,
+        viewport
+      }));
+    }, NODE_FOCUS_ANIMATION_DURATION_MS + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
   };
 
   const handlePaneContextMenu = (event: React.MouseEvent): void => {
@@ -1810,7 +1848,8 @@ function centerNodeInViewportWithoutExtraZoomIfPossible(
   reactFlowInstance: ReactFlowInstance<CanvasNodeData>,
   canvasShellElement: HTMLDivElement | null,
   hostState: CanvasPrototypeState | null,
-  nodeId: string
+  nodeId: string,
+  durationMs: number
 ): boolean {
   const targetNode = hostState?.nodes.find((candidate) => candidate.id === nodeId);
   if (!targetNode) {
@@ -1824,7 +1863,8 @@ function centerNodeInViewportWithoutExtraZoomIfPossible(
       targetNode.position.x + footprint.width / 2,
       targetNode.position.y + footprint.height / 2,
       {
-        zoom: currentViewport.zoom
+        zoom: currentViewport.zoom,
+        duration: durationMs
       }
     );
     return true;
@@ -1834,7 +1874,8 @@ function centerNodeInViewportWithoutExtraZoomIfPossible(
     nodes: [{ id: nodeId }],
     padding: NODE_FOCUS_VIEW_PADDING,
     maxZoom: NODE_FOCUS_MAX_ZOOM,
-    minZoom: NODE_FOCUS_MIN_ZOOM
+    minZoom: NODE_FOCUS_MIN_ZOOM,
+    duration: durationMs
   });
 }
 

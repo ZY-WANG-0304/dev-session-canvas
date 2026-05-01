@@ -12,6 +12,7 @@ const harnessUrl = pathToFileURL(
 ).href;
 const pageDiagnosticsByPage = new WeakMap();
 const TERMINAL_VIEWPORT_ZOOM = 1.6;
+const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
 const WORKBENCH_THEME_VARS = {
   dark: {
     '--vscode-editor-background': '#1e1e1e',
@@ -3147,16 +3148,32 @@ test('double-clicking the chrome focus region recenters the node and updates per
   await settleWebview(page, 4);
 
   const beforeState = await readPersistedUiState(page);
+  const beforeTransform = await readCanvasViewportTransform(page);
   expect(beforeState.viewport).toEqual({
     x: -420,
     y: -220,
     zoom: 0.48
   });
+  expect(beforeTransform).not.toBeNull();
 
   await page
     .locator('[data-node-id="agent-1"] .window-chrome')
     .dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
-  await settleWebview(page, 6);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeId ?? null)
+    .toBe('agent-1');
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeTransform ? transform : null;
+    })
+    .not.toBeNull();
+
+  const duringState = await readPersistedUiState(page);
+  expect(duringState.viewport).toEqual(beforeState.viewport);
+
+  await waitForNodeFocusAnimation(page);
 
   const afterState = await readPersistedUiState(page);
   expect(afterState.selectedNodeId).toBe('agent-1');
@@ -3537,7 +3554,7 @@ test('manually created nodes recenter without zooming when they already fully fi
   const nextState = createNoteNodeState();
   nextState.nodes.push(createManualNoteNode('note-2', createPayload.preferredPosition));
   await updateHostState(page, nextState);
-  await settleWebview(page, 6);
+  await waitForNodeFocusAnimation(page);
 
   const afterState = await readPersistedUiState(page);
   expect(afterState.selectedNodeId).toBe('note-2');
@@ -3597,7 +3614,7 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   const nextState = createEmptyCanvasState();
   nextState.nodes.push(createManualTerminalNode('terminal-1', createPayload.preferredPosition));
   await updateHostState(page, nextState);
-  await settleWebview(page, 6);
+  await waitForNodeFocusAnimation(page);
 
   const afterState = await readPersistedUiState(page);
   expect(afterState.selectedNodeId).toBe('terminal-1');
@@ -4712,6 +4729,18 @@ async function readPersistedUiState(page) {
   return page.evaluate(() => {
     return window.__devSessionCanvasHarness.getPersistedState();
   });
+}
+
+async function readCanvasViewportTransform(page) {
+  return page.evaluate(() => {
+    const viewport = document.querySelector('.react-flow__viewport');
+    return viewport instanceof HTMLElement ? viewport.style.transform : null;
+  });
+}
+
+async function waitForNodeFocusAnimation(page) {
+  await page.waitForTimeout(NODE_FOCUS_ANIMATION_DURATION_MS + 80);
+  await settleWebview(page, 4);
 }
 
 async function requestWebviewProbe(page, delayMs = 0) {
