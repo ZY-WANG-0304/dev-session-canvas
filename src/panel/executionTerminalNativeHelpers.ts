@@ -10,6 +10,7 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import {
+  inferExecutionTerminalPathStyle,
   getExecutionTerminalLinkSuffix,
   normalizeExecutionTerminalWordSeparators,
   removeExecutionTerminalLinkQueryString,
@@ -54,24 +55,6 @@ export function normalizeEditorMultiCursorModifier(value: unknown): 'ctrlCmd' | 
 }
 
 export { normalizeExecutionTerminalWordSeparators };
-
-export function inferExecutionTerminalPathStyle(
-  shellPath: string | undefined,
-  cwd: string | undefined
-): ExecutionTerminalPathStyle {
-  const cwdValue = cwd?.trim() ?? '';
-  const shellValue = shellPath?.trim() ?? '';
-  if (
-    /^[a-zA-Z]:[\\/]/.test(cwdValue) ||
-    cwdValue.startsWith('\\\\') ||
-    /^[a-zA-Z]:/.test(shellValue) ||
-    shellValue.includes('\\')
-  ) {
-    return 'windows';
-  }
-
-  return 'posix';
-}
 
 export function prepareExecutionTerminalDroppedPath(
   resource: ExecutionTerminalDroppedResource,
@@ -224,6 +207,9 @@ export async function openExecutionTerminalLink(
   readResolvedFileLink?: (resolvedId: string) => ResolvedExecutionFileLink | undefined
 ): Promise<OpenExecutionTerminalLinkResult> {
   if (link.linkKind === 'url') {
+    if (!(await ensureExecutionTerminalUrlSchemeAllowed(link.url))) {
+      return { opened: false };
+    }
     const uri = vscode.Uri.parse(link.url);
     await vscode.commands.executeCommand('vscode.open', uri);
     return {
@@ -245,6 +231,37 @@ export async function openExecutionTerminalLink(
   }
 
   return openResolvedExecutionTerminalLink(resolved);
+}
+
+async function ensureExecutionTerminalUrlSchemeAllowed(url: string): Promise<boolean> {
+  const uri = vscode.Uri.parse(url);
+  const scheme = uri.scheme;
+  if (!scheme) {
+    return false;
+  }
+
+  const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
+  const allowedSchemes = terminalConfiguration.get<string[]>('allowedLinkSchemes') ?? [];
+  if (allowedSchemes.includes(scheme)) {
+    return true;
+  }
+
+  const allowLabel = `Allow ${scheme}`;
+  const selection = await vscode.window.showWarningMessage(
+    `Opening URIs can be insecure. Do you want to allow opening links with the scheme ${scheme}?`,
+    { modal: true },
+    allowLabel
+  );
+  if (selection !== allowLabel) {
+    return false;
+  }
+
+  await terminalConfiguration.update(
+    'allowedLinkSchemes',
+    [...allowedSchemes, scheme],
+    vscode.ConfigurationTarget.Global
+  );
+  return true;
 }
 
 async function openExecutionTerminalSearchLink(

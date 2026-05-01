@@ -88,7 +88,10 @@ import type {
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
-import { normalizeExecutionTerminalWordSeparators } from '../common/executionTerminalLinks';
+import {
+  inferExecutionTerminalPathStyle,
+  normalizeExecutionTerminalWordSeparators
+} from '../common/executionTerminalLinks';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   estimatedCanvasNodeFootprint,
@@ -2017,6 +2020,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const terminalFlagsRef = useRef({
     liveSession: agentMetadata.liveSession
   });
+  const executionPathContextRef = useRef({
+    shellPath: agentMetadata.shellPath,
+    cwd: agentMetadata.cwd
+  });
 
   useEffect(() => {
     terminalSizeRef.current = {
@@ -2030,6 +2037,13 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       liveSession: agentMetadata.liveSession
     };
   }, [agentMetadata.liveSession]);
+
+  useEffect(() => {
+    executionPathContextRef.current = {
+      shellPath: agentMetadata.shellPath,
+      cwd: agentMetadata.cwd
+    };
+  }, [agentMetadata.cwd, agentMetadata.shellPath]);
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -2081,6 +2095,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       terminal,
       dropTarget: frame,
       getRuntimeContext: () => latestRuntimeContext,
+      getPathStyle: () =>
+        inferExecutionTerminalPathStyle(
+          executionPathContextRef.current.shellPath,
+          executionPathContextRef.current.cwd
+        ),
       onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
       onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
       resolveFileLinks: resolveExecutionTerminalFileLinks
@@ -2550,6 +2569,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     cols: terminalMetadata.lastCols ?? 96,
     rows: terminalMetadata.lastRows ?? 28
   });
+  const executionPathContextRef = useRef({
+    shellPath: terminalMetadata.shellPath,
+    cwd: terminalMetadata.cwd
+  });
   const snapshotRestoreRef = useRef({
     hasAppliedSnapshot: false,
     suppressShrinkFitUntilMs: 0
@@ -2567,6 +2590,13 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
+
+  useEffect(() => {
+    executionPathContextRef.current = {
+      shellPath: terminalMetadata.shellPath,
+      cwd: terminalMetadata.cwd
+    };
+  }, [terminalMetadata.cwd, terminalMetadata.shellPath]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -2614,6 +2644,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       terminal,
       dropTarget: frame,
       getRuntimeContext: () => latestRuntimeContext,
+      getPathStyle: () =>
+        inferExecutionTerminalPathStyle(
+          executionPathContextRef.current.shellPath,
+          executionPathContextRef.current.cwd
+        ),
       onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
       onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
       resolveFileLinks: resolveExecutionTerminalFileLinks

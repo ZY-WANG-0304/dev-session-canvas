@@ -129,6 +129,24 @@ export function normalizeExecutionTerminalWordSeparators(value: unknown): string
     : DEFAULT_EXECUTION_TERMINAL_WORD_SEPARATORS;
 }
 
+export function inferExecutionTerminalPathStyle(
+  shellPath: string | undefined,
+  cwd: string | undefined
+): ExecutionTerminalPathStyle {
+  const cwdValue = cwd?.trim() ?? '';
+  const shellValue = shellPath?.trim() ?? '';
+  if (
+    /^[a-zA-Z]:[\\/]/.test(cwdValue) ||
+    cwdValue.startsWith('\\\\') ||
+    /^[a-zA-Z]:/.test(shellValue) ||
+    shellValue.includes('\\')
+  ) {
+    return 'windows';
+  }
+
+  return 'posix';
+}
+
 export function getExecutionTerminalLinkSuffix(
   value: string
 ): ExecutionTerminalLinkSuffix | undefined {
@@ -438,8 +456,8 @@ export interface ExecutionTerminalFallbackPathLink extends DetectedExecutionTerm
 const fallbackMatchers: RegExp[] = [
   /^ *File (?<link>"(?<path>.+)"(, line (?<line>\d+))?)/,
   /^ +FILE +(?<link>(?<path>.+)(?::(?<line>\d+)(?::(?<col>\d+))?)?)/,
-  /^(?<link>(?<path>.+?)\((?<line>\d+)(?:, ?(?<col>\d+))?\))(?= ?:|$)/,
-  /^(?<link>(?<path>.+?):(?<line>\d+)(?::(?<col>\d+))?)(?= ?:|$)/,
+  /^(?<link>(?<path>.+)\((?<line>\d+)(?:, ?(?<col>\d+))?\)) ?:/,
+  /^(?<link>(?<path>.+):(?<line>\d+)(?::(?<col>\d+))?) ?:/,
   /^(?:PS\s+)?(?<link>(?<path>[^>]+))>/,
   /^ *(?<link>(?<path>.+))/
 ];

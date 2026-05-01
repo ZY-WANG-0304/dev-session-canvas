@@ -1,4 +1,4 @@
-import type { IBufferLine, IBufferRange, ILink, ILinkProvider, Terminal } from '@xterm/xterm';
+import type { IBufferLine, IBufferRange, ILink, ILinkDecorations, ILinkProvider, Terminal } from '@xterm/xterm';
 import LinkifyIt from 'linkify-it';
 
 import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
@@ -9,6 +9,7 @@ import {
   type ExecutionTerminalFileLinkCandidate,
   type ExecutionTerminalDroppedResource,
   type ExecutionTerminalOpenLink,
+  type ExecutionTerminalPathStyle,
   type ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 
@@ -18,6 +19,7 @@ interface ExecutionTerminalNativeInteractionsOptions {
   terminal: Terminal;
   dropTarget: HTMLElement;
   getRuntimeContext: () => CanvasRuntimeContext;
+  getPathStyle: () => ExecutionTerminalPathStyle;
   onDropResource: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -42,6 +44,11 @@ interface WrappedLineContext {
   text: string;
 }
 
+interface StyledFileLinkCandidate {
+  candidate: ExecutionTerminalFileLinkCandidate;
+  bufferRange: IBufferRange;
+}
+
 interface SimpleRange {
   startColumn: number;
   startLineNumber: number;
@@ -54,18 +61,28 @@ interface ActiveTooltipState {
   dispose: () => void;
 }
 
+interface TooltipController {
+  show: (event: MouseEvent, label: string) => void;
+  hide: () => void;
+}
+
 const RESOURCE_URLS_DATA_TRANSFER = 'ResourceURLs';
 const CODE_FILES_DATA_TRANSFER = 'CodeFiles';
 const URI_LIST_DATA_TRANSFER = 'text/uri-list';
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
 const EXECUTION_LINK_TOOLTIP_VISIBLE_CLASS = 'is-visible';
+const DEFAULT_WORKBENCH_HOVER_DELAY = 500;
+const EXECUTION_MAX_LINE_LENGTH = 2000;
+const EXECUTION_MAX_RESOLVED_LINK_LENGTH = 1024;
+const EXECUTION_MAX_RESOLVED_LINKS_PER_LINE = 10;
+const EXECUTION_MULTILINE_LINK_MAX_LENGTH = 500;
+const EXECUTION_LOCAL_LINK_MAX_LENGTH = 500;
+const EXECUTION_URI_LINK_MAX_LENGTH = 2048;
+const EXECUTION_WORD_LINK_MAX_LENGTH = 100;
 const FILE_LINK_LABEL = 'Open file in editor';
-const REVEAL_DIRECTORY_LINK_LABEL = 'Reveal in Explorer';
-const OPEN_DIRECTORY_LINK_LABEL = 'Open folder';
+const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
+const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
 const URL_LINK_LABEL = 'Follow link';
-const SEARCH_LINK_LABEL = 'Search workspace';
-const MAX_SEARCH_LINK_LINE_LENGTH = 2000;
-const MAX_SEARCH_LINK_TEXT_LENGTH = 100;
 const EXECUTION_URL_LINKIFY = new LinkifyIt()
   .set({
     fuzzyLink: false,
@@ -74,57 +91,13 @@ const EXECUTION_URL_LINKIFY = new LinkifyIt()
   })
   .add('vscode:', 'http:')
   .add('vscode-insiders:', 'http:');
-const EXECUTION_FILE_LEADING_TRIM_CHARS = new Set([
-  '"',
-  '\'',
-  '`',
-  '(',
-  '[',
-  '<',
-  '：',
-  '，',
-  '；',
-  '。',
-  '！',
-  '？',
-  '、',
-  '（',
-  '【',
-  '《',
-  '〈',
-  '「',
-  '『',
-  '“',
-  '‘'
-]);
-const EXECUTION_FILE_TRAILING_PUNCTUATION_CHARS = new Set([
-  '.',
-  ',',
-  ';',
-  '!',
-  '?',
-  ':',
-  '。',
-  '，',
-  '；',
-  '！',
-  '？',
-  '：',
-  '、'
-]);
-const EXECUTION_FILE_TRAILING_QUOTE_CHARS = new Set(['"', '\'', '`', '”', '’']);
-const EXECUTION_FILE_CLOSING_WRAPPERS = new Map<string, string>([
-  [')', '('],
-  [']', '['],
-  ['）', '（'],
-  ['】', '【'],
-  ['》', '《'],
-  ['〉', '〈'],
-  ['」', '「'],
-  ['』', '『']
-]);
-const EXECUTION_EMBEDDED_MULTI_SEGMENT_ASCII_PATH_REGEX =
-  /[A-Za-z0-9._-]+(?:[\\/][A-Za-z0-9._-]+){2,}/g;
+const EXECUTION_LOCAL_LINK_SPECIAL_END_CHAR_REGEX = /[\[\]"'\.]$/;
+const EXECUTION_MULTILINE_LINE_NUMBER_PREFIX_MATCHERS: RegExp[] = [
+  /^ *(?<link>(?<line>\d+):(?<col>\d+)?)/
+];
+const EXECUTION_MULTILINE_GIT_DIFF_MATCHERS: RegExp[] = [
+  /^(?<link>@@ .+ \+(?<toFileLine>\d+),(?<toFileCount>\d+) @@)/
+];
 
 interface XtermTerminalWithLinkProviders {
   _core?: {
@@ -151,6 +124,7 @@ export function setupExecutionTerminalNativeInteractions(
   >();
   let tooltip: ActiveTooltipState | undefined;
   let hoveredLink: ILink | undefined;
+  let tooltipTimer: number | undefined;
 
   const clearDropTarget = (): void => {
     dropTarget.classList.remove('is-drop-target');
@@ -160,38 +134,48 @@ export function setupExecutionTerminalNativeInteractions(
     dropTarget.classList.add('is-drop-target');
   };
 
+  const clearTooltipTimer = (): void => {
+    if (tooltipTimer !== undefined) {
+      window.clearTimeout(tooltipTimer);
+      tooltipTimer = undefined;
+    }
+  };
+
   const hideTooltip = (): void => {
+    clearTooltipTimer();
     tooltip?.dispose();
     tooltip = undefined;
   };
 
-  const updateTooltip = (nextTooltip: ActiveTooltipState | undefined): void => {
-    hideTooltip();
-    tooltip = nextTooltip;
+  const tooltipController: TooltipController = {
+    show: (event, label): void => {
+      hideTooltip();
+      tooltipTimer = window.setTimeout(() => {
+        tooltipTimer = undefined;
+        tooltip = createExecutionLinkTooltip(event, label, options.getRuntimeContext());
+      }, getExecutionTerminalHoverDelay());
+    },
+    hide: (): void => {
+      hideTooltip();
+    }
   };
 
   const clearHoveredLink = (): void => {
-    const currentHoveredLink = hoveredLink;
     hoveredLink = undefined;
-    if (currentHoveredLink?.leave) {
-      currentHoveredLink.leave(createSyntheticHoverEvent(dropTarget), currentHoveredLink.text);
-    }
+    dispatchSyntheticLinkMouseLeaveEvent(terminal);
     hideTooltip();
   };
 
   const previousLinkHandler = terminal.options.linkHandler;
-  terminal.options.linkHandler = createExplicitLinkHandler(options, updateTooltip);
-  const fileLinkProvider = createFileLinkProvider(options, fileLinkResolutionCache, () => tooltip, updateTooltip);
-  const urlLinkProvider = createUrlLinkProvider(options, () => tooltip, updateTooltip);
-  const searchLinkProvider = createSearchLinkProvider(
-    options,
-    fileLinkResolutionCache,
-    () => tooltip,
-    updateTooltip
-  );
+  terminal.options.linkHandler = createExplicitLinkHandler(options, tooltipController);
+  const multilineLinkProvider = createMultilineLinkProvider(options, fileLinkResolutionCache, tooltipController);
+  const fileLinkProvider = createFileLinkProvider(options, fileLinkResolutionCache, tooltipController);
+  const urlLinkProvider = createUrlLinkProvider(options, tooltipController);
+  const wordLinkProvider = createWordLinkProvider(options, tooltipController);
+  const multilineLinkDisposable = terminal.registerLinkProvider(multilineLinkProvider);
   const fileLinkDisposable = terminal.registerLinkProvider(fileLinkProvider);
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
-  const searchLinkDisposable = terminal.registerLinkProvider(searchLinkProvider);
+  const wordLinkDisposable = terminal.registerLinkProvider(wordLinkProvider);
 
   const handleDragEnter = (event: DragEvent): void => {
     if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
@@ -245,7 +229,7 @@ export function setupExecutionTerminalNativeInteractions(
         options,
         linkText,
         fileLinkResolutionCache,
-        () => undefined
+        tooltipController
       );
       if (!detectedLink) {
         throw new Error(`Execution link "${linkText}" was not detected.`);
@@ -259,7 +243,12 @@ export function setupExecutionTerminalNativeInteractions(
       }, 0);
     },
     async hoverLinkForTest(linkText: string): Promise<void> {
-      const detectedLink = await findInteractionLinkByText(options, linkText, fileLinkResolutionCache, updateTooltip);
+      const detectedLink = await findInteractionLinkByText(
+        options,
+        linkText,
+        fileLinkResolutionCache,
+        tooltipController
+      );
       if (!detectedLink) {
         throw new Error(`Execution link "${linkText}" was not detected.`);
       }
@@ -272,7 +261,7 @@ export function setupExecutionTerminalNativeInteractions(
         clearHoveredLink();
       }
 
-      detectedLink.hover(createSyntheticHoverEvent(dropTarget), detectedLink.text);
+      dispatchSyntheticLinkHoverEvent(terminal, detectedLink);
       hoveredLink = detectedLink;
     },
     clearHoverForTest(): void {
@@ -282,9 +271,10 @@ export function setupExecutionTerminalNativeInteractions(
       clearHoveredLink();
       clearDropTarget();
       terminal.options.linkHandler = previousLinkHandler;
+      multilineLinkDisposable.dispose();
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
-      searchLinkDisposable.dispose();
+      wordLinkDisposable.dispose();
       dropTarget.removeEventListener('dragenter', handleDragEnter);
       dropTarget.removeEventListener('dragover', handleDragOver);
       dropTarget.removeEventListener('dragleave', handleDragLeave);
@@ -301,18 +291,21 @@ function createFileLinkProvider(
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >,
-  _readTooltip: () => ActiveTooltipState | undefined,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  tooltipController: TooltipController
 ): ILinkProvider {
   return {
     provideLinks(bufferLineNumber, callback): void {
-      const context = readWrappedLineContext(options.terminal, bufferLineNumber);
+      const context = readWrappedLineContext(
+        options.terminal,
+        bufferLineNumber,
+        EXECUTION_LOCAL_LINK_MAX_LENGTH
+      );
       if (!context) {
         callback(undefined);
         return;
       }
 
-      void collectFileLinks(options, context, updateTooltip, fileLinkResolutionCache)
+      void collectFileLinks(options, context, tooltipController, fileLinkResolutionCache)
         .then((links) => {
           callback(links.length > 0 ? links : undefined);
         })
@@ -325,41 +318,43 @@ function createFileLinkProvider(
 
 function createUrlLinkProvider(
   options: ExecutionTerminalNativeInteractionsOptions,
-  _readTooltip: () => ActiveTooltipState | undefined,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  tooltipController: TooltipController
 ): ILinkProvider {
   return {
     provideLinks(bufferLineNumber, callback): void {
-      const context = readWrappedLineContext(options.terminal, bufferLineNumber);
+      const context = readWrappedLineContext(options.terminal, bufferLineNumber, EXECUTION_URI_LINK_MAX_LENGTH);
       if (!context) {
         callback(undefined);
         return;
       }
 
-      const links = collectUrlLinks(options, context, updateTooltip);
+      const links = collectUrlLinks(options, context, tooltipController);
       callback(links.length > 0 ? links : undefined);
     }
   };
 }
 
-function createSearchLinkProvider(
+function createMultilineLinkProvider(
   options: ExecutionTerminalNativeInteractionsOptions,
   fileLinkResolutionCache: Map<
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >,
-  _readTooltip: () => ActiveTooltipState | undefined,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  tooltipController: TooltipController
 ): ILinkProvider {
   return {
     provideLinks(bufferLineNumber, callback): void {
-      const context = readWrappedLineContext(options.terminal, bufferLineNumber);
+      const context = readWrappedLineContext(
+        options.terminal,
+        bufferLineNumber,
+        EXECUTION_MULTILINE_LINK_MAX_LENGTH
+      );
       if (!context) {
         callback(undefined);
         return;
       }
 
-      void collectSearchLinks(options, context, updateTooltip, fileLinkResolutionCache)
+      void collectMultilineLinks(options, context, tooltipController, fileLinkResolutionCache)
         .then((links) => {
           callback(links.length > 0 ? links : undefined);
         })
@@ -370,9 +365,27 @@ function createSearchLinkProvider(
   };
 }
 
+function createWordLinkProvider(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  tooltipController: TooltipController
+): ILinkProvider {
+  return {
+    provideLinks(bufferLineNumber, callback): void {
+      const context = readWrappedLineContext(options.terminal, bufferLineNumber, EXECUTION_WORD_LINK_MAX_LENGTH);
+      if (!context) {
+        callback(undefined);
+        return;
+      }
+
+      const links = collectWordLinks(options, context, tooltipController);
+      callback(links.length > 0 ? links : undefined);
+    }
+  };
+}
+
 function createExplicitLinkHandler(
   options: ExecutionTerminalNativeInteractionsOptions,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  tooltipController: TooltipController
 ): NonNullable<Terminal['options']['linkHandler']> {
   return {
     allowNonHttpProtocols: true,
@@ -394,16 +407,10 @@ function createExplicitLinkHandler(
         return;
       }
 
-      updateTooltip(
-        createExecutionLinkTooltip(
-          event,
-          link.linkKind === 'file' ? FILE_LINK_LABEL : URL_LINK_LABEL,
-          options.getRuntimeContext()
-        )
-      );
+      tooltipController.show(event, link.linkKind === 'file' ? FILE_LINK_LABEL : URL_LINK_LABEL);
     },
     leave: (): void => {
-      updateTooltip(undefined);
+      tooltipController.hide();
     }
   };
 }
@@ -411,15 +418,15 @@ function createExplicitLinkHandler(
 async function collectFileLinks(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void,
+  tooltipController: TooltipController,
   fileLinkResolutionCache: Map<
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >
 ): Promise<ILink[]> {
-  const candidates = collectFileLinkCandidates(context);
+  const candidates = collectFileLinkCandidates(context, options.getPathStyle());
   if (candidates.length === 0) {
-    return [];
+    return collectStyledFileLinks(options, context, tooltipController, fileLinkResolutionCache);
   }
 
   const directCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
@@ -434,7 +441,7 @@ async function collectFileLinks(
       context,
       directCandidates,
       resolvedDirectLinks,
-      updateTooltip
+      tooltipController
     );
   }
 
@@ -444,19 +451,134 @@ async function collectFileLinks(
     fallbackCandidates,
     fileLinkResolutionCache
   );
+  if (resolvedFallbackLinks.length > 0) {
+    return mapResolvedFileLinksToInteractions(
+      options,
+      context,
+      fallbackCandidates,
+      resolvedFallbackLinks,
+      tooltipController
+    );
+  }
+
+  return collectStyledFileLinks(options, context, tooltipController, fileLinkResolutionCache);
+}
+
+async function collectMultilineLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >
+): Promise<ILink[]> {
+  const candidates = collectMultilineFileLinkCandidates(options.terminal, context);
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const resolvedLinks = await resolveExecutionFileLinksForContext(
+    options,
+    context,
+    candidates,
+    fileLinkResolutionCache
+  );
   return mapResolvedFileLinksToInteractions(
     options,
     context,
-    fallbackCandidates,
-    resolvedFallbackLinks,
-    updateTooltip
+    candidates,
+    resolvedLinks,
+    tooltipController
   );
+}
+
+function collectMultilineFileLinkCandidates(
+  terminal: Terminal,
+  context: WrappedLineContext
+): ExecutionTerminalFileLinkCandidate[] {
+  if (context.text.length === 0 || context.text.length > EXECUTION_MAX_LINE_LENGTH) {
+    return [];
+  }
+
+  for (const matcher of EXECUTION_MULTILINE_LINE_NUMBER_PREFIX_MATCHERS) {
+    const match = context.text.match(matcher);
+    const group = match?.groups;
+    if (!group?.link || !group.line) {
+      continue;
+    }
+
+    const path = findPreviousMultilinePath(terminal, context.startLine);
+    if (!path) {
+      continue;
+    }
+
+    const startIndex = context.text.indexOf(group.link);
+    if (startIndex < 0) {
+      continue;
+    }
+
+    return [
+      {
+        candidateId: `${context.startLine}:0:${context.text.length}:multiline:${group.link}`,
+        text: group.link,
+        path,
+        startIndex: 0,
+        endIndexExclusive: context.text.length,
+        bufferStartLine: context.startLine,
+        line: parseExecutionTerminalInt(group.line),
+        column: parseExecutionTerminalInt(group.col),
+        lineEnd: undefined,
+        columnEnd: undefined,
+        source: 'detected'
+      }
+    ];
+  }
+
+  for (const matcher of EXECUTION_MULTILINE_GIT_DIFF_MATCHERS) {
+    const match = context.text.match(matcher);
+    const group = match?.groups;
+    if (!group?.link || !group.toFileLine) {
+      continue;
+    }
+
+    const path = findPreviousGitDiffPath(terminal, context.startLine);
+    if (!path) {
+      continue;
+    }
+
+    const startIndex = context.text.indexOf(group.link);
+    if (startIndex < 0) {
+      continue;
+    }
+
+    const startLine = parseExecutionTerminalInt(group.toFileLine);
+    const lineCount = parseExecutionTerminalInt(group.toFileCount);
+    return [
+      {
+        candidateId: `${context.startLine}:${startIndex}:${group.link.length}:gitdiff:${group.link}`,
+        text: group.link,
+        path,
+        startIndex,
+        endIndexExclusive: startIndex + group.link.length,
+        bufferStartLine: context.startLine,
+        line: startLine,
+        column: 1,
+        lineEnd:
+          startLine !== undefined && lineCount !== undefined ? startLine + Math.max(0, lineCount) : undefined,
+        columnEnd: undefined,
+        source: 'detected'
+      }
+    ];
+  }
+
+  return [];
 }
 
 function collectUrlLinks(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  tooltipController: TooltipController
 ): ILink[] {
   if (!EXECUTION_URL_LINKIFY.pretest(context.text)) {
     return [];
@@ -465,6 +587,9 @@ function collectUrlLinks(
   const links: ILink[] = [];
   const matches = EXECUTION_URL_LINKIFY.match(context.text) ?? [];
   for (const match of matches) {
+    if (match.text.length > EXECUTION_URI_LINK_MAX_LENGTH) {
+      continue;
+    }
     links.push(
       createInteractionLink(
         options,
@@ -477,7 +602,7 @@ function collectUrlLinks(
           url: match.url,
           source: 'implicit'
         },
-        updateTooltip,
+        tooltipController,
         {
           startColumn: match.index + 1,
           startLineNumber: 1,
@@ -486,53 +611,26 @@ function collectUrlLinks(
         }
       )
     );
+    if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
   }
 
   return links;
 }
 
-async function collectSearchLinks(
+function collectWordLinks(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void,
-  fileLinkResolutionCache: Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
-): Promise<ILink[]> {
-  if (context.text.length === 0 || context.text.length > MAX_SEARCH_LINK_LINE_LENGTH) {
+  tooltipController: TooltipController
+): ILink[] {
+  if (context.text.length === 0 || context.text.length > EXECUTION_MAX_LINE_LENGTH) {
     return [];
   }
-
-  const candidates = collectSearchLinkCandidates(context);
-  if (candidates.length === 0) {
-    return [];
-  }
-
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
-    context,
-    candidates,
-    fileLinkResolutionCache
-  );
-  const resolvedCandidateIds = new Set(resolvedLinks.map((resolvedLink) => resolvedLink.candidateId));
-  const candidateById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
-  const resolvedCandidates = resolvedLinks
-    .map((resolvedLink) => candidateById.get(resolvedLink.candidateId))
-    .filter((candidate): candidate is ExecutionTerminalFileLinkCandidate => candidate !== undefined);
-  const unresolvedCandidates = selectExecutionTerminalSearchLinkCandidates(
-    candidates.filter(
-      (candidate) =>
-        !resolvedCandidateIds.has(candidate.candidateId) &&
-        !resolvedCandidates.some((resolvedCandidate) =>
-          doExecutionTerminalFileLinkCandidateRangesOverlap(candidate, resolvedCandidate)
-        )
-    )
-  );
 
   const links: ILink[] = [];
-  for (const candidate of unresolvedCandidates) {
-    if (candidate.text.length > MAX_SEARCH_LINK_TEXT_LENGTH) {
+  for (const range of readExecutionTerminalWordRanges(context.text, options.getRuntimeContext())) {
+    if (range.text.length === 0 || range.text.length > EXECUTION_WORD_LINK_MAX_LENGTH) {
       continue;
     }
 
@@ -540,172 +638,187 @@ async function collectSearchLinks(
       createInteractionLink(
         options,
         context,
-        candidate.text,
-        SEARCH_LINK_LABEL,
+        range.text,
+        undefined,
         {
           linkKind: 'search',
-          text: candidate.text,
-          searchText: candidate.text,
+          text: range.text,
+          searchText: range.text,
           contextLine: context.text,
-          bufferStartLine: candidate.bufferStartLine,
+          bufferStartLine: context.startLine,
           source: 'word'
         },
-        updateTooltip,
+        tooltipController,
         {
-          startColumn: candidate.startIndex + 1,
+          startColumn: range.startIndex + 1,
           startLineNumber: 1,
-          endColumn: candidate.endIndexExclusive + 1,
+          endColumn: range.endIndexExclusive + 1,
           endLineNumber: 1
+        },
+        {
+          lowConfidence: true
         }
       )
     );
+    if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
   }
 
   return links;
 }
 
-function collectSearchLinkCandidates(context: WrappedLineContext): ExecutionTerminalFileLinkCandidate[] {
-  return selectExecutionTerminalSearchLinkCandidates(
-    collectFileLinkCandidates(context).filter(isExecutionTerminalSearchFallbackCandidate)
-  );
-}
-
-function isExecutionTerminalSearchFallbackCandidate(
-  candidate: ExecutionTerminalFileLinkCandidate
-): boolean {
-  if (candidate.source === 'detected' || candidate.source === 'refined') {
-    return true;
-  }
-
-  if (candidate.source !== 'fallback') {
-    return false;
-  }
-
-  return isExecutionTerminalSearchFallbackPathLike(candidate);
-}
-
-function isExecutionTerminalSearchFallbackPathLike(
-  candidate: ExecutionTerminalFileLinkCandidate
-): boolean {
-  if (
-    candidate.line !== undefined ||
-    candidate.column !== undefined ||
-    candidate.lineEnd !== undefined ||
-    candidate.columnEnd !== undefined
-  ) {
-    return true;
-  }
-
-  const pathValue = candidate.path.trim();
-  if (pathValue.length === 0) {
-    return false;
-  }
-
-  if (
-    pathValue.includes('/') ||
-    pathValue.includes('\\') ||
-    pathValue.startsWith('./') ||
-    pathValue.startsWith('../') ||
-    pathValue.startsWith('~/') ||
-    pathValue.startsWith('.\\') ||
-    pathValue.startsWith('..\\') ||
-    pathValue.startsWith('~\\') ||
-    pathValue.startsWith('file://') ||
-    /^[a-zA-Z]:[\\/]/.test(pathValue) ||
-    pathValue.startsWith('\\\\')
-  ) {
-    return true;
-  }
-
-  return /\.[a-zA-Z0-9_-]{1,20}$/.test(pathValue);
-}
-
-function selectExecutionTerminalSearchLinkCandidates(
-  candidates: ExecutionTerminalFileLinkCandidate[]
-): ExecutionTerminalFileLinkCandidate[] {
-  const selected: ExecutionTerminalFileLinkCandidate[] = [];
-  const sortedCandidates = [...candidates].sort(compareExecutionTerminalSearchLinkCandidates);
-  for (const candidate of sortedCandidates) {
-    if (
-      selected.some((selectedCandidate) =>
-        doExecutionTerminalFileLinkCandidateRangesOverlap(candidate, selectedCandidate)
-      )
-    ) {
-      continue;
+function readExecutionTerminalWordRanges(
+  text: string,
+  runtimeContext: CanvasRuntimeContext
+): Array<{ text: string; startIndex: number; endIndexExclusive: number }> {
+  const separatorRegex = createExecutionTerminalWordSeparatorRegex(runtimeContext.terminalWordSeparators);
+  const splitWords = text.split(separatorRegex);
+  const ranges: Array<{ text: string; startIndex: number; endIndexExclusive: number }> = [];
+  let runningIndex = 0;
+  for (const splitWord of splitWords) {
+    let nextText = splitWord;
+    let endIndexExclusive = runningIndex + splitWord.length;
+    if (nextText.length > 0 && nextText.endsWith(':')) {
+      nextText = nextText.slice(0, -1);
+      endIndexExclusive -= 1;
     }
-
-    selected.push(candidate);
+    ranges.push({
+      text: nextText,
+      startIndex: runningIndex,
+      endIndexExclusive
+    });
+    runningIndex += splitWord.length + 1;
   }
+  return ranges;
+}
 
-  return selected.sort(
-    (left, right) =>
-      left.startIndex - right.startIndex || left.endIndexExclusive - right.endIndexExclusive
+function createExecutionTerminalWordSeparatorRegex(wordSeparators: string): RegExp {
+  let powerlineSymbols = '';
+  for (let codePoint = 0xe0b0; codePoint <= 0xe0bf; codePoint += 1) {
+    powerlineSymbols += String.fromCharCode(codePoint);
+  }
+  return new RegExp(
+    `[${escapeExecutionTerminalWordSeparatorCharacters(wordSeparators)}${powerlineSymbols}]`,
+    'g'
   );
 }
 
-function compareExecutionTerminalSearchLinkCandidates(
-  left: ExecutionTerminalFileLinkCandidate,
-  right: ExecutionTerminalFileLinkCandidate
-): number {
-  const priorityDifference =
-    getExecutionTerminalSearchLinkCandidatePriority(right) -
-    getExecutionTerminalSearchLinkCandidatePriority(left);
-  if (priorityDifference !== 0) {
-    return priorityDifference;
-  }
-
-  const leftLength = left.endIndexExclusive - left.startIndex;
-  const rightLength = right.endIndexExclusive - right.startIndex;
-  if (leftLength !== rightLength) {
-    return leftLength - rightLength;
-  }
-
-  return left.startIndex - right.startIndex || left.endIndexExclusive - right.endIndexExclusive;
+function escapeExecutionTerminalWordSeparatorCharacters(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+*?.-]/g, '\\$&');
 }
 
-function getExecutionTerminalSearchLinkCandidatePriority(
-  candidate: ExecutionTerminalFileLinkCandidate
-): number {
-  switch (candidate.source) {
-    case 'refined':
-      return 3;
-    case 'detected':
-      return 2;
-    case 'fallback':
-      return 1;
-    default:
-      return 0;
-  }
-}
-
-function doExecutionTerminalFileLinkCandidateRangesOverlap(
-  left: Pick<ExecutionTerminalFileLinkCandidate, 'startIndex' | 'endIndexExclusive'>,
-  right: Pick<ExecutionTerminalFileLinkCandidate, 'startIndex' | 'endIndexExclusive'>
-): boolean {
-  return left.startIndex < right.endIndexExclusive && right.startIndex < left.endIndexExclusive;
-}
-
-function collectFileLinkCandidates(context: WrappedLineContext): ExecutionTerminalFileLinkCandidate[] {
-  const detectedCandidates = dedupeDetectedPathLinks([
-    ...detectExecutionTerminalPathLinks(context.text, 'posix'),
-    ...detectExecutionTerminalPathLinks(context.text, 'windows')
-  ]).filter((candidate) => !isNonFileUriLikePath(candidate.path));
+function collectFileLinkCandidates(
+  context: WrappedLineContext,
+  pathStyle: ExecutionTerminalPathStyle
+): ExecutionTerminalFileLinkCandidate[] {
+  const detectedCandidates = dedupeDetectedPathLinks(
+    detectExecutionTerminalPathLinks(context.text, pathStyle)
+  )
+    .filter(
+      (candidate) =>
+        !isNonFileUriLikePath(candidate.path) &&
+        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH
+    );
 
   const candidates: ExecutionTerminalFileLinkCandidate[] = [];
   for (const candidate of detectedCandidates) {
     candidates.push(toExecutionTerminalFileLinkCandidate(context, candidate, 'detected'));
-    const refinedCandidate = refineDetectedPathLinkCandidate(candidate);
-    if (refinedCandidate) {
-      candidates.push(toExecutionTerminalFileLinkCandidate(context, refinedCandidate, 'refined'));
+    for (const trimmedCandidate of trimDetectedPathLinkCandidateEnds(candidate)) {
+      candidates.push(toExecutionTerminalFileLinkCandidate(context, trimmedCandidate, 'refined'));
     }
   }
 
   const fallback = detectExecutionTerminalFallbackPathLink(context.text);
-  if (fallback && !isNonFileUriLikePath(fallback.path)) {
+  if (
+    fallback &&
+    !isNonFileUriLikePath(fallback.path) &&
+    fallback.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH
+  ) {
     candidates.push(toExecutionTerminalFileLinkCandidate(context, fallback, 'fallback'));
   }
 
-  return dedupeExecutionTerminalFileLinkCandidates(candidates);
+  return dedupeExecutionTerminalFileLinkCandidates(candidates).slice(0, EXECUTION_MAX_RESOLVED_LINKS_PER_LINE);
+}
+
+async function collectStyledFileLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >
+): Promise<ILink[]> {
+  const styledCandidates = collectStyledFileLinkCandidates(options.terminal, context);
+  if (styledCandidates.length === 0) {
+    return [];
+  }
+
+  const resolvedLinks = await resolveExecutionFileLinksForContext(
+    options,
+    context,
+    styledCandidates.map((entry) => entry.candidate),
+    fileLinkResolutionCache
+  );
+  return mapResolvedStyledFileLinksToInteractions(
+    options,
+    styledCandidates,
+    resolvedLinks,
+    tooltipController
+  );
+}
+
+function collectStyledFileLinkCandidates(
+  terminal: Terminal,
+  context: WrappedLineContext
+): StyledFileLinkCandidate[] {
+  const ranges = readXtermRangesByAttr(terminal, context.startLine, context.endLine);
+  const candidates: StyledFileLinkCandidate[] = [];
+  for (const range of ranges) {
+    let text = '';
+    for (let lineIndex = range.start.y - 1; lineIndex <= range.end.y - 1; lineIndex += 1) {
+      const line = terminal.buffer.active.getLine(lineIndex);
+      if (!line) {
+        break;
+      }
+
+      const lineStartX = lineIndex === range.start.y - 1 ? range.start.x - 1 : 0;
+      const lineEndX = lineIndex === range.end.y - 1 ? range.end.x : terminal.cols - 1;
+      text += line.translateToString(false, lineStartX, lineEndX);
+    }
+
+    if (
+      text.trim().length === 0 ||
+      text.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH ||
+      isNonFileUriLikePath(text)
+    ) {
+      continue;
+    }
+
+    candidates.push({
+      candidate: {
+        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${text}`,
+        text,
+        path: text,
+        startIndex: 0,
+        endIndexExclusive: text.length,
+        bufferStartLine: context.startLine,
+        line: undefined,
+        column: undefined,
+        lineEnd: undefined,
+        columnEnd: undefined,
+        source: 'detected'
+      },
+      bufferRange: range
+    });
+
+    if (candidates.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return candidates;
 }
 
 function toExecutionTerminalFileLinkCandidate(
@@ -794,7 +907,7 @@ function mapResolvedFileLinksToInteractions(
   context: WrappedLineContext,
   candidates: ExecutionTerminalFileLinkCandidate[],
   resolvedLinks: ExecutionTerminalResolvedFileLink[],
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  tooltipController: TooltipController
 ): ILink[] {
   const candidatesById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
   const links: ILink[] = [];
@@ -811,7 +924,7 @@ function mapResolvedFileLinksToInteractions(
         resolvedLink.link.text,
         labelForResolvedFileLink(resolvedLink.link.targetKind),
         resolvedLink.link,
-        updateTooltip,
+        tooltipController,
         {
           startColumn: candidate.startIndex + 1,
           startLineNumber: 1,
@@ -825,11 +938,40 @@ function mapResolvedFileLinksToInteractions(
   return links;
 }
 
+function mapResolvedStyledFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: StyledFileLinkCandidate[],
+  resolvedLinks: ExecutionTerminalResolvedFileLink[],
+  tooltipController: TooltipController
+): ILink[] {
+  const candidatesById = new Map(candidates.map((candidate) => [candidate.candidate.candidateId, candidate]));
+  const links: ILink[] = [];
+  for (const resolvedLink of resolvedLinks) {
+    const candidate = candidatesById.get(resolvedLink.candidateId);
+    if (!candidate) {
+      continue;
+    }
+
+    links.push(
+      createBufferRangeInteractionLink(
+        options,
+        resolvedLink.link.text,
+        labelForResolvedFileLink(resolvedLink.link.targetKind),
+        resolvedLink.link,
+        tooltipController,
+        candidate.bufferRange
+      )
+    );
+  }
+
+  return links;
+}
+
 function labelForResolvedFileLink(
   targetKind: ExecutionTerminalResolvedFileLink['link']['targetKind']
 ): string {
   if (targetKind === 'directory-in-workspace') {
-    return REVEAL_DIRECTORY_LINK_LABEL;
+    return FOCUS_DIRECTORY_LINK_LABEL;
   }
 
   if (targetKind === 'directory-outside-workspace') {
@@ -866,113 +1008,78 @@ function parseExplicitExecutionTerminalLink(
   }
 }
 
-function refineDetectedPathLinkCandidate(
+function trimDetectedPathLinkCandidateEnds(
   candidate: DetectedExecutionTerminalPathLink
-): DetectedExecutionTerminalPathLink | undefined {
-  let startIndex = candidate.startIndex;
+): DetectedExecutionTerminalPathLink[] {
+  if (
+    candidate.line !== undefined ||
+    candidate.column !== undefined ||
+    candidate.lineEnd !== undefined ||
+    candidate.columnEnd !== undefined
+  ) {
+    return [];
+  }
+
   let endIndexExclusive = candidate.endIndexExclusive;
   let text = candidate.text;
   let path = candidate.path;
-  let changed = false;
-
-  while (text.length > 0 && shouldTrimLeadingExecutionFileChar(text[0])) {
-    const leadingChar = text[0];
-    text = text.slice(1);
-    startIndex += 1;
-    if (path.startsWith(leadingChar)) {
-      path = path.slice(1);
+  const trimmedCandidates: DetectedExecutionTerminalPathLink[] = [];
+  let previousPath = path;
+  let nextPath = previousPath.replace(EXECUTION_LOCAL_LINK_SPECIAL_END_CHAR_REGEX, '');
+  while (nextPath !== previousPath) {
+    const trimmedChars = previousPath.length - nextPath.length;
+    text = text.slice(0, Math.max(0, text.length - trimmedChars));
+    endIndexExclusive -= trimmedChars;
+    if (text.trim().length > 0 && nextPath.trim().length > 0) {
+      trimmedCandidates.push({
+        ...candidate,
+        text,
+        path: nextPath,
+        endIndexExclusive
+      });
     }
-    changed = true;
+    previousPath = nextPath;
+    nextPath = previousPath.replace(EXECUTION_LOCAL_LINK_SPECIAL_END_CHAR_REGEX, '');
   }
-
-  const embeddedPathOffset = findEmbeddedExecutionPathOffset(path);
-  if (embeddedPathOffset > 0) {
-    text = text.slice(embeddedPathOffset);
-    path = path.slice(embeddedPathOffset);
-    startIndex += embeddedPathOffset;
-    changed = true;
-  }
-
-  while (text.length > 0 && shouldTrimTrailingExecutionFileChar(path, text[text.length - 1])) {
-    const trailingChar = text[text.length - 1];
-    text = text.slice(0, -1);
-    endIndexExclusive -= 1;
-    if (path.endsWith(trailingChar)) {
-      path = path.slice(0, -1);
-    }
-    changed = true;
-  }
-
-  if (!changed || text.trim().length === 0 || path.trim().length === 0) {
-    return undefined;
-  }
-
-  return {
-    ...candidate,
-    text,
-    path,
-    startIndex,
-    endIndexExclusive
-  };
+  return trimmedCandidates;
 }
 
-function findEmbeddedExecutionPathOffset(pathValue: string): number {
-  EXECUTION_EMBEDDED_MULTI_SEGMENT_ASCII_PATH_REGEX.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = EXECUTION_EMBEDDED_MULTI_SEGMENT_ASCII_PATH_REGEX.exec(pathValue)) !== null) {
-    if (match.index <= 0) {
+function findPreviousMultilinePath(terminal: Terminal, startLine: number): string | undefined {
+  for (let lineIndex = startLine - 1; lineIndex >= 0; lineIndex -= 1) {
+    const line = terminal.buffer.active.getLine(lineIndex);
+    if (!line || line.isWrapped) {
       continue;
     }
-
-    const directPrefix = pathValue.slice(0, match.index);
-    if (isLikelyAttachedExecutionProsePrefix(directPrefix)) {
-      return match.index;
+    const text = getXtermLineContent(terminal, lineIndex, lineIndex);
+    if (!text.match(/^\s*\d/)) {
+      return text.length > 0 ? text : undefined;
     }
   }
-
-  return 0;
+  return undefined;
 }
 
-function isLikelyAttachedExecutionProsePrefix(prefix: string): boolean {
-  if (prefix.length === 0 || prefix.includes('/') || prefix.includes('\\')) {
-    return false;
-  }
-
-  return /[^\x00-\x7F]/u.test(prefix) && !/[A-Za-z0-9]/.test(prefix);
-}
-
-function shouldTrimLeadingExecutionFileChar(value: string): boolean {
-  return EXECUTION_FILE_LEADING_TRIM_CHARS.has(value);
-}
-
-function shouldTrimTrailingExecutionFileChar(pathValue: string, value: string): boolean {
-  if (
-    EXECUTION_FILE_TRAILING_PUNCTUATION_CHARS.has(value) ||
-    EXECUTION_FILE_TRAILING_QUOTE_CHARS.has(value)
-  ) {
-    return true;
-  }
-
-  const openingWrapper = EXECUTION_FILE_CLOSING_WRAPPERS.get(value);
-  if (openingWrapper) {
-    if (!pathValue.endsWith(value)) {
-      return true;
+function findPreviousGitDiffPath(terminal: Terminal, startLine: number): string | undefined {
+  for (let lineIndex = startLine - 1; lineIndex >= 0; lineIndex -= 1) {
+    const line = terminal.buffer.active.getLine(lineIndex);
+    if (!line || line.isWrapped) {
+      continue;
     }
-    return countExecutionFileChar(pathValue, openingWrapper) < countExecutionFileChar(pathValue, value);
-  }
-
-  return false;
-}
-
-function countExecutionFileChar(value: string, char: string): number {
-  let count = 0;
-  for (const currentChar of value) {
-    if (currentChar === char) {
-      count += 1;
+    const text = getXtermLineContent(terminal, lineIndex, lineIndex);
+    const match = text.match(/\+\+\+ b\/(?<path>.+)/);
+    const path = match?.groups?.path?.trim();
+    if (path) {
+      return path;
     }
   }
+  return undefined;
+}
 
-  return count;
+function parseExecutionTerminalInt(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function isNonFileUriLikePath(pathValue: string): boolean {
@@ -1019,15 +1126,46 @@ function createInteractionLink(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
   text: string,
-  hoverLabel: string,
+  hoverLabel: string | undefined,
   link: ExecutionTerminalOpenLink,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void,
-  range: SimpleRange
+  tooltipController: TooltipController,
+  range: SimpleRange,
+  linkOptions?: {
+    lowConfidence?: boolean;
+  }
 ): ILink {
   const xtermRange = convertLinkRangeToBuffer(context.lines, options.terminal.cols, range, context.startLine);
-  return {
+  return createBufferRangeInteractionLink(
+    options,
+    text,
+    hoverLabel,
+    link,
+    tooltipController,
+    xtermRange,
+    linkOptions
+  );
+}
+
+function createBufferRangeInteractionLink(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  text: string,
+  hoverLabel: string | undefined,
+  link: ExecutionTerminalOpenLink,
+  tooltipController: TooltipController,
+  xtermRange: IBufferRange,
+  linkOptions?: {
+    lowConfidence?: boolean;
+  }
+): ILink {
+  const lowConfidence = linkOptions?.lowConfidence === true;
+  let interactionLink: ILink | undefined;
+  const lowConfidenceDecorations = lowConfidence
+    ? createLowConfidenceExecutionLinkDecorations(options.getRuntimeContext, () => interactionLink?.decorations)
+    : undefined;
+  interactionLink = {
     text,
     range: xtermRange,
+    decorations: lowConfidenceDecorations?.decorations,
     activate: (event): void => {
       if (!shouldActivateExecutionLink(options.getRuntimeContext(), event)) {
         return;
@@ -1036,10 +1174,93 @@ function createInteractionLink(
       options.onOpenLink(options.nodeId, options.kind, link);
     },
     hover: (event): void => {
-      updateTooltip(createExecutionLinkTooltip(event, hoverLabel, options.getRuntimeContext()));
+      lowConfidenceDecorations?.hover(event);
+      if (!lowConfidence && hoverLabel) {
+        tooltipController.show(event, hoverLabel);
+        return;
+      }
+
+      tooltipController.hide();
     },
     leave: (): void => {
-      updateTooltip(undefined);
+      lowConfidenceDecorations?.leave();
+      tooltipController.hide();
+    }
+  };
+  return interactionLink;
+}
+
+function createLowConfidenceExecutionLinkDecorations(
+  getRuntimeContext: () => CanvasRuntimeContext,
+  getDecorations: () => ILinkDecorations | undefined
+): {
+  decorations: ILinkDecorations;
+  hover: (event: MouseEvent) => void;
+  leave: () => void;
+} {
+  const decorations: ILinkDecorations = {
+    pointerCursor: false,
+    underline: false
+  };
+  let removeListeners: (() => void) | undefined;
+  let hoverSequence = 0;
+
+  const applyModifierState = (modifierDown: boolean): void => {
+    const activeDecorations = getDecorations() ?? decorations;
+    if (activeDecorations.pointerCursor !== modifierDown) {
+      activeDecorations.pointerCursor = modifierDown;
+    }
+    if (activeDecorations.underline !== modifierDown) {
+      activeDecorations.underline = modifierDown;
+    }
+  };
+
+  const clearListeners = (): void => {
+    removeListeners?.();
+    removeListeners = undefined;
+  };
+
+  return {
+    decorations,
+    hover: (event): void => {
+      clearListeners();
+      hoverSequence += 1;
+      const currentHoverSequence = hoverSequence;
+
+      const eventDocument = event.view?.document ?? document;
+      const handleKeydown = (nextEvent: KeyboardEvent): void => {
+        applyModifierState(isExecutionLinkModifierDown(getRuntimeContext(), nextEvent));
+      };
+      const handleKeyup = (nextEvent: KeyboardEvent): void => {
+        applyModifierState(isExecutionLinkModifierDown(getRuntimeContext(), nextEvent));
+      };
+      const handleMousemove = (nextEvent: MouseEvent): void => {
+        applyModifierState(isExecutionLinkModifierDown(getRuntimeContext(), nextEvent));
+      };
+
+      eventDocument.addEventListener('keydown', handleKeydown);
+      eventDocument.addEventListener('keyup', handleKeyup);
+      eventDocument.addEventListener('mousemove', handleMousemove);
+      removeListeners = (): void => {
+        eventDocument.removeEventListener('keydown', handleKeydown);
+        eventDocument.removeEventListener('keyup', handleKeyup);
+        eventDocument.removeEventListener('mousemove', handleMousemove);
+      };
+
+      const modifierDown = isExecutionLinkModifierDown(getRuntimeContext(), event);
+      applyModifierState(modifierDown);
+      void Promise.resolve().then(() => {
+        if (hoverSequence !== currentHoverSequence) {
+          return;
+        }
+
+        applyModifierState(modifierDown);
+      });
+    },
+    leave: (): void => {
+      hoverSequence += 1;
+      clearListeners();
+      applyModifierState(false);
     }
   };
 }
@@ -1065,6 +1286,10 @@ function createExecutionLinkTooltip(
   };
 }
 
+function getExecutionTerminalHoverDelay(): number {
+  return DEFAULT_WORKBENCH_HOVER_DELAY;
+}
+
 function describeExecutionLinkModifier(runtimeContext: CanvasRuntimeContext): string {
   if (runtimeContext.editorMultiCursorModifier === 'ctrlCmd') {
     return isMacintosh() ? 'option + click' : 'alt + click';
@@ -1073,15 +1298,22 @@ function describeExecutionLinkModifier(runtimeContext: CanvasRuntimeContext): st
   return isMacintosh() ? 'cmd + click' : 'ctrl + click';
 }
 
-function shouldActivateExecutionLink(
+function isExecutionLinkModifierDown(
   runtimeContext: CanvasRuntimeContext,
-  event: MouseEvent
+  event: MouseEvent | KeyboardEvent
 ): boolean {
   if (runtimeContext.editorMultiCursorModifier === 'ctrlCmd') {
     return event.altKey;
   }
 
   return isMacintosh() ? event.metaKey : event.ctrlKey;
+}
+
+function shouldActivateExecutionLink(
+  runtimeContext: CanvasRuntimeContext,
+  event: MouseEvent
+): boolean {
+  return isExecutionLinkModifierDown(runtimeContext, event);
 }
 
 function createSyntheticLinkActivationEvent(runtimeContext: CanvasRuntimeContext): MouseEvent {
@@ -1099,20 +1331,80 @@ function createSyntheticLinkActivationEvent(runtimeContext: CanvasRuntimeContext
   });
 }
 
-function createSyntheticHoverEvent(target: HTMLElement): MouseEvent {
-  const rect = target.getBoundingClientRect();
-  return new MouseEvent('mousemove', {
-    bubbles: true,
-    clientX: Math.round(rect.left + Math.min(Math.max(rect.width / 2, 12), 48)),
-    clientY: Math.round(rect.top + Math.min(Math.max(rect.height / 2, 12), 48))
-  });
+function dispatchSyntheticLinkHoverEvent(terminal: Terminal, link: ILink): void {
+  const screenElement = queryExecutionTerminalScreenElement(terminal);
+  if (!screenElement) {
+    throw new Error('Execution terminal screen is not mounted.');
+  }
+
+  const hoverPoint = computeExecutionLinkHoverPoint(terminal, screenElement, link.range);
+  const eventTarget = document.elementFromPoint(hoverPoint.clientX, hoverPoint.clientY) ?? screenElement;
+  eventTarget.dispatchEvent(
+    new MouseEvent('mousemove', {
+      bubbles: true,
+      composed: true,
+      view: window,
+      clientX: hoverPoint.clientX,
+      clientY: hoverPoint.clientY
+    })
+  );
+}
+
+function dispatchSyntheticLinkMouseLeaveEvent(terminal: Terminal): void {
+  const screenElement = queryExecutionTerminalScreenElement(terminal);
+  if (!screenElement) {
+    return;
+  }
+
+  screenElement.dispatchEvent(
+    new MouseEvent('mouseleave', {
+      bubbles: true,
+      composed: true,
+      view: window
+    })
+  );
+}
+
+function queryExecutionTerminalScreenElement(terminal: Terminal): HTMLElement | null {
+  return terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? terminal.element ?? null;
+}
+
+function computeExecutionLinkHoverPoint(
+  terminal: Terminal,
+  screenElement: HTMLElement,
+  range: IBufferRange
+): { clientX: number; clientY: number } {
+  const viewportLineIndex = range.start.y - terminal.buffer.active.viewportY - 1;
+  if (viewportLineIndex < 0 || viewportLineIndex >= terminal.rows) {
+    throw new Error(`Execution link "${range.start.x}:${range.start.y}" is outside the visible viewport.`);
+  }
+
+  const rect = screenElement.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    throw new Error('Execution terminal screen has no visible size.');
+  }
+
+  const cellWidth = rect.width / Math.max(terminal.cols, 1);
+  const cellHeight = rect.height / Math.max(terminal.rows, 1);
+  const linkStartColumn = Math.max(0, range.start.x - 1);
+  const linkEndColumn =
+    range.start.y === range.end.y ? Math.max(linkStartColumn, range.end.x - 1) : Math.max(linkStartColumn, terminal.cols - 1);
+  const linkMidColumn = linkStartColumn + Math.max(0, linkEndColumn - linkStartColumn) / 2;
+  return {
+    clientX: Math.round(rect.left + cellWidth * (linkMidColumn + 0.5)),
+    clientY: Math.round(rect.top + cellHeight * (viewportLineIndex + 0.5))
+  };
 }
 
 function isMacintosh(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 }
 
-function readWrappedLineContext(terminal: Terminal, bufferLineNumber: number): WrappedLineContext | undefined {
+function readWrappedLineContext(
+  terminal: Terminal,
+  bufferLineNumber: number,
+  maxLinkLength: number
+): WrappedLineContext | undefined {
   const startBufferLine = bufferLineNumber - 1;
   let startLine = startBufferLine;
   let endLine = startBufferLine;
@@ -1122,7 +1414,12 @@ function readWrappedLineContext(terminal: Terminal, bufferLineNumber: number): W
   }
 
   const lines: IBufferLine[] = [initialLine];
-  while (startLine > 0 && terminal.buffer.active.getLine(startLine)?.isWrapped) {
+  const maxCharacterContext = Math.max(maxLinkLength, terminal.cols);
+  const maxLineContext = Math.ceil(maxCharacterContext / terminal.cols);
+  const minStartLine = Math.max(startLine - maxLineContext, 0);
+  const maxEndLine = Math.min(endLine + maxLineContext, terminal.buffer.active.length);
+
+  while (startLine >= minStartLine && terminal.buffer.active.getLine(startLine)?.isWrapped) {
     const previousLine = terminal.buffer.active.getLine(startLine - 1);
     if (!previousLine) {
       break;
@@ -1132,7 +1429,7 @@ function readWrappedLineContext(terminal: Terminal, bufferLineNumber: number): W
     startLine -= 1;
   }
 
-  while (terminal.buffer.active.getLine(endLine + 1)?.isWrapped) {
+  while (endLine < maxEndLine && terminal.buffer.active.getLine(endLine + 1)?.isWrapped) {
     const nextLine = terminal.buffer.active.getLine(endLine + 1);
     if (!nextLine) {
       break;
@@ -1151,10 +1448,8 @@ function readWrappedLineContext(terminal: Terminal, bufferLineNumber: number): W
 }
 
 function getXtermLineContent(terminal: Terminal, lineStart: number, lineEnd: number): string {
-  const maxLineLength = Math.max(2048, terminal.cols * 2);
-  const boundedEnd = Math.min(lineEnd, lineStart + maxLineLength);
   let content = '';
-  for (let lineIndex = lineStart; lineIndex <= boundedEnd; lineIndex += 1) {
+  for (let lineIndex = lineStart; lineIndex <= lineEnd; lineIndex += 1) {
     const line = terminal.buffer.active.getLine(lineIndex);
     if (!line) {
       continue;
@@ -1164,6 +1459,52 @@ function getXtermLineContent(terminal: Terminal, lineStart: number, lineEnd: num
   }
 
   return content;
+}
+
+function readXtermRangesByAttr(terminal: Terminal, lineStart: number, lineEnd: number): IBufferRange[] {
+  let bufferRangeStart: { x: number; y: number } | undefined;
+  let lastFgAttr = -1;
+  let lastBgAttr = -1;
+  const ranges: IBufferRange[] = [];
+
+  for (let lineIndex = lineStart; lineIndex <= lineEnd; lineIndex += 1) {
+    const line = terminal.buffer.active.getLine(lineIndex);
+    if (!line) {
+      continue;
+    }
+
+    for (let column = 0; column < terminal.cols; column += 1) {
+      const cell = line.getCell(column);
+      if (!cell) {
+        break;
+      }
+
+      const fgAttr = cell.isBold() | cell.isInverse() | cell.isStrikethrough() | cell.isUnderline();
+      const bgAttr = cell.isDim() | cell.isItalic();
+      if (lastFgAttr === -1 || lastBgAttr === -1) {
+        bufferRangeStart = { x: column, y: lineIndex };
+      } else if (lastFgAttr !== fgAttr || lastBgAttr !== bgAttr) {
+        if (bufferRangeStart) {
+          ranges.push({
+            start: {
+              x: bufferRangeStart.x + 1,
+              y: bufferRangeStart.y + 1
+            },
+            end: {
+              x: column,
+              y: lineIndex + 1
+            }
+          });
+        }
+        bufferRangeStart = { x: column, y: lineIndex };
+      }
+
+      lastFgAttr = fgAttr;
+      lastBgAttr = bgAttr;
+    }
+  }
+
+  return ranges;
 }
 
 function convertLinkRangeToBuffer(
@@ -1391,12 +1732,12 @@ async function findInteractionLinkByText(
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >,
-  updateTooltip: (tooltip: ActiveTooltipState | undefined) => void
+  _tooltipController: TooltipController
 ): Promise<ILink | undefined> {
   for (
-    let bufferLineNumber = options.terminal.buffer.active.viewportY + 1;
-    bufferLineNumber <= options.terminal.buffer.active.length;
-    bufferLineNumber += 1
+    let bufferLineNumber = options.terminal.buffer.active.length;
+    bufferLineNumber >= options.terminal.buffer.active.viewportY + 1;
+    bufferLineNumber -= 1
   ) {
     const linkProviders = readExecutionTerminalLinkProviders(options.terminal);
     for (const linkProvider of linkProviders) {
