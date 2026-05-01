@@ -2660,7 +2660,81 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
-  test(`${executionKind} unresolved file-like paths fall back to search links while plain words do not`, async ({
+  test(`${executionKind} multiline line-number links resolve against the previous path line`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const pathLineText = 'link-target.ts';
+    const lineNumberLinkText = '3:1';
+    const duplicateWordLinkLineText = lineNumberLinkText;
+    const resultLineText = `  ${lineNumberLinkText}  export const value = 1;`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [lineNumberLinkText]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${duplicateWordLinkLineText}\r\n${pathLineText}\r\n${resultLineText}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: lineNumberLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  line: entry.payload.link.line,
+                  column: entry.payload.link.column,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: lineNumberLinkText,
+              path: pathLineText,
+              line: 3,
+              column: 1,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} word links match plain words and unresolved file-like paths as search links`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -2684,15 +2758,11 @@ for (const executionKind of ['agent', 'terminal']) {
     await settleWebview(page, 4);
     await clearPostedMessages(page);
 
-    await expectTestDomActionError(
-      page,
-      {
-        kind: 'activateExecutionLink',
-        nodeId,
-        text: searchWordText
-      },
-      'was not detected'
-    );
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: searchWordText
+    });
     await performTestDomAction(page, {
       kind: 'activateExecutionLink',
       nodeId,
@@ -2717,6 +2787,18 @@ for (const executionKind of ['agent', 'terminal']) {
             kind: executionKind,
             link: {
               linkKind: 'search',
+              text: searchWordText,
+              searchText: searchWordText,
+              contextLine: searchWordText,
+              bufferStartLine: 0,
+              source: 'word'
+            }
+          },
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'search',
               text: missingPathText,
               searchText: missingPathText,
               contextLine: missingPathText,
@@ -2728,7 +2810,56 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
-  test(`${executionKind} trims attached CJK prose prefixes from unresolved file-like paths`, async ({
+  test(`${executionKind} low-confidence word links underline only while the modifier is held`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const searchWordText = 'xxxtest';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${searchWordText}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: searchWordText
+      });
+
+      await expect
+        .poll(async () => readTerminalUnderlinedText(page, nodeId))
+        .not.toContain(searchWordText);
+
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(searchWordText);
+
+      await page.keyboard.up('Control');
+      await expect
+        .poll(async () => readTerminalUnderlinedText(page, nodeId))
+        .not.toContain(searchWordText);
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} does not synthesize trimmed links from attached CJK prose`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -2751,44 +2882,18 @@ for (const executionKind of ['agent', 'terminal']) {
       liveSession: true
     });
     await settleWebview(page, 4);
-    await clearPostedMessages(page);
-
-    await performTestDomAction(page, {
-      kind: 'activateExecutionLink',
-      nodeId,
-      text: cleanPathText
-    });
-
-    await expect
-      .poll(async () => {
-        return page.evaluate(() => {
-          return JSON.stringify(
-            window.__devSessionCanvasHarness
-              .getPostedMessages()
-              .filter((entry) => entry.type === 'webview/openExecutionLink')
-              .map((entry) => entry.payload)
-          );
-        });
-      })
-      .toBe(
-        JSON.stringify([
-          {
-            nodeId,
-            kind: executionKind,
-            link: {
-              linkKind: 'search',
-              text: cleanPathText,
-              searchText: cleanPathText,
-              contextLine: proseAttachedLine,
-              bufferStartLine: 0,
-              source: 'word'
-            }
-          }
-        ])
-      );
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: cleanPathText
+      },
+      'was not detected'
+    );
   });
 
-  test(`${executionKind} trims CJK punctuation and detects multiple directory links in one Chinese sentence`, async ({
+  test(`${executionKind} keeps native punctuation behavior for directory links in Chinese prose`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -2815,11 +2920,15 @@ for (const executionKind of ['agent', 'terminal']) {
       nodeId,
       text: firstDirectoryLinkText
     });
-    await performTestDomAction(page, {
-      kind: 'activateExecutionLink',
-      nodeId,
-      text: secondDirectoryLinkText
-    });
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: secondDirectoryLinkText
+      },
+      'was not detected'
+    );
 
     await expect
       .poll(async () => {
@@ -2853,17 +2962,6 @@ for (const executionKind of ['agent', 'terminal']) {
               path: firstDirectoryLinkText,
               targetKind: 'file',
               source: 'detected'
-            }
-          },
-          {
-            nodeId,
-            kind: executionKind,
-            link: {
-              linkKind: 'file',
-              text: secondDirectoryLinkText,
-              path: secondDirectoryLinkText,
-              targetKind: 'file',
-              source: 'refined'
             }
           }
         ])
@@ -5004,6 +5102,20 @@ async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttemp
   }
 
   throw new Error(`Failed to scroll terminal viewport for node ${nodeId}.`);
+}
+
+async function readTerminalUnderlinedText(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const rows = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-rows`);
+    if (!(rows instanceof HTMLElement)) {
+      return '';
+    }
+
+    return Array.from(rows.querySelectorAll('span'))
+      .filter((span) => span instanceof HTMLElement && span.style.textDecoration.includes('underline'))
+      .map((span) => span.textContent ?? '')
+      .join('');
+  }, nodeId);
 }
 
 async function dragConnectionBetweenAnchors(page, { sourceNodeId, sourceAnchor, targetNodeId, targetAnchor }) {

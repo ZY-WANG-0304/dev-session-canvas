@@ -3898,6 +3898,65 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    const multilinePathLineText = 'link-target.ts';
+    const multilineLinkText = '2:8';
+    const multilineResultLine = `  ${multilineLinkText}  export const two = 2;`;
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n%s\\n' '${multilinePathLineText}' '${multilineResultLine}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(multilineResultLine));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(multilineResultLine));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: multilineLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === multilineLinkText &&
+            event.detail?.linkKind === 'file'
+        ),
+      10000
+    );
+    const multilineEditor = await waitForActiveEditor(
+      () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.fsPath !== linkTargetPath) {
+          return false;
+        }
+
+        return editor.selection.active.line === 1 && editor.selection.active.character === 7;
+      },
+      10000
+    );
+    assert.strictEqual(multilineEditor.document.uri.fsPath, linkTargetPath);
+    assert.strictEqual(multilineEditor.selection.active.line, 1);
+    assert.strictEqual(multilineEditor.selection.active.character, 7);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
     const missingSearchLinkText = 'missing-target.ts:9:3';
     await performWebviewDomAction(
       {

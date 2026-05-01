@@ -1,7 +1,7 @@
 ---
 title: 执行节点的 VSCode 原生 Terminal 交互对齐
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -14,193 +14,202 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
+  - docs/exec-plans/active/execution-terminal-native-link-parity.md
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
   - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
-updated_at: 2026-04-18
+updated_at: 2026-05-01
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
 
 ## 1. 背景
 
-当前仓库已经把 `Terminal` 与 `Agent` 节点都收口成画布内的 runtime window，主要输入输出都发生在嵌入式 `xterm.js` 里。
+当前仓库已经让 `Terminal` 与 `Agent` 节点具备了画布内嵌终端、拖拽输入路径、文件路径 / URL 点击跳转，以及基础的 `OSC 8` / `search fallback` 能力。
 
-但这两类节点还缺少 VSCode 原生 Terminal 用户已经默认拥有的两项标准交互：
+但最新用户反馈已经明确表明，这一轮“基础可用”的实现还停留在“近似原生”而不是“原生同类体验”层级。当前最突出的两个问题是：
 
-1. 从 Explorer 拖拽文件到终端后，把路径文本插入当前会话。
-2. 在终端输出里识别文件路径与 URL，并支持点击跳转。
+1. 终端输出里仍会出现比 VSCode 原生 Terminal 更多的误判链接，尤其是 file-like 文本被过度注册链接。
+2. 终端输出中的跨行链接当前还不支持，例如上一行是路径、下一行是 `16:5` 这类 ripgrep / eslint / diff 输出，原生 Terminal 能点，执行节点里不能点。
 
-这两项能力缺失后，用户在画布里工作时会频繁退回原生 Terminal 或编辑器，破坏“执行窗口留在画布里”的主路径。
+因此，这一轮不再把目标限定为“支持路径和 URL 点击”，而是要把**除实现分层之外的链接解析逻辑与交互逻辑，全面向 VSCode 原生 Terminal 对齐**。
 
 ## 2. 问题定义
 
-本轮需要回答的不是“要不要做拖拽和链接”，而是：
+本轮需要明确的不是“是否继续补若干启发式规则”，而是：
 
-1. 这两项能力应该以什么标准对齐 VSCode 原生 Terminal。
-2. 在 `Webview` 里运行的 `xterm.js` 要如何接住 Explorer 拖拽和 link activation，而不越过宿主边界直接调用 VSCode API。
-3. 哪些逻辑应当留在 Webview，哪些必须回到 Extension Host。
+1. 当前执行节点里的 link detector / opener / hover 语义，应否继续维护一套仓库自定义 heuristics。
+2. 如果用户要求行为向 VSCode 原生 Terminal 全面对齐，那么哪些部分必须对齐到源码级别的解析顺序、交互规则与 opener 语义，哪些部分只需要保持当前 Webview -> Host 的架构边界即可。
+3. 如何在不照搬 VSCode 内部类结构的前提下，把执行节点的用户可观察行为收口成与原生 Terminal 同一套规则。
 
 ## 3. 目标
 
-- 让 `Terminal` 与 `Agent` 节点都支持文件拖拽输入路径。
-- 让执行节点中的文件路径、URL 与原生 search fallback 都可被识别并点击打开。
-- 与 VSCode 原生 Terminal 在“入口机制、修饰键规则、宿主打开路径”上保持同类实现分层，而不是在 Webview 里另造一套终端交互系统。
+- 执行节点中的链接检测顺序与命中结果，默认按 VSCode 原生 Terminal 的显式 hyperlink、multiline、本地文件、URI、word/search 语义对齐。
+- 当前仓库里“过多链接”的主问题应通过原生 detector 规则收口，而不是继续叠加仓库私有 heuristics。
+- 执行节点支持原生同类的跨行链接主路径，至少覆盖 ripgrep / eslint 类“上一行路径、下一行行列号”以及 git diff hunk 这类原生已支持场景。
+- 文件、目录、URL、search link 的 hover 文案、修饰键规则、打开语义与 fallback 语义，默认与 VSCode 原生 Terminal 一致。
+- 保留当前仓库的 Webview -> Host 架构边界，不要求把实现类、模块切分、扩展 API 接线方式做成与 VSCode 源码同构。
 
 ## 4. 非目标
 
-- 不在本轮覆盖 git commit hash 等 VSCode Terminal 还支持的其它 link type。
-- 不在本轮承诺完全复刻 VSCode 内部 terminal hover widget 的所有像素细节，也不单独收口链接下划线的像素级一致性。
-- 不在本轮把链接体系扩成“任意文本都能点击”的通用 NLP 识别器；低置信度 fallback 仍需受 workspace 与宿主 opener 约束。
+- 不要求把当前仓库内部类名、模块结构、消息协议或宿主 / Webview 分层改写成 VSCode 源码的类图。
+- 不要求在本轮把 VSCode 原生 Terminal 的 external link provider 扩展槽直接复制到仓库协议中；只要求当前仓库自己负责的内置解析与交互行为与原生一致。
+- 不要求像素级复刻 VSCode workbench hover widget 的 DOM 结构、动画和样式细节；但 hover 出现时机、文案和修饰键提示语义必须对齐。
+- 不在本轮扩大到 git commit hash、问题 matcher 等其它原生 Terminal 支持但当前用户未提出的 link taxonomy，除非它们是原生 multiline / local / uri / word 主路径收口所必需的组成部分。
 
 ## 5. 候选方案
 
-### 5.1 在 Webview 内自行实现拖拽和链接全部逻辑
+### 5.1 继续在当前仓库 heuristics 上增量打补丁
 
 特点：
 
-- Webview 自己从 `DragEvent` 和终端文本中拿到全部信息。
-- 文件打开、URL 打开和路径准备都由前端直接决定。
+- 继续保留当前 `file -> url -> search` provider 架构与仓库自定义 refine。
+- 遇到误判就补新的 trim rule，遇到漏判就补新的正则。
 
 不选原因：
 
-- Webview 不能直接调用 VSCode API。
-- 路径准备与资源打开带有平台、配置和宿主语义，放在 Webview 会把边界做反。
-- 这条路线会偏离 VSCode 原生 Terminal 的分层实现。
+- 这条路线已经证明只能“局部收敛”，无法保证与原生 Terminal 的整体行为一致。
+- 用户这次明确要求的是“除实现分层之外全面向原生对齐”，继续打补丁会让仓库结论与用户目标背离。
+- 当前最关键的跨行链接问题，本质上不是一两条后缀正则能稳定补齐的。
 
-### 5.2 完全依赖 xterm.js 内置 addon，不做宿主消息
-
-特点：
-
-- URL 可能可以靠现成 addon。
-- 文件路径和拖拽尽量在 xterm 范围内解决。
-
-不选原因：
-
-- VSCode 原生 Terminal 也没有只靠 xterm 自己完成这两项能力；它对拖拽和链接都包了一层宿主逻辑。
-- 文件路径打开最终仍需要 Extension Host 调用 VSCode API。
-
-### 5.3 Webview 负责事件入口与 xterm Link Provider，宿主负责路径准备与打开动作
+### 5.2 保留当前 Webview -> Host 边界，但把 detector / opener 语义改成原生同类实现
 
 特点：
 
-- 拖拽入口在 Webview：读取 `DataTransfer`，提取第一个文件资源，发消息给宿主。
-- 链接检测入口在 Webview：使用 xterm `registerLinkProvider` 暴露 link。
-- 最终的路径准备、文件解析与 URL 打开都在 Extension Host 执行。
+- 继续使用当前仓库已有的 Webview xterm + Host opener 架构。
+- 但链接检测顺序、跨行规则、本地文件验证、URI / word / search fallback、hover 语义与 opener 分流都按 VSCode 原生 Terminal 对齐。
 
 当前选择原因：
 
-- 这与 VSCode 原生 Terminal 的实现分层最接近。
-- 它保留了 Webview 与宿主的清晰边界。
-- 两类执行节点都能共享同一套 UI 层交互，而不把 VSCode API 漏进 Webview。
+- 它满足用户“架构分层不必对齐，但解析与交互要全面对齐”的要求。
+- 它允许仓库继续复用当前的消息协议、行级 cwd 追踪与宿主诊断能力。
+- 它把“行为 oracle”明确收口到 VSCode 原生 Terminal，而不是继续让仓库私有 heuristics 主导产品语义。
 
-## 6. 当前结论
+### 5.3 改成宿主全量扫描输出并在 Webview 只画结果
 
-当前收敛结论如下：
+特点：
 
-- 执行节点要补齐的标准交互是：
-  - Explorer/文件系统拖拽文件到终端区域后，把路径文本输入当前会话。
-  - 输出中的文件路径、URL，以及无法解析为真实文件目标的普通词条，都可以按 VSCode 原生 Terminal 的修饰键规则进入对应 opener。
+- 宿主直接负责所有文本解析、hover 与打开逻辑。
+- Webview 仅渲染已解析好的 link overlays。
 
-- 拖拽入口使用 Webview 原生 `DragEvent` / `DataTransfer`，并优先读取与 VSCode 原生 Terminal 一致的数据来源：
-  - `ResourceURLs`
-  - `CodeFiles`
-  - 文件系统 `Files`
+不选原因：
 
-- 根据当前 VSCode 源码，原生 Terminal 拖拽消费的是“第一个文件资源”，并把它交给宿主侧路径准备逻辑；当前没有源码证据支持“Explorer 拖拽默认输入 workspace 相对路径”这一说法，因此本仓库不能把它写成已确认结论。
+- 这会破坏当前 `xterm.registerLinkProvider` 作为交互入口的架构边界。
+- 用户这次只要求“实现代码 / 架构分层不必对齐”，没有要求推翻现有边界。
+- 在当前仓库里，继续让 xterm 负责 buffer 与 link interaction，风险更低，也更贴近原生 Terminal 的入口模型。
 
-- 宿主侧拖拽路径准备仍参考 VSCode `preparePathForShell` 的平台分支，但不把“当前上游实现的所有字符串改写”直接当成产品语义照搬：
-  - PowerShell 分支只插入被正确引用的路径文本，不插入 `&` 调用运算符，避免“拖拽插入路径”退化成“准备执行该路径”。
-  - Windows 上进入 `WSL` 或非 Git Bash 分支时，路径转成 Unix 风格后仍要补 shell quoting，避免含空格文件名被拆词。
-  - POSIX 合法文件名字符必须按原值保留；宿主只做 quoting / escaping，不删除 `#`、`!`、`$`、`&` 等合法字符。
+## 6. 风险与取舍
 
-- 拖拽入口在 Webview，最终输入文本准备在宿主；第二轮收口后，拖拽成功时会立即把焦点交还给当前 xterm textarea，避免拖拽后用户还要额外点一次终端才能继续输入。
+- 取舍：本轮把“原生行为一致性”放在“继续保留仓库自定义误报抑制规则”之前。
+  原因：用户已经明确要求向原生 Terminal 对齐，仓库不应继续把自定义 heuristics 当成正式产品语义。
 
-- 当前已确认的宿主现实约束是：从 VSCode Explorer 拖资源进入 Webview 时，VSCode 在拖拽期间默认不会把事件直接交给 Webview；当前人工观察与上游源码都指向“按住 `Shift` 时 Webview 才会重新接管拖拽事件”。这不是当前仓库的 Webview 内部解析逻辑可以单独消除的限制。
+- 风险：原生 `word/search link` 语义理论上比当前仓库更宽，可能让“任何普通词条都能触发 search link”重新进入可观察范围。
+  当前缓解：本轮不是简单放开所有当前自定义 search fallback，而是把完整 detector 顺序和优先级一起对齐；产品上接受“native parity 可能与当前主观预期不同”，但不接受“仓库私有误判更多却仍自称原生对齐”。
 
-- 因此当前实现能保证的是“当 Webview 已经收到拖拽事件后，首个资源会按宿主路径准备逻辑写入 PTY”；但“无需修饰键直接把 Explorer 资源拖进执行节点”不能再写成已验证结论。为避免误导，执行节点界面已显式提示 `Explorer 拖拽请按住 Shift`。
+- 风险：当前仓库的行级 cwd 追踪来自 `ExecutionTerminalLineContextTracker`，而不是 VSCode 内部的 command detection capability；若对齐方式不当，容易出现“顺序看似对齐，但相对路径解析结果仍不一致”。
+  当前缓解：本轮把现有 line context tracker 明确当作“原生行级 cwd 能力的仓库内等价输入”，要求 detector / opener 使用同一条 line-scoped cwd 语义，而不是回退到节点级 cwd。
 
-- 链接检测使用 xterm `registerLinkProvider`，而不是在 React 层或宿主侧扫描终端输出字符串。
+- 风险：原生 hover widget 依赖 workbench 内部服务；当前仓库仍在 Webview 内自绘 tooltip。
+  当前缓解：本轮只要求 hover 时机、文案和修饰键语义对齐，不要求 DOM / CSS 同构；`workbench.hover.delay` 不再透传到 Webview，而是保留仓库内固定 delay 作为边界取舍。
 
-- `OSC 8` 显式超链接是比隐式文本猜测更高优先级的入口；当前设计收口为：
-  - Webview 侧继续使用 xterm 作为显式超链接的 buffer/交互承载。
-  - 执行节点需要显式提供 `linkHandler`，让显式 hyperlink 直接走现有的宿主打开链路，而不是退回浏览器默认确认框。
-  - 显式 `file://` URI 应按 file opener 特化；其余 URI 统一走 `vscode.open` 宿主路径。
+- 风险：若继续大量保留当前仓库的 CJK refine / path trim 私有逻辑，会与“全面向原生对齐”的目标冲突。
+  当前缓解：当前仓库已有的自定义 refine 不再默认视为正式能力；只有当它是把 VSCode 原生 parser 移植到当前 Webview / Host 边界时不可避免的适配层时，才允许保留，并需在实现文档里明确标注“这是适配层，不是额外产品规则”。
 
-- URL 检测不再停留在 `http/https` 单正则，而是升级为成熟 URL parser 驱动的 provider；`mailto:`、`vscode://` 等 URI 也应纳入同一条宿主 opener 路径。
+## 7. 正式方案
 
-- 文件路径链接采用“Webview 检测候选，宿主解析/验证后再注册链接”的两段式实现；未被宿主确认存在的候选不会成为可点击链接。
+### 7.1 对齐范围
 
-- VSCode 原生 Terminal 里的 `word/search link` 需要一并对齐：
-  - `search` fallback 只服务于“看起来像文件路径、但未命中 file resolver 的候选”，而不是把整行普通词条都注册成可点击链接。
-  - 宿主打开时先按与原生一致的思路尝试 exact-open；若仍无法解析到真实文件/目录，则回退到 `workbench.action.quickOpen`，把该路径词条送入顶部搜索。
-  - 因此当前仓库中的对齐语义是：“不存在的路径词条”不会成为 file link，但仍可作为 search link 触发 Quick Access；普通文本不会因为 search fallback 变成可点击链接。
+从本轮开始，执行节点里的链接能力以 **VSCode 原生 Terminal 的用户可观察行为** 为准绳。这里的“用户可观察行为”包括：
 
-- 文件路径解析在第三轮收口后改为三层：
-  - 高置信度候选：优先按与输出 buffer 行对齐的 `cwd` 解析。
-  - 上下文缺失时：回退到节点当前宿主 `cwd`。
-  - 低置信度候选：仅在唯一 workspace 命中时做 fallback，不再把“找不到直接路径”直接等同于不可点。
+- 哪些文本会成为 link。
+- 不同类型 link 的优先级顺序。
+- hover 在什么时机出现、显示什么文案、要求什么修饰键。
+- 点击后文件、目录、URL、search 各自走哪条打开路径。
+- 哪些 path-like 文本必须等宿主验证后才可点击，哪些可以直接当 URI / search link。
 
-- 最终打开动作必须在宿主侧执行：
-  - 文件路径：`openTextDocument` + `showTextDocument`
-  - URL：通过 `vscode.open` 命令委托给 VSCode opener 路径
+当前仓库仍保留 Webview 与 Host 分层：`src/webview/executionTerminalNativeInteractions.ts` 继续作为 xterm 交互入口，`src/panel/executionTerminalNativeHelpers.ts` 与 `src/panel/CanvasPanelManager.ts` 继续作为宿主解析 / 打开入口；但这些模块内部的规则应当向 VSCode 原生 Terminal 对齐，而不再长期维护仓库自定义的替代语义。
 
-- `Agent` 与 `Terminal` 节点都属于 execution runtime window，因此拖拽和链接的 Webview 交互层应共享一套实现；但宿主仍可按节点 kind 区分路径准备/解析策略，因为 `Agent` 运行的是直接 PTY CLI，不等于 shell。
+### 7.2 detector 顺序与 link taxonomy
 
-- 宿主实现按 prepare / resolve / open 三层收口，目录目标统一分成：
-  - workspace 内目录：`revealInExplorer`
-  - workspace 外目录：`vscode.openFolder(uri, true)`
+执行节点中的 detector 顺序收口为：
 
-## 7. 风险与取舍
+1. `OSC 8` / 显式 hyperlink，由 `xterm.options.linkHandler` 处理。
+2. multiline detector。
+3. local file / folder detector。
+4. URI detector。
+5. word / search detector。
 
-- 取舍：本轮不做 VSCode 级别的完整 link taxonomy，只先覆盖文件路径和 URL。
-  原因：这是用户明确要求的两类能力，也是 VSCode Terminal 最常见的主路径。
+这意味着当前仓库的 `file -> url -> search` 简化顺序需要被替换。新的顺序要求如下：
 
-- 风险：当前仓库仍没有完整 VSCode shell integration，因此“逐行 cwd”不能照搬原生 Terminal 的全部上下文来源。
-  当前缓解：第三轮实现改为 Host 侧行上下文跟踪器，与 headless xterm 保持同一 buffer 行号语义；其优先消费显式 cwd 线索，并在没有线索时安全回退到节点当前 cwd。
+- multiline detector 必须先于 local / uri / word 执行，这样“上一行路径、下一行 16:5”的输出才能与原生 Terminal 一样优先解析为文件链接，而不是被当成孤立 search token。
+- local detector 必须在 URI detector 之前，以保持原生 Terminal 对本地路径的优先级。
+- word / search detector 必须位于最低优先级，只在更高优先级 detector 都未吞掉对应范围时，才为该词条暴露 search 语义。
 
-- 风险：Explorer 拖拽进入 Webview 的主 blocker 不是单一 `DataTransfer` type，而是 VSCode 宿主会在拖拽期间默认屏蔽 Webview 接收事件；在当前上游行为下，人工验证显示按住 `Shift` 才会把拖拽重新交给 Webview。
-  当前缓解：仓库侧继续兼容 `ResourceURLs`、`CodeFiles`、`text/uri-list` 和 Chromium/Electron 文件拖拽入口，确保一旦事件进入 Webview 就能完成资源提取；同时在执行节点界面显式提示 `Explorer 拖拽请按住 Shift`。若后续需要彻底消除该限制，只能继续寻找 VSCode 宿主级能力，而不是继续在 Webview 内部补解析分支。
+当前仓库不要求复制 VSCode 的外部扩展 link provider 注册槽，但内置 detector 的顺序、遮蔽关系和最终可点击范围必须与原生一致。
 
-- 风险：扩展 API 不直接暴露 VSCode 内部的 opener service。
-  当前缓解：URL 打开改走 `vscode.open` 命令，这条路径最终委托 `_workbench.open`，比直接 `env.openExternal` 更接近原生 Terminal 的 opener 行为。
+### 7.3 显式 hyperlink 语义
 
-- 风险：当前 file-like link refine 仍是启发式收口，少量“自然语言说明紧贴路径文本”的终端输出，仍可能把前缀或后缀文本一起并入 candidate，随后退化成 `search` link。
-  当前缓解：仓库已经把 `search` fallback 收窄到 unresolved file-like candidate，并补了中文前缀与中式标点裁剪回归；剩余少量误判已登记到技术债追踪，不把 file detection coverage 写成与 VSCode 原生 Terminal 完全等价。
+`src/webview/executionTerminalNativeInteractions.ts` 中的显式 hyperlink 入口继续由 xterm `linkHandler` 承载，但其行为要对齐原生 Terminal：
 
-## 8. 当前验证方法
+- 必须允许非 `http/https` 协议参与显式 hyperlink 检测。
+- `file://` URI 必须按文件 / 目录 opener 特化，而不是一律当成普通外链。
+- 非 `file://` URI 的打开前检查应对齐原生 Terminal 的 allowed scheme 语义；当前仓库可以在 Host 侧实现配置检查与提示，而不要求复制原生内部 prompt 类。
+- hover 文案与修饰键语义必须与原生保持一致。
 
-至少需要完成以下验证：
+### 7.4 本地文件与跨行链接解析
 
-1. 拖拽单个文件到 `Terminal` 节点后，会话收到路径文本输入。
-2. 相同行为对 `Agent` 节点也成立。
-3. 终端输出中的文件路径点击后会在编辑器中打开并跳到指定行列。
-4. `OSC 8` 显式超链接、`http/https`、`mailto:`、`vscode://` URL 点击后都会进入正确的 VSCode opener 路径。
-5. 悬停时存在修饰键提示 tooltip，且文案遵循 `editor.multiCursorModifier`；文件/目录/URL 的 hover 文案与最终 opener 类型一致。
-6. cwd 变化后的相对路径会优先按对应输出上下文解析；找不到直接路径时，低置信度 fallback 至少能恢复唯一 workspace 命中的主路径文件。
-7. 不存在的文件路径词条在未命中 file resolver 时，会按原生 `search link` 语义触发 Quick Access 搜索；普通文本不会被注册成链接。
+`src/common/executionTerminalLinks.ts` 不再把当前仓库私有的简化 parser 当成最终产品语义来源。它要么被替换为基于原生 Terminal 规则的等价 parser，要么只保留当前仓库消息模型与适配层所必需的类型定义。
 
-## 9. 当前验证状态
+本轮文件 / 目录链接解析的正式规则如下：
 
-- 2026-04-17 已完成 VSCode 源码级对照，明确拖拽和链接的原生分层与调用链。
-- 2026-04-17 已完成 Webview 自动化回归：
-  - `npm run test:webview` 覆盖了 `Agent` / `Terminal` 两类节点的拖拽消息转发，并断言只消费第一个 Explorer 资源。
-  - 同一组回归覆盖了文件路径 `src/index.ts:42:10` 与 URL `https://example.com/docs?q=1` 的 link activation 消息形态，确认 Webview 侧通过 xterm `registerLinkProvider` 暴露统一打开动作。
-- 2026-04-17 已完成真实 VS Code 宿主 smoke 的链接侧验证：
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 当前真实覆盖的是文件链接与 URL 打开链路。
-  - 该 smoke 里的拖拽断言本质上是 Webview DOM action，不是真实 Explorer → Webview 宿主拖拽，因此不能继续当成“真实 Explorer 拖拽已验证”的证据。
-- 2026-04-17 已完成第二轮收口验证：
-  - `npm run typecheck` 通过。
-  - `npm run test:webview` 通过，新增断言覆盖了拖拽后焦点回到 `.xterm-helper-textarea`，以及文件链接在宿主解析回包后才会发起 `openExecutionLink`。
-  - 同一轮 trusted smoke 再次通过，确认宿主预解析文件链接、`cwd` 收紧策略和目录打开分层没有打坏真实宿主场景。
-- 2026-04-17 已补齐真实宿主里的剩余自动化断言：
-  - trusted smoke 现在会点击本地 `http://127.0.0.1` URL，并断言真实 VSCode Host 最终把该链接委托给 `vscode.open`，从而覆盖 URL 的宿主 opener 落点，而不依赖外部浏览器或特定 tab 形态。
-  - 同一条 trusted smoke 现在会在真实 Webview 容器里触发链接 hover，并断言 tooltip 文案与 `editor.multiCursorModifier` 对齐。
-- 2026-04-17 人工复核后确认：真实 Explorer → Webview 的无修饰键拖拽仍受 VSCode 宿主限制；当前产品口径已显式收口为“按住 `Shift` 时 Webview 接管拖拽”，不再把“无修饰键真实 Explorer 拖拽”写成承诺行为。
-- 2026-04-18 已完成第三轮自动化验证：
-  - `npm run typecheck` 通过。
-  - `npm run test:webview` 通过，新增覆盖 `OSC 8`、`mailto:`、`vscode://`、basename `path:line:col` 与显式 URI 打开。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，确认真实宿主中的 basename `link-target.ts:3:1`、URL opener 与 hover tooltip 都已收口。
-- 2026-04-18 已完成原生 `word/search link` 对齐验证：
-  - `npm run typecheck` 通过。
-  - `npm run test:webview` 通过，新增覆盖“不存在路径词条会回退为 `search` link，而普通文本不会被注册成 link”。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，确认真实宿主中的不存在路径词条点击后会走 `workbench.action.quickOpen`。
+- 单行 path 检测必须对齐原生 Terminal 的 local link parser，包括后缀 `:line:col`、括号风格行列号、`File "..."` 与其它原生 fallback matcher 主路径。
+- 当普通单行解析失败时，仍需保留原生 local detector 的 fallback matcher 行为与 styled segment fallback，而不是继续使用当前仓库私有的 CJK / prose refine 作为主方案。
+- 跨行链接必须补齐原生 multiline detector 主路径，至少覆盖：
+  - ripgrep / eslint 类“上一行路径、下一行 `16:5`”格式。
+  - git diff hunk header 类原生已支持场景。
+- 本地路径解析必须继续使用当前仓库已有的 line-scoped cwd 语义；也就是 `src/panel/executionTerminalLineContextTracker.ts` 追踪出来的 `buffer line -> cwd` 结果，应作为原生 command detection 能力在当前仓库里的等价输入。
+
+### 7.5 URI 与 word/search 语义
+
+当前仓库的 URL 检测与 search fallback 需要从“仓库私有收口逻辑”切换到“原生 Terminal 语义”。正式规则如下：
+
+- URI detector 的结果范围与 file opener 分流应对齐原生 Terminal；这意味着对 `file://`、普通 URI 以及带 line/col 后缀的 file URI，应遵循原生的区分方式。
+- word detector 的切词规则必须受 `terminal.integrated.wordSeparators` 控制，并处于最低优先级。
+- search link 的打开逻辑不再是“仓库判断为 file-like 才给 search”，而是与原生 Terminal 一样：先尝试 exact-open，再回退到 Quick Access 搜索。
+- 若原生 Terminal 对普通词条暴露 search link，而当前仓库没有，那应以原生行为为准。
+
+### 7.6 hover、修饰键与 opener 行为
+
+`src/webview/executionTerminalNativeInteractions.ts` 与 `src/panel/executionTerminalNativeHelpers.ts` 共同负责当前仓库中的 hover 与 opener。虽然实现层仍保留 Webview / Host 边界，但用户可见行为应按下列规则对齐：
+
+- 激活修饰键继续遵循 `editor.multiCursorModifier`，行为与原生 Terminal 一致。
+- hover 文案和文案中的修饰键描述，应对齐原生 Terminal，而不是继续使用仓库自定义命名；但 `workbench.hover.delay` 不作为 Host -> Webview 运行时协议的一部分透传。
+- low-confidence 的 `word/search link` 不应在普通 hover 下默认显示下划线；只有按住激活修饰键时，才像原生 Terminal 一样临时强调为可点击状态。
+- 文件打开：`showTextDocument` 语义与原生 `openEditor` 对齐，包含 line / column selection。
+- workspace 内目录：`revealInExplorer`。
+- workspace 外目录：新窗口打开目录。
+- search：先 exact-open，再 `workbench.action.quickOpen`。
+- URL：非 `file://` 走 VSCode opener 路径，而不是浏览器默认行为。
+
+### 7.7 当前自定义 heuristics 的处置原则
+
+当前仓库已有的自定义 heuristics，例如 CJK 前缀裁剪、额外 trim rule、path-like search 限流，不再默认视为正式产品规则。它们的处置原则如下：
+
+- 如果某条规则是为了弥补当前仓库 Webview / Host 边界与原生内部服务差异而必须存在，则可保留，但应在实现文档和注释里说明“这是适配层”。
+- 如果某条规则只是为了继续偏离原生 detector 结果，则应删除或降级，不得继续作为默认行为。
+- 若原生 Terminal 的行为本身会让某些普通词条成为 search link，本轮不能以“当前仓库主观上不想给太多 link”为由再次私自收窄。
+
+## 8. 验证方法
+
+本轮至少需要完成以下验证，才能把文档重新标回 `已验证`：
+
+1. 在同一 workspace 中，对照 VSCode 原生 Terminal 与执行节点，验证单行文件路径、跨行 ripgrep / eslint 路径、git diff hunk、`file://` URI、普通 URI、普通词条 search 的命中结果与打开结果一致。
+2. `npm run typecheck` 通过。
+3. `npm run test:webview` 通过，并新增覆盖：
+   - multiline link 检测。
+   - 当前“过多链接”误判的回归样例，对齐到原生结果。
+   - word / search link 的原生优先级与 fallback 行为。
+4. `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，并至少在真实宿主中覆盖：
+   - 跨行文件链接打开。
+   - search link 的 exact-open / Quick Access fallback。
+   - hover 修饰键文案与打开动作。
+5. 若新增了 allowed scheme 提示语义，还必须补一条真实或可控自动化验证，证明未放行 scheme 不会直接打开。
