@@ -220,6 +220,7 @@ interface PendingNodeViewportFocusRequest {
 }
 interface PendingManualNodeCreateRequest {
   requestId: string;
+  knownNodeIdsSnapshot: ReadonlySet<string>;
   kind: CanvasCreatableNodeKind;
   preferredPosition?: CanvasNodePosition;
   agentProvider?: AgentProviderKind;
@@ -743,7 +744,7 @@ function App(): JSX.Element {
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
   const pendingFocusRequestRef = useRef<PendingNodeViewportFocusRequest | undefined>();
   const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
-  const knownHostNodeIdsRef = useRef<Set<string>>(new Set());
+  const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
 
@@ -757,6 +758,7 @@ function App(): JSX.Element {
           {
             const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
             const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+            latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
             latestRuntimeContext = normalizedRuntime;
             setHostState(normalizedState);
             setRuntimeContext(normalizedRuntime);
@@ -1022,7 +1024,6 @@ function App(): JSX.Element {
 
   useEffect(() => {
     if (!hostState) {
-      knownHostNodeIdsRef.current = new Set();
       return;
     }
 
@@ -1030,7 +1031,7 @@ function App(): JSX.Element {
     if (pendingManualCreateRequest) {
       const createdNode = resolvePendingManualNodeCreateTarget(
         hostState.nodes,
-        knownHostNodeIdsRef.current,
+        pendingManualCreateRequest.knownNodeIdsSnapshot,
         pendingManualCreateRequest
       );
       if (createdNode) {
@@ -1038,8 +1039,6 @@ function App(): JSX.Element {
         pendingManualCreateRequestRef.current = undefined;
       }
     }
-
-    knownHostNodeIdsRef.current = new Set(hostState.nodes.map((node) => node.id));
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
@@ -1824,12 +1823,15 @@ function App(): JSX.Element {
     agentCustomLaunchCommand?: string
   ): void {
     const requestId = createManualNodeCreateRequestId();
+    const resolvedPreferredPosition =
+      preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
     const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
     const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
     pendingManualCreateRequestRef.current = {
       requestId,
+      knownNodeIdsSnapshot: new Set(latestHostNodeIdsRef.current),
       kind,
-      preferredPosition,
+      preferredPosition: resolvedPreferredPosition,
       agentProvider: resolvedAgentProvider,
       agentLaunchPreset: resolvedAgentLaunchPreset,
       agentCustomLaunchCommand:
@@ -1840,8 +1842,7 @@ function App(): JSX.Element {
       payload: {
         requestId,
         kind,
-        preferredPosition:
-          preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current),
+        preferredPosition: resolvedPreferredPosition,
         agentProvider,
         agentLaunchPreset,
         agentCustomLaunchCommand

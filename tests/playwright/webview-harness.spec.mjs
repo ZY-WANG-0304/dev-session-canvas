@@ -3594,6 +3594,61 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
 });
 
+test('host-triggered manual node creation snapshots existing nodes before resolving autofocus', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'note-1',
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  const initialState = createNoteNodeState();
+  const runtime = createRuntimeContext();
+
+  await page.evaluate(
+    ({ nextState, nextRuntime }) => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/bootstrap',
+        payload: {
+          state: nextState,
+          runtime: nextRuntime
+        }
+      });
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind: 'note'
+        }
+      });
+    },
+    {
+      nextState: normalizeCanvasState(initialState),
+      nextRuntime: runtime
+    }
+  );
+
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  const nextState = createNoteNodeState();
+  nextState.nodes.push(
+    createManualNoteNode(
+      'note-2',
+      createPayload.preferredPosition ?? {
+        x: 320,
+        y: 0
+      }
+    )
+  );
+  await updateHostState(page, nextState, runtime);
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).toBe('note-2');
+});
+
 test('unrelated host errors do not cancel pending manual node centering', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
