@@ -2076,7 +2076,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
+    let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
+      onContentWillChange: () => {
+        nativeInteractions?.invalidateLinkResolutionCache();
+      },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
         snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
@@ -2089,7 +2093,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         }
       }
     });
-    const nativeInteractions = setupExecutionTerminalNativeInteractions({
+    nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
       kind: 'agent',
       terminal,
@@ -2251,7 +2255,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
       controller.dispose();
-      nativeInteractions.dispose();
+      nativeInteractions?.dispose();
       executionTerminalRegistry.delete(id);
       terminal.dispose();
     };
@@ -2625,7 +2629,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
+    let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
+      onContentWillChange: () => {
+        nativeInteractions?.invalidateLinkResolutionCache();
+      },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
         snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
@@ -2638,7 +2646,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         }
       }
     });
-    const nativeInteractions = setupExecutionTerminalNativeInteractions({
+    nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
       kind: 'terminal',
       terminal,
@@ -2800,7 +2808,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         window.cancelAnimationFrame(resizeFrameRef.current);
       }
       controller.dispose();
-      nativeInteractions.dispose();
+      nativeInteractions?.dispose();
       executionTerminalRegistry.delete(id);
       terminal.dispose();
     };
@@ -6483,6 +6491,7 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
 function createExecutionTerminalController(
   terminal: Terminal,
   options?: {
+    onContentWillChange?: () => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
   }
 ): ExecutionTerminalController {
@@ -6517,6 +6526,7 @@ function createExecutionTerminalController(
       pendingOutput = '';
       pendingExecutionTerminalDrains.delete(controller);
       writeGeneration += 1;
+      options?.onContentWillChange?.();
       options?.onSnapshotApplied?.(detail);
       queueTerminalWrite((done) => {
         restoreExecutionTerminalSnapshot(terminal, detail, done);
@@ -6536,6 +6546,7 @@ function createExecutionTerminalController(
       }
 
       controller.flushPendingOutput();
+      options?.onContentWillChange?.();
       queueTerminalWrite((done) => {
         terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
       });
@@ -6559,6 +6570,7 @@ function createExecutionTerminalController(
       pendingOutput = '';
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
+      options?.onContentWillChange?.();
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
       });

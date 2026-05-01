@@ -21,6 +21,7 @@
 - [x] (2026-05-01 00:18 +0800) 收口 hover 文案、low-confidence search hover 抑制、allowed scheme 与 opener 分流；hover delay 采用仓库内固定值，不把 `workbench.hover.delay` 透传进运行时协议。
 - [x] (2026-05-01 00:22 +0800) 更新 Playwright / smoke 用例，覆盖 multiline、plain word search、native punctuation 行为与 host 侧 multiline 打开路径。
 - [x] (2026-05-01 01:08 +0800) 继续把 low-confidence `word/search link` 的装饰行为对齐原生：默认 hover 不下划线，只有按住激活修饰键时才临时强调；并在现有 link Playwright 集合上完成回归验证。
+- [x] (2026-05-01 03:18 +0800) 根据 review 收口剩余 parity 缺口：search opener 现在会保留 `contextLine` 里的 `line[:column]` 后缀，workspace fallback 支持原生同类的唯一 partial hit，multiline/link resolve cache 会在终端内容变化时失效，且已删除把 wrapper / trailing punctuation 再修剪成 file link 的仓库私有 refine。
 
 ## 意外与发现
 
@@ -45,6 +46,9 @@
 - 观察：真实 VSCode trusted smoke 仍会在 `verifyRealWebviewProbe()` 提前失败，报错“当前 editor 不是可交互的主画布承载面”，导致本轮新增的 execution terminal link 路径尚未在该 smoke 流水线中被跑到。
   证据：2026-05-01 运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，失败栈指向 `captureWebviewProbeForTest()` / `verifyRealWebviewProbe()`，先于 `verifyExecutionTerminalNativeInteractions()`。
 
+- 观察：review 暴露出两类此前被误写成“已完成”的差异：一类是 Host 侧 search opener 仍会丢掉 `contextLine` 的 `line[:column]` 后缀，另一类是 multiline/file resolve cache 只按当前 wrapped line 文本缓存，未在终端 clear / redraw 后失效。
+  证据：2026-05-01 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts` 与 `src/webview/executionTerminalNativeInteractions.ts` 对应实现。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -65,7 +69,7 @@
 
 ## 结果与复盘
 
-当前已完成主要实现与 link 相关回归：provider 顺序切到原生 `multiline/local/uri/word`，multiline 与 styled fallback 已补齐，search 改成原生 broad word 语义且不再弹高置信 hover，Host 侧 URL scheme 放行与 search opener 也已对齐。剩余待收口的是两条验证噪音：其一是既有 Playwright baseline screenshot 差异，其二是真实 trusted smoke 仍被 `verifyRealWebviewProbe()` 的既有失败拦住，导致本轮 link case 没被该流水线实际跑到。后续复盘需要重点回答：一是 baseline 截图是否与本轮无关；二是 trusted smoke 的 probe 问题是否能先独立修复；三是 styled fallback 在真实宿主里是否还需要补额外样例验证。
+当前实现已经补齐本轮 review 指出的 4 个确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；workspace fallback 能直接打开唯一 partial hit；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright 回归均已补齐并通过。当前仍未完成的只剩宿主级 `trusted` smoke：它依旧被 `verifyRealWebviewProbe()` 的既有失败拦住，所以“真实宿主里整条 link parity 流水线已打通”还不能写成已验证结论。
 
 ## 上下文与定向
 

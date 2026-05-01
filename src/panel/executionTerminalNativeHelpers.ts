@@ -10,6 +10,7 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import {
+  detectExecutionTerminalPathLinks,
   inferExecutionTerminalPathStyle,
   getExecutionTerminalLinkSuffix,
   normalizeExecutionTerminalWordSeparators,
@@ -360,6 +361,10 @@ function normalizeExecutionTerminalSearchLinkText(
 
   text = text.replace(/^file:\/\/\/?/, '');
   text = pathModule.normalize(text).replace(/^(\.+[\\/])+/, '');
+  const parsedContextText = normalizeExecutionTerminalSearchLinkTextFromContextLine(link, context.pathStyle);
+  if (parsedContextText) {
+    text = parsedContextText;
+  }
   text = text.replace(/:[^\\/\d][^\d]*$/, '');
   text = text.replace(/\.$/, '');
 
@@ -373,6 +378,37 @@ function normalizeExecutionTerminalSearchLinkText(
   }
 
   return text.trim() || undefined;
+}
+
+function normalizeExecutionTerminalSearchLinkTextFromContextLine(
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'search' }>,
+  pathStyle: ExecutionTerminalPathStyle
+): string | undefined {
+  const contextLine = link.contextLine?.trim();
+  if (!contextLine) {
+    return undefined;
+  }
+
+  // Preserve plain timestamps as plain words instead of treating their trailing `:MM`
+  // segments like file line numbers.
+  const iso8601Pattern = /:\d{2}:\d{2}[+-]\d{2}:\d{2}\.[a-z]+/;
+  if (iso8601Pattern.test(link.text)) {
+    return undefined;
+  }
+
+  const parsedLink = detectExecutionTerminalPathLinks(contextLine, pathStyle).find(
+    (candidate) => candidate.line !== undefined && link.text.startsWith(candidate.path)
+  );
+  if (!parsedLink || parsedLink.line === undefined) {
+    return undefined;
+  }
+
+  let text = `${parsedLink.path}:${parsedLink.line}`;
+  if (parsedLink.column !== undefined) {
+    text += `:${parsedLink.column}`;
+  }
+
+  return text;
 }
 
 function collectExecutionTerminalSearchExactOpenCandidates(
@@ -516,16 +552,44 @@ async function resolveExecutionWorkspaceFallbackLink(
     return undefined;
   }
 
-  const basename = path.posix.basename(normalizedSearchPath);
-  if (!basename) {
+  const partialMatches = await collectExecutionWorkspaceFallbackMatches(
+    workspaceFolders,
+    normalizedSearchPath,
+    true
+  );
+  if (partialMatches.length === 1) {
+    return statExecutionLinkTarget(partialMatches[0], link);
+  }
+
+  if (partialMatches.length <= 1) {
     return undefined;
   }
 
+  const exactMatches = await collectExecutionWorkspaceFallbackMatches(
+    workspaceFolders,
+    normalizedSearchPath,
+    false
+  );
+  if (exactMatches.length !== 1) {
+    return undefined;
+  }
+
+  return statExecutionLinkTarget(exactMatches[0], link);
+}
+
+async function collectExecutionWorkspaceFallbackMatches(
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+  normalizedSearchPath: string,
+  allowPartialBasenameMatch: boolean
+): Promise<vscode.Uri[]> {
   const matches = new Map<string, vscode.Uri>();
-  const maxPerWorkspace = 64;
+  const searchGlob = allowPartialBasenameMatch
+    ? `**/${escapeExecutionWorkspaceGlobSegment(path.posix.basename(normalizedSearchPath))}*`
+    : `**/${escapeExecutionWorkspaceGlobPath(normalizedSearchPath)}`;
+  const maxPerWorkspace = allowPartialBasenameMatch ? 2 : 64;
   for (const workspaceFolder of workspaceFolders) {
     const candidates = await vscode.workspace.findFiles(
-      new vscode.RelativePattern(workspaceFolder, `**/${escapeExecutionWorkspaceGlobSegment(basename)}`),
+      new vscode.RelativePattern(workspaceFolder, searchGlob),
       undefined,
       maxPerWorkspace
     );
@@ -534,23 +598,21 @@ async function resolveExecutionWorkspaceFallbackLink(
         .relative(workspaceFolder.uri.fsPath, uri.fsPath)
         .split(path.sep)
         .join('/');
-      if (!relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath)) {
+      const matchesSearch = allowPartialBasenameMatch
+        ? relativePathMatchesPartialFallbackSearch(relativePath, normalizedSearchPath)
+        : relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath);
+      if (!matchesSearch) {
         continue;
       }
 
       matches.set(uri.toString(), uri);
-      if (matches.size > 1) {
-        return undefined;
+      if (allowPartialBasenameMatch && matches.size > 1) {
+        return [...matches.values()];
       }
     }
   }
 
-  const onlyMatch = matches.values().next().value;
-  if (!(onlyMatch instanceof vscode.Uri)) {
-    return undefined;
-  }
-
-  return statExecutionLinkTarget(onlyMatch, link);
+  return [...matches.values()];
 }
 
 function classifyExecutionFileLinkTarget(
@@ -584,8 +646,30 @@ function relativePathMatchesFallbackSearch(relativePath: string, normalizedSearc
   );
 }
 
+function relativePathMatchesPartialFallbackSearch(relativePath: string, normalizedSearchPath: string): boolean {
+  const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+  const normalizedRelativeDir = path.posix.dirname(normalizedRelativePath);
+  const normalizedSearchDir = path.posix.dirname(normalizedSearchPath);
+  if (
+    normalizedSearchDir !== '.' &&
+    normalizedRelativeDir !== normalizedSearchDir &&
+    !normalizedRelativeDir.endsWith(`/${normalizedSearchDir}`)
+  ) {
+    return false;
+  }
+
+  return path.posix.basename(normalizedRelativePath).startsWith(path.posix.basename(normalizedSearchPath));
+}
+
 function escapeExecutionWorkspaceGlobSegment(value: string): string {
   return value.replace(/([\*\?\[\]\{\}])/g, '[$1]');
+}
+
+function escapeExecutionWorkspaceGlobPath(value: string): string {
+  return value
+    .split('/')
+    .map((segment) => escapeExecutionWorkspaceGlobSegment(segment))
+    .join('/');
 }
 
 function toExecutionLinkSelection(
