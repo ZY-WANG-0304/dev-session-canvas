@@ -61,6 +61,7 @@ const REAL_DOM_NOTE_TITLE = 'Host Smoke Note Through DOM';
 const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview DOM.';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
+const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
@@ -269,9 +270,17 @@ async function runTrustedSmoke() {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '收到无法识别的消息，已忽略。'
+        message.payload.message === UNKNOWN_WEBVIEW_MESSAGE_ERROR
     )
   );
+  let probe = await waitForWebviewProbeOnSurface(
+    'editor',
+    (currentProbe) => currentProbe.toastMessage === UNKNOWN_WEBVIEW_MESSAGE_ERROR,
+    10000
+  );
+  assert.strictEqual(probe.toastMessage, UNKNOWN_WEBVIEW_MESSAGE_ERROR);
+  probe = await waitForWebviewProbeOnSurface('editor', (currentProbe) => currentProbe.toastMessage === null, 10000);
+  assert.strictEqual(probe.toastMessage, null);
   snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
