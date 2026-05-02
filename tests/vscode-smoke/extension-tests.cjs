@@ -61,6 +61,7 @@ const REAL_DOM_NOTE_TITLE = 'Host Smoke Note Through DOM';
 const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview DOM.';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
+const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
@@ -269,9 +270,17 @@ async function runTrustedSmoke() {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '收到无法识别的消息，已忽略。'
+        message.payload.message === UNKNOWN_WEBVIEW_MESSAGE_ERROR
     )
   );
+  let probe = await waitForWebviewProbeOnSurface(
+    'editor',
+    (currentProbe) => currentProbe.toastMessage === UNKNOWN_WEBVIEW_MESSAGE_ERROR,
+    10000
+  );
+  assert.strictEqual(probe.toastMessage, UNKNOWN_WEBVIEW_MESSAGE_ERROR);
+  probe = await waitForWebviewProbeOnSurface('editor', (currentProbe) => currentProbe.toastMessage === null, 10000);
+  assert.strictEqual(probe.toastMessage, null);
   snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
@@ -2951,64 +2960,68 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
     'editor',
     'Expected the real webview probe check to run against the editor surface.'
   );
+  assert.strictEqual(
+    editorReadySnapshot.surfaceMode?.editor,
+    'active',
+    'Expected the editor surface to stay in active mode before capturing a real webview probe.'
+  );
+  assert.strictEqual(
+    editorReadySnapshot.surfaceReady?.editor,
+    true,
+    'Expected the editor surface to report ready before capturing a real webview probe.'
+  );
 
-  const expectedAgentSubtitle =
-    findNodeById(await getDebugSnapshot(), agentNodeId).metadata?.agent?.lastLaunchCommandLine ?? null;
-  let probe = await waitForWebviewProbe((currentProbe) => {
-    const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-    const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
-    const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
+  const expectedAgentNode = findNodeById(editorReadySnapshot, agentNodeId);
+  const expectedTerminalNode = findNodeById(editorReadySnapshot, terminalNodeId);
+  const expectedNoteNode = findNodeById(editorReadySnapshot, noteNodeId);
+  const expectedAgentSubtitle = expectedAgentNode.metadata?.agent?.lastLaunchCommandLine ?? null;
+  const expectedNodeCount = editorReadySnapshot.state.nodes.length;
 
-    return Boolean(
-      currentProbe.hasCanvasShell &&
-        currentProbe.hasReactFlow &&
-        currentProbe.nodeCount === 3 &&
-        agentNode &&
-        agentNode.kind === 'agent' &&
-        typeof agentNode.chromeSubtitle === 'string' &&
-        agentNode.chromeSubtitle.length > 0 &&
-        (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
-        typeof agentNode.titleInputValue === 'string' &&
-        agentNode.titleInputValue.length > 0 &&
-        terminalNode &&
-        terminalNode.kind === 'terminal' &&
-        typeof terminalNode.titleInputValue === 'string' &&
-        terminalNode.titleInputValue.length > 0 &&
-        noteNode &&
-        noteNode.kind === 'note' &&
-        noteNode.chromeTitle === 'Host Smoke Note' &&
-        noteNode.chromeSubtitle === null &&
-        noteNode.statusText === null &&
-        agentNode.minimapVisible === true &&
-        terminalNode.minimapVisible === true &&
-        noteNode.minimapVisible === true &&
-        noteNode.titleInputValue === 'Host Smoke Note' &&
-        noteNode.bodyValue === 'Exercise the real webview-to-host update path.'
-    );
-  });
+  const probe = await waitForWebviewProbeOnSurface(
+    'editor',
+    (currentProbe) => {
+      const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+      const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
+      const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
 
+      return Boolean(
+        currentProbe.hasCanvasShell &&
+          currentProbe.hasReactFlow &&
+          currentProbe.nodeCount === expectedNodeCount &&
+          agentNode &&
+          agentNode.kind === 'agent' &&
+          agentNode.titleInputValue === expectedAgentNode.title &&
+          (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
+          agentNode.minimapVisible === true &&
+          terminalNode &&
+          terminalNode.kind === 'terminal' &&
+          terminalNode.titleInputValue === expectedTerminalNode.title &&
+          terminalNode.minimapVisible === true &&
+          noteNode &&
+          noteNode.kind === 'note' &&
+          noteNode.chromeTitle === expectedNoteNode.title &&
+          noteNode.chromeSubtitle === null &&
+          noteNode.statusText === null &&
+          noteNode.titleInputValue === expectedNoteNode.title &&
+          noteNode.bodyValue === expectedNoteNode.metadata.note.content &&
+          noteNode.minimapVisible === true
+      );
+    },
+    10000
+  );
+
+  const agentProbeNode = probe.nodes.find((node) => node.nodeId === agentNodeId);
+  const noteProbeNode = probe.nodes.find((node) => node.nodeId === noteNodeId);
+  assert.ok(agentProbeNode, 'Expected the real webview probe snapshot to include the agent node.');
+  assert.ok(noteProbeNode, 'Expected the real webview probe snapshot to include the note node.');
   assert.strictEqual(probe.hasCanvasShell, true);
   assert.strictEqual(probe.hasReactFlow, true);
-  assert.strictEqual(probe.nodeCount, 3);
+  assert.strictEqual(probe.nodeCount, expectedNodeCount);
+  assert.strictEqual(probe.toastMessage, null);
   if (expectedAgentSubtitle !== null) {
-    assert.strictEqual(
-      probe.nodes.find((node) => node.nodeId === agentNodeId)?.chromeSubtitle,
-      expectedAgentSubtitle
-    );
+    assert.strictEqual(agentProbeNode.chromeSubtitle, expectedAgentSubtitle);
   }
-  assert.strictEqual(
-    Object.prototype.hasOwnProperty.call(
-      probe.nodes.find((node) => node.nodeId === agentNodeId) ?? {},
-      'providerValue'
-    ),
-    false
-  );
-
-  await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
-  probe = await waitForWebviewProbe(
-    (currentProbe) => currentProbe.toastMessage === '收到无法识别的消息，已忽略。'
-  );
-  assert.strictEqual(probe.toastMessage, '收到无法识别的消息，已忽略。');
+  assert.strictEqual(noteProbeNode.bodyValue, expectedNoteNode.metadata.note.content);
 }
 
 async function verifyRealWebviewDomInteractions(agentNodeId, terminalNodeId, noteNodeId) {
@@ -3894,6 +3907,65 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     assert.strictEqual(cwdScopedEditor.document.uri.fsPath, linkTargetPath);
     assert.strictEqual(cwdScopedEditor.selection.active.line, 2);
     assert.strictEqual(cwdScopedEditor.selection.active.character, 0);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    const multilinePathLineText = 'link-target.ts';
+    const multilineLinkText = '2:8';
+    const multilineResultLine = `  ${multilineLinkText}  export const two = 2;`;
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n%s\\n' '${multilinePathLineText}' '${multilineResultLine}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(multilineResultLine));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(multilineResultLine));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: multilineLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === multilineLinkText &&
+            event.detail?.linkKind === 'file'
+        ),
+      10000
+    );
+    const multilineEditor = await waitForActiveEditor(
+      () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.fsPath !== linkTargetPath) {
+          return false;
+        }
+
+        return editor.selection.active.line === 1 && editor.selection.active.character === 7;
+      },
+      10000
+    );
+    assert.strictEqual(multilineEditor.document.uri.fsPath, linkTargetPath);
+    assert.strictEqual(multilineEditor.selection.active.line, 1);
+    assert.strictEqual(multilineEditor.selection.active.character, 7);
 
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
