@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.4.1 - Preview UI Polish Update
+
+相对 `0.4.0`，`0.4.1` 主要进行了一系列 UI 修复和交互优化，集中在 Agent 启动入口、节点与文件活动操作体验，以及执行节点里的 terminal link 行为对齐。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 修复 Agent 启动预设与会话展示细节：统一 `默认 / Resume / YOLO / 沙盒` 与 provider 默认参数之间的冲突归一化，避免预设文案、metadata 持久化与真实启动命令彼此打架；同时把创建菜单与最近一次实际启动命令展示收紧到更可解释的状态
+- 优化节点创建与文件活动交互：手动创建的新节点现在会平滑带到用户视野中心；文件活动功能默认保持关闭，显式启用后则提供更稳定的文件列表树形交互、自动文件边锚点与相关 smoke 覆盖
+- 优化执行节点 terminal link 交互：补齐 multiline 路径 / 行号解析、目录 / word / search link 行为，以及 low-confidence link 的 hover / 下划线语义，使交互尽量向 VS Code 原生 Terminal 对齐
+- 收口 `0.4.1` 发布材料：同步更新 Marketplace 文案、release notes、安装升级说明与发布手册，确保当前版本范围、升级路径和回退口径一致
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+- 若需要文件活动投影，请显式启用相关功能后再体验文件列表与自动边交互
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的记录；缺少工作目录信息的旧会话会被保守跳过
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.4.0` 升级到 `0.4.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.4.x` 更新同样通过 Marketplace 升级获取
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.4.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.4.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.4.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.4.0 - Preview Sidebar Session Update
 
 相对 `0.3.0`，`0.4.0` 重点补齐 VS Code 侧栏中的节点列表与工作区会话历史入口，让当前画布与最近会话都能在宿主侧栏中直接定位、检索和恢复。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
