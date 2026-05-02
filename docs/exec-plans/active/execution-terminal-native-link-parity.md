@@ -22,6 +22,7 @@
 - [x] (2026-05-01 00:22 +0800) 更新 Playwright / smoke 用例，覆盖 multiline、plain word search、native punctuation 行为与 host 侧 multiline 打开路径。
 - [x] (2026-05-01 01:08 +0800) 继续把 low-confidence `word/search link` 的装饰行为对齐原生：默认 hover 不下划线，只有按住激活修饰键时才临时强调；并在现有 link Playwright 集合上完成回归验证。
 - [x] (2026-05-01 03:18 +0800) 根据 review 收口剩余 parity 缺口：search opener 现在会保留 `contextLine` 里的 `line[:column]` 后缀，workspace fallback 支持原生同类的唯一 partial hit，multiline/link resolve cache 会在终端内容变化时失效，且已删除把 wrapper / trailing punctuation 再修剪成 file link 的仓库私有 refine。
+- [x] (2026-05-02 00:16 +0800) 继续根据 review 收口 search/local 边界：唯一 partial basename hit 现在只保留在 search opener 路径里，local fallback resolver 回到 exact-only，避免 `README`、`missing-target.ts` 这类 plain word 被错误升级成高置信 file link。
 
 ## 意外与发现
 
@@ -49,6 +50,9 @@
 - 观察：review 暴露出两类此前被误写成“已完成”的差异：一类是 Host 侧 search opener 仍会丢掉 `contextLine` 的 `line[:column]` 后缀，另一类是 multiline/file resolve cache 只按当前 wrapped line 文本缓存，未在终端 clear / redraw 后失效。
   证据：2026-05-01 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts` 与 `src/webview/executionTerminalNativeInteractions.ts` 对应实现。
 
+- 观察：上一轮把唯一 partial basename hit 做进共享 `resolveExecutionWorkspaceFallbackLink()` 后，local fallback candidate 也会复用这条路径，导致单独一行 `README` / `missing-target.ts` 在 workspace 存在唯一 `README.md` / `missing-target.tsx` 时被直接解析成 file link，而不是保留为 low-confidence search link。
+  证据：2026-05-02 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts`、`src/webview/executionTerminalNativeInteractions.ts` 与 `src/common/executionTerminalLinks.ts` 的共享 fallback 路径。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -69,7 +73,7 @@
 
 ## 结果与复盘
 
-当前实现已经补齐本轮 review 指出的 4 个确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；workspace fallback 能直接打开唯一 partial hit；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright 回归均已补齐并通过。当前仍未完成的只剩宿主级 `trusted` smoke：它依旧被 `verifyRealWebviewProbe()` 的既有失败拦住，所以“真实宿主里整条 link parity 流水线已打通”还不能写成已验证结论。
+当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。当前仍未完成的只剩宿主级 `trusted` smoke：它依旧被 `verifyRealWebviewProbe()` 的既有失败拦住，所以“真实宿主里整条 link parity 流水线已打通”还不能写成已验证结论。
 
 ## 上下文与定向
 

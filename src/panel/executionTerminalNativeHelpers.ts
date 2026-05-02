@@ -51,6 +51,10 @@ export interface OpenExecutionTerminalLinkResult {
   targetUri?: string;
 }
 
+interface ResolveExecutionFileLinkOptions {
+  allowPartialBasenameWorkspaceMatch?: boolean;
+}
+
 export function normalizeEditorMultiCursorModifier(value: unknown): 'ctrlCmd' | 'alt' {
   return value === 'ctrlCmd' ? 'ctrlCmd' : 'alt';
 }
@@ -96,7 +100,8 @@ export function prepareExecutionTerminalDroppedPath(
 
 export async function resolveExecutionFileLink(
   link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options?: ResolveExecutionFileLinkOptions
 ): Promise<ResolvedExecutionFileLink | undefined> {
   const sanitizedPath = sanitizeExecutionFileLinkPath(link.path, context);
   if (!sanitizedPath) {
@@ -127,7 +132,12 @@ export async function resolveExecutionFileLink(
   }
 
   if (link.source === 'fallback') {
-    const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context);
+    const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(
+      sanitizedPath,
+      link,
+      context,
+      options
+    );
     if (fallbackResolved) {
       return fallbackResolved;
     }
@@ -277,7 +287,10 @@ async function openExecutionTerminalSearchLink(
   for (const candidateText of collectExecutionTerminalSearchExactOpenCandidates(quickOpenText, context)) {
     const resolved = await resolveExecutionFileLink(
       toExecutionTerminalSearchFileLink(candidateText, link),
-      context
+      context,
+      {
+        allowPartialBasenameWorkspaceMatch: true
+      }
     );
     if (!resolved) {
       continue;
@@ -536,7 +549,8 @@ async function statExecutionLinkTarget(
 async function resolveExecutionWorkspaceFallbackLink(
   sanitizedPath: string,
   link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options?: ResolveExecutionFileLinkOptions
 ): Promise<ResolvedExecutionFileLink | undefined> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -552,29 +566,29 @@ async function resolveExecutionWorkspaceFallbackLink(
     return undefined;
   }
 
-  const partialMatches = await collectExecutionWorkspaceFallbackMatches(
-    workspaceFolders,
-    normalizedSearchPath,
-    true
-  );
-  if (partialMatches.length === 1) {
-    return statExecutionLinkTarget(partialMatches[0], link);
-  }
-
-  if (partialMatches.length <= 1) {
-    return undefined;
-  }
-
   const exactMatches = await collectExecutionWorkspaceFallbackMatches(
     workspaceFolders,
     normalizedSearchPath,
     false
   );
-  if (exactMatches.length !== 1) {
+  if (exactMatches.length === 1) {
+    return statExecutionLinkTarget(exactMatches[0], link);
+  }
+
+  if (!options?.allowPartialBasenameWorkspaceMatch) {
     return undefined;
   }
 
-  return statExecutionLinkTarget(exactMatches[0], link);
+  const partialMatches = await collectExecutionWorkspaceFallbackMatches(
+    workspaceFolders,
+    normalizedSearchPath,
+    true
+  );
+  if (partialMatches.length !== 1) {
+    return undefined;
+  }
+
+  return statExecutionLinkTarget(partialMatches[0], link);
 }
 
 async function collectExecutionWorkspaceFallbackMatches(
