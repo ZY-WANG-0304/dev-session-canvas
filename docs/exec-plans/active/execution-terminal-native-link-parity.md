@@ -44,8 +44,8 @@
 - 观察：`npm run test:webview` 当前只剩一个既有的 baseline screenshot diff（`canvas-shell-baseline`，385 px 差异），其余 91 条全部通过；本轮 link 相关 case 全部通过。
   证据：2026-05-01 本地运行 `npm run test:webview`，失败点位于 `tests/playwright/webview-harness.spec.mjs:276` 的截图基线断言，而新增 / 既有 link case 均为绿色。
 
-- 观察：2026-05-01 记录过的 `verifyRealWebviewProbe()` 提前失败已不再重现；当前 head 的 trusted smoke 可以继续跑到 execution terminal native link 路径。对应 smoke 断言已收口为“editor surface ready + 真实 Webview 基线渲染”，未知消息 toast 继续由更早的 smoke 步骤覆盖，避免把多类语义绑在同一个 probe 用例里。
-  证据：2026-05-02 运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过；对应调整位于 `tests/vscode-smoke/extension-tests.cjs` 的 `verifyRealWebviewProbe()`。
+- 观察：2026-05-01 记录过的 `verifyRealWebviewProbe()` 提前失败已不再重现；当前 head 的 trusted smoke 可以继续跑到 execution terminal native link 路径。当前覆盖拆成两层：更早的 trusted smoke 步骤会先验证未知消息是否既进入 `host/error`，也真实渲染到 editor surface Webview toast；`verifyRealWebviewProbe()` 本身则只保留 “editor surface ready + 真实 Webview 基线渲染” 断言，避免把多类语义绑在同一个 helper 里。
+  证据：2026-05-02 运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过；对应调整位于 `tests/vscode-smoke/extension-tests.cjs` 的 trusted smoke 前置断言与 `verifyRealWebviewProbe()`。
 
 - 观察：review 暴露出两类此前被误写成“已完成”的差异：一类是 Host 侧 search opener 仍会丢掉 `contextLine` 的 `line[:column]` 后缀，另一类是 multiline/file resolve cache 只按当前 wrapped line 文本缓存，未在终端 clear / redraw 后失效。
   证据：2026-05-01 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts` 与 `src/webview/executionTerminalNativeInteractions.ts` 对应实现。
