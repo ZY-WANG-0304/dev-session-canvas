@@ -182,7 +182,7 @@ updated_at: 2026-04-29
 - 当前仓库已经完成公开 `Marketplace Preview` 所需的发布包治理与发布说明收口；剩余事项主要是 release-day 执行，而不是仓库内仍缺少的发布资产。
 - 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `2.16 MB` / `48 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
 - 公开发布方向已经确认：首发渠道先收敛到 `Visual Studio Marketplace`；`Open VSX` 作为后续补充渠道单独决策。
-- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；当前 `0.4.0` 进一步把“侧栏节点列表与工作区会话历史入口”同步进了对外口径，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
+- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；当前 `0.4.1` 进一步把一轮 UI 修复与交互优化同步进了对外口径，重点覆盖 Agent 启动入口、节点与文件活动操作体验，以及执行节点 terminal link 行为对齐，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
 
 ## 10. 验证方法
 
