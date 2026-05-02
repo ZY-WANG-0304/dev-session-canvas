@@ -177,6 +177,7 @@ updated_at: 2026-05-01
 - word detector 的切词规则必须受 `terminal.integrated.wordSeparators` 控制，并处于最低优先级。
 - search link 的打开逻辑不再是“仓库判断为 file-like 才给 search”，而是与原生 Terminal 一样：先尝试 exact-open，再回退到 Quick Access 搜索。
 - 当 low-confidence word link 所在整行能解析出 `foo:10`、`"foo", line 10` 这类路径后缀时，search opener 必须保留该 `line[:column]` 信息，再进入 exact-open / Quick Access；不能把它降成只搜索 `foo`。
+- 若为了对齐原生 search opener 而补充唯一 partial basename hit（例如 `README -> README.md`），这条能力也只能发生在 search opener 阶段；local fallback detector 不得共享这层匹配把 plain word 直接升级成 file link。
 - 若原生 Terminal 对普通词条暴露 search link，而当前仓库没有，那应以原生行为为准。
 
 ### 7.6 hover、修饰键与 opener 行为

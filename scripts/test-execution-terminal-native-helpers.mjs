@@ -190,7 +190,7 @@ try {
   const require = createRequire(import.meta.url);
   const helperModule = require(outfile);
   const vscodeStub = createRequire(outfile)('vscode');
-  const { openExecutionTerminalLink, prepareExecutionTerminalDroppedPath } = helperModule;
+  const { openExecutionTerminalLink, prepareExecutionTerminalDroppedPath, resolveExecutionFileLink } = helperModule;
 
   assert.equal(
     prepareExecutionTerminalDroppedPath(
@@ -361,6 +361,21 @@ try {
   assert.equal(partialOpenCalls.length, 1);
   assert.equal(partialOpenCalls[0].document.uri.fsPath, '/workspace/README.md');
   assert.deepEqual(vscodeStub.__getExecutedCommands(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/README.md', type: 'file' }]);
+  const fallbackFileResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'README',
+      path: 'README',
+      bufferStartLine: 8,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.equal(fallbackFileResult, undefined);
 
   console.log('executionTerminalNativeHelpers tests passed');
 } finally {
