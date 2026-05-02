@@ -377,15 +377,38 @@ try {
   );
   assert.equal(fallbackFileResult, undefined);
 
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/scratch/link-target.ts', type: 'file' }]);
+  const lineScopedResolved = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: '2:8',
+      path: 'link-target.ts',
+      line: 2,
+      column: 8,
+      bufferStartLine: 21,
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace', 'posix', {
+      resolveCwdForBufferLine: async (bufferStartLine) =>
+        bufferStartLine === 21 ? '/workspace/scratch' : '/workspace'
+    })
+  );
+  assert.equal(lineScopedResolved?.uri.fsPath, '/workspace/scratch/link-target.ts');
+  assert.equal(lineScopedResolved?.selection?.start.line, 1);
+  assert.equal(lineScopedResolved?.selection?.start.character, 7);
+
   console.log('executionTerminalNativeHelpers tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }
 
-function createContext(shellPath, cwd, pathStyle) {
+function createContext(shellPath, cwd, pathStyle, extra = {}) {
   return {
     shellPath,
     cwd,
-    pathStyle
+    pathStyle,
+    ...extra
   };
 }
