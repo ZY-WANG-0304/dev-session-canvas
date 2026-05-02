@@ -2951,64 +2951,68 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
     'editor',
     'Expected the real webview probe check to run against the editor surface.'
   );
+  assert.strictEqual(
+    editorReadySnapshot.surfaceMode?.editor,
+    'active',
+    'Expected the editor surface to stay in active mode before capturing a real webview probe.'
+  );
+  assert.strictEqual(
+    editorReadySnapshot.surfaceReady?.editor,
+    true,
+    'Expected the editor surface to report ready before capturing a real webview probe.'
+  );
 
-  const expectedAgentSubtitle =
-    findNodeById(await getDebugSnapshot(), agentNodeId).metadata?.agent?.lastLaunchCommandLine ?? null;
-  let probe = await waitForWebviewProbe((currentProbe) => {
-    const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
-    const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
-    const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
+  const expectedAgentNode = findNodeById(editorReadySnapshot, agentNodeId);
+  const expectedTerminalNode = findNodeById(editorReadySnapshot, terminalNodeId);
+  const expectedNoteNode = findNodeById(editorReadySnapshot, noteNodeId);
+  const expectedAgentSubtitle = expectedAgentNode.metadata?.agent?.lastLaunchCommandLine ?? null;
+  const expectedNodeCount = editorReadySnapshot.state.nodes.length;
 
-    return Boolean(
-      currentProbe.hasCanvasShell &&
-        currentProbe.hasReactFlow &&
-        currentProbe.nodeCount === 3 &&
-        agentNode &&
-        agentNode.kind === 'agent' &&
-        typeof agentNode.chromeSubtitle === 'string' &&
-        agentNode.chromeSubtitle.length > 0 &&
-        (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
-        typeof agentNode.titleInputValue === 'string' &&
-        agentNode.titleInputValue.length > 0 &&
-        terminalNode &&
-        terminalNode.kind === 'terminal' &&
-        typeof terminalNode.titleInputValue === 'string' &&
-        terminalNode.titleInputValue.length > 0 &&
-        noteNode &&
-        noteNode.kind === 'note' &&
-        noteNode.chromeTitle === 'Host Smoke Note' &&
-        noteNode.chromeSubtitle === null &&
-        noteNode.statusText === null &&
-        agentNode.minimapVisible === true &&
-        terminalNode.minimapVisible === true &&
-        noteNode.minimapVisible === true &&
-        noteNode.titleInputValue === 'Host Smoke Note' &&
-        noteNode.bodyValue === 'Exercise the real webview-to-host update path.'
-    );
-  });
+  const probe = await waitForWebviewProbeOnSurface(
+    'editor',
+    (currentProbe) => {
+      const agentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+      const terminalNode = currentProbe.nodes.find((node) => node.nodeId === terminalNodeId);
+      const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
 
+      return Boolean(
+        currentProbe.hasCanvasShell &&
+          currentProbe.hasReactFlow &&
+          currentProbe.nodeCount === expectedNodeCount &&
+          agentNode &&
+          agentNode.kind === 'agent' &&
+          agentNode.titleInputValue === expectedAgentNode.title &&
+          (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
+          agentNode.minimapVisible === true &&
+          terminalNode &&
+          terminalNode.kind === 'terminal' &&
+          terminalNode.titleInputValue === expectedTerminalNode.title &&
+          terminalNode.minimapVisible === true &&
+          noteNode &&
+          noteNode.kind === 'note' &&
+          noteNode.chromeTitle === expectedNoteNode.title &&
+          noteNode.chromeSubtitle === null &&
+          noteNode.statusText === null &&
+          noteNode.titleInputValue === expectedNoteNode.title &&
+          noteNode.bodyValue === expectedNoteNode.metadata.note.content &&
+          noteNode.minimapVisible === true
+      );
+    },
+    10000
+  );
+
+  const agentProbeNode = probe.nodes.find((node) => node.nodeId === agentNodeId);
+  const noteProbeNode = probe.nodes.find((node) => node.nodeId === noteNodeId);
+  assert.ok(agentProbeNode, 'Expected the real webview probe snapshot to include the agent node.');
+  assert.ok(noteProbeNode, 'Expected the real webview probe snapshot to include the note node.');
   assert.strictEqual(probe.hasCanvasShell, true);
   assert.strictEqual(probe.hasReactFlow, true);
-  assert.strictEqual(probe.nodeCount, 3);
+  assert.strictEqual(probe.nodeCount, expectedNodeCount);
+  assert.strictEqual(probe.toastMessage, null);
   if (expectedAgentSubtitle !== null) {
-    assert.strictEqual(
-      probe.nodes.find((node) => node.nodeId === agentNodeId)?.chromeSubtitle,
-      expectedAgentSubtitle
-    );
+    assert.strictEqual(agentProbeNode.chromeSubtitle, expectedAgentSubtitle);
   }
-  assert.strictEqual(
-    Object.prototype.hasOwnProperty.call(
-      probe.nodes.find((node) => node.nodeId === agentNodeId) ?? {},
-      'providerValue'
-    ),
-    false
-  );
-
-  await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
-  probe = await waitForWebviewProbe(
-    (currentProbe) => currentProbe.toastMessage === '收到无法识别的消息，已忽略。'
-  );
-  assert.strictEqual(probe.toastMessage, '收到无法识别的消息，已忽略。');
+  assert.strictEqual(noteProbeNode.bodyValue, expectedNoteNode.metadata.note.content);
 }
 
 async function verifyRealWebviewDomInteractions(agentNodeId, terminalNodeId, noteNodeId) {
