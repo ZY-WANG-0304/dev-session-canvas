@@ -51,19 +51,19 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.4.0 Highlights
+## 0.4.1 Highlights
 
-The public `0.4.0` release focuses on closing the sidebar node list and workspace session-history entry points:
+The public `0.4.1` release mainly delivers a round of UI fixes and interaction polish:
 
-- Add a sidebar `Nodes` list that shows every non-file canvas node with its color marker, title, status, and attention indicator, and lets users jump directly to that node on the canvas
-- Add a sidebar `Session History` list that shows recent `Codex` / `Claude Code` sessions for the current workspace, supports search, and restores a new `Agent` node directly from history
-- Tighten the history-restore path so it reuses the current provider command and default launch arguments before appending explicit `resume` parameters; when the sidebar is hidden, the same capability remains available through command-palette list fallbacks
-- Use conservative workspace attribution for session history so only records that can be confirmed for the current workspace are shown, while still explicitly retaining the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
+- Fix agent launch-presets and session-presentation details so `Default / Resume / YOLO / Sandbox` normalize more predictably against provider default arguments, avoiding conflicts between preset labels and the command that actually launches
+- Polish node-creation and file-activity interactions so manually created nodes move smoothly into view; file activity stays disabled by default, and when explicitly enabled it gets more stable file-list tree behavior and automatic edge anchors
+- Polish terminal-link behavior inside execution nodes by covering multiline path-and-line parsing, directory / word / search link behavior, and low-confidence hover / underline semantics
+- Keep conservative workspace attribution for session history so only records that can be confirmed for the current workspace are shown, while still explicitly retaining the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.3.0` to `0.4.0` all go through the `Visual Studio Marketplace`; later `0.4.x` updates follow the same Marketplace upgrade path
+- First-time installs and upgrades from `0.4.0` to `0.4.1` all go through the `Visual Studio Marketplace`; later `0.4.x` updates follow the same Marketplace upgrade path
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
