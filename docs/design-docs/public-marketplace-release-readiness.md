@@ -11,7 +11,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
-updated_at: 2026-04-29
+updated_at: 2026-05-02
 ---
 
 # 公开平台发布准备
@@ -62,7 +62,7 @@ updated_at: 2026-04-29
 
 ## 6. 当前现状
 
-截至 2026-04-29，仓库里已经成立的事实如下：
+截至 2026-05-02（PR35 head `e12b32f`），仓库里已经成立的事实如下：
 
 - `package.json` 具备基础扩展元数据，且仍标记为 `preview: true`。
 - `README.md` 已明确写成“产品已处于公开 Preview 阶段”；发布执行与对外口径已收口到 `docs/public-preview-release-playbook.md`。
@@ -71,8 +71,8 @@ updated_at: 2026-04-29
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
 - `scripts/package-vsix.mjs` 当前会在打包阶段显式传入 `--readme-path README.marketplace.md`，确保后续 `publish --packagePath` 上传的现成 VSIX 已内嵌 Marketplace 专用 README，而不是依赖发布时重新替换。
 - `scripts/package-vsix.mjs` 默认会把 Marketplace README 的相对资源改写到当前 `HEAD` 对应的最终 git ref；若在不含 `.git` 元数据的 clean checkout 或导出目录中打包，则必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，并在打包前校验这些相对资源能在该 ref 上解析成功。
-- 当前工作树已能稳定执行 `npm run package:vsix`，生成约 `2.16 MB`、`48 files` 的 VSIX，并再次通过 `npm run test:vsix-smoke`。
-- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 打包验证，可在干净目录内稳定产出约 `2.16 MB`、`48 files` 的 VSIX；packaged-payload smoke 继续通过单独执行 `npm run test:vsix-smoke` 复核。
+- 当前工作树已能稳定执行 `npm run package:vsix`，生成 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB`、`48 files`），并再次通过 `npm run test:vsix-smoke`。
+- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 打包验证，可在干净目录内稳定产出 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB`、`48 files`）；packaged-payload smoke 继续通过单独执行 `npm run test:vsix-smoke` 复核。
 - 当前候选 release head 也已再次通过隔离 `clean checkout` 验证，说明这轮瘦身后的最小 Preview 工件已经固定到可追溯提交。
 - 仓库已补上 `validate:clean-checkout:vsix` 隔离验证入口，可在 `/tmp` 下准备 clean checkout 验证，不必直接扰动当前工作树。
 - 当前对外分发主路径已确定为 `Visual Studio Marketplace Preview`，而不是手动分发 `.vsix`。
@@ -91,10 +91,10 @@ updated_at: 2026-04-29
 本地证据：
 
 - 第一轮收口前，仓库内曾出现约 `293 MB` 的 VSIX，并把 `.debug/playwright/`、`.debug/vscode-smoke/` 等调试缓存一起打入包内。
-- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出约 `2.16 MB`、`48 files` 的 VSIX。
+- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB`、`48 files`）。
 - 当前 `npm run test:vsix-smoke` 已再次通过，说明第二轮收口后的 packaged payload 仍能独立启动并跑通 trusted smoke。
 - 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`，以及 `node-pty` 的 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
-- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `2.16 MB`、`48 files`；由于当前工作树与候选 release head 已一致，这轮候选发布输入也应以同一组最小工件证据为准。
+- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `2.17 MB`、`48 files`；由于当前工作树与候选 release head 已一致，这轮候选发布输入也应以同一组最小工件证据为准。
 - 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` / `Note` 主路径已补齐当前轮功能可用性验证；Windows 下使用 `Codex` 时执行节点内历史仍有无法向上翻页的已知问题。
 
 因此，当前只需保持以下约束与 release-day 动作：
@@ -175,21 +175,33 @@ updated_at: 2026-04-29
 - 若后续版本在许可证、公开链接和支持口径失配时贸然上架，商店页面会把仓库内部事实包装成外部承诺，后续回收成本更高。
 - 若只解决 publisher / PAT 而不先治理发布包，公开发布过程会被包体污染、内容漂移和不可重复打包持续阻断。
 
-## 9. 当前结论
+## 9. 正式方案
 
-截至当前研究结论：
+### 9.1 方案说明
 
-- 当前仓库已经完成公开 `Marketplace Preview` 所需的发布包治理与发布说明收口；剩余事项主要是 release-day 执行，而不是仓库内仍缺少的发布资产。
-- 当前第一优先级不再是继续瘦身 `node-pty`；当前 `working tree` 与候选 release head 的 `2.16 MB` / `48 files` 工件证据都已固定，接下来应按手工发布步骤锁定最终 git ref 并执行实际发布。
-- 公开发布方向已经确认：首发渠道先收敛到 `Visual Studio Marketplace`；`Open VSX` 作为后续补充渠道单独决策。
-- `Apache-2.0`、公开 GitHub 仓库链接、issue 模板、支持边界说明、渠道账号、Marketplace listing 草案、release notes 使用口径以及升级 / 回滚说明都已经确定；当前 `0.4.1` 进一步把一轮 UI 修复与交互优化同步进了对外口径，重点覆盖 Agent 启动入口、节点与文件活动操作体验，以及执行节点 terminal link 行为对齐，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。在真正点击发布前，只需按 release-day checklist 复核最终 git ref、执行发布并完成发布后验证。
+- `0.4.1` 的公开 `Marketplace Preview` 正式发布输入固定为当前候选 release head（PR35 head `e12b32f`）验证通过的最小 VSIX 工件：`dev-session-canvas-0.4.1.vsix`。当前仓库内证据为 `48 files`、约 `2.17 MB`，生成入口是 `scripts/package-vsix.mjs`，隔离复核入口是 `npm run validate:clean-checkout:vsix -- --source working-tree`。
+- 首发渠道正式收敛为 `Visual Studio Marketplace`。`Open VSX` 不与 `0.4.1` 首发绑定，后续若要补发，单独走渠道决策与凭证准备。
+- 对外发布口径以 `README.md`、`README.marketplace.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md` 与 `docs/support.md` 为唯一仓库内正式来源。`0.4.1` 对外内容聚焦一轮 UI 修复与交互优化，重点覆盖 Agent 启动入口、节点与文件活动操作体验，以及执行节点 terminal link 行为对齐，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。
+
+### 9.2 适用范围与边界
+
+- 本方案只覆盖 `0.4.1` 公开 `Marketplace Preview` 的仓库内准备与 release-day 执行，不把“已经上架”“已经具备稳定版 SLA”或“已经同步 `Open VSX`”写成既成事实。
+- 适用的发布输入必须与上述正式文档保持一致；若真正发布使用的不是当前候选 head，而是后续 merge commit、tag 或其他最终 git ref，则必须基于最终 ref 重新执行 clean-checkout 打包验证，并复核 `README.marketplace.md` 的资源改写 ref。
+- 支持矩阵继续以 `Remote SSH` 与桌面三平台主路径已验证为基础，但不把 `Restricted Mode`、`Virtual Workspace`、CLI 依赖边界或更强 runtime guarantee 误写成全量稳定支持。
+
+### 9.3 核心规则与不变量
+
+- `scripts/package-vsix.mjs` 必须继续显式传入 `--readme-path README.marketplace.md`，且 README 资源改写 ref 必须与最终发布 ref 一致；不允许依赖发布时临时替换文案来修正文档内容。
+- `npm run validate:clean-checkout:vsix` 与 `npm run test:vsix-smoke` 是发布前必须保留的最小证据链；只要工件大小、文件数或 packaged payload 内容发生变化，就必须同步刷新本设计文档与相关发布文档中的证据。
+- `.debug/`、`.playwright-browsers/`、`.github/`、`node-pty` 的源码/脚本/PDB/重复依赖等冗余内容必须继续留在 VSIX 之外，避免包体回涨或引入不可追溯内容；相关内容守卫继续由 `scripts/run-vscode-vsix-smoke.mjs` 负责。
+- 发布账号、PAT、Marketplace listing 草案、release notes 口径与支持入口只要发生变化，都必须回写到仓库正式文档，而不是只停留在外部聊天或 MR 评论。
 
 ## 10. 验证方法
 
 本研究依赖以下证据来源：
 
 - 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/support.md`、`LICENSE` 与打包脚本现状。
-- 本地执行 `npm run package:vsix`、`npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke` 与 `npm run test:vsix-smoke` 的实际结果，确认当前工作树（也即当前候选 release head）已能稳定产出约 `2.16 MB` / `48 files` 的 VSIX，且收口后的 packaged payload 仍可启动。
+- 本地执行 `npm run package:vsix`、`npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke` 与 `npm run test:vsix-smoke` 的实际结果，确认当前工作树（也即当前候选 release head）已能稳定产出 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB` / `48 files`），且收口后的 packaged payload 仍可启动。
 - `Visual Studio Code` 官方发布文档：<https://code.visualstudio.com/api/working-with-extensions/publishing-extension>
 - `Open VSX` 发布文档：<https://github.com/eclipse/openvsx/wiki/Publishing-Extensions>
 
