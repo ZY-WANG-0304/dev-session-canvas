@@ -44,7 +44,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus is on closing the sidebar node-list and workspace session-history entry points for `0.4.0`, continuing to tighten recovery-path verification, and iterating under Marketplace `Preview` positioning rather than inventing a new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.4.1` is a round of UI fixes and interaction polish across agent launch entry points, node and file-activity operations, and terminal-link behavior inside execution nodes, while continuing to iterate under Marketplace `Preview` positioning rather than inventing a brand-new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
