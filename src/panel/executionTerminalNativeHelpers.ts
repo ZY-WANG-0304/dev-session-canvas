@@ -10,6 +10,8 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import {
+  detectExecutionTerminalPathLinks,
+  inferExecutionTerminalPathStyle,
   getExecutionTerminalLinkSuffix,
   normalizeExecutionTerminalWordSeparators,
   removeExecutionTerminalLinkQueryString,
@@ -49,29 +51,15 @@ export interface OpenExecutionTerminalLinkResult {
   targetUri?: string;
 }
 
+interface ResolveExecutionFileLinkOptions {
+  allowPartialBasenameWorkspaceMatch?: boolean;
+}
+
 export function normalizeEditorMultiCursorModifier(value: unknown): 'ctrlCmd' | 'alt' {
   return value === 'ctrlCmd' ? 'ctrlCmd' : 'alt';
 }
 
 export { normalizeExecutionTerminalWordSeparators };
-
-export function inferExecutionTerminalPathStyle(
-  shellPath: string | undefined,
-  cwd: string | undefined
-): ExecutionTerminalPathStyle {
-  const cwdValue = cwd?.trim() ?? '';
-  const shellValue = shellPath?.trim() ?? '';
-  if (
-    /^[a-zA-Z]:[\\/]/.test(cwdValue) ||
-    cwdValue.startsWith('\\\\') ||
-    /^[a-zA-Z]:/.test(shellValue) ||
-    shellValue.includes('\\')
-  ) {
-    return 'windows';
-  }
-
-  return 'posix';
-}
 
 export function prepareExecutionTerminalDroppedPath(
   resource: ExecutionTerminalDroppedResource,
@@ -112,7 +100,8 @@ export function prepareExecutionTerminalDroppedPath(
 
 export async function resolveExecutionFileLink(
   link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options?: ResolveExecutionFileLinkOptions
 ): Promise<ResolvedExecutionFileLink | undefined> {
   const sanitizedPath = sanitizeExecutionFileLinkPath(link.path, context);
   if (!sanitizedPath) {
@@ -143,7 +132,12 @@ export async function resolveExecutionFileLink(
   }
 
   if (link.source === 'fallback') {
-    const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context);
+    const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(
+      sanitizedPath,
+      link,
+      context,
+      options
+    );
     if (fallbackResolved) {
       return fallbackResolved;
     }
@@ -224,6 +218,9 @@ export async function openExecutionTerminalLink(
   readResolvedFileLink?: (resolvedId: string) => ResolvedExecutionFileLink | undefined
 ): Promise<OpenExecutionTerminalLinkResult> {
   if (link.linkKind === 'url') {
+    if (!(await ensureExecutionTerminalUrlSchemeAllowed(link.url))) {
+      return { opened: false };
+    }
     const uri = vscode.Uri.parse(link.url);
     await vscode.commands.executeCommand('vscode.open', uri);
     return {
@@ -247,6 +244,37 @@ export async function openExecutionTerminalLink(
   return openResolvedExecutionTerminalLink(resolved);
 }
 
+async function ensureExecutionTerminalUrlSchemeAllowed(url: string): Promise<boolean> {
+  const uri = vscode.Uri.parse(url);
+  const scheme = uri.scheme;
+  if (!scheme) {
+    return false;
+  }
+
+  const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
+  const allowedSchemes = terminalConfiguration.get<string[]>('allowedLinkSchemes') ?? [];
+  if (allowedSchemes.includes(scheme)) {
+    return true;
+  }
+
+  const allowLabel = `Allow ${scheme}`;
+  const selection = await vscode.window.showWarningMessage(
+    `Opening URIs can be insecure. Do you want to allow opening links with the scheme ${scheme}?`,
+    { modal: true },
+    allowLabel
+  );
+  if (selection !== allowLabel) {
+    return false;
+  }
+
+  await terminalConfiguration.update(
+    'allowedLinkSchemes',
+    [...allowedSchemes, scheme],
+    vscode.ConfigurationTarget.Global
+  );
+  return true;
+}
+
 async function openExecutionTerminalSearchLink(
   link: Extract<ExecutionTerminalOpenLink, { linkKind: 'search' }>,
   context: ExecutionTerminalPathContext
@@ -259,7 +287,10 @@ async function openExecutionTerminalSearchLink(
   for (const candidateText of collectExecutionTerminalSearchExactOpenCandidates(quickOpenText, context)) {
     const resolved = await resolveExecutionFileLink(
       toExecutionTerminalSearchFileLink(candidateText, link),
-      context
+      context,
+      {
+        allowPartialBasenameWorkspaceMatch: true
+      }
     );
     if (!resolved) {
       continue;
@@ -343,6 +374,10 @@ function normalizeExecutionTerminalSearchLinkText(
 
   text = text.replace(/^file:\/\/\/?/, '');
   text = pathModule.normalize(text).replace(/^(\.+[\\/])+/, '');
+  const parsedContextText = normalizeExecutionTerminalSearchLinkTextFromContextLine(link, context.pathStyle);
+  if (parsedContextText) {
+    text = parsedContextText;
+  }
   text = text.replace(/:[^\\/\d][^\d]*$/, '');
   text = text.replace(/\.$/, '');
 
@@ -356,6 +391,37 @@ function normalizeExecutionTerminalSearchLinkText(
   }
 
   return text.trim() || undefined;
+}
+
+function normalizeExecutionTerminalSearchLinkTextFromContextLine(
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'search' }>,
+  pathStyle: ExecutionTerminalPathStyle
+): string | undefined {
+  const contextLine = link.contextLine?.trim();
+  if (!contextLine) {
+    return undefined;
+  }
+
+  // Preserve plain timestamps as plain words instead of treating their trailing `:MM`
+  // segments like file line numbers.
+  const iso8601Pattern = /:\d{2}:\d{2}[+-]\d{2}:\d{2}\.[a-z]+/;
+  if (iso8601Pattern.test(link.text)) {
+    return undefined;
+  }
+
+  const parsedLink = detectExecutionTerminalPathLinks(contextLine, pathStyle).find(
+    (candidate) => candidate.line !== undefined && link.text.startsWith(candidate.path)
+  );
+  if (!parsedLink || parsedLink.line === undefined) {
+    return undefined;
+  }
+
+  let text = `${parsedLink.path}:${parsedLink.line}`;
+  if (parsedLink.column !== undefined) {
+    text += `:${parsedLink.column}`;
+  }
+
+  return text;
 }
 
 function collectExecutionTerminalSearchExactOpenCandidates(
@@ -483,7 +549,8 @@ async function statExecutionLinkTarget(
 async function resolveExecutionWorkspaceFallbackLink(
   sanitizedPath: string,
   link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options?: ResolveExecutionFileLinkOptions
 ): Promise<ResolvedExecutionFileLink | undefined> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -499,16 +566,44 @@ async function resolveExecutionWorkspaceFallbackLink(
     return undefined;
   }
 
-  const basename = path.posix.basename(normalizedSearchPath);
-  if (!basename) {
+  const exactMatches = await collectExecutionWorkspaceFallbackMatches(
+    workspaceFolders,
+    normalizedSearchPath,
+    false
+  );
+  if (exactMatches.length === 1) {
+    return statExecutionLinkTarget(exactMatches[0], link);
+  }
+
+  if (!options?.allowPartialBasenameWorkspaceMatch) {
     return undefined;
   }
 
+  const partialMatches = await collectExecutionWorkspaceFallbackMatches(
+    workspaceFolders,
+    normalizedSearchPath,
+    true
+  );
+  if (partialMatches.length !== 1) {
+    return undefined;
+  }
+
+  return statExecutionLinkTarget(partialMatches[0], link);
+}
+
+async function collectExecutionWorkspaceFallbackMatches(
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+  normalizedSearchPath: string,
+  allowPartialBasenameMatch: boolean
+): Promise<vscode.Uri[]> {
   const matches = new Map<string, vscode.Uri>();
-  const maxPerWorkspace = 64;
+  const searchGlob = allowPartialBasenameMatch
+    ? `**/${escapeExecutionWorkspaceGlobSegment(path.posix.basename(normalizedSearchPath))}*`
+    : `**/${escapeExecutionWorkspaceGlobPath(normalizedSearchPath)}`;
+  const maxPerWorkspace = allowPartialBasenameMatch ? 2 : 64;
   for (const workspaceFolder of workspaceFolders) {
     const candidates = await vscode.workspace.findFiles(
-      new vscode.RelativePattern(workspaceFolder, `**/${escapeExecutionWorkspaceGlobSegment(basename)}`),
+      new vscode.RelativePattern(workspaceFolder, searchGlob),
       undefined,
       maxPerWorkspace
     );
@@ -517,23 +612,21 @@ async function resolveExecutionWorkspaceFallbackLink(
         .relative(workspaceFolder.uri.fsPath, uri.fsPath)
         .split(path.sep)
         .join('/');
-      if (!relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath)) {
+      const matchesSearch = allowPartialBasenameMatch
+        ? relativePathMatchesPartialFallbackSearch(relativePath, normalizedSearchPath)
+        : relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath);
+      if (!matchesSearch) {
         continue;
       }
 
       matches.set(uri.toString(), uri);
-      if (matches.size > 1) {
-        return undefined;
+      if (allowPartialBasenameMatch && matches.size > 1) {
+        return [...matches.values()];
       }
     }
   }
 
-  const onlyMatch = matches.values().next().value;
-  if (!(onlyMatch instanceof vscode.Uri)) {
-    return undefined;
-  }
-
-  return statExecutionLinkTarget(onlyMatch, link);
+  return [...matches.values()];
 }
 
 function classifyExecutionFileLinkTarget(
@@ -567,8 +660,30 @@ function relativePathMatchesFallbackSearch(relativePath: string, normalizedSearc
   );
 }
 
+function relativePathMatchesPartialFallbackSearch(relativePath: string, normalizedSearchPath: string): boolean {
+  const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+  const normalizedRelativeDir = path.posix.dirname(normalizedRelativePath);
+  const normalizedSearchDir = path.posix.dirname(normalizedSearchPath);
+  if (
+    normalizedSearchDir !== '.' &&
+    normalizedRelativeDir !== normalizedSearchDir &&
+    !normalizedRelativeDir.endsWith(`/${normalizedSearchDir}`)
+  ) {
+    return false;
+  }
+
+  return path.posix.basename(normalizedRelativePath).startsWith(path.posix.basename(normalizedSearchPath));
+}
+
 function escapeExecutionWorkspaceGlobSegment(value: string): string {
   return value.replace(/([\*\?\[\]\{\}])/g, '[$1]');
+}
+
+function escapeExecutionWorkspaceGlobPath(value: string): string {
+  return value
+    .split('/')
+    .map((segment) => escapeExecutionWorkspaceGlobSegment(segment))
+    .join('/');
 }
 
 function toExecutionLinkSelection(

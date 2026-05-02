@@ -141,8 +141,8 @@ import type {
   ExecutionTerminalDroppedResource,
   ExecutionTerminalOpenLink
 } from '../common/executionTerminalLinks';
+import { inferExecutionTerminalPathStyle } from '../common/executionTerminalLinks';
 import {
-  inferExecutionTerminalPathStyle,
   normalizeEditorMultiCursorModifier,
   normalizeExecutionTerminalWordSeparators,
   openExecutionTerminalLink,
