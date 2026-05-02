@@ -290,6 +290,7 @@ export class ExecutionTerminalLineContextTracker {
     const terminal = this.terminal;
     const previousLength = terminal.buffer.active.length;
     const previousBaseY = terminal.buffer.active.baseY;
+    const previousCursorLine = previousBaseY + terminal.buffer.active.cursorY;
     await Promise.race([
       new Promise<void>((resolve) => {
         terminal.write(segment.data, () => resolve());
@@ -303,6 +304,7 @@ export class ExecutionTerminalLineContextTracker {
 
     const nextLength = terminal.buffer.active.length;
     const nextBaseY = terminal.buffer.active.baseY;
+    const nextCursorLine = nextBaseY + terminal.buffer.active.cursorY;
     const lengthGrowth = Math.max(0, nextLength - previousLength);
     const trimmedLines = Math.max(0, nextBaseY - previousBaseY - lengthGrowth);
     if (trimmedLines > 0) {
@@ -320,8 +322,12 @@ export class ExecutionTerminalLineContextTracker {
       return;
     }
 
-    const touchedStartLine = Math.max(0, Math.min(nextLength - 1, previousLength - trimmedLines - 1));
-    for (let lineIndex = touchedStartLine; lineIndex < nextLength; lineIndex += 1) {
+    // xterm keeps trailing blank rows in the buffer, so writes can update lines
+    // well before buffer.length - 1 after a cwd change or resize. Track the span
+    // between the pre-write and post-write cursor rows instead of assuming tail writes.
+    const touchedStartLine = Math.max(0, Math.min(nextLength - 1, previousCursorLine - trimmedLines));
+    const touchedEndLine = Math.max(touchedStartLine, Math.min(nextLength - 1, nextCursorLine));
+    for (let lineIndex = touchedStartLine; lineIndex <= touchedEndLine; lineIndex += 1) {
       this.lineCwds[lineIndex] = segment.cwd;
     }
   }
