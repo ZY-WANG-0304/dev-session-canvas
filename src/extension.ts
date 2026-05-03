@@ -165,17 +165,32 @@ export function activate(context: vscode.ExtensionContext): void {
     await panelManager.resetState();
   });
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand(COMMAND_IDS.focusSidebarNode, async (nodeId?: unknown) => {
-      if (typeof nodeId !== 'string' || nodeId.trim().length === 0) {
-        return;
-      }
+  const focusNodeFromCommand = async (nodeId?: unknown): Promise<void> => {
+    if (typeof nodeId !== 'string' || nodeId.trim().length === 0) {
+      return;
+    }
 
-      const focused = await panelManager.focusNodeById(nodeId);
-      if (!focused) {
-        await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
-      }
-    }),
+    const focused = await panelManager.focusNodeById(nodeId);
+    if (!focused) {
+      await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+    }
+  };
+
+  const focusAttentionNodeFromCommand = async (nodeId?: unknown): Promise<void> => {
+    if (typeof nodeId !== 'string' || nodeId.trim().length === 0) {
+      return;
+    }
+
+    const focused = await panelManager.focusAttentionNodeById(nodeId);
+    if (!focused) {
+      await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+    }
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.focusNode, focusNodeFromCommand),
+    vscode.commands.registerCommand(COMMAND_IDS.focusAttentionNode, focusAttentionNodeFromCommand),
+    vscode.commands.registerCommand(COMMAND_IDS.focusSidebarNode, focusNodeFromCommand),
     vscode.commands.registerCommand(
       COMMAND_IDS.restoreSidebarSessionHistoryEntry,
       async (provider?: unknown, sessionId?: unknown, title?: unknown) => {
