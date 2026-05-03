@@ -1,0 +1,40 @@
+{
+  "name": "dev-session-canvas-notifier",
+  "displayName": "Dev Session Canvas Notifier",
+  "description": "在本机 UI 侧为 Dev Session Canvas 投递桌面系统通知的 companion extension。",
+  "version": "0.4.0",
+  "publisher": "devsessioncanvas",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onCommand:devSessionCanvasNotifier.postSystemNotification",
+    "onCommand:devSessionCanvasNotifier.sendTestNotification",
+    "onCommand:devSessionCanvasNotifier.openDiagnosticOutput",
+    "onUri"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "devSessionCanvasNotifier.sendTestNotification",
+        "title": "Dev Session Canvas Notifier: 发送测试桌面通知"
+      },
+      {
+        "command": "devSessionCanvasNotifier.openDiagnosticOutput",
+        "title": "Dev Session Canvas Notifier: 打开通知诊断输出"
+      }
+    ]
+  },
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+  }
+}

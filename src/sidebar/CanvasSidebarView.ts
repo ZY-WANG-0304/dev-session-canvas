@@ -166,22 +166,34 @@ function buildSurfaceLocationLine(
 }
 
 function formatNotificationModeSummary(state: CanvasSidebarState): string {
-  const bridgeStatus = state.notificationBridgeEnabled ? '已桥接' : '未桥接';
+  const bridgeStatus = formatNotificationBridgeStatus(state);
   return `${bridgeStatus} · ${formatStrongReminderModeLabel(state)}`;
 }
 
 function buildNotificationModeTooltip(state: CanvasSidebarState): string {
   return [
     '执行节点收到 BEL、OSC 9 或 OSC 777 时，节点提醒 icon 与 minimap 闪烁会始终保留。',
-    state.notificationBridgeEnabled
-      ? '当前已开启 VS Code 工作台通知桥接。'
-      : '当前未开启 VS Code 工作台通知桥接。',
+    state.notificationPreferNotifierCompanion
+      ? state.notificationBridgeEnabled
+        ? '当前优先使用本机 Notifier companion；若 companion 不可用或投递失败，则回退到 VS Code 工作台通知。'
+        : '当前优先使用本机 Notifier companion，且未配置 VS Code 工作台通知回退。'
+      : state.notificationBridgeEnabled
+        ? '当前已开启 VS Code 工作台通知桥接。'
+        : '当前未开启 VS Code 工作台通知桥接。',
     `增强提醒模式：${formatStrongReminderModeLabel(state)}。`,
     '',
     '💡 通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。',
     '• Claude Code：需配置 Terminal Bell Notifications',
     '• Codex：需设置 notification_method 和 notification_condition'
   ].join('\n');
+}
+
+function formatNotificationBridgeStatus(state: CanvasSidebarState): string {
+  if (state.notificationPreferNotifierCompanion) {
+    return state.notificationBridgeEnabled ? 'Companion 优先' : '仅 Companion';
+  }
+
+  return state.notificationBridgeEnabled ? '已桥接' : '未桥接';
 }
 
 function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string | undefined {

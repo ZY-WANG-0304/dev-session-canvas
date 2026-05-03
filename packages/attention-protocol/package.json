@@ -1,0 +1,8 @@
+{
+  "name": "@dev-session-canvas/attention-protocol",
+  "private": true,
+  "version": "0.4.0",
+  "description": "Shared attention notification protocol for Dev Session Canvas companion integrations.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

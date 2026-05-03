@@ -51,19 +51,23 @@ npm run package:vsix
 
 ## 本地调试
 
-`Run Dev Session Canvas` 是仓库自带的 VS Code 调试配置，不是命令面板里的普通命令。
+`Run Dev Session Canvas` 系列是仓库自带的 VS Code 调试配置，不是命令面板里的普通命令。
 仓库内的调试入口定义在隐藏文件 `.vscode/launch.json`；如果文件视图未显示 dotfiles，容易误以为“当前目录没有配置”。
 
 推荐启动方式：
 
 1. 打开 VS Code 的 `Run and Debug` 视图
-2. 在顶部调试配置下拉框中选择 `Run Dev Session Canvas`
+2. 在顶部调试配置下拉框中按场景选择：
+   - 本地窗口调主扩展：`Run Dev Session Canvas`
+   - 本地窗口联调主扩展 + notifier：`Run Dev Session Canvas + Notifier (Local Window)`
+   - 本地窗口只排查 notifier：`Run Notifier Only (Local Window)`
+   - `Remote SSH` / WSL / Dev Container 窗口里联调“远端主扩展 + 本机 notifier”：`Run Remote Main + Local Notifier (Prompt)`
 3. 点击启动按钮或直接按 `F5`
 
 也可通过命令面板执行：
 
 1. `Debug: Select and Start Debugging`
-2. 选择 `Run Dev Session Canvas`
+2. 选择对应的调试配置名称
 
 启动后，VS Code 会打开一个 `Extension Development Host` 窗口。后续所有插件交互在该窗口中进行，而非在仓库窗口里。
 
@@ -74,6 +78,12 @@ npm run package:vsix
 - 通过 `--extensionDevelopmentPath` 加载仓库中的开发态扩展，而非已安装副本
 
 因此，日常使用的 VS Code profile 和扩展集合不会参与 F5 调试。Remote-SSH 所需的本机 UI 扩展应放入专用 profile，扩展的已安装副本不要放进该 profile。
+
+补充说明：
+
+- `Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Notifier Only (Local Window)` 只适用于本地窗口，因为 notifier 是 `extensionKind: ["ui"]` 的本机 UI 扩展。
+- 如果当前仓库是通过 `Remote SSH` / WSL / Dev Container 打开的，notifier 不能直接从远端源码目录启动；此时应改用 `Run Remote Main + Local Notifier (Prompt)`，让主扩展继续从远端路径运行、让 notifier 从本机 clone 路径运行。
+- `Run Remote Main + Local Notifier (Prompt)` 当前只要求输入 2 个值：`remoteAuthority` 和 `localRepoRoot`。远端 `folder-uri` 与本机 notifier `dist` 路径会自动从这两个输入推导。
 
 ## 首次准备 Debug Profile
 
@@ -92,6 +102,7 @@ code --profile "Dev Session Canvas Extension Debug" --uninstall-extension devses
 2. 创建空 profile，名称填 `Dev Session Canvas Extension Debug`
 3. 在该 profile 里安装 `Remote Development`
 4. 确认该 profile 里未安装 `Dev Session Canvas`
+5. 若后续需要调 notifier，确认该 profile 里也未安装 Marketplace 版 `Dev Session Canvas Notifier`
 
 说明：
 
@@ -172,11 +183,22 @@ npm run test:webview -- --update-snapshots
 4. 在新窗口中执行 `Dev Session Canvas: 打开画布`，确认画布正常打开。
 5. 若本机默认 profile 中已安装该扩展，确认 Development Host 里实际生效的是开发态扩展，而非已安装副本。
 
+如果本轮改动涉及 notifier companion，还应额外做一次“远端主扩展 + 本机 notifier”人工验收：
+
+1. 在 `Remote - SSH` 打开的仓库窗口中按 `F5` 运行 `Run Remote Main + Local Notifier (Prompt)`。
+2. 输入：
+   - `remoteAuthority`：例如 `ssh-remote+your-host-alias`
+   - `localRepoRoot`：本机 clone 的 repo 根目录绝对路径
+3. 确认远端仓库窗口里的主扩展仍可正常打开画布。
+4. 在新开的 Development Host 中执行 `Developer: Show Running Extensions`，确认 `devsessioncanvas.dev-session-canvas-notifier` 出现在本机 UI 侧。
+5. 再搜索并执行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认 notifier 命令已被同一 Development Host 成功加载。
+
 ## 常见误区
 
 - `Run Dev Session Canvas` 不是命令面板命令，而是调试配置名称。
 - `Run Dev Session Canvas` 依赖专用 profile `Dev Session Canvas Extension Debug`；若该 profile 里缺少 `Remote Development`，Remote-SSH 调试不会正常工作。
 - `Run Dev Session Canvas` 不会自动禁用扩展的已安装副本；正确做法是不要将其装入 debug profile。
+- `Run Notifier Only (Local Window)` 不是远端窗口专用配置；在 `Remote SSH` / WSL / Dev Container 窗口里直接使用它，通常看不到 notifier 命令，因为 notifier 需要从本机路径加载。
 - `Dev Session Canvas: 打开画布` 按默认承载面打开主画布；如需指定宿主区域，请使用显式的编辑区 / 面板打开命令。
 - 在仓库窗口的命令面板里搜索 `Run Dev Session Canvas` 通常找不到正确入口，因为它应从调试配置启动。
 - 仓库尚未处于稳定版发布状态；对外目标是公开 `Marketplace Preview`，不是稳定正式版。
