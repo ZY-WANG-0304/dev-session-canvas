@@ -8,6 +8,21 @@
       "args": ["run", "build"],
       "group": "build",
       "problemMatcher": []
+    },
+    {
+      "label": "build notifier",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "build:notifier"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build extension + notifier",
+      "type": "shell",
+      "command": "npm run build && npm run build:notifier",
+      "group": "build",
+      "problemMatcher": []
     }
   ]
 }

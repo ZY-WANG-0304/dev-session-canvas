@@ -12,6 +12,8 @@
 docs/**
 scripts/**
 !scripts/claude-file-event-hook.cjs
+extensions/**
+packages/**
 src/**
 tests/**
 node_modules/**

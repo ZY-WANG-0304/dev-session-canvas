@@ -3,6 +3,10 @@
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "version": "0.4.1",
+  "workspaces": [
+    "extensions/vscode/dev-session-canvas-notifier",
+    "packages/attention-protocol"
+  ],
   "publisher": "devsessioncanvas",
   "license": "Apache-2.0",
   "repository": {
@@ -268,6 +272,12 @@
           "scope": "window",
           "markdownDescription": "%configuration.notifications.bridgeTerminalAttentionSignals.description%"
         },
+        "devSessionCanvas.notifications.preferNotifierCompanion": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDescription": "%configuration.notifications.preferNotifierCompanion.description%"
+        },
         "devSessionCanvas.notifications.strongTerminalAttentionReminder": {
           "type": "string",
           "enum": [
@@ -344,14 +354,18 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier build",
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:execution-terminal-native-helpers && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:agent-launch-presets && npm run test:sidebar-session-history && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:execution-terminal-native-helpers && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:agent-launch-presets && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:smoke && npm run test:webview",
     "test:agent-cli-resolver": "node scripts/test-agent-cli-resolver.mjs",
     "test:agent-launch-presets": "node scripts/test-agent-launch-presets.mjs",
     "test:extension-storage-paths": "node scripts/test-extension-storage-paths.mjs",
     "test:execution-session-bridge": "node scripts/test-execution-session-bridge.mjs",
+    "test:attention-protocol": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/attention-protocol.test.mts",
+    "test:notifier-source": "node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/platformNotification.test.mts",
+    "test:notifier-smoke": "npm run build && npm run build:notifier && node scripts/run-vscode-notifier-smoke.mjs",
     "test:package-vsix-command": "node scripts/test-package-vsix-command.mjs",
     "test:sidebar-codicon-bundle": "node scripts/test-sidebar-codicon-bundle.mjs",
     "test:execution-attention-signals": "node scripts/test-execution-attention-signals.mjs",
@@ -370,7 +384,8 @@
     "generate:marketplace-media": "node scripts/generate-marketplace-media.mjs",
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.45",

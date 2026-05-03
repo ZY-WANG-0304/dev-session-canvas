@@ -30,6 +30,7 @@
   "configuration.agent.codexDefaultArgs.description": "新建 Codex Agent 或启动 Codex 新会话时默认追加的启动参数片段。只填写参数，不要重复命令本身；使用 window scope，可在当前窗口/工作区范围覆盖。",
   "configuration.agent.claudeDefaultArgs.description": "新建 Claude Code Agent 或启动 Claude 新会话时默认追加的启动参数片段。只填写参数，不要重复命令本身；使用 window scope，可在当前窗口/工作区范围覆盖。",
   "configuration.notifications.bridgeTerminalAttentionSignals.description": "是否把执行节点输出中的 `BEL`、`OSC 9` 和 `OSC 777` 终端提醒桥接为 VS Code 工作台通知。关闭后，现有启发式与诊断仍继续解析这些信号，但不会额外弹出 VS Code 通知。",
+  "configuration.notifications.preferNotifierCompanion.description": "是否优先把执行节点终端提醒投递给本机 UI 侧的 `Dev Session Canvas Notifier` companion extension。开启后，若 companion 可用则优先发桌面系统通知；若 companion 不可用或投递失败，且 `bridgeTerminalAttentionSignals` 仍为开启状态，则自动回退到 VS Code 工作台通知。",
   "configuration.notifications.strongTerminalAttentionReminder.description": "执行节点收到 `BEL`、`OSC 9` 或 `OSC 777` 终端提醒后，节点上的提醒 icon 与 minimap 中对应节点的同色明暗闪烁始终会保留。这个选项只控制额外的增强提醒表面，可选值为 `none`、`titleBar`、`minimap`、`both`；默认值是 `both`。",
   "configuration.notifications.strongTerminalAttentionReminder.none.description": "不额外开启增强提醒，只保留节点提醒 icon 和 minimap 的同色明暗闪烁。",
   "configuration.notifications.strongTerminalAttentionReminder.titleBar.description": "只让执行节点标题栏进入闪烁态，不给 minimap 增加尺寸 pulse。",
