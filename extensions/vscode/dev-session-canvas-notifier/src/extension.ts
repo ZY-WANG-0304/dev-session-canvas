@@ -20,6 +20,9 @@ import type { NotifierExtensionModeLabel } from './sidebarEnvironment';
 const FOCUS_URI_PATH = '/focus';
 const MAX_DEBUG_RECORDS = 20;
 const OUTPUT_CHANNEL_NAME = 'Dev Session Canvas Notifier';
+const CONFIGURATION_KEYS = {
+  playSound: 'devSessionCanvasNotifier.notifications.playSound'
+} as const;
 const MANUAL_COMMAND_IDS = {
   sendTestNotification: 'devSessionCanvasNotifier.sendTestNotification',
   openDiagnosticOutput: 'devSessionCanvasNotifier.openDiagnosticOutput',
@@ -46,6 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   const sidebarViewProvider = new NotifierSidebarViewProvider({
     getModeLabel: () => getExtensionModeLabel(context.extensionMode),
+    getPlaySoundEnabled: () => readPlaySoundEnabled(),
     getLatestRecord: () => postedNotifications.at(-1),
     getLatestManualAttempt: () => getLatestManualNotificationAttempt(manualNotificationAttempts),
     sendTestNotification: async () => sendTestNotification(),
@@ -55,7 +59,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(outputChannel, sidebarViewProvider);
   appendOutputLine(
     outputChannel,
-    `activated platform=${process.platform} mode=${getExtensionModeLabel(context.extensionMode)}`
+    `activated platform=${process.platform} mode=${getExtensionModeLabel(context.extensionMode)} playSound=${describeBooleanFlag(
+      readPlaySoundEnabled()
+    )}`
   );
 
   const executeFocusAction = async (action: AttentionNotificationFocusAction | undefined): Promise<void> => {
@@ -106,6 +112,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const callbackUri = request.focusAction
       ? await buildFocusCallbackUri(context, request.focusAction)
       : undefined;
+    const playSound = readPlaySoundEnabled();
     const result =
       context.extensionMode === vscode.ExtensionMode.Test
         ? ({
@@ -116,7 +123,8 @@ export function activate(context: vscode.ExtensionContext): void {
         : await postDesktopNotification({
             request,
             callbackUri,
-            onDidActivate: () => executeFocusAction(request.focusAction)
+            onDidActivate: () => executeFocusAction(request.focusAction),
+            playSound
           });
 
     recordDebugNotification(postedNotifications, {
@@ -131,6 +139,7 @@ export function activate(context: vscode.ExtensionContext): void {
         `status=${result.status}`,
         `backend=${result.backend}`,
         `activation=${result.activationMode}`,
+        `playSound=${describeBooleanFlag(playSound)}`,
         `dedupeKey=${request.dedupeKey}`,
         result.detail ? `detail=${result.detail}` : undefined,
         callbackUri ? `callback=${callbackUri}` : undefined
@@ -180,16 +189,24 @@ export function activate(context: vscode.ExtensionContext): void {
 
     if (selectedAction === '打开输出') {
       outputChannel.show(true);
-      logPlatformSnapshot(outputChannel, postedNotifications.at(-1));
+      logPlatformSnapshot(outputChannel, postedNotifications.at(-1), readPlaySoundEnabled());
     }
   };
 
   const openDiagnosticOutput = (): void => {
     outputChannel.show(true);
-    logPlatformSnapshot(outputChannel, postedNotifications.at(-1));
+    logPlatformSnapshot(outputChannel, postedNotifications.at(-1), readPlaySoundEnabled());
   };
 
   context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (!event.affectsConfiguration(CONFIGURATION_KEYS.playSound)) {
+        return;
+      }
+
+      appendOutputLine(outputChannel, `config playSound=${describeBooleanFlag(readPlaySoundEnabled())}`);
+      void sidebarViewProvider.refresh();
+    }),
     vscode.window.registerUriHandler({
       handleUri: (uri) => {
         void handleFocusUri(uri);
@@ -315,10 +332,12 @@ function buildManualNotificationMessage(result: AttentionNotificationDeliveryRes
 
 function logPlatformSnapshot(
   outputChannel: vscode.OutputChannel,
-  lastRecord: AttentionNotificationDebugRecord | undefined
+  lastRecord: AttentionNotificationDebugRecord | undefined,
+  playSoundEnabled: boolean
 ): void {
   appendOutputLine(outputChannel, '--- platform snapshot ---');
   appendOutputLine(outputChannel, `platform=${process.platform}`);
+  appendOutputLine(outputChannel, `playSound=${describeBooleanFlag(playSoundEnabled)}`);
   for (const line of getPlatformGuidanceLines(process.platform)) {
     appendOutputLine(outputChannel, line);
   }
@@ -421,4 +440,12 @@ function getLatestManualNotificationAttempt(
     requestedAt: latestAttempt.requestedAt,
     activatedAt: latestAttempt.activatedAt
   };
+}
+
+function readPlaySoundEnabled(): boolean {
+  return vscode.workspace.getConfiguration().get<boolean>(CONFIGURATION_KEYS.playSound, true) !== false;
+}
+
+function describeBooleanFlag(value: boolean): string {
+  return value ? 'on' : 'off';
 }

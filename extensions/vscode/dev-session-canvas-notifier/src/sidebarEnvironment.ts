@@ -19,6 +19,8 @@ export interface NotifierEnvironmentSnapshot {
   currentRouteDetail: string;
   activationLabel: string;
   activationDetail: string;
+  soundLabel: string;
+  soundDetail: string;
   installRequirements: NotifierInstallRequirement[];
   notes: string[];
 }
@@ -26,19 +28,22 @@ export interface NotifierEnvironmentSnapshot {
 interface NotifierEnvironmentSnapshotInput {
   platform: NodeJS.Platform;
   modeLabel: NotifierExtensionModeLabel;
+  playSoundEnabled: boolean;
   terminalNotifierAvailable?: boolean;
   notifySendAvailable?: boolean;
 }
 
 export async function probeNotifierEnvironmentSnapshot(
   platform: NodeJS.Platform,
-  modeLabel: NotifierExtensionModeLabel
+  modeLabel: NotifierExtensionModeLabel,
+  playSoundEnabled: boolean
 ): Promise<NotifierEnvironmentSnapshot> {
   const terminalNotifierAvailable = platform === 'darwin' ? await isCommandAvailable('terminal-notifier', platform) : false;
   const notifySendAvailable = platform === 'linux' ? await isCommandAvailable('notify-send', platform) : false;
   return buildNotifierEnvironmentSnapshot({
     platform,
     modeLabel,
+    playSoundEnabled,
     terminalNotifierAvailable,
     notifySendAvailable
   });
@@ -49,7 +54,8 @@ export function buildNotifierEnvironmentSnapshot(
 ): NotifierEnvironmentSnapshot {
   const notes = [
     '这里显示的是当前本机 UI 侧环境，不代表远端 workspace 主机。',
-    '如需确认真实回跳能力，请从本视图或命令面板发送一次测试桌面通知。'
+    '如需确认真实回跳能力，请从本视图或命令面板发送一次测试桌面通知。',
+    '声音开关默认开启；实际是否响铃仍取决于平台后端和系统通知服务。'
   ];
 
   if (input.modeLabel === 'test') {
@@ -60,6 +66,8 @@ export function buildNotifierEnvironmentSnapshot(
       currentRouteDetail: '当前为 Extension Test 模式，通知不会触达真实系统，而是直接记录测试结果。',
       activationLabel: 'test-replay',
       activationDetail: '测试环境通过回放 callback URI 验证“聚焦节点 / 清除 attention”链路。',
+      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+      soundDetail: '测试模式不会触发真实系统声音；这里只反映当前配置值。',
       installRequirements: [
         {
           name: '真实桌面通知后端',
@@ -80,6 +88,11 @@ export function buildNotifierEnvironmentSnapshot(
         currentRouteDetail: '当前环境会优先走 terminal-notifier，并通过 -open 回到 VS Code。',
         activationLabel: 'protocol',
         activationDetail: '系统通知支持点击后回到 VS Code URI handler。',
+        soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+        soundDetail:
+          input.playSoundEnabled === false
+            ? '当前已关闭提示音，terminal-notifier 会按静音路径发送。'
+            : '当前会请求 terminal-notifier 播放默认通知声音。',
         installRequirements: [
           {
             name: 'terminal-notifier',
@@ -99,6 +112,11 @@ export function buildNotifierEnvironmentSnapshot(
       currentRouteDetail: '当前环境会退回 osascript display notification，只保证通知出现。',
       activationLabel: 'none',
       activationDetail: '当前路径不支持点击通知后自动回到 VS Code。',
+      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+      soundDetail:
+        input.playSoundEnabled === false
+          ? '当前已关闭提示音，osascript 回退路径不会再额外播放系统 alert sound。'
+          : '当前会在投递通知前 best-effort 播放一次系统 alert sound。',
       installRequirements: [
         {
           name: 'terminal-notifier',
@@ -120,6 +138,11 @@ export function buildNotifierEnvironmentSnapshot(
         currentRouteDetail: '当前环境会调用 notify-send 投递桌面通知。',
         activationLabel: 'direct-action / none',
         activationDetail: '是否支持点击回跳，取决于桌面环境对 notify-send --action --wait 的支持。',
+        soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+        soundDetail:
+          input.playSoundEnabled === false
+            ? '当前会请求通知服务尽量静音；最终是否完全静音取决于桌面环境。'
+            : '当前会通过 sound-name hint 请求提示音；最终是否响铃取决于桌面环境。',
         installRequirements: [
           {
             name: 'notify-send',
@@ -139,6 +162,8 @@ export function buildNotifierEnvironmentSnapshot(
       currentRouteDetail: '当前环境缺少 notify-send，notifier 无法投递真实桌面通知。',
       activationLabel: 'unavailable',
       activationDetail: '安装 notify-send 后，系统通知主路径才会生效。',
+      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+      soundDetail: '当前缺少 Linux 桌面通知命令，声音设置暂时不会生效。',
       installRequirements: [
         {
           name: 'notify-send',
@@ -159,6 +184,11 @@ export function buildNotifierEnvironmentSnapshot(
       currentRouteDetail: '当前环境会通过 PowerShell 生成 Windows Toast 通知。',
       activationLabel: 'protocol',
       activationDetail: '系统通知支持点击后回到 VS Code URI handler。',
+      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+      soundDetail:
+        input.playSoundEnabled === false
+          ? '当前会在 Toast XML 中显式请求静音。'
+          : '当前会在 Toast XML 中请求默认通知声音；最终是否响铃取决于系统通知策略。',
       installRequirements: [
         {
           name: '额外 CLI',
@@ -177,6 +207,8 @@ export function buildNotifierEnvironmentSnapshot(
     currentRouteDetail: '当前平台未映射到桌面通知后端。',
     activationLabel: 'none',
     activationDetail: '本环境下不会触发可点击回跳的桌面通知。',
+    soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+    soundDetail: '当前平台未支持桌面通知后端，声音开关不会生效。',
     installRequirements: [
       {
         name: '支持状态',
