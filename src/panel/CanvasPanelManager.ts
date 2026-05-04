@@ -51,6 +51,7 @@ import {
   type CanvasEdgeColor,
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
+  type CanvasAttentionNotificationBridgeMode,
   type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
@@ -88,6 +89,7 @@ import {
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   isExecutionNodeKind,
+  normalizeCanvasAttentionNotificationBridgeMode,
   normalizeCanvasStrongTerminalAttentionReminderMode,
   normalizeCanvasNodeFootprint,
   parseWebviewMessage,
@@ -333,8 +335,7 @@ export interface CanvasSidebarState {
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
-  notificationBridgeEnabled: boolean;
-  notificationPreferNotifierCompanion: boolean;
+  notificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
   filesFeatureEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
@@ -460,8 +461,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
-  private bridgeTerminalAttentionSignalsEnabled: boolean;
-  private preferNotifierCompanionEnabled: boolean;
+  private attentionNotificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   private fileFilterState: CanvasFileFilterState;
   private state: CanvasPrototypeState;
@@ -510,8 +510,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.appliedStartupConfiguration = this.readStartupConfiguration();
-    this.bridgeTerminalAttentionSignalsEnabled = this.readBridgeTerminalAttentionSignalsEnabled();
-    this.preferNotifierCompanionEnabled = this.readPreferNotifierCompanionEnabled();
+    this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
@@ -563,12 +562,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
         const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
         const filesPathDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPathDisplayMode);
-        const bridgeTerminalAttentionSignalsChanged = event.affectsConfiguration(
-          CONFIG_KEYS.notificationBridgeTerminalAttentionSignals
-        );
-        const preferNotifierCompanionChanged = event.affectsConfiguration(
-          CONFIG_KEYS.notificationPreferNotifierCompanion
-        );
+        const attentionNotificationBridgeChanged =
+          event.affectsConfiguration(CONFIG_KEYS.notificationAttentionSignalBridge) ||
+          event.affectsConfiguration(CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals) ||
+          event.affectsConfiguration(CONFIG_KEYS.legacyNotificationPreferNotifierCompanion);
         const strongTerminalAttentionReminderChanged = event.affectsConfiguration(
           CONFIG_KEYS.notificationStrongTerminalAttentionReminder
         );
@@ -586,8 +583,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           fileNodeDisplayStyleChanged ||
           filesNodeDisplayModeChanged ||
           filesPathDisplayModeChanged ||
-          bridgeTerminalAttentionSignalsChanged ||
-          preferNotifierCompanionChanged ||
+          attentionNotificationBridgeChanged ||
           strongTerminalAttentionReminderChanged;
 
         if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
@@ -608,8 +604,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
           !filesPathDisplayModeChanged &&
-          !bridgeTerminalAttentionSignalsChanged &&
-          !preferNotifierCompanionChanged &&
+          !attentionNotificationBridgeChanged &&
           !strongTerminalAttentionReminderChanged &&
           !terminalScrollbackChanged &&
           !multiCursorModifierChanged &&
@@ -633,8 +628,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
             filesPathDisplayModeChanged,
-            bridgeTerminalAttentionSignalsChanged,
-            preferNotifierCompanionChanged,
+            attentionNotificationBridgeChanged,
             strongTerminalAttentionReminderChanged,
             terminalScrollbackChanged,
             multiCursorModifierChanged,
@@ -681,8 +675,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceLocation,
       configuredSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
-      notificationBridgeEnabled: this.bridgeTerminalAttentionSignalsEnabled,
-      notificationPreferNotifierCompanion: this.preferNotifierCompanionEnabled,
+      notificationBridgeMode: this.attentionNotificationBridgeMode,
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       filePresentationMode: fileConfiguration.presentationMode,
@@ -2182,12 +2175,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private readBridgeTerminalAttentionSignalsEnabled(): boolean {
-    return getConfigurationValue<boolean>('notificationBridgeTerminalAttentionSignals', true);
-  }
+  private readAttentionNotificationBridgeMode(): CanvasAttentionNotificationBridgeMode {
+    const configuration = vscode.workspace.getConfiguration();
+    const configuredMode = configuration.get<CanvasAttentionNotificationBridgeMode | boolean>(
+      CONFIG_KEYS.notificationAttentionSignalBridge
+    );
+    if (configuredMode !== undefined) {
+      return normalizeCanvasAttentionNotificationBridgeMode(configuredMode);
+    }
 
-  private readPreferNotifierCompanionEnabled(): boolean {
-    return getConfigurationValue<boolean>('notificationPreferNotifierCompanion', false);
+    const legacyPreferNotifierCompanion =
+      configuration.get<boolean>(CONFIG_KEYS.legacyNotificationPreferNotifierCompanion, false) === true;
+    if (legacyPreferNotifierCompanion) {
+      return 'system';
+    }
+
+    return configuration.get<boolean>(CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals, true) === true
+      ? 'workbench'
+      : 'none';
   }
 
   private readStrongTerminalAttentionReminderMode(): CanvasStrongTerminalAttentionReminderMode {
@@ -2272,25 +2277,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
     filesPathDisplayModeChanged: boolean;
-    bridgeTerminalAttentionSignalsChanged: boolean;
-    preferNotifierCompanionChanged: boolean;
+    attentionNotificationBridgeChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
     terminalWordSeparatorsChanged: boolean;
     workbenchIconThemeChanged: boolean;
   }): Promise<void> {
-    if (options.bridgeTerminalAttentionSignalsChanged) {
-      this.bridgeTerminalAttentionSignalsEnabled = this.readBridgeTerminalAttentionSignalsEnabled();
+    if (options.attentionNotificationBridgeChanged) {
+      this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
       this.recordDiagnosticEvent('execution/attentionNotificationBridgeConfigChanged', {
-        enabled: this.bridgeTerminalAttentionSignalsEnabled
-      });
-    }
-
-    if (options.preferNotifierCompanionChanged) {
-      this.preferNotifierCompanionEnabled = this.readPreferNotifierCompanionEnabled();
-      this.recordDiagnosticEvent('execution/attentionNotifierCompanionConfigChanged', {
-        enabled: this.preferNotifierCompanionEnabled
+        enabled: this.attentionNotificationBridgeMode !== 'none',
+        mode: this.attentionNotificationBridgeMode,
+        workbenchEnabled: this.attentionNotificationBridgeMode !== 'none',
+        systemPreferred: this.attentionNotificationBridgeMode === 'system'
       });
     }
 
@@ -4795,7 +4795,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     state.lastNotificationKey = notificationKey;
     state.lastNotificationAtMs = now;
 
-    if (this.preferNotifierCompanionEnabled) {
+    if (this.attentionNotificationBridgeMode === 'system') {
       const companionResult = await this.postExecutionAttentionNotificationToCompanion(
         this.buildExecutionAttentionNotificationRequest(kind, nodeId, message, notificationKey)
       );
@@ -4805,6 +4805,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           nodeId,
           signal: signal.kind,
           message,
+          bridgeMode: this.attentionNotificationBridgeMode,
           backend: companionResult.backend,
           activationMode: companionResult.activationMode,
           detail: companionResult.detail
@@ -4817,6 +4818,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         signal: signal.kind,
         message,
+        bridgeMode: this.attentionNotificationBridgeMode,
         status: companionResult.status,
         backend: companionResult.backend,
         activationMode: companionResult.activationMode,
@@ -4824,7 +4826,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
-    if (!this.bridgeTerminalAttentionSignalsEnabled) {
+    if (this.attentionNotificationBridgeMode === 'none') {
       return;
     }
 
@@ -4832,7 +4834,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind,
       nodeId,
       signal: signal.kind,
-      message
+      message,
+      bridgeMode: this.attentionNotificationBridgeMode
     });
     void this.showExecutionAttentionNotification(kind, nodeId, message);
   }

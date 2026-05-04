@@ -26,7 +26,7 @@
 3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）
 4. 系统捕获并解析这些信号，识别出需要用户注意的事件
 5. 系统在画布节点上显示视觉提示（节点内提醒 icon、Minimap 同色明暗闪烁）
-6. 如果启用了 VS Code 工作台通知桥接，系统还会弹出 VS Code 通知
+6. 如果桥接模式不是 `none`，系统还会按配置额外弹出 VS Code 工作台消息或桌面系统通知
 7. 如果启用了强提醒模式，系统还会在节点标题栏或 Minimap 上显示额外增强提示
 8. 用户通过视觉提示快速定位到需要注意的节点
 9. 用户通过以下方式之一清除通知状态：
@@ -37,8 +37,7 @@
 
 1. 用户打开 VSCode 设置（`devSessionCanvas.notifications.*`）
 2. 用户根据个人偏好调整通知行为：
-   - 启用/禁用 notifier companion 优先桥接
-   - 启用/禁用 VS Code 工作台通知桥接
+   - 选择通知桥接模式（不桥接通知、工作台消息、系统通知）
    - 选择强提醒模式（无、节点标题栏、Minimap 尺寸脉冲、两者都有）
 3. 配置立即生效，无需重启 VSCode
 
@@ -58,30 +57,22 @@
   - Minimap 对应节点的同色明暗闪烁
   - 节点 `attentionPending` 状态标记并持久化到存储
 
-### 4.2 VS Code 工作台通知桥接
+### 4.2 通知桥接模式
 
-- 配置项 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals`：
-  - 类型：`boolean`
-  - 默认值：`true`
+- 配置项 `devSessionCanvas.notifications.attentionSignalBridge`：
+  - 类型：`enum`
+  - 可选值：`none` | `workbench` | `system`
+  - 默认值：`workbench`
   - 作用域：`window`
-  - 功能：控制是否将终端注意力信号桥接为 VS Code 工作台通知（`vscode.window.showInformationMessage`）
-  - 关闭后：节点内提醒 icon 与 Minimap 同色闪烁仍然保留，只是不额外弹出 VS Code 工作台通知
-
-### 4.2.1 Notifier companion 优先桥接
-
-- 配置项 `devSessionCanvas.notifications.preferNotifierCompanion`：
-  - 类型：`boolean`
-  - 默认值：`false`
-  - 作用域：`window`
-  - 功能：控制是否优先把执行节点 attention event 发送给本机 UI 侧的 `Dev Session Canvas Notifier` companion extension
-- 开启后：
-  - 若 companion 可用且成功接单，则本次提醒优先走本机桌面系统通知，不再重复弹 VS Code 工作台通知
+- 各模式行为：
+  - `none`：不额外弹出 VS Code 工作台消息或系统通知；节点内提醒 icon、Minimap 同色明暗闪烁、诊断事件与 `attentionPending` 状态仍然保留
+  - `workbench`：把终端注意力信号桥接为 VS Code 工作台消息（`vscode.window.showInformationMessage`）
+  - `system`：优先把 attention event 发送给本机 UI 侧的 `Dev Session Canvas Notifier` companion extension；若 companion 可用且成功接单，则本次提醒走本机桌面系统通知，不再重复弹 VS Code 工作台消息
+- `system` 模式的补充约束：
   - companion 会同时返回实际使用的 `backend` 与 `activationMode`；其中 `activationMode=none` 明确表示“当前平台只保证通知出现，不承诺点击后回到 VS Code”
-  - 若 companion 缺失、当前平台不支持、或调用失败，则按 `bridgeTerminalAttentionSignals` 的原有配置决定是否回退到 VS Code 工作台通知
-- 关闭后：
-  - 完全保留当前工作台通知桥接语义，不尝试调用 companion
+  - 若 companion 缺失、当前平台不支持、或调用失败，则自动回退到 VS Code 工作台消息，避免静默丢提醒
 
-### 4.2.2 Notifier companion 声音开关
+### 4.2.1 Notifier companion 声音开关
 
 - 配置项 `devSessionCanvasNotifier.notifications.playSound`：
   - 类型：`boolean`
@@ -212,10 +203,11 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - [ ] 系统能正确解析 BEL、OSC 9、OSC 777 三种终端注意力信号
 - [ ] OSC 9 中以 `4;` 开头的消息被正确标记为 `ignore`
 - [ ] 当检测到注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁始终显示
-- [ ] 配置 `bridgeTerminalAttentionSignals` 为 `false` 时，不弹出 VS Code 工作台通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
-- [x] 配置 `preferNotifierCompanion` 为 `true` 且 companion 可用时，主扩展会优先把 attention event 发送给 companion，并避免重复弹出 VS Code 工作台通知
+- [ ] 配置 `attentionSignalBridge` 为 `none` 时，不额外弹出 VS Code 工作台消息或系统通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
+- [ ] 配置 `attentionSignalBridge` 为 `workbench` 时，会弹出 VS Code 工作台消息
+- [x] 配置 `attentionSignalBridge` 为 `system` 且 companion 可用时，主扩展会优先把 attention event 发送给 companion，并避免重复弹出 VS Code 工作台消息
 - [x] companion 成功接单时，diagnostic event 会记录实际 `backend` 与 `activationMode`，便于区分“完整可点击通知”和“只展示通知”的平台差异
-- [ ] 配置 `preferNotifierCompanion` 为 `true` 但 companion 不可用时，若 `bridgeTerminalAttentionSignals` 仍为 `true`，则自动回退到 VS Code 工作台通知
+- [ ] 配置 `attentionSignalBridge` 为 `system` 但 companion 不可用时，会自动回退到 VS Code 工作台消息
 - [ ] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
 - [ ] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
 - [ ] 左键点击节点本体后，通知状态自动清除

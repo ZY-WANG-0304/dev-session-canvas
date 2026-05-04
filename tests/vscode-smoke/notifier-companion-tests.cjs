@@ -42,14 +42,13 @@ async function run() {
   await clearNotifierPostedNotifications();
 
   const configuration = vscode.workspace.getConfiguration();
-  const originalPreferNotifier = configuration.get('devSessionCanvas.notifications.preferNotifierCompanion', false) === true;
-  const originalBridgeEnabled =
-    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+  const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+  );
 
   let agentNodeId;
   try {
-    await ensurePreferNotifierCompanionEnabled(true);
-    await ensureBridgeTerminalAttentionSignalsEnabled(true);
+    await ensureAttentionNotificationBridgeMode('system');
 
     await vscode.commands.executeCommand(MAIN_COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(MAIN_COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
@@ -167,13 +166,8 @@ async function run() {
       await ensureAgentStopped(agentNodeId);
     }
     await configuration.update(
-      'devSessionCanvas.notifications.preferNotifierCompanion',
-      originalPreferNotifier,
-      vscode.ConfigurationTarget.Global
-    );
-    await configuration.update(
-      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
-      originalBridgeEnabled,
+      'devSessionCanvas.notifications.attentionSignalBridge',
+      originalBridgeMode,
       vscode.ConfigurationTarget.Global
     );
     await clearDiagnosticEvents();
@@ -253,51 +247,45 @@ async function waitForHostMessages(predicate, timeoutMs = 20000) {
   throw new Error('Timed out waiting for host messages.');
 }
 
-async function ensurePreferNotifierCompanionEnabled(enabled) {
+async function ensureAttentionNotificationBridgeMode(mode) {
   const configuration = vscode.workspace.getConfiguration();
-  const currentEnabled = configuration.get('devSessionCanvas.notifications.preferNotifierCompanion', false) === true;
-  if (currentEnabled === enabled) {
+  const currentMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+  );
+  if (currentMode === mode) {
     return;
   }
 
   await clearDiagnosticEvents();
   await configuration.update(
-    'devSessionCanvas.notifications.preferNotifierCompanion',
-    enabled,
+    'devSessionCanvas.notifications.attentionSignalBridge',
+    mode,
     vscode.ConfigurationTarget.Global
   );
   await waitForDiagnosticEvents(
     (events) =>
       events.some(
         (event) =>
-          event.kind === 'execution/attentionNotifierCompanionConfigChanged' && event.detail?.enabled === enabled
+          event.kind === 'execution/attentionNotificationBridgeConfigChanged' && event.detail?.mode === mode
       ),
     20000
   );
 }
 
-async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
-  const configuration = vscode.workspace.getConfiguration();
-  const currentEnabled =
-    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
-  if (currentEnabled === enabled) {
-    return;
+function normalizeAttentionNotificationBridgeMode(value) {
+  if (value === 'none' || value === 'workbench' || value === 'system') {
+    return value;
   }
 
-  await clearDiagnosticEvents();
-  await configuration.update(
-    'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
-    enabled,
-    vscode.ConfigurationTarget.Global
-  );
-  await waitForDiagnosticEvents(
-    (events) =>
-      events.some(
-        (event) =>
-          event.kind === 'execution/attentionNotificationBridgeConfigChanged' && event.detail?.enabled === enabled
-      ),
-    20000
-  );
+  if (value === false) {
+    return 'none';
+  }
+
+  if (value === true) {
+    return 'workbench';
+  }
+
+  return 'workbench';
 }
 
 async function ensureAgentStopped(agentNodeId) {

@@ -266,17 +266,26 @@
           "scope": "window",
           "markdownDescription": "%configuration.agent.claudeDefaultArgs.description%"
         },
-        "devSessionCanvas.notifications.bridgeTerminalAttentionSignals": {
-          "type": "boolean",
-          "default": true,
+        "devSessionCanvas.notifications.attentionSignalBridge": {
+          "type": "string",
+          "enum": [
+            "none",
+            "workbench",
+            "system"
+          ],
+          "enumItemLabels": [
+            "%configuration.notifications.attentionSignalBridge.none.label%",
+            "%configuration.notifications.attentionSignalBridge.workbench.label%",
+            "%configuration.notifications.attentionSignalBridge.system.label%"
+          ],
+          "default": "workbench",
           "scope": "window",
-          "markdownDescription": "%configuration.notifications.bridgeTerminalAttentionSignals.description%"
-        },
-        "devSessionCanvas.notifications.preferNotifierCompanion": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "markdownDescription": "%configuration.notifications.preferNotifierCompanion.description%"
+          "markdownDescription": "%configuration.notifications.attentionSignalBridge.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.notifications.attentionSignalBridge.none.description%",
+            "%configuration.notifications.attentionSignalBridge.workbench.description%",
+            "%configuration.notifications.attentionSignalBridge.system.description%"
+          ]
         },
         "devSessionCanvas.notifications.strongTerminalAttentionReminder": {
           "type": "string",
