@@ -53,6 +53,7 @@
     "onCommand:devSessionCanvas.openCanvasInEditor",
     "onCommand:devSessionCanvas.openCanvasInPanel",
     "onCommand:devSessionCanvas.openSettings",
+    "onCommand:devSessionCanvas.selectTerminalShell",
     "onCommand:devSessionCanvas.createNode",
     "onCommand:devSessionCanvas.showNodeList",
     "onCommand:devSessionCanvas.showSessionHistory",
@@ -153,6 +154,11 @@
         "command": "devSessionCanvas.openSettings",
         "title": "%command.openSettings.title%",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "devSessionCanvas.selectTerminalShell",
+        "title": "%command.selectTerminalShell.title%",
+        "icon": "$(terminal)"
       },
       {
         "command": "devSessionCanvas.createNode",

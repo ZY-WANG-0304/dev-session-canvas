@@ -1,5 +1,6 @@
 const assert = require('assert');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
@@ -287,7 +288,7 @@ async function runTrustedSmoke() {
 
   await verifyRuntimeContextRefreshesDefaultAgentProvider();
   await verifyRuntimeContextRefreshesTerminalScrollback();
-  await verifyTerminalShellSelectionRefreshesIdleTerminalNode();
+  await verifyTerminalShellPathRefreshesIdleTerminalNode();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
@@ -1198,7 +1199,7 @@ async function verifyRuntimeContextRefreshesTerminalScrollback() {
   }
 }
 
-async function verifyTerminalShellSelectionRefreshesIdleTerminalNode() {
+async function verifyTerminalShellPathRefreshesIdleTerminalNode() {
   const configuration = vscode.workspace.getConfiguration();
   const originalShell = normalizeTerminalShellSelection(
     configuration.get('devSessionCanvas.terminal.shell', 'default')
@@ -1216,12 +1217,12 @@ async function verifyTerminalShellSelectionRefreshesIdleTerminalNode() {
     const terminalNode = findNodeByKind(snapshot, 'terminal');
     terminalNodeId = terminalNode.id;
 
-    const { selection, expectedShellPath } = pickAlternateTerminalShellSelection(
+    const expectedShellPath = await resolveAlternateTerminalShellPath(
       terminalNode.metadata?.terminal?.shellPath ?? ''
     );
 
-    await setTerminalShellPath('');
-    await setTerminalShell(selection);
+    await setTerminalShell('default');
+    await setTerminalShellPath(expectedShellPath);
 
     snapshot = await waitForSnapshot((currentSnapshot) => {
       const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
@@ -7773,39 +7774,108 @@ function normalizeTerminalShellSelection(value) {
   }
 }
 
-function resolveExpectedTerminalShellPath(selection) {
-  if (process.platform !== 'win32') {
-    return selection;
+async function resolveAlternateTerminalShellPath(currentShellPath) {
+  const normalizedCurrentShellPath = normalizeShellPath(currentShellPath);
+  const availableShellPaths = await listAvailableTerminalShellPaths();
+  const alternateShellPath = availableShellPaths.find((candidatePath) => {
+    return normalizeShellPath(candidatePath) !== normalizedCurrentShellPath;
+  });
+
+  if (!alternateShellPath) {
+    throw new Error(`未找到与当前 shell 不同的可用候选：${currentShellPath || '<empty>'}`);
   }
 
-  switch (selection) {
-    case 'pwsh':
-      return 'pwsh.exe';
-    case 'powershell':
-      return 'powershell.exe';
-    case 'cmd':
-      return 'cmd.exe';
-    default:
-      return selection;
-  }
+  return alternateShellPath;
 }
 
-function pickAlternateTerminalShellSelection(currentShellPath) {
-  if (process.platform === 'win32') {
-    const normalizedPath = String(currentShellPath || '').toLowerCase();
-    const selection = normalizedPath.includes('cmd.exe') ? 'powershell' : 'cmd';
-    return {
-      selection,
-      expectedShellPath: resolveExpectedTerminalShellPath(selection)
-    };
+async function listAvailableTerminalShellPaths() {
+  const candidates = process.platform === 'win32'
+    ? [
+        vscode.env.shell,
+        process.env.ComSpec,
+        process.env.COMSPEC,
+        'pwsh.exe',
+        'powershell.exe',
+        'cmd.exe',
+        'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        'C:\\Windows\\System32\\cmd.exe'
+      ]
+    : [
+        vscode.env.shell,
+        process.env.SHELL,
+        '/bin/sh',
+        '/bin/bash',
+        '/usr/bin/bash',
+        '/bin/zsh',
+        '/usr/bin/zsh',
+        '/bin/fish',
+        '/usr/bin/fish'
+      ];
+
+  const resolvedCandidates = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const resolvedCandidate = await resolveAvailableShellPath(candidate);
+    if (!resolvedCandidate) {
+      continue;
+    }
+
+    const normalizedCandidate = normalizeShellPath(resolvedCandidate);
+    if (seen.has(normalizedCandidate)) {
+      continue;
+    }
+
+    seen.add(normalizedCandidate);
+    resolvedCandidates.push(resolvedCandidate);
   }
 
-  const normalizedPath = String(currentShellPath || '').toLowerCase();
-  const selection = normalizedPath.endsWith('/bash') || normalizedPath === 'bash' ? 'sh' : 'bash';
-  return {
-    selection,
-    expectedShellPath: resolveExpectedTerminalShellPath(selection)
-  };
+  return resolvedCandidates;
+}
+
+function normalizeShellPath(shellPath) {
+  return process.platform === 'win32'
+    ? String(shellPath || '').trim().toLowerCase()
+    : String(shellPath || '').trim();
+}
+
+async function resolveAvailableShellPath(candidate) {
+  const trimmedCandidate = String(candidate || '').trim();
+  if (!trimmedCandidate) {
+    return undefined;
+  }
+
+  if (path.isAbsolute(trimmedCandidate) || trimmedCandidate.includes(path.sep)) {
+    return (await hasExecutableShellPath(trimmedCandidate)) ? trimmedCandidate : undefined;
+  }
+
+  const pathEntries = String(process.env.PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean);
+  const commandCandidates =
+    process.platform === 'win32' && !path.extname(trimmedCandidate)
+      ? [trimmedCandidate, `${trimmedCandidate}.exe`, `${trimmedCandidate}.cmd`, `${trimmedCandidate}.bat`]
+      : [trimmedCandidate];
+
+  for (const directory of pathEntries) {
+    for (const commandCandidate of commandCandidates) {
+      const candidatePath = path.join(directory, commandCandidate);
+      if (await hasExecutableShellPath(candidatePath)) {
+        return candidatePath;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+async function hasExecutableShellPath(candidatePath) {
+  try {
+    await fs.access(candidatePath, process.platform === 'win32' ? fsSync.constants.F_OK : fsSync.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function setTerminalShell(selection) {
