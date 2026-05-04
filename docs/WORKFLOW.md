@@ -19,11 +19,18 @@
 2. 开始实现前，先确认相关正式文档已经具备足够上下文；如果涉及复杂功能、显著重构或多步研究，先按 `docs/PLANS.md` 创建或更新 `ExecPlan`。
 3. 在主题分支上完成与当前目标直接相关的设计、开发或文档修改；如果改动触及产品、设计或架构结论，必须同步更新对应正式文档。
 4. 当当前目标已经形成一组可独立说明的改动时，按 `docs/workflows/COMMIT.md` 进行本地提交，并确保相关文档同步或验证说明可追溯。
-5. 如果当前目标是一次对外发布或发布收口，应在发布范围冻结后、最终发布验证前，按 `docs/workflows/VERSION.md` 统一更新版本号，并同步 `package.json`、`package-lock.json`、`CHANGELOG.md` 等对外版本信息；普通功能或 bugfix MR 默认不因为开发进行中而单独更新版本号。
+5. 功能或实现类主题分支默认先只收口功能本身；普通功能或 bugfix MR 默认不因为开发进行中而单独更新版本号，也不提前混入 Marketplace 文案、发布手册或 tag 计划等发布收口物料。若某些 manifest / 安装路径改动本身就是功能成立条件（例如 companion 的 `extensionDependencies`、`api` 声明、运行时必需的图标或 listing 入口文件），可随 feature 一起合入 `main`，不要为了形式把它们硬拆到后续发布准备分支。
 6. 当当前目标已经完成，且验证结果与相关文档已同步后，推送分支并创建 MR；目标分支默认是 `main`，MR 描述按 `docs/workflows/MR_CREATE.md` 保持与当前目标、验证结果和残余风险一致。
 7. 当 MR 收到 comment 后，按评论结论处理相关修复、补齐文档、补充验证并登记技术债；完成后再次推送新的 MR head 供 reviewer 复审。
 
 注意：在每次准备推送当前分支、创建MR、更新MR前，默认先拉取最新 `main` 并对当前分支执行 `rebase`。
+
+## 发布流程
+
+1. 当准备一次对外发布时，先确认当前版本对应的 feature 均已经合入 `main`；不要把尚未合并的功能分支 head 直接当成发布输入。
+2. 从最新 `main` 单独切出一条发布准备分支，在这条分支上集中处理版本号、`package.json`、`package-lock.json`、`CHANGELOG.md`、Marketplace 文案、发布手册与最终发布验证。
+3. 发布准备分支完成后，创建一个只包含发布收口内容的 MR 合回 `main`，并在 review 中明确发布输入、验证结果与残余风险。
+4. 只有在发布准备 MR 完成 review 并合并后，才在 `main` 上执行最终 publish 与 tag；不要在未合入 `main` 的发布准备分支 head 上直接发布或打 tag。
 
 ## Code Review 流程
 
