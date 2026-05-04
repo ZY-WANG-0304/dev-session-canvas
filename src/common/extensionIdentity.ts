@@ -76,6 +76,7 @@ export const CONFIG_KEYS = {
   legacyNotificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   legacyNotificationPreferNotifierCompanion: 'devSessionCanvas.notifications.preferNotifierCompanion',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
+  terminalShell: 'devSessionCanvas.terminal.shell',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   filesFeatureEnabled: 'devSessionCanvas.files.enabled',
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
