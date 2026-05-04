@@ -44,7 +44,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.4.1` 做一轮 UI 修复与交互优化，集中在 Agent 启动入口、节点与文件活动操作体验，以及执行节点 terminal link 行为对齐，并继续按 Marketplace `Preview` 口径迭代，而不是重新发明一套新的发布准备方案。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.5.0` 做一轮 UI 修复、交互优化与 notifier companion 发布收口，集中在 Agent 启动入口、节点与文件活动操作体验、执行节点 terminal link 行为对齐，以及桌面通知 companion 的正式安装路径，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -68,6 +68,15 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
 - 当前仓库内的发布资产已收口；真正上架前仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
 - `Open VSX` 不是本次 `Preview` 的首发路径
+
+## 桌面通知 companion（自动安装）
+
+安装 `Dev Session Canvas` 时，VS Code 会自动安装 companion 扩展 `Dev Session Canvas Notifier`（`devsessioncanvas.dev-session-canvas-notifier`）。如果你是从 notifier 页面单独安装，VS Code 也会自动补齐主扩展 `Dev Session Canvas`。
+
+- 在主扩展设置中将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
+- `system` 模式下会优先调用本机 UI 侧 notifier companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到工作台消息
+- 该 companion 尤其适合 `Remote SSH`、WSL、Dev Container 等“主扩展运行在远端，而提醒需要回到本机桌面”的场景
+- notifier 自己的发布与复核口径见 [`docs/notifier-preview-release-playbook.md`](docs/notifier-preview-release-playbook.md)
 
 ## 源码编译与开发安装
 

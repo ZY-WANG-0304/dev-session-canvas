@@ -2,14 +2,36 @@
   "name": "dev-session-canvas-notifier",
   "displayName": "Dev Session Canvas Notifier",
   "description": "在本机 UI 侧为 Dev Session Canvas 投递桌面系统通知的 companion extension。",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "devsessioncanvas",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas.git"
+  },
+  "homepage": "https://github.com/ZY-WANG-0304/dev-session-canvas",
+  "bugs": {
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/issues"
+  },
+  "api": "none",
+  "preview": true,
+  "icon": "images/icon.png",
+  "extensionDependencies": [
+    "devsessioncanvas.dev-session-canvas"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
+  ],
+  "files": [
+    "dist/**",
+    "images/**",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.marketplace.md",
+    "package.json"
   ],
   "extensionKind": [
     "ui"
@@ -65,6 +87,9 @@
   "main": "./dist/extension.js",
   "scripts": {
     "build": "node ./scripts/build.mjs",
-    "typecheck": "tsc -p ./tsconfig.json --noEmit"
+    "package": "npm run typecheck && node ./scripts/build.mjs --production",
+    "package:vsix": "npm run package && node ./scripts/package-vsix.mjs",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "vscode:prepublish": "npm run package"
   }
 }

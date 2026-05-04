@@ -2,7 +2,7 @@
   "name": "dev-session-canvas",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "workspaces": [
     "extensions/vscode/dev-session-canvas-notifier",
     "packages/attention-protocol"
@@ -17,7 +17,11 @@
   "bugs": {
     "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/issues"
   },
+  "api": "none",
   "preview": true,
+  "extensionDependencies": [
+    "devsessioncanvas.dev-session-canvas-notifier"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },

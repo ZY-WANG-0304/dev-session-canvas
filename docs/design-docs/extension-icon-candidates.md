@@ -63,16 +63,18 @@ updated_at: 2026-05-04
 资源：
 
 - `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg`
+- `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png`
 
 - notifier companion 的 Marketplace icon 继续沿用“从 activity bar icon 出发，再放大并上色导出 PNG”的策略，不单独发明新的轮廓语言。
-- 颜色策略沿用主扩展的上下双终端分色：上层 terminal 使用 `#4CB6A3`，下层 terminal 使用 `#497BF0`；右上角通知徽标使用暖色强调，表示 notifier 的提醒语义。
-- `extensions/vscode/dev-session-canvas-notifier/images/icon.png` 由 package-local 的 `activitybar.svg` 作为渲染输入导出，作为 notifier 后续接入 Marketplace icon 时的正式 PNG 资产。
+- 颜色策略沿用主扩展的上下双终端分色：上层 terminal 使用 `#4CB6A3`，下层 terminal 使用 `#497BF0`；右上角通知徽标也对齐为上层 terminal 的绿色，保持更统一的视觉语言。
+- `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 是放大并上色后的独立矢量源，用于收口 notifier 的 Marketplace icon 造型。
+- `extensions/vscode/dev-session-canvas-notifier/images/icon.png` 由 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 渲染导出，作为 notifier 后续接入 Marketplace icon 时的正式 PNG 资产。
 
 ## 6. 风险与取舍
 
 - 主 icon 的最终 PNG 依赖渲染链生成；如果后续 SVG 继续微调，应重新导出 `images/icon.png`。
-- notifier companion 的最终 PNG 同样依赖渲染链；如果后续调整 `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg`，应同步重新导出 `extensions/vscode/dev-session-canvas-notifier/images/icon.png`。
+- notifier companion 的最终 PNG 同样依赖渲染链；如果后续调整 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`，应同步重新导出 `extensions/vscode/dev-session-canvas-notifier/images/icon.png`。
 - 当前已经完成文件级同步与渲染验证，但还没有补充 Marketplace 或 VS Code 实景截图类人工校验。
 
 ## 7. 当前结论
@@ -82,7 +84,8 @@ updated_at: 2026-05-04
 - `images/dev-session-canvas-icon.svg` 是主扩展 icon 的唯一源文件。
 - `images/dev-session-canvas-activitybar.svg` 是 activity bar icon 的唯一源文件。
 - `images/icon.png` 是由最终主 icon 渲染出的正式打包 PNG。
-- `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg` 是 notifier companion 当前用于导出 Marketplace PNG 的渲染输入。
+- `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg` 是 notifier companion activity bar icon 的唯一源文件。
+- `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 是 notifier companion Marketplace icon 的唯一矢量源文件。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png` 是 notifier companion 的正式 PNG icon 资产。
 - 其他历史 icon 草稿应从仓库中移除。
 
@@ -90,6 +93,7 @@ updated_at: 2026-05-04
 
 - 已验证 `images/dev-session-canvas-icon.svg` 与 `images/dev-session-canvas-activitybar.svg` 的 SVG XML 语法有效。
 - 已使用本地渲染链将 `images/dev-session-canvas-icon.svg` 渲染为正式 `images/icon.png`。
-- 已使用本地 `rsvg-convert` 基于 `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg` 的放大上色策略生成 `extensions/vscode/dev-session-canvas-notifier/images/icon.png`（`256x256` PNG）。
+- 已新增 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`，将 notifier 的放大上色版正式收口为独立矢量源。
+- 已使用本地 `rsvg-convert` 基于 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 生成 `extensions/vscode/dev-session-canvas-notifier/images/icon.png`（`256x256` PNG）。
 - 已确认 `package.json` 继续引用 `images/icon.png` 与 `images/dev-session-canvas-activitybar.svg`，无需改动接入路径。
 - 后续如需进一步保险，可补一轮 VS Code 扩展列表与 Marketplace 的人工视觉复核。

@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.4.1`。当前版本范围已经收口到“相对 `0.4.0` 的一轮 UI 修复与交互优化：Agent 启动入口、节点与文件活动操作体验、执行节点 terminal link 行为，以及 `0.4.1` 发布材料更新”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.5.0`。当前版本范围已经收口到“相对 `0.4.0` 的一轮 UI 修复与交互优化、执行节点 terminal link 行为对齐，以及 `Dev Session Canvas Notifier` companion 的发布与自动安装关系收口”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -29,13 +29,13 @@
 
 ## release notes 定稿口径
 
-当前 `0.4.1` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
+当前 `0.5.0` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.4.1 - Preview UI Polish Update`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.5.0 - Preview Notifier Companion Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：Agent 创建预设与 provider 默认参数归一化、创建菜单与最近启动命令展示、手动创建节点后的平滑居中、文件活动默认关闭与树形交互 / 自动边锚点优化、执行节点 terminal link 行为对齐，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
+- release notes 应覆盖以下当前已确认范围：Agent 创建预设与 provider 默认参数归一化、创建菜单与最近启动命令展示、手动创建节点后的平滑居中、文件活动默认关闭与树形交互 / 自动边锚点优化、执行节点 terminal link 行为对齐、`Dev Session Canvas Notifier` companion 的公开发布与自动安装关系，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -43,31 +43,32 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.4.1`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.4.0` 升级到 `0.4.1` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.4.x` 更新也通过 Marketplace 常规升级获取。
-3. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
+1. 当前目标版本为 `0.5.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.4.0` 升级到 `0.5.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.5.x` 更新也通过 Marketplace 常规升级获取。
+3. 当前主扩展通过 `extensionDependencies` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，也会自动补齐主扩展。
+4. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.4.1` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.5.0` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
-2. 关注后续 `0.4.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
+2. 关注后续 `0.5.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
 3. 若确需回退，以重新安装目标版本并重新验证工作区状态为准；当前不承诺 `Preview` 版本之间的回退兼容。
 
 ### 维护者侧回滚
 
 若发布后发现 P0 / P1 blocker，默认按以下顺序处理：
 
-1. 优先评估能否在短时间内发布后续 `0.4.x` hotfix。
+1. 优先评估能否在短时间内发布后续 `0.5.x` hotfix。
 2. 若短时间内无法修复，且当前版本会阻塞主路径使用或引发宿主崩溃，再考虑临时下架当前版本。
 3. 无论选择 hotfix 还是临时下架，都需要同步更新 GitHub issue、`docs/support.md` 与对外说明，避免用户只看到失真状态。
 
 ## 截图策略
 
-当前 `0.4.1` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.5.0` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -111,9 +112,9 @@
 注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.4.1.vsix
+      --packagePath dev-session-canvas-0.5.0.vsix
 
-若最终版本号不是 `0.4.1`，应先同步更新命令中的 VSIX 文件名。
+若最终版本号不是 `0.5.0`，应先同步更新命令中的 VSIX 文件名。
 
 ## publish 后补 tag
 
@@ -121,15 +122,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.4.1
-    git push origin v0.4.1
+    git tag v0.5.0
+    git push origin v0.5.0
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.4.1 <final-ref-or-sha>
-    git push origin v0.4.1
+    git tag v0.5.0 <final-ref-or-sha>
+    git push origin v0.5.0
 
-若最终版本号不是 `0.4.1`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.5.0`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 
