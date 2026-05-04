@@ -300,7 +300,10 @@ function buildWindowsToastScript(title: string, message: string, callbackUri?: s
     '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null',
     '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null',
     "$xml = New-Object Windows.Data.Xml.Dom.XmlDocument",
-    `$xml.LoadXml(@"${xml}"@)`,
+    "$toastXml = @'",
+    xml,
+    "'@",
+    '$xml.LoadXml($toastXml)',
     '$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)',
     '$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Dev Session Canvas")',
     '$notifier.Show($toast)'
