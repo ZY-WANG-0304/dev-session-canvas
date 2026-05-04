@@ -19,8 +19,8 @@
     },
     {
       "label": "build extension + notifier",
-      "type": "shell",
-      "command": "npm run build && npm run build:notifier",
+      "dependsOrder": "sequence",
+      "dependsOn": ["build extension", "build notifier"],
       "group": "build",
       "problemMatcher": []
     }
