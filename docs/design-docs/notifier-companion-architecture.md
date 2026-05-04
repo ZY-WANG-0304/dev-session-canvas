@@ -119,6 +119,28 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 ### 5.6 聚焦语义：系统通知点击必须清除 attention
 
+### 5.6 开发态调试策略：用 debug-only 主扩展目录隔离 notifier 依赖
+
+双向 `extensionDependencies` 解决的是发布态 / 安装态的自动补齐，但它也会让“只跑主扩展”这条 Development Host 路径在缺少 notifier 时直接失活。当前开发态对这个问题的收口方式不是再维护一套 shim，而是在 `Run Dev Session Canvas` 启动前生成一份 debug-only 的临时主扩展目录：
+
+- 临时目录位于 `.debug/vscode-extension-main-only/`
+- 目录内容来自当前仓库根主扩展的开发产物与运行时资源
+- 临时 `package.json` 会移除 `extensionDependencies`
+
+因此，当前三类调试场景分别是：
+
+- `Run Dev Session Canvas`：本地 / 远端窗口统一使用；只调主扩展，不加载 notifier
+- `Run Dev Session Canvas + Notifier (Local Window)`：本地窗口联调真实主扩展 + 真实 notifier
+- `Run Dev Session Canvas + Notifier (Remote Window)`：远端仓库窗口联调远端主扩展 + 本机 notifier；只额外要求输入本机 `localRepoRoot`
+
+这样可以同时满足三个约束：
+
+- 正式 `package.json` 继续保持双向依赖，不为调试改写发布真相
+- 单独调主扩展时，不需要额外先安装或加载 notifier
+- 从远端仓库窗口发起主扩展单调时，继续保持 `Run Dev Session Canvas` 的零输入体验；只有远端联调 notifier 时才额外要求本机 `localRepoRoot`
+
+### 5.7 聚焦语义：系统通知点击必须清除 attention
+
 主扩展新增内部命令 `devSessionCanvas.__internal.focusAttentionNode`。它不同于现有“仅定位节点”的内部命令：
 
 - 会打开并聚焦当前节点
@@ -218,7 +240,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 2. notifier companion 改从本机 clone 路径注入 Development Host
 3. 在同一个 Development Host 中用 `Developer: Show Running Extensions` 确认主扩展运行在 workspace 侧、notifier 运行在 UI 侧
 4. 再执行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认 UI-side companion 命令确实可见
-5. 如果当前发起调试的是本地 clone 窗口，则必须使用 `Run Remote Main + Local Notifier (Prompt from Local Window)`，并显式输入远端 repo 根目录 `remoteWorkspacePath`；不要把本机 `${workspaceFolder}` 误当成远端路径
+5. 当前远端 notifier 联调只支持“从远端仓库窗口发起”的 `Run Dev Session Canvas + Notifier (Remote Window)`；不要在本地 clone 窗口里手工把 `${workspaceFolder}` 误当成远端路径
 
 ## 9. 当前验证状态
 
@@ -242,8 +264,8 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - notifier companion 新增测试桌面通知命令，可直接在真实桌面环境触发一次通知
 - notifier companion 新增诊断输出，可记录实际 `backend`、`activationMode` 与最后一次人工验收结果
 - 主扩展 diagnostic event 会同步记录 companion 返回的 `activationMode`，避免把“通知已发出”误读成“通知必然可点击回跳”
-- 远端联调场景新增 `Run Remote Main + Local Notifier (Prompt)`，把 `Remote SSH` / WSL / Dev Container 下的 workspace 主扩展与本机 UI notifier 明确拆成两条开发态路径，并将启动输入收口到 `remoteAuthority` + `localRepoRoot`
-- 当联调入口本身来自本地 clone 窗口时，额外提供 `Run Remote Main + Local Notifier (Prompt from Local Window)`，要求显式输入 `remoteWorkspacePath`，避免把本机 `${workspaceFolder}` 误拼成远端 `folder-uri`
+- `Run Dev Session Canvas` 现在会先生成 `.debug/vscode-extension-main-only/` 作为 debug-only 主扩展目录，因此主扩展在 local / remote 场景里都可单独调试，而不需要 notifier shim
+- 远端联调场景收口为 `Run Dev Session Canvas + Notifier (Remote Window)`，把 `Remote SSH` / WSL / Dev Container 下的 workspace 主扩展与本机 UI notifier 明确拆成两条开发态路径；从远端仓库窗口发起时只要求输入 `localRepoRoot`
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
 - 当前 staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”

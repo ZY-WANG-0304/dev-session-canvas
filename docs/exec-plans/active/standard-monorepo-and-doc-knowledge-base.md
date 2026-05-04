@@ -28,11 +28,11 @@
 - [x] (2026-05-03) **实施策略再调整**：notifier 直接在 `extensions/vscode/dev-session-canvas-notifier/` 开发，主扩展暂不迁移。
 - [x] (2026-05-03 10:25 +0800) 完成阶段 1.1 的第一批落地：根 `package.json` 已配置 `workspaces`；`extensions/vscode/dev-session-canvas-notifier/` 与 `packages/attention-protocol/` 已创建；主扩展也已接上“优先调用 companion、失败再回退工作台通知”的主路径。
 - [x] (2026-05-03 17:10 +0800) 完成 notifier 第二批落地：companion 新增“发送测试桌面通知 / 打开通知诊断输出”命令，真实桌面通知人工验收步骤已收口到固定命令与输出面板；共享结果新增 `activationMode`，主扩展 diagnostic event 也会显式记录平台退化路径。
-- [x] (2026-05-03 19:05 +0800) 补齐本地 / 远端联调配置：新增 `Run Notifier Only (Local Window)`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Remote Main + Local Notifier (Prompt)`，并把远端联调输入从 4 项收口到 `remoteAuthority` + `localRepoRoot` 两项。
+- [x] (2026-05-03 19:05 +0800) 补齐本地 / 远端联调配置：先补上本地 notifier 联调与远端主扩展 + 本机 notifier 的调试入口，随后继续收口为当前的三类调试场景：本地 / 远端只调主扩展、本地联调、远端联调。
 - [x] (2026-05-03) **阶段 1.1 的代码与文档收口已完成**：`extensions/vscode/dev-session-canvas-notifier/`、`packages/attention-protocol/`、主扩展接线、诊断输出、联调配置与正式文档均已落地；当前工作树已经是可提交并切换环境继续调试的状态。
-- [x] (2026-05-04) 追加“从本地窗口发起远端主扩展 + 本机 notifier”调试配置：新增 `Run Remote Main + Local Notifier (Prompt from Local Window)`，并同步补齐 `remoteWorkspacePath` 输入、协作文档与人工验收说明，避免把本机 `${workspaceFolder}` 误当成远端路径。
 - [x] (2026-05-04) 完成阶段 1.1 尾项（真实桌面通知人工验收）：macOS、Windows、Linux 本机环境与 `Remote Main + Local Notifier` 联调拓扑均已完成人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证。
 - [x] (2026-05-05) 恢复 `npm run test:notifier-smoke` 自动化链路：smoke runner 已改为 staged smoke host + notifier wrapper，并补齐统一 test harness mode；latest head 已通过 `npm run test:notifier-smoke`、`npm run test:smoke-storage-slot`、`npm run test:vsix-smoke` 与 `npm run test:smoke` 复核。
+- [x] (2026-05-04) 收口调试拓扑：用 debug-only 临时主扩展目录替代原先的 shim 方案，让 `Run Dev Session Canvas` 在 local / remote 环境下都能单独启动；同时把 launch 配置收敛到 `Run Dev Session Canvas`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Dev Session Canvas + Notifier (Remote Window)` 三条，并补上相应协作文档与 launch 配置回归脚本。
 - [ ] **阶段 1.2（可选重构）**：notifier 验证通过后，根据需要决定是否迁移主扩展到 `extensions/vscode/dev-session-canvas/`。
 - [ ] 新增文档知识库入口页与体系图资产，补齐根 README、`ARCHITECTURE.md` 与各扩展 README 的职责边界。
 - [ ] **里程碑 5（延后到第二阶段）**：建立跨平台共享层（`packages/protocol/` 三层结构、`packages/webview/` 共享前端、JSON Schema 自动生成工具链）。仅在决定启动 IntelliJ 开发时执行。
@@ -61,8 +61,14 @@
 - 观察：在 `Remote SSH` / WSL / Dev Container 窗口里，workspace 主扩展可以直接从远端源码目录启动，但 `extensionKind: ["ui"]` 的 notifier companion 若仍指向远端路径，Development Host 中通常看不到 notifier 命令。
   证据：本轮联调排查里，`Run Notifier Only` 在远端窗口中无法出现 `Dev Session Canvas Notifier` 命令；改为“远端主扩展 + 本机 notifier”双路径注入后，调试链路恢复。
 
-- 观察：现有 `Run Remote Main + Local Notifier (Prompt)` 如果从本地 clone 窗口启动，会把本机 `${workspaceFolder}` 误拼到 `vscode-remote://...` 后面，最终报“Unable to resolve workspace folder”。
-  证据：在本地窗口里使用 `remoteAuthority=ssh-remote+gpu-dev042.hogpu.cc`、`localRepoRoot=/Users/wzy/Projects/dev-session-canvas` 启动时，Development Host 直接报 `Unable to resolve nonexistent file 'vscode-remote://ssh-remote+gpu-dev042.hogpu.cc/Users/wzy/Projects/dev-session-canvas'`。
+- 观察：早期“从远端仓库窗口发起”的远端联调配置如果误从本地 clone 窗口启动，会把本机 `${workspaceFolder}` 误拼到 `vscode-remote://...` 后面，最终报“Unable to resolve workspace folder”。
+  证据：在本地窗口里使用 `remoteAuthority=ssh-remote+gpu-dev042.hogpu.cc`、`localRepoRoot=/Users/wzy/Projects/dev-session-canvas` 启动旧配置时，Development Host 直接报 `Unable to resolve nonexistent file 'vscode-remote://ssh-remote+gpu-dev042.hogpu.cc/Users/wzy/Projects/dev-session-canvas'`。
+
+- 观察：在 notifier companion 引入对称 `extensionDependencies` 之后，单独跑主扩展会因为缺少对端 extension id 而在 Development Host 中直接失活。
+  证据：`Run Dev Session Canvas` 直接加载根主扩展时，VS Code 会把缺失 notifier 依赖视为未满足条件，扩展无法按预期激活；当前改为在启动前生成一份去掉 `extensionDependencies` 的 debug-only 临时主扩展目录后，单独调试恢复。
+
+- 观察：当调试入口本身已经来自远端仓库窗口时，再额外要求输入 `remoteAuthority` 属于重复输入，因为当前远端上下文本来就能让 `--extensionDevelopmentPath=${workspaceFolder}` 正常落到远端主扩展。
+  证据：引入 notifier 之前，`Run Dev Session Canvas` 在 `Remote SSH` 窗口下本就可以直接复用当前远端 `${workspaceFolder}` 启动；本轮把远端窗口专用配置改回“当前远端窗口 + 本机 localRepoRoot”的组合后，不再需要显式拼 `vscode-remote://...` URI。
 
 ## 决策记录
 
@@ -117,8 +123,16 @@
   理由：当前产品更需要真实反映平台差异，并给人工验收与诊断留下证据；如果 companion 已成功发出桌面通知却再补发工作台通知，会把“能力退化”和“重复提醒噪音”混在一起。
   日期/作者：2026-05-03 / Codex
 
-- 决策：保留现有 `Run Remote Main + Local Notifier (Prompt)` 作为“从远端仓库窗口发起”的入口，并额外新增 `Run Remote Main + Local Notifier (Prompt from Local Window)` 作为“从本地 clone 窗口发起”的入口。
-  理由：两种入口的差异不在 notifier 路径，而在远端主扩展路径的来源；前者可直接复用当前远端 `${workspaceFolder}`，后者必须显式输入 `remoteWorkspacePath`，否则会把本机路径错误地当成远端 `folder-uri`。
+- 决策：当前 launch 配置只保留三条主路径：`Run Dev Session Canvas`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`。
+  理由：这三条配置刚好覆盖“local 联调 / remote 联调 / local&remote 单独调主扩展”三类真实场景；其余 notifier-only 或“从本地 clone 窗口手工拼 remote authority”的入口虽然可做，但会放大配置面与文档心智负担，不适合继续保留在默认 launch 集合中。
+  日期/作者：2026-05-04 / Codex
+
+- 决策：保留正式双向 `extensionDependencies` 不变，同时为 `Run Dev Session Canvas` 生成一份 debug-only 的临时主扩展目录，并在其中移除 notifier 依赖；不要为了 F5 直接改正式 manifest。
+  理由：这样既能维持 Marketplace / 安装态的单一真相，又能让 `Run Dev Session Canvas` 在 local / remote 环境继续保持零 notifier 输入的单调体验，而不必长期维护额外的 shim 调试入口。
+  日期/作者：2026-05-04 / Codex
+
+- 决策：从远端仓库窗口发起的远端联调配置只保留 `localRepoRoot` 这一个输入；不再要求输入 `remoteAuthority`，也不再保留本地 clone 窗口发起远端联调的默认入口。
+  理由：在远端窗口里重复输入当前 remote alias 没有信息增益；而“本地 clone 窗口手工拼远端联调”的使用频率低、文档成本高，不值得继续作为默认 launch 配置暴露。
   日期/作者：2026-05-04 / Codex
 
 ## 结果与复盘
@@ -132,7 +146,7 @@
 - 一个最小共享 attention 协议包：`packages/attention-protocol/`
 - 一条已打通的主扩展 -> companion -> focus callback 自动化验证链路：`npm run test:notifier-smoke`
 - 一套固定的真实桌面通知人工验收入口：companion 测试通知命令、诊断输出与 `activationMode` 结果结构
-- 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas + Notifier (Local Window)`、`Run Notifier Only (Local Window)`、`Run Remote Main + Local Notifier (Prompt)`、`Run Remote Main + Local Notifier (Prompt from Local Window)`
+- 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`
 
 本轮尚未完成的事情：
 
