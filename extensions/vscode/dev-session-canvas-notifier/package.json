@@ -66,5 +66,27 @@
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "typecheck": "tsc -p ./tsconfig.json --noEmit"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas.git"
+  },
+  "homepage": "https://github.com/ZY-WANG-0304/dev-session-canvas",
+  "bugs": {
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/issues"
+  },
+  "api": "none",
+  "preview": true,
+  "icon": "images/icon.png",
+  "extensionDependencies": [
+    "devsessioncanvas.dev-session-canvas"
+  ],
+  "files": [
+    "dist/**",
+    "images/**",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.marketplace.md",
+    "package.json"
+  ]
 }
