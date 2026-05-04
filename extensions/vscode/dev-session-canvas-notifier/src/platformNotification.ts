@@ -9,6 +9,7 @@ export interface DesktopNotificationOptions {
   request: AttentionNotificationRequest;
   callbackUri?: string;
   onDidActivate?: () => void | Promise<void>;
+  playSound?: boolean;
 }
 
 export interface ShellInvocation {
@@ -46,11 +47,7 @@ export async function postDesktopNotification(
 }
 
 export function buildLinuxNotifySendInvocation(options: DesktopNotificationOptions): ShellInvocation {
-  const args = ['--app-name=Dev Session Canvas'];
-  if (options.callbackUri) {
-    args.push('--action=view=查看节点', '--wait');
-  }
-  args.push(options.request.title, options.request.message);
+  const args = buildLinuxNotifySendArgs(options, true);
   return {
     backend: 'linux-notify-send',
     activationMode: options.callbackUri ? 'direct-action' : 'none',
@@ -68,6 +65,23 @@ export function buildLinuxNotifySendInvocation(options: DesktopNotificationOptio
   };
 }
 
+function buildLinuxNotifySendArgs(options: DesktopNotificationOptions, includeActionArgs: boolean): string[] {
+  const args = ['--app-name=Dev Session Canvas'];
+  if (options.playSound === false) {
+    args.push('--hint=boolean:suppress-sound:true');
+  } else {
+    args.push('--hint=string:sound-name:message-new-instant');
+  }
+
+  if (options.callbackUri) {
+    if (includeActionArgs) {
+      args.push('--action=view=查看节点', '--wait');
+    }
+  }
+  args.push(options.request.title, options.request.message);
+  return args;
+}
+
 export function buildMacOSTerminalNotifierInvocation(
   options: DesktopNotificationOptions
 ): ShellInvocation | undefined {
@@ -75,29 +89,44 @@ export function buildMacOSTerminalNotifierInvocation(
     return undefined;
   }
 
+  const args = ['-title', options.request.title, '-message', options.request.message];
+  if (options.playSound !== false) {
+    args.push('-sound', 'default');
+  }
+  args.push('-open', options.callbackUri);
+
   return {
     backend: 'macos-terminal-notifier',
     activationMode: 'protocol',
     command: 'terminal-notifier',
-    args: ['-title', options.request.title, '-message', options.request.message, '-open', options.callbackUri]
+    args
   };
 }
 
 export function buildMacOSAppleScriptInvocation(options: DesktopNotificationOptions): ShellInvocation {
-  const script = `display notification ${appleScriptString(options.request.message)} with title ${appleScriptString(
-    options.request.title
-  )}`;
+  const scriptLines = [];
+  if (options.playSound !== false) {
+    scriptLines.push('beep');
+  }
+  scriptLines.push(
+    `display notification ${appleScriptString(options.request.message)} with title ${appleScriptString(options.request.title)}`
+  );
   return {
     backend: 'macos-osascript',
     activationMode: 'none',
     command: 'osascript',
-    args: ['-e', script],
+    args: ['-e', scriptLines.join('\n')],
     postedDetail: options.callbackUri ? 'posted-without-activation' : undefined
   };
 }
 
 export function buildWindowsToastInvocation(options: DesktopNotificationOptions): ShellInvocation {
-  const script = buildWindowsToastScript(options.request.title, options.request.message, options.callbackUri);
+  const script = buildWindowsToastScript(
+    options.request.title,
+    options.request.message,
+    options.callbackUri,
+    options.playSound !== false
+  );
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   return {
     backend: 'windows-toast',
@@ -125,7 +154,7 @@ async function postLinuxNotification(options: DesktopNotificationOptions): Promi
           backend: 'linux-notify-send',
           activationMode: 'none',
           command: 'notify-send',
-          args: ['--app-name=Dev Session Canvas', options.request.title, options.request.message],
+          args: buildLinuxNotifySendArgs(options, false),
           postedDetail: 'posted-without-activation'
         },
         { settlePostedOnSpawn: false }
@@ -294,8 +323,8 @@ function appleScriptString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function buildWindowsToastScript(title: string, message: string, callbackUri?: string): string {
-  const xml = buildWindowsToastXml(title, message, callbackUri);
+function buildWindowsToastScript(title: string, message: string, callbackUri?: string, playSound = true): string {
+  const xml = buildWindowsToastXml(title, message, callbackUri, playSound);
   return [
     '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null',
     '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null',
@@ -310,10 +339,13 @@ function buildWindowsToastScript(title: string, message: string, callbackUri?: s
   ].join('\n');
 }
 
-function buildWindowsToastXml(title: string, message: string, callbackUri?: string): string {
+function buildWindowsToastXml(title: string, message: string, callbackUri?: string, playSound = true): string {
   const activationAttributes = callbackUri
     ? ` activationType="protocol" launch="${escapeXml(callbackUri)}"`
     : '';
+  const audioLine = playSound
+    ? '  <audio src="ms-winsoundevent:Notification.Default"/>'
+    : '  <audio silent="true"/>';
   return [
     `<toast${activationAttributes}>`,
     '  <visual>',
@@ -322,6 +354,7 @@ function buildWindowsToastXml(title: string, message: string, callbackUri?: stri
     `      <text>${escapeXml(message)}</text>`,
     '    </binding>',
     '  </visual>',
+    audioLine,
     '</toast>'
   ].join('\n');
 }
