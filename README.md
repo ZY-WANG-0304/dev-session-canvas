@@ -92,7 +92,7 @@ npm run build
 然后在仓库窗口中：
 
 1. 打开 `Run and Debug`
-2. 选择 `Run Dev Session Canvas`
+2. 选择 `Run Dev Session Canvas (Main Only)`
 3. 按 `F5` 启动 `Extension Development Host`
 
 更完整的源码开发、`Remote SSH` 调试和自动化验证说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。

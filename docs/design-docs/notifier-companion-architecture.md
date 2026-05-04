@@ -50,9 +50,34 @@ updated_at: 2026-05-05
 - 本轮不引入独立 extension pack；用户安装路径改由双向 `extensionDependencies` 自动收口。
 - 本轮不把 JSON Schema 自动生成、跨 IntelliJ 复用或更大的跨平台共享层一并实现。
 
-## 5. 核心决策
+## 5. 正式方案
 
-### 5.1 目录策略：先混合结构，notifier 直接放最终位置
+### 5.1 方案总览
+
+当前正式方案把 notifier 明确收口成“主扩展负责 workspace-side 权威状态，companion 负责 UI-side 本机桌面通知”的双扩展协作模型：
+
+- `src/extension.ts` 与 `src/panel/CanvasPanelManager.ts`：继续作为主扩展入口，负责解析执行节点 attention signal、维护 `attentionPending`、决定是否桥接提醒，并在通知回跳后执行聚焦与清除 attention。
+- `extensions/vscode/dev-session-canvas-notifier/src/extension.ts`：作为 UI-side companion 入口，负责校验结构化请求、选择本机通知后端、维护 pending focus token、注册 URI handler，并记录诊断输出。
+- `packages/attention-protocol/src/index.ts`：作为两侧共享协议单一真相，定义请求结构、回调动作、返回结果与测试命令约束。
+
+两侧协作只通过结构化协议、VS Code commands 与受控 callback URI 完成，不通过 `activate()` 导出的 JS API 直连，也不让 notifier 直接写入画布内部状态。
+
+### 5.2 适用范围与边界
+
+- 本方案适用于 VS Code 的 local / remote 双 host 运行模型，尤其是 workspace-side 主扩展与 UI-side companion 分居两侧的 `Remote SSH`、WSL、Dev Container 场景；不覆盖 IntelliJ 插件或仓库外的泛用桌面通知框架。
+- notifier companion 只负责 best-effort 地把 attention 事件投递到本机系统通知，并在平台能力允许时触发回跳；`attentionPending` 的权威状态、节点聚焦语义和去重冷却规则仍只归主扩展所有。
+- repo-local staged smoke / VSIX smoke 可能为了装配 wrapper 临时移除 `extensionDependencies`；这些自动化验证“功能链路是否打通”，不直接等价于 Marketplace / VSIX 正式安装时的自动补齐链路证据。
+- 第一版允许不同平台在点击回调能力上存在 `direct-action`、`protocol`、`none` 三种能力差异；平台退化需要被显式暴露，而不是被伪装成“所有平台都已完整支持”。
+
+### 5.3 核心规则与不变量
+
+- 正式安装真相固定为双向 `extensionDependencies + api:none`；跨 host 协作必须依赖异步 commands 和结构化协议，而不是额外引入跨扩展 JS API。
+- 外部通知系统看到的 callback URI 只能携带一次性 token；真实 `focusAction` 只能保存在 companion 内部 pending table 中，避免把任意命令载荷直接暴露给 OS 通知层。
+- 用户点击系统通知后，最终只能回到主扩展的 `devSessionCanvas.__internal.focusAttentionNode` 或 notifier 自己的测试确认命令；notifier 不得直接改写画布状态，也不得新增未登记的回调动作白名单。
+- `devSessionCanvas.notifications.attentionSignalBridge=system` 时，只有 companion 缺失、平台不支持或调用失败才允许回退到工作台消息；一旦 companion 返回 `posted`，主扩展就不得再重复弹工作台通知。
+- 开发态主扩展单调试可以临时去掉 notifier 依赖，但该动作只能发生在 `.debug/vscode-extension-main-only/` 这类 debug-only 副本，不得回写正式 manifest。
+
+### 5.4 目录策略：先混合结构，notifier 直接放最终位置
 
 当前选定结构是：
 
@@ -63,7 +88,7 @@ updated_at: 2026-05-05
 
 这样做的好处是：notifier 不需要先经历“临时目录 -> 最终目录”的二次迁移；而主扩展目录大搬迁则可以延后到阶段 1.2 再做。
 
-### 5.2 协议策略：显式结构化请求，而不是隐式 escape sequence
+### 5.5 协议策略：显式结构化请求，而不是隐式 escape sequence
 
 主扩展与 companion 之间的最小协议定义在 `packages/attention-protocol/src/index.ts`。当前只覆盖一类请求：`execution-attention`。
 
@@ -78,7 +103,7 @@ updated_at: 2026-05-05
 
 其中 `focusAction` 当前仍收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部聚焦命令即可；但真正暴露给外部通知系统的 callback URI 不再直接携带这段动作载荷，而是只携带 companion 侧登记的一次性 token。
 
-### 5.3 回调策略：URI handler 负责“回到 VS Code”
+### 5.6 回调策略：URI handler 负责“回到 VS Code”
 
 companion 使用 `vscode.window.registerUriHandler(...)` 注册自己的 URI handler，但 callback URI 只会携带一次性 token；真实 `focusAction` 会先登记到 companion 内部的 pending table，并在回调时按 token 查表执行。这样可以避免把任意命令载荷直接暴露给外部通知系统，同时仍保留 URI handler 作为真实点击路径。原因有两个：
 
@@ -87,7 +112,7 @@ companion 使用 `vscode.window.registerUriHandler(...)` 注册自己的 URI han
 
 Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 companion 进程内直接执行 focus action；但 companion 仍然同步生成 callback URI，并在测试态用它验证回调链路。无论是直接执行还是 URI 回调，companion 当前都只接受当前设计明确允许的两类动作：主扩展的 `devSessionCanvas.__internal.focusAttentionNode`，以及 notifier 自己的测试确认命令。
 
-### 5.4 主扩展回退策略：companion 优先，工作台通知兜底
+### 5.7 主扩展回退策略：companion 优先，工作台通知兜底
 
 主扩展新增配置：
 
@@ -101,7 +126,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 这让用户可以把当前配置理解为“用一个设置明确选择不桥接 / 工作台消息 / 系统通知”，同时继续保留 `system` 模式下的工作台兜底，避免因为本机 companion 缺失而静默丢提醒。
 
-### 5.5 安装策略：双向 `extensionDependencies` 自动补齐
+### 5.8 安装策略：双向 `extensionDependencies` 自动补齐
 
 当前选定的安装策略是：
 
@@ -117,11 +142,9 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 需要单独说明的是：repo-local 的 smoke host / VSIX smoke 为了在同一个 Development Host 中装配 wrapper，会在 staged 测试副本里临时移除 `extensionDependencies`。这不改变正式 manifest 的安装策略，但意味着“真实安装时是否自动补齐依赖”仍应通过 clean profile / Marketplace / VSIX 安装步骤单独复核，而不是把 staged smoke 当成直接证据。
 
-### 5.6 聚焦语义：系统通知点击必须清除 attention
+### 5.9 开发态调试策略：用 debug-only 主扩展目录隔离 notifier 依赖
 
-### 5.6 开发态调试策略：用 debug-only 主扩展目录隔离 notifier 依赖
-
-双向 `extensionDependencies` 解决的是发布态 / 安装态的自动补齐，但它也会让“只跑主扩展”这条 Development Host 路径在缺少 notifier 时直接失活。当前开发态对这个问题的收口方式不是再维护一套 shim，而是在 `Run Dev Session Canvas` 启动前生成一份 debug-only 的临时主扩展目录：
+双向 `extensionDependencies` 解决的是发布态 / 安装态的自动补齐，但它也会让“只跑主扩展”这条 Development Host 路径在缺少 notifier 时直接失活。当前开发态对这个问题的收口方式不是再维护一套 shim，而是在 `Run Dev Session Canvas (Main Only)` 启动前生成一份 debug-only 的临时主扩展目录：
 
 - 临时目录位于 `.debug/vscode-extension-main-only/`
 - 目录内容来自当前仓库根主扩展的开发产物与运行时资源
@@ -129,7 +152,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 因此，当前三类调试场景分别是：
 
-- `Run Dev Session Canvas`：本地 / 远端窗口统一使用；只调主扩展，不加载 notifier
+- `Run Dev Session Canvas (Main Only)`：本地 / 远端窗口统一使用；只调主扩展，不加载 notifier
 - `Run Dev Session Canvas + Notifier (Local Window)`：本地窗口联调真实主扩展 + 真实 notifier
 - `Run Dev Session Canvas + Notifier (Remote Window)`：远端仓库窗口联调远端主扩展 + 本机 notifier；只额外要求输入本机 `localRepoRoot`
 
@@ -137,9 +160,9 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 - 正式 `package.json` 继续保持双向依赖，不为调试改写发布真相
 - 单独调主扩展时，不需要额外先安装或加载 notifier
-- 从远端仓库窗口发起主扩展单调时，继续保持 `Run Dev Session Canvas` 的零输入体验；只有远端联调 notifier 时才额外要求本机 `localRepoRoot`
+- 从远端仓库窗口发起主扩展单调时，继续保持 `Run Dev Session Canvas (Main Only)` 的零输入体验；只有远端联调 notifier 时才额外要求本机 `localRepoRoot`
 
-### 5.7 聚焦语义：系统通知点击必须清除 attention
+### 5.10 聚焦语义：系统通知点击必须清除 attention
 
 主扩展新增内部命令 `devSessionCanvas.__internal.focusAttentionNode`。它不同于现有“仅定位节点”的内部命令：
 
@@ -264,7 +287,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - notifier companion 新增测试桌面通知命令，可直接在真实桌面环境触发一次通知
 - notifier companion 新增诊断输出，可记录实际 `backend`、`activationMode` 与最后一次人工验收结果
 - 主扩展 diagnostic event 会同步记录 companion 返回的 `activationMode`，避免把“通知已发出”误读成“通知必然可点击回跳”
-- `Run Dev Session Canvas` 现在会先生成 `.debug/vscode-extension-main-only/` 作为 debug-only 主扩展目录，因此主扩展在 local / remote 场景里都可单独调试，而不需要 notifier shim
+- `Run Dev Session Canvas (Main Only)` 现在会先生成 `.debug/vscode-extension-main-only/` 作为 debug-only 主扩展目录，因此主扩展在 local / remote 场景里都可单独调试，而不需要 notifier shim
 - 远端联调场景收口为 `Run Dev Session Canvas + Notifier (Remote Window)`，把 `Remote SSH` / WSL / Dev Container 下的 workspace 主扩展与本机 UI notifier 明确拆成两条开发态路径；从远端仓库窗口发起时只要求输入 `localRepoRoot`
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
