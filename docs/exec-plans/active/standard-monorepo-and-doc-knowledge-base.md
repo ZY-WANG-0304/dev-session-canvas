@@ -32,7 +32,7 @@
 - [x] (2026-05-03) **阶段 1.1 的代码与文档收口已完成**：`extensions/vscode/dev-session-canvas-notifier/`、`packages/attention-protocol/`、主扩展接线、诊断输出、联调配置与正式文档均已落地；当前工作树已经是可提交并切换环境继续调试的状态。
 - [x] (2026-05-04) 完成阶段 1.1 尾项（真实桌面通知人工验收）：macOS、Windows、Linux 本机环境与 `Remote Main + Local Notifier` 联调拓扑均已完成人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证。
 - [x] (2026-05-05) 恢复 `npm run test:notifier-smoke` 自动化链路：smoke runner 已改为 staged smoke host + notifier wrapper，并补齐统一 test harness mode；latest head 已通过 `npm run test:notifier-smoke`、`npm run test:smoke-storage-slot`、`npm run test:vsix-smoke` 与 `npm run test:smoke` 复核。
-- [x] (2026-05-04) 收口调试拓扑：用 debug-only 临时主扩展目录替代原先的 shim 方案，让 `Run Dev Session Canvas` 在 local / remote 环境下都能单独启动；同时把 launch 配置收敛到 `Run Dev Session Canvas`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Dev Session Canvas + Notifier (Remote Window)` 三条，并补上相应协作文档与 launch 配置回归脚本。
+- [x] (2026-05-04) 收口调试拓扑：用 debug-only 临时主扩展目录替代原先的 shim 方案，让 `Run Dev Session Canvas (Main Only)` 在 local / remote 环境下都能单独启动；同时把 launch 配置收敛到 `Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Dev Session Canvas + Notifier (Remote Window)` 三条，并补上相应协作文档与 launch 配置回归脚本。
 - [ ] **阶段 1.2（可选重构）**：notifier 验证通过后，根据需要决定是否迁移主扩展到 `extensions/vscode/dev-session-canvas/`。
 - [ ] 新增文档知识库入口页与体系图资产，补齐根 README、`ARCHITECTURE.md` 与各扩展 README 的职责边界。
 - [ ] **里程碑 5（延后到第二阶段）**：建立跨平台共享层（`packages/protocol/` 三层结构、`packages/webview/` 共享前端、JSON Schema 自动生成工具链）。仅在决定启动 IntelliJ 开发时执行。
@@ -65,10 +65,10 @@
   证据：在本地窗口里使用 `remoteAuthority=ssh-remote+gpu-dev042.hogpu.cc`、`localRepoRoot=/Users/wzy/Projects/dev-session-canvas` 启动旧配置时，Development Host 直接报 `Unable to resolve nonexistent file 'vscode-remote://ssh-remote+gpu-dev042.hogpu.cc/Users/wzy/Projects/dev-session-canvas'`。
 
 - 观察：在 notifier companion 引入对称 `extensionDependencies` 之后，单独跑主扩展会因为缺少对端 extension id 而在 Development Host 中直接失活。
-  证据：`Run Dev Session Canvas` 直接加载根主扩展时，VS Code 会把缺失 notifier 依赖视为未满足条件，扩展无法按预期激活；当前改为在启动前生成一份去掉 `extensionDependencies` 的 debug-only 临时主扩展目录后，单独调试恢复。
+  证据：`Run Dev Session Canvas (Main Only)` 直接加载根主扩展时，VS Code 会把缺失 notifier 依赖视为未满足条件，扩展无法按预期激活；当前改为在启动前生成一份去掉 `extensionDependencies` 的 debug-only 临时主扩展目录后，单独调试恢复。
 
 - 观察：当调试入口本身已经来自远端仓库窗口时，再额外要求输入 `remoteAuthority` 属于重复输入，因为当前远端上下文本来就能让 `--extensionDevelopmentPath=${workspaceFolder}` 正常落到远端主扩展。
-  证据：引入 notifier 之前，`Run Dev Session Canvas` 在 `Remote SSH` 窗口下本就可以直接复用当前远端 `${workspaceFolder}` 启动；本轮把远端窗口专用配置改回“当前远端窗口 + 本机 localRepoRoot”的组合后，不再需要显式拼 `vscode-remote://...` URI。
+  证据：引入 notifier 之前，`Run Dev Session Canvas (Main Only)` 在 `Remote SSH` 窗口下本就可以直接复用当前远端 `${workspaceFolder}` 启动；本轮把远端窗口专用配置改回“当前远端窗口 + 本机 localRepoRoot”的组合后，不再需要显式拼 `vscode-remote://...` URI。
 
 ## 决策记录
 
@@ -123,12 +123,12 @@
   理由：当前产品更需要真实反映平台差异，并给人工验收与诊断留下证据；如果 companion 已成功发出桌面通知却再补发工作台通知，会把“能力退化”和“重复提醒噪音”混在一起。
   日期/作者：2026-05-03 / Codex
 
-- 决策：当前 launch 配置只保留三条主路径：`Run Dev Session Canvas`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`。
+- 决策：当前 launch 配置只保留三条主路径：`Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`。
   理由：这三条配置刚好覆盖“local 联调 / remote 联调 / local&remote 单独调主扩展”三类真实场景；其余 notifier-only 或“从本地 clone 窗口手工拼 remote authority”的入口虽然可做，但会放大配置面与文档心智负担，不适合继续保留在默认 launch 集合中。
   日期/作者：2026-05-04 / Codex
 
-- 决策：保留正式双向 `extensionDependencies` 不变，同时为 `Run Dev Session Canvas` 生成一份 debug-only 的临时主扩展目录，并在其中移除 notifier 依赖；不要为了 F5 直接改正式 manifest。
-  理由：这样既能维持 Marketplace / 安装态的单一真相，又能让 `Run Dev Session Canvas` 在 local / remote 环境继续保持零 notifier 输入的单调体验，而不必长期维护额外的 shim 调试入口。
+- 决策：保留正式双向 `extensionDependencies` 不变，同时为 `Run Dev Session Canvas (Main Only)` 生成一份 debug-only 的临时主扩展目录，并在其中移除 notifier 依赖；不要为了 F5 直接改正式 manifest。
+  理由：这样既能维持 Marketplace / 安装态的单一真相，又能让 `Run Dev Session Canvas (Main Only)` 在 local / remote 环境继续保持零 notifier 输入的单调体验，而不必长期维护额外的 shim 调试入口。
   日期/作者：2026-05-04 / Codex
 
 - 决策：从远端仓库窗口发起的远端联调配置只保留 `localRepoRoot` 这一个输入；不再要求输入 `remoteAuthority`，也不再保留本地 clone 窗口发起远端联调的默认入口。
@@ -146,7 +146,7 @@
 - 一个最小共享 attention 协议包：`packages/attention-protocol/`
 - 一条已打通的主扩展 -> companion -> focus callback 自动化验证链路：`npm run test:notifier-smoke`
 - 一套固定的真实桌面通知人工验收入口：companion 测试通知命令、诊断输出与 `activationMode` 结果结构
-- 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`
+- 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`
 
 本轮尚未完成的事情：
 

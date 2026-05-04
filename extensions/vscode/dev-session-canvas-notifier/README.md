@@ -6,7 +6,7 @@
 
 本地手动 F5 调试时，优先使用仓库里的 `Run Dev Session Canvas + Notifier (Local Window)`。这条配置固定使用专用 profile `Dev Session Canvas Notifier Extension Debug`，目的是把 notifier 的开发态调试环境与日常使用环境隔离开，减少已安装插件和已安装发布版扩展带来的冲突。
 
-如果只想单独调主扩展，而不把真实 notifier 一起跑起来，则使用 `Run Dev Session Canvas`。这条配置不会加载 notifier，也不会要求本机 notifier 路径；它会在启动前生成一份 debug-only 的临时主扩展目录，并去掉开发态的 notifier 依赖，因此主扩展仍可在本地或远端窗口中独立调试。
+如果只想单独调主扩展，而不把真实 notifier 一起跑起来，则使用 `Run Dev Session Canvas (Main Only)`。这条配置不会加载 notifier，也不会要求本机 notifier 路径；它会在启动前生成一份 debug-only 的临时主扩展目录，并去掉开发态的 notifier 依赖，因此主扩展仍可在本地或远端窗口中独立调试。
 
 建议这个专用 profile 只保留调试必需的插件；如果要调 `Remote SSH`，就在该 profile 里额外安装 `Remote Development` 相关扩展，但不要把 Marketplace 里的 `Dev Session Canvas` 或 `Dev Session Canvas Notifier` 已发布版本装进这个 profile。
 
@@ -15,7 +15,7 @@
 1. 如果你当前打开的是远端仓库窗口，选择 `Run Dev Session Canvas + Notifier (Remote Window)`
    - 输入 `localRepoRoot`：你本机 clone 的 repo 根目录绝对路径，例如 `/Users/you/dev-session-canvas`
    - 这条配置会直接复用当前远端窗口作为主扩展上下文，并把 `${localRepoRoot}/extensions/vscode/dev-session-canvas-notifier` 作为本机 UI 侧 notifier 注入同一个 Development Host
-2. 如果你只想在远端窗口里调主扩展而不联调 notifier，则直接使用 `Run Dev Session Canvas`
+2. 如果你只想在远端窗口里调主扩展而不联调 notifier，则直接使用 `Run Dev Session Canvas (Main Only)`
    - 这条配置不需要输入 `localRepoRoot`
    - 主扩展会从当前远端 `${workspaceFolder}` 生成 debug-only 临时目录并启动
 

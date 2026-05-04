@@ -30,7 +30,7 @@ function assertArgsContain(configuration, expectedArgs) {
 assert.deepEqual(
   launchJson.configurations.map((configuration) => configuration.name),
   [
-    'Run Dev Session Canvas',
+    'Run Dev Session Canvas (Main Only)',
     'Run Dev Session Canvas + Notifier (Local Window)',
     'Run Dev Session Canvas + Notifier (Remote Window)'
   ],
@@ -40,7 +40,7 @@ assert.deepEqual(
 const mainOnlyExtensionPath = `${workspaceFolder}/.debug/vscode-extension-main-only`;
 const notifierExtensionPath = `${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier`;
 
-const runMainOnly = getConfiguration('Run Dev Session Canvas');
+const runMainOnly = getConfiguration('Run Dev Session Canvas (Main Only)');
 assert.equal(runMainOnly.preLaunchTask, 'build debug main-only extension');
 assertArgsContain(runMainOnly, [
   '--profile=Dev Session Canvas Extension Debug',

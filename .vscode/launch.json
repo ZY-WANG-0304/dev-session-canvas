@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Dev Session Canvas",
+      "name": "Run Dev Session Canvas (Main Only)",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
