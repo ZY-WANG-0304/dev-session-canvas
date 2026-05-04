@@ -149,6 +149,8 @@ companion 当前放在 `extensions/vscode/dev-session-canvas-notifier/`，职责
 - Windows：PowerShell 生成 Toast XML，并用 protocol activation 指向 companion URI handler
 - 测试模式：不碰真实系统通知，直接记录请求并返回 `posted`
 
+companion 还额外暴露 `devSessionCanvasNotifier.notifications.playSound` 开关，默认开启。它只负责“是否请求提示音”，不改变通知路由和回调语义；实际是否响铃仍保持 best-effort，并继续受平台后端与系统通知服务约束。
+
 companion 当前会把点击回调能力显式收口成 `activationMode`：
 
 | `backend` | `activationMode` | 含义 |

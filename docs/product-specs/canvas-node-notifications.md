@@ -81,6 +81,19 @@
 - 关闭后：
   - 完全保留当前工作台通知桥接语义，不尝试调用 companion
 
+### 4.2.2 Notifier companion 声音开关
+
+- 配置项 `devSessionCanvasNotifier.notifications.playSound`：
+  - 类型：`boolean`
+  - 默认值：`true`
+  - 作用域：`window`
+  - 功能：控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音
+- 开启后：
+  - notifier 会在当前平台支持的后端上 best-effort 请求提示音
+  - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会额外播放一次系统 alert sound
+- 关闭后：
+  - notifier 会尽量走静音路径，但不影响通知弹出、点击回跳和 `attentionPending` 状态机
+
 ### 4.3 强提醒模式
 
 - 配置项 `devSessionCanvas.notifications.strongTerminalAttentionReminder`：
@@ -123,7 +136,7 @@
 
 ### 5.1 当前阶段不做
 
-- 不支持自定义通知声音
+- 不支持自定义通知声音或声音选择
 - 不支持通知历史记录或通知中心
 - 不支持基于通知内容的智能分类或优先级
 - 不支持跨 workspace 的通知聚合
@@ -253,7 +266,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - **智能通知**：基于通知内容的智能分类和优先级排序
 - **通知聚合**：当同一节点短时间内触发多次通知时，聚合显示
 - **自定义规则**：允许用户定义通知过滤规则和触发条件
-- **声音提示**：可选的通知声音
+- **声音提示**：自定义通知声音或声音选择
 - **通知中心**：提供统一的通知历史和管理界面
 
 ## 9. 依据文档

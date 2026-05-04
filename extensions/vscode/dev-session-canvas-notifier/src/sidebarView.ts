@@ -17,6 +17,7 @@ export interface NotifierSidebarLatestAttempt {
 
 interface NotifierSidebarCallbacks {
   getModeLabel: () => NotifierExtensionModeLabel;
+  getPlaySoundEnabled: () => boolean;
   getLatestRecord: () => AttentionNotificationDebugRecord | undefined;
   getLatestManualAttempt: () => NotifierSidebarLatestAttempt | undefined;
   sendTestNotification: () => Promise<void>;
@@ -64,7 +65,11 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
       return;
     }
 
-    const snapshot = await probeNotifierEnvironmentSnapshot(process.platform, this.callbacks.getModeLabel());
+    const snapshot = await probeNotifierEnvironmentSnapshot(
+      process.platform,
+      this.callbacks.getModeLabel(),
+      this.callbacks.getPlaySoundEnabled()
+    );
     this.view.webview.html = renderSidebarHtml(
       this.view.webview,
       snapshot,
@@ -378,8 +383,13 @@ function renderEnvironmentInfo(snapshot: NotifierEnvironmentSnapshot): string {
         <span class="info-label">点击回跳</span>
         <span class="info-value">${escapeHtml(clickSupportText)}</span>
       </div>
+      <div class="info-item">
+        <span class="info-label">声音提醒</span>
+        <span class="info-value">${escapeHtml(snapshot.soundLabel)}</span>
+      </div>
     </div>
     <p class="help-text" style="margin-top: 12px;">${escapeHtml(routeDescription)}</p>
+    <p class="help-text">${escapeHtml(snapshot.soundDetail)}</p>
   `;
 }
 

@@ -49,7 +49,18 @@
         "command": "devSessionCanvasNotifier.openDiagnosticOutput",
         "title": "Dev Session Canvas Notifier: 打开通知诊断输出"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Dev Session Canvas Notifier",
+      "properties": {
+        "devSessionCanvasNotifier.notifications.playSound": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音。关闭后会尽量走静音路径；实际是否完全静音取决于平台后端与系统通知服务。"
+        }
+      }
+    }
   },
   "main": "./dist/extension.js",
   "scripts": {
