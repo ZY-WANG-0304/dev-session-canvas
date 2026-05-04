@@ -15,12 +15,31 @@
     "ui"
   ],
   "activationEvents": [
+    "onView:devSessionCanvasNotifier.sidebar",
     "onCommand:devSessionCanvasNotifier.postSystemNotification",
     "onCommand:devSessionCanvasNotifier.sendTestNotification",
     "onCommand:devSessionCanvasNotifier.openDiagnosticOutput",
     "onUri"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "devSessionCanvasNotifier",
+          "title": "Dev Session Canvas Notifier",
+          "icon": "images/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "devSessionCanvasNotifier": [
+        {
+          "id": "devSessionCanvasNotifier.sidebar",
+          "name": "通知环境",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "devSessionCanvasNotifier.sendTestNotification",

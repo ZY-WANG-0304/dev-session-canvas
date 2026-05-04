@@ -62,7 +62,7 @@
       "preLaunchTask": "build notifier"
     },
     {
-      "name": "Run Remote Main + Local Notifier (Prompt)",
+      "name": "Run Remote Main + Local Notifier (Prompt from Remote Window)",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
@@ -84,6 +84,30 @@
         "${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
       ],
       "preLaunchTask": "build extension"
+    },
+    {
+      "name": "Run Remote Main + Local Notifier (Prompt from Local Window)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--profile=Dev Session Canvas Notifier Extension Debug",
+        "--remote=${input:devSessionCanvas.remoteAuthority}",
+        "--folder-uri=vscode-remote://${input:devSessionCanvas.remoteAuthority}${input:devSessionCanvas.remoteWorkspacePath}",
+        "--extensionDevelopmentPath=vscode-remote://${input:devSessionCanvas.remoteAuthority}${input:devSessionCanvas.remoteWorkspacePath}",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier"
+      ],
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/.vscode-server/**/extensions/**",
+        "**/.vscode-server/**/server/extensions/**",
+        "**/resources/app/extensions/**"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
+      ],
+      "preLaunchTask": "build notifier"
     }
   ],
   "inputs": [
@@ -96,6 +120,11 @@
       "id": "devSessionCanvas.localRepoRoot",
       "type": "promptString",
       "description": "本机 repo 根目录绝对路径，例如 /Users/you/dev-session-canvas"
+    },
+    {
+      "id": "devSessionCanvas.remoteWorkspacePath",
+      "type": "promptString",
+      "description": "远端 repo 根目录绝对路径，例如 /home/you/dev-session-canvas；不要填写本机路径"
     }
   ]
 }

@@ -14,6 +14,8 @@ import {
   type AttentionNotificationRequest
 } from '../../../../packages/attention-protocol/src/index';
 import { postDesktopNotification } from './platformNotification';
+import { NotifierSidebarViewProvider } from './sidebarView';
+import type { NotifierExtensionModeLabel } from './sidebarEnvironment';
 
 const FOCUS_URI_PATH = '/focus';
 const MAX_DEBUG_RECORDS = 20;
@@ -42,8 +44,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const postedNotifications: AttentionNotificationDebugRecord[] = [];
   const manualNotificationAttempts = new Map<string, ManualNotificationAttempt>();
   const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+  const sidebarViewProvider = new NotifierSidebarViewProvider({
+    getModeLabel: () => getExtensionModeLabel(context.extensionMode),
+    getLatestRecord: () => postedNotifications.at(-1),
+    getLatestManualAttempt: () => getLatestManualNotificationAttempt(manualNotificationAttempts),
+    sendTestNotification: async () => sendTestNotification(),
+    openDiagnosticOutput: () => openDiagnosticOutput()
+  });
 
-  context.subscriptions.push(outputChannel);
+  context.subscriptions.push(outputChannel, sidebarViewProvider);
   appendOutputLine(
     outputChannel,
     `activated platform=${process.platform} mode=${getExtensionModeLabel(context.extensionMode)}`
@@ -129,6 +138,7 @@ export function activate(context: vscode.ExtensionContext): void {
         .filter(Boolean)
         .join(' ')
     );
+    void sidebarViewProvider.refresh();
     return { request, callbackUri, result };
   };
 
@@ -146,6 +156,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     appendOutputLine(outputChannel, `manual notification activated requestId=${normalizedRequestId}`);
+    void sidebarViewProvider.refresh();
     void vscode.window.showInformationMessage('Dev Session Canvas Notifier 已收到测试通知点击回调。');
   };
 
@@ -184,6 +195,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void handleFocusUri(uri);
       }
     }),
+    vscode.window.registerWebviewViewProvider(NotifierSidebarViewProvider.viewType, sidebarViewProvider),
     vscode.commands.registerCommand(NOTIFIER_COMMAND_IDS.postSystemNotification, async (rawRequest?: unknown) => {
       const outcome = await postNotificationRequest(rawRequest, 'main-extension');
       return outcome.result;
@@ -385,7 +397,7 @@ function describeActivationMode(mode: AttentionNotificationActivationMode): stri
   return 'none';
 }
 
-function getExtensionModeLabel(mode: vscode.ExtensionMode): string {
+function getExtensionModeLabel(mode: vscode.ExtensionMode): NotifierExtensionModeLabel {
   if (mode === vscode.ExtensionMode.Development) {
     return 'development';
   }
@@ -395,4 +407,18 @@ function getExtensionModeLabel(mode: vscode.ExtensionMode): string {
   }
 
   return 'production';
+}
+
+function getLatestManualNotificationAttempt(
+  attempts: Map<string, ManualNotificationAttempt>
+): { requestedAt: string; activatedAt?: string } | undefined {
+  const latestAttempt = Array.from(attempts.values()).at(-1);
+  if (!latestAttempt) {
+    return undefined;
+  }
+
+  return {
+    requestedAt: latestAttempt.requestedAt,
+    activatedAt: latestAttempt.activatedAt
+  };
 }

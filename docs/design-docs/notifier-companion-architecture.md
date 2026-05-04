@@ -1,7 +1,7 @@
 ---
 title: UI 侧 Notifier Companion 架构
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,7 +14,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-05-03
+updated_at: 2026-05-04
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -199,10 +199,11 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 2. notifier companion 改从本机 clone 路径注入 Development Host
 3. 在同一个 Development Host 中用 `Developer: Show Running Extensions` 确认主扩展运行在 workspace 侧、notifier 运行在 UI 侧
 4. 再执行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认 UI-side companion 命令确实可见
+5. 如果当前发起调试的是本地 clone 窗口，则必须使用 `Run Remote Main + Local Notifier (Prompt from Local Window)`，并显式输入远端 repo 根目录 `remoteWorkspacePath`；不要把本机 `${workspaceFolder}` 误当成远端路径
 
 ## 9. 当前验证状态
 
-截至 2026-05-03，本设计对应的第一版实现已完成以下仓库内验证：
+截至 2026-05-04，本设计对应的第一版实现已完成以下仓库内验证：
 
 - `npm run typecheck`
 - `npm run typecheck:notifier`
@@ -218,8 +219,8 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - notifier companion 新增诊断输出，可记录实际 `backend`、`activationMode` 与最后一次人工验收结果
 - 主扩展 diagnostic event 会同步记录 companion 返回的 `activationMode`，避免把“通知已发出”误读成“通知必然可点击回跳”
 - 远端联调场景新增 `Run Remote Main + Local Notifier (Prompt)`，把 `Remote SSH` / WSL / Dev Container 下的 workspace 主扩展与本机 UI notifier 明确拆成两条开发态路径，并将启动输入收口到 `remoteAuthority` + `localRepoRoot`
+- 当联调入口本身来自本地 clone 窗口时，额外提供 `Run Remote Main + Local Notifier (Prompt from Local Window)`，要求显式输入 `remoteWorkspacePath`，避免把本机 `${workspaceFolder}` 误拼成远端 `folder-uri`
+- 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
+- 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
 
-当前仍保持 `验证中`，因为：
-
-- 真实 macOS / Windows / Linux 桌面通知的人工验收步骤虽然已固定，但尚未在三类本机环境逐一执行并归档
-- 用户安装路径、extension pack 与发布策略还未收口
+因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议、回调链路、跨平台本机通知路径与远端主扩展 + 本机 UI notifier 的调试拓扑都已获得自动化与人工证据闭环。用户安装路径、extension pack 与发布策略仍可继续在其他计划中演进，但它们不再阻塞本设计的架构正确性判断。
