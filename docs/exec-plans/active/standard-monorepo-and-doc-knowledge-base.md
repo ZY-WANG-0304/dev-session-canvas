@@ -30,7 +30,8 @@
 - [x] (2026-05-03 17:10 +0800) 完成 notifier 第二批落地：companion 新增“发送测试桌面通知 / 打开通知诊断输出”命令，真实桌面通知人工验收步骤已收口到固定命令与输出面板；共享结果新增 `activationMode`，主扩展 diagnostic event 也会显式记录平台退化路径。
 - [x] (2026-05-03 19:05 +0800) 补齐本地 / 远端联调配置：新增 `Run Notifier Only (Local Window)`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Remote Main + Local Notifier (Prompt)`，并把远端联调输入从 4 项收口到 `remoteAuthority` + `localRepoRoot` 两项。
 - [x] (2026-05-03) **阶段 1.1 的代码与文档收口已完成**：`extensions/vscode/dev-session-canvas-notifier/`、`packages/attention-protocol/`、主扩展接线、诊断输出、联调配置与正式文档均已落地；当前工作树已经是可提交并切换环境继续调试的状态。
-- [ ] **阶段 1.1 尾项（真实桌面通知人工验收）**：当前已在 macOS 上确认 `macos-osascript + activationMode=none` 的通知展示退化路径；切换到本机开发环境后，还需要继续验证 `terminal-notifier` / helper 路径与其他平台差异。
+- [x] (2026-05-04) 追加“从本地窗口发起远端主扩展 + 本机 notifier”调试配置：新增 `Run Remote Main + Local Notifier (Prompt from Local Window)`，并同步补齐 `remoteWorkspacePath` 输入、协作文档与人工验收说明，避免把本机 `${workspaceFolder}` 误当成远端路径。
+- [x] (2026-05-04) 完成阶段 1.1 尾项（真实桌面通知人工验收）：macOS、Windows、Linux 本机环境与 `Remote Main + Local Notifier` 联调拓扑均已完成人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证。
 - [ ] **阶段 1.2（可选重构）**：notifier 验证通过后，根据需要决定是否迁移主扩展到 `extensions/vscode/dev-session-canvas/`。
 - [ ] 新增文档知识库入口页与体系图资产，补齐根 README、`ARCHITECTURE.md` 与各扩展 README 的职责边界。
 - [ ] **里程碑 5（延后到第二阶段）**：建立跨平台共享层（`packages/protocol/` 三层结构、`packages/webview/` 共享前端、JSON Schema 自动生成工具链）。仅在决定启动 IntelliJ 开发时执行。
@@ -58,6 +59,9 @@
 
 - 观察：在 `Remote SSH` / WSL / Dev Container 窗口里，workspace 主扩展可以直接从远端源码目录启动，但 `extensionKind: ["ui"]` 的 notifier companion 若仍指向远端路径，Development Host 中通常看不到 notifier 命令。
   证据：本轮联调排查里，`Run Notifier Only` 在远端窗口中无法出现 `Dev Session Canvas Notifier` 命令；改为“远端主扩展 + 本机 notifier”双路径注入后，调试链路恢复。
+
+- 观察：现有 `Run Remote Main + Local Notifier (Prompt)` 如果从本地 clone 窗口启动，会把本机 `${workspaceFolder}` 误拼到 `vscode-remote://...` 后面，最终报“Unable to resolve workspace folder”。
+  证据：在本地窗口里使用 `remoteAuthority=ssh-remote+gpu-dev042.hogpu.cc`、`localRepoRoot=/Users/wzy/Projects/dev-session-canvas` 启动时，Development Host 直接报 `Unable to resolve nonexistent file 'vscode-remote://ssh-remote+gpu-dev042.hogpu.cc/Users/wzy/Projects/dev-session-canvas'`。
 
 ## 决策记录
 
@@ -112,6 +116,10 @@
   理由：当前产品更需要真实反映平台差异，并给人工验收与诊断留下证据；如果 companion 已成功发出桌面通知却再补发工作台通知，会把“能力退化”和“重复提醒噪音”混在一起。
   日期/作者：2026-05-03 / Codex
 
+- 决策：保留现有 `Run Remote Main + Local Notifier (Prompt)` 作为“从远端仓库窗口发起”的入口，并额外新增 `Run Remote Main + Local Notifier (Prompt from Local Window)` 作为“从本地 clone 窗口发起”的入口。
+  理由：两种入口的差异不在 notifier 路径，而在远端主扩展路径的来源；前者可直接复用当前远端 `${workspaceFolder}`，后者必须显式输入 `remoteWorkspacePath`，否则会把本机路径错误地当成远端 `folder-uri`。
+  日期/作者：2026-05-04 / Codex
+
 ## 结果与复盘
 
 当前已经从“纯设计阶段”进入“阶段 1.1 的代码、文档与联调链路均已落地”的状态。已确认的产出是：
@@ -123,14 +131,14 @@
 - 一个最小共享 attention 协议包：`packages/attention-protocol/`
 - 一条已打通的主扩展 -> companion -> focus callback 验证链路：`npm run test:notifier-smoke`
 - 一套固定的真实桌面通知人工验收入口：companion 测试通知命令、诊断输出与 `activationMode` 结果结构
-- 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas + Notifier (Local Window)`、`Run Notifier Only (Local Window)`、`Run Remote Main + Local Notifier (Prompt)`
+- 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas + Notifier (Local Window)`、`Run Notifier Only (Local Window)`、`Run Remote Main + Local Notifier (Prompt)`、`Run Remote Main + Local Notifier (Prompt from Local Window)`
 
 本轮尚未完成的事情：
 
 - 没有移动任何源码目录
 - 主扩展仍未迁移到 `extensions/vscode/dev-session-canvas/`
 - 没有实际创建 `docs/README.md` 或 `docs/diagrams/`
-- 真实桌面通知的人工验收还只完成了“当前 macOS 机器上的 osascript 退化路径”，完整 helper / 多平台验收需切换到更适合的本机环境继续
+- 真实桌面通知的跨平台人工验收已经完成；剩余未决事项不再是 notifier 可用性，而是是否继续投入阶段 1.2 结构重构
 
 因此，本计划不再是“完全待执行”的空方案，而是“阶段 1.1 已具备可提交结果、阶段 1.2 仍待决策”的活文档。
 
@@ -179,7 +187,7 @@ README.md              项目对外入口
 - 增加“发送测试桌面通知 / 打开通知诊断输出”两个固定人工验收入口
 - 补齐本地窗口、notifier-only 与“远端主扩展 + 本机 notifier”三类调试配置
 - 明确记录平台差异：真实桌面通知可以退化，但必须通过 `activationMode` 与诊断输出显式暴露
-- 当前剩余工作仅是切换到更适合的本机环境，继续做 helper / 多平台真实通知人工验收
+- 真实桌面通知人工验收现已完成；阶段 1.1 后续只剩“是否进入阶段 1.2 结构重构”的决策
 
 **决策点**：notifier 是否有价值？是否继续投入阶段 1.2？
 
@@ -457,3 +465,5 @@ README.md              项目对外入口
 本次创建说明：2026-04-30 新增本计划，用于覆盖标准 monorepo 目标结构、主扩展与 notifier companion 的代码落位，以及“正式文档单一知识库 + docs/README 知识图谱入口 + docs/diagrams 图资产目录”的文档治理方案。之所以先写计划，是因为这项工作同时影响目录结构、构建脚本、测试入口、README 体系和正式文档导航，必须先把边界讲清楚再动手迁移。
 
 本次更新说明：2026-05-03 按当前 notifier 实现状态收口计划，补记“阶段 1.1 主体已完成、真实桌面通知人工验收仍需切换本机环境继续”的边界，并把阶段 1.1 的工作描述改成与当前仓库实际目录和调试入口一致。
+
+本次更新说明：2026-05-04 进一步同步用户在 macOS、Windows、Linux 本机环境以及 `Remote Main + Local Notifier` 联调拓扑上的通过结果，关闭阶段 1.1 的真实桌面通知人工验收尾项，并把 notifier 可用性的剩余问题收口为“是否启动阶段 1.2 重构”的后续决策。
