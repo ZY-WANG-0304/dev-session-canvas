@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +21,8 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    detectAvailableTerminalShells,
+    inspectConfiguredTerminalShell,
     normalizeConfiguredTerminalShell,
     resolveConfiguredTerminalShell,
     resolveDefaultTerminalShellPath,
@@ -31,6 +33,16 @@ try {
   assert.equal(normalizeConfiguredTerminalShell('cmd'), 'cmd');
   assert.equal(normalizeConfiguredTerminalShell('not-a-shell'), 'default');
 
+  assert.equal(
+    resolveDefaultTerminalShellPath(
+      'linux',
+      {
+        SHELL: '/bin/zsh'
+      },
+      ' /custom/default-shell '
+    ),
+    '/custom/default-shell'
+  );
   assert.equal(
     resolveDefaultTerminalShellPath('linux', {
       SHELL: '/bin/zsh'
@@ -53,18 +65,16 @@ try {
 
   assert.deepEqual(
     resolveConfiguredTerminalShell({
-      configuredShell: 'zsh',
+      configuredShell: 'cmd',
       configuredPath: '  ',
-      platform: 'linux',
-      env: {
-        SHELL: '/bin/bash'
-      }
+      platform: 'win32',
+      env: {}
     }),
     {
-      configuredShell: 'zsh',
       configuredPath: '',
-      resolvedPath: 'zsh',
-      resolutionSource: 'named-shell'
+      resolvedPath: 'cmd.exe',
+      resolutionSource: 'named-shell',
+      configuredShell: 'cmd'
     }
   );
 
@@ -78,10 +88,10 @@ try {
       }
     }),
     {
-      configuredShell: 'bash',
       configuredPath: '/custom/shell',
       resolvedPath: '/custom/shell',
-      resolutionSource: 'path'
+      resolutionSource: 'path',
+      configuredShell: 'bash'
     }
   );
 
@@ -92,17 +102,185 @@ try {
       platform: 'win32',
       env: {
         COMSPEC: 'C:\\Windows\\System32\\cmd.exe'
+      },
+      defaultShellPath: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
+    }),
+    {
+      configuredPath: '',
+      resolvedPath: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+      resolutionSource: 'default-shell',
+      configuredShell: 'default'
+    }
+  );
+
+  const posixShellDir = path.join(tempDir, 'posix-shells');
+  await mkdir(posixShellDir, { recursive: true });
+  const bashPath = path.join(posixShellDir, 'bash');
+  const zshPath = path.join(posixShellDir, 'zsh');
+  const nuPath = path.join(posixShellDir, 'nu');
+  const falsePath = path.join(posixShellDir, 'false');
+  await createExecutable(bashPath);
+  await createExecutable(zshPath);
+  await createExecutable(nuPath);
+  await createExecutable(falsePath);
+
+  assert.deepEqual(
+    resolveConfiguredTerminalShell({
+      configuredShell: 'zsh',
+      configuredPath: '',
+      platform: 'linux',
+      env: {
+        PATH: posixShellDir
       }
     }),
     {
-      configuredShell: 'default',
       configuredPath: '',
-      resolvedPath: 'C:\\Windows\\System32\\cmd.exe',
-      resolutionSource: 'default-shell'
+      resolvedPath: zshPath,
+      resolutionSource: 'named-shell',
+      configuredShell: 'zsh'
     }
+  );
+
+  assert.deepEqual(
+    inspectConfiguredTerminalShell({
+      configuredShell: 'zsh',
+      configuredPath: '',
+      platform: 'linux',
+      env: {
+        PATH: posixShellDir
+      }
+    }),
+    {
+      configuredPath: '',
+      resolvedPath: zshPath,
+      resolutionSource: 'named-shell',
+      configuredShell: 'zsh',
+      resolvedAvailablePath: zshPath,
+      isAvailable: true
+    }
+  );
+
+  assert.deepEqual(
+    inspectConfiguredTerminalShell({
+      configuredShell: 'pwsh',
+      configuredPath: '',
+      platform: 'win32',
+      env: {
+        PATH: '',
+        PATHEXT: '.EXE;.CMD'
+      }
+    }),
+    {
+      configuredPath: '',
+      resolvedPath: 'pwsh.exe',
+      resolutionSource: 'named-shell',
+      configuredShell: 'pwsh',
+      resolvedAvailablePath: undefined,
+      isAvailable: false
+    }
+  );
+
+  const detectedPosixShells = await detectAvailableTerminalShells({
+    platform: 'linux',
+    env: {
+      PATH: posixShellDir
+    },
+    defaultShellPath: bashPath,
+    etcShellsContent: `# comment\n${bashPath}\n${nuPath}\n${falsePath}\n`
+  });
+
+  assert.deepEqual(
+    detectedPosixShells.map((shell) => shell.resolvedPath),
+    [bashPath, zshPath, nuPath]
+  );
+  assert.deepEqual(
+    detectedPosixShells.map((shell) => shell.source),
+    ['default-shell', 'path-env', 'etc-shells']
+  );
+  assert.deepEqual(
+    detectedPosixShells.map((shell) => shell.isDefault),
+    [true, false, false]
+  );
+  assert.equal(detectedPosixShells[2].label, 'nu');
+
+  const windowsShellDir = path.join(tempDir, 'windows-shells');
+  await mkdir(windowsShellDir, { recursive: true });
+  const cmdPath = path.join(windowsShellDir, 'cmd.exe');
+  const powershellPath = path.join(windowsShellDir, 'powershell.exe');
+  const pwshPath = path.join(windowsShellDir, 'pwsh.exe');
+  await createExecutable(cmdPath, { windows: true });
+  await createExecutable(powershellPath, { windows: true });
+  await createExecutable(pwshPath, { windows: true });
+
+  assert.deepEqual(
+    resolveConfiguredTerminalShell({
+      configuredShell: 'pwsh',
+      configuredPath: '',
+      platform: 'win32',
+      env: {
+        PATH: windowsShellDir,
+        PATHEXT: '.EXE;.CMD'
+      }
+    }),
+    {
+      configuredPath: '',
+      resolvedPath: pwshPath,
+      resolutionSource: 'named-shell',
+      configuredShell: 'pwsh'
+    }
+  );
+
+  assert.deepEqual(
+    inspectConfiguredTerminalShell({
+      configuredShell: 'pwsh',
+      configuredPath: '',
+      platform: 'win32',
+      env: {
+        PATH: windowsShellDir,
+        PATHEXT: '.EXE;.CMD'
+      }
+    }),
+    {
+      configuredPath: '',
+      resolvedPath: pwshPath,
+      resolutionSource: 'named-shell',
+      configuredShell: 'pwsh',
+      resolvedAvailablePath: pwshPath,
+      isAvailable: true
+    }
+  );
+
+  const detectedWindowsShells = await detectAvailableTerminalShells({
+    platform: 'win32',
+    env: {
+      PATH: `${windowsShellDir};${windowsShellDir}`,
+      PATHEXT: '.EXE;.CMD'
+    },
+    defaultShellPath: 'pwsh.exe'
+  });
+
+  assert.deepEqual(
+    detectedWindowsShells.map((shell) => shell.resolvedPath),
+    [pwshPath, powershellPath, cmdPath]
+  );
+  assert.deepEqual(
+    detectedWindowsShells.map((shell) => shell.source),
+    ['default-shell', 'path-env', 'path-env']
+  );
+  assert.deepEqual(
+    detectedWindowsShells.map((shell) => shell.isDefault),
+    [true, false, false]
   );
 
   console.log('terminal shell configuration tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function createExecutable(filePath, options = {}) {
+  const { windows = false } = options;
+  await writeFile(filePath, windows ? '@echo off\r\n' : '#!/bin/sh\nexit 0\n', 'utf8');
+  if (!windows) {
+    await chmod(filePath, 0o755);
+  }
 }

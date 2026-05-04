@@ -6,6 +6,7 @@ export const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
   openSettings: 'devSessionCanvas.openSettings',
+  selectTerminalShell: 'devSessionCanvas.selectTerminalShell',
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
