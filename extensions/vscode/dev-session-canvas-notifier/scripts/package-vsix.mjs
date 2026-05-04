@@ -1,9 +1,23 @@
 import { spawnSync } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs';
+import os from 'os';
 import path from 'path';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const projectRoot = process.cwd();
+import { resolveCommand } from '../../../../scripts/package-vsix.mjs';
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = path.resolve(packageRoot, '../../..');
+const packageRepoRelativePath = toPosixPath(path.relative(repoRoot, packageRoot));
 const isWindows = process.platform === 'win32';
 const isMainModule = process.argv[1]
   ? import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
@@ -14,14 +28,14 @@ if (isMainModule) {
 }
 
 export function main() {
-  const packageJsonPath = path.join(projectRoot, 'package.json');
-  const vsceEntry = resolveVsceEntry(projectRoot);
+  const packageJsonPath = path.join(packageRoot, 'package.json');
+  const vsceEntry = resolveVsceEntry(repoRoot);
   const gitValidationRoot =
-    process.env.DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT?.trim() || projectRoot;
+    process.env.DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT?.trim() || repoRoot;
 
   if (!vsceEntry) {
     console.error(
-      '未找到由 @vscode/vsce 提供的本地 vsce 可执行文件。请先在仓库根目录运行 npm install，再重新执行 npm run package:vsix。'
+      '未找到由 @vscode/vsce 提供的本地 vsce 可执行文件。请先在仓库根目录运行 npm install，再重新执行 notifier 的 package:vsix。'
     );
     return 1;
   }
@@ -30,40 +44,93 @@ export function main() {
   const readmePath =
     process.env.DEV_SESSION_CANVAS_VSCE_README_PATH?.trim() || 'README.marketplace.md';
   const docBranch = resolveVsceDocRef(gitValidationRoot);
-  const baseUrls = resolveVsceBaseUrls(packageJson.homepage, docBranch);
+  const baseUrls = resolveVsceBaseUrls(packageJson.homepage, docBranch, packageRepoRelativePath);
   const packageArgs = ['package'];
 
   validateReadmeRewriteTargets({
-    projectRoot,
+    packageRoot,
+    repoRoot,
+    packageRepoRelativePath,
     gitValidationRoot,
     readmePath,
     docBranch,
     baseUrls
   });
 
-  packageArgs.push('--readme-path', readmePath);
+  assertPackageInputsExist();
 
-  if (baseUrls?.contentUrl) {
-    packageArgs.push('--baseContentUrl', baseUrls.contentUrl);
+  const stageRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-notifier-vsix-'));
+  const stagePackageRoot = path.join(stageRoot, 'package');
+  mkdirSync(stagePackageRoot, { recursive: true });
+
+  try {
+    stagePackageFiles(stagePackageRoot, packageJson, readmePath);
+
+    packageArgs.push('--readme-path', readmePath);
+
+    if (baseUrls?.contentUrl) {
+      packageArgs.push('--baseContentUrl', baseUrls.contentUrl);
+    }
+
+    if (baseUrls?.imagesUrl) {
+      packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
+    }
+
+    const command = resolveCommand(vsceEntry, packageArgs);
+    const result = spawnSync(command.file, command.args, {
+      cwd: stagePackageRoot,
+      stdio: 'inherit',
+      windowsVerbatimArguments: command.windowsVerbatimArguments
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (result.status === 0) {
+      const vsixFilename = `${packageJson.name}-${packageJson.version}.vsix`;
+      copyFileSync(path.join(stagePackageRoot, vsixFilename), path.join(packageRoot, vsixFilename));
+      console.log(`已生成 ${path.join(packageRoot, vsixFilename)}`);
+    }
+
+    return result.status === null ? 1 : result.status;
+  } finally {
+    rmSync(stageRoot, { recursive: true, force: true });
   }
+}
 
-  if (baseUrls?.imagesUrl) {
-    packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
+function assertPackageInputsExist() {
+  const requiredPaths = [
+    path.join(packageRoot, 'dist', 'extension.js'),
+    path.join(packageRoot, 'README.marketplace.md'),
+    path.join(packageRoot, 'CHANGELOG.md'),
+    path.join(packageRoot, 'LICENSE'),
+    path.join(packageRoot, 'images', 'icon.png'),
+    path.join(packageRoot, 'images', 'activitybar.svg')
+  ];
+
+  for (const requiredPath of requiredPaths) {
+    if (!existsSync(requiredPath)) {
+      throw new Error(`notifier 打包缺少必需输入：${path.relative(packageRoot, requiredPath)}`);
+    }
   }
+}
 
-  const command = resolveCommand(vsceEntry, packageArgs);
+function stagePackageFiles(stagePackageRoot, packageJson, readmePath) {
+  const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
+  delete stagedPackageJson.scripts;
 
-  const result = spawnSync(command.file, command.args, {
-    cwd: projectRoot,
-    stdio: 'inherit',
-    windowsVerbatimArguments: command.windowsVerbatimArguments
-  });
+  writeFileSync(
+    path.join(stagePackageRoot, 'package.json'),
+    `${JSON.stringify(stagedPackageJson, null, 2)}\n`,
+    'utf8'
+  );
 
-  if (result.error) {
-    throw result.error;
-  }
-
-  return result.status === null ? 1 : result.status;
+  copyFileSync(path.join(packageRoot, readmePath), path.join(stagePackageRoot, readmePath));
+  copyFileSync(path.join(packageRoot, 'CHANGELOG.md'), path.join(stagePackageRoot, 'CHANGELOG.md'));
+  copyFileSync(path.join(packageRoot, 'LICENSE'), path.join(stagePackageRoot, 'LICENSE'));
+  cpSync(path.join(packageRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
+  cpSync(path.join(packageRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
 }
 
 function resolveVsceDocRef(gitRoot) {
@@ -78,7 +145,7 @@ function resolveVsceDocRef(gitRoot) {
   }
 
   throw new Error(
-    '无法为 README 相对资源改写解析最终 git ref。请在带 .git 元数据的 checkout 中执行，或显式传入 DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>。'
+    '无法为 notifier Marketplace README 相对资源改写解析最终 git ref。请在带 .git 元数据的 checkout 中执行，或显式传入 DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>。'
   );
 }
 
@@ -96,24 +163,46 @@ function tryResolveGitRevision(rootDir, revision) {
   return value === '' ? undefined : value;
 }
 
-function validateReadmeRewriteTargets({ projectRoot, gitValidationRoot, readmePath, docBranch, baseUrls }) {
-  const absoluteReadmePath = path.resolve(projectRoot, readmePath);
+function validateReadmeRewriteTargets({
+  packageRoot,
+  repoRoot,
+  packageRepoRelativePath,
+  gitValidationRoot,
+  readmePath,
+  docBranch,
+  baseUrls
+}) {
+  const absoluteReadmePath = path.resolve(packageRoot, readmePath);
   const readmeContent = readFileSync(absoluteReadmePath, 'utf8');
   const rewriteTargets = collectReadmeRewriteTargets(readmeContent);
   const resolvedTargets = [];
 
   for (const target of rewriteTargets) {
-    const resolvedTarget = resolveReadmeTarget(projectRoot, absoluteReadmePath, readmePath, target);
+    const resolvedTarget = resolveReadmeTarget(
+      packageRoot,
+      repoRoot,
+      packageRepoRelativePath,
+      absoluteReadmePath,
+      readmePath,
+      target
+    );
     if (!resolvedTarget) {
       continue;
     }
 
-    const rewriteBaseUrl = target.kind === 'media' ? (baseUrls?.imagesUrl || baseUrls?.contentUrl) : (baseUrls?.contentUrl || baseUrls?.imagesUrl);
+    const rewriteBaseUrl =
+      target.kind === 'media'
+        ? (baseUrls?.imagesUrl || baseUrls?.contentUrl)
+        : (baseUrls?.contentUrl || baseUrls?.imagesUrl);
     if (!rewriteBaseUrl) {
       throw new Error(`无法为 ${readmePath} 中的相对链接生成可发布 URL：仓库 homepage 或 VSCE base URL 配置缺失。`);
     }
 
-    const rewrittenUrl = buildRewrittenUrl(rewriteBaseUrl, resolvedTarget.repoRelativePath, resolvedTarget.suffix);
+    const rewrittenUrl = buildRewrittenUrl(
+      rewriteBaseUrl,
+      resolvedTarget.packageRelativePath,
+      resolvedTarget.suffix
+    );
     resolvedTargets.push({
       ...target,
       ...resolvedTarget,
@@ -169,15 +258,27 @@ function addRewriteTarget(rewriteTargets, kind, target) {
   }
 }
 
-function resolveReadmeTarget(projectRoot, absoluteReadmePath, readmePath, target) {
+function resolveReadmeTarget(
+  packageRoot,
+  repoRoot,
+  packageRepoRelativePath,
+  absoluteReadmePath,
+  readmePath,
+  target
+) {
   const { targetPath, suffix } = splitTargetSuffix(target.target);
   if (!isRelativeReadmeTarget(targetPath)) {
     return undefined;
   }
 
   const absoluteTargetPath = path.resolve(path.dirname(absoluteReadmePath), targetPath);
-  const relativeTargetPath = path.relative(projectRoot, absoluteTargetPath);
-  if (relativeTargetPath.startsWith('..') || path.isAbsolute(relativeTargetPath)) {
+  const packageRelativeTargetPath = path.relative(packageRoot, absoluteTargetPath);
+  if (packageRelativeTargetPath.startsWith('..') || path.isAbsolute(packageRelativeTargetPath)) {
+    throw new Error(`${readmePath} 中的相对路径 ${target.target} 超出了 notifier 子包目录，无法作为子包 Marketplace README 资源。`);
+  }
+
+  const repoRelativeTargetPath = path.relative(repoRoot, absoluteTargetPath);
+  if (repoRelativeTargetPath.startsWith('..') || path.isAbsolute(repoRelativeTargetPath)) {
     throw new Error(`${readmePath} 中的相对路径 ${target.target} 超出了仓库根目录，无法作为 Marketplace README 资源。`);
   }
 
@@ -187,7 +288,8 @@ function resolveReadmeTarget(projectRoot, absoluteReadmePath, readmePath, target
 
   return {
     suffix,
-    repoRelativePath: toPosixPath(relativeTargetPath)
+    packageRelativePath: toPosixPath(packageRelativeTargetPath),
+    repoRelativePath: toPosixPath(path.join(packageRepoRelativePath, packageRelativeTargetPath))
   };
 }
 
@@ -214,9 +316,9 @@ function isRelativeReadmeTarget(targetPath) {
   return !/^[a-z][a-z0-9+.-]*:/i.test(targetPath);
 }
 
-function buildRewrittenUrl(baseUrl, repoRelativePath, suffix) {
+function buildRewrittenUrl(baseUrl, packageRelativePath, suffix) {
   const normalizedBaseUrl = `${baseUrl.replace(/\/+$/, '')}/`;
-  return new URL(`${repoRelativePath}${suffix}`, normalizedBaseUrl).toString();
+  return new URL(`${packageRelativePath}${suffix}`, normalizedBaseUrl).toString();
 }
 
 function assertGitPathExistsAtRef(gitRoot, gitRef, readmePath, target) {
@@ -235,11 +337,7 @@ function assertGitPathExistsAtRef(gitRoot, gitRef, readmePath, target) {
   }
 }
 
-function toPosixPath(filePath) {
-  return filePath.split(path.sep).join('/');
-}
-
-function resolveVsceBaseUrls(homepage, branch) {
+function resolveVsceBaseUrls(homepage, branch, packageRepoRelativePath) {
   const contentOverride = process.env.DEV_SESSION_CANVAS_VSCE_BASE_CONTENT_URL?.trim();
   const imagesOverride = process.env.DEV_SESSION_CANVAS_VSCE_BASE_IMAGES_URL?.trim();
 
@@ -257,36 +355,19 @@ function resolveVsceBaseUrls(homepage, branch) {
   const normalizedHomepage = homepage.trim().replace(/\/+$/, '');
   if (normalizedHomepage.includes('github.com/')) {
     return {
-      contentUrl: `${normalizedHomepage}/blob/${branch}`,
-      imagesUrl: `${normalizedHomepage}/raw/${branch}`
+      contentUrl: `${normalizedHomepage}/blob/${branch}/${packageRepoRelativePath}`,
+      imagesUrl: `${normalizedHomepage}/raw/${branch}/${packageRepoRelativePath}`
     };
   }
 
   return {
-    contentUrl: `${normalizedHomepage}/-/blob/${branch}`,
-    imagesUrl: `${normalizedHomepage}/-/raw/${branch}`
+    contentUrl: `${normalizedHomepage}/-/blob/${branch}/${packageRepoRelativePath}`,
+    imagesUrl: `${normalizedHomepage}/-/raw/${branch}/${packageRepoRelativePath}`
   };
 }
 
-function buildWindowsBatchShellArgs(file, args) {
-  const shellCommand = [escapeWindowsCmdCommand(file), ...args.map(escapeWindowsCmdArgument)].join(
-    ' '
-  );
-  return `/d /s /c "${shellCommand}"`;
-}
-
-function escapeWindowsCmdCommand(value) {
-  return value.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
-}
-
-function escapeWindowsCmdArgument(value) {
-  let normalizedValue = `${value}`;
-
-  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
-  normalizedValue = normalizedValue.replace(/(?=(\\+?)?)\1$/, '$1$1');
-  normalizedValue = `"${normalizedValue}"`;
-
-  return normalizedValue.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
+function toPosixPath(filePath) {
+  return filePath.split(path.sep).join('/');
 }
 
 function resolveVsceEntry(rootDir) {
@@ -309,32 +390,3 @@ function resolveVsceEntry(rootDir) {
 
   return undefined;
 }
-
-export function resolveCommand(vsceEntry, packageArgs, options = {}) {
-  const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
-
-  if (vsceEntry.kind === 'node-script') {
-    return {
-      file: process.execPath,
-      args: [vsceEntry.path, ...packageArgs]
-    };
-  }
-
-  if (platform === 'win32') {
-    return {
-      // `cmd.exe` reparses `/c` as shell syntax, so pass one fully escaped
-      // command string and mark it as verbatim for Windows process creation.
-      file: env.ComSpec || env.COMSPEC || 'cmd.exe',
-      args: [buildWindowsBatchShellArgs(vsceEntry.path, packageArgs)],
-      windowsVerbatimArguments: true
-    };
-  }
-
-  return {
-    file: vsceEntry.path,
-    args: packageArgs
-  };
-}
-
-const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
