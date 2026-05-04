@@ -424,5 +424,9 @@
     "esbuild": "^0.17.19",
     "tmp": "0.2.1",
     "typescript": "5.0.4"
-  }
+  },
+  "api": "none",
+  "extensionDependencies": [
+    "devsessioncanvas.dev-session-canvas-notifier"
+  ]
 }

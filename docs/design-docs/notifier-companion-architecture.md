@@ -47,7 +47,7 @@ updated_at: 2026-05-04
 
 - 本轮不要求主扩展迁出仓库根目录。
 - 本轮不要求 companion 已经覆盖所有 OS 的完整点击回调体验；第一版允许平台间存在“能力完整度不同”的现实差异，只要协议与回退链路明确。
-- 本轮不引入 extension pack，也不自动要求用户一起安装 companion。
+- 本轮不引入独立 extension pack；用户安装路径改由双向 `extensionDependencies` 自动收口。
 - 本轮不把 JSON Schema 自动生成、跨 IntelliJ 复用或更大的跨平台共享层一并实现。
 
 ## 5. 核心决策
@@ -101,7 +101,21 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 这让用户可以把当前配置理解为“用一个设置明确选择不桥接 / 工作台消息 / 系统通知”，同时继续保留 `system` 模式下的工作台兜底，避免因为本机 companion 缺失而静默丢提醒。
 
-### 5.5 聚焦语义：系统通知点击必须清除 attention
+### 5.5 安装策略：双向 `extensionDependencies` 自动补齐
+
+当前选定的安装策略是：
+
+- 主扩展 `devsessioncanvas.dev-session-canvas` 在 manifest 中声明依赖 `devsessioncanvas.dev-session-canvas-notifier`
+- notifier companion 在 manifest 中声明依赖 `devsessioncanvas.dev-session-canvas`
+- 两个扩展都显式声明 `"api": "none"`，因为跨 host 协作只依赖异步 VS Code commands，而不依赖 `activate()` 导出的 JS API
+
+这样做的原因是：
+
+- 用户从任一 Marketplace 页面进入安装，都能自动补齐另一侧，不需要再手动理解“workspace 主扩展 + 本机 UI companion”的组合关系
+- 仍然保持两个独立 VSIX，与当前“主扩展负责画布与 attention 判定、notifier 负责本机桌面通知”的分层一致
+- 在 `Remote SSH` / Dev Container 一类跨 host 场景里，也继续符合 VS Code 官方对 `extensionDependencies + api:none + commands` 的推荐用法
+
+### 5.6 聚焦语义：系统通知点击必须清除 attention
 
 主扩展新增内部命令 `devSessionCanvas.__internal.focusAttentionNode`。它不同于现有“仅定位节点”的内部命令：
 
@@ -226,4 +240,4 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
 
-因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议、回调链路、跨平台本机通知路径与远端主扩展 + 本机 UI notifier 的调试拓扑都已获得自动化与人工证据闭环。用户安装路径、extension pack 与发布策略仍可继续在其他计划中演进，但它们不再阻塞本设计的架构正确性判断。
+因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议、回调链路、跨平台本机通知路径、双向自动安装关系，以及远端主扩展 + 本机 UI notifier 的调试拓扑都已获得自动化与人工证据闭环。是否额外引入独立 extension pack 仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
