@@ -40,7 +40,7 @@ updated_at: 2026-05-04
 
 - 形成一个独立的 UI-side companion extension，并把它放在计划中的最终目录：`extensions/vscode/dev-session-canvas-notifier/`。
 - 形成一个最小共享协议包：`packages/attention-protocol/`。
-- 让主扩展在 `devSessionCanvas.notifications.preferNotifierCompanion=true` 时，优先把执行节点终端提醒投递给 companion；若 companion 不可用或失败，再按原有 `bridgeTerminalAttentionSignals` 配置回退到 VS Code 工作台通知。
+- 让主扩展通过一个三级下拉配置统一控制 attention signal 的外部桥接面：`none` 不桥接、`workbench` 走 VS Code 工作台消息、`system` 优先把执行节点终端提醒投递给 companion，并在必要时回退到工作台消息。
 - 为后续主扩展迁移到完整 monorepo 提前收口接口和目录，而不是先做临时 `notifier/` 目录。
 
 ## 4. 非目标
@@ -91,14 +91,15 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 主扩展新增配置：
 
-- `devSessionCanvas.notifications.preferNotifierCompanion`（默认 `false`）
+- `devSessionCanvas.notifications.attentionSignalBridge`（默认 `workbench`）
 
 当前语义是：
 
-- `false`：完全保留既有行为；若 `bridgeTerminalAttentionSignals` 为真，则发 VS Code 工作台通知。
-- `true`：先调用 companion 命令 `devSessionCanvasNotifier.postSystemNotification`；如果 companion 返回 `posted`，则本次不再重复弹 VS Code 工作台通知；如果 companion 缺失、当前平台不支持、或调用失败，则再按 `bridgeTerminalAttentionSignals` 决定是否回退到工作台通知。
+- `none`：不额外弹出工作台消息或系统通知，只保留节点内 attention 状态与诊断。
+- `workbench`：完全保留既有工作台通知桥接语义，直接发 VS Code 工作台消息。
+- `system`：先调用 companion 命令 `devSessionCanvasNotifier.postSystemNotification`；如果 companion 返回 `posted`，则本次不再重复弹 VS Code 工作台消息；如果 companion 缺失、当前平台不支持、或调用失败，则自动回退到工作台消息。
 
-这让用户可以把当前配置理解为“优先本机桌面通知，但仍保留工作台回退”。
+这让用户可以把当前配置理解为“用一个设置明确选择不桥接 / 工作台消息 / 系统通知”，同时继续保留 `system` 模式下的工作台兜底，避免因为本机 companion 缺失而静默丢提醒。
 
 ### 5.5 聚焦语义：系统通知点击必须清除 attention
 
