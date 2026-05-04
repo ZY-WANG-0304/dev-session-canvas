@@ -11,7 +11,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
-updated_at: 2026-05-03
+updated_at: 2026-05-04
 ---
 
 # 公开平台发布准备
@@ -62,17 +62,19 @@ updated_at: 2026-05-03
 
 ## 6. 当前现状
 
-截至 2026-05-03（以 PR35 当前最新 head 对应的工作树快照为准），仓库里已经成立的事实如下：
+截至 2026-05-04（以 PR35 当前最新 head 对应的工作树快照为准），仓库里已经成立的事实如下：
 
 - `package.json` 具备基础扩展元数据，且仍标记为 `preview: true`。
+- 主扩展与 notifier companion 都已声明双向 `extensionDependencies`，用户从任一 Marketplace 页面安装时都会自动补齐另一侧。
 - `README.md` 已明确写成“产品已处于公开 Preview 阶段”；发布执行与对外口径已收口到 `docs/public-preview-release-playbook.md`。
+- notifier companion 的独立发布手册已收口到 `docs/notifier-preview-release-playbook.md`。
 - 许可证已选定为 `Apache-2.0`。
 - `repository`、`homepage` 和 `bugs` 已切换到公开 GitHub 地址。
 - 发布工具链已迁移到 `@vscode/vsce`，`scripts/package-vsix.mjs` 也已兼容 `.bin/vsce` 与包内 CLI 脚本两条本地入口。
 - `scripts/package-vsix.mjs` 当前会在打包阶段显式传入 `--readme-path README.marketplace.md`，确保后续 `publish --packagePath` 上传的现成 VSIX 已内嵌 Marketplace 专用 README，而不是依赖发布时重新替换。
 - `scripts/package-vsix.mjs` 默认会把 Marketplace README 的相对资源改写到当前 `HEAD` 对应的最终 git ref；若在不含 `.git` 元数据的 clean checkout 或导出目录中打包，则必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，并在打包前校验这些相对资源能在该 ref 上解析成功。
-- 当前工作树已能稳定执行 `npm run package:vsix`，生成 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB`、`48 files`），并再次通过 `npm run test:vsix-smoke`。
-- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 打包验证，可在干净目录内稳定产出 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB`、`48 files`）；packaged-payload smoke 继续通过单独执行 `npm run test:vsix-smoke` 复核。
+- 当前工作树已能稳定执行 `npm run package:vsix`，生成 `dev-session-canvas-0.5.0.vsix`（约 `2.12 MB`、`49 files`），并再次通过 `npm run test:vsix-smoke`。
+- 当前 `working tree` 快照已再次通过隔离 `clean checkout` 打包验证，可在干净目录内稳定产出 `dev-session-canvas-0.5.0.vsix`（约 `2.12 MB`、`49 files`）；packaged-payload smoke 继续通过单独执行 `npm run test:vsix-smoke` 复核。
 - 当前候选 release 输入快照也已再次通过隔离 `clean checkout` 验证，说明这轮瘦身后的最小 Preview 工件已经固定到可追溯提交。
 - 仓库已补上 `validate:clean-checkout:vsix` 隔离验证入口，可在 `/tmp` 下准备 clean checkout 验证，不必直接扰动当前工作树。
 - 当前对外分发主路径已确定为 `Visual Studio Marketplace Preview`，而不是手动分发 `.vsix`。
@@ -91,10 +93,10 @@ updated_at: 2026-05-03
 本地证据：
 
 - 第一轮收口前，仓库内曾出现约 `293 MB` 的 VSIX，并把 `.debug/playwright/`、`.debug/vscode-smoke/` 等调试缓存一起打入包内。
-- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB`、`48 files`）。
+- 当前工作树在第二轮收紧 `.vscodeignore` 后，`npm run package:vsix` 已可稳定产出 `dev-session-canvas-0.5.0.vsix`（约 `2.12 MB`、`49 files`）。
 - 当前 `npm run test:vsix-smoke` 已再次通过，说明第二轮收口后的 packaged payload 仍能独立启动并跑通 trusted smoke。
 - 当前 packaged-payload smoke 还会在解包阶段显式校验 VSIX 不再携带 `.github/`，以及 `node-pty` 的 `binding.gyp`、`scripts/`、`src/`、`third_party/`、`typings/`、嵌套 `node_modules/` 与 `.pdb` 等冗余内容。
-- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `2.17 MB`、`48 files`；由于当前工作树与候选 release head 已一致，这轮候选发布输入也应以同一组最小工件证据为准。
+- 基于当前 `working tree` 快照的 clean-checkout 证据已经更新到 `2.12 MB`、`49 files`；由于当前工作树与候选 release head 已一致，这轮候选发布输入也应以同一组最小工件证据为准。
 - 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` / `Note` 主路径已补齐当前轮功能可用性验证；Windows 下使用 `Codex` 时执行节点内历史仍有无法向上翻页的已知问题。
 
 因此，当前只需保持以下约束与 release-day 动作：
@@ -179,13 +181,13 @@ updated_at: 2026-05-03
 
 ### 9.1 方案说明
 
-- `0.4.1` 的公开 `Marketplace Preview` 正式发布输入固定为当前候选 release 输入快照（即 PR35 当前最新 head 对应、且已通过 clean-checkout 复核的工作树内容）验证通过的最小 VSIX 工件：`dev-session-canvas-0.4.1.vsix`。当前仓库内证据为 `48 files`、约 `2.17 MB`，生成入口是 `scripts/package-vsix.mjs`，隔离复核入口是 `npm run validate:clean-checkout:vsix -- --source working-tree`。
-- 首发渠道正式收敛为 `Visual Studio Marketplace`。`Open VSX` 不与 `0.4.1` 首发绑定，后续若要补发，单独走渠道决策与凭证准备。
-- 对外发布口径以 `README.md`、`README.marketplace.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md` 与 `docs/support.md` 为唯一仓库内正式来源。`0.4.1` 对外内容聚焦一轮 UI 修复与交互优化，重点覆盖 Agent 启动入口、节点与文件活动操作体验，以及执行节点 terminal link 行为对齐，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。
+- `0.5.0` 的公开 `Marketplace Preview` 正式发布输入固定为当前候选 release 输入快照（即 PR35 当前最新 head 对应、且已通过 clean-checkout 复核的工作树内容）验证通过的最小 VSIX 工件：`dev-session-canvas-0.5.0.vsix`。当前仓库内证据为 `49 files`、约 `2.12 MB`，生成入口是 `scripts/package-vsix.mjs`，隔离复核入口是 `npm run validate:clean-checkout:vsix -- --source working-tree`。
+- 首发渠道正式收敛为 `Visual Studio Marketplace`。`Open VSX` 不与 `0.5.0` 首发绑定，后续若要补发，单独走渠道决策与凭证准备。
+- 对外发布口径以 `README.md`、`README.marketplace.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/notifier-preview-release-playbook.md` 与 `docs/support.md` 为唯一仓库内正式来源。`0.5.0` 对外内容聚焦一轮 UI 修复与交互优化、`Dev Session Canvas Notifier` companion 的公开发布与自动安装关系，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。
 
 ### 9.2 适用范围与边界
 
-- 本方案只覆盖 `0.4.1` 公开 `Marketplace Preview` 的仓库内准备与 release-day 执行，不把“已经上架”“已经具备稳定版 SLA”或“已经同步 `Open VSX`”写成既成事实。
+- 本方案只覆盖 `0.5.0` 公开 `Marketplace Preview` 的仓库内准备与 release-day 执行，不把“已经上架”“已经具备稳定版 SLA”或“已经同步 `Open VSX`”写成既成事实。
 - 适用的发布输入必须与上述正式文档保持一致；若真正发布使用的不是当前候选 head，而是后续 merge commit、tag 或其他最终 git ref，则必须基于最终 ref 重新执行 clean-checkout 打包验证，并复核 `README.marketplace.md` 的资源改写 ref。
 - 支持矩阵继续以 `Remote SSH` 与桌面三平台主路径已验证为基础，但不把 `Restricted Mode`、`Virtual Workspace`、CLI 依赖边界或更强 runtime guarantee 误写成全量稳定支持。
 
@@ -193,6 +195,7 @@ updated_at: 2026-05-03
 
 - `scripts/package-vsix.mjs` 必须继续显式传入 `--readme-path README.marketplace.md`，且 README 资源改写 ref 必须与最终发布 ref 一致；不允许依赖发布时临时替换文案来修正文档内容。
 - `npm run validate:clean-checkout:vsix` 与 `npm run test:vsix-smoke` 是发布前必须保留的最小证据链；只要工件大小、文件数或 packaged payload 内容发生变化，就必须同步刷新本设计文档与相关发布文档中的证据。
+- 主扩展与 notifier companion 的双向 `extensionDependencies` 必须继续保持对称，且两侧都保持 `"api": "none"`；这样才能在跨 host 场景里继续用 commands 完成依赖通信，并让任一安装入口都自动补齐另一侧。
 - `.debug/`、`.playwright-browsers/`、`.github/`、`node-pty` 的源码/脚本/PDB/重复依赖等冗余内容必须继续留在 VSIX 之外，避免包体回涨或引入不可追溯内容；相关内容守卫继续由 `scripts/run-vscode-vsix-smoke.mjs` 负责。
 - 发布账号、PAT、Marketplace listing 草案、release notes 口径与支持入口只要发生变化，都必须回写到仓库正式文档，而不是只停留在外部聊天或 MR 评论。
 
@@ -201,7 +204,7 @@ updated_at: 2026-05-03
 本研究依赖以下证据来源：
 
 - 仓库内 `package.json`、`README.md`、`CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/support.md`、`LICENSE` 与打包脚本现状。
-- 本地执行 `npm run package:vsix`、`npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke` 与 `npm run test:vsix-smoke` 的实际结果，确认当前工作树（也即当前候选 release 输入快照）已能稳定产出 `dev-session-canvas-0.4.1.vsix`（约 `2.17 MB` / `48 files`），且收口后的 packaged payload 仍可启动。
+- 本地执行 `npm run package:vsix`、`npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke` 与 `npm run test:vsix-smoke` 的实际结果，确认当前工作树（也即当前候选 release 输入快照）已能稳定产出 `dev-session-canvas-0.5.0.vsix`（约 `2.12 MB` / `49 files`），且收口后的 packaged payload 仍可启动。
 - `Visual Studio Code` 官方发布文档：<https://code.visualstudio.com/api/working-with-extensions/publishing-extension>
 - `Open VSX` 发布文档：<https://github.com/eclipse/openvsx/wiki/Publishing-Extensions>
 
