@@ -13,10 +13,11 @@ architecture_layers:
   - 适配与基础设施层
 related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
+  - docs/product-specs/canvas-node-notifications.md
 related_plans:
   - docs/exec-plans/completed/execution-node-notification-research.md
   - docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md
-updated_at: 2026-04-29
+updated_at: 2026-05-04
 ---
 
 # 执行节点通知与注意力信号设计
@@ -298,23 +299,24 @@ updated_at: 2026-04-29
 
 新增配置项：
 
-- `devSessionCanvas.notifications.bridgeTerminalAttentionSignals`
+- `devSessionCanvas.notifications.attentionSignalBridge`
 - `devSessionCanvas.notifications.strongTerminalAttentionReminder`
 
 当前口径：
 
-- 默认值：`both`
+- 默认值：分别是 `workbench` 和 `both`
 - 作用域：都为 `window`
-- `bridgeTerminalAttentionSignals`
-  - 关闭时：现有启发式与诊断层继续解析这些信号，节点内 icon 与标题栏提醒也继续生效，但不额外发 VSCode 工作台通知
-  - 打开时：在节点内提醒之外，再把命中的 attention signal 桥接为 VSCode 工作台通知
+- `attentionSignalBridge`
+  - `none`：现有启发式与诊断层继续解析这些信号，节点内 icon、minimap 同色闪烁与增强提醒也继续生效，但不额外发工作台消息或系统通知
+  - `workbench`：在节点内提醒之外，再把命中的 attention signal 桥接为 VSCode 工作台消息
+  - `system`：优先把命中的 attention signal 交给本机 UI 侧的 `Dev Session Canvas Notifier` companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到 VSCode 工作台消息
 - `strongTerminalAttentionReminder`
   - `none`：只保留节点 attention icon 与 minimap 同色明暗闪烁，不额外开启标题栏闪烁或 minimap 尺寸 pulse
   - `titleBar`：在默认 attention 表面之外，只额外开启标题栏闪烁
   - `minimap`：在默认 attention 表面之外，只额外开启 minimap 尺寸 pulse
   - `both`：同时开启标题栏闪烁和 minimap 尺寸 pulse
 
-这里两个开关默认分别是 `true` 和 `both`，是为了让执行节点里的 attention signal 在开箱即用时既能回到 VSCode 工作台，也能在画布节点内部保留显眼提醒；`BEL` 噪音仍依靠信号优先级与冷却去重控制，用户可按需分别关闭工作台通知桥接或收窄增强提醒表面。
+这里两个开关默认分别是 `workbench` 和 `both`，是为了让执行节点里的 attention signal 在开箱即用时既能回到 VSCode 工作台，也能在画布节点内部保留显眼提醒；`BEL` 噪音仍依靠信号优先级与冷却去重控制，用户可按需把外部桥接改成 `none` / `system`，或单独收窄增强提醒表面。
 
 #### 7.7.3 宿主分层
 
@@ -404,7 +406,7 @@ updated_at: 2026-04-29
   - 节点标题栏状态控件左侧出现 attention icon
   - 若 `strongTerminalAttentionReminder` 为 `titleBar` 或 `both`，标题栏区域进入闪烁态
   - 若 `strongTerminalAttentionReminder` 为 `minimap` 或 `both`，minimap 在同色明暗闪烁之外额外加入尺寸 pulse
-- 这个节点内提醒不依赖 `bridgeTerminalAttentionSignals`
+- 这个节点内提醒不依赖 `attentionSignalBridge`
 - `OSC 9 ; 4` 这类进度状态仍不进入节点内 icon/闪烁
 
 当前确认路径只有两条，且都直接清除宿主权威 attention pending：

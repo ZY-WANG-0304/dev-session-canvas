@@ -20,9 +20,36 @@ export type CanvasFilePresentationMode = 'nodes' | 'lists';
 export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
 export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
+export const canvasAttentionNotificationBridgeModes = ['none', 'workbench', 'system'] as const;
+export type CanvasAttentionNotificationBridgeMode =
+  (typeof canvasAttentionNotificationBridgeModes)[number];
 export const canvasStrongTerminalAttentionReminderModes = ['none', 'titleBar', 'minimap', 'both'] as const;
 export type CanvasStrongTerminalAttentionReminderMode =
   (typeof canvasStrongTerminalAttentionReminderModes)[number];
+
+export function isCanvasAttentionNotificationBridgeMode(
+  value: unknown
+): value is CanvasAttentionNotificationBridgeMode {
+  return value === 'none' || value === 'workbench' || value === 'system';
+}
+
+export function normalizeCanvasAttentionNotificationBridgeMode(
+  value: unknown
+): CanvasAttentionNotificationBridgeMode {
+  if (isCanvasAttentionNotificationBridgeMode(value)) {
+    return value;
+  }
+
+  if (value === false) {
+    return 'none';
+  }
+
+  if (value === true) {
+    return 'workbench';
+  }
+
+  return 'workbench';
+}
 
 export function isCanvasStrongTerminalAttentionReminderMode(
   value: unknown

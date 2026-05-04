@@ -256,7 +256,7 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '已桥接 · 标题栏+Minimap 增强');
+  assert.strictEqual(notificationModeSummaryItem.description, '工作台消息 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
   await verifyClaudeSessionIdLocator();
@@ -3264,8 +3264,9 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
 
 async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   const configuration = vscode.workspace.getConfiguration();
-  const originalBridgeEnabled =
-    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+  const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+  );
   const originalStrongReminderMode = normalizeStrongTerminalAttentionReminderMode(
     configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
   );
@@ -3286,7 +3287,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
 
   try {
     await ensureStrongTerminalAttentionReminderMode('both');
-    await ensureBridgeTerminalAttentionSignalsEnabled(false);
+    await ensureAttentionNotificationBridgeMode('none');
 
     await startExecutionSessionForTest({
       kind: 'agent',
@@ -3466,7 +3467,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
         await clearAttentionByClick();
 
         await ensureStrongTerminalAttentionReminderMode('both');
-        await ensureBridgeTerminalAttentionSignalsEnabled(true);
+        await ensureAttentionNotificationBridgeMode('workbench');
 
         calls.length = 0;
         await clearDiagnosticEvents();
@@ -3668,7 +3669,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
     );
   } finally {
     await ensureAgentStopped(agentNodeId);
-    await ensureBridgeTerminalAttentionSignalsEnabled(originalBridgeEnabled);
+    await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await ensureStrongTerminalAttentionReminderMode(originalStrongReminderMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
@@ -7650,19 +7651,20 @@ async function setAgentDefaultArgs(provider, defaultArgs) {
     );
 }
 
-async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
+async function ensureAttentionNotificationBridgeMode(mode) {
   const configuration = vscode.workspace.getConfiguration();
-  const currentEnabled =
-    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+  const currentMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+  );
 
-  if (currentEnabled === enabled) {
+  if (currentMode === mode) {
     return;
   }
 
   await clearDiagnosticEvents();
   await configuration.update(
-    'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
-    enabled,
+    'devSessionCanvas.notifications.attentionSignalBridge',
+    mode,
     vscode.ConfigurationTarget.Global
   );
   await waitForDiagnosticEvents(
@@ -7670,10 +7672,26 @@ async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
       events.some(
         (event) =>
           event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
-          event.detail?.enabled === enabled
+          event.detail?.mode === mode
       ),
     20000
   );
+}
+
+function normalizeAttentionNotificationBridgeMode(value) {
+  if (value === 'none' || value === 'workbench' || value === 'system') {
+    return value;
+  }
+
+  if (value === false) {
+    return 'none';
+  }
+
+  if (value === true) {
+    return 'workbench';
+  }
+
+  return 'workbench';
 }
 
 function normalizeStrongTerminalAttentionReminderMode(value) {
