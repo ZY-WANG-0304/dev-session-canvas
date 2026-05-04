@@ -57,6 +57,10 @@ const windowsInvocation = buildWindowsToastInvocation({
 assert.equal(windowsInvocation.command, 'powershell.exe');
 assert.equal(windowsInvocation.activationMode, 'protocol');
 assert.ok(windowsInvocation.args.includes('-EncodedCommand'));
+const encodedCommand = windowsInvocation.args[windowsInvocation.args.indexOf('-EncodedCommand') + 1];
+const windowsScript = Buffer.from(encodedCommand, 'base64').toString('utf16le');
+assert.match(windowsScript, /\$toastXml = @'\r?\n<toast activationType="protocol"/);
+assert.match(windowsScript, /\r?\n'@\r?\n\$xml\.LoadXml\(\$toastXml\)/);
 
 const downgradedLinuxResult = await launchShellInvocation(
   {
