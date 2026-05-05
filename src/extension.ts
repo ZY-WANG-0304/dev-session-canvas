@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {
@@ -25,6 +26,8 @@ import {
   validateAgentCommandLine
 } from './common/agentLaunchPresets';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
+import { buildPersistedTerminalShellSelection, detectAvailableTerminalShells } from './panel/terminalShellConfiguration';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import {
   CanvasSidebarNodeListView,
@@ -63,6 +66,22 @@ type CreateNodeQuickPickSelectionId =
 interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
   request?: CreateNodeRequest;
+}
+
+interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
+  resolvedPath?: string;
+  shellName?: string;
+  useDefault?: boolean;
+}
+
+function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
+  return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+}
+
+function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTarget): string {
+  return target === vscode.ConfigurationTarget.Workspace ? '当前 workspace' : '当前设备';
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -125,6 +144,10 @@ export function activate(context: vscode.ExtensionContext): void {
       'workbench.action.openSettings',
       '@ext:devsessioncanvas.dev-session-canvas devSessionCanvas'
     );
+  });
+
+  registerCommand(context, COMMAND_IDS.selectTerminalShell, async () => {
+    await promptTerminalShellSelection();
   });
 
   registerCommand(context, COMMAND_IDS.createNode, async () => {
@@ -249,6 +272,139 @@ export async function deactivate(): Promise<void> {
 
 function registerCommand(context: vscode.ExtensionContext, commandId: string, handler: () => Promise<void>): void {
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
+}
+
+async function promptTerminalShellSelection(): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration();
+  const effectiveTerminalShellConfiguration = getEffectiveTerminalShellConfiguration();
+  const currentConfiguredShellPath = effectiveTerminalShellConfiguration.configuredPath;
+  const resolvedConfiguredShell = getConfiguredTerminalShell();
+  const detectedShells = await detectAvailableTerminalShells({
+    defaultShellPath: vscode.env.shell
+  });
+  const configurationTarget = resolveTerminalShellConfigurationTarget();
+  const targetLabel = describeTerminalShellConfigurationTarget(configurationTarget);
+
+  const picked = await vscode.window.showQuickPick(
+    buildTerminalShellQuickPickItems(
+      detectedShells,
+      currentConfiguredShellPath,
+      resolvedConfiguredShell.resolvedPath,
+      resolvedConfiguredShell.resolutionSource === 'default-shell'
+    ),
+    {
+      placeHolder: '选择嵌入式 Terminal 要使用的 shell'
+    }
+  );
+
+  if (!picked) {
+    return;
+  }
+
+  if (picked.useDefault) {
+    await configuration.update(CONFIG_KEYS.terminalShell, 'default', configurationTarget);
+    await configuration.update(CONFIG_KEYS.terminalShellPath, '', configurationTarget);
+    const defaultShellPath = detectedShells.find((shell) => shell.isDefault)?.resolvedPath ?? vscode.env.shell.trim();
+    const detail = defaultShellPath ? `：${defaultShellPath}` : '';
+    await vscode.window.showInformationMessage(`已将${targetLabel}的嵌入式 Terminal 改为跟随当前默认 shell${detail}`);
+    return;
+  }
+
+  if (!picked.resolvedPath) {
+    return;
+  }
+
+  const persistedSelection = buildPersistedTerminalShellSelection({
+    shellName: picked.shellName,
+    resolvedPath: picked.resolvedPath,
+    useDefault: picked.useDefault
+  });
+  if (!persistedSelection) {
+    return;
+  }
+
+  await configuration.update(
+    CONFIG_KEYS.terminalShell,
+    persistedSelection.configuredShell,
+    configurationTarget
+  );
+  await configuration.update(
+    CONFIG_KEYS.terminalShellPath,
+    persistedSelection.configuredPath,
+    configurationTarget
+  );
+  const configuredShellDetail =
+    persistedSelection.configuredShell === 'default'
+      ? ''
+      : `（类型：${persistedSelection.configuredShell}；实际启动优先使用该路径）`;
+  await vscode.window.showInformationMessage(
+    `已将${targetLabel}的嵌入式 Terminal shell 更新为 ${picked.label}：${persistedSelection.configuredPath}${configuredShellDetail}`
+  );
+}
+
+function buildTerminalShellQuickPickItems(
+  detectedShells: Awaited<ReturnType<typeof detectAvailableTerminalShells>>,
+  currentConfiguredShellPath: string,
+  resolvedConfiguredShellPath: string,
+  isFollowingDefaultShell: boolean
+): TerminalShellQuickPickItem[] {
+  const normalizedResolvedConfiguredShellPath = resolvedConfiguredShellPath.trim();
+  const items: TerminalShellQuickPickItem[] = [
+    {
+      label: '跟随当前默认 shell',
+      description: isFollowingDefaultShell ? '当前' : undefined,
+      detail: normalizedResolvedConfiguredShellPath || '未检测到默认 shell 路径',
+      useDefault: true
+    }
+  ];
+
+  const hasCurrentResolvedShell =
+    normalizedResolvedConfiguredShellPath.length > 0 &&
+    detectedShells.some((shell) => shellPathsEqual(shell.resolvedPath, normalizedResolvedConfiguredShellPath));
+  const shouldShowCurrentConfiguredShell =
+    !isFollowingDefaultShell &&
+    normalizedResolvedConfiguredShellPath.length > 0 &&
+    !hasCurrentResolvedShell;
+
+  if (detectedShells.length > 0 || shouldShowCurrentConfiguredShell) {
+    items.push({
+      label: '',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+  }
+
+  if (shouldShowCurrentConfiguredShell) {
+    items.push({
+      label: `当前配置 (${path.basename(normalizedResolvedConfiguredShellPath) || normalizedResolvedConfiguredShellPath})`,
+      description: currentConfiguredShellPath ? '当前' : '当前（兼容旧配置）',
+      detail: normalizedResolvedConfiguredShellPath,
+      resolvedPath: normalizedResolvedConfiguredShellPath,
+      shellName: path.basename(normalizedResolvedConfiguredShellPath).toLowerCase()
+    });
+  }
+
+  for (const shell of detectedShells) {
+    items.push({
+      label: shell.label,
+      description: !isFollowingDefaultShell &&
+        shellPathsEqual(shell.resolvedPath, normalizedResolvedConfiguredShellPath)
+        ? '当前'
+        : shell.isDefault
+          ? '默认 shell'
+          : undefined,
+      detail: shell.detail,
+      resolvedPath: shell.resolvedPath,
+      shellName: shell.shellName
+    });
+  }
+
+  return items;
+}
+
+function shellPathsEqual(left: string, right: string): boolean {
+  return process.platform === 'win32'
+    ? left.trim().toLowerCase() === right.trim().toLowerCase()
+    : left.trim() === right.trim();
 }
 
 async function promptCreateNodeRequest(

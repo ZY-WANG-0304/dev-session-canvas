@@ -128,7 +128,11 @@ import {
   type AgentCliResolutionCacheEntry,
   type AgentCliResolutionSource
 } from './agentCliResolver';
-import { getConfigurationValue } from './configuration';
+import {
+  getConfigurationValue,
+  getConfiguredTerminalShell,
+  inspectCurrentConfiguredTerminalShellInCwd
+} from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 import {
@@ -169,6 +173,7 @@ import {
   type AgentFileActivityEvent,
   type AgentFileActivitySession
 } from './agentFileActivity';
+import type { InspectedConfiguredTerminalShell } from './terminalShellConfiguration';
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
@@ -502,6 +507,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
+  private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
 
@@ -549,6 +555,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       })
     );
 
+    const onDidChangeShell = (vscode.env as unknown as { onDidChangeShell?: vscode.Event<string> }).onDidChangeShell;
+    if (onDidChangeShell) {
+      context.subscriptions.push(
+        onDidChangeShell(() => {
+          if (getConfiguredTerminalShell().resolutionSource !== 'default-shell') {
+            return;
+          }
+
+          if (this.refreshConfiguredTerminalShellMetadata()) {
+            this.postState('host/stateUpdated');
+          }
+        })
+      );
+    }
+
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
         const defaultSurfaceChanged = event.affectsConfiguration(CONFIG_KEYS.canvasDefaultSurface);
@@ -570,6 +591,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const strongTerminalAttentionReminderChanged = event.affectsConfiguration(
           CONFIG_KEYS.notificationStrongTerminalAttentionReminder
         );
+        const terminalShellChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShell);
+        const terminalShellPathChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShellPath);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
         const multiCursorModifierChanged = event.affectsConfiguration('editor.multiCursorModifier');
         const terminalWordSeparatorsChanged = event.affectsConfiguration(
@@ -607,6 +630,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !filesPathDisplayModeChanged &&
           !attentionNotificationBridgeChanged &&
           !strongTerminalAttentionReminderChanged &&
+          !terminalShellChanged &&
+          !terminalShellPathChanged &&
           !terminalScrollbackChanged &&
           !multiCursorModifierChanged &&
           !terminalWordSeparatorsChanged &&
@@ -631,6 +656,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             filesPathDisplayModeChanged,
             attentionNotificationBridgeChanged,
             strongTerminalAttentionReminderChanged,
+            terminalShellChanged,
+            terminalShellPathChanged,
             terminalScrollbackChanged,
             multiCursorModifierChanged,
             terminalWordSeparatorsChanged,
@@ -651,6 +678,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
 
     this.scheduleRestoreLiveRuntimeSessions();
+    void this.notifyIfConfiguredTerminalShellUnavailable();
   }
 
   public async revealOrCreate(surface: CanvasSurfaceLocation = this.getConfiguredSurface()): Promise<void> {
@@ -771,7 +799,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
     const diagnosticEvents = cloneJsonValue(this.testDiagnosticEvents);
     const agentCliConfig = this.getAgentCliConfig();
-    const configuredTerminalShellPath = getConfigurationValue<string>('terminalShellPath', '').trim();
+    const configuredTerminalShell = getConfiguredTerminalShell();
     const persistedSnapshotPath = this.getPersistedCanvasSnapshotPath();
     const persistedSnapshot = this.loadPersistedCanvasSnapshot();
     const summaryPath = path.join(outputDir, 'summary.json');
@@ -818,7 +846,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         agentDefaultProvider: agentCliConfig.defaultProvider,
         agentCodexCommand: agentCliConfig.codexCommand,
         agentClaudeCommand: agentCliConfig.claudeCommand,
-        terminalShellPath: configuredTerminalShellPath || defaultTerminalShellPath(),
+        terminalShellPath: configuredTerminalShell.resolvedPath,
+        terminalShellPathOverride: configuredTerminalShell.configuredPath || undefined,
+        terminalShellResolutionSource: configuredTerminalShell.resolutionSource,
+        terminalShellSetting:
+          configuredTerminalShell.configuredShell !== 'default'
+            ? configuredTerminalShell.configuredShell
+            : undefined,
         runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
         filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
         preferredRuntimeHostBackendKind: this.preferredRuntimeHostBackendKind,
@@ -2272,6 +2306,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private async notifyIfConfiguredTerminalShellUnavailable(): Promise<void> {
+    const inspectedShell = inspectCurrentConfiguredTerminalShellInCwd(this.getTerminalWorkingDirectory());
+    if (inspectedShell.isAvailable) {
+      this.lastUnavailableConfiguredTerminalShellWarningKey = undefined;
+      return;
+    }
+
+    const warningKey = [
+      inspectedShell.configuredShell,
+      inspectedShell.configuredPath,
+      inspectedShell.resolutionSource,
+      inspectedShell.resolvedPath
+    ].join('|');
+    if (this.lastUnavailableConfiguredTerminalShellWarningKey === warningKey) {
+      return;
+    }
+    this.lastUnavailableConfiguredTerminalShellWarningKey = warningKey;
+
+    const selectShellAction = '选择可用 Shell';
+    const openSettingsAction = '打开 Terminal 设置';
+    const selection = await vscode.window.showWarningMessage(
+      describeUnavailableConfiguredTerminalShell(inspectedShell),
+      selectShellAction,
+      openSettingsAction
+    );
+    if (selection === selectShellAction) {
+      await vscode.commands.executeCommand(COMMAND_IDS.selectTerminalShell);
+      return;
+    }
+    if (selection === openSettingsAction) {
+      await vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        `@ext:devsessioncanvas.dev-session-canvas ${
+          inspectedShell.configuredPath ? CONFIG_KEYS.terminalShellPath : CONFIG_KEYS.terminalShell
+        }`
+      );
+    }
+  }
+
   private async handleRuntimeConfigurationChanged(options: {
     defaultAgentProviderChanged: boolean;
     agentCodexCommandChanged: boolean;
@@ -2284,6 +2357,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     filesPathDisplayModeChanged: boolean;
     attentionNotificationBridgeChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
+    terminalShellChanged: boolean;
+    terminalShellPathChanged: boolean;
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
     terminalWordSeparatorsChanged: boolean;
@@ -2307,6 +2382,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         titleBarEnabled: strongTerminalAttentionReminderShowsTitleBar(this.strongTerminalAttentionReminderMode),
         minimapEnabled: strongTerminalAttentionReminderPulsesMinimap(this.strongTerminalAttentionReminderMode)
       });
+    }
+
+    const terminalShellMetadataChanged =
+      options.terminalShellChanged || options.terminalShellPathChanged
+        ? this.refreshConfiguredTerminalShellMetadata()
+        : false;
+    if (options.terminalShellChanged || options.terminalShellPathChanged) {
+      await this.notifyIfConfiguredTerminalShellUnavailable();
     }
 
     if (options.terminalScrollbackChanged) {
@@ -2347,7 +2430,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
       options.filesPathDisplayModeChanged ||
+      options.terminalShellChanged ||
+      options.terminalShellPathChanged ||
       options.strongTerminalAttentionReminderChanged ||
+      terminalShellMetadataChanged ||
       options.terminalScrollbackChanged ||
       options.multiCursorModifierChanged ||
       options.terminalWordSeparatorsChanged ||
@@ -2355,6 +2441,52 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     ) {
       this.postState('host/stateUpdated');
     }
+  }
+
+  private refreshConfiguredTerminalShellMetadata(): boolean {
+    const shellPath = this.getTerminalShellPath();
+    let changed = false;
+
+    const nextNodes = this.state.nodes.map((node) => {
+      if (node.kind !== 'terminal') {
+        return node;
+      }
+
+      const metadata = ensureTerminalMetadata(node);
+      if (
+        metadata.liveSession ||
+        metadata.runtimeSessionId ||
+        metadata.lifecycle === 'launching' ||
+        metadata.attachmentState === 'reattaching' ||
+        metadata.shellPath === shellPath
+      ) {
+        return node;
+      }
+
+      changed = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          terminal: {
+            ...metadata,
+            shellPath
+          }
+        }
+      };
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    this.state = {
+      ...this.state,
+      updatedAt: new Date().toISOString(),
+      nodes: nextNodes
+    };
+    this.persistState();
+    return true;
   }
 
   private async handleDroppedExecutionResource(
@@ -6032,16 +6164,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getTerminalShellPath(): string {
-    const configuredPath = getConfigurationValue<string>('terminalShellPath', '').trim();
-    if (configuredPath) {
-      return configuredPath;
-    }
-
-    if (process.platform === 'win32') {
-      return process.env.ComSpec?.trim() || process.env.COMSPEC?.trim() || 'powershell.exe';
-    }
-
-    return process.env.SHELL?.trim() || '/bin/bash';
+    return getConfiguredTerminalShell().resolvedPath;
   }
 
   private getTerminalWorkingDirectory(): string {
@@ -9423,7 +9546,7 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
   return {
     backend: 'node-pty',
     lifecycle: 'idle',
-    shellPath: defaultTerminalShellPath(),
+    shellPath: getConfiguredTerminalShell().resolvedPath,
     cwd: defaultTerminalWorkingDirectory(),
     persistenceMode: 'snapshot-only',
     attachmentState: 'history-restored',
@@ -10679,14 +10802,6 @@ function createExecutionSessionId(nodeId: string, kind: ExecutionNodeKind): stri
   return `${nodeId}-${kind}-${Date.now().toString(36)}`;
 }
 
-function defaultTerminalShellPath(): string {
-  if (process.platform === 'win32') {
-    return process.env.ComSpec?.trim() || process.env.COMSPEC?.trim() || 'powershell.exe';
-  }
-
-  return process.env.SHELL?.trim() || '/bin/bash';
-}
-
 function defaultTerminalWorkingDirectory(): string {
   if (process.platform === 'win32') {
     return (
@@ -10941,6 +11056,18 @@ function isAgentLifecycleAwaitingInteractiveState(
 
 function isAgentInstructionSubmission(data: string): boolean {
   return /[\r\n]/.test(data);
+}
+
+function describeUnavailableConfiguredTerminalShell(shell: InspectedConfiguredTerminalShell): string {
+  if (shell.resolutionSource === 'path') {
+    return `当前配置的 Terminal shell 路径不可用：${shell.configuredPath || shell.resolvedPath}。新的嵌入式 Terminal 启动可能失败；请改成当前设备实际可用的 shell。`;
+  }
+
+  if (shell.resolutionSource === 'named-shell') {
+    return `当前设备上未找到设置项 \`devSessionCanvas.terminal.shell=${shell.configuredShell}\` 对应的可用 shell。新的嵌入式 Terminal 启动可能失败；请改选当前设备实际支持的 shell。`;
+  }
+
+  return `当前设备的默认 shell 暂不可用：${shell.resolvedPath || '未解析到路径'}。新的嵌入式 Terminal 启动可能失败；请检查宿主环境，或手动指定可用 shell。`;
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
