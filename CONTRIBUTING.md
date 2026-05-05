@@ -76,7 +76,7 @@ npm run package:vsix
 - 两条真实 notifier 联调配置固定使用命名 profile `Dev Session Canvas Notifier Extension Debug`
 - 通过 `skipFiles` 跳过 Node 内部和 VS Code 内置扩展源码，避免调试器停在内置 `git` 等非本仓库代码里
 - 通过 `--extensionDevelopmentPath` 加载仓库中的开发态扩展，而非已安装副本
-- 在保留正式双向 `extensionDependencies` 不变的前提下，`Run Dev Session Canvas (Main Only)` 会先生成一份 debug-only 的临时主扩展目录，并从那份目录启动；这份临时 manifest 会去掉 notifier 依赖，因此可以在 local / remote 环境下单独调主扩展，而不用额外加载 notifier
+- 正式安装关系固定为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”；`Run Dev Session Canvas (Main Only)` 会先生成一份 debug-only 的临时主扩展目录，并从那份目录启动；这份临时 manifest 会去掉这些安装期关系，因此可以在 local / remote 环境下单独调主扩展，而不用额外加载 notifier
 
 因此，日常使用的 VS Code profile 和扩展集合不会参与 F5 调试。Remote-SSH 所需的本机 UI 扩展应放入对应的专用 profile，扩展的已安装副本不要放进这些 profile。
 
