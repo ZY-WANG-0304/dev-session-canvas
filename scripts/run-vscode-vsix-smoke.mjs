@@ -4,19 +4,22 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 
 import {
+  resolveStagedSmokeTestPath,
   runInsideXvfb,
   runVSCodeScenario,
+  stageSmokeTestSuite,
   shouldReRunInsideXvfb
 } from './vscode-smoke-runner.mjs';
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
-const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'extension-tests.cjs');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
 const debugRoot = path.join(projectRoot, '.debug', 'vscode-vsix-smoke');
 const unpackRoot = path.join(debugRoot, 'packaged-extension');
+const notifierExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
+const NOTIFIER_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas-notifier';
 
 async function main() {
   if (process.platform !== 'linux') {
@@ -30,6 +33,7 @@ async function main() {
   await fs.rm(unpackRoot, { recursive: true, force: true });
   await fs.mkdir(debugRoot, { recursive: true });
 
+  runCommand('npm', ['run', 'build:notifier'], 'Notifier companion 构建失败。');
   runCommand('npm', ['run', 'package:vsix'], 'VSIX 打包失败。');
 
   const vsixPath = await resolveLatestVsixPath();
@@ -37,14 +41,18 @@ async function main() {
 
   const packagedExtensionPath = path.join(unpackRoot, 'extension');
   await validatePackagedExtension(packagedExtensionPath);
-  const packagedExtensionTestsPath = await preparePackagedExtensionTests(packagedExtensionPath);
+  const smokeHostRoot = await preparePackagedSmokeHostExtension({
+    packagedExtensionPath,
+    root: debugRoot
+  });
+  const packagedExtensionTestsPath = resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs');
 
   await runVSCodeScenario({
     projectRoot,
     debugRoot: path.join(debugRoot, 'smoke-runtime'),
     runtimeDirName: 'dsc-vscode-vsix-smoke-runtime',
     workspacePath: projectRoot,
-    extensionDevelopmentPath: packagedExtensionPath,
+    extensionDevelopmentPath: smokeHostRoot,
     extensionTestsPath: packagedExtensionTestsPath,
     disableWorkspaceTrust: true,
     extensionTestsEnv: {
@@ -55,6 +63,101 @@ async function main() {
   });
 
   console.log('VSIX packaged-payload smoke passed.');
+}
+
+async function preparePackagedSmokeHostExtension({ packagedExtensionPath, root }) {
+  const smokeHostRoot = path.join(root, 'smoke-host');
+  const notifierRuntimeRoot = path.join(smokeHostRoot, 'notifier-extension');
+  await fs.rm(smokeHostRoot, { recursive: true, force: true });
+  await fs.cp(packagedExtensionPath, smokeHostRoot, { recursive: true });
+  await stageNotifierExtension(notifierRuntimeRoot);
+  await stageSmokeTestSuite({
+    projectRoot,
+    targetRoot: smokeHostRoot
+  });
+
+  const packageJsonPath = path.join(smokeHostRoot, 'package.json');
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+  delete packageJson.extensionDependencies;
+  delete packageJson.extensionPack;
+  packageJson.main = './extension.js';
+  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(smokeHostRoot, 'extension.js'), buildSmokeHostEntrySource(), 'utf8');
+
+  return smokeHostRoot;
+}
+
+async function stageNotifierExtension(targetRoot) {
+  await fs.rm(targetRoot, { recursive: true, force: true });
+  await fs.mkdir(targetRoot, { recursive: true });
+
+  for (const entry of ['package.json', 'dist', 'images']) {
+    const sourcePath = path.join(notifierExtensionRoot, entry);
+    const targetPath = path.join(targetRoot, entry);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.cp(sourcePath, targetPath, { recursive: true });
+  }
+
+  return targetRoot;
+}
+
+function buildSmokeHostEntrySource() {
+  return `const path = require('path');
+const vscode = require('vscode');
+
+const mainExtension = require('./dist/extension.js');
+const notifierExtension = require('./notifier-extension/dist/extension.js');
+const notifierPackageJson = require('./notifier-extension/package.json');
+
+const NOTIFIER_EXTENSION_ID = ${JSON.stringify(NOTIFIER_EXTENSION_ID)};
+
+exports.activate = async function activate(context) {
+  await Promise.resolve(mainExtension.activate?.(context));
+  await Promise.resolve(notifierExtension.activate?.(createNotifierContext(context)));
+};
+
+exports.deactivate = async function deactivate() {
+  await Promise.resolve(notifierExtension.deactivate?.());
+  await Promise.resolve(mainExtension.deactivate?.());
+};
+
+function createNotifierContext(baseContext) {
+  const extensionPath = path.join(baseContext.extensionPath, 'notifier-extension');
+  const extensionUri = vscode.Uri.file(extensionPath);
+  const packageJSON = notifierPackageJson;
+  const extension = {
+    id: NOTIFIER_EXTENSION_ID,
+    packageJSON,
+    extensionUri,
+    extensionPath,
+    isActive: true
+  };
+  const notifierContext = Object.create(baseContext);
+
+  Object.defineProperties(notifierContext, {
+    extension: {
+      value: extension,
+      enumerable: true
+    },
+    extensionUri: {
+      value: extensionUri,
+      enumerable: true
+    },
+    extensionPath: {
+      value: extensionPath,
+      enumerable: true
+    },
+    asAbsolutePath: {
+      value(relativePath) {
+        return path.join(extensionPath, relativePath);
+      },
+      enumerable: true
+    }
+  });
+
+  return notifierContext;
+}
+`;
 }
 
 async function resolveLatestVsixPath() {
@@ -135,16 +238,6 @@ async function validatePackagedExtension(packagedExtensionPath) {
   if (!packagedReadmeContents.includes(marketplaceReadmeMarker)) {
     throw new Error('打包产物中的 README 未命中 Marketplace README 标记，当前 VSIX 可能仍在携带仓库根 README。');
   }
-}
-
-async function preparePackagedExtensionTests(packagedExtensionPath) {
-  // Keep the smoke test entrypoint under the unpacked extension root so
-  // `require("vscode")` resolves to the same extension-scoped API object.
-  const testsRoot = path.join(packagedExtensionPath, '.smoke-tests');
-  const packagedTestsPath = path.join(testsRoot, path.basename(extensionTestsPath));
-  await fs.mkdir(testsRoot, { recursive: true });
-  await fs.copyFile(extensionTestsPath, packagedTestsPath);
-  return packagedTestsPath;
 }
 
 function runCommand(file, args, errorMessage) {
