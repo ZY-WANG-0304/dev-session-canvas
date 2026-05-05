@@ -68,6 +68,35 @@ export interface DetectAvailableTerminalShellsOptions {
   etcShellsContent?: string;
 }
 
+export interface PersistedTerminalShellSelection {
+  configuredShell: ConfiguredTerminalShell;
+  configuredPath: string;
+}
+
+export type TerminalShellConfigurationScope = 'default' | 'global' | 'workspace';
+
+export interface EffectiveTerminalShellConfiguration {
+  configuredShell: ConfiguredTerminalShell;
+  configuredPath: string;
+  configurationScope: TerminalShellConfigurationScope;
+}
+
+export interface ResolveEffectiveTerminalShellConfigurationOptions {
+  defaultConfiguredShell?: unknown;
+  globalConfiguredShell?: unknown;
+  workspaceConfiguredShell?: unknown;
+  defaultConfiguredPath?: unknown;
+  globalConfiguredPath?: unknown;
+  workspaceConfiguredPath?: unknown;
+  hasWorkspace?: boolean;
+}
+
+export interface TerminalShellSelectionCandidate {
+  shellName?: string;
+  resolvedPath?: string;
+  useDefault?: boolean;
+}
+
 export function normalizeConfiguredTerminalShell(value: unknown): ConfiguredTerminalShell {
   switch (value) {
     case 'bash':
@@ -81,6 +110,78 @@ export function normalizeConfiguredTerminalShell(value: unknown): ConfiguredTerm
     default:
       return 'default';
   }
+}
+
+export function buildPersistedTerminalShellSelection(
+  selection: TerminalShellSelectionCandidate
+): PersistedTerminalShellSelection | undefined {
+  if (selection.useDefault) {
+    return {
+      configuredShell: 'default',
+      configuredPath: ''
+    };
+  }
+
+  const configuredPath = selection.resolvedPath?.trim() ?? '';
+  if (!configuredPath) {
+    return undefined;
+  }
+
+  return {
+    // Preserve the logical shell type for display/manual fallback, but always
+    // persist the exact path the user chose so duplicate shell names stay stable.
+    configuredShell: normalizeConfiguredTerminalShell(selection.shellName),
+    configuredPath
+  };
+}
+
+export function resolveEffectiveTerminalShellConfiguration(
+  options: ResolveEffectiveTerminalShellConfigurationOptions = {}
+): EffectiveTerminalShellConfiguration {
+  const defaultConfiguredShell = normalizeConfiguredTerminalShell(options.defaultConfiguredShell);
+  const defaultConfiguredPath = normalizeConfiguredTerminalShellPath(options.defaultConfiguredPath);
+  const hasWorkspace = options.hasWorkspace !== false;
+  const hasWorkspaceOverride =
+    hasWorkspace &&
+    (typeof options.workspaceConfiguredShell !== 'undefined' ||
+      typeof options.workspaceConfiguredPath !== 'undefined');
+
+  if (hasWorkspaceOverride) {
+    return {
+      configuredShell:
+        typeof options.workspaceConfiguredShell === 'undefined'
+          ? defaultConfiguredShell
+          : normalizeConfiguredTerminalShell(options.workspaceConfiguredShell),
+      configuredPath:
+        typeof options.workspaceConfiguredPath === 'undefined'
+          ? defaultConfiguredPath
+          : normalizeConfiguredTerminalShellPath(options.workspaceConfiguredPath),
+      configurationScope: 'workspace'
+    };
+  }
+
+  const hasGlobalOverride =
+    typeof options.globalConfiguredShell !== 'undefined' ||
+    typeof options.globalConfiguredPath !== 'undefined';
+  if (hasGlobalOverride) {
+    return {
+      configuredShell:
+        typeof options.globalConfiguredShell === 'undefined'
+          ? defaultConfiguredShell
+          : normalizeConfiguredTerminalShell(options.globalConfiguredShell),
+      configuredPath:
+        typeof options.globalConfiguredPath === 'undefined'
+          ? defaultConfiguredPath
+          : normalizeConfiguredTerminalShellPath(options.globalConfiguredPath),
+      configurationScope: 'global'
+    };
+  }
+
+  return {
+    configuredShell: defaultConfiguredShell,
+    configuredPath: defaultConfiguredPath,
+    configurationScope: 'default'
+  };
 }
 
 export function resolveDefaultTerminalShellPath(
@@ -118,6 +219,10 @@ export function resolveNamedTerminalShellPath(
     default:
       return shell;
   }
+}
+
+function normalizeConfiguredTerminalShellPath(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 export function resolveConfiguredTerminalShell(
