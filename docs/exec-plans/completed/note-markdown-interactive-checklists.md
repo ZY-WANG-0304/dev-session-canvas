@@ -38,8 +38,8 @@
   理由：这样可以复用现有 `webview/updateNoteNode` 持久化主路径，避免引入单独的 checklist 状态字段或 HTML 到 Markdown 的双向同步层。
   日期/作者：2026-05-06 / Codex
 
-- 决策：只有真正由 Markdown checklist 语法渲染出来的 checkbox 可交互，普通正文点击仍进入编辑态，链接点击仍走宿主打开链路。
-  理由：这能把三类点击语义分清：checkbox 负责切换完成状态，链接负责跳转，其他正文负责进入编辑，避免交互冲突。
+- 决策：当前仓库口径下，只有真正由 Markdown checklist 语法渲染出来的 checkbox 可交互；普通正文单击保留预览、双击进入编辑，链接点击仍走宿主打开链路。
+  理由：这能把四类交互语义分清：checkbox 负责切换完成状态，链接负责跳转，单击正文负责选择/复制，双击正文负责进入编辑，避免交互冲突。
   日期/作者：2026-05-06 / Codex
 
 - 决策：checkbox 到源文的定位采用“渲染时注入行号元数据 + 改写时再次校验源文行是否仍是合法 checklist”的 fail-closed 方案。
@@ -48,9 +48,9 @@
 
 ## 结果与复盘
 
-本轮已经把 Note Markdown 阅读态中的 checklist 从“只读视觉元素”升级成“可直接勾选并回写 Markdown 源文”的工作表面。`src/common/noteMarkdownChecklist.ts` 负责按源文行切换 `[ ]` / `[x]` 标记，支持无序列表、有序列表、大写 `X` 和嵌套缩进场景；`src/webview/main.tsx` 则在渲染时给 checkbox 注入源文行号元数据，并在 preview 点击时复用现有 `webview/updateNoteNode` 持久化主路径。
+本轮已经把 Note Markdown 阅读态中的 checklist 从“只读视觉元素”升级成“可直接勾选并回写 Markdown 源文”的工作表面。`src/common/noteMarkdownChecklist.ts` 负责按源文行切换 `[ ]` / `[x]` 标记，支持无序列表、有序列表、大写 `X`、blockquote 前缀和嵌套缩进场景；`src/webview/main.tsx` 则在渲染时给 checkbox 注入源文行号元数据，并在 preview 点击时复用现有 `webview/updateNoteNode` 持久化主路径。
 
-本轮同时保持了点击语义的清晰分流：checkbox 点击只切换完成状态，不进入编辑；Markdown 链接点击继续走宿主安全打开链路；普通正文点击仍进入纯文本编辑态。若 checkbox 缺少合法源文行号、命中的源文行已不再是 checklist，系统会 fail closed，不产生异常写入。
+后续同主题交互收口后，当前仓库中的点击语义已进一步分流为：checkbox 点击只切换完成状态，不进入编辑；Markdown 链接点击继续走宿主安全打开链路；普通正文单击保留预览以便选择/复制，双击才进入纯文本编辑态。若 checkbox 缺少合法源文行号、命中的源文行已不再是 checklist，系统会 fail closed，不产生异常写入。
 
 验证已完成：`npm run typecheck`、`npm run test:note-markdown-checklists`、`npm run test:webview -- --grep "note markdown|checklist"` 与 `npm run test:smoke` 均通过，其中 smoke 覆盖了 trusted / restricted workspace、real reopen 与 remote reopen 主路径。本轮没有新增需要登记到 `docs/exec-plans/tech-debt-tracker.md` 的遗留技术债。
 
@@ -65,7 +65,7 @@
 - `tests/vscode-smoke/extension-tests.cjs`：需要补真实 VS Code Webview 下的 checkbox 点击验证，证明主宿主持久化路径生效。
 - `docs/design-docs/note-markdown-preview-rendering.md` 与 `docs/product-specs/canvas-core-collaboration-mvp.md`：要把 checklist 从“只读展示”更新成正式支持交互。
 
-这里的“交互式 checklist”指 Markdown 语法 `- [ ] item`、`- [x] item`、`- [X] item` 以及有序列表版本 `1. [ ] item` 在阅读态可直接点击 checkbox 切换状态。这里的“回写源文”指把原始 Markdown 对应行的标记从 `[ ]` 改成 `[x]`，或从 `[x]` / `[X]` 改回 `[ ]`。
+这里的“交互式 checklist”指 Markdown 语法 `- [ ] item`、`- [x] item`、`- [X] item`、有序列表版本 `1. [ ] item`，以及带 blockquote / 嵌套前缀的这些标准 task list 变体，在阅读态都可直接点击 checkbox 切换状态。这里的“回写源文”指把原始 Markdown 对应行的标记从 `[ ]` 改成 `[x]`，或从 `[x]` / `[X]` 改回 `[ ]`。
 
 ## 工作计划
 
@@ -73,7 +73,7 @@
 
 然后在 Webview 里补主实现。`markdown-it-task-lists` 需要切到可交互模式，并给每个 checkbox 附上可追溯到 Markdown 源文行号的元数据。点击 checkbox 时，不进入编辑态，而是基于当前原始 Markdown 文本精确改写对应行的 `[ ]` / `[x]` 标记，再复用现有 `onUpdateNote` / `webview/updateNoteNode` 提交流程持久化。
 
-最后补验证。纯函数层需要证明 checklist 行改写逻辑能处理无序/有序列表与 fail-closed 场景；Playwright harness 需要证明点击 checkbox 会发出正文更新而非切换到编辑态；真实 smoke 需要证明 VS Code 宿主里的真实 DOM 点击也能更新宿主状态与 probe 结果。
+最后补验证。纯函数层需要证明 checklist 行改写逻辑能处理无序/有序列表、blockquote / 嵌套前缀与 fail-closed 场景；Playwright harness 需要证明点击 checkbox 会发出正文更新而非切换到编辑态；真实 smoke 需要证明 VS Code 宿主里的真实 DOM 点击也能更新宿主状态与 probe 结果。
 
 ## 具体步骤
 
@@ -96,7 +96,7 @@
 - 阅读态里的 Markdown checklist checkbox 可直接点击切换。
 - 点击 checkbox 后不会误进入编辑态，也不会走链接打开链路。
 - 原始 Markdown 文本会按对应源文行回写 `[ ]` / `[x]` 标记。
-- 非 checklist 正文点击仍进入编辑态，链接点击仍保持原有行为。
+- 非 checklist 正文单击仍保留预览且可选择复制；双击仍进入编辑态，链接点击仍保持原有行为。
 - `npm run typecheck`、新增 checklist 纯函数测试、相关 `test:webview` 回归和 `npm run test:smoke` 通过。
 
 ## 幂等性与恢复

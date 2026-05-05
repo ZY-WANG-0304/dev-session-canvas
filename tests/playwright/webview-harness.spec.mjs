@@ -3647,6 +3647,34 @@ test('clicking a note checklist checkbox updates markdown without entering edit 
   );
 });
 
+test('clicking a quoted note checklist checkbox updates markdown without entering edit mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = ['> 引用段落', '> - [ ] quoted task', '> - [x] done task'].join('\n');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await expect(taskCheckboxes).toHaveCount(2);
+  await taskCheckboxes.nth(0).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: ['> 引用段落', '> - [x] quoted task', '> - [x] done task'].join('\n')
+    }
+  });
+  await expect(taskCheckboxes.nth(0)).toBeChecked();
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute(
+    'data-probe-value',
+    ['> 引用段落', '> - [x] quoted task', '> - [x] done task'].join('\n')
+  );
+});
+
 test('clicking a note markdown link posts openNoteLink without entering edit mode', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();

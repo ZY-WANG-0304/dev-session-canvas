@@ -34,6 +34,18 @@ function run(): void {
   );
 
   assert.equal(
+    toggleNoteMarkdownChecklistAtLine('> - [ ] 引用待办', 1),
+    '> - [x] 引用待办',
+    '引用块中的无序 checklist 应可切换。'
+  );
+
+  assert.equal(
+    toggleNoteMarkdownChecklistAtLine('> > 1. [x] 多层引用待办', 1),
+    '> > 1. [ ] 多层引用待办',
+    '多层引用中的有序 checklist 应保持引用前缀与序号。'
+  );
+
+  assert.equal(
     toggleNoteMarkdownChecklistAtLine('- 普通列表', 1),
     null,
     '非 checklist 行不应被误改写。'

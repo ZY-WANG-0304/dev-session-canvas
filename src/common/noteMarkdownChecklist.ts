@@ -1,4 +1,4 @@
-const NOTE_MARKDOWN_CHECKLIST_LINE_PATTERN = /^(\s*(?:[-+*]|\d+[.)])\s+\[)([ xX])(\])/u;
+const NOTE_MARKDOWN_CHECKLIST_LINE_PATTERN = /^(\s*(?:>\s*)*(?:[-+*]|\d+[.)])\s+\[)([ xX])(\])/u;
 
 export function toggleNoteMarkdownChecklistAtLine(content: string, lineNumber: number): string | null {
   if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) {

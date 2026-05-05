@@ -101,7 +101,7 @@ updated_at: 2026-05-06
   缓解：渲染器关闭 HTML 透传，只把 Markdown 语法转成受控 HTML。
 
 - 风险：阅读态点击若同时承担 checklist 切换、链接激活和进入编辑，会产生冲突。
-  缓解：普通正文点击继续进入编辑；明确命中 checklist checkbox 时只切换完成状态；明确命中链接元素时只走宿主打开路径，不回落成默认浏览器导航。
+  缓解：单击普通正文保留预览、双击普通正文进入编辑；明确命中 checklist checkbox 时只切换完成状态；明确命中链接元素时只走宿主打开路径，不回落成默认浏览器导航。
 
 - 风险：如果把任意 Markdown 链接都交给宿主打开，`command:`、越界相对路径或多根 workspace 歧义路径可能绕过安全边界。
   缓解：宿主对白名单外部 scheme 与受限 workspace 文件路径做显式校验；多根 workspace 缺少根名前缀时直接拒绝打开。
@@ -145,7 +145,7 @@ updated_at: 2026-05-06
 
 ### 7.4 任务列表可在预览态切换，链接通过宿主安全打开
 
-- `Note` 阅读态的首要职责仍然是展示 Markdown 结构，并允许用户点击进入编辑。
+- `Note` 阅读态的首要职责仍然是展示 Markdown 结构，并允许用户在需要时通过双击进入编辑。
 - 如果用户单击的是普通正文区域，行为应保留在预览态，以便直接选择和复制内容；只有双击普通正文区域时，才进入编辑态。
 - 如果用户点击的是由 Markdown task list 语法渲染出来的 checkbox，则不进入编辑态，而是按源文行号切换对应 `[ ]` / `[x]` 标记，并立即复用现有 `webview/updateNoteNode` 写回宿主。
 - checkbox 的源文定位通过 `markdown-it` token `map` 行号注入到渲染后的 DOM 属性中；如果行号缺失、越界或命中的源文行不再是合法 checklist，则必须 fail closed，不切换内容也不报错污染宿主状态。
@@ -154,7 +154,7 @@ updated_at: 2026-05-06
   - workspace 文件链接只允许当前 workspace 内文件，单根 workspace 支持纯相对路径，多根 workspace 要求 `workspace-folder/relative/path` 前缀。
 - workspace 文件链接支持可选 `#L12`、`#L12C3` 行列 fragment；宿主会按当前画布 surface 语义打开文件并定位到对应行列。
 - 绝对路径、`..` 逃逸、目录目标和多根 workspace 下缺少根名前缀的歧义路径都必须 fail closed。
-- 交互式 checklist 只覆盖标准 Markdown task list 语法生成的 checkbox，包括无序列表与有序列表版本；不支持原始 HTML 注入出的自定义 checkbox，也不在预览态直接编辑任务正文。
+- 交互式 checklist 只覆盖标准 Markdown task list 语法生成的 checkbox，包括无序列表、有序列表以及 blockquote / 嵌套场景中的版本；不支持原始 HTML 注入出的自定义 checkbox，也不在预览态直接编辑任务正文。
 - 如果未来要给 `Note` 增加目录跳转、代码块复制或更复杂的块级操作，应单独扩展设计，而不是把更多行为隐式混进当前预览面。
 
 ### 7.5 测试、probe 与宿主协议继续围绕原始文本工作
