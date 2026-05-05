@@ -33,6 +33,7 @@
 - [x] (2026-05-04) 完成阶段 1.1 尾项（真实桌面通知人工验收）：macOS、Windows、Linux 本机环境与 `Remote Main + Local Notifier` 联调拓扑均已完成人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证。
 - [x] (2026-05-05) 恢复 `npm run test:notifier-smoke` 自动化链路：smoke runner 已改为 staged smoke host + notifier wrapper，并补齐统一 test harness mode；latest head 已通过 `npm run test:notifier-smoke`、`npm run test:smoke-storage-slot`、`npm run test:vsix-smoke` 与 `npm run test:smoke` 复核。
 - [x] (2026-05-04) 收口调试拓扑：用 debug-only 临时主扩展目录替代原先的 shim 方案，让 `Run Dev Session Canvas (Main Only)` 在 local / remote 环境下都能单独启动；同时把 launch 配置收敛到 `Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Dev Session Canvas + Notifier (Remote Window)` 三条，并补上相应协作文档与 launch 配置回归脚本。
+- [x] (2026-05-06) 同步 notifier 安装拓扑的文档口径：按仓库根 `package.json` 已切到“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”的现状，清理 `CONTRIBUTING.md` 与本计划中仍把“正式双向依赖不变”写成当前结论的旧表述。
 - [ ] **阶段 1.2（可选重构）**：notifier 验证通过后，根据需要决定是否迁移主扩展到 `extensions/vscode/dev-session-canvas/`。
 - [ ] 新增文档知识库入口页与体系图资产，补齐根 README、`ARCHITECTURE.md` 与各扩展 README 的职责边界。
 - [ ] **里程碑 5（延后到第二阶段）**：建立跨平台共享层（`packages/protocol/` 三层结构、`packages/webview/` 共享前端、JSON Schema 自动生成工具链）。仅在决定启动 IntelliJ 开发时执行。
@@ -127,9 +128,9 @@
   理由：这三条配置刚好覆盖“local 联调 / remote 联调 / local&remote 单独调主扩展”三类真实场景；其余 notifier-only 或“从本地 clone 窗口手工拼 remote authority”的入口虽然可做，但会放大配置面与文档心智负担，不适合继续保留在默认 launch 集合中。
   日期/作者：2026-05-04 / Codex
 
-- 决策：保留正式双向 `extensionDependencies` 不变，同时为 `Run Dev Session Canvas (Main Only)` 生成一份 debug-only 的临时主扩展目录，并在其中移除 notifier 依赖；不要为了 F5 直接改正式 manifest。
-  理由：这样既能维持 Marketplace / 安装态的单一真相，又能让 `Run Dev Session Canvas (Main Only)` 在 local / remote 环境继续保持零 notifier 输入的单调体验，而不必长期维护额外的 shim 调试入口。
-  日期/作者：2026-05-04 / Codex
+- 决策：`Run Dev Session Canvas (Main Only)` 一律生成一份 debug-only 的临时主扩展目录，并在其中移除 notifier 相关安装期关系；不要为了 F5 直接改正式 manifest。
+  理由：这条策略先于 2026-05-05 的安装拓扑调整形成；保留下来的核心是“单独调主扩展必须通过 debug-only 副本隔离安装期关系，而不是为 F5 改写仓库根 manifest”。正式安装真相切到“主扩展 `extensionPack` + notifier 单向 `extensionDependencies`”后，临时 manifest 也随之同步移除 `extensionDependencies` / `extensionPack`。
+  日期/作者：2026-05-04 / Codex（2026-05-06 同步口径）
 
 - 决策：正式安装关系改为“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”；`Run Dev Session Canvas (Main Only)` 的 debug-only 临时 manifest 同步移除 `extensionDependencies` / `extensionPack`。
   理由：主扩展运行时允许 notifier 缺失后回退到工作台通知，因此安装期聚合不应继续伪装成双向功能依赖；改成 pack + 单向依赖后，既保留“一装主扩展就有 notifier”的体验，也消除了 VS Code 会直接禁用两个扩展的依赖环。
@@ -142,6 +143,8 @@
 ## 结果与复盘
 
 当前已经从“纯设计阶段”进入“阶段 1.1 的代码、文档、自动化验证与人工验收入口均已落地”的状态。已确认的产出是：
+
+截至 2026-05-06，`CONTRIBUTING.md` 与本计划已重新与仓库根 `package.json` 对齐：当前正式安装真相只保留“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，旧的“双向依赖不变”表述仅作为 2026-05-04 调试问题的历史背景，不再作为当前结论。
 
 - 一份明确说明标准 monorepo 目标结构的 `ExecPlan`
 - 一套“根目录单一正式文档集 + 子包最小局部文档”的文档治理口径
@@ -488,3 +491,5 @@ README.md              项目对外入口
 本次更新说明：2026-05-04 进一步同步用户在 macOS、Windows、Linux 本机环境以及 `Remote Main + Local Notifier` 联调拓扑上的通过结果，完成阶段 1.1 的真实桌面通知人工验收尾项。
 
 本次更新说明：2026-05-05 通过 staged smoke host、notifier wrapper 与统一 test harness mode 收口 `npm run test:notifier-smoke` 自动化链路，并同步确认 `npm run test:smoke-storage-slot`、`npm run test:vsix-smoke` 与 `npm run test:smoke` 通过；阶段 1.1 现已具备自动化与人工验证闭环。
+
+本次更新说明：2026-05-06 按仓库根 `package.json` 已切换到 `extensionPack` 的现状，清理 `CONTRIBUTING.md` 与本计划里仍把“正式双向依赖不变”写成当前结论的旧口径，恢复 notifier 安装拓扑的单一事实来源。
