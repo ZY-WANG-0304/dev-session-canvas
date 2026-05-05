@@ -131,6 +131,10 @@
   理由：这样既能维持 Marketplace / 安装态的单一真相，又能让 `Run Dev Session Canvas (Main Only)` 在 local / remote 环境继续保持零 notifier 输入的单调体验，而不必长期维护额外的 shim 调试入口。
   日期/作者：2026-05-04 / Codex
 
+- 决策：正式安装关系改为“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”；`Run Dev Session Canvas (Main Only)` 的 debug-only 临时 manifest 同步移除 `extensionDependencies` / `extensionPack`。
+  理由：主扩展运行时允许 notifier 缺失后回退到工作台通知，因此安装期聚合不应继续伪装成双向功能依赖；改成 pack + 单向依赖后，既保留“一装主扩展就有 notifier”的体验，也消除了 VS Code 会直接禁用两个扩展的依赖环。
+  日期/作者：2026-05-05 / Codex
+
 - 决策：从远端仓库窗口发起的远端联调配置只保留 `localRepoRoot` 这一个输入；不再要求输入 `remoteAuthority`，也不再保留本地 clone 窗口发起远端联调的默认入口。
   理由：在远端窗口里重复输入当前 remote alias 没有信息增益；而“本地 clone 窗口手工拼远端联调”的使用频率低、文档成本高，不值得继续作为默认 launch 配置暴露。
   日期/作者：2026-05-04 / Codex

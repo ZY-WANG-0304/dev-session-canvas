@@ -24,7 +24,7 @@
   3. 如果用户从主扩展页面安装，VS Code 也会自动带上 notifier
   4. 在主扩展设置中把 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
   5. 如需静音请求，再把 `devSessionCanvasNotifier.notifications.playSound` 设为 `false`
-- 两个扩展当前通过双向 `extensionDependencies` 设计自动收口安装体验；继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。需要注意的是，repo-local smoke / VSIX smoke 为了加载 staged wrapper 会临时移除这条依赖，因此真正的自动补齐安装路径仍要在 clean profile 安装步骤里单独复核。
+- 两个扩展当前通过“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”来收口安装体验；继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。需要注意的是，repo-local smoke / VSIX smoke 为了加载 staged wrapper 会临时移除这些安装期关系，因此真正的自动补齐安装路径仍要在 clean profile 安装步骤里单独复核。
 - 不再继续使用 legacy 配置键 `devSessionCanvas.notifications.preferNotifierCompanion` 作为对外说明；当前正式配置键是 `devSessionCanvas.notifications.attentionSignalBridge`。
 - `system` 模式的正式口径是：优先调用 notifier companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到 VS Code 工作台消息。
 
@@ -91,4 +91,4 @@
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
 - 当前本地仍可作为有效证据保留的验证包括：`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`、`npm run test:notifier-source`、`npm run test:notifier-smoke`，以及真实桌面通知的人工验收。
-- 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。
+- 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。
