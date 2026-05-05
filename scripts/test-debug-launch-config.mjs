@@ -46,6 +46,11 @@ assertArgsContain(runMainOnly, [
   '--profile=Dev Session Canvas Extension Debug',
   `--extensionDevelopmentPath=${mainOnlyExtensionPath}`
 ]);
+assert.deepEqual(runMainOnly.sourceMapPathOverrides, {
+  '../src/*': `${workspaceFolder}/src/*`,
+  '../packages/*': `${workspaceFolder}/packages/*`,
+  '../node_modules/*': `${workspaceFolder}/node_modules/*`
+});
 
 const runLocalNotifier = getConfiguration('Run Dev Session Canvas + Notifier (Local Window)');
 assert.equal(runLocalNotifier.preLaunchTask, 'build extension + notifier');
