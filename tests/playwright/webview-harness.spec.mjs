@@ -3512,13 +3512,40 @@ test('note markdown preview renders task lists, syntax highlighting, and math fo
   const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
   await expect(taskCheckboxes).toHaveCount(2);
   await expect(taskCheckboxes.nth(0)).toBeChecked();
-  await expect(taskCheckboxes.nth(0)).toBeDisabled();
+  await expect(taskCheckboxes.nth(0)).toBeEnabled();
   await expect(taskCheckboxes.nth(1)).not.toBeChecked();
-  await expect(taskCheckboxes.nth(1)).toBeDisabled();
+  await expect(taskCheckboxes.nth(1)).toBeEnabled();
   await expect(noteNode.locator('.note-markdown-preview pre code.hljs')).toHaveCount(1);
   await expect(noteNode.locator('.note-markdown-preview pre code.hljs .hljs-keyword')).toContainText('const');
   await expect(noteNode.locator('.note-markdown-preview .katex')).toHaveCount(2);
   await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
+});
+
+test('clicking a note checklist checkbox updates markdown without entering edit mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = ['- [ ] 补齐 smoke', '- [x] 收口设计'].join('\n');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await taskCheckboxes.nth(0).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: ['- [x] 补齐 smoke', '- [x] 收口设计'].join('\n')
+    }
+  });
+  await expect(taskCheckboxes.nth(0)).toBeChecked();
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute(
+    'data-probe-value',
+    ['- [x] 补齐 smoke', '- [x] 收口设计'].join('\n')
+  );
 });
 
 test('clicking a note markdown link posts openNoteLink without entering edit mode', async ({ page }) => {

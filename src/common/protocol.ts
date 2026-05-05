@@ -429,6 +429,12 @@ export type WebviewDomAction =
       nodeId: string;
       filePath: string;
       delayMs?: number;
+    }
+  | {
+      kind: 'toggleNoteChecklistItem';
+      nodeId: string;
+      lineNumber: number;
+      delayMs?: number;
     };
 
 export type WebviewToHostMessage =
@@ -1346,6 +1352,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'clickFileEntry') {
     return typeof value.filePath === 'string';
+  }
+
+  if (value.kind === 'toggleNoteChecklistItem') {
+    return typeof value.lineNumber === 'number' && Number.isSafeInteger(value.lineNumber);
   }
 
   return false;

@@ -1778,9 +1778,12 @@ body {
 .note-markdown-preview-copy .task-list-item-checkbox {
   margin: 0 8px 0 0;
   accent-color: var(--vscode-checkbox-selectBackground, var(--vscode-focusBorder));
-  pointer-events: none;
   opacity: 1;
   transform: translateY(1px);
+}
+
+.note-markdown-preview-copy .task-list-item.enabled .task-list-item-checkbox {
+  cursor: pointer;
 }
 
 .note-markdown-preview-copy code {
