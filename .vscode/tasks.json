@@ -23,6 +23,21 @@
       "dependsOn": ["build extension", "build notifier"],
       "group": "build",
       "problemMatcher": []
+    },
+    {
+      "label": "prepare debug main-only extension",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "prepare:debug-main-only-extension"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build debug main-only extension",
+      "dependsOrder": "sequence",
+      "dependsOn": ["build extension", "prepare debug main-only extension"],
+      "group": "build",
+      "problemMatcher": []
     }
   ]
 }
