@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的 Marketplace 发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.5.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的 Marketplace 发布素材、手工发布步骤、安装启用口径与发布后复核动作。本文不预设固定目标版本；每次发布前都应从 manifest 读取当前版本事实。publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。截止 2026-05-05，仓库里的 manifest 版本当前仍是主扩展 `0.4.1`、notifier `0.4.0`；任何未来目标版本都必须先在 manifest / changelog / 产物名里同步落地，不能直接把计划中的版本号写成既成事实。
 
 ## 当前发布素材
 
@@ -24,7 +24,7 @@
   3. 如果用户从主扩展页面安装，VS Code 也会自动带上 notifier
   4. 在主扩展设置中把 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
   5. 如需静音请求，再把 `devSessionCanvasNotifier.notifications.playSound` 设为 `false`
-- 两个扩展当前通过双向 `extensionDependencies` 自动收口安装体验；继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。
+- 两个扩展当前通过双向 `extensionDependencies` 设计自动收口安装体验；继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。需要注意的是，repo-local smoke / VSIX smoke 为了加载 staged wrapper 会临时移除这条依赖，因此真正的自动补齐安装路径仍要在 clean profile 安装步骤里单独复核。
 - 不再继续使用 legacy 配置键 `devSessionCanvas.notifications.preferNotifierCompanion` 作为对外说明；当前正式配置键是 `devSessionCanvas.notifications.attentionSignalBridge`。
 - `system` 模式的正式口径是：优先调用 notifier companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到 VS Code 工作台消息。
 
@@ -38,7 +38,7 @@
 
 以下步骤默认建立在一个前提上：notifier 对应的 feature 均已经先合入 `main`，发布物料也已经通过独立发布准备分支 review 并回到 `main`。真正执行 `publish` 时，应站在 `main` 上对应的最终发布 commit，而不是仍停留在未合并的发布准备分支 head。
 
-1. 锁定最终 git ref、版本号与 VSIX 文件名；当前默认产物名为 `dev-session-canvas-notifier-0.5.0.vsix`。
+1. 锁定最终 git ref、版本号与 VSIX 文件名；notifier 产物名默认遵循 `dev-session-canvas-notifier-<notifier-version>.vsix`。
 2. 若刚切到最终 git ref，或这轮同步带来了 `package-lock.json` / workspace 依赖变化，先在仓库根目录执行一次 `npm install`（干净 release checkout 则执行 `npm ci`），刷新 workspace link 与本地 `@vscode/vsce` 安装；否则后续打包阶段可能在 `npm list` 或 `vsce` 入口解析时误报缺少 workspace 依赖。
 3. 复核以下文件的版本事实一致：
    - `extensions/vscode/dev-session-canvas-notifier/package.json`
@@ -64,31 +64,31 @@
 在最终 git ref、版本号与 VSIX 产物都锁定后，从仓库根目录执行；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
 
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.5.0.vsix
+      --packagePath extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-<notifier-version>.vsix
 
-若最终版本号不是 `0.5.0`，应先同步更新命令中的文件名。
+将 `<notifier-version>` 替换为 `extensions/vscode/dev-session-canvas-notifier/package.json` 中已经锁定的最终版本号。
 
 注意：`publish --packagePath` 只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 `package:vsix`，并确保它针对最终发布 ref 完成过 README 重写目标校验。
 
 ## Tag 与版本对齐约束
 
-- 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的 `v0.5.0` 仓库 tag 即可，不单独再发一个 notifier 专属 tag。
-- 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `0.5.0`，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
+- 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的 `v<release-version>` 仓库 tag 即可，不单独再发一个 notifier 专属 tag。
+- 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `v<release-version>` 对应的同一组数字，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
 
 ## 发布后验证
 
 1. 打开 Marketplace 页面，确认名称、图标、README 文案、issue 链接与许可证信息没有失真。
-2. 在干净 profile 中同时安装：
-   - `Dev Session Canvas`
-   - `Dev Session Canvas Notifier`
+2. 在干净 profile 中分别验证两条安装路径：
+   - 只安装 `Dev Session Canvas Notifier`，确认 VS Code 会自动补齐 `Dev Session Canvas`
+   - 卸载后只安装 `Dev Session Canvas`，确认 VS Code 会自动补齐 `Dev Session Canvas Notifier`
 3. 在主扩展设置中将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`。
 4. 运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认系统通知出现，并在支持平台上验证点击后是否能回到 VS Code。
 5. 运行 `Dev Session Canvas Notifier: 打开通知诊断输出`，确认 `backend`、`activationMode` 与最近一次投递结果符合当前平台预期。
 
 ## 当前验证备注
 
-- 当前开发机（`macOS 26.3.1` + `Visual Studio Code 1.118.1`）上，`npm run test:notifier-smoke` 会在 VS Code test host 启动阶段直接 `SIGABRT`；同样现象可用最小临时扩展复现，因此当前更像宿主 / 环境级问题，而不是 notifier smoke 用例本身失败。
-- 截至 `2026-05-04`，当前分支最新 head（`47d3f02`）已重新通过 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，稳定产出 `dev-session-canvas-notifier-0.5.0.vsix`（`10 files` / `30.33 KB`）；同轮也复核了主扩展 `npm run package:vsix`，继续产出 `dev-session-canvas-0.5.0.vsix`（`49 files` / `2.17 MB`）。
+- 截至 `2026-05-05`，当前分支 latest head 已重新通过 `npm run test:notifier-smoke`，说明“主扩展 -> companion -> 回放 callback -> 清除 attention”这条 repo-local 功能链路已恢复。
+- notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 当前本地仍可作为有效证据保留的验证包括：`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`、`npm run test:notifier-source`，以及真实桌面通知的人工验收。
-- 如需继续推进 notifier smoke，优先在另一台设备、不同 macOS 版本，或后续 VS Code / Electron 版本上复核。
+- 当前本地仍可作为有效证据保留的验证包括：`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`、`npm run test:notifier-source`、`npm run test:notifier-smoke`，以及真实桌面通知的人工验收。
+- 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

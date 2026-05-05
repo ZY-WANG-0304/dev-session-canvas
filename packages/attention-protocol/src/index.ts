@@ -123,37 +123,6 @@ export function isAttentionNotificationDeliveryResult(
   return value.detail === undefined || typeof value.detail === 'string';
 }
 
-export function encodeAttentionNotificationFocusAction(action: AttentionNotificationFocusAction): string {
-  const payload = JSON.stringify({
-    command: action.command,
-    arguments: action.arguments ?? []
-  });
-  return Buffer.from(payload, 'utf8').toString('base64url');
-}
-
-export function decodeAttentionNotificationFocusAction(
-  encoded: string | undefined
-): AttentionNotificationFocusAction | undefined {
-  if (!isNonEmptyString(encoded)) {
-    return undefined;
-  }
-
-  try {
-    const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
-    const parsed = JSON.parse(decoded) as unknown;
-    if (!isAttentionNotificationFocusAction(parsed)) {
-      return undefined;
-    }
-
-    return {
-      command: parsed.command.trim(),
-      arguments: parsed.arguments?.slice()
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 function isAttentionNotificationBackend(value: unknown): value is AttentionNotificationBackend {
   return (
     value === 'test' ||

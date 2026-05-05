@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'crypto';
 
 import {
   ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
-  decodeAttentionNotificationFocusAction,
-  encodeAttentionNotificationFocusAction,
   NOTIFIER_COMMAND_IDS,
   NOTIFIER_TEST_COMMAND_IDS,
+  isAttentionNotificationFocusAction,
   parseAttentionNotificationRequest,
   type AttentionNotificationActivationMode,
   type AttentionNotificationDebugRecord,
@@ -13,6 +13,7 @@ import {
   type AttentionNotificationFocusAction,
   type AttentionNotificationRequest
 } from '../../../../packages/attention-protocol/src/index';
+import { COMMAND_IDS } from '../../../../src/common/extensionIdentity';
 import { isTestHarnessMode } from '../../../../src/common/testHarness';
 import { postDesktopNotification } from './platformNotification';
 import { NotifierSidebarViewProvider } from './sidebarView';
@@ -21,6 +22,9 @@ import type { NotifierExtensionModeLabel } from './sidebarEnvironment';
 const FOCUS_URI_PATH = '/focus';
 const MAX_DEBUG_RECORDS = 20;
 const OUTPUT_CHANNEL_NAME = 'Dev Session Canvas Notifier';
+const MAX_PENDING_FOCUS_ACTIONS = 64;
+const PENDING_FOCUS_ACTION_TTL_MS = 1000 * 60 * 60 * 24;
+const PENDING_FOCUS_ACTIONS_STORAGE_KEY = 'devSessionCanvasNotifier.pendingFocusActions';
 const CONFIGURATION_KEYS = {
   playSound: 'devSessionCanvasNotifier.notifications.playSound'
 } as const;
@@ -44,9 +48,15 @@ interface ManualNotificationAttempt {
   activatedAt?: string;
 }
 
+interface StoredPendingFocusAction {
+  action: AttentionNotificationFocusAction;
+  createdAt: string;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const postedNotifications: AttentionNotificationDebugRecord[] = [];
   const manualNotificationAttempts = new Map<string, ManualNotificationAttempt>();
+  const pendingFocusActions = restorePendingFocusActions(context.globalState);
   const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   const sidebarViewProvider = new NotifierSidebarViewProvider({
     getModeLabel: () => getExtensionModeLabel(context.extensionMode),
@@ -64,6 +74,9 @@ export function activate(context: vscode.ExtensionContext): void {
       readPlaySoundEnabled()
     )}`
   );
+  if (prunePendingFocusActions(pendingFocusActions)) {
+    void persistPendingFocusActions(context.globalState, pendingFocusActions);
+  }
 
   const executeFocusAction = async (action: AttentionNotificationFocusAction | undefined): Promise<void> => {
     if (!action) {
@@ -77,21 +90,60 @@ export function activate(context: vscode.ExtensionContext): void {
     await vscode.commands.executeCommand(action.command, ...(action.arguments ?? []));
   };
 
-  const handleFocusUri = async (uri: vscode.Uri): Promise<void> => {
+  const registerPendingFocusAction = async (action: AttentionNotificationFocusAction): Promise<string> => {
+    prunePendingFocusActions(pendingFocusActions);
+    const token = createFocusActionToken();
+    pendingFocusActions.set(token, {
+      action: {
+        command: action.command,
+        arguments: action.arguments?.slice()
+      },
+      createdAt: new Date().toISOString()
+    });
+    prunePendingFocusActions(pendingFocusActions);
+    await persistPendingFocusActions(context.globalState, pendingFocusActions);
+    return token;
+  };
+
+  const consumePendingFocusAction = async (
+    token: string
+  ): Promise<AttentionNotificationFocusAction | undefined> => {
+    const didPrune = prunePendingFocusActions(pendingFocusActions);
+    const currentAction = pendingFocusActions.get(token);
+    if (!currentAction) {
+      if (didPrune) {
+        await persistPendingFocusActions(context.globalState, pendingFocusActions);
+      }
+      return undefined;
+    }
+
+    pendingFocusActions.delete(token);
+    await persistPendingFocusActions(context.globalState, pendingFocusActions);
+    return cloneFocusAction(currentAction.action);
+  };
+
+  const handleFocusUri = async (uri: vscode.Uri): Promise<boolean> => {
     if (uri.path !== FOCUS_URI_PATH) {
       appendOutputLine(outputChannel, `ignored uri path=${uri.path}`);
-      return;
+      return false;
     }
 
     const query = new URLSearchParams(uri.query);
-    const action = decodeAttentionNotificationFocusAction(query.get('payload') ?? undefined);
+    const token = query.get('token')?.trim();
+    if (!token) {
+      appendOutputLine(outputChannel, 'ignored focus callback without token');
+      return false;
+    }
+
+    const action = await consumePendingFocusAction(token);
     if (!action) {
-      appendOutputLine(outputChannel, 'ignored focus callback with invalid payload');
-      return;
+      appendOutputLine(outputChannel, `ignored focus callback with unknown or expired token=${token}`);
+      return false;
     }
 
     appendOutputLine(outputChannel, `received focus callback uri=${uri.toString(true)}`);
     await executeFocusAction(action);
+    return true;
   };
 
   const postNotificationRequest = async (
@@ -110,8 +162,32 @@ export function activate(context: vscode.ExtensionContext): void {
       return { result };
     }
 
-    const callbackUri = request.focusAction
-      ? await buildFocusCallbackUri(context, request.focusAction)
+    const focusAction = normalizeSupportedFocusAction(request.focusAction, source);
+    if (request.focusAction && !focusAction) {
+      const result = {
+        status: 'error',
+        backend: 'unsupported',
+        activationMode: 'none',
+        detail: 'unsupported-focus-action'
+      } satisfies AttentionNotificationDeliveryResult;
+      appendOutputLine(
+        outputChannel,
+        `source=${source} rejected unsupported focus action command=${request.focusAction.command}`
+      );
+      return { result };
+    }
+
+    const normalizedRequest = focusAction
+      ? {
+          ...request,
+          focusAction
+        }
+      : {
+          ...request,
+          focusAction: undefined
+        };
+    const callbackUri = focusAction
+      ? await buildFocusCallbackUri(context, registerPendingFocusAction, focusAction)
       : undefined;
     const playSound = readPlaySoundEnabled();
     const result =
@@ -119,17 +195,17 @@ export function activate(context: vscode.ExtensionContext): void {
         ? ({
             status: 'posted',
             backend: 'test',
-            activationMode: request.focusAction ? 'test-replay' : 'none'
+            activationMode: focusAction ? 'test-replay' : 'none'
           } satisfies AttentionNotificationDeliveryResult)
         : await postDesktopNotification({
-            request,
+            request: normalizedRequest,
             callbackUri,
-            onDidActivate: () => executeFocusAction(request.focusAction),
+            onDidActivate: () => executeFocusAction(focusAction),
             playSound
           });
 
     recordDebugNotification(postedNotifications, {
-      request,
+      request: normalizedRequest,
       callbackUri,
       result
     });
@@ -240,8 +316,7 @@ export function activate(context: vscode.ExtensionContext): void {
           return false;
         }
 
-        await handleFocusUri(vscode.Uri.parse(lastRecord.callbackUri));
-        return true;
+        return handleFocusUri(vscode.Uri.parse(lastRecord.callbackUri));
       })
     );
   }
@@ -253,11 +328,12 @@ export function deactivate(): void {
 
 async function buildFocusCallbackUri(
   context: vscode.ExtensionContext,
+  registerPendingFocusAction: (action: AttentionNotificationFocusAction) => Promise<string>,
   focusAction: AttentionNotificationFocusAction
 ): Promise<string> {
-  const payload = encodeAttentionNotificationFocusAction(focusAction);
+  const token = await registerPendingFocusAction(focusAction);
   const localUri = vscode.Uri.parse(`${vscode.env.uriScheme}://${context.extension.id}${FOCUS_URI_PATH}`).with({
-    query: `payload=${encodeURIComponent(payload)}`
+    query: `token=${encodeURIComponent(token)}`
   });
   const externalUri = await vscode.env.asExternalUri(localUri);
   return externalUri.toString(true);
@@ -288,12 +364,7 @@ function cloneDebugRecords(records: AttentionNotificationDebugRecord[]): Attenti
 function cloneRequest(request: AttentionNotificationRequest): AttentionNotificationRequest {
   return {
     ...request,
-    focusAction: request.focusAction
-      ? {
-          command: request.focusAction.command,
-          arguments: request.focusAction.arguments?.slice()
-        }
-      : undefined
+    focusAction: cloneFocusAction(request.focusAction)
   };
 }
 
@@ -315,6 +386,143 @@ function buildManualNotificationRequest(requestId: string): AttentionNotificatio
 
 function createManualNotificationRequestId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createFocusActionToken(): string {
+  return randomBytes(16).toString('hex');
+}
+
+function cloneFocusAction(
+  action: AttentionNotificationFocusAction | undefined
+): AttentionNotificationFocusAction | undefined {
+  return action
+    ? {
+        command: action.command,
+        arguments: action.arguments?.slice()
+      }
+    : undefined;
+}
+
+function normalizeSupportedFocusAction(
+  action: AttentionNotificationFocusAction | undefined,
+  source: 'main-extension' | 'manual-test'
+): AttentionNotificationFocusAction | undefined {
+  if (!action) {
+    return undefined;
+  }
+
+  const normalizedArgument = normalizeSingleStringArgument(action.arguments);
+  if (!normalizedArgument) {
+    return undefined;
+  }
+
+  if (source === 'main-extension' && action.command === COMMAND_IDS.focusAttentionNode) {
+    return {
+      command: COMMAND_IDS.focusAttentionNode,
+      arguments: [normalizedArgument]
+    };
+  }
+
+  if (source === 'manual-test' && action.command === MANUAL_COMMAND_IDS.acknowledgeTestNotification) {
+    return {
+      command: MANUAL_COMMAND_IDS.acknowledgeTestNotification,
+      arguments: [normalizedArgument]
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeSingleStringArgument(argumentsList: string[] | undefined): string | undefined {
+  if (!Array.isArray(argumentsList) || argumentsList.length !== 1) {
+    return undefined;
+  }
+
+  const [value] = argumentsList;
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+
+  return value.trim();
+}
+
+function restorePendingFocusActions(memento: vscode.Memento): Map<string, StoredPendingFocusAction> {
+  const restored = new Map<string, StoredPendingFocusAction>();
+  const rawValue = memento.get<Record<string, unknown>>(PENDING_FOCUS_ACTIONS_STORAGE_KEY);
+  if (!rawValue || typeof rawValue !== 'object') {
+    return restored;
+  }
+
+  for (const [token, candidate] of Object.entries(rawValue)) {
+    if (typeof token !== 'string' || token.trim().length === 0 || !isRecord(candidate)) {
+      continue;
+    }
+
+    if (!isAttentionNotificationFocusAction(candidate.action) || typeof candidate.createdAt !== 'string') {
+      continue;
+    }
+
+    restored.set(token, {
+      action: {
+        command: candidate.action.command.trim(),
+        arguments: candidate.action.arguments?.slice()
+      },
+      createdAt: candidate.createdAt
+    });
+  }
+
+  prunePendingFocusActions(restored);
+  return restored;
+}
+
+async function persistPendingFocusActions(
+  memento: vscode.Memento,
+  pendingFocusActions: Map<string, StoredPendingFocusAction>
+): Promise<void> {
+  const serialized: Record<string, StoredPendingFocusAction> = {};
+  for (const [token, storedAction] of pendingFocusActions.entries()) {
+    serialized[token] = {
+      action: cloneFocusAction(storedAction.action)!,
+      createdAt: storedAction.createdAt
+    };
+  }
+
+  await memento.update(PENDING_FOCUS_ACTIONS_STORAGE_KEY, serialized);
+}
+
+function prunePendingFocusActions(pendingFocusActions: Map<string, StoredPendingFocusAction>): boolean {
+  let changed = false;
+  const cutoff = Date.now() - PENDING_FOCUS_ACTION_TTL_MS;
+  for (const [token, storedAction] of pendingFocusActions.entries()) {
+    const createdAtMs = Date.parse(storedAction.createdAt);
+    if (!Number.isFinite(createdAtMs) || createdAtMs < cutoff) {
+      pendingFocusActions.delete(token);
+      changed = true;
+    }
+  }
+
+  if (pendingFocusActions.size <= MAX_PENDING_FOCUS_ACTIONS) {
+    return changed;
+  }
+
+  const sortedEntries = [...pendingFocusActions.entries()].sort((left, right) => {
+    return Date.parse(right[1].createdAt) - Date.parse(left[1].createdAt);
+  });
+  pendingFocusActions.clear();
+  for (const [index, entry] of sortedEntries.entries()) {
+    if (index >= MAX_PENDING_FOCUS_ACTIONS) {
+      changed = true;
+      continue;
+    }
+
+    pendingFocusActions.set(entry[0], entry[1]);
+  }
+
+  return changed;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object';
 }
 
 function buildManualNotificationMessage(result: AttentionNotificationDeliveryResult): string {

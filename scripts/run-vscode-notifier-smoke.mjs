@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 
 import {
+  copyPathRecursive,
   launchPreparedVSCodeScenario,
   prepareRuntime,
   resolveStagedSmokeTestPath,
@@ -101,7 +102,7 @@ async function stageExtension({ sourceRoot, targetRoot, entries }) {
     const sourcePath = path.join(sourceRoot, entry);
     const targetPath = path.join(targetRoot, entry);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.cp(sourcePath, targetPath, { recursive: true });
+    await copyPathRecursive(sourcePath, targetPath);
   }
 }
 

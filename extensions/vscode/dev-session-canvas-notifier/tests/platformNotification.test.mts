@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 
-import {
-  ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
-  encodeAttentionNotificationFocusAction
-} from '../../../../packages/attention-protocol/src/index.ts';
+import { ATTENTION_NOTIFICATION_PROTOCOL_VERSION } from '../../../../packages/attention-protocol/src/index.ts';
 import {
   buildLinuxNotifySendInvocation,
   buildMacOSAppleScriptInvocation,
@@ -20,13 +17,11 @@ const request = {
   message: 'Agent「Notifier」: ready',
   dedupeKey: 'osc9:notifier-ready',
   focusAction: {
-    command: 'devSessionCanvas.__internal.focusNode',
+    command: 'devSessionCanvas.__internal.focusAttentionNode',
     arguments: ['node-1']
   }
 };
-const callbackUri = `vscode://devsessioncanvas.dev-session-canvas-notifier/focus?payload=${encodeURIComponent(
-  encodeAttentionNotificationFocusAction(request.focusAction)
-)}`;
+const callbackUri = 'vscode://devsessioncanvas.dev-session-canvas-notifier/focus?token=test-token';
 
 const linuxInvocation = buildLinuxNotifySendInvocation({
   request,
