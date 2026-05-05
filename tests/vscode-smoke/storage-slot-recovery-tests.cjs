@@ -6,6 +6,7 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
+const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -17,6 +18,7 @@ const COMMAND_IDS = {
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testFlushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
+  testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
@@ -29,12 +31,12 @@ module.exports = {
 };
 
 async function run() {
-  const extension = vscode.extensions.getExtension(EXTENSION_ID);
-  assert.ok(extension, `Missing extension ${EXTENSION_ID}.`);
-  await extension.activate();
+  const extension = await activateVisibleExtension(vscode, EXTENSION_ID);
+  await waitForCommand(vscode, COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await waitForCommand(vscode, COMMAND_IDS.testResetState);
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
-  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
   await dispatchWebviewMessage({
@@ -219,6 +221,7 @@ async function runLiveRuntimeStorageRecoveryScenario(extension) {
 
   try {
     await setRuntimePersistenceEnabled(true);
+    await simulateRuntimeReload();
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
@@ -431,6 +434,10 @@ async function flushPersistedState() {
 
 async function setPersistedState(rawState) {
   return vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, rawState);
+}
+
+async function simulateRuntimeReload() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
 }
 
 async function setRuntimePersistenceEnabled(enabled) {

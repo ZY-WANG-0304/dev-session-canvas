@@ -78,6 +78,11 @@ src/
 tests/
   vscode-smoke/         宿主级 smoke 与重开恢复验证
   playwright/           Webview DOM 与交互回归
+extensions/vscode/
+  dev-session-canvas-notifier/
+                        UI-side notifier companion；负责本机桌面通知桥接
+packages/
+  attention-protocol/   主扩展与 notifier companion 之间的最小共享 attention 协议
 scripts/                build、打包、smoke、调试入口
 ```
 
@@ -218,6 +223,39 @@ scripts/                build、打包、smoke、调试入口
 - 渲染画布、节点、缩放与导航。
 - 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端。
 - 维护局部 UI 状态，例如当前选中节点、视口位置、上下文菜单和短生命周期输入态。
+
+### `extensions/vscode/dev-session-canvas-notifier/`
+
+这是当前阶段新增的 UI-side notifier companion。
+
+关键命名实体：
+
+- `src/extension.ts`
+- `src/platformNotification.ts`
+
+这里主要负责：
+
+- 在本机 UI 侧接收结构化 attention notification 请求。
+- 生成桌面通知点击后的 callback URI，并回调主扩展的内部聚焦命令。
+- 在测试模式下提供 notifier bridge 的宿主级 smoke 验证入口。
+
+架构不变量：
+
+- companion 只负责本机通知投递与点击回调，不持有画布权威状态。
+- 主扩展是否设置 `attentionPending`、何时去重、何时清除 attention，仍由根主扩展裁决。
+
+### `packages/attention-protocol/`
+
+这是 notifier companion 当前最小共享协议包。
+
+这里主要负责：
+
+- 定义主扩展到 companion 的结构化 notification request / result。
+- 提供 focus action 的编码与解码辅助函数。
+
+架构不变量：
+
+- 它只承载纯数据协议与无副作用 helper，不依赖 `vscode`、React 或具体桌面通知命令。
 - 通过 `acquireVsCodeApi()` 与宿主交换消息与 Webview 本地状态。
 
 架构不变量：

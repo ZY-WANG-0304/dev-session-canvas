@@ -128,9 +128,12 @@ function validateReadmeRewriteTargets({ projectRoot, gitValidationRoot, readmePa
     }
   }
 
+  console.log(`VSCE README doc ref: ${docBranch}`);
+
   if (resolvedTargets.length > 0) {
-    console.log(`VSCE README doc ref: ${docBranch}`);
     console.log(`已校验 ${readmePath} 中 ${resolvedTargets.length} 个会被重写的相对链接。`);
+  } else {
+    console.log(`${readmePath} 当前没有需要重写的相对链接。`);
   }
 }
 
