@@ -18,6 +18,7 @@ const COMMAND_IDS = {
   openCanvas: 'devSessionCanvas.openCanvas',
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
+  selectTerminalShell: 'devSessionCanvas.selectTerminalShell',
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
@@ -288,7 +289,9 @@ async function runTrustedSmoke() {
 
   await verifyRuntimeContextRefreshesDefaultAgentProvider();
   await verifyRuntimeContextRefreshesTerminalScrollback();
-  await verifyTerminalShellPathRefreshesIdleTerminalNode();
+  await verifyTerminalShellPathRefreshesStoppedTerminalNode();
+  await verifySelectTerminalShellCommandPersistsExactDetectedPath();
+  await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
@@ -1199,12 +1202,11 @@ async function verifyRuntimeContextRefreshesTerminalScrollback() {
   }
 }
 
-async function verifyTerminalShellPathRefreshesIdleTerminalNode() {
+async function verifyTerminalShellPathRefreshesStoppedTerminalNode() {
   const configuration = vscode.workspace.getConfiguration();
-  const originalShell = normalizeTerminalShellSelection(
-    configuration.get('devSessionCanvas.terminal.shell', 'default')
-  );
-  const originalShellPath = configuration.get('devSessionCanvas.terminal.shellPath', '');
+  const originalShellSetting = configuration.inspect('devSessionCanvas.terminal.shell');
+  const originalShellPathSetting = configuration.inspect('devSessionCanvas.terminal.shellPath');
+  const configurationTarget = resolvePreferredTerminalShellSettingsTarget();
   let terminalNodeId;
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
@@ -1214,19 +1216,25 @@ async function verifyTerminalShellPathRefreshesIdleTerminalNode() {
     let snapshot = await waitForSnapshot((currentSnapshot) => {
       return currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1;
     }, 20000);
-    const terminalNode = findNodeByKind(snapshot, 'terminal');
+    let terminalNode = findNodeByKind(snapshot, 'terminal');
     terminalNodeId = terminalNode.id;
+
+    snapshot = await waitForTerminalLive(terminalNodeId);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
 
     const expectedShellPath = await resolveAlternateTerminalShellPath(
       terminalNode.metadata?.terminal?.shellPath ?? ''
     );
 
-    await setTerminalShell('default');
-    await setTerminalShellPath(expectedShellPath);
+    snapshot = await ensureTerminalStopped(terminalNodeId);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, false);
+
+    await setTerminalShell('default', configurationTarget);
+    await setTerminalShellPath(expectedShellPath, configurationTarget);
 
     snapshot = await waitForSnapshot((currentSnapshot) => {
       const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return currentNode?.metadata?.terminal?.shellPath === expectedShellPath;
+      return currentNode?.metadata?.terminal?.shellPath === expectedShellPath && !currentNode?.metadata?.terminal?.liveSession;
     }, 20000);
     assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.shellPath, expectedShellPath);
 
@@ -1244,8 +1252,134 @@ async function verifyTerminalShellPathRefreshesIdleTerminalNode() {
       await ensureTerminalStopped(terminalNodeId).catch(() => {});
     }
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
-    await setTerminalShell(originalShell);
-    await setTerminalShellPath(originalShellPath);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shell', originalShellSetting);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shellPath', originalShellPathSetting);
+  }
+}
+
+async function verifySelectTerminalShellCommandPersistsExactDetectedPath() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalShellSetting = configuration.inspect('devSessionCanvas.terminal.shell');
+  const originalShellPathSetting = configuration.inspect('devSessionCanvas.terminal.shellPath');
+  const configurationTarget = resolvePreferredTerminalShellSettingsTarget();
+  const originalPathEnv = process.env.PATH || '';
+  const fakeShellRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-select-terminal-shell-'));
+  const shellBinaryName = process.platform === 'win32' ? 'bash.exe' : 'bash';
+  const firstDir = path.join(fakeShellRoot, 'first');
+  const secondDir = path.join(fakeShellRoot, 'second');
+  const firstShellPath = path.join(firstDir, shellBinaryName);
+  const secondShellPath = path.join(secondDir, shellBinaryName);
+
+  await fs.mkdir(firstDir, { recursive: true });
+  await fs.mkdir(secondDir, { recursive: true });
+  await createFakeExecutableShell(firstShellPath);
+  await createFakeExecutableShell(secondShellPath);
+
+  try {
+    process.env.PATH = [firstDir, secondDir, originalPathEnv].filter(Boolean).join(path.delimiter);
+    await setTerminalShell('default', configurationTarget);
+    await setTerminalShellPath(secondShellPath, configurationTarget);
+
+    await withInterceptedQuickPicks(
+      async (quickPickCalls) => {
+        await withInterceptedInformationMessages(async () => {
+          await vscode.commands.executeCommand(COMMAND_IDS.selectTerminalShell);
+        });
+        assert.strictEqual(quickPickCalls.length, 1, 'Expected terminal shell selection command to open one Quick Pick.');
+      },
+      async ({ items }) => {
+        const picked = items.find(
+          (item) => normalizeShellPath(item.resolvedPath || '') === normalizeShellPath(secondShellPath)
+        );
+        assert.ok(picked, `Expected Quick Pick to include the explicitly chosen shell path: ${secondShellPath}`);
+        return picked;
+      }
+    );
+
+    const refreshedConfiguration = vscode.workspace.getConfiguration();
+    const configuredShell = normalizeTerminalShellSelection(
+      refreshedConfiguration.get('devSessionCanvas.terminal.shell', 'default')
+    );
+    assert.ok(
+      configuredShell === 'default' || configuredShell === 'bash',
+      `Expected terminal shell selection command to preserve a compatible shell type, got: ${configuredShell}`
+    );
+    assert.strictEqual(
+      normalizeShellPath(refreshedConfiguration.get('devSessionCanvas.terminal.shellPath', '')),
+      normalizeShellPath(secondShellPath)
+    );
+  } finally {
+    process.env.PATH = originalPathEnv;
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shell', originalShellSetting);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shellPath', originalShellPathSetting);
+    await fs.rm(fakeShellRoot, { recursive: true, force: true });
+  }
+}
+
+async function verifySelectTerminalShellCommandUpdatesWorkspaceOverride() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalShellSetting = configuration.inspect('devSessionCanvas.terminal.shell');
+  const originalShellPathSetting = configuration.inspect('devSessionCanvas.terminal.shellPath');
+  const originalPathEnv = process.env.PATH || '';
+  const fakeShellRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-workspace-terminal-shell-'));
+  const shellBinaryName = process.platform === 'win32' ? 'bash.exe' : 'bash';
+  const firstDir = path.join(fakeShellRoot, 'first');
+  const secondDir = path.join(fakeShellRoot, 'second');
+  const firstShellPath = path.join(firstDir, shellBinaryName);
+  const secondShellPath = path.join(secondDir, shellBinaryName);
+
+  assert.ok(hasWorkspaceSettingsTarget(), 'Expected workspace-scoped terminal shell smoke to run inside an open workspace.');
+
+  await fs.mkdir(firstDir, { recursive: true });
+  await fs.mkdir(secondDir, { recursive: true });
+  await createFakeExecutableShell(firstShellPath);
+  await createFakeExecutableShell(secondShellPath);
+
+  try {
+    process.env.PATH = [firstDir, secondDir, originalPathEnv].filter(Boolean).join(path.delimiter);
+    await setTerminalShell('default', vscode.ConfigurationTarget.Global);
+    await setTerminalShellPath(secondShellPath, vscode.ConfigurationTarget.Global);
+    await setTerminalShell('bash', vscode.ConfigurationTarget.Workspace);
+    await setTerminalShellPath(undefined, vscode.ConfigurationTarget.Workspace);
+
+    await withInterceptedQuickPicks(
+      async () => {
+        await withInterceptedInformationMessages(async () => {
+          await vscode.commands.executeCommand(COMMAND_IDS.selectTerminalShell);
+        });
+      },
+      async ({ items }) => {
+        const picked = items.find(
+          (item) => normalizeShellPath(item.resolvedPath || '') === normalizeShellPath(firstShellPath)
+        );
+        assert.ok(picked, `Expected Quick Pick to include the detected workspace override shell path: ${firstShellPath}`);
+        return picked;
+      }
+    );
+
+    const refreshedConfiguration = vscode.workspace.getConfiguration();
+    const refreshedShellSetting = refreshedConfiguration.inspect('devSessionCanvas.terminal.shell');
+    const refreshedShellPathSetting = refreshedConfiguration.inspect('devSessionCanvas.terminal.shellPath');
+    assert.strictEqual(
+      normalizeTerminalShellSelection(refreshedConfiguration.get('devSessionCanvas.terminal.shell', 'default')),
+      'bash',
+      'Expected shell selection command to keep the logical shell type effective when a workspace override is active.'
+    );
+    assert.strictEqual(
+      normalizeShellPath(refreshedConfiguration.get('devSessionCanvas.terminal.shellPath', '')),
+      normalizeShellPath(firstShellPath),
+      'Expected shell selection command to make the workspace override path take effect when a workspace override is active.'
+    );
+    assert.strictEqual(
+      normalizeShellPath(refreshedShellPathSetting?.globalValue || ''),
+      normalizeShellPath(secondShellPath),
+      'Expected shell selection command to leave the device-level shell path unchanged when updating a workspace override.'
+    );
+  } finally {
+    process.env.PATH = originalPathEnv;
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shell', originalShellSetting);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shellPath', originalShellPathSetting);
+    await fs.rm(fakeShellRoot, { recursive: true, force: true });
   }
 }
 
@@ -7878,16 +8012,51 @@ async function hasExecutableShellPath(candidatePath) {
   }
 }
 
-async function setTerminalShell(selection) {
-  await vscode.workspace
-    .getConfiguration()
-    .update('devSessionCanvas.terminal.shell', selection, vscode.ConfigurationTarget.Global);
+async function createFakeExecutableShell(candidatePath) {
+  await fs.writeFile(candidatePath, process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\nexit 0\n', 'utf8');
+  if (process.platform !== 'win32') {
+    await fs.chmod(candidatePath, 0o755);
+  }
 }
 
-async function setTerminalShellPath(shellPath) {
+function hasWorkspaceSettingsTarget() {
+  return Boolean(vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0);
+}
+
+function resolvePreferredTerminalShellSettingsTarget() {
+  return hasWorkspaceSettingsTarget()
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+}
+
+function getWorkspaceScopedConfigurationValue(inspection) {
+  return typeof inspection?.workspaceFolderValue !== 'undefined'
+    ? inspection.workspaceFolderValue
+    : inspection?.workspaceValue;
+}
+
+async function restoreTerminalShellSetting(settingKey, inspection) {
+  const configuration = vscode.workspace.getConfiguration();
+  await configuration.update(settingKey, inspection?.globalValue, vscode.ConfigurationTarget.Global);
+  if (hasWorkspaceSettingsTarget()) {
+    await configuration.update(
+      settingKey,
+      getWorkspaceScopedConfigurationValue(inspection),
+      vscode.ConfigurationTarget.Workspace
+    );
+  }
+}
+
+async function setTerminalShell(selection, target = vscode.ConfigurationTarget.Global) {
   await vscode.workspace
     .getConfiguration()
-    .update('devSessionCanvas.terminal.shellPath', shellPath, vscode.ConfigurationTarget.Global);
+    .update('devSessionCanvas.terminal.shell', selection, target);
+}
+
+async function setTerminalShellPath(shellPath, target = vscode.ConfigurationTarget.Global) {
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.terminal.shellPath', shellPath, target);
 }
 
 async function setAgentDefaultArgs(provider, defaultArgs) {

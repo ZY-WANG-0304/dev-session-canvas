@@ -26,8 +26,8 @@ import {
   validateAgentCommandLine
 } from './common/agentLaunchPresets';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
-import { getConfiguredTerminalShell } from './panel/configuration';
-import { detectAvailableTerminalShells, normalizeConfiguredTerminalShell } from './panel/terminalShellConfiguration';
+import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
+import { buildPersistedTerminalShellSelection, detectAvailableTerminalShells } from './panel/terminalShellConfiguration';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import {
   CanvasSidebarNodeListView,
@@ -72,6 +72,16 @@ interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
   resolvedPath?: string;
   shellName?: string;
   useDefault?: boolean;
+}
+
+function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
+  return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+}
+
+function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTarget): string {
+  return target === vscode.ConfigurationTarget.Workspace ? '当前 workspace' : '当前设备';
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -266,11 +276,14 @@ function registerCommand(context: vscode.ExtensionContext, commandId: string, ha
 
 async function promptTerminalShellSelection(): Promise<void> {
   const configuration = vscode.workspace.getConfiguration();
-  const currentConfiguredShellPath = configuration.get<string>(CONFIG_KEYS.terminalShellPath, '').trim();
+  const effectiveTerminalShellConfiguration = getEffectiveTerminalShellConfiguration();
+  const currentConfiguredShellPath = effectiveTerminalShellConfiguration.configuredPath;
   const resolvedConfiguredShell = getConfiguredTerminalShell();
   const detectedShells = await detectAvailableTerminalShells({
     defaultShellPath: vscode.env.shell
   });
+  const configurationTarget = resolveTerminalShellConfigurationTarget();
+  const targetLabel = describeTerminalShellConfigurationTarget(configurationTarget);
 
   const picked = await vscode.window.showQuickPick(
     buildTerminalShellQuickPickItems(
@@ -289,11 +302,11 @@ async function promptTerminalShellSelection(): Promise<void> {
   }
 
   if (picked.useDefault) {
-    await configuration.update(CONFIG_KEYS.terminalShell, 'default', vscode.ConfigurationTarget.Global);
-    await configuration.update(CONFIG_KEYS.terminalShellPath, '', vscode.ConfigurationTarget.Global);
+    await configuration.update(CONFIG_KEYS.terminalShell, 'default', configurationTarget);
+    await configuration.update(CONFIG_KEYS.terminalShellPath, '', configurationTarget);
     const defaultShellPath = detectedShells.find((shell) => shell.isDefault)?.resolvedPath ?? vscode.env.shell.trim();
     const detail = defaultShellPath ? `：${defaultShellPath}` : '';
-    await vscode.window.showInformationMessage(`嵌入式 Terminal 已改为跟随当前默认 shell${detail}`);
+    await vscode.window.showInformationMessage(`已将${targetLabel}的嵌入式 Terminal 改为跟随当前默认 shell${detail}`);
     return;
   }
 
@@ -301,17 +314,32 @@ async function promptTerminalShellSelection(): Promise<void> {
     return;
   }
 
-  const configuredShell = normalizeConfiguredTerminalShell(picked.shellName);
-  if (configuredShell !== 'default') {
-    await configuration.update(CONFIG_KEYS.terminalShell, configuredShell, vscode.ConfigurationTarget.Global);
-    await configuration.update(CONFIG_KEYS.terminalShellPath, '', vscode.ConfigurationTarget.Global);
-    await vscode.window.showInformationMessage(`嵌入式 Terminal 已改为使用 ${picked.label}（运行时按当前设备动态解析）。`);
+  const persistedSelection = buildPersistedTerminalShellSelection({
+    shellName: picked.shellName,
+    resolvedPath: picked.resolvedPath,
+    useDefault: picked.useDefault
+  });
+  if (!persistedSelection) {
     return;
   }
 
-  await configuration.update(CONFIG_KEYS.terminalShell, 'default', vscode.ConfigurationTarget.Global);
-  await configuration.update(CONFIG_KEYS.terminalShellPath, picked.resolvedPath, vscode.ConfigurationTarget.Global);
-  await vscode.window.showInformationMessage(`嵌入式 Terminal shell 已更新为 ${picked.label}：${picked.resolvedPath}`);
+  await configuration.update(
+    CONFIG_KEYS.terminalShell,
+    persistedSelection.configuredShell,
+    configurationTarget
+  );
+  await configuration.update(
+    CONFIG_KEYS.terminalShellPath,
+    persistedSelection.configuredPath,
+    configurationTarget
+  );
+  const configuredShellDetail =
+    persistedSelection.configuredShell === 'default'
+      ? ''
+      : `（类型：${persistedSelection.configuredShell}；实际启动优先使用该路径）`;
+  await vscode.window.showInformationMessage(
+    `已将${targetLabel}的嵌入式 Terminal shell 更新为 ${picked.label}：${persistedSelection.configuredPath}${configuredShellDetail}`
+  );
 }
 
 function buildTerminalShellQuickPickItems(

@@ -325,7 +325,7 @@
             "cmd"
           ],
           "default": "default",
-          "scope": "machine",
+          "scope": "machine-overridable",
           "markdownDescription": "%configuration.terminal.shell.description%",
           "markdownEnumDescriptions": [
             "%configuration.terminal.shell.default.description%",
@@ -341,7 +341,7 @@
         "devSessionCanvas.terminal.shellPath": {
           "type": "string",
           "default": "",
-          "scope": "machine",
+          "scope": "machine-overridable",
           "markdownDescription": "%configuration.terminal.shellPath.description%"
         },
         "devSessionCanvas.files.enabled": {

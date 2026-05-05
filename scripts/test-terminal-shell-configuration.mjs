@@ -21,9 +21,11 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    buildPersistedTerminalShellSelection,
     detectAvailableTerminalShells,
     inspectConfiguredTerminalShell,
     normalizeConfiguredTerminalShell,
+    resolveEffectiveTerminalShellConfiguration,
     resolveConfiguredTerminalShell,
     resolveDefaultTerminalShellPath,
     resolveNamedTerminalShellPath
@@ -32,6 +34,57 @@ try {
   assert.equal(normalizeConfiguredTerminalShell('bash'), 'bash');
   assert.equal(normalizeConfiguredTerminalShell('cmd'), 'cmd');
   assert.equal(normalizeConfiguredTerminalShell('not-a-shell'), 'default');
+  assert.deepEqual(
+    resolveEffectiveTerminalShellConfiguration({
+      defaultConfiguredShell: 'default',
+      defaultConfiguredPath: '',
+      globalConfiguredShell: 'zsh',
+      globalConfiguredPath: '/global/zsh',
+      workspaceConfiguredShell: 'bash',
+      hasWorkspace: true
+    }),
+    {
+      configuredShell: 'bash',
+      configuredPath: '',
+      configurationScope: 'workspace'
+    }
+  );
+  assert.deepEqual(
+    resolveEffectiveTerminalShellConfiguration({
+      defaultConfiguredShell: 'default',
+      defaultConfiguredPath: '',
+      globalConfiguredShell: 'zsh',
+      globalConfiguredPath: '/global/zsh',
+      workspaceConfiguredPath: ' /workspace/bash ',
+      hasWorkspace: true
+    }),
+    {
+      configuredShell: 'default',
+      configuredPath: '/workspace/bash',
+      configurationScope: 'workspace'
+    }
+  );
+  assert.deepEqual(
+    resolveEffectiveTerminalShellConfiguration({
+      defaultConfiguredShell: 'default',
+      defaultConfiguredPath: '',
+      globalConfiguredShell: 'zsh',
+      globalConfiguredPath: ' /global/zsh ',
+      workspaceConfiguredShell: 'bash',
+      workspaceConfiguredPath: '/workspace/bash',
+      hasWorkspace: false
+    }),
+    {
+      configuredShell: 'zsh',
+      configuredPath: '/global/zsh',
+      configurationScope: 'global'
+    }
+  );
+  assert.deepEqual(buildPersistedTerminalShellSelection({ useDefault: true }), {
+    configuredShell: 'default',
+    configuredPath: ''
+  });
+  assert.equal(buildPersistedTerminalShellSelection({ shellName: 'bash', resolvedPath: '  ' }), undefined);
 
   assert.equal(
     resolveDefaultTerminalShellPath(
@@ -113,6 +166,43 @@ try {
     }
   );
 
+  const duplicateShellRoot = path.join(tempDir, 'duplicate-bash');
+  const firstBashDir = path.join(duplicateShellRoot, 'first');
+  const secondBashDir = path.join(duplicateShellRoot, 'second');
+  await mkdir(firstBashDir, { recursive: true });
+  await mkdir(secondBashDir, { recursive: true });
+  const firstBashPath = path.join(firstBashDir, 'bash');
+  const secondBashPath = path.join(secondBashDir, 'bash');
+  await createExecutable(firstBashPath);
+  await createExecutable(secondBashPath);
+
+  assert.deepEqual(
+    buildPersistedTerminalShellSelection({
+      shellName: 'bash',
+      resolvedPath: ` ${secondBashPath} `
+    }),
+    {
+      configuredShell: 'bash',
+      configuredPath: secondBashPath
+    }
+  );
+  assert.deepEqual(
+    resolveConfiguredTerminalShell({
+      configuredShell: 'bash',
+      configuredPath: secondBashPath,
+      platform: 'linux',
+      env: {
+        PATH: `${firstBashDir}:${secondBashDir}`
+      }
+    }),
+    {
+      configuredPath: secondBashPath,
+      resolvedPath: secondBashPath,
+      resolutionSource: 'path',
+      configuredShell: 'bash'
+    }
+  );
+
   const posixShellDir = path.join(tempDir, 'posix-shells');
   await mkdir(posixShellDir, { recursive: true });
   const bashPath = path.join(posixShellDir, 'bash');
@@ -123,6 +213,17 @@ try {
   await createExecutable(zshPath);
   await createExecutable(nuPath);
   await createExecutable(falsePath);
+
+  assert.deepEqual(
+    buildPersistedTerminalShellSelection({
+      shellName: 'nu',
+      resolvedPath: ` ${nuPath} `
+    }),
+    {
+      configuredShell: 'default',
+      configuredPath: nuPath
+    }
+  );
 
   assert.deepEqual(
     resolveConfiguredTerminalShell({
