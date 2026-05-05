@@ -4,7 +4,9 @@ import { existsSync } from 'fs';
 import {
   ensureVSCodeExecutable,
   launchPreparedVSCodeScenario,
-  prepareRuntime
+  prepareMainSmokeHostExtension,
+  prepareRuntime,
+  resolveStagedSmokeTestPath
 } from './vscode-smoke-runner.mjs';
 
 if (process.platform !== 'win32') {
@@ -12,7 +14,6 @@ if (process.platform !== 'win32') {
 }
 
 const projectRoot = process.cwd();
-const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'windows-real-codex-smoke.cjs');
 const explicitCodexCommand =
   process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_EXPLICIT_COMMAND?.trim() ||
   path.join(process.env.APPDATA ?? '', 'npm', 'codex.cmd');
@@ -26,14 +27,19 @@ async function main() {
       'security.workspace.trust.enabled': false
     }
   });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+  });
 
   await launchPreparedVSCodeScenario({
     projectRoot,
     runtime,
     vscodeExecutablePath,
     workspacePath: projectRoot,
-    extensionDevelopmentPath: projectRoot,
-    extensionTestsPath,
+    extensionDevelopmentPath: smokeHostRoot,
+    extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'windows-real-codex-smoke.cjs'),
+    disableExtensions: false,
     disableWorkspaceTrust: true,
     extensionTestsEnv: {
       DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_DEFAULT_COMMAND:

@@ -3,7 +3,6 @@ const path = require('path');
 const vscode = require('vscode');
 
 const MAIN_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
-const NOTIFIER_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas-notifier';
 const MAIN_COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
@@ -17,6 +16,9 @@ const MAIN_COMMAND_IDS = {
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
+const NOTIFIER_COMMAND_IDS = {
+  postSystemNotification: 'devSessionCanvasNotifier.postSystemNotification'
+};
 const NOTIFIER_TEST_COMMAND_IDS = {
   getPostedNotifications: 'devSessionCanvasNotifier.__test.getPostedNotifications',
   clearPostedNotifications: 'devSessionCanvasNotifier.__test.clearPostedNotifications',
@@ -28,13 +30,13 @@ module.exports = {
 };
 
 async function run() {
-  const mainExtension = vscode.extensions.getExtension(MAIN_EXTENSION_ID);
-  assert.ok(mainExtension, `Missing extension ${MAIN_EXTENSION_ID}.`);
+  const mainExtension = await waitForVisibleExtension(MAIN_EXTENSION_ID);
+
   await mainExtension.activate();
 
-  const notifierExtension = vscode.extensions.getExtension(NOTIFIER_EXTENSION_ID);
-  assert.ok(notifierExtension, `Missing extension ${NOTIFIER_EXTENSION_ID}.`);
-  await notifierExtension.activate();
+  await waitForCommand(MAIN_COMMAND_IDS.testResetState);
+  await waitForCommand(NOTIFIER_TEST_COMMAND_IDS.clearPostedNotifications);
+  await activateNotifierSmokeHarness();
 
   await vscode.commands.executeCommand(MAIN_COMMAND_IDS.testResetState);
   await clearDiagnosticEvents();
@@ -245,6 +247,50 @@ async function waitForHostMessages(predicate, timeoutMs = 20000) {
   }
 
   throw new Error('Timed out waiting for host messages.');
+}
+
+async function waitForCommand(commandId, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const commands = await vscode.commands.getCommands(true);
+    if (commands.includes(commandId)) {
+      return;
+    }
+    await sleep(100);
+  }
+
+  throw new Error(`Timed out waiting for command ${commandId}.`);
+}
+
+async function waitForVisibleExtension(extensionId, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const extension = vscode.extensions.all.find((candidate) => candidate.id === extensionId);
+    if (extension) {
+      return extension;
+    }
+    await sleep(100);
+  }
+
+  const visibleIds = vscode.extensions.all
+    .map((extension) => extension.id)
+    .filter((id) => id.startsWith('devsessioncanvas'))
+    .sort();
+  throw new Error(
+    `Timed out waiting for extension ${extensionId}. Visible devsessioncanvas extensions: ${visibleIds.join(', ')}`
+  );
+}
+
+async function activateNotifierSmokeHarness() {
+  await vscode.commands.executeCommand(NOTIFIER_COMMAND_IDS.postSystemNotification, {
+    version: 1,
+    kind: 'execution-attention',
+    title: 'notifier smoke bootstrap',
+    message: 'bootstrap notifier smoke command surface',
+    dedupeKey: `notifier-smoke-bootstrap:${Date.now()}`
+  });
+  await waitForCommand(NOTIFIER_TEST_COMMAND_IDS.clearPostedNotifications);
+  await clearNotifierPostedNotifications();
 }
 
 async function ensureAttentionNotificationBridgeMode(mode) {

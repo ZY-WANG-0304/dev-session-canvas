@@ -13,6 +13,7 @@ import {
   type AttentionNotificationFocusAction,
   type AttentionNotificationRequest
 } from '../../../../packages/attention-protocol/src/index';
+import { isTestHarnessMode } from '../../../../src/common/testHarness';
 import { postDesktopNotification } from './platformNotification';
 import { NotifierSidebarViewProvider } from './sidebarView';
 import type { NotifierExtensionModeLabel } from './sidebarEnvironment';
@@ -114,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
       : undefined;
     const playSound = readPlaySoundEnabled();
     const result =
-      context.extensionMode === vscode.ExtensionMode.Test
+      isTestHarnessMode(context.extensionMode)
         ? ({
             status: 'posted',
             backend: 'test',
@@ -225,7 +226,7 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  if (context.extensionMode === vscode.ExtensionMode.Test) {
+  if (isTestHarnessMode(context.extensionMode)) {
     context.subscriptions.push(
       vscode.commands.registerCommand(NOTIFIER_TEST_COMMAND_IDS.getPostedNotifications, () =>
         cloneDebugRecords(postedNotifications)
@@ -417,12 +418,12 @@ function describeActivationMode(mode: AttentionNotificationActivationMode): stri
 }
 
 function getExtensionModeLabel(mode: vscode.ExtensionMode): NotifierExtensionModeLabel {
-  if (mode === vscode.ExtensionMode.Development) {
-    return 'development';
+  if (isTestHarnessMode(mode)) {
+    return 'test';
   }
 
-  if (mode === vscode.ExtensionMode.Test) {
-    return 'test';
+  if (mode === vscode.ExtensionMode.Development) {
+    return 'development';
   }
 
   return 'production';

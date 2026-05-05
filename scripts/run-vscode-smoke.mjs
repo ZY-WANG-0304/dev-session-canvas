@@ -6,9 +6,10 @@ import {
   ensureVSCodeExecutable,
   installVSCodeExtensions,
   launchPreparedVSCodeScenario,
+  prepareMainSmokeHostExtension,
   prepareRuntime,
+  resolveStagedSmokeTestPath,
   runInsideXvfb,
-  runVSCodeScenario,
   shouldReRunInsideXvfb,
   writeUserSettings
 } from './vscode-smoke-runner.mjs';
@@ -16,8 +17,6 @@ import { createRemoteSSHFixture } from './vscode-remote-ssh-fixture.mjs';
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
-const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'extension-tests.cjs');
-const realReopenExtensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'real-reopen-tests.cjs');
 const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
@@ -61,15 +60,31 @@ async function main() {
       continue;
     }
 
-    await runVSCodeScenario({
+    const runtime = await prepareRuntime({
       projectRoot,
       debugRoot: path.join(projectRoot, '.debug', 'vscode-smoke', scenario.name),
       runtimeDirName: `dsc-vscode-smoke-runtime-${scenario.name}`,
-      workspacePath: projectRoot,
-      extensionDevelopmentPath: projectRoot,
-      extensionTestsPath,
-      disableWorkspaceTrust: scenario.disableWorkspaceTrust,
       userSettings: scenario.userSettings,
+      extensionTestsEnv: {
+        DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
+        DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+        DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+        PATH: smokeFixturesPath
+      }
+    });
+    const smokeHostRoot = await prepareMainSmokeHostExtension({
+      projectRoot,
+      targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+    });
+
+    await launchPreparedVSCodeScenario({
+      projectRoot,
+      runtime,
+      workspacePath: projectRoot,
+      extensionDevelopmentPath: smokeHostRoot,
+      extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs'),
+      disableExtensions: false,
+      disableWorkspaceTrust: scenario.disableWorkspaceTrust,
       extensionTestsEnv: {
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
@@ -143,13 +158,18 @@ async function runLocalRealWindowReopenScenario(options) {
       'security.workspace.trust.enabled': false
     }
   });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+  });
 
   const sharedOptions = {
     projectRoot,
     runtime,
     workspacePath: projectRoot,
-    extensionDevelopmentPath: projectRoot,
-    extensionTestsPath: realReopenExtensionTestsPath,
+    extensionDevelopmentPath: smokeHostRoot,
+    extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'real-reopen-tests.cjs'),
+    disableExtensions: false,
     disableWorkspaceTrust: true
   };
   const controlFilePath = path.join(runtime.artifactsDir, `${options.scenarioName}-control.json`);
@@ -214,6 +234,10 @@ async function runRemoteSSHRealReopenScenario() {
     debugRoot,
     runtimeDirName: 'dsc-vscode-smoke-runtime-remote-ssh-real-reopen'
   });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+  });
   const controlFilePath = path.join(runtime.artifactsDir, 'remote-ssh-real-reopen-control.json');
   const workspaceFallbackControlFilePath = path.join(projectRoot, '.debug', 'vscode-smoke', 'real-reopen-control.json');
   const stateFilePath = path.join(runtime.artifactsDir, 'remote-ssh-real-reopen-state.json');
@@ -254,7 +278,11 @@ async function runRemoteSSHRealReopenScenario() {
       }
     });
     const remoteProjectUri = toRemoteURI(fixture.remoteAuthority, projectRoot);
-    const remoteRealReopenTestsUri = toRemoteURI(fixture.remoteAuthority, realReopenExtensionTestsPath);
+    const remoteSmokeHostUri = toRemoteURI(fixture.remoteAuthority, smokeHostRoot);
+    const remoteRealReopenTestsUri = toRemoteURI(
+      fixture.remoteAuthority,
+      resolveStagedSmokeTestPath(smokeHostRoot, 'real-reopen-tests.cjs')
+    );
 
     const sharedOptions = {
       projectRoot,
@@ -262,7 +290,7 @@ async function runRemoteSSHRealReopenScenario() {
       vscodeExecutablePath,
       folderUri: remoteProjectUri,
       remoteAuthority: fixture.remoteAuthority,
-      extensionDevelopmentPath: [remoteProjectUri, ...remoteExtensionDevelopmentPaths],
+      extensionDevelopmentPath: [remoteSmokeHostUri, ...remoteExtensionDevelopmentPaths],
       extensionTestsPath: remoteRealReopenTestsUri,
       disableWorkspaceTrust: true,
       disableExtensions: false,
