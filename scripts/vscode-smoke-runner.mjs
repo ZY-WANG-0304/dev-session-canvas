@@ -137,7 +137,7 @@ export async function prepareMainSmokeHostExtension(options) {
     const sourcePath = path.join(options.projectRoot, entry);
     const targetPath = path.join(smokeHostRoot, entry);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.cp(sourcePath, targetPath, { recursive: true });
+    await copyPathRecursive(sourcePath, targetPath);
   }
 
   const packageJsonPath = path.join(smokeHostRoot, 'package.json');
@@ -158,7 +158,7 @@ export async function stageSmokeTestSuite(options) {
   const targetRoot = path.join(options.targetRoot, STAGED_SMOKE_TESTS_ROOT);
   await fs.mkdir(path.dirname(targetRoot), { recursive: true });
   await fs.rm(targetRoot, { recursive: true, force: true });
-  await fs.cp(sourceRoot, targetRoot, { recursive: true });
+  await copyPathRecursive(sourceRoot, targetRoot);
   return targetRoot;
 }
 
@@ -172,8 +172,16 @@ export async function stageBundledExtension(options) {
   const extensionDirName = `${packageJson.publisher}.${packageJson.name}-${packageJson.version}`;
   const targetRoot = path.join(options.extensionsDir, extensionDirName);
   await fs.rm(targetRoot, { recursive: true, force: true });
-  await fs.cp(options.sourceRoot, targetRoot, { recursive: true });
+  await copyPathRecursive(options.sourceRoot, targetRoot);
   return targetRoot;
+}
+
+export async function copyPathRecursive(sourcePath, targetPath) {
+  await fs.cp(sourcePath, targetPath, {
+    recursive: true,
+    dereference: true,
+    force: true
+  });
 }
 
 export async function writeUserSettings(userDataDir, userSettings) {

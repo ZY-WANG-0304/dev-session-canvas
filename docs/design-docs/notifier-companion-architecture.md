@@ -76,16 +76,16 @@ updated_at: 2026-05-05
 - `dedupeKey`
 - `focusAction`
 
-其中 `focusAction` 当前收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部聚焦命令即可。
+其中 `focusAction` 当前仍收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部聚焦命令即可；但真正暴露给外部通知系统的 callback URI 不再直接携带这段动作载荷，而是只携带 companion 侧登记的一次性 token。
 
 ### 5.3 回调策略：URI handler 负责“回到 VS Code”
 
-companion 使用 `vscode.window.registerUriHandler(...)` 注册自己的 URI handler，并把 `focusAction` 编码进 callback URI 中。原因有两个：
+companion 使用 `vscode.window.registerUriHandler(...)` 注册自己的 URI handler，但 callback URI 只会携带一次性 token；真实 `focusAction` 会先登记到 companion 内部的 pending table，并在回调时按 token 查表执行。这样可以避免把任意命令载荷直接暴露给外部通知系统，同时仍保留 URI handler 作为真实点击路径。原因有两个：
 
 1. 对 Windows Toast、macOS `terminal-notifier` 这类支持 protocol / open-url 的通知后端，URI handler 是最自然的点击回调入口。
 2. 即使未来从桌面通知点击时需要把 VS Code 从后台唤回前台，URI handler 仍然比“只在当前进程内直接 executeCommand”更稳定，也更接近真实用户路径。
 
-Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 companion 进程内直接执行 focus action；但 companion 仍然同步生成 callback URI，并在测试态用它验证回调链路。
+Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 companion 进程内直接执行 focus action；但 companion 仍然同步生成 callback URI，并在测试态用它验证回调链路。无论是直接执行还是 URI 回调，companion 当前都只接受当前设计明确允许的两类动作：主扩展的 `devSessionCanvas.__internal.focusAttentionNode`，以及 notifier 自己的测试确认命令。
 
 ### 5.4 主扩展回退策略：companion 优先，工作台通知兜底
 
@@ -114,6 +114,8 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 - 用户从任一 Marketplace 页面进入安装，都能自动补齐另一侧，不需要再手动理解“workspace 主扩展 + 本机 UI companion”的组合关系
 - 仍然保持两个独立 VSIX，与当前“主扩展负责画布与 attention 判定、notifier 负责本机桌面通知”的分层一致
 - 在 `Remote SSH` / Dev Container 一类跨 host 场景里，也继续符合 VS Code 官方对 `extensionDependencies + api:none + commands` 的推荐用法
+
+需要单独说明的是：repo-local 的 smoke host / VSIX smoke 为了在同一个 Development Host 中装配 wrapper，会在 staged 测试副本里临时移除 `extensionDependencies`。这不改变正式 manifest 的安装策略，但意味着“真实安装时是否自动补齐依赖”仍应通过 clean profile / Marketplace / VSIX 安装步骤单独复核，而不是把 staged smoke 当成直接证据。
 
 ### 5.6 聚焦语义：系统通知点击必须清除 attention
 
@@ -244,5 +246,6 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 当联调入口本身来自本地 clone 窗口时，额外提供 `Run Remote Main + Local Notifier (Prompt from Local Window)`，要求显式输入 `remoteWorkspacePath`，避免把本机 `${workspaceFolder}` 误拼成远端 `folder-uri`
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
+- 当前 staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”
 
-因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径、双向自动安装关系，以及“远端主扩展 + 本机 UI notifier”的联调拓扑都已获得自动化与人工证据闭环。是否额外引入独立 extension pack 仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
+因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径，以及“远端主扩展 + 本机 UI notifier”的联调拓扑都已获得自动化与人工证据闭环。双向 `extensionDependencies` 作为正式安装策略已经落在 manifest 中，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。

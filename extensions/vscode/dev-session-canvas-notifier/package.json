@@ -65,6 +65,7 @@
   "main": "./dist/extension.js",
   "scripts": {
     "build": "node ./scripts/build.mjs",
+    "package:vsix": "npm run build && node ./scripts/package-vsix.mjs",
     "typecheck": "tsc -p ./tsconfig.json --noEmit"
   },
   "repository": {

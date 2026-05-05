@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 
 import {
+  copyPathRecursive,
   resolveStagedSmokeTestPath,
   runInsideXvfb,
   runVSCodeScenario,
@@ -69,7 +70,7 @@ async function preparePackagedSmokeHostExtension({ packagedExtensionPath, root }
   const smokeHostRoot = path.join(root, 'smoke-host');
   const notifierRuntimeRoot = path.join(smokeHostRoot, 'notifier-extension');
   await fs.rm(smokeHostRoot, { recursive: true, force: true });
-  await fs.cp(packagedExtensionPath, smokeHostRoot, { recursive: true });
+  await copyPathRecursive(packagedExtensionPath, smokeHostRoot);
   await stageNotifierExtension(notifierRuntimeRoot);
   await stageSmokeTestSuite({
     projectRoot,
@@ -95,7 +96,7 @@ async function stageNotifierExtension(targetRoot) {
     const sourcePath = path.join(notifierExtensionRoot, entry);
     const targetPath = path.join(targetRoot, entry);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.cp(sourcePath, targetPath, { recursive: true });
+    await copyPathRecursive(sourcePath, targetPath);
   }
 
   return targetRoot;

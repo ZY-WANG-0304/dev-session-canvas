@@ -42,6 +42,7 @@ async function run() {
   await clearDiagnosticEvents();
   await clearHostMessages();
   await clearNotifierPostedNotifications();
+  await verifyUnsupportedFocusActionIsRejected();
 
   const configuration = vscode.workspace.getConfiguration();
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
@@ -163,6 +164,9 @@ async function run() {
       false,
       'Replaying the notifier callback should clear the attention state.'
     );
+
+    const replayedAgain = await vscode.commands.executeCommand(NOTIFIER_TEST_COMMAND_IDS.replayLastFocusAction);
+    assert.strictEqual(replayedAgain, false, 'Expected focus callback tokens to be single-use.');
   } finally {
     if (agentNodeId) {
       await ensureAgentStopped(agentNodeId);
@@ -176,6 +180,35 @@ async function run() {
     await clearHostMessages();
     await clearNotifierPostedNotifications();
   }
+}
+
+async function verifyUnsupportedFocusActionIsRejected() {
+  const postedNotificationsBefore = await getNotifierPostedNotifications();
+  const result = await vscode.commands.executeCommand(NOTIFIER_COMMAND_IDS.postSystemNotification, {
+    version: 1,
+    kind: 'execution-attention',
+    title: 'notifier smoke invalid action',
+    message: 'invalid focus action should be rejected',
+    dedupeKey: `notifier-smoke-invalid-focus:${Date.now()}`,
+    focusAction: {
+      command: 'workbench.action.closeWindow',
+      arguments: ['unexpected']
+    }
+  });
+
+  assert.deepStrictEqual(result, {
+    status: 'error',
+    backend: 'unsupported',
+    activationMode: 'none',
+    detail: 'unsupported-focus-action'
+  });
+
+  const postedNotificationsAfter = await getNotifierPostedNotifications();
+  assert.strictEqual(
+    postedNotificationsAfter.length,
+    postedNotificationsBefore.length,
+    'Rejected focus actions should not be recorded as posted notifications.'
+  );
 }
 
 async function getDebugSnapshot() {
