@@ -1717,6 +1717,14 @@ body {
   color: var(--vscode-editor-foreground);
   cursor: text;
   line-height: 1.6;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note-markdown-preview-copy,
+.note-markdown-preview-placeholder {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .note-markdown-preview.is-empty {

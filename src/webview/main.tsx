@@ -3843,6 +3843,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       }
       return;
     }
+  };
+
+  const handlePreviewDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    if (findNoteMarkdownChecklistInputTarget(event.target) || findNoteMarkdownLinkTarget(event.target)) {
+      return;
+    }
 
     event.preventDefault();
     stopCanvasEvent(event);
@@ -3850,6 +3856,17 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (shouldHandleReadonlySelectAllShortcut(event)) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      selectReadonlyTextContents(event.currentTarget);
+      return;
+    }
+
+    if (shouldAllowReadonlyTextShortcutToBubble(event)) {
+      return;
+    }
+
     stopCanvasEvent(event);
     if (findNoteMarkdownChecklistInputTarget(event.target)) {
       return;
@@ -3938,10 +3955,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               data-probe-field="body"
               data-probe-value={content}
               tabIndex={0}
-              aria-label="Note 正文预览，按 Enter 或单击开始编辑"
+              aria-label="Note 正文预览，按 Enter 或双击开始编辑"
               onFocus={() => data.onSelectNode?.(id)}
               onMouseDown={stopCanvasEvent}
               onClick={handlePreviewClick}
+              onDoubleClick={handlePreviewDoubleClick}
               onKeyDown={handlePreviewKeyDown}
             >
               {previewHtml ? (
@@ -6461,6 +6479,17 @@ function handleEditableFieldKeyDown(
     isComposing?: boolean;
   }
 ): void {
+  if (shouldHandleEditableSelectAllShortcut(event)) {
+    event.preventDefault();
+    stopCanvasEvent(event);
+    event.currentTarget.select();
+    return;
+  }
+
+  if (shouldAllowTextEditingShortcutToBubble(event)) {
+    return;
+  }
+
   stopCanvasEvent(event);
 
   if (options?.isComposing || isImeComposingKeyboardEvent(event)) {
@@ -6505,6 +6534,71 @@ function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElemen
     event.preventDefault();
     event.currentTarget.blur();
   }
+}
+
+function shouldAllowTextEditingShortcutToBubble(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  const normalizedKey = event.key.toLowerCase();
+  if (normalizedKey === 'c' || normalizedKey === 'x' || normalizedKey === 'v') {
+    return true;
+  }
+
+  if (normalizedKey === 'z') {
+    return true;
+  }
+
+  return normalizedKey === 'y' && !event.shiftKey;
+}
+
+function shouldAllowReadonlyTextShortcutToBubble(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  const normalizedKey = event.key.toLowerCase();
+  return normalizedKey === 'c';
+}
+
+function shouldHandleEditableSelectAllShortcut(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === 'a';
+}
+
+function shouldHandleReadonlySelectAllShortcut(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === 'a';
+}
+
+function selectReadonlyTextContents(container: HTMLElement): void {
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
+  const selectionTarget =
+    container.querySelector<HTMLElement>('.note-markdown-preview-copy, .note-markdown-preview-placeholder') ??
+    container;
+  const range = document.createRange();
+  range.selectNodeContents(selectionTarget);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -7278,7 +7372,7 @@ async function queryNodeTextField(
   }
 
   if (fieldName === 'body' && field instanceof HTMLElement) {
-    dispatchSyntheticMouseClick(field);
+    dispatchSyntheticMouseDoubleClick(field);
     await waitForDomActionFlush();
     field = queryNodeField(nodeId, fieldName);
     if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
@@ -7397,6 +7491,19 @@ function dispatchSyntheticMouseClick(target: Element): void {
   target.dispatchEvent(new MouseEvent('mousedown', eventInit));
   target.dispatchEvent(new MouseEvent('mouseup', eventInit));
   target.dispatchEvent(new MouseEvent('click', eventInit));
+}
+
+function dispatchSyntheticMouseDoubleClick(target: Element): void {
+  dispatchSyntheticMouseClick(target);
+  dispatchSyntheticMouseClick(target);
+  target.dispatchEvent(
+    new MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      button: 0
+    })
+  );
 }
 
 function waitForDomActionFlush(): Promise<void> {
