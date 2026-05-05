@@ -89,5 +89,5 @@
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 当前本地仍可作为有效证据保留的验证包括：`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`、`npm run test:notifier-source`、`npm run test:notifier-smoke`，以及真实桌面通知的人工验收。
+- 截至 `2026-05-05`，当前候选 release 分支 latest head 已重新通过 `npm run test:notifier-source`、`npm run test:notifier-smoke` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；结合 `npm run package:vsix` 与真实桌面通知人工验收，这条 repo-local notifier 功能链路当前可继续作为 `0.5.0` 发布准备证据保留。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

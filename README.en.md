@@ -44,7 +44,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.4.1` is a round of UI fixes and interaction polish across agent launch entry points, node and file-activity operations, and terminal-link behavior inside execution nodes, while continuing to iterate under Marketplace `Preview` positioning rather than inventing a brand-new release-preparation plan. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.5.0` is to consolidate the local-side notifier companion, the `system` attention-signal bridge path, embedded `Terminal` shell selection, and the release materials for this milestone, while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -69,6 +69,15 @@ Public distribution is intended to happen through `Visual Studio Marketplace`. `
 - The release assets in this repository have already been consolidated, but before the actual listing goes live, the final git ref still needs to be locked, the release executed, and post-release verification completed
 - `Open VSX` is not part of the initial `Preview` launch path
 
+## Desktop Notification Companion (Auto-Installed)
+
+Installing `Dev Session Canvas` automatically installs the companion extension `Dev Session Canvas Notifier` (`devsessioncanvas.dev-session-canvas-notifier`). If a user installs from the notifier page first, VS Code also auto-installs the main extension `Dev Session Canvas`.
+
+- Set `devSessionCanvas.notifications.attentionSignalBridge` to `system` in the main extension settings
+- In `system` mode, the main extension prefers the local UI-side notifier companion and falls back to workbench notifications when the companion is missing, unsupported, or delivery fails
+- The companion is especially useful in `Remote SSH`, WSL, and Dev Container scenarios where the main extension runs on the workspace side but the notification must return to the local desktop
+- Notifier-specific release and verification guidance lives in [`docs/notifier-preview-release-playbook.md`](docs/notifier-preview-release-playbook.md)
+
 ## Build From Source And Install For Development
 
 For developers, the recommended path is to build from source and install through an Extension Development Host, rather than manually installing a `.vsix`.
@@ -83,7 +92,7 @@ npm run build
 Then in the repository window:
 
 1. Open `Run and Debug`
-2. Select `Run Dev Session Canvas`
+2. Select `Run Dev Session Canvas (Main Only)`
 3. Press `F5` to launch the `Extension Development Host`
 
 For more complete instructions on source development, `Remote SSH` debugging, and automated verification, see [CONTRIBUTING.md](CONTRIBUTING.md).

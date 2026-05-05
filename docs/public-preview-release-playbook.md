@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.5.0`。当前版本范围已经收口到“相对 `0.4.0` 的一轮 UI 修复与交互优化、执行节点 terminal link 行为对齐，以及 `Dev Session Canvas Notifier` companion 的发布与自动安装关系收口”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.5.0`。当前版本范围已经收口到“相对 `0.4.1` 新增 `Dev Session Canvas Notifier` companion、attention signal 的 `system` 桥接主路径，以及嵌入式 `Terminal` shell 选择与 workspace 覆盖能力，并同步收口这轮发布材料”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -33,9 +33,9 @@
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.5.0 - Preview Notifier Companion Update`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.5.0 - Preview Notifier And Shell Selection Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：Agent 创建预设与 provider 默认参数归一化、创建菜单与最近启动命令展示、手动创建节点后的平滑居中、文件活动默认关闭与树形交互 / 自动边锚点优化、执行节点 terminal link 行为对齐、`Dev Session Canvas Notifier` companion 的公开发布与自动安装关系，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
+- release notes 应覆盖以下当前已确认范围：`Dev Session Canvas Notifier` companion 的公开发布与自动安装关系、attention signal 的 `system` 桥接主路径、测试通知命令与环境诊断侧栏、嵌入式 `Terminal` shell 的动态探测 / 精确路径持久化 / workspace 级覆盖，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -44,7 +44,7 @@
 当前对外统一使用以下安装与升级说明：
 
 1. 当前目标版本为 `0.5.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.4.0` 升级到 `0.5.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.5.x` 更新也通过 Marketplace 常规升级获取。
+2. 首次安装与从 `0.4.1` 升级到 `0.5.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.5.x` 更新也通过 Marketplace 常规升级获取。
 3. 当前主扩展通过 `extensionDependencies` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，也会自动补齐主扩展。
 4. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 

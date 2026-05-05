@@ -44,7 +44,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.5.0` 做一轮 UI 修复、交互优化与 notifier companion 发布收口，集中在 Agent 启动入口、节点与文件活动操作体验、执行节点 terminal link 行为对齐，以及桌面通知 companion 的正式安装路径，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.5.0` 收口本机 UI 侧 notifier companion、attention signal 的 `system` 桥接路径、嵌入式 `Terminal` shell 选择能力与版本发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
