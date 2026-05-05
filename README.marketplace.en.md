@@ -51,21 +51,31 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.4.1 Highlights
+## 0.5.0 Highlights
 
-The public `0.4.1` release mainly delivers a round of UI fixes and interaction polish:
+The public `0.5.0` release mainly adds two new user-facing paths: the desktop-notification companion and embedded `Terminal` shell selection.
 
-- Fix agent launch-presets and session-presentation details so `Default / Resume / YOLO / Sandbox` normalize more predictably against provider default arguments, avoiding conflicts between preset labels and the command that actually launches
-- Polish node-creation and file-activity interactions so manually created nodes move smoothly into view; file activity stays disabled by default, and when explicitly enabled it gets more stable file-list tree behavior and automatic edge anchors
-- Polish terminal-link behavior inside execution nodes by covering multiline path-and-line parsing, directory / word / search link behavior, and low-confidence hover / underline semantics
-- Keep conservative workspace attribution for session history so only records that can be confirmed for the current workspace are shown, while still explicitly retaining the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
+- Add the `Dev Session Canvas Notifier` companion and close the installation path with symmetric `extensionDependencies`, so installing either side auto-installs the other
+- Add the `devSessionCanvas.notifications.attentionSignalBridge = system` path in the main extension, together with a test-notification command, environment diagnostics sidebar, and the `devSessionCanvasNotifier.notifications.playSound` toggle for local-notification verification
+- Add the `Dev Session Canvas: Select Terminal Shell` command so the extension can discover currently available shells, persist the exact binary path the user picked, and prefer a workspace-level override when a workspace is open
+- Keep conservative workspace attribution for session history, while still explicitly retaining the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.4.0` to `0.4.1` all go through the `Visual Studio Marketplace`; later `0.4.x` updates follow the same Marketplace upgrade path
+- First-time installs and upgrades from `0.4.1` to `0.5.0` all go through the `Visual Studio Marketplace`; later `0.5.x` updates follow the same Marketplace upgrade path
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
+
+
+## Desktop Notification Companion (Auto-Installed)
+
+- Installing `Dev Session Canvas` automatically installs `Dev Session Canvas Notifier` (`devsessioncanvas.dev-session-canvas-notifier`)
+- If a user installs from the notifier page first, VS Code also auto-installs the main extension `Dev Session Canvas`
+- To bridge execution-node attention signals to the local desktop, set `devSessionCanvas.notifications.attentionSignalBridge` to `system` in the main extension settings
+- In `system` mode, the main extension prefers the local UI-side companion and falls back to VS Code workbench notifications when the companion is missing, unsupported, or delivery fails
+- The companion is especially useful in `Remote SSH`, WSL, and Dev Container scenarios where the main extension runs on the workspace side but the notification needs to return to the local desktop
+
 
 ## Usage Tips
 
@@ -89,7 +99,7 @@ The public `0.4.1` release mainly delivers a round of UI fixes and interaction p
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.4.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.5.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
