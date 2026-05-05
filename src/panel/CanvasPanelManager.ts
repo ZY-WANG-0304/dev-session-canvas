@@ -111,6 +111,11 @@ import {
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import { isTestHarnessMode } from '../common/testHarness';
+import {
+  resolveNoteMarkdownLinkTarget,
+  type NoteMarkdownFileSelection,
+  type NoteMarkdownWorkspaceRoot
+} from '../common/noteMarkdownLinks';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
 import {
   createExecutionSessionProcess,
@@ -2606,7 +2611,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private async openCanvasFile(filePath: string, sourceSurface: CanvasSurfaceLocation): Promise<void> {
+  private async openCanvasFile(
+    filePath: string,
+    sourceSurface: CanvasSurfaceLocation,
+    selection?: NoteMarkdownFileSelection
+  ): Promise<void> {
     const normalizedPath = normalizeTrackedFilePath(filePath);
     if (!normalizedPath) {
       return;
@@ -2614,21 +2623,87 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const uri = vscode.Uri.file(normalizedPath);
     const document = await vscode.workspace.openTextDocument(uri);
+    const initialSelection = toNoteMarkdownDocumentSelection(document, selection);
     const showOptions: vscode.TextDocumentShowOptions =
       sourceSurface === 'editor'
         ? {
             preview: false,
             preserveFocus: true,
-            viewColumn: vscode.ViewColumn.Beside
+            viewColumn: vscode.ViewColumn.Beside,
+            selection: initialSelection
           }
         : {
             preview: false,
-            preserveFocus: true
+            preserveFocus: true,
+            selection: initialSelection
           };
     await vscode.window.showTextDocument(document, showOptions);
     if (sourceSurface === 'editor') {
       await this.refocusInteractiveSurface('editor');
     }
+  }
+
+  private async openNoteLink(
+    nodeId: string,
+    href: string,
+    sourceSurface: CanvasSurfaceLocation
+  ): Promise<void> {
+    const resolvedTarget = resolveNoteMarkdownLinkTarget({
+      href,
+      workspaceRoots: this.listNoteMarkdownWorkspaceRoots()
+    });
+    if (!resolvedTarget) {
+      this.recordDiagnosticEvent('note/linkOpenRejected', {
+        nodeId,
+        href,
+        reason: 'unsupported-scheme-or-unresolved-workspace-link'
+      });
+      return;
+    }
+
+    if (resolvedTarget.kind === 'external') {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(resolvedTarget.href));
+      this.recordDiagnosticEvent('note/linkOpened', {
+        nodeId,
+        href: resolvedTarget.href,
+        targetKind: 'external'
+      });
+      return;
+    }
+
+    const fileUri = vscode.Uri.file(resolvedTarget.filePath);
+    let stat: vscode.FileStat | null = null;
+    try {
+      stat = await vscode.workspace.fs.stat(fileUri);
+    } catch {
+      stat = null;
+    }
+    if (!stat || stat.type === vscode.FileType.Directory) {
+      this.recordDiagnosticEvent('note/linkOpenRejected', {
+        nodeId,
+        href,
+        filePath: resolvedTarget.filePath,
+        reason: 'workspace-file-missing-or-not-a-file'
+      });
+      return;
+    }
+
+    await this.openCanvasFile(resolvedTarget.filePath, sourceSurface, resolvedTarget.selection);
+    this.recordDiagnosticEvent('note/linkOpened', {
+      nodeId,
+      href,
+      filePath: resolvedTarget.filePath,
+      line: resolvedTarget.selection?.line ?? null,
+      column: resolvedTarget.selection?.column ?? null,
+      targetKind: 'workspace-file'
+    });
+  }
+
+  private listNoteMarkdownWorkspaceRoots(): NoteMarkdownWorkspaceRoot[] {
+    return (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
+      name: workspaceFolder.name,
+      path: workspaceFolder.uri.fsPath
+    }));
   }
 
   private async refocusInteractiveSurface(surface: CanvasSurfaceLocation | undefined): Promise<void> {
@@ -4450,6 +4525,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/openCanvasFile':
         void this.openCanvasFile(parsedMessage.payload.filePath, sourceSurface);
+        return;
+      case 'webview/openNoteLink':
+        void this.openNoteLink(parsedMessage.payload.nodeId, parsedMessage.payload.href, sourceSurface);
         return;
       case 'webview/resetDemoState':
         void this.resetState().catch((error) => {
@@ -9100,6 +9178,24 @@ function normalizeTrackedFilePath(filePath: string): string | undefined {
   }
 
   return path.normalize(trimmed);
+}
+
+function toNoteMarkdownDocumentSelection(
+  document: vscode.TextDocument,
+  selection: NoteMarkdownFileSelection | undefined
+): vscode.Range | undefined {
+  if (!selection) {
+    return undefined;
+  }
+
+  const line = Math.min(Math.max(selection.line - 1, 0), Math.max(document.lineCount - 1, 0));
+  const targetLine = document.lineAt(line);
+  const column = Math.min(
+    Math.max((selection.column ?? 1) - 1, 0),
+    targetLine.text.length
+  );
+  const position = new vscode.Position(line, column);
+  return new vscode.Range(position, position);
 }
 
 function normalizeState(

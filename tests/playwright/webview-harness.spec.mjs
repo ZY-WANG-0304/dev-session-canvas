@@ -3460,6 +3460,110 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
     .toBe('matched');
 });
 
+test('note body switches between markdown preview and plain text editing', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = '# 迭代复盘\n- 补齐 Markdown 预览\n- 保持纯文本编辑';
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('迭代复盘');
+  await expect(noteNode.locator('.note-markdown-preview li')).toHaveText([
+    '补齐 Markdown 预览',
+    '保持纯文本编辑'
+  ]);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', markdownBody);
+
+  await noteNode.locator('.note-markdown-preview').click();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+
+  await bodyInput.fill('## 已完成\n- 主路径切换');
+  await bodyInput.blur();
+
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview h2')).toHaveText('已完成');
+  await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
+});
+
+test('note markdown preview renders task lists, syntax highlighting, and math formulas', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = [
+    '- [x] 已收口预览切换',
+    '- [ ] 补齐宿主链接打开',
+    '',
+    '```ts',
+    'const total: number = 2;',
+    '```',
+    '',
+    '内联公式 $a^2 + b^2 = c^2$',
+    '',
+    '$$',
+    'x^2 + y^2 = z^2',
+    '$$'
+  ].join('\n');
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await expect(taskCheckboxes).toHaveCount(2);
+  await expect(taskCheckboxes.nth(0)).toBeChecked();
+  await expect(taskCheckboxes.nth(0)).toBeDisabled();
+  await expect(taskCheckboxes.nth(1)).not.toBeChecked();
+  await expect(taskCheckboxes.nth(1)).toBeDisabled();
+  await expect(noteNode.locator('.note-markdown-preview pre code.hljs')).toHaveCount(1);
+  await expect(noteNode.locator('.note-markdown-preview pre code.hljs .hljs-keyword')).toContainText('const');
+  await expect(noteNode.locator('.note-markdown-preview .katex')).toHaveCount(2);
+  await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
+});
+
+test('clicking a note markdown link posts openNoteLink without entering edit mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '[打开文档](https://example.com/docs)';
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview a').click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openNoteLink');
+  expect(message).toEqual({
+    type: 'webview/openNoteLink',
+    payload: {
+      nodeId: 'note-1',
+      href: 'https://example.com/docs'
+    }
+  });
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview a')).toHaveText('打开文档');
+});
+
+test('clicking a note workspace file link posts openNoteLink with the raw relative href', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '[打开配置](package.json#L3C1)';
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview a').click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openNoteLink');
+  expect(message).toEqual({
+    type: 'webview/openNoteLink',
+    payload: {
+      nodeId: 'note-1',
+      href: 'package.json#L3C1'
+    }
+  });
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+});
+
 test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createNoteNodeState());

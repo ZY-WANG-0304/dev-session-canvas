@@ -593,6 +593,13 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/openNoteLink';
+      payload: {
+        nodeId: string;
+        href: string;
+      };
+    }
+  | {
       type: 'webview/runtimeDiagnostic';
       payload: {
         source: 'window.error' | 'window.unhandledrejection';
@@ -1049,6 +1056,21 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       payload: {
         nodeId: payload.nodeId,
         filePath: payload.filePath
+      }
+    };
+  }
+
+  if (value.type === 'webview/openNoteLink') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.href !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/openNoteLink',
+      payload: {
+        nodeId: payload.nodeId,
+        href: payload.href
       }
     };
   }

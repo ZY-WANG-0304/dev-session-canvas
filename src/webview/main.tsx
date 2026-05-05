@@ -2,6 +2,10 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
+import hljs from 'highlight.js/lib/common';
+import MarkdownIt from 'markdown-it';
+import markdownItKatex from 'markdown-it-katex';
+import markdownItTaskLists from 'markdown-it-task-lists';
 import { Terminal } from '@xterm/xterm';
 import ReactFlow, {
   applyNodeChanges,
@@ -29,6 +33,7 @@ import ReactFlow, {
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
+import 'katex/dist/katex.min.css';
 import '@xterm/xterm/css/xterm.css';
 import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
@@ -142,6 +147,7 @@ interface CanvasNodeData {
   onSelectNode?: (nodeId: string) => void;
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
+  onOpenNoteLink?: (nodeId: string, href: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -182,6 +188,9 @@ type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
+const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
+const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
+const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
@@ -1310,6 +1319,14 @@ function App(): JSX.Element {
         payload: {
           nodeId,
           filePath
+        }
+      }),
+    onOpenNoteLink: (nodeId, href) =>
+      postMessage({
+        type: 'webview/openNoteLink',
+        payload: {
+          nodeId,
+          href
         }
       }),
     onSelectFileListEntry: selectFileListEntry,
@@ -3725,20 +3742,52 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const committedContentRef = useRef(noteMetadata.content);
+  const pendingContentRef = useRef<string | null>(null);
+  const lastPropContentRef = useRef(noteMetadata.content);
+  const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingBodyFocusRef = useRef(false);
+  const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
 
   useLayoutEffect(() => {
-    committedContentRef.current = noteMetadata.content;
+    const previousPropContent = lastPropContentRef.current;
+    lastPropContentRef.current = noteMetadata.content;
+
+    if (pendingContentRef.current === noteMetadata.content) {
+      pendingContentRef.current = null;
+    } else if (pendingContentRef.current && noteMetadata.content !== previousPropContent) {
+      pendingContentRef.current = null;
+    }
+
+    committedContentRef.current = pendingContentRef.current ?? noteMetadata.content;
     if (!isEditingBody && !isComposing) {
-      setContent(noteMetadata.content);
+      setContent(pendingContentRef.current ?? noteMetadata.content);
     }
   }, [id, isComposing, isEditingBody, noteMetadata.content]);
 
+  useLayoutEffect(() => {
+    if (!isEditingBody || !pendingBodyFocusRef.current) {
+      return;
+    }
+
+    pendingBodyFocusRef.current = false;
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.focus();
+    const selectionEnd = textarea.value.length;
+    textarea.setSelectionRange(selectionEnd, selectionEnd);
+  }, [isEditingBody]);
+
   const submitNote = (nextContent: string): void => {
-    if (nextContent === committedContentRef.current) {
+    const baselineContent = committedContentRef.current;
+    if (nextContent === baselineContent) {
       return;
     }
 
     committedContentRef.current = nextContent;
+    pendingContentRef.current = nextContent;
     data.onUpdateNote?.({
       nodeId: id,
       content: nextContent
@@ -3748,6 +3797,41 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const deleteNote = (): void => {
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
+  };
+
+  const startEditingBody = (): void => {
+    pendingBodyFocusRef.current = true;
+    data.onSelectNode?.(id);
+    setIsEditingBody(true);
+  };
+
+  const handlePreviewClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+
+    const link = findNoteMarkdownLinkTarget(event.target);
+    if (link) {
+      const href = link.getAttribute('href');
+      if (href) {
+        data.onSelectNode?.(id);
+        data.onOpenNoteLink?.(id, href);
+      }
+      return;
+    }
+
+    startEditingBody();
+  };
+
+  const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    stopCanvasEvent(event);
+    if (findNoteMarkdownLinkTarget(event.target)) {
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      startEditingBody();
+    }
   };
 
   return (
@@ -3781,39 +3865,64 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
       <div className="object-body object-surface note-surface">
         <div className="note-editor-surface">
-          <textarea
-            className="node-document-input note-document-input nowheel nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="body"
-            value={content}
-            onFocus={() => {
-              setIsEditingBody(true);
-              data.onSelectNode?.(id);
-            }}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onWheel={stopCanvasEvent}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={(event) => {
-              setIsComposing(false);
-              setContent(event.currentTarget.value);
-            }}
-            onChange={(event) => setContent(event.target.value)}
-            onBlur={(event) => {
-              const nextContent = event.currentTarget.value;
-              setContent(nextContent);
-              setIsEditingBody(false);
-              submitNote(nextContent);
-            }}
-            onKeyDown={(event) =>
-              handleEditableFieldKeyDown(
-                event,
-                () => submitNote(event.currentTarget.value),
-                { isComposing }
-              )
-            }
-            placeholder="直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。"
-          />
+          {isEditingBody ? (
+            <textarea
+              ref={bodyInputRef}
+              className="node-document-input note-document-input nowheel nodrag nopan"
+              data-node-interactive="true"
+              data-probe-field="body"
+              value={content}
+              onFocus={() => {
+                setIsEditingBody(true);
+                data.onSelectNode?.(id);
+              }}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onWheel={stopCanvasEvent}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={(event) => {
+                setIsComposing(false);
+                setContent(event.currentTarget.value);
+              }}
+              onChange={(event) => setContent(event.target.value)}
+              onBlur={(event) => {
+                const nextContent = event.currentTarget.value;
+                setContent(nextContent);
+                setIsEditingBody(false);
+                submitNote(nextContent);
+              }}
+              onKeyDown={(event) =>
+                handleEditableFieldKeyDown(
+                  event,
+                  () => submitNote(event.currentTarget.value),
+                  { isComposing }
+                )
+              }
+              placeholder={NOTE_BODY_PLACEHOLDER}
+            />
+          ) : (
+            <div
+              className={`note-markdown-preview nowheel nodrag nopan ${content.trim() ? '' : 'is-empty'}`.trim()}
+              data-node-interactive="true"
+              data-probe-field="body"
+              data-probe-value={content}
+              tabIndex={0}
+              aria-label="Note 正文预览，按 Enter 或单击开始编辑"
+              onFocus={() => data.onSelectNode?.(id)}
+              onMouseDown={stopCanvasEvent}
+              onClick={handlePreviewClick}
+              onKeyDown={handlePreviewKeyDown}
+            >
+              {previewHtml ? (
+                <div
+                  className="note-markdown-preview-copy"
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              ) : (
+                <p className="note-markdown-preview-placeholder">{NOTE_BODY_PLACEHOLDER}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -5560,6 +5669,7 @@ function toFlowNodes(params: {
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
+  onOpenNoteLink: (nodeId: string, href: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -5636,6 +5746,7 @@ function toFlowNodes(params: {
         onSelectNode: params.onSelectNode,
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
+        onOpenNoteLink: params.onOpenNoteLink,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
@@ -6847,11 +6958,17 @@ function readProbeNodeFootprint(element: HTMLElement): CanvasNodeFootprint {
 }
 
 function readProbeFieldValue(element: HTMLElement, fieldName: string): string | undefined {
-  const field = element.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    `[data-probe-field="${fieldName}"]`
-  );
+  const field = element.querySelector<HTMLElement>(`[data-probe-field="${fieldName}"]`);
+  if (!field) {
+    return undefined;
+  }
 
-  return field?.value;
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    return field.value;
+  }
+
+  const probeValue = field.dataset.probeValue;
+  return typeof probeValue === 'string' ? probeValue : undefined;
 }
 
 function readProbeText(element: Element | null): string | null {
@@ -6947,7 +7064,7 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         break;
       }
       case 'setNodeTextField': {
-        const field = queryNodeTextField(action.nodeId, action.field);
+        const field = await queryNodeTextField(action.nodeId, action.field);
         field.focus();
         field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
         setControlledFieldValue(field, action.value);
@@ -7110,13 +7227,22 @@ async function respondWithWebviewProbeSnapshot(requestId: string, delayMs?: numb
   });
 }
 
-function queryNodeTextField(
+async function queryNodeTextField(
   nodeId: string,
   fieldName: 'title' | 'body'
-): HTMLInputElement | HTMLTextAreaElement {
-  const field = queryNodeField(nodeId, fieldName);
+): Promise<HTMLInputElement | HTMLTextAreaElement> {
+  let field = queryNodeField(nodeId, fieldName);
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     return field;
+  }
+
+  if (fieldName === 'body' && field instanceof HTMLElement) {
+    dispatchSyntheticMouseClick(field);
+    await waitForDomActionFlush();
+    field = queryNodeField(nodeId, fieldName);
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      return field;
+    }
   }
 
   throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
@@ -7236,6 +7362,91 @@ function delayTestAction(delayMs?: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+}
+
+function createNoteMarkdownRenderer(): MarkdownIt {
+  const renderer = new MarkdownIt({
+    html: false,
+    breaks: true,
+    linkify: true,
+    highlight(code, info) {
+      const language = info.trim().split(/\s+/, 1)[0];
+      if (language && hljs.getLanguage(language)) {
+        return renderHighlightedNoteCodeBlock(
+          hljs.highlight(code, {
+            language,
+            ignoreIllegals: true
+          }).value,
+          language
+        );
+      }
+
+      if (!language) {
+        const autoDetected = hljs.highlightAuto(code);
+        if (autoDetected.value) {
+          return renderHighlightedNoteCodeBlock(autoDetected.value, autoDetected.language);
+        }
+      }
+
+      return renderHighlightedNoteCodeBlock(escapeHtml(code), language || undefined);
+    }
+  });
+
+  renderer.use(markdownItTaskLists, {
+    enabled: false
+  });
+  renderer.use(markdownItKatex, {
+    throwOnError: false,
+    strict: 'ignore',
+    trust: false
+  });
+
+  const defaultLinkOpenRenderer =
+    renderer.renderer.rules.link_open ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    token.attrSet('data-note-markdown-link', 'true');
+    token.attrJoin('class', 'note-markdown-link');
+    token.attrSet('rel', 'noopener noreferrer');
+    return defaultLinkOpenRenderer(tokens, idx, options, env, self);
+  };
+
+  return renderer;
+}
+
+function renderHighlightedNoteCodeBlock(highlightedHtml: string, language: string | undefined): string {
+  const languageClass = normalizeHighlightedNoteCodeLanguageClass(language);
+  return `<pre><code class="hljs${languageClass ? ` ${languageClass}` : ''}">${highlightedHtml}</code></pre>`;
+}
+
+function normalizeHighlightedNoteCodeLanguageClass(language: string | undefined): string | null {
+  if (!language) {
+    return null;
+  }
+
+  return /^[A-Za-z0-9_+-]+$/u.test(language) ? `language-${language}` : null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function findNoteMarkdownLinkTarget(target: EventTarget | null): HTMLAnchorElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLAnchorElement>(NOTE_MARKDOWN_LINK_SELECTOR);
+}
+
+function renderNoteMarkdownPreview(content: string): string {
+  return content.trim() ? noteMarkdownRenderer.render(content) : '';
 }
 
 function formatTestDomActionError(error: unknown): string {
