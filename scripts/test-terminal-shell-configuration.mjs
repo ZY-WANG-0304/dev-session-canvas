@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
 import esbuild from 'esbuild';
+
+const WINDOWS_WELL_KNOWN_SHELL_PATHS = [
+  'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  'C:\\Windows\\System32\\cmd.exe'
+];
+const TERMINAL_SHELL_DISPLAY_ORDER = ['bash', 'zsh', 'fish', 'sh', 'pwsh', 'powershell', 'cmd'];
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-terminal-shell-config-'));
 
@@ -386,17 +393,20 @@ try {
     defaultShellPath: 'pwsh.exe'
   });
 
+  const expectedWindowsShells = [
+    { resolvedPath: pwshPath, source: 'default-shell', isDefault: true },
+    { resolvedPath: powershellPath, source: 'path-env', isDefault: false },
+    { resolvedPath: cmdPath, source: 'path-env', isDefault: false },
+    ...(await getExistingWindowsKnownShells())
+  ].sort(compareExpectedDetectedShells);
+
   assert.deepEqual(
-    detectedWindowsShells.map((shell) => shell.resolvedPath),
-    [pwshPath, powershellPath, cmdPath]
-  );
-  assert.deepEqual(
-    detectedWindowsShells.map((shell) => shell.source),
-    ['default-shell', 'path-env', 'path-env']
-  );
-  assert.deepEqual(
-    detectedWindowsShells.map((shell) => shell.isDefault),
-    [true, false, false]
+    detectedWindowsShells.map(({ resolvedPath, source, isDefault }) => ({
+      resolvedPath,
+      source,
+      isDefault
+    })),
+    expectedWindowsShells
   );
 
   console.log('terminal shell configuration tests passed');
@@ -410,4 +420,51 @@ async function createExecutable(filePath, options = {}) {
   if (!windows) {
     await chmod(filePath, 0o755);
   }
+}
+
+async function getExistingWindowsKnownShells() {
+  const shells = [];
+  for (const shellPath of WINDOWS_WELL_KNOWN_SHELL_PATHS) {
+    if (await fileExists(shellPath)) {
+      shells.push({
+        resolvedPath: shellPath,
+        source: 'windows-known-path',
+        isDefault: false
+      });
+    }
+  }
+  return shells;
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function compareExpectedDetectedShells(left, right) {
+  if (left.isDefault !== right.isDefault) {
+    return left.isDefault ? -1 : 1;
+  }
+
+  const leftOrder = TERMINAL_SHELL_DISPLAY_ORDER.indexOf(getShellName(left.resolvedPath));
+  const rightOrder = TERMINAL_SHELL_DISPLAY_ORDER.indexOf(getShellName(right.resolvedPath));
+  if (leftOrder !== rightOrder) {
+    if (leftOrder === -1) {
+      return 1;
+    }
+    if (rightOrder === -1) {
+      return -1;
+    }
+    return leftOrder - rightOrder;
+  }
+
+  return left.resolvedPath.localeCompare(right.resolvedPath);
+}
+
+function getShellName(shellPath) {
+  return path.basename(shellPath, path.extname(shellPath)).toLowerCase();
 }
