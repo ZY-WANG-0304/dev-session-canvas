@@ -55,10 +55,28 @@ export function getConfiguredTerminalShell(): ResolvedConfiguredTerminalShell {
 }
 
 export function inspectCurrentConfiguredTerminalShell(): InspectedConfiguredTerminalShell {
+  return inspectCurrentConfiguredTerminalShellInCwd(resolveCurrentTerminalWorkingDirectory());
+}
+
+export function inspectCurrentConfiguredTerminalShellInCwd(cwd: string): InspectedConfiguredTerminalShell {
   const effectiveConfiguration = getEffectiveTerminalShellConfiguration();
   return inspectConfiguredTerminalShell({
     configuredShell: effectiveConfiguration.configuredShell,
     configuredPath: effectiveConfiguration.configuredPath,
-    defaultShellPath: vscode.env.shell
+    defaultShellPath: vscode.env.shell,
+    cwd
   });
+}
+
+function resolveCurrentTerminalWorkingDirectory(): string {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (workspaceRoot) {
+    return workspaceRoot;
+  }
+
+  if (process.platform === 'win32') {
+    return process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || process.cwd();
+  }
+
+  return process.env.HOME?.trim() || process.cwd();
 }

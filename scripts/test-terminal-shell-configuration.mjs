@@ -118,21 +118,6 @@ try {
 
   assert.deepEqual(
     resolveConfiguredTerminalShell({
-      configuredShell: 'cmd',
-      configuredPath: '  ',
-      platform: 'win32',
-      env: {}
-    }),
-    {
-      configuredPath: '',
-      resolvedPath: 'cmd.exe',
-      resolutionSource: 'named-shell',
-      configuredShell: 'cmd'
-    }
-  );
-
-  assert.deepEqual(
-    resolveConfiguredTerminalShell({
       configuredShell: 'bash',
       configuredPath: ' /custom/shell ',
       platform: 'linux',
@@ -200,6 +185,29 @@ try {
       resolvedPath: secondBashPath,
       resolutionSource: 'path',
       configuredShell: 'bash'
+    }
+  );
+
+  const workspaceShellRoot = path.join(tempDir, 'workspace-shell');
+  await mkdir(workspaceShellRoot, { recursive: true });
+  const relativeShellPath = path.join(workspaceShellRoot, 'fake-shell');
+  await createExecutable(relativeShellPath);
+
+  assert.deepEqual(
+    inspectConfiguredTerminalShell({
+      configuredShell: 'default',
+      configuredPath: './fake-shell',
+      platform: 'linux',
+      env: {},
+      cwd: workspaceShellRoot
+    }),
+    {
+      configuredPath: './fake-shell',
+      resolvedPath: './fake-shell',
+      resolutionSource: 'path',
+      configuredShell: 'default',
+      resolvedAvailablePath: relativeShellPath,
+      isAvailable: true
     }
   );
 
@@ -312,6 +320,24 @@ try {
   await createExecutable(cmdPath, { windows: true });
   await createExecutable(powershellPath, { windows: true });
   await createExecutable(pwshPath, { windows: true });
+
+  assert.deepEqual(
+    resolveConfiguredTerminalShell({
+      configuredShell: 'cmd',
+      configuredPath: '',
+      platform: 'win32',
+      env: {
+        PATH: windowsShellDir,
+        PATHEXT: '.EXE;.CMD'
+      }
+    }),
+    {
+      configuredPath: '',
+      resolvedPath: cmdPath,
+      resolutionSource: 'named-shell',
+      configuredShell: 'cmd'
+    }
+  );
 
   assert.deepEqual(
     resolveConfiguredTerminalShell({

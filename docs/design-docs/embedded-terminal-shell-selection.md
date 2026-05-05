@@ -169,6 +169,7 @@ Quick Pick 的正式规则如下：
 扩展激活后会检查当前配置是否能在本机解析为真实可用的 shell：
 
 - 如果 `terminal.shellPath` 已填写，但该路径当前不可用，则按“显式路径不可用”告警，并优先引导用户重新选择或直接编辑 `terminal.shellPath`。
+- 如果 `terminal.shellPath` 填的是显式相对路径，例如 `./tooling/dev-shell`，可用性检查必须按真实终端启动时相同的 workspace `cwd` 解析；只要该相对路径在目标 workspace 下可执行，就不应误报“当前设备上未找到”。
 - 如果 `terminal.shellPath` 为空、但 `terminal.shell=<name>` 在当前设备上找不到任何可用路径，则按“逻辑 shell 类型当前不可用”告警。
 - 对于“跟随默认 shell”的情况，如果 `vscode.env.shell` 与平台回退路径都不可用，则提示用户检查宿主环境或手动指定 `terminal.shellPath`。
 
@@ -190,6 +191,6 @@ Quick Pick 的正式规则如下：
 
 1. `npm run typecheck` 通过。
 2. `npm run build` 通过。
-3. `npm run test:terminal-shell-configuration` 通过，并覆盖“多个同名 shell 存在时，显式路径优先于按名称重新解析”和“workspace 级 shell 配置不会再混入设备级 `shellPath`”两类回归。
+3. `npm run test:terminal-shell-configuration` 通过，并覆盖“多个同名 shell 存在时，显式路径优先于按名称重新解析”“显式相对 shell 路径按 workspace cwd 检查可用性”以及“workspace 级 shell 配置不会再混入设备级 `shellPath`”三类回归。
 4. `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 已于 2026-05-05 通过，且 smoke 中包含“执行 `Dev Session Canvas: 选择 Terminal shell` 后，配置里保留被选中的精确路径”和“workspace 打开时命令生效结果会覆盖当前 workspace 而不是改写设备级默认值”的断言。
 5. 设置描述与命令文案不再把“动态探测到的真实路径”误写成“只会落盘 shell 名称”，并明确 settings UI 同时支持设备级默认与 workspace 级覆盖。
