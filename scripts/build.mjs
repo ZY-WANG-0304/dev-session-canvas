@@ -57,7 +57,9 @@ const webviewConfig = {
   platform: 'browser',
   target: 'es2020',
   loader: {
-    '.ttf': 'file'
+    '.ttf': 'file',
+    '.woff': 'file',
+    '.woff2': 'file'
   }
 };
 
