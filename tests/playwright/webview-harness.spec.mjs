@@ -6,6 +6,7 @@ import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
+const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
@@ -3460,7 +3461,7 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
     .toBe('matched');
 });
 
-test('note body switches between markdown preview and plain text editing', async ({ page }) => {
+test('note body requires double click to switch from markdown preview to plain text editing', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
   const markdownBody = '# 迭代复盘\n- 补齐 Markdown 预览\n- 保持纯文本编辑';
@@ -3477,6 +3478,9 @@ test('note body switches between markdown preview and plain text editing', async
   await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', markdownBody);
 
   await noteNode.locator('.note-markdown-preview').click();
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  await noteNode.locator('.note-markdown-preview').dblclick();
 
   const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
   await expect(bodyInput).toHaveValue(markdownBody);
@@ -3487,6 +3491,101 @@ test('note body switches between markdown preview and plain text editing', async
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
   await expect(noteNode.locator('.note-markdown-preview h2')).toHaveText('已完成');
   await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
+});
+
+test('note markdown preview text remains selectable in read mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = 'copyable preview text stays selectable without entering edit mode.';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const previewParagraph = noteNode.locator('.note-markdown-preview-copy p').first();
+  const previewBox = await previewParagraph.boundingBox();
+  expect(previewBox).not.toBeNull();
+  if (!previewBox) {
+    throw new Error('Expected note preview paragraph to have a bounding box.');
+  }
+
+  const anchorX = previewBox.x + 12;
+  const focusX = previewBox.x + Math.min(previewBox.width - 12, 220);
+  const selectionY = previewBox.y + previewBox.height / 2;
+  await page.mouse.move(anchorX, selectionY);
+  await page.mouse.down();
+  await page.mouse.move(focusX, selectionY, { steps: 12 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? ''))
+    .not.toBe('');
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+});
+
+test('note preview and editor scope select-all locally while copy and edit shortcuts still reach the host', async ({
+  page
+}) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = 'shortcut bridge should keep bubbling to the host.';
+  await bootstrap(page, state);
+
+  await page.evaluate(() => {
+    window.__noteShortcutEvents = [];
+    window.addEventListener('keydown', (event) => {
+      if (!event.metaKey && !event.ctrlKey) {
+        return;
+      }
+
+      window.__noteShortcutEvents.push({
+        key: event.key.toLowerCase(),
+        editing: Boolean(document.querySelector('textarea[data-probe-field="body"]'))
+      });
+    });
+  });
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  await preview.focus();
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
+  await expect
+    .poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? ''))
+    .toBe('shortcut bridge should keep bubbling to the host.');
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyC`);
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  await preview.dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveCount(1);
+  await bodyInput.focus();
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd,
+        valueLength: element.value.length
+      }))
+    )
+    .toEqual({
+      selectionStart: 0,
+      selectionEnd: 'shortcut bridge should keep bubbling to the host.'.length,
+      valueLength: 'shortcut bridge should keep bubbling to the host.'.length
+    });
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyC`);
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyX`);
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyV`);
+
+  const shortcutEvents = await page.evaluate(() => window.__noteShortcutEvents);
+  expect(
+    shortcutEvents.filter((event) => event.editing === false).map((event) => event.key)
+  ).toEqual(expect.arrayContaining(['c']));
+  expect(shortcutEvents.some((event) => event.editing === false && event.key === 'a')).toBe(false);
+  expect(
+    shortcutEvents.filter((event) => event.editing === true).map((event) => event.key)
+  ).toEqual(expect.arrayContaining(['c', 'x', 'v']));
+  expect(shortcutEvents.some((event) => event.editing === true && event.key === 'a')).toBe(false);
 });
 
 test('note markdown preview renders task lists, syntax highlighting, and math formulas', async ({ page }) => {

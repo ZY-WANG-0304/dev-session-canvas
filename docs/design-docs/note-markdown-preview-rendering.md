@@ -126,7 +126,7 @@ updated_at: 2026-05-06
 ### 7.2 Webview 中把 Note 正文拆成阅读态与编辑态
 
 - `src/webview/main.tsx` 的 `NoteEditableNode` 继续持有本地 `content` 草稿与提交逻辑。
-- 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；当用户点击正文区时，切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
+- 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；用户单击时应能直接选中和复制预览内容，其中 `Ctrl/Cmd+A` 只应全选当前 Note 正文预览而不是整张画布，`Ctrl/Cmd+C` 则继续走宿主原生复制链路；只有双击普通正文区域时才切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
 - 当用户失焦、按 `Ctrl/Cmd+Enter` 提交或结束当前编辑时，正文区回到预览态，并把最新内容写回宿主。
 - `Escape` 仍沿用当前退出编辑语义，避免节点内键盘行为分叉。
 
@@ -146,7 +146,7 @@ updated_at: 2026-05-06
 ### 7.4 任务列表可在预览态切换，链接通过宿主安全打开
 
 - `Note` 阅读态的首要职责仍然是展示 Markdown 结构，并允许用户点击进入编辑。
-- 如果用户点击的是普通正文区域，行为继续是进入编辑态。
+- 如果用户单击的是普通正文区域，行为应保留在预览态，以便直接选择和复制内容；只有双击普通正文区域时，才进入编辑态。
 - 如果用户点击的是由 Markdown task list 语法渲染出来的 checkbox，则不进入编辑态，而是按源文行号切换对应 `[ ]` / `[x]` 标记，并立即复用现有 `webview/updateNoteNode` 写回宿主。
 - checkbox 的源文定位通过 `markdown-it` token `map` 行号注入到渲染后的 DOM 属性中；如果行号缺失、越界或命中的源文行不再是合法 checklist，则必须 fail closed，不切换内容也不报错污染宿主状态。
 - 如果用户点击的是 Markdown 链接元素，则不进入编辑，而是发消息给宿主；宿主按两类目标处理：
@@ -162,6 +162,7 @@ updated_at: 2026-05-06
 - `src/webview/main.tsx` 中的 probe 读取正文时，不能只依赖表单控件的 `.value`，而要在阅读态也能读取当前原始文本。
 - `setNodeTextField(field: 'body')` 的 test DOM action 继续在设置正文前先确保节点进入编辑态，再对真实 `textarea` 写值。
 - 真实 DOM / smoke 还需要一条专用 DOM action 来命中渲染后的 checklist checkbox，证明预览点击会走源文改写与宿主持久化主路径。
+- 阅读态与编辑态中的标准文本快捷键需要按语义分流：`Ctrl/Cmd+C`、`Ctrl/Cmd+X`、`Ctrl/Cmd+V` 不能被节点层 `keydown` 处理吞掉；`Ctrl/Cmd+A` 则必须在节点内本地收口为“只全选当前正文区域/输入框”，而不是继续冒泡成整张画布的 select-all。
 - `src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 需要新增一条专用于 `Note` 预览链接的消息链路，让链接打开不与编辑提交共用模糊语义。
 - `tests/playwright/webview-harness.spec.mjs` 至少新增覆盖任务列表交互、链接点击、代码高亮和数学公式渲染的用例；如果补了纯函数级辅助逻辑，也应补对应脚本测试。
 
@@ -170,7 +171,7 @@ updated_at: 2026-05-06
 至少需要完成以下验证：
 
 1. `Note` 正文默认显示 Markdown 预览，而不是始终显示原始文本框。
-2. 点击正文区后，用户能进入纯文本编辑态，并看到原始 Markdown 源文。
+2. 单击正文区时，用户仍停留在预览态并可直接选择内容；双击正文区后，用户能进入纯文本编辑态，并看到原始 Markdown 源文。
 3. 点击阅读态 checklist checkbox 时，正文会在不进入编辑态的前提下切换 `[ ]` / `[x]`，并立即写回宿主持久化。
 4. 编辑结束后，正文会回到预览态，且任务列表、链接、代码高亮与数学公式等结构可见。
 5. 点击安全白名单内链接时，Webview 会请求宿主打开，且不会误切回编辑态；其中外部链接只允许显式白名单 scheme，workspace 文件链接只允许当前 workspace 内文件并支持可选行列定位。
