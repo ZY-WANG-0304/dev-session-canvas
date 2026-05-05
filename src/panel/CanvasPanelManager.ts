@@ -128,7 +128,11 @@ import {
   type AgentCliResolutionCacheEntry,
   type AgentCliResolutionSource
 } from './agentCliResolver';
-import { getConfigurationValue, getConfiguredTerminalShell, inspectCurrentConfiguredTerminalShell } from './configuration';
+import {
+  getConfigurationValue,
+  getConfiguredTerminalShell,
+  inspectCurrentConfiguredTerminalShellInCwd
+} from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 import {
@@ -2303,7 +2307,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async notifyIfConfiguredTerminalShellUnavailable(): Promise<void> {
-    const inspectedShell = inspectCurrentConfiguredTerminalShell();
+    const inspectedShell = inspectCurrentConfiguredTerminalShellInCwd(this.getTerminalWorkingDirectory());
     if (inspectedShell.isAvailable) {
       this.lastUnavailableConfiguredTerminalShellWarningKey = undefined;
       return;

@@ -44,6 +44,7 @@ export interface ResolveConfiguredTerminalShellOptions {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   defaultShellPath?: string;
+  cwd?: string;
 }
 
 export type DetectedTerminalShellSource =
@@ -265,7 +266,12 @@ export function inspectConfiguredTerminalShell(
   const resolvedShell = resolveConfiguredTerminalShell(options);
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
-  const resolvedAvailablePath = resolveTerminalShellCandidateSync(resolvedShell.resolvedPath, env, platform);
+  const resolvedAvailablePath = resolveTerminalShellCandidateSync(
+    resolvedShell.resolvedPath,
+    env,
+    platform,
+    options.cwd
+  );
   return {
     ...resolvedShell,
     resolvedAvailablePath,
@@ -600,7 +606,8 @@ async function normalizeResolvedShellCandidate(
 function resolveTerminalShellCandidateSync(
   candidatePath: string,
   env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  cwd?: string
 ): string | undefined {
   if (!path.isAbsolute(candidatePath) && !isExplicitRelativePath(candidatePath)) {
     const resolvedPathEnvCandidate = resolveCommandFromPathEnvSync(candidatePath, env, platform);
@@ -609,13 +616,27 @@ function resolveTerminalShellCandidateSync(
     }
   }
 
-  for (const executableCandidate of buildPreferredResolvedShellCandidates(candidatePath, env, platform)) {
+  const resolvedCandidatePath = resolveShellCandidateAgainstWorkingDirectory(candidatePath, cwd);
+  for (const executableCandidate of buildPreferredResolvedShellCandidates(resolvedCandidatePath, env, platform)) {
     if (isExecutableCandidateSync(executableCandidate, platform)) {
       return executableCandidate;
     }
   }
 
   return undefined;
+}
+
+function resolveShellCandidateAgainstWorkingDirectory(candidatePath: string, cwd?: string): string {
+  if (!isExplicitRelativePath(candidatePath)) {
+    return candidatePath;
+  }
+
+  const normalizedCwd = cwd?.trim();
+  if (!normalizedCwd) {
+    return candidatePath;
+  }
+
+  return path.resolve(normalizedCwd, candidatePath);
 }
 
 function buildPreferredResolvedShellCandidates(

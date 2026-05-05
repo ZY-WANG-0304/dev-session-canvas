@@ -19,6 +19,7 @@
 - [x] (2026-05-05 18:58 +0800) 按新增需求把 `terminal.shell` / `terminal.shellPath` 从纯设备级扩展为“设备级默认 + workspace 级覆盖”，并补上成组解析逻辑，避免 workspace 级 `terminal.shell` 被设备级 `terminal.shellPath` 反向压住。
 - [x] (2026-05-05 19:06 +0800) 将 `Dev Session Canvas: 选择 Terminal shell` 调整为：打开 workspace 时默认写当前 workspace 覆盖；没有 workspace 时才写设备级用户设置。
 - [x] (2026-05-05 19:57 +0800) 重新运行 `npm run test:terminal-shell-configuration`、`npm run typecheck`、`npm run build` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 成功，workspace 覆盖语义已拿到自动化证据。
+- [x] (2026-05-05 20:03 +0800) 收口 review 新指出的两处回归：修正 Windows 命名 shell 测试中的不稳定断言，并让显式相对 `terminal.shellPath` 的可用性检查改为按真实终端启动时相同的 workspace `cwd` 解析；随后重新运行 `npm run test:terminal-shell-configuration`、`npm run typecheck`、`npm run build` 与 trusted smoke 成功。
 
 ## 意外与发现
 
@@ -43,6 +44,9 @@
 - 观察：trusted smoke 里看到的 extension 行为一度和源码不一致，是因为 smoke host 继续复用了旧 `dist/extension.js`；在这条仓库里改完 `src/extension.ts` 后，必须先 `npm run build` 再跑 trusted smoke，才能拿到最新命令逻辑。
   证据：失败时 `.debug/vscode-smoke/trusted/smoke-host/dist/extension.js` 里 `promptTerminalShellSelection()` 仍然固定写 `ConfigurationTarget.Global`；重新 build 后该逻辑才切换到最新实现。
 
+- 观察：显式相对 `terminal.shellPath` 的“是否可用”不能只在 extension host 当前目录上做 `accessSync`；真实启动时 `node-pty.spawn(file, { cwd })` 会按 workspace `cwd` 解析同一条相对路径，所以 probe 若不共享同一 `cwd` 规则，就会对 repo-local wrapper 稳定误报 warning。
+  证据：review 复现里 `inspectConfiguredTerminalShell({ configuredPath: './fake-shell' })` 返回不可用，但 `node-pty.spawn('./fake-shell', { cwd: <workspace> })` 正常退出 0。
+
 ## 决策记录
 
 - 决策：保留 `devSessionCanvas.terminal.shell` 作为固定设置项，同时让命令把精确路径写入 `devSessionCanvas.terminal.shellPath`。
@@ -65,6 +69,10 @@
   理由：命令发生在当前项目语境里，用户更常见的预期是“只影响当前 workspace”；设备级默认值仍保留在 Settings 的用户作用域里可编辑。
   日期/作者：2026-05-05 / Codex
 
+- 决策：配置可用性检查在遇到显式相对 `terminal.shellPath` 时，必须使用和真实终端 launch 完全一致的 workspace `cwd` 解析路径。
+  理由：只有让 warning probe 与 `node-pty.spawn(..., { cwd })` 共享同一套解析语义，才能避免对 repo-local wrapper 出现“能启动但激活就报警”的假阳性。
+  日期/作者：2026-05-05 / Codex
+
 ## 结果与复盘
 
 本轮完成后，嵌入式 Terminal 的 shell 选择能力正式分成了两层：设置页里的 `terminal.shell` 负责逻辑 shell 类型，命令式 Quick Pick 负责把当前设备真实探测到的具体路径写入 `terminal.shellPath`。这样，`default` 跟随宿主默认 shell 的语义保留不变；而当用户显式从 Quick Pick 里选择某个 `bash` / `zsh` / `pwsh` 路径时，扩展会稳定记住这一个二进制，不再因为 `PATH` 顺序或 well-known path 重新解析而漂移。
@@ -72,6 +80,8 @@
 在此基础上，配置作用域也正式收口成“设备级默认 + workspace 级覆盖”：这两个键现在都允许在 Settings 的用户作用域里给默认值，也允许在当前 workspace 里覆盖。实现上不再让 VS Code 分别合并两个键，而是把它们视为一个配置组；只要 workspace 级显式写了其中任意一项，就整体切到 workspace 级组合，避免出现“workspace 里选了 bash，却还偷偷继承设备级 shellPath”这类混合状态。
 
 同时，本轮补齐了此前缺失的文档链路：新增正式设计文档，解释为什么 VS Code 设置项不能动态枚举，以及当前仓库为何要使用“固定设置项 + 动态命令 + 精确路径覆盖”这一组合。后续新增的 scope 规则也已经同步写入：命令在 workspace 打开时默认只改当前 workspace；需要修改设备级默认值时，改用户设置而不是复用命令。若后续还要继续扩大 shell 自动探测来源，应在新计划里基于同一套分层语义推进，而不是再让设置项和命令路径互相混淆。
+
+这轮 review 修复又补了一个容易遗漏的边界：`terminal.shellPath` 不仅可以是绝对路径，也可能是当前 workspace 下的相对 wrapper 脚本。现在可用性检查已经改成与真实 launch 共享同一个 workspace `cwd` 解析规则，因此 `./fake-shell` 这类 repo-local shell 不会再在激活或配置变更时被误报为不可用；同时 Windows 命名 shell 的纯测试断言也改成受控环境下验证，不再把宿主机上真实存在的 well-known path 误判成失败。
 
 验证上，本轮已经拿到 `npm run test:terminal-shell-configuration`、`npm run typecheck`、`npm run build`、`npm run build:notifier` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过的证据。trusted smoke 的两处测试假设问题也已同步收口：旧的“空闲终端节点”断言改为先等待自动启动、再停掉会话后验证；新的 shell 选择断言则改为正确读取刷新后的配置并只匹配真正带 `resolvedPath` 的 Quick Pick 项。scope 扩展后又新增了“workspace 打开时命令不会再改写设备级默认值”的 smoke 断言，并在重新 build 主扩展后验证通过。因此设计文档现已从 `验证中` 升级为 `已验证`。
 
