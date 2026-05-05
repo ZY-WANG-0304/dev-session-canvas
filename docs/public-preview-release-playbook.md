@@ -83,12 +83,15 @@
 
 ## 发布前检查
 
+以下步骤默认建立在一个前提上：当前版本对应的 feature 均已经先合入 `main`，发布物料也已经通过独立发布准备分支 review 并回到 `main`。真正执行 `publish` 和打 tag 时，应站在 `main` 上对应的最终发布 commit，而不是仍停留在未合并的发布准备分支 head。
+
 1. 锁定最终要发布的 git ref、版本号与产物文件名。
-2. 在最终 git ref 上执行：
+2. 若刚切到最终 git ref，或这轮同步带来了 `package-lock.json` / workspace 依赖变化，先在仓库根目录执行一次 `npm install`（干净 release checkout 则执行 `npm ci`），刷新 workspace link 与本地 `@vscode/vsce` 安装；否则 `npm run package:vsix` 可能在 `npm list` 阶段误报缺少 workspace 依赖。
+3. 在最终 git ref 上执行：
 
        npm run validate:clean-checkout:vsix -- --ref <final-ref>
 
-3. 在带 `.git` 元数据的最终 release checkout 中执行：
+4. 在带 `.git` 元数据的最终 release checkout 中执行：
 
        npm run package:vsix
 
@@ -96,17 +99,17 @@
 
        DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> npm run package:vsix
 
-4. 确认打包日志已经打印当前 README 改写 ref，且没有出现相对媒体 URL 校验失败。
-5. 复核以下文件与当前版本事实一致：
+5. 确认打包日志已经打印当前 README 改写 ref，且没有出现相对媒体 URL 校验失败。
+6. 复核以下文件与当前版本事实一致：
    - `README.marketplace.md`
    - `CHANGELOG.md`
    - `docs/support.md`
    - `docs/SECURITY.md`
-6. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
+7. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
 
 ## 发布命令
 
-在版本号、最终 git ref 与 VSIX 产物都已锁定后，使用本地 `@vscode/vsce` 执行：
+在版本号、最终 git ref 与 VSIX 产物都已锁定后，使用本地 `@vscode/vsce` 执行；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
 
 注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
@@ -117,7 +120,7 @@
 
 ## publish 后补 tag
 
-`publish` 成功后，应立即给这次实际发布所对应的 commit 打上 `vX.Y.Z` 形式的 lightweight tag，并把该 tag 推送到远端仓库；只在本地打 tag 不算完成。不要等到后续 hotfix、README 修订或其他提交出现后再补打，避免 tag 漂移到错误提交。
+`publish` 成功后，应立即给这次实际发布所对应、且已经位于 `main` 上的 commit 打上 `vX.Y.Z` 形式的 lightweight tag，并把该 tag 推送到远端仓库；只在本地打 tag 不算完成。不要等到后续 hotfix、README 修订或其他提交出现后再补打，避免 tag 漂移到错误提交。
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 

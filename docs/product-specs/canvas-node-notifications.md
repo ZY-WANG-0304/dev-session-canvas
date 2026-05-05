@@ -26,7 +26,7 @@
 3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）
 4. 系统捕获并解析这些信号，识别出需要用户注意的事件
 5. 系统在画布节点上显示视觉提示（节点内提醒 icon、Minimap 同色明暗闪烁）
-6. 如果启用了 VS Code 工作台通知桥接，系统还会弹出 VS Code 通知
+6. 如果桥接模式不是 `none`，系统还会按配置额外弹出 VS Code 工作台消息或桌面系统通知
 7. 如果启用了强提醒模式，系统还会在节点标题栏或 Minimap 上显示额外增强提示
 8. 用户通过视觉提示快速定位到需要注意的节点
 9. 用户通过以下方式之一清除通知状态：
@@ -37,7 +37,7 @@
 
 1. 用户打开 VSCode 设置（`devSessionCanvas.notifications.*`）
 2. 用户根据个人偏好调整通知行为：
-   - 启用/禁用 VS Code 工作台通知桥接
+   - 选择通知桥接模式（不桥接通知、工作台消息、系统通知）
    - 选择强提醒模式（无、节点标题栏、Minimap 尺寸脉冲、两者都有）
 3. 配置立即生效，无需重启 VSCode
 
@@ -57,14 +57,33 @@
   - Minimap 对应节点的同色明暗闪烁
   - 节点 `attentionPending` 状态标记并持久化到存储
 
-### 4.2 VS Code 工作台通知桥接
+### 4.2 通知桥接模式
 
-- 配置项 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals`：
+- 配置项 `devSessionCanvas.notifications.attentionSignalBridge`：
+  - 类型：`enum`
+  - 可选值：`none` | `workbench` | `system`
+  - 默认值：`workbench`
+  - 作用域：`window`
+- 各模式行为：
+  - `none`：不额外弹出 VS Code 工作台消息或系统通知；节点内提醒 icon、Minimap 同色明暗闪烁、诊断事件与 `attentionPending` 状态仍然保留
+  - `workbench`：把终端注意力信号桥接为 VS Code 工作台消息（`vscode.window.showInformationMessage`）
+  - `system`：优先把 attention event 发送给本机 UI 侧的 `Dev Session Canvas Notifier` companion extension；若 companion 可用且成功接单，则本次提醒走本机桌面系统通知，不再重复弹 VS Code 工作台消息
+- `system` 模式的补充约束：
+  - companion 会同时返回实际使用的 `backend` 与 `activationMode`；其中 `activationMode=none` 明确表示“当前平台只保证通知出现，不承诺点击后回到 VS Code”
+  - 若 companion 缺失、当前平台不支持、或调用失败，则自动回退到 VS Code 工作台消息，避免静默丢提醒
+
+### 4.2.1 Notifier companion 声音开关
+
+- 配置项 `devSessionCanvasNotifier.notifications.playSound`：
   - 类型：`boolean`
   - 默认值：`true`
   - 作用域：`window`
-  - 功能：控制是否将终端注意力信号桥接为 VS Code 工作台通知（`vscode.window.showInformationMessage`）
-  - 关闭后：节点内提醒 icon 与 Minimap 同色闪烁仍然保留，只是不额外弹出 VS Code 工作台通知
+  - 功能：控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音
+- 开启后：
+  - notifier 会在当前平台支持的后端上 best-effort 请求提示音
+  - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会额外播放一次系统 alert sound
+- 关闭后：
+  - notifier 会尽量走静音路径，但不影响通知弹出、点击回跳和 `attentionPending` 状态机
 
 ### 4.3 强提醒模式
 
@@ -98,6 +117,7 @@
   - 通知状态清除路径：
     - 用户左键点击节点本体
     - 用户点击 VS Code 工作台通知中的"查看节点"按钮
+    - 用户点击支持回调的系统桌面通知（例如 `activationMode=direct-action` 或 `protocol` 的 companion 后端）
 - 状态持久化：
   - 通知状态会持久化到存储（snapshot 和 workspace state）
   - 重新加载画布后会从存储中恢复通知状态
@@ -107,7 +127,7 @@
 
 ### 5.1 当前阶段不做
 
-- 不支持自定义通知声音
+- 不支持自定义通知声音或声音选择
 - 不支持通知历史记录或通知中心
 - 不支持基于通知内容的智能分类或优先级
 - 不支持跨 workspace 的通知聚合
@@ -183,7 +203,11 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - [ ] 系统能正确解析 BEL、OSC 9、OSC 777 三种终端注意力信号
 - [ ] OSC 9 中以 `4;` 开头的消息被正确标记为 `ignore`
 - [ ] 当检测到注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁始终显示
-- [ ] 配置 `bridgeTerminalAttentionSignals` 为 `false` 时，不弹出 VS Code 工作台通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
+- [ ] 配置 `attentionSignalBridge` 为 `none` 时，不额外弹出 VS Code 工作台消息或系统通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
+- [ ] 配置 `attentionSignalBridge` 为 `workbench` 时，会弹出 VS Code 工作台消息
+- [x] 配置 `attentionSignalBridge` 为 `system` 且 companion 可用时，主扩展会优先把 attention event 发送给 companion，并避免重复弹出 VS Code 工作台消息
+- [x] companion 成功接单时，diagnostic event 会记录实际 `backend` 与 `activationMode`，便于区分“完整可点击通知”和“只展示通知”的平台差异
+- [ ] 配置 `attentionSignalBridge` 为 `system` 但 companion 不可用时，会自动回退到 VS Code 工作台消息
 - [ ] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
 - [ ] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
 - [ ] 左键点击节点本体后，通知状态自动清除
@@ -206,6 +230,14 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - [ ] Minimap 上的通知提示与节点本体的提示保持一致
 - [ ] 用户能通过设置面板轻松调整通知行为
 
+### 7.4 真实桌面通知人工验收
+
+- [x] 在本机 VS Code 中运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，能够看到一次真实桌面通知或拿到明确失败原因
+- [x] Linux：若实际 `activationMode=direct-action`，点击通知后会回到 VS Code；若实际 `activationMode=none`，则只要求确认通知出现，并在诊断输出中看到退化记录
+- [x] macOS：若实际 `backend=macos-terminal-notifier`，点击通知后会回到 VS Code；若实际 `backend=macos-osascript`，则只要求确认通知出现，并接受“不可点击回跳”的退化
+- [x] Windows：若实际 `backend=windows-toast`，点击通知后会回到 VS Code；若系统通知被 Focus Assist / 权限策略拦截，需在通知中心或诊断输出中记录环境原因
+- [ ] 人工验收记录必须至少包含平台、实际 `backend`、实际 `activationMode` 和点击回调是否成功，避免把退化路径误记成完整能力
+
 ## 8. 开放问题
 
 ### 8.1 待确认
@@ -217,6 +249,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 ### 8.2 已知限制
 
 - **Codex 集成**：Codex Agent 需要在配置中设置 `notification_method` 和 `notification_condition` 才能正确触发通知，这一要求需要在文档中明确说明。
+- **平台差异**：桌面通知是否支持“点击后回到 VS Code”并不统一；当前由 companion 返回 `activationMode` 显式区分完整路径和退化路径，而不是伪装成统一能力。
 - **跨 chunk 解析**：OSC 序列可能被分割在多个输出 chunk 中，当前实现通过 `oscCarryover` 缓存处理，但缓存大小限制为 256 字节，超长序列可能被截断。
 - **启发式检测**：Agent 等待输入检测基于启发式规则，可能存在误判情况（如误将长时间运行的任务判断为等待输入）。
 
@@ -225,7 +258,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - **智能通知**：基于通知内容的智能分类和优先级排序
 - **通知聚合**：当同一节点短时间内触发多次通知时，聚合显示
 - **自定义规则**：允许用户定义通知过滤规则和触发条件
-- **声音提示**：可选的通知声音
+- **声音提示**：自定义通知声音或声音选择
 - **通知中心**：提供统一的通知历史和管理界面
 
 ## 9. 依据文档
@@ -244,4 +277,4 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 
 ## 11. 最后更新
 
-2026-04-28
+2026-05-03

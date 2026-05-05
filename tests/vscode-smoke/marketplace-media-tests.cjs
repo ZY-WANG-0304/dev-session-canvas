@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs/promises');
 const path = require('path');
 const vscode = require('vscode');
+const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const VIEW_IDS = {
@@ -41,11 +42,12 @@ async function run() {
     const surface = spec.surface ?? 'panel';
     const mode = spec.mode === 'recording' ? 'recording' : 'frame';
 
-    await activateExtension();
-    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await activateVisibleExtension(vscode, EXTENSION_ID);
+    await waitForCommand(vscode, COMMAND_IDS.openCanvas);
     await configureWorkbench(spec);
-
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
+    await waitForCommand(vscode, COMMAND_IDS.testResetState);
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, surface, 20000);
     await closeAuxiliaryBar();
     await clearNotifications();
@@ -136,12 +138,6 @@ async function run() {
   } finally {
     await stateMirror?.stop();
   }
-}
-
-async function activateExtension() {
-  const extension = vscode.extensions.getExtension(EXTENSION_ID);
-  assert.ok(extension, `Missing extension ${EXTENSION_ID}.`);
-  await extension.activate();
 }
 
 async function configureWorkbench(spec) {

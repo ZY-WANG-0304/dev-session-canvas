@@ -4,6 +4,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
+const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
@@ -52,7 +53,6 @@ const COMMAND_IDS = {
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
-
 const artifactDir = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const smokeScenario = process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO || 'trusted';
 const REAL_DOM_AGENT_TITLE = 'Agent Title Through DOM';
@@ -126,9 +126,10 @@ async function run() {
 }
 
 async function runSmoke() {
-  const extension = vscode.extensions.getExtension(EXTENSION_ID);
-  assert.ok(extension, `Missing extension ${EXTENSION_ID}.`);
-  await extension.activate();
+  await activateVisibleExtension(vscode, EXTENSION_ID);
+  await waitForCommand(vscode, COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await waitForCommand(vscode, COMMAND_IDS.testResetState);
 
   const commands = await vscode.commands.getCommands(true);
   for (const command of Object.values(COMMAND_IDS)) {
@@ -256,7 +257,7 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '已桥接 · 标题栏+Minimap 增强');
+  assert.strictEqual(notificationModeSummaryItem.description, '工作台消息 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
   await verifyClaudeSessionIdLocator();
@@ -353,6 +354,7 @@ async function runTrustedSmoke() {
     expectAgentSessionId: true
   });
   await verifyTerminalExecutionFlow(terminalNode.id);
+  await verifyLegacyAttentionNotificationBridgeMigration();
   await verifyExecutionAttentionNotificationBridge(agentNode.id);
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
@@ -409,7 +411,6 @@ async function runTrustedSmoke() {
 
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
-
 async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   const baselineSnapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
@@ -3264,8 +3265,9 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
 
 async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   const configuration = vscode.workspace.getConfiguration();
-  const originalBridgeEnabled =
-    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+  const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+  );
   const originalStrongReminderMode = normalizeStrongTerminalAttentionReminderMode(
     configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
   );
@@ -3286,7 +3288,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
 
   try {
     await ensureStrongTerminalAttentionReminderMode('both');
-    await ensureBridgeTerminalAttentionSignalsEnabled(false);
+    await ensureAttentionNotificationBridgeMode('none');
 
     await startExecutionSessionForTest({
       kind: 'agent',
@@ -3466,7 +3468,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
         await clearAttentionByClick();
 
         await ensureStrongTerminalAttentionReminderMode('both');
-        await ensureBridgeTerminalAttentionSignalsEnabled(true);
+        await ensureAttentionNotificationBridgeMode('workbench');
 
         calls.length = 0;
         await clearDiagnosticEvents();
@@ -3668,9 +3670,74 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
     );
   } finally {
     await ensureAgentStopped(agentNodeId);
-    await ensureBridgeTerminalAttentionSignalsEnabled(originalBridgeEnabled);
+    await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await ensureStrongTerminalAttentionReminderMode(originalStrongReminderMode);
     await clearHostMessages();
+    await clearDiagnosticEvents();
+  }
+}
+
+async function verifyLegacyAttentionNotificationBridgeMigration() {
+  const configuration = vscode.workspace.getConfiguration();
+  const bridgeSetting = configuration.inspect('devSessionCanvas.notifications.attentionSignalBridge');
+  const legacyBridgeSetting = configuration.inspect(
+    'devSessionCanvas.notifications.bridgeTerminalAttentionSignals'
+  );
+  const legacyPreferNotifierSetting = configuration.inspect(
+    'devSessionCanvas.notifications.preferNotifierCompanion'
+  );
+
+  try {
+    await clearDiagnosticEvents();
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.attentionSignalBridge': undefined,
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': undefined,
+      'devSessionCanvas.notifications.preferNotifierCompanion': true
+    });
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+            event.detail?.mode === 'system'
+        ),
+      20000
+    );
+
+    await clearDiagnosticEvents();
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.preferNotifierCompanion': undefined,
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': false
+    });
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+            event.detail?.mode === 'none'
+        ),
+      20000
+    );
+
+    await clearDiagnosticEvents();
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': true
+    });
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+            event.detail?.mode === 'workbench'
+        ),
+      20000
+      );
+  } finally {
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.attentionSignalBridge': bridgeSetting?.globalValue,
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': legacyBridgeSetting?.globalValue,
+      'devSessionCanvas.notifications.preferNotifierCompanion': legacyPreferNotifierSetting?.globalValue
+    });
     await clearDiagnosticEvents();
   }
 }
@@ -7650,19 +7717,20 @@ async function setAgentDefaultArgs(provider, defaultArgs) {
     );
 }
 
-async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
+async function ensureAttentionNotificationBridgeMode(mode) {
   const configuration = vscode.workspace.getConfiguration();
-  const currentEnabled =
-    configuration.get('devSessionCanvas.notifications.bridgeTerminalAttentionSignals', true) === true;
+  const currentMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+  );
 
-  if (currentEnabled === enabled) {
+  if (currentMode === mode) {
     return;
   }
 
   await clearDiagnosticEvents();
   await configuration.update(
-    'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
-    enabled,
+    'devSessionCanvas.notifications.attentionSignalBridge',
+    mode,
     vscode.ConfigurationTarget.Global
   );
   await waitForDiagnosticEvents(
@@ -7670,10 +7738,52 @@ async function ensureBridgeTerminalAttentionSignalsEnabled(enabled) {
       events.some(
         (event) =>
           event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
-          event.detail?.enabled === enabled
+          event.detail?.mode === mode
       ),
     20000
   );
+}
+
+function resolveSmokeUserSettingsPath() {
+  if (!artifactDir) {
+    throw new Error('缺少 DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR，无法直接写入 smoke settings.json。');
+  }
+
+  return path.join(path.dirname(artifactDir), 'user-data', 'User', 'settings.json');
+}
+
+async function writeSmokeUserSettings(updates) {
+  const settingsPath = resolveSmokeUserSettingsPath();
+  const raw = await fs.readFile(settingsPath, 'utf8').catch(() => '{}');
+  const settings = JSON.parse(raw);
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      delete settings[key];
+      continue;
+    }
+
+    settings[key] = value;
+  }
+
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+}
+
+function normalizeAttentionNotificationBridgeMode(value) {
+  if (value === 'none' || value === 'workbench' || value === 'system') {
+    return value;
+  }
+
+  if (value === false) {
+    return 'none';
+  }
+
+  if (value === true) {
+    return 'workbench';
+  }
+
+  return 'workbench';
 }
 
 function normalizeStrongTerminalAttentionReminderMode(value) {

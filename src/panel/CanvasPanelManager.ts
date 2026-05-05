@@ -2,6 +2,13 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import {
+  ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
+  NOTIFIER_COMMAND_IDS,
+  isAttentionNotificationDeliveryResult,
+  type AttentionNotificationDeliveryResult,
+  type AttentionNotificationRequest
+} from '../../packages/attention-protocol/src/index';
 
 import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
@@ -19,6 +26,7 @@ import {
   type ExecutionAttentionSignalState
 } from '../common/executionAttentionSignals';
 import {
+  COMMAND_IDS,
   CONTEXT_KEYS,
   CONFIG_KEYS,
   EXTENSION_DISPLAY_NAME,
@@ -43,6 +51,7 @@ import {
   type CanvasEdgeColor,
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
+  type CanvasAttentionNotificationBridgeMode,
   type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
@@ -80,6 +89,7 @@ import {
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   isExecutionNodeKind,
+  normalizeCanvasAttentionNotificationBridgeMode,
   normalizeCanvasStrongTerminalAttentionReminderMode,
   normalizeCanvasNodeFootprint,
   parseWebviewMessage,
@@ -100,6 +110,7 @@ import {
   normalizeSerializedTerminalState
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
+import { isTestHarnessMode } from '../common/testHarness';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
 import {
   createExecutionSessionProcess,
@@ -325,7 +336,7 @@ export interface CanvasSidebarState {
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
-  notificationBridgeEnabled: boolean;
+  notificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
   filesFeatureEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
@@ -451,7 +462,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
-  private bridgeTerminalAttentionSignalsEnabled: boolean;
+  private attentionNotificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   private fileFilterState: CanvasFileFilterState;
   private state: CanvasPrototypeState;
@@ -500,7 +511,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.appliedStartupConfiguration = this.readStartupConfiguration();
-    this.bridgeTerminalAttentionSignalsEnabled = this.readBridgeTerminalAttentionSignalsEnabled();
+    this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
@@ -552,9 +563,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
         const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
         const filesPathDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPathDisplayMode);
-        const bridgeTerminalAttentionSignalsChanged = event.affectsConfiguration(
-          CONFIG_KEYS.notificationBridgeTerminalAttentionSignals
-        );
+        const attentionNotificationBridgeChanged =
+          event.affectsConfiguration(CONFIG_KEYS.notificationAttentionSignalBridge) ||
+          event.affectsConfiguration(CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals) ||
+          event.affectsConfiguration(CONFIG_KEYS.legacyNotificationPreferNotifierCompanion);
         const strongTerminalAttentionReminderChanged = event.affectsConfiguration(
           CONFIG_KEYS.notificationStrongTerminalAttentionReminder
         );
@@ -572,7 +584,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           fileNodeDisplayStyleChanged ||
           filesNodeDisplayModeChanged ||
           filesPathDisplayModeChanged ||
-          bridgeTerminalAttentionSignalsChanged ||
+          attentionNotificationBridgeChanged ||
           strongTerminalAttentionReminderChanged;
 
         if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
@@ -593,7 +605,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
           !filesPathDisplayModeChanged &&
-          !bridgeTerminalAttentionSignalsChanged &&
+          !attentionNotificationBridgeChanged &&
           !strongTerminalAttentionReminderChanged &&
           !terminalScrollbackChanged &&
           !multiCursorModifierChanged &&
@@ -617,7 +629,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
             filesPathDisplayModeChanged,
-            bridgeTerminalAttentionSignalsChanged,
+            attentionNotificationBridgeChanged,
             strongTerminalAttentionReminderChanged,
             terminalScrollbackChanged,
             multiCursorModifierChanged,
@@ -664,7 +676,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceLocation,
       configuredSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
-      notificationBridgeEnabled: this.bridgeTerminalAttentionSignalsEnabled,
+      notificationBridgeMode: this.attentionNotificationBridgeMode,
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       filePresentationMode: fileConfiguration.presentationMode,
@@ -702,7 +714,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public getRuntimeSupervisorStateForTest(): RuntimeSupervisorDebugStateForTest {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('getRuntimeSupervisorStateForTest 仅在测试模式下可用。');
     }
 
@@ -887,7 +899,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     preferredPosition?: CanvasNodePosition,
     options?: CreateAgentNodeOptions
   ): void {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('createNodeForTest 仅在测试模式下可用。');
     }
 
@@ -908,6 +920,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     try {
       await this.focusNodeInCanvas(nodeId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public async focusAttentionNodeById(nodeId: string): Promise<boolean> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) {
+      return false;
+    }
+
+    try {
+      await this.focusNodeInCanvas(nodeId);
+      if (isExecutionNodeKind(node.kind)) {
+        this.clearExecutionAttention(node.kind, nodeId);
+      }
       return true;
     } catch {
       return false;
@@ -974,7 +1003,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
     }
 
@@ -1034,7 +1063,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async setPersistedStateForTest(rawState: unknown): Promise<CanvasDebugSnapshot> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
     }
 
@@ -1096,7 +1125,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     requestedCommand: string,
     workspaceCwd?: string
   ): string {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('getAgentCliResolutionCacheKeyForTest 仅在测试模式下可用。');
     }
 
@@ -1104,7 +1133,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('flushPersistedCanvasStateForTest 仅在测试模式下可用。');
     }
 
@@ -1217,7 +1246,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     timeoutMs = 5000,
     delayMs = 0
   ): Promise<WebviewProbeSnapshot> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('captureWebviewProbeForTest 仅在测试模式下可用。');
     }
 
@@ -1377,7 +1406,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation | undefined = this.activeSurface,
     timeoutMs = 5000
   ): Promise<void> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('performWebviewDomActionForTest 仅在测试模式下可用。');
     }
 
@@ -2147,8 +2176,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private readBridgeTerminalAttentionSignalsEnabled(): boolean {
-    return getConfigurationValue<boolean>('notificationBridgeTerminalAttentionSignals', true);
+  private readAttentionNotificationBridgeMode(): CanvasAttentionNotificationBridgeMode {
+    const configuration = vscode.workspace.getConfiguration();
+    const inspectedMode = configuration.inspect<CanvasAttentionNotificationBridgeMode | boolean>(
+      CONFIG_KEYS.notificationAttentionSignalBridge
+    );
+    // Distinguish an explicit v2 setting from the schema default before falling
+    // back to legacy keys used by earlier notifier experiments.
+    const configuredMode =
+      inspectedMode?.workspaceFolderValue ?? inspectedMode?.workspaceValue ?? inspectedMode?.globalValue;
+    if (configuredMode !== undefined) {
+      return normalizeCanvasAttentionNotificationBridgeMode(configuredMode);
+    }
+
+    const legacyPreferNotifierCompanion =
+      configuration.get<boolean>(CONFIG_KEYS.legacyNotificationPreferNotifierCompanion, false) === true;
+    if (legacyPreferNotifierCompanion) {
+      return 'system';
+    }
+
+    return configuration.get<boolean>(CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals, true) === true
+      ? 'workbench'
+      : 'none';
   }
 
   private readStrongTerminalAttentionReminderMode(): CanvasStrongTerminalAttentionReminderMode {
@@ -2182,7 +2231,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimePersistenceChanged: boolean;
     filesFeatureEnabledChanged: boolean;
   }): Promise<void> {
-    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+    if (isTestHarnessMode(this.context.extensionMode)) {
       return;
     }
 
@@ -2233,17 +2282,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
     filesPathDisplayModeChanged: boolean;
-    bridgeTerminalAttentionSignalsChanged: boolean;
+    attentionNotificationBridgeChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
     terminalWordSeparatorsChanged: boolean;
     workbenchIconThemeChanged: boolean;
   }): Promise<void> {
-    if (options.bridgeTerminalAttentionSignalsChanged) {
-      this.bridgeTerminalAttentionSignalsEnabled = this.readBridgeTerminalAttentionSignalsEnabled();
+    if (options.attentionNotificationBridgeChanged) {
+      this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
       this.recordDiagnosticEvent('execution/attentionNotificationBridgeConfigChanged', {
-        enabled: this.bridgeTerminalAttentionSignalsEnabled
+        enabled: this.attentionNotificationBridgeMode !== 'none',
+        mode: this.attentionNotificationBridgeMode,
+        workbenchEnabled: this.attentionNotificationBridgeMode !== 'none',
+        systemPreferred: this.attentionNotificationBridgeMode === 'system'
       });
     }
 
@@ -3470,7 +3522,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.buffer = appendTerminalBuffer(session.buffer, chunk);
     session.terminalStateTracker.write(chunk);
     session.lineContextTracker.write(chunk);
-    this.bridgeExecutionAttentionSignals(binding.kind, binding.nodeId, session, chunk);
+    void this.bridgeExecutionAttentionSignals(binding.kind, binding.nodeId, session, chunk);
     if (binding.kind === 'agent') {
       this.maybeSyncAgentResumeContextFromOutput(binding.nodeId, session, {
         allowOverwriteExisting: session.stopRequested,
@@ -4344,7 +4396,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
-    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+    if (isTestHarnessMode(this.context.extensionMode)) {
       if (launchMode === 'resume') {
         const sessionId = previousProvider === provider ? metadata?.resumeSessionId?.trim() : undefined;
         const storagePath =
@@ -4698,12 +4750,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.clearExecutionAttention(node.kind, nodeId);
   }
 
-  private bridgeExecutionAttentionSignals(
+  private async bridgeExecutionAttentionSignals(
     kind: ExecutionNodeKind,
     nodeId: string,
     session: ManagedExecutionSession,
     chunk: string
-  ): void {
+  ): Promise<void> {
     const state = this.ensureExecutionAttentionNotificationState(session);
     const parsed = parseExecutionAttentionSignals(chunk, state.carryover);
     state.carryover = parsed.carryover;
@@ -4719,12 +4771,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         reason: 'no-notify-signal'
       });
-      return;
-    }
-
-    this.setExecutionAttentionPending(kind, nodeId, true);
-
-    if (!this.bridgeTerminalAttentionSignalsEnabled) {
       return;
     }
 
@@ -4750,15 +4796,103 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    this.setExecutionAttentionPending(kind, nodeId, true);
     state.lastNotificationKey = notificationKey;
     state.lastNotificationAtMs = now;
+
+    if (this.attentionNotificationBridgeMode === 'system') {
+      const companionResult = await this.postExecutionAttentionNotificationToCompanion(
+        this.buildExecutionAttentionNotificationRequest(kind, nodeId, message, notificationKey)
+      );
+      if (companionResult.status === 'posted') {
+        this.recordDiagnosticEvent('execution/attentionNotificationCompanionPosted', {
+          kind,
+          nodeId,
+          signal: signal.kind,
+          message,
+          bridgeMode: this.attentionNotificationBridgeMode,
+          backend: companionResult.backend,
+          activationMode: companionResult.activationMode,
+          detail: companionResult.detail
+        });
+        return;
+      }
+
+      this.recordDiagnosticEvent('execution/attentionNotificationCompanionFallback', {
+        kind,
+        nodeId,
+        signal: signal.kind,
+        message,
+        bridgeMode: this.attentionNotificationBridgeMode,
+        status: companionResult.status,
+        backend: companionResult.backend,
+        activationMode: companionResult.activationMode,
+        detail: companionResult.detail
+      });
+    }
+
+    if (this.attentionNotificationBridgeMode === 'none') {
+      return;
+    }
+
     this.recordDiagnosticEvent('execution/attentionNotificationPosted', {
       kind,
       nodeId,
       signal: signal.kind,
-      message
+      message,
+      bridgeMode: this.attentionNotificationBridgeMode
     });
     void this.showExecutionAttentionNotification(kind, nodeId, message);
+  }
+
+  private buildExecutionAttentionNotificationRequest(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    message: string,
+    notificationKey: string
+  ): AttentionNotificationRequest {
+    const targetLabel = kind === 'agent' ? 'Agent' : 'Terminal';
+    return {
+      version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
+      kind: 'execution-attention',
+      title: `${EXTENSION_DISPLAY_NAME} · ${targetLabel}`,
+      message,
+      dedupeKey: `${nodeId}:${notificationKey}`,
+      focusAction: {
+        command: COMMAND_IDS.focusAttentionNode,
+        arguments: [nodeId]
+      }
+    };
+  }
+
+  private async postExecutionAttentionNotificationToCompanion(
+    request: AttentionNotificationRequest
+  ): Promise<AttentionNotificationDeliveryResult> {
+    try {
+      const result = await vscode.commands.executeCommand(
+        NOTIFIER_COMMAND_IDS.postSystemNotification,
+        request
+      );
+      if (isAttentionNotificationDeliveryResult(result)) {
+        return result;
+      }
+
+      return {
+        status: 'error',
+        backend: 'unsupported',
+        activationMode: 'none',
+        detail: 'invalid-companion-result'
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const status = /command .* not found/i.test(detail) ? 'unsupported' : 'error';
+      return {
+        status,
+        backend: 'unsupported',
+        activationMode: 'none',
+        detail
+      };
+    }
   }
 
   private async showExecutionAttentionNotification(
@@ -5395,7 +5529,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
-        this.bridgeExecutionAttentionSignals('agent', nodeId, activeSession, text);
+        void this.bridgeExecutionAttentionSignals('agent', nodeId, activeSession, text);
         this.maybeSyncAgentResumeContextFromOutput(nodeId, activeSession, {
           allowOverwriteExisting: activeSession.stopRequested,
           flushImmediately: activeSession.stopRequested
@@ -5658,11 +5792,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '').trim();
 
     const codexCommand =
-      this.context.extensionMode === vscode.ExtensionMode.Test
+      isTestHarnessMode(this.context.extensionMode)
         ? process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND?.trim() || configuredCodexCommand
         : configuredCodexCommand;
     const claudeCommand =
-      this.context.extensionMode === vscode.ExtensionMode.Test
+      isTestHarnessMode(this.context.extensionMode)
         ? process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND?.trim() || configuredClaudeCommand
         : configuredClaudeCommand;
 
@@ -5921,7 +6055,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
-    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+    if (isTestHarnessMode(this.context.extensionMode)) {
       const commandDirectories = new Set<string>();
       for (const command of [
         process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
@@ -6203,7 +6337,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
-        this.bridgeExecutionAttentionSignals('terminal', nodeId, activeSession, text);
+        void this.bridgeExecutionAttentionSignals('terminal', nodeId, activeSession, text);
         if (activeSession.lifecycleStatus === 'launching') {
           activeSession.lifecycleStatus = 'live';
         }
@@ -7232,7 +7366,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private recordHostMessageForTest(message: HostToWebviewMessage): void {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       return;
     }
 

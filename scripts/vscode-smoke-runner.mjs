@@ -7,6 +7,7 @@ import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 
 const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
 const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
+const STAGED_SMOKE_TESTS_ROOT = path.join('tests', 'vscode-smoke');
 
 export function shouldReRunInsideXvfb() {
   return (
@@ -125,6 +126,62 @@ export async function prepareRuntime(options) {
       ...(options.extensionTestsEnv ?? {})
     }
   };
+}
+
+export async function prepareMainSmokeHostExtension(options) {
+  const smokeHostRoot = options.targetRoot;
+  await fs.rm(smokeHostRoot, { recursive: true, force: true });
+  await fs.mkdir(smokeHostRoot, { recursive: true });
+
+  for (const entry of ['package.json', 'package.nls.json', 'dist', 'images', 'node_modules', 'scripts']) {
+    const sourcePath = path.join(options.projectRoot, entry);
+    const targetPath = path.join(smokeHostRoot, entry);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await copyPathRecursive(sourcePath, targetPath);
+  }
+
+  const packageJsonPath = path.join(smokeHostRoot, 'package.json');
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+  delete packageJson.extensionDependencies;
+  delete packageJson.extensionPack;
+  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+  await stageSmokeTestSuite({
+    projectRoot: options.projectRoot,
+    targetRoot: smokeHostRoot
+  });
+
+  return smokeHostRoot;
+}
+
+export async function stageSmokeTestSuite(options) {
+  const sourceRoot = path.join(options.projectRoot, STAGED_SMOKE_TESTS_ROOT);
+  const targetRoot = path.join(options.targetRoot, STAGED_SMOKE_TESTS_ROOT);
+  await fs.mkdir(path.dirname(targetRoot), { recursive: true });
+  await fs.rm(targetRoot, { recursive: true, force: true });
+  await copyPathRecursive(sourceRoot, targetRoot);
+  return targetRoot;
+}
+
+export function resolveStagedSmokeTestPath(targetRoot, testFileName) {
+  return path.join(targetRoot, STAGED_SMOKE_TESTS_ROOT, testFileName);
+}
+
+export async function stageBundledExtension(options) {
+  const packageJsonPath = path.join(options.sourceRoot, 'package.json');
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+  const extensionDirName = `${packageJson.publisher}.${packageJson.name}-${packageJson.version}`;
+  const targetRoot = path.join(options.extensionsDir, extensionDirName);
+  await fs.rm(targetRoot, { recursive: true, force: true });
+  await copyPathRecursive(options.sourceRoot, targetRoot);
+  return targetRoot;
+}
+
+export async function copyPathRecursive(sourcePath, targetPath) {
+  await fs.cp(sourcePath, targetPath, {
+    recursive: true,
+    dereference: true,
+    force: true
+  });
 }
 
 export async function writeUserSettings(userDataDir, userSettings) {

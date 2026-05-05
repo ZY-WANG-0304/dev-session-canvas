@@ -2,6 +2,7 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs/promises');
 const vscode = require('vscode');
+const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -252,9 +253,11 @@ async function runVerifyPhase() {
 }
 
 async function activateExtension() {
-  const extension = vscode.extensions.getExtension(EXTENSION_ID);
-  assert.ok(extension, `Missing extension ${EXTENSION_ID}.`);
-  await extension.activate();
+  await activateVisibleExtension(vscode, EXTENSION_ID);
+  await waitForCommand(vscode, COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await waitForCommand(vscode, COMMAND_IDS.testResetState);
+  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
 
 async function openCanvasEditor() {
