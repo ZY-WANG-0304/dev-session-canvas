@@ -97,6 +97,7 @@ import {
   inferExecutionTerminalPathStyle,
   normalizeExecutionTerminalWordSeparators
 } from '../common/executionTerminalLinks';
+import { toggleNoteMarkdownChecklistAtLine } from '../common/noteMarkdownChecklist';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   estimatedCanvasNodeFootprint,
@@ -190,6 +191,7 @@ const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
+const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
@@ -3805,12 +3807,35 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     setIsEditingBody(true);
   };
 
+  const toggleChecklistFromPreview = (input: HTMLInputElement): void => {
+    const lineNumber = readNoteMarkdownChecklistLineNumber(input);
+    if (!lineNumber) {
+      return;
+    }
+
+    const nextContent = toggleNoteMarkdownChecklistAtLine(content, lineNumber);
+    if (!nextContent) {
+      return;
+    }
+
+    data.onSelectNode?.(id);
+    setContent(nextContent);
+    submitNote(nextContent);
+  };
+
   const handlePreviewClick = (event: React.MouseEvent<HTMLDivElement>): void => {
-    event.preventDefault();
-    stopCanvasEvent(event);
+    const checkbox = findNoteMarkdownChecklistInputTarget(event.target);
+    if (checkbox) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      toggleChecklistFromPreview(checkbox);
+      return;
+    }
 
     const link = findNoteMarkdownLinkTarget(event.target);
     if (link) {
+      event.preventDefault();
+      stopCanvasEvent(event);
       const href = link.getAttribute('href');
       if (href) {
         data.onSelectNode?.(id);
@@ -3819,11 +3844,17 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       return;
     }
 
+    event.preventDefault();
+    stopCanvasEvent(event);
     startEditingBody();
   };
 
   const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     stopCanvasEvent(event);
+    if (findNoteMarkdownChecklistInputTarget(event.target)) {
+      return;
+    }
+
     if (findNoteMarkdownLinkTarget(event.target)) {
       return;
     }
@@ -7194,6 +7225,16 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'toggleNoteChecklistItem': {
+        const checkbox = queryNoteChecklistInput(action.nodeId, action.lineNumber);
+        checkbox.focus();
+        checkbox.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        dispatchSyntheticMouseClick(checkbox);
+        await waitForDomActionFlush();
+        checkbox.blur();
+        checkbox.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        break;
+      }
     }
 
     await waitForDomActionFlush();
@@ -7301,6 +7342,18 @@ function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
   return target;
 }
 
+function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  const target = nodeRoot.querySelector<HTMLInputElement>(
+    `${NOTE_MARKDOWN_CHECKLIST_SELECTOR}[data-note-markdown-task-line="${lineNumber}"]`
+  );
+  if (!(target instanceof HTMLInputElement)) {
+    throw new Error(`未找到节点 ${nodeId} 上第 ${lineNumber} 行的 Note checklist。`);
+  }
+
+  return target;
+}
+
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
@@ -7393,12 +7446,35 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   });
 
   renderer.use(markdownItTaskLists, {
-    enabled: false
+    enabled: true
   });
   renderer.use(markdownItKatex, {
     throwOnError: false,
     strict: 'ignore',
     trust: false
+  });
+  renderer.core.ruler.after('github-task-lists', 'note-task-list-metadata', (state) => {
+    for (const token of state.tokens) {
+      if (token.type !== 'inline' || !token.map || !Array.isArray(token.children)) {
+        continue;
+      }
+
+      const checkboxChild = token.children.find(
+        (child) =>
+          child.type === 'html_inline' &&
+          child.content.startsWith('<input') &&
+          child.content.includes('task-list-item-checkbox')
+      );
+      if (!checkboxChild) {
+        continue;
+      }
+
+      const lineNumber = token.map[0] + 1;
+      checkboxChild.content = injectNoteMarkdownCheckboxAttributes(checkboxChild.content, {
+        'data-note-markdown-task-line': String(lineNumber),
+        'aria-label': checkboxChild.content.includes('checked=""') ? '取消待办完成状态' : '标记待办为已完成'
+      });
+    }
   });
 
   const defaultLinkOpenRenderer =
@@ -7445,8 +7521,41 @@ function findNoteMarkdownLinkTarget(target: EventTarget | null): HTMLAnchorEleme
   return target.closest<HTMLAnchorElement>(NOTE_MARKDOWN_LINK_SELECTOR);
 }
 
+function findNoteMarkdownChecklistInputTarget(target: EventTarget | null): HTMLInputElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  const checkbox = target.closest<HTMLInputElement>(NOTE_MARKDOWN_CHECKLIST_SELECTOR);
+  return checkbox instanceof HTMLInputElement ? checkbox : null;
+}
+
+function readNoteMarkdownChecklistLineNumber(input: HTMLInputElement): number | null {
+  const rawLineNumber = input.dataset.noteMarkdownTaskLine;
+  if (!rawLineNumber) {
+    return null;
+  }
+
+  const parsedLineNumber = Number.parseInt(rawLineNumber, 10);
+  return Number.isSafeInteger(parsedLineNumber) && parsedLineNumber > 0 ? parsedLineNumber : null;
+}
+
 function renderNoteMarkdownPreview(content: string): string {
   return content.trim() ? noteMarkdownRenderer.render(content) : '';
+}
+
+function injectNoteMarkdownCheckboxAttributes(
+  html: string,
+  attributes: Record<string, string>
+): string {
+  if (!html.startsWith('<input')) {
+    return html;
+  }
+
+  const serializedAttributes = Object.entries(attributes)
+    .map(([key, value]) => ` ${key}="${escapeHtml(value)}"`)
+    .join('');
+  return html.replace(/^<input\b/u, `<input${serializedAttributes}`);
 }
 
 function formatTestDomActionError(error: unknown): string {
