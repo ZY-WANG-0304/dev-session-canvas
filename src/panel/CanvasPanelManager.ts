@@ -110,6 +110,7 @@ import {
   normalizeSerializedTerminalState
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
+import { isTestHarnessMode } from '../common/testHarness';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
 import {
   createExecutionSessionProcess,
@@ -713,7 +714,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public getRuntimeSupervisorStateForTest(): RuntimeSupervisorDebugStateForTest {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('getRuntimeSupervisorStateForTest 仅在测试模式下可用。');
     }
 
@@ -898,7 +899,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     preferredPosition?: CanvasNodePosition,
     options?: CreateAgentNodeOptions
   ): void {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('createNodeForTest 仅在测试模式下可用。');
     }
 
@@ -1002,7 +1003,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
     }
 
@@ -1062,7 +1063,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async setPersistedStateForTest(rawState: unknown): Promise<CanvasDebugSnapshot> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('setPersistedStateForTest 仅在测试模式下可用。');
     }
 
@@ -1124,7 +1125,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     requestedCommand: string,
     workspaceCwd?: string
   ): string {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('getAgentCliResolutionCacheKeyForTest 仅在测试模式下可用。');
     }
 
@@ -1132,7 +1133,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('flushPersistedCanvasStateForTest 仅在测试模式下可用。');
     }
 
@@ -1245,7 +1246,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     timeoutMs = 5000,
     delayMs = 0
   ): Promise<WebviewProbeSnapshot> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('captureWebviewProbeForTest 仅在测试模式下可用。');
     }
 
@@ -1405,7 +1406,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation | undefined = this.activeSurface,
     timeoutMs = 5000
   ): Promise<void> {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('performWebviewDomActionForTest 仅在测试模式下可用。');
     }
 
@@ -2177,9 +2178,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private readAttentionNotificationBridgeMode(): CanvasAttentionNotificationBridgeMode {
     const configuration = vscode.workspace.getConfiguration();
-    const configuredMode = configuration.get<CanvasAttentionNotificationBridgeMode | boolean>(
+    const inspectedMode = configuration.inspect<CanvasAttentionNotificationBridgeMode | boolean>(
       CONFIG_KEYS.notificationAttentionSignalBridge
     );
+    // Distinguish an explicit v2 setting from the schema default before falling
+    // back to legacy keys used by earlier notifier experiments.
+    const configuredMode =
+      inspectedMode?.workspaceFolderValue ?? inspectedMode?.workspaceValue ?? inspectedMode?.globalValue;
     if (configuredMode !== undefined) {
       return normalizeCanvasAttentionNotificationBridgeMode(configuredMode);
     }
@@ -2226,7 +2231,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimePersistenceChanged: boolean;
     filesFeatureEnabledChanged: boolean;
   }): Promise<void> {
-    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+    if (isTestHarnessMode(this.context.extensionMode)) {
       return;
     }
 
@@ -4391,7 +4396,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
-    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+    if (isTestHarnessMode(this.context.extensionMode)) {
       if (launchMode === 'resume') {
         const sessionId = previousProvider === provider ? metadata?.resumeSessionId?.trim() : undefined;
         const storagePath =
@@ -5787,11 +5792,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '').trim();
 
     const codexCommand =
-      this.context.extensionMode === vscode.ExtensionMode.Test
+      isTestHarnessMode(this.context.extensionMode)
         ? process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND?.trim() || configuredCodexCommand
         : configuredCodexCommand;
     const claudeCommand =
-      this.context.extensionMode === vscode.ExtensionMode.Test
+      isTestHarnessMode(this.context.extensionMode)
         ? process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND?.trim() || configuredClaudeCommand
         : configuredClaudeCommand;
 
@@ -6050,7 +6055,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
-    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+    if (isTestHarnessMode(this.context.extensionMode)) {
       const commandDirectories = new Set<string>();
       for (const command of [
         process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
@@ -7361,7 +7366,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private recordHostMessageForTest(message: HostToWebviewMessage): void {
-    if (this.context.extensionMode !== vscode.ExtensionMode.Test) {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
       return;
     }
 

@@ -36,6 +36,7 @@ import {
   isSidebarSessionHistoryTestAction
 } from './sidebar/CanvasSidebarSessionHistoryView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
+import { isTestHarnessMode } from './common/testHarness';
 
 let activePanelManager: CanvasPanelManager | undefined;
 let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
@@ -870,7 +871,7 @@ function registerTestCommands(
   sidebarNodeListView: CanvasSidebarNodeListView,
   sidebarSessionHistoryView: CanvasSidebarSessionHistoryView
 ): void {
-  if (context.extensionMode !== vscode.ExtensionMode.Test) {
+  if (!isTestHarnessMode(context.extensionMode)) {
     return;
   }
 

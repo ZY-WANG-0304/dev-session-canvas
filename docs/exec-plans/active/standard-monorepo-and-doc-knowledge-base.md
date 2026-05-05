@@ -26,12 +26,13 @@
 - [x] (2026-05-03) 识别与 IntelliJ 插件开发计划的协调需求，创建跨计划协调文档。
 - [x] (2026-05-03) **实施策略调整**：决定先在当前结构下验证 notifier 可行性，再做目录迁移。
 - [x] (2026-05-03) **实施策略再调整**：notifier 直接在 `extensions/vscode/dev-session-canvas-notifier/` 开发，主扩展暂不迁移。
-- [x] (2026-05-03 10:25 +0800) 完成阶段 1.1 的第一批落地：根 `package.json` 已配置 `workspaces`；`extensions/vscode/dev-session-canvas-notifier/` 与 `packages/attention-protocol/` 已创建；主扩展已能优先调用 companion，并通过 `npm run test:notifier-smoke` 验证“发送通知 -> companion 回放点击 -> 聚焦节点并清除 attention”。
+- [x] (2026-05-03 10:25 +0800) 完成阶段 1.1 的第一批落地：根 `package.json` 已配置 `workspaces`；`extensions/vscode/dev-session-canvas-notifier/` 与 `packages/attention-protocol/` 已创建；主扩展也已接上“优先调用 companion、失败再回退工作台通知”的主路径。
 - [x] (2026-05-03 17:10 +0800) 完成 notifier 第二批落地：companion 新增“发送测试桌面通知 / 打开通知诊断输出”命令，真实桌面通知人工验收步骤已收口到固定命令与输出面板；共享结果新增 `activationMode`，主扩展 diagnostic event 也会显式记录平台退化路径。
 - [x] (2026-05-03 19:05 +0800) 补齐本地 / 远端联调配置：新增 `Run Notifier Only (Local Window)`、`Run Dev Session Canvas + Notifier (Local Window)` 与 `Run Remote Main + Local Notifier (Prompt)`，并把远端联调输入从 4 项收口到 `remoteAuthority` + `localRepoRoot` 两项。
 - [x] (2026-05-03) **阶段 1.1 的代码与文档收口已完成**：`extensions/vscode/dev-session-canvas-notifier/`、`packages/attention-protocol/`、主扩展接线、诊断输出、联调配置与正式文档均已落地；当前工作树已经是可提交并切换环境继续调试的状态。
 - [x] (2026-05-04) 追加“从本地窗口发起远端主扩展 + 本机 notifier”调试配置：新增 `Run Remote Main + Local Notifier (Prompt from Local Window)`，并同步补齐 `remoteWorkspacePath` 输入、协作文档与人工验收说明，避免把本机 `${workspaceFolder}` 误当成远端路径。
 - [x] (2026-05-04) 完成阶段 1.1 尾项（真实桌面通知人工验收）：macOS、Windows、Linux 本机环境与 `Remote Main + Local Notifier` 联调拓扑均已完成人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证。
+- [x] (2026-05-05) 恢复 `npm run test:notifier-smoke` 自动化链路：smoke runner 已改为 staged smoke host + notifier wrapper，并补齐统一 test harness mode；latest head 已通过 `npm run test:notifier-smoke`、`npm run test:smoke-storage-slot`、`npm run test:vsix-smoke` 与 `npm run test:smoke` 复核。
 - [ ] **阶段 1.2（可选重构）**：notifier 验证通过后，根据需要决定是否迁移主扩展到 `extensions/vscode/dev-session-canvas/`。
 - [ ] 新增文档知识库入口页与体系图资产，补齐根 README、`ARCHITECTURE.md` 与各扩展 README 的职责边界。
 - [ ] **里程碑 5（延后到第二阶段）**：建立跨平台共享层（`packages/protocol/` 三层结构、`packages/webview/` 共享前端、JSON Schema 自动生成工具链）。仅在决定启动 IntelliJ 开发时执行。
@@ -51,8 +52,8 @@
 - 观察：`docs/references/` 和未来可能出现的 `docs/generated/` 都不适合作为正式知识库体系图的归宿。
   证据：`AGENTS.md` 明确规定 `docs/references/` 只能作为输入，`docs/generated/` 不能替代人工确认后的正式结论。
 
-- 观察：在 notifier 的第一版里，如果 companion 只调用“普通聚焦节点”命令，attention icon 不会清除，因为当前“聚焦”和“确认提醒”在主扩展里是两条不同语义。
-  证据：首版 `test:notifier-smoke` 失败在“回放 focus callback 后 `attentionPending` 仍为 `true`”；新增 `devSessionCanvas.__internal.focusAttentionNode` 后，smoke 通过。
+- 观察：`npm run test:notifier-smoke` 真正的剩余问题并不是 notifier 协议本身，而是 VS Code extension test host 拓扑。在主扩展与 notifier 拆成两条 development path 后，测试宿主既拿不到主扩展 manifest，也不会把 `ExtensionMode.Test` 传给 staged 运行时。
+  证据：旧链路会在 `tests/vscode-smoke/notifier-companion-tests.cjs:32` 触发 `Missing extension devsessioncanvas.dev-session-canvas.`；改为 staged smoke host + notifier wrapper，并用 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 统一暴露 `__test` 命令后，`npm run test:notifier-smoke`、`npm run test:smoke` 与 `npm run test:vsix-smoke` 都已恢复通过。
 
 - 观察：真实桌面通知的最大平台差异不是“能否发出通知”，而是“通知发出后是否还能点击回到 VS Code”；如果不把这条差异显式写进结果结构，主扩展与人工验收都会把“posted”误读成“完整能力可用”。
   证据：Linux `notify-send` 在不支持 `--action --wait` 的桌面环境中会退化成只发通知；macOS 也可能从 `terminal-notifier` 回退到 `osascript`，这两条路径都仍然会返回“通知已发出”。
@@ -122,14 +123,14 @@
 
 ## 结果与复盘
 
-当前已经从“纯设计阶段”进入“阶段 1.1 的代码、文档与联调链路均已落地”的状态。已确认的产出是：
+当前已经从“纯设计阶段”进入“阶段 1.1 的代码、文档、自动化验证与人工验收入口均已落地”的状态。已确认的产出是：
 
 - 一份明确说明标准 monorepo 目标结构的 `ExecPlan`
 - 一套“根目录单一正式文档集 + 子包最小局部文档”的文档治理口径
 - 一条对文档知识库体系图的明确放置规则：未来正式入口是 `docs/README.md`，图像资产放在 `docs/diagrams/`
 - 一个已落在最终位置的 notifier companion：`extensions/vscode/dev-session-canvas-notifier/`
 - 一个最小共享 attention 协议包：`packages/attention-protocol/`
-- 一条已打通的主扩展 -> companion -> focus callback 验证链路：`npm run test:notifier-smoke`
+- 一条已打通的主扩展 -> companion -> focus callback 自动化验证链路：`npm run test:notifier-smoke`
 - 一套固定的真实桌面通知人工验收入口：companion 测试通知命令、诊断输出与 `activationMode` 结果结构
 - 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas + Notifier (Local Window)`、`Run Notifier Only (Local Window)`、`Run Remote Main + Local Notifier (Prompt)`、`Run Remote Main + Local Notifier (Prompt from Local Window)`
 
@@ -138,9 +139,9 @@
 - 没有移动任何源码目录
 - 主扩展仍未迁移到 `extensions/vscode/dev-session-canvas/`
 - 没有实际创建 `docs/README.md` 或 `docs/diagrams/`
-- 真实桌面通知的跨平台人工验收已经完成；剩余未决事项不再是 notifier 可用性，而是是否继续投入阶段 1.2 结构重构
+- 真实桌面通知的跨平台人工验收已经完成；阶段 1.1 的剩余未决事项主要回到“是否继续投入阶段 1.2 结构重构”
 
-因此，本计划不再是“完全待执行”的空方案，而是“阶段 1.1 已具备可提交结果、阶段 1.2 仍待决策”的活文档。
+因此，本计划不再是“完全待执行”的空方案，而是“阶段 1.1 已具备代码、文档、自动化验证与人工验收闭环，阶段 1.2 仍待决策”的活文档。
 
 ## 上下文与定向
 
@@ -173,7 +174,7 @@ README.md              项目对外入口
 
 > **⚠️ 已调整 (2026-05-03)**：分为两个阶段，先验证 notifier，再做 monorepo 重构。
 
-### 阶段 1.1：Notifier companion 落地与环境切换前收口（已完成主体实现）
+### 阶段 1.1：Notifier companion 落地与环境切换前收口（已形成验证闭环）
 
 **目标**：在不迁移主扩展目录的前提下，先把 notifier companion、共享协议、主扩展接线、调试入口和正式文档收口到“可提交、可换环境继续调试”的状态。
 
@@ -181,7 +182,7 @@ README.md              项目对外入口
 - 在 `extensions/vscode/dev-session-canvas-notifier/` 落地 UI-side companion
 - 在 `packages/attention-protocol/` 落地共享请求 / 结果协议
 - 让主扩展优先调用 companion，并在 companion 缺失或失败时保留原工作台通知回退
-- 用 `npm run test:notifier-smoke` 验证“发送通知 -> 回放点击 -> 聚焦节点并清除 attention”整条链路
+- 用 `npm run test:notifier-smoke` 验证“发送通知 -> 回放点击 -> 聚焦节点并清除 attention”整条链路；截至 2026-05-05，这条自动化链路已通过 staged smoke host / wrapper 恢复到 latest head 可复现通过的状态
 
 **里程碑 1.1.2：用户验证**
 - 增加“发送测试桌面通知 / 打开通知诊断输出”两个固定人工验收入口
@@ -195,7 +196,7 @@ README.md              项目对外入口
 
 ### 阶段 1.2：Monorepo 重构（2-3 周，需阶段 1.1 验证通过）
 
-**前置条件**：✅ 阶段 1.1 验证通过，决定继续投入
+**前置条件**：阶段 1.1 已验证通过；若决定继续投入，再启动本阶段
 
 这项工作分成四个里程碑推进。
 
@@ -466,4 +467,6 @@ README.md              项目对外入口
 
 本次更新说明：2026-05-03 按当前 notifier 实现状态收口计划，补记“阶段 1.1 主体已完成、真实桌面通知人工验收仍需切换本机环境继续”的边界，并把阶段 1.1 的工作描述改成与当前仓库实际目录和调试入口一致。
 
-本次更新说明：2026-05-04 进一步同步用户在 macOS、Windows、Linux 本机环境以及 `Remote Main + Local Notifier` 联调拓扑上的通过结果，关闭阶段 1.1 的真实桌面通知人工验收尾项，并把 notifier 可用性的剩余问题收口为“是否启动阶段 1.2 重构”的后续决策。
+本次更新说明：2026-05-04 进一步同步用户在 macOS、Windows、Linux 本机环境以及 `Remote Main + Local Notifier` 联调拓扑上的通过结果，完成阶段 1.1 的真实桌面通知人工验收尾项。
+
+本次更新说明：2026-05-05 通过 staged smoke host、notifier wrapper 与统一 test harness mode 收口 `npm run test:notifier-smoke` 自动化链路，并同步确认 `npm run test:smoke-storage-slot`、`npm run test:vsix-smoke` 与 `npm run test:smoke` 通过；阶段 1.1 现已具备自动化与人工验证闭环。

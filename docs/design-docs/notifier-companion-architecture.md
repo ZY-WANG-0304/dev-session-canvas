@@ -14,7 +14,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-05-04
+updated_at: 2026-05-05
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -200,7 +200,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 6. `npm run test:notifier-source`
 7. `npm run test:notifier-smoke`
 
-第 7 条是当前最关键的验证：它在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 focus callback -> 主扩展聚焦并清除 attention”这一整条链路。
+第 7 条是当前最关键的验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 focus callback -> 主扩展聚焦并清除 attention”这一整条链路。2026-05-05 起，这条 smoke 已改为通过 staged smoke host + notifier wrapper 同时装配两侧扩展，并借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令，latest head 可稳定复现通过。
 
 真实桌面通知的人工验收，则统一使用 companion 自带命令：
 
@@ -220,7 +220,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 
 ## 9. 当前验证状态
 
-截至 2026-05-04，本设计对应的第一版实现已完成以下仓库内验证：
+截至 2026-05-05，本设计对应的第一版实现已确认以下仓库内验证：
 
 - `npm run typecheck`
 - `npm run typecheck:notifier`
@@ -229,6 +229,11 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - `npm run test:attention-protocol`
 - `npm run test:notifier-source`
 - `npm run test:notifier-smoke`
+- `npm run test:smoke-storage-slot`
+- `npm run test:vsix-smoke`
+- `npm run test:smoke`
+
+其中，`npm run test:notifier-smoke` 在 2026-05-05 的 latest head 复核里已恢复通过。此前 `tests/vscode-smoke/notifier-companion-tests.cjs:32` 暴露的 `Missing extension devsessioncanvas.dev-session-canvas.` 问题，确认来自旧的 extension test host 拓扑：主扩展与 notifier companion 拆成两条 development path 后，测试宿主既拿不到主扩展 manifest，也不会把 `ExtensionMode.Test` 传给 staged 运行时。当前已通过 staged smoke host、wrapper 激活入口与统一 test harness mode 收口这条验证链路。
 
 同时，本轮已补齐人工验收支撑：
 
@@ -240,4 +245,4 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
 
-因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议、回调链路、跨平台本机通知路径、双向自动安装关系，以及远端主扩展 + 本机 UI notifier 的调试拓扑都已获得自动化与人工证据闭环。是否额外引入独立 extension pack 仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
+因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径、双向自动安装关系，以及“远端主扩展 + 本机 UI notifier”的联调拓扑都已获得自动化与人工证据闭环。是否额外引入独立 extension pack 仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。

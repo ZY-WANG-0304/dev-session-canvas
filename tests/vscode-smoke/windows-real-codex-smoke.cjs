@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs/promises');
 const path = require('path');
 const vscode = require('vscode');
+const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -43,9 +44,10 @@ async function run() {
 }
 
 async function runSmoke() {
-  const extension = vscode.extensions.getExtension(EXTENSION_ID);
-  assert.ok(extension, `Missing extension ${EXTENSION_ID}.`);
-  await extension.activate();
+  await activateVisibleExtension(vscode, EXTENSION_ID);
+  await waitForCommand(vscode, COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await waitForCommand(vscode, COMMAND_IDS.testResetState);
 
   const scenarios = [
     {

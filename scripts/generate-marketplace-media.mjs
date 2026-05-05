@@ -8,13 +8,14 @@ import {
   buildVSCodeArgs,
   buildVSCodeChildEnv,
   ensureVSCodeExecutable,
-  prepareRuntime
+  prepareRuntime,
+  prepareMainSmokeHostExtension,
+  resolveStagedSmokeTestPath
 } from './vscode-smoke-runner.mjs';
 
 const projectRoot = process.cwd();
 const sharedRepoRoot = resolveSharedRepoRoot();
 const vscodeTestCachePath = configureVSCodeTestCache(sharedRepoRoot);
-const extensionTestsPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'marketplace-media-tests.cjs');
 const currentNodeBinDir = path.dirname(process.execPath);
 const codexCommandPath = resolveMarketplaceCommand({
   envKey: 'DEV_SESSION_CANVAS_MARKETPLACE_CODEX_COMMAND',
@@ -118,6 +119,10 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
       'workbench.panel.opensMaximized': 'always'
     }
   });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+  });
   await hydrateMarketplaceProviderRuntime(runtime);
   const runtimeLocalBinDir = path.join(runtime.homeDir, '.local', 'bin');
   const codexRuntimeCommandPath = await writeMarketplaceCommandShim({
@@ -149,12 +154,12 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
 
   const args = buildVSCodeArgs({
     workspacePath: projectRoot,
-    extensionDevelopmentPath: projectRoot,
-    extensionTestsPath,
+    extensionDevelopmentPath: smokeHostRoot,
+    extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'marketplace-media-tests.cjs'),
     userDataDir: runtime.userDataDir,
     extensionsDir: runtime.extensionsDir,
     disableWorkspaceTrust: true,
-    disableExtensions: true,
+    disableExtensions: false,
     extraLaunchArgs: [
       '--new-window',
       '--force-device-scale-factor=1',
