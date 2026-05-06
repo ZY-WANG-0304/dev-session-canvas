@@ -45,7 +45,7 @@
 
 1. 当前目标版本为 `0.5.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
 2. 首次安装与从 `0.4.1` 升级到 `0.5.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.5.x` 更新也通过 Marketplace 常规升级获取。
-3. 当前主扩展通过 `extensionDependencies` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，也会自动补齐主扩展。
+3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
 4. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径

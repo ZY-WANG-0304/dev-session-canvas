@@ -65,7 +65,7 @@ updated_at: 2026-05-05
 截至 2026-05-05（以当前 `0.5.0` 候选 release 输入快照对应的工作树为准），仓库里已经成立的事实如下：
 
 - `package.json` 具备基础扩展元数据，且仍标记为 `preview: true`。
-- 主扩展与 notifier companion 都已声明双向 `extensionDependencies`，用户从任一 Marketplace 页面安装时都会自动补齐另一侧。
+- 主扩展当前通过 `extensionPack` 聚合 notifier companion，而 notifier companion 继续单向依赖主扩展；用户从主扩展页面安装时会自动带上 notifier，从 notifier 页面安装时也会自动补齐主扩展。
 - `README.md` 已明确写成“产品已处于公开 Preview 阶段”；发布执行与对外口径已收口到 `docs/public-preview-release-playbook.md`。
 - notifier companion 的独立发布手册已收口到 `docs/notifier-preview-release-playbook.md`。
 - 许可证已选定为 `Apache-2.0`。
@@ -195,7 +195,7 @@ updated_at: 2026-05-05
 
 - `scripts/package-vsix.mjs` 必须继续显式传入 `--readme-path README.marketplace.md`，且 README 资源改写 ref 必须与最终发布 ref 一致；不允许依赖发布时临时替换文案来修正文档内容。
 - `npm run validate:clean-checkout:vsix` 与 `npm run test:vsix-smoke` 是发布前必须保留的最小证据链；只要工件大小、文件数或 packaged payload 内容发生变化，就必须同步刷新本设计文档与相关发布文档中的证据。
-- 主扩展与 notifier companion 的双向 `extensionDependencies` 必须继续保持对称，且两侧都保持 `"api": "none"`；这样才能在跨 host 场景里继续用 commands 完成依赖通信，并让任一安装入口都自动补齐另一侧。
+- 正式安装真相必须继续保持为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，且两侧都保持 `"api": "none"`；这样才能继续兼顾主扩展安装时自动带上 companion、notifier 单独安装时自动补齐主扩展，以及跨 host 场景下只靠 commands 完成协作。
 - `.debug/`、`.playwright-browsers/`、`.github/`、`node-pty` 的源码/脚本/PDB/重复依赖等冗余内容必须继续留在 VSIX 之外，避免包体回涨或引入不可追溯内容；相关内容守卫继续由 `scripts/run-vscode-vsix-smoke.mjs` 负责。
 - 发布账号、PAT、Marketplace listing 草案、release notes 口径与支持入口只要发生变化，都必须回写到仓库正式文档，而不是只停留在外部聊天或 MR 评论。
 

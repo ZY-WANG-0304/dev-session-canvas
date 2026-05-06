@@ -55,7 +55,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 当前公开的 `0.5.0` 版本主要带来两条新增主路径：桌面通知 companion 与嵌入式 `Terminal` shell 选择能力。
 
-- 新增 `Dev Session Canvas Notifier` companion，并通过双向 `extensionDependencies` 自动收口安装关系：安装主扩展时会自动带上 notifier，单独安装 notifier 时也会自动补齐主扩展
+- 新增 `Dev Session Canvas Notifier` companion，并通过“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”收口安装关系
 - 在主扩展中新增 `devSessionCanvas.notifications.attentionSignalBridge = system` 主路径；可通过测试通知命令、环境诊断侧栏与 `devSessionCanvasNotifier.notifications.playSound` 开关复核当前本机通知能力
 - 新增 `Dev Session Canvas: 选择 Terminal shell` 命令：动态探测当前设备可用 shell、持久化精确路径，并在打开 workspace 时默认写入当前 workspace 覆盖
 - 继续保留保守的 workspace 会话归属过滤，以及 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
