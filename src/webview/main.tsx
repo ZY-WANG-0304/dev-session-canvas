@@ -190,6 +190,7 @@ type FileListEntrySelectionTone = 'active' | 'inactive';
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
+const NOTE_BODY_INDENT = '  ';
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
@@ -3743,12 +3744,18 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const committedContentRef = useRef(noteMetadata.content);
   const pendingContentRef = useRef<string | null>(null);
   const lastPropContentRef = useRef(noteMetadata.content);
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingBodyFocusRef = useRef(false);
+  const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
   const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
+  const bodyLineNumbers = useMemo(
+    () => Array.from({ length: countTextLines(content) }, (_, index) => index + 1),
+    [content]
+  );
 
   useLayoutEffect(() => {
     const previousPropContent = lastPropContentRef.current;
@@ -3782,6 +3789,21 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     textarea.setSelectionRange(selectionEnd, selectionEnd);
   }, [isEditingBody]);
 
+  useLayoutEffect(() => {
+    if (!isEditingBody || !pendingBodySelectionRef.current) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const pendingSelection = pendingBodySelectionRef.current;
+    pendingBodySelectionRef.current = null;
+    textarea.setSelectionRange(pendingSelection.selectionStart, pendingSelection.selectionEnd);
+  }, [content, isEditingBody]);
+
   const submitNote = (nextContent: string): void => {
     const baselineContent = committedContentRef.current;
     if (nextContent === baselineContent) {
@@ -3804,7 +3826,18 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const startEditingBody = (): void => {
     pendingBodyFocusRef.current = true;
     data.onSelectNode?.(id);
+    setBodyScrollTop(0);
     setIsEditingBody(true);
+  };
+
+  const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (handleNoteBodyIndentKeyDown(event, setContent, pendingBodySelectionRef)) {
+      return;
+    }
+
+    handleEditableFieldKeyDown(event, () => submitNote(event.currentTarget.value), {
+      isComposing
+    });
   };
 
   const toggleChecklistFromPreview = (input: HTMLInputElement): void => {
@@ -3914,40 +3947,50 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       <div className="object-body object-surface note-surface">
         <div className="note-editor-surface">
           {isEditingBody ? (
-            <textarea
-              ref={bodyInputRef}
-              className="node-document-input note-document-input nowheel nodrag nopan"
-              data-node-interactive="true"
-              data-probe-field="body"
-              value={content}
-              onFocus={() => {
-                setIsEditingBody(true);
-                data.onSelectNode?.(id);
-              }}
-              onMouseDown={stopCanvasEvent}
-              onClick={stopCanvasEvent}
-              onWheel={stopCanvasEvent}
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={(event) => {
-                setIsComposing(false);
-                setContent(event.currentTarget.value);
-              }}
-              onChange={(event) => setContent(event.target.value)}
-              onBlur={(event) => {
-                const nextContent = event.currentTarget.value;
-                setContent(nextContent);
-                setIsEditingBody(false);
-                submitNote(nextContent);
-              }}
-              onKeyDown={(event) =>
-                handleEditableFieldKeyDown(
-                  event,
-                  () => submitNote(event.currentTarget.value),
-                  { isComposing }
-                )
-              }
-              placeholder={NOTE_BODY_PLACEHOLDER}
-            />
+            <div className="note-document-editor">
+              <div className="note-document-line-number-gutter" aria-hidden="true">
+                <div
+                  className="note-document-line-number-list"
+                  style={{ transform: `translateY(-${bodyScrollTop}px)` }}
+                >
+                  {bodyLineNumbers.map((lineNumber) => (
+                    <span className="note-document-line-number" key={lineNumber}>
+                      {lineNumber}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <textarea
+                ref={bodyInputRef}
+                className="node-document-input note-document-input nowheel nodrag nopan"
+                data-node-interactive="true"
+                data-probe-field="body"
+                value={content}
+                onFocus={() => {
+                  setIsEditingBody(true);
+                  data.onSelectNode?.(id);
+                }}
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+                onWheel={stopCanvasEvent}
+                onScroll={(event) => setBodyScrollTop(event.currentTarget.scrollTop)}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={(event) => {
+                  setIsComposing(false);
+                  setContent(event.currentTarget.value);
+                }}
+                onChange={(event) => setContent(event.target.value)}
+                onBlur={(event) => {
+                  const nextContent = event.currentTarget.value;
+                  setContent(nextContent);
+                  setIsEditingBody(false);
+                  submitNote(nextContent);
+                }}
+                onKeyDown={handleBodyKeyDown}
+                placeholder={NOTE_BODY_PLACEHOLDER}
+                spellCheck={false}
+              />
+            </div>
           ) : (
             <div
               className={`note-markdown-preview nowheel nodrag nopan ${content.trim() ? '' : 'is-empty'}`.trim()}
@@ -6470,6 +6513,179 @@ function normalizeCanvasNodeFootprintForDisplayStyle(
   }
 
   return normalizeCanvasNodeFootprint(kind, size);
+}
+
+function countTextLines(value: string): number {
+  return value.split('\n').length;
+}
+
+function handleNoteBodyIndentKeyDown(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+  setContent: React.Dispatch<React.SetStateAction<string>>,
+  pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>
+): boolean {
+  if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
+    return false;
+  }
+
+  event.preventDefault();
+  stopCanvasEvent(event);
+  applyNoteBodyIndentChange(
+    event.currentTarget,
+    setContent,
+    pendingSelectionRef,
+    event.shiftKey ? 'outdent' : 'indent'
+  );
+  return true;
+}
+
+function applyNoteBodyIndentChange(
+  textarea: HTMLTextAreaElement,
+  setContent: React.Dispatch<React.SetStateAction<string>>,
+  pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>,
+  direction: 'indent' | 'outdent'
+): void {
+  const edit =
+    direction === 'indent'
+      ? createNoteBodyIndentEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd)
+      : createNoteBodyOutdentEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd);
+
+  if (!edit) {
+    return;
+  }
+
+  pendingSelectionRef.current = {
+    selectionStart: edit.selectionStart,
+    selectionEnd: edit.selectionEnd
+  };
+  setContent(edit.value);
+  window.requestAnimationFrame(() => {
+    if (document.activeElement !== textarea) {
+      return;
+    }
+
+    textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+  });
+}
+
+function createNoteBodyIndentEdit(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number
+): { value: string; selectionStart: number; selectionEnd: number } {
+  const selectedText = value.slice(selectionStart, selectionEnd);
+  if (!selectedText.includes('\n')) {
+    const nextValue = `${value.slice(0, selectionStart)}${NOTE_BODY_INDENT}${value.slice(selectionEnd)}`;
+    const nextSelection = selectionStart + NOTE_BODY_INDENT.length;
+    return {
+      value: nextValue,
+      selectionStart: nextSelection,
+      selectionEnd: nextSelection
+    };
+  }
+
+  const lineStarts = getSelectedLineStarts(value, selectionStart, selectionEnd);
+  const nextValue = insertTextAtOffsets(value, lineStarts, NOTE_BODY_INDENT);
+  return {
+    value: nextValue,
+    selectionStart: selectionStart + countOffsetsBefore(lineStarts, selectionStart) * NOTE_BODY_INDENT.length,
+    selectionEnd: selectionEnd + countOffsetsBefore(lineStarts, selectionEnd) * NOTE_BODY_INDENT.length
+  };
+}
+
+function createNoteBodyOutdentEdit(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number
+): { value: string; selectionStart: number; selectionEnd: number } | null {
+  const removals = getSelectedLineStarts(value, selectionStart, selectionEnd)
+    .map((offset) => ({
+      offset,
+      length: countNoteBodyOutdentChars(value, offset)
+    }))
+    .filter((removal) => removal.length > 0);
+
+  if (removals.length === 0) {
+    return null;
+  }
+
+  return {
+    value: removeTextAtOffsets(value, removals),
+    selectionStart: adjustOffsetAfterRemovals(selectionStart, removals),
+    selectionEnd: adjustOffsetAfterRemovals(selectionEnd, removals)
+  };
+}
+
+function getSelectedLineStarts(value: string, selectionStart: number, selectionEnd: number): number[] {
+  const lineStart = value.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
+  const effectiveSelectionEnd =
+    selectionEnd > selectionStart && value.charAt(selectionEnd - 1) === '\n' ? selectionEnd - 1 : selectionEnd;
+  const nextLineBreak = value.indexOf('\n', effectiveSelectionEnd);
+  const lineEnd = nextLineBreak === -1 ? value.length : nextLineBreak;
+  const lineStarts = [lineStart];
+
+  for (
+    let lineBreak = value.indexOf('\n', lineStart);
+    lineBreak !== -1 && lineBreak < lineEnd;
+    lineBreak = value.indexOf('\n', lineBreak + 1)
+  ) {
+    lineStarts.push(lineBreak + 1);
+  }
+
+  return lineStarts;
+}
+
+function countNoteBodyOutdentChars(value: string, lineStart: number): number {
+  if (value.charAt(lineStart) === '\t') {
+    return 1;
+  }
+
+  let count = 0;
+  while (count < NOTE_BODY_INDENT.length && value.charAt(lineStart + count) === ' ') {
+    count += 1;
+  }
+
+  return count;
+}
+
+function insertTextAtOffsets(value: string, offsets: number[], insertedText: string): string {
+  let nextValue = '';
+  let cursor = 0;
+  for (const offset of offsets) {
+    nextValue += value.slice(cursor, offset);
+    nextValue += insertedText;
+    cursor = offset;
+  }
+
+  return nextValue + value.slice(cursor);
+}
+
+function removeTextAtOffsets(value: string, removals: Array<{ offset: number; length: number }>): string {
+  let nextValue = '';
+  let cursor = 0;
+  for (const removal of removals) {
+    nextValue += value.slice(cursor, removal.offset);
+    cursor = removal.offset + removal.length;
+  }
+
+  return nextValue + value.slice(cursor);
+}
+
+function countOffsetsBefore(offsets: number[], position: number): number {
+  return offsets.filter((offset) => offset < position).length;
+}
+
+function adjustOffsetAfterRemovals(position: number, removals: Array<{ offset: number; length: number }>): number {
+  let nextPosition = position;
+  for (const removal of removals) {
+    if (removal.offset >= position) {
+      continue;
+    }
+
+    nextPosition -= Math.min(removal.length, position - removal.offset);
+  }
+
+  return Math.max(0, nextPosition);
 }
 
 function handleEditableFieldKeyDown(
