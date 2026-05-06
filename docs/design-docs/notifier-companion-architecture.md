@@ -47,7 +47,7 @@ updated_at: 2026-05-05
 
 - 本轮不要求主扩展迁出仓库根目录。
 - 本轮不要求 companion 已经覆盖所有 OS 的完整点击回调体验；第一版允许平台间存在“能力完整度不同”的现实差异，只要协议与回退链路明确。
-- 本轮不引入独立 extension pack；用户安装路径改由双向 `extensionDependencies` 自动收口。
+- 本轮不引入独立的第三个 extension pack 扩展包；用户安装路径改由“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”收口。
 - 本轮不把 JSON Schema 自动生成、跨 IntelliJ 复用或更大的跨平台共享层一并实现。
 
 ## 5. 正式方案
@@ -66,12 +66,12 @@ updated_at: 2026-05-05
 
 - 本方案适用于 VS Code 的 local / remote 双 host 运行模型，尤其是 workspace-side 主扩展与 UI-side companion 分居两侧的 `Remote SSH`、WSL、Dev Container 场景；不覆盖 IntelliJ 插件或仓库外的泛用桌面通知框架。
 - notifier companion 只负责 best-effort 地把 attention 事件投递到本机系统通知，并在平台能力允许时触发回跳；`attentionPending` 的权威状态、节点聚焦语义和去重冷却规则仍只归主扩展所有。
-- repo-local staged smoke / VSIX smoke 可能为了装配 wrapper 临时移除 `extensionDependencies`；这些自动化验证“功能链路是否打通”，不直接等价于 Marketplace / VSIX 正式安装时的自动补齐链路证据。
+- repo-local staged smoke / VSIX smoke 可能为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`；这些自动化验证“功能链路是否打通”，不直接等价于 Marketplace / VSIX 正式安装时的自动补齐链路证据。
 - 第一版允许不同平台在点击回调能力上存在 `direct-action`、`protocol`、`none` 三种能力差异；平台退化需要被显式暴露，而不是被伪装成“所有平台都已完整支持”。
 
 ### 5.3 核心规则与不变量
 
-- 正式安装真相固定为双向 `extensionDependencies + api:none`；跨 host 协作必须依赖异步 commands 和结构化协议，而不是额外引入跨扩展 JS API。
+- 正式安装真相固定为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` + `api:none`”；跨 host 协作必须依赖异步 commands 和结构化协议，而不是额外引入跨扩展 JS API。
 - 外部通知系统看到的 callback URI 只能携带一次性 token；真实 `focusAction` 只能保存在 companion 内部 pending table 中，避免把任意命令载荷直接暴露给 OS 通知层。
 - 用户点击系统通知后，最终只能回到主扩展的 `devSessionCanvas.__internal.focusAttentionNode` 或 notifier 自己的测试确认命令；notifier 不得直接改写画布状态，也不得新增未登记的回调动作白名单。
 - `devSessionCanvas.notifications.attentionSignalBridge=system` 时，只有 companion 缺失、平台不支持或调用失败才允许回退到工作台消息；一旦 companion 返回 `posted`，主扩展就不得再重复弹工作台通知。
@@ -126,29 +126,32 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 这让用户可以把当前配置理解为“用一个设置明确选择不桥接 / 工作台消息 / 系统通知”，同时继续保留 `system` 模式下的工作台兜底，避免因为本机 companion 缺失而静默丢提醒。
 
-### 5.8 安装策略：双向 `extensionDependencies` 自动补齐
+### 5.8 安装策略：主扩展 `extensionPack` 聚合 + notifier 单向依赖回补
 
 当前选定的安装策略是：
 
-- 主扩展 `devsessioncanvas.dev-session-canvas` 在 manifest 中声明依赖 `devsessioncanvas.dev-session-canvas-notifier`
-- notifier companion 在 manifest 中声明依赖 `devsessioncanvas.dev-session-canvas`
+- 主扩展 `devsessioncanvas.dev-session-canvas` 在仓库根 `package.json` 中声明 `extensionPack: ["devsessioncanvas.dev-session-canvas-notifier"]`
+- notifier companion 在 `extensions/vscode/dev-session-canvas-notifier/package.json` 中继续声明 `extensionDependencies: ["devsessioncanvas.dev-session-canvas"]`
 - 两个扩展都显式声明 `"api": "none"`，因为跨 host 协作只依赖异步 VS Code commands，而不依赖 `activate()` 导出的 JS API
 
 这样做的原因是：
 
-- 用户从任一 Marketplace 页面进入安装，都能自动补齐另一侧，不需要再手动理解“workspace 主扩展 + 本机 UI companion”的组合关系
+- 用户从主扩展 Marketplace / VSIX 页面安装时，VS Code 会顺带安装 notifier，不需要额外理解 companion 的安装步骤
+- 用户从 notifier 页面单独安装时，VS Code 仍会通过单向 `extensionDependencies` 自动补齐主扩展
+- 主扩展运行时本就允许 companion 缺失后回退到工作台通知，因此安装期聚合不应伪装成运行时硬依赖；把“随主扩展一起安装”与“notifier 自身必须依赖主扩展”拆开表达，更符合 VS Code 官方语义
 - 仍然保持两个独立 VSIX，与当前“主扩展负责画布与 attention 判定、notifier 负责本机桌面通知”的分层一致
-- 在 `Remote SSH` / Dev Container 一类跨 host 场景里，也继续符合 VS Code 官方对 `extensionDependencies + api:none + commands` 的推荐用法
+- 避免 `A -> B -> A` 的 manifest 环，防止 Development Host / 已安装扩展在解析依赖时直接把两个扩展一起禁用
+- 在 `Remote SSH` / Dev Container 一类跨 host 场景里，也继续符合 VS Code 对“安装期 pack + 运行期 commands 协作 + 必要时单向依赖”的能力边界
 
-需要单独说明的是：repo-local 的 smoke host / VSIX smoke 为了在同一个 Development Host 中装配 wrapper，会在 staged 测试副本里临时移除 `extensionDependencies`。这不改变正式 manifest 的安装策略，但意味着“真实安装时是否自动补齐依赖”仍应通过 clean profile / Marketplace / VSIX 安装步骤单独复核，而不是把 staged smoke 当成直接证据。
+需要单独说明的是：repo-local 的 smoke host / VSIX smoke 为了在同一个 Development Host 中装配 wrapper，会在 staged 测试副本里临时移除 `extensionDependencies` / `extensionPack`。这不改变正式 manifest 的安装策略，但意味着“真实安装时是否自动补齐依赖”仍应通过 clean profile / Marketplace / VSIX 安装步骤单独复核，而不是把 staged smoke 当成直接证据。
 
 ### 5.9 开发态调试策略：用 debug-only 主扩展目录隔离 notifier 依赖
 
-双向 `extensionDependencies` 解决的是发布态 / 安装态的自动补齐，但它也会让“只跑主扩展”这条 Development Host 路径在缺少 notifier 时直接失活。当前开发态对这个问题的收口方式不是再维护一套 shim，而是在 `Run Dev Session Canvas (Main Only)` 启动前生成一份 debug-only 的临时主扩展目录：
+即使正式安装关系已经改成“主扩展 `extensionPack` + notifier 单向 `extensionDependencies`”，开发态 `Run Dev Session Canvas (Main Only)` 仍然会在启动前生成一份 debug-only 的临时主扩展目录，把安装期关系从调试副本中剥离，避免单调主扩展时把 notifier 的安装语义混入当前 Development Host：
 
 - 临时目录位于 `.debug/vscode-extension-main-only/`
 - 目录内容来自当前仓库根主扩展的开发产物与运行时资源
-- 临时 `package.json` 会移除 `extensionDependencies`
+- 临时 `package.json` 会移除 `extensionDependencies` / `extensionPack`
 
 因此，当前三类调试场景分别是：
 
@@ -158,7 +161,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 这样可以同时满足三个约束：
 
-- 正式 `package.json` 继续保持双向依赖，不为调试改写发布真相
+- 正式 `package.json` 继续保持“主扩展 `extensionPack` + notifier 单向 `extensionDependencies`”的安装真相，不为调试改写发布口径
 - 单独调主扩展时，不需要额外先安装或加载 notifier
 - 从远端仓库窗口发起主扩展单调时，继续保持 `Run Dev Session Canvas (Main Only)` 的零输入体验；只有远端联调 notifier 时才额外要求本机 `localRepoRoot`
 
@@ -291,6 +294,6 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 远端联调场景收口为 `Run Dev Session Canvas + Notifier (Remote Window)`，把 `Remote SSH` / WSL / Dev Container 下的 workspace 主扩展与本机 UI notifier 明确拆成两条开发态路径；从远端仓库窗口发起时只要求输入 `localRepoRoot`
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
-- 当前 staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”
+- 当前 staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”
 
-因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径，以及“远端主扩展 + 本机 UI notifier”的联调拓扑都已获得自动化与人工证据闭环。双向 `extensionDependencies` 作为正式安装策略已经落在 manifest 中，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
+因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径，以及“远端主扩展 + 本机 UI notifier”的联调拓扑都已获得自动化与人工证据闭环。正式安装策略现已落成“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 扩展包仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
