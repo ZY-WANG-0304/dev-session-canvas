@@ -2241,8 +2241,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       inspectedLegacyBridgeTerminalAttentionSignals?.workspaceFolderValue ??
       inspectedLegacyBridgeTerminalAttentionSignals?.workspaceValue ??
       inspectedLegacyBridgeTerminalAttentionSignals?.globalValue;
-    if (legacyBridgeTerminalAttentionSignals !== undefined) {
-      return legacyBridgeTerminalAttentionSignals === true ? 'workbench' : 'none';
+    if (
+      legacyPreferNotifierCompanion !== undefined ||
+      legacyBridgeTerminalAttentionSignals !== undefined
+    ) {
+      const effectiveLegacyBridgeTerminalAttentionSignals =
+        legacyBridgeTerminalAttentionSignals ?? true;
+      return effectiveLegacyBridgeTerminalAttentionSignals === true ? 'workbench' : 'none';
     }
 
     return 'system';
