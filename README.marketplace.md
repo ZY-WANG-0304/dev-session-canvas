@@ -51,21 +51,29 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.4.1 版本亮点
+## 0.5.0 版本亮点
 
-当前公开的 `0.4.1` 版本主要进行了一系列 UI 修复和交互优化：
+当前公开的 `0.5.0` 版本主要带来两条新增主路径：桌面通知 companion 与嵌入式 `Terminal` shell 选择能力。
 
-- 修复 Agent 启动预设与会话展示细节：统一 `默认 / Resume / YOLO / 沙盒` 与 provider 默认参数之间的冲突归一化，避免预设文案与真实启动命令互相打架
-- 优化节点创建与文件活动交互：手动创建的新节点会平滑带到视野中心；文件活动功能默认保持关闭，显式启用后可获得更稳定的文件列表树形交互与自动边锚点
-- 优化执行节点 terminal link 行为：补齐 multiline 路径 / 行号解析、目录 / word / search link 行为，以及 low-confidence link 的 hover / 下划线语义
-- 继续沿用保守会话归属过滤：只有能明确确认属于当前 workspace 的历史记录才会显示；Windows 下使用 `Codex` 时仍保留执行节点内历史无法向上翻页的已知限制
+- 新增 `Dev Session Canvas Notifier` companion，并通过“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”收口安装关系
+- 在主扩展中新增 `devSessionCanvas.notifications.attentionSignalBridge = system` 主路径；可通过测试通知命令、环境诊断侧栏与 `devSessionCanvasNotifier.notifications.playSound` 开关复核当前本机通知能力
+- 新增 `Dev Session Canvas: 选择 Terminal shell` 命令：动态探测当前设备可用 shell、持久化精确路径，并在打开 workspace 时默认写入当前 workspace 覆盖
+- 继续保留保守的 workspace 会话归属过滤，以及 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.4.0` 升级到 `0.4.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.4.x` 更新同样通过 Marketplace 升级获取
+- 首次安装与从 `0.4.1` 升级到 `0.5.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.5.x` 更新同样通过 Marketplace 升级获取
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+## 桌面通知 companion（自动安装）
+
+- 安装 `Dev Session Canvas` 时，VS Code 会自动安装 `Dev Session Canvas Notifier`（`devsessioncanvas.dev-session-canvas-notifier`）
+- 如果你是从 notifier 页面单独安装，VS Code 也会自动补齐主扩展 `Dev Session Canvas`
+- 如需把执行节点的 attention signal 桥接到本机桌面，请在主扩展设置中将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
+- `system` 模式下，主扩展会优先把通知交给本机 UI 侧 companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到 VS Code 工作台消息
+- 这个 companion 尤其适合 `Remote SSH`、WSL、Dev Container 等“主扩展跑在 workspace 侧、提醒需要回到本机桌面”的场景
 
 ## 使用提示
 
@@ -89,7 +97,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.4.x` 修复版本，而非尝试手动降级
+- 优先等待后续 `0.5.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
