@@ -14,7 +14,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-05-06
+updated_at: 2026-05-07
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -25,7 +25,7 @@ updated_at: 2026-05-06
 
 已有设计文档 `docs/design-docs/execution-node-notification-and-attention-signals.md` 已经明确：如果后续要把执行节点注意力事件升级成真正的桌面系统通知，不应把 `notify-send`、`terminal-notifier` 或 Windows Toast 直接塞进当前 workspace 宿主，而应引入一个运行在本机 UI 侧的 notifier companion。
 
-本次设计要把这条方向从“未来建议”收口成可实现的第一版架构：主扩展仍留在仓库根目录；notifier companion 先落到 `extensions/vscode/dev-session-canvas-notifier/`；共享通知协议先落到 `packages/attention-protocol/`。用户当前可验证的结果不是“所有平台都已经有完整桌面通知”，而是：主扩展能够把执行节点 attention event 发送给 companion；companion 能在本机 UI 侧接收结构化请求；测试环境里能够验证这条链路会在点击回调后重新聚焦节点并清除 attention 状态。
+本次设计要把这条方向从“未来建议”收口成可实现的第一版架构：主扩展仍留在仓库根目录；notifier companion 先落到 `extensions/vscode/dev-session-canvas-notifier/`；共享通知协议先落到 `packages/attention-protocol/`。用户当前可验证的结果不是“所有平台都已经有完整桌面通知”，而是：主扩展能够把执行节点 attention event 发送给 companion；companion 能在本机 UI 侧接收结构化请求；测试环境里能够验证这条链路会在点击回调后回到画布并把对应节点居中，同时不代替用户选中节点或清除 attention 状态。
 
 ## 2. 问题定义
 
@@ -33,7 +33,7 @@ updated_at: 2026-05-06
 
 1. 主扩展与 companion 之间用什么结构化载荷通信，才能避免继续把“终端输出副作用”当协议。
 2. companion 在桌面场景里如何把结构化 attention event 变成本机系统通知，同时保持主扩展不依赖本地 OS 命令。
-3. 当用户点击系统通知时，如何安全地回到 VS Code 并重新执行“聚焦节点 / 清除 attention”的主扩展命令。
+3. 当用户点击系统通知时，如何安全地回到 VS Code，并只把对应节点居中显示，避免把“查看提醒”误当成用户已经确认该节点。
 4. 在 notifier 仍处于第一阶段验证时，怎样把代码先放到最终目录位置，而不要求主扩展同步迁移到 `extensions/vscode/dev-session-canvas/`。
 
 ## 3. 目标
@@ -56,7 +56,7 @@ updated_at: 2026-05-06
 
 当前正式方案把 notifier 明确收口成“主扩展负责 workspace-side 权威状态，companion 负责 UI-side 本机桌面通知”的双扩展协作模型：
 
-- `src/extension.ts` 与 `src/panel/CanvasPanelManager.ts`：继续作为主扩展入口，负责解析执行节点 attention signal、维护 `attentionPending`、决定是否桥接提醒，并在通知回跳后执行聚焦与清除 attention。
+- `src/extension.ts` 与 `src/panel/CanvasPanelManager.ts`：继续作为主扩展入口，负责解析执行节点 attention signal、维护 `attentionPending`、决定是否桥接提醒；工作台通知按钮与系统通知回跳都只居中节点，用户点击节点才负责确认并清除 attention。
 - `extensions/vscode/dev-session-canvas-notifier/src/extension.ts`：作为 UI-side companion 入口，负责校验结构化请求、选择本机通知后端、维护 pending focus token、注册 URI handler，并记录诊断输出。
 - `packages/attention-protocol/src/index.ts`：作为两侧共享协议单一真相，定义请求结构、回调动作、返回结果与测试命令约束。
 
@@ -73,7 +73,7 @@ updated_at: 2026-05-06
 
 - 正式安装真相固定为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` + `api:none`”；跨 host 协作必须依赖异步 commands 和结构化协议，而不是额外引入跨扩展 JS API。
 - 外部通知系统看到的 callback URI 只能携带一次性 token；真实 `focusAction` 只能保存在 companion 内部 pending table 中，避免把任意命令载荷直接暴露给 OS 通知层。
-- 用户点击系统通知后，最终只能回到主扩展的 `devSessionCanvas.__internal.focusAttentionNode` 或 notifier 自己的测试确认命令；notifier 不得直接改写画布状态，也不得新增未登记的回调动作白名单。
+- 用户点击系统通知后，最终只能回到主扩展的 `devSessionCanvas.__internal.centerAttentionNode` 或 notifier 自己的测试确认命令；notifier 不得直接改写画布状态，也不得新增未登记的回调动作白名单。
 - `devSessionCanvas.notifications.attentionSignalBridge=system` 时，只有 companion 缺失、平台不支持或调用失败才允许回退到工作台消息；一旦 companion 返回 `posted`，主扩展就不得再重复弹工作台通知。
 - 开发态主扩展单调试可以临时去掉 notifier 依赖，但该动作只能发生在 `.debug/vscode-extension-main-only/` 这类 debug-only 副本，不得回写正式 manifest。
 
@@ -106,7 +106,7 @@ updated_at: 2026-05-06
 - `title`：`DSCanvas · <workspace> · Agent|Terminal`
 - `message`：`Agent|Terminal「<节点显示名>」: <终端信号消息>`，若信号未携带文本则回退成“发出终端提醒 / 通知”
 
-`focusAction` 当前仍收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部聚焦命令即可；但真正暴露给外部通知系统的 callback URI 不再直接携带这段动作载荷，而是只携带 companion 侧登记的一次性 token。
+`focusAction` 当前仍收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部定位命令即可；但真正暴露给外部通知系统的 callback URI 不再直接携带这段动作载荷，而是只携带 companion 侧登记的一次性 token。对执行节点 attention 来说，该命令是 `devSessionCanvas.__internal.centerAttentionNode`：它只让画布回到对应节点并居中，不选中节点，也不清除 `attentionPending`。
 
 ### 5.6 回调策略：URI handler 负责“回到 VS Code”
 
@@ -115,7 +115,7 @@ companion 使用 `vscode.window.registerUriHandler(...)` 注册自己的 URI han
 1. 对 Windows Toast、macOS `terminal-notifier` 这类支持 protocol / open-url 的通知后端，URI handler 是最自然的点击回调入口。
 2. 即使未来从桌面通知点击时需要把 VS Code 从后台唤回前台，URI handler 仍然比“只在当前进程内直接 executeCommand”更稳定，也更接近真实用户路径。
 
-Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 companion 进程内直接执行 focus action；但 companion 仍然同步生成 callback URI，并在测试态用它验证回调链路。无论是直接执行还是 URI 回调，companion 当前都只接受当前设计明确允许的两类动作：主扩展的 `devSessionCanvas.__internal.focusAttentionNode`，以及 notifier 自己的测试确认命令。
+Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 companion 进程内直接执行受控回跳动作；但 companion 仍然同步生成 callback URI，并在测试态用它验证回调链路。无论是直接执行还是 URI 回调，companion 当前都只接受当前设计明确允许的两类动作：主扩展的 `devSessionCanvas.__internal.centerAttentionNode`，以及 notifier 自己的测试确认命令。
 
 ### 5.7 主扩展回退策略：companion 优先，工作台通知兜底
 
@@ -170,14 +170,19 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 - 单独调主扩展时，不需要额外先安装或加载 notifier
 - 从远端仓库窗口发起主扩展单调时，继续保持 `Run Dev Session Canvas (Main Only)` 的零输入体验；只有远端联调 notifier 时才额外要求本机 `localRepoRoot`
 
-### 5.10 聚焦语义：系统通知点击必须清除 attention
+### 5.10 回跳语义：通知点击只居中节点
 
-主扩展新增内部命令 `devSessionCanvas.__internal.focusAttentionNode`。它不同于现有“仅定位节点”的内部命令：
+点击 VS Code 工作台通知的 `查看节点` 按钮或点击桌面系统通知，都只代表用户想回到画布查看，不代表已经处理了该节点。因此这两条通知回跳路径不能把节点设为选中，也不能清除 `attentionPending`。
 
-- 会打开并聚焦当前节点
-- 如果目标是执行节点，还会同步清除 `attentionPending`
+系统通知请求使用 `devSessionCanvas.__internal.centerAttentionNode`；VS Code 工作台通知按钮直接复用同一套 `host/centerNode` 语义。规则是：
 
-这样 companion 不必直接碰宿主私有状态；它只要回调这条命令，就能复用主扩展已经确定的“聚焦即确认”语义。
+- 打开目标画布 surface，并向 Webview 发送 `host/centerNode`
+- Webview 只调整视口，让目标节点居中显示
+- 这条回跳路径会抑制 `host/visibilityRestored` 的 Webview focus restore，避免把返回画布误转成节点内部控件 focus
+- 不更新 `selectedNodeId`，不清除已选中的其他对象，也不发送 `webview/selectNode`
+- 不清除执行节点的 `attentionPending`；用户需要自己点击节点后，才走既有确认路径
+
+这样 companion 和工作台通知都不直接碰确认状态；通知只负责把用户带回正确位置，而“确认提醒”继续由用户在画布中的显式点击完成。
 
 ## 6. 第一版实现分层
 
@@ -196,7 +201,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 - 继续设置 `attentionPending`
 - 继续执行冷却与去重
 - 继续在 companion 不可用时回退到工作台通知
-- 新增 companion 配置读取、diagnostic event 与 focusAttention internal command
+- 新增 companion 配置读取、diagnostic event 与 centerAttention internal command
 
 ### 6.2 Companion extension
 
@@ -226,7 +231,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 
 | `backend` | `activationMode` | 含义 |
 | --- | --- | --- |
-| `linux-notify-send` | `direct-action` | 当前桌面环境支持 `notify-send --action --wait`，点击通知可直接回调 focus action |
+| `linux-notify-send` | `direct-action` | 当前桌面环境支持 `notify-send --action --wait`，点击通知可直接回调受控定位动作 |
 | `linux-notify-send` | `none` | 已退化成“只发通知”，人工验收只要求确认通知出现 |
 | `macos-terminal-notifier` | `protocol` | 通过 `terminal-notifier -open` 回到 VS Code URI handler |
 | `macos-osascript` | `none` | 只保证 `display notification` 出现，不承诺点击回跳 |
@@ -236,7 +241,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 ## 7. 风险与当前缓解
 
 - 风险：不同平台对“点击通知 -> 回到 VS Code”的支持度不一致。
-  当前缓解：协议、URI handler、主扩展 focus 命令已经固定；平台能力不足时允许退化，但不改变主扩展状态机。
+  当前缓解：协议、URI handler、主扩展 center 命令已经固定；平台能力不足时允许退化，但不改变主扩展状态机。
 
 - 风险：companion 与工作台通知同时弹出，导致噪音。
   当前缓解：只要 companion 返回 `posted`，主扩展就不再重复发 VS Code 工作台通知；只有 companion 不可用或失败时才回退。
@@ -256,7 +261,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 6. `npm run test:notifier-source`
 7. `npm run test:notifier-smoke`
 
-第 7 条是当前最关键的验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 focus callback -> 主扩展聚焦并清除 attention”这一整条链路。2026-05-05 起，这条 smoke 已改为通过 staged smoke host + notifier wrapper 同时装配两侧扩展，并借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令，latest head 可稳定复现通过。
+第 7 条是当前最关键的验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 callback -> 主扩展发送 `host/centerNode` 且保留 attention 状态”这一整条链路。2026-05-07 起，这条 smoke 已改为通过 staged smoke host + notifier wrapper 同时装配两侧扩展，并借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令，latest head 可稳定复现通过。
 
 真实桌面通知的人工验收，则统一使用 companion 自带命令：
 

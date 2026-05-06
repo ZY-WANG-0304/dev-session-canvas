@@ -653,9 +653,18 @@ export type HostToWebviewMessage =
     }
   | {
       type: 'host/visibilityRestored';
+      payload?: {
+        restoreFocus?: boolean;
+      };
     }
   | {
       type: 'host/focusNode';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'host/centerNode';
       payload: {
         nodeId: string;
       };

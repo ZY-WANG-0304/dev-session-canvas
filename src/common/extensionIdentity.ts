@@ -17,6 +17,7 @@ export const COMMAND_IDS = {
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   focusNode: 'devSessionCanvas.__internal.focusNode',
   focusAttentionNode: 'devSessionCanvas.__internal.focusAttentionNode',
+  centerAttentionNode: 'devSessionCanvas.__internal.centerAttentionNode',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
   clearFileIncludeFilter: 'devSessionCanvas.clearFileIncludeFilter',

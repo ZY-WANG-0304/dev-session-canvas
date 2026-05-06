@@ -65,7 +65,7 @@ export function buildNotifierEnvironmentSnapshot(
       currentRouteLabel: 'in-memory test backend',
       currentRouteDetail: '当前为 Extension Test 模式，通知不会触达真实系统，而是直接记录测试结果。',
       activationLabel: 'test-replay',
-      activationDetail: '测试环境通过回放 callback URI 验证“聚焦节点 / 清除 attention”链路。',
+      activationDetail: '测试环境通过回放 callback URI 验证“回到画布并居中节点”链路。',
       soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
       soundDetail: '测试模式不会触发真实系统声音；这里只反映当前配置值。',
       installRequirements: [

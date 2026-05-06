@@ -60,6 +60,7 @@
     "onCommand:devSessionCanvas.refreshSessionHistory",
     "onCommand:devSessionCanvas.resetCanvasState",
     "onCommand:devSessionCanvas.dumpHostDiagnostics",
+    "onCommand:devSessionCanvas.__internal.centerAttentionNode",
     "onView:devSessionCanvas.sidebar",
     "onView:devSessionCanvas.sidebarFilters",
     "onView:devSessionCanvas.sidebarNodes",
