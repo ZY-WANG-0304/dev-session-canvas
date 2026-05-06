@@ -33,6 +33,7 @@ import ReactFlow, {
 } from 'reactflow';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
+import type Token from 'markdown-it/lib/token.mjs';
 
 import 'reactflow/dist/style.css';
 import 'katex/dist/katex.min.css';
@@ -193,6 +194,7 @@ const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
 const NOTE_BODY_INDENT = '  ';
+const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
@@ -7801,8 +7803,19 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   const defaultLinkOpenRenderer =
     renderer.renderer.rules.link_open ??
     ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  const defaultValidateLink = renderer.validateLink.bind(renderer);
+  renderer.validateLink = (href) =>
+    defaultValidateLink(href) && isRenderableNoteMarkdownHref(href);
   renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
+    const href = token.attrGet('href');
+    if (!href || !isRenderableNoteMarkdownHref(href)) {
+      removeMarkdownTokenAttribute(token, 'href');
+      token.attrSet('aria-disabled', 'true');
+      token.attrJoin('class', 'is-disabled');
+      return defaultLinkOpenRenderer(tokens, idx, options, env, self);
+    }
+
     token.attrSet('data-note-markdown-link', 'true');
     token.attrJoin('class', 'note-markdown-link');
     token.attrSet('rel', 'noopener noreferrer');
@@ -7819,6 +7832,57 @@ function registerSafeNoteMathRenderer(renderer: MarkdownIt): void {
   });
   renderer.renderer.rules.note_math_inline = (tokens, idx) => renderSafeNoteMath(tokens[idx].content, false);
   renderer.renderer.rules.note_math_block = (tokens, idx) => `${renderSafeNoteMath(tokens[idx].content, true)}\n`;
+}
+
+function isRenderableNoteMarkdownHref(href: string): boolean {
+  const trimmedHref = href.trim();
+  if (!trimmedHref || trimmedHref.startsWith('#')) {
+    return false;
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(trimmedHref);
+  if (schemeMatch) {
+    return NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES.has(schemeMatch[1].toLowerCase());
+  }
+
+  return isRenderableNoteMarkdownWorkspaceHref(trimmedHref);
+}
+
+function isRenderableNoteMarkdownWorkspaceHref(href: string): boolean {
+  const hashIndex = href.indexOf('#');
+  const rawPathPart = hashIndex === -1 ? href : href.slice(0, hashIndex);
+  if (!rawPathPart || rawPathPart.includes('?')) {
+    return false;
+  }
+
+  let decodedPathPart: string;
+  try {
+    decodedPathPart = decodeURIComponent(rawPathPart);
+  } catch {
+    return false;
+  }
+
+  const normalizedPath = decodedPathPart.replace(/\\/g, '/');
+  if (
+    !normalizedPath ||
+    normalizedPath.startsWith('/') ||
+    normalizedPath.startsWith('//') ||
+    /^[A-Za-z]:[\\/]/u.test(decodedPathPart)
+  ) {
+    return false;
+  }
+
+  const pathSegments = normalizedPath.split('/').filter((segment) => segment.length > 0);
+  return pathSegments.length > 0 && pathSegments.every((segment) => segment !== '..');
+}
+
+function removeMarkdownTokenAttribute(token: Token, attributeName: string): void {
+  const attributeIndex = token.attrIndex(attributeName);
+  if (attributeIndex < 0 || !token.attrs) {
+    return;
+  }
+
+  token.attrs.splice(attributeIndex, 1);
 }
 
 function parseNoteInlineMath(state: StateInline, silent: boolean): boolean {

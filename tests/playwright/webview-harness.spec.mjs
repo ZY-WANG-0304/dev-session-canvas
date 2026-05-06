@@ -3814,6 +3814,19 @@ test('clicking a note workspace file link posts openNoteLink with the raw relati
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
 });
 
+test('note markdown unsafe command links do not render clickable hrefs', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '[run](command:workbench.action.closeActiveEditor)';
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview')).toContainText('run');
+  await expect(noteNode.locator('.note-markdown-preview a[href^="command:"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview a[data-note-markdown-link="true"]')).toHaveCount(0);
+});
+
 test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createNoteNodeState());

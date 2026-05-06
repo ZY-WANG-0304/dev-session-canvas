@@ -153,6 +153,7 @@ updated_at: 2026-05-06
 - 如果用户点击的是 Markdown 链接元素，则不进入编辑，而是发消息给宿主；宿主按两类目标处理：
   - 外部链接只允许 `http`、`https`、`mailto` 三类 scheme。
   - workspace 文件链接只允许当前 workspace 内文件，单根 workspace 支持纯相对路径，多根 workspace 要求 `workspace-folder/relative/path` 前缀。
+- 链接安全边界必须在渲染层和宿主层双重 fail closed：`src/webview/main.tsx` 的 Markdown renderer 不应为 `command:`、未知 scheme、绝对路径、query 路径或 `..` 逃逸路径生成真实 `href`，宿主 `src/panel/CanvasPanelManager.ts` 仍在 `openNoteLink()` 中执行最终白名单和 workspace containment 校验。
 - workspace 文件链接支持可选 `#L12`、`#L12C3` 行列 fragment；宿主会按当前画布 surface 语义打开文件并定位到对应行列。
 - 绝对路径、`..` 逃逸、目录目标和多根 workspace 下缺少根名前缀的歧义路径都必须 fail closed。
 - 交互式 checklist 只覆盖标准 Markdown task list 语法生成的 checkbox，包括无序列表、有序列表以及 blockquote / 嵌套场景中的版本；不支持原始 HTML 注入出的自定义 checkbox，也不在预览态直接编辑任务正文。
@@ -187,6 +188,7 @@ updated_at: 2026-05-06
 当前实现已经按上述方案落地：
 
 - `src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js` 和自有安全 KaTeX 规则，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”；malformed math 中的 raw HTML / `command:` 链接必须被 KaTeX 转义，不能生成真实标签。
+- `src/webview/main.tsx` 的 Markdown link renderer 已覆盖 `validateLink` 并在 `link_open` 中二次检查 `href`，不为 `command:` 等 unsafe 链接生成可激活 DOM；`src/panel/CanvasPanelManager.ts` 的 `enableCommandUris` 也收窄到画布 standby 页面需要的扩展命令白名单。
 - `src/common/noteMarkdownChecklist.ts` 已新增按源文行切换 Markdown checklist 标记的纯函数辅助逻辑，支持无序列表、有序列表和嵌套缩进场景。
 - `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
@@ -210,3 +212,8 @@ updated_at: 2026-05-06
 
 1. 移除存在 high severity XSS 的 `markdown-it-katex` 依赖，改为 `src/webview/main.tsx` 内自有 Markdown math 规则直接调用新版 `katex`。
 2. 新增 Playwright 回归，验证 malformed math `$<a href="command:workbench.action.closeActiveEditor">run command</a>%$` 不会在预览态生成真实 `<a>` 标签。
+
+2026-05-07 链接渲染层追加验证：
+
+1. 新增 Playwright 回归，验证普通 Markdown 链接 `[run](command:workbench.action.closeActiveEditor)` 不会在 `.note-markdown-preview` 内生成 `href="command:..."` 或 `data-note-markdown-link="true"` 的可激活链接。
+2. 将 Webview `enableCommandUris` 从 `true` 收窄到 `devSessionCanvas.openCanvas` / `openCanvasInEditor` / `openCanvasInPanel`，只保留 standby 页面需要的命令 URI。

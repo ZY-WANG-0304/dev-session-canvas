@@ -51,7 +51,7 @@
 
 本轮已经把 `Note` Markdown 阅读态从“基础排版预览”扩展成更完整的工作笔记预览表面。`src/webview/main.tsx` 现在通过 `markdown-it-task-lists`、`highlight.js` 和自有安全 KaTeX 规则生成任务列表、语法高亮与数学公式的受控 HTML；`NoteEditableNode` 也不再把所有预览点击都强行切回编辑态，而是对链接点击单独分流到宿主。
 
-为保证链接能力不破坏安全边界，本轮新增了 `src/common/noteMarkdownLinks.ts` 作为纯函数白名单辅助模块，只允许 `http`、`https`、`mailto` 三类 scheme；`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 新增 `webview/openNoteLink` 消息链路，最终通过 `vscode.open` 打开安全链接，并在拒绝非法 scheme 时留下诊断事件。
+为保证链接能力不破坏安全边界，本轮新增了 `src/common/noteMarkdownLinks.ts` 作为纯函数白名单辅助模块，只允许 `http`、`https`、`mailto` 三类 scheme；`src/webview/main.tsx` 的 Markdown link renderer 也会在生成 DOM 前 fail closed，不为 `command:`、未知 scheme、绝对路径、query 路径或 `..` 逃逸路径保留真实 `href`。`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 新增 `webview/openNoteLink` 消息链路，最终通过 `vscode.open` 打开安全链接，并在拒绝非法 scheme 时留下诊断事件；Webview `enableCommandUris` 已收窄到 standby 页面实际需要的扩展命令白名单。
 
 样式和构建层也已同步收口：`scripts/build.mjs` 补齐 `.woff` / `.woff2` loader，`src/webview/styles.css` 为 task list checkbox、highlight token、可点击链接和 KaTeX block 提供了跟随 VSCode 主题的样式。最终验证通过，且没有发现需要立即登记到 `docs/exec-plans/tech-debt-tracker.md` 的新技术债。
 
@@ -171,3 +171,5 @@
 
 - 2026-05-05 22:18 +0800，新建本计划，记录 Note Markdown 富展示扩展的目标、边界与实现顺序。
 - 2026-05-05 23:08 +0800，补齐实现、验证与复盘，确认本轮完成并移入 `completed/`。
+
+更新（2026-05-07 安全更新）：已补充渲染层链接白名单与 Playwright 回归，确认普通 Markdown `[run](command:workbench.action.closeActiveEditor)` 不会在 Note 预览 DOM 中生成可激活 `command:` href；同时将 Webview `enableCommandUris` 收窄到画布 standby 页面需要的扩展命令列表。
