@@ -141,7 +141,7 @@ updated_at: 2026-05-06
 - 在此基础上补充以下插件或渲染扩展：
   - `markdown-it-task-lists`：把 `- [ ]` / `- [x]` 渲染成可交互 checkbox 列表，并保留足够的元数据把点击回写到源文。
   - `highlight.js`：为 fenced code block 生成语法高亮 token；声明语言时优先按语言高亮，无法识别时回退到自动识别或纯文本。
-  - `markdown-it-katex` + `katex`：支持 `$...$` 行内公式和 `$$...$$` 块级公式，关闭信任外部 HTML 的路径。
+  - `katex`：通过 Webview 内自有 `markdown-it` inline / block 规则识别 `$...$` 行内公式和 `$$...$$` 块级公式，并调用 `katex.renderToString({ trust: false, throwOnError: false })` 生成受控 HTML；不使用会透传 malformed math raw HTML 的第三方 Markdown 插件。
 - 最终视觉排版由 `src/webview/styles.css` 接管，继续遵循 VSCode 主题 token，而不是引入固定站点风格。
 
 ### 7.4 任务列表可在预览态切换，链接通过宿主安全打开
@@ -186,7 +186,7 @@ updated_at: 2026-05-06
 
 当前实现已经按上述方案落地：
 
-- `src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js`、`markdown-it-katex` 和 `katex`，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”。
+- `src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js` 和自有安全 KaTeX 规则，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”；malformed math 中的 raw HTML / `command:` 链接必须被 KaTeX 转义，不能生成真实标签。
 - `src/common/noteMarkdownChecklist.ts` 已新增按源文行切换 Markdown checklist 标记的纯函数辅助逻辑，支持无序列表、有序列表和嵌套缩进场景。
 - `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
@@ -205,3 +205,8 @@ updated_at: 2026-05-06
 
 1. `npm run typecheck` 通过。
 2. `npm run test:webview -- -g "note body editor supports tab indentation and line numbers|note body editing target fills the note frame without an inset editor box"` 通过。
+
+2026-05-06 安全 KaTeX 追加验证：
+
+1. 移除存在 high severity XSS 的 `markdown-it-katex` 依赖，改为 `src/webview/main.tsx` 内自有 Markdown math 规则直接调用新版 `katex`。
+2. 新增 Playwright 回归，验证 malformed math `$<a href="command:workbench.action.closeActiveEditor">run command</a>%$` 不会在预览态生成真实 `<a>` 标签。

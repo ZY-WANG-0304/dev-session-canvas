@@ -43,13 +43,13 @@
   理由：Webview 默认导航不符合仓库现有原生打开语义；同时 `command:`、相对路径或其他未知 scheme 不应因为用户粘贴 Markdown 就隐式获得打开能力。
   日期/作者：2026-05-05 / Codex
 
-- 决策：代码高亮优先使用 `highlight.js` 的常见语言集合，数学公式使用 `markdown-it-katex` + `katex`，并继续保持 `markdown-it` 的 `html: false`。
+- 决策：代码高亮优先使用 `highlight.js` 的常见语言集合，数学公式使用 Webview 自有 `markdown-it` math 规则直接调用新版 `katex`，并继续保持 `markdown-it` 的 `html: false`；不再依赖会透传 malformed math raw HTML 的第三方 Markdown 插件。
   理由：这条组合能在不引入富文本编辑器的前提下，补齐用户最直观的阅读态能力；同时它们都可以作为纯渲染层能力存在，不改变 `Note` 的持久化模型。
   日期/作者：2026-05-05 / Codex
 
 ## 结果与复盘
 
-本轮已经把 `Note` Markdown 阅读态从“基础排版预览”扩展成更完整的工作笔记预览表面。`src/webview/main.tsx` 现在通过 `markdown-it-task-lists`、`highlight.js`、`markdown-it-katex` 和 `katex` 生成任务列表、语法高亮与数学公式的受控 HTML；`NoteEditableNode` 也不再把所有预览点击都强行切回编辑态，而是对链接点击单独分流到宿主。
+本轮已经把 `Note` Markdown 阅读态从“基础排版预览”扩展成更完整的工作笔记预览表面。`src/webview/main.tsx` 现在通过 `markdown-it-task-lists`、`highlight.js` 和自有安全 KaTeX 规则生成任务列表、语法高亮与数学公式的受控 HTML；`NoteEditableNode` 也不再把所有预览点击都强行切回编辑态，而是对链接点击单独分流到宿主。
 
 为保证链接能力不破坏安全边界，本轮新增了 `src/common/noteMarkdownLinks.ts` 作为纯函数白名单辅助模块，只允许 `http`、`https`、`mailto` 三类 scheme；`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 新增 `webview/openNoteLink` 消息链路，最终通过 `vscode.open` 打开安全链接，并在拒绝非法 scheme 时留下诊断事件。
 
@@ -83,7 +83,7 @@
 ## 具体步骤
 
 1. 更新 `docs/design-docs/note-markdown-preview-rendering.md`、`docs/design-docs/index.md` 和 `docs/product-specs/canvas-core-collaboration-mvp.md`，写清新增支持项与安全边界。
-2. 安装并接入 `markdown-it-task-lists`、`highlight.js`、`markdown-it-katex`、`katex` 等运行时依赖；必要时补 TypeScript 声明。
+2. 安装并接入 `markdown-it-task-lists`、`highlight.js`、`katex` 等运行时依赖；公式语法由 Webview 自有 Markdown math 规则负责，必要时补 TypeScript 声明。
 3. 在 `src/webview/main.tsx` 中扩展 `noteMarkdownRenderer`，增加 task list、代码高亮、数学公式和链接点击分流。
 4. 在 `src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 中增加 `Note` 链接打开消息与宿主处理，并对白名单 scheme 做显式校验。
 5. 在 `scripts/build.mjs` 与 `src/webview/styles.css` 中补齐 KaTeX 资源打包与预览样式。
@@ -139,7 +139,7 @@
 - 运行时依赖：
   - `markdown-it-task-lists`：把 checklist 语法渲染成只读 checkbox 结构。
   - `highlight.js`：为 fenced code block 生成语法高亮的 HTML token。
-  - `markdown-it-katex` 与 `katex`：为行内 / 块级数学公式生成受控 HTML 与字体样式。
+  - 自有 Markdown math 规则与 `katex`：为行内 / 块级数学公式生成受控 HTML 与字体样式，malformed math 中的 raw HTML / 命令链接只能作为转义文本进入 KaTeX 输出。
 
 - `src/common/protocol.ts`
 

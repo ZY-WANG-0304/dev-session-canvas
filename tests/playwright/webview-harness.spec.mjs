@@ -3699,6 +3699,23 @@ test('note markdown preview renders task lists, syntax highlighting, and math fo
   await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
 });
 
+test('note markdown math escapes malformed html and command links', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content =
+    '恶意公式 $<a href="command:workbench.action.closeActiveEditor">run command</a>%$';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview .katex')).toHaveCount(1);
+  await expect(noteNode.locator('.note-markdown-preview a')).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      noteNode.locator('.note-markdown-preview').evaluate((element) => element.innerHTML)
+    )
+    .not.toContain('<a href="command:workbench.action.closeActiveEditor">');
+});
+
 test('clicking a note checklist checkbox updates markdown without entering edit mode', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
