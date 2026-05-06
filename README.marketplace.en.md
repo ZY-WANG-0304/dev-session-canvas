@@ -56,7 +56,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 The public `0.5.0` release mainly adds two new user-facing paths: the desktop-notification companion and embedded `Terminal` shell selection.
 
 - Add the `Dev Session Canvas Notifier` companion and close the installation path with `extensionPack` on the main extension plus one-way `extensionDependencies` on the notifier, so either entry point still completes the pair automatically
-- Add the `devSessionCanvas.notifications.attentionSignalBridge = system` path in the main extension, together with a test-notification command, environment diagnostics sidebar, and the `devSessionCanvasNotifier.notifications.playSound` toggle for local-notification verification
+- Add the `devSessionCanvas.notifications.attentionSignalBridge` path in the main extension with `system` as the default, together with a test-notification command, environment diagnostics sidebar, and the `devSessionCanvasNotifier.notifications.playSound` toggle for local-notification verification
 - Add the `Dev Session Canvas: Select Terminal Shell` command so the extension can discover currently available shells, persist the exact binary path the user picked, and prefer a workspace-level override when a workspace is open
 - Keep conservative workspace attribution for session history, while still explicitly retaining the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
 
@@ -72,7 +72,7 @@ The public `0.5.0` release mainly adds two new user-facing paths: the desktop-no
 
 - Installing `Dev Session Canvas` automatically installs `Dev Session Canvas Notifier` (`devsessioncanvas.dev-session-canvas-notifier`)
 - If a user installs from the notifier page first, VS Code also auto-installs the main extension `Dev Session Canvas`
-- To bridge execution-node attention signals to the local desktop, set `devSessionCanvas.notifications.attentionSignalBridge` to `system` in the main extension settings
+- Execution-node attention signals now prefer the local desktop by default through `devSessionCanvas.notifications.attentionSignalBridge = system`; switch the setting if you want `workbench` or `none` instead
 - In `system` mode, the main extension prefers the local UI-side companion and falls back to VS Code workbench notifications when the companion is missing, unsupported, or delivery fails
 - The companion is especially useful in `Remote SSH`, WSL, and Dev Container scenarios where the main extension runs on the workspace side but the notification needs to return to the local desktop
 

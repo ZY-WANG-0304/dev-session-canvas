@@ -62,12 +62,13 @@
 - 配置项 `devSessionCanvas.notifications.attentionSignalBridge`：
   - 类型：`enum`
   - 可选值：`none` | `workbench` | `system`
-  - 默认值：`workbench`
+  - 默认值：`system`
   - 作用域：`window`
 - 各模式行为：
   - `none`：不额外弹出 VS Code 工作台消息或系统通知；节点内提醒 icon、Minimap 同色明暗闪烁、诊断事件与 `attentionPending` 状态仍然保留
   - `workbench`：把终端注意力信号桥接为 VS Code 工作台消息（`vscode.window.showInformationMessage`）
   - `system`：优先把 attention event 发送给本机 UI 侧的 `Dev Session Canvas Notifier` companion extension；若 companion 可用且成功接单，则本次提醒走本机桌面系统通知，不再重复弹 VS Code 工作台消息
+- `system` 模式下，系统通知标题应包含固定前缀 `DSCanvas`、当前 workspace 名称，以及节点类型（`Agent` / `Terminal`）
 - `system` 模式的补充约束：
   - companion 会同时返回实际使用的 `backend` 与 `activationMode`；其中 `activationMode=none` 明确表示“当前平台只保证通知出现，不承诺点击后回到 VS Code”
   - 若 companion 缺失、当前平台不支持、或调用失败，则自动回退到 VS Code 工作台消息，避免静默丢提醒

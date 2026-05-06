@@ -374,7 +374,7 @@ function buildManualNotificationRequest(requestId: string): AttentionNotificatio
   return {
     version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
     kind: 'execution-attention',
-    title: 'Dev Session Canvas Notifier',
+    title: 'DSCanvas · Notifier',
     message: `测试桌面通知 ${createdAtLabel}；若当前后端支持点击回调，应回到 VS Code 并写入诊断输出。`,
     dedupeKey: `manual-test:${requestId}`,
     focusAction: {

@@ -259,7 +259,7 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '工作台消息 · 标题栏+Minimap 增强');
+  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强');
 
   await verifyCodexSessionIdLocator();
   await verifyClaudeSessionIdLocator();
@@ -3452,7 +3452,7 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
 async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   const configuration = vscode.workspace.getConfiguration();
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
-    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
   const originalStrongReminderMode = normalizeStrongTerminalAttentionReminderMode(
     configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
@@ -3874,25 +3874,11 @@ async function verifyLegacyAttentionNotificationBridgeMigration() {
   );
 
   try {
-    await clearDiagnosticEvents();
-    await writeSmokeUserSettings({
-      'devSessionCanvas.notifications.attentionSignalBridge': undefined,
-      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': undefined,
-      'devSessionCanvas.notifications.preferNotifierCompanion': true
-    });
-    await waitForDiagnosticEvents(
-      (events) =>
-        events.some(
-          (event) =>
-            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
-            event.detail?.mode === 'system'
-        ),
-      20000
-    );
+    await ensureAttentionNotificationBridgeMode('workbench');
 
     await clearDiagnosticEvents();
     await writeSmokeUserSettings({
-      'devSessionCanvas.notifications.preferNotifierCompanion': undefined,
+      'devSessionCanvas.notifications.attentionSignalBridge': undefined,
       'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': false
     });
     await waitForDiagnosticEvents(
@@ -3901,6 +3887,20 @@ async function verifyLegacyAttentionNotificationBridgeMigration() {
           (event) =>
             event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
             event.detail?.mode === 'none'
+        ),
+      20000
+    );
+
+    await clearDiagnosticEvents();
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': undefined
+    });
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+            event.detail?.mode === 'system'
         ),
       20000
     );
@@ -3917,7 +3917,22 @@ async function verifyLegacyAttentionNotificationBridgeMigration() {
             event.detail?.mode === 'workbench'
         ),
       20000
-      );
+    );
+
+    await clearDiagnosticEvents();
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': undefined,
+      'devSessionCanvas.notifications.preferNotifierCompanion': true
+    });
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+            event.detail?.mode === 'system'
+        ),
+      20000
+    );
   } finally {
     await writeSmokeUserSettings({
       'devSessionCanvas.notifications.attentionSignalBridge': bridgeSetting?.globalValue,
@@ -8072,7 +8087,7 @@ async function setAgentDefaultArgs(provider, defaultArgs) {
 async function ensureAttentionNotificationBridgeMode(mode) {
   const configuration = vscode.workspace.getConfiguration();
   const currentMode = normalizeAttentionNotificationBridgeMode(
-    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
 
   if (currentMode === mode) {
@@ -8135,7 +8150,7 @@ function normalizeAttentionNotificationBridgeMode(value) {
     return 'workbench';
   }
 
-  return 'workbench';
+  return 'system';
 }
 
 function normalizeStrongTerminalAttentionReminderMode(value) {
