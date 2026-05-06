@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，仓库内的发布资产与对外口径已基本收口；当前待执行的是 release-day 发布与发布后复核。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.5.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![DevSessionCanvas 动态演示](images/marketplace/canvas-overview.gif)
 
@@ -44,7 +44,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.5.0` 收口本机 UI 侧 notifier companion、attention signal 的 `system` 桥接路径、嵌入式 `Terminal` shell 选择能力与版本发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.5.1` 收口 attention signal 默认 `system` 桥接、legacy 配置兼容、系统通知标题辨识与版本发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -66,7 +66,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 对外分发目标是通过 `Visual Studio Marketplace` 发布。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
-- 当前仓库内的发布资产已收口；真正上架前仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
+- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.5.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
 - `Open VSX` 不是本次 `Preview` 的首发路径
 
 ## 桌面通知 companion（自动安装）

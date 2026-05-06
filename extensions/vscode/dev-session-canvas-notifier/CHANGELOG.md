@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- 与主扩展 `0.5.1` 对齐：主扩展默认把 `devSessionCanvas.notifications.attentionSignalBridge` 收口到 `system`，安装配对扩展后无需再手工开启桌面通知主路径。
+- 执行 attention 系统通知标题统一对齐为 `DSCanvas · <workspace> · Agent|Terminal`，在多窗口或远端 workspace 下更容易辨认通知来源。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.5.0
 
 - 初始化 UI-side notifier companion 骨架。

@@ -51,19 +51,19 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.5.0 版本亮点
+## 0.5.1 版本亮点
 
-当前公开的 `0.5.0` 版本主要带来两条新增主路径：桌面通知 companion 与嵌入式 `Terminal` shell 选择能力。
+当前公开的 `0.5.1` 版本聚焦把执行节点的桌面通知链路调整为默认开启，并补齐升级兼容与通知来源辨识。
 
-- 新增 `Dev Session Canvas Notifier` companion，并通过“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”收口安装关系
-- 在主扩展中新增默认走 `system` 的 `devSessionCanvas.notifications.attentionSignalBridge` 主路径；可通过测试通知命令、环境诊断侧栏与 `devSessionCanvasNotifier.notifications.playSound` 开关复核当前本机通知能力
-- 新增 `Dev Session Canvas: 选择 Terminal shell` 命令：动态探测当前设备可用 shell、持久化精确路径，并在打开 workspace 时默认写入当前 workspace 覆盖
-- 继续保留保守的 workspace 会话归属过滤，以及 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
+- 默认将 `devSessionCanvas.notifications.attentionSignalBridge` 收口到 `system`；安装主扩展并自动带上 notifier 后，无需额外改设置即可优先尝试把提醒送回本机桌面
+- 若你此前仍在沿用 legacy 配置键 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 或 `devSessionCanvas.notifications.preferNotifierCompanion`，升级到 `0.5.1` 后会继续保留既有 `workbench` / `none` / `system` 语义，避免旧设置被静默改成桌面通知
+- `system` 模式下的执行通知标题现在统一为 `DSCanvas · <workspace> · Agent|Terminal`，更适合多窗口、多 workspace 或远端场景辨认来源
+- 继续保留 `Dev Session Canvas Notifier` 自动安装关系、嵌入式 `Terminal` shell 选择能力，以及 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.4.1` 升级到 `0.5.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.5.x` 更新同样通过 Marketplace 升级获取
+- 首次安装与从 `0.5.0` 升级到 `0.5.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.5.x` 更新同样通过 Marketplace 升级获取
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 

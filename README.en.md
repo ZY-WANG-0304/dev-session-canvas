@@ -4,7 +4,7 @@
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase. The repository's release assets and external messaging have largely been finalized, and the remaining work is focused on release-day publication and post-release verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.5.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![DevSessionCanvas Animated Demo](images/marketplace/canvas-overview.gif)
 
@@ -44,7 +44,7 @@ The product has entered the public `Preview` phase. The repository's release ass
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.5.0` is to consolidate the local-side notifier companion, the `system` attention-signal bridge path, embedded `Terminal` shell selection, and the release materials for this milestone, while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.5.1` is to consolidate the default `system` attention-signal bridge, legacy notification-config compatibility, system-notification source labeling, and the release materials for this milestone, while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -66,7 +66,7 @@ Related entry points:
 Public distribution is intended to happen through `Visual Studio Marketplace`. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
 - Public `Preview` users should install through Marketplace rather than by manually distributing a `.vsix`
-- The release assets in this repository have already been consolidated, but before the actual listing goes live, the final git ref still needs to be locked, the release executed, and post-release verification completed
+- `Visual Studio Marketplace` is already the public installation path; later `0.5.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
 - `Open VSX` is not part of the initial `Preview` launch path
 
 ## Desktop Notification Companion (Auto-Installed)
