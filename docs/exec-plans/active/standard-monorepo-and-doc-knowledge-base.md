@@ -151,7 +151,7 @@
 - 一条对文档知识库体系图的明确放置规则：未来正式入口是 `docs/README.md`，图像资产放在 `docs/diagrams/`
 - 一个已落在最终位置的 notifier companion：`extensions/vscode/dev-session-canvas-notifier/`
 - 一个最小共享 attention 协议包：`packages/attention-protocol/`
-- 一条已打通的主扩展 -> companion -> focus callback 自动化验证链路：`npm run test:notifier-smoke`
+- 一条已打通的主扩展 -> companion -> callback 自动化验证链路：`npm run test:notifier-smoke`
 - 一套固定的真实桌面通知人工验收入口：companion 测试通知命令、诊断输出与 `activationMode` 结果结构
 - 一组可直接切换环境继续使用的调试入口：`Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`
 
@@ -203,7 +203,7 @@ README.md              项目对外入口
 - 在 `extensions/vscode/dev-session-canvas-notifier/` 落地 UI-side companion
 - 在 `packages/attention-protocol/` 落地共享请求 / 结果协议
 - 让主扩展优先调用 companion，并在 companion 缺失或失败时保留原工作台通知回退
-- 用 `npm run test:notifier-smoke` 验证“发送通知 -> 回放点击 -> 聚焦节点并清除 attention”整条链路；截至 2026-05-05，这条自动化链路已通过 staged smoke host / wrapper 恢复到 latest head 可复现通过的状态
+- 用 `npm run test:notifier-smoke` 验证“发送通知 -> 回放点击 -> 居中节点且保留 attention”整条链路；截至 2026-05-07，这条自动化链路已通过 staged smoke host / wrapper 恢复到 latest head 可复现通过的状态
 
 **里程碑 1.1.2：用户验证**
 - 增加“发送测试桌面通知 / 打开通知诊断输出”两个固定人工验收入口

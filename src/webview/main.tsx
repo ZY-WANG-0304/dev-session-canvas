@@ -233,9 +233,10 @@ interface CanvasContextMenuState {
   selectedAgentProvider?: AgentProviderKind;
 }
 type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
-interface PendingNodeViewportFocusRequest {
+interface PendingNodeViewportRequest {
   nodeId: string;
   mode: NodeViewportFocusMode;
+  selectNode: boolean;
 }
 interface PendingManualNodeCreateRequest {
   requestId: string;
@@ -761,7 +762,7 @@ function App(): JSX.Element {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
-  const pendingFocusRequestRef = useRef<PendingNodeViewportFocusRequest | undefined>();
+  const pendingViewportRequestRef = useRef<PendingNodeViewportRequest | undefined>();
   const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
@@ -790,10 +791,15 @@ function App(): JSX.Element {
           break;
         case 'host/visibilityRestored':
           scheduleExecutionTerminalVisibilityRestore();
-          scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+          if (message.payload?.restoreFocus !== false) {
+            scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+          }
           break;
         case 'host/focusNode':
           requestNodeFocus(message.payload.nodeId);
+          break;
+        case 'host/centerNode':
+          requestNodeCenter(message.payload.nodeId);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -1030,14 +1036,19 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    const pendingFocusRequest = pendingFocusRequestRef.current;
-    if (!pendingFocusRequest || !hostState?.nodes.some((node) => node.id === pendingFocusRequest.nodeId)) {
+    const pendingViewportRequest = pendingViewportRequestRef.current;
+    if (!pendingViewportRequest || !hostState?.nodes.some((node) => node.id === pendingViewportRequest.nodeId)) {
       return;
     }
 
-    if (focusNodeInViewport(pendingFocusRequest.nodeId, pendingFocusRequest.mode)) {
-      pendingFocusRequestRef.current = undefined;
-      scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+    const didApply = pendingViewportRequest.selectNode
+      ? focusNodeInViewport(pendingViewportRequest.nodeId, pendingViewportRequest.mode)
+      : centerNodeInViewport(pendingViewportRequest.nodeId, pendingViewportRequest.mode);
+    if (didApply) {
+      pendingViewportRequestRef.current = undefined;
+      if (pendingViewportRequest.selectNode) {
+        scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+      }
     }
   }, [hostState, reactFlowReadyVersion]);
 
@@ -1171,30 +1182,31 @@ function App(): JSX.Element {
     });
   };
 
-  const focusNodeInViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
+  const moveNodeIntoViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
     const reactFlowInstance = reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
       return false;
     }
 
-    const didFocus =
-      mode === 'center-no-extra-zoom-if-visible'
-        ? centerNodeInViewportWithoutExtraZoomIfPossible(
-            reactFlowInstance,
-            canvasShellRef.current,
-            hostState,
-            nodeId,
-            NODE_FOCUS_ANIMATION_DURATION_MS
-          )
-        : reactFlowInstance.fitView({
-            nodes: [{ id: nodeId }],
-            padding: NODE_FOCUS_VIEW_PADDING,
-            maxZoom: NODE_FOCUS_MAX_ZOOM,
-            minZoom: NODE_FOCUS_MIN_ZOOM,
-            duration: NODE_FOCUS_ANIMATION_DURATION_MS
-          });
+    return mode === 'center-no-extra-zoom-if-visible'
+      ? centerNodeInViewportWithoutExtraZoomIfPossible(
+          reactFlowInstance,
+          canvasShellRef.current,
+          hostState,
+          nodeId,
+          NODE_FOCUS_ANIMATION_DURATION_MS
+        )
+      : reactFlowInstance.fitView({
+          nodes: [{ id: nodeId }],
+          padding: NODE_FOCUS_VIEW_PADDING,
+          maxZoom: NODE_FOCUS_MAX_ZOOM,
+          minZoom: NODE_FOCUS_MIN_ZOOM,
+          duration: NODE_FOCUS_ANIMATION_DURATION_MS
+        });
+  };
 
-    if (!didFocus) {
+  const focusNodeInViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
+    if (!moveNodeIntoViewport(nodeId, mode)) {
       return false;
     }
 
@@ -1208,16 +1220,39 @@ function App(): JSX.Element {
     return true;
   };
 
+  const centerNodeInViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
+    if (!moveNodeIntoViewport(nodeId, mode)) {
+      return false;
+    }
+
+    scheduleFocusedViewportPersistence();
+    return true;
+  };
+
   const requestNodeFocus = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): void => {
     if (focusNodeInViewport(nodeId, mode)) {
-      pendingFocusRequestRef.current = undefined;
+      pendingViewportRequestRef.current = undefined;
       scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
       return;
     }
 
-    pendingFocusRequestRef.current = {
+    pendingViewportRequestRef.current = {
       nodeId,
-      mode
+      mode,
+      selectNode: true
+    };
+  };
+
+  const requestNodeCenter = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): void => {
+    if (centerNodeInViewport(nodeId, mode)) {
+      pendingViewportRequestRef.current = undefined;
+      return;
+    }
+
+    pendingViewportRequestRef.current = {
+      nodeId,
+      mode,
+      selectNode: false
     };
   };
 

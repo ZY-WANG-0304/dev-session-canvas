@@ -416,9 +416,9 @@ function normalizeSupportedFocusAction(
     return undefined;
   }
 
-  if (source === 'main-extension' && action.command === COMMAND_IDS.focusAttentionNode) {
+  if (source === 'main-extension' && action.command === COMMAND_IDS.centerAttentionNode) {
     return {
-      command: COMMAND_IDS.focusAttentionNode,
+      command: COMMAND_IDS.centerAttentionNode,
       arguments: [normalizedArgument]
     };
   }

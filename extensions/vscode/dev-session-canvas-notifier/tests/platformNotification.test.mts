@@ -17,7 +17,7 @@ const request = {
   message: 'Agent「Notifier」: ready',
   dedupeKey: 'osc9:notifier-ready',
   focusAction: {
-    command: 'devSessionCanvas.__internal.focusAttentionNode',
+    command: 'devSessionCanvas.__internal.centerAttentionNode',
     arguments: ['node-1']
   }
 };

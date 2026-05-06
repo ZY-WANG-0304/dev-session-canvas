@@ -236,7 +236,7 @@ scripts/                build、打包、smoke、调试入口
 这里主要负责：
 
 - 在本机 UI 侧接收结构化 attention notification 请求。
-- 生成桌面通知点击后的 callback URI，并回调主扩展的内部聚焦命令。
+- 生成桌面通知点击后的 callback URI，并回调主扩展的内部受控回跳命令。
 - 在测试模式下提供 notifier bridge 的宿主级 smoke 验证入口。
 
 架构不变量：
@@ -251,7 +251,7 @@ scripts/                build、打包、smoke、调试入口
 这里主要负责：
 
 - 定义主扩展到 companion 的结构化 notification request / result。
-- 提供 focus action 的编码与解码辅助函数。
+- 提供通知点击回跳 action 的编码与解码辅助函数。
 
 架构不变量：
 

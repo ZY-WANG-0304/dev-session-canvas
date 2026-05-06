@@ -28,10 +28,9 @@
 5. 系统在画布节点上显示视觉提示（节点内提醒 icon、Minimap 同色明暗闪烁）
 6. 如果桥接模式不是 `none`，系统还会按配置额外弹出 VS Code 工作台消息或桌面系统通知
 7. 如果启用了强提醒模式，系统还会在节点标题栏或 Minimap 上显示额外增强提示
-8. 用户通过视觉提示快速定位到需要注意的节点
+8. 用户通过视觉提示快速定位到需要注意的节点；若用户点击 VS Code 工作台通知或支持回调的系统桌面通知，画布只把对应节点居中显示，不自动选中节点
 9. 用户通过以下方式之一清除通知状态：
    - 左键点击节点本体
-   - 点击 VS Code 工作台通知中的"查看节点"按钮
 
 ### 3.2 配置调整流程
 
@@ -71,6 +70,7 @@
 - `system` 模式下，系统通知标题应包含固定前缀 `DSCanvas`、当前 workspace 名称，以及节点类型（`Agent` / `Terminal`）
 - `system` 模式的补充约束：
   - companion 会同时返回实际使用的 `backend` 与 `activationMode`；其中 `activationMode=none` 明确表示“当前平台只保证通知出现，不承诺点击后回到 VS Code”
+  - 用户点击支持回调的系统桌面通知时，画布只负责回到对应节点并把节点居中显示，不代替用户选中节点，也不清除 `attentionPending`
   - 若 companion 缺失、当前平台不支持、或调用失败，则自动回退到 VS Code 工作台消息，避免静默丢提醒
 
 ### 4.2.1 Notifier companion 声音开关
@@ -117,8 +117,7 @@
   - 当检测到注意力信号时，自动设置节点为待注意状态（`attentionPending: true`）
   - 通知状态清除路径：
     - 用户左键点击节点本体
-    - 用户点击 VS Code 工作台通知中的"查看节点"按钮
-    - 用户点击支持回调的系统桌面通知（例如 `activationMode=direct-action` 或 `protocol` 的 companion 后端）
+  - 用户点击 VS Code 工作台通知中的"查看节点"按钮，或点击支持回调的系统桌面通知（例如 `activationMode=direct-action` 或 `protocol` 的 companion 后端），只会让画布把对应节点居中显示；是否确认并清除提醒，仍由用户自己点击节点决定
 - 状态持久化：
   - 通知状态会持久化到存储（snapshot 和 workspace state）
   - 重新加载画布后会从存储中恢复通知状态
@@ -212,7 +211,8 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - [ ] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
 - [ ] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
 - [ ] 左键点击节点本体后，通知状态自动清除
-- [ ] 点击 VS Code 工作台通知中的"查看节点"按钮后，通知状态自动清除
+- [x] 点击 VS Code 工作台通知中的"查看节点"按钮后，画布只居中对应节点，不选中节点且不清除通知状态
+- [x] 点击支持回调的系统桌面通知后，画布只居中对应节点，不选中节点且不清除通知状态
 - [ ] 配置变更后立即生效，无需重启 VSCode
 - [ ] 通知状态会持久化到存储，重新加载画布后能正确恢复
 
