@@ -27,7 +27,7 @@
 1. 安装本扩展 `Dev Session Canvas Notifier`
 2. 若当前尚未安装主扩展，VS Code 会自动补齐 `Dev Session Canvas`
 3. 如果你是从主扩展页面安装，VS Code 也会自动带上本扩展，无需额外单独安装
-4. 在主扩展设置中将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
+4. 主扩展默认已将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`；如需改回工作台消息或关闭桥接，可在设置中调整
 5. 如需关闭提示音请求，可将 `devSessionCanvasNotifier.notifications.playSound` 设为 `false`
 
 `system` 模式会优先把 attention signal 交给本扩展；若 companion 缺失、当前平台不支持或本次投递失败，主扩展会自动回退到 VS Code 工作台消息。

@@ -48,7 +48,7 @@ export function normalizeCanvasAttentionNotificationBridgeMode(
     return 'workbench';
   }
 
-  return 'workbench';
+  return 'system';
 }
 
 export function isCanvasStrongTerminalAttentionReminderMode(

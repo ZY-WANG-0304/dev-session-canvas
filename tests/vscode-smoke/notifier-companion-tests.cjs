@@ -46,7 +46,7 @@ async function run() {
 
   const configuration = vscode.workspace.getConfiguration();
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
-    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
 
   let agentNodeId;
@@ -139,6 +139,10 @@ async function run() {
     assert.strictEqual(postedNotifications.length, 1, 'Expected the notifier companion to record one posted notification.');
     assert.strictEqual(postedNotifications[0].result.backend, 'test');
     assert.strictEqual(postedNotifications[0].result.activationMode, 'test-replay');
+    assert.strictEqual(
+      postedNotifications[0].request.title,
+      `DSCanvas · ${vscode.workspace.name ?? path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '')} · Agent`
+    );
     assert.match(postedNotifications[0].request.message, /notifier companion smoke/);
     assert.ok(postedNotifications[0].callbackUri, 'Expected the notifier companion to build a callback URI.');
 
@@ -329,7 +333,7 @@ async function activateNotifierSmokeHarness() {
 async function ensureAttentionNotificationBridgeMode(mode) {
   const configuration = vscode.workspace.getConfiguration();
   const currentMode = normalizeAttentionNotificationBridgeMode(
-    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'workbench')
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
   if (currentMode === mode) {
     return;
@@ -364,7 +368,7 @@ function normalizeAttentionNotificationBridgeMode(value) {
     return 'workbench';
   }
 
-  return 'workbench';
+  return 'system';
 }
 
 async function ensureAgentStopped(agentNodeId) {
