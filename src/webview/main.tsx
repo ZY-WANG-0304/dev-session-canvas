@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
 import hljs from 'highlight.js/lib/common';
+import katex from 'katex';
 import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
 import markdownItTaskLists from 'markdown-it-task-lists';
 import { Terminal } from '@xterm/xterm';
 import ReactFlow, {
@@ -31,6 +31,8 @@ import ReactFlow, {
   type NodeProps,
   type Viewport
 } from 'reactflow';
+import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
+import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
 
 import 'reactflow/dist/style.css';
 import 'katex/dist/katex.min.css';
@@ -7771,11 +7773,7 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   renderer.use(markdownItTaskLists, {
     enabled: true
   });
-  renderer.use(markdownItKatex, {
-    throwOnError: false,
-    strict: 'ignore',
-    trust: false
-  });
+  registerSafeNoteMathRenderer(renderer);
   renderer.core.ruler.after('github-task-lists', 'note-task-list-metadata', (state) => {
     for (const token of state.tokens) {
       if (token.type !== 'inline' || !token.map || !Array.isArray(token.children)) {
@@ -7812,6 +7810,133 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   };
 
   return renderer;
+}
+
+function registerSafeNoteMathRenderer(renderer: MarkdownIt): void {
+  renderer.inline.ruler.before('escape', 'note_math_inline', parseNoteInlineMath);
+  renderer.block.ruler.before('fence', 'note_math_block', parseNoteBlockMath, {
+    alt: ['paragraph', 'reference', 'blockquote', 'list']
+  });
+  renderer.renderer.rules.note_math_inline = (tokens, idx) => renderSafeNoteMath(tokens[idx].content, false);
+  renderer.renderer.rules.note_math_block = (tokens, idx) => `${renderSafeNoteMath(tokens[idx].content, true)}\n`;
+}
+
+function parseNoteInlineMath(state: StateInline, silent: boolean): boolean {
+  if (state.src.charAt(state.pos) !== '$' || state.src.charAt(state.pos + 1) === '$') {
+    return false;
+  }
+
+  const markerEnd = findUnescapedNoteMathDelimiter(state.src, '$', state.pos + 1, state.posMax);
+  if (markerEnd === -1) {
+    return false;
+  }
+
+  const content = state.src.slice(state.pos + 1, markerEnd);
+  if (!content.trim()) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push('note_math_inline', 'math', 0);
+    token.content = content;
+    token.markup = '$';
+  }
+
+  state.pos = markerEnd + 1;
+  return true;
+}
+
+function parseNoteBlockMath(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
+  if (state.sCount[startLine] - state.blkIndent >= 4) {
+    return false;
+  }
+
+  const lineStart = state.bMarks[startLine] + state.tShift[startLine];
+  const lineEnd = state.eMarks[startLine];
+  const lineText = state.src.slice(lineStart, lineEnd);
+  const openingMarkerOffset = lineText.indexOf('$$');
+  if (openingMarkerOffset === -1 || lineText.slice(0, openingMarkerOffset).trim().length > 0) {
+    return false;
+  }
+
+  const openingMarkerEnd = lineStart + openingMarkerOffset + 2;
+  const openingLineRest = state.src.slice(openingMarkerEnd, lineEnd);
+  const sameLineClosingOffset = findUnescapedNoteMathDelimiter(openingLineRest, '$$', 0, openingLineRest.length);
+  if (sameLineClosingOffset !== -1 && openingLineRest.slice(sameLineClosingOffset + 2).trim().length === 0) {
+    if (!silent) {
+      pushNoteBlockMathToken(state, startLine, startLine + 1, openingLineRest.slice(0, sameLineClosingOffset));
+    }
+    state.line = startLine + 1;
+    return true;
+  }
+
+  if (openingLineRest.trim().length > 0) {
+    return false;
+  }
+
+  for (let nextLine = startLine + 1; nextLine < endLine; nextLine += 1) {
+    const nextLineStart = state.bMarks[nextLine] + state.tShift[nextLine];
+    const nextLineEnd = state.eMarks[nextLine];
+    const nextLineText = state.src.slice(nextLineStart, nextLineEnd);
+    if (nextLineText.trim() !== '$$') {
+      continue;
+    }
+
+    if (!silent) {
+      pushNoteBlockMathToken(state, startLine, nextLine + 1, state.getLines(startLine + 1, nextLine, 0, true));
+    }
+    state.line = nextLine + 1;
+    return true;
+  }
+
+  return false;
+}
+
+function pushNoteBlockMathToken(
+  state: StateBlock,
+  startLine: number,
+  endLine: number,
+  content: string
+): void {
+  const token = state.push('note_math_block', 'math', 0);
+  token.block = true;
+  token.content = content.trim();
+  token.map = [startLine, endLine];
+  token.markup = '$$';
+}
+
+function findUnescapedNoteMathDelimiter(source: string, delimiter: '$' | '$$', start: number, end: number): number {
+  for (let offset = start; offset < end; offset += 1) {
+    if (!source.startsWith(delimiter, offset) || isEscapedNoteMathDelimiter(source, offset)) {
+      continue;
+    }
+
+    return offset;
+  }
+
+  return -1;
+}
+
+function isEscapedNoteMathDelimiter(source: string, delimiterOffset: number): boolean {
+  let backslashCount = 0;
+  for (let offset = delimiterOffset - 1; offset >= 0 && source.charAt(offset) === '\\'; offset -= 1) {
+    backslashCount += 1;
+  }
+
+  return backslashCount % 2 === 1;
+}
+
+function renderSafeNoteMath(content: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(content, {
+      displayMode,
+      strict: 'ignore',
+      throwOnError: false,
+      trust: false
+    });
+  } catch {
+    return `<code class="note-markdown-math-fallback">${escapeHtml(content)}</code>`;
+  }
 }
 
 function renderHighlightedNoteCodeBlock(highlightedHtml: string, language: string | undefined): string {
