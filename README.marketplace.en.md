@@ -64,6 +64,7 @@ The public `0.5.1` release focuses on making execution-node desktop notification
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
 - First-time installs and upgrades from `0.5.0` to `0.5.1` all go through the `Visual Studio Marketplace`; later `0.5.x` updates follow the same Marketplace upgrade path
+- If you previously used the legacy keys `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` or `devSessionCanvas.notifications.preferNotifierCompanion` to control the notification path, upgrading to `0.5.1` preserves that explicit `workbench` / `none` / `system` choice. To switch back to the new default strategy, update `devSessionCanvas.notifications.attentionSignalBridge` directly
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
