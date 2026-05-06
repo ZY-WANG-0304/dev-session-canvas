@@ -1681,16 +1681,19 @@ body {
   overflow: hidden;
 }
 
+.note-surface {
+  gap: 0;
+  padding: 0;
+}
+
 .note-editor-surface {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 10px 12px 12px;
-  border-radius: var(--canvas-node-radius-inner);
-  border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-panel-border) 76%);
-  border-style: solid;
-  border-width: 1px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 97%, var(--vscode-sideBar-background) 3%);
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 calc(var(--canvas-node-radius) - 1px) calc(var(--canvas-node-radius) - 1px);
+  background: transparent;
 }
 
 .node-document-input {
@@ -1705,14 +1708,58 @@ body {
   line-height: 1.6;
 }
 
+.note-document-editor {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.note-document-line-number-gutter {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 46px;
+  box-sizing: border-box;
+  padding: 16px 8px 16px 6px;
+  overflow: hidden;
+  border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 86%, var(--vscode-sideBar-background) 14%);
+  color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground));
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  pointer-events: none;
+  user-select: none;
+}
+
+.note-document-line-number-list {
+  will-change: transform;
+}
+
+.note-document-line-number {
+  display: block;
+  height: 1.6em;
+  text-align: right;
+}
+
 .note-document-input {
   min-height: 100%;
+  height: 100%;
+  padding: 16px 18px 16px 62px;
+  resize: none;
+  tab-size: 2;
 }
 
 .note-markdown-preview {
   flex: 1;
   min-height: 0;
   width: 100%;
+  box-sizing: border-box;
+  padding: 16px 18px;
   overflow: auto;
   color: var(--vscode-editor-foreground);
   cursor: text;
@@ -1942,6 +1989,15 @@ body {
 .note-markdown-preview:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
+}
+
+.canvas-node.kind-note:focus-within {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 10px 22px rgba(0, 0, 0, 0.14);
+}
+
+.canvas-node.kind-note .node-document-input:focus,
+.canvas-node.kind-note .note-markdown-preview:focus {
+  outline: none;
 }
 
 .node-topline {

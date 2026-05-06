@@ -3493,6 +3493,85 @@ test('note body requires double click to switch from markdown preview to plain t
   await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
 });
 
+test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# Note\n- [ ] 你好\n- [ ] 天气';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const noteBox = await noteNode.boundingBox();
+  const chromeBox = await noteNode.locator('.window-chrome').boundingBox();
+  const surfaceBox = await noteNode.locator('.note-editor-surface').boundingBox();
+  const preview = noteNode.locator('.note-markdown-preview');
+  const previewBox = await preview.boundingBox();
+  expect(noteBox).not.toBeNull();
+  expect(chromeBox).not.toBeNull();
+  expect(surfaceBox).not.toBeNull();
+  expect(previewBox).not.toBeNull();
+  if (!noteBox || !chromeBox || !surfaceBox || !previewBox) {
+    throw new Error('Expected note frame, chrome, surface, and preview boxes.');
+  }
+
+  const bodyFrameBox = {
+    x: noteBox.x + 1,
+    y: chromeBox.y + chromeBox.height,
+    width: noteBox.width - 2,
+    height: noteBox.y + noteBox.height - 1 - (chromeBox.y + chromeBox.height)
+  };
+  expectBoxEdgesClose(surfaceBox, bodyFrameBox, 2);
+  expectBoxEdgesClose(previewBox, surfaceBox, 1);
+  await preview.focus();
+  expect(await preview.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+
+  await preview.dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveCount(1);
+  const editorBox = await bodyInput.boundingBox();
+  expect(editorBox).not.toBeNull();
+  if (!editorBox) {
+    throw new Error('Expected note textarea to have a bounding box.');
+  }
+
+  expectBoxEdgesClose(editorBox, surfaceBox, 1);
+  expect(await bodyInput.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+});
+
+test('note body editor supports tab indentation and line numbers', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['alpha', 'beta', 'gamma'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-document-line-number')).toHaveCount(0);
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect(noteNode.locator('.note-document-line-number')).toHaveText(['1', '2', '3']);
+
+  await bodyInput.evaluate((element) => {
+    element.setSelectionRange(0, 0);
+  });
+  await page.keyboard.press('Tab');
+  await expect(bodyInput).toHaveValue(`  ${markdownBody}`);
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(bodyInput).toHaveValue(markdownBody);
+
+  await bodyInput.evaluate((element) => {
+    element.setSelectionRange(0, element.value.length);
+  });
+  await page.keyboard.press('Tab');
+  await expect(bodyInput).toHaveValue(['  alpha', '  beta', '  gamma'].join('\n'));
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect(bodyInput).toBeFocused();
+});
+
 test('note markdown preview text remains selectable in read mode', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -3509,7 +3588,7 @@ test('note markdown preview text remains selectable in read mode', async ({ page
 
   const anchorX = previewBox.x + 12;
   const focusX = previewBox.x + Math.min(previewBox.width - 12, 220);
-  const selectionY = previewBox.y + previewBox.height / 2;
+  const selectionY = previewBox.y + Math.min(previewBox.height / 2, 14);
   await page.mouse.move(anchorX, selectionY);
   await page.mouse.down();
   await page.mouse.move(focusX, selectionY, { steps: 12 });
@@ -5842,6 +5921,17 @@ async function expectTestDomActionError(page, action, expectedSubstring) {
 
 function nodeById(page, nodeId) {
   return page.locator(`[data-node-id="${nodeId}"]`);
+}
+
+function expectBoxEdgesClose(actualBox, expectedBox, tolerance = 2) {
+  expect(Math.abs(actualBox.x - expectedBox.x)).toBeLessThanOrEqual(tolerance);
+  expect(Math.abs(actualBox.y - expectedBox.y)).toBeLessThanOrEqual(tolerance);
+  expect(
+    Math.abs(actualBox.x + actualBox.width - (expectedBox.x + expectedBox.width))
+  ).toBeLessThanOrEqual(tolerance);
+  expect(
+    Math.abs(actualBox.y + actualBox.height - (expectedBox.y + expectedBox.height))
+  ).toBeLessThanOrEqual(tolerance);
 }
 
 async function waitForCreateDemoNodePayload(page, options = {}) {

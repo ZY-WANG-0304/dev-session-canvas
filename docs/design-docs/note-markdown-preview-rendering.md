@@ -128,6 +128,7 @@ updated_at: 2026-05-06
 - `src/webview/main.tsx` 的 `NoteEditableNode` 继续持有本地 `content` 草稿与提交逻辑。
 - 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；用户单击时应能直接选中和复制预览内容，其中 `Ctrl/Cmd+A` 只应全选当前 Note 正文预览而不是整张画布，`Ctrl/Cmd+C` 则继续走宿主原生复制链路；只有双击普通正文区域时才切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
 - 当用户失焦、按 `Ctrl/Cmd+Enter` 提交或结束当前编辑时，正文区回到预览态，并把最新内容写回宿主。
+- 编辑态的 `textarea` 应保留纯文本权威输入模型，但需要提供最小代码编辑器 affordance：左侧显示逻辑行号；`Tab` 在光标处插入两个空格或对多行选择整体缩进；`Shift+Tab` 对当前行或多行选择移除一个 tab 或最多两个前导空格，并且不把焦点移出正文编辑区。
 - `Escape` 仍沿用当前退出编辑语义，避免节点内键盘行为分叉。
 
 ### 7.3 Markdown 预览使用受控渲染，不开启原始 HTML
@@ -163,6 +164,7 @@ updated_at: 2026-05-06
 - `setNodeTextField(field: 'body')` 的 test DOM action 继续在设置正文前先确保节点进入编辑态，再对真实 `textarea` 写值。
 - 真实 DOM / smoke 还需要一条专用 DOM action 来命中渲染后的 checklist checkbox，证明预览点击会走源文改写与宿主持久化主路径。
 - 阅读态与编辑态中的标准文本快捷键需要按语义分流：`Ctrl/Cmd+C`、`Ctrl/Cmd+X`、`Ctrl/Cmd+V` 不能被节点层 `keydown` 处理吞掉；`Ctrl/Cmd+A` 则必须在节点内本地收口为“只全选当前正文区域/输入框”，而不是继续冒泡成整张画布的 select-all。
+- 编辑态的 `Tab` / `Shift+Tab` 属于正文编辑器局部快捷键：由 Webview 在 `textarea` 的 `keydown` 中阻止浏览器焦点跳转并直接改写当前草稿，直到失焦或显式提交时再复用 `webview/updateNoteNode` 写回宿主。
 - `src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 需要新增一条专用于 `Note` 预览链接的消息链路，让链接打开不与编辑提交共用模糊语义。
 - `tests/playwright/webview-harness.spec.mjs` 至少新增覆盖任务列表交互、链接点击、代码高亮和数学公式渲染的用例；如果补了纯函数级辅助逻辑，也应补对应脚本测试。
 
@@ -176,8 +178,9 @@ updated_at: 2026-05-06
 4. 编辑结束后，正文会回到预览态，且任务列表、链接、代码高亮与数学公式等结构可见。
 5. 点击安全白名单内链接时，Webview 会请求宿主打开，且不会误切回编辑态；其中外部链接只允许显式白名单 scheme，workspace 文件链接只允许当前 workspace 内文件并支持可选行列定位。
 6. 宿主持久化的 `metadata.note.content` 仍是原始文本。
-7. `npm run typecheck` 通过。
-8. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
+7. 编辑态显示与正文逻辑行数一致的行号；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
+8. `npm run typecheck` 通过。
+9. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
 
 ## 9. 已完成实现与验证
 
@@ -188,7 +191,7 @@ updated_at: 2026-05-06
 - `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
 - `scripts/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
-- `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归；`scripts/test-note-markdown-links.mts` 与 `scripts/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
+- `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test-note-markdown-links.mts` 与 `scripts/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
 
 本轮验证结果：
 
@@ -197,3 +200,8 @@ updated_at: 2026-05-06
 3. `npm run test:note-markdown-checklists` 通过。
 4. `npm run test:webview` 通过。
 5. `npm run test:smoke` 通过，覆盖 trusted / restricted workspace、real reopen 与 remote reopen 主路径。
+
+2026-05-06 编辑态行号与缩进追加验证：
+
+1. `npm run typecheck` 通过。
+2. `npm run test:webview -- -g "note body editor supports tab indentation and line numbers|note body editing target fills the note frame without an inset editor box"` 通过。
