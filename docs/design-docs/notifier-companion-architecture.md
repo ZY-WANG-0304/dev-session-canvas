@@ -14,7 +14,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-05-05
+updated_at: 2026-05-06
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -101,7 +101,12 @@ updated_at: 2026-05-05
 - `dedupeKey`
 - `focusAction`
 
-其中 `focusAction` 当前仍收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部聚焦命令即可；但真正暴露给外部通知系统的 callback URI 不再直接携带这段动作载荷，而是只携带 companion 侧登记的一次性 token。
+其中当前执行节点 attention 的正式文案组成是：
+
+- `title`：`DSCanvas · <workspace> · Agent|Terminal`
+- `message`：`Agent|Terminal「<节点显示名>」: <终端信号消息>`，若信号未携带文本则回退成“发出终端提醒 / 通知”
+
+`focusAction` 当前仍收口成最简单、最稳定的形式：命令 ID + 字符串参数数组。这样 notifier companion 不需要理解画布内部状态机，只需要在用户点击通知后，回调主扩展公开的内部聚焦命令即可；但真正暴露给外部通知系统的 callback URI 不再直接携带这段动作载荷，而是只携带 companion 侧登记的一次性 token。
 
 ### 5.6 回调策略：URI handler 负责“回到 VS Code”
 
@@ -116,7 +121,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 主扩展新增配置：
 
-- `devSessionCanvas.notifications.attentionSignalBridge`（默认 `workbench`）
+- `devSessionCanvas.notifications.attentionSignalBridge`（默认 `system`）
 
 当前语义是：
 
@@ -124,7 +129,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 - `workbench`：完全保留既有工作台通知桥接语义，直接发 VS Code 工作台消息。
 - `system`：先调用 companion 命令 `devSessionCanvasNotifier.postSystemNotification`；如果 companion 返回 `posted`，则本次不再重复弹 VS Code 工作台消息；如果 companion 缺失、当前平台不支持、或调用失败，则自动回退到工作台消息。
 
-这让用户可以把当前配置理解为“用一个设置明确选择不桥接 / 工作台消息 / 系统通知”，同时继续保留 `system` 模式下的工作台兜底，避免因为本机 companion 缺失而静默丢提醒。
+这让用户可以把当前配置理解为“用一个设置明确选择不桥接 / 工作台消息 / 系统通知”。默认值收口到 `system`，因为 notifier companion 已经跟随主扩展自动安装，而 `Remote SSH` / WSL / Dev Container 这类“执行发生在 workspace 侧、提醒应回到本机桌面”的场景正是这条链路的主价值；同时继续保留 `system` 模式下的工作台兜底，避免因为本机 companion 缺失而静默丢提醒。
 
 ### 5.8 安装策略：主扩展 `extensionPack` 聚合 + notifier 单向依赖回补
 
@@ -199,6 +204,7 @@ companion 当前放在 `extensions/vscode/dev-session-canvas-notifier/`，职责
 
 - 注册命令 `devSessionCanvasNotifier.postSystemNotification`
 - 注册人工验收辅助命令 `Dev Session Canvas Notifier: 发送测试桌面通知` 与 `Dev Session Canvas Notifier: 打开通知诊断输出`
+- 其中手动测试桌面通知的标题固定为 `DSCanvas · Notifier`，与执行 attention 通知的 `DSCanvas` 前缀保持一致
 - 校验共享协议请求
 - 为通知点击生成 callback URI
 - 在桌面平台上把请求投递给本地系统通知后端

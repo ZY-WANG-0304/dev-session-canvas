@@ -22,7 +22,7 @@
   1. 安装 `Dev Session Canvas Notifier`
   2. 若当前尚未安装主扩展，VS Code 会自动补齐 `Dev Session Canvas`
   3. 如果用户从主扩展页面安装，VS Code 也会自动带上 notifier
-  4. 在主扩展设置中把 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
+  4. 主扩展默认已把 `devSessionCanvas.notifications.attentionSignalBridge` 收口到 `system`
   5. 如需静音请求，再把 `devSessionCanvasNotifier.notifications.playSound` 设为 `false`
 - 两个扩展当前通过“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”来收口安装体验；继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。需要注意的是，repo-local smoke / VSIX smoke 为了加载 staged wrapper 会临时移除这些安装期关系，因此真正的自动补齐安装路径仍要在 clean profile 安装步骤里单独复核。
 - 不再继续使用 legacy 配置键 `devSessionCanvas.notifications.preferNotifierCompanion` 作为对外说明；当前正式配置键是 `devSessionCanvas.notifications.attentionSignalBridge`。
@@ -81,7 +81,7 @@
 2. 在干净 profile 中分别验证两条安装路径：
    - 只安装 `Dev Session Canvas Notifier`，确认 VS Code 会自动补齐 `Dev Session Canvas`
    - 卸载后只安装 `Dev Session Canvas`，确认 VS Code 会自动补齐 `Dev Session Canvas Notifier`
-3. 在主扩展设置中将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`。
+3. 确认主扩展设置里的 `devSessionCanvas.notifications.attentionSignalBridge` 默认值是 `system`。
 4. 运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认系统通知出现，并在支持平台上验证点击后是否能回到 VS Code。
 5. 运行 `Dev Session Canvas Notifier: 打开通知诊断输出`，确认 `backend`、`activationMode` 与最近一次投递结果符合当前平台预期。
 

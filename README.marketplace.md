@@ -56,7 +56,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 当前公开的 `0.5.0` 版本主要带来两条新增主路径：桌面通知 companion 与嵌入式 `Terminal` shell 选择能力。
 
 - 新增 `Dev Session Canvas Notifier` companion，并通过“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”收口安装关系
-- 在主扩展中新增 `devSessionCanvas.notifications.attentionSignalBridge = system` 主路径；可通过测试通知命令、环境诊断侧栏与 `devSessionCanvasNotifier.notifications.playSound` 开关复核当前本机通知能力
+- 在主扩展中新增默认走 `system` 的 `devSessionCanvas.notifications.attentionSignalBridge` 主路径；可通过测试通知命令、环境诊断侧栏与 `devSessionCanvasNotifier.notifications.playSound` 开关复核当前本机通知能力
 - 新增 `Dev Session Canvas: 选择 Terminal shell` 命令：动态探测当前设备可用 shell、持久化精确路径，并在打开 workspace 时默认写入当前 workspace 覆盖
 - 继续保留保守的 workspace 会话归属过滤，以及 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
 
@@ -71,7 +71,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 - 安装 `Dev Session Canvas` 时，VS Code 会自动安装 `Dev Session Canvas Notifier`（`devsessioncanvas.dev-session-canvas-notifier`）
 - 如果你是从 notifier 页面单独安装，VS Code 也会自动补齐主扩展 `Dev Session Canvas`
-- 如需把执行节点的 attention signal 桥接到本机桌面，请在主扩展设置中将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`
+- 执行节点的 attention signal 默认会通过 `devSessionCanvas.notifications.attentionSignalBridge = system` 优先桥接到本机桌面；如需改回工作台消息或关闭桥接，可在主扩展设置中调整
 - `system` 模式下，主扩展会优先把通知交给本机 UI 侧 companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到 VS Code 工作台消息
 - 这个 companion 尤其适合 `Remote SSH`、WSL、Dev Container 等“主扩展跑在 workspace 侧、提醒需要回到本机桌面”的场景
 

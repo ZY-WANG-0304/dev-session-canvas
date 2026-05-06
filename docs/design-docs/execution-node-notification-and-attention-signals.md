@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/execution-node-notification-research.md
   - docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md
-updated_at: 2026-05-05
+updated_at: 2026-05-06
 ---
 
 # 执行节点通知与注意力信号设计
@@ -304,7 +304,7 @@ updated_at: 2026-05-05
 
 当前口径：
 
-- 默认值：分别是 `workbench` 和 `both`
+- 默认值：分别是 `system` 和 `both`
 - 作用域：都为 `window`
 - `attentionSignalBridge`
   - `none`：现有启发式与诊断层继续解析这些信号，节点内 icon、minimap 同色闪烁与增强提醒也继续生效，但不额外发工作台消息或系统通知
@@ -316,7 +316,7 @@ updated_at: 2026-05-05
   - `minimap`：在默认 attention 表面之外，只额外开启 minimap 尺寸 pulse
   - `both`：同时开启标题栏闪烁和 minimap 尺寸 pulse
 
-这里两个开关默认分别是 `workbench` 和 `both`，是为了让执行节点里的 attention signal 在开箱即用时既能回到 VSCode 工作台，也能在画布节点内部保留显眼提醒；`BEL` 噪音仍依靠信号优先级与冷却去重控制，用户可按需把外部桥接改成 `none` / `system`，或单独收窄增强提醒表面。
+这里两个开关默认分别是 `system` 和 `both`，是为了让执行节点里的 attention signal 在开箱即用时优先回到本机桌面，同时继续在画布节点内部保留显眼提醒；`workbench` 仍作为显式可选模式与 `system` 的失败回退存在，`BEL` 噪音则继续依靠信号优先级与冷却去重控制，用户可按需把外部桥接改成 `none` / `workbench`，或单独收窄增强提醒表面。
 
 #### 7.7.3 宿主分层
 
