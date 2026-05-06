@@ -1685,7 +1685,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getWebviewOptions(): vscode.WebviewOptions {
     return {
       enableScripts: true,
-      enableCommandUris: true,
+      enableCommandUris: [
+        COMMAND_IDS.openCanvas,
+        COMMAND_IDS.openCanvasInEditor,
+        COMMAND_IDS.openCanvasInPanel
+      ],
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')]
     };
   }
