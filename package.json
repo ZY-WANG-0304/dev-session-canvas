@@ -285,7 +285,7 @@
             "%configuration.notifications.attentionSignalBridge.workbench.label%",
             "%configuration.notifications.attentionSignalBridge.system.label%"
           ],
-          "default": "workbench",
+          "default": "system",
           "scope": "window",
           "markdownDescription": "%configuration.notifications.attentionSignalBridge.description%",
           "markdownEnumDescriptions": [

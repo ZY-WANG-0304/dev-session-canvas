@@ -2223,15 +2223,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return normalizeCanvasAttentionNotificationBridgeMode(configuredMode);
     }
 
+    const inspectedLegacyPreferNotifierCompanion = configuration.inspect<boolean>(
+      CONFIG_KEYS.legacyNotificationPreferNotifierCompanion
+    );
     const legacyPreferNotifierCompanion =
-      configuration.get<boolean>(CONFIG_KEYS.legacyNotificationPreferNotifierCompanion, false) === true;
-    if (legacyPreferNotifierCompanion) {
+      inspectedLegacyPreferNotifierCompanion?.workspaceFolderValue ??
+      inspectedLegacyPreferNotifierCompanion?.workspaceValue ??
+      inspectedLegacyPreferNotifierCompanion?.globalValue;
+    if (legacyPreferNotifierCompanion === true) {
       return 'system';
     }
 
-    return configuration.get<boolean>(CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals, true) === true
-      ? 'workbench'
-      : 'none';
+    const inspectedLegacyBridgeTerminalAttentionSignals = configuration.inspect<boolean>(
+      CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals
+    );
+    const legacyBridgeTerminalAttentionSignals =
+      inspectedLegacyBridgeTerminalAttentionSignals?.workspaceFolderValue ??
+      inspectedLegacyBridgeTerminalAttentionSignals?.workspaceValue ??
+      inspectedLegacyBridgeTerminalAttentionSignals?.globalValue;
+    if (
+      legacyPreferNotifierCompanion !== undefined ||
+      legacyBridgeTerminalAttentionSignals !== undefined
+    ) {
+      const effectiveLegacyBridgeTerminalAttentionSignals =
+        legacyBridgeTerminalAttentionSignals ?? true;
+      return effectiveLegacyBridgeTerminalAttentionSignals === true ? 'workbench' : 'none';
+    }
+
+    return 'system';
   }
 
   private readStrongTerminalAttentionReminderMode(): CanvasStrongTerminalAttentionReminderMode {
@@ -4983,11 +5002,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     message: string,
     notificationKey: string
   ): AttentionNotificationRequest {
-    const targetLabel = kind === 'agent' ? 'Agent' : 'Terminal';
     return {
       version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
       kind: 'execution-attention',
-      title: `${EXTENSION_DISPLAY_NAME} · ${targetLabel}`,
+      title: this.buildExecutionAttentionNotificationTitle(kind),
       message,
       dedupeKey: `${nodeId}:${notificationKey}`,
       focusAction: {
@@ -4995,6 +5013,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         arguments: [nodeId]
       }
     };
+  }
+
+  private buildExecutionAttentionNotificationTitle(kind: ExecutionNodeKind): string {
+    const titlePrefix = 'DSCanvas';
+    const targetLabel = kind === 'agent' ? 'Agent' : 'Terminal';
+    const workspaceLabel = this.resolveExecutionAttentionNotificationWorkspaceLabel();
+    if (!workspaceLabel) {
+      return `${titlePrefix} · ${targetLabel}`;
+    }
+
+    return `${titlePrefix} · ${workspaceLabel} · ${targetLabel}`;
+  }
+
+  private resolveExecutionAttentionNotificationWorkspaceLabel(): string | undefined {
+    const configuredWorkspaceName = trimStoredTerminalText(vscode.workspace.name ?? '').trim();
+    if (configuredWorkspaceName) {
+      return configuredWorkspaceName;
+    }
+
+    const firstWorkspaceFolderName = trimStoredTerminalText(vscode.workspace.workspaceFolders?.[0]?.name ?? '').trim();
+    return firstWorkspaceFolderName || undefined;
   }
 
   private async postExecutionAttentionNotificationToCompanion(
