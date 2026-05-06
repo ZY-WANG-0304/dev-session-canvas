@@ -3893,7 +3893,22 @@ async function verifyLegacyAttentionNotificationBridgeMigration() {
 
     await clearDiagnosticEvents();
     await writeSmokeUserSettings({
-      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': undefined
+      'devSessionCanvas.notifications.bridgeTerminalAttentionSignals': undefined,
+      'devSessionCanvas.notifications.preferNotifierCompanion': false
+    });
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationBridgeConfigChanged' &&
+            event.detail?.mode === 'workbench'
+        ),
+      20000
+    );
+
+    await clearDiagnosticEvents();
+    await writeSmokeUserSettings({
+      'devSessionCanvas.notifications.preferNotifierCompanion': undefined
     });
     await waitForDiagnosticEvents(
       (events) =>
