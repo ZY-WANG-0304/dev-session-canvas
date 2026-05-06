@@ -4,6 +4,10 @@
 
 当前目录只承载 companion extension 本身的构建与局部实现；正式产品、架构与设计结论仍以仓库根目录的 `README.md`、`ARCHITECTURE.md` 与 `docs/` 为准。
 
+如果当前在准备对外发布或复核 Marketplace 输入，统一以仓库根目录的 [`docs/notifier-preview-release-playbook.md`](../../../docs/notifier-preview-release-playbook.md) 为准；本目录下的 `README.marketplace.md` 只负责最终商店页文案。
+
+当前公开安装关系已收口为双向自动补齐：安装主扩展 `Dev Session Canvas` 时，VS Code 会自动安装本扩展；如果从本扩展页面单独安装，VS Code 也会自动补齐主扩展。
+
 本地手动 F5 调试时，优先使用仓库里的 `Run Dev Session Canvas + Notifier (Local Window)`。这条配置固定使用专用 profile `Dev Session Canvas Notifier Extension Debug`，目的是把 notifier 的开发态调试环境与日常使用环境隔离开，减少已安装插件和已安装发布版扩展带来的冲突。
 
 如果只想单独调主扩展，而不把真实 notifier 一起跑起来，则使用 `Run Dev Session Canvas (Main Only)`。这条配置不会加载 notifier，也不会要求本机 notifier 路径；它会在启动前生成一份 debug-only 的临时主扩展目录，并去掉开发态的 notifier 依赖，因此主扩展仍可在本地或远端窗口中独立调试。
