@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.5.1 - Preview Attention Bridge Default Update
+
+相对 `0.5.0`，`0.5.1` 聚焦把执行节点 attention signal 的默认外部桥接从工作台消息收口到 `system`，同时补齐旧配置升级兼容与系统通知来源辨识。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 默认将 `devSessionCanvas.notifications.attentionSignalBridge` 收口到 `system`：安装主扩展并自动带上 notifier 后，无需额外改设置即可优先尝试把提醒送回本机桌面
+- 兼容 legacy 桥接配置：如果用户此前显式设置过 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 或 `devSessionCanvas.notifications.preferNotifierCompanion`，升级到 `0.5.1` 后仍保留既有 `workbench` / `none` / `system` 语义，避免旧设置被静默改成桌面通知
+- 收口 `system` 模式通知标题：统一使用 `DSCanvas · <workspace> · Agent|Terminal`，让多窗口、多 workspace 或远端场景里更容易辨认提醒来源
+- 保留 `Dev Session Canvas Notifier` 自动安装关系、嵌入式 `Terminal` shell 选择能力与现有 `Preview` 支持边界，并同步收口 `0.5.1` 发布材料
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 安装后默认即可体验本机桌面通知；如需复核当前链路，可直接运行 notifier 的测试通知命令与诊断侧栏
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的记录；缺少工作目录信息的旧会话会被保守跳过
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.5.0` 升级到 `0.5.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.5.x` 更新同样通过 Marketplace 升级获取
+- 若你此前显式使用 legacy 配置键 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 或 `devSessionCanvas.notifications.preferNotifierCompanion` 控制提醒路径，升级后会继续沿用旧设置的明确选择；如需切换到新的默认策略，请直接改 `devSessionCanvas.notifications.attentionSignalBridge`
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.5.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.5.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.5.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.5.0 - Preview Notifier And Shell Selection Update
 
 相对 `0.4.1`，`0.5.0` 主要把本机 UI 侧桌面通知 companion 与嵌入式 `Terminal` shell 选择能力纳入公开 `Preview` 的正式版本范围，并同步收口这轮发布材料。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
