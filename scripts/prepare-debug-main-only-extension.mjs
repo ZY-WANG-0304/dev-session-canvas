@@ -33,6 +33,7 @@ export async function prepareDebugMainOnlyExtension({
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const debugManifest = { ...manifest };
   delete debugManifest.extensionDependencies;
+  delete debugManifest.extensionPack;
 
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });

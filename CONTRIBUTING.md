@@ -76,7 +76,7 @@ npm run package:vsix
 - 两条真实 notifier 联调配置固定使用命名 profile `Dev Session Canvas Notifier Extension Debug`
 - 通过 `skipFiles` 跳过 Node 内部和 VS Code 内置扩展源码，避免调试器停在内置 `git` 等非本仓库代码里
 - 通过 `--extensionDevelopmentPath` 加载仓库中的开发态扩展，而非已安装副本
-- 在保留正式双向 `extensionDependencies` 不变的前提下，`Run Dev Session Canvas (Main Only)` 会先生成一份 debug-only 的临时主扩展目录，并从那份目录启动；这份临时 manifest 会去掉 notifier 依赖，因此可以在 local / remote 环境下单独调主扩展，而不用额外加载 notifier
+- 正式安装关系固定为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”；`Run Dev Session Canvas (Main Only)` 会先生成一份 debug-only 的临时主扩展目录，并从那份目录启动；这份临时 manifest 会去掉这些安装期关系，因此可以在 local / remote 环境下单独调主扩展，而不用额外加载 notifier
 
 因此，日常使用的 VS Code profile 和扩展集合不会参与 F5 调试。Remote-SSH 所需的本机 UI 扩展应放入对应的专用 profile，扩展的已安装副本不要放进这些 profile。
 
@@ -204,7 +204,7 @@ npm run test:webview -- --update-snapshots
 - `Run Dev Session Canvas (Main Only)` 不是命令面板命令，而是调试配置名称。
 - `Run Dev Session Canvas (Main Only)` 依赖专用 profile `Dev Session Canvas Extension Debug`；若该 profile 里缺少 `Remote Development`，请改用远端窗口配置而不是直接在远端窗口里运行它。
 - `Run Dev Session Canvas (Main Only)` 不会自动禁用扩展的已安装副本；正确做法是不要将其装入 debug profile。
-- `Run Dev Session Canvas (Main Only)` 调的是一份 runtime 临时生成的 debug-only 主扩展目录，不是直接把仓库根 `package.json` 原样加载进 Development Host；这正是它在保留正式双向依赖不变的前提下仍能单独调主扩展的原因。
+- `Run Dev Session Canvas (Main Only)` 调的是一份 runtime 临时生成的 debug-only 主扩展目录，不是直接把仓库根 `package.json` 原样加载进 Development Host；这正是它在保留正式安装真相“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”不变的前提下，仍能单独调主扩展的原因。
 - `Run Dev Session Canvas + Notifier (Remote Window)` 不能从本地 clone 窗口启动；如果当前窗口的 `${workspaceFolder}` 是本机路径，这条配置会把本机目录误当成远端主扩展路径。
 - `Dev Session Canvas: 打开画布` 按默认承载面打开主画布；如需指定宿主区域，请使用显式的编辑区 / 面板打开命令。
 - 在仓库窗口的命令面板里搜索 `Run Dev Session Canvas (Main Only)` 通常找不到正确入口，因为它应从调试配置启动。

@@ -83,6 +83,7 @@ const preparedManifest = JSON.parse(await readFile(path.join(preparedOutputDir, 
 assert.equal(preparedManifest.name, sourceManifest.name);
 assert.equal(preparedManifest.main, sourceManifest.main);
 assert.equal('extensionDependencies' in preparedManifest, false);
+assert.equal('extensionPack' in preparedManifest, false);
 
 await rm(preparedOutputDir, { recursive: true, force: true });
 

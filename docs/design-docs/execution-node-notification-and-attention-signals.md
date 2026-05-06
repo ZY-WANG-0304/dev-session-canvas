@@ -486,7 +486,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 
 - 当前主扩展继续承载画布、节点、会话与 runtime 逻辑。
 - notifier companion 作为单独扩展承载本地系统通知。
-- 当前正式安装策略已通过双向 `extensionDependencies` 收口：安装主扩展时预期会自动带上 notifier，单独安装 notifier 时也预期会补齐主扩展；仍继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。需要注意的是，repo-local staged smoke 为了装配 wrapper 会临时移除这条依赖，因此真实 Marketplace / VSIX 自动补齐路径仍应在 clean profile 安装步骤里单独复核。
+- 当前正式安装策略已收口为“主扩展 `extensionPack` 自动带上 notifier + notifier 单向 `extensionDependencies` 自动补齐主扩展”；仍继续保持两个独立 VSIX，而不是额外引入第三个 extension pack。需要注意的是，repo-local staged smoke 为了装配 wrapper 会临时移除这些安装期关系，因此真实 Marketplace / VSIX 自动补齐路径仍应在 clean profile 安装步骤里单独复核。
 
 本小节当前不承诺以下内容：
 

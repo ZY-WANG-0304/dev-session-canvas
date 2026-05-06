@@ -462,7 +462,7 @@
     "typescript": "5.0.4"
   },
   "api": "none",
-  "extensionDependencies": [
+  "extensionPack": [
     "devsessioncanvas.dev-session-canvas-notifier"
   ]
 }
