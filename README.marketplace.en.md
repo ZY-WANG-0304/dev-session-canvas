@@ -55,7 +55,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 The public `0.5.0` release mainly adds two new user-facing paths: the desktop-notification companion and embedded `Terminal` shell selection.
 
-- Add the `Dev Session Canvas Notifier` companion and close the installation path with symmetric `extensionDependencies`, so installing either side auto-installs the other
+- Add the `Dev Session Canvas Notifier` companion and close the installation path with `extensionPack` on the main extension plus one-way `extensionDependencies` on the notifier, so either entry point still completes the pair automatically
 - Add the `devSessionCanvas.notifications.attentionSignalBridge = system` path in the main extension, together with a test-notification command, environment diagnostics sidebar, and the `devSessionCanvasNotifier.notifications.playSound` toggle for local-notification verification
 - Add the `Dev Session Canvas: Select Terminal Shell` command so the extension can discover currently available shells, persist the exact binary path the user picked, and prefer a workspace-level override when a workspace is open
 - Keep conservative workspace attribution for session history, while still explicitly retaining the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
