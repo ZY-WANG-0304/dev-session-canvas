@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.5.0`。当前版本范围已经收口到“相对 `0.4.1` 新增 `Dev Session Canvas Notifier` companion、attention signal 的 `system` 桥接主路径，以及嵌入式 `Terminal` shell 选择与 workspace 覆盖能力，并同步收口这轮发布材料”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明与回退口径；当前目标版本为 `0.5.1`。当前版本范围已经收口到“相对 `0.5.0`，把执行节点 attention signal 的默认外部桥接从工作台消息调整为 `system`，补齐 legacy 配置升级兼容，并让系统通知标题显式带上 workspace 与节点类型”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -29,13 +29,13 @@
 
 ## release notes 定稿口径
 
-当前 `0.5.0` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
+当前 `0.5.1` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.5.0 - Preview Notifier And Shell Selection Update`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.5.1 - Preview Attention Bridge Default Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：`Dev Session Canvas Notifier` companion 的公开发布与自动安装关系、attention signal 的 `system` 桥接主路径、测试通知命令与环境诊断侧栏、嵌入式 `Terminal` shell 的动态探测 / 精确路径持久化 / workspace 级覆盖，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
+- release notes 应覆盖以下当前已确认范围：attention signal 默认 `system` 桥接、legacy 配置键升级兼容、`DSCanvas · <workspace> · Agent|Terminal` 通知标题、`Dev Session Canvas Notifier` companion 自动安装关系，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -43,16 +43,17 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.5.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.4.1` 升级到 `0.5.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.5.x` 更新也通过 Marketplace 常规升级获取。
+1. 当前目标版本为 `0.5.1`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.5.0` 升级到 `0.5.1` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.5.x` 更新也通过 Marketplace 常规升级获取。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
-4. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
+4. 若用户此前显式使用过 legacy 配置键 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 或 `devSessionCanvas.notifications.preferNotifierCompanion` 控制提醒路径，升级到 `0.5.1` 后会继续沿用旧设置的明确选择；如需切换到新的默认策略，应直接改 `devSessionCanvas.notifications.attentionSignalBridge`。
+5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.5.0` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.5.1` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
 2. 关注后续 `0.5.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
@@ -68,7 +69,7 @@
 
 ## 截图策略
 
-当前 `0.5.0` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.5.1` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -115,9 +116,9 @@
 注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.5.0.vsix
+      --packagePath dev-session-canvas-0.5.1.vsix
 
-若最终版本号不是 `0.5.0`，应先同步更新命令中的 VSIX 文件名。
+若最终版本号不是 `0.5.1`，应先同步更新命令中的 VSIX 文件名。
 
 ## publish 后补 tag
 
@@ -125,15 +126,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.5.0
-    git push origin v0.5.0
+    git tag v0.5.1
+    git push origin v0.5.1
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.5.0 <final-ref-or-sha>
-    git push origin v0.5.0
+    git tag v0.5.1 <final-ref-or-sha>
+    git push origin v0.5.1
 
-若最终版本号不是 `0.5.0`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.5.1`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 
