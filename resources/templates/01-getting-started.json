@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "template": {
+    "id": "builtin-getting-started",
+    "name": "使用说明",
+    "category": "builtin",
+    "createdAt": "2026-05-06T00:00:00.000Z",
+    "updatedAt": "2026-05-06T00:00:00.000Z",
+    "nodes": [
+      {
+        "kind": "note",
+        "title": "欢迎使用",
+        "position": { "x": 0, "y": 0 },
+        "size": { "width": 420, "height": 340 },
+        "metadata": {
+          "note": {
+            "content": "欢迎使用 Dev Session Canvas\n\n从这里开始：\n1. 在空白区右键，创建 Agent / Terminal / Note\n2. 拖动画布空白区可平移，滚轮可缩放\n3. 拖动节点标题或边缘，整理你的工作面\n4. 从节点四周锚点拖出连线，表达协作关系"
+          }
+        }
+      },
+      {
+        "kind": "note",
+        "title": "当前已支持的快捷操作",
+        "position": { "x": 460, "y": 24 },
+        "size": { "width": 420, "height": 340 },
+        "metadata": {
+          "note": {
+            "content": "快捷操作（以当前实现为准）：\n\n- Delete / Backspace：删除选中的节点或连线\n- Esc：关闭右键菜单或取消当前浮层\n- 双击连线：编辑边标签\n- 侧栏中的模板 / 节点 / 会话历史，可以快速回到常用入口\n\n提示：这个模板不会自动创建 Agent 或 Terminal，会先帮你熟悉画布本身。"
+          }
+        }
+      }
+    ],
+    "edges": []
+  }
+}
