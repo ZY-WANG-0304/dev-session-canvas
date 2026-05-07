@@ -31,6 +31,7 @@ const CONFIGURATION_KEYS = {
 const MANUAL_COMMAND_IDS = {
   sendTestNotification: 'devSessionCanvasNotifier.sendTestNotification',
   openDiagnosticOutput: 'devSessionCanvasNotifier.openDiagnosticOutput',
+  openSettings: 'devSessionCanvasNotifier.openSettings',
   acknowledgeTestNotification: 'devSessionCanvasNotifier.__internal.acknowledgeTestNotification'
 } as const;
 
@@ -275,6 +276,13 @@ export function activate(context: vscode.ExtensionContext): void {
     logPlatformSnapshot(outputChannel, postedNotifications.at(-1), readPlaySoundEnabled());
   };
 
+  const openSettings = async (): Promise<void> => {
+    await vscode.commands.executeCommand(
+      'workbench.action.openSettings',
+      '@ext:devsessioncanvas.dev-session-canvas-notifier devSessionCanvasNotifier'
+    );
+  };
+
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration(CONFIGURATION_KEYS.playSound)) {
@@ -296,6 +304,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand(MANUAL_COMMAND_IDS.sendTestNotification, () => sendTestNotification()),
     vscode.commands.registerCommand(MANUAL_COMMAND_IDS.openDiagnosticOutput, () => openDiagnosticOutput()),
+    vscode.commands.registerCommand(MANUAL_COMMAND_IDS.openSettings, () => openSettings()),
     vscode.commands.registerCommand(
       MANUAL_COMMAND_IDS.acknowledgeTestNotification,
       async (requestId?: unknown) => acknowledgeManualNotification(requestId)
@@ -416,9 +425,9 @@ function normalizeSupportedFocusAction(
     return undefined;
   }
 
-  if (source === 'main-extension' && action.command === COMMAND_IDS.focusAttentionNode) {
+  if (source === 'main-extension' && action.command === COMMAND_IDS.centerAttentionNode) {
     return {
-      command: COMMAND_IDS.focusAttentionNode,
+      command: COMMAND_IDS.centerAttentionNode,
       arguments: [normalizedArgument]
     };
   }

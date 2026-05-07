@@ -144,6 +144,10 @@ async function run() {
       `DSCanvas · ${vscode.workspace.name ?? path.basename(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '')} · Agent`
     );
     assert.match(postedNotifications[0].request.message, /notifier companion smoke/);
+    assert.deepStrictEqual(postedNotifications[0].request.focusAction, {
+      command: 'devSessionCanvas.__internal.centerAttentionNode',
+      arguments: [agentNodeId]
+    });
     assert.ok(postedNotifications[0].callbackUri, 'Expected the notifier companion to build a callback URI.');
 
     await clearHostMessages();
@@ -151,22 +155,30 @@ async function run() {
     assert.strictEqual(replayed, true, 'Expected the notifier test helper to replay the focus callback URI.');
 
     const hostMessages = await waitForHostMessages(
-      (messages) => messages.some((message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId),
+      (messages) => messages.some((message) => message.type === 'host/centerNode' && message.payload.nodeId === agentNodeId),
       20000
     );
     assert.ok(
-      hostMessages.some((message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId),
-      'Expected replaying the notifier callback to focus the execution node.'
+      hostMessages.some((message) => message.type === 'host/centerNode' && message.payload.nodeId === agentNodeId),
+      'Expected replaying the notifier callback to center the execution node without selecting it.'
+    );
+    assert.ok(
+      hostMessages.some(
+        (message) => message.type === 'host/visibilityRestored' && message.payload?.restoreFocus === false
+      ),
+      'Expected replaying the notifier callback to return to the canvas without restoring Webview focus.'
+    );
+    assert.strictEqual(
+      hostMessages.some((message) => message.type === 'host/focusNode' && message.payload?.nodeId === agentNodeId),
+      false,
+      'Replaying the notifier callback should not send a focus-node host message.'
     );
 
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-      return Boolean(currentAgent && currentAgent.metadata?.agent?.attentionPending === false);
-    });
+    snapshot = await getDebugSnapshot();
     assert.strictEqual(
       snapshot.state.nodes.find((node) => node.id === agentNodeId)?.metadata?.agent?.attentionPending,
-      false,
-      'Replaying the notifier callback should clear the attention state.'
+      true,
+      'Replaying the notifier callback should keep the attention state until the user clicks the node.'
     );
 
     const replayedAgain = await vscode.commands.executeCommand(NOTIFIER_TEST_COMMAND_IDS.replayLastFocusAction);

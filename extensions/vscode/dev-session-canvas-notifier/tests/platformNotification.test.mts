@@ -17,7 +17,7 @@ const request = {
   message: 'Agent「Notifier」: ready',
   dedupeKey: 'osc9:notifier-ready',
   focusAction: {
-    command: 'devSessionCanvas.__internal.focusAttentionNode',
+    command: 'devSessionCanvas.__internal.centerAttentionNode',
     arguments: ['node-1']
   }
 };
@@ -100,7 +100,7 @@ const sidebarSnapshot = buildNotifierEnvironmentSnapshot({
   terminalNotifierAvailable: true
 });
 assert.equal(sidebarSnapshot.soundLabel, '已关闭');
-assert.match(sidebarSnapshot.soundDetail, /静音路径/);
+assert.match(sidebarSnapshot.soundDetail, /静音发送/);
 
 const downgradedLinuxResult = await launchShellInvocation(
   {

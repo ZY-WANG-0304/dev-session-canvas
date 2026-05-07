@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/execution-node-notification-research.md
   - docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md
-updated_at: 2026-05-06
+updated_at: 2026-05-07
 ---
 
 # 执行节点通知与注意力信号设计
@@ -336,7 +336,8 @@ updated_at: 2026-05-06
   - 负责把命中的 signal 落成 execution node 的宿主权威 attention pending 状态
   - 负责在 bridge 打开时把同一条 signal 额外桥接成 VSCode 工作台通知
   - 统一覆盖本地 PTY 与 runtime supervisor 输出
-  - 负责在用户点击节点或使用工作台通知的 `查看节点` 动作时清除 attention pending
+  - 负责在用户点击节点时清除 attention pending
+  - 工作台通知的 `查看节点` 动作与系统通知 companion 回跳都只把对应节点居中显示，不清除 attention pending；确认仍由用户点击节点完成
 
 - `src/webview/main.tsx` 与 `src/webview/styles.css`
   - 负责把 execution node 的 attention pending 渲染成标题栏 icon 与 minimap 中对应节点的闪烁态
@@ -386,8 +387,8 @@ updated_at: 2026-05-06
 
 - 每条工作台通知都提供 `查看节点` action
 - 用户点击后，宿主会打开当前活动画布；如果当前没有活动画布，则打开默认承载面
-- 画布 ready 后，会把对应 `Agent` / `Terminal` 节点选中并拉到当前视口中心
-- 这个交互只改变画布视图焦点，不改变节点 lifecycle 或执行状态
+- 画布 ready 后，只把对应 `Agent` / `Terminal` 节点居中显示，不选中节点
+- 这个交互只改变画布视口位置，不改变节点 lifecycle、执行状态或 `attentionPending`
 
 文案规则：
 
@@ -409,12 +410,11 @@ updated_at: 2026-05-06
 - 这个节点内提醒不依赖 `attentionSignalBridge`
 - `OSC 9 ; 4` 这类进度状态仍不进入节点内 icon/闪烁
 
-当前确认路径只有两条，且都直接清除宿主权威 attention pending：
+当前确认路径只有一条，且会直接清除宿主权威 attention pending：
 
 - 用户点击对应的 `Agent` / `Terminal` 节点
-- 用户点击 VSCode 工作台通知中的 `查看节点` 动作，并由宿主完成节点聚焦
 
-这里的“点击节点”按产品语义理解为“用户显式用鼠标点击该节点”，而不是“selectedNodeId 首次从别的节点切换到它”，也不是程序化 focus、terminal selection change 或其它内部选中副作用。因此即使节点已经处于选中态，用户再次点击也仍应被视为确认动作；但仅仅因为节点在本地 UI 中重新获得 focus，不应自动清除提醒。
+这里的“点击节点”按产品语义理解为“用户显式用鼠标点击该节点”，而不是“selectedNodeId 首次从别的节点切换到它”，也不是程序化 focus、terminal selection change、工作台通知 `查看节点` 动作或系统通知回跳。因此即使节点已经处于选中态，用户再次点击也仍应被视为确认动作；但仅仅因为节点在本地 UI 中重新获得 focus 或被通知动作居中，不应自动清除提醒。
 
 #### 7.7.8 去重与冷却
 
@@ -471,7 +471,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
   - 运行在用户本机 UI 侧
   - 接收结构化 `AttentionEvent`
   - 负责按平台调用 macOS / Windows / Linux 的系统通知能力
-  - 在用户点击通知时回调主扩展命令，执行 `打开画布 -> 聚焦节点 -> 清除 attention pending`
+  - 在用户点击通知时回调主扩展命令，执行 `打开画布 -> 居中对应节点`，不代替用户清除 attention pending
 
 - VSCode 工作台通知
   - 继续保留为默认 fallback
@@ -480,7 +480,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 推荐的最小通信方式是显式扩展命令桥，而不是共享终端输出副作用：
 
 - 主扩展负责调用类似 `devSessionCanvasNotifier.postSystemNotification` 的命令，并把 `nodeId`、`kind`、`title`、`message`、`dedupeKey`、`focusAction` 作为参数传给 companion。
-- notifier companion 在通知点击后，再回调主扩展已有的节点聚焦命令。
+- notifier companion 在通知点击后，再回调主扩展受控的节点居中命令；节点确认和清除 attention 仍只由画布内点击承担。
 
 在仓库组织上，这条路线允许两个扩展保留在同一个 repo 中维护，但发布时应保持为两个独立 VSIX：
 
@@ -502,7 +502,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 3. 在经过 `tmux` 的场景下验证通知序列是否透传，以及需要哪些配置。
 4. 对 `Claude Code` / `Codex` 的“审批请求”“用户输入请求”“任务完成”三类事件分别验证最终提醒链路。
 5. 在仓库实现阶段补自动化或人工验证，证明 `Agent` 状态机不会因为收到通知协议就错误地把 attention signal 误判为权威 turn 边界。
-6. 如果后续开始实现 7.7.11 的 notifier companion，还需要额外验证本地桌面、Remote SSH / Dev Container、缺少 companion 时的 fallback，以及“点击系统通知后回到画布并聚焦节点”的完整链路。
+6. 如果后续开始实现 7.7.11 的 notifier companion，还需要额外验证本地桌面、Remote SSH / Dev Container、缺少 companion 时的 fallback，以及“点击系统通知后回到画布并居中节点，但不自动选中或清除 attention”的完整链路。
 
 ## 9. 当前验证状态
 
@@ -518,7 +518,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
   - `npm run build`
   - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`
 - 2026-04-29 已补记未来 OS 系统通知的 UI-side / local-side notifier companion 方向；本次仅更新设计文档，不涉及代码与运行时行为变更。
-- 当前文档继续保持 `验证中`，因为本轮尚未在真实 Ghostty / kitty / iTerm2 / tmux 场景里做手工协议验证；但仓库内已完成 VS Code 宿主级自动化验证，覆盖配置开关、冷却抑制、节点内提醒、显式点击确认，以及工作台通知后定位节点。
+- 当前文档继续保持 `验证中`，因为本轮尚未在真实 Ghostty / kitty / iTerm2 / tmux 场景里做手工协议验证；但仓库内已完成 VS Code 宿主级自动化验证，覆盖配置开关、冷却抑制、节点内提醒、显式点击确认，以及工作台通知后居中节点但不确认提醒。
 
 ## 10. 外部依据
 

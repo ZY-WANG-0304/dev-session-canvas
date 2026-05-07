@@ -200,20 +200,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
-  const focusAttentionNodeFromCommand = async (nodeId?: unknown): Promise<void> => {
+  const centerAttentionNodeFromCommand = async (nodeId?: unknown): Promise<void> => {
     if (typeof nodeId !== 'string' || nodeId.trim().length === 0) {
       return;
     }
 
-    const focused = await panelManager.focusAttentionNodeById(nodeId);
-    if (!focused) {
+    const centered = await panelManager.centerAttentionNodeById(nodeId);
+    if (!centered) {
       await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
     }
   };
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_IDS.focusNode, focusNodeFromCommand),
-    vscode.commands.registerCommand(COMMAND_IDS.focusAttentionNode, focusAttentionNodeFromCommand),
+    vscode.commands.registerCommand(COMMAND_IDS.focusAttentionNode, centerAttentionNodeFromCommand),
+    vscode.commands.registerCommand(COMMAND_IDS.centerAttentionNode, centerAttentionNodeFromCommand),
     vscode.commands.registerCommand(COMMAND_IDS.focusSidebarNode, focusNodeFromCommand),
     vscode.commands.registerCommand(
       COMMAND_IDS.restoreSidebarSessionHistoryEntry,

@@ -486,6 +486,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     editor: false,
     panel: false
   };
+  private readonly pendingVisibilityRestoreFocus: Partial<Record<CanvasSurfaceLocation, boolean>> = {};
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
   private readonly runtimeSessionBindings = new Map<
@@ -965,17 +966,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  public async focusAttentionNodeById(nodeId: string): Promise<boolean> {
+  public async centerAttentionNodeById(nodeId: string): Promise<boolean> {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) {
       return false;
     }
 
     try {
-      await this.focusNodeInCanvas(nodeId);
-      if (isExecutionNodeKind(node.kind)) {
-        this.clearExecutionAttention(node.kind, nodeId);
-      }
+      await this.centerNodeInCanvas(nodeId);
       return true;
     } catch {
       return false;
@@ -1507,7 +1505,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.attachPanelView(webviewView);
   }
 
-  private async revealSurface(surface: CanvasSurfaceLocation): Promise<void> {
+  private async revealSurface(
+    surface: CanvasSurfaceLocation,
+    options?: { restoreWebviewFocus?: boolean }
+  ): Promise<void> {
     this.recordDiagnosticEvent('surface/revealRequested', {
       from: this.activeSurface,
       to: surface
@@ -1515,13 +1516,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.activeSurface = surface;
     this.persistActiveSurface();
     this.applyWorkbenchContextKeys();
+    if (options?.restoreWebviewFocus === false) {
+      this.pendingVisibilityRestoreFocus[surface] = false;
+    } else {
+      delete this.pendingVisibilityRestoreFocus[surface];
+    }
 
     if (surface === 'editor') {
       this.renderStandbySurface('panel');
 
       if (this.editorPanel) {
         this.ensureActiveSurfaceRendered('editor');
-        await this.refocusInteractiveSurface('editor');
+        await this.refocusInteractiveSurface('editor', options);
         this.notifySidebarStateChanged();
         return;
       }
@@ -1534,7 +1540,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
       this.attachEditorPanel(panel);
       this.ensureActiveSurfaceRendered('editor');
-      await this.refocusInteractiveSurface('editor');
+      await this.refocusInteractiveSurface('editor', options);
       this.notifySidebarStateChanged();
       return;
     }
@@ -1545,7 +1551,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (this.panelView) {
       this.ensureActiveSurfaceRendered('panel');
-      await this.refocusInteractiveSurface('panel');
+      await this.refocusInteractiveSurface('panel', options);
       this.notifySidebarStateChanged();
       return;
     }
@@ -2710,11 +2716,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }));
   }
 
-  private async refocusInteractiveSurface(surface: CanvasSurfaceLocation | undefined): Promise<void> {
+  private async refocusInteractiveSurface(
+    surface: CanvasSurfaceLocation | undefined,
+    options?: { restoreWebviewFocus?: boolean }
+  ): Promise<void> {
     if (surface === 'panel') {
       this.panelView?.show(false);
       this.maybePostVisibilityRestored('panel', {
-        force: true
+        force: true,
+        restoreFocus: options?.restoreWebviewFocus
       });
       return;
     }
@@ -2730,7 +2740,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
       this.maybePostVisibilityRestored('editor', {
-        force: true
+        force: true,
+        restoreFocus: options?.restoreWebviewFocus
       });
     }
   }
@@ -4192,7 +4203,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.panelView.visible ? 'visible' : 'hidden';
   }
 
-  private maybePostVisibilityRestored(surface: CanvasSurfaceLocation, options?: { force?: boolean }): void {
+  private maybePostVisibilityRestored(
+    surface: CanvasSurfaceLocation,
+    options?: { force?: boolean; restoreFocus?: boolean }
+  ): void {
     if (
       this.activeSurface !== surface ||
       !this.surfaceReady[surface] ||
@@ -4206,8 +4220,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.pendingVisibilityRestore[surface] = false;
+    const restoreFocus = options?.restoreFocus ?? this.pendingVisibilityRestoreFocus[surface];
+    delete this.pendingVisibilityRestoreFocus[surface];
     this.postMessage({
-      type: 'host/visibilityRestored'
+      type: 'host/visibilityRestored',
+      ...(restoreFocus === false
+        ? {
+            payload: {
+              restoreFocus: false
+            }
+          }
+        : {})
     });
   }
 
@@ -5091,7 +5114,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       message,
       dedupeKey: `${nodeId}:${notificationKey}`,
       focusAction: {
-        command: COMMAND_IDS.focusAttentionNode,
+        command: COMMAND_IDS.centerAttentionNode,
         arguments: [nodeId]
       }
     };
@@ -5158,10 +5181,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    await this.focusExecutionAttentionNode(kind, nodeId);
+    await this.centerExecutionAttentionNode(kind, nodeId);
   }
 
-  private async focusExecutionAttentionNode(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
+  private async centerExecutionAttentionNode(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
     if (!node) {
       void vscode.window.showWarningMessage('通知对应的节点已不存在，无法定位。');
@@ -5169,8 +5192,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     try {
-      await this.focusNodeInCanvas(nodeId);
-      this.clearExecutionAttention(kind, nodeId);
+      await this.centerNodeInCanvas(nodeId);
     } catch {
       void vscode.window.showWarningMessage(
         `${kind === 'agent' ? 'Agent' : 'Terminal'}「${trimStoredTerminalText(node.title).trim() || nodeId}」暂时无法定位。`
@@ -5184,6 +5206,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
     this.postMessageToSurface(targetSurface, {
       type: 'host/focusNode',
+      payload: {
+        nodeId
+      }
+    });
+  }
+
+  private async centerNodeInCanvas(nodeId: string): Promise<void> {
+    const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
+    await this.revealSurface(targetSurface, { restoreWebviewFocus: false });
+    await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+    this.postMessageToSurface(targetSurface, {
+      type: 'host/centerNode',
       payload: {
         nodeId
       }
@@ -9462,6 +9496,10 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
       return {
         nodeId: message.payload.nodeId
       };
+    case 'host/centerNode':
+      return {
+        nodeId: message.payload.nodeId
+      };
     case 'host/error':
       return {
         message: message.payload.message
@@ -9513,8 +9551,13 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
         action: cloneJsonValue(message.payload.action)
       };
     case 'host/themeChanged':
-    case 'host/visibilityRestored':
       return undefined;
+    case 'host/visibilityRestored':
+      return message.payload?.restoreFocus === false
+        ? {
+            restoreFocus: false
+          }
+        : undefined;
   }
 }
 
