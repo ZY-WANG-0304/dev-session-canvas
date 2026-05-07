@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- 与主扩展 `0.6.0` 对齐：通知点击回跳只把对应执行节点居中，不再把“查看节点”误处理为用户已经确认并清除提醒。
+- `通知环境` sidebar 标题行新增配置齿轮，可直接打开 `Dev Session Canvas Notifier` 自身设置，便于调整 `devSessionCanvasNotifier.notifications.playSound`。
+- 优化 sidebar 文案表达，继续显式展示当前通知后端、点击回跳能力、声音请求状态、前置依赖与最近一次投递结果。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.5.1
 
 - 与主扩展 `0.5.1` 对齐：主扩展默认把 `devSessionCanvas.notifications.attentionSignalBridge` 收口到 `system`，安装配对扩展后无需再手工开启桌面通知主路径。
