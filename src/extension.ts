@@ -1337,7 +1337,7 @@ async function exportCanvasTemplateFromCommand(
     return;
   }
 
-  await panelManager.exportCanvasTemplateById(selectedTemplate.template.id, targetUri.fsPath);
+  await panelManager.exportCanvasTemplateById(selectedTemplate.template.id, targetUri);
   await vscode.window.showInformationMessage(`已导出模板「${selectedTemplate.template.name}」。`);
 }
 

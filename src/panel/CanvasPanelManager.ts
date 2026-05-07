@@ -109,6 +109,7 @@ import {
   DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID,
   captureCanvasTemplateFromState,
   cloneCanvasTemplate,
+  encodeCanvasTemplateDocument,
   formatCanvasTemplateStats,
   resolveCanvasTemplateAgentProvider,
   type CanvasTemplate,
@@ -904,14 +905,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  public async exportCanvasTemplateById(templateId: string, filePath: string): Promise<void> {
+  public async exportCanvasTemplateById(templateId: string, target: string | vscode.Uri): Promise<void> {
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
       throw new Error('目标模板不存在。');
     }
 
-    await this.canvasTemplateStore.exportTemplateToFile(storedTemplate.template, filePath);
+    if (typeof target === 'string') {
+      await this.canvasTemplateStore.exportTemplateToFile(storedTemplate.template, target);
+      return;
+    }
+
+    await vscode.workspace.fs.createDirectory(getUriDirectory(target));
+    await vscode.workspace.fs.writeFile(
+      target,
+      new TextEncoder().encode(encodeCanvasTemplateDocument(storedTemplate.template))
+    );
   }
 
   public async deleteCanvasTemplateById(templateId: string): Promise<void> {
@@ -8264,6 +8274,11 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function getUriDirectory(uri: vscode.Uri): vscode.Uri {
+  const directoryPath = path.posix.dirname(uri.path);
+  return uri.with({ path: directoryPath || '/' });
 }
 
 function findCanvasTemplateById(
