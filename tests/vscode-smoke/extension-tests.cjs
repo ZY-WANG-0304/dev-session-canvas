@@ -61,6 +61,11 @@ const REAL_DOM_AGENT_TITLE = 'Agent Title Through DOM';
 const REAL_DOM_TERMINAL_TITLE = 'Terminal Title Through DOM';
 const REAL_DOM_NOTE_TITLE = 'Host Smoke Note Through DOM';
 const REAL_DOM_NOTE_BODY = 'Drive the note edit through the real VS Code webview DOM.';
+const REAL_DOM_NOTE_CHECKLIST_BODY = ['- [ ] 补齐 smoke', '- [x] 保持预览态'].join('\n');
+const REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED = ['- [x] 补齐 smoke', '- [x] 保持预览态'].join('\n');
+const REAL_DOM_NOTE_FILE_LINK_RELATIVE_PATH = 'note-link-open-target.txt';
+const REAL_DOM_NOTE_FILE_LINK_BODY =
+  '[打开 Note 链接目标](.debug/vscode-smoke/note-link-open-target.txt#L2C3)';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
@@ -352,6 +357,8 @@ async function runTrustedSmoke() {
 
   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
+  await verifyInteractiveNoteChecklist(noteNode.id);
+  await verifyNoteWorkspaceFileLinks(noteNode.id);
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
@@ -3303,6 +3310,154 @@ async function verifyRealWebviewDomInteractions(agentNodeId, terminalNodeId, not
     probe.nodes.find((node) => node.nodeId === noteNodeId)?.bodyValue,
     REAL_DOM_NOTE_BODY
   );
+}
+
+async function verifyInteractiveNoteChecklist(noteNodeId) {
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: noteNodeId,
+      content: REAL_DOM_NOTE_CHECKLIST_BODY
+    }
+  });
+
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_CHECKLIST_BODY);
+  });
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_CHECKLIST_BODY);
+
+  await performWebviewDomAction({
+    kind: 'toggleNoteChecklistItem',
+    nodeId: noteNodeId,
+    lineNumber: 1
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, noteNodeId).metadata.note.content,
+    REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED
+  );
+
+  let probe = await waitForWebviewProbe((currentProbe) => {
+    const currentNote = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
+    return Boolean(currentNote?.bodyValue === REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED);
+  });
+  assert.strictEqual(
+    probe.nodes.find((node) => node.nodeId === noteNodeId)?.bodyValue,
+    REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED
+  );
+
+  await performWebviewDomAction({
+    kind: 'toggleNoteChecklistItem',
+    nodeId: noteNodeId,
+    lineNumber: 1
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_CHECKLIST_BODY);
+  });
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_CHECKLIST_BODY);
+
+  probe = await waitForWebviewProbe((currentProbe) => {
+    const currentNote = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
+    return Boolean(currentNote?.bodyValue === REAL_DOM_NOTE_CHECKLIST_BODY);
+  });
+  assert.strictEqual(
+    probe.nodes.find((node) => node.nodeId === noteNodeId)?.bodyValue,
+    REAL_DOM_NOTE_CHECKLIST_BODY
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: noteNodeId,
+      content: REAL_DOM_NOTE_BODY
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_BODY);
+  });
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
+}
+
+async function verifyNoteWorkspaceFileLinks(noteNodeId) {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+
+  const linkTargetUri = vscode.Uri.joinPath(
+    workspaceFolder.uri,
+    '.debug',
+    'vscode-smoke',
+    REAL_DOM_NOTE_FILE_LINK_RELATIVE_PATH
+  );
+  await fs.mkdir(path.dirname(linkTargetUri.fsPath), { recursive: true });
+  await fs.writeFile(linkTargetUri.fsPath, 'line 1\nline 2 target\nline 3\n', 'utf8');
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: noteNodeId,
+      content: REAL_DOM_NOTE_FILE_LINK_BODY
+    }
+  });
+  let snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_FILE_LINK_BODY);
+  });
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_FILE_LINK_BODY);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+  await dispatchWebviewMessage(
+    {
+      type: 'webview/openNoteLink',
+      payload: {
+        nodeId: noteNodeId,
+        href: '.debug/vscode-smoke/note-link-open-target.txt#L2C3'
+      }
+    },
+    'editor'
+  );
+
+  const openedEditor = await waitForVisibleEditor(
+    (editor) =>
+      editor.document.uri.fsPath === linkTargetUri.fsPath &&
+      editor.selection.active.line === 1 &&
+      editor.selection.active.character === 2,
+    10000
+  );
+  assert.strictEqual(
+    openedEditor.viewColumn,
+    vscode.ViewColumn.Two,
+    'Expected editor-surface Note file links to open the target beside the canvas and honor #L..C.. selection.'
+  );
+
+  const probe = await captureWebviewProbe('editor', 2000);
+  assert.ok(
+    probe.hasCanvasShell && probe.hasReactFlow,
+    'Expected the editor-surface canvas to remain mounted after opening a Note workspace file link.'
+  );
+  await closeVisibleEditor(linkTargetUri.fsPath);
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: noteNodeId,
+      content: REAL_DOM_NOTE_BODY
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNodeId);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_BODY);
+  });
+  assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {

@@ -68,6 +68,8 @@ interface ExtensionStoragePathResolutionOptions {
   readTextFile?: (filePath: string) => string;
 }
 
+type PathModuleLike = typeof path.posix | typeof path.win32;
+
 export function resolvePreferredExtensionStoragePath(
   currentPath: string,
   options: ExtensionStoragePathResolutionOptions = {}
@@ -84,8 +86,9 @@ export function selectPreferredExtensionStorageRecoverySource(
   currentPath: string,
   options: ExtensionStoragePathResolutionOptions = {}
 ): ExtensionStorageRecoverySourceSelection {
+  const pathModule = resolveExtensionStoragePathModule(currentPath);
   const candidates = collectExtensionStorageSlotCandidates(currentPath, options);
-  const normalizedCurrentPath = path.normalize(currentPath);
+  const normalizedCurrentPath = normalizeExtensionStoragePath(currentPath, pathModule);
   const currentCandidate =
     candidates.find((candidate) => candidate.isCurrent) ?? createStandaloneCurrentCandidate(normalizedCurrentPath, options);
   const recoverableCandidates = candidates.filter((candidate) => candidate.hasRecoverableState);
@@ -146,17 +149,18 @@ export function collectExtensionStorageSlotCandidates(
   currentPath: string,
   options: ExtensionStoragePathResolutionOptions = {}
 ): ExtensionStorageSlotCandidate[] {
-  const normalizedCurrentPath = path.normalize(currentPath);
+  const pathModule = resolveExtensionStoragePathModule(currentPath);
+  const normalizedCurrentPath = normalizeExtensionStoragePath(currentPath, pathModule);
   const pathExists = options.pathExists ?? fs.existsSync;
   const listDirectoryEntries = options.listDirectoryEntries ?? listDirectoryNames;
   const readTextFile = options.readTextFile ?? readTextFileSync;
 
-  const workspaceSlotDir = path.dirname(normalizedCurrentPath);
-  const workspaceSlotName = path.basename(workspaceSlotDir);
-  const workspaceStorageDir = path.dirname(workspaceSlotDir);
+  const workspaceSlotDir = pathModule.dirname(normalizedCurrentPath);
+  const workspaceSlotName = pathModule.basename(workspaceSlotDir);
+  const workspaceStorageDir = pathModule.dirname(workspaceSlotDir);
   const currentWorkspaceSlot = parseWorkspaceStorageSlotName(workspaceSlotName);
   if (
-    path.basename(workspaceStorageDir) !== WORKSPACE_STORAGE_DIRNAME ||
+    pathModule.basename(workspaceStorageDir) !== WORKSPACE_STORAGE_DIRNAME ||
     currentWorkspaceSlot === undefined
   ) {
     return [createStandaloneCurrentCandidate(normalizedCurrentPath, options)];
@@ -183,11 +187,12 @@ export function collectExtensionStorageSlotCandidates(
     slotCandidates.set(candidateWorkspaceSlot.name, candidateWorkspaceSlot);
   }
 
-  const extensionStorageDirName = path.basename(normalizedCurrentPath);
+  const extensionStorageDirName = pathModule.basename(normalizedCurrentPath);
   return Array.from(slotCandidates.values())
     .map((slotIdentity) => {
-      const candidatePath = path.join(workspaceStorageDir, slotIdentity.name, extensionStorageDirName);
+      const candidatePath = pathModule.join(workspaceStorageDir, slotIdentity.name, extensionStorageDirName);
       return buildSlotCandidate(candidatePath, slotIdentity, currentWorkspaceSlot, {
+        pathModule,
         pathExists,
         readTextFile
       });
@@ -199,15 +204,17 @@ function createStandaloneCurrentCandidate(
   currentPath: string,
   options: ExtensionStoragePathResolutionOptions
 ): ExtensionStorageSlotCandidate {
+  const pathModule = resolveExtensionStoragePathModule(currentPath);
   const pathExists = options.pathExists ?? fs.existsSync;
   const readTextFile = options.readTextFile ?? readTextFileSync;
-  const slotName = path.basename(path.dirname(currentPath));
+  const slotName = pathModule.basename(pathModule.dirname(currentPath));
   const slotIdentity = parseWorkspaceStorageSlotName(slotName) ?? {
     name: slotName,
     canonicalName: slotName,
     slotIndex: 0
   };
   return buildSlotCandidate(currentPath, slotIdentity, slotIdentity, {
+    pathModule,
     pathExists,
     readTextFile
   });
@@ -218,19 +225,20 @@ function buildSlotCandidate(
   slotIdentity: WorkspaceStorageSlotIdentity,
   currentWorkspaceSlot: WorkspaceStorageSlotIdentity,
   options: {
+    pathModule: PathModuleLike;
     pathExists: (candidatePath: string) => boolean;
     readTextFile: (filePath: string) => string;
   }
 ): ExtensionStorageSlotCandidate {
   return {
-    path: path.normalize(candidatePath),
+    path: normalizeExtensionStoragePath(candidatePath, options.pathModule),
     slotName: slotIdentity.name,
     canonicalSlotName: slotIdentity.canonicalName,
     slotIndex: slotIdentity.slotIndex,
     isCurrent:
       slotIdentity.name === currentWorkspaceSlot.name &&
       slotIdentity.slotIndex === currentWorkspaceSlot.slotIndex,
-    hasRecoverableState: hasRecoverableState(candidatePath, options.pathExists),
+    hasRecoverableState: hasRecoverableState(candidatePath, options.pathModule, options.pathExists),
     snapshot: readPersistedCanvasSnapshotMetadata(candidatePath, options)
   };
 }
@@ -238,11 +246,12 @@ function buildSlotCandidate(
 function readPersistedCanvasSnapshotMetadata(
   basePath: string,
   options: {
+    pathModule: PathModuleLike;
     pathExists: (candidatePath: string) => boolean;
     readTextFile: (filePath: string) => string;
   }
 ): ExtensionStorageSnapshotMetadata {
-  const snapshotPath = path.join(basePath, SNAPSHOT_RELATIVE_PATH);
+  const snapshotPath = options.pathModule.join(basePath, SNAPSHOT_RELATIVE_PATH);
   if (!options.pathExists(snapshotPath)) {
     return {
       exists: false
@@ -391,8 +400,31 @@ function safelyListDirectoryEntries(
   }
 }
 
-function hasRecoverableState(basePath: string, pathExists: (candidatePath: string) => boolean): boolean {
-  return RECOVERABLE_STATE_RELATIVE_PATHS.some((relativePath) => pathExists(path.join(basePath, relativePath)));
+function hasRecoverableState(
+  basePath: string,
+  pathModule: PathModuleLike,
+  pathExists: (candidatePath: string) => boolean
+): boolean {
+  return RECOVERABLE_STATE_RELATIVE_PATHS.some((relativePath) => pathExists(pathModule.join(basePath, relativePath)));
+}
+
+function resolveExtensionStoragePathModule(candidatePath: string): PathModuleLike {
+  const normalizedCandidatePath = candidatePath.trim();
+  if (
+    normalizedCandidatePath.startsWith('\\') ||
+    /^[A-Za-z]:/u.test(normalizedCandidatePath) ||
+    normalizedCandidatePath.includes('\\')
+  ) {
+    return path.win32;
+  }
+  if (normalizedCandidatePath.startsWith('/') || normalizedCandidatePath.includes('/')) {
+    return path.posix;
+  }
+  return process.platform === 'win32' ? path.win32 : path.posix;
+}
+
+function normalizeExtensionStoragePath(candidatePath: string, pathModule: PathModuleLike): string {
+  return pathModule.normalize(candidatePath);
 }
 
 function listDirectoryNames(directoryPath: string): readonly string[] {

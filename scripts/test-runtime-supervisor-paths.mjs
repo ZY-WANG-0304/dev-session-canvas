@@ -8,6 +8,7 @@ import path from 'node:path';
 import esbuild from 'esbuild';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-runtime-supervisor-paths-'));
+const posixPath = path.posix;
 
 try {
   const outfile = path.join(tempDir, 'runtimeSupervisorPaths.cjs');
@@ -36,8 +37,8 @@ try {
   assert.equal(shortPaths.storageDir, shortStorageDir);
   assert.equal(shortPaths.runtimeDir, shortStorageDir);
   assert.equal(shortPaths.socketLocation, 'storage');
-  assert.equal(shortPaths.socketPath, path.join(shortStorageDir, 'supervisor.sock'));
-  assert.equal(shortPaths.registryPath, path.join(shortStorageDir, 'registry.json'));
+  assert.equal(shortPaths.socketPath, posixPath.join(shortStorageDir, 'supervisor.sock'));
+  assert.equal(shortPaths.registryPath, posixPath.join(shortStorageDir, 'registry.json'));
 
   const longStorageDir =
     '/home/users/example/.vscode-server/data/User/workspaceStorage/' +
@@ -53,11 +54,11 @@ try {
     userId: 1000
   });
   assert.equal(xdgPaths.storageDir, longStorageDir);
-  assert.equal(xdgPaths.runtimeDir, path.join('/run/user/1000', 'dev-session-canvas'));
+  assert.equal(xdgPaths.runtimeDir, posixPath.join('/run/user/1000', 'dev-session-canvas'));
   assert.equal(xdgPaths.socketLocation, 'runtime-private');
   assert.equal(
     xdgPaths.socketPath,
-    path.join('/run/user/1000', 'dev-session-canvas', `supervisor-${digest}.sock`)
+    posixPath.join('/run/user/1000', 'dev-session-canvas', `supervisor-${digest}.sock`)
   );
   assert.ok(Buffer.byteLength(xdgPaths.socketPath, 'utf8') <= 104);
 
@@ -72,7 +73,7 @@ try {
   assert.equal(tmpPaths.socketLocation, 'runtime-private');
   assert.equal(
     tmpPaths.socketPath,
-    path.join('/tmp', 'dev-session-canvas-1000', `supervisor-${digest}.sock`)
+    posixPath.join('/tmp', 'dev-session-canvas-1000', `supervisor-${digest}.sock`)
   );
   assert.ok(Buffer.byteLength(tmpPaths.socketPath, 'utf8') <= 104);
 
@@ -101,12 +102,12 @@ try {
   });
   assert.equal(systemdPaths.storageDir, longStorageDir);
   assert.equal(systemdPaths.runtimeDir, undefined);
-  assert.equal(systemdPaths.controlDir, path.join('/home/users/example', '.local', 'state', 'dsc', 'rh', digest));
+  assert.equal(systemdPaths.controlDir, posixPath.join('/home/users/example', '.local', 'state', 'dsc', 'rh', digest));
   assert.equal(systemdPaths.socketLocation, 'control-dir');
-  assert.equal(systemdPaths.socketPath, path.join(systemdPaths.controlDir, 's.sock'));
+  assert.equal(systemdPaths.socketPath, posixPath.join(systemdPaths.controlDir, 's.sock'));
   assert.equal(
     systemdPaths.unitFilePath,
-    path.join(
+    posixPath.join(
       '/home/users/example',
       '.config',
       'systemd',
@@ -125,10 +126,10 @@ try {
     },
     homeDir: '/home/users/example'
   });
-  assert.equal(xdgSystemdPaths.controlDir, path.join('/home/users/example', '.state-alt', 'dsc', 'rh', digest));
+  assert.equal(xdgSystemdPaths.controlDir, posixPath.join('/home/users/example', '.state-alt', 'dsc', 'rh', digest));
   assert.equal(
     xdgSystemdPaths.unitFilePath,
-    path.join(
+    posixPath.join(
       '/home/users/example',
       '.config-alt',
       'systemd',
