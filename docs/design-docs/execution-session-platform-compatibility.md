@@ -14,7 +14,8 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
-updated_at: 2026-04-28
+  - docs/exec-plans/active/agent-shell-environment-inheritance.md
+updated_at: 2026-05-07
 ---
 
 # 执行会话平台兼容性设计
@@ -87,14 +88,18 @@ updated_at: 2026-04-28
 - 会引入原生 Node 模块，需要处理扩展打包与运行时加载。
 - Windows 下 provider CLI 的 PATH、`.cmd` / `.exe` 解析与剩余交互限制仍需持续补齐证据。
 
-## 6. 当前结论
+## 6. 正式方案
 
-当前收敛结论如下：
+当前正式方案如下：
 
 - 执行会话后端从 Linux `script` 原型迁移到统一 `node-pty` 路线。
 - Linux、macOS、Windows 本地 workspace 现在都走统一 `node-pty` 主路径，并已完成功能可用性验证。
 - Windows 仍保留一条显式已知限制：使用 `Codex` 时，执行节点内历史当前无法向上翻页；这条差异必须继续写在对外文案与技术债中。
 - `Terminal` 与 `Agent` 共用同一个宿主会话 bridge；差别只在于启动命令和节点语义。
+- `src/panel/CanvasPanelManager.ts` 需要通过统一 execution env 入口为 `Agent` 与 `Terminal` 组装启动环境，而不是让 resolver、local PTY 与 runtime supervisor 各自直接读取 `process.env`。
+- macOS / Linux 当前新增一层更接近 VS Code 原生 Terminal 的 shell env 继承：`src/panel/shellEnvironmentResolver.ts` 会在 `VSCODE_CLI=1` 之外的 GUI 场景读取登录 shell 环境，提取受控增量 patch，并把这份 patch 同时用于 `Agent` resolver、`Agent` spawn 与 `Terminal` spawn。
+- 这份 shell env patch 不直接 wholesale 替换 Extension Host 环境；它只在保留宿主基线、测试注入目录和 `TERM`/`COLORTERM` 约束的前提下，同步 `PATH` 与工具链相关变量，并排除 `HOME`、`PWD`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被执行节点接管的键。
+- Windows 当前仍以 Extension Host 基线环境为主，只继续使用 `PATH`/`PATHEXT`、`where.exe` 与 `Get-Command` 做命令发现；等价的 shell env 继承路线尚未在本轮实现，必须继续显式记录为技术债，而不是写成已对齐。
 - `Agent` provider CLI 的命令发现采用宿主侧 resolver，而不是把裸命令名直接交给 PTY：
   - 显式设置优先
   - 最近成功解析的绝对路径缓存次之
@@ -113,8 +118,8 @@ updated_at: 2026-04-28
 - 取舍：接受原生 PTY 依赖，换取平台收敛和真实 resize。
   原因：用户已经不再满足于“Linux 原型可跑”，而是明确要求 Linux / macOS 为主、Windows 尽量兼容。
 
-- 风险：Windows 下 `codex` / `claude` 这类命令若通过 npm 全局安装，常见入口可能是 `.cmd` / `.exe` 包装；同时，Windows 上使用 `Codex` 时执行节点内历史仍存在无法向上翻页的已知限制。macOS / Linux 从 GUI 启动 VSCode 时，Extension Host 的 PATH 也可能和交互 shell 不一致。
-  当前缓解：把命令定位升级为宿主侧 resolver，显式覆盖 Windows 包装后缀、POSIX 登录 shell 探测和成功路径缓存；设置项仍保留为最高优先级兜底。同时把 Windows `Codex` 历史翻页问题明确登记为技术债，不把它写成已收口。
+- 风险：Windows 下 `codex` / `claude` 这类命令若通过 npm 全局安装，常见入口可能是 `.cmd` / `.exe` 包装；同时，Windows 上使用 `Codex` 时执行节点内历史仍存在无法向上翻页的已知限制。macOS / Linux 从 GUI 启动 VSCode 时，Extension Host 的环境也可能和交互 shell 不一致。
+  当前缓解：macOS / Linux 当前已经补上一层受控 shell env patch，并要求 resolver 与 spawn 共用同一份 execution env；Windows 侧则继续保留现有命令发现策略与设置项兜底，同时把“等价 shell env 继承尚未实现”与 `Codex` 历史翻页问题一起明确登记为技术债，不把它写成已收口。
 
 - 风险：Remote SSH / Codespaces 的 Extension Host 与 Webview 仍然跨端运行，平台兼容并不自动等于所有远程宿主都已收口。
   当前缓解：`Remote SSH` 主路径已按当前轮支持口径升级为“已验证可用”；但 Codespaces 与其他更深远程场景仍继续保留为待补验证，不把它们误写成已完成。
@@ -129,12 +134,16 @@ updated_at: 2026-04-28
 4. Windows 本地至少完成一次真实 `Agent` / `Terminal` 人工 smoke test，并把剩余已知限制显式记录到发布文案与技术债。
 5. Webview 尺寸变化后，活跃会话行列能够同步更新，而不是只在启动前生效。
 6. 至少完成一次“CLI 已安装但当前 Extension Host PATH 不直达”的命令发现验证，确认宿主侧 resolver 能定位到目标 CLI。
+7. macOS / Linux 上至少完成一条自动化验证，证明 execution env 不再只依赖 Extension Host `process.env`，而是会把登录 shell 导出的受控 patch 同步到 `Agent` / `Terminal` 启动环境。
+8. 若 Windows 仍未具备等价环境继承能力，必须在设计文档与技术债中继续显式标注，不得把当前实现误写成全平台已对齐。
 
 ## 9. 当前验证状态
 
 - 已完成 `npm run typecheck` 与 `npm run build`。
 - 已完成 Linux 本地 `node-pty` TTY smoke test，确认子进程具备真实 PTY 语义。
 - 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` 主路径已补齐当前轮功能可用性验证。
+- 2026-05-07 已补 `node scripts/test-shell-environment-resolver.mjs`，覆盖 macOS / Linux shell env patch 的过滤规则、`PATH` 合并与 `VSCODE_CLI=1` 跳过逻辑；同日 `npm run typecheck` 与 `npm run build` 通过。
 - Windows 下使用 `Codex` 时，执行节点内历史当前仍有无法向上翻页的已知限制；文档状态继续保持为“验证中”，直到这条剩余差异与更深的远程场景验证也完成收口。
+- Windows 侧等价的 shell env 继承路线当前仍未实现，已继续登记到技术债，等待在真实 Windows 环境中完成后续实现与验证。
 - 截至 `2026-04-28`，`Remote SSH` 主路径已补齐当前轮功能可用性验证。
 - Codespaces 与其他更深远程场景的人工验证证据仍需继续补齐，因此这些场景保持为“验证中”。
