@@ -277,11 +277,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
     const confirmed = await vscode.window.showWarningMessage(
-      '重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
+      '清空画板会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
       { modal: true },
-      '继续重置'
+      '继续清空'
     );
-    if (confirmed !== '继续重置') {
+    if (confirmed !== '继续清空') {
       return;
     }
 

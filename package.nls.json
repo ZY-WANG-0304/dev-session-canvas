@@ -20,7 +20,7 @@
   "command.showNodeList.title": "Dev Session Canvas: 显示节点列表",
   "command.showSessionHistory.title": "Dev Session Canvas: 显示会话历史",
   "command.refreshSessionHistory.title": "Dev Session Canvas: 刷新会话历史",
-  "command.resetCanvasState.title": "Dev Session Canvas: 重置画布状态",
+  "command.resetCanvasState.title": "Dev Session Canvas: 清空画板",
   "command.dumpHostDiagnostics.title": "Dev Session Canvas: 落盘当前宿主诊断",
   "configuration.title": "Dev Session Canvas",
   "configuration.canvas.defaultSurface.description": "主画布默认出现的宿主承载面。默认值为 panel；该 view 的实际工作台位置由 VS Code 记住，用户可自行移动。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
