@@ -279,6 +279,27 @@ try {
   const roundTripText = encodeCanvasTemplateDocument(userTemplate);
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
 
+  const extensionSource = await readFile('src/extension.ts', 'utf8');
+  const exportCommandSource = sliceBetween(
+    extensionSource,
+    'async function exportCanvasTemplateFromCommand',
+    'async function deleteCanvasTemplateFromCommand'
+  );
+  assert.match(
+    exportCommandSource,
+    /exportCanvasTemplateById\(selectedTemplate\.template\.id, targetUri\)/u
+  );
+  assert.doesNotMatch(exportCommandSource, /targetUri\.fsPath/u);
+
+  const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+  const exportTemplateMethodSource = sliceBetween(
+    panelManagerSource,
+    'public async exportCanvasTemplateById',
+    'public async deleteCanvasTemplateById'
+  );
+  assert.match(exportTemplateMethodSource, /vscode\.workspace\.fs\.writeFile/u);
+  assert.match(exportTemplateMethodSource, /encodeCanvasTemplateDocument/u);
+
   const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
   const rowClickHandler = sliceBetween(
     sidebarTemplateViewSource,
