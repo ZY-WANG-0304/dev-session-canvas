@@ -113,7 +113,7 @@
 
 截至 `2026-05-07`，当前 `0.6.0` 发布准备分支已完成以下 repo-local 验证；这些结果用于证明发布准备分支的当前工作树可打包，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 复跑：
 
-- `npm install` 已刷新本地 workspace 依赖；安装后 `npm audit` 仍报告 `esbuild <=0.24.2` 与 `tmp <=0.2.3` 相关漏洞，其中可用自动修复分别涉及 breaking change 或超出当前依赖范围，当前准备分支未改依赖策略，需 release owner 在发布前确认是否作为 blocker
+- `npm install --lockfile-version=2` 已刷新本地 workspace 依赖；`npm audit` 通过（0 vulnerabilities）。本轮已将 `esbuild` 升级到安全的 `0.25` 系列，并让 `@vscode/vsce` 解析到 `tmp@0.2.5`
 - `npm run typecheck` 通过
 - `npm run test:note-markdown-links` 与 `npm run test:note-markdown-checklists` 通过
 - `npm run test:notifier-source` 与 `npm run test:notifier-smoke` 通过
