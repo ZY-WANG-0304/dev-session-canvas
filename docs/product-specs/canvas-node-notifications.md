@@ -85,6 +85,7 @@
   - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会额外播放一次系统 alert sound
 - 关闭后：
   - notifier 会尽量走静音路径，但不影响通知弹出、点击回跳和 `attentionPending` 状态机
+- 用户可从 `Dev Session Canvas Notifier` sidebar 的 `通知环境` 标题行尾部齿轮按钮打开 companion 配置；该入口只负责跳转设置，不改变通知投递或回跳语义
 
 ### 4.3 强提醒模式
 

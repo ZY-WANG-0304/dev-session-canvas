@@ -210,6 +210,7 @@ companion 当前放在 `extensions/vscode/dev-session-canvas-notifier/`，职责
 - 注册命令 `devSessionCanvasNotifier.postSystemNotification`
 - 注册人工验收辅助命令 `Dev Session Canvas Notifier: 发送测试桌面通知` 与 `Dev Session Canvas Notifier: 打开通知诊断输出`
 - 其中手动测试桌面通知的标题固定为 `DSCanvas · Notifier`，与执行 attention 通知的 `DSCanvas` 前缀保持一致
+- 在 notifier sidebar 的 `通知环境` view title 尾部暴露 `settings-gear` 快捷入口，执行 `devSessionCanvasNotifier.openSettings` 并跳转到 companion 自身配置
 - 校验共享协议请求
 - 为通知点击生成 callback URI
 - 在桌面平台上把请求投递给本地系统通知后端
