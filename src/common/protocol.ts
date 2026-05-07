@@ -429,6 +429,12 @@ export type WebviewDomAction =
       nodeId: string;
       filePath: string;
       delayMs?: number;
+    }
+  | {
+      kind: 'toggleNoteChecklistItem';
+      nodeId: string;
+      lineNumber: number;
+      delayMs?: number;
     };
 
 export type WebviewToHostMessage =
@@ -590,6 +596,13 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
         filePath: string;
+      };
+    }
+  | {
+      type: 'webview/openNoteLink';
+      payload: {
+        nodeId: string;
+        href: string;
       };
     }
   | {
@@ -1053,6 +1066,21 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/openNoteLink') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.href !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/openNoteLink',
+      payload: {
+        nodeId: payload.nodeId,
+        href: payload.href
+      }
+    };
+  }
+
   if (value.type === 'webview/runtimeDiagnostic') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
@@ -1324,6 +1352,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'clickFileEntry') {
     return typeof value.filePath === 'string';
+  }
+
+  if (value.kind === 'toggleNoteChecklistItem') {
+    return typeof value.lineNumber === 'number' && Number.isSafeInteger(value.lineNumber);
   }
 
   return false;

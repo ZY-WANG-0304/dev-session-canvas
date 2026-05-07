@@ -2,6 +2,10 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
+import hljs from 'highlight.js/lib/common';
+import katex from 'katex';
+import MarkdownIt from 'markdown-it';
+import markdownItTaskLists from 'markdown-it-task-lists';
 import { Terminal } from '@xterm/xterm';
 import ReactFlow, {
   applyNodeChanges,
@@ -27,8 +31,12 @@ import ReactFlow, {
   type NodeProps,
   type Viewport
 } from 'reactflow';
+import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
+import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
+import type Token from 'markdown-it/lib/token.mjs';
 
 import 'reactflow/dist/style.css';
+import 'katex/dist/katex.min.css';
 import '@xterm/xterm/css/xterm.css';
 import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
@@ -92,6 +100,7 @@ import {
   inferExecutionTerminalPathStyle,
   normalizeExecutionTerminalWordSeparators
 } from '../common/executionTerminalLinks';
+import { toggleNoteMarkdownChecklistAtLine } from '../common/noteMarkdownChecklist';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   estimatedCanvasNodeFootprint,
@@ -103,6 +112,7 @@ import {
   setupExecutionTerminalNativeInteractions,
   type ExecutionTerminalNativeInteractionsHandle
 } from './executionTerminalNativeInteractions';
+import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -142,6 +152,7 @@ interface CanvasNodeData {
   onSelectNode?: (nodeId: string) => void;
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
+  onOpenNoteLink?: (nodeId: string, href: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -182,6 +193,11 @@ type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
+const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
+const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
+const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
+const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
+const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
   arrowMode: CanvasEdgeArrowMode;
@@ -1310,6 +1326,14 @@ function App(): JSX.Element {
         payload: {
           nodeId,
           filePath
+        }
+      }),
+    onOpenNoteLink: (nodeId, href) =>
+      postMessage({
+        type: 'webview/openNoteLink',
+        payload: {
+          nodeId,
+          href
         }
       }),
     onSelectFileListEntry: selectFileListEntry,
@@ -3724,21 +3748,74 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const committedContentRef = useRef(noteMetadata.content);
+  const pendingContentRef = useRef<string | null>(null);
+  const lastPropContentRef = useRef(noteMetadata.content);
+  const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingBodyFocusRef = useRef(false);
+  const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
+  const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
+  const bodyLineNumbers = useMemo(
+    () => Array.from({ length: countTextLines(content) }, (_, index) => index + 1),
+    [content]
+  );
 
   useLayoutEffect(() => {
-    committedContentRef.current = noteMetadata.content;
+    const previousPropContent = lastPropContentRef.current;
+    lastPropContentRef.current = noteMetadata.content;
+
+    if (pendingContentRef.current === noteMetadata.content) {
+      pendingContentRef.current = null;
+    } else if (pendingContentRef.current && noteMetadata.content !== previousPropContent) {
+      pendingContentRef.current = null;
+    }
+
+    committedContentRef.current = pendingContentRef.current ?? noteMetadata.content;
     if (!isEditingBody && !isComposing) {
-      setContent(noteMetadata.content);
+      setContent(pendingContentRef.current ?? noteMetadata.content);
     }
   }, [id, isComposing, isEditingBody, noteMetadata.content]);
 
+  useLayoutEffect(() => {
+    if (!isEditingBody || !pendingBodyFocusRef.current) {
+      return;
+    }
+
+    pendingBodyFocusRef.current = false;
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.focus();
+    const selectionEnd = textarea.value.length;
+    textarea.setSelectionRange(selectionEnd, selectionEnd);
+  }, [isEditingBody]);
+
+  useLayoutEffect(() => {
+    if (!isEditingBody || !pendingBodySelectionRef.current) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const pendingSelection = pendingBodySelectionRef.current;
+    pendingBodySelectionRef.current = null;
+    textarea.setSelectionRange(pendingSelection.selectionStart, pendingSelection.selectionEnd);
+  }, [content, isEditingBody]);
+
   const submitNote = (nextContent: string): void => {
-    if (nextContent === committedContentRef.current) {
+    const baselineContent = committedContentRef.current;
+    if (nextContent === baselineContent) {
       return;
     }
 
     committedContentRef.current = nextContent;
+    pendingContentRef.current = nextContent;
     data.onUpdateNote?.({
       nodeId: id,
       content: nextContent
@@ -3748,6 +3825,98 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const deleteNote = (): void => {
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
+  };
+
+  const startEditingBody = (): void => {
+    pendingBodyFocusRef.current = true;
+    data.onSelectNode?.(id);
+    setBodyScrollTop(0);
+    setIsEditingBody(true);
+  };
+
+  const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (handleNoteBodyIndentKeyDown(event, setContent, pendingBodySelectionRef)) {
+      return;
+    }
+
+    handleEditableFieldKeyDown(event, () => submitNote(event.currentTarget.value), {
+      isComposing
+    });
+  };
+
+  const toggleChecklistFromPreview = (input: HTMLInputElement): void => {
+    const lineNumber = readNoteMarkdownChecklistLineNumber(input);
+    if (!lineNumber) {
+      return;
+    }
+
+    const nextContent = toggleNoteMarkdownChecklistAtLine(content, lineNumber);
+    if (!nextContent) {
+      return;
+    }
+
+    data.onSelectNode?.(id);
+    setContent(nextContent);
+    submitNote(nextContent);
+  };
+
+  const handlePreviewClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    const checkbox = findNoteMarkdownChecklistInputTarget(event.target);
+    if (checkbox) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      toggleChecklistFromPreview(checkbox);
+      return;
+    }
+
+    const link = findNoteMarkdownLinkTarget(event.target);
+    if (link) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      const href = link.getAttribute('href');
+      if (href) {
+        data.onSelectNode?.(id);
+        data.onOpenNoteLink?.(id, href);
+      }
+      return;
+    }
+  };
+
+  const handlePreviewDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    if (findNoteMarkdownChecklistInputTarget(event.target) || findNoteMarkdownLinkTarget(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    startEditingBody();
+  };
+
+  const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (shouldHandleReadonlySelectAllShortcut(event)) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      selectReadonlyTextContents(event.currentTarget);
+      return;
+    }
+
+    if (shouldAllowReadonlyTextShortcutToBubble(event)) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    if (findNoteMarkdownChecklistInputTarget(event.target)) {
+      return;
+    }
+
+    if (findNoteMarkdownLinkTarget(event.target)) {
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      startEditingBody();
+    }
   };
 
   return (
@@ -3781,39 +3950,75 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
       <div className="object-body object-surface note-surface">
         <div className="note-editor-surface">
-          <textarea
-            className="node-document-input note-document-input nowheel nodrag nopan"
-            data-node-interactive="true"
-            data-probe-field="body"
-            value={content}
-            onFocus={() => {
-              setIsEditingBody(true);
-              data.onSelectNode?.(id);
-            }}
-            onMouseDown={stopCanvasEvent}
-            onClick={stopCanvasEvent}
-            onWheel={stopCanvasEvent}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={(event) => {
-              setIsComposing(false);
-              setContent(event.currentTarget.value);
-            }}
-            onChange={(event) => setContent(event.target.value)}
-            onBlur={(event) => {
-              const nextContent = event.currentTarget.value;
-              setContent(nextContent);
-              setIsEditingBody(false);
-              submitNote(nextContent);
-            }}
-            onKeyDown={(event) =>
-              handleEditableFieldKeyDown(
-                event,
-                () => submitNote(event.currentTarget.value),
-                { isComposing }
-              )
-            }
-            placeholder="直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。"
-          />
+          {isEditingBody ? (
+            <div className="note-document-editor">
+              <div className="note-document-line-number-gutter" aria-hidden="true">
+                <div
+                  className="note-document-line-number-list"
+                  style={{ transform: `translateY(-${bodyScrollTop}px)` }}
+                >
+                  {bodyLineNumbers.map((lineNumber) => (
+                    <span className="note-document-line-number" key={lineNumber}>
+                      {lineNumber}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <textarea
+                ref={bodyInputRef}
+                className="node-document-input note-document-input nowheel nodrag nopan"
+                data-node-interactive="true"
+                data-probe-field="body"
+                value={content}
+                onFocus={() => {
+                  setIsEditingBody(true);
+                  data.onSelectNode?.(id);
+                }}
+                onMouseDown={stopCanvasEvent}
+                onClick={stopCanvasEvent}
+                onWheel={stopCanvasEvent}
+                onScroll={(event) => setBodyScrollTop(event.currentTarget.scrollTop)}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={(event) => {
+                  setIsComposing(false);
+                  setContent(event.currentTarget.value);
+                }}
+                onChange={(event) => setContent(event.target.value)}
+                onBlur={(event) => {
+                  const nextContent = event.currentTarget.value;
+                  setContent(nextContent);
+                  setIsEditingBody(false);
+                  submitNote(nextContent);
+                }}
+                onKeyDown={handleBodyKeyDown}
+                placeholder={NOTE_BODY_PLACEHOLDER}
+                spellCheck={false}
+              />
+            </div>
+          ) : (
+            <div
+              className={`note-markdown-preview nowheel nodrag nopan ${content.trim() ? '' : 'is-empty'}`.trim()}
+              data-node-interactive="true"
+              data-probe-field="body"
+              data-probe-value={content}
+              tabIndex={0}
+              aria-label="Note 正文预览，按 Enter 或双击开始编辑"
+              onFocus={() => data.onSelectNode?.(id)}
+              onMouseDown={stopCanvasEvent}
+              onClick={handlePreviewClick}
+              onDoubleClick={handlePreviewDoubleClick}
+              onKeyDown={handlePreviewKeyDown}
+            >
+              {previewHtml ? (
+                <div
+                  className="note-markdown-preview-copy"
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              ) : (
+                <p className="note-markdown-preview-placeholder">{NOTE_BODY_PLACEHOLDER}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -5560,6 +5765,7 @@ function toFlowNodes(params: {
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
+  onOpenNoteLink: (nodeId: string, href: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -5636,6 +5842,7 @@ function toFlowNodes(params: {
         onSelectNode: params.onSelectNode,
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
+        onOpenNoteLink: params.onOpenNoteLink,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
@@ -6312,6 +6519,59 @@ function normalizeCanvasNodeFootprintForDisplayStyle(
   return normalizeCanvasNodeFootprint(kind, size);
 }
 
+function countTextLines(value: string): number {
+  return value.split('\n').length;
+}
+
+function handleNoteBodyIndentKeyDown(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+  setContent: React.Dispatch<React.SetStateAction<string>>,
+  pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>
+): boolean {
+  if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
+    return false;
+  }
+
+  event.preventDefault();
+  stopCanvasEvent(event);
+  applyNoteBodyIndentChange(
+    event.currentTarget,
+    setContent,
+    pendingSelectionRef,
+    event.shiftKey ? 'outdent' : 'indent'
+  );
+  return true;
+}
+
+function applyNoteBodyIndentChange(
+  textarea: HTMLTextAreaElement,
+  setContent: React.Dispatch<React.SetStateAction<string>>,
+  pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>,
+  direction: 'indent' | 'outdent'
+): void {
+  const edit =
+    direction === 'indent'
+      ? createNoteBodyIndentEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd)
+      : createNoteBodyOutdentEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd);
+
+  if (!edit) {
+    return;
+  }
+
+  pendingSelectionRef.current = {
+    selectionStart: edit.selectionStart,
+    selectionEnd: edit.selectionEnd
+  };
+  setContent(edit.value);
+  window.requestAnimationFrame(() => {
+    if (document.activeElement !== textarea) {
+      return;
+    }
+
+    textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+  });
+}
+
 function handleEditableFieldKeyDown(
   event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   submit: () => void,
@@ -6319,6 +6579,17 @@ function handleEditableFieldKeyDown(
     isComposing?: boolean;
   }
 ): void {
+  if (shouldHandleEditableSelectAllShortcut(event)) {
+    event.preventDefault();
+    stopCanvasEvent(event);
+    event.currentTarget.select();
+    return;
+  }
+
+  if (shouldAllowTextEditingShortcutToBubble(event)) {
+    return;
+  }
+
   stopCanvasEvent(event);
 
   if (options?.isComposing || isImeComposingKeyboardEvent(event)) {
@@ -6363,6 +6634,71 @@ function handleEditableSelectKeyDown(event: React.KeyboardEvent<HTMLSelectElemen
     event.preventDefault();
     event.currentTarget.blur();
   }
+}
+
+function shouldAllowTextEditingShortcutToBubble(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  const normalizedKey = event.key.toLowerCase();
+  if (normalizedKey === 'c' || normalizedKey === 'x' || normalizedKey === 'v') {
+    return true;
+  }
+
+  if (normalizedKey === 'z') {
+    return true;
+  }
+
+  return normalizedKey === 'y' && !event.shiftKey;
+}
+
+function shouldAllowReadonlyTextShortcutToBubble(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  const normalizedKey = event.key.toLowerCase();
+  return normalizedKey === 'c';
+}
+
+function shouldHandleEditableSelectAllShortcut(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === 'a';
+}
+
+function shouldHandleReadonlySelectAllShortcut(
+  event: Pick<React.KeyboardEvent<HTMLElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'key'>
+): boolean {
+  if (event.altKey || (!event.metaKey && !event.ctrlKey)) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === 'a';
+}
+
+function selectReadonlyTextContents(container: HTMLElement): void {
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
+  const selectionTarget =
+    container.querySelector<HTMLElement>('.note-markdown-preview-copy, .note-markdown-preview-placeholder') ??
+    container;
+  const range = document.createRange();
+  range.selectNodeContents(selectionTarget);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -6847,11 +7183,17 @@ function readProbeNodeFootprint(element: HTMLElement): CanvasNodeFootprint {
 }
 
 function readProbeFieldValue(element: HTMLElement, fieldName: string): string | undefined {
-  const field = element.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    `[data-probe-field="${fieldName}"]`
-  );
+  const field = element.querySelector<HTMLElement>(`[data-probe-field="${fieldName}"]`);
+  if (!field) {
+    return undefined;
+  }
 
-  return field?.value;
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    return field.value;
+  }
+
+  const probeValue = field.dataset.probeValue;
+  return typeof probeValue === 'string' ? probeValue : undefined;
 }
 
 function readProbeText(element: Element | null): string | null {
@@ -6947,7 +7289,7 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         break;
       }
       case 'setNodeTextField': {
-        const field = queryNodeTextField(action.nodeId, action.field);
+        const field = await queryNodeTextField(action.nodeId, action.field);
         field.focus();
         field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
         setControlledFieldValue(field, action.value);
@@ -7077,6 +7419,16 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'toggleNoteChecklistItem': {
+        const checkbox = queryNoteChecklistInput(action.nodeId, action.lineNumber);
+        checkbox.focus();
+        checkbox.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        dispatchSyntheticMouseClick(checkbox);
+        await waitForDomActionFlush();
+        checkbox.blur();
+        checkbox.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        break;
+      }
     }
 
     await waitForDomActionFlush();
@@ -7110,13 +7462,22 @@ async function respondWithWebviewProbeSnapshot(requestId: string, delayMs?: numb
   });
 }
 
-function queryNodeTextField(
+async function queryNodeTextField(
   nodeId: string,
   fieldName: 'title' | 'body'
-): HTMLInputElement | HTMLTextAreaElement {
-  const field = queryNodeField(nodeId, fieldName);
+): Promise<HTMLInputElement | HTMLTextAreaElement> {
+  let field = queryNodeField(nodeId, fieldName);
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     return field;
+  }
+
+  if (fieldName === 'body' && field instanceof HTMLElement) {
+    dispatchSyntheticMouseDoubleClick(field);
+    await waitForDomActionFlush();
+    field = queryNodeField(nodeId, fieldName);
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      return field;
+    }
   }
 
   throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
@@ -7175,6 +7536,18 @@ function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
   return target;
 }
 
+function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputElement {
+  const nodeRoot = queryNodeRoot(nodeId);
+  const target = nodeRoot.querySelector<HTMLInputElement>(
+    `${NOTE_MARKDOWN_CHECKLIST_SELECTOR}[data-note-markdown-task-line="${lineNumber}"]`
+  );
+  if (!(target instanceof HTMLInputElement)) {
+    throw new Error(`未找到节点 ${nodeId} 上第 ${lineNumber} 行的 Note checklist。`);
+  }
+
+  return target;
+}
+
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
@@ -7220,6 +7593,19 @@ function dispatchSyntheticMouseClick(target: Element): void {
   target.dispatchEvent(new MouseEvent('click', eventInit));
 }
 
+function dispatchSyntheticMouseDoubleClick(target: Element): void {
+  dispatchSyntheticMouseClick(target);
+  dispatchSyntheticMouseClick(target);
+  target.dispatchEvent(
+    new MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      button: 0
+    })
+  );
+}
+
 function waitForDomActionFlush(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => {
@@ -7236,6 +7622,332 @@ function delayTestAction(delayMs?: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+}
+
+function createNoteMarkdownRenderer(): MarkdownIt {
+  const renderer = new MarkdownIt({
+    html: false,
+    breaks: true,
+    linkify: true,
+    highlight(code, info) {
+      const language = info.trim().split(/\s+/, 1)[0];
+      if (language && hljs.getLanguage(language)) {
+        return renderHighlightedNoteCodeBlock(
+          hljs.highlight(code, {
+            language,
+            ignoreIllegals: true
+          }).value,
+          language
+        );
+      }
+
+      if (!language) {
+        const autoDetected = hljs.highlightAuto(code);
+        if (autoDetected.value) {
+          return renderHighlightedNoteCodeBlock(autoDetected.value, autoDetected.language);
+        }
+      }
+
+      return renderHighlightedNoteCodeBlock(escapeHtml(code), language || undefined);
+    }
+  });
+
+  renderer.use(markdownItTaskLists, {
+    enabled: true
+  });
+  registerSafeNoteMathRenderer(renderer);
+  renderer.core.ruler.after('github-task-lists', 'note-task-list-metadata', (state) => {
+    for (const token of state.tokens) {
+      if (token.type !== 'inline' || !token.map || !Array.isArray(token.children)) {
+        continue;
+      }
+
+      const checkboxChild = token.children.find(
+        (child) =>
+          child.type === 'html_inline' &&
+          child.content.startsWith('<input') &&
+          child.content.includes('task-list-item-checkbox')
+      );
+      if (!checkboxChild) {
+        continue;
+      }
+
+      const lineNumber = token.map[0] + 1;
+      checkboxChild.content = injectNoteMarkdownCheckboxAttributes(checkboxChild.content, {
+        'data-note-markdown-task-line': String(lineNumber),
+        'aria-label': checkboxChild.content.includes('checked=""') ? '取消待办完成状态' : '标记待办为已完成'
+      });
+    }
+  });
+
+  const defaultLinkOpenRenderer =
+    renderer.renderer.rules.link_open ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  const defaultValidateLink = renderer.validateLink.bind(renderer);
+  renderer.validateLink = (href) =>
+    defaultValidateLink(href) && isRenderableNoteMarkdownHref(href);
+  renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const href = token.attrGet('href');
+    if (!href || !isRenderableNoteMarkdownHref(href)) {
+      removeMarkdownTokenAttribute(token, 'href');
+      token.attrSet('aria-disabled', 'true');
+      token.attrJoin('class', 'is-disabled');
+      return defaultLinkOpenRenderer(tokens, idx, options, env, self);
+    }
+
+    token.attrSet('data-note-markdown-link', 'true');
+    token.attrJoin('class', 'note-markdown-link');
+    token.attrSet('rel', 'noopener noreferrer');
+    return defaultLinkOpenRenderer(tokens, idx, options, env, self);
+  };
+
+  return renderer;
+}
+
+function registerSafeNoteMathRenderer(renderer: MarkdownIt): void {
+  renderer.inline.ruler.before('escape', 'note_math_inline', parseNoteInlineMath);
+  renderer.block.ruler.before('fence', 'note_math_block', parseNoteBlockMath, {
+    alt: ['paragraph', 'reference', 'blockquote', 'list']
+  });
+  renderer.renderer.rules.note_math_inline = (tokens, idx) => renderSafeNoteMath(tokens[idx].content, false);
+  renderer.renderer.rules.note_math_block = (tokens, idx) => `${renderSafeNoteMath(tokens[idx].content, true)}\n`;
+}
+
+function isRenderableNoteMarkdownHref(href: string): boolean {
+  const trimmedHref = href.trim();
+  if (!trimmedHref || trimmedHref.startsWith('#')) {
+    return false;
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(trimmedHref);
+  if (schemeMatch) {
+    return NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES.has(schemeMatch[1].toLowerCase());
+  }
+
+  return isRenderableNoteMarkdownWorkspaceHref(trimmedHref);
+}
+
+function isRenderableNoteMarkdownWorkspaceHref(href: string): boolean {
+  const hashIndex = href.indexOf('#');
+  const rawPathPart = hashIndex === -1 ? href : href.slice(0, hashIndex);
+  if (!rawPathPart || rawPathPart.includes('?')) {
+    return false;
+  }
+
+  let decodedPathPart: string;
+  try {
+    decodedPathPart = decodeURIComponent(rawPathPart);
+  } catch {
+    return false;
+  }
+
+  const normalizedPath = decodedPathPart.replace(/\\/g, '/');
+  if (
+    !normalizedPath ||
+    normalizedPath.startsWith('/') ||
+    normalizedPath.startsWith('//') ||
+    /^[A-Za-z]:[\\/]/u.test(decodedPathPart)
+  ) {
+    return false;
+  }
+
+  const pathSegments = normalizedPath.split('/').filter((segment) => segment.length > 0);
+  return pathSegments.length > 0 && pathSegments.every((segment) => segment !== '..');
+}
+
+function removeMarkdownTokenAttribute(token: Token, attributeName: string): void {
+  const attributeIndex = token.attrIndex(attributeName);
+  if (attributeIndex < 0 || !token.attrs) {
+    return;
+  }
+
+  token.attrs.splice(attributeIndex, 1);
+}
+
+function parseNoteInlineMath(state: StateInline, silent: boolean): boolean {
+  if (state.src.charAt(state.pos) !== '$' || state.src.charAt(state.pos + 1) === '$') {
+    return false;
+  }
+
+  const markerEnd = findUnescapedNoteMathDelimiter(state.src, '$', state.pos + 1, state.posMax);
+  if (markerEnd === -1) {
+    return false;
+  }
+
+  const content = state.src.slice(state.pos + 1, markerEnd);
+  if (!content.trim()) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push('note_math_inline', 'math', 0);
+    token.content = content;
+    token.markup = '$';
+  }
+
+  state.pos = markerEnd + 1;
+  return true;
+}
+
+function parseNoteBlockMath(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
+  if (state.sCount[startLine] - state.blkIndent >= 4) {
+    return false;
+  }
+
+  const lineStart = state.bMarks[startLine] + state.tShift[startLine];
+  const lineEnd = state.eMarks[startLine];
+  const lineText = state.src.slice(lineStart, lineEnd);
+  const openingMarkerOffset = lineText.indexOf('$$');
+  if (openingMarkerOffset === -1 || lineText.slice(0, openingMarkerOffset).trim().length > 0) {
+    return false;
+  }
+
+  const openingMarkerEnd = lineStart + openingMarkerOffset + 2;
+  const openingLineRest = state.src.slice(openingMarkerEnd, lineEnd);
+  const sameLineClosingOffset = findUnescapedNoteMathDelimiter(openingLineRest, '$$', 0, openingLineRest.length);
+  if (sameLineClosingOffset !== -1 && openingLineRest.slice(sameLineClosingOffset + 2).trim().length === 0) {
+    if (!silent) {
+      pushNoteBlockMathToken(state, startLine, startLine + 1, openingLineRest.slice(0, sameLineClosingOffset));
+    }
+    state.line = startLine + 1;
+    return true;
+  }
+
+  if (openingLineRest.trim().length > 0) {
+    return false;
+  }
+
+  for (let nextLine = startLine + 1; nextLine < endLine; nextLine += 1) {
+    const nextLineStart = state.bMarks[nextLine] + state.tShift[nextLine];
+    const nextLineEnd = state.eMarks[nextLine];
+    const nextLineText = state.src.slice(nextLineStart, nextLineEnd);
+    if (nextLineText.trim() !== '$$') {
+      continue;
+    }
+
+    if (!silent) {
+      pushNoteBlockMathToken(state, startLine, nextLine + 1, state.getLines(startLine + 1, nextLine, 0, true));
+    }
+    state.line = nextLine + 1;
+    return true;
+  }
+
+  return false;
+}
+
+function pushNoteBlockMathToken(
+  state: StateBlock,
+  startLine: number,
+  endLine: number,
+  content: string
+): void {
+  const token = state.push('note_math_block', 'math', 0);
+  token.block = true;
+  token.content = content.trim();
+  token.map = [startLine, endLine];
+  token.markup = '$$';
+}
+
+function findUnescapedNoteMathDelimiter(source: string, delimiter: '$' | '$$', start: number, end: number): number {
+  for (let offset = start; offset < end; offset += 1) {
+    if (!source.startsWith(delimiter, offset) || isEscapedNoteMathDelimiter(source, offset)) {
+      continue;
+    }
+
+    return offset;
+  }
+
+  return -1;
+}
+
+function isEscapedNoteMathDelimiter(source: string, delimiterOffset: number): boolean {
+  let backslashCount = 0;
+  for (let offset = delimiterOffset - 1; offset >= 0 && source.charAt(offset) === '\\'; offset -= 1) {
+    backslashCount += 1;
+  }
+
+  return backslashCount % 2 === 1;
+}
+
+function renderSafeNoteMath(content: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(content, {
+      displayMode,
+      strict: 'ignore',
+      throwOnError: false,
+      trust: false
+    });
+  } catch {
+    return `<code class="note-markdown-math-fallback">${escapeHtml(content)}</code>`;
+  }
+}
+
+function renderHighlightedNoteCodeBlock(highlightedHtml: string, language: string | undefined): string {
+  const languageClass = normalizeHighlightedNoteCodeLanguageClass(language);
+  return `<pre><code class="hljs${languageClass ? ` ${languageClass}` : ''}">${highlightedHtml}</code></pre>`;
+}
+
+function normalizeHighlightedNoteCodeLanguageClass(language: string | undefined): string | null {
+  if (!language) {
+    return null;
+  }
+
+  return /^[A-Za-z0-9_+-]+$/u.test(language) ? `language-${language}` : null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function findNoteMarkdownLinkTarget(target: EventTarget | null): HTMLAnchorElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLAnchorElement>(NOTE_MARKDOWN_LINK_SELECTOR);
+}
+
+function findNoteMarkdownChecklistInputTarget(target: EventTarget | null): HTMLInputElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  const checkbox = target.closest<HTMLInputElement>(NOTE_MARKDOWN_CHECKLIST_SELECTOR);
+  return checkbox instanceof HTMLInputElement ? checkbox : null;
+}
+
+function readNoteMarkdownChecklistLineNumber(input: HTMLInputElement): number | null {
+  const rawLineNumber = input.dataset.noteMarkdownTaskLine;
+  if (!rawLineNumber) {
+    return null;
+  }
+
+  const parsedLineNumber = Number.parseInt(rawLineNumber, 10);
+  return Number.isSafeInteger(parsedLineNumber) && parsedLineNumber > 0 ? parsedLineNumber : null;
+}
+
+function renderNoteMarkdownPreview(content: string): string {
+  return content.trim() ? noteMarkdownRenderer.render(content) : '';
+}
+
+function injectNoteMarkdownCheckboxAttributes(
+  html: string,
+  attributes: Record<string, string>
+): string {
+  if (!html.startsWith('<input')) {
+    return html;
+  }
+
+  const serializedAttributes = Object.entries(attributes)
+    .map(([key, value]) => ` ${key}="${escapeHtml(value)}"`)
+    .join('');
+  return html.replace(/^<input\b/u, `<input${serializedAttributes}`);
 }
 
 function formatTestDomActionError(error: unknown): string {

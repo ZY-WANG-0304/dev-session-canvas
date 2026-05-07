@@ -1681,16 +1681,19 @@ body {
   overflow: hidden;
 }
 
+.note-surface {
+  gap: 0;
+  padding: 0;
+}
+
 .note-editor-surface {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 10px 12px 12px;
-  border-radius: var(--canvas-node-radius-inner);
-  border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-panel-border) 76%);
-  border-style: solid;
-  border-width: 1px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 97%, var(--vscode-sideBar-background) 3%);
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 calc(var(--canvas-node-radius) - 1px) calc(var(--canvas-node-radius) - 1px);
+  background: transparent;
 }
 
 .node-document-input {
@@ -1705,8 +1708,263 @@ body {
   line-height: 1.6;
 }
 
+.note-document-editor {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.note-document-line-number-gutter {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 46px;
+  box-sizing: border-box;
+  padding: 16px 8px 16px 6px;
+  overflow: hidden;
+  border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
+  background: color-mix(in srgb, var(--vscode-editor-background) 86%, var(--vscode-sideBar-background) 14%);
+  color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground));
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  pointer-events: none;
+  user-select: none;
+}
+
+.note-document-line-number-list {
+  will-change: transform;
+}
+
+.note-document-line-number {
+  display: block;
+  height: 1.6em;
+  text-align: right;
+}
+
 .note-document-input {
   min-height: 100%;
+  height: 100%;
+  padding: 16px 18px 16px 62px;
+  resize: none;
+  tab-size: 2;
+}
+
+.note-markdown-preview {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  overflow: auto;
+  color: var(--vscode-editor-foreground);
+  cursor: text;
+  line-height: 1.6;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note-markdown-preview-copy,
+.note-markdown-preview-placeholder {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note-markdown-preview.is-empty {
+  color: var(--vscode-descriptionForeground);
+}
+
+.note-markdown-preview-copy > :first-child,
+.note-markdown-preview-placeholder {
+  margin-top: 0;
+}
+
+.note-markdown-preview-copy > :last-child,
+.note-markdown-preview-placeholder {
+  margin-bottom: 0;
+}
+
+.note-markdown-preview-copy h1,
+.note-markdown-preview-copy h2,
+.note-markdown-preview-copy h3,
+.note-markdown-preview-copy h4,
+.note-markdown-preview-copy h5,
+.note-markdown-preview-copy h6 {
+  margin: 0 0 10px;
+  line-height: 1.35;
+}
+
+.note-markdown-preview-copy p,
+.note-markdown-preview-copy ul,
+.note-markdown-preview-copy ol,
+.note-markdown-preview-copy pre,
+.note-markdown-preview-copy blockquote,
+.note-markdown-preview-copy hr {
+  margin: 0 0 10px;
+}
+
+.note-markdown-preview-copy ul,
+.note-markdown-preview-copy ol {
+  padding-left: 22px;
+}
+
+.note-markdown-preview-copy ul.contains-task-list,
+.note-markdown-preview-copy ol.contains-task-list {
+  padding-left: 0;
+}
+
+.note-markdown-preview-copy .task-list-item .contains-task-list {
+  margin-top: 6px;
+  padding-left: 22px;
+}
+
+.note-markdown-preview-copy li + li {
+  margin-top: 4px;
+}
+
+.note-markdown-preview-copy .task-list-item {
+  list-style: none;
+}
+
+.note-markdown-preview-copy .task-list-item-checkbox {
+  margin: 0 8px 0 0;
+  accent-color: var(--vscode-checkbox-selectBackground, var(--vscode-focusBorder));
+  opacity: 1;
+  transform: translateY(1px);
+}
+
+.note-markdown-preview-copy .task-list-item.enabled .task-list-item-checkbox {
+  cursor: pointer;
+}
+
+.note-markdown-preview-copy code {
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  background: var(
+    --vscode-textCodeBlock-background,
+    color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-panel-border) 12%)
+  );
+  font-family: var(--vscode-editor-font-family, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
+  font-size: 0.94em;
+}
+
+.note-markdown-preview-copy pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(
+    --vscode-textCodeBlock-background,
+    color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-panel-border) 12%)
+  );
+}
+
+.note-markdown-preview-copy pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.note-markdown-preview-copy .hljs {
+  display: block;
+  color: var(--vscode-editor-foreground);
+}
+
+.note-markdown-preview-copy .hljs-comment,
+.note-markdown-preview-copy .hljs-quote {
+  color: var(--vscode-descriptionForeground);
+}
+
+.note-markdown-preview-copy .hljs-keyword,
+.note-markdown-preview-copy .hljs-selector-tag,
+.note-markdown-preview-copy .hljs-meta,
+.note-markdown-preview-copy .hljs-built_in {
+  color: var(--vscode-terminal-ansiMagenta, var(--vscode-editorInfo-foreground));
+}
+
+.note-markdown-preview-copy .hljs-string,
+.note-markdown-preview-copy .hljs-regexp,
+.note-markdown-preview-copy .hljs-addition {
+  color: var(--vscode-terminal-ansiGreen, var(--vscode-editorInfo-foreground));
+}
+
+.note-markdown-preview-copy .hljs-number,
+.note-markdown-preview-copy .hljs-literal,
+.note-markdown-preview-copy .hljs-symbol,
+.note-markdown-preview-copy .hljs-bullet {
+  color: var(--vscode-terminal-ansiCyan, var(--vscode-editorInfo-foreground));
+}
+
+.note-markdown-preview-copy .hljs-title,
+.note-markdown-preview-copy .hljs-section,
+.note-markdown-preview-copy .hljs-type,
+.note-markdown-preview-copy .hljs-attr,
+.note-markdown-preview-copy .hljs-attribute {
+  color: var(--vscode-terminal-ansiBlue, var(--vscode-textLink-foreground));
+}
+
+.note-markdown-preview-copy .hljs-variable,
+.note-markdown-preview-copy .hljs-template-variable,
+.note-markdown-preview-copy .hljs-property,
+.note-markdown-preview-copy .hljs-link {
+  color: var(--vscode-terminal-ansiYellow, var(--vscode-editorWarning-foreground));
+}
+
+.note-markdown-preview-copy .hljs-subst {
+  color: inherit;
+}
+
+.note-markdown-preview-copy blockquote {
+  padding-left: 12px;
+  border-left: 3px solid color-mix(in srgb, var(--vscode-focusBorder) 58%, transparent);
+  color: var(--vscode-descriptionForeground);
+}
+
+.note-markdown-preview-copy a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.note-markdown-preview-copy a:hover {
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+.note-markdown-preview-copy table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.note-markdown-preview-copy th,
+.note-markdown-preview-copy td {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 84%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+
+.note-markdown-preview-copy th {
+  color: var(--vscode-editor-foreground);
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
+}
+
+.note-markdown-preview-placeholder {
+  color: inherit;
+}
+
+.note-markdown-preview-copy .katex {
+  color: inherit;
+}
+
+.note-markdown-preview-copy .katex-display {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
 
 .canvas-node-resize-handle {
@@ -1727,9 +1985,19 @@ body {
 .node-select:focus,
 .agent-prompt-input:focus,
 .window-title-input:focus,
-.node-document-input:focus {
+.node-document-input:focus,
+.note-markdown-preview:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
+}
+
+.canvas-node.kind-note:focus-within {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 10px 22px rgba(0, 0, 0, 0.14);
+}
+
+.canvas-node.kind-note .node-document-input:focus,
+.canvas-node.kind-note .note-markdown-preview:focus {
+  outline: none;
 }
 
 .node-topline {

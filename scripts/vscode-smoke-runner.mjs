@@ -81,6 +81,8 @@ export async function prepareRuntime(options) {
   const homeDir = path.join(debugRoot, 'home');
   const configDir = path.join(debugRoot, 'config');
   const cacheDir = path.join(debugRoot, 'cache');
+  const appDataDir = path.join(debugRoot, 'appdata');
+  const localAppDataDir = path.join(debugRoot, 'local-appdata');
   const runtimeDir = path.join(os.tmpdir(), options.runtimeDirName ?? 'dsc-vscode-smoke-runtime');
   const stateDir = path.join(runtimeDir, 'state');
   const tmpDir = path.join(debugRoot, 'tmp');
@@ -93,6 +95,8 @@ export async function prepareRuntime(options) {
   await fs.mkdir(homeDir, { recursive: true });
   await fs.mkdir(configDir, { recursive: true });
   await fs.mkdir(cacheDir, { recursive: true });
+  await fs.mkdir(appDataDir, { recursive: true });
+  await fs.mkdir(localAppDataDir, { recursive: true });
   await fs.mkdir(path.join(cacheDir, 'mesa'), { recursive: true });
   await fs.rm(runtimeDir, { recursive: true, force: true });
   await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
@@ -116,11 +120,16 @@ export async function prepareRuntime(options) {
     artifactsDir,
     environment: {
       HOME: homeDir,
+      USERPROFILE: homeDir,
+      APPDATA: appDataDir,
+      LOCALAPPDATA: localAppDataDir,
       XDG_CONFIG_HOME: configDir,
       XDG_CACHE_HOME: cacheDir,
       XDG_STATE_HOME: stateDir,
       XDG_RUNTIME_DIR: runtimeDir,
       TMPDIR: tmpDir,
+      TMP: tmpDir,
+      TEMP: tmpDir,
       MESA_SHADER_CACHE_DIR: path.join(cacheDir, 'mesa'),
       DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR: artifactsDir,
       ...(options.extensionTestsEnv ?? {})
@@ -213,6 +222,11 @@ export async function snapshotVSCodeLogs(userDataDir, artifactsDir) {
 }
 
 export async function ensureVSCodeExecutable(projectRoot) {
+  const preferredInstalledPath = findPreferredInstalledVSCodeExecutablePath();
+  if (preferredInstalledPath) {
+    return preferredInstalledPath;
+  }
+
   const existingPath = await findExistingVSCodeExecutablePath(projectRoot);
   if (existingPath) {
     return existingPath;
@@ -326,12 +340,40 @@ function normalizeVSCodeExecutablePath(downloadResult) {
   return resolveVSCodeExecutablePath(downloadResult);
 }
 
+function findPreferredInstalledVSCodeExecutablePath() {
+  if (process.env.DEV_SESSION_CANVAS_VSCODE_USE_TEST_DOWNLOAD === '1') {
+    return undefined;
+  }
+
+  const candidates = [
+    process.env.DEV_SESSION_CANVAS_VSCODE_EXECUTABLE?.trim(),
+    process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Microsoft VS Code', 'Code.exe')
+      : undefined,
+    process.env['ProgramFiles']
+      ? path.join(process.env['ProgramFiles'], 'Microsoft VS Code', 'Code.exe')
+      : undefined,
+    process.env['ProgramFiles(x86)']
+      ? path.join(process.env['ProgramFiles(x86)'], 'Microsoft VS Code', 'Code.exe')
+      : undefined
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
 async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
   const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
   const shell = process.platform === 'win32';
+  const launchPath = resolveVSCodeTestLaunchPath(executablePath);
 
   await new Promise((resolve, reject) => {
-    const child = spawn(shell ? `"${executablePath}"` : executablePath, args, {
+    const child = spawn(shell ? `"${launchPath}"` : launchPath, args, {
       env: fullEnv,
       shell
     });
@@ -430,6 +472,13 @@ export function buildVSCodeChildEnv(overrides = {}) {
 }
 
 function resolveVSCodeCliPath(vscodeExecutablePath) {
+  const normalizedExecutablePath = vscodeExecutablePath.toLowerCase();
+  if (
+    normalizedExecutablePath.endsWith(`${path.sep}bin${path.sep}code.cmd`) ||
+    normalizedExecutablePath.endsWith('/bin/code.cmd')
+  ) {
+    return vscodeExecutablePath;
+  }
   if (process.platform === 'win32') {
     return path.join(path.dirname(vscodeExecutablePath), 'bin', 'code.cmd');
   }
@@ -445,4 +494,13 @@ function resolveVSCodeCliPath(vscodeExecutablePath) {
   }
 
   return path.join(path.dirname(vscodeExecutablePath), 'bin', 'code');
+}
+
+function resolveVSCodeTestLaunchPath(vscodeExecutablePath) {
+  if (process.platform !== 'win32') {
+    return vscodeExecutablePath;
+  }
+
+  const cliPath = resolveVSCodeCliPath(vscodeExecutablePath);
+  return existsSync(cliPath) ? cliPath : vscodeExecutablePath;
 }

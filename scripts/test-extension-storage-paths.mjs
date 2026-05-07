@@ -8,6 +8,7 @@ import path from 'node:path';
 import esbuild from 'esbuild';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-extension-storage-paths-'));
+const storagePath = path.posix;
 
 try {
   const outfile = path.join(tempDir, 'extensionStoragePaths.cjs');
@@ -50,13 +51,30 @@ try {
   assert.equal(unchangedResult.recoveryReason, undefined);
   assert.equal(unchangedResult.selectionBasis, 'current-slot');
 
+  const windowsStablePath = path.win32.join(
+    'C:\\Users\\example',
+    'AppData',
+    'Roaming',
+    'Code',
+    'User',
+    'workspaceStorage',
+    '33709ceba1e836bc24c67b57ee72421c',
+    'devsessioncanvas.dev-session-canvas'
+  );
+  const unchangedWindowsResult = selectPreferredExtensionStorageRecoverySource(windowsStablePath, {
+    pathExists: () => false
+  });
+  assert.equal(unchangedWindowsResult.currentPath, windowsStablePath);
+  assert.equal(unchangedWindowsResult.writePath, windowsStablePath);
+  assert.equal(unchangedWindowsResult.sourcePath, windowsStablePath);
+
   const fresherSiblingSnapshots = buildSnapshotFixture([
-    [path.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
+    [storagePath.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
       title: 'CURRENT-OLD',
       writtenAt: '2026-04-15T09:00:00.000Z',
       updatedAt: '2026-04-15T08:59:00.000Z'
     })],
-    [path.join(stablePath, 'canvas-state.json'), createSnapshotText({
+    [storagePath.join(stablePath, 'canvas-state.json'), createSnapshotText({
       title: 'SIBLING-NEW',
       writtenAt: '2026-04-16T09:00:00.000Z',
       updatedAt: '2026-04-16T08:59:00.000Z'
@@ -80,12 +98,12 @@ try {
   );
 
   const preferCurrentWhenNewestSnapshots = buildSnapshotFixture([
-    [path.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
+    [storagePath.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
       title: 'CURRENT-NEW',
       writtenAt: '2026-04-16T10:00:00.000Z',
       updatedAt: '2026-04-16T09:59:00.000Z'
     })],
-    [path.join(stablePath, 'canvas-state.json'), createSnapshotText({
+    [storagePath.join(stablePath, 'canvas-state.json'), createSnapshotText({
       title: 'SIBLING-OLD',
       writtenAt: '2026-04-16T09:00:00.000Z',
       updatedAt: '2026-04-16T08:59:00.000Z'
@@ -101,7 +119,7 @@ try {
 
   const missingCurrentSnapshotResult = selectPreferredExtensionStorageRecoverySource(indexedPathTwo, {
     ...buildSnapshotFixture([
-      [path.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
+      [storagePath.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
         title: 'INDEXED-SIBLING',
         writtenAt: '2026-04-16T10:00:00.000Z',
         updatedAt: '2026-04-16T09:59:00.000Z'
@@ -114,12 +132,12 @@ try {
 
   const invalidSiblingTimestampResult = selectPreferredExtensionStorageRecoverySource(indexedPathOne, {
     ...buildSnapshotFixture([
-      [path.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
+      [storagePath.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
         title: 'CURRENT-VALID',
         writtenAt: '2026-04-16T10:00:00.000Z',
         updatedAt: '2026-04-16T09:59:00.000Z'
       })],
-      [path.join(stablePath, 'canvas-state.json'), createSnapshotText({
+      [storagePath.join(stablePath, 'canvas-state.json'), createSnapshotText({
         title: 'SIBLING-INVALID',
         writtenAt: 'not-a-timestamp',
         updatedAt: 'still-not-a-timestamp'
@@ -132,8 +150,8 @@ try {
 
   const fallbackToNearestRecoverableStateResult = selectPreferredExtensionStorageRecoverySource(indexedPathTwo, {
     pathExists: (candidatePath) =>
-      candidatePath === path.join(stablePath, 'runtime-supervisor', 'registry.json') ||
-      candidatePath === path.join(indexedPathOne, 'agent-runtime'),
+      candidatePath === storagePath.join(stablePath, 'runtime-supervisor', 'registry.json') ||
+      candidatePath === storagePath.join(indexedPathOne, 'agent-runtime'),
     listDirectoryEntries: () => workspaceStorageEntries,
     readTextFile: () => {
       throw new Error('Should not attempt to read snapshot text in pure recoverable fallback case.');
@@ -163,7 +181,7 @@ function buildSnapshotFixture(entries) {
       }
 
       for (const existingPath of textFiles.keys()) {
-        if (existingPath.startsWith(`${candidatePath}${path.sep}`)) {
+        if (existingPath.startsWith(`${candidatePath}${storagePath.sep}`)) {
           return true;
         }
       }

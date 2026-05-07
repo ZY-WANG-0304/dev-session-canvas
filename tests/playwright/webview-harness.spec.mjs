@@ -6,6 +6,7 @@ import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
+const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const harnessUrl = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
@@ -1078,6 +1079,7 @@ test('minimal icon-path file nodes fit short numeric basenames without premature
 });
 
 test('minimal file nodes keep a content-fitting minimum size when manually resized', async ({ page }) => {
+  const minimumExpectedWidth = process.platform === 'win32' ? 72 : 80;
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>
     node.id === 'file-src-main'
@@ -1140,7 +1142,7 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
     .toBe('matched');
 
   expect(nextLayout.size.width).toBeLessThan(96);
-  expect(nextLayout.size.width).toBeGreaterThanOrEqual(80);
+  expect(nextLayout.size.width).toBeGreaterThanOrEqual(minimumExpectedWidth);
   expect(nextLayout.size.height).toBeGreaterThanOrEqual(24);
   expect(nextLayout.size.height).toBeLessThanOrEqual(28);
 
@@ -1161,11 +1163,11 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
     (node) =>
       typeof node?.renderedWidth === 'number' &&
       typeof node?.renderedHeight === 'number' &&
-      node.renderedWidth >= 80 &&
+      node.renderedWidth >= minimumExpectedWidth &&
       node.renderedHeight >= 24
   );
   expect(probeNode.renderedWidth).toBeLessThan(96);
-  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(80);
+  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(minimumExpectedWidth);
   expect(probeNode.renderedHeight).toBeGreaterThanOrEqual(24);
 
   const contentRemainsVisible = await page.evaluate(() => {
@@ -3460,6 +3462,372 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
     .toBe('matched');
 });
 
+test('note body requires double click to switch from markdown preview to plain text editing', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = '# 迭代复盘\n- 补齐 Markdown 预览\n- 保持纯文本编辑';
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('迭代复盘');
+  await expect(noteNode.locator('.note-markdown-preview li')).toHaveText([
+    '补齐 Markdown 预览',
+    '保持纯文本编辑'
+  ]);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', markdownBody);
+
+  await noteNode.locator('.note-markdown-preview').click();
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+
+  await bodyInput.fill('## 已完成\n- 主路径切换');
+  await bodyInput.blur();
+
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview h2')).toHaveText('已完成');
+  await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
+});
+
+test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# Note\n- [ ] 你好\n- [ ] 天气';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const noteBox = await noteNode.boundingBox();
+  const chromeBox = await noteNode.locator('.window-chrome').boundingBox();
+  const surfaceBox = await noteNode.locator('.note-editor-surface').boundingBox();
+  const preview = noteNode.locator('.note-markdown-preview');
+  const previewBox = await preview.boundingBox();
+  expect(noteBox).not.toBeNull();
+  expect(chromeBox).not.toBeNull();
+  expect(surfaceBox).not.toBeNull();
+  expect(previewBox).not.toBeNull();
+  if (!noteBox || !chromeBox || !surfaceBox || !previewBox) {
+    throw new Error('Expected note frame, chrome, surface, and preview boxes.');
+  }
+
+  const bodyFrameBox = {
+    x: noteBox.x + 1,
+    y: chromeBox.y + chromeBox.height,
+    width: noteBox.width - 2,
+    height: noteBox.y + noteBox.height - 1 - (chromeBox.y + chromeBox.height)
+  };
+  expectBoxEdgesClose(surfaceBox, bodyFrameBox, 2);
+  expectBoxEdgesClose(previewBox, surfaceBox, 1);
+  await preview.focus();
+  expect(await preview.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+
+  await preview.dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveCount(1);
+  const editorBox = await bodyInput.boundingBox();
+  expect(editorBox).not.toBeNull();
+  if (!editorBox) {
+    throw new Error('Expected note textarea to have a bounding box.');
+  }
+
+  expectBoxEdgesClose(editorBox, surfaceBox, 1);
+  expect(await bodyInput.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+});
+
+test('note body editor supports tab indentation and line numbers', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['alpha', 'beta', 'gamma'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-document-line-number')).toHaveCount(0);
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect(noteNode.locator('.note-document-line-number')).toHaveText(['1', '2', '3']);
+
+  await bodyInput.evaluate((element) => {
+    element.setSelectionRange(0, 0);
+  });
+  await page.keyboard.press('Tab');
+  await expect(bodyInput).toHaveValue(`  ${markdownBody}`);
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(bodyInput).toHaveValue(markdownBody);
+
+  await bodyInput.evaluate((element) => {
+    element.setSelectionRange(0, element.value.length);
+  });
+  await page.keyboard.press('Tab');
+  await expect(bodyInput).toHaveValue(['  alpha', '  beta', '  gamma'].join('\n'));
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect(bodyInput).toBeFocused();
+});
+
+test('note markdown preview text remains selectable in read mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = 'copyable preview text stays selectable without entering edit mode.';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const previewParagraph = noteNode.locator('.note-markdown-preview-copy p').first();
+  const previewBox = await previewParagraph.boundingBox();
+  expect(previewBox).not.toBeNull();
+  if (!previewBox) {
+    throw new Error('Expected note preview paragraph to have a bounding box.');
+  }
+
+  const anchorX = previewBox.x + 12;
+  const focusX = previewBox.x + Math.min(previewBox.width - 12, 220);
+  const selectionY = previewBox.y + Math.min(previewBox.height / 2, 14);
+  await page.mouse.move(anchorX, selectionY);
+  await page.mouse.down();
+  await page.mouse.move(focusX, selectionY, { steps: 12 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? ''))
+    .not.toBe('');
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+});
+
+test('note preview and editor scope select-all locally while copy and edit shortcuts still reach the host', async ({
+  page
+}) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = 'shortcut bridge should keep bubbling to the host.';
+  await bootstrap(page, state);
+
+  await page.evaluate(() => {
+    window.__noteShortcutEvents = [];
+    window.addEventListener('keydown', (event) => {
+      if (!event.metaKey && !event.ctrlKey) {
+        return;
+      }
+
+      window.__noteShortcutEvents.push({
+        key: event.key.toLowerCase(),
+        editing: Boolean(document.querySelector('textarea[data-probe-field="body"]'))
+      });
+    });
+  });
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  await preview.focus();
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
+  await expect
+    .poll(async () => page.evaluate(() => window.getSelection()?.toString() ?? ''))
+    .toBe('shortcut bridge should keep bubbling to the host.');
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyC`);
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  await preview.dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveCount(1);
+  await bodyInput.focus();
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd,
+        valueLength: element.value.length
+      }))
+    )
+    .toEqual({
+      selectionStart: 0,
+      selectionEnd: 'shortcut bridge should keep bubbling to the host.'.length,
+      valueLength: 'shortcut bridge should keep bubbling to the host.'.length
+    });
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyC`);
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyX`);
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+KeyV`);
+
+  const shortcutEvents = await page.evaluate(() => window.__noteShortcutEvents);
+  expect(
+    shortcutEvents.filter((event) => event.editing === false).map((event) => event.key)
+  ).toEqual(expect.arrayContaining(['c']));
+  expect(shortcutEvents.some((event) => event.editing === false && event.key === 'a')).toBe(false);
+  expect(
+    shortcutEvents.filter((event) => event.editing === true).map((event) => event.key)
+  ).toEqual(expect.arrayContaining(['c', 'x', 'v']));
+  expect(shortcutEvents.some((event) => event.editing === true && event.key === 'a')).toBe(false);
+});
+
+test('note markdown preview renders task lists, syntax highlighting, and math formulas', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = [
+    '- [x] 已收口预览切换',
+    '- [ ] 补齐宿主链接打开',
+    '',
+    '```ts',
+    'const total: number = 2;',
+    '```',
+    '',
+    '内联公式 $a^2 + b^2 = c^2$',
+    '',
+    '$$',
+    'x^2 + y^2 = z^2',
+    '$$'
+  ].join('\n');
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await expect(taskCheckboxes).toHaveCount(2);
+  await expect(taskCheckboxes.nth(0)).toBeChecked();
+  await expect(taskCheckboxes.nth(0)).toBeEnabled();
+  await expect(taskCheckboxes.nth(1)).not.toBeChecked();
+  await expect(taskCheckboxes.nth(1)).toBeEnabled();
+  await expect(noteNode.locator('.note-markdown-preview pre code.hljs')).toHaveCount(1);
+  await expect(noteNode.locator('.note-markdown-preview pre code.hljs .hljs-keyword')).toContainText('const');
+  await expect(noteNode.locator('.note-markdown-preview .katex')).toHaveCount(2);
+  await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
+});
+
+test('note markdown math escapes malformed html and command links', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content =
+    '恶意公式 $<a href="command:workbench.action.closeActiveEditor">run command</a>%$';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview .katex')).toHaveCount(1);
+  await expect(noteNode.locator('.note-markdown-preview a')).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      noteNode.locator('.note-markdown-preview').evaluate((element) => element.innerHTML)
+    )
+    .not.toContain('<a href="command:workbench.action.closeActiveEditor">');
+});
+
+test('clicking a note checklist checkbox updates markdown without entering edit mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = ['- [ ] 补齐 smoke', '- [x] 收口设计'].join('\n');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await taskCheckboxes.nth(0).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: ['- [x] 补齐 smoke', '- [x] 收口设计'].join('\n')
+    }
+  });
+  await expect(taskCheckboxes.nth(0)).toBeChecked();
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute(
+    'data-probe-value',
+    ['- [x] 补齐 smoke', '- [x] 收口设计'].join('\n')
+  );
+});
+
+test('clicking a quoted note checklist checkbox updates markdown without entering edit mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = ['> 引用段落', '> - [ ] quoted task', '> - [x] done task'].join('\n');
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await expect(taskCheckboxes).toHaveCount(2);
+  await taskCheckboxes.nth(0).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: ['> 引用段落', '> - [x] quoted task', '> - [x] done task'].join('\n')
+    }
+  });
+  await expect(taskCheckboxes.nth(0)).toBeChecked();
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute(
+    'data-probe-value',
+    ['> 引用段落', '> - [x] quoted task', '> - [x] done task'].join('\n')
+  );
+});
+
+test('clicking a note markdown link posts openNoteLink without entering edit mode', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '[打开文档](https://example.com/docs)';
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview a').click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openNoteLink');
+  expect(message).toEqual({
+    type: 'webview/openNoteLink',
+    payload: {
+      nodeId: 'note-1',
+      href: 'https://example.com/docs'
+    }
+  });
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview a')).toHaveText('打开文档');
+});
+
+test('clicking a note workspace file link posts openNoteLink with the raw relative href', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '[打开配置](package.json#L3C1)';
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview a').click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/openNoteLink');
+  expect(message).toEqual({
+    type: 'webview/openNoteLink',
+    payload: {
+      nodeId: 'note-1',
+      href: 'package.json#L3C1'
+    }
+  });
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+});
+
+test('note markdown unsafe command links do not render clickable hrefs', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '[run](command:workbench.action.closeActiveEditor)';
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview')).toContainText('run');
+  await expect(noteNode.locator('.note-markdown-preview a[href^="command:"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview a[data-note-markdown-link="true"]')).toHaveCount(0);
+});
+
 test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createNoteNodeState());
@@ -5584,6 +5952,17 @@ async function expectTestDomActionError(page, action, expectedSubstring) {
 
 function nodeById(page, nodeId) {
   return page.locator(`[data-node-id="${nodeId}"]`);
+}
+
+function expectBoxEdgesClose(actualBox, expectedBox, tolerance = 2) {
+  expect(Math.abs(actualBox.x - expectedBox.x)).toBeLessThanOrEqual(tolerance);
+  expect(Math.abs(actualBox.y - expectedBox.y)).toBeLessThanOrEqual(tolerance);
+  expect(
+    Math.abs(actualBox.x + actualBox.width - (expectedBox.x + expectedBox.width))
+  ).toBeLessThanOrEqual(tolerance);
+  expect(
+    Math.abs(actualBox.y + actualBox.height - (expectedBox.y + expectedBox.height))
+  ).toBeLessThanOrEqual(tolerance);
 }
 
 async function waitForCreateDemoNodePayload(page, options = {}) {
