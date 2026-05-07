@@ -181,7 +181,7 @@ function resolveContainedWorkspaceFilePath(rootPath: string, relativePath: strin
     return null;
   }
 
-  const resolvedPath = path.resolve(rootPath, normalizedRelativePath.split('/').join(path.sep));
+  const resolvedPath = path.join(rootPath, normalizedRelativePath.split('/').join(path.sep));
   const containmentRelativePath = path.relative(rootPath, resolvedPath);
   if (
     !containmentRelativePath ||
