@@ -117,7 +117,7 @@
 - `npm run typecheck` 通过
 - `npm run test:note-markdown-links` 与 `npm run test:note-markdown-checklists` 通过
 - `npm run test:notifier-source` 与 `npm run test:notifier-smoke` 通过
-- `npm run package:vsix` 已生成 `dev-session-canvas-0.6.0.vsix`；当前工作树验证时打包日志打印 `VSCE README doc ref: 6e141d7416799c574ce368e4164f7ee325f9c102`，并确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写
+- `npm run package:vsix` 已生成 `dev-session-canvas-0.6.0.vsix`；当前工作树验证时打包日志打印了当前 `HEAD` 对应的 `VSCE README doc ref`，并确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写
 - `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.6.0.vsix`
 
 ## 发布命令
