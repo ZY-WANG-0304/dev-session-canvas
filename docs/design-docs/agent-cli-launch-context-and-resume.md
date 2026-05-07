@@ -1,7 +1,7 @@
 ---
 title: Agent CLI 启动上下文与显式恢复设计
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 协作对象域
@@ -16,7 +16,8 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/agent-cli-launch-context-and-resume.md
-updated_at: 2026-04-14
+  - docs/exec-plans/active/agent-shell-environment-inheritance.md
+updated_at: 2026-05-07
 ---
 
 # Agent CLI 启动上下文与显式恢复设计
@@ -100,7 +101,7 @@ updated_at: 2026-04-14
 - 一旦 provider CLI 的配置或恢复行为变化，这层影子兼容层会非常脆弱。
 - 当前仓库没有证据表明这种额外复杂度是必要的。
 
-## 6. 当前结论
+## 6. 正式方案
 
 ### 6.1 启动目录与配置所有权
 
@@ -119,16 +120,22 @@ updated_at: 2026-04-14
 
 这里的“本地 CLI”一律指向真正运行 `Agent` 的那台宿主机器，而不是 VSCode UI 所在机器。对本地 workspace 来说，它通常就是当前机器；对 `Remote SSH` 来说，它是远端 Extension Host / runtime host 所在机器。
 
-当前正式结论如下：
+当前正式方案如下：
 
 - CLI 定位发生在执行宿主侧，而不是 Webview 或 UI 侧。
+- `src/panel/CanvasPanelManager.ts` 必须通过统一的 execution env 入口同时服务“命令解析”和“真实 spawn”；`src/panel/shellEnvironmentResolver.ts` 负责把 Extension Host 基线环境升级成这份 execution env。
 - 命令解析优先级为：
   1. provider 对应的显式设置值。
   2. 同一宿主上、同一设置版本下最近一次成功解析出的绝对路径缓存；前提是该路径仍存在且可执行。
-  3. 当前执行宿主环境的 `PATH` 解析。
+  3. 当前 execution env 的 `PATH` 解析。其中：
+     - Windows 当前仍只使用 Extension Host 基线环境。
+     - macOS / Linux 当前要额外叠加一次“更接近 VS Code 原生 Terminal”的登录 shell env patch；该 patch 只同步受控增量变量，不直接 wholesale 替换 `process.env`。
   4. 平台原生命令发现回退：
      - POSIX：登录 shell / 交互 shell 的 `command -v` 或等价探测。
      - Windows：`where.exe`、`Get-Command` 和常见包装后缀 `.exe` / `.cmd` / `.bat` / `.com`。
+- macOS / Linux 的 shell env patch 只作为 execution env 的受控增量：默认允许补齐 `PATH` 与工具链相关变量，但不得覆写 `HOME`、`PWD`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被 provider 启动环境接管的键。
+- 对 `Agent` 而言，这份 execution env 必须同时进入 `resolveAgentCliCommand(...)` 和 `buildAgentLaunchSpec(...)`；不能再出现“resolver 用登录 shell 找到了 `codex`，但 spawn 时 `#!/usr/bin/env node` 仍回到 Extension Host 原始 `PATH`”的分叉。
+- runtime supervisor 路径不单独重新解析 shell env，而是继续直接复用 host 序列化后的 `launchSpec.env`，保证本地 PTY 与 runtime supervisor 的 `Agent` 启动环境一致。
 - 如果设置值本身是绝对路径，则应优先校验并直接使用；如果它只是命令名或相对路径，则仍应交给 resolver 做完整探测，而不是原样 `spawn` 后再等失败。
 - 解析成功后，宿主应把本次使用的绝对命令路径记录到诊断和缓存中，方便后续复用与错误排查。
 - 所有探测都失败后，才向用户显示“未找到命令”的错误；错误信息应说明已经尝试过哪些来源，并提示用户通过设置固定路径。
@@ -207,8 +214,8 @@ updated_at: 2026-04-14
 - 风险：`Codex` fresh start 后没有已确认的标准 session identity 获取接口，任何基于私有状态反查的方案都可能漂移、歧义或失效。
   当前缓解：当前代码仅以显式登记的技术债务方式实现 `~/.codex/sessions/.../rollout-*.jsonl` 反查，并要求 `cwd + 启动时间窗 + 候选唯一` 同时成立；任何 miss、歧义或超时都默认 fail closed，且后续应在 provider 暴露标准接口后移除这段逻辑。
 
-- 风险：不同平台和不同启动方式下，执行宿主的 `PATH` 可能与用户交互 shell 可见的 `PATH` 不一致。
-  当前缓解：把命令发现从“裸命令名直接 spawn”升级为宿主侧 resolver，并把绝对命令路径缓存和探测诊断纳入正式设计。
+- 风险：不同平台和不同启动方式下，执行宿主的环境变量可能与用户交互 shell 可见环境不一致；仅修正 resolver 而不修正 spawn env，会继续留下 shebang / shim 二跳失败。
+  当前缓解：macOS / Linux 现在通过受控 shell env patch 把登录 shell 的增量环境同步到统一 execution env，并要求 resolver 与 spawn 共用同一份 env；Windows 路线仍明确登记为后续实现，不把它误写成已收口。
 
 - 风险：旧节点 metadata 里可能还保存着 `resumeStoragePath` 或其他旧设计残留。
   当前缓解：迁移时把这些数据降级为不可自动恢复，而不是继续当成恢复凭据。
@@ -223,9 +230,12 @@ updated_at: 2026-04-14
 1. 新建 `Agent` 节点后，CLI 的 `cwd` 仍是当前 repo/workspace 目录。
 2. 默认启动路径不会把 `Codex` 或 `Claude Code` 切到扩展私有配置目录。
 3. 当 CLI 已安装但不在当前进程 PATH 直达位置时，宿主侧 resolver 仍能通过登录 shell / 平台原生命令发现或缓存找到它。
-4. `Claude Code` 可通过显式 session id 走自动恢复。
-5. `Codex` 在没有可信 session identity 绑定来源时不会进入自动恢复；否则退化为 `interrupted`。
-6. `resume-ready` 不再由“存在私有状态目录”驱动。
+4. macOS / Linux 上，`Agent` 的 resolver 与真实 spawn 必须共用同一份 execution env；至少要覆盖 `PATH` 与工具链变量，不得再出现 `codex` 找到入口脚本但运行时 `node` 缺失的分叉失败。
+5. runtime supervisor 创建 `Agent` 会话时，也必须继续复用 host 侧已经合并好的 execution env，而不是回退到另一份 `process.env` 基线。
+6. `Claude Code` 可通过显式 session id 走自动恢复。
+7. `Codex` 在没有可信 session identity 绑定来源时不会进入自动恢复；否则退化为 `interrupted`。
+8. `resume-ready` 不再由“存在私有状态目录”驱动。
+9. Windows 若仍未实现等价的 shell env 继承路线，必须在正式文档与技术债中显式记录，不得把这部分差异写成已解决。
 
 ## 9. 当前验证状态
 
@@ -234,4 +244,6 @@ updated_at: 2026-04-14
 - OpenAI 官方 `Codex CLI` 文档已确认显式 `codex resume [SESSION_ID]` 入口，以及 `~/.codex/config.toml` / `<repo>/.codex/config.toml` 这两层正式配置。
 - 2026-04-12 已完成代码落地：`Codex` 新增一条明确标记为技术债务的 heuristic session-id fallback，会扫描 `~/.codex/sessions/.../rollout-*.jsonl` 并按 `cwd + 启动时间窗` 的唯一候选回填 session id；本地 PTY 与 runtime supervisor 两条链路都已接入。
 - 2026-04-12 已新增自动化覆盖：通过 test-only 命令和 smoke 用例验证 locator 在唯一命中、`cwd` 不匹配与候选歧义三种情况下的行为。
+- 2026-05-07 已完成 macOS / Linux shell env 继承收口：`src/panel/shellEnvironmentResolver.ts` 新增受控 shell env patch，`CanvasPanelManager` 会让 `resolveAgentCliCommand(...)` 与 `buildAgentLaunchSpec(...)` 共用同一份 execution env，并把 runtime supervisor createSession 继续对齐到 host 侧 env。新增 `node scripts/test-shell-environment-resolver.mjs` 覆盖 patch 过滤、`PATH` 合并和 `VSCODE_CLI=1` 跳过逻辑。
+- 2026-05-07 同步明确：Windows 侧仍沿用当前 Extension Host 基线环境与既有 `where.exe` / `Get-Command` 命令发现；等价的 shell env 继承路线已显式登记到技术债，等待在 Windows 环境里继续实现。
 - 当前设计状态更新为 `验证中`：显式 session identity 路线已经代码落地并有自动化覆盖，但 `Codex` 仍缺少正式 session identity 接口，真实 provider 端到端验证也尚未完成。
