@@ -30,6 +30,11 @@ try {
       runtimeDirName: 'dsc-smoke-runner-env-runtime'
     });
     assert.strictEqual(runtime.environment.XDG_STATE_HOME, path.join(runtime.runtimeDir, 'state'));
+    assert.strictEqual(runtime.environment.USERPROFILE, path.join(debugRoot, 'home'));
+    assert.strictEqual(runtime.environment.APPDATA, path.join(debugRoot, 'appdata'));
+    assert.strictEqual(runtime.environment.LOCALAPPDATA, path.join(debugRoot, 'local-appdata'));
+    assert.strictEqual(runtime.environment.TMP, path.join(debugRoot, 'tmp'));
+    assert.strictEqual(runtime.environment.TEMP, path.join(debugRoot, 'tmp'));
   } finally {
     await fs.rm(debugRoot, { recursive: true, force: true });
   }

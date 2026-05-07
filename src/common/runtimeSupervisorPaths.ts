@@ -11,9 +11,11 @@ const XDG_RUNTIME_SUBDIR_NAME = 'dev-session-canvas';
 const TMP_RUNTIME_DIR_PREFIX = 'dev-session-canvas-';
 const SHORT_TMP_RUNTIME_DIR_PREFIX = 'dsc-';
 const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
-const SYSTEMD_STATE_SUBDIR = path.join('dsc', 'rh');
-const SYSTEMD_HOME_SUBDIR = path.join('.dsc', 'rh');
+const SYSTEMD_STATE_SUBDIR = path.posix.join('dsc', 'rh');
+const SYSTEMD_HOME_SUBDIR = path.posix.join('.dsc', 'rh');
 const SYSTEMD_USER_SERVICE_PREFIX = 'dev-session-canvas-runtime-supervisor-';
+
+type PathModuleLike = typeof path.posix | typeof path.win32;
 
 export interface RuntimeSupervisorPathResolutionOptions {
   platform?: NodeJS.Platform;
@@ -52,7 +54,8 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
   options: RuntimeSupervisorPathResolutionOptions = {}
 ): RuntimeSupervisorPaths {
   const platform = options.platform ?? process.platform;
-  const registryPath = path.join(storageDir, 'registry.json');
+  const pathModule = resolveRuntimeSupervisorPathModule(platform);
+  const registryPath = pathModule.join(storageDir, 'registry.json');
   const digest = createHash('sha1').update(storageDir).digest('hex').slice(0, 24);
 
   if (platform === 'win32') {
@@ -64,7 +67,7 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
     };
   }
 
-  const storageSocketPath = path.join(storageDir, STORAGE_SOCKET_FILE_NAME);
+  const storageSocketPath = pathModule.join(storageDir, STORAGE_SOCKET_FILE_NAME);
   if (isUnixSocketPathWithinLimit(storageSocketPath)) {
     return {
       storageDir,
@@ -75,10 +78,10 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
     };
   }
 
-  const tmpDir = path.resolve(options.tmpDir ?? os.tmpdir());
-  for (const runtimeDir of resolvePrivateRuntimeDirCandidates(options, tmpDir)) {
+  const tmpDir = pathModule.resolve(options.tmpDir ?? os.tmpdir());
+  for (const runtimeDir of resolvePrivateRuntimeDirCandidates(options, platform, pathModule, tmpDir)) {
     for (const socketFileName of resolveLegacyRuntimePrivateSocketFileNames(digest)) {
-      const socketPath = path.join(runtimeDir, socketFileName);
+      const socketPath = pathModule.join(runtimeDir, socketFileName);
       if (!isUnixSocketPathWithinLimit(socketPath)) {
         continue;
       }
@@ -93,9 +96,9 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
     }
   }
 
-  for (const runtimeDir of resolveFallbackRuntimeDirCandidates(options, tmpDir)) {
+  for (const runtimeDir of resolveFallbackRuntimeDirCandidates(options, platform, pathModule, tmpDir)) {
     for (const socketFileName of resolveLegacyRuntimeFallbackSocketFileNames(digest)) {
-      const socketPath = path.join(runtimeDir, socketFileName);
+      const socketPath = pathModule.join(runtimeDir, socketFileName);
       if (!isUnixSocketPathWithinLimit(socketPath)) {
         continue;
       }
@@ -132,23 +135,24 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
     throw new Error('systemd-user backend 不支持 Windows。');
   }
 
+  const pathModule = resolveRuntimeSupervisorPathModule(platform);
   const digest = createHash('sha1').update(storageDir).digest('hex').slice(0, 24);
-  const registryPath = path.join(storageDir, 'registry.json');
-  const homeDir = resolveHomeDirectory(options);
-  const configHome = resolveConfigHome(options, homeDir);
-  const controlPath = resolveSystemdControlPath(options, homeDir, digest);
+  const registryPath = pathModule.join(storageDir, 'registry.json');
+  const homeDir = resolveHomeDirectory(options, pathModule);
+  const configHome = resolveConfigHome(options, pathModule, homeDir);
+  const controlPath = resolveSystemdControlPath(options, pathModule, homeDir, digest);
 
   return {
     storageDir,
     controlDir: controlPath.controlDir,
     socketPath: controlPath.socketPath,
     registryPath,
-    socketLocation: 'control-dir',
-    unitName: `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`,
-    unitFilePath: path.join(
-      configHome,
-      'systemd',
-      'user',
+      socketLocation: 'control-dir',
+      unitName: `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`,
+      unitFilePath: pathModule.join(
+        configHome,
+        'systemd',
+        'user',
       `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`
     )
   };
@@ -156,18 +160,20 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
 
 function resolvePrivateRuntimeDirCandidates(
   options: RuntimeSupervisorPathResolutionOptions,
+  platform: NodeJS.Platform,
+  pathModule: PathModuleLike,
   tmpDir: string
 ): string[] {
   const env = options.env ?? process.env;
   const userId = normalizeUserId(options.userId ?? process.getuid?.());
   const candidates: string[] = [];
-  const xdgRuntimeDir = normalizeAbsoluteDirectory(env.XDG_RUNTIME_DIR);
+  const xdgRuntimeDir = normalizeAbsoluteDirectory(env.XDG_RUNTIME_DIR, pathModule);
   if (xdgRuntimeDir) {
-    candidates.push(path.join(xdgRuntimeDir, XDG_RUNTIME_SUBDIR_NAME));
+    candidates.push(pathModule.join(xdgRuntimeDir, XDG_RUNTIME_SUBDIR_NAME));
   }
 
-  candidates.push(path.join(tmpDir, `${TMP_RUNTIME_DIR_PREFIX}${userId}`));
-  candidates.push(path.join(tmpDir, `${SHORT_TMP_RUNTIME_DIR_PREFIX}${userId}`));
+  candidates.push(pathModule.join(tmpDir, `${TMP_RUNTIME_DIR_PREFIX}${userId}`));
+  candidates.push(pathModule.join(tmpDir, `${SHORT_TMP_RUNTIME_DIR_PREFIX}${userId}`));
 
   return Array.from(new Set(candidates));
 }
@@ -193,41 +199,44 @@ function resolveLegacyRuntimeFallbackSocketFileNames(digest: string): string[] {
 
 function resolveFallbackRuntimeDirCandidates(
   options: RuntimeSupervisorPathResolutionOptions,
+  platform: NodeJS.Platform,
+  pathModule: PathModuleLike,
   tmpDir: string
 ): string[] {
   const candidates = [tmpDir];
-  if (process.platform !== 'win32') {
+  if (platform !== 'win32') {
     candidates.push('/tmp', '/private/tmp', '/var/tmp');
   }
 
-  const homeDir = resolveHomeDirectory(options);
-  candidates.push(path.join(homeDir, '.dsc'));
-  return Array.from(new Set(candidates.map((candidate) => path.resolve(candidate))));
+  const homeDir = resolveHomeDirectory(options, pathModule);
+  candidates.push(pathModule.join(homeDir, '.dsc'));
+  return Array.from(new Set(candidates.map((candidate) => pathModule.resolve(candidate))));
 }
 
 function resolveSystemdControlPath(
   options: RuntimeSupervisorPathResolutionOptions,
+  pathModule: PathModuleLike,
   homeDir: string,
   digest: string
 ): { controlDir: string; socketPath: string } {
-  const stateHome = resolveStateHome(options, homeDir);
+  const stateHome = resolveStateHome(options, pathModule, homeDir);
   const candidates = [
     {
-      controlDir: path.join(stateHome, SYSTEMD_STATE_SUBDIR, digest),
+      controlDir: pathModule.join(stateHome, SYSTEMD_STATE_SUBDIR, digest),
       socketName: SYSTEMD_CONTROL_SOCKET_FILE_NAME
     },
     {
-      controlDir: path.join(homeDir, SYSTEMD_HOME_SUBDIR, digest),
+      controlDir: pathModule.join(homeDir, SYSTEMD_HOME_SUBDIR, digest),
       socketName: SYSTEMD_CONTROL_SOCKET_FILE_NAME
     },
     {
-      controlDir: path.join(homeDir, '.dsc'),
+      controlDir: pathModule.join(homeDir, '.dsc'),
       socketName: `${digest}.sock`
     }
   ];
 
   for (const candidate of candidates) {
-    const socketPath = path.join(candidate.controlDir, candidate.socketName);
+    const socketPath = pathModule.join(candidate.controlDir, candidate.socketName);
     if (!isUnixSocketPathWithinLimit(socketPath)) {
       continue;
     }
@@ -241,13 +250,13 @@ function resolveSystemdControlPath(
   throw new Error('无法为 systemd-user backend 生成符合 Unix socket 限制的控制路径。');
 }
 
-function resolveHomeDirectory(options: RuntimeSupervisorPathResolutionOptions): string {
-  const configuredHome = normalizeAbsoluteDirectory(options.homeDir);
+function resolveHomeDirectory(options: RuntimeSupervisorPathResolutionOptions, pathModule: PathModuleLike): string {
+  const configuredHome = normalizeAbsoluteDirectory(options.homeDir, pathModule);
   if (configuredHome) {
     return configuredHome;
   }
 
-  const homeDir = normalizeAbsoluteDirectory(os.homedir());
+  const homeDir = normalizeAbsoluteDirectory(os.homedir(), pathModule);
   if (!homeDir) {
     throw new Error('无法解析当前用户目录，无法初始化 runtime host backend。');
   }
@@ -257,31 +266,37 @@ function resolveHomeDirectory(options: RuntimeSupervisorPathResolutionOptions): 
 
 function resolveConfigHome(
   options: RuntimeSupervisorPathResolutionOptions,
+  pathModule: PathModuleLike,
   homeDir: string
 ): string {
   const env = options.env ?? process.env;
-  return normalizeAbsoluteDirectory(env.XDG_CONFIG_HOME) ?? path.join(homeDir, '.config');
+  return normalizeAbsoluteDirectory(env.XDG_CONFIG_HOME, pathModule) ?? pathModule.join(homeDir, '.config');
 }
 
 function resolveStateHome(
   options: RuntimeSupervisorPathResolutionOptions,
+  pathModule: PathModuleLike,
   homeDir: string
 ): string {
   const env = options.env ?? process.env;
-  return normalizeAbsoluteDirectory(env.XDG_STATE_HOME) ?? path.join(homeDir, '.local', 'state');
+  return normalizeAbsoluteDirectory(env.XDG_STATE_HOME, pathModule) ?? pathModule.join(homeDir, '.local', 'state');
 }
 
 function isUnixSocketPathWithinLimit(value: string): boolean {
   return Buffer.byteLength(value, 'utf8') <= MAX_UNIX_SOCKET_PATH_BYTES;
 }
 
-function normalizeAbsoluteDirectory(value: string | undefined): string | undefined {
+function normalizeAbsoluteDirectory(value: string | undefined, pathModule: PathModuleLike): string | undefined {
   const normalized = value?.trim();
   if (!normalized) {
     return undefined;
   }
 
-  return path.isAbsolute(normalized) ? path.normalize(normalized) : undefined;
+  return pathModule.isAbsolute(normalized) ? pathModule.normalize(normalized) : undefined;
+}
+
+function resolveRuntimeSupervisorPathModule(platform: NodeJS.Platform): PathModuleLike {
+  return platform === 'win32' ? path.win32 : path.posix;
 }
 
 function normalizeUserId(value: number | string | undefined): string {

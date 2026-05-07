@@ -112,6 +112,7 @@ import {
   setupExecutionTerminalNativeInteractions,
   type ExecutionTerminalNativeInteractionsHandle
 } from './executionTerminalNativeInteractions';
+import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -193,7 +194,6 @@ type FileListEntrySelectionTone = 'active' | 'inactive';
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
-const NOTE_BODY_INDENT = '  ';
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
@@ -6570,126 +6570,6 @@ function applyNoteBodyIndentChange(
 
     textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
   });
-}
-
-function createNoteBodyIndentEdit(
-  value: string,
-  selectionStart: number,
-  selectionEnd: number
-): { value: string; selectionStart: number; selectionEnd: number } {
-  const selectedText = value.slice(selectionStart, selectionEnd);
-  if (!selectedText.includes('\n')) {
-    const nextValue = `${value.slice(0, selectionStart)}${NOTE_BODY_INDENT}${value.slice(selectionEnd)}`;
-    const nextSelection = selectionStart + NOTE_BODY_INDENT.length;
-    return {
-      value: nextValue,
-      selectionStart: nextSelection,
-      selectionEnd: nextSelection
-    };
-  }
-
-  const lineStarts = getSelectedLineStarts(value, selectionStart, selectionEnd);
-  const nextValue = insertTextAtOffsets(value, lineStarts, NOTE_BODY_INDENT);
-  return {
-    value: nextValue,
-    selectionStart: selectionStart + countOffsetsBefore(lineStarts, selectionStart) * NOTE_BODY_INDENT.length,
-    selectionEnd: selectionEnd + countOffsetsBefore(lineStarts, selectionEnd) * NOTE_BODY_INDENT.length
-  };
-}
-
-function createNoteBodyOutdentEdit(
-  value: string,
-  selectionStart: number,
-  selectionEnd: number
-): { value: string; selectionStart: number; selectionEnd: number } | null {
-  const removals = getSelectedLineStarts(value, selectionStart, selectionEnd)
-    .map((offset) => ({
-      offset,
-      length: countNoteBodyOutdentChars(value, offset)
-    }))
-    .filter((removal) => removal.length > 0);
-
-  if (removals.length === 0) {
-    return null;
-  }
-
-  return {
-    value: removeTextAtOffsets(value, removals),
-    selectionStart: adjustOffsetAfterRemovals(selectionStart, removals),
-    selectionEnd: adjustOffsetAfterRemovals(selectionEnd, removals)
-  };
-}
-
-function getSelectedLineStarts(value: string, selectionStart: number, selectionEnd: number): number[] {
-  const lineStart = value.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
-  const effectiveSelectionEnd =
-    selectionEnd > selectionStart && value.charAt(selectionEnd - 1) === '\n' ? selectionEnd - 1 : selectionEnd;
-  const nextLineBreak = value.indexOf('\n', effectiveSelectionEnd);
-  const lineEnd = nextLineBreak === -1 ? value.length : nextLineBreak;
-  const lineStarts = [lineStart];
-
-  for (
-    let lineBreak = value.indexOf('\n', lineStart);
-    lineBreak !== -1 && lineBreak < lineEnd;
-    lineBreak = value.indexOf('\n', lineBreak + 1)
-  ) {
-    lineStarts.push(lineBreak + 1);
-  }
-
-  return lineStarts;
-}
-
-function countNoteBodyOutdentChars(value: string, lineStart: number): number {
-  if (value.charAt(lineStart) === '\t') {
-    return 1;
-  }
-
-  let count = 0;
-  while (count < NOTE_BODY_INDENT.length && value.charAt(lineStart + count) === ' ') {
-    count += 1;
-  }
-
-  return count;
-}
-
-function insertTextAtOffsets(value: string, offsets: number[], insertedText: string): string {
-  let nextValue = '';
-  let cursor = 0;
-  for (const offset of offsets) {
-    nextValue += value.slice(cursor, offset);
-    nextValue += insertedText;
-    cursor = offset;
-  }
-
-  return nextValue + value.slice(cursor);
-}
-
-function removeTextAtOffsets(value: string, removals: Array<{ offset: number; length: number }>): string {
-  let nextValue = '';
-  let cursor = 0;
-  for (const removal of removals) {
-    nextValue += value.slice(cursor, removal.offset);
-    cursor = removal.offset + removal.length;
-  }
-
-  return nextValue + value.slice(cursor);
-}
-
-function countOffsetsBefore(offsets: number[], position: number): number {
-  return offsets.filter((offset) => offset < position).length;
-}
-
-function adjustOffsetAfterRemovals(position: number, removals: Array<{ offset: number; length: number }>): number {
-  let nextPosition = position;
-  for (const removal of removals) {
-    if (removal.offset >= position) {
-      continue;
-    }
-
-    nextPosition -= Math.min(removal.length, position - removal.offset);
-  }
-
-  return Math.max(0, nextPosition);
 }
 
 function handleEditableFieldKeyDown(

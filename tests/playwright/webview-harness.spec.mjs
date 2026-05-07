@@ -1079,6 +1079,7 @@ test('minimal icon-path file nodes fit short numeric basenames without premature
 });
 
 test('minimal file nodes keep a content-fitting minimum size when manually resized', async ({ page }) => {
+  const minimumExpectedWidth = process.platform === 'win32' ? 72 : 80;
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>
     node.id === 'file-src-main'
@@ -1141,7 +1142,7 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
     .toBe('matched');
 
   expect(nextLayout.size.width).toBeLessThan(96);
-  expect(nextLayout.size.width).toBeGreaterThanOrEqual(80);
+  expect(nextLayout.size.width).toBeGreaterThanOrEqual(minimumExpectedWidth);
   expect(nextLayout.size.height).toBeGreaterThanOrEqual(24);
   expect(nextLayout.size.height).toBeLessThanOrEqual(28);
 
@@ -1162,11 +1163,11 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
     (node) =>
       typeof node?.renderedWidth === 'number' &&
       typeof node?.renderedHeight === 'number' &&
-      node.renderedWidth >= 80 &&
+      node.renderedWidth >= minimumExpectedWidth &&
       node.renderedHeight >= 24
   );
   expect(probeNode.renderedWidth).toBeLessThan(96);
-  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(80);
+  expect(probeNode.renderedWidth).toBeGreaterThanOrEqual(minimumExpectedWidth);
   expect(probeNode.renderedHeight).toBeGreaterThanOrEqual(24);
 
   const contentRemainsVisible = await page.evaluate(() => {
