@@ -23,6 +23,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 创建 `Agent`、`Terminal` 与 `Note` 节点
 - 通过 `codex` 或 `claude` CLI 驱动 `Agent` 节点执行
 - 通过嵌入式终端运行 `Terminal` 节点
+- 在 `Note` 节点中使用 Markdown 预览、交互式 checklist、workspace 文件链接、代码块与公式
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
 - 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -51,20 +52,21 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.5.1 版本亮点
+## 0.6.0 版本亮点
 
-当前公开的 `0.5.1` 版本聚焦把执行节点的桌面通知链路调整为默认开启，并补齐升级兼容与通知来源辨识。
+当前公开的 `0.6.0` 版本聚焦把 `Note` 节点升级为更完整的 Markdown 工作表面，并收紧 Note 安全边界与执行通知回跳语义。
 
-- 默认将 `devSessionCanvas.notifications.attentionSignalBridge` 收口到 `system`；安装主扩展并自动带上 notifier 后，无需额外改设置即可优先尝试把提醒送回本机桌面
-- 若你此前仍在沿用 legacy 配置键 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 或 `devSessionCanvas.notifications.preferNotifierCompanion`，升级到 `0.5.1` 后会继续保留既有 `workbench` / `none` / `system` 语义，避免旧设置被静默改成桌面通知
-- `system` 模式下的执行通知标题现在统一为 `DSCanvas · <workspace> · Agent|Terminal`，更适合多窗口、多 workspace 或远端场景辨认来源
-- 继续保留 `Dev Session Canvas Notifier` 自动安装关系、嵌入式 `Terminal` shell 选择能力，以及 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
+- `Note` 阅读态现在可以展示 Markdown 结构、代码高亮、KaTeX 公式、workspace 文件链接与可交互 checklist；正文权威数据仍是原始 Markdown 文本
+- 点击 checklist 可直接回写 `[ ]` / `[x]`；单击预览可选择和复制，双击正文进入编辑，编辑态提供行号与 `Tab` / `Shift+Tab` 缩进辅助
+- Note 链接与公式渲染默认 fail closed：只允许 `http` / `https` / `mailto` 和当前 workspace 内文件链接，不会把 `command:` 或 malformed math 生成为可激活 DOM
+- 点击 VS Code 工作台通知或支持回调的系统通知后，只把对应执行节点居中，不选中节点，也不清除待处理提醒
+- `Dev Session Canvas Notifier` 的 `通知环境` sidebar 现在提供配置齿轮入口，继续保留自动安装关系、默认 `system` 桥接和 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.5.0` 升级到 `0.5.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.5.x` 更新同样通过 Marketplace 升级获取
-- 若你此前显式使用过 legacy 配置键 `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 或 `devSessionCanvas.notifications.preferNotifierCompanion` 控制提醒路径，升级到 `0.5.1` 后会继续沿用旧设置的明确选择；如需切换到新的默认策略，请直接改 `devSessionCanvas.notifications.attentionSignalBridge`
+- 首次安装与从 `0.5.1` 升级到 `0.6.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.6.x` 更新同样通过 Marketplace 升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.6.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -98,7 +100,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.5.x` 修复版本，而非尝试手动降级
+- 优先等待后续 `0.6.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 

@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.6.0 - Preview Note Markdown Update
+
+相对 `0.5.1`，`0.6.0` 主要把 `Note` 节点从轻量纯文本对象升级为更完整的 Markdown 工作表面，同时收口 Note 链接与公式渲染的安全边界，并修正执行通知“查看节点”的确认语义。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 新增 `Note` Markdown 预览：阅读态可展示标题、列表、引用、代码块、语法高亮与 KaTeX 公式；正文权威数据仍保持原始 Markdown 文本
+- 支持 `Note` 预览态交互式 checklist：点击 checkbox 可直接回写 `[ ]` / `[x]`，覆盖无序、有序、嵌套与引用场景，不需要先进入编辑态
+- 支持安全的 `Note` 链接打开链路：允许 `http` / `https` / `mailto` 与当前 workspace 内文件链接，并支持 `#L12`、`#L12C3` 行列定位；不安全 scheme、绝对路径、目录与越界路径会 fail closed
+- 优化 `Note` 正文交互：单击预览保留选择与复制，双击进入编辑；编辑态提供行号 gutter，并支持 `Tab` / `Shift+Tab` 对单行或多行按两个空格缩进 / 反缩进
+- 收紧 Markdown 安全边界：移除不安全公式插件，改用自有 Markdown math 规则调用 KaTeX，并阻止 malformed math 或 `command:` 链接生成可激活 DOM
+- 修正通知回跳语义：点击 VS Code 工作台通知或支持回调的系统通知后，只把对应节点居中，不选中节点，也不清除 `attentionPending`
+- 补齐 notifier sidebar 配置入口：`Dev Session Canvas Notifier` 的 `通知环境` 标题行提供齿轮按钮，可直接打开 companion 配置，并同步优化 sidebar 文案
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 使用 `Note` 记录结构化上下文、待办清单、workspace 文件链接、代码片段与轻量公式说明
+- 安装后默认即可体验本机桌面通知；如需复核当前链路，可直接运行 notifier 的测试通知命令与诊断侧栏
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑
+- 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的记录；缺少工作目录信息的旧会话会被保守跳过
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.5.1` 升级到 `0.6.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.6.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，也会自动补齐主扩展
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.6.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.6.0` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.6.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.6.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.5.1 - Preview Attention Bridge Default Update
 
 相对 `0.5.0`，`0.5.1` 聚焦把执行节点 attention signal 的默认外部桥接从工作台消息收口到 `system`，同时补齐旧配置升级兼容与系统通知来源辨识。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。

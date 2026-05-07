@@ -23,6 +23,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Create `Agent`, `Terminal`, and `Note` nodes
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
+- Use Markdown preview, interactive checklists, workspace file links, code blocks, and math inside `Note` nodes
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
@@ -51,20 +52,21 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.5.1 Highlights
+## 0.6.0 Highlights
 
-The public `0.5.1` release focuses on making execution-node desktop notifications opt-out by default, while tightening upgrade compatibility and notification-source clarity.
+The public `0.6.0` release focuses on turning `Note` nodes into a fuller Markdown work surface while tightening Note security boundaries and execution-notification callback semantics.
 
-- Set `devSessionCanvas.notifications.attentionSignalBridge` to `system` by default, so installing the main extension together with the auto-installed notifier now prefers sending attention signals back to the local desktop without extra setup
-- Preserve legacy bridge choices during upgrade: if a user still has `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` or `devSessionCanvas.notifications.preferNotifierCompanion` configured, `0.5.1` keeps the existing `workbench` / `none` / `system` behavior instead of silently switching to desktop notifications
-- Standardize `system`-mode execution-notification titles as `DSCanvas · <workspace> · Agent|Terminal`, which makes the source easier to identify across multiple windows, workspaces, or remote sessions
-- Keep the `Dev Session Canvas Notifier` auto-install relationship, embedded `Terminal` shell selection, and the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
+- `Note` read mode now renders Markdown structure, code highlighting, KaTeX math, workspace file links, and interactive checklists while keeping raw Markdown text as the authoritative body data
+- Checklist clicks directly write back `[ ]` / `[x]`; single-click preview supports selection and copying, double-click enters editing, and edit mode adds line numbers plus `Tab` / `Shift+Tab` indentation affordances
+- Note link and math rendering fails closed by default: only `http` / `https` / `mailto` and files inside the current workspace are allowed, and `command:` links or malformed math do not become activatable DOM
+- Clicking a VS Code workbench notification or a supported system notification now only centers the target execution node; it does not select the node or clear the pending attention state
+- The `Dev Session Canvas Notifier` `Notification Environment` sidebar now includes a settings gear, while keeping the auto-install relationship, default `system` bridge, and the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.5.0` to `0.5.1` all go through the `Visual Studio Marketplace`; later `0.5.x` updates follow the same Marketplace upgrade path
-- If you previously used the legacy keys `devSessionCanvas.notifications.bridgeTerminalAttentionSignals` or `devSessionCanvas.notifications.preferNotifierCompanion` to control the notification path, upgrading to `0.5.1` preserves that explicit `workbench` / `none` / `system` choice. To switch back to the new default strategy, update `devSessionCanvas.notifications.attentionSignalBridge` directly
+- First-time installs and upgrades from `0.5.1` to `0.6.0` all go through the `Visual Studio Marketplace`; later `0.6.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.6.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -100,7 +102,7 @@ The public `0.5.1` release focuses on making execution-node desktop notification
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.5.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.6.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
