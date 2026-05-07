@@ -14,6 +14,9 @@ type SidebarActionsInboundMessage =
       type: 'sidebarActions/createNode';
     }
   | {
+      type: 'sidebarActions/resetToDefaultTemplate';
+    }
+  | {
       type: 'sidebarActions/resetCanvas';
     }
   | {
@@ -111,6 +114,9 @@ export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vsc
       }
       case 'sidebarActions/createNode':
         await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+        return;
+      case 'sidebarActions/resetToDefaultTemplate':
+        await vscode.commands.executeCommand(COMMAND_IDS.resetToDefaultTemplate);
         return;
       case 'sidebarActions/resetCanvas':
         await vscode.commands.executeCommand(COMMAND_IDS.resetCanvasState);
@@ -328,7 +334,8 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
       <div class="actions">
         <button class="action-button is-primary" type="button" data-action="openCanvas"></button>
         <button class="action-button is-primary" type="button" data-action="createNode">创建节点</button>
-        <button class="action-button is-danger" type="button" data-action="resetCanvas">重置画布状态</button>
+        <button class="action-button is-danger" type="button" data-action="resetToDefaultTemplate">重置画板</button>
+        <button class="action-button is-danger" type="button" data-action="resetCanvas">清空画板</button>
       </div>
 
       <div class="fields">
@@ -466,6 +473,7 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       bindActionButtons('openCanvas', 'sidebarActions/openCanvas');
       bindActionButtons('createNode', 'sidebarActions/createNode');
+      bindActionButtons('resetToDefaultTemplate', 'sidebarActions/resetToDefaultTemplate');
       bindActionButtons('resetCanvas', 'sidebarActions/resetCanvas');
 
       clearButtons.include.addEventListener('click', () => {
@@ -518,6 +526,7 @@ function parseSidebarActionsMessage(value: unknown): SidebarActionsInboundMessag
     case 'sidebarActions/ready':
     case 'sidebarActions/openCanvas':
     case 'sidebarActions/createNode':
+    case 'sidebarActions/resetToDefaultTemplate':
     case 'sidebarActions/resetCanvas':
       return {
         type: message.type
