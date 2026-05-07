@@ -2125,6 +2125,13 @@ body {
   gap: 2px;
 }
 
+.canvas-context-menu-separator {
+  height: 0;
+  margin: 4px 8px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--vscode-menu-border, var(--vscode-panel-border)) 72%, transparent);
+}
+
 .canvas-context-menu-split-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2145,6 +2152,10 @@ body {
   cursor: pointer;
   font: inherit;
   text-align: left;
+}
+
+.canvas-context-menu-item.with-trailing-icon {
+  justify-content: space-between;
 }
 
 .canvas-context-menu-item.has-clamped-detail {
@@ -2210,6 +2221,16 @@ body {
   min-width: 32px;
   padding-inline: 8px;
   color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-item-trailing-icon {
+  flex: 0 0 auto;
+  color: var(--vscode-descriptionForeground);
+}
+
+.canvas-context-menu-item:hover .canvas-context-menu-item-trailing-icon,
+.canvas-context-menu-item:focus-visible .canvas-context-menu-item-trailing-icon {
+  color: inherit;
 }
 
 .canvas-context-menu-inline-editor {

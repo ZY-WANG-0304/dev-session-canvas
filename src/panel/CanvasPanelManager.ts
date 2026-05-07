@@ -68,6 +68,7 @@ import {
   type CanvasNodeMetadata,
   type CanvasNodePosition,
   type CanvasRuntimeContext,
+  type CanvasTemplateMenuEntry,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
   type ExecutionNodeKind,
@@ -105,6 +106,16 @@ import {
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import {
+  DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID,
+  captureCanvasTemplateFromState,
+  cloneCanvasTemplate,
+  formatCanvasTemplateStats,
+  resolveCanvasTemplateAgentProvider,
+  type CanvasTemplate,
+  type CanvasTemplateCaptureResult,
+  type CanvasTemplateSaveAgentProviderSelection
+} from '../common/canvasTemplates';
+import {
   SerializedTerminalStateTracker,
   cloneSerializedTerminalState,
   normalizeSerializedTerminalState
@@ -140,6 +151,12 @@ import {
 } from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
+import {
+  CanvasTemplateStore,
+  type CanvasStoredTemplate,
+  type CanvasTemplateCatalog,
+  type CanvasTemplateStorageLocation
+} from './CanvasTemplateStore';
 import {
   serializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorCreateSessionParams,
@@ -199,6 +216,7 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
+const CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.defaultTemplateId';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
 const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
@@ -468,6 +486,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ] as const;
 
   private readonly rawExtensionStoragePath: string;
+  private readonly canvasTemplateStore: CanvasTemplateStore;
   private storageRecoverySelection!: ExtensionStorageRecoverySourceSelection;
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
@@ -475,8 +494,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private attentionNotificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   private fileFilterState: CanvasFileFilterState;
+  private canvasTemplateInitialized: boolean;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
+  private readonly lastVisibleCanvasCenterBySurface: Partial<Record<CanvasSurfaceLocation, CanvasNodePosition>> = {};
   private readonly surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>> = {};
   private readonly surfaceReady: Record<CanvasSurfaceLocation, boolean> = {
     editor: false,
@@ -494,6 +515,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     { nodeId: string; kind: ExecutionNodeKind; runtimeSessionId: string; runtimeStoragePath: string }
   >();
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
+  private readonly templateCatalogEmitter = new vscode.EventEmitter<void>();
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
@@ -516,18 +538,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
+  public readonly onDidChangeTemplateCatalog = this.templateCatalogEmitter.event;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.agentCliResolutionCache = readAgentCliResolutionCache(
       context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
     );
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
+    this.canvasTemplateStore = new CanvasTemplateStore(
+      path.join(this.context.extensionUri.fsPath, 'resources', 'templates'),
+      buildCanvasTemplateStorageLocations(this.context)
+    );
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
+    this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.applyWorkbenchContextKeys();
@@ -541,12 +569,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           : this.storageRecoverySelection.sourcePath,
       storageSelectionBasis: this.storageRecoverySelection.selectionBasis
     });
-    context.subscriptions.push(this.sidebarStateEmitter);
+    context.subscriptions.push(this.sidebarStateEmitter, this.templateCatalogEmitter);
 
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
         this.recordDiagnosticEvent('workspace/trustGranted');
         this.state = this.loadReconciledState();
+        this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
         this.persistState();
         this.postState('host/stateUpdated');
         this.scheduleRestoreLiveRuntimeSessions();
@@ -735,6 +764,212 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public getCanvasFileFilterState(): CanvasFileFilterState {
     return cloneJsonValue(this.fileFilterState);
+  }
+
+  public getUserCanvasTemplateDirectoryPath(): string {
+    return this.canvasTemplateStore.getUserTemplateDir();
+  }
+
+  public getCanvasTemplateStorageLocations(): CanvasTemplateStorageLocation[] {
+    return this.canvasTemplateStore.getUserTemplateLocations();
+  }
+
+  public getDefaultCanvasTemplateId(): string {
+    const storedValue = this.context.globalState.get<string>(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY);
+    return typeof storedValue === 'string' && storedValue.trim().length > 0
+      ? storedValue.trim()
+      : DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID;
+  }
+
+  public async getCanvasTemplateCatalog(): Promise<CanvasTemplateCatalog> {
+    return this.canvasTemplateStore.listTemplates();
+  }
+
+  public async refreshCanvasTemplateCatalog(): Promise<CanvasTemplateCatalog> {
+    const catalog = await this.canvasTemplateStore.listTemplates();
+    this.notifyTemplateCatalogChanged();
+    return catalog;
+  }
+
+  public async saveCurrentCanvasAsTemplate(
+    name: string,
+    agentProviderSelection: CanvasTemplateSaveAgentProviderSelection,
+    options?: {
+      overwriteTemplateId?: string;
+      targetRootPath?: string;
+      relativeDirectory?: string;
+    }
+  ): Promise<CanvasStoredTemplate> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const overwriteTemplate = options?.overwriteTemplateId
+      ? findCanvasTemplateById(catalog.templates, options.overwriteTemplateId)
+      : undefined;
+    if (overwriteTemplate && overwriteTemplate.template.category !== 'user') {
+      throw new Error('内置模板不能被覆盖。');
+    }
+
+    const now = new Date().toISOString();
+    const capture = captureCanvasTemplateFromState({
+      state: this.buildStateForCanvasTemplateCapture(),
+      name,
+      templateId: overwriteTemplate?.template.id ?? `user-template-${randomUUID()}`,
+      category: 'user',
+      agentProviderSelection,
+      now
+    });
+    const template = capture.template;
+    if (overwriteTemplate) {
+      template.createdAt = overwriteTemplate.template.createdAt;
+      template.updatedAt = now;
+    }
+
+    const savedTemplate = await this.canvasTemplateStore.writeUserTemplate(template, {
+      filePath: overwriteTemplate?.filePath,
+      targetRootPath: options?.targetRootPath,
+      relativeDirectory: options?.relativeDirectory
+    });
+    this.canvasTemplateInitialized = true;
+    this.notifyTemplateCatalogChanged();
+    return savedTemplate;
+  }
+
+  private buildStateForCanvasTemplateCapture(): CanvasPrototypeState {
+    return {
+      ...this.state,
+      nodes: this.state.nodes.map((node) => {
+        if (node.kind !== 'agent') {
+          return node;
+        }
+
+        const metadata = node.metadata?.agent;
+        if (!metadata) {
+          return node;
+        }
+
+        const launchSnapshot = this.resolveAgentFreshLaunch(metadata.provider, metadata);
+        return {
+          ...node,
+          metadata: {
+            ...node.metadata,
+            agent: {
+              ...metadata,
+              templateArgv: [...launchSnapshot.launchArgs]
+            }
+          }
+        };
+      })
+    };
+  }
+
+  public async importCanvasTemplateFromPath(
+    sourcePath: string,
+    options?: {
+      overwriteTemplateId?: string;
+      nameOverride?: string;
+      targetRootPath?: string;
+      relativeDirectory?: string;
+    }
+  ): Promise<CanvasStoredTemplate> {
+    const importedTemplate = await this.canvasTemplateStore.readTemplateFile(sourcePath, {
+      forceCategory: 'user'
+    });
+    const catalog = await this.getCanvasTemplateCatalog();
+    const overwriteTemplate = options?.overwriteTemplateId
+      ? findCanvasTemplateById(catalog.templates, options.overwriteTemplateId)
+      : undefined;
+    if (overwriteTemplate && overwriteTemplate.template.category !== 'user') {
+      throw new Error('内置模板不能被覆盖。');
+    }
+
+    const now = new Date().toISOString();
+    const nextTemplate = cloneCanvasTemplate(importedTemplate.template);
+    nextTemplate.id = overwriteTemplate?.template.id ?? `user-template-${randomUUID()}`;
+    nextTemplate.category = 'user';
+    nextTemplate.name = options?.nameOverride?.trim() || nextTemplate.name;
+    nextTemplate.updatedAt = now;
+    nextTemplate.createdAt = overwriteTemplate?.template.createdAt ?? now;
+
+    const savedTemplate = await this.canvasTemplateStore.writeUserTemplate(nextTemplate, {
+      filePath: overwriteTemplate?.filePath,
+      targetRootPath: options?.targetRootPath,
+      relativeDirectory: options?.relativeDirectory
+    });
+    this.notifyTemplateCatalogChanged();
+    return savedTemplate;
+  }
+
+  public async readCanvasTemplateFromPath(sourcePath: string): Promise<CanvasStoredTemplate> {
+    return this.canvasTemplateStore.readTemplateFile(sourcePath, {
+      forceCategory: 'user'
+    });
+  }
+
+  public async exportCanvasTemplateById(templateId: string, filePath: string): Promise<void> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
+    if (!storedTemplate) {
+      throw new Error('目标模板不存在。');
+    }
+
+    await this.canvasTemplateStore.exportTemplateToFile(storedTemplate.template, filePath);
+  }
+
+  public async deleteCanvasTemplateById(templateId: string): Promise<void> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
+    if (!storedTemplate) {
+      throw new Error('目标模板不存在。');
+    }
+    if (storedTemplate.template.category !== 'user') {
+      throw new Error('内置模板不能删除。');
+    }
+
+    await this.canvasTemplateStore.deleteUserTemplate(storedTemplate.filePath);
+    if (this.getDefaultCanvasTemplateId() === storedTemplate.template.id) {
+      await this.setDefaultCanvasTemplateById(DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID);
+    }
+    this.notifyTemplateCatalogChanged();
+  }
+
+  public async setDefaultCanvasTemplateById(templateId: string): Promise<void> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
+    if (!storedTemplate) {
+      throw new Error('目标模板不存在。');
+    }
+
+    await this.context.globalState.update(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY, storedTemplate.template.id);
+    this.notifyTemplateCatalogChanged();
+  }
+
+  public async applyDefaultCanvasTemplate(options?: {
+    reset?: boolean;
+    visibleCenter?: CanvasNodePosition;
+    quietOnFailure?: boolean;
+  }): Promise<void> {
+    const defaultTemplate = await this.resolveDefaultCanvasTemplateRecord();
+    if (!defaultTemplate) {
+      throw new Error('当前没有可用的默认模板。');
+    }
+
+    await this.applyCanvasTemplateRecord(defaultTemplate, options);
+  }
+
+  public async applyCanvasTemplateById(
+    templateId: string,
+    options?: {
+      reset?: boolean;
+      visibleCenter?: CanvasNodePosition;
+      quietOnFailure?: boolean;
+    }
+  ): Promise<void> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
+    if (!storedTemplate) {
+      throw new Error('目标模板不存在。');
+    }
+
+    await this.applyCanvasTemplateRecord(storedTemplate, options);
   }
 
   public getDebugSnapshot(): CanvasDebugSnapshot {
@@ -1081,6 +1316,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
+    this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.applyWorkbenchContextKeys();
@@ -1106,6 +1342,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     // 先切换内存态，再异步同步到 workspaceState，避免旧 webview 在 await 间隙继续把已删除节点写回持久化快照。
     this.state = this.reconcileSeededStateForTest(rawState);
+    this.canvasTemplateInitialized = this.canvasTemplateInitialized || this.state.nodes.length > 0;
     this.recordDiagnosticEvent('state/seededForTest', {
       nodeCount: this.state.nodes.length
     });
@@ -1139,6 +1376,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
+    this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
     this.applyWorkbenchContextKeys();
@@ -1252,6 +1490,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       invalidatePendingExecutionOperations: true
     });
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
+    this.canvasTemplateInitialized = true;
     this.persistState();
     this.recordDiagnosticEvent('state/reset', {
       previousNodeCount
@@ -1489,6 +1728,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     _state: unknown
   ): Promise<void> {
     this.state = this.loadReconciledState();
+    this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.persistState();
     if ((this.activeSurface ?? this.getConfiguredSurface()) !== 'editor') {
       this.recordDiagnosticEvent('surface/editorRestoreSkipped', {
@@ -1509,6 +1749,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     options?: { restoreWebviewFocus?: boolean }
   ): Promise<void> {
+    await this.ensureDefaultTemplateAppliedIfNeeded();
     this.recordDiagnosticEvent('surface/revealRequested', {
       from: this.activeSurface,
       to: surface
@@ -1711,6 +1952,188 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.context.workspaceState.get<T>(key);
   }
 
+  private readCanvasTemplateInitializedFlag(state: CanvasPrototypeState): boolean {
+    return this.getStoredValue<boolean>(STORAGE_KEYS.canvasTemplateInitialized) === true || state.nodes.length > 0;
+  }
+
+  private notifyTemplateCatalogChanged(): void {
+    this.templateCatalogEmitter.fire();
+    void this.postCanvasTemplateCatalogToActiveWebview();
+  }
+
+  private async postCanvasTemplateCatalogToActiveWebview(): Promise<void> {
+    if (!this.activeSurface || !this.surfaceReady[this.activeSurface] || !this.isInteractiveSurface(this.activeSurface)) {
+      return;
+    }
+
+    try {
+      const catalog = await this.getCanvasTemplateCatalog();
+      const defaultTemplateId = resolveEffectiveCanvasTemplateId(catalog.templates, this.getDefaultCanvasTemplateId());
+      this.postMessage({
+        type: 'host/templateCatalogUpdated',
+        payload: {
+          templates: buildCanvasTemplateMenuEntries(catalog.templates, defaultTemplateId)
+        }
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('template/catalogPostFailed', {
+        message: formatUnknownError(error)
+      });
+    }
+  }
+
+  private resolvePreferredTemplatePlacementCenter(explicitCenter?: CanvasNodePosition): CanvasNodePosition | undefined {
+    if (explicitCenter) {
+      return explicitCenter;
+    }
+
+    const activeCenter = this.activeSurface ? this.lastVisibleCanvasCenterBySurface[this.activeSurface] : undefined;
+    if (activeCenter) {
+      return activeCenter;
+    }
+
+    return this.lastVisibleCanvasCenterBySurface[this.getConfiguredSurface()];
+  }
+
+  private async ensureDefaultTemplateAppliedIfNeeded(): Promise<void> {
+    if (this.canvasTemplateInitialized || this.state.nodes.length > 0) {
+      return;
+    }
+
+    const preferredCenter = this.resolvePreferredTemplatePlacementCenter();
+    const selectedDefaultTemplateId = this.getDefaultCanvasTemplateId();
+    try {
+      await this.applyDefaultCanvasTemplate({
+        visibleCenter: preferredCenter
+      });
+      this.recordDiagnosticEvent('template/defaultAppliedOnFirstOpen', {
+        templateId: this.getDefaultCanvasTemplateId()
+      });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.recordDiagnosticEvent('template/defaultApplyFailedOnFirstOpen', {
+        templateId: selectedDefaultTemplateId,
+        message
+      });
+    }
+
+    if (selectedDefaultTemplateId !== DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) {
+      try {
+        await this.context.globalState.update(
+          CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY,
+          DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID
+        );
+        const fallbackTemplate = await this.resolveDefaultCanvasTemplateRecord();
+        if (fallbackTemplate) {
+          await this.applyCanvasTemplateRecord(fallbackTemplate, {
+            visibleCenter: preferredCenter
+          });
+          this.recordDiagnosticEvent('template/defaultFallbackAppliedOnFirstOpen', {
+            templateId: fallbackTemplate.template.id
+          });
+          return;
+        }
+      } catch (error) {
+        this.recordDiagnosticEvent('template/defaultFallbackFailedOnFirstOpen', {
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    this.canvasTemplateInitialized = true;
+    this.persistState();
+  }
+
+  private async resolveDefaultCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const storedTemplate =
+      findCanvasTemplateById(catalog.templates, this.getDefaultCanvasTemplateId()) ??
+      findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) ??
+      catalog.templates[0];
+
+    if (storedTemplate && storedTemplate.template.id !== this.getDefaultCanvasTemplateId()) {
+      await this.context.globalState.update(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY, storedTemplate.template.id);
+    }
+
+    return storedTemplate;
+  }
+
+  private async applyCanvasTemplateRecord(
+    storedTemplate: CanvasStoredTemplate,
+    options?: {
+      reset?: boolean;
+      visibleCenter?: CanvasNodePosition;
+      quietOnFailure?: boolean;
+    }
+  ): Promise<void> {
+    const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
+    const preferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
+    const nextBaseState = options?.reset
+      ? createDefaultState(this.getAgentCliConfig().defaultProvider)
+      : this.state;
+
+    if (options?.reset) {
+      await this.prepareForHostBoundary({
+        preserveLiveRuntime: false,
+        allowRuntimeSupervisorRestart: false,
+        invalidatePendingExecutionOperations: true
+      });
+    }
+
+    this.state = this.reconcileCanvasFileArtifacts(
+      applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
+        preferredCenter,
+        resolvedAgentProviders
+      })
+    );
+    this.canvasTemplateInitialized = true;
+    this.persistState();
+    this.recordDiagnosticEvent('template/applied', {
+      templateId: storedTemplate.template.id,
+      templateName: storedTemplate.template.name,
+      reset: options?.reset === true,
+      nodeCount: storedTemplate.template.nodes.length,
+      edgeCount: storedTemplate.template.edges.length
+    });
+    this.postState('host/stateUpdated');
+  }
+
+  private async validateCanvasTemplateForApply(template: CanvasTemplate): Promise<Map<number, AgentProviderKind>> {
+    const resolvedAgentProviders = new Map<number, AgentProviderKind>();
+    const uniqueProviders = new Set<AgentProviderKind>();
+    const containsExecutionNode = template.nodes.some((node) => node.kind === 'agent' || node.kind === 'terminal');
+
+    if (containsExecutionNode && !vscode.workspace.isTrusted) {
+      throw new Error('当前 workspace 未受信任，只有纯 Note 模板可以应用。');
+    }
+
+    for (const [index, node] of template.nodes.entries()) {
+      if (node.kind !== 'agent') {
+        continue;
+      }
+
+      const resolvedProvider = resolveCanvasTemplateAgentProvider(
+        node.metadata?.agent?.provider ?? 'default',
+        this.getAgentCliConfig().defaultProvider
+      );
+      resolvedAgentProviders.set(index, resolvedProvider);
+      uniqueProviders.add(resolvedProvider);
+    }
+
+    for (const provider of uniqueProviders) {
+      try {
+        await this.resolveAgentCli(provider);
+      } catch (error) {
+        throw new Error(
+          `模板「${template.name}」要求使用 ${agentProviderDisplayLabel(provider)}，但当前环境不可用：${formatUnknownError(error)}`
+        );
+      }
+    }
+
+    return resolvedAgentProviders;
+  }
+
   private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
     const snapshot = this.loadPersistedCanvasSnapshot();
     if (
@@ -1908,6 +2331,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       await this.context.workspaceState.update(
         STORAGE_KEYS.canvasFileFilterState,
         normalizeCanvasFileFilterState(snapshotWithMetadata.fileFilterState)
+      );
+      await this.context.workspaceState.update(
+        STORAGE_KEYS.canvasTemplateInitialized,
+        this.canvasTemplateInitialized
       );
       this.lastPersistedCanvasSnapshotError = undefined;
     }).catch((error) => {
@@ -4386,6 +4813,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       if (this.isInteractiveSurface(sourceSurface)) {
         this.postState('host/bootstrap');
+        void this.postCanvasTemplateCatalogToActiveWebview();
         this.maybePostVisibilityRestored(sourceSurface, {
           force: true
         });
@@ -4406,6 +4834,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): void {
     switch (parsedMessage.type) {
       case 'webview/ready':
+        return;
+      case 'webview/updateViewportCenter':
+        this.lastVisibleCanvasCenterBySurface[sourceSurface] = parsedMessage.payload.visibleCenter;
         return;
       case 'webview/selectNode':
         this.acknowledgeExecutionAttentionForNode(parsedMessage.payload.nodeId);
@@ -4565,6 +4996,59 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             }
           });
         });
+        return;
+      case 'webview/applyDefaultTemplate':
+        void this.applyDefaultCanvasTemplate({
+          visibleCenter: parsedMessage.payload?.visibleCenter
+        }).catch((error) => {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: formatUnknownError(error)
+            }
+          });
+        });
+        return;
+      case 'webview/applyTemplate':
+        void this.applyCanvasTemplateById(parsedMessage.payload.templateId, {
+          visibleCenter: parsedMessage.payload.visibleCenter
+        }).catch((error) => {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: formatUnknownError(error)
+            }
+          });
+        });
+        return;
+      case 'webview/resetToDefaultTemplate':
+        void this.applyDefaultCanvasTemplate({
+          reset: true,
+          visibleCenter: parsedMessage.payload?.visibleCenter
+        }).catch((error) => {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: formatUnknownError(error)
+            }
+          });
+        });
+        return;
+      case 'webview/resetToTemplate':
+        void this.applyCanvasTemplateById(parsedMessage.payload.templateId, {
+          reset: true,
+          visibleCenter: parsedMessage.payload.visibleCenter
+        }).catch((error) => {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: formatUnknownError(error)
+            }
+          });
+        });
+        return;
+      case 'webview/saveCanvasAsTemplate':
+        void vscode.commands.executeCommand(COMMAND_IDS.saveCanvasAsTemplate);
         return;
     }
   }
@@ -6131,17 +6615,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     provider: AgentProviderKind,
     launchPreset: AgentLaunchPresetKind,
     customLaunchCommand: string | undefined,
-    defaults: AgentProviderLaunchDefaults
+    defaults: AgentProviderLaunchDefaults,
+    templateArgv?: readonly string[]
   ): {
     commandLine: string;
     requestedCommand: string;
     launchArgs: string[];
   } {
-    if (launchPreset === 'custom' && !customLaunchCommand?.trim()) {
+    if (launchPreset === 'custom' && !customLaunchCommand?.trim() && templateArgv === undefined) {
       throw new Error('自定义启动命令不能为空。');
     }
 
-    const commandLine = buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
+    const commandLine =
+      templateArgv !== undefined
+        ? formatCommandLine([defaults.command.trim() || provider, ...normalizeStoredAgentTemplateArgv(templateArgv)])
+        : buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
     const validation = validateAgentCommandLine(commandLine, provider, defaults);
     if (!validation.valid || !validation.parsed) {
       throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
@@ -6168,7 +6656,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       provider,
       metadata.launchPreset,
       metadata.customLaunchCommand,
-      defaults
+      defaults,
+      metadata.templateArgv
     );
     return {
       commandLine: parsed.commandLine,
@@ -7612,6 +8101,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = nextStateWithOverrides;
     }
 
+    this.canvasTemplateInitialized = true;
     this.persistState();
     this.postState('host/stateUpdated');
     return createdNode;
@@ -7774,6 +8264,37 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function findCanvasTemplateById(
+  templates: readonly CanvasStoredTemplate[],
+  templateId: string
+): CanvasStoredTemplate | undefined {
+  return templates.find((template) => template.template.id === templateId);
+}
+
+function resolveEffectiveCanvasTemplateId(
+  templates: readonly CanvasStoredTemplate[],
+  preferredTemplateId: string
+): string | undefined {
+  return (
+    findCanvasTemplateById(templates, preferredTemplateId)?.template.id ??
+    findCanvasTemplateById(templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID)?.template.id ??
+    templates[0]?.template.id
+  );
+}
+
+function buildCanvasTemplateMenuEntries(
+  templates: readonly CanvasStoredTemplate[],
+  defaultTemplateId: string | undefined
+): CanvasTemplateMenuEntry[] {
+  return templates.map((storedTemplate) => ({
+    templateId: storedTemplate.template.id,
+    name: storedTemplate.template.name,
+    category: storedTemplate.template.category,
+    statsLabel: formatCanvasTemplateStats(storedTemplate.template),
+    isDefault: storedTemplate.template.id === defaultTemplateId
+  }));
 }
 
 function summarizeCanvasStateForDiagnostics(rawState: unknown): Record<string, unknown> {
@@ -8074,6 +8595,225 @@ function fallbackPlacementPosition(
   return snapCanvasPosition({
     x: bounds.maxRight + NODE_PLACEMENT_PADDING,
     y: Math.max(bounds.maxBottom - Math.round(nextFootprint.height / 2), normalizedAnchor.y)
+  });
+}
+
+function applyCanvasTemplateToState(
+  previousState: CanvasPrototypeState,
+  template: CanvasTemplate,
+  options: {
+    preferredCenter?: CanvasNodePosition;
+    resolvedAgentProviders: Map<number, AgentProviderKind>;
+  }
+): CanvasPrototypeState {
+  const bounds = measureCanvasTemplateBounds(template.nodes);
+  const centeredTopLeft = snapCanvasPosition({
+    x: (options.preferredCenter?.x ?? 0) - Math.round(bounds.width / 2),
+    y: (options.preferredCenter?.y ?? 0) - Math.round(bounds.height / 2)
+  });
+  const resolvedTopLeft =
+    previousState.nodes.length === 0
+      ? centeredTopLeft
+      : resolveTemplatePlacementTopLeft(previousState.nodes, template.nodes, centeredTopLeft);
+
+  let nextSequence = readNextNodeSequence(previousState.nodes);
+  const nodeIdByTemplateIndex = new Map<number, string>();
+  const materializedNodes = template.nodes.map((templateNode, index) => {
+    const resolvedAgentProvider =
+      templateNode.kind === 'agent'
+        ? options.resolvedAgentProviders.get(index) ?? 'codex'
+        : undefined;
+    const baseNode = createNode(
+      templateNode.kind,
+      nextSequence,
+      resolvedAgentProvider ?? 'codex'
+    );
+    nextSequence += 1;
+    nodeIdByTemplateIndex.set(index, baseNode.id);
+
+    return materializeTemplateNode(baseNode, templateNode, bounds.origin, resolvedTopLeft, resolvedAgentProvider);
+  });
+
+  const materializedEdges = template.edges.flatMap((edge) => {
+    const sourceNodeId = nodeIdByTemplateIndex.get(edge.sourceNodeIndex);
+    const targetNodeId = nodeIdByTemplateIndex.get(edge.targetNodeIndex);
+    if (!sourceNodeId || !targetNodeId) {
+      return [];
+    }
+
+    return [
+      {
+        id: `edge-${randomUUID()}`,
+        sourceNodeId,
+        targetNodeId,
+        sourceAnchor: edge.sourceAnchor,
+        targetAnchor: edge.targetAnchor,
+        arrowMode: edge.arrowMode,
+        owner: 'user' as const,
+        color: edge.color,
+        label: edge.label
+      }
+    ];
+  });
+
+  return {
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: [...previousState.nodes, ...materializedNodes],
+    edges: [...previousState.edges, ...materializedEdges]
+  };
+}
+
+function materializeTemplateNode(
+  baseNode: CanvasNodeSummary,
+  templateNode: CanvasTemplate['nodes'][number],
+  templateOrigin: CanvasNodePosition,
+  placedTopLeft: CanvasNodePosition,
+  resolvedAgentProvider?: AgentProviderKind
+): CanvasNodeSummary {
+  const position = snapCanvasPosition({
+    x: placedTopLeft.x + (templateNode.position.x - templateOrigin.x),
+    y: placedTopLeft.y + (templateNode.position.y - templateOrigin.y)
+  });
+
+  if (templateNode.kind === 'note') {
+    const content = trimStoredNodeText(templateNode.metadata?.note?.content ?? '');
+    return {
+      ...baseNode,
+      title: templateNode.title,
+      position,
+      size: normalizeCanvasNodeFootprint('note', templateNode.size),
+      status: 'ready',
+      summary: summarizeNoteNode(content),
+      metadata: {
+        note: {
+          content
+        }
+      }
+    };
+  }
+
+  if (templateNode.kind === 'agent') {
+    const provider = resolvedAgentProvider ?? 'codex';
+    const templateArgv = templateNode.metadata?.agent?.argv;
+    return {
+      ...baseNode,
+      title: templateNode.title,
+      position,
+      size: normalizeCanvasNodeFootprint('agent', templateNode.size),
+      status: 'idle',
+      summary: defaultSummaryForKind('agent'),
+      metadata: {
+        agent: {
+          ...createAgentMetadata(provider),
+          templateArgv: Array.isArray(templateArgv) ? normalizeStoredAgentTemplateArgv(templateArgv) : undefined
+        }
+      }
+    };
+  }
+
+  return {
+    ...baseNode,
+    title: templateNode.title,
+    position,
+    size: normalizeCanvasNodeFootprint('terminal', templateNode.size),
+    status: 'idle',
+    summary: defaultSummaryForKind('terminal'),
+    metadata: {
+      terminal: createTerminalMetadata(baseNode.id)
+    }
+  };
+}
+
+function measureCanvasTemplateBounds(nodes: readonly CanvasTemplate['nodes'][number][]): {
+  origin: CanvasNodePosition;
+  width: number;
+  height: number;
+} {
+  const minX = Math.min(...nodes.map((node) => node.position.x));
+  const minY = Math.min(...nodes.map((node) => node.position.y));
+  const maxRight = Math.max(...nodes.map((node) => node.position.x + node.size.width));
+  const maxBottom = Math.max(...nodes.map((node) => node.position.y + node.size.height));
+  return {
+    origin: {
+      x: minX,
+      y: minY
+    },
+    width: maxRight - minX,
+    height: maxBottom - minY
+  };
+}
+
+function resolveTemplatePlacementTopLeft(
+  existingNodes: CanvasNodeSummary[],
+  templateNodes: readonly CanvasTemplate['nodes'][number][],
+  centeredTopLeft: CanvasNodePosition
+): CanvasNodePosition {
+  const normalizedAnchor = snapCanvasPosition(centeredTopLeft);
+  for (const candidate of buildPlacementCandidates(normalizedAnchor, 'right-down')) {
+    if (!doesTemplatePlacementCollide(existingNodes, templateNodes, candidate)) {
+      return candidate;
+    }
+  }
+
+  return fallbackTemplatePlacementTopLeft(existingNodes, templateNodes, normalizedAnchor);
+}
+
+function doesTemplatePlacementCollide(
+  existingNodes: CanvasNodeSummary[],
+  templateNodes: readonly CanvasTemplate['nodes'][number][],
+  placedTopLeft: CanvasNodePosition
+): boolean {
+  const templateRects = buildTemplatePlacementRects(templateNodes, placedTopLeft);
+  return existingNodes.some((node) => {
+    const existingRect = createPlacementRect(node.position, node.size);
+    return templateRects.some((templateRect) => placementRectsOverlap(templateRect, existingRect));
+  });
+}
+
+function buildTemplatePlacementRects(
+  templateNodes: readonly CanvasTemplate['nodes'][number][],
+  placedTopLeft: CanvasNodePosition
+): Array<{ left: number; top: number; right: number; bottom: number }> {
+  const bounds = measureCanvasTemplateBounds(templateNodes);
+  return templateNodes.map((node) =>
+    createPlacementRect(
+      {
+        x: placedTopLeft.x + (node.position.x - bounds.origin.x),
+        y: placedTopLeft.y + (node.position.y - bounds.origin.y)
+      },
+      node.size
+    )
+  );
+}
+
+function fallbackTemplatePlacementTopLeft(
+  existingNodes: CanvasNodeSummary[],
+  templateNodes: readonly CanvasTemplate['nodes'][number][],
+  normalizedAnchor: CanvasNodePosition
+): CanvasNodePosition {
+  if (existingNodes.length === 0) {
+    return normalizedAnchor;
+  }
+
+  const bounds = existingNodes.reduce(
+    (current, node) => {
+      const rect = createPlacementRect(node.position, node.size);
+      return {
+        maxRight: Math.max(current.maxRight, rect.right),
+        maxBottom: Math.max(current.maxBottom, rect.bottom)
+      };
+    },
+    {
+      maxRight: Number.NEGATIVE_INFINITY,
+      maxBottom: Number.NEGATIVE_INFINITY
+    }
+  );
+  const templateBounds = measureCanvasTemplateBounds(templateNodes);
+
+  return snapCanvasPosition({
+    x: bounds.maxRight + NODE_PLACEMENT_PADDING,
+    y: Math.max(bounds.maxBottom - Math.round(templateBounds.height / 2), normalizedAnchor.y)
   });
 }
 
@@ -9983,6 +10723,9 @@ function normalizeMetadata(
           launchPreset === 'custom' && typeof agent.customLaunchCommand === 'string'
             ? agent.customLaunchCommand.trim() || undefined
             : undefined,
+        templateArgv: Array.isArray(agent.templateArgv)
+          ? normalizeStoredAgentTemplateArgv(agent.templateArgv)
+          : undefined,
         lastLaunchCommandLine:
           typeof agent.lastLaunchCommandLine === 'string'
             ? trimStoredTerminalText(agent.lastLaunchCommandLine)
@@ -10793,6 +11536,16 @@ function ensureAgentMetadata(node: CanvasNodeSummary): AgentNodeMetadata {
   return node.metadata?.agent ?? createAgentMetadata();
 }
 
+function normalizeStoredAgentTemplateArgv(value: readonly string[] | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => entry.trim());
+}
+
 function ensureTerminalMetadata(node: CanvasNodeSummary): TerminalNodeMetadata {
   return node.metadata?.terminal ?? createTerminalMetadata(node.id);
 }
@@ -11328,4 +12081,25 @@ function readAgentCliResolutionCache(value: unknown): Record<string, AgentCliRes
   }
 
   return cache;
+}
+
+function buildCanvasTemplateStorageLocations(context: vscode.ExtensionContext): CanvasTemplateStorageLocation[] {
+  const workspaceLocations =
+    vscode.workspace.workspaceFolders
+      ?.filter((folder) => folder.uri.scheme === 'file')
+      .map<CanvasTemplateStorageLocation>((folder) => ({
+        id: `workspace:${folder.uri.fsPath}`,
+        label: `当前 workspace · ${folder.name}`,
+        rootPath: path.join(folder.uri.fsPath, '.dev-session-canvas', 'templates'),
+        scope: 'workspace'
+      })) ?? [];
+
+  const globalLocation: CanvasTemplateStorageLocation = {
+    id: 'global',
+    label: '当前设备',
+    rootPath: path.join(context.globalStorageUri.fsPath, 'templates'),
+    scope: 'global'
+  };
+
+  return [...workspaceLocations, globalLocation];
 }

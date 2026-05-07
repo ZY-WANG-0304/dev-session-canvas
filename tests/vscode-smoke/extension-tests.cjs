@@ -18,6 +18,14 @@ const COMMAND_IDS = {
   openCanvas: 'devSessionCanvas.openCanvas',
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   openCanvasInPanel: 'devSessionCanvas.openCanvasInPanel',
+  applyTemplate: 'devSessionCanvas.applyTemplate',
+  applyDefaultTemplate: 'devSessionCanvas.applyDefaultTemplate',
+  resetToDefaultTemplate: 'devSessionCanvas.resetToDefaultTemplate',
+  saveCanvasAsTemplate: 'devSessionCanvas.saveCanvasAsTemplate',
+  importTemplate: 'devSessionCanvas.importTemplate',
+  exportTemplate: 'devSessionCanvas.exportTemplate',
+  setDefaultTemplate: 'devSessionCanvas.setDefaultTemplate',
+  refreshTemplates: 'devSessionCanvas.refreshTemplates',
   selectTerminalShell: 'devSessionCanvas.selectTerminalShell',
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
@@ -46,6 +54,13 @@ const COMMAND_IDS = {
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
   testPerformSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
   testPerformSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
+  testGetCanvasTemplateItems: 'devSessionCanvas.__test.getCanvasTemplateItems',
+  testApplyCanvasTemplate: 'devSessionCanvas.__test.applyCanvasTemplate',
+  testSaveCanvasAsTemplate: 'devSessionCanvas.__test.saveCanvasAsTemplate',
+  testSetDefaultTemplate: 'devSessionCanvas.__test.setDefaultTemplate',
+  testDeleteCanvasTemplate: 'devSessionCanvas.__test.deleteCanvasTemplate',
+  testExportCanvasTemplateToPath: 'devSessionCanvas.__test.exportCanvasTemplateToPath',
+  testImportCanvasTemplateFromPath: 'devSessionCanvas.__test.importCanvasTemplateFromPath',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
@@ -143,6 +158,7 @@ async function runSmoke() {
     assert.ok(commands.includes(command), `Missing command ${command}.`);
   }
 
+  await verifyFirstOpenDefaultTemplate();
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -177,6 +193,75 @@ async function createBaseNodes() {
       preferredPosition: { x: 420, y: 320 }
     }
   });
+}
+
+async function verifyFirstOpenDefaultTemplate() {
+  const snapshot = await waitForSnapshot((currentSnapshot) => {
+    const noteTitles = currentSnapshot.state.nodes
+      .filter((node) => node.kind === 'note')
+      .map((node) => node.title)
+      .sort();
+    return (
+      currentSnapshot.state.nodes.length === 2 &&
+      noteTitles.includes('欢迎使用') &&
+      noteTitles.includes('当前已支持的快捷操作')
+    );
+  }, 20000);
+
+  assert.deepStrictEqual(
+    snapshot.state.nodes.map((node) => node.kind).sort(),
+    ['note', 'note']
+  );
+
+  const templateCatalog = await getCanvasTemplateCatalog();
+  const builtinTemplateIds = templateCatalog.templates
+    .filter((entry) => entry.template.category === 'builtin')
+    .map((entry) => entry.template.id)
+    .sort();
+  assert.deepStrictEqual(builtinTemplateIds, [
+    'builtin-anthropic-harness',
+    'builtin-basic-workflow',
+    'builtin-getting-started'
+  ]);
+  assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
+}
+
+async function getCanvasTemplateCatalog() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetCanvasTemplateItems);
+}
+
+async function applyCanvasTemplateForTest(templateId, reset = false) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testApplyCanvasTemplate, templateId, reset);
+}
+
+async function saveCanvasTemplateForTest(name, agentProviderMode = 'default', overwriteTemplateId) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testSaveCanvasAsTemplate,
+    name,
+    agentProviderMode,
+    overwriteTemplateId
+  );
+}
+
+async function setDefaultCanvasTemplateForTest(templateId) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testSetDefaultTemplate, templateId);
+}
+
+async function deleteCanvasTemplateForTest(templateId) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testDeleteCanvasTemplate, templateId);
+}
+
+async function exportCanvasTemplateToPathForTest(templateId, targetPath) {
+  return vscode.commands.executeCommand(COMMAND_IDS.testExportCanvasTemplateToPath, templateId, targetPath);
+}
+
+async function importCanvasTemplateFromPathForTest(sourcePath, overwriteTemplateId, nameOverride) {
+  return vscode.commands.executeCommand(
+    COMMAND_IDS.testImportCanvasTemplateFromPath,
+    sourcePath,
+    overwriteTemplateId,
+    nameOverride
+  );
 }
 
 async function prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(enabled) {
@@ -233,6 +318,258 @@ async function prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode(enable
   };
 }
 
+async function verifyCanvasTemplatesTrusted() {
+  let templateCatalog = await getCanvasTemplateCatalog();
+  assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
+  assert.strictEqual(
+    templateCatalog.templates.filter((entry) => entry.template.category === 'builtin').length,
+    3
+  );
+  assert.deepStrictEqual(templateCatalog.issues, []);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await ensureEditorCanvasReady();
+
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'note',
+      preferredPosition: { x: 0, y: 0 }
+    }
+  });
+
+  let snapshot = await waitForSnapshot(
+    (currentSnapshot) => currentSnapshot.state.nodes.length === 1,
+    20000
+  );
+  const baselineNote = findNodeByKind(snapshot, 'note');
+
+  await dispatchWebviewMessage({
+    type: 'webview/applyTemplate',
+    payload: {
+      templateId: 'builtin-basic-workflow',
+      visibleCenter: { x: 0, y: 0 }
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.length === 4 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'agent').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'note').length === 2,
+    20000
+  );
+
+  for (const newNode of snapshot.state.nodes.filter((node) => node.id !== baselineNote.id)) {
+    assert.ok(
+      !rectanglesOverlap(baselineNote, newNode),
+      `Expected template apply to avoid overlapping baseline note ${baselineNote.id} with ${newNode.id}.`
+    );
+  }
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await ensureEditorCanvasReady();
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'note');
+
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'agent').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'terminal').length === 1 &&
+      currentSnapshot.state.nodes.filter((node) => node.kind === 'note').length === 1,
+    20000
+  );
+
+  const agentNode = findNodeByKind(snapshot, 'agent');
+  const terminalNode = findNodeByKind(snapshot, 'terminal');
+  const noteNode = findNodeByKind(snapshot, 'note');
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNodeTitle',
+    payload: {
+      nodeId: agentNode.id,
+      title: 'Template Save Agent'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/updateNodeTitle',
+    payload: {
+      nodeId: terminalNode.id,
+      title: 'Template Save Terminal'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/updateNodeTitle',
+    payload: {
+      nodeId: noteNode.id,
+      title: 'Template Save Note'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: noteNode.id,
+      content: 'Template note body'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/createEdge',
+    payload: {
+      sourceNodeId: agentNode.id,
+      targetNodeId: terminalNode.id,
+      sourceAnchor: 'right',
+      targetAnchor: 'left'
+    }
+  });
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === noteNode.id);
+    return (
+      currentSnapshot.state.edges.length === 1 &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Agent') &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Terminal') &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Note') &&
+      currentNote?.metadata?.note?.content === 'Template note body'
+    );
+  }, 20000);
+
+  const savedTemplateName = `Smoke Saved Template ${Date.now()}`;
+  const savedTemplate = await saveCanvasTemplateForTest(savedTemplateName, 'default');
+  assert.strictEqual(savedTemplate.template.name, savedTemplateName);
+  assert.strictEqual(savedTemplate.template.category, 'user');
+
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Expected an open workspace folder for canvas template smoke.');
+  const scratchDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'canvas-templates');
+  await fs.mkdir(scratchDir, { recursive: true });
+  const exportPath = path.join(scratchDir, 'saved-template.json');
+  await exportCanvasTemplateToPathForTest(savedTemplate.template.id, exportPath);
+  assert.ok(fsSync.existsSync(exportPath), 'Expected exported canvas template JSON to exist.');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await ensureEditorCanvasReady();
+  await applyCanvasTemplateForTest(savedTemplate.template.id);
+
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.title === 'Template Save Agent');
+    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.title === 'Template Save Terminal');
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.title === 'Template Save Note');
+    return Boolean(
+      currentSnapshot.state.nodes.length === 3 &&
+      currentSnapshot.state.edges.length === 1 &&
+      currentAgent &&
+      currentAgent.status === 'idle' &&
+      currentAgent.metadata?.agent?.liveSession === false &&
+      currentAgent.metadata?.agent?.pendingLaunch === undefined &&
+      currentTerminal &&
+      currentTerminal.status === 'idle' &&
+      currentTerminal.metadata?.terminal?.liveSession === false &&
+      currentTerminal.metadata?.terminal?.pendingLaunch === undefined &&
+      currentNote?.metadata?.note?.content === 'Template note body'
+    );
+  }, 20000);
+
+  await setDefaultCanvasTemplateForTest(savedTemplate.template.id);
+  await waitForHostMessages((messages) =>
+    messages.some(
+      (message) =>
+        message.type === 'host/templateCatalogUpdated' &&
+        message.payload.templates.some(
+          (templateEntry) => templateEntry.templateId === savedTemplate.template.id && templateEntry.isDefault
+        )
+    )
+  );
+  templateCatalog = await getCanvasTemplateCatalog();
+  assert.strictEqual(templateCatalog.defaultTemplateId, savedTemplate.template.id);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await ensureEditorCanvasReady();
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'note',
+      preferredPosition: { x: 0, y: 0 }
+    }
+  });
+  await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 1, 20000);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.applyDefaultTemplate);
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.length === 4 &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Agent') &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Terminal') &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Note'),
+    20000
+  );
+  assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'note').length, 2);
+
+  await dispatchWebviewMessage({
+    type: 'webview/resetToTemplate',
+    payload: {
+      templateId: savedTemplate.template.id,
+      visibleCenter: { x: 0, y: 0 }
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.length === 3 &&
+      currentSnapshot.state.edges.length === 1 &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Agent') &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Terminal') &&
+      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Note'),
+    20000
+  );
+  assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'note').length, 1);
+
+  await deleteCanvasTemplateForTest(savedTemplate.template.id);
+  templateCatalog = await getCanvasTemplateCatalog();
+  assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
+  assert.ok(!templateCatalog.templates.some((entry) => entry.template.id === savedTemplate.template.id));
+
+  const importedTemplateName = `Imported Smoke Template ${Date.now()}`;
+  const importedTemplate = await importCanvasTemplateFromPathForTest(exportPath, undefined, importedTemplateName);
+  assert.strictEqual(importedTemplate.template.name, importedTemplateName);
+
+  templateCatalog = await getCanvasTemplateCatalog();
+  assert.ok(templateCatalog.templates.some((entry) => entry.template.id === importedTemplate.template.id));
+
+  await deleteCanvasTemplateForTest(importedTemplate.template.id);
+  templateCatalog = await getCanvasTemplateCatalog();
+  assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+}
+
+async function verifyCanvasTemplatesRestricted() {
+  const templateCatalog = await getCanvasTemplateCatalog();
+  assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
+  assert.strictEqual(
+    templateCatalog.templates.filter((entry) => entry.template.category === 'builtin').length,
+    3
+  );
+
+  await applyCanvasTemplateForTest('builtin-getting-started');
+  let snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.length === 2 &&
+      currentSnapshot.state.nodes.every((node) => node.kind === 'note'),
+    20000
+  );
+  assert.ok(snapshot.state.nodes.every((node) => node.kind === 'note'));
+
+  await assert.rejects(
+    () => applyCanvasTemplateForTest('builtin-basic-workflow'),
+    /只有纯 Note 模板可以应用/
+  );
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+}
+
 async function runTrustedSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
@@ -265,6 +602,11 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
   assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强');
+
+  await verifyCanvasTemplatesTrusted();
+  await ensureEditorCanvasReady();
+  await clearHostMessages();
+  await clearDiagnosticEvents();
 
   await verifyCodexSessionIdLocator();
   await verifyClaudeSessionIdLocator();
@@ -2560,6 +2902,10 @@ async function runRestrictedSmoke() {
   assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['note']);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
+
+  await verifyCanvasTemplatesRestricted();
+  await ensureEditorCanvasReady();
+  await clearHostMessages();
 
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',

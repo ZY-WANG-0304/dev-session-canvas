@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const defaultOutputDir = path.join(repoRoot, '.debug', 'vscode-extension-main-only');
-const copiedEntries = ['dist', 'images', 'package.nls.json'];
+const copiedEntries = ['dist', 'images', 'resources', 'package.nls.json'];
 
 async function pathExists(targetPath) {
   try {

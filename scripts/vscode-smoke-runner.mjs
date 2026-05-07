@@ -142,7 +142,7 @@ export async function prepareMainSmokeHostExtension(options) {
   await fs.rm(smokeHostRoot, { recursive: true, force: true });
   await fs.mkdir(smokeHostRoot, { recursive: true });
 
-  for (const entry of ['package.json', 'package.nls.json', 'dist', 'images', 'node_modules', 'scripts']) {
+  for (const entry of ['package.json', 'package.nls.json', 'dist', 'images', 'resources', 'node_modules', 'scripts']) {
     const sourcePath = path.join(options.projectRoot, entry);
     const targetPath = path.join(smokeHostRoot, entry);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });

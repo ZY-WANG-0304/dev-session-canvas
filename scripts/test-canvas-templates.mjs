@@ -1,0 +1,325 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+
+import esbuild from 'esbuild';
+
+const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-canvas-templates-'));
+
+try {
+  const outfile = path.join(tempDir, 'canvasTemplates.cjs');
+
+  await esbuild.build({
+    stdin: {
+      contents: `
+        export * from './src/common/canvasTemplates';
+        export * from './src/panel/CanvasTemplateStore';
+      `,
+      resolveDir: process.cwd(),
+      sourcefile: 'canvas-templates-entry.ts'
+    },
+    bundle: true,
+    format: 'cjs',
+    outfile,
+    platform: 'node',
+    target: 'node18'
+  });
+
+  const require = createRequire(import.meta.url);
+  const {
+    CanvasTemplateStore,
+    buildCanvasTemplateDocument,
+    captureCanvasTemplateFromState,
+    encodeCanvasTemplateDocument,
+    formatCanvasTemplateStats,
+    parseCanvasTemplateDocument,
+    sanitizeCanvasTemplateFileStem
+  } = require(outfile);
+
+  const builtinDir = path.join(tempDir, 'builtin');
+  const workspaceUserDir = path.join(tempDir, 'workspace-user');
+  const globalUserDir = path.join(tempDir, 'global-user');
+  await mkdir(builtinDir, { recursive: true });
+  await mkdir(workspaceUserDir, { recursive: true });
+  await mkdir(globalUserDir, { recursive: true });
+
+  const builtinTemplateA = {
+    id: 'builtin-a',
+    name: 'Builtin A',
+    category: 'builtin',
+    createdAt: '2026-05-06T00:00:00.000Z',
+    updatedAt: '2026-05-06T00:00:00.000Z',
+    nodes: [
+      {
+        kind: 'note',
+        title: 'Welcome',
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 240 },
+        metadata: { note: { content: 'hello' } }
+      }
+    ],
+    edges: []
+  };
+  const builtinTemplateB = {
+    id: 'builtin-b',
+    name: 'Builtin B',
+    category: 'builtin',
+    createdAt: '2026-05-06T00:00:00.000Z',
+    updatedAt: '2026-05-06T00:00:00.000Z',
+    nodes: [
+      {
+        kind: 'agent',
+        title: 'Agent A',
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 240 },
+        metadata: { agent: { provider: 'default' } }
+      },
+      {
+        kind: 'terminal',
+        title: 'Terminal B',
+        position: { x: 360, y: 0 },
+        size: { width: 320, height: 240 }
+      }
+    ],
+    edges: []
+  };
+  const userTemplate = {
+    id: 'user-a',
+    name: 'User Template',
+    category: 'user',
+    createdAt: '2026-05-07T00:00:00.000Z',
+    updatedAt: '2026-05-07T00:00:00.000Z',
+    nodes: [
+      {
+        kind: 'note',
+        title: 'User Note',
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 240 },
+        metadata: { note: { content: 'world' } }
+      }
+    ],
+    edges: []
+  };
+
+  await writeFile(
+    path.join(builtinDir, '01-a.json'),
+    `${JSON.stringify(buildCanvasTemplateDocument(builtinTemplateA), null, 2)}\n`
+  );
+  await writeFile(
+    path.join(builtinDir, '02-b.json'),
+    `${JSON.stringify(buildCanvasTemplateDocument(builtinTemplateB), null, 2)}\n`
+  );
+  await writeFile(path.join(globalUserDir, 'broken.json'), '{ this is not valid json\n');
+
+  const store = new CanvasTemplateStore(builtinDir, [
+    {
+      id: 'workspace',
+      label: 'Workspace',
+      rootPath: workspaceUserDir,
+      scope: 'workspace'
+    },
+    {
+      id: 'global',
+      label: 'Current Device',
+      rootPath: globalUserDir,
+      scope: 'global'
+    }
+  ]);
+  const savedUserTemplate = await store.writeUserTemplate(userTemplate);
+  assert.ok(savedUserTemplate.filePath.startsWith(globalUserDir));
+  assert.match(path.basename(savedUserTemplate.filePath), /User-Template-user-a\.json$/);
+
+  const workspaceTemplate = {
+    ...userTemplate,
+    id: 'user-workspace',
+    name: 'Workspace Template',
+    createdAt: '2026-05-08T00:00:00.000Z',
+    updatedAt: '2026-05-08T00:00:00.000Z'
+  };
+  const savedWorkspaceTemplate = await store.writeUserTemplate(workspaceTemplate, {
+    targetRootPath: workspaceUserDir,
+    relativeDirectory: 'team/backend'
+  });
+  assert.ok(savedWorkspaceTemplate.filePath.startsWith(workspaceUserDir));
+  assert.strictEqual(savedWorkspaceTemplate.relativeDirectory, path.join('team', 'backend'));
+
+  const catalog = await store.listTemplates();
+  assert.deepStrictEqual(
+    catalog.templates.map((entry) => entry.template.id),
+    ['builtin-a', 'builtin-b', 'user-workspace', 'user-a']
+  );
+  assert.strictEqual(catalog.issues.length, 1);
+  assert.match(catalog.issues[0].message, /JSON/);
+  assert.strictEqual(formatCanvasTemplateStats(builtinTemplateB), '1 Agent, 1 Terminal');
+
+  const exportPath = path.join(tempDir, 'exports', 'template-export.json');
+  await store.exportTemplateToFile(userTemplate, exportPath);
+  const exportedText = await readFile(exportPath, 'utf8');
+  assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(exportedText)).document.template, userTemplate);
+
+  const captureState = {
+    version: 1,
+    updatedAt: '2026-05-06T10:00:00.000Z',
+    nodes: [
+      {
+        id: 'agent-1',
+        kind: 'agent',
+        title: 'Planner',
+        status: 'running',
+        summary: 'summary',
+        position: { x: 100, y: 140 },
+        size: { width: 520, height: 380 },
+        metadata: { agent: { provider: 'claude', templateArgv: ['--model', 'sonnet'] } }
+      },
+      {
+        id: 'terminal-1',
+        kind: 'terminal',
+        title: 'Terminal',
+        status: 'running',
+        summary: 'summary',
+        position: { x: 700, y: 140 },
+        size: { width: 500, height: 360 },
+        metadata: { terminal: {} }
+      },
+      {
+        id: 'note-1',
+        kind: 'note',
+        title: 'Notes',
+        status: 'ready',
+        summary: 'summary',
+        position: { x: 220, y: 560 },
+        size: { width: 420, height: 240 },
+        metadata: { note: { content: 'remember this' } }
+      },
+      {
+        id: 'file-1',
+        kind: 'file',
+        title: 'ignore.ts',
+        status: 'ready',
+        summary: 'summary',
+        position: { x: 1500, y: 300 },
+        size: { width: 280, height: 120 },
+        metadata: { file: { filePath: 'src/ignore.ts', ownerNodeIds: ['agent-1'], accessMode: 'read' } }
+      }
+    ],
+    edges: [
+      {
+        id: 'edge-user',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'terminal-1',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'user',
+        label: 'run'
+      },
+      {
+        id: 'edge-auto',
+        sourceNodeId: 'agent-1',
+        targetNodeId: 'file-1',
+        sourceAnchor: 'bottom',
+        targetAnchor: 'top',
+        arrowMode: 'none',
+        owner: 'automatic'
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
+  };
+
+  const capturedDefault = captureCanvasTemplateFromState({
+    state: captureState,
+    name: 'Captured Template',
+    templateId: 'captured-template',
+    category: 'user',
+    agentProviderSelection: 'default',
+    now: '2026-05-06T10:00:00.000Z'
+  });
+
+  assert.deepStrictEqual(capturedDefault.ignoredNodeIds, ['file-1']);
+  assert.deepStrictEqual(capturedDefault.ignoredEdgeIds, ['edge-auto']);
+  assert.strictEqual(capturedDefault.template.nodes.length, 3);
+  assert.deepStrictEqual(capturedDefault.template.nodes[0].position, { x: 0, y: 0 });
+  assert.strictEqual(capturedDefault.template.nodes[0].metadata.agent.provider, 'default');
+  assert.deepStrictEqual(capturedDefault.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
+  assert.strictEqual(capturedDefault.template.edges.length, 1);
+  assert.strictEqual(capturedDefault.template.edges[0].label, 'run');
+
+  const capturedPreserved = captureCanvasTemplateFromState({
+    state: captureState,
+    name: 'Captured Template',
+    templateId: 'captured-template-preserved',
+    category: 'user',
+    agentProviderSelection: 'preserve',
+    now: '2026-05-06T10:00:00.000Z'
+  });
+  assert.strictEqual(capturedPreserved.template.nodes[0].metadata.agent.provider, 'claude');
+  assert.deepStrictEqual(capturedPreserved.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
+
+  const capturedPerAgent = captureCanvasTemplateFromState({
+    state: captureState,
+    name: 'Captured Template',
+    templateId: 'captured-template-per-agent',
+    category: 'user',
+    agentProviderSelection: {
+      'agent-1': 'default'
+    },
+    now: '2026-05-06T10:00:00.000Z'
+  });
+  assert.strictEqual(capturedPerAgent.template.nodes[0].metadata.agent.provider, 'default');
+
+  assert.strictEqual(
+    sanitizeCanvasTemplateFileStem('  team workflow / draft  ', 'user-template-1234567890'),
+    'team-workflow-draft-user-templat'
+  );
+
+  const roundTripText = encodeCanvasTemplateDocument(userTemplate);
+  assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
+
+  const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
+  const rowClickHandler = sliceBetween(
+    sidebarTemplateViewSource,
+    "row.addEventListener('click', () => {",
+    "row.addEventListener('focus'"
+  );
+  const rowKeyboardHandler = sliceBetween(
+    sidebarTemplateViewSource,
+    "row.addEventListener('keydown', (event) => {",
+    "const main = document.createElement('div');"
+  );
+  const applyActionClickHandler = sliceBetween(
+    sidebarTemplateViewSource,
+    "applyAction.addEventListener('click', (event) => {",
+    "const resetAction = document.createElement('button');"
+  );
+  assert.match(rowClickHandler, /setSelectedId\(item\.id\)/u);
+  assert.doesNotMatch(rowClickHandler, /postTemplateMessage\('sidebarTemplates\/applyTemplate'/u);
+  assert.match(rowKeyboardHandler, /setSelectedId\(item\.id\)/u);
+  assert.doesNotMatch(rowKeyboardHandler, /postTemplateMessage\('sidebarTemplates\/applyTemplate'/u);
+  assert.match(applyActionClickHandler, /postTemplateMessage\('sidebarTemplates\/applyTemplate', item\.templateId\)/u);
+  assert.match(sidebarTemplateViewSource, /titleLine\.append\(actions\);/u);
+  assert.match(sidebarTemplateViewSource, /row\.append\(main\);/u);
+  assert.doesNotMatch(sidebarTemplateViewSource, /row\.append\(main, actions\);/u);
+  assert.match(sidebarTemplateViewSource, /grid-template-columns: minmax\(0, 1fr\);/u);
+  assert.doesNotMatch(sidebarTemplateViewSource, /grid-template-columns: minmax\(0, 1fr\) auto;/u);
+  assert.match(sidebarTemplateViewSource, /flex-wrap: nowrap;/u);
+  assert.match(sidebarTemplateViewSource, /text-overflow: ellipsis;/u);
+  assert.doesNotMatch(sidebarTemplateViewSource, /hintNote|hint-note|canSaveCurrentCanvas/u);
+  assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
+  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '用户'/u);
+  assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
+  assert.doesNotMatch(sidebarTemplateViewSource, /textContent = item\.category === 'builtin' \? '内置' : '用户';/u);
+} finally {
+  await rm(tempDir, { recursive: true, force: true });
+}
+
+function sliceBetween(source, startMarker, endMarker) {
+  const startIndex = source.indexOf(startMarker);
+  assert.notStrictEqual(startIndex, -1, `Expected source to contain start marker: ${startMarker}`);
+  const endIndex = source.indexOf(endMarker, startIndex + startMarker.length);
+  assert.notStrictEqual(endIndex, -1, `Expected source to contain end marker: ${endMarker}`);
+  return source.slice(startIndex, endIndex);
+}

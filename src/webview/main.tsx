@@ -64,6 +64,7 @@ import type {
   CanvasStrongTerminalAttentionReminderMode,
   CanvasNodeSummary,
   CanvasPrototypeState,
+  CanvasTemplateMenuEntry,
   ExecutionNodeKind,
   FileListNodeEntrySummary,
   HostToWebviewMessage,
@@ -225,11 +226,12 @@ interface CanvasNodeLayoutDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
 }
+type CanvasContextMenuView = 'root' | 'agent-launch-mode' | 'apply-template' | 'reset-template';
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
-  view: 'root' | 'agent-launch-mode';
+  view: CanvasContextMenuView;
   selectedAgentProvider?: AgentProviderKind;
 }
 type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
@@ -708,6 +710,7 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
 
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
+  const [templateMenuEntries, setTemplateMenuEntries] = useState<CanvasTemplateMenuEntry[]>([]);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
     workspaceTrusted: false,
     surfaceLocation: latestRuntimeContext.surfaceLocation,
@@ -785,6 +788,9 @@ function App(): JSX.Element {
             applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
           }
           scheduleEmbeddedTerminalAppearanceRefresh();
+          break;
+        case 'host/templateCatalogUpdated':
+          setTemplateMenuEntries(Array.isArray(message.payload.templates) ? message.payload.templates : []);
           break;
         case 'host/themeChanged':
           scheduleEmbeddedTerminalAppearanceRefresh();
@@ -1535,6 +1541,15 @@ function App(): JSX.Element {
       ...current,
       viewport
     }));
+    const visibleCenter = resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current);
+    if (visibleCenter) {
+      postMessage({
+        type: 'webview/updateViewportCenter',
+        payload: {
+          visibleCenter
+        }
+      });
+    }
   };
 
   const handleMoveStart = (): void => {
@@ -1598,6 +1613,26 @@ function App(): JSX.Element {
   };
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const visibleCenter = resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current);
+      if (!visibleCenter) {
+        return;
+      }
+
+      postMessage({
+        type: 'webview/updateViewportCenter',
+        payload: {
+          visibleCenter
+        }
+      });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [reactFlowReadyVersion]);
+
+  useEffect(() => {
     const currentSelectedNodeId = localUiState.selectedNodeId;
     const currentSelectedEdgeId = selectedEdgeId;
     if (!currentSelectedNodeId && !currentSelectedEdgeId) {
@@ -1650,7 +1685,7 @@ function App(): JSX.Element {
           closeFloatingMenus();
           return current;
         }
-        if (current.view === 'agent-launch-mode') {
+        if (current.view !== 'root') {
           return {
             ...current,
             view: 'root',
@@ -1830,8 +1865,10 @@ function App(): JSX.Element {
           view={contextMenu.view}
           selectedAgentProvider={contextMenu.selectedAgentProvider}
           kinds={creatableKinds}
+          templateEntries={templateMenuEntries}
           defaultAgentProvider={runtimeContext.defaultAgentProvider}
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
+          canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
           onCreate={(kind, agentProvider, agentLaunchPreset, agentCustomLaunchCommand) => {
             createNode(
               kind,
@@ -1853,6 +1890,51 @@ function App(): JSX.Element {
                 : current
             )
           }
+          onShowTemplatePicker={(view) =>
+            setContextMenu((current) =>
+              current
+                ? {
+                    ...current,
+                    view,
+                    selectedAgentProvider: undefined
+                  }
+                : current
+            )
+          }
+          onApplyDefaultTemplate={() => {
+            postMessage({
+              type: 'webview/applyDefaultTemplate',
+              payload: {
+                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+              }
+            });
+            closePaneContextMenu();
+          }}
+          onResetToDefaultTemplate={() => {
+            postMessage({
+              type: 'webview/resetToDefaultTemplate',
+              payload: {
+                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+              }
+            });
+            closePaneContextMenu();
+          }}
+          onApplyTemplate={(templateId, reset) => {
+            postMessage({
+              type: reset ? 'webview/resetToTemplate' : 'webview/applyTemplate',
+              payload: {
+                templateId,
+                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+              }
+            });
+            closePaneContextMenu();
+          }}
+          onSaveCanvasAsTemplate={() => {
+            postMessage({
+              type: 'webview/saveCanvasAsTemplate'
+            });
+            closePaneContextMenu();
+          }}
           onBack={() =>
             setContextMenu((current) => {
               if (!current) {
@@ -2023,6 +2105,30 @@ function doesNodeMatchPendingManualCreateRequest(
   }
 
   return true;
+}
+
+function resolveVisibleCanvasCenter(
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null,
+  canvasShellElement: HTMLDivElement | null
+): CanvasNodePosition | undefined {
+  if (!reactFlowInstance?.viewportInitialized || !canvasShellElement) {
+    return undefined;
+  }
+
+  const bounds = canvasShellElement.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    return undefined;
+  }
+
+  const flowCenter = reactFlowInstance.screenToFlowPosition({
+    x: bounds.left + bounds.width / 2,
+    y: bounds.top + bounds.height / 2
+  });
+
+  return {
+    x: Math.round(flowCenter.x),
+    y: Math.round(flowCenter.y)
+  };
 }
 
 function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
@@ -4302,11 +4408,13 @@ const CanvasContextMenu = React.forwardRef<
   {
     screenX: number;
     screenY: number;
-    view: 'root' | 'agent-launch-mode';
+    view: CanvasContextMenuView;
     selectedAgentProvider?: AgentProviderKind;
     kinds: CanvasCreatableNodeKind[];
+    templateEntries: CanvasTemplateMenuEntry[];
     defaultAgentProvider: AgentProviderKind;
     agentLaunchDefaults: AgentLaunchDefaultsByProvider;
+    canSaveCurrentCanvas: boolean;
     onCreate: (
       kind: CanvasCreatableNodeKind,
       agentProvider?: AgentProviderKind,
@@ -4314,6 +4422,11 @@ const CanvasContextMenu = React.forwardRef<
       agentCustomLaunchCommand?: string
     ) => void;
     onShowAgentLaunchModes: (provider: AgentProviderKind) => void;
+    onShowTemplatePicker: (view: 'apply-template' | 'reset-template') => void;
+    onApplyDefaultTemplate: () => void;
+    onResetToDefaultTemplate: () => void;
+    onApplyTemplate: (templateId: string, reset: boolean) => void;
+    onSaveCanvasAsTemplate: () => void;
     onBack: () => void;
     onClose: () => void;
   }
@@ -4323,6 +4436,9 @@ const CanvasContextMenu = React.forwardRef<
   const rootKinds = (['note', 'terminal'] as const).filter((kind) => props.kinds.includes(kind));
   const showAgentProviders = props.kinds.includes('agent');
   const isNestedView = props.view !== 'root';
+  const isTemplatePickerView = props.view === 'apply-template' || props.view === 'reset-template';
+  const isResetTemplatePicker = props.view === 'reset-template';
+  const defaultTemplateEntry = props.templateEntries.find((entry) => entry.isDefault) ?? props.templateEntries[0];
   const selectedAgentProvider = props.selectedAgentProvider ?? props.defaultAgentProvider;
   const selectedLaunchDefaults = props.agentLaunchDefaults[selectedAgentProvider];
   const defaultPresetBuild = tryBuildAgentPresetCommandLine(
@@ -4421,14 +4537,22 @@ const CanvasContextMenu = React.forwardRef<
         <div className="canvas-context-menu-header-copy">
           <strong>
             {props.view === 'root'
-              ? '新建节点'
-              : `选择启动方式 - ${providerLabel(selectedAgentProvider)}`}
+              ? '画布操作'
+              : props.view === 'agent-launch-mode'
+                ? `选择启动方式 - ${providerLabel(selectedAgentProvider)}`
+                : isResetTemplatePicker
+                  ? '重置为模板'
+                  : '应用模板'}
           </strong>
-          <span>
-            {props.view === 'root'
-              ? '在此位置创建节点'
-              : '选择启动方式'}
-          </span>
+          {props.view === 'root' ? null : (
+            <span>
+              {props.view === 'agent-launch-mode'
+                ? '选择启动方式'
+                : isResetTemplatePicker
+                  ? '选择一个模板，清空当前画布后套用'
+                  : '选择一个模板，追加到当前画布'}
+            </span>
+          )}
         </div>
       </div>
       <div className="canvas-context-menu-items">
@@ -4499,8 +4623,86 @@ const CanvasContextMenu = React.forwardRef<
                   </div>
                 ))
               : null}
+            <div className="canvas-context-menu-separator" aria-hidden="true" />
+            <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="apply-default-template"
+                onClick={props.onApplyDefaultTemplate}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-library" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>应用模板</strong>
+                  <span>
+                    {defaultTemplateEntry
+                      ? `快速追加默认模板「${defaultTemplateEntry.name}」`
+                      : '快速追加当前默认模板'}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="canvas-context-menu-item-secondary"
+                data-context-menu-action="show-apply-template-picker"
+                disabled={props.templateEntries.length === 0}
+                onClick={() => props.onShowTemplatePicker('apply-template')}
+                aria-label="选择具体模板追加到当前画布"
+                title="选择具体模板追加到当前画布"
+              >
+                <span
+                  className="canvas-context-menu-icon codicon codicon-chevron-right"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+            <div className="canvas-context-menu-split-item" data-context-menu-template-group="reset">
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="reset-default-template"
+                onClick={props.onResetToDefaultTemplate}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-discard" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>重置为模板</strong>
+                  <span>
+                    {defaultTemplateEntry
+                      ? `快速重置为默认模板「${defaultTemplateEntry.name}」`
+                      : '快速重置为当前默认模板'}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="canvas-context-menu-item-secondary"
+                data-context-menu-action="show-reset-template-picker"
+                disabled={props.templateEntries.length === 0}
+                onClick={() => props.onShowTemplatePicker('reset-template')}
+                aria-label="选择具体模板并清空后套用"
+                title="选择具体模板并清空后套用"
+              >
+                <span
+                  className="canvas-context-menu-icon codicon codicon-chevron-right"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="save-canvas-template"
+              disabled={!props.canSaveCurrentCanvas}
+              onClick={props.onSaveCanvasAsTemplate}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-save-as" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>保存为模板</strong>
+                <span>把当前布局保存到用户模板目录</span>
+              </span>
+            </button>
           </>
-        ) : (
+        ) : props.view === 'agent-launch-mode' ? (
           <>
             {defaultPresetBuild.error ? (
               <div className="canvas-context-menu-inline-error" data-context-menu-launch-error="true">
@@ -4632,7 +4834,39 @@ const CanvasContextMenu = React.forwardRef<
               </div>
             ) : null}
           </>
-        )}
+        ) : isTemplatePickerView ? (
+          props.templateEntries.length > 0 ? (
+            <>
+              {props.templateEntries.map((templateEntry) => (
+                <button
+                  key={`${props.view}/${templateEntry.templateId}`}
+                  type="button"
+                  className="canvas-context-menu-item has-clamped-detail"
+                  data-context-menu-template-id={templateEntry.templateId}
+                  data-context-menu-template-action={props.view}
+                  onClick={() => props.onApplyTemplate(templateEntry.templateId, isResetTemplatePicker)}
+                >
+                  <span
+                    className={`canvas-context-menu-icon codicon codicon-${
+                      isResetTemplatePicker ? 'discard' : 'library'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="canvas-context-menu-copy">
+                    <strong>
+                      {templateEntry.isDefault ? `${templateEntry.name}（默认）` : templateEntry.name}
+                    </strong>
+                    <span className="canvas-context-menu-copy-detail">
+                      {`${templateEntry.category === 'builtin' ? '内置' : '用户'} · ${templateEntry.statsLabel}`}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </>
+          ) : (
+            <div className="canvas-context-menu-inline-error">当前没有可用模板。</div>
+          )
+        ) : null}
       </div>
     </div>
   );
@@ -4695,6 +4929,10 @@ const CANVAS_EDGE_COLOR_MENU_ITEMS: ReadonlyArray<{
 
 function isCanvasEdgePresetColor(value: string | undefined): value is (typeof canvasEdgePresetColors)[number] {
   return typeof value === 'string' && canvasEdgePresetColors.includes(value as (typeof canvasEdgePresetColors)[number]);
+}
+
+function isTemplateCompatibleNodeKind(value: CanvasNodeKind): value is 'agent' | 'terminal' | 'note' {
+  return value === 'agent' || value === 'terminal' || value === 'note';
 }
 
 function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {
@@ -6296,6 +6534,11 @@ function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): 
 
   const provider = metadata.provider ?? 'codex';
   try {
+    if (Array.isArray(metadata.templateArgv)) {
+      const configuredCommand = latestRuntimeContext.agentLaunchDefaults[provider].command.trim() || provider;
+      return formatCommandLine([configuredCommand, ...metadata.templateArgv]);
+    }
+
     return buildFreshAgentCommandLine(
       provider,
       metadata.launchPreset ?? 'default',
