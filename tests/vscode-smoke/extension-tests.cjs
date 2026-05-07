@@ -367,7 +367,7 @@ async function runTrustedSmoke() {
   });
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyLegacyAttentionNotificationBridgeMigration();
-  await verifyExecutionAttentionNotificationBridge(agentNode.id);
+  await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
@@ -3604,7 +3604,7 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
 }
 
-async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
+async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeId) {
   const configuration = vscode.workspace.getConfiguration();
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
     configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
@@ -3617,7 +3617,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
   const strongReminderTitleBarMessage = 'strong-reminder-titlebar-smoke';
   const strongReminderMinimapMessage = 'strong-reminder-minimap-smoke';
   const bridgeEnabledMessage = 'bridge-enabled-smoke';
-  const bridgeFocusMessage = 'bridge-focus-smoke';
+  const bridgeViewMessage = 'bridge-focus-smoke';
   const bridgeDuplicateMessage = 'bridge-duplicate-smoke';
   let autoSelectNotificationMessage;
 
@@ -3883,7 +3883,17 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
         await clearAttentionByClick();
 
         calls.length = 0;
-        autoSelectNotificationMessage = `Agent「${agentLabel}」: ${bridgeFocusMessage}`;
+        await performWebviewDomAction({
+          kind: 'selectNode',
+          nodeId: noteNodeId
+        });
+        await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => currentProbe.nodes.some((node) => node.nodeId === noteNodeId && node.selected === true),
+          20000
+        );
+
+        autoSelectNotificationMessage = `Agent「${agentLabel}」: ${bridgeViewMessage}`;
         await clearHostMessages();
         await clearDiagnosticEvents();
         await dispatchWebviewMessage({
@@ -3891,59 +3901,75 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId) {
           payload: {
             nodeId: agentNodeId,
             kind: 'agent',
-            data: `notify ${bridgeFocusMessage}\r`
+            data: `notify ${bridgeViewMessage}\r`
           }
         });
 
-        const focusHostMessages = await waitForHostMessages(
+        const centerHostMessages = await waitForHostMessages(
           (messages) =>
             messages.some(
-              (message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId
+              (message) => message.type === 'host/centerNode' && message.payload.nodeId === agentNodeId
             ),
           20000
         );
         assert.deepStrictEqual(calls.map((call) => call.message), [autoSelectNotificationMessage]);
         assert.ok(
           calls[0]?.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
-          'Expected attention notification to expose a focus action.'
+          'Expected attention notification to expose a view action.'
         );
         assert.ok(
-          focusHostMessages.some(
-            (message) => message.type === 'host/focusNode' && message.payload.nodeId === agentNodeId
+          centerHostMessages.some(
+            (message) => message.type === 'host/centerNode' && message.payload.nodeId === agentNodeId
           ),
-          'Expected selecting the attention notification to send a focus-node host message.'
+          'Expected selecting the attention notification to send a center-node host message.'
+        );
+        assert.ok(
+          centerHostMessages.some(
+            (message) => message.type === 'host/visibilityRestored' && message.payload?.restoreFocus === false
+          ),
+          'Expected selecting the attention notification to return to the canvas without restoring Webview focus.'
+        );
+        assert.strictEqual(
+          centerHostMessages.some(
+            (message) => message.type === 'host/focusNode' && message.payload?.nodeId === agentNodeId
+          ),
+          false,
+          'Selecting the attention notification should not send a focus-node host message.'
         );
 
-        const focusProbe = await waitForWebviewProbeOnSurface(
+        const centerProbe = await waitForWebviewProbeOnSurface(
           'editor',
           (currentProbe) => {
             const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            const noteNode = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
             return Boolean(
               currentNode &&
-                currentNode.selected === true &&
-                currentNode.attentionIndicatorVisible === false &&
-                currentNode.attentionIndicatorFlashing === false &&
-                currentNode.minimapAttentionFlashing === false &&
-                currentNode.minimapAttentionSizePulsing === false
+                noteNode &&
+                currentNode.selected === false &&
+                noteNode.selected === true &&
+                currentNode.attentionIndicatorVisible === true &&
+                currentNode.attentionIndicatorFlashing === true &&
+                currentNode.minimapAttentionFlashing === true &&
+                currentNode.minimapAttentionSizePulsing === true
             );
           },
           20000
         );
-        assert.ok(focusProbe.nodes.some((node) => node.nodeId === agentNodeId && node.selected === true));
+        assert.ok(centerProbe.nodes.some((node) => node.nodeId === noteNodeId && node.selected === true));
         assert.strictEqual(
-          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
-          false,
-          'Focusing the node from the VS Code notification should clear the attention icon.'
+          centerProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          true,
+          'Viewing the node from the VS Code notification should keep the attention icon until the user clicks the node.'
         );
         assert.strictEqual(
-          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
-          false,
-          'Focusing the node from the VS Code notification should also clear the minimap attention flash.'
+          centerProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionFlashing,
+          true,
+          'Viewing the node from the VS Code notification should keep the minimap attention flash.'
         );
         assert.strictEqual(
-          focusProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
-          false,
-          'Focusing the node from the VS Code notification should also clear the minimap size pulse.'
+          centerProbe.nodes.find((node) => node.nodeId === agentNodeId)?.minimapAttentionSizePulsing,
+          true,
+          'Viewing the node from the VS Code notification should keep the minimap size pulse.'
         );
 
         calls.length = 0;

@@ -28,8 +28,8 @@
 - 观察：当前 sidebar 已经是“原生 `TreeView` + 最小 `WebviewView`”的混合架构，其中 `概览` 使用 `TreeView`，`常用操作` 使用 `WebviewView`。
   证据：`src/sidebar/CanvasSidebarView.ts`、`src/sidebar/CanvasSidebarActionsView.ts`、`package.json` 现有 `views` 注册。
 
-- 观察：画布已经具备宿主向 Webview 下发 `host/focusNode` 消息并在前端滚动聚焦节点的能力，但目前只在执行节点注意力提醒链路里调用。
-  证据：`src/common/protocol.ts` 中 `host/focusNode`，以及 `src/panel/CanvasPanelManager.ts` 的 `focusExecutionAttentionNode`。
+- 观察：画布已经具备宿主向 Webview 下发 `host/focusNode` 消息并在前端滚动聚焦节点的能力。
+  证据：`src/common/protocol.ts` 中 `host/focusNode`，以及 `src/panel/CanvasPanelManager.ts` 的节点定位入口。
 
 - 观察：当前仓库已经具备两条 provider session identity 读取基础：`Codex` 可从 `~/.codex/sessions/.../rollout-*.jsonl` 的 `session_meta` 读取 `cwd` 与 `sessionId`；`Claude Code` 可通过 `~/.claude/projects/.../<session-id>.jsonl` 文件确认 `sessionId`。
   证据：`src/common/codexSessionIdLocator.ts` 与现有 smoke fixture/测试辅助写入逻辑。

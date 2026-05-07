@@ -41,6 +41,7 @@
     "onCommand:devSessionCanvasNotifier.postSystemNotification",
     "onCommand:devSessionCanvasNotifier.sendTestNotification",
     "onCommand:devSessionCanvasNotifier.openDiagnosticOutput",
+    "onCommand:devSessionCanvasNotifier.openSettings",
     "onUri"
   ],
   "contributes": {
@@ -62,6 +63,15 @@
         }
       ]
     },
+    "menus": {
+      "view/title": [
+        {
+          "command": "devSessionCanvasNotifier.openSettings",
+          "when": "view == devSessionCanvasNotifier.sidebar",
+          "group": "navigation@99"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "devSessionCanvasNotifier.sendTestNotification",
@@ -70,6 +80,11 @@
       {
         "command": "devSessionCanvasNotifier.openDiagnosticOutput",
         "title": "Dev Session Canvas Notifier: 打开通知诊断输出"
+      },
+      {
+        "command": "devSessionCanvasNotifier.openSettings",
+        "title": "Dev Session Canvas Notifier: 打开配置",
+        "icon": "$(settings-gear)"
       }
     ],
     "configuration": {

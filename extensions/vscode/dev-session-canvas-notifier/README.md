@@ -37,6 +37,8 @@
 - 当前机器还需要用户预安装什么（例如 macOS 上是否已安装 `terminal-notifier`、Linux 上是否已检测到 `notify-send`）
 - 最近一次 notifier 投递结果，便于对照诊断输出
 
+`通知环境` 标题行最右侧的齿轮按钮可直接打开本扩展配置。
+
 声音开关配置：
 
 - 设置项：`devSessionCanvasNotifier.notifications.playSound`

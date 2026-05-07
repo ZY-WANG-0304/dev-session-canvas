@@ -3410,6 +3410,60 @@ test('double-clicking the chrome focus region recenters the node and updates per
   expect(afterState.viewport.y).not.toBe(beforeState.viewport.y);
 });
 
+test('host center node request recenters without selecting or acknowledging attention', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'agent-1',
+      viewport: {
+        x: -20,
+        y: -20,
+        zoom: 1
+      }
+    }
+  });
+  const state = createCanvasScreenshotState();
+  state.nodes.find((node) => node.id === 'terminal-1').metadata.terminal.attentionPending = true;
+  await bootstrap(page, state);
+  await settleWebview(page, 4);
+  await performTestDomAction(page, {
+    kind: 'selectNode',
+    nodeId: 'note-1'
+  });
+  await expect.poll(async () => (await readPersistedUiState(page)).selectedNodeId ?? null).toBe('note-1');
+
+  const beforeTransform = await readCanvasViewportTransform(page);
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/centerNode',
+      payload: {
+        nodeId: 'terminal-1'
+      }
+    });
+  });
+
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeTransform ? transform : null;
+    })
+    .not.toBeNull();
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedNodeId).toBe('note-1');
+
+  const terminalProbe = await readProbeNode(page, 'terminal-1', 20);
+  expect(terminalProbe.selected).toBe(false);
+  expect(terminalProbe.attentionIndicatorVisible).toBe(true);
+
+  const viewportSize = page.viewportSize();
+  const terminalBox = await nodeById(page, 'terminal-1').boundingBox();
+  expect(viewportSize).not.toBeNull();
+  expect(terminalBox).not.toBeNull();
+  expect(Math.abs(terminalBox.x + terminalBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(18);
+  expect(Math.abs(terminalBox.y + terminalBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
+});
+
 test('double-clicking the title input keeps the current viewport unchanged', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
