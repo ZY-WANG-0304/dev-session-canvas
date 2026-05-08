@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -290,6 +290,8 @@ try {
     /exportCanvasTemplateById\(selectedTemplate\.template\.id, targetUri\)/u
   );
   assert.doesNotMatch(exportCommandSource, /targetUri\.fsPath/u);
+  assert.match(extensionSource, /resetDefaultCanvasTemplateWithConfirmation/u);
+  assert.match(extensionSource, /resetCanvasTemplateByIdWithConfirmation\(selectedTemplate\.template\.id/u);
 
   const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
   const exportTemplateMethodSource = sliceBetween(
@@ -299,6 +301,22 @@ try {
   );
   assert.match(exportTemplateMethodSource, /vscode\.workspace\.fs\.writeFile/u);
   assert.match(exportTemplateMethodSource, /encodeCanvasTemplateDocument/u);
+  assert.match(panelManagerSource, /private async confirmCanvasTemplateReset/u);
+  assert.match(panelManagerSource, /vscode\.window\.showWarningMessage/u);
+  const resetDefaultWebviewCaseSource = sliceBetween(
+    panelManagerSource,
+    "case 'webview/resetToDefaultTemplate':",
+    "case 'webview/resetToTemplate':"
+  );
+  assert.match(resetDefaultWebviewCaseSource, /resetDefaultCanvasTemplateWithConfirmation/u);
+  assert.doesNotMatch(resetDefaultWebviewCaseSource, /applyDefaultCanvasTemplate\(\{\s*reset: true/u);
+  const resetTemplateWebviewCaseSource = sliceBetween(
+    panelManagerSource,
+    "case 'webview/resetToTemplate':",
+    "case 'webview/saveCanvasAsTemplate':"
+  );
+  assert.match(resetTemplateWebviewCaseSource, /resetCanvasTemplateByIdWithConfirmation/u);
+  assert.doesNotMatch(resetTemplateWebviewCaseSource, /applyCanvasTemplateById\(parsedMessage\.payload\.templateId, \{\s*reset: true/u);
   const applyTemplateMethodSource = sliceBetween(
     panelManagerSource,
     'private async applyCanvasTemplateRecord',
@@ -365,6 +383,26 @@ try {
   assert.doesNotMatch(sidebarTemplateViewSource, /defaultBadge|badge is-default|defaultAction\.hidden = item\.isDefault/u);
   assert.match(sidebarTemplateViewSource, /item\.isDefault \? 'codicon-star-full' : 'codicon-star-empty'/u);
   assert.match(sidebarTemplateViewSource, /if \(item\.isDefault\) \{\s*return;\s*\}\s*postTemplateMessage\('sidebarTemplates\/setDefaultTemplate', item\.templateId\);/u);
+
+  const builtinResourceNames = (await readdir('resources/templates'))
+    .filter((fileName) => fileName.endsWith('.json'))
+    .sort();
+  assert.deepStrictEqual(builtinResourceNames, ['01-getting-started.json', '02-basic-workflow.json']);
+  const builtinResourceTemplateNames = [];
+  for (const fileName of builtinResourceNames) {
+    const document = JSON.parse(await readFile(path.join('resources/templates', fileName), 'utf8'));
+    builtinResourceTemplateNames.push(document.template.name);
+  }
+  assert.deepStrictEqual(builtinResourceTemplateNames, ['使用说明', '示例模板']);
+
+  const templateProductSpecSource = await readFile('docs/product-specs/canvas-template-feature.md', 'utf8');
+  const templateDesignDocSource = await readFile('docs/design-docs/canvas-template-feature.md', 'utf8');
+  const templateExecPlanSource = await readFile('docs/exec-plans/active/canvas-template-feature.md', 'utf8');
+  for (const source of [templateProductSpecSource, templateDesignDocSource, templateExecPlanSource]) {
+    assert.doesNotMatch(source, /3 个内置|3个|Anthropic Harness|基础工作流/u);
+  }
+  assert.match(templateProductSpecSource, /内置模板（2 个）/u);
+  assert.match(templateProductSpecSource, /示例模板 - 1 Agent, 1 Terminal, 1 Note/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

@@ -133,7 +133,7 @@ updated_at: 2026-05-08
 - `src/sidebar/CanvasSidebarTemplateView.ts`：模板列表侧栏视图。
 - `src/extension.ts` / `package.json` / `package.nls.json`：命令、view contribution 和交互文案。
 - `src/webview/main.tsx` / `src/common/protocol.ts`：空白区右键菜单中的模板动作，以及视口中心信息回传。
-- `resources/templates/*.json`：3 个内置模板的正式资产。
+- `resources/templates/*.json`：2 个内置模板的正式资产。
 
 ### 7.1 模板模型与版本边界
 
@@ -250,7 +250,7 @@ updated_at: 2026-05-08
 4. 在当前画布已有节点时应用模板，新模板整体会避开现有节点，而不是直接重叠。
 5. 在当前画布已有节点且避碰把模板放到当前视野外时，应用模板后视口会自动 `fitView` 到本次新增的整组模板节点。
 6. 导入无效 JSON、损坏文件或不可用 Provider 模板时，会给出明确错误提示，并阻止写入/应用。
-7. 模板侧栏能显示 3 个内置模板、默认标记、节点统计和 hover 详情；用户模板支持导出与删除。
+7. 模板侧栏能显示 2 个内置模板、默认标记、节点统计和 hover 详情；用户模板支持导出与删除。
 
 ## 9. 当前验证状态
 
@@ -263,6 +263,7 @@ updated_at: 2026-05-08
 - 导入模板继续改为复用同一套表单，并补充 sidebar tooltip 层级提示与更贴近 VS Code 的字号/控件尺寸后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
 - 显式应用 / 重置模板后自动追焦到本次新增节点组，并补充 `host/focusNodes`、宿主新增节点 id 返回与 Webview 组级 `fitView` 的静态断言后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过。
 - 组级追焦延后一拍问题已修复：Webview 改用最新节点 id ref 判定 `host/focusNodes` 目标，并在 React Flow 节点尚未完成渲染时主动重试；再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过。
+- Webview 右键菜单的重置模板入口已改为复用宿主 modal 确认；当前正式内置模板口径同步为 2 个（`使用说明` 与 `示例模板`），不再保留已移除第三模板的旧口径；再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过。
 - 模板 sidebar 的行单击交互已收口为“只选中，不应用”；追加模板仍由右侧行内 `run` 动作、命令面板或画布右键菜单显式触发。本轮已再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖行 click / keyboard handler 不发送 `sidebarTemplates/applyTemplate` 的回归断言。
 - 模板 sidebar 行尾动作已收口为与标题同一行，第二行摘要改为独立占用整行宽度，并在窄侧栏下用省略号退化而不是换行。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖按钮挂载在标题行、第二行 nowrap 与 ellipsis 的静态回归断言。
 - 模板 sidebar 已移除底部“当前画布还没有可保存的 Agent / Terminal / Note 节点”提示，内容区只保留模板列表及模板列表自身的加载 / 空 / 错误状态。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖不再输出 `hintNote` / `hint-note` / `canSaveCurrentCanvas`。

@@ -188,18 +188,13 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.resetToDefaultTemplate, async () => {
-      const confirmed = await vscode.window.showWarningMessage(
-        '重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话，然后套用当前默认模板。',
-        { modal: true },
-        '继续重置'
-      );
-      if (confirmed !== '继续重置') {
-        return;
-      }
-
       try {
-        await panelManager.applyDefaultCanvasTemplate({ reset: true, focusAppliedNodes: true });
-        await panelManager.revealOrCreate();
+        const didReset = await panelManager.resetDefaultCanvasTemplateWithConfirmation({
+          focusAppliedNodes: true
+        });
+        if (didReset) {
+          await panelManager.revealOrCreate();
+        }
       } catch (error) {
         await showCanvasTemplateError('重置为默认模板失败', error);
       }
@@ -1151,20 +1146,12 @@ async function resetToTemplateFromCommand(
     return;
   }
 
-  const confirmed = await vscode.window.showWarningMessage(
-    `重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话，然后套用模板「${selectedTemplate.template.name}」。`,
-    { modal: true },
-    '继续重置'
-  );
-  if (confirmed !== '继续重置') {
-    return;
-  }
-
-  await panelManager.applyCanvasTemplateById(selectedTemplate.template.id, {
-    reset: true,
+  const didReset = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id, {
     focusAppliedNodes: true
   });
-  await panelManager.revealOrCreate();
+  if (didReset) {
+    await panelManager.revealOrCreate();
+  }
 }
 
 async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelManager): Promise<void> {
