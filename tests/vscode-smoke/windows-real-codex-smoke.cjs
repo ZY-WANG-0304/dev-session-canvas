@@ -499,6 +499,15 @@ async function buildScenarios() {
 function assertScenarioResult(scenario, result) {
   assert.ok(result.resolvedCommand, `Expected ${scenario.name} to resolve a Codex command.`);
   assert.ok(
+    result.resolutionSource,
+    `Expected ${scenario.name} to record a Codex resolution source. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.notStrictEqual(
+    result.resolutionSource,
+    'cache',
+    `Expected ${scenario.name} to resolve Codex without reusing a stale cache entry. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.ok(
     result.nonEmptyVisibleLines.length > 0,
     `Expected ${scenario.name} to render visible terminal output. Result: ${JSON.stringify(result, null, 2)}`
   );
