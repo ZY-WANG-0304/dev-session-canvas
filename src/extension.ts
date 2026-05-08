@@ -25,7 +25,13 @@ import {
   matchesAgentCommandLinePreset,
   validateAgentCommandLine
 } from './common/agentLaunchPresets';
+import {
+  formatCanvasTemplateStats,
+  sanitizeCanvasTemplateFileStem
+} from './common/canvasTemplates';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
+import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
 import { buildPersistedTerminalShellSelection, detectAvailableTerminalShells } from './panel/terminalShellConfiguration';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
@@ -38,6 +44,7 @@ import {
   CanvasSidebarSessionHistoryView,
   isSidebarSessionHistoryTestAction
 } from './sidebar/CanvasSidebarSessionHistoryView';
+import { CanvasSidebarTemplateView } from './sidebar/CanvasSidebarTemplateView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
 import { isTestHarnessMode } from './common/testHarness';
 
@@ -74,6 +81,10 @@ interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
   useDefault?: boolean;
 }
 
+interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
+  templateId: string;
+}
+
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
     ? vscode.ConfigurationTarget.Workspace
@@ -89,6 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
+  const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
   const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri);
   const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
 
@@ -107,10 +119,16 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     sidebarSummaryView,
     sidebarActionsView,
+    sidebarTemplateView,
     sidebarNodeListView,
     sidebarSessionHistoryView,
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
     vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    }),
+    vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarTemplates, sidebarTemplateView, {
       webviewOptions: {
         retainContextWhenHidden: true
       }
@@ -146,6 +164,82 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   });
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.applyTemplate, async (templateId?: unknown) => {
+      try {
+        await applyTemplateFromCommand(panelManager, templateId);
+      } catch (error) {
+        await showCanvasTemplateError('应用模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
+      try {
+        const appliedNodeIds = await panelManager.applyDefaultCanvasTemplate();
+        await panelManager.revealOrCreate();
+        panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
+      } catch (error) {
+        await showCanvasTemplateError('应用默认模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.resetToTemplate, async (templateId?: unknown) => {
+      try {
+        await resetToTemplateFromCommand(panelManager, templateId);
+      } catch (error) {
+        await showCanvasTemplateError('重置为模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.resetToDefaultTemplate, async () => {
+      try {
+        const appliedNodeIds = await panelManager.resetDefaultCanvasTemplateWithConfirmation();
+        if (appliedNodeIds) {
+          await panelManager.revealOrCreate();
+          panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
+        }
+      } catch (error) {
+        await showCanvasTemplateError('重置为默认模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.saveCanvasAsTemplate, async () => {
+      try {
+        await saveCurrentCanvasAsTemplateFromCommand(panelManager);
+      } catch (error) {
+        await showCanvasTemplateError('保存模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.importTemplate, async () => {
+      try {
+        await importCanvasTemplateFromCommand(panelManager);
+      } catch (error) {
+        await showCanvasTemplateError('导入模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.exportTemplate, async (templateId?: unknown) => {
+      try {
+        await exportCanvasTemplateFromCommand(panelManager, templateId);
+      } catch (error) {
+        await showCanvasTemplateError('导出模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.deleteTemplate, async (templateId?: unknown) => {
+      try {
+        await deleteCanvasTemplateFromCommand(panelManager, templateId);
+      } catch (error) {
+        await showCanvasTemplateError('删除模板失败', error);
+      }
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.setDefaultTemplate, async (templateId?: unknown) => {
+      try {
+        await setDefaultCanvasTemplateFromCommand(panelManager, templateId);
+      } catch (error) {
+        await showCanvasTemplateError('设置默认模板失败', error);
+      }
+    })
+  );
+
+  registerCommand(context, COMMAND_IDS.refreshTemplates, async () => {
+    await panelManager.refreshCanvasTemplateCatalog();
+  });
+
   registerCommand(context, COMMAND_IDS.selectTerminalShell, async () => {
     await promptTerminalShellSelection();
   });
@@ -178,11 +272,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
     const confirmed = await vscode.window.showWarningMessage(
-      '重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
+      '清空画板会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
       { modal: true },
-      '继续重置'
+      '继续清空'
     );
-    if (confirmed !== '继续重置') {
+    if (confirmed !== '继续清空') {
       return;
     }
 
@@ -1022,6 +1116,336 @@ function splitCanvasFileFilterInput(value: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+async function applyTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  templateIdValue: unknown
+): Promise<void> {
+  const selectedTemplate = await resolveCanvasTemplateFromCommand(
+    panelManager,
+    templateIdValue,
+    '选择一个模板并应用到当前画布'
+  );
+  if (!selectedTemplate) {
+    return;
+  }
+
+  const appliedNodeIds = await panelManager.applyCanvasTemplateById(selectedTemplate.template.id);
+  await panelManager.revealOrCreate();
+  panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
+}
+
+async function resetToTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  templateIdValue: unknown
+): Promise<void> {
+  const selectedTemplate = await resolveCanvasTemplateFromCommand(
+    panelManager,
+    templateIdValue,
+    '选择一个模板并重置当前画布'
+  );
+  if (!selectedTemplate) {
+    return;
+  }
+
+  const appliedNodeIds = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id);
+  if (appliedNodeIds) {
+    await panelManager.revealOrCreate();
+    panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
+  }
+}
+
+async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelManager): Promise<void> {
+  if (!panelManager.getCanvasNodes().some((node) => isTemplateCompatibleNodeKind(node.kind))) {
+    await vscode.window.showInformationMessage('当前画布还没有可保存到模板的 Agent / Terminal / Note 节点。');
+    return;
+  }
+
+  const canvasNodes = panelManager.getCanvasNodes();
+  const formResult = await showCanvasTemplateSaveForm({
+    mode: 'save',
+    title: '保存当前画布为模板',
+    submitLabel: '保存模板',
+    storageLocations: panelManager.getCanvasTemplateStorageLocations(),
+    agentNodes: canvasNodes
+      .filter(
+        (node): node is typeof node & {
+          kind: 'agent';
+          metadata: NonNullable<typeof node.metadata> & { agent: NonNullable<NonNullable<typeof node.metadata>['agent']> };
+        } => node.kind === 'agent' && !!node.metadata?.agent
+      )
+      .map((node) => ({
+        nodeId: node.id,
+        title: node.title,
+        currentProvider: node.metadata.agent.provider
+      }))
+  });
+  if (!formResult) {
+    return;
+  }
+
+  const targetStorageLocation = panelManager
+    .getCanvasTemplateStorageLocations()
+    .find((location) => location.id === formResult.targetStorageLocationId);
+  if (!targetStorageLocation) {
+    throw new Error('目标模板保存位置不存在。');
+  }
+
+  const savedTemplate = await panelManager.saveCurrentCanvasAsTemplate(formResult.name, formResult.agentProviderSelection, {
+    targetRootPath: targetStorageLocation.rootPath
+  });
+  await vscode.window.showInformationMessage(`已保存模板「${savedTemplate.template.name}」。`);
+}
+
+async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager): Promise<void> {
+  const selectedUris = await vscode.window.showOpenDialog({
+    canSelectMany: false,
+    canSelectFiles: true,
+    canSelectFolders: false,
+    filters: {
+      JSON: ['json']
+    },
+    openLabel: '导入模板'
+  });
+  const selectedUri = selectedUris?.[0];
+  if (!selectedUri) {
+    return;
+  }
+
+  const importedTemplate = await panelManager.readCanvasTemplateFromPath(selectedUri.fsPath);
+  const storageLocations = panelManager.getCanvasTemplateStorageLocations();
+  let draftFormState:
+    | {
+        name: string;
+        targetStorageLocationId: string;
+      }
+    | undefined;
+
+  while (true) {
+    const formResult = await showCanvasTemplateSaveForm({
+      mode: 'import',
+      title: '导入模板',
+      submitLabel: '导入模板',
+      initialName: draftFormState?.name ?? importedTemplate.template.name,
+      initialTargetStorageLocationId: draftFormState?.targetStorageLocationId,
+      storageLocations,
+      agentNodes: []
+    });
+    if (!formResult) {
+      return;
+    }
+
+    const targetStorageLocation = storageLocations.find((location) => location.id === formResult.targetStorageLocationId);
+    if (!targetStorageLocation) {
+      throw new Error('目标模板保存位置不存在。');
+    }
+
+    const catalog = await panelManager.getCanvasTemplateCatalog();
+    const conflictingTemplates = catalog.templates.filter((candidate) => candidate.template.name === formResult.name);
+    const builtinConflict = conflictingTemplates.find((candidate) => candidate.template.category === 'builtin');
+    const userConflicts = conflictingTemplates.filter((candidate) => candidate.template.category === 'user');
+
+    draftFormState = {
+      name: formResult.name,
+      targetStorageLocationId: formResult.targetStorageLocationId
+    };
+
+    if (builtinConflict) {
+      const action = await vscode.window.showWarningMessage(
+        `模板名「${formResult.name}」已被内置模板占用，不能覆盖内置模板。`,
+        '返回表单修改名称'
+      );
+      if (action === '返回表单修改名称') {
+        continue;
+      }
+      return;
+    }
+
+    if (userConflicts.length > 1) {
+      const action = await vscode.window.showWarningMessage(
+        `当前已有多个同名用户模板「${formResult.name}」。请返回表单修改名称后再导入。`,
+        '返回表单修改名称'
+      );
+      if (action === '返回表单修改名称') {
+        continue;
+      }
+      return;
+    }
+
+    let overwriteTemplateId: string | undefined;
+    if (userConflicts.length === 1) {
+      const overwriteConflict = userConflicts[0];
+      const action = await vscode.window.showWarningMessage(
+        `模板名「${formResult.name}」已存在。你可以覆盖已有用户模板，或返回表单修改名称。`,
+        '覆盖现有模板',
+        '返回表单修改名称'
+      );
+      if (!action) {
+        return;
+      }
+
+      if (action === '返回表单修改名称') {
+        continue;
+      }
+      overwriteTemplateId = overwriteConflict.template.id;
+    }
+
+    const savedTemplate = await panelManager.importCanvasTemplateFromPath(selectedUri.fsPath, {
+      overwriteTemplateId,
+      nameOverride: formResult.name,
+      targetRootPath: targetStorageLocation.rootPath
+    });
+    await vscode.window.showInformationMessage(`已导入模板「${savedTemplate.template.name}」。`);
+    return;
+  }
+}
+
+async function exportCanvasTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  templateIdValue: unknown
+): Promise<void> {
+  const selectedTemplate = await resolveCanvasTemplateFromCommand(
+    panelManager,
+    templateIdValue,
+    '选择一个模板并导出为 JSON'
+  );
+  if (!selectedTemplate) {
+    return;
+  }
+
+  const defaultFileName = `${sanitizeCanvasTemplateFileStem(
+    selectedTemplate.template.name,
+    selectedTemplate.template.id
+  )}.json`;
+  const targetUri = await vscode.window.showSaveDialog({
+    saveLabel: '导出模板',
+    defaultUri: vscode.Uri.file(path.join(panelManager.getUserCanvasTemplateDirectoryPath(), defaultFileName)),
+    filters: {
+      JSON: ['json']
+    }
+  });
+  if (!targetUri) {
+    return;
+  }
+
+  await panelManager.exportCanvasTemplateById(selectedTemplate.template.id, targetUri);
+  await vscode.window.showInformationMessage(`已导出模板「${selectedTemplate.template.name}」。`);
+}
+
+async function deleteCanvasTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  templateIdValue: unknown
+): Promise<void> {
+  const selectedTemplate = await resolveCanvasTemplateFromCommand(
+    panelManager,
+    templateIdValue,
+    '选择一个用户模板并删除'
+  );
+  if (!selectedTemplate) {
+    return;
+  }
+  if (selectedTemplate.template.category !== 'user') {
+    throw new Error('内置模板不能删除。');
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `删除模板「${selectedTemplate.template.name}」后将无法恢复该用户模板文件。`,
+    { modal: true },
+    '继续删除'
+  );
+  if (confirmed !== '继续删除') {
+    return;
+  }
+
+  await panelManager.deleteCanvasTemplateById(selectedTemplate.template.id);
+  await vscode.window.showInformationMessage(`已删除模板「${selectedTemplate.template.name}」。`);
+}
+
+async function setDefaultCanvasTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  templateIdValue: unknown
+): Promise<void> {
+  const selectedTemplate = await resolveCanvasTemplateFromCommand(
+    panelManager,
+    templateIdValue,
+    '选择一个模板设为默认模板'
+  );
+  if (!selectedTemplate) {
+    return;
+  }
+
+  await panelManager.setDefaultCanvasTemplateById(selectedTemplate.template.id);
+  await vscode.window.showInformationMessage(`已将默认模板设置为「${selectedTemplate.template.name}」。`);
+}
+
+async function resolveCanvasTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  templateIdValue: unknown,
+  placeHolder: string
+): Promise<CanvasStoredTemplate | undefined> {
+  const explicitTemplateId = normalizeCanvasTemplateIdValue(templateIdValue);
+  if (explicitTemplateId) {
+    const catalog = await panelManager.getCanvasTemplateCatalog();
+    const selectedTemplate = catalog.templates.find((candidate) => candidate.template.id === explicitTemplateId);
+    if (!selectedTemplate) {
+      throw new Error('目标模板不存在。');
+    }
+    return selectedTemplate;
+  }
+
+  return pickCanvasTemplate(panelManager, placeHolder);
+}
+
+async function pickCanvasTemplate(
+  panelManager: CanvasPanelManager,
+  placeHolder: string
+): Promise<CanvasStoredTemplate | undefined> {
+  const catalog = await panelManager.getCanvasTemplateCatalog();
+  if (catalog.templates.length === 0) {
+    await vscode.window.showInformationMessage('当前还没有可用模板。');
+    return undefined;
+  }
+
+  const defaultTemplateId = panelManager.getDefaultCanvasTemplateId();
+  const picked = await vscode.window.showQuickPick<CanvasTemplateQuickPickItem>(
+    catalog.templates.map((storedTemplate) => ({
+      label: storedTemplate.template.name,
+      description: `${storedTemplate.template.category === 'builtin' ? '内置' : '用户'} · ${formatCanvasTemplateStats(storedTemplate.template)}${storedTemplate.template.id === defaultTemplateId ? ' · 默认' : ''}`,
+      detail: storedTemplate.template.nodes.map((node) => `${humanizeNodeKind(node.kind)}: ${node.title}`).join(' / '),
+      templateId: storedTemplate.template.id
+    })),
+    {
+      placeHolder,
+      matchOnDescription: true,
+      matchOnDetail: true
+    }
+  );
+  if (!picked) {
+    return undefined;
+  }
+
+  return catalog.templates.find((candidate) => candidate.template.id === picked.templateId);
+}
+
+async function showCanvasTemplateError(title: string, error: unknown): Promise<void> {
+  await vscode.window.showErrorMessage(`${title}：${error instanceof Error ? error.message : String(error)}`);
+}
+
+function normalizeCanvasTemplateIdValue(value: unknown): string | undefined {
+  if (isRecord(value) && typeof value.templateId === 'string' && value.templateId.trim().length > 0) {
+    return value.templateId.trim();
+  }
+
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isTemplateCompatibleNodeKind(value: string): value is 'agent' | 'terminal' | 'note' {
+  return value === 'agent' || value === 'terminal' || value === 'note';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function registerTestCommands(
   context: vscode.ExtensionContext,
   panelManager: CanvasPanelManager,
@@ -1198,6 +1622,89 @@ function registerTestCommands(
         await vscode.commands.executeCommand(`${VIEW_IDS.sidebarSessions}.focus`);
         await sidebarSessionHistoryView.waitForReady(normalizedTimeoutMs);
         return sidebarSessionHistoryView.performTestAction(action, normalizedTimeoutMs);
+      }
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getCanvasTemplateItems, async () => {
+      const catalog = await panelManager.getCanvasTemplateCatalog();
+      return {
+        defaultTemplateId: panelManager.getDefaultCanvasTemplateId(),
+        templates: catalog.templates,
+        issues: catalog.issues
+      };
+    }),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.applyCanvasTemplate,
+      async (templateId?: unknown, reset?: unknown) => {
+        const normalizedTemplateId = normalizeCanvasTemplateIdValue(templateId);
+        if (!normalizedTemplateId) {
+          throw new Error('测试命令 devSessionCanvas.__test.applyCanvasTemplate 需要有效的模板 ID。');
+        }
+
+        await panelManager.applyCanvasTemplateById(normalizedTemplateId, {
+          reset: reset === true
+        });
+        return panelManager.getDebugSnapshot();
+      }
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.saveCanvasAsTemplate,
+      async (name?: unknown, agentProviderMode?: unknown, overwriteTemplateId?: unknown) => {
+        if (typeof name !== 'string' || name.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.saveCanvasAsTemplate 需要有效的模板名称。');
+        }
+        if (agentProviderMode !== 'default' && agentProviderMode !== 'preserve') {
+          throw new Error('测试命令 devSessionCanvas.__test.saveCanvasAsTemplate 需要有效的 Provider 保存模式。');
+        }
+
+        return panelManager.saveCurrentCanvasAsTemplate(name.trim(), agentProviderMode, {
+          overwriteTemplateId: normalizeCanvasTemplateIdValue(overwriteTemplateId)
+        });
+      }
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.setDefaultTemplate, async (templateId?: unknown) => {
+      const normalizedTemplateId = normalizeCanvasTemplateIdValue(templateId);
+      if (!normalizedTemplateId) {
+        throw new Error('测试命令 devSessionCanvas.__test.setDefaultTemplate 需要有效的模板 ID。');
+      }
+
+      await panelManager.setDefaultCanvasTemplateById(normalizedTemplateId);
+      return panelManager.getDefaultCanvasTemplateId();
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.deleteCanvasTemplate, async (templateId?: unknown) => {
+      const normalizedTemplateId = normalizeCanvasTemplateIdValue(templateId);
+      if (!normalizedTemplateId) {
+        throw new Error('测试命令 devSessionCanvas.__test.deleteCanvasTemplate 需要有效的模板 ID。');
+      }
+
+      await panelManager.deleteCanvasTemplateById(normalizedTemplateId);
+      return panelManager.getDefaultCanvasTemplateId();
+    }),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.exportCanvasTemplateToPath,
+      async (templateId?: unknown, targetPath?: unknown) => {
+        const normalizedTemplateId = normalizeCanvasTemplateIdValue(templateId);
+        if (!normalizedTemplateId) {
+          throw new Error('测试命令 devSessionCanvas.__test.exportCanvasTemplateToPath 需要有效的模板 ID。');
+        }
+        if (typeof targetPath !== 'string' || targetPath.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.exportCanvasTemplateToPath 需要有效的目标路径。');
+        }
+
+        await panelManager.exportCanvasTemplateById(normalizedTemplateId, targetPath.trim());
+        return targetPath.trim();
+      }
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.importCanvasTemplateFromPath,
+      async (sourcePath?: unknown, overwriteTemplateId?: unknown, nameOverride?: unknown) => {
+        if (typeof sourcePath !== 'string' || sourcePath.trim().length === 0) {
+          throw new Error('测试命令 devSessionCanvas.__test.importCanvasTemplateFromPath 需要有效的源路径。');
+        }
+
+        return panelManager.importCanvasTemplateFromPath(sourcePath.trim(), {
+          overwriteTemplateId: normalizeCanvasTemplateIdValue(overwriteTemplateId),
+          nameOverride: typeof nameOverride === 'string' && nameOverride.trim().length > 0 ? nameOverride.trim() : undefined
+        });
       }
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.setPersistedState, (rawState?: unknown) =>

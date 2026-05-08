@@ -71,7 +71,7 @@ async function prepareSmokeHostExtension(root) {
   await stageExtension({
     sourceRoot: projectRoot,
     targetRoot: smokeHostRoot,
-    entries: ['package.json', 'package.nls.json', 'dist', 'images', 'node_modules', 'scripts']
+    entries: ['package.json', 'package.nls.json', 'dist', 'images', 'resources', 'node_modules', 'scripts']
   });
   await stageExtension({
     sourceRoot: notifierExtensionRoot,

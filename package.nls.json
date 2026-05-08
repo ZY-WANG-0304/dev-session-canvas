@@ -20,7 +20,7 @@
   "command.showNodeList.title": "Dev Session Canvas: 显示节点列表",
   "command.showSessionHistory.title": "Dev Session Canvas: 显示会话历史",
   "command.refreshSessionHistory.title": "Dev Session Canvas: 刷新会话历史",
-  "command.resetCanvasState.title": "Dev Session Canvas: 重置画布状态",
+  "command.resetCanvasState.title": "Dev Session Canvas: 清空画板",
   "command.dumpHostDiagnostics.title": "Dev Session Canvas: 落盘当前宿主诊断",
   "configuration.title": "Dev Session Canvas",
   "configuration.canvas.defaultSurface.description": "主画布默认出现的宿主承载面。默认值为 panel；该 view 的实际工作台位置由 VS Code 记住，用户可自行移动。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
@@ -56,5 +56,15 @@
   "configuration.files.presentationMode.description": "Agent 文件活动的默认展示方式。`nodes` 会把文件显示为独立节点；`lists` 会按 Agent 与共享关系收口成文件列表节点。",
   "configuration.fileNode.displayStyle.description": "文件节点和文件列表节点的显示风格。`card` 保留当前卡片样式；`minimal` 使用更紧凑、接近 VS Code 原生文件列表的极简样式。",
   "configuration.files.nodeDisplayMode.description": "文件节点的显示模式。默认同时显示图标和路径。",
-  "configuration.files.pathDisplayMode.description": "文件节点与文件列表条目的路径显示口径。默认只显示文件名。"
+  "configuration.files.pathDisplayMode.description": "文件节点与文件列表条目的路径显示口径。默认只显示文件名。",
+  "view.canvas.sidebar.templates.title": "模板",
+  "command.applyTemplate.title": "Dev Session Canvas: 应用模板",
+  "command.applyDefaultTemplate.title": "Dev Session Canvas: 应用默认模板",
+  "command.resetToDefaultTemplate.title": "Dev Session Canvas: 重置为默认模板",
+  "command.saveCanvasAsTemplate.title": "Dev Session Canvas: 保存当前画布为模板",
+  "command.importTemplate.title": "Dev Session Canvas: 导入模板",
+  "command.exportTemplate.title": "Dev Session Canvas: 导出模板",
+  "command.deleteTemplate.title": "Dev Session Canvas: 删除模板",
+  "command.setDefaultTemplate.title": "Dev Session Canvas: 设为默认模板",
+  "command.refreshTemplates.title": "Dev Session Canvas: 刷新模板列表"
 }

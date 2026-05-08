@@ -52,6 +52,9 @@
 - [x] (2026-04-20 12:20 +0800) 按最新 review blocker 收窄画布焦点恢复：`openCanvasInEditor` / `revealSurface('editor')` 继续显式把 document focus 交还给 editor-surface webview；文件打开链路改为按消息来源 surface 处理，避免 panel 内点击文件误走 editor route 语义。
 - [x] (2026-04-20 13:44 +0800) 按最新产品语义修正 trusted smoke：panel route 点击文件的正确不变量是“文件在编辑区打开 + 画布继续保有 document focus”，而不是把旧 sentinel 文件固定成 `activeTextEditor`；因此删除两处过度约束的断言，并保留对真实交互语义的校验。
 - [x] (2026-04-20 18:41 +0800) 按用户澄清回退 panel 文件打开的过度焦点实现：目标语义只是“在编辑区打开文件且不主动把文本光标切进文件”，而不是强制让 `.canvas-shell` 保有焦点；因此移除 Webview 根元素 `tabIndex/.focus()` 路径，并同步修正设计文档、Playwright 回归与 trusted smoke 断言。
+- [x] (2026-05-08 00:18 +0800) 按最新文案反馈，把 `常用操作` 里的“重置画布状态”对外改名为“清空画板”；底层仍复用既有宿主重置命令，只同步按钮、命令标题、确认弹窗与正式文档口径。
+- [x] (2026-05-08 00:34 +0800) 按最新交互反馈，在 `常用操作` 的“创建节点”和“清空画板”之间新增“重置画板”按钮，直接复用重置为默认模板命令，并同步 sidebar / 模板相关正式文档。
+- [x] (2026-05-08 00:40 +0800) 按最新视觉反馈，将“重置画板”和“清空画板”统一为相同 danger 按钮视觉，保留文案区分默认模板重置与纯清空。
 
 ## 意外与发现
 
@@ -140,7 +143,7 @@
 
 按 review 收口后，文件活动视图又补上两条宿主边界。第一条是“编辑区点击文件不覆盖画布组”：当画布承载在编辑区时，文件打开统一走相邻 editor group；如果当前没有 split editor，就由宿主隐式创建一列再打开。第二条是“过滤不改真相，但只在文件功能开启时成立”：`include` / `exclude` 不再暴露为 settings，而是迁到 sidebar 作为持久化视图状态；宿主只在文件功能开启时用它裁剪文件节点 / 文件列表节点 / 自动边的显示投影，而不会回写 `fileReferences`。如果文件功能关闭并完成 reload，则这组过滤入口与 `fileReferences` 一起退出文件域。
 
-在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；随后结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃，改成两个原生 TreeView section。最后，用户进一步明确指出 `include` / `exclude` 必须直接以内嵌输入框出现在 sidebar 中，而不是再点编辑按钮。当前实现因此收口为混合结构：`概览` 保留原生 TreeView，只展示状态摘要，并新增 `Runtime Persistence` 与“文件功能”状态；`常用操作` 改为最小 `WebviewView`，内容区承载打开画布、创建节点、重置画布状态和 `include` / `exclude` 输入框，而对应的快捷 icon 按钮则由宿主 `view/title` action 放在该 view 标题行尾部。这样既保留“文件功能开启时过滤不改真相”的状态分层，也把自定义 UI 限制在确实需要 inline 输入框的最小范围内。
+在这之后，sidebar 又经历了一次方向修正。最初为了贴近 Search 视图，过滤入口一度被实现成单一 `WebviewView` 内的自绘输入框；随后结合用户提供的 VSCode 原生参考图和官方 `Sidebars` / `Views` / `Tree View` / `Webviews` 指南复查后，这条路线被正式放弃，改成两个原生 TreeView section。最后，用户进一步明确指出 `include` / `exclude` 必须直接以内嵌输入框出现在 sidebar 中，而不是再点编辑按钮。当前实现因此收口为混合结构：`概览` 保留原生 TreeView，只展示状态摘要，并新增 `Runtime Persistence` 与“文件功能”状态；`常用操作` 改为最小 `WebviewView`，内容区承载打开画布、创建节点、重置画板、清空画板和 `include` / `exclude` 输入框，而对应的快捷 icon 按钮则由宿主 `view/title` action 放在该 view 标题行尾部。这样既保留“文件功能开启时过滤不改真相”的状态分层，也把自定义 UI 限制在确实需要 inline 输入框的最小范围内。
 
 针对本轮最后一条 sidebar 文案反馈，`概览` 里的“画布状态”也进一步从“当前挂在 Panel / Editor 哪个承载面”收口回纯状态语义，只保留“已打开 / 未打开”。承载面仍然作为默认配置或宿主内部行为存在，但不再直接占用“状态”这行的描述位。
 
@@ -242,6 +245,12 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
 - 2026-04-20 常用操作标题行位置修正验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+- 2026-05-08 常用操作重置画板入口验证：
+  - `npm run typecheck`：通过。
+  - `npm run build`：通过。
+- 2026-05-08 常用操作重置 / 清空按钮视觉一致性验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
 - 2026-04-20 概览画布状态语义修正验证：
