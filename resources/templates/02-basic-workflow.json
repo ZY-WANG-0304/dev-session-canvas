@@ -2,15 +2,26 @@
   "version": 1,
   "template": {
     "id": "builtin-basic-workflow",
-    "name": "基础工作流",
+    "name": "示例模板",
     "category": "builtin",
     "createdAt": "2026-05-06T00:00:00.000Z",
-    "updatedAt": "2026-05-06T00:00:00.000Z",
+    "updatedAt": "2026-05-08T00:00:00.000Z",
     "nodes": [
+      {
+        "kind": "note",
+        "title": "工作说明",
+        "position": { "x": 0, "y": 0 },
+        "size": { "width": 420, "height": 280 },
+        "metadata": {
+          "note": {
+            "content": "建议流程：\n1. 先在 Note 中写清任务目标\n2. 让 Agent 负责分析与实现\n3. 用 Terminal 观察命令输出或手动执行验证\n\n这个模板只提供布局，不会自动启动执行会话。"
+          }
+        }
+      },
       {
         "kind": "agent",
         "title": "AI Assistant",
-        "position": { "x": 0, "y": 0 },
+        "position": { "x": 0, "y": 320 },
         "size": { "width": 560, "height": 430 },
         "metadata": {
           "agent": {
@@ -21,25 +32,14 @@
       {
         "kind": "terminal",
         "title": "Terminal",
-        "position": { "x": 640, "y": 20 },
-        "size": { "width": 540, "height": 420 }
-      },
-      {
-        "kind": "note",
-        "title": "工作说明",
-        "position": { "x": 300, "y": 500 },
-        "size": { "width": 420, "height": 320 },
-        "metadata": {
-          "note": {
-            "content": "建议流程：\n1. 先在 Note 中写清任务目标\n2. 让 Agent 负责分析与实现\n3. 用 Terminal 观察命令输出或手动执行验证\n\n这个模板只提供布局，不会自动启动执行会话。"
-          }
-        }
+        "position": { "x": 660, "y": 320 },
+        "size": { "width": 540, "height": 430 }
       }
     ],
     "edges": [
       {
-        "sourceNodeIndex": 0,
-        "targetNodeIndex": 1,
+        "sourceNodeIndex": 1,
+        "targetNodeIndex": 2,
         "sourceAnchor": "right",
         "targetAnchor": "left",
         "arrowMode": "forward",
