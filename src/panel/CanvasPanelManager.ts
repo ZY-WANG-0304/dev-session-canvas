@@ -1564,18 +1564,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.waitForPendingWorkspaceStateUpdates();
   }
 
-  public async resetState(): Promise<void> {
+  public async resetState(options: { clearAgentCliResolutionCache?: boolean } = {}): Promise<void> {
     const previousNodeCount = this.state.nodes.length;
     await this.prepareForHostBoundary({
       preserveLiveRuntime: false,
       allowRuntimeSupervisorRestart: false,
       invalidatePendingExecutionOperations: true
     });
+    if (options.clearAgentCliResolutionCache) {
+      this.clearAgentCliResolutionCache();
+    }
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     this.canvasTemplateInitialized = true;
     this.persistState();
     this.recordDiagnosticEvent('state/reset', {
-      previousNodeCount
+      previousNodeCount,
+      clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true
     });
     this.postState('host/stateUpdated');
   }

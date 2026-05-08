@@ -24,6 +24,7 @@
 - [x] (2026-05-08 10:46 +0800) 根据 review 收口 Windows `Terminal` 启动不再预应用 shell env patch，并让相对 `terminal.shellPath` 的 env probe 与配置检查统一复用 workspace `cwd`。
 - [x] (2026-05-08 11:34 +0800) 根据 review 收口 `PATH` 合并顺序：普通 host-only 目录不再整体前置到 shell `PATH` 之前，只保留显式注入测试目录的优先级，并补齐跨平台回归。
 - [x] (2026-05-08 12:08 +0800) 根据 review 收口 Agent CLI 解析缓存：把 cache key 绑定到当前 shell authority，并在 shell 配置变化时清空旧 cache，避免 resolver 持续命中旧工具链路径。
+- [x] (2026-05-08) 根据 review 收口 Windows real smoke 隔离：让 `testResetState` 清空 Agent CLI 解析缓存，并要求 smoke 场景显式断言 `resolutionSource !== 'cache'`。
 
 ## 意外与发现
 
@@ -59,6 +60,9 @@
 
 - 观察：即使 shell env patch 会在 shell 变化时刷新，如果 Agent CLI 绝对路径缓存仍只按 `platform/provider/requestedCommand/workspaceCwd` 建 key，resolver 仍会持续以 `source: cache` 命中旧 shell 工具链，重新制造“resolver 仍指向旧 shell，spawn env 已切到新 shell”的确定性分叉。
   证据：review 指出的 `CanvasPanelManager` 只在 shell 变化时失效 `resolvedShellEnvironmentPatchPromise`，但 `agentCliResolutionCache` 既没有同步清空，也没有把 shell authority 编进 key。
+
+- 观察：Windows real smoke 虽然会在多个 shell 场景之间循环调用 `testResetState()`，但如果该 helper 只重置画布状态、不清空 Agent CLI 解析缓存，后续场景仍可能通过 `source: cache` 命中第一轮解析出的绝对 `codex` 路径，从而给出假阳性。
+  证据：`tests/vscode-smoke/windows-real-codex-smoke.cjs` 会在每轮场景前后调用 `devSessionCanvas.__test.resetState`，而修复前 `CanvasPanelManager.resetState()` 不会触碰 `agentCliResolutionCache`；同一 smoke 断言又只要求 `resolvedCommand` 非空，没有要求 `resolutionSource` 脱离 `cache`。
 
 - 观察：2026-05-08 本机 `npm run test:smoke` 的 `SIGABRT` 不是由这次 shell authority cache 修复直接触发；在同一台 macOS 机器上，哪怕去掉 extension test、只直接启动 VS Code 主进程，也会在创建日志目录前就被 LaunchServices / AppKit 路径上的 `RegisterApplication` 中止。
   证据：同日 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 仍稳定 `SIGABRT` 且 `artifacts/` 为空；随后最小命令 `env -u ELECTRON_RUN_AS_NODE /Applications/Visual Studio Code.app/Contents/MacOS/Code ...` 也独立返回 134，并在 `~/Library/Logs/DiagnosticReports/Code-2026-05-08-164522.ips` 中留下 `EXC_CRASH (SIGABRT)`，主线程栈顶为 `___RegisterApplication_block_invoke` / `NSApplication sharedApplication`。
@@ -101,6 +105,7 @@
 - 已完成：`resolveShellEnvironmentPatch(...)` 现在会接收并透传 workspace `cwd`；相对 `terminal.shellPath` 的 env probe 与 `terminalShellConfiguration` 的配置检查已共享同一套解析基准，不再因为 `spawn` 端漏传 `cwd` 而稳定 `ENOENT`。
 - 已完成：`applyShellEnvironmentPatch(...)` 现在只会把显式声明要保优先级的 base `PATH` 目录继续前置；其余 host-only 目录都会追加在 shell `PATH` 之后。macOS / Linux 与 Windows 回归已同步覆盖“shell 主体顺序优先 + test harness 目录仍可保前置”的组合语义。
 - 已完成：Agent CLI 解析缓存现在会把当前 Terminal shell 的 authority 编入 cache key，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或默认 shell 变化时清空缓存；同一 requested command 在不同 shell authority 下不再共享旧绝对路径。
+- 已完成：`devSessionCanvas.__test.resetState` 现在会显式清空 Agent CLI 解析缓存；Windows real smoke 也新增 `resolutionSource` 必须存在且不得为 `cache` 的断言，避免多场景循环时把旧绝对路径命中误当成新的 shell 证据。
 - 已完成：正式设计文档、技术债和自动化验证已同步更新；`npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build`、`npm run test:smoke:windows-real-codex` 与 `git diff --check` 均已通过。其中 Windows real smoke 现在覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 七类场景。
 - 剩余：Windows 自定义 shell 的真实 smoke 缺口已继续收窄到更少见的 Windows POSIX family shell 名称，例如 `zsh`、`fish`，或用户通过显式 `shellPath` 接入的非常规 shell；它们仍共享同一条 POSIX 解析分支，但当前仓库还没有同等级真实 smoke 证据。
 
@@ -173,6 +178,7 @@
 - 2026-05-08：review 收口后的 `npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build` 与 `npm run test:smoke:windows-real-codex` 通过，新增覆盖 Windows `Terminal` target 跳过预应用 patch 与相对 `terminal.shellPath` probe 复用 workspace `cwd`。
 - 2026-05-08：再次根据 review 收口后，`npm run test:shell-environment-resolver`、`npm run typecheck`、`npm run build` 与 `git diff --check` 通过，新增覆盖 “shell `PATH` 主体顺序优先 + 显式注入测试目录仍保前置” 的 POSIX / Windows 回归。
 - 2026-05-08：再次根据 review 收口后，`npm run typecheck`、`npm run build`、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；新增了 Agent CLI cache key 按 shell authority 隔离的 smoke 断言。随后复跑 `npm run test:smoke` 仍在本机以 `SIGABRT` 提前终止；进一步最小化到直接启动 VS Code 主进程也同样崩溃，并在 `~/Library/Logs/DiagnosticReports/Code-2026-05-08-164522.ips` 记录到 `RegisterApplication` 相关 `SIGABRT`，因此当前把 smoke 结果标注为“本机 VS Code/macOS 启动环境问题，待单独处理后复跑”，而不是本轮代码回归。
+- 2026-05-08：再次根据 review 收口后，`npm run typecheck`、`npm run build`、`npm run test:smoke:windows-real-codex` 与 `git diff --check` 通过；新增覆盖 `testResetState` 清空 Agent CLI 解析缓存，以及 Windows real smoke 场景显式拒绝 `resolutionSource = cache` 的回归。
 - 2026-05-08：`git diff --check` 通过。
 
 ## 接口与依赖

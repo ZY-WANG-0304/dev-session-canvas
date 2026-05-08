@@ -1784,7 +1784,9 @@ function registerTestCommands(
       return panelManager.getDebugSnapshot();
     }),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, async () => {
-      await panelManager.resetState();
+      await panelManager.resetState({
+        clearAgentCliResolutionCache: true
+      });
       return panelManager.getDebugSnapshot();
     })
   );
