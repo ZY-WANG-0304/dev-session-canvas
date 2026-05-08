@@ -124,8 +124,10 @@ try {
   assert.equal(skippedWindowsCliPatch.source, 'none');
   assert.equal(skippedWindowsCliPatch.skippedReason, 'launched-from-cli');
   assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('agent', 'win32'), true);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('agent', 'darwin'), true);
   assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'win32'), false);
-  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'darwin'), true);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'darwin'), false);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'linux'), false);
 
   if (process.platform !== 'win32') {
     const fakeShellPath = path.join(tempDir, 'fake-login-shell');

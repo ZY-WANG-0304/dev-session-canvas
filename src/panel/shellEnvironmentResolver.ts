@@ -126,11 +126,8 @@ export async function resolveShellEnvironmentPatch(
   }
 }
 
-export function shouldResolveShellEnvironmentPatchForExecutionTarget(
-  target: ShellEnvironmentPatchTarget,
-  platform: NodeJS.Platform = process.platform
-): boolean {
-  return !(platform === 'win32' && target === 'terminal');
+export function shouldResolveShellEnvironmentPatchForExecutionTarget(target: ShellEnvironmentPatchTarget): boolean {
+  return target === 'agent';
 }
 
 export function buildControlledShellEnvironmentPatch(
