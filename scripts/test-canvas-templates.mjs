@@ -319,6 +319,20 @@ try {
   assert.match(firstOpenFallbackResolverSource, /DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID/u);
   assert.match(firstOpenFallbackResolverSource, /node\.kind === 'note'/u);
   assert.doesNotMatch(firstOpenFallbackResolverSource, /globalState\.update/u);
+  const webviewReadyHandlerSource = sliceBetween(
+    panelManagerSource,
+    "if (parsedMessage.type === 'webview/ready')",
+    'private async bootstrapInteractiveSurface'
+  );
+  assert.match(webviewReadyHandlerSource, /bootstrapInteractiveSurface\(sourceSurface\)/u);
+  assert.doesNotMatch(webviewReadyHandlerSource, /postState\('host\/bootstrap'\)/u);
+  const bootstrapSurfaceSource = sliceBetween(
+    panelManagerSource,
+    'private async bootstrapInteractiveSurface',
+    'private handleActiveWebviewMessage'
+  );
+  assert.match(bootstrapSurfaceSource, /await this\.ensureDefaultTemplateAppliedIfNeeded\(\)/u);
+  assert.match(bootstrapSurfaceSource, /postState\('host\/bootstrap'\)/u);
   const resetDefaultWebviewCaseSource = sliceBetween(
     panelManagerSource,
     "case 'webview/resetToDefaultTemplate':",

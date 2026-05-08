@@ -4897,11 +4897,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSurface: this.activeSurface
       });
       if (this.isInteractiveSurface(sourceSurface)) {
-        this.postState('host/bootstrap');
-        void this.postCanvasTemplateCatalogToActiveWebview();
-        this.maybePostVisibilityRestored(sourceSurface, {
-          force: true
-        });
+        void this.bootstrapInteractiveSurface(sourceSurface);
       }
       return;
     }
@@ -4911,6 +4907,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.handleActiveWebviewMessage(sourceSurface, parsedMessage);
+  }
+
+  private async bootstrapInteractiveSurface(sourceSurface: CanvasSurfaceLocation): Promise<void> {
+    try {
+      await this.ensureDefaultTemplateAppliedIfNeeded();
+    } catch (error) {
+      this.recordDiagnosticEvent('template/defaultApplyFailedBeforeBootstrap', {
+        message: formatUnknownError(error)
+      });
+    }
+
+    if (!this.isInteractiveSurface(sourceSurface) || !this.surfaceReady[sourceSurface]) {
+      return;
+    }
+
+    this.postState('host/bootstrap');
+    void this.postCanvasTemplateCatalogToActiveWebview();
+    this.maybePostVisibilityRestored(sourceSurface, {
+      force: true
+    });
   }
 
   private handleActiveWebviewMessage(
