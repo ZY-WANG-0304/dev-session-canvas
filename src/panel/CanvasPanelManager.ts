@@ -989,6 +989,52 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.applyCanvasTemplateRecord(storedTemplate, options);
   }
 
+  public async resetDefaultCanvasTemplateWithConfirmation(options?: {
+    visibleCenter?: CanvasNodePosition;
+    focusAppliedNodes?: boolean;
+    quietOnFailure?: boolean;
+  }): Promise<boolean> {
+    const defaultTemplate = await this.resolveDefaultCanvasTemplateRecord();
+    if (!defaultTemplate) {
+      throw new Error('当前没有可用的默认模板。');
+    }
+
+    if (!(await this.confirmCanvasTemplateReset('当前默认模板'))) {
+      return false;
+    }
+
+    await this.applyCanvasTemplateRecord(defaultTemplate, {
+      ...options,
+      reset: true
+    });
+    return true;
+  }
+
+  public async resetCanvasTemplateByIdWithConfirmation(
+    templateId: string,
+    options?: {
+      visibleCenter?: CanvasNodePosition;
+      focusAppliedNodes?: boolean;
+      quietOnFailure?: boolean;
+    }
+  ): Promise<boolean> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
+    if (!storedTemplate) {
+      throw new Error('目标模板不存在。');
+    }
+
+    if (!(await this.confirmCanvasTemplateReset(`模板「${storedTemplate.template.name}」`))) {
+      return false;
+    }
+
+    await this.applyCanvasTemplateRecord(storedTemplate, {
+      ...options,
+      reset: true
+    });
+    return true;
+  }
+
   public getDebugSnapshot(): CanvasDebugSnapshot {
     return {
       activeSurface: this.activeSurface,
@@ -2118,6 +2164,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.requestTemplateNodeGroupFocus(applyResult.nodeIds);
     }
     return applyResult.nodeIds;
+  }
+
+  private async confirmCanvasTemplateReset(targetLabel: string): Promise<boolean> {
+    const confirmed = await vscode.window.showWarningMessage(
+      `重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`,
+      { modal: true },
+      '继续重置'
+    );
+    return confirmed === '继续重置';
   }
 
   private async validateCanvasTemplateForApply(template: CanvasTemplate): Promise<Map<number, AgentProviderKind>> {
@@ -5045,8 +5100,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
         return;
       case 'webview/resetToDefaultTemplate':
-        void this.applyDefaultCanvasTemplate({
-          reset: true,
+        void this.resetDefaultCanvasTemplateWithConfirmation({
           visibleCenter: parsedMessage.payload?.visibleCenter,
           focusAppliedNodes: true
         }).catch((error) => {
@@ -5059,8 +5113,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
         return;
       case 'webview/resetToTemplate':
-        void this.applyCanvasTemplateById(parsedMessage.payload.templateId, {
-          reset: true,
+        void this.resetCanvasTemplateByIdWithConfirmation(parsedMessage.payload.templateId, {
           visibleCenter: parsedMessage.payload.visibleCenter,
           focusAppliedNodes: true
         }).catch((error) => {
