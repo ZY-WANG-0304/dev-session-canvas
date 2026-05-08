@@ -240,6 +240,10 @@ interface PendingNodeViewportRequest {
   mode: NodeViewportFocusMode;
   selectNode: boolean;
 }
+interface PendingNodeGroupViewportRequest {
+  nodeIds: string[];
+  retryCount: number;
+}
 interface PendingManualNodeCreateRequest {
   requestId: string;
   knownNodeIdsSnapshot: ReadonlySet<string>;
@@ -470,6 +474,8 @@ const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
 const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
 const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
+const NODE_GROUP_FOCUS_RETRY_INTERVAL_MS = 48;
+const NODE_GROUP_FOCUS_MAX_RETRY_COUNT = 8;
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
 const EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR = '--canvas-embedded-terminal-foreground';
 const TERMINAL_BACKGROUND_FALLBACKS: Record<'editor' | 'panel', string[]> = {
@@ -766,6 +772,8 @@ function App(): JSX.Element {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
   const pendingViewportRequestRef = useRef<PendingNodeViewportRequest | undefined>();
+  const pendingNodeGroupViewportRequestRef = useRef<PendingNodeGroupViewportRequest | undefined>();
+  const pendingNodeGroupViewportRetryTimeoutRef = useRef<number | undefined>();
   const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
@@ -806,6 +814,9 @@ function App(): JSX.Element {
           break;
         case 'host/centerNode':
           requestNodeCenter(message.payload.nodeId);
+          break;
+        case 'host/focusNodes':
+          requestNodeGroupFocus(message.payload.nodeIds);
           break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
@@ -1038,6 +1049,7 @@ function App(): JSX.Element {
       if (pendingViewportSyncTimeoutRef.current !== undefined) {
         window.clearTimeout(pendingViewportSyncTimeoutRef.current);
       }
+      clearPendingNodeGroupViewportRetryTimeout();
     };
   }, []);
 
@@ -1056,6 +1068,27 @@ function App(): JSX.Element {
         scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
       }
     }
+  }, [hostState, reactFlowReadyVersion]);
+
+  useEffect(() => {
+    const pendingNodeGroupViewportRequest = pendingNodeGroupViewportRequestRef.current;
+    if (
+      !pendingNodeGroupViewportRequest ||
+      !hostState ||
+      !pendingNodeGroupViewportRequest.nodeIds.every((nodeId) =>
+        hostState.nodes.some((node) => node.id === nodeId)
+      )
+    ) {
+      return;
+    }
+
+    if (focusNodeGroupInViewport(pendingNodeGroupViewportRequest.nodeIds)) {
+      pendingNodeGroupViewportRequestRef.current = undefined;
+      clearPendingNodeGroupViewportRetryTimeout();
+      return;
+    }
+
+    schedulePendingNodeGroupViewportRetry();
   }, [hostState, reactFlowReadyVersion]);
 
   useEffect(() => {
@@ -1235,6 +1268,80 @@ function App(): JSX.Element {
     return true;
   };
 
+  const normalizeNodeGroupFocusIds = (nodeIds: readonly string[]): string[] => {
+    return Array.from(
+      new Set(nodeIds.filter((nodeId) => typeof nodeId === 'string' && nodeId.trim().length > 0))
+    );
+  };
+
+  const focusNodeGroupInViewport = (nodeIds: readonly string[]): boolean => {
+    const targetNodeIds = normalizeNodeGroupFocusIds(nodeIds);
+    const reactFlowInstance = reactFlowRef.current;
+    if (!reactFlowInstance?.viewportInitialized || targetNodeIds.length === 0) {
+      return false;
+    }
+
+    const knownNodeIds = latestHostNodeIdsRef.current;
+    if (!targetNodeIds.every((nodeId) => knownNodeIds.has(nodeId))) {
+      return false;
+    }
+
+    const didFit = reactFlowInstance.fitView({
+      nodes: targetNodeIds.map((id) => ({ id })),
+      padding: NODE_FOCUS_VIEW_PADDING,
+      maxZoom: NODE_FOCUS_MAX_ZOOM,
+      minZoom: NODE_FOCUS_MIN_ZOOM,
+      duration: NODE_FOCUS_ANIMATION_DURATION_MS
+    });
+    if (!didFit) {
+      return false;
+    }
+
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    scheduleFocusedViewportPersistence();
+    return true;
+  };
+
+  const clearPendingNodeGroupViewportRetryTimeout = (): void => {
+    if (pendingNodeGroupViewportRetryTimeoutRef.current === undefined) {
+      return;
+    }
+
+    window.clearTimeout(pendingNodeGroupViewportRetryTimeoutRef.current);
+    pendingNodeGroupViewportRetryTimeoutRef.current = undefined;
+  };
+
+  const schedulePendingNodeGroupViewportRetry = (): void => {
+    const pendingNodeGroupViewportRequest = pendingNodeGroupViewportRequestRef.current;
+    if (
+      !pendingNodeGroupViewportRequest ||
+      pendingNodeGroupViewportRequest.retryCount >= NODE_GROUP_FOCUS_MAX_RETRY_COUNT ||
+      pendingNodeGroupViewportRetryTimeoutRef.current !== undefined
+    ) {
+      return;
+    }
+
+    pendingNodeGroupViewportRequestRef.current = {
+      ...pendingNodeGroupViewportRequest,
+      retryCount: pendingNodeGroupViewportRequest.retryCount + 1
+    };
+    pendingNodeGroupViewportRetryTimeoutRef.current = window.setTimeout(() => {
+      pendingNodeGroupViewportRetryTimeoutRef.current = undefined;
+      const nextPendingNodeGroupViewportRequest = pendingNodeGroupViewportRequestRef.current;
+      if (!nextPendingNodeGroupViewportRequest) {
+        return;
+      }
+
+      if (focusNodeGroupInViewport(nextPendingNodeGroupViewportRequest.nodeIds)) {
+        pendingNodeGroupViewportRequestRef.current = undefined;
+        return;
+      }
+
+      schedulePendingNodeGroupViewportRetry();
+    }, NODE_GROUP_FOCUS_RETRY_INTERVAL_MS);
+  };
+
   const requestNodeFocus = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): void => {
     if (focusNodeInViewport(nodeId, mode)) {
       pendingViewportRequestRef.current = undefined;
@@ -1260,6 +1367,28 @@ function App(): JSX.Element {
       mode,
       selectNode: false
     };
+  };
+
+  const requestNodeGroupFocus = (nodeIds: readonly string[]): void => {
+    const targetNodeIds = normalizeNodeGroupFocusIds(nodeIds);
+    if (targetNodeIds.length === 0) {
+      pendingNodeGroupViewportRequestRef.current = undefined;
+      clearPendingNodeGroupViewportRetryTimeout();
+      return;
+    }
+
+    pendingNodeGroupViewportRequestRef.current = {
+      nodeIds: targetNodeIds,
+      retryCount: 0
+    };
+    clearPendingNodeGroupViewportRetryTimeout();
+
+    if (focusNodeGroupInViewport(targetNodeIds)) {
+      pendingNodeGroupViewportRequestRef.current = undefined;
+      return;
+    }
+
+    schedulePendingNodeGroupViewportRetry();
   };
 
   const acknowledgeNodeAttention = (nodeId: string): void => {

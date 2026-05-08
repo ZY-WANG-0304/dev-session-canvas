@@ -193,12 +193,14 @@ updated_at: 2026-05-08
 - 若模板携带 `argv`，宿主会把它暂存到节点 metadata 中，并在真正启动时再与当前 Provider 命令组合，避免把用户机器上的 command path 固化进模板或运行态快照。
 - 若模板要求的固定 Provider 当前不可用（例如 CLI 命令无法解析），宿主提示用户并阻止整次应用；不静默降级。
 - 若当前 workspace 未受信任，含 `agent` / `terminal` 的模板不可应用；仅 `note` 模板允许通过。
+- 显式 `apply` / `reset` 成功后，宿主会把本次物化出的新节点 id 作为一组发送给 Webview；Webview 对这组节点执行组级 `fitView`，让用户视口自动追到新增模板节点，而不是只停留在发起操作前的画布位置。
 
 ### 7.5 模板落位规则
 
 - 首次打开或 `reset`：模板 bounding box 的中心对齐到“当前可见区域中心”；若当前还没有 Webview 可见区域信息，则以画布原点附近为基准，让初始 `fitView` 接管居中表现。
 - `apply`：以当前可见区域中心作为首选锚点，把整组模板节点视作一个矩形簇执行“组级避碰搜索”。宿主复用现有节点摆放的网格步长思路，但碰撞检测改为模板组内所有节点与现有节点逐一比较；找到第一个无碰撞位置后整组平移落位。
 - 若首选区域始终碰撞，则 fallback 到当前画布 bounding box 右下方空区，仍保持模板内部相对位置不变。
+- 落位完成后的追焦同样以“本次新增节点组”为单位，而不是任选其中一个节点。这样当避碰把模板放到当前视野外侧时，用户仍会看到整组模板的相对布局；首次打开自动应用默认模板不走这条显式追焦路径，继续由 Webview 初始 `fitView` 保持启动体验稳定。
 
 这样模板应用不会把每个节点单独散落，也不会与现有窗口初始重叠。
 
@@ -246,8 +248,9 @@ updated_at: 2026-05-08
 2. 将另一个模板设为默认后，再执行“重置为默认模板”，会清空当前节点并应用新的默认模板。
 3. 从现有画布保存模板，再重新应用该模板时，节点标题、相对布局、Note 内容和边样式能被保留，但 `Agent` / `Terminal` 不会自动启动。
 4. 在当前画布已有节点时应用模板，新模板整体会避开现有节点，而不是直接重叠。
-5. 导入无效 JSON、损坏文件或不可用 Provider 模板时，会给出明确错误提示，并阻止写入/应用。
-6. 模板侧栏能显示 3 个内置模板、默认标记、节点统计和 hover 详情；用户模板支持导出与删除。
+5. 在当前画布已有节点且避碰把模板放到当前视野外时，应用模板后视口会自动 `fitView` 到本次新增的整组模板节点。
+6. 导入无效 JSON、损坏文件或不可用 Provider 模板时，会给出明确错误提示，并阻止写入/应用。
+7. 模板侧栏能显示 3 个内置模板、默认标记、节点统计和 hover 详情；用户模板支持导出与删除。
 
 ## 9. 当前验证状态
 
@@ -258,6 +261,8 @@ updated_at: 2026-05-08
 - 保存模板交互改为表单式对话面板后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
 - 保存模板表单继续按最新要求优化为“更贴近 VS Code 原生表单布局 + 按 Agent 分别设置 Provider + 选择存储位置与层级路径”，并同步让 sidebar 移除模板目录提示、模板存储支持 workspace/global 多根与递归层级后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
 - 导入模板继续改为复用同一套表单，并补充 sidebar tooltip 层级提示与更贴近 VS Code 的字号/控件尺寸后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
+- 显式应用 / 重置模板后自动追焦到本次新增节点组，并补充 `host/focusNodes`、宿主新增节点 id 返回与 Webview 组级 `fitView` 的静态断言后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过。
+- 组级追焦延后一拍问题已修复：Webview 改用最新节点 id ref 判定 `host/focusNodes` 目标，并在 React Flow 节点尚未完成渲染时主动重试；再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过。
 - 模板 sidebar 的行单击交互已收口为“只选中，不应用”；追加模板仍由右侧行内 `run` 动作、命令面板或画布右键菜单显式触发。本轮已再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖行 click / keyboard handler 不发送 `sidebarTemplates/applyTemplate` 的回归断言。
 - 模板 sidebar 行尾动作已收口为与标题同一行，第二行摘要改为独立占用整行宽度，并在窄侧栏下用省略号退化而不是换行。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖按钮挂载在标题行、第二行 nowrap 与 ellipsis 的静态回归断言。
 - 模板 sidebar 已移除底部“当前画布还没有可保存的 Agent / Terminal / Note 节点”提示，内容区只保留模板列表及模板列表自身的加载 / 空 / 错误状态。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖不再输出 `hintNote` / `hint-note` / `canSaveCurrentCanvas`。
