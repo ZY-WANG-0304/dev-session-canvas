@@ -98,17 +98,18 @@ updated_at: 2026-05-08
 - `Terminal` 与 `Agent` 共用同一个宿主会话 bridge；差别只在于启动命令和节点语义。
 - `src/panel/CanvasPanelManager.ts` 需要通过统一 execution env 入口为 `Agent` 与 `Terminal` 组装启动环境，而不是让 resolver、local PTY 与 runtime supervisor 各自直接读取 `process.env`；其中 `Agent` 继续复用 shell-derived execution env，Windows `Terminal` 则保留 base env 让真实 shell 自己执行 profile / AutoRun 一次。
 - `src/panel/shellEnvironmentResolver.ts` 当前已经为桌面三平台提供受控 shell env 继承：
-  - macOS / Linux：在 `VSCODE_CLI=1` 之外的 GUI 场景读取登录 shell 环境。
+  - macOS / Linux：在 `VSCODE_CLI=1` 之外的 GUI 场景读取 shell 环境；POSIX family shell 走登录 shell probe，`pwsh` / `powershell` 走 PowerShell 专用 probe，避免把 PowerShell 误送入 POSIX `-i -l -c` 命令串。
   - Windows：以当前配置/默认 Terminal shell 为准；`powershell.exe` / `cmd.exe` 走各自环境快照解析，名称可判定为 `bash` / `zsh` / `sh` / `fish` 的 Windows shell 复用登录 shell 解析。这份 patch 供 `Agent` resolver / spawn 使用，同时保留给 host diagnostics 与排障。
 - 这份 shell env patch 不直接 wholesale 替换 Extension Host 环境；它只在保留宿主基线、`TERM`/`COLORTERM` 约束和少量显式注入目录的前提下，同步 `PATH`、`PATHEXT` 与工具链相关变量，并排除 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被执行节点接管的键。`PATH` 合并需要保持 shell 导出的主体顺序优先：普通 host-only 目录追加在 shell `PATH` 之后，只有宿主显式注入且要求保优先级的目录（例如 test harness CLI 目录）可以继续排在前面。
-- shell env patch 的缓存与当前 Terminal shell 绑定；当 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时，宿主必须刷新缓存，不能继续沿用旧 shell 的环境快照。
+- shell env patch 的缓存与当前 Terminal shell 和 workspace root 绑定；当 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath`、`vscode.env.shell` 或 workspace root 变化时，宿主必须刷新缓存，不能继续沿用旧 shell / 旧 repo 的环境快照。
 - 如果 `terminal.shellPath` 是相对路径，则 `terminalShellConfiguration` 的配置检查与 `shellEnvironmentResolver` 的 env probe 必须共享同一套 workspace `cwd` 解析基准，不能一边判定可用、一边在 `spawn` 时稳定 `ENOENT`。
-- 与此同时，宿主诊断必须至少记录 shell env patch 的 `source`、`shellFamily`、`shellPath` 与 `appliedKeys`/失败摘要，这样 Windows 上才能区分当前对齐的是 PowerShell、`cmd.exe`、Git Bash、MSYS2，还是其它 POSIX family shell。
+- 与此同时，宿主诊断必须至少记录 shell env patch 的 `source`、`shellFamily`、`shellPath` 与 `appliedKeys`/失败摘要；非 Windows PowerShell 使用 `source=powershell`，Windows 使用 `source=windows-shell` 并通过 `shellFamily` 区分当前对齐的是 PowerShell、`cmd.exe`、Git Bash、MSYS2，还是其它 POSIX family shell。
 - `Agent` provider CLI 的命令发现采用宿主侧 resolver，而不是把裸命令名直接交给 PTY：
   - 显式设置优先
-  - 最近成功解析的绝对路径缓存次之，但这层缓存必须和当前 shell authority 绑定；切换 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或默认 shell 后，不能继续命中旧 shell 解析出的 CLI 路径
+  - 最近成功解析的绝对路径缓存次之，但这层缓存只存在于当前 Extension Host 生命周期内，并必须同时绑定当前 shell authority 与规范化 workspace `cwd`；切换 shell、切换 repo 或重载窗口后，不能继续命中旧 shell / 旧 workspace 解析出的 CLI 路径
   - 当前宿主 `PATH` 再次之
   - POSIX 登录 shell 探测、Windows `where.exe` / `Get-Command` 与常见包装后缀作为最后自动回退
+- 这层缓存只服务一次 Extension Host 生命周期内的重复解析；显式配置路径是用户决策，自动解析出的绝对路径只是当前环境观测值。用户通过安装工具链、修改 shell profile、启用 direnv / Nix 后，Reload Window 或重启 VS Code 应触发重新 probe 当前可见环境，而不是继续使用旧持久化路径。
 - 宿主当前通过最小 PTY bridge 暴露：
   - 创建会话
   - 写入输入
@@ -138,8 +139,8 @@ updated_at: 2026-05-08
 4. Windows 本地至少完成一次真实 `Agent` / `Terminal` 人工 smoke test，并把剩余已知限制显式记录到发布文案与技术债。
 5. Webview 尺寸变化后，活跃会话行列能够同步更新，而不是只在启动前生效。
 6. 至少完成一次“CLI 已安装但当前 Extension Host PATH 不直达”的命令发现验证，确认宿主侧 resolver 能定位到目标 CLI。
-7. 至少完成一条自动化验证，证明 execution env 不再只依赖 Extension Host `process.env`，而是会把 shell 导出的受控 patch 同步到 `Agent` 启动环境；其中 Windows 还要覆盖 `PATHEXT` 或 profile / AutoRun 驱动的环境增量，并证明 `Terminal` launch 不会预应用这份 patch。
-8. 若 `terminal.shellPath` 支持相对路径，至少完成一条验证证明配置检查与 env probe 共享同一套 workspace `cwd` 基准，不会出现 UI 认定可用、probe 却因 `ENOENT` 静默回退的分叉。
+7. 至少完成一条自动化验证，证明 execution env 不再只依赖 Extension Host `process.env`，而是会把 shell 导出的受控 patch 同步到 `Agent` 启动环境；其中 Windows 还要覆盖 `PATHEXT` 或 profile / AutoRun 驱动的环境增量，并证明 `Terminal` launch 不会预应用这份 patch；非 Windows 还要覆盖 `pwsh` / `powershell` 不会落入 POSIX probe。
+8. 若 `terminal.shellPath` 支持相对路径，至少完成一条验证证明配置检查与 env probe 共享同一套 workspace `cwd` 基准，不会出现 UI 认定可用、probe 却因 `ENOENT` 静默回退的分叉。Agent CLI cache 还要验证裸命令名按 workspace `cwd` 隔离，不能跨 repo 复用旧绝对路径。
 9. 若某类 Windows shell 仍缺真实验证或存在未收口边界，必须把缺口收窄到具体 shell / 具体场景，并在设计文档与技术债中显式标注，不得再笼统写成“Windows 路线未对齐”。
 
 ## 9. 当前验证状态
@@ -149,7 +150,7 @@ updated_at: 2026-05-08
 - 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Agent` / `Terminal` 主路径已补齐当前轮功能可用性验证。
 - 2026-05-07 已补 `node scripts/test-shell-environment-resolver.mjs`，覆盖 macOS / Linux 与 Windows shell env patch 的过滤规则、`PATH` / `PATHEXT` 合并、`VSCODE_CLI=1` 跳过逻辑，以及 PowerShell profile 驱动的 Windows env patch；同日 `npm run typecheck` 与 `npm run build` 通过。
 - Windows 下使用 `Codex` 时，执行节点内历史当前仍有无法向上翻页的已知限制；文档状态继续保持为“验证中”，直到这条剩余差异与更深的远程场景验证也完成收口。
-- 2026-05-08 已按 review 补齐 Windows `Terminal` target 与相对 `terminal.shellPath` probe 回归：`node scripts/test-shell-environment-resolver.mjs` 现已覆盖 Windows `Terminal` launch 跳过预应用 patch 与相对 shell 路径复用 workspace `cwd`；同轮 `npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build` 与扩充后的 `npm run test:smoke:windows-real-codex` 继续通过。
+- 2026-05-08 已按 review 补齐 Windows `Terminal` target、相对 `terminal.shellPath` probe、非 Windows PowerShell probe 与 Agent CLI cache workspace 隔离回归：`node scripts/test-shell-environment-resolver.mjs` 现已覆盖 Windows `Terminal` launch 跳过预应用 patch、相对 shell 路径复用 workspace `cwd`，以及 fake `pwsh` 走 PowerShell probe；`tests/vscode-smoke/extension-tests.cjs` 也已要求裸命令名 cache key 按 workspace `cwd` 隔离。同轮 `npm run typecheck`、`npm run build`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 均已通过。
 - 2026-05-07/2026-05-08 已在真实 Windows 环境通过 `npm run test:agent-cli-resolver` 与扩充后的 `npm run test:smoke:windows-real-codex`，确认新的 execution env 路线可以覆盖 `Path` 大小写回归，以及默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 七类真实 Agent 启动 / shell 对齐场景。
 - 截至 `2026-04-28`，`Remote SSH` 主路径已补齐当前轮功能可用性验证。
 - Codespaces 与其他更深远程场景的人工验证证据仍需继续补齐，因此这些场景保持为“验证中”。

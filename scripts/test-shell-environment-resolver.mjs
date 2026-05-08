@@ -184,6 +184,51 @@ try {
     assert.equal(relativeResolvedPatch.source, 'posix-login-shell');
     assert.equal(relativeResolvedPatch.shellFamily, 'posix');
     assert.equal(relativeResolvedPatch.envPatch.CUSTOM_TOOLCHAIN_TOKEN, 'from-shell');
+
+    const fakePowerShellPath = path.join(tempDir, 'pwsh');
+    await writeFile(
+      fakePowerShellPath,
+      [
+        '#!/bin/sh',
+        'command=""',
+        'capture_next=""',
+        'for arg in "$@"; do',
+        '  case "$arg" in',
+        '    -i|-l|-c|-ic)',
+        '      echo "unexpected POSIX probe args for PowerShell" >&2',
+        '      exit 12',
+        '      ;;',
+        '  esac',
+        '  if [ "$capture_next" = "1" ]; then',
+        '    command="$arg"',
+        '    capture_next=""',
+        '  elif [ "$arg" = "-Command" ]; then',
+        '    capture_next="1"',
+        '  fi',
+        'done',
+        'mark=$(printf "%s" "$command" | awk -F"\\047" \'{ print $2 }\')',
+        'if [ -z "$mark" ]; then',
+        '  echo "missing PowerShell mark" >&2',
+        '  exit 13',
+        'fi',
+        'printf "%s%s%s\\n" "$mark" \'{"PATH":"/opt/powershell/bin:/usr/bin","CUSTOM_TOOLCHAIN_TOKEN":"from-powershell","HOME":"/should-not-override","TERM":"screen"}\' "$mark"'
+      ].join('\n'),
+      'utf8'
+    );
+    await chmod(fakePowerShellPath, 0o755);
+
+    const nonWindowsPowerShellPatch = await resolveShellEnvironmentPatch({
+      env: posixBaseEnv,
+      platform: 'darwin',
+      shellPath: fakePowerShellPath,
+      timeoutMs: 2000
+    });
+    assert.equal(nonWindowsPowerShellPatch.source, 'powershell');
+    assert.equal(nonWindowsPowerShellPatch.shellFamily, 'powershell');
+    assert.equal(nonWindowsPowerShellPatch.envPatch.CUSTOM_TOOLCHAIN_TOKEN, 'from-powershell');
+    assert.equal(nonWindowsPowerShellPatch.envPatch.PATH, '/opt/powershell/bin:/usr/bin');
+    assert.equal('HOME' in nonWindowsPowerShellPatch.envPatch, false);
+    assert.equal('TERM' in nonWindowsPowerShellPatch.envPatch, false);
   } else {
     const windowsPowerShellPath =
       process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim()

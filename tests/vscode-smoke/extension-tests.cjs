@@ -614,7 +614,7 @@ async function runTrustedSmoke() {
   await verifyClaudeSessionIdLocator();
   await verifyCodexResumeCommandHintParser();
   await verifyClaudeResumeCommandHintParser();
-  await verifyAgentCliRelativePathCacheIsolation();
+  await verifyAgentCliCacheIsolation();
 
   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
   let hostMessages = await getHostMessages();
@@ -8156,7 +8156,7 @@ async function verifyClaudeResumeCommandHintParser() {
   assert.strictEqual(missedSessionId, null);
 }
 
-async function verifyAgentCliRelativePathCacheIsolation() {
+async function verifyAgentCliCacheIsolation() {
   const workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-a-'));
   const workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-cli-cache-b-'));
 
@@ -8207,7 +8207,7 @@ async function verifyAgentCliRelativePathCacheIsolation() {
     });
 
     assert.notStrictEqual(relativeKeyA, relativeKeyB);
-    assert.strictEqual(absoluteKeyA, absoluteKeyB);
+    assert.notStrictEqual(absoluteKeyA, absoluteKeyB);
     assert.notStrictEqual(shellAuthorityKeyA, shellAuthorityKeyB);
     assert.notStrictEqual(relativeShellAuthorityKeyA, relativeShellAuthorityKeyB);
   } finally {
