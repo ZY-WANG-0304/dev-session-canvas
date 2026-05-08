@@ -156,6 +156,7 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   provider: AgentProviderKind;
   launchPreset: AgentLaunchPresetKind;
   customLaunchCommand?: string;
+  templateArgv?: string[];
   lastLaunchCommandLine?: string;
   runtimeKind: AgentRuntimeKind;
   resumeSupported: boolean;
@@ -302,6 +303,14 @@ export interface CanvasRuntimeContext {
   fileIconFontFaces: CanvasFileIconFontFace[];
 }
 
+export interface CanvasTemplateMenuEntry {
+  templateId: string;
+  name: string;
+  category: 'builtin' | 'user';
+  statsLabel: string;
+  isDefault: boolean;
+}
+
 export interface WebviewProbeNodeSnapshot {
   nodeId: string;
   kind: CanvasNodeKind;
@@ -442,6 +451,12 @@ export type WebviewToHostMessage =
       type: 'webview/ready';
     }
   | {
+      type: 'webview/updateViewportCenter';
+      payload: {
+        visibleCenter: CanvasNodePosition;
+      };
+    }
+  | {
       type: 'webview/selectNode';
       payload: {
         nodeId: string;
@@ -481,6 +496,35 @@ export type WebviewToHostMessage =
     }
   | {
       type: 'webview/resetDemoState';
+    }
+  | {
+      type: 'webview/applyDefaultTemplate';
+      payload?: {
+        visibleCenter?: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/applyTemplate';
+      payload: {
+        templateId: string;
+        visibleCenter?: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/resetToDefaultTemplate';
+      payload?: {
+        visibleCenter?: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/resetToTemplate';
+      payload: {
+        templateId: string;
+        visibleCenter?: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/saveCanvasAsTemplate';
     }
   | {
       type: 'webview/startExecutionSession';
@@ -649,6 +693,12 @@ export type HostToWebviewMessage =
       };
     }
   | {
+      type: 'host/templateCatalogUpdated';
+      payload: {
+        templates: CanvasTemplateMenuEntry[];
+      };
+    }
+  | {
       type: 'host/themeChanged';
     }
   | {
@@ -667,6 +717,12 @@ export type HostToWebviewMessage =
       type: 'host/centerNode';
       payload: {
         nodeId: string;
+      };
+    }
+  | {
+      type: 'host/focusNodes';
+      payload: {
+        nodeIds: string[];
       };
     }
   | {
@@ -770,8 +826,26 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     return null;
   }
 
-  if (value.type === 'webview/ready' || value.type === 'webview/resetDemoState') {
+  if (
+    value.type === 'webview/ready' ||
+    value.type === 'webview/resetDemoState' ||
+    value.type === 'webview/saveCanvasAsTemplate'
+  ) {
     return { type: value.type };
+  }
+
+  if (value.type === 'webview/updateViewportCenter') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isCanvasNodePosition(payload.visibleCenter)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateViewportCenter',
+      payload: {
+        visibleCenter: payload.visibleCenter
+      }
+    };
   }
 
   if (value.type === 'webview/selectNode') {
@@ -784,6 +858,64 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/selectNode',
       payload: {
         nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/applyDefaultTemplate' || value.type === 'webview/resetToDefaultTemplate') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (payload && payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) {
+      return null;
+    }
+    const visibleCenterValue = payload?.visibleCenter;
+    const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+
+    if (value.type === 'webview/applyDefaultTemplate') {
+      return {
+        type: 'webview/applyDefaultTemplate',
+        payload: {
+          visibleCenter
+        }
+      };
+    }
+
+    return {
+      type: 'webview/resetToDefaultTemplate',
+      payload: {
+        visibleCenter
+      }
+    };
+  }
+
+  if (value.type === 'webview/applyTemplate' || value.type === 'webview/resetToTemplate') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.templateId !== 'string' ||
+      payload.templateId.trim().length === 0 ||
+      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter))
+    ) {
+      return null;
+    }
+
+    const normalizedTemplateId = payload.templateId.trim();
+    const visibleCenterValue = payload.visibleCenter;
+    const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    if (value.type === 'webview/applyTemplate') {
+      return {
+        type: 'webview/applyTemplate',
+        payload: {
+          templateId: normalizedTemplateId,
+          visibleCenter
+        }
+      };
+    }
+
+    return {
+      type: 'webview/resetToTemplate',
+      payload: {
+        templateId: normalizedTemplateId,
+        visibleCenter
       }
     };
   }

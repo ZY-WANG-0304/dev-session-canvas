@@ -66,7 +66,17 @@
     "onView:devSessionCanvas.sidebarNodes",
     "onView:devSessionCanvas.sidebarSessions",
     "onView:devSessionCanvas.canvasPanel",
-    "onWebviewPanel:devSessionCanvas.canvas"
+    "onWebviewPanel:devSessionCanvas.canvas",
+    "onCommand:devSessionCanvas.applyTemplate",
+    "onCommand:devSessionCanvas.applyDefaultTemplate",
+    "onCommand:devSessionCanvas.resetToDefaultTemplate",
+    "onCommand:devSessionCanvas.saveCanvasAsTemplate",
+    "onCommand:devSessionCanvas.importTemplate",
+    "onCommand:devSessionCanvas.exportTemplate",
+    "onCommand:devSessionCanvas.deleteTemplate",
+    "onCommand:devSessionCanvas.setDefaultTemplate",
+    "onCommand:devSessionCanvas.refreshTemplates",
+    "onView:devSessionCanvas.sidebarTemplates"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -111,6 +121,11 @@
         {
           "id": "devSessionCanvas.sidebar",
           "name": "%view.canvas.sidebar.summary.title%"
+        },
+        {
+          "id": "devSessionCanvas.sidebarTemplates",
+          "name": "%view.canvas.sidebar.templates.title%",
+          "type": "webview"
         },
         {
           "id": "devSessionCanvas.sidebarFilters",
@@ -190,6 +205,51 @@
         "command": "devSessionCanvas.dumpHostDiagnostics",
         "title": "%command.dumpHostDiagnostics.title%",
         "icon": "$(output)"
+      },
+      {
+        "command": "devSessionCanvas.applyTemplate",
+        "title": "%command.applyTemplate.title%",
+        "icon": "$(run)"
+      },
+      {
+        "command": "devSessionCanvas.applyDefaultTemplate",
+        "title": "%command.applyDefaultTemplate.title%",
+        "icon": "$(library)"
+      },
+      {
+        "command": "devSessionCanvas.resetToDefaultTemplate",
+        "title": "%command.resetToDefaultTemplate.title%",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "devSessionCanvas.saveCanvasAsTemplate",
+        "title": "%command.saveCanvasAsTemplate.title%",
+        "icon": "$(save-as)"
+      },
+      {
+        "command": "devSessionCanvas.importTemplate",
+        "title": "%command.importTemplate.title%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "devSessionCanvas.exportTemplate",
+        "title": "%command.exportTemplate.title%",
+        "icon": "$(export)"
+      },
+      {
+        "command": "devSessionCanvas.deleteTemplate",
+        "title": "%command.deleteTemplate.title%",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "devSessionCanvas.setDefaultTemplate",
+        "title": "%command.setDefaultTemplate.title%",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "devSessionCanvas.refreshTemplates",
+        "title": "%command.refreshTemplates.title%",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -217,6 +277,21 @@
         {
           "command": "devSessionCanvas.resetCanvasState",
           "when": "view == devSessionCanvas.sidebarFilters",
+          "group": "navigation@3"
+        },
+        {
+          "command": "devSessionCanvas.refreshTemplates",
+          "when": "view == devSessionCanvas.sidebarTemplates",
+          "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.importTemplate",
+          "when": "view == devSessionCanvas.sidebarTemplates",
+          "group": "navigation@2"
+        },
+        {
+          "command": "devSessionCanvas.saveCanvasAsTemplate",
+          "when": "view == devSessionCanvas.sidebarTemplates",
           "group": "navigation@3"
         }
       ]
@@ -401,9 +476,10 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:note-markdown-links && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:agent-launch-presets && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:note-markdown-links && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
     "test:agent-cli-resolver": "node scripts/test-agent-cli-resolver.mjs",
     "test:agent-launch-presets": "node scripts/test-agent-launch-presets.mjs",
+    "test:canvas-templates": "node scripts/test-canvas-templates.mjs",
     "test:extension-storage-paths": "node scripts/test-extension-storage-paths.mjs",
     "test:execution-session-bridge": "node scripts/test-execution-session-bridge.mjs",
     "test:attention-protocol": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/attention-protocol.test.mts",

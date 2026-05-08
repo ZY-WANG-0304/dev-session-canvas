@@ -4114,6 +4114,8 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
 
   const menu = page.locator('[data-context-menu="true"]');
   await expect(menu).toBeVisible();
+  await expect(menu.locator('.canvas-context-menu-header-copy')).toContainText('画布操作');
+  await expect(menu.locator('.canvas-context-menu-header-copy')).not.toContainText('先创建节点');
   await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-kind="note"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
@@ -4130,7 +4132,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
           elements.map(
             (element) =>
               element.getAttribute('data-context-menu-kind') ?? element.getAttribute('data-context-menu-provider')
-          )
+          ).filter(Boolean)
         )
     )
     .toEqual(['note', 'terminal', 'codex', 'claude']);
