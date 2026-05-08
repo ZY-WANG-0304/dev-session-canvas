@@ -22,6 +22,7 @@
 - [x] (2026-05-07 20:13 +0800) 扩充 Windows real Codex smoke，新增 `powershell` / `cmd` / Git Bash shell 场景，并把 host diagnostics 补齐 `shellFamily` 维度，进一步把剩余技术债收窄到 MSYS2 等尚未验证的少量自定义 shell。
 - [x] (2026-05-08 08:18 +0800) 利用本机已安装的 MSYS2，继续扩充 Windows real Codex smoke，补齐 `msys2-bash` / `msys2-sh` 场景，并把剩余技术债继续收窄到更少见的 Windows POSIX family shell 名称。
 - [x] (2026-05-08 10:46 +0800) 根据 review 收口 Windows `Terminal` 启动不再预应用 shell env patch，并让相对 `terminal.shellPath` 的 env probe 与配置检查统一复用 workspace `cwd`。
+- [x] (2026-05-08 11:34 +0800) 根据 review 收口 `PATH` 合并顺序：普通 host-only 目录不再整体前置到 shell `PATH` 之前，只保留显式注入测试目录的优先级，并补齐跨平台回归。
 
 ## 意外与发现
 
@@ -52,6 +53,9 @@
 - 观察：`terminal.shellPath` 使用相对路径时，配置层与 env probe 的解析基准如果不一致，会出现 UI / 校验认定 shell 可用，但 probe 侧稳定 `ENOENT` 并静默回退到未补丁环境的分叉。
   证据：`src/panel/terminalShellConfiguration.ts` 会按 workspace `cwd` 解析相对 shell 路径；修复前 `shellEnvironmentResolver.spawnAndCapture(...)` 直接拿原始相对路径 `spawn(...)` 且未传 `cwd`，因此与配置检查基准不一致。
 
+- 观察：如果把所有 host-only `PATH` 目录一律整体前置到 shell `PATH` 前面，shell 已经选定的 Node / Codex / pnpm / volta 工具链仍可能被 Extension Host 基线目录抢先命中，导致“受控 shell env patch 已应用但工具链 authority 仍回到 host”的假对齐。
+  证据：review 给出的最小复现 `base=/usr/local/bin:/usr/bin`、`shell=/opt/homebrew/bin:/usr/bin` 会把旧实现合成为 `/usr/local/bin:/opt/homebrew/bin:/usr/bin`；修复前 `mergePathEnvironmentValue(...)` 也确实先收集全部 base-only 目录，再整体拼到 shell `PATH` 前面。
+
 ## 决策记录
 
 - 决策：本轮不把 `Agent` 执行改成“整条命令交给 shell 解释”，而是继续保持 `node-pty.spawn(file, args)` 的结构化执行路径，只把“环境发现”和“环境复用”对齐到更接近 VS Code 原生的模式。
@@ -74,12 +78,17 @@
   理由：只有让 `terminalShellConfiguration` 的可用性校验和 `shellEnvironmentResolver` 的真实 probe 对齐，才能避免 UI 认定可用、probe 却因 `ENOENT` 静默回退到未补丁环境的分叉。
   日期/作者：2026-05-08 / Codex
 
+- 决策：`PATH` 合并改为“shell 主体顺序优先 + 显式优先目录白名单前置 + 其余 host-only 目录后置”，而不是把所有 host-only 目录整体前置。
+  理由：这样既能保住 test harness 等显式注入目录的优先级，又不会让普通 host `PATH` 抢在 shell 选定的工具链前面，避免再次出现 resolver / spawn 已走 shell patch 但最终命中的仍是 host 版本的确定性偏差。
+  日期/作者：2026-05-08 / Codex
+
 ## 结果与复盘
 
 - 已完成：`src/panel/shellEnvironmentResolver.ts` 现在已经同时支持三条桌面路线：macOS / Linux 的登录 shell、Windows PowerShell / cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell。它会统一产出受控 env patch，并在 Windows 上处理 `PATH` / `PATHEXT` 与环境变量大小写不敏感问题。
 - 已完成：host diagnostics 现在会显式记录 shell env patch 来源、`shellFamily`、skip reason、shell 路径、应用到的 key 和错误摘要，后续排查 GUI 环境缺工具链时不再只能靠截图倒推。
 - 已完成：`CanvasPanelManager` 现在会把 shell env patch 显式绑定到当前配置/默认 Terminal shell，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时刷新缓存；其中 `Agent` resolver、`Agent` spawn 与 runtime supervisor createSession 继续共用同一份 execution env，而 Windows `Terminal` launch 则显式保留 base env，避免 profile / AutoRun 被预执行后再重放一次。
 - 已完成：`resolveShellEnvironmentPatch(...)` 现在会接收并透传 workspace `cwd`；相对 `terminal.shellPath` 的 env probe 与 `terminalShellConfiguration` 的配置检查已共享同一套解析基准，不再因为 `spawn` 端漏传 `cwd` 而稳定 `ENOENT`。
+- 已完成：`applyShellEnvironmentPatch(...)` 现在只会把显式声明要保优先级的 base `PATH` 目录继续前置；其余 host-only 目录都会追加在 shell `PATH` 之后。macOS / Linux 与 Windows 回归已同步覆盖“shell 主体顺序优先 + test harness 目录仍可保前置”的组合语义。
 - 已完成：正式设计文档、技术债和自动化验证已同步更新；`npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build`、`npm run test:smoke:windows-real-codex` 与 `git diff --check` 均已通过。其中 Windows real smoke 现在覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 七类场景。
 - 剩余：Windows 自定义 shell 的真实 smoke 缺口已继续收窄到更少见的 Windows POSIX family shell 名称，例如 `zsh`、`fish`，或用户通过显式 `shellPath` 接入的非常规 shell；它们仍共享同一条 POSIX 解析分支，但当前仓库还没有同等级真实 smoke 证据。
 
@@ -150,6 +159,7 @@
 - 2026-05-07：扩充后的 `npm run test:smoke:windows-real-codex` 再次通过，覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd` 与 Git Bash 场景，并断言 `shellEnvPatchResolved` 的 `shellFamily` 与当前 Terminal shell 绑定关系。
 - 2026-05-08：再次扩充后的 `npm run test:smoke:windows-real-codex` 通过，新增覆盖 MSYS2 `bash` / `sh` 场景，并把真实 smoke 缺口继续收窄到更少见的 Windows POSIX family shell 名称。
 - 2026-05-08：review 收口后的 `npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build` 与 `npm run test:smoke:windows-real-codex` 通过，新增覆盖 Windows `Terminal` target 跳过预应用 patch 与相对 `terminal.shellPath` probe 复用 workspace `cwd`。
+- 2026-05-08：再次根据 review 收口后，`npm run test:shell-environment-resolver`、`npm run typecheck`、`npm run build` 与 `git diff --check` 通过，新增覆盖 “shell `PATH` 主体顺序优先 + 显式注入测试目录仍保前置” 的 POSIX / Windows 回归。
 - 2026-05-08：`git diff --check` 通过。
 
 ## 接口与依赖

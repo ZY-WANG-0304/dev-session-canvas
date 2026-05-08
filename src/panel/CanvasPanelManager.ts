@@ -6970,6 +6970,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.getWorkspaceRoot() ?? defaultTerminalWorkingDirectory();
   }
 
+  private getPrioritizedBaseExecutionPathEntries(): string[] {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
+      return [];
+    }
+
+    const commandDirectories = new Set<string>();
+    for (const command of [
+      process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
+      process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND
+    ]) {
+      const trimmedCommand = command?.trim();
+      if (!trimmedCommand) {
+        continue;
+      }
+
+      if (path.isAbsolute(trimmedCommand)) {
+        commandDirectories.add(path.dirname(trimmedCommand));
+        continue;
+      }
+
+      if (isExplicitRelativePath(trimmedCommand)) {
+        commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
+      }
+    }
+
+    return Array.from(commandDirectories);
+  }
+
   private buildBaseExecutionEnvironment(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -6977,31 +7005,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
-    if (isTestHarnessMode(this.context.extensionMode)) {
-      const commandDirectories = new Set<string>();
-      for (const command of [
-        process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
-        process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND
-      ]) {
-        const trimmedCommand = command?.trim();
-        if (!trimmedCommand) {
-          continue;
-        }
-
-        if (path.isAbsolute(trimmedCommand)) {
-          commandDirectories.add(path.dirname(trimmedCommand));
-          continue;
-        }
-
-        if (isExplicitRelativePath(trimmedCommand)) {
-          commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
-        }
-      }
-
-      if (commandDirectories.size > 0) {
-        const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
-        env.PATH = Array.from(new Set([...commandDirectories, ...existingPathEntries])).join(path.delimiter);
-      }
+    const prioritizedPathEntries = this.getPrioritizedBaseExecutionPathEntries();
+    if (prioritizedPathEntries.length > 0) {
+      const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+      env.PATH = Array.from(new Set([...prioritizedPathEntries, ...existingPathEntries])).join(path.delimiter);
     }
 
     if (process.platform === 'win32') {
@@ -7018,7 +7025,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(baseEnv);
-    return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch);
+    return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch, process.platform, {
+      prioritizedBasePathEntries: this.getPrioritizedBaseExecutionPathEntries()
+    });
   }
 
   private invalidateResolvedShellEnvironmentPatch(): void {

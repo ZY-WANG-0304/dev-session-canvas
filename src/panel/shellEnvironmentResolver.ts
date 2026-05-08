@@ -66,6 +66,10 @@ export interface ResolveShellEnvironmentPatchOptions {
   timeoutMs?: number;
 }
 
+export interface ApplyShellEnvironmentPatchOptions {
+  prioritizedBasePathEntries?: string[];
+}
+
 interface SpawnCaptureResult {
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -154,7 +158,8 @@ export function buildControlledShellEnvironmentPatch(
 export function applyShellEnvironmentPatch(
   baseEnv: NodeJS.ProcessEnv,
   envPatch: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  options: ApplyShellEnvironmentPatchOptions = {}
 ): NodeJS.ProcessEnv {
   const nextEnv: NodeJS.ProcessEnv = {
     ...baseEnv
@@ -170,7 +175,12 @@ export function applyShellEnvironmentPatch(
   const basePathValue = readEnvironmentValue(baseEnv, 'PATH', platform);
   const shellPathValue = readEnvironmentValue(envPatch, 'PATH', platform);
   if (typeof basePathValue === 'string' && typeof shellPathValue === 'string') {
-    setEnvironmentValue(nextEnv, 'PATH', mergePathEnvironmentValue(basePathValue, shellPathValue, platform), platform);
+    setEnvironmentValue(
+      nextEnv,
+      'PATH',
+      mergePathEnvironmentValue(basePathValue, shellPathValue, platform, options),
+      platform
+    );
   }
 
   return nextEnv;
@@ -198,15 +208,32 @@ function shouldIncludeShellEnvironmentKey(key: string, value: string, previousVa
 function mergePathEnvironmentValue(
   basePathValue: string,
   shellPathValue: string,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  options: ApplyShellEnvironmentPatchOptions
 ): string {
   const delimiter = platform === 'win32' ? ';' : ':';
+  const prioritizedEntries = new Set(
+    (options.prioritizedBasePathEntries ?? []).map((entry) => normalizePathEntry(entry, platform))
+  );
   const shellEntries = splitPathEntries(shellPathValue, delimiter);
   const shellSeen = new Set(shellEntries.map((entry) => normalizePathEntry(entry, platform)));
-  const preservedEntries = splitPathEntries(basePathValue, delimiter).filter(
-    (entry) => !shellSeen.has(normalizePathEntry(entry, platform))
-  );
-  return [...preservedEntries, ...shellEntries].join(delimiter);
+  const prependedBaseEntries: string[] = [];
+  const appendedBaseEntries: string[] = [];
+  const baseOnlySeen = new Set<string>();
+  for (const entry of splitPathEntries(basePathValue, delimiter)) {
+    const normalizedEntry = normalizePathEntry(entry, platform);
+    if (shellSeen.has(normalizedEntry) || baseOnlySeen.has(normalizedEntry)) {
+      continue;
+    }
+    baseOnlySeen.add(normalizedEntry);
+    if (prioritizedEntries.has(normalizedEntry)) {
+      prependedBaseEntries.push(entry);
+      continue;
+    }
+    appendedBaseEntries.push(entry);
+  }
+
+  return [...prependedBaseEntries, ...shellEntries, ...appendedBaseEntries].join(delimiter);
 }
 
 function splitPathEntries(value: string, delimiter: string): string[] {

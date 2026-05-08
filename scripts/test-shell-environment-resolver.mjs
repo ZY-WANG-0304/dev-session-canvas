@@ -28,7 +28,7 @@ try {
   } = require(outfile);
 
   const posixBaseEnv = {
-    PATH: ['/tmp/host-tools', '/usr/bin'].join(':'),
+    PATH: ['/tmp/test-bin', '/usr/local/bin', '/usr/bin'].join(':'),
     HOME: '/Users/example',
     TERM: 'xterm-256color',
     KEEP_BASE: '1'
@@ -53,13 +53,20 @@ try {
   assert.equal('PS1' in posixPatch, false);
 
   const mergedPosixEnv = applyShellEnvironmentPatch(posixBaseEnv, posixPatch, 'darwin');
-  assert.equal(mergedPosixEnv.PATH, ['/tmp/host-tools', '/opt/homebrew/bin', '/usr/bin'].join(':'));
+  assert.equal(mergedPosixEnv.PATH, ['/opt/homebrew/bin', '/usr/bin', '/tmp/test-bin', '/usr/local/bin'].join(':'));
+  const mergedPosixEnvWithPriority = applyShellEnvironmentPatch(posixBaseEnv, posixPatch, 'darwin', {
+    prioritizedBasePathEntries: ['/tmp/test-bin']
+  });
+  assert.equal(
+    mergedPosixEnvWithPriority.PATH,
+    ['/tmp/test-bin', '/opt/homebrew/bin', '/usr/bin', '/usr/local/bin'].join(':')
+  );
   assert.equal(mergedPosixEnv.NVM_DIR, posixShellEnv.NVM_DIR);
   assert.equal(mergedPosixEnv.CUSTOM_TOOLCHAIN_TOKEN, posixShellEnv.CUSTOM_TOOLCHAIN_TOKEN);
   assert.equal(mergedPosixEnv.HOME, posixBaseEnv.HOME);
 
   const windowsBaseEnv = {
-    PATH: ['C:\\host-tools', 'C:\\Windows'].join(';'),
+    PATH: ['C:\\test-bin', 'C:\\host-tools', 'C:\\Windows'].join(';'),
     PATHEXT: '.COM;.EXE;.BAT;.CMD',
     PROMPT: 'host$G',
     USERPROFILE: 'C:\\Users\\example',
@@ -85,7 +92,14 @@ try {
   const mergedWindowsEnv = applyShellEnvironmentPatch(windowsBaseEnv, windowsPatch, 'win32');
   assert.equal(
     mergedWindowsEnv.PATH,
-    ['C:\\host-tools', 'C:\\Users\\example\\AppData\\Roaming\\npm', 'C:\\Windows'].join(';')
+    ['C:\\Users\\example\\AppData\\Roaming\\npm', 'C:\\Windows', 'C:\\test-bin', 'C:\\host-tools'].join(';')
+  );
+  const mergedWindowsEnvWithPriority = applyShellEnvironmentPatch(windowsBaseEnv, windowsPatch, 'win32', {
+    prioritizedBasePathEntries: ['C:\\test-bin']
+  });
+  assert.equal(
+    mergedWindowsEnvWithPriority.PATH,
+    ['C:\\test-bin', 'C:\\Users\\example\\AppData\\Roaming\\npm', 'C:\\Windows', 'C:\\host-tools'].join(';')
   );
   assert.equal(mergedWindowsEnv.PATHEXT, windowsShellEnv.PATHEXT);
   assert.equal(mergedWindowsEnv.USERPROFILE, windowsBaseEnv.USERPROFILE);

@@ -133,7 +133,7 @@ updated_at: 2026-05-08
     4. 平台原生命令发现回退：
      - POSIX：登录 shell / 交互 shell 的 `command -v` 或等价探测。
      - Windows：`where.exe`、`Get-Command` 和常见包装后缀 `.exe` / `.cmd` / `.bat` / `.com`。
-- shell env patch 只作为 execution env 的受控增量：默认允许补齐 `PATH`、`PATHEXT` 与工具链相关变量，但不得覆写 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被 provider 启动环境接管的键。
+- shell env patch 只作为 execution env 的受控增量：默认允许补齐 `PATH`、`PATHEXT` 与工具链相关变量，但不得覆写 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被 provider 启动环境接管的键；其中 `PATH` 合并必须以 shell 导出的主体顺序为准，普通 host-only 目录只能追加在 shell `PATH` 之后，只有宿主显式注入且要求保优先级的目录（如 test harness CLI 目录）才允许继续前置。
 - 对 `Agent` 而言，这份 execution env 必须同时进入 `resolveAgentCliCommand(...)` 和 `buildAgentLaunchSpec(...)`；不能再出现“resolver 用登录 shell 找到了 `codex`，但 spawn 时 `#!/usr/bin/env node` 仍回到 Extension Host 原始 `PATH`”的分叉。
 - 对 `Terminal` 而言，macOS / Linux 可以继续沿用同一份 shell-derived execution env；但 Windows 必须保留 base env，让真实 shell 自己执行 profile / AutoRun 一次，而不是先离线 probe 再把副作用预注入到启动环境里。
 - runtime supervisor 路径不单独重新解析 shell env，而是继续直接复用 host 序列化后的 `launchSpec.env`，保证本地 PTY 与 runtime supervisor 的 `Agent` 启动环境一致。
