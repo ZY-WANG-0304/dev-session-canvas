@@ -361,6 +361,10 @@ try {
   assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '用户'/u);
   assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /textContent = item\.category === 'builtin' \? '内置' : '用户';/u);
+  assert.match(sidebarTemplateViewSource, /title\.textContent = item\.isDefault \? '\(默认\) ' \+ item\.name : item\.name;/u);
+  assert.doesNotMatch(sidebarTemplateViewSource, /defaultBadge|badge is-default|defaultAction\.hidden = item\.isDefault/u);
+  assert.match(sidebarTemplateViewSource, /item\.isDefault \? 'codicon-star-full' : 'codicon-star-empty'/u);
+  assert.match(sidebarTemplateViewSource, /if \(item\.isDefault\) \{\s*return;\s*\}\s*postTemplateMessage\('sidebarTemplates\/setDefaultTemplate', item\.templateId\);/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }
