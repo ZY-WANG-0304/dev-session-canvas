@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,7 +23,8 @@ try {
   const {
     applyShellEnvironmentPatch,
     buildControlledShellEnvironmentPatch,
-    resolveShellEnvironmentPatch
+    resolveShellEnvironmentPatch,
+    shouldResolveShellEnvironmentPatchForExecutionTarget
   } = require(outfile);
 
   const posixBaseEnv = {
@@ -108,6 +109,9 @@ try {
   });
   assert.equal(skippedWindowsCliPatch.source, 'none');
   assert.equal(skippedWindowsCliPatch.skippedReason, 'launched-from-cli');
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('agent', 'win32'), true);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'win32'), false);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'darwin'), true);
 
   if (process.platform !== 'win32') {
     const fakeShellPath = path.join(tempDir, 'fake-login-shell');
@@ -148,6 +152,24 @@ try {
     assert.equal('TERM' in resolvedPatch.envPatch, false);
     assert.equal(resolvedPatch.appliedKeys.includes('CUSTOM_TOOLCHAIN_TOKEN'), true);
     assert.equal(resolvedPatch.appliedKeys.includes('NVM_DIR'), true);
+
+    const relativeShellCwd = path.join(tempDir, 'relative-posix-shell');
+    await mkdir(relativeShellCwd, { recursive: true });
+    const relativeShellPath = path.join(relativeShellCwd, 'fake-relative-shell');
+    await writeFile(relativeShellPath, await readFile(fakeShellPath, 'utf8'), 'utf8');
+    await chmod(relativeShellPath, 0o755);
+
+    const relativeResolvedPatch = await resolveShellEnvironmentPatch({
+      env: posixBaseEnv,
+      platform: 'darwin',
+      shellPath: './fake-relative-shell',
+      cwd: relativeShellCwd,
+      processExecPath: process.execPath,
+      timeoutMs: 2000
+    });
+    assert.equal(relativeResolvedPatch.source, 'posix-login-shell');
+    assert.equal(relativeResolvedPatch.shellFamily, 'posix');
+    assert.equal(relativeResolvedPatch.envPatch.CUSTOM_TOOLCHAIN_TOKEN, 'from-shell');
   } else {
     const windowsPowerShellPath =
       process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim()
@@ -207,6 +229,24 @@ try {
     assert.equal(cmdPatch.source, 'windows-shell');
     assert.equal(cmdPatch.shellFamily, 'cmd');
     assert.equal(cmdPatch.shellPath.toLowerCase().includes('cmd'), true);
+
+    const relativeShellCwd = path.join(tempDir, 'relative-windows-shell');
+    await mkdir(relativeShellCwd, { recursive: true });
+    const relativeCmdPath = path.join(relativeShellCwd, 'cmd.exe');
+    await copyFile(process.env.ComSpec || process.env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe', relativeCmdPath);
+
+    const relativeCmdPatch = await resolveShellEnvironmentPatch({
+      env: {
+        ...process.env
+      },
+      platform: 'win32',
+      shellPath: './cmd.exe',
+      cwd: relativeShellCwd,
+      timeoutMs: 5000
+    });
+    assert.equal(relativeCmdPatch.source, 'windows-shell');
+    assert.equal(relativeCmdPatch.shellFamily, 'cmd');
+    assert.equal(relativeCmdPatch.shellPath, './cmd.exe');
   }
 
   console.log('shellEnvironmentResolver tests passed');

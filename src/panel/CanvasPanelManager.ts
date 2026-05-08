@@ -148,6 +148,7 @@ import {
 import {
   applyShellEnvironmentPatch,
   resolveShellEnvironmentPatch,
+  shouldResolveShellEnvironmentPatchForExecutionTarget,
   type ResolvedShellEnvironmentPatch
 } from './shellEnvironmentResolver';
 import {
@@ -5947,7 +5948,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'agent');
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getTerminalWorkingDirectory();
-    const executionEnv = await this.resolveExecutionEnvironment();
+    const executionEnv = await this.resolveExecutionEnvironment('agent');
     await this.disposeAgentFileActivitySession(nodeId);
     const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
@@ -6077,7 +6078,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingMetadata = ensureTerminalMetadata(existingNode);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
-    const executionEnv = await this.resolveExecutionEnvironment();
+    const executionEnv = await this.resolveExecutionEnvironment('terminal');
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient();
     if (fallbackReason) {
@@ -6380,7 +6381,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
-    const executionEnv = await this.resolveExecutionEnvironment();
+    const executionEnv = await this.resolveExecutionEnvironment('agent');
     await this.disposeAgentFileActivitySession(nodeId);
 
     try {
@@ -6904,7 +6905,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async resolveAgentCli(provider: AgentProviderKind, requestedCommand?: string): Promise<AgentCliSpec> {
-    const executionEnv = await this.resolveExecutionEnvironment();
+    const executionEnv = await this.resolveExecutionEnvironment('agent');
     const configuredSpec = this.getRequestedAgentCliSpec(
       provider,
       requestedCommand?.trim() || this.getAgentLaunchDefaults(provider).command
@@ -7010,8 +7011,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return env;
   }
 
-  private async resolveExecutionEnvironment(): Promise<NodeJS.ProcessEnv> {
+  private async resolveExecutionEnvironment(target: 'agent' | 'terminal'): Promise<NodeJS.ProcessEnv> {
     const baseEnv = this.buildBaseExecutionEnvironment();
+    if (!shouldResolveShellEnvironmentPatchForExecutionTarget(target)) {
+      return baseEnv;
+    }
+
     const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(baseEnv);
     return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch);
   }
@@ -7023,9 +7028,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getResolvedShellEnvironmentPatch(baseEnv: NodeJS.ProcessEnv): Promise<ResolvedShellEnvironmentPatch> {
     if (!this.resolvedShellEnvironmentPatchPromise) {
       const shellPath = this.getTerminalShellPath();
+      const cwd = this.getTerminalWorkingDirectory();
       this.resolvedShellEnvironmentPatchPromise = resolveShellEnvironmentPatch({
         env: baseEnv,
-        shellPath
+        shellPath,
+        cwd
       }).then((result) => {
         if (result.source !== 'none') {
           this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchResolved', {
@@ -7252,7 +7259,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
     const sessionId = createExecutionSessionId(nodeId, 'terminal');
-    const executionEnv = await this.resolveExecutionEnvironment();
+    const executionEnv = await this.resolveExecutionEnvironment('terminal');
 
     try {
       const process = createExecutionSessionProcess(

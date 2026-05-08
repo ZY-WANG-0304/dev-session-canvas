@@ -40,6 +40,7 @@ const EXCLUDED_SHELL_ENV_PREFIXES = ['BASH_FUNC_', 'ELECTRON_', 'VSCODE_', 'XPC_
 
 export type ShellEnvironmentPatchSource = 'none' | 'posix-login-shell' | 'windows-shell';
 export type ShellEnvironmentPatchFamily = 'cmd' | 'posix' | 'powershell' | 'unsupported';
+export type ShellEnvironmentPatchTarget = 'agent' | 'terminal';
 export type ShellEnvironmentPatchSkipReason =
   | 'launched-from-cli'
   | 'shell-not-found'
@@ -57,6 +58,7 @@ export interface ResolvedShellEnvironmentPatch {
 }
 
 export interface ResolveShellEnvironmentPatchOptions {
+  cwd?: string;
   env: NodeJS.ProcessEnv;
   processExecPath?: string;
   platform?: NodeJS.Platform;
@@ -91,6 +93,7 @@ export async function resolveShellEnvironmentPatch(
   const shellFamily = detectShellFamily(shellPath, platform);
   try {
     const shellEnv = await resolveShellEnvironment({
+      cwd: options.cwd,
       env: options.env,
       platform,
       processExecPath: options.processExecPath ?? process.execPath,
@@ -117,6 +120,13 @@ export async function resolveShellEnvironmentPatch(
       error: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+export function shouldResolveShellEnvironmentPatchForExecutionTarget(
+  target: ShellEnvironmentPatchTarget,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  return !(platform === 'win32' && target === 'terminal');
 }
 
 export function buildControlledShellEnvironmentPatch(
@@ -211,6 +221,7 @@ function normalizePathEntry(entry: string, platform: NodeJS.Platform): string {
 }
 
 async function resolveShellEnvironment(options: {
+  cwd?: string;
   env: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
   processExecPath: string;
@@ -299,6 +310,7 @@ async function resolveWindowsShellPath(env: NodeJS.ProcessEnv): Promise<string |
 }
 
 async function resolvePosixShellEnvironment(options: {
+  cwd?: string;
   env: NodeJS.ProcessEnv;
   processExecPath: string;
   shellPath: string;
@@ -311,6 +323,7 @@ async function resolvePosixShellEnvironment(options: {
   const capture = await spawnAndCapture({
     file: options.shellPath,
     args: shellArgs,
+    cwd: options.cwd,
     env: buildShellProbeEnvironment(options.env),
     timeoutMs: options.timeoutMs
   });
@@ -327,6 +340,7 @@ async function resolvePosixShellEnvironment(options: {
 }
 
 async function resolveWindowsPowerShellEnvironment(options: {
+  cwd?: string;
   env: NodeJS.ProcessEnv;
   shellPath: string;
   timeoutMs: number;
@@ -341,6 +355,7 @@ async function resolveWindowsPowerShellEnvironment(options: {
   const capture = await spawnAndCapture({
     file: options.shellPath,
     args: ['-NoLogo', '-Command', powerShellCommand],
+    cwd: options.cwd,
     env: buildShellProbeEnvironment(options.env),
     timeoutMs: options.timeoutMs
   });
@@ -357,6 +372,7 @@ async function resolveWindowsPowerShellEnvironment(options: {
 }
 
 async function resolveWindowsCmdEnvironment(options: {
+  cwd?: string;
   env: NodeJS.ProcessEnv;
   shellPath: string;
   timeoutMs: number;
@@ -364,6 +380,7 @@ async function resolveWindowsCmdEnvironment(options: {
   const capture = await spawnAndCapture({
     file: options.shellPath,
     args: ['/u', '/c', 'set'],
+    cwd: options.cwd,
     env: buildShellProbeEnvironment(options.env),
     timeoutMs: options.timeoutMs
   });
@@ -432,11 +449,13 @@ function buildShellProbeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 async function spawnAndCapture(options: {
   file: string;
   args: string[];
+  cwd?: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
 }): Promise<SpawnCaptureResult> {
-  const child = spawn(options.file, options.args, {
+  const child = spawn(resolveSpawnFile(options.file, options.cwd), options.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: normalizeSpawnCwd(options.cwd),
     env: options.env,
     windowsHide: true
   });
@@ -476,6 +495,20 @@ function emptyShellEnvironmentPatch(skipReason: ShellEnvironmentPatchSkipReason)
     appliedKeys: [],
     skippedReason: skipReason
   };
+}
+
+function normalizeSpawnCwd(cwd: string | undefined): string | undefined {
+  const normalizedCwd = cwd?.trim();
+  return normalizedCwd && normalizedCwd.length > 0 ? normalizedCwd : undefined;
+}
+
+function resolveSpawnFile(file: string, cwd: string | undefined): string {
+  const normalizedCwd = normalizeSpawnCwd(cwd);
+  if (!normalizedCwd || !isExplicitRelativePath(file)) {
+    return file;
+  }
+
+  return path.resolve(normalizedCwd, file);
 }
 
 function escapePosixSingleQuoted(value: string): string {
