@@ -303,6 +303,22 @@ try {
   assert.match(exportTemplateMethodSource, /encodeCanvasTemplateDocument/u);
   assert.match(panelManagerSource, /private async confirmCanvasTemplateReset/u);
   assert.match(panelManagerSource, /vscode\.window\.showWarningMessage/u);
+  const defaultTemplateInitializationSource = sliceBetween(
+    panelManagerSource,
+    'private async ensureDefaultTemplateAppliedIfNeeded',
+    'private async resolveDefaultCanvasTemplateRecord'
+  );
+  assert.match(defaultTemplateInitializationSource, /resolveFirstOpenFallbackCanvasTemplateRecord/u);
+  assert.match(defaultTemplateInitializationSource, /preservedDefaultTemplateId: selectedDefaultTemplateId/u);
+  assert.doesNotMatch(defaultTemplateInitializationSource, /globalState\.update/u);
+  const firstOpenFallbackResolverSource = sliceBetween(
+    panelManagerSource,
+    'private async resolveFirstOpenFallbackCanvasTemplateRecord',
+    'private async applyCanvasTemplateRecord'
+  );
+  assert.match(firstOpenFallbackResolverSource, /DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID/u);
+  assert.match(firstOpenFallbackResolverSource, /node\.kind === 'note'/u);
+  assert.doesNotMatch(firstOpenFallbackResolverSource, /globalState\.update/u);
   const resetDefaultWebviewCaseSource = sliceBetween(
     panelManagerSource,
     "case 'webview/resetToDefaultTemplate':",
