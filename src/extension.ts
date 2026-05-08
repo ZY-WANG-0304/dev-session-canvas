@@ -1552,7 +1552,7 @@ function registerTestCommands(
     }),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getAgentCliResolutionCacheKey,
-      (provider?: unknown, requestedCommand?: unknown, workspaceCwd?: unknown) => {
+      (provider?: unknown, requestedCommand?: unknown, workspaceCwd?: unknown, shellAuthority?: unknown) => {
         if (provider !== 'codex' && provider !== 'claude') {
           throw new Error('测试命令 devSessionCanvas.__test.getAgentCliResolutionCacheKey 需要有效的 provider。');
         }
@@ -1563,7 +1563,8 @@ function registerTestCommands(
         return panelManager.getAgentCliResolutionCacheKeyForTest(
           provider,
           requestedCommand,
-          typeof workspaceCwd === 'string' && workspaceCwd.trim().length > 0 ? workspaceCwd : undefined
+          typeof workspaceCwd === 'string' && workspaceCwd.trim().length > 0 ? workspaceCwd : undefined,
+          typeof shellAuthority === 'string' && shellAuthority.trim().length > 0 ? shellAuthority : undefined
         );
       }
     ),

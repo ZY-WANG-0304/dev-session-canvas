@@ -612,6 +612,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
 
           this.invalidateResolvedShellEnvironmentPatch();
+          this.clearAgentCliResolutionCache();
           if (this.refreshConfiguredTerminalShellMetadata()) {
             this.postState('host/stateUpdated');
           }
@@ -1478,13 +1479,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public getAgentCliResolutionCacheKeyForTest(
     provider: AgentProviderKind,
     requestedCommand: string,
-    workspaceCwd?: string
+    workspaceCwd?: string,
+    shellAuthority?: string
   ): string {
     if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('getAgentCliResolutionCacheKeyForTest 仅在测试模式下可用。');
     }
 
-    return this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd);
+    return this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd, shellAuthority);
   }
 
   public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
@@ -2953,6 +2955,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : false;
     if (options.terminalShellChanged || options.terminalShellPathChanged) {
       this.invalidateResolvedShellEnvironmentPatch();
+      this.clearAgentCliResolutionCache();
       await this.notifyIfConfiguredTerminalShellUnavailable();
     }
 
@@ -6855,19 +6858,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private getAgentCliResolutionAuthority(): string {
+    return getConfiguredTerminalShell().resolvedPath;
+  }
+
   private getAgentCliResolutionCacheKey(
     provider: AgentProviderKind,
     requestedCommand: string,
-    workspaceCwd?: string
+    workspaceCwd?: string,
+    shellAuthority: string = this.getAgentCliResolutionAuthority()
   ): string {
     const normalizedCommand =
       process.platform === 'win32' ? requestedCommand.trim().toLowerCase() : requestedCommand.trim();
+    const normalizedShellAuthority = normalizeAgentCliCacheAuthority(shellAuthority, workspaceCwd);
     if (!isExplicitRelativePath(requestedCommand.trim())) {
-      return `${process.platform}:${provider}:${normalizedCommand}`;
+      return `${process.platform}:${provider}:${normalizedShellAuthority}:${normalizedCommand}`;
     }
 
     const normalizedWorkspaceCwd = normalizeAgentCliCacheWorkspaceCwd(workspaceCwd);
-    return `${process.platform}:${provider}:${normalizedWorkspaceCwd}:${normalizedCommand}`;
+    return `${process.platform}:${provider}:${normalizedShellAuthority}:${normalizedWorkspaceCwd}:${normalizedCommand}`;
   }
 
   private getCachedAgentCliResolution(
@@ -6901,6 +6910,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     delete this.agentCliResolutionCache[
       this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd)
     ];
+    void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
+  }
+
+  private clearAgentCliResolutionCache(): void {
+    const cacheKeys = Object.keys(this.agentCliResolutionCache);
+    if (cacheKeys.length === 0) {
+      return;
+    }
+
+    for (const cacheKey of cacheKeys) {
+      delete this.agentCliResolutionCache[cacheKey];
+    }
     void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
@@ -11937,6 +11958,20 @@ function normalizeAgentCliCacheWorkspaceCwd(workspaceCwd: string | undefined): s
 
   const resolvedWorkspaceCwd = path.resolve(normalizedWorkspaceCwd);
   return process.platform === 'win32' ? resolvedWorkspaceCwd.toLowerCase() : resolvedWorkspaceCwd;
+}
+
+function normalizeAgentCliCacheAuthority(shellAuthority: string | undefined, workspaceCwd?: string): string {
+  const normalizedShellAuthority = shellAuthority?.trim();
+  if (!normalizedShellAuthority) {
+    return '<no-shell-authority>';
+  }
+
+  if (isExplicitRelativePath(normalizedShellAuthority)) {
+    const resolvedShellAuthority = path.resolve(workspaceCwd ?? process.cwd(), normalizedShellAuthority);
+    return process.platform === 'win32' ? resolvedShellAuthority.toLowerCase() : resolvedShellAuthority;
+  }
+
+  return process.platform === 'win32' ? normalizedShellAuthority.toLowerCase() : normalizedShellAuthority;
 }
 
 function shouldResetIdleAgentNode(
