@@ -292,6 +292,50 @@ try {
   assert.doesNotMatch(exportCommandSource, /targetUri\.fsPath/u);
   assert.match(extensionSource, /resetDefaultCanvasTemplateWithConfirmation/u);
   assert.match(extensionSource, /resetCanvasTemplateByIdWithConfirmation\(selectedTemplate\.template\.id/u);
+  const applyDefaultCommandSource = sliceBetween(
+    extensionSource,
+    'vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate',
+    'vscode.commands.registerCommand(COMMAND_IDS.resetToTemplate'
+  );
+  assert.match(applyDefaultCommandSource, /const appliedNodeIds = await panelManager\.applyDefaultCanvasTemplate\(\)/u);
+  assert.match(
+    applyDefaultCommandSource,
+    /await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+  );
+  assert.doesNotMatch(applyDefaultCommandSource, /focusAppliedNodes: true/u);
+  const resetDefaultCommandSource = sliceBetween(
+    extensionSource,
+    'vscode.commands.registerCommand(COMMAND_IDS.resetToDefaultTemplate',
+    'vscode.commands.registerCommand(COMMAND_IDS.saveCanvasAsTemplate'
+  );
+  assert.match(resetDefaultCommandSource, /const appliedNodeIds = await panelManager\.resetDefaultCanvasTemplateWithConfirmation\(\)/u);
+  assert.match(
+    resetDefaultCommandSource,
+    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+  );
+  assert.doesNotMatch(resetDefaultCommandSource, /focusAppliedNodes: true/u);
+  const applyTemplateCommandSource = sliceBetween(
+    extensionSource,
+    'async function applyTemplateFromCommand',
+    'async function resetToTemplateFromCommand'
+  );
+  assert.match(applyTemplateCommandSource, /const appliedNodeIds = await panelManager\.applyCanvasTemplateById/u);
+  assert.match(
+    applyTemplateCommandSource,
+    /await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+  );
+  assert.doesNotMatch(applyTemplateCommandSource, /focusAppliedNodes: true/u);
+  const resetTemplateCommandSource = sliceBetween(
+    extensionSource,
+    'async function resetToTemplateFromCommand',
+    'async function saveCurrentCanvasAsTemplateFromCommand'
+  );
+  assert.match(resetTemplateCommandSource, /const appliedNodeIds = await panelManager\.resetCanvasTemplateByIdWithConfirmation/u);
+  assert.match(
+    resetTemplateCommandSource,
+    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+  );
+  assert.doesNotMatch(resetTemplateCommandSource, /focusAppliedNodes: true/u);
 
   const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
   const exportTemplateMethodSource = sliceBetween(
@@ -303,6 +347,21 @@ try {
   assert.match(exportTemplateMethodSource, /encodeCanvasTemplateDocument/u);
   assert.match(panelManagerSource, /private async confirmCanvasTemplateReset/u);
   assert.match(panelManagerSource, /vscode\.window\.showWarningMessage/u);
+  assert.match(panelManagerSource, /public focusCanvasTemplateNodeGroup\(nodeIds: readonly string\[\]\): void/u);
+  const resetDefaultTemplateMethodSource = sliceBetween(
+    panelManagerSource,
+    'public async resetDefaultCanvasTemplateWithConfirmation',
+    'public async resetCanvasTemplateByIdWithConfirmation'
+  );
+  assert.match(resetDefaultTemplateMethodSource, /Promise<string\[\] \| undefined>/u);
+  assert.match(resetDefaultTemplateMethodSource, /return this\.applyCanvasTemplateRecord/u);
+  const resetTemplateMethodSource = sliceBetween(
+    panelManagerSource,
+    'public async resetCanvasTemplateByIdWithConfirmation',
+    'public focusCanvasTemplateNodeGroup'
+  );
+  assert.match(resetTemplateMethodSource, /Promise<string\[\] \| undefined>/u);
+  assert.match(resetTemplateMethodSource, /return this\.applyCanvasTemplateRecord/u);
   const defaultTemplateInitializationSource = sliceBetween(
     panelManagerSource,
     'private async ensureDefaultTemplateAppliedIfNeeded',
