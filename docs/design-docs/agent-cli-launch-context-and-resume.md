@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-cli-launch-context-and-resume.md
   - docs/exec-plans/active/agent-shell-environment-inheritance.md
-updated_at: 2026-05-07
+updated_at: 2026-05-08
 ---
 
 # Agent CLI 启动上下文与显式恢复设计
@@ -129,16 +129,17 @@ updated_at: 2026-05-07
   2. 同一宿主上、同一设置版本下最近一次成功解析出的绝对路径缓存；前提是该路径仍存在且可执行。
   3. 当前 execution env 的 `PATH` 解析。其中：
      - macOS / Linux 当前会额外叠加一次“更接近 VS Code 原生 Terminal”的登录 shell env patch。
-     - Windows 当前也会额外叠加一次受控 shell env patch；它以当前配置/默认 Terminal shell 为准，对 `powershell.exe` / `cmd.exe` 走各自的环境快照解析，对 Windows 下名称可判定为 `bash` / `zsh` / `sh` / `fish` 的 POSIX shell 复用登录 shell 解析。
-   4. 平台原生命令发现回退：
+     - Windows 当前会为 `Agent` 侧 execution env 额外叠加一次受控 shell env patch；它以当前配置/默认 Terminal shell 为准，对 `powershell.exe` / `cmd.exe` 走各自的环境快照解析，对 Windows 下名称可判定为 `bash` / `zsh` / `sh` / `fish` 的 POSIX shell 复用登录 shell 解析。
+    4. 平台原生命令发现回退：
      - POSIX：登录 shell / 交互 shell 的 `command -v` 或等价探测。
      - Windows：`where.exe`、`Get-Command` 和常见包装后缀 `.exe` / `.cmd` / `.bat` / `.com`。
 - shell env patch 只作为 execution env 的受控增量：默认允许补齐 `PATH`、`PATHEXT` 与工具链相关变量，但不得覆写 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被 provider 启动环境接管的键。
 - 对 `Agent` 而言，这份 execution env 必须同时进入 `resolveAgentCliCommand(...)` 和 `buildAgentLaunchSpec(...)`；不能再出现“resolver 用登录 shell 找到了 `codex`，但 spawn 时 `#!/usr/bin/env node` 仍回到 Extension Host 原始 `PATH`”的分叉。
+- 对 `Terminal` 而言，macOS / Linux 可以继续沿用同一份 shell-derived execution env；但 Windows 必须保留 base env，让真实 shell 自己执行 profile / AutoRun 一次，而不是先离线 probe 再把副作用预注入到启动环境里。
 - runtime supervisor 路径不单独重新解析 shell env，而是继续直接复用 host 序列化后的 `launchSpec.env`，保证本地 PTY 与 runtime supervisor 的 `Agent` 启动环境一致。
 - shell env patch 的缓存必须和当前 Terminal shell 绑定；当 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时，宿主需要刷新这份 patch，而不是继续沿用旧 shell 的解析结果。
 - host diagnostics 至少要记录 shell env patch 的 `source`、`shellFamily`、`shellPath`、`appliedKeys` 与失败摘要，这样才能区分当前走的是 PowerShell、`cmd.exe`、Git Bash、MSYS2，还是其它 POSIX family shell。
-- 如果设置值本身是绝对路径，则应优先校验并直接使用；如果它只是命令名或相对路径，则仍应交给 resolver 做完整探测，而不是原样 `spawn` 后再等失败。
+- 如果设置值本身是绝对路径，则应优先校验并直接使用；如果它只是命令名或相对路径，则仍应交给 resolver 做完整探测，而不是原样 `spawn` 后再等失败。对相对 `terminal.shellPath`，配置检查与 shell env probe 还必须共享同一套 workspace `cwd` 解析基准。
 - 解析成功后，宿主应把本次使用的绝对命令路径记录到诊断和缓存中，方便后续复用与错误排查。
 - 所有探测都失败后，才向用户显示“未找到命令”的错误；错误信息应说明已经尝试过哪些来源，并提示用户通过设置固定路径。
 
@@ -217,7 +218,7 @@ updated_at: 2026-05-07
   当前缓解：当前代码仅以显式登记的技术债务方式实现 `~/.codex/sessions/.../rollout-*.jsonl` 反查，并要求 `cwd + 启动时间窗 + 候选唯一` 同时成立；任何 miss、歧义或超时都默认 fail closed，且后续应在 provider 暴露标准接口后移除这段逻辑。
 
 - 风险：不同平台和不同启动方式下，执行宿主的环境变量可能与用户交互 shell 可见环境不一致；仅修正 resolver 而不修正 spawn env，会继续留下 shebang / shim 二跳失败。
-  当前缓解：macOS / Linux 现在通过受控 shell env patch 把登录 shell 的增量环境同步到统一 execution env；Windows 则基于当前 Terminal shell 解析 PowerShell / cmd / POSIX shell 的环境快照，并同样要求 resolver 与 spawn 共用同一份 env。剩余风险主要收窄到“少量更少见的 Windows POSIX family shell 名称仍缺真实 smoke 证据”，而不是整条路线未实现。
+  当前缓解：macOS / Linux 现在通过受控 shell env patch 把登录 shell 的增量环境同步到统一 execution env；Windows 则基于当前 Terminal shell 解析 PowerShell / cmd / POSIX shell 的环境快照，把 patch 只用于 `Agent` resolver / spawn，并让 `Terminal` launch 保留 base env 以避免 profile / AutoRun 双重应用；相对 `terminal.shellPath` 的 probe 也已与配置检查对齐到同一 workspace `cwd`。剩余风险主要收窄到“少量更少见的 Windows POSIX family shell 名称仍缺真实 smoke 证据”，而不是整条路线未实现。
 
 - 风险：旧节点 metadata 里可能还保存着 `resumeStoragePath` 或其他旧设计残留。
   当前缓解：迁移时把这些数据降级为不可自动恢复，而不是继续当成恢复凭据。
@@ -233,11 +234,13 @@ updated_at: 2026-05-07
 2. 默认启动路径不会把 `Codex` 或 `Claude Code` 切到扩展私有配置目录。
 3. 当 CLI 已安装但不在当前进程 PATH 直达位置时，宿主侧 resolver 仍能通过登录 shell / 平台原生命令发现或缓存找到它。
 4. 所有桌面平台上，`Agent` 的 resolver 与真实 spawn 必须共用同一份 execution env；至少要覆盖 `PATH`、工具链变量，以及 Windows 上常见的 `PATHEXT`，不得再出现 `codex` 找到入口脚本但运行时 `node` 缺失的分叉失败。
-5. runtime supervisor 创建 `Agent` 会话时，也必须继续复用 host 侧已经合并好的 execution env，而不是回退到另一份 `process.env` 基线。
-6. `Claude Code` 可通过显式 session id 走自动恢复。
-7. `Codex` 在没有可信 session identity 绑定来源时不会进入自动恢复；否则退化为 `interrupted`。
-8. `resume-ready` 不再由“存在私有状态目录”驱动。
-9. 如果某类 Windows shell 仍缺真实验证或仍存在例外边界，必须把缺口收窄到具体 shell / 具体场景，并在正式文档与技术债中显式记录；不得再笼统写成“Windows 路线未实现”。
+5. Windows 上的 `Terminal` 启动不得先离线执行一次 profile / AutoRun 再启动真实 shell；它应保留 base env，让真实 shell 自己完成这一步。
+6. runtime supervisor 创建 `Agent` 会话时，也必须继续复用 host 侧已经合并好的 execution env，而不是回退到另一份 `process.env` 基线。
+7. 相对 `terminal.shellPath` 的配置校验与 env probe 必须共用同一套 workspace `cwd` 基准，不能出现 UI 认定可用、probe 却因 `ENOENT` 静默回退的分叉。
+8. `Claude Code` 可通过显式 session id 走自动恢复。
+9. `Codex` 在没有可信 session identity 绑定来源时不会进入自动恢复；否则退化为 `interrupted`。
+10. `resume-ready` 不再由“存在私有状态目录”驱动。
+11. 如果某类 Windows shell 仍缺真实验证或仍存在例外边界，必须把缺口收窄到具体 shell / 具体场景，并在正式文档与技术债中显式记录；不得再笼统写成“Windows 路线未实现”。
 
 ## 9. 当前验证状态
 
@@ -246,6 +249,7 @@ updated_at: 2026-05-07
 - OpenAI 官方 `Codex CLI` 文档已确认显式 `codex resume [SESSION_ID]` 入口，以及 `~/.codex/config.toml` / `<repo>/.codex/config.toml` 这两层正式配置。
 - 2026-04-12 已完成代码落地：`Codex` 新增一条明确标记为技术债务的 heuristic session-id fallback，会扫描 `~/.codex/sessions/.../rollout-*.jsonl` 并按 `cwd + 启动时间窗` 的唯一候选回填 session id；本地 PTY 与 runtime supervisor 两条链路都已接入。
 - 2026-04-12 已新增自动化覆盖：通过 test-only 命令和 smoke 用例验证 locator 在唯一命中、`cwd` 不匹配与候选歧义三种情况下的行为。
-- 2026-05-07 已完成桌面三平台 execution env 继承收口：`src/panel/shellEnvironmentResolver.ts` 现在同时支持 POSIX 登录 shell、Windows PowerShell、Windows cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell；`CanvasPanelManager` 会让 `resolveAgentCliCommand(...)`、`buildAgentLaunchSpec(...)`、`buildTerminalLaunchSpec(...)` 与 runtime supervisor createSession 共用同一份 execution env，并在 Terminal shell 变化时刷新 patch 缓存。
-- 2026-05-07/2026-05-08 已新增自动化验证：`node scripts/test-shell-environment-resolver.mjs` 现在覆盖 POSIX / Windows 的 patch 过滤、`PATH` 合并、`PATHEXT` 继承、`VSCODE_CLI=1` 跳过逻辑，以及 PowerShell profile 驱动的 Windows env patch；同轮 `npm run test:agent-cli-resolver` 补齐了 Windows `Path` 大小写回归，扩充后的 `npm run test:smoke:windows-real-codex` 也已在真实 Windows + Codex 环境通过，覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 场景，并断言 `shellEnvPatchResolved` 的 `shellFamily` 与当前 Terminal shell 绑定关系。
+- 2026-05-07 已完成桌面三平台 execution env 继承主线收口：`src/panel/shellEnvironmentResolver.ts` 现在同时支持 POSIX 登录 shell、Windows PowerShell、Windows cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell；`CanvasPanelManager` 会让 `resolveAgentCliCommand(...)`、`buildAgentLaunchSpec(...)` 与 runtime supervisor createSession 共用同一份 agent execution env，并在 Terminal shell 变化时刷新 patch 缓存。
+- 2026-05-08 已按 review 收口 Windows `Terminal` launch 与相对 `terminal.shellPath` probe：Windows `Terminal` 不再预应用 shell env patch，而是保留 base env 让真实 shell 自己执行 profile / AutoRun；同时 `resolveShellEnvironmentPatch(...)` 现在会透传 workspace `cwd`，使相对 `terminal.shellPath` 的 env probe 与配置检查使用同一套解析基准。
+- 2026-05-07/2026-05-08 已新增自动化验证：`node scripts/test-shell-environment-resolver.mjs` 现在覆盖 POSIX / Windows 的 patch 过滤、`PATH` 合并、`PATHEXT` 继承、`VSCODE_CLI=1` 跳过逻辑、Windows `Terminal` target 跳过预应用 patch，以及相对 `terminal.shellPath` probe 复用 workspace `cwd`；同轮 `npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build` 与扩充后的 `npm run test:smoke:windows-real-codex` 也已在真实 Windows + Codex 环境通过，覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 场景，并断言 `shellEnvPatchResolved` 的 `shellFamily` 与当前 Terminal shell 绑定关系。
 - 当前设计状态更新为 `验证中`：显式 session identity 路线已经代码落地并有自动化覆盖，但 `Codex` 仍缺少正式 session identity 接口，真实 provider 端到端验证也尚未完成。
