@@ -174,8 +174,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
       try {
-        await panelManager.applyDefaultCanvasTemplate({ focusAppliedNodes: true });
+        const appliedNodeIds = await panelManager.applyDefaultCanvasTemplate();
         await panelManager.revealOrCreate();
+        panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
       } catch (error) {
         await showCanvasTemplateError('应用默认模板失败', error);
       }
@@ -189,11 +190,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand(COMMAND_IDS.resetToDefaultTemplate, async () => {
       try {
-        const didReset = await panelManager.resetDefaultCanvasTemplateWithConfirmation({
-          focusAppliedNodes: true
-        });
-        if (didReset) {
+        const appliedNodeIds = await panelManager.resetDefaultCanvasTemplateWithConfirmation();
+        if (appliedNodeIds) {
           await panelManager.revealOrCreate();
+          panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
         }
       } catch (error) {
         await showCanvasTemplateError('重置为默认模板失败', error);
@@ -1129,8 +1129,9 @@ async function applyTemplateFromCommand(
     return;
   }
 
-  await panelManager.applyCanvasTemplateById(selectedTemplate.template.id, { focusAppliedNodes: true });
+  const appliedNodeIds = await panelManager.applyCanvasTemplateById(selectedTemplate.template.id);
   await panelManager.revealOrCreate();
+  panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
 }
 
 async function resetToTemplateFromCommand(
@@ -1146,11 +1147,10 @@ async function resetToTemplateFromCommand(
     return;
   }
 
-  const didReset = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id, {
-    focusAppliedNodes: true
-  });
-  if (didReset) {
+  const appliedNodeIds = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id);
+  if (appliedNodeIds) {
     await panelManager.revealOrCreate();
+    panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
   }
 }
 

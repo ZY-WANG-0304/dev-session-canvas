@@ -41,6 +41,7 @@
 - [x] (2026-05-09 00:44 +0800) 修复 PR review 反馈：Webview 右键“重置为模板 / 重置为默认模板”改为复用宿主 modal 确认后再清空画布；同时把正式文档中的旧三模板口径同步为当前 2 个内置模板。
 - [x] (2026-05-09 01:17 +0800) 修复 PR review 反馈：首次打开默认模板因为 untrusted workspace 或 Provider 暂不可用而应用失败时，只临时回退到内置 `使用说明`，不再改写用户全局默认模板偏好；同时把 smoke acceptance 的内置模板数量收口为 2 个。
 - [x] (2026-05-09 06:25 +0800) 修复 PR review 反馈：smoke 中“使用说明”模板断言同步为当前 1 个 Note；Webview ready/bootstrap 前统一执行首次默认模板初始化，覆盖 VS Code 直接打开 Panel view 与恢复 Editor webview 的路径。
+- [x] (2026-05-09 07:00 +0800) 修复 PR review 反馈：smoke 直接注入 `webview/resetToTemplate` 时显式模拟“继续重置”确认；命令面板与 sidebar 模板入口改为应用后拿到新增节点 id，reveal 到最终承载面后再发起组级追焦，避免跨 surface 时追焦旧 Webview。
 
 ## 意外与发现
 
@@ -182,6 +183,7 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 - 模板 sidebar `工作区` 位置标签补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 workspace scope 映射为 `工作区`，以及行内 badge 使用 `item.locationLabel`。
 - 模板应用后组级追焦补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖宿主返回新增节点 id、发送 `host/focusNodes`，以及 Webview 对该节点组执行 `fitView`。
 - 组级追焦延后一拍修复后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 Webview 使用 `latestHostNodeIdsRef` 判定目标节点，并在首次 `fitView` 失败时调度追焦重试。
+- Webview 重置确认与跨 surface 命令追焦修复后，再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过；`test:canvas-templates` 已补充静态断言覆盖命令入口在 reveal 最终承载面后再触发组级追焦。
 
 剩余取舍与已知边界：
 

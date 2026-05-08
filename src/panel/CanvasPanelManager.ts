@@ -993,21 +993,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     visibleCenter?: CanvasNodePosition;
     focusAppliedNodes?: boolean;
     quietOnFailure?: boolean;
-  }): Promise<boolean> {
+  }): Promise<string[] | undefined> {
     const defaultTemplate = await this.resolveDefaultCanvasTemplateRecord();
     if (!defaultTemplate) {
       throw new Error('当前没有可用的默认模板。');
     }
 
     if (!(await this.confirmCanvasTemplateReset('当前默认模板'))) {
-      return false;
+      return undefined;
     }
 
-    await this.applyCanvasTemplateRecord(defaultTemplate, {
+    return this.applyCanvasTemplateRecord(defaultTemplate, {
       ...options,
       reset: true
     });
-    return true;
   }
 
   public async resetCanvasTemplateByIdWithConfirmation(
@@ -1017,7 +1016,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       focusAppliedNodes?: boolean;
       quietOnFailure?: boolean;
     }
-  ): Promise<boolean> {
+  ): Promise<string[] | undefined> {
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
@@ -1025,14 +1024,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (!(await this.confirmCanvasTemplateReset(`模板「${storedTemplate.template.name}」`))) {
-      return false;
+      return undefined;
     }
 
-    await this.applyCanvasTemplateRecord(storedTemplate, {
+    return this.applyCanvasTemplateRecord(storedTemplate, {
       ...options,
       reset: true
     });
-    return true;
+  }
+
+  public focusCanvasTemplateNodeGroup(nodeIds: readonly string[]): void {
+    this.requestTemplateNodeGroupFocus(nodeIds);
   }
 
   public getDebugSnapshot(): CanvasDebugSnapshot {

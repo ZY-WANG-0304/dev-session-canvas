@@ -501,21 +501,28 @@ async function verifyCanvasTemplatesTrusted() {
   );
   assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'note').length, 2);
 
-  await dispatchWebviewMessage({
-    type: 'webview/resetToTemplate',
-    payload: {
-      templateId: savedTemplate.template.id,
-      visibleCenter: { x: 0, y: 0 }
-    }
-  });
-  snapshot = await waitForSnapshot(
-    (currentSnapshot) =>
-      currentSnapshot.state.nodes.length === 3 &&
-      currentSnapshot.state.edges.length === 1 &&
-      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Agent') &&
-      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Terminal') &&
-      currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Note'),
-    20000
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage({
+        type: 'webview/resetToTemplate',
+        payload: {
+          templateId: savedTemplate.template.id,
+          visibleCenter: { x: 0, y: 0 }
+        }
+      });
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.length === 3 &&
+          currentSnapshot.state.edges.length === 1 &&
+          currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Agent') &&
+          currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Terminal') &&
+          currentSnapshot.state.nodes.some((node) => node.title === 'Template Save Note'),
+        20000
+      );
+      assert.strictEqual(warningCalls.length, 1);
+      assert.match(String(warningCalls[0].message), /重置会清空当前 workspace 绑定的画布对象/);
+    },
+    ({ items }) => items.find((item) => item === '继续重置')
   );
   assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'note').length, 1);
 
