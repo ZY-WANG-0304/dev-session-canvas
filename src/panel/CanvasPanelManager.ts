@@ -477,6 +477,11 @@ interface StartExecutionSessionOptions {
   bypassTrust?: boolean;
 }
 
+interface CanvasTemplateApplyStateResult {
+  state: CanvasPrototypeState;
+  nodeIds: string[];
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
@@ -955,14 +960,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async applyDefaultCanvasTemplate(options?: {
     reset?: boolean;
     visibleCenter?: CanvasNodePosition;
+    focusAppliedNodes?: boolean;
     quietOnFailure?: boolean;
-  }): Promise<void> {
+  }): Promise<string[]> {
     const defaultTemplate = await this.resolveDefaultCanvasTemplateRecord();
     if (!defaultTemplate) {
       throw new Error('当前没有可用的默认模板。');
     }
 
-    await this.applyCanvasTemplateRecord(defaultTemplate, options);
+    return this.applyCanvasTemplateRecord(defaultTemplate, options);
   }
 
   public async applyCanvasTemplateById(
@@ -970,16 +976,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: {
       reset?: boolean;
       visibleCenter?: CanvasNodePosition;
+      focusAppliedNodes?: boolean;
       quietOnFailure?: boolean;
     }
-  ): Promise<void> {
+  ): Promise<string[]> {
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
       throw new Error('目标模板不存在。');
     }
 
-    await this.applyCanvasTemplateRecord(storedTemplate, options);
+    return this.applyCanvasTemplateRecord(storedTemplate, options);
   }
 
   public getDebugSnapshot(): CanvasDebugSnapshot {
@@ -2074,9 +2081,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: {
       reset?: boolean;
       visibleCenter?: CanvasNodePosition;
+      focusAppliedNodes?: boolean;
       quietOnFailure?: boolean;
     }
-  ): Promise<void> {
+  ): Promise<string[]> {
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
     const preferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
     const nextBaseState = options?.reset
@@ -2091,12 +2099,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
-    this.state = this.reconcileCanvasFileArtifacts(
-      applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
-        preferredCenter,
-        resolvedAgentProviders
-      })
-    );
+    const applyResult = applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
+      preferredCenter,
+      resolvedAgentProviders
+    });
+    this.state = this.reconcileCanvasFileArtifacts(applyResult.state);
     this.canvasTemplateInitialized = true;
     this.persistState();
     this.recordDiagnosticEvent('template/applied', {
@@ -2107,6 +2114,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       edgeCount: storedTemplate.template.edges.length
     });
     this.postState('host/stateUpdated');
+    if (options?.focusAppliedNodes === true) {
+      this.requestTemplateNodeGroupFocus(applyResult.nodeIds);
+    }
+    return applyResult.nodeIds;
   }
 
   private async validateCanvasTemplateForApply(template: CanvasTemplate): Promise<Map<number, AgentProviderKind>> {
@@ -5009,7 +5020,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/applyDefaultTemplate':
         void this.applyDefaultCanvasTemplate({
-          visibleCenter: parsedMessage.payload?.visibleCenter
+          visibleCenter: parsedMessage.payload?.visibleCenter,
+          focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
             type: 'host/error',
@@ -5021,7 +5033,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/applyTemplate':
         void this.applyCanvasTemplateById(parsedMessage.payload.templateId, {
-          visibleCenter: parsedMessage.payload.visibleCenter
+          visibleCenter: parsedMessage.payload.visibleCenter,
+          focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
             type: 'host/error',
@@ -5034,7 +5047,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/resetToDefaultTemplate':
         void this.applyDefaultCanvasTemplate({
           reset: true,
-          visibleCenter: parsedMessage.payload?.visibleCenter
+          visibleCenter: parsedMessage.payload?.visibleCenter,
+          focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
             type: 'host/error',
@@ -5047,7 +5061,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/resetToTemplate':
         void this.applyCanvasTemplateById(parsedMessage.payload.templateId, {
           reset: true,
-          visibleCenter: parsedMessage.payload.visibleCenter
+          visibleCenter: parsedMessage.payload.visibleCenter,
+          focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
             type: 'host/error',
@@ -5692,6 +5707,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         `${kind === 'agent' ? 'Agent' : 'Terminal'}「${trimStoredTerminalText(node.title).trim() || nodeId}」暂时无法定位。`
       );
     }
+  }
+
+  private requestTemplateNodeGroupFocus(nodeIds: readonly string[]): void {
+    const targetNodeIds = Array.from(
+      new Set(nodeIds.filter((nodeId) => nodeId.trim().length > 0))
+    );
+    if (targetNodeIds.length === 0) {
+      return;
+    }
+
+    void this.focusTemplateNodeGroupInCanvas(targetNodeIds).catch((error) => {
+      this.recordDiagnosticEvent('template/focusFailed', {
+        nodeIds: targetNodeIds,
+        message: formatUnknownError(error)
+      });
+    });
+  }
+
+  private async focusTemplateNodeGroupInCanvas(nodeIds: readonly string[]): Promise<void> {
+    const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
+    await this.revealSurface(targetSurface);
+    await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+    this.postMessageToSurface(targetSurface, {
+      type: 'host/focusNodes',
+      payload: {
+        nodeIds: [...nodeIds]
+      }
+    });
   }
 
   private async focusNodeInCanvas(nodeId: string): Promise<void> {
@@ -8620,7 +8663,7 @@ function applyCanvasTemplateToState(
     preferredCenter?: CanvasNodePosition;
     resolvedAgentProviders: Map<number, AgentProviderKind>;
   }
-): CanvasPrototypeState {
+): CanvasTemplateApplyStateResult {
   const bounds = measureCanvasTemplateBounds(template.nodes);
   const centeredTopLeft = snapCanvasPosition({
     x: (options.preferredCenter?.x ?? 0) - Math.round(bounds.width / 2),
@@ -8672,10 +8715,13 @@ function applyCanvasTemplateToState(
   });
 
   return {
-    ...previousState,
-    updatedAt: new Date().toISOString(),
-    nodes: [...previousState.nodes, ...materializedNodes],
-    edges: [...previousState.edges, ...materializedEdges]
+    state: {
+      ...previousState,
+      updatedAt: new Date().toISOString(),
+      nodes: [...previousState.nodes, ...materializedNodes],
+      edges: [...previousState.edges, ...materializedEdges]
+    },
+    nodeIds: materializedNodes.map((node) => node.id)
   };
 }
 
@@ -10254,6 +10300,10 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
     case 'host/centerNode':
       return {
         nodeId: message.payload.nodeId
+      };
+    case 'host/focusNodes':
+      return {
+        nodeIds: message.payload.nodeIds
       };
     case 'host/error':
       return {

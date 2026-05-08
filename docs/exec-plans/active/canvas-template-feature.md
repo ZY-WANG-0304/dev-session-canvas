@@ -35,6 +35,8 @@
 - [x] (2026-05-07) 按最新产品反馈移除模板 sidebar 底部“当前画布还没有可保存的 Agent / Terminal / Note 节点”提示，让模板 section 内容区只列出模板列表，并重新执行 `npm run typecheck`、`npm run test:canvas-templates`。
 - [x] (2026-05-07) 按最新视觉反馈移除画布空白区右键菜单根层说明文案，只保留“画布操作”标题和操作项，并重新执行 `npm run typecheck` 与 targeted `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`。
 - [x] (2026-05-07) 按最新产品反馈把模板 sidebar 第二行位置标签扩展为 `内置 / 工作区 / 用户`，区分内置模板、workspace 模板和当前设备用户模板，并重新执行 `npm run typecheck`、`npm run test:canvas-templates`。
+- [x] (2026-05-08 08:43 +0800) 按最新交互反馈实现模板应用后的组级追焦：宿主记录本次物化出的节点 id 组，显式应用 / 重置模板后向 Webview 发送组级聚焦消息，Webview 对这组节点执行 `fitView`；同时更新产品规格、设计文档与模板测试静态断言。
+- [x] (2026-05-08 23:27 +0800) 修复组级追焦延后一拍的问题：Webview 收到 `host/focusNodes` 时改用最新 host node id ref 判定目标节点，并在 React Flow 尚未完成节点渲染时安排短间隔重试，避免第一次点击只缓存请求、第二次点击才追到上一组节点。
 
 ## 意外与发现
 
@@ -52,6 +54,9 @@
 
 - 观察：虽然模板列表的交互复杂度低于节点 / 会话历史，但用户明确要求它与那两个 section 保持一致的 `webview` 承载方式；因此最终更重要的是“对齐现有 sidebar 体系”，而不是单独追求最小实现。
   证据：用户最新要求明确指出“还是改成 webview 的类型，参考 节点section 和 历史会话section”。当前实现也确实改为与 `CanvasSidebarNodeListView.ts` / `CanvasSidebarSessionHistoryView.ts` 同类的 `WebviewViewProvider`。
+
+- 观察：`host/focusNodes` 若在 `host/stateUpdated` 已处理但 React 当前闭包仍持有旧 `hostState` 时到达，会只把请求写进 pending ref；由于这时没有新的状态变化触发 pending effect，用户第一次点击不会追焦，下一次应用模板触发状态变化时才追到上一组节点。
+  证据：实际调试复现为“点击应用模板按钮后不会追焦；再次点击应用模板按钮时，追焦前一次应用的模板节点组”。
 
 ## 决策记录
 
@@ -103,6 +108,14 @@
   理由：workspace 模板和当前设备用户模板都属于用户可写模板，但作用域不同；列表里需要直接区分保存位置，避免用户误判模板资产来源。
   日期/作者：2026-05-07 / Codex
 
+- 决策：模板应用后的自动追焦以“本次物化出的节点 id 组”为单位，由宿主在状态更新后发送 `host/focusNodes`，Webview 再对整组节点执行 `fitView`。
+  理由：模板是一个相对布局整体；如果只聚焦第一个节点，用户仍可能看不到整组模板结构。追焦放在状态更新之后，并允许 Webview 在新节点尚未渲染时暂存请求，可避免消息时序早于 React Flow 节点渲染导致定位失败。首次打开默认模板初始化不走这条显式追焦路径，继续交给初始 `fitView` 处理。
+  日期/作者：2026-05-08 / Codex
+
+- 决策：组级追焦的即时判定不再读取 React 闭包里的 `hostState`，而改读 `latestHostNodeIdsRef`；如果 `fitView` 当下仍失败，则通过有限次数短间隔重试兜住 React Flow 节点渲染晚于消息处理的情况。
+  理由：消息监听器是长期注册的稳定回调，闭包中的 `hostState` 可能不是最新状态；使用 ref 能读到最近一次 `host/stateUpdated` 的节点集合，重试则避免把 pending 请求卡到下一次用户操作才执行。
+  日期/作者：2026-05-08 / Codex
+
 ## 结果与复盘
 
 本轮已完成画布模板功能的正式交付：默认模板首次打开自动应用、模板侧栏与命令入口、导入导出与默认模板管理、组级避碰落位、restricted note-only 限制，以及 Agent `argv` 的保存与回放链路均已落地。随后又按最新交互要求把空白区右键菜单调整为“先节点创建、后横线分组的模板操作”，并让“应用模板 / 重置为模板”同时支持一级默认模板快速操作与二级具体模板选择菜单；模板 sidebar 最终保持 `WebviewView`，但在布局、间距、title actions 与行级交互上向 `节点` / `会话历史` section 收口，同时继续保留修掉 blank bug 所需的首屏 loading + 主动 refresh 机制。
@@ -118,6 +131,10 @@
 右键菜单也继续收口：根层标题区不再显示“先创建节点，再通过横线下方的模板分组执行模板操作”这类说明句，只保留“画布操作”标题和实际操作项。
 
 模板 sidebar 的第二行来源标签也从两类扩展为三类：内置模板显示 `内置`，workspace 模板显示 `工作区`，当前设备级用户模板显示 `用户`；tooltip 仍继续展示更具体的保存位置与相对层级。
+
+显式应用模板和重置为模板现在会在状态更新后自动追焦到本次新增的节点组。宿主的模板物化函数会返回新增节点 id，`CanvasPanelManager` 在用户发起的模板应用路径上发送 `host/focusNodes`，Webview 收到后对整组节点执行 `fitView`；如果新节点还没完成渲染，Webview 会暂存这次组级聚焦请求，等下一次状态/React Flow ready 后再执行。首次打开自动套用默认模板仍沿用初始 `fitView`，不会额外制造一次追焦动画。
+
+该追焦链路随后修复了“延后一拍”问题：Webview 现在收到 `host/focusNodes` 后直接用最新节点 id ref 尝试追焦，并在节点尚未进入 React Flow 内部视图时主动重试，不再依赖下一次模板应用或其他 host state 更新来触发 pending 请求。
 
 本轮验证结果如下：
 
@@ -137,6 +154,8 @@
 - 模板 sidebar 底部保存条件提示移除后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 `hintNote` / `hint-note` / `canSaveCurrentCanvas` 不再出现在模板 sidebar 源码中。
 - 画布空白区右键菜单根层说明文案移除后，再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过；Playwright harness 已补充断言覆盖根层仍显示“画布操作”标题且不再显示“先创建节点”说明。
 - 模板 sidebar `工作区` 位置标签补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 workspace scope 映射为 `工作区`，以及行内 badge 使用 `item.locationLabel`。
+- 模板应用后组级追焦补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖宿主返回新增节点 id、发送 `host/focusNodes`，以及 Webview 对该节点组执行 `fitView`。
+- 组级追焦延后一拍修复后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 Webview 使用 `latestHostNodeIdsRef` 判定目标节点，并在首次 `fitView` 失败时调度追焦重试。
 
 剩余取舍与已知边界：
 

@@ -720,6 +720,12 @@ export type HostToWebviewMessage =
       };
     }
   | {
+      type: 'host/focusNodes';
+      payload: {
+        nodeIds: string[];
+      };
+    }
+  | {
       type: 'host/error';
       payload: {
         message: string;

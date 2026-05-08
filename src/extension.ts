@@ -174,7 +174,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
       try {
-        await panelManager.applyDefaultCanvasTemplate();
+        await panelManager.applyDefaultCanvasTemplate({ focusAppliedNodes: true });
         await panelManager.revealOrCreate();
       } catch (error) {
         await showCanvasTemplateError('应用默认模板失败', error);
@@ -198,7 +198,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       try {
-        await panelManager.applyDefaultCanvasTemplate({ reset: true });
+        await panelManager.applyDefaultCanvasTemplate({ reset: true, focusAppliedNodes: true });
         await panelManager.revealOrCreate();
       } catch (error) {
         await showCanvasTemplateError('重置为默认模板失败', error);
@@ -1134,7 +1134,7 @@ async function applyTemplateFromCommand(
     return;
   }
 
-  await panelManager.applyCanvasTemplateById(selectedTemplate.template.id);
+  await panelManager.applyCanvasTemplateById(selectedTemplate.template.id, { focusAppliedNodes: true });
   await panelManager.revealOrCreate();
 }
 
@@ -1160,7 +1160,10 @@ async function resetToTemplateFromCommand(
     return;
   }
 
-  await panelManager.applyCanvasTemplateById(selectedTemplate.template.id, { reset: true });
+  await panelManager.applyCanvasTemplateById(selectedTemplate.template.id, {
+    reset: true,
+    focusAppliedNodes: true
+  });
   await panelManager.revealOrCreate();
 }
 

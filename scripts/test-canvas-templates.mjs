@@ -299,6 +299,34 @@ try {
   );
   assert.match(exportTemplateMethodSource, /vscode\.workspace\.fs\.writeFile/u);
   assert.match(exportTemplateMethodSource, /encodeCanvasTemplateDocument/u);
+  const applyTemplateMethodSource = sliceBetween(
+    panelManagerSource,
+    'private async applyCanvasTemplateRecord',
+    'private async validateCanvasTemplateForApply'
+  );
+  assert.match(applyTemplateMethodSource, /focusAppliedNodes\?: boolean/u);
+  assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(applyResult\.nodeIds\)/u);
+  const applyTemplateHelperSource = sliceBetween(
+    panelManagerSource,
+    'function applyCanvasTemplateToState',
+    'function materializeTemplateNode'
+  );
+  assert.match(applyTemplateHelperSource, /nodeIds: materializedNodes\.map\(\(node\) => node\.id\)/u);
+  const templateGroupFocusSource = sliceBetween(
+    panelManagerSource,
+    'private requestTemplateNodeGroupFocus',
+    'private async focusNodeInCanvas'
+  );
+  assert.match(templateGroupFocusSource, /type: 'host\/focusNodes'/u);
+
+  const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
+  assert.match(protocolSource, /type: 'host\/focusNodes'/u);
+
+  const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
+  assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
+  assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
+  assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
+  assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);
 
   const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
   const rowClickHandler = sliceBetween(
