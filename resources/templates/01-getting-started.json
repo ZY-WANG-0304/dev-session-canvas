@@ -4,28 +4,23 @@
     "id": "builtin-getting-started",
     "name": "使用说明",
     "category": "builtin",
-    "createdAt": "2026-05-06T00:00:00.000Z",
-    "updatedAt": "2026-05-06T00:00:00.000Z",
+    "createdAt": "2026-05-08T00:00:00.000Z",
+    "updatedAt": "2026-05-08T00:00:00.000Z",
     "nodes": [
       {
         "kind": "note",
-        "title": "欢迎使用",
-        "position": { "x": 0, "y": 0 },
-        "size": { "width": 420, "height": 340 },
+        "title": "Dev Session Canvas 使用指南",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 900,
+          "height": 1150
+        },
         "metadata": {
           "note": {
-            "content": "欢迎使用 Dev Session Canvas\n\n从这里开始：\n1. 在空白区右键，创建 Agent / Terminal / Note\n2. 拖动画布空白区可平移，滚轮可缩放\n3. 拖动节点标题或边缘，整理你的工作面\n4. 从节点四周锚点拖出连线，表达协作关系"
-          }
-        }
-      },
-      {
-        "kind": "note",
-        "title": "当前已支持的快捷操作",
-        "position": { "x": 460, "y": 24 },
-        "size": { "width": 420, "height": 340 },
-        "metadata": {
-          "note": {
-            "content": "快捷操作（以当前实现为准）：\n\n- Delete / Backspace：删除选中的节点或连线\n- Esc：关闭右键菜单或取消当前浮层\n- 双击连线：编辑边标签\n- 侧栏中的模板 / 节点 / 会话历史，可以快速回到常用入口\n\n提示：这个模板不会自动创建 Agent 或 Terminal，会先帮你熟悉画布本身。"
+            "content": "# Dev Session Canvas 使用指南\n\n欢迎使用 Dev Session Canvas！这是一个可视化的开发会话管理工具，帮助你在画布上组织 AI Agent、Terminal 和笔记。\n\n---\n\n## 🚀 快速开始\n\n### 创建节点\n- **右键点击画布空白区域** → 选择要创建的节点类型\n- **命令面板**：`Ctrl/Cmd+Shift+P` → 搜索 \"Dev Session Canvas: 创建节点\"\n\n### 节点类型\n- **Agent**：Codex 或 Claude Code 会话窗口\n- **Terminal**：嵌入式终端\n- **Note**：支持 Markdown 的笔记节点（就像这个！）\n\n---\n\n## ⌨️ 快捷键\n\n### 画布操作\n- **拖动空白区域**：平移画布\n- **滚轮**：缩放画布\n\n### 节点操作\n- **拖动节点标题栏**：移动节点\n- **拖动节点边缘**：调整大小\n- **Delete**：删除选中的节点或连线\n\n### 连线操作\n- **从节点锚点拖动**：创建连线（上下左右四个锚点）\n- **双击连线**：编辑边标签\n- **Delete**：删除选中的连线\n\n---\n\n## 💡 使用技巧\n\n### 拖拽文件插入路径\n从 VS Code 资源管理器拖拽文件到 Terminal 或 Agent 节点时：\n- **按住 Shift 再松手**：自动插入文件路径到输入框\n\n### 开启持久化功能\n**设置路径**：`devSessionCanvas.runtimePersistence.enabled`\n\n开启后，Agent 与 Terminal 会由独立的 runtime host backend 持有：\n- **Linux 本地与 Remote SSH**：在 `systemd --user` 可用时提供强保证\n- **其他环境**：自动回退到 detached supervisor（best-effort）\n\n**注意**：更改后需要重新加载窗口才会生效；切换此设置会清空当前 workspace 的画布宿主状态。\n\n### 侧栏功能\n- **节点列表**：快速定位到画布中的节点\n- **会话历史**：恢复之前的 Codex/Claude 会话\n- **模板管理**：快速应用和管理模板\n\n### 工作流建议\n1. 使用 **Note** 记录任务目标和思路\n2. 使用 **Agent** 进行代码分析和实现\n3. 使用 **Terminal** 执行命令和验证结果\n4. 使用 **连线** 表达节点之间的协作关系\n\n---\n\n## 📋 模板系统\n\n### 使用模板\n1. **侧栏 → 模板视图**：查看所有可用模板\n2. **应用模板**：在现有画布上叠加模板内容\n3. **重置为模板**：清空画布并套用模板（会终止运行中的会话）\n\n### 保存模板\n1. 在画布上创建你的工作布局\n2. **命令面板** → \"Dev Session Canvas: 保存当前画布为模板\"\n3. 填写模板名称，选择保存位置\n\n### 导入/导出\n\n**方式一：使用命令**\n- **导出**：命令面板 → \"Dev Session Canvas: 导出模板\"\n- **导入**：命令面板 → \"Dev Session Canvas: 导入模板\"\n\n**方式二：直接操作文件**\n- **导出**：直接复制模板文件到其他位置\n- **导入**：直接将模板文件（JSON）复制到模板目录\n  - 用户模板目录：`~/.vscode/globalStorage/devsessioncanvas.dev-session-canvas/templates/`\n  - 工作区模板目录：`.dev-session-canvas/templates/`（相对于工作区根目录）\n\n---\n\n## 🔔 通知功能\n\n### 注意力信号（Attention Signal）\n当 Agent 或 Terminal 输出 `BEL`、`OSC 9` 或 `OSC 777` 终端提醒时，会显示提醒标记。\n\n### 配置通知桥接\n**设置路径**：`devSessionCanvas.notifications.attentionSignalBridge`\n\n- **`none`**：不额外弹出工作台消息或系统通知，只保留节点内提醒表面\n- **`workbench`**：桥接为 VS Code 工作台消息\n- **`system`**（默认）：优先发送给 `Dev Session Canvas Notifier` companion；若不可用则回退到工作台消息\n\n**注意**：无论如何配置，节点内提醒 icon 与 minimap 同色明暗闪烁都会保留。\n\n### 强提醒模式\n**设置路径**：`devSessionCanvas.notifications.strongTerminalAttentionReminder`\n\n可选值：`none`、`titleBar`、`minimap`、`both`（默认）\n\n- **`none`**：只保留节点提醒 icon 和 minimap 的同色明暗闪烁\n- **`titleBar`**：让执行节点标题栏进入闪烁态\n- **`minimap`**：让 minimap 对应节点额外加入尺寸 pulse\n- **`both`**：同时开启标题栏闪烁和 minimap 尺寸 pulse\n\n---\n\n## 🤖 配置 Agent\n\n### 默认 Agent 类型\n**设置路径**：`devSessionCanvas.agent.defaultProvider`\n- `codex`：使用 Codex\n- `claude`：使用 Claude Code\n\n### Codex 配置\n**命令路径**：`devSessionCanvas.agent.codexCommand`\n- 默认：`codex`（从 Extension Host 的 `PATH` 解析）\n- 示例：`/usr/local/bin/codex`\n\n**默认参数**：`devSessionCanvas.agent.codexDefaultArgs`\n- 只填写参数，不要重复命令本身\n- 示例：`--model gpt-4`\n\n### Claude Code 配置\n**命令路径**：`devSessionCanvas.agent.claudeCommand`\n- 默认：`claude`（从 Extension Host 的 `PATH` 解析）\n- 示例：`/usr/local/bin/claude`\n\n**默认参数**：`devSessionCanvas.agent.claudeDefaultArgs`\n- 只填写参数，不要重复命令本身\n- 示例：`--model opus`\n\n---\n\n## 🪟 Windows 配置\n\n### Terminal Shell 配置\n**命令面板** → \"Dev Session Canvas: 选择 Terminal Shell\"\n\nExtension 会在当前设备上动态探测可用的 shell 并写入配置。\n\n### 支持的 Shell\n- PowerShell (`pwsh`)\n- Windows PowerShell (`powershell`)\n- Command Prompt (`cmd`)\n- Git Bash\n- WSL (Windows Subsystem for Linux)\n\n### 手动配置\n**设置路径**：\n- `devSessionCanvas.terminal.shell`：Shell 类型\n- `devSessionCanvas.terminal.shellPath`：Shell 可执行文件路径（可选）\n\n**示例配置**：\n```json\n{\n  \"devSessionCanvas.terminal.shell\": \"powershell\",\n  \"devSessionCanvas.terminal.shellPath\": \"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\"\n}\n```\n\n**注意**：\n- 该设置支持\"当前设备\"默认值，也支持在当前 workspace 里单独覆盖\n- 若同时填写 `terminal.shellPath`，则始终优先使用该精确路径\n- 一旦 workspace 级配置显式赋值，就会整体以 workspace 级为准\n\n---\n\n## 📁 文件功能\n\n**⚠️ 实验性功能**：当前仅 Claude 支持文件功能，且为实验性功能，存在已知 bug。\n\n### 启用文件功能\n**设置路径**：`devSessionCanvas.files.enabled`\n\n默认关闭。启用后可以：\n- 显示 Agent 文件活动\n- 使用文件节点和文件列表节点\n- 配置文件过滤\n\n**注意**：更改后需要重新加载窗口才会生效。\n\n### 文件展示方式\n**设置路径**：`devSessionCanvas.files.presentationMode`\n\n- **`nodes`**：把文件显示为独立节点\n- **`lists`**：按 Agent 与共享关系收口成文件列表节点\n\n### 文件节点显示风格\n**设置路径**：`devSessionCanvas.fileNode.displayStyle`\n\n- **`minimal`**：更紧凑的极简样式，接近 VS Code 原生文件列表（默认）\n- **`card`**：卡片样式\n\n### 文件过滤\n如果启用了文件功能，可以配置文件过滤：\n- **Include 过滤**：只显示匹配的文件（glob 模式）\n- **Exclude 过滤**：排除匹配的文件（glob 模式）\n\n**命令面板**：\n- \"Dev Session Canvas: 编辑文件 Include 过滤\"\n- \"Dev Session Canvas: 编辑文件 Exclude 过滤\"\n\n---\n\n## 📚 更多资源\n\n- **命令面板**：`Ctrl/Cmd+Shift+P` → 搜索 \"Dev Session Canvas\"\n- **设置界面**：`Ctrl/Cmd+,` → 搜索 \"Dev Session Canvas\"\n- **侧栏视图**：点击活动栏中的 Canvas 图标\n\n---\n\n**提示**：这个模板不会自动创建 Agent 或 Terminal，你可以自己尝试创建节点来熟悉画布操作！"
           }
         }
       }
