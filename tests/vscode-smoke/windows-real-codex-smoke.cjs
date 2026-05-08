@@ -23,6 +23,22 @@ const defaultCodexCommand =
   process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_DEFAULT_COMMAND?.trim() || 'codex';
 const explicitCodexCommand =
   process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_EXPLICIT_COMMAND?.trim() || '';
+const terminalShellSettingsTarget = hasWorkspaceSettingsTarget()
+  ? vscode.ConfigurationTarget.Workspace
+  : vscode.ConfigurationTarget.Global;
+const gitBashCandidates = [
+  process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_GIT_BASH_PATH?.trim(),
+  'C:\\Program Files\\Git\\bin\\bash.exe',
+  'C:\\Program Files\\Git\\usr\\bin\\bash.exe'
+].filter(Boolean);
+const msys2BashCandidates = [
+  process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_MSYS2_BASH_PATH?.trim(),
+  'C:\\msys64\\usr\\bin\\bash.exe'
+].filter(Boolean);
+const msys2ShCandidates = [
+  process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_MSYS2_SH_PATH?.trim(),
+  'C:\\msys64\\usr\\bin\\sh.exe'
+].filter(Boolean);
 
 let lastSnapshot;
 let lastHostMessages;
@@ -49,46 +65,49 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await waitForCommand(vscode, COMMAND_IDS.testResetState);
 
-  const scenarios = [
-    {
-      name: 'default-codex-command',
-      command: defaultCodexCommand
+  const configuration = vscode.workspace.getConfiguration();
+  const originalCodexCommand = configuration.inspect('devSessionCanvas.agent.codexCommand');
+  const originalRuntimePersistence = configuration.inspect('devSessionCanvas.runtimePersistence.enabled');
+  const originalTerminalShell = configuration.inspect('devSessionCanvas.terminal.shell');
+  const originalTerminalShellPath = configuration.inspect('devSessionCanvas.terminal.shellPath');
+
+  try {
+    const scenarios = await buildScenarios();
+
+    scenarioResults = [];
+    for (const scenario of scenarios) {
+      const result = await runScenario(scenario);
+      scenarioResults.push(result);
     }
-  ];
-  if (explicitCodexCommand) {
-    scenarios.push({
-      name: 'explicit-codex-cmd',
-      command: explicitCodexCommand
-    });
+
+    await writeSuccessArtifacts();
+
+    const failed = scenarioResults.filter((result) => result.nonEmptyVisibleLines.length === 0);
+    assert.deepStrictEqual(
+      failed,
+      [],
+      `Expected real Codex smoke to render visible terminal lines. Failed scenarios: ${JSON.stringify(failed, null, 2)}`
+    );
+  } finally {
+    await restoreGlobalSetting('devSessionCanvas.agent.codexCommand', originalCodexCommand);
+    await restoreGlobalSetting('devSessionCanvas.runtimePersistence.enabled', originalRuntimePersistence);
+    await restoreScopedSetting('devSessionCanvas.terminal.shell', originalTerminalShell);
+    await restoreScopedSetting('devSessionCanvas.terminal.shellPath', originalTerminalShellPath);
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   }
-
-  scenarioResults = [];
-  for (const scenario of scenarios) {
-    const result = await runScenario(scenario);
-    scenarioResults.push(result);
-  }
-
-  await writeSuccessArtifacts();
-
-  const failed = scenarioResults.filter((result) => result.nonEmptyVisibleLines.length === 0);
-  assert.deepStrictEqual(
-    failed,
-    [],
-    `Expected real Codex smoke to render visible terminal lines. Failed scenarios: ${JSON.stringify(failed, null, 2)}`
-  );
 }
 
 async function runScenario(scenario) {
-  await vscode.workspace
-    .getConfiguration()
-    .update('devSessionCanvas.agent.codexCommand', scenario.command, vscode.ConfigurationTarget.Global);
-  await vscode.workspace
-    .getConfiguration()
-    .update('devSessionCanvas.runtimePersistence.enabled', false, vscode.ConfigurationTarget.Global);
+  const configuration = vscode.workspace.getConfiguration();
+  await configuration.update('devSessionCanvas.agent.codexCommand', scenario.command, vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.runtimePersistence.enabled', false, vscode.ConfigurationTarget.Global);
+  await configuration.update('devSessionCanvas.terminal.shell', scenario.terminalShell, terminalShellSettingsTarget);
+  await configuration.update('devSessionCanvas.terminal.shellPath', scenario.terminalShellPath, terminalShellSettingsTarget);
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  await sleep(250);
   await clearHostMessages();
   await clearDiagnosticEvents();
 
@@ -108,11 +127,23 @@ async function runScenario(scenario) {
   const result = {
     scenario: scenario.name,
     configuredCommand: scenario.command,
+    configuredTerminalShell: scenario.terminalShell,
+    configuredTerminalShellPath: scenario.terminalShellPath || null,
     agentNodeId: agentNode.id,
     status: observed.node?.status ?? null,
     summary: observed.node?.summary ?? null,
     resolvedCommand: resolvedEvent?.detail?.resolvedCommand ?? null,
     resolutionSource: resolvedEvent?.detail?.source ?? null,
+    terminalShellSetting: observed.snapshot.configuration?.terminalShellSetting ?? null,
+    terminalShellPath: observed.snapshot.configuration?.terminalShellPath ?? null,
+    terminalShellPathOverride: observed.snapshot.configuration?.terminalShellPathOverride ?? null,
+    terminalShellResolutionSource: observed.snapshot.configuration?.terminalShellResolutionSource ?? null,
+    shellEnvSource: null,
+    shellEnvShellFamily: null,
+    shellEnvShellPath: null,
+    shellEnvAppliedKeys: [],
+    shellEnvSkippedReason: null,
+    shellEnvError: null,
     hostExecutionOutputCount: observed.hostExecutionOutputCount,
     hostExecutionSnapshotCount: observed.hostExecutionSnapshotCount,
     hostErrorMessages: observed.hostErrorMessages,
@@ -121,6 +152,51 @@ async function runScenario(scenario) {
     terminalVisibleLines: observed.terminalVisibleLines,
     nonEmptyVisibleLines: observed.nonEmptyVisibleLines
   };
+  const shellEnvResolvedEvent = findLastDiagnosticEvent(
+    observed.diagnosticEvents,
+    (event) => event.kind === 'executionEnvironment/shellEnvPatchResolved'
+  );
+  const shellEnvFailedEvent = findLastDiagnosticEvent(
+    observed.diagnosticEvents,
+    (event) => event.kind === 'executionEnvironment/shellEnvPatchFailed'
+  );
+  const shellEnvSkippedEvent = findLastDiagnosticEvent(
+    observed.diagnosticEvents,
+    (event) => event.kind === 'executionEnvironment/shellEnvPatchSkipped'
+  );
+
+  result.shellEnvSource =
+    shellEnvResolvedEvent?.detail?.source ??
+    shellEnvFailedEvent?.detail?.source ??
+    shellEnvSkippedEvent?.detail?.source ??
+    observed.snapshot.configuration?.executionShellEnvPatchSource ??
+    null;
+  result.shellEnvShellFamily =
+    shellEnvResolvedEvent?.detail?.shellFamily ??
+    shellEnvFailedEvent?.detail?.shellFamily ??
+    shellEnvSkippedEvent?.detail?.shellFamily ??
+    observed.snapshot.configuration?.executionShellEnvPatchShellFamily ??
+    null;
+  result.shellEnvShellPath =
+    shellEnvResolvedEvent?.detail?.shellPath ??
+    shellEnvFailedEvent?.detail?.shellPath ??
+    shellEnvSkippedEvent?.detail?.shellPath ??
+    observed.snapshot.configuration?.executionShellEnvPatchShellPath ??
+    null;
+  result.shellEnvAppliedKeys = Array.isArray(shellEnvResolvedEvent?.detail?.appliedKeys)
+    ? shellEnvResolvedEvent.detail.appliedKeys
+    : Array.isArray(observed.snapshot.configuration?.executionShellEnvPatchAppliedKeys)
+      ? observed.snapshot.configuration.executionShellEnvPatchAppliedKeys
+      : [];
+  result.shellEnvSkippedReason =
+    shellEnvFailedEvent?.detail?.skippedReason ??
+    shellEnvSkippedEvent?.detail?.skippedReason ??
+    observed.snapshot.configuration?.executionShellEnvPatchSkipReason ??
+    null;
+  result.shellEnvError =
+    shellEnvFailedEvent?.detail?.error ??
+    observed.snapshot.configuration?.executionShellEnvPatchError ??
+    null;
 
   if (artifactDir) {
     const scenarioArtifactDir = path.join(artifactDir, scenario.name);
@@ -148,6 +224,7 @@ async function runScenario(scenario) {
     );
   }
 
+  assertScenarioResult(scenario, result);
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   return result;
 }
@@ -320,4 +397,209 @@ function formatError(error) {
   }
 
   return String(error);
+}
+
+async function buildScenarios() {
+  const scenarios = [
+    {
+      name: 'default-codex-command',
+      command: defaultCodexCommand,
+      terminalShell: 'default',
+      terminalShellPath: '',
+      expectedShellSource: 'windows-shell',
+      expectedTerminalShellSetting: null,
+      expectedTerminalShellResolutionSource: 'default-shell'
+    }
+  ];
+
+  if (explicitCodexCommand) {
+    scenarios.push({
+      name: 'explicit-codex-cmd',
+      command: explicitCodexCommand,
+      terminalShell: 'default',
+      terminalShellPath: '',
+      expectedShellSource: 'windows-shell',
+      expectedTerminalShellSetting: null,
+      expectedTerminalShellResolutionSource: 'default-shell'
+    });
+  }
+
+  scenarios.push({
+    name: 'powershell-shell',
+    command: defaultCodexCommand,
+    terminalShell: 'powershell',
+    terminalShellPath: '',
+    expectedShellSource: 'windows-shell',
+    expectedShellFamily: 'powershell',
+    expectedTerminalShellSetting: 'powershell',
+    expectedTerminalShellPath: 'powershell.exe',
+    expectedTerminalShellResolutionSource: 'named-shell'
+  });
+
+  scenarios.push({
+    name: 'cmd-shell',
+    command: defaultCodexCommand,
+    terminalShell: 'cmd',
+    terminalShellPath: '',
+    expectedShellSource: 'windows-shell',
+    expectedShellFamily: 'cmd',
+    expectedTerminalShellSetting: 'cmd',
+    expectedTerminalShellPath: 'cmd.exe',
+    expectedTerminalShellResolutionSource: 'named-shell'
+  });
+
+  const gitBashPath = await resolveFirstExistingPath(gitBashCandidates);
+  if (gitBashPath) {
+    scenarios.push({
+      name: 'git-bash-shell',
+      command: defaultCodexCommand,
+      terminalShell: 'bash',
+      terminalShellPath: gitBashPath,
+      expectedShellSource: 'windows-shell',
+      expectedShellFamily: 'posix',
+      expectedTerminalShellSetting: 'bash',
+      expectedTerminalShellPath: gitBashPath,
+      expectedTerminalShellResolutionSource: 'path'
+    });
+  }
+
+  const msys2BashPath = await resolveFirstExistingPath(msys2BashCandidates);
+  if (msys2BashPath) {
+    scenarios.push({
+      name: 'msys2-bash-shell',
+      command: defaultCodexCommand,
+      terminalShell: 'bash',
+      terminalShellPath: msys2BashPath,
+      expectedShellSource: 'windows-shell',
+      expectedShellFamily: 'posix',
+      expectedTerminalShellSetting: 'bash',
+      expectedTerminalShellPath: msys2BashPath,
+      expectedTerminalShellResolutionSource: 'path'
+    });
+  }
+
+  const msys2ShPath = await resolveFirstExistingPath(msys2ShCandidates);
+  if (msys2ShPath) {
+    scenarios.push({
+      name: 'msys2-sh-shell',
+      command: defaultCodexCommand,
+      terminalShell: 'sh',
+      terminalShellPath: msys2ShPath,
+      expectedShellSource: 'windows-shell',
+      expectedShellFamily: 'posix',
+      expectedTerminalShellSetting: 'sh',
+      expectedTerminalShellPath: msys2ShPath,
+      expectedTerminalShellResolutionSource: 'path'
+    });
+  }
+
+  return scenarios;
+}
+
+function assertScenarioResult(scenario, result) {
+  assert.ok(result.resolvedCommand, `Expected ${scenario.name} to resolve a Codex command.`);
+  assert.ok(
+    result.nonEmptyVisibleLines.length > 0,
+    `Expected ${scenario.name} to render visible terminal output. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.strictEqual(
+    result.shellEnvSource,
+    scenario.expectedShellSource,
+    `Expected ${scenario.name} to resolve shell env patch source ${scenario.expectedShellSource}. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.strictEqual(
+    normalizeShellPath(result.shellEnvShellPath),
+    normalizeShellPath(result.terminalShellPath),
+    `Expected ${scenario.name} to bind shell env patch to the same terminal shell path. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.strictEqual(
+    result.terminalShellSetting,
+    scenario.expectedTerminalShellSetting,
+    `Expected ${scenario.name} terminal shell setting to match the scenario. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.strictEqual(
+    result.terminalShellResolutionSource,
+    scenario.expectedTerminalShellResolutionSource,
+    `Expected ${scenario.name} terminal shell resolution source to match the scenario. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.strictEqual(
+    result.shellEnvSkippedReason,
+    null,
+    `Expected ${scenario.name} not to skip shell env patch resolution. Result: ${JSON.stringify(result, null, 2)}`
+  );
+  assert.strictEqual(
+    result.shellEnvError,
+    null,
+    `Expected ${scenario.name} not to report shell env patch resolution errors. Result: ${JSON.stringify(result, null, 2)}`
+  );
+
+  if (scenario.expectedShellFamily) {
+    assert.strictEqual(
+      result.shellEnvShellFamily,
+      scenario.expectedShellFamily,
+      `Expected ${scenario.name} shell family to match. Result: ${JSON.stringify(result, null, 2)}`
+    );
+  }
+
+  if (scenario.expectedTerminalShellPath) {
+    assert.strictEqual(
+      normalizeShellPath(result.terminalShellPath),
+      normalizeShellPath(scenario.expectedTerminalShellPath),
+      `Expected ${scenario.name} terminal shell path to match. Result: ${JSON.stringify(result, null, 2)}`
+    );
+  }
+}
+
+function findLastDiagnosticEvent(events, predicate) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (predicate(events[index])) {
+      return events[index];
+    }
+  }
+
+  return undefined;
+}
+
+async function resolveFirstExistingPath(candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Keep walking the candidate list until we find a real shell path.
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeShellPath(shellPath) {
+  return String(shellPath || '').trim().toLowerCase();
+}
+
+function hasWorkspaceSettingsTarget() {
+  return Boolean(vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0);
+}
+
+function getWorkspaceScopedConfigurationValue(inspection) {
+  return typeof inspection?.workspaceFolderValue !== 'undefined'
+    ? inspection.workspaceFolderValue
+    : inspection?.workspaceValue;
+}
+
+async function restoreGlobalSetting(settingKey, inspection) {
+  const configuration = vscode.workspace.getConfiguration();
+  await configuration.update(settingKey, inspection?.globalValue, vscode.ConfigurationTarget.Global);
+}
+
+async function restoreScopedSetting(settingKey, inspection) {
+  const configuration = vscode.workspace.getConfiguration();
+  await restoreGlobalSetting(settingKey, inspection);
+  if (hasWorkspaceSettingsTarget()) {
+    await configuration.update(settingKey, getWorkspaceScopedConfigurationValue(inspection), vscode.ConfigurationTarget.Workspace);
+  }
 }

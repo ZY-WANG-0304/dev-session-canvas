@@ -610,6 +610,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             return;
           }
 
+          this.invalidateResolvedShellEnvironmentPatch();
           if (this.refreshConfiguredTerminalShellMetadata()) {
             this.postState('host/stateUpdated');
           }
@@ -1163,6 +1164,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         terminalShellPathOverride: configuredTerminalShell.configuredPath || undefined,
         terminalShellResolutionSource: configuredTerminalShell.resolutionSource,
         executionShellEnvPatchSource: shellEnvironmentPatch.source,
+        executionShellEnvPatchShellFamily: shellEnvironmentPatch.shellFamily,
         executionShellEnvPatchSkipReason: shellEnvironmentPatch.skippedReason,
         executionShellEnvPatchShellPath: shellEnvironmentPatch.shellPath,
         executionShellEnvPatchAppliedKeys: shellEnvironmentPatch.appliedKeys,
@@ -2949,6 +2951,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? this.refreshConfiguredTerminalShellMetadata()
         : false;
     if (options.terminalShellChanged || options.terminalShellPathChanged) {
+      this.invalidateResolvedShellEnvironmentPatch();
       await this.notifyIfConfiguredTerminalShellUnavailable();
     }
 
@@ -7013,20 +7016,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch);
   }
 
+  private invalidateResolvedShellEnvironmentPatch(): void {
+    this.resolvedShellEnvironmentPatchPromise = undefined;
+  }
+
   private getResolvedShellEnvironmentPatch(baseEnv: NodeJS.ProcessEnv): Promise<ResolvedShellEnvironmentPatch> {
     if (!this.resolvedShellEnvironmentPatchPromise) {
+      const shellPath = this.getTerminalShellPath();
       this.resolvedShellEnvironmentPatchPromise = resolveShellEnvironmentPatch({
-        env: baseEnv
+        env: baseEnv,
+        shellPath
       }).then((result) => {
-        if (result.source === 'posix-login-shell') {
+        if (result.source !== 'none') {
           this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchResolved', {
             source: result.source,
+            shellFamily: result.shellFamily,
             shellPath: result.shellPath,
             appliedKeys: result.appliedKeys
           });
         } else if (result.skippedReason === 'shell-resolution-failed') {
           this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchFailed', {
             source: result.source,
+            shellFamily: result.shellFamily,
             skippedReason: result.skippedReason,
             shellPath: result.shellPath,
             error: result.error
@@ -7034,6 +7045,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         } else {
           this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchSkipped', {
             source: result.source,
+            shellFamily: result.shellFamily,
             skippedReason: result.skippedReason,
             shellPath: result.shellPath
           });
