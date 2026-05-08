@@ -123,13 +123,13 @@
           "name": "%view.canvas.sidebar.summary.title%"
         },
         {
-          "id": "devSessionCanvas.sidebarFilters",
-          "name": "%view.canvas.sidebar.actions.title%",
+          "id": "devSessionCanvas.sidebarTemplates",
+          "name": "%view.canvas.sidebar.templates.title%",
           "type": "webview"
         },
         {
-          "id": "devSessionCanvas.sidebarTemplates",
-          "name": "%view.canvas.sidebar.templates.title%",
+          "id": "devSessionCanvas.sidebarFilters",
+          "name": "%view.canvas.sidebar.actions.title%",
           "type": "webview"
         },
         {

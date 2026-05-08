@@ -443,10 +443,6 @@ function buildSidebarTemplateHtml(
         color: var(--badge-fg);
       }
 
-      .badge.is-default {
-        background: color-mix(in srgb, var(--focus) 22%, transparent);
-      }
-
       .template-actions {
         display: flex;
         align-items: center;
@@ -605,16 +601,9 @@ function buildSidebarTemplateHtml(
 
         const title = document.createElement('div');
         title.className = 'template-title';
-        title.textContent = item.name;
+        title.textContent = item.isDefault ? '(默认) ' + item.name : item.name;
 
         titleLine.replaceChildren(icon, title);
-
-        if (item.isDefault) {
-          const defaultBadge = document.createElement('span');
-          defaultBadge.className = 'badge is-default';
-          defaultBadge.textContent = '默认';
-          titleLine.append(defaultBadge);
-        }
 
         main.append(titleLine);
 
@@ -662,10 +651,16 @@ function buildSidebarTemplateHtml(
         defaultAction.type = 'button';
         defaultAction.title = item.isDefault ? '当前已是默认模板' : '设为默认模板';
         defaultAction.setAttribute('aria-label', defaultAction.title);
-        defaultAction.hidden = item.isDefault;
-        defaultAction.innerHTML = '<span class="codicon codicon-star-empty" aria-hidden="true"></span>';
+        defaultAction.innerHTML =
+          '<span class="codicon ' +
+          (item.isDefault ? 'codicon-star-full' : 'codicon-star-empty') +
+          '" aria-hidden="true"></span>';
         defaultAction.addEventListener('click', (event) => {
           event.stopPropagation();
+          if (item.isDefault) {
+            return;
+          }
+
           postTemplateMessage('sidebarTemplates/setDefaultTemplate', item.templateId);
         });
 
