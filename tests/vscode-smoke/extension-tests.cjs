@@ -202,15 +202,14 @@ async function verifyFirstOpenDefaultTemplate() {
       .map((node) => node.title)
       .sort();
     return (
-      currentSnapshot.state.nodes.length === 2 &&
-      noteTitles.includes('欢迎使用') &&
-      noteTitles.includes('当前已支持的快捷操作')
+      currentSnapshot.state.nodes.length === 1 &&
+      noteTitles.includes('Dev Session Canvas 使用指南')
     );
   }, 20000);
 
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
-    ['note', 'note']
+    ['note']
   );
 
   const templateCatalog = await getCanvasTemplateCatalog();
@@ -550,7 +549,7 @@ async function verifyCanvasTemplatesRestricted() {
   await applyCanvasTemplateForTest('builtin-getting-started');
   let snapshot = await waitForSnapshot(
     (currentSnapshot) =>
-      currentSnapshot.state.nodes.length === 2 &&
+      currentSnapshot.state.nodes.length === 1 &&
       currentSnapshot.state.nodes.every((node) => node.kind === 'note'),
     20000
   );
