@@ -2083,17 +2083,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (selectedDefaultTemplateId !== DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) {
       try {
-        await this.context.globalState.update(
-          CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY,
-          DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID
-        );
-        const fallbackTemplate = await this.resolveDefaultCanvasTemplateRecord();
+        const fallbackTemplate = await this.resolveFirstOpenFallbackCanvasTemplateRecord();
         if (fallbackTemplate) {
           await this.applyCanvasTemplateRecord(fallbackTemplate, {
             visibleCenter: preferredCenter
           });
           this.recordDiagnosticEvent('template/defaultFallbackAppliedOnFirstOpen', {
-            templateId: fallbackTemplate.template.id
+            templateId: fallbackTemplate.template.id,
+            preservedDefaultTemplateId: selectedDefaultTemplateId
           });
           return;
         }
@@ -2110,16 +2107,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async resolveDefaultCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
     const catalog = await this.getCanvasTemplateCatalog();
+    const preferredTemplateId = this.getDefaultCanvasTemplateId();
     const storedTemplate =
-      findCanvasTemplateById(catalog.templates, this.getDefaultCanvasTemplateId()) ??
+      findCanvasTemplateById(catalog.templates, preferredTemplateId) ??
       findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) ??
       catalog.templates[0];
 
-    if (storedTemplate && storedTemplate.template.id !== this.getDefaultCanvasTemplateId()) {
+    if (storedTemplate && storedTemplate.template.id !== preferredTemplateId) {
       await this.context.globalState.update(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY, storedTemplate.template.id);
     }
 
     return storedTemplate;
+  }
+
+  private async resolveFirstOpenFallbackCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
+    const catalog = await this.getCanvasTemplateCatalog();
+    return (
+      findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) ??
+      catalog.templates.find((storedTemplate) =>
+        storedTemplate.template.nodes.every((node) => node.kind === 'note')
+      ) ??
+      catalog.templates[0]
+    );
   }
 
   private async applyCanvasTemplateRecord(

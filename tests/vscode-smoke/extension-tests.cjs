@@ -218,11 +218,7 @@ async function verifyFirstOpenDefaultTemplate() {
     .filter((entry) => entry.template.category === 'builtin')
     .map((entry) => entry.template.id)
     .sort();
-  assert.deepStrictEqual(builtinTemplateIds, [
-    'builtin-anthropic-harness',
-    'builtin-basic-workflow',
-    'builtin-getting-started'
-  ]);
+  assert.deepStrictEqual(builtinTemplateIds, ['builtin-basic-workflow', 'builtin-getting-started']);
   assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
 }
 
@@ -323,7 +319,7 @@ async function verifyCanvasTemplatesTrusted() {
   assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
   assert.strictEqual(
     templateCatalog.templates.filter((entry) => entry.template.category === 'builtin').length,
-    3
+    2
   );
   assert.deepStrictEqual(templateCatalog.issues, []);
 
@@ -548,7 +544,7 @@ async function verifyCanvasTemplatesRestricted() {
   assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
   assert.strictEqual(
     templateCatalog.templates.filter((entry) => entry.template.category === 'builtin').length,
-    3
+    2
   );
 
   await applyCanvasTemplateForTest('builtin-getting-started');
