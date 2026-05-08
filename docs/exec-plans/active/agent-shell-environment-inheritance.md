@@ -23,6 +23,7 @@
 - [x] (2026-05-08 08:18 +0800) 利用本机已安装的 MSYS2，继续扩充 Windows real Codex smoke，补齐 `msys2-bash` / `msys2-sh` 场景，并把剩余技术债继续收窄到更少见的 Windows POSIX family shell 名称。
 - [x] (2026-05-08 10:46 +0800) 根据 review 收口 Windows `Terminal` 启动不再预应用 shell env patch，并让相对 `terminal.shellPath` 的 env probe 与配置检查统一复用 workspace `cwd`。
 - [x] (2026-05-08 11:34 +0800) 根据 review 收口 `PATH` 合并顺序：普通 host-only 目录不再整体前置到 shell `PATH` 之前，只保留显式注入测试目录的优先级，并补齐跨平台回归。
+- [x] (2026-05-08 12:08 +0800) 根据 review 收口 Agent CLI 解析缓存：把 cache key 绑定到当前 shell authority，并在 shell 配置变化时清空旧 cache，避免 resolver 持续命中旧工具链路径。
 
 ## 意外与发现
 
@@ -56,6 +57,12 @@
 - 观察：如果把所有 host-only `PATH` 目录一律整体前置到 shell `PATH` 前面，shell 已经选定的 Node / Codex / pnpm / volta 工具链仍可能被 Extension Host 基线目录抢先命中，导致“受控 shell env patch 已应用但工具链 authority 仍回到 host”的假对齐。
   证据：review 给出的最小复现 `base=/usr/local/bin:/usr/bin`、`shell=/opt/homebrew/bin:/usr/bin` 会把旧实现合成为 `/usr/local/bin:/opt/homebrew/bin:/usr/bin`；修复前 `mergePathEnvironmentValue(...)` 也确实先收集全部 base-only 目录，再整体拼到 shell `PATH` 前面。
 
+- 观察：即使 shell env patch 会在 shell 变化时刷新，如果 Agent CLI 绝对路径缓存仍只按 `platform/provider/requestedCommand/workspaceCwd` 建 key，resolver 仍会持续以 `source: cache` 命中旧 shell 工具链，重新制造“resolver 仍指向旧 shell，spawn env 已切到新 shell”的确定性分叉。
+  证据：review 指出的 `CanvasPanelManager` 只在 shell 变化时失效 `resolvedShellEnvironmentPatchPromise`，但 `agentCliResolutionCache` 既没有同步清空，也没有把 shell authority 编进 key。
+
+- 观察：2026-05-08 本机 `npm run test:smoke` 的 `SIGABRT` 不是由这次 shell authority cache 修复直接触发；在同一台 macOS 机器上，哪怕去掉 extension test、只直接启动 VS Code 主进程，也会在创建日志目录前就被 LaunchServices / AppKit 路径上的 `RegisterApplication` 中止。
+  证据：同日 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 仍稳定 `SIGABRT` 且 `artifacts/` 为空；随后最小命令 `env -u ELECTRON_RUN_AS_NODE /Applications/Visual Studio Code.app/Contents/MacOS/Code ...` 也独立返回 134，并在 `~/Library/Logs/DiagnosticReports/Code-2026-05-08-164522.ips` 中留下 `EXC_CRASH (SIGABRT)`，主线程栈顶为 `___RegisterApplication_block_invoke` / `NSApplication sharedApplication`。
+
 ## 决策记录
 
 - 决策：本轮不把 `Agent` 执行改成“整条命令交给 shell 解释”，而是继续保持 `node-pty.spawn(file, args)` 的结构化执行路径，只把“环境发现”和“环境复用”对齐到更接近 VS Code 原生的模式。
@@ -82,6 +89,10 @@
   理由：这样既能保住 test harness 等显式注入目录的优先级，又不会让普通 host `PATH` 抢在 shell 选定的工具链前面，避免再次出现 resolver / spawn 已走 shell patch 但最终命中的仍是 host 版本的确定性偏差。
   日期/作者：2026-05-08 / Codex
 
+- 决策：Agent CLI 绝对路径缓存必须显式绑定当前 shell authority，并在 shell 配置变化时清空旧缓存。
+  理由：当前分支已经把 Terminal shell 视为 execution env authority；如果 cache 仍跨 shell 复用，就会让 resolver 固定在旧 shell 解析出的 `codex` / `claude` 路径上，直接破坏“resolver 与 spawn 共享同一 authority”的目标。
+  日期/作者：2026-05-08 / Codex
+
 ## 结果与复盘
 
 - 已完成：`src/panel/shellEnvironmentResolver.ts` 现在已经同时支持三条桌面路线：macOS / Linux 的登录 shell、Windows PowerShell / cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell。它会统一产出受控 env patch，并在 Windows 上处理 `PATH` / `PATHEXT` 与环境变量大小写不敏感问题。
@@ -89,6 +100,7 @@
 - 已完成：`CanvasPanelManager` 现在会把 shell env patch 显式绑定到当前配置/默认 Terminal shell，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时刷新缓存；其中 `Agent` resolver、`Agent` spawn 与 runtime supervisor createSession 继续共用同一份 execution env，而 Windows `Terminal` launch 则显式保留 base env，避免 profile / AutoRun 被预执行后再重放一次。
 - 已完成：`resolveShellEnvironmentPatch(...)` 现在会接收并透传 workspace `cwd`；相对 `terminal.shellPath` 的 env probe 与 `terminalShellConfiguration` 的配置检查已共享同一套解析基准，不再因为 `spawn` 端漏传 `cwd` 而稳定 `ENOENT`。
 - 已完成：`applyShellEnvironmentPatch(...)` 现在只会把显式声明要保优先级的 base `PATH` 目录继续前置；其余 host-only 目录都会追加在 shell `PATH` 之后。macOS / Linux 与 Windows 回归已同步覆盖“shell 主体顺序优先 + test harness 目录仍可保前置”的组合语义。
+- 已完成：Agent CLI 解析缓存现在会把当前 Terminal shell 的 authority 编入 cache key，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或默认 shell 变化时清空缓存；同一 requested command 在不同 shell authority 下不再共享旧绝对路径。
 - 已完成：正式设计文档、技术债和自动化验证已同步更新；`npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build`、`npm run test:smoke:windows-real-codex` 与 `git diff --check` 均已通过。其中 Windows real smoke 现在覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 七类场景。
 - 剩余：Windows 自定义 shell 的真实 smoke 缺口已继续收窄到更少见的 Windows POSIX family shell 名称，例如 `zsh`、`fish`，或用户通过显式 `shellPath` 接入的非常规 shell；它们仍共享同一条 POSIX 解析分支，但当前仓库还没有同等级真实 smoke 证据。
 
@@ -160,6 +172,7 @@
 - 2026-05-08：再次扩充后的 `npm run test:smoke:windows-real-codex` 通过，新增覆盖 MSYS2 `bash` / `sh` 场景，并把真实 smoke 缺口继续收窄到更少见的 Windows POSIX family shell 名称。
 - 2026-05-08：review 收口后的 `npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build` 与 `npm run test:smoke:windows-real-codex` 通过，新增覆盖 Windows `Terminal` target 跳过预应用 patch 与相对 `terminal.shellPath` probe 复用 workspace `cwd`。
 - 2026-05-08：再次根据 review 收口后，`npm run test:shell-environment-resolver`、`npm run typecheck`、`npm run build` 与 `git diff --check` 通过，新增覆盖 “shell `PATH` 主体顺序优先 + 显式注入测试目录仍保前置” 的 POSIX / Windows 回归。
+- 2026-05-08：再次根据 review 收口后，`npm run typecheck`、`npm run build`、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；新增了 Agent CLI cache key 按 shell authority 隔离的 smoke 断言。随后复跑 `npm run test:smoke` 仍在本机以 `SIGABRT` 提前终止；进一步最小化到直接启动 VS Code 主进程也同样崩溃，并在 `~/Library/Logs/DiagnosticReports/Code-2026-05-08-164522.ips` 记录到 `RegisterApplication` 相关 `SIGABRT`，因此当前把 smoke 结果标注为“本机 VS Code/macOS 启动环境问题，待单独处理后复跑”，而不是本轮代码回归。
 - 2026-05-08：`git diff --check` 通过。
 
 ## 接口与依赖

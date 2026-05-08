@@ -8181,9 +8181,35 @@ async function verifyAgentCliRelativePathCacheIsolation() {
       requestedCommand: 'codex',
       workspaceCwd: workspaceB
     });
+    const shellAuthorityKeyA = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceA,
+      shellAuthority: '/bin/zsh'
+    });
+    const shellAuthorityKeyB = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceA,
+      shellAuthority: '/bin/bash'
+    });
+    const relativeShellAuthorityKeyA = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceA,
+      shellAuthority: './shell-wrapper'
+    });
+    const relativeShellAuthorityKeyB = await getAgentCliResolutionCacheKeyForTest({
+      provider: 'codex',
+      requestedCommand: 'codex',
+      workspaceCwd: workspaceB,
+      shellAuthority: './shell-wrapper'
+    });
 
     assert.notStrictEqual(relativeKeyA, relativeKeyB);
     assert.strictEqual(absoluteKeyA, absoluteKeyB);
+    assert.notStrictEqual(shellAuthorityKeyA, shellAuthorityKeyB);
+    assert.notStrictEqual(relativeShellAuthorityKeyA, relativeShellAuthorityKeyB);
   } finally {
     await fs.rm(workspaceA, { recursive: true, force: true });
     await fs.rm(workspaceB, { recursive: true, force: true });
@@ -8246,12 +8272,13 @@ async function extractClaudeResumeSessionIdForTest(output) {
   return vscode.commands.executeCommand(COMMAND_IDS.testExtractClaudeResumeSessionId, output);
 }
 
-async function getAgentCliResolutionCacheKeyForTest({ provider, requestedCommand, workspaceCwd }) {
+async function getAgentCliResolutionCacheKeyForTest({ provider, requestedCommand, workspaceCwd, shellAuthority }) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testGetAgentCliResolutionCacheKey,
     provider,
     requestedCommand,
-    workspaceCwd
+    workspaceCwd,
+    shellAuthority
   );
 }
 

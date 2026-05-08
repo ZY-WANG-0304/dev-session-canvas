@@ -126,7 +126,7 @@ updated_at: 2026-05-08
 - `src/panel/CanvasPanelManager.ts` 必须通过统一的 execution env 入口同时服务“命令解析”和“真实 spawn”；`src/panel/shellEnvironmentResolver.ts` 负责把 Extension Host 基线环境升级成这份 execution env。
 - 命令解析优先级为：
   1. provider 对应的显式设置值。
-  2. 同一宿主上、同一设置版本下最近一次成功解析出的绝对路径缓存；前提是该路径仍存在且可执行。
+  2. 同一宿主上、同一 shell authority 下最近一次成功解析出的绝对路径缓存；前提是该路径仍存在且可执行。这里的 shell authority 至少要绑定当前实际生效的 Terminal shell 身份，避免切换 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或默认 shell 后继续复用旧工具链路径。
   3. 当前 execution env 的 `PATH` 解析。其中：
      - macOS / Linux 当前会额外叠加一次“更接近 VS Code 原生 Terminal”的登录 shell env patch。
      - Windows 当前会为 `Agent` 侧 execution env 额外叠加一次受控 shell env patch；它以当前配置/默认 Terminal shell 为准，对 `powershell.exe` / `cmd.exe` 走各自的环境快照解析，对 Windows 下名称可判定为 `bash` / `zsh` / `sh` / `fish` 的 POSIX shell 复用登录 shell 解析。

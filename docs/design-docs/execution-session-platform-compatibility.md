@@ -106,7 +106,7 @@ updated_at: 2026-05-08
 - 与此同时，宿主诊断必须至少记录 shell env patch 的 `source`、`shellFamily`、`shellPath` 与 `appliedKeys`/失败摘要，这样 Windows 上才能区分当前对齐的是 PowerShell、`cmd.exe`、Git Bash、MSYS2，还是其它 POSIX family shell。
 - `Agent` provider CLI 的命令发现采用宿主侧 resolver，而不是把裸命令名直接交给 PTY：
   - 显式设置优先
-  - 最近成功解析的绝对路径缓存次之
+  - 最近成功解析的绝对路径缓存次之，但这层缓存必须和当前 shell authority 绑定；切换 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或默认 shell 后，不能继续命中旧 shell 解析出的 CLI 路径
   - 当前宿主 `PATH` 再次之
   - POSIX 登录 shell 探测、Windows `where.exe` / `Get-Command` 与常见包装后缀作为最后自动回退
 - 宿主当前通过最小 PTY bridge 暴露：
