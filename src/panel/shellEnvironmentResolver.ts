@@ -38,7 +38,7 @@ const EXCLUDED_SHELL_ENV_KEYS = new Set([
 ]);
 const EXCLUDED_SHELL_ENV_PREFIXES = ['BASH_FUNC_', 'ELECTRON_', 'VSCODE_', 'XPC_', '__CF'];
 
-export type ShellEnvironmentPatchSource = 'none' | 'posix-login-shell' | 'windows-shell';
+export type ShellEnvironmentPatchSource = 'none' | 'posix-login-shell' | 'powershell' | 'windows-shell';
 export type ShellEnvironmentPatchFamily = 'cmd' | 'posix' | 'powershell' | 'unsupported';
 export type ShellEnvironmentPatchTarget = 'agent' | 'terminal';
 export type ShellEnvironmentPatchSkipReason =
@@ -109,7 +109,7 @@ export async function resolveShellEnvironmentPatch(
     const appliedKeys = Object.keys(envPatch).sort((left, right) => left.localeCompare(right));
     return {
       envPatch,
-      source: platform === 'win32' ? 'windows-shell' : 'posix-login-shell',
+      source: resolveShellEnvironmentPatchSource(platform, shellFamily),
       shellPath,
       shellFamily,
       appliedKeys
@@ -257,19 +257,33 @@ async function resolveShellEnvironment(options: {
   shellFamily: ShellEnvironmentPatchFamily;
 }): Promise<NodeJS.ProcessEnv> {
   const shellFamily = options.shellFamily;
-  if (options.platform !== 'win32' || shellFamily === 'posix') {
-    return resolvePosixShellEnvironment(options);
-  }
-
   if (shellFamily === 'powershell') {
-    return resolveWindowsPowerShellEnvironment(options);
+    return resolvePowerShellEnvironment(options);
   }
 
   if (shellFamily === 'cmd') {
+    if (options.platform !== 'win32') {
+      throw new UnsupportedShellEnvironmentResolverError(`当前 shell 不支持环境解析：${options.shellPath}`);
+    }
     return resolveWindowsCmdEnvironment(options);
   }
 
+  if (shellFamily === 'posix') {
+    return resolvePosixShellEnvironment(options);
+  }
+
   throw new UnsupportedShellEnvironmentResolverError(`当前 shell 不支持环境解析：${options.shellPath}`);
+}
+
+function resolveShellEnvironmentPatchSource(
+  platform: NodeJS.Platform,
+  shellFamily: ShellEnvironmentPatchFamily
+): ShellEnvironmentPatchSource {
+  if (platform === 'win32') {
+    return 'windows-shell';
+  }
+
+  return shellFamily === 'powershell' ? 'powershell' : 'posix-login-shell';
 }
 
 function detectShellFamily(
@@ -366,7 +380,7 @@ async function resolvePosixShellEnvironment(options: {
   });
 }
 
-async function resolveWindowsPowerShellEnvironment(options: {
+async function resolvePowerShellEnvironment(options: {
   cwd?: string;
   env: NodeJS.ProcessEnv;
   shellPath: string;

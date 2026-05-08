@@ -222,7 +222,6 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
-const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
 const CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.defaultTemplateId';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
@@ -545,6 +544,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
+  // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
@@ -554,9 +554,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public readonly onDidChangeTemplateCatalog = this.templateCatalogEmitter.event;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.agentCliResolutionCache = readAgentCliResolutionCache(
-      context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
-    );
+    this.agentCliResolutionCache = {};
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.canvasTemplateStore = new CanvasTemplateStore(
       path.join(this.context.extensionUri.fsPath, 'resources', 'templates'),
@@ -619,6 +617,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         })
       );
     }
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this.invalidateResolvedShellEnvironmentPatch();
+        this.clearAgentCliResolutionCache();
+        if (this.refreshConfiguredTerminalShellMetadata()) {
+          this.postState('host/stateUpdated');
+        }
+      })
+    );
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -6875,11 +6883,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const normalizedCommand =
       process.platform === 'win32' ? requestedCommand.trim().toLowerCase() : requestedCommand.trim();
     const normalizedShellAuthority = normalizeAgentCliCacheAuthority(shellAuthority, workspaceCwd);
-    if (!isExplicitRelativePath(requestedCommand.trim())) {
-      return `${process.platform}:${provider}:${normalizedShellAuthority}:${normalizedCommand}`;
-    }
-
     const normalizedWorkspaceCwd = normalizeAgentCliCacheWorkspaceCwd(workspaceCwd);
+    // The execution env can be cwd-sensitive through direnv, Nix, or repo-local shell hooks.
     return `${process.platform}:${provider}:${normalizedShellAuthority}:${normalizedWorkspaceCwd}:${normalizedCommand}`;
   }
 
@@ -6903,7 +6908,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       requestedCommand,
       resolvedCommand
     };
-    void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
   private clearAgentCliResolution(
@@ -6914,7 +6918,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     delete this.agentCliResolutionCache[
       this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd)
     ];
-    void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
   private clearAgentCliResolutionCache(): void {
@@ -6926,7 +6929,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     for (const cacheKey of cacheKeys) {
       delete this.agentCliResolutionCache[cacheKey];
     }
-    void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
   private async resolveAgentCli(provider: AgentProviderKind, requestedCommand?: string): Promise<AgentCliSpec> {
@@ -12323,34 +12325,6 @@ function isLegacyPlaceholderTerminal(node: CanvasNodeSummary): boolean {
     node.summary === '宿主终端已关闭，可重新创建。' ||
     node.summary === '已匹配到现存宿主终端，可直接显示。'
   );
-}
-
-function readAgentCliResolutionCache(value: unknown): Record<string, AgentCliResolutionCacheEntry> {
-  if (!isRecord(value)) {
-    return {};
-  }
-
-  const cache: Record<string, AgentCliResolutionCacheEntry> = {};
-  for (const [cacheKey, entry] of Object.entries(value)) {
-    if (!isRecord(entry)) {
-      continue;
-    }
-
-    const requestedCommand =
-      typeof entry.requestedCommand === 'string' ? entry.requestedCommand.trim() : '';
-    const resolvedCommand =
-      typeof entry.resolvedCommand === 'string' ? entry.resolvedCommand.trim() : '';
-    if (!requestedCommand || !resolvedCommand) {
-      continue;
-    }
-
-    cache[cacheKey] = {
-      requestedCommand,
-      resolvedCommand
-    };
-  }
-
-  return cache;
 }
 
 function buildCanvasTemplateStorageLocations(context: vscode.ExtensionContext): CanvasTemplateStorageLocation[] {
