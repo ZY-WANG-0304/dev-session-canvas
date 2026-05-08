@@ -100,7 +100,7 @@ updated_at: 2026-05-08
 - `src/panel/shellEnvironmentResolver.ts` 当前已经为桌面三平台提供受控 shell env 继承：
   - macOS / Linux：在 `VSCODE_CLI=1` 之外的 GUI 场景读取登录 shell 环境。
   - Windows：以当前配置/默认 Terminal shell 为准；`powershell.exe` / `cmd.exe` 走各自环境快照解析，名称可判定为 `bash` / `zsh` / `sh` / `fish` 的 Windows shell 复用登录 shell 解析。这份 patch 供 `Agent` resolver / spawn 使用，同时保留给 host diagnostics 与排障。
-- 这份 shell env patch 不直接 wholesale 替换 Extension Host 环境；它只在保留宿主基线、测试注入目录和 `TERM`/`COLORTERM` 约束的前提下，同步 `PATH`、`PATHEXT` 与工具链相关变量，并排除 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被执行节点接管的键。
+- 这份 shell env patch 不直接 wholesale 替换 Extension Host 环境；它只在保留宿主基线、`TERM`/`COLORTERM` 约束和少量显式注入目录的前提下，同步 `PATH`、`PATHEXT` 与工具链相关变量，并排除 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被执行节点接管的键。`PATH` 合并需要保持 shell 导出的主体顺序优先：普通 host-only 目录追加在 shell `PATH` 之后，只有宿主显式注入且要求保优先级的目录（例如 test harness CLI 目录）可以继续排在前面。
 - shell env patch 的缓存与当前 Terminal shell 绑定；当 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时，宿主必须刷新缓存，不能继续沿用旧 shell 的环境快照。
 - 如果 `terminal.shellPath` 是相对路径，则 `terminalShellConfiguration` 的配置检查与 `shellEnvironmentResolver` 的 env probe 必须共享同一套 workspace `cwd` 解析基准，不能一边判定可用、一边在 `spawn` 时稳定 `ENOENT`。
 - 与此同时，宿主诊断必须至少记录 shell env patch 的 `source`、`shellFamily`、`shellPath` 与 `appliedKeys`/失败摘要，这样 Windows 上才能区分当前对齐的是 PowerShell、`cmd.exe`、Git Bash、MSYS2，还是其它 POSIX family shell。
