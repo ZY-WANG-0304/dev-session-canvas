@@ -553,6 +553,24 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/copyExecutionSelection';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        text: string;
+        clearSelectionAfterCopy?: boolean;
+      };
+    }
+  | {
+      type: 'webview/requestExecutionPaste';
+      payload: {
+        requestId: string;
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        bracketedPasteMode: boolean;
+      };
+    }
+  | {
       type: 'webview/dropExecutionResource';
       payload: {
         nodeId: string;
@@ -767,6 +785,23 @@ export type HostToWebviewMessage =
         nodeId: string;
         kind: ExecutionNodeKind;
         resolvedLinks: ExecutionTerminalResolvedFileLink[];
+      };
+    }
+  | {
+      type: 'host/executionPasteText';
+      payload: {
+        requestId: string;
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        text: string;
+      };
+    }
+  | {
+      type: 'host/executionPasteCancelled';
+      payload: {
+        requestId: string;
+        nodeId: string;
+        kind: ExecutionNodeKind;
       };
     }
   | {
@@ -1016,6 +1051,52 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         nodeId: payload.nodeId,
         kind: payload.kind,
         data: payload.data
+      }
+    };
+  }
+
+  if (value.type === 'webview/copyExecutionSelection') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      typeof payload.text !== 'string' ||
+      (payload.clearSelectionAfterCopy !== undefined && typeof payload.clearSelectionAfterCopy !== 'boolean')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/copyExecutionSelection',
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        text: payload.text,
+        clearSelectionAfterCopy: payload.clearSelectionAfterCopy === true
+      }
+    };
+  }
+
+  if (value.type === 'webview/requestExecutionPaste') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.requestId !== 'string' ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      typeof payload.bracketedPasteMode !== 'boolean'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/requestExecutionPaste',
+      payload: {
+        requestId: payload.requestId,
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        bracketedPasteMode: payload.bracketedPasteMode
       }
     };
   }
