@@ -50,7 +50,7 @@ export function resolveExecutionTerminalClipboardShortcut(
 
   if (platform === 'mac') {
     if (meta && !ctrl && !shift && key === 'c') {
-      return hasSelection ? 'copy' : 'noop';
+      return hasSelection ? 'copy' : 'passThrough';
     }
     if (meta && !ctrl && !shift && key === 'v') {
       return 'paste';

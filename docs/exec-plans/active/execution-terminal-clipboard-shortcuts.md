@@ -26,6 +26,7 @@
 - [x] (2026-05-09 06:33Z) 处理 PR review blocker：把裸 `CR` 纳入粘贴行分隔 / 尾随换行安全处理，避免 `echo one\recho two` 绕过多行确认。
 - [x] (2026-05-09 06:33Z) 处理 PR review blocker：移除 Webview 端 paste request 的固定 30 秒清理，让等待 Host 模态确认的请求只在回包、取消或 Webview dispose 时清理。
 - [x] (2026-05-09 06:33Z) 补充 CR-only 纯规则测试和延迟 Host 粘贴回包 Playwright 回归，并重新运行验证。
+- [x] (2026-05-09 06:45Z) 处理 PR review blocker：macOS `Cmd+C` 无终端选区时改为 `passThrough`，避免被 xterm key handler 作为 `noop` 吞掉。
 
 ## 意外与发现
 
@@ -60,6 +61,9 @@
 - 观察：Webview 端固定 30 秒 paste request 超时会与 Host 侧无超时的 VSCode modal 确认冲突，用户在确认框停留超过 30 秒后点击“继续粘贴”会让回包被误丢弃。
   证据：本轮移除固定前端超时，并新增 `terminal paste response survives a delayed host confirmation` Playwright 用例，用 fake clock 前进 31 秒后确认 Host 回包仍能进入 xterm。
 
+- 观察：macOS `Cmd+C` 无终端选区如果返回 `noop`，会被当前 xterm key handler 当作非 `passThrough` 动作执行 `preventDefault()` 和 `stopPropagation()`，从而违背“透传给 Workbench / 浏览器”的设计意图。
+  证据：`resolveExecutionTerminalClipboardShortcut('mac', Cmd+C, false)` 已改为 `passThrough`，并补充纯规则断言。
+
 ## 决策记录
 
 - 决策：本功能默认对齐 VSCode 原生 Terminal 的平台默认口径，而不是做一套跨平台统一的 `Ctrl+C` / `Ctrl+V` 规则。
@@ -86,7 +90,7 @@
 
 本轮已经完成设计、协议、Webview、Host 和测试收口。用户现在可以在画布内 `Agent` / `Terminal` xterm 聚焦时按本地 VSCode UI 平台的默认规则复制终端选区、请求系统剪贴板粘贴，并在无选区时继续让 `Ctrl+C` 进入 PTY / Agent CLI 作为 interrupt。Remote SSH 到 Linux 时，macOS 本地仍用 `Cmd+C/V`，Windows 本地仍用 Windows 的 `Ctrl+C` 有选区复制 / 无选区打断规则；远端 Linux 只接收最终输入字节。
 
-验证已覆盖纯规则矩阵、协议 validator、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke。PR review 发现的两个 blocker 已完成修复：裸 `CR` 粘贴不会绕过多行安全判断，Host 多行确认超过 30 秒后返回的 paste response 也不会被 Webview 固定超时丢弃。设计文档的 `validation_status` 已从 `未验证` 更新为 `已验证`，产品规格也更新为“已实现并通过自动化验证”。当前没有发现必须登记到 `docs/exec-plans/tech-debt-tracker.md` 的新增遗留债；本计划仍保留在 `active/`，等待后续提交 / MR 流程前的最终复查。
+验证已覆盖纯规则矩阵、协议 validator、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke。PR review 发现的 blocker 已完成修复：裸 `CR` 粘贴不会绕过多行安全判断，Host 多行确认超过 30 秒后返回的 paste response 不会被 Webview 固定超时丢弃，macOS `Cmd+C` 无终端选区也不会被 xterm handler 吞掉。设计文档的 `validation_status` 已从 `未验证` 更新为 `已验证`，产品规格也更新为“已实现并通过自动化验证”。当前没有发现必须登记到 `docs/exec-plans/tech-debt-tracker.md` 的新增遗留债；本计划仍保留在 `active/`，等待后续提交 / MR 流程前的最终复查。
 
 ## 上下文与定向
 
@@ -210,6 +214,14 @@ PR review 修复后的补充验证：
       127 passed (3.8m)
       Playwright webview tests passed.
 
+macOS `Cmd+C` 无选区透传修复后的补充验证：
+
+    npm run test:execution-terminal-clipboard
+      execution terminal clipboard tests passed
+
+    npm run typecheck
+      tsc --noEmit 退出码 0
+
 ## 接口与依赖
 
 需要修改或继续使用的仓库接口如下：
@@ -227,3 +239,5 @@ PR review 修复后的补充验证：
 本次更新说明：2026-05-09 04:01Z，完成协议、Webview、Host、测试与验证收口；记录 Remote SSH 本地 UI 平台语义和自动化验证结果。
 
 本次更新说明：2026-05-09 06:33Z，处理 PR review 中的 CR-only 粘贴安全绕过和 Webview 端 paste request 固定超时问题，并记录补充验证结果。
+
+本次更新说明：2026-05-09 06:45Z，处理 PR review 中的 macOS `Cmd+C` 无终端选区被吞掉问题，并记录纯规则验证。
