@@ -23,6 +23,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Create `Agent`, `Terminal`, and `Note` nodes
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
+- Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
 - Use Markdown preview, interactive checklists, workspace file links, code blocks, and math inside `Note` nodes
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
@@ -53,22 +54,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.7.0 Highlights
+## 0.7.1 Highlights
 
-The public `0.7.0` release focuses on canvas templates, so first-run onboarding, repeated workflow setup, and team template sharing can happen directly inside the canvas.
+The public `0.7.1` release focuses on shell-environment compatibility, making `Agent` and embedded `Terminal` nodes more reliable when VS Code is launched from a GUI, when platform shells differ, or when local toolchains are configured from shell profiles.
 
-- Empty first-run canvases now apply the default onboarding template so users can learn core operations inside the canvas itself
-- A new template sidebar, command-palette entries, and empty-canvas context menu let users apply templates, reset to templates, save the current canvas, import / export templates, and choose the default template
-- Templates capture static work surfaces: node titles, relative layout, `Note` content, edge styling, and `Agent` provider / arguments are preserved, while runtime state, output, sessions, and file activity are excluded
-- Custom templates can be saved to the current workspace or current device, and exported as shareable JSON
-- Applying a template avoids existing nodes when possible, then focuses the viewport on the newly created node group after explicit apply or reset actions
-- `Restricted Mode` and provider checks continue to fail closed: untrusted workspaces block templates with execution nodes, and fixed providers must be available before a template can be applied
+- The `Agent` CLI resolver and the real launch environment now share the same controlled shell env patch, avoiding splits where a command resolves but launch-time `PATH`, `node`, or toolchain variables differ
+- macOS / Linux read controlled increments from the current shell, while Windows resolves the current configured or default Terminal shell across PowerShell, `cmd.exe`, Git Bash / MSYS2, and related main paths
+- Embedded `Terminal` behavior is platform-aware: Windows lets the real shell run profile / AutoRun itself, while macOS / Linux inherit a login-only shell env patch by default
+- `devSessionCanvas.terminal.inheritEnv` lets macOS / Linux users opt out of Terminal shell env inheritance when duplicate `PATH` entries or profile side effects appear
+- `devSessionCanvas.terminal.shellArgs` lets users pass explicit shell argv such as `-l`, `--login`, or other arguments supported by the selected shell
+- Host diagnostics and Windows real Codex smoke coverage now include common shell-authority scenarios such as PowerShell, `cmd.exe`, Git Bash, and MSYS2 `bash` / `sh`
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.6.0` to `0.7.0` all go through the `Visual Studio Marketplace`; later `0.7.x` updates follow the same Marketplace upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.7.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.7.0` to `0.7.1` all go through the `Visual Studio Marketplace`; later `0.7.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.7.1` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 

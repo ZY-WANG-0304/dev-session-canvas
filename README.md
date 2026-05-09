@@ -22,6 +22,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 基于 React Flow 的基础画布交互与布局
 - `Note` Markdown 预览、交互式 checklist、workspace 文件链接与编辑态行号 / 缩进辅助
 - 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏与重置入口
+- `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
 - `Restricted Mode` 下的有限能力声明
 - 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
 - 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -46,7 +47,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.7.0` 收口画布模板、默认自举模板、自定义模板管理、模板应用 / 重置体验与版本发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.7.1` 收口 `Agent` / `Terminal` shell 环境继承、CLI 解析缓存、跨平台 smoke 证据与发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -54,7 +55,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道已收口为 `Visual Studio Marketplace`；是否同步 `Open VSX` 延后决策。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径的当前轮功能可用性验证均已完成；其中 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径的当前轮功能可用性验证均已完成；其中 `0.7.1` 已重点收口执行节点 shell 环境继承，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -124,7 +125,7 @@ npm run build
 ## 能力边界
 
 - `Agent` 节点：需要本机或远端 Extension Host 可解析的 `codex` 或 `claude` CLI
-- `Terminal` 节点：需要工作区侧可用的 shell 环境
+- `Terminal` 节点：需要工作区侧可用的 shell 环境；macOS / Linux 默认继承受控 shell env patch，Windows 让真实 shell 自己执行 profile / AutoRun，可通过 `devSessionCanvas.terminal.inheritEnv` 与 `devSessionCanvas.terminal.shellArgs` 调整
 - `Note` 节点：正文权威数据仍为原始 Markdown 文本；预览态只允许安全白名单链接与当前 workspace 内文件目标
 - `devSessionCanvas.runtimePersistence.enabled = false`：基线能力，不承诺真实进程跨 VS Code 生命周期持续存在
 - `devSessionCanvas.runtimePersistence.enabled = true`：已具备较多自动化与人工验证证据，尤其覆盖 `Remote SSH` real-reopen 主路径；用户可见 guarantee 取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则自动回退到 `best-effort`
