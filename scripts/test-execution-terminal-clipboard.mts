@@ -24,6 +24,11 @@ function runShortcutMatrix(): void {
     'macOS Cmd+C 应复制终端选区。'
   );
   assert.equal(
+    resolveExecutionTerminalClipboardShortcut('mac', event('c', { metaKey: true }), false),
+    'passThrough',
+    'macOS Cmd+C 无终端选区时不应被 xterm handler 吞掉。'
+  );
+  assert.equal(
     resolveExecutionTerminalClipboardShortcut('mac', event('c', { ctrlKey: true }), true),
     'passThrough',
     'macOS Ctrl+C 即使有选区也应继续交给 shell 打断。'

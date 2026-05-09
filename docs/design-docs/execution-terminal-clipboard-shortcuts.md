@@ -106,7 +106,7 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 核心快捷键不变量如下：
 
-- macOS：`Cmd+C` 在 xterm 选区非空时复制，选区为空时 no-op 给 Workbench / 浏览器；`Ctrl+C` 始终不拦截，继续发送打断；`Cmd+V` 请求粘贴。
+- macOS：`Cmd+C` 在 xterm 选区非空时复制，选区为空时透传给 Workbench / 浏览器；`Ctrl+C` 始终不拦截，继续发送打断；`Cmd+V` 请求粘贴。
 - Windows：xterm 选区非空时 `Ctrl+C` 复制并清空选区；选区为空时不拦截，继续发送打断；`Ctrl+Shift+C` 复制但不要求清选区；`Ctrl+V` 与 `Ctrl+Shift+V` 请求粘贴。
 - Linux：`Ctrl+C` 始终不拦截，继续发送打断；`Ctrl+Shift+C` 复制；`Ctrl+Shift+V` 请求粘贴。
 
