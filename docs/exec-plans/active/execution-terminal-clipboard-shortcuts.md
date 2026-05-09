@@ -23,6 +23,9 @@
 - [x] (2026-05-09 04:01Z) 在 `src/webview/main.tsx` 中接线复制 / 粘贴 callbacks、pending paste request 管理和 Host paste response 路由，最终通过 `terminal.paste(text)` 进入现有输入链路。
 - [x] (2026-05-09 04:01Z) 在 `src/panel/CanvasPanelManager.ts` 中接入 `vscode.env.clipboard`，粘贴前确认 live session、处理多行安全确认，并把错误和回包限制到来源 surface。
 - [x] (2026-05-09 04:01Z) 补齐 `scripts/test-execution-terminal-clipboard.mts`、`package.json` 测试脚本和 `tests/playwright/webview-harness.spec.mjs` 的 copy / paste / interrupt 回归，并完成自动化验证。
+- [x] (2026-05-09 06:33Z) 处理 PR review blocker：把裸 `CR` 纳入粘贴行分隔 / 尾随换行安全处理，避免 `echo one\recho two` 绕过多行确认。
+- [x] (2026-05-09 06:33Z) 处理 PR review blocker：移除 Webview 端 paste request 的固定 30 秒清理，让等待 Host 模态确认的请求只在回包、取消或 Webview dispose 时清理。
+- [x] (2026-05-09 06:33Z) 补充 CR-only 纯规则测试和延迟 Host 粘贴回包 Playwright 回归，并重新运行验证。
 
 ## 意外与发现
 
@@ -51,6 +54,12 @@
 - 观察：trusted VSCode smoke 在当前环境会输出大量 VSCode trace、GPU 初始化和缺失用户配置文件噪声，但进程最终以 0 退出并打印通过信息。
   证据：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 输出 `Trusted workspace smoke passed.` 与 `VS Code smoke test passed.`。
 
+- 观察：剪贴板文本不能只按 `\n` 或 `\r\n` 识别换行；裸 `\r` 在 xterm paste 中也会形成回车输入，如果不计入行分隔，会绕过多行粘贴确认。
+  证据：PR review 指出 `prepareExecutionTerminalPasteText('echo one\recho two', false)` 曾被误判为单行；本轮改为 `\r\n|\r|\n` 拆分，并补充 CR-only 尾随回车与 CR-only 多行测试。
+
+- 观察：Webview 端固定 30 秒 paste request 超时会与 Host 侧无超时的 VSCode modal 确认冲突，用户在确认框停留超过 30 秒后点击“继续粘贴”会让回包被误丢弃。
+  证据：本轮移除固定前端超时，并新增 `terminal paste response survives a delayed host confirmation` Playwright 用例，用 fake clock 前进 31 秒后确认 Host 回包仍能进入 xterm。
+
 ## 决策记录
 
 - 决策：本功能默认对齐 VSCode 原生 Terminal 的平台默认口径，而不是做一套跨平台统一的 `Ctrl+C` / `Ctrl+V` 规则。
@@ -77,7 +86,7 @@
 
 本轮已经完成设计、协议、Webview、Host 和测试收口。用户现在可以在画布内 `Agent` / `Terminal` xterm 聚焦时按本地 VSCode UI 平台的默认规则复制终端选区、请求系统剪贴板粘贴，并在无选区时继续让 `Ctrl+C` 进入 PTY / Agent CLI 作为 interrupt。Remote SSH 到 Linux 时，macOS 本地仍用 `Cmd+C/V`，Windows 本地仍用 Windows 的 `Ctrl+C` 有选区复制 / 无选区打断规则；远端 Linux 只接收最终输入字节。
 
-验证已覆盖纯规则矩阵、协议 validator、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke。设计文档的 `validation_status` 已从 `未验证` 更新为 `已验证`，产品规格也更新为“已实现并通过自动化验证”。当前没有发现必须登记到 `docs/exec-plans/tech-debt-tracker.md` 的新增遗留债；本计划仍保留在 `active/`，等待后续提交 / MR 流程前的最终复查。
+验证已覆盖纯规则矩阵、协议 validator、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke。PR review 发现的两个 blocker 已完成修复：裸 `CR` 粘贴不会绕过多行安全判断，Host 多行确认超过 30 秒后返回的 paste response 也不会被 Webview 固定超时丢弃。设计文档的 `validation_status` 已从 `未验证` 更新为 `已验证`，产品规格也更新为“已实现并通过自动化验证”。当前没有发现必须登记到 `docs/exec-plans/tech-debt-tracker.md` 的新增遗留债；本计划仍保留在 `active/`，等待后续提交 / MR 流程前的最终复查。
 
 ## 上下文与定向
 
@@ -179,12 +188,27 @@ VSCode 原生 Terminal 的行为 oracle 锚定到 2026-05-09 upstream commit `93
       tsc --noEmit 退出码 0
 
     npm run test:webview
-      125 passed (3.7m)
+      127 passed (3.8m)
       Playwright webview tests passed.
 
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
       Trusted workspace smoke passed.
       VS Code smoke test passed.
+
+PR review 修复后的补充验证：
+
+    npm run test:execution-terminal-clipboard
+      execution terminal clipboard tests passed
+
+    npm run typecheck
+      tsc --noEmit 退出码 0
+
+    npm run build && node scripts/run-playwright-webview.mjs -g "terminal copy shortcut|terminal paste shortcut|paste response survives|Ctrl\\+C without terminal selection"
+      8 passed (15.1s)
+
+    npm run test:webview
+      127 passed (3.8m)
+      Playwright webview tests passed.
 
 ## 接口与依赖
 
@@ -201,3 +225,5 @@ VSCode 原生 Terminal 的行为 oracle 锚定到 2026-05-09 upstream commit `93
 本次更新说明：2026-05-09 新建计划，完成 VSCode 原生 Terminal 剪贴板逻辑调研，并把本仓库 `Agent` / `Terminal` 执行节点的正式交互口径收口为“Webview 判定快捷键，Host 负责系统剪贴板与粘贴安全，Webview 调用 xterm paste”。
 
 本次更新说明：2026-05-09 04:01Z，完成协议、Webview、Host、测试与验证收口；记录 Remote SSH 本地 UI 平台语义和自动化验证结果。
+
+本次更新说明：2026-05-09 06:33Z，处理 PR review 中的 CR-only 粘贴安全绕过和 Webview 端 paste request 固定超时问题，并记录补充验证结果。

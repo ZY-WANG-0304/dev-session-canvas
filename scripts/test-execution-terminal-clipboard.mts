@@ -107,9 +107,19 @@ function runPastePreparationChecks(): void {
     '单条命令尾随换行应先剥离，避免立即执行。'
   );
   assert.deepEqual(
+    prepareExecutionTerminalPasteText('echo ok\r', false),
+    { kind: 'paste', text: 'echo ok' },
+    'CR-only 单条命令尾随回车也应先剥离，避免立即执行。'
+  );
+  assert.deepEqual(
     prepareExecutionTerminalPasteText('echo one\necho two', false),
     { kind: 'confirm', text: 'echo one\necho two', lineCount: 2 },
     '普通多行剪贴板应要求确认。'
+  );
+  assert.deepEqual(
+    prepareExecutionTerminalPasteText('echo one\recho two', false),
+    { kind: 'confirm', text: 'echo one\recho two', lineCount: 2 },
+    'CR-only 分隔的多行剪贴板也应要求确认。'
   );
   assert.deepEqual(
     prepareExecutionTerminalPasteText('echo one\necho two', true),

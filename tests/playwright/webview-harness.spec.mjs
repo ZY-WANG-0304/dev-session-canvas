@@ -2637,6 +2637,56 @@ for (const executionKind of ['agent', 'terminal']) {
       .toBe(pasteText);
   });
 
+  test(`${executionKind} terminal paste response survives a delayed host confirmation`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const pasteText = 'confirmed paste after modal wait';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await page.clock.install({ time: new Date('2026-05-09T00:00:00Z') });
+    await clearPostedMessages(page);
+
+    await dispatchTerminalShortcut(page, nodeId, executionTerminalPasteShortcutEvent(), { settle: false });
+    const pasteRequest = await waitForPostedMessageByType(page, 'webview/requestExecutionPaste');
+
+    await page.clock.fastForward(31_000);
+    await page.evaluate(
+      ({ requestId, nextNodeId, nextKind, nextPasteText }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionPasteText',
+          payload: {
+            requestId,
+            nodeId: nextNodeId,
+            kind: nextKind,
+            text: nextPasteText
+          }
+        });
+      },
+      {
+        requestId: pasteRequest.payload.requestId,
+        nextNodeId: nodeId,
+        nextKind: executionKind,
+        nextPasteText: pasteText
+      }
+    );
+
+    await expect
+      .poll(async () => {
+        const message = await page.evaluate(() => {
+          return (
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .find((entry) => entry.type === 'webview/executionInput') ?? null
+          );
+        });
+        return message?.payload?.data ?? null;
+      })
+      .toBe(pasteText);
+  });
+
   test(`${executionKind} Ctrl+C without terminal selection still reaches the PTY as interrupt`, async ({
     page
   }) => {
@@ -6009,7 +6059,7 @@ async function focusExecutionTerminal(page, nodeId) {
   await settleWebview(page, 1);
 }
 
-async function dispatchTerminalShortcut(page, nodeId, shortcut) {
+async function dispatchTerminalShortcut(page, nodeId, shortcut, options = {}) {
   await page.evaluate(
     ({ nextNodeId, nextShortcut }) => {
       const textarea = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-helper-textarea`);
@@ -6037,7 +6087,9 @@ async function dispatchTerminalShortcut(page, nodeId, shortcut) {
       nextShortcut: shortcut
     }
   );
-  await settleWebview(page, 2);
+  if (options.settle !== false) {
+    await settleWebview(page, 2);
+  }
 }
 
 function executionTerminalCopyShortcutEvent() {

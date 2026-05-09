@@ -117,7 +117,7 @@ export function prepareExecutionTerminalPasteText(
     return { kind: 'cancel' };
   }
 
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r\n|\r|\n/);
   if (lines.length === 1 || bracketedPasteMode) {
     return {
       kind: 'paste',
