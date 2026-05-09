@@ -177,6 +177,17 @@ interface CanvasNodeData {
     kind: ExecutionNodeKind,
     link: ExecutionTerminalOpenLink
   ) => void;
+  onCopyExecutionSelection?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    text: string,
+    clearSelectionAfterCopy: boolean
+  ) => void;
+  onRequestExecutionPaste?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    bracketedPasteMode: boolean
+  ) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNodeTitle?: (nodeId: string, title: string) => void;
@@ -357,6 +368,13 @@ const pendingExecutionFileLinkResolutionRequests = new Map<
     resolve: (resolvedLinks: ExecutionTerminalResolvedFileLink[]) => void;
     reject: (error: Error) => void;
     timeout: number;
+  }
+>();
+const pendingExecutionPasteRequests = new Map<
+  string,
+  {
+    nodeId: string;
+    kind: ExecutionNodeKind;
   }
 >();
 
@@ -852,6 +870,21 @@ function App(): JSX.Element {
             message.payload.resolvedLinks
           );
           break;
+        case 'host/executionPasteText':
+          routeExecutionPasteText(
+            message.payload.requestId,
+            message.payload.nodeId,
+            message.payload.kind,
+            message.payload.text
+          );
+          break;
+        case 'host/executionPasteCancelled':
+          clearPendingExecutionPasteRequest(
+            message.payload.requestId,
+            message.payload.nodeId,
+            message.payload.kind
+          );
+          break;
         case 'host/error':
           if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
             pendingManualCreateRequestRef.current = undefined;
@@ -889,6 +922,7 @@ function App(): JSX.Element {
         window.clearTimeout(clearErrorTimer.current);
       }
       rejectPendingExecutionFileLinkResolutionRequests('Webview disposed before execution file links were resolved.');
+      clearPendingExecutionPasteRequests();
     };
   }, []);
 
@@ -1549,6 +1583,8 @@ function App(): JSX.Element {
           link
         }
       }),
+    onCopyExecutionSelection: copyExecutionSelection,
+    onRequestExecutionPaste: requestExecutionPaste,
     onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
         type: 'webview/resizeExecutionSession',
@@ -2400,6 +2436,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         ),
       onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
       onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
+      onCopySelection: (nodeId, kind, text, clearSelectionAfterCopy) =>
+        data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
+      onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
+        data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
     terminal.loadAddon(fitAddon);
@@ -2953,6 +2993,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         ),
       onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
       onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
+      onCopySelection: (nodeId, kind, text, clearSelectionAfterCopy) =>
+        data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
+      onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
+        data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
     terminal.loadAddon(fitAddon);
@@ -6192,6 +6236,17 @@ function toFlowNodes(params: {
     kind: ExecutionNodeKind,
     link: ExecutionTerminalOpenLink
   ) => void;
+  onCopyExecutionSelection: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    text: string,
+    clearSelectionAfterCopy: boolean
+  ) => void;
+  onRequestExecutionPaste: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    bracketedPasteMode: boolean
+  ) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNote: (payload: {
@@ -6254,6 +6309,8 @@ function toFlowNodes(params: {
         onExecutionInput: params.onExecutionInput,
         onDropExecutionResource: params.onDropExecutionResource,
         onOpenExecutionLink: params.onOpenExecutionLink,
+        onCopyExecutionSelection: params.onCopyExecutionSelection,
+        onRequestExecutionPaste: params.onRequestExecutionPaste,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
@@ -8689,6 +8746,78 @@ function rejectPendingExecutionFileLinkResolutionRequests(message: string): void
     pendingExecutionFileLinkResolutionRequests.delete(requestId);
     pendingRequest.reject(new Error(message));
   }
+}
+
+function copyExecutionSelection(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  text: string,
+  clearSelectionAfterCopy: boolean
+): void {
+  postMessage({
+    type: 'webview/copyExecutionSelection',
+    payload: {
+      nodeId,
+      kind,
+      text,
+      clearSelectionAfterCopy
+    }
+  });
+}
+
+function requestExecutionPaste(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  bracketedPasteMode: boolean
+): void {
+  const requestId = `execution-paste-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  pendingExecutionPasteRequests.set(requestId, {
+    nodeId,
+    kind
+  });
+
+  postMessage({
+    type: 'webview/requestExecutionPaste',
+    payload: {
+      requestId,
+      nodeId,
+      kind,
+      bracketedPasteMode
+    }
+  });
+}
+
+function routeExecutionPasteText(
+  requestId: string,
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  text: string
+): void {
+  const pendingRequest = pendingExecutionPasteRequests.get(requestId);
+  if (!pendingRequest || pendingRequest.nodeId !== nodeId || pendingRequest.kind !== kind) {
+    return;
+  }
+
+  clearPendingExecutionPasteRequest(requestId, nodeId, kind);
+  executionTerminalRegistry.get(nodeId)?.terminal.paste(text);
+}
+
+function clearPendingExecutionPasteRequest(
+  requestId: string,
+  nodeId: string,
+  kind: ExecutionNodeKind
+): void {
+  const pendingRequest = pendingExecutionPasteRequests.get(requestId);
+  if (!pendingRequest || pendingRequest.nodeId !== nodeId || pendingRequest.kind !== kind) {
+    return;
+  }
+
+  pendingExecutionPasteRequests.delete(requestId);
+}
+
+function clearPendingExecutionPasteRequests(): void {
+  pendingExecutionPasteRequests.clear();
 }
 
 function postMessage(message: WebviewToHostMessage): void {
