@@ -61,6 +61,23 @@ try {
   assert.equal(absoluteResolution.source, 'configured-absolute');
   assert.equal(absoluteResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
 
+  const envWithOnlyPath = {
+    ...process.env,
+    Path: tempDir,
+    PATHEXT: '.COM;.EXE;.BAT;.CMD'
+  };
+  delete envWithOnlyPath.PATH;
+
+  const pathCaseInsensitiveResolution = await resolveAgentCliCommand({
+    provider: 'codex',
+    label: 'Codex',
+    requestedCommand: 'codex',
+    workspaceCwd: tempDir,
+    env: envWithOnlyPath
+  });
+  assert.equal(pathCaseInsensitiveResolution.source, 'path-env');
+  assert.equal(pathCaseInsensitiveResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
+
   console.log('agentCliResolver tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });

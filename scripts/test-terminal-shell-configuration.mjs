@@ -32,6 +32,7 @@ try {
     detectAvailableTerminalShells,
     inspectConfiguredTerminalShell,
     normalizeConfiguredTerminalShell,
+    normalizeConfiguredTerminalShellArgs,
     resolveEffectiveTerminalShellConfiguration,
     resolveConfiguredTerminalShell,
     resolveDefaultTerminalShellPath,
@@ -41,6 +42,11 @@ try {
   assert.equal(normalizeConfiguredTerminalShell('bash'), 'bash');
   assert.equal(normalizeConfiguredTerminalShell('cmd'), 'cmd');
   assert.equal(normalizeConfiguredTerminalShell('not-a-shell'), 'default');
+  assert.deepEqual(normalizeConfiguredTerminalShellArgs([' -l ', '--noprofile', '', 42, false]), [
+    '-l',
+    '--noprofile'
+  ]);
+  assert.deepEqual(normalizeConfiguredTerminalShellArgs('-l'), []);
   assert.deepEqual(
     resolveEffectiveTerminalShellConfiguration({
       defaultConfiguredShell: 'default',
