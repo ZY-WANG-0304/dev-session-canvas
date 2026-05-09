@@ -24,6 +24,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 通过 `codex` 或 `claude` CLI 驱动 `Agent` 节点执行
 - 通过嵌入式终端运行 `Terminal` 节点
 - 在 `Note` 节点中使用 Markdown 预览、交互式 checklist、workspace 文件链接、代码块与公式
+- 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
 - 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -52,21 +53,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.6.0 版本亮点
+## 0.7.0 版本亮点
 
-当前公开的 `0.6.0` 版本聚焦把 `Note` 节点升级为更完整的 Markdown 工作表面，并收紧 Note 安全边界与执行通知回跳语义。
+当前公开的 `0.7.0` 版本聚焦画布模板：让首次打开、常用工作流复用和团队间模板分享都能直接从 Canvas 内完成。
 
-- `Note` 阅读态现在可以展示 Markdown 结构、代码高亮、KaTeX 公式、workspace 文件链接与可交互 checklist；正文权威数据仍是原始 Markdown 文本
-- 点击 checklist 可直接回写 `[ ]` / `[x]`；单击预览可选择和复制，双击正文进入编辑，编辑态提供行号与 `Tab` / `Shift+Tab` 缩进辅助
-- Note 链接与公式渲染默认 fail closed：只允许 `http` / `https` / `mailto` 和当前 workspace 内文件链接，不会把 `command:` 或 malformed math 生成为可激活 DOM
-- 点击 VS Code 工作台通知或支持回调的系统通知后，只把对应执行节点居中，不选中节点，也不清除待处理提醒
-- `Dev Session Canvas Notifier` 的 `通知环境` sidebar 现在提供配置齿轮入口，继续保留自动安装关系、默认 `system` 桥接和 Windows 下使用 `Codex` 时执行节点内历史无法向上翻页的已知限制
+- 首次打开空白画布时会应用默认 `使用说明` 模板，帮助用户直接在 Canvas 中了解基础操作
+- 新增模板侧栏、命令面板入口和画布空白区右键菜单，可应用模板、重置为模板、保存当前画布、导入 / 导出模板和设置默认模板
+- 模板保存静态工作面：节点标题、相对布局、`Note` 内容、连线样式和 `Agent` Provider / 参数会被保留，但运行态、输出、会话和文件活动不会进入模板
+- 自定义模板可保存到当前 workspace 或当前设备；模板 JSON 可导出并分享给其他用户或团队
+- 应用模板时会尽量避开现有节点，并在显式应用或重置后自动追焦到本次新增节点组
+- `Restricted Mode` 与 Provider 校验继续 fail closed：未信任 workspace 下阻止含执行型节点的模板，固定 Provider 不可用时阻止应用
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.5.1` 升级到 `0.6.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.6.x` 更新同样通过 Marketplace 升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.6.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.6.0` 升级到 `0.7.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.7.x` 更新同样通过 Marketplace 升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.7.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -100,7 +102,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.6.x` 修复版本，而非尝试手动降级
+- 优先等待后续 `0.7.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 

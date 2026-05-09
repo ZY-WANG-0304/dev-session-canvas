@@ -2,7 +2,7 @@
   "name": "dev-session-canvas",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "workspaces": [
     "extensions/vscode/dev-session-canvas-notifier",
     "packages/attention-protocol"
@@ -539,7 +539,7 @@
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^3.9.1",
     "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.25.12",
     "typescript": "5.0.4"

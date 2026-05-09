@@ -24,6 +24,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
 - Use Markdown preview, interactive checklists, workspace file links, code blocks, and math inside `Note` nodes
+- Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
@@ -52,21 +53,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.6.0 Highlights
+## 0.7.0 Highlights
 
-The public `0.6.0` release focuses on turning `Note` nodes into a fuller Markdown work surface while tightening Note security boundaries and execution-notification callback semantics.
+The public `0.7.0` release focuses on canvas templates, so first-run onboarding, repeated workflow setup, and team template sharing can happen directly inside the canvas.
 
-- `Note` read mode now renders Markdown structure, code highlighting, KaTeX math, workspace file links, and interactive checklists while keeping raw Markdown text as the authoritative body data
-- Checklist clicks directly write back `[ ]` / `[x]`; single-click preview supports selection and copying, double-click enters editing, and edit mode adds line numbers plus `Tab` / `Shift+Tab` indentation affordances
-- Note link and math rendering fails closed by default: only `http` / `https` / `mailto` and files inside the current workspace are allowed, and `command:` links or malformed math do not become activatable DOM
-- Clicking a VS Code workbench notification or a supported system notification now only centers the target execution node; it does not select the node or clear the pending attention state
-- The `Dev Session Canvas Notifier` `Notification Environment` sidebar now includes a settings gear, while keeping the auto-install relationship, default `system` bridge, and the known Windows limitation where `Codex` history cannot page upward inside embedded sessions
+- Empty first-run canvases now apply the default onboarding template so users can learn core operations inside the canvas itself
+- A new template sidebar, command-palette entries, and empty-canvas context menu let users apply templates, reset to templates, save the current canvas, import / export templates, and choose the default template
+- Templates capture static work surfaces: node titles, relative layout, `Note` content, edge styling, and `Agent` provider / arguments are preserved, while runtime state, output, sessions, and file activity are excluded
+- Custom templates can be saved to the current workspace or current device, and exported as shareable JSON
+- Applying a template avoids existing nodes when possible, then focuses the viewport on the newly created node group after explicit apply or reset actions
+- `Restricted Mode` and provider checks continue to fail closed: untrusted workspaces block templates with execution nodes, and fixed providers must be available before a template can be applied
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.5.1` to `0.6.0` all go through the `Visual Studio Marketplace`; later `0.6.x` updates follow the same Marketplace upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.6.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.6.0` to `0.7.0` all go through the `Visual Studio Marketplace`; later `0.7.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.7.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -102,7 +104,7 @@ The public `0.6.0` release focuses on turning `Note` nodes into a fuller Markdow
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.6.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.7.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
