@@ -126,8 +126,14 @@ try {
   assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('agent', 'win32'), true);
   assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('agent', 'darwin'), true);
   assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'win32'), false);
-  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'darwin'), false);
-  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'linux'), false);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'darwin'), true);
+  assert.equal(shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'linux'), true);
+  assert.equal(
+    shouldResolveShellEnvironmentPatchForExecutionTarget('terminal', 'darwin', {
+      terminalInheritEnv: false
+    }),
+    false
+  );
 
   if (process.platform !== 'win32') {
     const fakeShellPath = path.join(tempDir, 'fake-login-shell');
@@ -136,9 +142,15 @@ try {
       [
         '#!/bin/sh',
         'last=""',
+        'probe_args=""',
         'for arg in "$@"; do',
         '  last="$arg"',
+        '  case "$arg" in',
+        '    *JSON.stringify*) ;;',
+        '    *) probe_args="${probe_args:+$probe_args }$arg" ;;',
+        '  esac',
         'done',
+        'export PROBE_ARGV="$probe_args"',
         'export PATH="/opt/homebrew/bin:/usr/bin"',
         'export CUSTOM_TOOLCHAIN_TOKEN="from-shell"',
         'export NVM_DIR="/Users/example/.nvm"',
@@ -161,7 +173,9 @@ try {
     });
     assert.equal(resolvedPatch.source, 'posix-login-shell');
     assert.equal(resolvedPatch.shellFamily, 'posix');
+    assert.equal(resolvedPatch.probeMode, 'interactive-login');
     assert.equal(resolvedPatch.shellPath, fakeShellPath);
+    assert.equal(resolvedPatch.envPatch.PROBE_ARGV.includes('-i -l -c'), true);
     assert.equal(resolvedPatch.envPatch.CUSTOM_TOOLCHAIN_TOKEN, 'from-shell');
     assert.equal(resolvedPatch.envPatch.NVM_DIR, '/Users/example/.nvm');
     assert.equal('HOME' in resolvedPatch.envPatch, false);
@@ -186,6 +200,19 @@ try {
     assert.equal(relativeResolvedPatch.source, 'posix-login-shell');
     assert.equal(relativeResolvedPatch.shellFamily, 'posix');
     assert.equal(relativeResolvedPatch.envPatch.CUSTOM_TOOLCHAIN_TOKEN, 'from-shell');
+
+    const loginOnlyResolvedPatch = await resolveShellEnvironmentPatch({
+      env: posixBaseEnv,
+      platform: 'darwin',
+      shellPath: fakeShellPath,
+      processExecPath: process.execPath,
+      probeMode: 'login',
+      timeoutMs: 2000
+    });
+    assert.equal(loginOnlyResolvedPatch.source, 'posix-login-shell');
+    assert.equal(loginOnlyResolvedPatch.probeMode, 'login');
+    assert.equal(loginOnlyResolvedPatch.envPatch.PROBE_ARGV.includes('-l -c'), true);
+    assert.equal(loginOnlyResolvedPatch.envPatch.PROBE_ARGV.includes('-i'), false);
 
     const fakePowerShellPath = path.join(tempDir, 'pwsh');
     await writeFile(

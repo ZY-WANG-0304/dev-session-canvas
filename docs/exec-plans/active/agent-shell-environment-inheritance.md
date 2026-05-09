@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-完成后，三端桌面宿主都应有一条明确、可诊断的 `Agent` execution env 继承路线。macOS / Linux 继续沿用“登录 shell -> 受控 patch -> execution env”的现有收口，并在用户显式选择 `pwsh` / `powershell` 时改走 PowerShell 专用 probe，而不是误用 POSIX `-i -l -c` 命令串；Windows 则补上一条等价但不伪装成 POSIX 登录 shell 的路线：宿主基于当前配置/默认 Terminal shell 解析出受控环境增量，把它用于 `Agent` resolver 与 `Agent` spawn。嵌入式 `Terminal` 在所有平台都保留 base env，让真实 shell 自己执行 profile / rc / AutoRun 一次，不把离线 probe 已经执行过的 shell 启动副作用再预注入。用户可以直接观察到：插件里的 `codex`、`node`、`pnpm`、`volta` 等工具链命令不再出现“resolver 能找到入口脚本，但子进程里解释器缺失”的分叉失败，`Terminal` 也不会再把 shell 启动副作用重复应用两次，且 host diagnostics 会明确记录当前实际使用了哪条 shell env 路线。
+完成后，三端桌面宿主都应有一条明确、可诊断的 execution env 继承路线，并把 `Agent` 与用户可见的嵌入式 `Terminal` 分成不同目标处理。`Agent` 继续使用本仓库更严格的“当前 Terminal shell authority -> 受控 patch -> resolver 与 spawn 共用 env”路线：macOS / Linux 使用 POSIX 登录 shell 或非 Windows PowerShell probe，Windows 使用当前配置/默认 Terminal shell 的 PowerShell、`cmd.exe` 或 POSIX family probe。嵌入式 `Terminal` 则对齐 VS Code 原生 Terminal 的跨平台取舍：Windows 不预应用 shell env patch，让真实 shell 自己执行 profile / AutoRun；macOS / Linux 默认继承受控 shell env patch，避免 GUI 启动 VS Code 时丢失只存在于 login startup 文件里的 Homebrew、NVM、PATH 或工具链变量，同时提供 `devSessionCanvas.terminal.inheritEnv` 作为 opt-out。中期还要补 `devSessionCanvas.terminal.shellArgs`，让 shell 的 `path + args` 由配置表达，而不是把 env 继承和是否 login shell 启动硬绑在一起。后续优化在 POSIX `Terminal` 上使用 login-only probe，尽量只预取 login startup 文件里的环境，让真实交互 shell 自己执行 rc 一次；这个优化不会替代配置开关，因为用户 profile 手动 source rc 时仍可能重复。用户可以直接观察到：`Agent` 和 `Terminal` 节点在 POSIX GUI 启动场景下都能看到 shell 工具链变量，Windows Terminal 不再双重应用 profile / AutoRun，且 host diagnostics 能说明当前使用的 shell env 继承策略与 probe 模式。
 
 ## 进度
 
@@ -28,6 +28,11 @@
 - [x] (2026-05-08 23:10 +0800) 根据 review 修复非 Windows PowerShell env probe：`pwsh` / `powershell` 不再落入 POSIX `-i -l -c` 分支，并新增脚本级回归。
 - [x] (2026-05-08 23:20 +0800) 根据 review 收口 Agent CLI 缓存 workspace 语义：缓存改为 Extension Host 进程内状态，所有命令的 cache key 都绑定规范化 workspace `cwd`，并在 workspace root 变化时失效。
 - [x] (2026-05-09) 根据 review 将 `Terminal` target 的 shell env patch 保护扩展到所有平台，避免 macOS / Linux 的登录/交互 shell probe 与真实 Terminal 启动双重执行 rc/profile。
+- [x] (2026-05-09 18:10 +0800) 复盘 VS Code 原生 Terminal 行为，确认应采用混合方案：`Agent` 保留受控 patch 与 Windows-aware 设计，POSIX `Terminal` 默认继承 shell env，Windows `Terminal` 继续跳过。
+- [x] (2026-05-09 18:36 +0800) 实现短期修复：`Terminal` env inheritance 改为平台感知，并新增 `devSessionCanvas.terminal.inheritEnv` 作为 POSIX opt-out。
+- [x] (2026-05-09 18:42 +0800) 实现中期基础能力：新增 `devSessionCanvas.terminal.shellArgs` 并让本地 PTY 与 runtime supervisor 共用 `path + args + env` launch spec。
+- [x] (2026-05-09 18:47 +0800) 实现后续优化的第一步：POSIX `Terminal` 使用独立的 login-only probe cache，尽量降低 rc/profile 双重应用风险，同时保留显式配置开关。
+- [x] (2026-05-09 18:55 +0800) 补齐自动化测试、类型检查、构建验证，并把验证证据写回本计划与正式设计文档。
 
 ## 意外与发现
 
@@ -76,6 +81,12 @@
 - 观察：非 Windows `Terminal` 如果沿用 shell-derived execution env，POSIX `-i -l -c` probe 或 PowerShell profile probe 会先执行一次 rc/profile；随后真实 `Terminal` 又以 `args: []` 启动同一个交互 shell，常见的 `PATH="$HOME/.local/bin:$PATH"`、工具链 hook 或计数型变量会被稳定应用两次。
   证据：修复前 `shouldResolveShellEnvironmentPatchForExecutionTarget(...)` 只跳过 Windows `Terminal`，因此 macOS / Linux `resolveExecutionEnvironment('terminal')` 会预应用 patch；用 fake shell 复现时，probe 后 `CUSTOM_RC_COUNT=1`，再用 patched env 启动真实 shell 会输出 `CUSTOM_RC_COUNT=2`，`PATH` 中同一个 rc 目录也被重复前置。
 
+- 观察：VS Code 原生 Terminal 没有把“避免 profile/rc 重复执行”放在“POSIX GUI 启动时工具链变量可用”之前；它默认让 Terminal 继承可能来自 login shell 的 shell environment，并用 `terminal.integrated.inheritEnv=false` 或 profile args 调整作为 opt-out。
+  证据：2026-05-09 调研 VS Code 主线源码时，`terminal.integrated.inheritEnv` 默认值为 `true`，描述明确写出这份环境可能来自 login shell、用于初始化 `$PATH` 与开发变量，且对 Windows 无效；`TerminalProcessManager._resolveEnvironment(...)` 在 `useShellEnvironment=true` 时使用 backend shell environment 作为 base env。
+
+- 观察：仅把 POSIX `Terminal` 改成真正 login shell 启动并不是 VS Code 的完整方案，也不适合作为本仓库唯一修复；VS Code 把 env inheritance 和 profile args 拆成两层。
+  证据：VS Code `terminalProfileResolverService` 会先把 `useShellEnvironment` 绑定到 `terminal.integrated.inheritEnv`，再由 profile 的 `path + args` 决定 shell 启动参数；其 macOS fallback 会给 zsh/bash `--login`，Linux fallback 仍是 `args=[]`。
+
 - 观察：2026-05-08 本机 `npm run test:smoke` 的 `SIGABRT` 不是由这次 shell authority cache 修复直接触发；在同一台 macOS 机器上，哪怕去掉 extension test、只直接启动 VS Code 主进程，也会在创建日志目录前就被 LaunchServices / AppKit 路径上的 `RegisterApplication` 中止。
   证据：同日 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 仍稳定 `SIGABRT` 且 `artifacts/` 为空；随后最小命令 `env -u ELECTRON_RUN_AS_NODE /Applications/Visual Studio Code.app/Contents/MacOS/Code ...` 也独立返回 134，并在 `~/Library/Logs/DiagnosticReports/Code-2026-05-08-164522.ips` 中留下 `EXC_CRASH (SIGABRT)`，主线程栈顶为 `___RegisterApplication_block_invoke` / `NSApplication sharedApplication`。
 
@@ -93,9 +104,17 @@
   理由：Windows 没有与 POSIX 完全等价的登录 shell 语义；直接基于当前 Terminal shell 解析 PowerShell / cmd / POSIX family shell 的环境快照，更贴近用户真实在插件里选择的执行上下文，也能在 shell 设置变化时给出可诊断的刷新点。
   日期/作者：2026-05-07 / Codex
 
-- 决策：shell env patch 只预应用到 `Agent` 侧 execution env；所有平台的 `Terminal` launch 都保留 base env，让真实 shell 自己执行 profile / rc / AutoRun 一次。
-  理由：`Terminal` 节点启动的本来就是用户选中的 shell；如果先 probe 再注入 patch，会把 profile / rc / AutoRun 的 PATH 前置、PATHEXT 前置与工具链变量注入重放两遍，偏离“用户正常打开一次 shell”的结果。Windows 已暴露这类问题，macOS / Linux 的 POSIX rc/profile 和非 Windows PowerShell profile 也同样有确定性双重应用风险。
-  日期/作者：2026-05-08、2026-05-09 / Codex
+- 决策：采用混合方案，而不是继续把 `Terminal` shell env patch 全平台关闭。`Agent` 继续使用本仓库的受控 patch、Windows-aware probe、结构化 spawn 与 shell/workspace 绑定 cache；`Terminal` 则对齐 VS Code 原生跨平台语义：Windows 跳过 shell env patch，POSIX 默认继承 shell env，并提供 opt-out。
+  理由：`Agent` 不是用户交互 shell，必须避免整份 shell env 无边界覆盖并在 Windows 上主动读取当前 shell authority；但用户可见 `Terminal` 的默认行为应优先保证 macOS / Linux GUI 启动时仍能拿到 login startup 文件中的 PATH、Homebrew、NVM 与工具链变量。重复 PATH / rc 副作用是真实 trade-off，应通过配置与 profile args 管理，而不是牺牲 POSIX Terminal 工具链可用性。
+  日期/作者：2026-05-09 / Codex
+
+- 决策：新增 `devSessionCanvas.terminal.inheritEnv` 与 `devSessionCanvas.terminal.shellArgs`，分别表达“Terminal 是否继承 shell environment”和“Terminal shell 以哪些 argv 启动”。
+  理由：这复用 VS Code 原生 Terminal 的关键分层：env inheritance 决定 base env，profile args 决定 shell 启动形态。短期用 `inheritEnv` 修复 POSIX login-only env 丢失；中期用 `shellArgs` 支持用户显式 `-l`、`--login` 或清空参数，而不是继续让 `CanvasPanelManager.buildTerminalLaunchSpec(...)` 固定 `args: []`。
+  日期/作者：2026-05-09 / Codex
+
+- 决策：POSIX `Terminal` 的 shell env patch 使用独立 login-only probe cache，`Agent` 继续使用 interactive-login probe cache；Windows `Terminal` 不使用这两者。
+  理由：`Agent` 需要尽可能贴近用户完整开发 shell environment；`Terminal` 启动后还会运行真实交互 shell 自己的 rc，所以先预应用 login-only patch 可以覆盖 GUI 启动缺失的 login startup 变量，同时减少 `.zshrc` / `.bashrc` 被离线 probe 与真实 shell 双重执行的概率。这个优化不能消除 profile 手动 source rc 的重复风险，因此仍需要 `inheritEnv` opt-out 与 `shellArgs` 显式控制。
+  日期/作者：2026-05-09 / Codex
 
 - 决策：相对 `terminal.shellPath` 的 env probe 必须与配置检查共享同一套 workspace `cwd` 解析基准。
   理由：只有让 `terminalShellConfiguration` 的可用性校验和 `shellEnvironmentResolver` 的真实 probe 对齐，才能避免 UI 认定可用、probe 却因 `ENOENT` 静默回退到未补丁环境的分叉。
@@ -125,12 +144,12 @@
 
 - 已完成：`src/panel/shellEnvironmentResolver.ts` 现在已经同时支持桌面 shell env 继承主路径：macOS / Linux 的 POSIX 登录 shell、非 Windows `pwsh` / `powershell` 的 PowerShell probe、Windows PowerShell / cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell。它会统一产出受控 env patch，并在 Windows 上处理 `PATH` / `PATHEXT` 与环境变量大小写不敏感问题。
 - 已完成：host diagnostics 现在会显式记录 shell env patch 来源、`shellFamily`、skip reason、shell 路径、应用到的 key 和错误摘要，后续排查 GUI 环境缺工具链时不再只能靠截图倒推。
-- 已完成：`CanvasPanelManager` 现在会把 shell env patch 显式绑定到当前配置/默认 Terminal shell，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时刷新缓存；其中 `Agent` resolver、`Agent` spawn 与 runtime supervisor createSession 继续共用同一份 execution env，而所有平台的 `Terminal` launch 都显式保留 base env，避免 profile / rc / AutoRun 被预执行后再重放一次。
+- 已完成：`CanvasPanelManager` 现在会把 shell env patch 显式绑定到当前配置/默认 Terminal shell，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时刷新缓存；其中 `Agent` resolver、`Agent` spawn 与 runtime supervisor createSession 继续共用同一份 execution env。`Terminal` env inheritance 已改为平台感知：Windows 保留 base env，POSIX 默认继承 login-only shell env patch，并可通过 `devSessionCanvas.terminal.inheritEnv=false` 关闭。
 - 已完成：`resolveShellEnvironmentPatch(...)` 现在会接收并透传 workspace `cwd`；相对 `terminal.shellPath` 的 env probe 与 `terminalShellConfiguration` 的配置检查已共享同一套解析基准，不再因为 `spawn` 端漏传 `cwd` 而稳定 `ENOENT`。
 - 已完成：`applyShellEnvironmentPatch(...)` 现在只会把显式声明要保优先级的 base `PATH` 目录继续前置；其余 host-only 目录都会追加在 shell `PATH` 之后。macOS / Linux 与 Windows 回归已同步覆盖“shell 主体顺序优先 + test harness 目录仍可保前置”的组合语义。
 - 已完成：Agent CLI 解析缓存现在只存在于当前 Extension Host 生命周期内，并会把当前 Terminal shell authority 与规范化 workspace `cwd` 一起编入 cache key；同一 requested command 在不同 shell authority 或不同 workspace 下不再共享旧绝对路径，workspace root 变化时也会同步清空缓存与 shell env patch。
 - 已完成：`devSessionCanvas.__test.resetState` 现在会显式清空 Agent CLI 解析缓存；Windows real smoke 也新增 `resolutionSource` 必须存在且不得为 `cache` 的断言，避免多场景循环时把旧绝对路径命中误当成新的 shell 证据。
-- 已完成：正式设计文档和自动化验证已同步更新；本轮 `npm run test:shell-environment-resolver`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build`、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 已通过。其中 shell resolver 新增覆盖非 Windows `pwsh` / `powershell` 不再落入 POSIX probe，以及所有平台 `Terminal` target 都跳过预应用 patch 的回归，smoke 脚本断言也已改为要求裸命令名 cache key 按 workspace `cwd` 隔离。上一轮 Windows real smoke 已覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 七类场景。
+- 已完成：正式设计文档和自动化验证已同步更新；本轮 `node scripts/test-shell-environment-resolver.mjs`、`node scripts/test-terminal-shell-configuration.mjs`、`npm run test:agent-cli-resolver`、`npm run typecheck`、`npm run build`、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 已通过。其中 shell resolver 新增覆盖非 Windows `pwsh` / `powershell` 不再落入 POSIX probe、`Terminal` target 平台感知继承、POSIX login-only probe 与 inheritEnv opt-out；terminal shell 配置回归新增覆盖 `shellArgs` 规范化。上一轮 Windows real smoke 已覆盖默认 `codex`、显式 `codex.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 七类场景。
 - 剩余：Windows 自定义 shell 的真实 smoke 缺口已继续收窄到更少见的 Windows POSIX family shell 名称，例如 `zsh`、`fish`，或用户通过显式 `shellPath` 接入的非常规 shell；它们仍共享同一条 POSIX 解析分支，但当前仓库还没有同等级真实 smoke 证据。
 
 ## 上下文与定向
@@ -149,7 +168,7 @@
 
 ## 工作计划
 
-现状已经完成 POSIX 与 Windows 路线，本轮继续收口 review 指出的三条主路径回归。第一，`src/panel/shellEnvironmentResolver.ts` 必须先按 `shellFamily` 分流，保证非 Windows 的 `pwsh` / `powershell` 走 PowerShell probe，而不是被平台判断抢先送进 POSIX `-i -l -c` 分支。第二，`src/panel/CanvasPanelManager.ts` 的 Agent CLI 解析缓存必须与 execution env authority 对齐：缓存只存在于当前 Extension Host 生命周期内，key 同时绑定 Terminal shell authority 与 workspace `cwd`，并在 shell 或 workspace root 变化时失效。第三，`Terminal` launch 在所有平台都不能预应用已经包含 rc/profile 副作用的 shell env patch。随后补脚本 / smoke 回归、正式设计文档和本计划记录。
+现状已经完成 POSIX 与 Windows 的 Agent execution env 路线，本轮继续按混合方案收口 Terminal 侧语义。第一，`src/panel/shellEnvironmentResolver.ts` 必须保留 Agent 的 interactive-login probe，并新增 POSIX Terminal 专用 login-only probe mode，避免把后续真实交互 shell 自己会执行的 rc 尽量重复离线执行。第二，`src/panel/CanvasPanelManager.ts` 的 `resolveExecutionEnvironment(...)` 必须按 target、platform 与 `devSessionCanvas.terminal.inheritEnv` 做平台感知 gating：Agent 始终使用 shell env patch，Windows Terminal 始终跳过，POSIX Terminal 默认继承。第三，`Terminal` launch spec 必须从配置读取 `devSessionCanvas.terminal.shellArgs`，让 shell 启动参数与 env inheritance 分层表达。随后补脚本回归、正式设计文档和本计划记录。
 
 ## 具体步骤
 
@@ -161,14 +180,16 @@
 2. 修改 `src/panel/CanvasPanelManager.ts`：
    - 让 shell env patch 解析显式依赖当前配置/默认 Terminal shell；
    - 在 Terminal shell 配置或 VS Code 默认 shell 变化时使缓存失效；
-   - 保持 `resolveAgentCli(...)`、`buildAgentLaunchSpec(...)` 与 runtime supervisor 继续共用同一份 agent execution env，同时让所有平台的 `Terminal` launch 跳过预应用 patch。
+   - 保持 `resolveAgentCli(...)`、`buildAgentLaunchSpec(...)` 与 runtime supervisor 继续共用同一份 agent execution env，同时让 Windows `Terminal` 跳过预应用 patch、POSIX `Terminal` 默认继承 login-only patch。
 3. 必要时调整 `src/panel/agentCliResolver.ts`，确保 Windows 上对 `PATH` / `PATHEXT` 的读取能和新 execution env 对齐，而不是依赖大小写巧合。
 4. 新增脚本级回归，至少覆盖：
    - Windows shell env patch 会保留 `PATH` 外的工具链变量；
    - `USERPROFILE` / `HOME` / `PROMPT` / `TERM` 等禁用变量不会被 patch 覆盖；
    - Windows `PATH` 合并不会吃掉 host 额外前置的测试目录；
    - `VSCODE_CLI=1` 会继续跳过 shell env 解析；
-   - 所有平台的 `Terminal` launch 不会先离线执行一次 profile / rc / AutoRun 再启动真实 shell；
+   - `Terminal` target 的 shell env patch gating 平台感知：Windows 跳过，POSIX 默认开启，POSIX opt-out 可关闭；
+   - POSIX `Terminal` 使用 login-only probe，而 `Agent` 继续使用 interactive-login probe；
+   - `devSessionCanvas.terminal.shellArgs` 会进入 Terminal launch spec；
    - 相对 `terminal.shellPath` 的 env probe 与配置检查共享 workspace `cwd`；
    - 非 Windows `pwsh` / `powershell` 会走 PowerShell probe，而不是 POSIX `-i -l -c` 分支；
    - Agent CLI cache key 对裸命令名也按 workspace `cwd` 隔离，且缓存不再跨窗口持久化；
@@ -183,7 +204,7 @@
 - 在 Windows 环境运行 `npm run test:agent-cli-resolver`，预期通过。
 - 如果当前机器具备真实 `Codex`、VS Code、Git Bash 与 MSYS2，可运行 `npm run test:smoke:windows-real-codex`，预期同时证明默认 `codex` / 显式 `.cmd`、`powershell`、`cmd`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh` 场景下的 `Agent` 路线都能按当前 Terminal shell 对齐环境并渲染出真实终端输出。
 - 如实现中新增或调整现有脚本，再补 `git diff --check`，预期无 whitespace / conflict 类问题。
-- 验收时至少应能明确说明：所有平台上 `Agent` launch env 与 resolver 共享同一份 shell-derived patch；所有平台的 `Terminal` launch 保留 base env，让真实 shell 自己执行 profile / rc / AutoRun 一次。若 Windows 仍有剩余边界，必须把它收窄到具体 shell / 具体验证缺口，而不是继续笼统写成“整条路线未实现”。
+- 验收时至少应能明确说明：所有平台上 `Agent` launch env 与 resolver 共享同一份 shell-derived patch；Windows `Terminal` launch 保留 base env，让真实 shell 自己执行 profile / AutoRun 一次；POSIX `Terminal` 默认继承受控 shell env，并可通过 `devSessionCanvas.terminal.inheritEnv=false` 关闭。若 Windows 仍有剩余边界，必须把它收窄到具体 shell / 具体验证缺口，而不是继续笼统写成“整条路线未实现”。
 
 ## 幂等性与恢复
 
@@ -209,8 +230,9 @@
 - 2026-05-08：`git diff --check` 通过。
 - 2026-05-08 23:22 +0800：`npm run test:shell-environment-resolver` 通过；新增非 Windows `pwsh` fake probe，证明 PowerShell family 不再落入 POSIX `-i -l -c` 分支。
 - 2026-05-08 23:30 +0800：`npm run typecheck`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`（当前非 Windows 环境跳过 Windows 专项断言）、`node -c tests/vscode-smoke/extension-tests.cjs`、`npm run build` 与 `git diff --check` 通过；`tests/vscode-smoke/extension-tests.cjs` 现已要求裸命令名 cache key 按 workspace `cwd` 隔离。
-- 2026-05-09：`npm run test:shell-environment-resolver` 通过；新增所有平台 `Terminal` target 跳过 shell env patch 的断言，防止 POSIX rc/profile 或非 Windows PowerShell profile 被离线 probe 与真实 Terminal 启动重复应用。
+- 2026-05-09：`npm run test:shell-environment-resolver` 通过；当时新增所有平台 `Terminal` target 跳过 shell env patch 的断言，用于防止 POSIX rc/profile 或非 Windows PowerShell profile 被离线 probe 与真实 Terminal 启动重复应用。随后同日复盘 VS Code 原生 Terminal 后，本计划已改为平台感知混合方案，并由后续证据覆盖新的 POSIX 默认继承口径。
 - 2026-05-09：`npm run typecheck`、`npm run test:terminal-shell-configuration`、`npm run test:agent-cli-resolver`（当前非 Windows 环境跳过 Windows 专项断言）、`npm run build`、`node -c tests/vscode-smoke/windows-real-codex-smoke.cjs`、`node -c tests/vscode-smoke/extension-tests.cjs`、`node -c scripts/test-shell-environment-resolver.mjs` 与 `git diff --check` 通过。
+- 2026-05-09 18:55 +0800：`node scripts/test-shell-environment-resolver.mjs`、`node scripts/test-terminal-shell-configuration.mjs`、`npm run typecheck`、`npm run build`、`npm run test:agent-cli-resolver`（当前非 Windows 环境跳过 Windows 专项断言）、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；新增覆盖 POSIX `Terminal` 默认继承、inheritEnv opt-out、login-only probe mode，以及 Terminal shell args 规范化。
 
 ## 接口与依赖
 
@@ -222,10 +244,12 @@
 - patch 中实际生效了哪些 key
 - 如果有错误，错误摘要是什么
 
-`CanvasPanelManager` 最终必须持有一条“已解析 execution env”的统一入口，使 `Agent` 的 resolver、`Agent` 的 spawn 与 runtime supervisor createSession 可以共用它，同时允许所有平台的 `Terminal` launch 显式跳过预应用 patch，而不是各自再读取一遍 `process.env` 或把 shell 启动副作用重复执行两次。
+`CanvasPanelManager` 最终必须持有一条“已解析 execution env”的统一入口，使 `Agent` 的 resolver、`Agent` 的 spawn 与 runtime supervisor createSession 可以共用它，同时让 `Terminal` 按平台和配置选择 base env：Windows 跳过预应用 patch，POSIX 默认继承 login-only shell env patch，`devSessionCanvas.terminal.inheritEnv=false` 时回退 base env。Terminal launch spec 还必须包含 `devSessionCanvas.terminal.shellArgs` 提供的 argv，避免继续固定 `args: []`。
 
 本次更新说明：2026-05-07 新建本计划，先完成 macOS / Linux shell env 继承，再于 2026-05-08 借助本机已安装的 MSYS2 继续收口 Windows 路线，并在 review 轮次中补上“`Terminal` 不预应用 shell env patch”与“相对 `terminal.shellPath` probe 复用 workspace `cwd`”两条收口；当前计划已把技术债从“Windows 整条路线未实现”收窄为“少量更少见的 Windows POSIX family shell 名称仍缺真实 smoke 覆盖”。
 
 本次更新说明：2026-05-08 根据 review 继续收口两条确定性问题：非 Windows PowerShell shell env probe 改走 PowerShell 专用分支，Agent CLI cache 改为进程内且按 workspace `cwd` 隔离，避免跨 repo / 跨窗口复用旧绝对路径。
 
-本次更新说明：2026-05-09 根据 review 将 `Terminal` launch 的 target gating 扩展到所有平台，避免 macOS / Linux POSIX rc/profile 或非 Windows PowerShell profile 在离线 probe 和真实交互 shell 启动中被重复应用；`Agent` 仍继续复用 shell-derived execution env。
+本次更新说明：2026-05-09 根据 review 曾将 `Terminal` launch 的 target gating 扩展到所有平台，以避免 macOS / Linux POSIX rc/profile 或非 Windows PowerShell profile 在离线 probe 和真实交互 shell 启动中被重复应用；随后复盘 VS Code 原生 Terminal 后，本计划已用平台感知混合方案替代这条过宽结论。
+
+本次更新说明：2026-05-09 复盘 VS Code 原生 Terminal 后改为混合方案；本轮已实现 POSIX Terminal 默认继承 shell env、Windows Terminal 继续跳过、`devSessionCanvas.terminal.inheritEnv` opt-out、`devSessionCanvas.terminal.shellArgs` profile args 基础能力，以及 POSIX Terminal login-only probe cache，避免继续把“所有平台 Terminal raw base env”写成正式结论。

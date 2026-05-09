@@ -41,6 +41,7 @@ const EXCLUDED_SHELL_ENV_PREFIXES = ['BASH_FUNC_', 'ELECTRON_', 'VSCODE_', 'XPC_
 export type ShellEnvironmentPatchSource = 'none' | 'posix-login-shell' | 'powershell' | 'windows-shell';
 export type ShellEnvironmentPatchFamily = 'cmd' | 'posix' | 'powershell' | 'unsupported';
 export type ShellEnvironmentPatchTarget = 'agent' | 'terminal';
+export type ShellEnvironmentProbeMode = 'interactive-login' | 'login';
 export type ShellEnvironmentPatchSkipReason =
   | 'launched-from-cli'
   | 'shell-not-found'
@@ -52,6 +53,7 @@ export interface ResolvedShellEnvironmentPatch {
   source: ShellEnvironmentPatchSource;
   shellPath?: string;
   shellFamily?: ShellEnvironmentPatchFamily;
+  probeMode: ShellEnvironmentProbeMode;
   appliedKeys: string[];
   skippedReason?: ShellEnvironmentPatchSkipReason;
   error?: string;
@@ -64,6 +66,7 @@ export interface ResolveShellEnvironmentPatchOptions {
   platform?: NodeJS.Platform;
   shellPath?: string;
   timeoutMs?: number;
+  probeMode?: ShellEnvironmentProbeMode;
 }
 
 export interface ApplyShellEnvironmentPatchOptions {
@@ -83,15 +86,16 @@ export async function resolveShellEnvironmentPatch(
   options: ResolveShellEnvironmentPatchOptions
 ): Promise<ResolvedShellEnvironmentPatch> {
   const platform = options.platform ?? process.platform;
+  const probeMode = options.probeMode ?? 'interactive-login';
   if (options.env.VSCODE_CLI === '1') {
-    return emptyShellEnvironmentPatch('launched-from-cli');
+    return emptyShellEnvironmentPatch('launched-from-cli', probeMode);
   }
 
   const shellPath =
     options.shellPath?.trim() ||
     (platform === 'win32' ? await resolveWindowsShellPath(options.env) : await resolvePosixShellPath(options.env));
   if (!shellPath) {
-    return emptyShellEnvironmentPatch('shell-not-found');
+    return emptyShellEnvironmentPatch('shell-not-found', probeMode);
   }
 
   const shellFamily = detectShellFamily(shellPath, platform);
@@ -103,7 +107,8 @@ export async function resolveShellEnvironmentPatch(
       processExecPath: options.processExecPath ?? process.execPath,
       shellPath,
       timeoutMs: options.timeoutMs ?? SHELL_ENV_TIMEOUT_MS,
-      shellFamily
+      shellFamily,
+      probeMode
     });
     const envPatch = buildControlledShellEnvironmentPatch(options.env, shellEnv, platform);
     const appliedKeys = Object.keys(envPatch).sort((left, right) => left.localeCompare(right));
@@ -112,12 +117,14 @@ export async function resolveShellEnvironmentPatch(
       source: resolveShellEnvironmentPatchSource(platform, shellFamily),
       shellPath,
       shellFamily,
+      probeMode,
       appliedKeys
     };
   } catch (error) {
     return {
       ...emptyShellEnvironmentPatch(
-        error instanceof UnsupportedShellEnvironmentResolverError ? 'shell-not-supported' : 'shell-resolution-failed'
+        error instanceof UnsupportedShellEnvironmentResolverError ? 'shell-not-supported' : 'shell-resolution-failed',
+        probeMode
       ),
       shellPath,
       shellFamily,
@@ -126,8 +133,20 @@ export async function resolveShellEnvironmentPatch(
   }
 }
 
-export function shouldResolveShellEnvironmentPatchForExecutionTarget(target: ShellEnvironmentPatchTarget): boolean {
-  return target === 'agent';
+export function shouldResolveShellEnvironmentPatchForExecutionTarget(
+  target: ShellEnvironmentPatchTarget,
+  platform: NodeJS.Platform = process.platform,
+  options: { terminalInheritEnv?: boolean } = {}
+): boolean {
+  if (target === 'agent') {
+    return true;
+  }
+
+  if (platform === 'win32') {
+    return false;
+  }
+
+  return options.terminalInheritEnv !== false;
 }
 
 export function buildControlledShellEnvironmentPatch(
@@ -252,6 +271,7 @@ async function resolveShellEnvironment(options: {
   shellPath: string;
   timeoutMs: number;
   shellFamily: ShellEnvironmentPatchFamily;
+  probeMode: ShellEnvironmentProbeMode;
 }): Promise<NodeJS.ProcessEnv> {
   const shellFamily = options.shellFamily;
   if (shellFamily === 'powershell') {
@@ -353,11 +373,17 @@ async function resolvePosixShellEnvironment(options: {
   processExecPath: string;
   shellPath: string;
   timeoutMs: number;
+  probeMode: ShellEnvironmentProbeMode;
 }): Promise<NodeJS.ProcessEnv> {
   const mark = randomUUID().replace(/-/g, '').slice(0, 12);
   const shellName = path.basename(options.shellPath).toLowerCase();
   const shellCommand = `'${escapePosixSingleQuoted(options.processExecPath)}' -p '"${mark}" + JSON.stringify(process.env) + "${mark}"'`;
-  const shellArgs = shellName === 'tcsh' || shellName === 'csh' ? ['-ic', shellCommand] : ['-i', '-l', '-c', shellCommand];
+  const shellArgs =
+    shellName === 'tcsh' || shellName === 'csh'
+      ? ['-ic', shellCommand]
+      : options.probeMode === 'login'
+        ? ['-l', '-c', shellCommand]
+        : ['-i', '-l', '-c', shellCommand];
   const capture = await spawnAndCapture({
     file: options.shellPath,
     args: shellArgs,
@@ -526,10 +552,14 @@ async function spawnAndCapture(options: {
   });
 }
 
-function emptyShellEnvironmentPatch(skipReason: ShellEnvironmentPatchSkipReason): ResolvedShellEnvironmentPatch {
+function emptyShellEnvironmentPatch(
+  skipReason: ShellEnvironmentPatchSkipReason,
+  probeMode: ShellEnvironmentProbeMode = 'interactive-login'
+): ResolvedShellEnvironmentPatch {
   return {
     envPatch: {},
     source: 'none',
+    probeMode,
     appliedKeys: [],
     skippedReason: skipReason
   };

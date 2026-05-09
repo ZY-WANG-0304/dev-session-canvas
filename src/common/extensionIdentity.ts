@@ -98,6 +98,8 @@ export const CONFIG_KEYS = {
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
   terminalShell: 'devSessionCanvas.terminal.shell',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
+  terminalInheritEnv: 'devSessionCanvas.terminal.inheritEnv',
+  terminalShellArgs: 'devSessionCanvas.terminal.shellArgs',
   filesFeatureEnabled: 'devSessionCanvas.files.enabled',
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
   fileNodeDisplayStyle: 'devSessionCanvas.fileNode.displayStyle',
