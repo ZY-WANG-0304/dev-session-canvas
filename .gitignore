@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .vscode-test/
+.vscode-test-*/
+.vscode-test-manual-*/
 *.vsix
 .debug/
 .codex
@@ -10,3 +12,5 @@ test-results/
 .vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json
+core
+core.*

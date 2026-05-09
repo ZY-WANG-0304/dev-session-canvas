@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.6.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.7.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![DevSessionCanvas 动态演示](images/marketplace/canvas-overview.gif)
 
@@ -21,6 +21,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - `Note` 轻量辅助协作对象
 - 基于 React Flow 的基础画布交互与布局
 - `Note` Markdown 预览、交互式 checklist、workspace 文件链接与编辑态行号 / 缩进辅助
+- 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏与重置入口
 - `Restricted Mode` 下的有限能力声明
 - 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
 - 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -35,7 +36,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 运行前提
 
-- VS Code `1.85.0` 或更高版本
+- VS Code `1.80.0` 或更高版本
 - 标准文件系统工作区（本地磁盘或 `Remote SSH` workspace）
 - 对应的 CLI 运行环境：
   - `Agent` 节点依赖 `codex` 或 `claude`
@@ -45,7 +46,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.6.0` 收口 `Note` Markdown 预览、交互式 checklist、安全链接 / 公式渲染、通知回跳语义与版本发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.7.0` 收口画布模板、默认自举模板、自定义模板管理、模板应用 / 重置体验与版本发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -67,7 +68,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 对外分发目标是通过 `Visual Studio Marketplace` 发布。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.6.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
+- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.7.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
 - `Open VSX` 不是本次 `Preview` 的首发路径
 
 ## 桌面通知 companion（自动安装）
@@ -105,6 +106,7 @@ npm run build
 - 公开 `Preview` 的分发主路径已收口到 `Visual Studio Marketplace`，但 release-day 仍需手工执行与复核。
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
 - `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑。
+- 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、文件活动、缩略图、云同步或模板历史。
 - 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的 `Codex` / `Claude Code` 记录；缺少工作目录信息的旧会话会被保守跳过。
 - 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。
 

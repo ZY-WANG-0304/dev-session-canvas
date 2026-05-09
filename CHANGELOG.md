@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.7.0 - Preview Canvas Templates Update
+
+相对 `0.6.0`，`0.7.0` 主要把画布模板纳入公开 `Preview` 主路径：首次打开不再只是空白画布，用户可以通过内置模板、自定义模板和默认模板快速复用一组 `Agent` / `Terminal` / `Note` 工作面。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 新增画布模板能力：模板可以保存节点标题、相对位置、尺寸、`Note` 内容、连线样式与 `Agent` Provider / 参数；不会保存运行时输出、会话、文件活动或自动启动状态
+- 新增 2 个内置模板：`使用说明` 作为默认自举模板，`示例模板` 提供基础 `Agent` + `Terminal` + `Note` 协作布局
+- 新增侧栏 `模板` 列表、命令面板入口与画布空白区右键菜单，可应用模板、重置为模板、保存当前画布、导入 / 导出模板、设置默认模板与删除用户模板
+- 支持用户模板保存到当前 workspace 或当前设备，并支持递归读取模板子目录；导入模板复用表单式确认流程，导出模板可直接生成可分享 JSON
+- 优化模板应用体验：追加模板时会避开现有节点，显式应用或重置后自动追焦到本次新增节点组；重置类入口会复用宿主确认流程
+- 收紧模板边界：未信任 workspace 下阻止含 `Agent` / `Terminal` 的模板，固定 Provider 不可用时阻止应用；删除当前默认用户模板后自动回退到 `使用说明`
+- 将主扩展与 notifier 的最低 VS Code 版本要求调整为 `1.80.0`，并把 VS Code API 类型校验锁定到 `@types/vscode@1.80.0`
+- 补齐侧栏常用操作中的 `重置画板` 与 `清空画板` 语义，并升级打包依赖以完成当前 `npm audit` 修复
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 首次打开画布可先阅读默认 `使用说明` 模板，再通过侧栏 `模板` 尝试 `示例模板`
+- 对可复用协作布局，优先用 `保存当前画布为模板` 固化静态工作面，再通过 workspace 或当前设备模板库复用
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- 未信任 workspace 下只能应用不含执行型节点的模板；含固定 Provider 的模板会在对应 CLI 不可用时被阻止应用
+- `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑
+- 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的记录；缺少工作目录信息的旧会话会被保守跳过
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.6.0` 升级到 `0.7.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.7.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，也会自动补齐主扩展
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.7.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.7.0` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.7.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.7.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.6.0 - Preview Note Markdown Update
 
 相对 `0.5.1`，`0.6.0` 主要把 `Note` 节点从轻量纯文本对象升级为更完整的 Markdown 工作表面，同时收口 Note 链接与公式渲染的安全边界，并修正执行通知“查看节点”的确认语义。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。

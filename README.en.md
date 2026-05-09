@@ -4,7 +4,7 @@
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.6.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.7.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![DevSessionCanvas Animated Demo](images/marketplace/canvas-overview.gif)
 
@@ -21,6 +21,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Lightweight `Note` nodes for supporting collaboration
 - Basic canvas interaction and layout built on React Flow
 - `Note` Markdown preview, interactive checklists, workspace file links, and editor-mode line-number / indentation affordances
+- Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, and reset entry points
 - Limited capability handling under `Restricted Mode`
 - A public `Preview` release path targeting the `Visual Studio Marketplace`
 - Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
@@ -35,7 +36,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Runtime Requirements
 
-- VS Code `1.85.0` or later
+- VS Code `1.80.0` or later
 - A standard filesystem workspace, either on local disk or in a `Remote SSH` workspace
 - The required CLI runtime:
   - `Agent` nodes depend on `codex` or `claude`
@@ -45,7 +46,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.6.0` is to consolidate `Note` Markdown preview, interactive checklists, safe link / math rendering, notification callback semantics, and the release materials for this milestone, while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.7.0` is to consolidate canvas templates, the default onboarding template, custom template management, template apply / reset behavior, and the release materials for this milestone, while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -67,7 +68,7 @@ Related entry points:
 Public distribution is intended to happen through `Visual Studio Marketplace`. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
 - Public `Preview` users should install through Marketplace rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` is already the public installation path; later `0.6.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
+- `Visual Studio Marketplace` is already the public installation path; later `0.7.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
 - `Open VSX` is not part of the initial `Preview` launch path
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -105,6 +106,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 - The public `Preview` distribution path has been consolidated around `Visual Studio Marketplace`, but release-day publication still requires manual execution and review.
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
+- Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.
 - The sidebar `Session History` list only shows `Codex` / `Claude Code` records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively.
 - If the machine does not have a usable `codex` or `claude` CLI, `Agent` nodes cannot provide the full experience.
 
