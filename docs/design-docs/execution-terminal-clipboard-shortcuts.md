@@ -98,9 +98,9 @@ updated_at: 2026-05-09
     host/executionPasteCancelled
       payload: { requestId, nodeId, kind }
 
-复制不需要回包；如果 Host 写剪贴板失败，可走现有 `host/error`。粘贴必须回包，因为 Webview 需要在确认后调用本地 xterm paste。`requestId` 用于丢弃过期响应，`nodeId` 与 `kind` 用于确认目标仍是原节点。
+复制不需要回包；如果 Host 写剪贴板失败，可走现有 `host/error`。粘贴必须回包，因为 Webview 需要在确认后调用本地 xterm paste。`requestId` 用于丢弃没有匹配请求的响应，`nodeId` 与 `kind` 用于确认目标仍是原节点；Webview 不应对等待 Host 多行粘贴确认的请求施加固定短超时，否则用户在模态确认框停留较久后点击继续会被误丢弃。
 
-`src/panel/CanvasPanelManager.ts` 是 Host 侧处理入口。收到 `webview/copyExecutionSelection` 后，Host 调用 `vscode.env.clipboard.writeText(text)`；如果 `clearSelectionAfterCopy` 为 true，Webview 可在发送请求后立即清选区，因为清选区只影响 xterm UI。收到 `webview/requestExecutionPaste` 后，Host 调用 `vscode.env.clipboard.readText()`，再按固定 `auto` 规则处理文本：空文本 no-op；单行文本直接返回；`bracketedPasteMode` 为 true 时直接返回；若文本只有一条命令和尾随空白换行，剥离尾随空白换行后返回；其他多行文本必须通过 VSCode 原生确认后才返回，取消则发 `host/executionPasteCancelled`。
+`src/panel/CanvasPanelManager.ts` 是 Host 侧处理入口。收到 `webview/copyExecutionSelection` 后，Host 调用 `vscode.env.clipboard.writeText(text)`；如果 `clearSelectionAfterCopy` 为 true，Webview 可在发送请求后立即清选区，因为清选区只影响 xterm UI。收到 `webview/requestExecutionPaste` 后，Host 调用 `vscode.env.clipboard.readText()`，再按固定 `auto` 规则处理文本：空文本 no-op；单行文本直接返回；`bracketedPasteMode` 为 true 时直接返回；按 `CRLF`、裸 `CR` 或裸 `LF` 判断行分隔，若文本只有一条命令和尾随空白换行，剥离尾随空白换行后返回；其他多行文本必须通过 VSCode 原生确认后才返回，取消则发 `host/executionPasteCancelled`。
 
 Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerminalRegistry` 中仍存活的对应 `Terminal` 实例，并调用 `terminal.paste(text)`，而不是发送 `webview/executionInput` 或直接调用 Host 写入输入。这样可以保留 xterm 的 bracketed paste、换行归一化、textarea focus 和本地状态一致性。若节点已经销毁、kind 不匹配或请求不是最新请求，应丢弃回包。
 

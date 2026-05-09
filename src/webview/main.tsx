@@ -375,10 +375,8 @@ const pendingExecutionPasteRequests = new Map<
   {
     nodeId: string;
     kind: ExecutionNodeKind;
-    timeout: number;
   }
 >();
-const EXECUTION_PASTE_REQUEST_TIMEOUT_MS = 30_000;
 
 type WebviewRuntimeDiagnosticPayload = Extract<
   WebviewToHostMessage,
@@ -8773,14 +8771,10 @@ function requestExecutionPaste(
   bracketedPasteMode: boolean
 ): void {
   const requestId = `execution-paste-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const timeout = window.setTimeout(() => {
-    pendingExecutionPasteRequests.delete(requestId);
-  }, EXECUTION_PASTE_REQUEST_TIMEOUT_MS);
 
   pendingExecutionPasteRequests.set(requestId, {
     nodeId,
-    kind,
-    timeout
+    kind
   });
 
   postMessage({
@@ -8819,14 +8813,10 @@ function clearPendingExecutionPasteRequest(
     return;
   }
 
-  window.clearTimeout(pendingRequest.timeout);
   pendingExecutionPasteRequests.delete(requestId);
 }
 
 function clearPendingExecutionPasteRequests(): void {
-  for (const pendingRequest of pendingExecutionPasteRequests.values()) {
-    window.clearTimeout(pendingRequest.timeout);
-  }
   pendingExecutionPasteRequests.clear();
 }
 

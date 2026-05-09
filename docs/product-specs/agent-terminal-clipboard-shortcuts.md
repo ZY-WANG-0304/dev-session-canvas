@@ -26,7 +26,7 @@
 - Linux：`Ctrl+C` 始终发送打断；`Ctrl+Shift+C` 复制；`Ctrl+Shift+V` 粘贴。
 - 复制范围只取当前 xterm 选区；不把画布节点标题、Note DOM 选区或浏览器页面选区混入终端复制。
 - 粘贴以文本为第一版范围；如果剪贴板没有文本，第一版可以 no-op，不自动把资源 URI 或文件对象注入终端。
-- 多行粘贴使用 VSCode 原生 Terminal 的 `auto` 安全口径：单行直接粘贴；启用 bracketed paste mode 时直接粘贴；单条命令加尾随空白换行时先去掉尾随换行；其他多行粘贴必须显式确认或取消。
+- 多行粘贴使用 VSCode 原生 Terminal 的 `auto` 安全口径：单行直接粘贴；启用 bracketed paste mode 时直接粘贴；按 `CRLF`、裸 `CR` 或裸 `LF` 识别行分隔，单条命令加尾随空白换行时先去掉尾随换行；其他多行粘贴必须显式确认或取消。
 
 ## 5. 不在范围内
 
