@@ -8903,7 +8903,7 @@ function createNode(
     'file-list': 'File List'
   } satisfies Record<CanvasNodeKind, string>;
 
-  const id = `${kind}-${sequence}`;
+  const id = createCanvasNodeObjectId(kind, sequence);
   return {
     id,
     kind,
@@ -8914,6 +8914,10 @@ function createNode(
     size: estimatedCanvasNodeFootprint(kind),
     metadata: createNodeMetadata(kind, id, agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
   };
+}
+
+function createCanvasNodeObjectId(kind: CanvasNodeKind, sequence: number): string {
+  return `${kind}-${sequence}-${randomUUID()}`;
 }
 
 function createNodePosition(sequence: number): CanvasNodePosition {
@@ -10890,16 +10894,29 @@ function capitalize(value: string): string {
 
 function readNextNodeSequence(nodes: CanvasNodeSummary[]): number {
   const maxSequence = nodes.reduce((currentMax, node) => {
-    const matchedSuffix = node.id.match(/-(\d+)$/);
-    if (!matchedSuffix) {
+    const parsedValue = readCanvasNodeDisplaySequence(node);
+    if (parsedValue === undefined) {
       return currentMax;
     }
 
-    const parsedValue = Number.parseInt(matchedSuffix[1], 10);
     return Number.isFinite(parsedValue) ? Math.max(currentMax, parsedValue) : currentMax;
   }, 0);
 
   return maxSequence + 1;
+}
+
+function readCanvasNodeDisplaySequence(node: Pick<CanvasNodeSummary, 'id' | 'kind'>): number | undefined {
+  if (node.kind !== 'agent' && node.kind !== 'terminal' && node.kind !== 'note') {
+    return undefined;
+  }
+
+  const matchedPrefix = node.id.match(/^(agent|terminal|note)-([1-9]\d*)(?:-.+)?$/u);
+  if (!matchedPrefix || matchedPrefix[1] !== node.kind) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(matchedPrefix[2], 10);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
 }
 
 function createNodeMetadata(

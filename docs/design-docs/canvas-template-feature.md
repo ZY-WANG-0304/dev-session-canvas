@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-template-feature.md
 related_plans:
   - docs/exec-plans/active/canvas-template-feature.md
-updated_at: 2026-05-08
+updated_at: 2026-05-09
 ---
 
 # 画布模板功能设计
@@ -166,6 +166,7 @@ updated_at: 2026-05-08
 - 仅保存 `agent`、`terminal`、`note` 节点；自动文件节点与文件列表节点会被忽略。
 - 仅保存两端都仍在模板节点集合中的用户边；文件活动边和悬空边被排除。
 - 节点坐标先求整体 bounding box，再转换成相对左上角坐标；这样模板可在任意锚点下重建原始相对布局。
+- 宿主节点 id 只作为保存瞬间的临时映射键使用：保存流程用当前节点 id 把用户边转换成模板节点索引、把每个 Agent 的 Provider 选择匹配到对应节点，但模板文件本身不写入任何画布节点 id。
 - 保存时通过一个接近 VS Code 原生表单风格的对话面板，一次性完成以下输入，而不是拆成多段 Quick Input：
   - 模板名称
   - 保存位置（workspace 级模板库 / 当前设备模板库这类模板库根位置）
@@ -195,6 +196,8 @@ updated_at: 2026-05-08
 - 若模板要求的固定 Provider 当前不可用（例如 CLI 命令无法解析），宿主提示用户并阻止整次应用；不静默降级。
 - 若当前 workspace 未受信任，含 `agent` / `terminal` 的模板不可应用；仅 `note` 模板允许通过。
 - 显式 `apply` / `reset` 成功后，宿主会把本次物化出的新节点 id 作为一组发送给 Webview；Webview 对这组节点执行组级 `fitView`，让用户视口自动追到新增模板节点，而不是只停留在发起操作前的画布位置。
+- `src/panel/CanvasPanelManager.ts` 中的手工/模板节点 id 是对象身份，不再等同于可读编号：新建 `agent` / `terminal` / `note` 节点时，标题仍使用 `Agent 1`、`Terminal 2` 这类递增展示编号，但 `node.id` 会带随机 object identity 后缀。这样同一个模板被反复 reset 后，也会物化成新的 React Flow / 执行终端对象，不复用旧 Webview 节点实例或旧 xterm 缓冲区。
+- 为兼容已有 workspace 快照，宿主继续接受历史 `agent-1`、`terminal-2`、`note-3` 这类旧 id；计算下一个展示编号时只读取手工节点 id 中的展示编号前缀，不把自动文件节点或随机 identity 后缀当成编号来源。
 
 ### 7.5 模板落位规则
 
