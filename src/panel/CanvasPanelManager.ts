@@ -7161,6 +7161,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  public async resolveAgentSettingsFileEnvironment(): Promise<{ env: NodeJS.ProcessEnv; cwd: string }> {
+    return {
+      env: await this.resolveExecutionEnvironment('agent'),
+      cwd: this.getTerminalWorkingDirectory()
+    };
+  }
+
   private getShellEnvironmentProbeMode(target: 'agent' | 'terminal'): ShellEnvironmentProbeMode {
     return target === 'terminal' && process.platform !== 'win32' ? 'login' : 'interactive-login';
   }
