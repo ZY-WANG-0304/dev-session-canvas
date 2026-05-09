@@ -39,6 +39,11 @@ const msys2ShCandidates = [
   process.env.DEV_SESSION_CANVAS_WINDOWS_REAL_CODEX_MSYS2_SH_PATH?.trim(),
   'C:\\msys64\\usr\\bin\\sh.exe'
 ].filter(Boolean);
+const windowsWellKnownShellPaths = [
+  'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  'C:\\Windows\\System32\\cmd.exe'
+];
 
 let lastSnapshot;
 let lastHostMessages;
@@ -400,6 +405,8 @@ function formatError(error) {
 }
 
 async function buildScenarios() {
+  const expectedPowerShellPath = await resolveWindowsNamedShellPath('powershell.exe', 'powershell');
+  const expectedCmdPath = await resolveWindowsNamedShellPath('cmd.exe', 'cmd');
   const scenarios = [
     {
       name: 'default-codex-command',
@@ -432,7 +439,7 @@ async function buildScenarios() {
     expectedShellSource: 'windows-shell',
     expectedShellFamily: 'powershell',
     expectedTerminalShellSetting: 'powershell',
-    expectedTerminalShellPath: 'powershell.exe',
+    expectedTerminalShellPath: expectedPowerShellPath,
     expectedTerminalShellResolutionSource: 'named-shell'
   });
 
@@ -444,7 +451,7 @@ async function buildScenarios() {
     expectedShellSource: 'windows-shell',
     expectedShellFamily: 'cmd',
     expectedTerminalShellSetting: 'cmd',
-    expectedTerminalShellPath: 'cmd.exe',
+    expectedTerminalShellPath: expectedCmdPath,
     expectedTerminalShellResolutionSource: 'named-shell'
   });
 
@@ -584,6 +591,58 @@ async function resolveFirstExistingPath(candidates) {
   }
 
   return undefined;
+}
+
+async function resolveWindowsNamedShellPath(command, shellName) {
+  const resolvedFromPath = await resolveWindowsCommandFromPath(command);
+  if (resolvedFromPath) {
+    return resolvedFromPath;
+  }
+
+  const matchingKnownPath = await resolveFirstExistingPath(
+    windowsWellKnownShellPaths.filter((candidatePath) => getWindowsShellName(candidatePath) === shellName)
+  );
+  return matchingKnownPath ?? command;
+}
+
+async function resolveWindowsCommandFromPath(command) {
+  const pathValue = (process.env.PATH || process.env.Path || '').trim();
+  if (!pathValue) {
+    return undefined;
+  }
+
+  const commandCandidates = buildWindowsPathCommandCandidates(command);
+  for (const directory of pathValue.split(';').filter(Boolean)) {
+    for (const commandCandidate of commandCandidates) {
+      const candidatePath = path.win32.join(directory, commandCandidate);
+      try {
+        await fs.access(candidatePath);
+        return candidatePath;
+      } catch {
+        // Keep walking PATH until we find the shell VS Code would resolve.
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function buildWindowsPathCommandCandidates(command) {
+  if (path.win32.extname(command)) {
+    return [command];
+  }
+
+  const pathExt = (process.env.PATHEXT || '.com;.exe;.bat;.cmd')
+    .split(';')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  const candidates = new Set(pathExt.map((extension) => `${command}${extension}`));
+  candidates.add(command);
+  return Array.from(candidates);
+}
+
+function getWindowsShellName(shellPath) {
+  return path.win32.basename(shellPath, path.win32.extname(shellPath)).toLowerCase();
 }
 
 function normalizeShellPath(shellPath) {
