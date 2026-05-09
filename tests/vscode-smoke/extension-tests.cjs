@@ -27,6 +27,11 @@ const COMMAND_IDS = {
   setDefaultTemplate: 'devSessionCanvas.setDefaultTemplate',
   refreshTemplates: 'devSessionCanvas.refreshTemplates',
   selectTerminalShell: 'devSessionCanvas.selectTerminalShell',
+  selectCodexCli: 'devSessionCanvas.selectCodexCli',
+  selectClaudeCli: 'devSessionCanvas.selectClaudeCli',
+  openCodexConfigFile: 'devSessionCanvas.openCodexConfigFile',
+  openCodexAuthFile: 'devSessionCanvas.openCodexAuthFile',
+  openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
@@ -598,6 +603,26 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   const sidebarSummaryItems = await getSidebarSummaryItems();
+  assert.deepStrictEqual(
+    sidebarSummaryItems.map((item) => item.id),
+    [
+      'summary/workspace-trust',
+      'summary/canvas-surface',
+      'summary/runtime-persistence',
+      'summary/notification-mode',
+      'summary/files-feature',
+      'summary/node-count',
+      'summary/running-executions',
+      'summary/terminal-shell',
+      'summary/codex-cli',
+      'summary/claude-cli'
+    ]
+  );
+  assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/terminal-shell').command?.command, COMMAND_IDS.selectTerminalShell);
+  assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/codex-cli').command?.command, COMMAND_IDS.selectCodexCli);
+  assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/claude-cli').command?.command, COMMAND_IDS.selectClaudeCli);
+  assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/codex-cli').contextValue, 'codexCliConfig');
+  assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/claude-cli').contextValue, 'claudeCliConfig');
   const canvasSurfaceSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/canvas-surface');
   assert.strictEqual(canvasSurfaceSummaryItem.description, '已打开 · Editor');
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);

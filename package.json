@@ -54,6 +54,11 @@
     "onCommand:devSessionCanvas.openCanvasInPanel",
     "onCommand:devSessionCanvas.openSettings",
     "onCommand:devSessionCanvas.selectTerminalShell",
+    "onCommand:devSessionCanvas.selectCodexCli",
+    "onCommand:devSessionCanvas.selectClaudeCli",
+    "onCommand:devSessionCanvas.openCodexConfigFile",
+    "onCommand:devSessionCanvas.openCodexAuthFile",
+    "onCommand:devSessionCanvas.openClaudeSettingsFile",
     "onCommand:devSessionCanvas.createNode",
     "onCommand:devSessionCanvas.showNodeList",
     "onCommand:devSessionCanvas.showSessionHistory",
@@ -179,6 +184,31 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "devSessionCanvas.selectCodexCli",
+        "title": "%command.selectCodexCli.title%",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "devSessionCanvas.selectClaudeCli",
+        "title": "%command.selectClaudeCli.title%",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "devSessionCanvas.openCodexConfigFile",
+        "title": "%command.openCodexConfigFile.title%",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "devSessionCanvas.openCodexAuthFile",
+        "title": "%command.openCodexAuthFile.title%",
+        "icon": "$(key)"
+      },
+      {
+        "command": "devSessionCanvas.openClaudeSettingsFile",
+        "title": "%command.openClaudeSettingsFile.title%",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "devSessionCanvas.createNode",
         "title": "%command.createNode.title%",
         "icon": "$(add)"
@@ -295,6 +325,23 @@
           "command": "devSessionCanvas.saveCanvasAsTemplate",
           "when": "view == devSessionCanvas.sidebarTemplates",
           "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "devSessionCanvas.openCodexAuthFile",
+          "when": "view == devSessionCanvas.sidebar && viewItem == codexCliConfig",
+          "group": "inline@1"
+        },
+        {
+          "command": "devSessionCanvas.openCodexConfigFile",
+          "when": "view == devSessionCanvas.sidebar && viewItem == codexCliConfig",
+          "group": "inline@2"
+        },
+        {
+          "command": "devSessionCanvas.openClaudeSettingsFile",
+          "when": "view == devSessionCanvas.sidebar && viewItem == claudeCliConfig",
+          "group": "inline@1"
         }
       ]
     },
@@ -493,8 +540,9 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:shell-environment-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:note-markdown-links && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:execution-terminal-clipboard && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:agent-cli-resolver && npm run test:agent-cli-selection && npm run test:shell-environment-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:note-markdown-links && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:execution-terminal-clipboard && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
     "test:agent-cli-resolver": "node scripts/test-agent-cli-resolver.mjs",
+    "test:agent-cli-selection": "node scripts/test-agent-cli-selection.mjs",
     "test:agent-launch-presets": "node scripts/test-agent-launch-presets.mjs",
     "test:canvas-templates": "node scripts/test-canvas-templates.mjs",
     "test:shell-environment-resolver": "node scripts/test-shell-environment-resolver.mjs",

@@ -250,7 +250,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 
 ### 8.2 已知限制
 
-- **Codex 集成**：Codex Agent 需要在配置中设置 `notification_method` 和 `notification_condition` 才能正确触发通知，这一要求需要在文档中明确说明。
+- **Codex / Claude Code 集成**：Codex Agent 需要在 `[tui]` 中设置 `notifications = true`、`notification_method = "osc9"` 和 `notification_condition = "always"` 才能稳定触发终端注意力信号；Claude Code Agent 需要设置 `preferredNotifChannel: "iterm2"` 才能进入同一桥接链路。这一要求需要在文档中明确说明。
 - **平台差异**：桌面通知是否支持“点击后回到 VS Code”并不统一；当前由 companion 返回 `activationMode` 显式区分完整路径和退化路径，而不是伪装成统一能力。
 - **跨 chunk 解析**：OSC 序列可能被分割在多个输出 chunk 中，当前实现通过 `oscCarryover` 缓存处理，但缓存大小限制为 256 字节，超长序列可能被截断。
 - **启发式检测**：Agent 等待输入检测基于启发式规则，可能存在误判情况（如误将长时间运行的任务判断为等待输入）。

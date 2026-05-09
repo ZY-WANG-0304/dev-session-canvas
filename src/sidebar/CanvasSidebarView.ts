@@ -4,14 +4,25 @@ import {
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
+import { COMMAND_IDS } from '../common/extensionIdentity';
+import { shortenMiddle } from '../panel/agentCliSelection';
 import { type CanvasSidebarState, CanvasPanelManager } from '../panel/CanvasPanelManager';
 
 class CanvasSidebarItem extends vscode.TreeItem {
-  public constructor(id: string, label: string, description: string, tooltip: string) {
+  public constructor(
+    id: string,
+    label: string,
+    description: string,
+    tooltip: string,
+    command?: vscode.Command,
+    contextValue?: string
+  ) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.id = id;
     this.description = description;
     this.tooltip = tooltip;
+    this.command = command;
+    this.contextValue = contextValue;
   }
 }
 
@@ -20,6 +31,8 @@ export interface CanvasSidebarSummaryItemSnapshot {
   label: string;
   description: string;
   tooltip: string;
+  command?: vscode.Command;
+  contextValue?: string;
 }
 
 export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarItem>, vscode.Disposable {
@@ -54,12 +67,20 @@ export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarI
 
 function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
   return getCanvasSidebarSummaryItems(state).map(
-    (item) => new CanvasSidebarItem(item.id, item.label, item.description, item.tooltip)
+    (item) => new CanvasSidebarItem(item.id, item.label, item.description, item.tooltip, item.command, item.contextValue)
   );
 }
 
 export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasSidebarSummaryItemSnapshot[] {
   return [
+    {
+      id: 'summary/workspace-trust',
+      label: '工作区信任',
+      description: state.workspaceTrusted ? '已信任' : '受限模式',
+      tooltip: state.workspaceTrusted
+        ? '当前工作区已受信任，执行型对象可按各自能力创建和运行。'
+        : '当前工作区处于受限模式；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
+    },
     {
       id: 'summary/canvas-surface',
       label: '画布状态',
@@ -99,14 +120,46 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
       tooltip: `当前正在运行的 Agent / Terminal 会话总数：${state.runningExecutionCount}。`
     },
     {
-      id: 'summary/workspace-trust',
-      label: '工作区信任',
-      description: state.workspaceTrusted ? '已信任' : '受限模式',
-      tooltip: state.workspaceTrusted
-        ? '当前工作区已受信任，执行型对象可按各自能力创建和运行。'
-        : '当前工作区处于受限模式；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
+      id: 'summary/terminal-shell',
+      label: '终端',
+      description: formatConfigSummaryValue(state.terminalShellPath),
+      tooltip: [
+        '点击选择嵌入式 Terminal shell。',
+        `配置值：${state.terminalShellConfiguredValue}`,
+        `实际路径：${state.terminalShellPath || '未解析'}`
+      ].join('\n'),
+      command: {
+        command: COMMAND_IDS.selectTerminalShell,
+        title: '选择 Terminal shell'
+      }
+    },
+    {
+      id: 'summary/codex-cli',
+      label: 'Codex 命令',
+      description: formatConfigSummaryValue(state.agentCodexCommand),
+      tooltip: ['点击选择 Codex 命令。', `当前配置：${state.agentCodexCommand}`].join('\n'),
+      command: {
+        command: COMMAND_IDS.selectCodexCli,
+        title: '选择 Codex CLI'
+      },
+      contextValue: 'codexCliConfig'
+    },
+    {
+      id: 'summary/claude-cli',
+      label: 'Claude Code 命令',
+      description: formatConfigSummaryValue(state.agentClaudeCommand),
+      tooltip: ['点击选择 Claude Code 命令。', `当前配置：${state.agentClaudeCommand}`].join('\n'),
+      command: {
+        command: COMMAND_IDS.selectClaudeCli,
+        title: '选择 Claude Code CLI'
+      },
+      contextValue: 'claudeCliConfig'
     }
   ];
+}
+
+function formatConfigSummaryValue(value: string): string {
+  return shortenMiddle(value.trim() || '未配置');
 }
 
 function formatCanvasSurfaceSummary(state: CanvasSidebarState): string {
@@ -177,8 +230,8 @@ function buildNotificationModeTooltip(state: CanvasSidebarState): string {
     `增强提醒模式：${formatStrongReminderModeLabel(state)}。`,
     '',
     '💡 通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。',
-    '• Claude Code：需配置 Terminal Bell Notifications',
-    '• Codex：需设置 notification_method 和 notification_condition'
+    '• Claude Code：需设置 preferredNotifChannel: "iterm2"',
+    '• Codex：需在 [tui] 设置 notifications = true、notification_method = "osc9"、notification_condition = "always"'
   ].join('\n');
 }
 
