@@ -60,7 +60,7 @@
   "configuration.terminal.inheritEnv.description": "控制嵌入式 Terminal 是否继承由当前 shell 解析出的受控环境增量。默认开启；在 macOS/Linux 上用于补齐 GUI 启动 VS Code 时缺失的 PATH、Homebrew、NVM 或工具链变量。Windows Terminal 始终让真实 shell 自己执行 profile / AutoRun，此设置不会让 Windows Terminal 预应用 shell env patch。若遇到重复 PATH 或 profile 副作用，可关闭此项或调整 `devSessionCanvas.terminal.shellArgs`。",
   "configuration.terminal.shellArgs.description": "启动嵌入式 Terminal shell 时附加的 argv 参数数组，等价于 Terminal profile 的 args 部分。默认空数组，保持现有启动形态；可显式配置为 `[\"-l\"]`、`[\"--login\"]` 或其他当前 shell 支持的参数。该设置只影响 Terminal 节点，不影响 Agent provider CLI 的结构化启动参数。",
   "configuration.files.enabled.description": "是否启用 Agent 文件活动功能。默认关闭；关闭后会停用文件节点、文件列表节点、文件过滤和自动文件关系，并在下次加载时清空文件活动和过滤状态。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
-  "configuration.files.presentationMode.description": "Agent 文件活动的默认展示方式。`nodes` 会把文件显示为独立节点；`lists` 会按 Agent 与共享关系收口成文件列表节点。",
+  "configuration.files.presentationMode.description": "Agent 文件活动的默认展示方式，默认使用 `lists`。`nodes` 会把文件显示为独立节点；`lists` 会按 Agent 与共享关系收口成文件列表节点。",
   "configuration.fileNode.displayStyle.description": "文件节点和文件列表节点的显示风格。`card` 保留当前卡片样式；`minimal` 使用更紧凑、接近 VS Code 原生文件列表的极简样式。",
   "configuration.files.nodeDisplayMode.description": "文件节点的显示模式。默认同时显示图标和路径。",
   "configuration.files.pathDisplayMode.description": "文件节点与文件列表条目的路径显示口径。默认只显示文件名。",

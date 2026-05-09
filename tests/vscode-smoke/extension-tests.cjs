@@ -1906,7 +1906,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
   const configuration = vscode.workspace.getConfiguration();
   const originalFilesEnabled = configuration.get('devSessionCanvas.files.enabled', false) === true;
   const originalPresentationMode =
-    configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+    configuration.get('devSessionCanvas.files.presentationMode', 'lists') === 'nodes' ? 'nodes' : 'lists';
   const originalFileNodeDisplayStyle =
     configuration.get('devSessionCanvas.fileNode.displayStyle', 'minimal') === 'card' ? 'card' : 'minimal';
   const originalFileNodeDisplayMode =
@@ -2784,7 +2784,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
 async function verifyReadExitFileActivityDrain() {
   const configuration = vscode.workspace.getConfiguration();
   const originalPresentationMode =
-    configuration.get('devSessionCanvas.files.presentationMode', 'nodes') === 'lists' ? 'lists' : 'nodes';
+    configuration.get('devSessionCanvas.files.presentationMode', 'lists') === 'nodes' ? 'nodes' : 'lists';
   const originalFileNodeDisplayStyle =
     configuration.get('devSessionCanvas.fileNode.displayStyle', 'minimal') === 'card' ? 'card' : 'minimal';
   const originalPathDisplayMode =

@@ -125,8 +125,8 @@ updated_at: 2026-04-21
 
 `src/panel/CanvasPanelManager.ts` 继续作为宿主权威状态入口，并新增一层“文件视图重建”：
 
-- 默认配置 `files.presentationMode = nodes` 时，宿主把每个文件引用投影成一个 `file` 节点，并自动生成 `Agent -> 文件` 关系线。
-- 配置切到 `lists` 时，宿主不再保留 `file` 节点，而是为每个 Agent 生成一个 `file-list` 节点；若有共享文件，则额外生成一个共享 `file-list` 节点。
+- 默认配置 `files.presentationMode = lists` 时，宿主为每个 Agent 生成一个 `file-list` 节点；若有共享文件，则额外生成一个共享 `file-list` 节点。
+- 配置切到 `nodes` 时，宿主把每个文件引用投影成一个 `file` 节点，并自动生成 `Agent -> 文件` 关系线。
 - `include` / `exclude` 过滤从 settings 页面迁到 sidebar 的 `常用操作` section；过滤状态单独持久化为视图状态，不写回 `fileReferences`。
 - 由于 VSCode 扩展 API 不支持在 TreeView 中局部嵌入输入框，当前实现把 `包含文件` / `排除文件` 收口为该 section 中的最小 `WebviewView` 输入框，并保持其余状态摘要继续留在原生 TreeView。
 - 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。

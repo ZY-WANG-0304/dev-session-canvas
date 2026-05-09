@@ -2745,14 +2745,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
-    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
+    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists');
     const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
     const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
     const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
 
     return {
       enabled: this.appliedStartupConfiguration.filesFeatureEnabled,
-      presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
+      presentationMode: presentationMode === 'nodes' ? 'nodes' : 'lists',
       includeGlobs: this.fileFilterState.includeGlobs,
       excludeGlobs: this.fileFilterState.excludeGlobs,
       displayStyle: displayStyle === 'card' ? 'card' : 'minimal',
