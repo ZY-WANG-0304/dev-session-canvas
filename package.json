@@ -496,7 +496,7 @@
             "nodes",
             "lists"
           ],
-          "default": "nodes",
+          "default": "lists",
           "scope": "window",
           "markdownDescription": "%configuration.files.presentationMode.description%"
         },
