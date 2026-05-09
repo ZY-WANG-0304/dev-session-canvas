@@ -33,6 +33,22 @@ import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPa
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
+import {
+  discoverAgentCliCandidates,
+  getAgentCliDefaultCommand,
+  getAgentCliDisplayName,
+  type AgentCliCandidate,
+  type AgentCliCandidateSource
+} from './panel/agentCliSelection';
+import {
+  createRestrictedLocalAgentSettingsFile,
+  getAgentSettingsFileDescriptor,
+  getLocalAgentSettingsFileStatus,
+  isNodeFileAlreadyExistsError,
+  resolveAgentSettingsFilePath,
+  type AgentSettingsFileDescriptor,
+  type AgentSettingsFileKind
+} from './panel/agentSettingsFiles';
 import { buildPersistedTerminalShellSelection, detectAvailableTerminalShells } from './panel/terminalShellConfiguration';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import {
@@ -79,6 +95,11 @@ interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
   resolvedPath?: string;
   shellName?: string;
   useDefault?: boolean;
+}
+
+interface AgentCliQuickPickItem extends vscode.QuickPickItem {
+  command?: string;
+  manualInput?: boolean;
 }
 
 interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
@@ -242,6 +263,26 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.selectTerminalShell, async () => {
     await promptTerminalShellSelection();
+  });
+
+  registerCommand(context, COMMAND_IDS.selectCodexCli, async () => {
+    await promptAgentCliSelection('codex');
+  });
+
+  registerCommand(context, COMMAND_IDS.selectClaudeCli, async () => {
+    await promptAgentCliSelection('claude');
+  });
+
+  registerCommand(context, COMMAND_IDS.openCodexConfigFile, async () => {
+    await openAgentSettingsFile('codex-config', panelManager);
+  });
+
+  registerCommand(context, COMMAND_IDS.openCodexAuthFile, async () => {
+    await openAgentSettingsFile('codex-auth', panelManager);
+  });
+
+  registerCommand(context, COMMAND_IDS.openClaudeSettingsFile, async () => {
+    await openAgentSettingsFile('claude-settings', panelManager);
   });
 
   registerCommand(context, COMMAND_IDS.createNode, async () => {
@@ -435,6 +476,181 @@ async function promptTerminalShellSelection(): Promise<void> {
   await vscode.window.showInformationMessage(
     `已将${targetLabel}的嵌入式 Terminal shell 更新为 ${picked.label}：${persistedSelection.configuredPath}${configuredShellDetail}`
   );
+}
+
+async function openAgentSettingsFile(kind: AgentSettingsFileKind, panelManager: CanvasPanelManager): Promise<void> {
+  const descriptor = getAgentSettingsFileDescriptor(kind);
+  const settingsEnvironment = await panelManager.resolveAgentSettingsFileEnvironment();
+  const filePath = resolveAgentSettingsFilePath(kind, settingsEnvironment);
+  if (!filePath) {
+    await vscode.window.showWarningMessage(`无法定位当前执行宿主的配置目录，暂时不能打开 ${descriptor.label}。`);
+    return;
+  }
+
+  const uri = vscode.Uri.file(filePath);
+  try {
+    const status = await getLocalAgentSettingsFileStatus(filePath);
+    if (status === 'directory') {
+      await vscode.window.showWarningMessage(`${descriptor.label} 指向的是目录，不能作为配置文件打开：${filePath}`);
+      return;
+    }
+
+    if (status === 'missing') {
+      const created = await createMissingAgentSettingsFileIfRequested(descriptor, filePath);
+      if (!created) {
+        return;
+      }
+    }
+
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: false });
+  } catch (error) {
+    await vscode.window.showErrorMessage(
+      `打开 ${descriptor.label} 失败：${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+async function createMissingAgentSettingsFileIfRequested(
+  descriptor: AgentSettingsFileDescriptor,
+  filePath: string
+): Promise<boolean> {
+  const picked = await vscode.window.showWarningMessage(
+    `未找到 ${descriptor.label}：${filePath}。是否创建后打开？`,
+    { modal: true },
+    '创建并打开'
+  );
+  if (picked !== '创建并打开') {
+    return false;
+  }
+
+  try {
+    await createRestrictedLocalAgentSettingsFile(filePath, descriptor.initialContent);
+  } catch (error) {
+    if (!isNodeFileAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
+  return true;
+}
+
+async function promptAgentCliSelection(provider: AgentProviderKind): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration();
+  const providerLabelText = getAgentCliDisplayName(provider);
+  const configuredCommand = getConfiguredAgentCliCommand(provider);
+  const candidates = await discoverAgentCliCandidates({
+    provider,
+    configuredCommand,
+    env: process.env,
+    workspaceCwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    extensionRoots: vscode.extensions.all.map((extension) => extension.extensionPath)
+  });
+  const picked = await vscode.window.showQuickPick(buildAgentCliQuickPickItems(provider, candidates, configuredCommand), {
+    placeHolder: `选择 ${providerLabelText} CLI 命令或路径`
+  });
+
+  if (!picked) {
+    return;
+  }
+
+  const selectedCommand = picked.manualInput
+    ? await promptManualAgentCliCommand(provider, configuredCommand)
+    : picked.command;
+  if (!selectedCommand) {
+    return;
+  }
+
+  const configKey = provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand;
+  await configuration.update(configKey, selectedCommand, vscode.ConfigurationTarget.Global);
+  await vscode.window.showInformationMessage(`已将当前设备的 ${providerLabelText} CLI 更新为：${selectedCommand}`);
+}
+
+function getConfiguredAgentCliCommand(provider: AgentProviderKind): string {
+  const defaultCommand = getAgentCliDefaultCommand(provider);
+  const configKey = provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand;
+  return vscode.workspace.getConfiguration().get<string>(configKey, defaultCommand)?.trim() || defaultCommand;
+}
+
+async function promptManualAgentCliCommand(
+  provider: AgentProviderKind,
+  currentCommand: string
+): Promise<string | undefined> {
+  const providerLabelText = getAgentCliDisplayName(provider);
+  const value = await vscode.window.showInputBox({
+    title: `选择 ${providerLabelText} CLI`,
+    prompt: `输入 ${providerLabelText} CLI 的命令名或绝对路径。`,
+    value: currentCommand,
+    validateInput: (input) => (input.trim().length > 0 ? undefined : 'CLI 命令不能为空。')
+  });
+  return value?.trim() || undefined;
+}
+
+function buildAgentCliQuickPickItems(
+  provider: AgentProviderKind,
+  candidates: readonly AgentCliCandidate[],
+  currentCommand: string
+): AgentCliQuickPickItem[] {
+  const items: AgentCliQuickPickItem[] = candidates.map((candidate) => {
+    const sourceLabel = formatAgentCliCandidateSource(candidate.source);
+    const isCurrent = agentCliCommandValuesEqual(candidate.command, currentCommand);
+    return {
+      label: candidate.command,
+      description: isCurrent ? `${sourceLabel} · 当前` : sourceLabel,
+      detail: buildAgentCliCandidateDetail(candidate),
+      command: candidate.command
+    } satisfies AgentCliQuickPickItem;
+  });
+
+  if (items.length > 0) {
+    items.push({
+      label: '',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+  }
+
+  items.push({
+    label: '手动输入命令或路径...',
+    description: '命令名或绝对路径',
+    detail: `例如：${getAgentCliDefaultCommand(provider)}，或当前执行宿主上的 CLI 绝对路径。`,
+    manualInput: true
+  });
+
+  return items;
+}
+
+function formatAgentCliCandidateSource(source: AgentCliCandidateSource): string {
+  switch (source) {
+    case 'configured':
+      return '当前配置';
+    case 'default-command':
+      return '默认命令';
+    case 'path-env':
+      return 'PATH';
+    case 'login-shell':
+      return '登录 shell';
+    case 'extension-bundled':
+      return 'VS Code 扩展内置';
+    case 'common-location':
+      return '常见位置';
+  }
+}
+
+function buildAgentCliCandidateDetail(candidate: AgentCliCandidate): string {
+  const lines = [`命令值：${candidate.command}`];
+  if (candidate.resolvedPath && !agentCliCommandValuesEqual(candidate.resolvedPath, candidate.command)) {
+    lines.push(`解析路径：${candidate.resolvedPath}`);
+  }
+  if (candidate.extensionRoot) {
+    lines.push(`扩展目录：${candidate.extensionRoot}`);
+    lines.push('提示：扩展升级后该路径可能变化。');
+  }
+  return lines.join('\n');
+}
+
+function agentCliCommandValuesEqual(left: string, right: string): boolean {
+  return process.platform === 'win32'
+    ? left.trim().toLowerCase() === right.trim().toLowerCase()
+    : left.trim() === right.trim();
 }
 
 function buildTerminalShellQuickPickItems(

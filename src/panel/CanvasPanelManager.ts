@@ -385,6 +385,10 @@ export interface CanvasSidebarState {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  terminalShellConfiguredValue: string;
+  terminalShellPath: string;
+  agentCodexCommand: string;
+  agentClaudeCommand: string;
   nodeCount: number;
   runningExecutionCount: number;
   workspaceTrusted: boolean;
@@ -643,6 +647,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           if (this.refreshConfiguredTerminalShellMetadata()) {
             this.postState('host/stateUpdated');
           }
+          this.notifySidebarStateChanged();
         })
       );
     }
@@ -654,6 +659,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         if (this.refreshConfiguredTerminalShellMetadata()) {
           this.postState('host/stateUpdated');
         }
+        this.notifySidebarStateChanged();
       })
     );
 
@@ -696,6 +702,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           fileNodeDisplayStyleChanged ||
           filesNodeDisplayModeChanged ||
           filesPathDisplayModeChanged ||
+          agentCodexCommandChanged ||
+          agentClaudeCommandChanged ||
+          terminalShellChanged ||
+          terminalShellPathChanged ||
           attentionNotificationBridgeChanged ||
           strongTerminalAttentionReminderChanged;
 
@@ -791,6 +801,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
     const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
     const fileConfiguration = this.getCanvasFileViewConfiguration();
+    const terminalShell = getConfiguredTerminalShell();
+    const agentCliConfig = this.getAgentCliConfig();
 
     return {
       canvasSurface,
@@ -804,6 +816,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
+      terminalShellConfiguredValue: terminalShell.configuredPath || terminalShell.configuredShell,
+      terminalShellPath: terminalShell.resolvedPath,
+      agentCodexCommand: agentCliConfig.codexCommand,
+      agentClaudeCommand: agentCliConfig.claudeCommand,
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
@@ -2729,14 +2745,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
-    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'nodes');
+    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists');
     const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
     const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
     const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
 
     return {
       enabled: this.appliedStartupConfiguration.filesFeatureEnabled,
-      presentationMode: presentationMode === 'lists' ? 'lists' : 'nodes',
+      presentationMode: presentationMode === 'nodes' ? 'nodes' : 'lists',
       includeGlobs: this.fileFilterState.includeGlobs,
       excludeGlobs: this.fileFilterState.excludeGlobs,
       displayStyle: displayStyle === 'card' ? 'card' : 'minimal',
@@ -7143,6 +7159,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch, process.platform, {
       prioritizedBasePathEntries: this.getPrioritizedBaseExecutionPathEntries()
     });
+  }
+
+  public async resolveAgentSettingsFileEnvironment(): Promise<{ env: NodeJS.ProcessEnv; cwd: string }> {
+    return {
+      env: await this.resolveExecutionEnvironment('agent'),
+      cwd: this.getTerminalWorkingDirectory()
+    };
   }
 
   private getShellEnvironmentProbeMode(target: 'agent' | 'terminal'): ShellEnvironmentProbeMode {
