@@ -20,7 +20,7 @@ export const RESTRICTED_AGENT_SETTINGS_FILE_MODE = 0o600;
 
 const CODEX_CONFIG_INITIAL_CONTENT = [
   '# Codex proxy/gateway configuration.',
-  '# Replace base_url when routing Codex through your OpenAI-compatible gateway.',
+  '# Fill base_url with your OpenAI-compatible proxy or gateway endpoint before using Codex.',
   '# Keep secrets in auth.json under the same Codex config directory.',
   '# Docs: https://developers.openai.com/codex/config-basic',
   '',
@@ -31,7 +31,7 @@ const CODEX_CONFIG_INITIAL_CONTENT = [
   '',
   '[model_providers.openai_compatible]',
   'name = "OpenAI-compatible gateway"',
-  'base_url = "https://api.openai.com/v1"',
+  'base_url = ""',
   'wire_api = "responses"',
   '# Uncomment env_key only if you prefer environment-variable auth over auth.json.',
   '# env_key = "OPENAI_API_KEY"',

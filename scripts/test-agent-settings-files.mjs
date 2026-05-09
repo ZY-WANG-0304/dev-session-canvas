@@ -59,10 +59,11 @@ try {
   );
 
   const codexConfig = getAgentSettingsFileDescriptor('codex-config').initialContent;
-  assert.ok(codexConfig.includes('base_url = "https://api.openai.com/v1"'));
+  const codexConfigLines = codexConfig.split(/\r?\n/);
+  assert.ok(codexConfig.includes('base_url = ""'));
   assert.ok(codexConfig.includes('# env_key = "OPENAI_API_KEY"'));
-  assert.ok(!codexConfig.includes('base_url = ""'));
-  assert.ok(!codexConfig.includes('\nenv_key = "OPENAI_API_KEY"'));
+  assert.ok(!codexConfigLines.includes('base_url = "https://api.openai.com/v1"'));
+  assert.ok(!codexConfigLines.includes('env_key = "OPENAI_API_KEY"'));
 
   const codexAuth = JSON.parse(getAgentSettingsFileDescriptor('codex-auth').initialContent);
   assert.equal(codexAuth.auth_mode, 'apikey');
