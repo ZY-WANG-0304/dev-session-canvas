@@ -62,6 +62,7 @@ const CLAUDE_SETTINGS_INITIAL_CONTENT = [
   '  "$schema": "https://json.schemastore.org/claude-code-settings.json",',
   '  "_comment": "Fill ANTHROPIC_API_KEY for API-key auth. Fill ANTHROPIC_BASE_URL only when routing through a proxy or gateway.",',
   '  "preferredNotifChannel": "iterm2",',
+  '  "hasCompletedOnboarding": true,',
   '  "env": {',
   '    "ANTHROPIC_API_KEY": null,',
   '    "ANTHROPIC_BASE_URL": ""',

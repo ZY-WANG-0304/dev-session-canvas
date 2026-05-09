@@ -69,6 +69,10 @@ try {
   assert.equal(codexAuth.auth_mode, 'apikey');
   assert.equal(codexAuth.OPENAI_API_KEY, '');
 
+  const claudeSettings = JSON.parse(getAgentSettingsFileDescriptor('claude-settings').initialContent);
+  assert.equal(claudeSettings.preferredNotifChannel, 'iterm2');
+  assert.equal(claudeSettings.hasCompletedOnboarding, true);
+
   const authPath = path.join(tempDir, 'secure-home', '.codex', 'auth.json');
   assert.equal(await getLocalAgentSettingsFileStatus(authPath), 'missing');
   await createRestrictedLocalAgentSettingsFile(authPath, 'secret\n');
