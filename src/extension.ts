@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -33,6 +34,13 @@ import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPa
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
+import {
+  discoverAgentCliCandidates,
+  getAgentCliDefaultCommand,
+  getAgentCliDisplayName,
+  type AgentCliCandidate,
+  type AgentCliCandidateSource
+} from './panel/agentCliSelection';
 import { buildPersistedTerminalShellSelection, detectAvailableTerminalShells } from './panel/terminalShellConfiguration';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
 import {
@@ -80,6 +88,75 @@ interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
   shellName?: string;
   useDefault?: boolean;
 }
+
+interface AgentCliQuickPickItem extends vscode.QuickPickItem {
+  command?: string;
+  manualInput?: boolean;
+}
+
+type AgentSettingsFileKind = 'codex-config' | 'codex-auth' | 'claude-settings';
+
+interface AgentSettingsFileDescriptor {
+  label: string;
+  relativePathSegments: string[];
+  initialContent: string;
+}
+
+const CODEX_CONFIG_INITIAL_CONTENT = [
+  '# Codex proxy/gateway configuration.',
+  '# Fill base_url and OPENAI_API_KEY before using Codex through an OpenAI-compatible gateway.',
+  '# Keep secrets in `~/.codex/auth.json` or the environment variable named by env_key.',
+  '# Docs: https://developers.openai.com/codex/config-basic',
+  '',
+  'model_provider = "openai_compatible"',
+  '# model = "gpt-5.5"',
+  '# approval_policy = "on-request"',
+  '# sandbox_mode = "workspace-write"',
+  '',
+  '[model_providers.openai_compatible]',
+  'name = "OpenAI-compatible gateway"',
+  'base_url = ""',
+  'env_key = "OPENAI_API_KEY"',
+  'wire_api = "responses"',
+  'env_key_instructions = "Fill OPENAI_API_KEY in ~/.codex/auth.json or export it before starting Codex."',
+  '',
+  '[tui]',
+  'notifications = true',
+  'notification_method = "osc9"',
+  'notification_condition = "always"',
+  '',
+  '# If you use official OpenAI login instead, switch to:',
+  '# model_provider = "openai"',
+  '# openai_base_url = "https://api.openai.com/v1"',
+  ''
+].join('\n');
+
+const CODEX_AUTH_INITIAL_CONTENT = [
+  '{',
+  '  "_comment": "Run `codex login`, or replace null OPENAI_API_KEY manually for API-key auth. Keep this plaintext file private.",',
+  '  "_auth_mode_hint": "Use \\"apikey\\" only after filling OPENAI_API_KEY; otherwise leave auth_mode as null and let Codex login manage it.",',
+  '  "auth_mode": null,',
+  '  "OPENAI_API_KEY": null',
+  '}',
+  ''
+].join('\n');
+
+const CLAUDE_SETTINGS_INITIAL_CONTENT = [
+  '{',
+  '  "$schema": "https://json.schemastore.org/claude-code-settings.json",',
+  '  "_comment": "Fill ANTHROPIC_API_KEY for API-key auth. Fill ANTHROPIC_BASE_URL only when routing through a proxy or gateway.",',
+  '  "preferredNotifChannel": "iterm2",',
+  '  "env": {',
+  '    "ANTHROPIC_API_KEY": null,',
+  '    "ANTHROPIC_BASE_URL": ""',
+  '  },',
+  '  "permissions": {',
+  '    "allow": [],',
+  '    "deny": []',
+  '  }',
+  '}',
+  ''
+].join('\n');
 
 interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
   templateId: string;
@@ -242,6 +319,26 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.selectTerminalShell, async () => {
     await promptTerminalShellSelection();
+  });
+
+  registerCommand(context, COMMAND_IDS.selectCodexCli, async () => {
+    await promptAgentCliSelection('codex');
+  });
+
+  registerCommand(context, COMMAND_IDS.selectClaudeCli, async () => {
+    await promptAgentCliSelection('claude');
+  });
+
+  registerCommand(context, COMMAND_IDS.openCodexConfigFile, async () => {
+    await openAgentSettingsFile('codex-config');
+  });
+
+  registerCommand(context, COMMAND_IDS.openCodexAuthFile, async () => {
+    await openAgentSettingsFile('codex-auth');
+  });
+
+  registerCommand(context, COMMAND_IDS.openClaudeSettingsFile, async () => {
+    await openAgentSettingsFile('claude-settings');
   });
 
   registerCommand(context, COMMAND_IDS.createNode, async () => {
@@ -435,6 +532,212 @@ async function promptTerminalShellSelection(): Promise<void> {
   await vscode.window.showInformationMessage(
     `已将${targetLabel}的嵌入式 Terminal shell 更新为 ${picked.label}：${persistedSelection.configuredPath}${configuredShellDetail}`
   );
+}
+
+async function openAgentSettingsFile(kind: AgentSettingsFileKind): Promise<void> {
+  const descriptor = getAgentSettingsFileDescriptor(kind);
+  const homeDir = resolveCurrentHostHomeDirectory();
+  if (!homeDir) {
+    await vscode.window.showWarningMessage(`无法定位当前执行宿主的 home 目录，暂时不能打开 ${descriptor.label}。`);
+    return;
+  }
+
+  const filePath = path.join(homeDir, ...descriptor.relativePathSegments);
+  const uri = vscode.Uri.file(filePath);
+  try {
+    const status = await getFileStatus(uri);
+    if (status === 'directory') {
+      await vscode.window.showWarningMessage(`${descriptor.label} 指向的是目录，不能作为配置文件打开：${filePath}`);
+      return;
+    }
+
+    if (status === 'missing') {
+      const created = await createMissingAgentSettingsFileIfRequested(descriptor, uri, filePath);
+      if (!created) {
+        return;
+      }
+    }
+
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: false });
+  } catch (error) {
+    await vscode.window.showErrorMessage(
+      `打开 ${descriptor.label} 失败：${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+function getAgentSettingsFileDescriptor(kind: AgentSettingsFileKind): AgentSettingsFileDescriptor {
+  switch (kind) {
+    case 'codex-config':
+      return {
+        label: 'Codex config.toml',
+        relativePathSegments: ['.codex', 'config.toml'],
+        initialContent: CODEX_CONFIG_INITIAL_CONTENT
+      };
+    case 'codex-auth':
+      return {
+        label: 'Codex auth.json',
+        relativePathSegments: ['.codex', 'auth.json'],
+        initialContent: CODEX_AUTH_INITIAL_CONTENT
+      };
+    case 'claude-settings':
+      return {
+        label: 'Claude Code settings.json',
+        relativePathSegments: ['.claude', 'settings.json'],
+        initialContent: CLAUDE_SETTINGS_INITIAL_CONTENT
+      };
+  }
+}
+
+function resolveCurrentHostHomeDirectory(): string {
+  return process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || os.homedir();
+}
+
+async function getFileStatus(uri: vscode.Uri): Promise<'file' | 'directory' | 'missing'> {
+  try {
+    const stat = await vscode.workspace.fs.stat(uri);
+    return stat.type === vscode.FileType.Directory ? 'directory' : 'file';
+  } catch {
+    return 'missing';
+  }
+}
+
+async function createMissingAgentSettingsFileIfRequested(
+  descriptor: AgentSettingsFileDescriptor,
+  uri: vscode.Uri,
+  filePath: string
+): Promise<boolean> {
+  const picked = await vscode.window.showWarningMessage(
+    `未找到 ${descriptor.label}：${filePath}。是否创建后打开？`,
+    '创建并打开'
+  );
+  if (picked !== '创建并打开') {
+    return false;
+  }
+
+  await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(filePath)));
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(descriptor.initialContent, 'utf8'));
+  return true;
+}
+
+async function promptAgentCliSelection(provider: AgentProviderKind): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration();
+  const providerLabelText = getAgentCliDisplayName(provider);
+  const configuredCommand = getConfiguredAgentCliCommand(provider);
+  const candidates = await discoverAgentCliCandidates({
+    provider,
+    configuredCommand,
+    env: process.env,
+    workspaceCwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    extensionRoots: vscode.extensions.all.map((extension) => extension.extensionPath)
+  });
+  const picked = await vscode.window.showQuickPick(buildAgentCliQuickPickItems(provider, candidates, configuredCommand), {
+    placeHolder: `选择 ${providerLabelText} CLI 命令或路径`
+  });
+
+  if (!picked) {
+    return;
+  }
+
+  const selectedCommand = picked.manualInput
+    ? await promptManualAgentCliCommand(provider, configuredCommand)
+    : picked.command;
+  if (!selectedCommand) {
+    return;
+  }
+
+  const configKey = provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand;
+  await configuration.update(configKey, selectedCommand, vscode.ConfigurationTarget.Global);
+  await vscode.window.showInformationMessage(`已将当前设备的 ${providerLabelText} CLI 更新为：${selectedCommand}`);
+}
+
+function getConfiguredAgentCliCommand(provider: AgentProviderKind): string {
+  const defaultCommand = getAgentCliDefaultCommand(provider);
+  const configKey = provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand;
+  return vscode.workspace.getConfiguration().get<string>(configKey, defaultCommand)?.trim() || defaultCommand;
+}
+
+async function promptManualAgentCliCommand(
+  provider: AgentProviderKind,
+  currentCommand: string
+): Promise<string | undefined> {
+  const providerLabelText = getAgentCliDisplayName(provider);
+  const value = await vscode.window.showInputBox({
+    title: `选择 ${providerLabelText} CLI`,
+    prompt: `输入 ${providerLabelText} CLI 的命令名或绝对路径。`,
+    value: currentCommand,
+    validateInput: (input) => (input.trim().length > 0 ? undefined : 'CLI 命令不能为空。')
+  });
+  return value?.trim() || undefined;
+}
+
+function buildAgentCliQuickPickItems(
+  provider: AgentProviderKind,
+  candidates: readonly AgentCliCandidate[],
+  currentCommand: string
+): AgentCliQuickPickItem[] {
+  const items: AgentCliQuickPickItem[] = candidates.map((candidate) => {
+    const sourceLabel = formatAgentCliCandidateSource(candidate.source);
+    const isCurrent = agentCliCommandValuesEqual(candidate.command, currentCommand);
+    return {
+      label: candidate.command,
+      description: isCurrent ? `${sourceLabel} · 当前` : sourceLabel,
+      detail: buildAgentCliCandidateDetail(candidate),
+      command: candidate.command
+    } satisfies AgentCliQuickPickItem;
+  });
+
+  if (items.length > 0) {
+    items.push({
+      label: '',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+  }
+
+  items.push({
+    label: '手动输入命令或路径...',
+    description: '命令名或绝对路径',
+    detail: `例如：${getAgentCliDefaultCommand(provider)}，或当前执行宿主上的 CLI 绝对路径。`,
+    manualInput: true
+  });
+
+  return items;
+}
+
+function formatAgentCliCandidateSource(source: AgentCliCandidateSource): string {
+  switch (source) {
+    case 'configured':
+      return '当前配置';
+    case 'default-command':
+      return '默认命令';
+    case 'path-env':
+      return 'PATH';
+    case 'login-shell':
+      return '登录 shell';
+    case 'extension-bundled':
+      return 'VS Code 扩展内置';
+    case 'common-location':
+      return '常见位置';
+  }
+}
+
+function buildAgentCliCandidateDetail(candidate: AgentCliCandidate): string {
+  const lines = [`命令值：${candidate.command}`];
+  if (candidate.resolvedPath && !agentCliCommandValuesEqual(candidate.resolvedPath, candidate.command)) {
+    lines.push(`解析路径：${candidate.resolvedPath}`);
+  }
+  if (candidate.extensionRoot) {
+    lines.push(`扩展目录：${candidate.extensionRoot}`);
+    lines.push('提示：扩展升级后该路径可能变化。');
+  }
+  return lines.join('\n');
+}
+
+function agentCliCommandValuesEqual(left: string, right: string): boolean {
+  return process.platform === 'win32'
+    ? left.trim().toLowerCase() === right.trim().toLowerCase()
+    : left.trim() === right.trim();
 }
 
 function buildTerminalShellQuickPickItems(

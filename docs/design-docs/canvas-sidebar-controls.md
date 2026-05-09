@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-controls-design.md
   - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-05-08
+updated_at: 2026-05-09
 ---
 
 # 画布外层控件侧栏化设计
@@ -153,7 +153,7 @@ updated_at: 2026-05-08
 - 风险：一旦把 `WebviewView` 用成新的 mini dashboard，侧栏又会重新偏离 VSCode 原生质感。
   当前缓解：当前只把“必须要有 inline 输入框”的常用操作区交给 `WebviewView`，并明确限制它只承载打开、创建、重置画板、清空画板和 `include` / `exclude`；状态摘要仍然保持在原生 TreeView。
 
-## 7. 当前结论
+## 7. 正式方案
 
 当前已选定以下路线，并已完成第一版实现：
 
@@ -169,7 +169,7 @@ updated_at: 2026-05-08
 
 - 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 容器。
 - 该容器当前收口为两个 section：
-  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要，并在标题行尾部提供一个设置快捷入口，直接跳转到本扩展设置；其中状态摘要已补入“通知模式”“文件功能”“文件视图”等行，让用户在不离开 sidebar 的前提下看清当前窗口的提醒表面、文件活动总开关，以及文件对象的投影类型与显示模式。
+  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要，并在标题行尾部提供一个设置快捷入口，直接跳转到本扩展设置；其中状态摘要已补入“通知模式”“文件功能”“文件视图”等行，让用户在不离开 sidebar 的前提下看清当前窗口的提醒表面、文件活动总开关，以及文件对象的投影类型与显示模式。`工作区信任` 固定放在概览第一行；`终端`、`Codex 命令`、`Claude Code 命令` 三个环境配置行保留在同一个概览 section 的尾部，不单独拆 section，且终端在三项中排第一。环境配置行只在行内展示当前值，路径过长时使用中间 `...` 保留首尾；完整配置值和解析信息进入 tooltip。
   - `常用操作`：使用最小 `WebviewView` 承载四个高频操作按钮，并在文件功能开启时额外承载 `include` / `exclude` 输入框。
 - 这样既保留了大部分 sidebar 的原生结构，也把必须以内嵌输入框表达的交互隔离在最小范围内。
 
@@ -181,7 +181,7 @@ updated_at: 2026-05-08
   - 重置画板：清空当前画布后套用当前默认模板
   - 清空画板
 - 为了兼顾主路径可读性与高频回点效率，`常用操作` 的 view title 行尾部可补一排原生风格的 icon-only 快捷入口；它们只复用内容区里的部分高频动作，不引入新的语义或额外状态。重置画板留在内容区文字按钮中，避免和清空画板共用 `discard` 图标时造成含义混淆；重置画板与清空画板同属会清空当前画布的破坏性动作，内容区使用一致的 danger 按钮视觉，并通过文案区分最终是否套用默认模板；清空入口继续复用既有宿主重置命令，只调整对用户暴露的动作文案。
-- `概览` 树项本身优先展示状态，不再承担动作入口职责。
+- `概览` 树项本身优先展示状态，不再承担动作入口职责；唯一例外是环境配置行，它们是“当前值 + 修复入口”的原生 TreeView 行，点击后分别触发 `选择 Terminal shell`、`选择 Codex CLI`、`选择 Claude Code CLI` 的 QuickPick，不在概览中额外放卡片。Codex / Claude Code 命令行右侧允许放最小 inline tail action，用于直接在编辑器打开 provider 自己的配置文件；这些按钮只作为排障捷径，不改变行点击的“选择命令”语义。
 - 这样可以避免把 TreeView 伪装成按钮墙，也避免把同一组操作拆散在 view title toolbar 与别处。
 
 ### 7.4 `include` / `exclude` 以条件化最小 Webview 输入框展示
@@ -212,7 +212,8 @@ updated_at: 2026-05-08
 - Webview 顶部的左上角 hero 与右上角 actions panel 已移除，画布中只保留底角控件和节点本体。
 - 当画布已在前台可见时，侧栏中的“创建节点”会通过 Host -> Webview 消息复用当前视口锚点；当画布尚未就绪时，宿主退回到默认锚点 + 避碰搜索。
 - `常用操作` 区域当前是一个最小 `WebviewView`：内容区始终承载四个高频按钮；文件功能开启时追加两个输入框，文件功能关闭时改为说明文案。对应的快捷 icon 按钮放在该 view 的标题行尾部，不承担状态摘要、选中详情或说明卡片。
-- `概览` 视图标题行尾部额外提供一个 gear 按钮，作为进入扩展设置的稳定捷径，不把设置入口挤进状态树项本身；视图正文则额外暴露 `通知模式`、`文件功能` 与 `文件视图` 状态，避免用户把“提醒行为变化”或“过滤入口消失”误解成渲染故障。
+- `概览` 视图标题行尾部额外提供一个 gear 按钮，作为进入扩展设置的稳定捷径，不把设置入口挤进状态树项本身；视图正文则额外暴露 `通知模式`、`文件功能` 与 `文件视图` 状态，避免用户把“提醒行为变化”或“过滤入口消失”误解成渲染故障。环境配置行由 `src/sidebar/CanvasSidebarView.ts` 读取 `CanvasSidebarState` 中的 terminal / Agent CLI 配置快照，并通过 TreeItem `command` 接到 `src/extension.ts` 中的选择命令；Codex / Claude Code 行通过 `contextValue` 贡献 inline tail action，分别打开 `~/.codex/auth.json`、`~/.codex/config.toml` 和 `~/.claude/settings.json`，文件缺失时先弹出确认提示，再创建带最小默认内容的文件并在编辑器中打开。Agent CLI 候选发现逻辑收口在 `src/panel/agentCliSelection.ts`，只负责帮助用户选择当前执行宿主上的命令或路径，不改变 Agent 节点的 PTY 启动模型。
+- 缺失文件的最小默认内容只提供安全占位，不生成真实凭证。`~/.codex/config.toml` 面向“通过代理 / OpenAI-compatible gateway 访问 Codex”的主场景，直接写入 `model_provider = "openai_compatible"` 与 `[model_providers.openai_compatible]`，并暴露 `base_url = ""`、`env_key = "OPENAI_API_KEY"`、`wire_api = "responses"`，让用户打开文件后能直接补代理地址；`OPENAI_API_KEY` 的真实值仍放在 `~/.codex/auth.json` 或同名环境变量中，`config.toml` 只负责声明取哪个 key。`model`、`approval_policy`、`sandbox_mode` 保持注释，因为它们会改变模型选择或执行权限；官方 OpenAI 登录路径仅作为注释提示 `model_provider = "openai"` 与 `openai_base_url = "https://api.openai.com/v1"`。Codex 通知默认写入 `[tui] notifications = true`、`notification_method = "osc9"`、`notification_condition = "always"`，让嵌入式终端稳定输出 OSC 9 并被画板的注意力桥接捕获。`~/.codex/auth.json` 保持合法 JSON，写入 `auth_mode: null` 与 `OPENAI_API_KEY: null` 作为无密钥占位，并通过 `_comment` 提醒优先使用 `codex login` 生成真实登录态；`~/.claude/settings.json` 保持合法 JSON，写入 `$schema`、`preferredNotifChannel: "iterm2"`、空 `permissions.allow` / `permissions.deny`，并在 `env` 中直接暴露 `ANTHROPIC_API_KEY` 与 `ANTHROPIC_BASE_URL` 这两个主路径配置 key，`ANTHROPIC_API_KEY` 默认为 `null`，`ANTHROPIC_BASE_URL` 默认为空字符串，避免空 base URL 被 Claude Code 解析成无效 `null/v1/messages` 地址；Claude Code 依赖内置 iTerm2 通知通道输出终端通知序列，不再在用户 settings 中写入额外 hooks。`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_CUSTOM_HEADERS`、`ANTHROPIC_MODEL` 等高级配置不放进默认模板，避免把可选 gateway / header / model override 误导成必填项。
 
 ## 8. 验证方法
 
@@ -224,6 +225,7 @@ updated_at: 2026-05-08
 4. 在 workspace 未受信任场景下，确认侧栏能正确禁用或降级执行型入口。
 5. 验证 `包含文件` / `排除文件` 输入框在文件功能开启时的输入、失焦、Enter、清空和 reload 后都保持稳定，且整体观感与 VSCode 输入控件 token 对齐；当文件功能关闭并 reload 后，确认这组入口不再显示为可用状态。
 6. 验证当用户折叠、移动或离开侧栏时，命令入口仍能完成打开画布、创建对象、重置画板和清空画板。
+7. 验证 `概览` 中 `工作区信任` 始终位于第一行，环境配置行保留在概览尾部并按 `终端`、`Codex 命令`、`Claude Code 命令` 展示；长路径在行内使用中间 `...`，点击三行分别进入对应选择 QuickPick，Codex / Claude Code 行尾按钮能打开对应 provider 配置文件。
 
 ## 9. 当前验证状态
 
