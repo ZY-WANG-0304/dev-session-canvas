@@ -52,6 +52,8 @@
   "configuration.terminal.shell.powershell.description": "优先在当前设备上动态解析 `powershell` 的实际可用路径，并用它启动嵌入式 Terminal 节点。",
   "configuration.terminal.shell.cmd.description": "优先在当前设备上动态解析 `cmd` 的实际可用路径，并用它启动嵌入式 Terminal 节点。",
   "configuration.terminal.shellPath.description": "显式指定嵌入式 Terminal 节点启动 shell 时使用的精确命令路径。该设置支持“当前设备”默认值，也支持在当前 workspace 里单独覆盖；一旦 workspace 级为 Terminal shell 配置显式赋值，就会整体以 workspace 级的 `terminal.shell` / `terminal.shellPath` 为准，不再混入设备级的另一半配置。`Dev Session Canvas: 选择 Terminal shell` 命令会按当前设备真实可用 shell 动态探测，并把所选路径写入这里；即使当前设备上存在多个同名 shell，也会优先使用这里记录的那一个。打开 workspace 时，该命令默认写入当前 workspace 覆盖；若要改设备级默认值，请直接修改用户设置。如果该路径在当前设备上不可用，Extension 会直接提示。留空时会根据 `terminal.shell` 设置动态解析当前设备上的实际 shell。",
+  "configuration.terminal.inheritEnv.description": "控制嵌入式 Terminal 是否继承由当前 shell 解析出的受控环境增量。默认开启；在 macOS/Linux 上用于补齐 GUI 启动 VS Code 时缺失的 PATH、Homebrew、NVM 或工具链变量。Windows Terminal 始终让真实 shell 自己执行 profile / AutoRun，此设置不会让 Windows Terminal 预应用 shell env patch。若遇到重复 PATH 或 profile 副作用，可关闭此项或调整 `devSessionCanvas.terminal.shellArgs`。",
+  "configuration.terminal.shellArgs.description": "启动嵌入式 Terminal shell 时附加的 argv 参数数组，等价于 Terminal profile 的 args 部分。默认空数组，保持现有启动形态；可显式配置为 `[\"-l\"]`、`[\"--login\"]` 或其他当前 shell 支持的参数。该设置只影响 Terminal 节点，不影响 Agent provider CLI 的结构化启动参数。",
   "configuration.files.enabled.description": "是否启用 Agent 文件活动功能。默认关闭；关闭后会停用文件节点、文件列表节点、文件过滤和自动文件关系，并在下次加载时清空文件活动和过滤状态。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
   "configuration.files.presentationMode.description": "Agent 文件活动的默认展示方式。`nodes` 会把文件显示为独立节点；`lists` 会按 Agent 与共享关系收口成文件列表节点。",
   "configuration.fileNode.displayStyle.description": "文件节点和文件列表节点的显示风格。`card` 保留当前卡片样式；`minimal` 使用更紧凑、接近 VS Code 原生文件列表的极简样式。",

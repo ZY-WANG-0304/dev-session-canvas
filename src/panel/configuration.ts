@@ -4,6 +4,7 @@ import { CONFIG_KEYS } from '../common/extensionIdentity';
 import {
   resolveEffectiveTerminalShellConfiguration,
   inspectConfiguredTerminalShell,
+  normalizeConfiguredTerminalShellArgs,
   resolveConfiguredTerminalShell,
   type EffectiveTerminalShellConfiguration,
   type InspectedConfiguredTerminalShell,
@@ -52,6 +53,16 @@ export function getConfiguredTerminalShell(): ResolvedConfiguredTerminalShell {
     configuredPath: effectiveConfiguration.configuredPath,
     defaultShellPath: vscode.env.shell
   });
+}
+
+export function getConfiguredTerminalInheritEnv(): boolean {
+  return getConfigurationValue<boolean>('terminalInheritEnv', true);
+}
+
+export function getConfiguredTerminalShellArgs(): string[] {
+  return normalizeConfiguredTerminalShellArgs(
+    vscode.workspace.getConfiguration().get<unknown>(CONFIG_KEYS.terminalShellArgs)
+  );
 }
 
 export function inspectCurrentConfiguredTerminalShell(): InspectedConfiguredTerminalShell {
