@@ -12,6 +12,7 @@
 - 支持用户模板保存到当前 workspace 或当前设备，并支持递归读取模板子目录；导入模板复用表单式确认流程，导出模板可直接生成可分享 JSON
 - 优化模板应用体验：追加模板时会避开现有节点，显式应用或重置后自动追焦到本次新增节点组；重置类入口会复用宿主确认流程
 - 收紧模板边界：未信任 workspace 下阻止含 `Agent` / `Terminal` 的模板，固定 Provider 不可用时阻止应用；删除当前默认用户模板后自动回退到 `使用说明`
+- 将主扩展与 notifier 的最低 VS Code 版本要求调整为 `1.80.0`，并把 VS Code API 类型校验锁定到 `@types/vscode@1.80.0`
 - 补齐侧栏常用操作中的 `重置画板` 与 `清空画板` 语义，并升级打包依赖以完成当前 `npm audit` 修复
 
 ### 推荐体验路径
@@ -36,6 +37,7 @@
 ### 安装与升级
 
 - 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
 - 首次安装与从 `0.6.0` 升级到 `0.7.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.7.x` 更新同样通过 Marketplace 升级获取
 - 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，也会自动补齐主扩展
 - 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.7.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息

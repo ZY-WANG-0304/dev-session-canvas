@@ -35,7 +35,7 @@
 
 - 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.7.0 - Preview Canvas Templates Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：画布模板、默认 `使用说明` 模板、`示例模板`、自定义模板保存 / 导入 / 导出、workspace / 当前设备模板库、模板侧栏、命令面板与画布右键入口、应用 / 重置后的组级追焦、模板 Provider 与 `Restricted Mode` 边界、`重置画板` / `清空画板` 语义、依赖安全修复、`Dev Session Canvas Notifier` companion 自动安装关系，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
+- release notes 应覆盖以下当前已确认范围：画布模板、默认 `使用说明` 模板、`示例模板`、自定义模板保存 / 导入 / 导出、workspace / 当前设备模板库、模板侧栏、命令面板与画布右键入口、应用 / 重置后的组级追焦、模板 Provider 与 `Restricted Mode` 边界、`重置画板` / `清空画板` 语义、最低 VS Code 版本要求调整为 `1.80.0`、依赖安全修复、`Dev Session Canvas Notifier` companion 自动安装关系，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 

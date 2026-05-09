@@ -48,7 +48,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 ## 环境要求
 
-- VS Code `1.85.0` 或更高版本
+- VS Code `1.80.0` 或更高版本
 - 标准文件系统工作区
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
