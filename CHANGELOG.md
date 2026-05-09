@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.8.0 - Preview Agent Usability Update
+
+相对 `0.7.1`，`0.8.0` 是一轮新的公开 `Preview` 里程碑更新，重点改善 `Agent` / `Terminal` 节点的日常可用性：补齐执行终端复制粘贴快捷键、增加 Agent CLI 配置入口、让文件活动默认以列表节点呈现，并修正模板重置、Claude onboarding 与配置文件创建等体验问题。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 新增 `Agent` / `Terminal` 执行终端复制粘贴快捷键：macOS 使用 `Cmd+C` / `Cmd+V`，Windows 支持有选区 `Ctrl+C` 复制、无选区 `Ctrl+C` 打断以及 `Ctrl+V` / `Ctrl+Shift+V` 粘贴，Linux 保留 `Ctrl+C` 打断并使用 `Ctrl+Shift+C` / `Ctrl+Shift+V`
+- 粘贴链路对齐 VS Code 原生 Terminal 的安全口径：单行直接粘贴，bracketed paste mode 下直接粘贴，多行或可能直接执行的尾随换行内容需要确认后才进入当前会话
+- 新增 Agent CLI 配置入口：侧栏可查看并选择 `Codex` / `Claude Code` 命令，命令面板也提供选择 CLI、打开 `Codex config.toml`、打开 `Codex auth.json` 与打开 `Claude Code settings.json` 的入口
+- 文件活动功能开启时，默认展示方式从独立文件节点调整为文件列表节点，更接近 VS Code Changes 列表的阅读方式；仍可通过 `devSessionCanvas.files.presentationMode` 切回独立节点
+- 修正模板重置时复用旧节点身份的问题，避免重置后的节点继续携带不应保留的运行态或交互状态
+- 补齐 Claude onboarding 标记、代理地址占位与 Agent 配置文件创建边界，降低首次配置 `Codex` / `Claude Code` 的摩擦
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 使用 `Agent` 节点前，请先通过侧栏或命令面板确认 `codex` / `claude` CLI 命令可解析；如需代理或认证配置，可直接从命令面板打开对应配置文件
+- 在执行节点内复制输出或粘贴命令时，优先使用本机平台熟悉的 VS Code Terminal 快捷键；多行粘贴出现确认提示时，先复核内容再继续
+- 若启用文件活动功能，默认文件列表节点更适合观察单个 Agent 或多个 Agent 共享的文件读写关系
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 复制粘贴快捷键第一版不读取用户自定义 VS Code keybindings，也不支持 `terminal.integrated.copyOnSelection`、Linux selection clipboard、右键 copyPaste、HTML 富文本复制或文件资源剪贴板 fallback
+- 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.7.1` 升级到 `0.8.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.8.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.8.0`，不引入新的通知行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.8.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.8.0` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.8.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.8.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.7.1 - Preview Shell Environment Compatibility Update
 
 相对 `0.7.0`，`0.7.1` 是同一公开 `Preview` 里程碑下的一轮兼容性修复更新，重点收口 `Agent` 与嵌入式 `Terminal` 的 shell 环境继承、CLI 解析缓存、Windows 真实 smoke 覆盖和发布验证口径。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
