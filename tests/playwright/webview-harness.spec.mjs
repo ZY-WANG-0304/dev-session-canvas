@@ -2549,6 +2549,121 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(dropFocusState).toBe(true);
   });
 
+  test(`${executionKind} terminal copy shortcut posts the xterm selection`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const outputLine = 'copy-target';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${outputLine}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await dragTerminalSelection(page, {
+      nodeId,
+      row: 1,
+      startCol: 1,
+      endCol: outputLine.length
+    });
+    await clearPostedMessages(page);
+    await dispatchTerminalShortcut(page, nodeId, executionTerminalCopyShortcutEvent());
+
+    const message = await waitForPostedMessageByType(page, 'webview/copyExecutionSelection');
+    expect(message.payload).toEqual({
+      nodeId,
+      kind: executionKind,
+      text: outputLine,
+      clearSelectionAfterCopy: process.platform === 'win32'
+    });
+  });
+
+  test(`${executionKind} terminal paste shortcut requests host clipboard text and routes returned text through xterm`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const pasteText = 'pasted into xterm';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await dispatchTerminalShortcut(page, nodeId, executionTerminalPasteShortcutEvent());
+    const pasteRequest = await waitForPostedMessageByType(page, 'webview/requestExecutionPaste');
+    expect(pasteRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      bracketedPasteMode: false
+    });
+
+    await page.evaluate(
+      ({ requestId, nextNodeId, nextKind, nextPasteText }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionPasteText',
+          payload: {
+            requestId,
+            nodeId: nextNodeId,
+            kind: nextKind,
+            text: nextPasteText
+          }
+        });
+      },
+      {
+        requestId: pasteRequest.payload.requestId,
+        nextNodeId: nodeId,
+        nextKind: executionKind,
+        nextPasteText: pasteText
+      }
+    );
+
+    await expect
+      .poll(async () => {
+        const message = await page.evaluate(() => {
+          return (
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .find((entry) => entry.type === 'webview/executionInput') ?? null
+          );
+        });
+        return message?.payload?.data ?? null;
+      })
+      .toBe(pasteText);
+  });
+
+  test(`${executionKind} Ctrl+C without terminal selection still reaches the PTY as interrupt`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await focusExecutionTerminal(page, nodeId);
+    await clearPostedMessages(page);
+
+    await page.keyboard.press('Control+KeyC');
+
+    await expect
+      .poll(async () => {
+        const message = await page.evaluate(() => {
+          return (
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .find((entry) => entry.type === 'webview/executionInput') ?? null
+          );
+        });
+        return message?.payload?.data ?? null;
+      })
+      .toBe('\u0003');
+  });
+
   test(`${executionKind} link activation posts parsed file and URL targets`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const fileLinkText = 'src/index.ts:42:10';
@@ -5887,6 +6002,77 @@ async function dragTerminalSelection(
   await page.mouse.move(endX, y, { steps: 14 });
   await page.mouse.up();
   await settleWebview(page, 3);
+}
+
+async function focusExecutionTerminal(page, nodeId) {
+  await nodeById(page, nodeId).locator('.xterm-helper-textarea').focus();
+  await settleWebview(page, 1);
+}
+
+async function dispatchTerminalShortcut(page, nodeId, shortcut) {
+  await page.evaluate(
+    ({ nextNodeId, nextShortcut }) => {
+      const textarea = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-helper-textarea`);
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        throw new Error(`Execution terminal ${nextNodeId} has no xterm textarea.`);
+      }
+      textarea.focus();
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: nextShortcut.key,
+          code: nextShortcut.code,
+          keyCode: nextShortcut.keyCode,
+          which: nextShortcut.keyCode,
+          ctrlKey: nextShortcut.ctrlKey,
+          metaKey: nextShortcut.metaKey,
+          shiftKey: nextShortcut.shiftKey,
+          altKey: false
+        })
+      );
+    },
+    {
+      nextNodeId: nodeId,
+      nextShortcut: shortcut
+    }
+  );
+  await settleWebview(page, 2);
+}
+
+function executionTerminalCopyShortcutEvent() {
+  if (process.platform === 'darwin') {
+    return createTerminalShortcutEvent('c', { metaKey: true });
+  }
+  if (process.platform === 'win32') {
+    return createTerminalShortcutEvent('c', { ctrlKey: true });
+  }
+  return createTerminalShortcutEvent('c', { ctrlKey: true, shiftKey: true });
+}
+
+function executionTerminalPasteShortcutEvent() {
+  if (process.platform === 'darwin') {
+    return createTerminalShortcutEvent('v', { metaKey: true });
+  }
+  if (process.platform === 'win32') {
+    return createTerminalShortcutEvent('v', { ctrlKey: true });
+  }
+  return createTerminalShortcutEvent('v', { ctrlKey: true, shiftKey: true });
+}
+
+function createTerminalShortcutEvent(
+  key,
+  modifiers = {}
+) {
+  const normalizedKey = key.toLowerCase();
+  return {
+    key: normalizedKey,
+    code: `Key${normalizedKey.toUpperCase()}`,
+    keyCode: normalizedKey.toUpperCase().charCodeAt(0),
+    ctrlKey: modifiers.ctrlKey === true,
+    metaKey: modifiers.metaKey === true,
+    shiftKey: modifiers.shiftKey === true
+  };
 }
 
 async function performTestDomAction(page, action) {

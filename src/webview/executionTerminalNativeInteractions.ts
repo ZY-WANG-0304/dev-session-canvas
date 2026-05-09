@@ -3,6 +3,11 @@ import LinkifyIt from 'linkify-it';
 
 import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
 import {
+  inferExecutionTerminalClipboardPlatform,
+  resolveExecutionTerminalClipboardShortcut,
+  type ExecutionTerminalClipboardPlatform
+} from '../common/executionTerminalClipboard';
+import {
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
   type DetectedExecutionTerminalPathLink,
@@ -29,6 +34,17 @@ interface ExecutionTerminalNativeInteractionsOptions {
     nodeId: string,
     kind: ExecutionNodeKind,
     link: ExecutionTerminalOpenLink
+  ) => void;
+  onCopySelection: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    text: string,
+    clearSelectionAfterCopy: boolean
+  ) => void;
+  onRequestPaste: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    bracketedPasteMode: boolean
   ) => void;
   resolveFileLinks: (
     nodeId: string,
@@ -176,6 +192,44 @@ export function setupExecutionTerminalNativeInteractions(
   const fileLinkDisposable = terminal.registerLinkProvider(fileLinkProvider);
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
   const wordLinkDisposable = terminal.registerLinkProvider(wordLinkProvider);
+  const clipboardPlatform = detectExecutionTerminalClipboardPlatform();
+
+  terminal.attachCustomKeyEventHandler((event) => {
+    if (event.type !== 'keydown') {
+      return true;
+    }
+
+    const selection = terminal.getSelection();
+    const action = resolveExecutionTerminalClipboardShortcut(clipboardPlatform, event, selection.length > 0);
+    if (action === 'passThrough') {
+      return true;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (action === 'copy' || action === 'copyAndClearSelection') {
+      if (selection.length > 0) {
+        options.onCopySelection(
+          options.nodeId,
+          options.kind,
+          selection,
+          action === 'copyAndClearSelection'
+        );
+        if (action === 'copyAndClearSelection') {
+          terminal.clearSelection();
+        }
+      }
+      return false;
+    }
+
+    if (action === 'paste') {
+      options.onRequestPaste(options.nodeId, options.kind, terminal.modes.bracketedPasteMode);
+      return false;
+    }
+
+    return false;
+  });
 
   const handleDragEnter = (event: DragEvent): void => {
     if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
@@ -279,6 +333,7 @@ export function setupExecutionTerminalNativeInteractions(
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
       wordLinkDisposable.dispose();
+      terminal.attachCustomKeyEventHandler(() => true);
       dropTarget.removeEventListener('dragenter', handleDragEnter);
       dropTarget.removeEventListener('dragover', handleDragOver);
       dropTarget.removeEventListener('dragleave', handleDragLeave);
@@ -287,6 +342,13 @@ export function setupExecutionTerminalNativeInteractions(
       fileLinkResolutionCache.clear();
     }
   };
+}
+
+function detectExecutionTerminalClipboardPlatform(): ExecutionTerminalClipboardPlatform {
+  return inferExecutionTerminalClipboardPlatform({
+    platform: window.navigator.platform,
+    userAgent: window.navigator.userAgent
+  });
 }
 
 function createFileLinkProvider(
