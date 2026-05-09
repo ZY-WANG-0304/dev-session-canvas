@@ -67,6 +67,7 @@
 - ✅ 连线样式（颜色、箭头方向、标签）
 - ✅ Agent 类型和 argv
 - ✅ Agent Provider（`codex`、`claude` 或 `default`）
+- ✅ 模板内部连线使用节点索引表达；不保存画布节点 id，应用模板时重新生成节点对象身份
 
 ### 4.2 Agent Provider 配置
 - **Provider 类型**：
