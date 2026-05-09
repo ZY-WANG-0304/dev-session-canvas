@@ -146,8 +146,17 @@ import {
   type AgentCliResolutionSource
 } from './agentCliResolver';
 import {
+  applyShellEnvironmentPatch,
+  resolveShellEnvironmentPatch,
+  shouldResolveShellEnvironmentPatchForExecutionTarget,
+  type ResolvedShellEnvironmentPatch,
+  type ShellEnvironmentProbeMode
+} from './shellEnvironmentResolver';
+import {
+  getConfiguredTerminalInheritEnv,
   getConfigurationValue,
   getConfiguredTerminalShell,
+  getConfiguredTerminalShellArgs,
   inspectCurrentConfiguredTerminalShellInCwd
 } from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
@@ -196,7 +205,11 @@ import {
   type AgentFileActivityEvent,
   type AgentFileActivitySession
 } from './agentFileActivity';
-import type { InspectedConfiguredTerminalShell } from './terminalShellConfiguration';
+import type {
+  ConfiguredTerminalShell,
+  InspectedConfiguredTerminalShell,
+  TerminalShellResolutionSource
+} from './terminalShellConfiguration';
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
@@ -216,7 +229,6 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
-const AGENT_CLI_RESOLUTION_CACHE_KEY = 'devSessionCanvas.agent.cliResolutionCache';
 const CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.defaultTemplateId';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
@@ -381,10 +393,27 @@ export interface CanvasSidebarState {
 
 export interface CanvasDebugSnapshot {
   activeSurface: CanvasSurfaceLocation | undefined;
+  configuration: CanvasDebugConfigurationSnapshot;
   sidebar: CanvasSidebarState;
   state: CanvasPrototypeState;
   surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>>;
   surfaceReady: Record<CanvasSurfaceLocation, boolean>;
+}
+
+interface CanvasDebugConfigurationSnapshot {
+  terminalShellPath: string;
+  terminalShellPathOverride?: string;
+  terminalShellResolutionSource: TerminalShellResolutionSource;
+  terminalInheritEnv: boolean;
+  terminalShellArgs: string[];
+  terminalShellSetting?: Exclude<ConfiguredTerminalShell, 'default'>;
+  executionShellEnvPatchSource?: ResolvedShellEnvironmentPatch['source'];
+  executionShellEnvPatchShellFamily?: ResolvedShellEnvironmentPatch['shellFamily'];
+  executionShellEnvPatchProbeMode?: ResolvedShellEnvironmentPatch['probeMode'];
+  executionShellEnvPatchSkipReason?: ResolvedShellEnvironmentPatch['skippedReason'];
+  executionShellEnvPatchShellPath?: ResolvedShellEnvironmentPatch['shellPath'];
+  executionShellEnvPatchAppliedKeys?: ResolvedShellEnvironmentPatch['appliedKeys'];
+  executionShellEnvPatchError?: ResolvedShellEnvironmentPatch['error'];
 }
 
 interface PersistedCanvasSnapshot {
@@ -539,17 +568,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
+  // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
+  private readonly resolvedShellEnvironmentPatchPromises = new Map<
+    ShellEnvironmentProbeMode,
+    Promise<ResolvedShellEnvironmentPatch>
+  >();
+  private readonly resolvedShellEnvironmentPatches = new Map<ShellEnvironmentProbeMode, ResolvedShellEnvironmentPatch>();
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
   public readonly onDidChangeTemplateCatalog = this.templateCatalogEmitter.event;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
-    this.agentCliResolutionCache = readAgentCliResolutionCache(
-      context.globalState.get<Record<string, AgentCliResolutionCacheEntry>>(AGENT_CLI_RESOLUTION_CACHE_KEY)
-    );
+    this.agentCliResolutionCache = {};
     this.rawExtensionStoragePath = this.context.storageUri?.fsPath ?? this.context.globalStorageUri.fsPath;
     this.canvasTemplateStore = new CanvasTemplateStore(
       path.join(this.context.extensionUri.fsPath, 'resources', 'templates'),
@@ -604,12 +637,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             return;
           }
 
+          this.invalidateResolvedShellEnvironmentPatch();
+          this.clearAgentCliResolutionCache();
           if (this.refreshConfiguredTerminalShellMetadata()) {
             this.postState('host/stateUpdated');
           }
         })
       );
     }
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this.invalidateResolvedShellEnvironmentPatch();
+        this.clearAgentCliResolutionCache();
+        if (this.refreshConfiguredTerminalShellMetadata()) {
+          this.postState('host/stateUpdated');
+        }
+      })
+    );
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -634,6 +679,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         );
         const terminalShellChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShell);
         const terminalShellPathChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShellPath);
+        const terminalInheritEnvChanged = event.affectsConfiguration(CONFIG_KEYS.terminalInheritEnv);
+        const terminalShellArgsChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShellArgs);
         const terminalScrollbackChanged = event.affectsConfiguration('terminal.integrated.scrollback');
         const multiCursorModifierChanged = event.affectsConfiguration('editor.multiCursorModifier');
         const terminalWordSeparatorsChanged = event.affectsConfiguration(
@@ -673,6 +720,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !strongTerminalAttentionReminderChanged &&
           !terminalShellChanged &&
           !terminalShellPathChanged &&
+          !terminalInheritEnvChanged &&
+          !terminalShellArgsChanged &&
           !terminalScrollbackChanged &&
           !multiCursorModifierChanged &&
           !terminalWordSeparatorsChanged &&
@@ -699,6 +748,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             strongTerminalAttentionReminderChanged,
             terminalShellChanged,
             terminalShellPathChanged,
+            terminalInheritEnvChanged,
+            terminalShellArgsChanged,
             terminalScrollbackChanged,
             multiCursorModifierChanged,
             terminalWordSeparatorsChanged,
@@ -1040,6 +1091,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public getDebugSnapshot(): CanvasDebugSnapshot {
     return {
       activeSurface: this.activeSurface,
+      configuration: cloneJsonValue(this.buildDebugConfigurationSnapshot()),
       sidebar: cloneJsonValue(this.getSidebarState()),
       state: cloneJsonValue(this.state),
       surfaceMode: cloneJsonValue(this.surfaceMode),
@@ -1105,7 +1157,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
     const diagnosticEvents = cloneJsonValue(this.testDiagnosticEvents);
     const agentCliConfig = this.getAgentCliConfig();
-    const configuredTerminalShell = getConfiguredTerminalShell();
+    const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(this.buildBaseExecutionEnvironment());
     const persistedSnapshotPath = this.getPersistedCanvasSnapshotPath();
     const persistedSnapshot = this.loadPersistedCanvasSnapshot();
     const summaryPath = path.join(outputDir, 'summary.json');
@@ -1152,13 +1204,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         agentDefaultProvider: agentCliConfig.defaultProvider,
         agentCodexCommand: agentCliConfig.codexCommand,
         agentClaudeCommand: agentCliConfig.claudeCommand,
-        terminalShellPath: configuredTerminalShell.resolvedPath,
-        terminalShellPathOverride: configuredTerminalShell.configuredPath || undefined,
-        terminalShellResolutionSource: configuredTerminalShell.resolutionSource,
-        terminalShellSetting:
-          configuredTerminalShell.configuredShell !== 'default'
-            ? configuredTerminalShell.configuredShell
-            : undefined,
+        ...this.buildDebugConfigurationSnapshot(shellEnvironmentPatch),
         runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
         filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
         preferredRuntimeHostBackendKind: this.preferredRuntimeHostBackendKind,
@@ -1463,13 +1509,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public getAgentCliResolutionCacheKeyForTest(
     provider: AgentProviderKind,
     requestedCommand: string,
-    workspaceCwd?: string
+    workspaceCwd?: string,
+    shellAuthority?: string
   ): string {
     if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('getAgentCliResolutionCacheKeyForTest 仅在测试模式下可用。');
     }
 
-    return this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd);
+    return this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd, shellAuthority);
   }
 
   public async flushPersistedCanvasStateForTest(): Promise<PersistedCanvasStateFlushResult> {
@@ -1547,18 +1594,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.waitForPendingWorkspaceStateUpdates();
   }
 
-  public async resetState(): Promise<void> {
+  public async resetState(options: { clearAgentCliResolutionCache?: boolean } = {}): Promise<void> {
     const previousNodeCount = this.state.nodes.length;
     await this.prepareForHostBoundary({
       preserveLiveRuntime: false,
       allowRuntimeSupervisorRestart: false,
       invalidatePendingExecutionOperations: true
     });
+    if (options.clearAgentCliResolutionCache) {
+      this.clearAgentCliResolutionCache();
+    }
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     this.canvasTemplateInitialized = true;
     this.persistState();
     this.recordDiagnosticEvent('state/reset', {
-      previousNodeCount
+      previousNodeCount,
+      clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true
     });
     this.postState('host/stateUpdated');
   }
@@ -2907,6 +2958,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     strongTerminalAttentionReminderChanged: boolean;
     terminalShellChanged: boolean;
     terminalShellPathChanged: boolean;
+    terminalInheritEnvChanged: boolean;
+    terminalShellArgsChanged: boolean;
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
     terminalWordSeparatorsChanged: boolean;
@@ -2937,7 +2990,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? this.refreshConfiguredTerminalShellMetadata()
         : false;
     if (options.terminalShellChanged || options.terminalShellPathChanged) {
+      this.invalidateResolvedShellEnvironmentPatch();
+      this.clearAgentCliResolutionCache();
       await this.notifyIfConfiguredTerminalShellUnavailable();
+    }
+
+    if (options.terminalInheritEnvChanged) {
+      this.recordDiagnosticEvent('executionEnvironment/terminalInheritEnvConfigChanged', {
+        inheritEnv: this.getTerminalInheritEnv(),
+        platform: process.platform
+      });
     }
 
     if (options.terminalScrollbackChanged) {
@@ -2980,6 +3042,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.filesPathDisplayModeChanged ||
       options.terminalShellChanged ||
       options.terminalShellPathChanged ||
+      options.terminalInheritEnvChanged ||
+      options.terminalShellArgsChanged ||
       options.strongTerminalAttentionReminderChanged ||
       terminalShellMetadataChanged ||
       options.terminalScrollbackChanged ||
@@ -5932,6 +5996,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'agent');
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getTerminalWorkingDirectory();
+    const executionEnv = await this.resolveExecutionEnvironment('agent');
     await this.disposeAgentFileActivitySession(nodeId);
     const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
@@ -6025,6 +6090,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             cwd,
             normalizedCols,
             normalizedRows,
+            executionEnv,
             launchMode,
             resumeContext,
             fileActivitySession
@@ -6060,6 +6126,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingMetadata = ensureTerminalMetadata(existingNode);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getTerminalWorkingDirectory();
+    const executionEnv = await this.resolveExecutionEnvironment('terminal');
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient();
     if (fallbackReason) {
@@ -6130,7 +6197,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchMode: 'start',
       scrollback: this.getTerminalScrollback(),
       launchSpec: serializeExecutionSessionLaunchSpec(
-        this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows)
+        this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows, executionEnv)
       )
     });
     if (!this.shouldApplyRuntimeCreateResult('terminal', nodeId, operationToken, backend.kind)) {
@@ -6362,6 +6429,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
+    const executionEnv = await this.resolveExecutionEnvironment('agent');
     await this.disposeAgentFileActivitySession(nodeId);
 
     try {
@@ -6374,6 +6442,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           cwd,
           normalizedCols,
           normalizedRows,
+          executionEnv,
           launchMode,
           resumeContext,
           fileActivitySession
@@ -6834,19 +6903,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private getAgentCliResolutionAuthority(): string {
+    return getConfiguredTerminalShell().resolvedPath;
+  }
+
   private getAgentCliResolutionCacheKey(
     provider: AgentProviderKind,
     requestedCommand: string,
-    workspaceCwd?: string
+    workspaceCwd?: string,
+    shellAuthority: string = this.getAgentCliResolutionAuthority()
   ): string {
     const normalizedCommand =
       process.platform === 'win32' ? requestedCommand.trim().toLowerCase() : requestedCommand.trim();
-    if (!isExplicitRelativePath(requestedCommand.trim())) {
-      return `${process.platform}:${provider}:${normalizedCommand}`;
-    }
-
+    const normalizedShellAuthority = normalizeAgentCliCacheAuthority(shellAuthority, workspaceCwd);
     const normalizedWorkspaceCwd = normalizeAgentCliCacheWorkspaceCwd(workspaceCwd);
-    return `${process.platform}:${provider}:${normalizedWorkspaceCwd}:${normalizedCommand}`;
+    // The execution env can be cwd-sensitive through direnv, Nix, or repo-local shell hooks.
+    return `${process.platform}:${provider}:${normalizedShellAuthority}:${normalizedWorkspaceCwd}:${normalizedCommand}`;
   }
 
   private getCachedAgentCliResolution(
@@ -6869,7 +6941,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       requestedCommand,
       resolvedCommand
     };
-    void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
   }
 
   private clearAgentCliResolution(
@@ -6880,10 +6951,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     delete this.agentCliResolutionCache[
       this.getAgentCliResolutionCacheKey(provider, requestedCommand, workspaceCwd)
     ];
-    void this.context.globalState.update(AGENT_CLI_RESOLUTION_CACHE_KEY, this.agentCliResolutionCache);
+  }
+
+  private clearAgentCliResolutionCache(): void {
+    const cacheKeys = Object.keys(this.agentCliResolutionCache);
+    if (cacheKeys.length === 0) {
+      return;
+    }
+
+    for (const cacheKey of cacheKeys) {
+      delete this.agentCliResolutionCache[cacheKey];
+    }
   }
 
   private async resolveAgentCli(provider: AgentProviderKind, requestedCommand?: string): Promise<AgentCliSpec> {
+    const executionEnv = await this.resolveExecutionEnvironment('agent');
     const configuredSpec = this.getRequestedAgentCliSpec(
       provider,
       requestedCommand?.trim() || this.getAgentLaunchDefaults(provider).command
@@ -6896,7 +6978,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         label: configuredSpec.label,
         requestedCommand: configuredSpec.requestedCommand,
         workspaceCwd,
-        env: this.buildExecutionEnvironment(),
+        env: executionEnv,
         cachedResolvedCommand: this.getCachedAgentCliResolution(
           provider,
           configuredSpec.requestedCommand,
@@ -6944,42 +7026,79 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return getConfiguredTerminalShell().resolvedPath;
   }
 
+  private getTerminalInheritEnv(): boolean {
+    return getConfiguredTerminalInheritEnv();
+  }
+
+  private getTerminalShellArgs(): string[] {
+    return getConfiguredTerminalShellArgs();
+  }
+
+  private buildDebugConfigurationSnapshot(
+    shellEnvironmentPatch = this.resolvedShellEnvironmentPatches.get('interactive-login')
+  ): CanvasDebugConfigurationSnapshot {
+    const configuredTerminalShell = getConfiguredTerminalShell();
+    return {
+      terminalShellPath: configuredTerminalShell.resolvedPath,
+      terminalShellPathOverride: configuredTerminalShell.configuredPath || undefined,
+      terminalShellResolutionSource: configuredTerminalShell.resolutionSource,
+      terminalInheritEnv: this.getTerminalInheritEnv(),
+      terminalShellArgs: this.getTerminalShellArgs(),
+      terminalShellSetting:
+        configuredTerminalShell.configuredShell !== 'default' ? configuredTerminalShell.configuredShell : undefined,
+      executionShellEnvPatchSource: shellEnvironmentPatch?.source,
+      executionShellEnvPatchShellFamily: shellEnvironmentPatch?.shellFamily,
+      executionShellEnvPatchProbeMode: shellEnvironmentPatch?.probeMode,
+      executionShellEnvPatchSkipReason: shellEnvironmentPatch?.skippedReason,
+      executionShellEnvPatchShellPath: shellEnvironmentPatch?.shellPath,
+      executionShellEnvPatchAppliedKeys: shellEnvironmentPatch?.appliedKeys,
+      executionShellEnvPatchError: shellEnvironmentPatch?.error
+    };
+  }
+
   private getTerminalWorkingDirectory(): string {
     return this.getWorkspaceRoot() ?? defaultTerminalWorkingDirectory();
   }
 
-  private buildExecutionEnvironment(): NodeJS.ProcessEnv {
+  private getPrioritizedBaseExecutionPathEntries(): string[] {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
+      return [];
+    }
+
+    const commandDirectories = new Set<string>();
+    for (const command of [
+      process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
+      process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND
+    ]) {
+      const trimmedCommand = command?.trim();
+      if (!trimmedCommand) {
+        continue;
+      }
+
+      if (path.isAbsolute(trimmedCommand)) {
+        commandDirectories.add(path.dirname(trimmedCommand));
+        continue;
+      }
+
+      if (isExplicitRelativePath(trimmedCommand)) {
+        commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
+      }
+    }
+
+    return Array.from(commandDirectories);
+  }
+
+  private buildBaseExecutionEnvironment(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       TERM: process.env.TERM?.trim() || (process.platform === 'win32' ? 'xterm-color' : 'xterm-256color'),
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
-    if (isTestHarnessMode(this.context.extensionMode)) {
-      const commandDirectories = new Set<string>();
-      for (const command of [
-        process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND,
-        process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND
-      ]) {
-        const trimmedCommand = command?.trim();
-        if (!trimmedCommand) {
-          continue;
-        }
-
-        if (path.isAbsolute(trimmedCommand)) {
-          commandDirectories.add(path.dirname(trimmedCommand));
-          continue;
-        }
-
-        if (isExplicitRelativePath(trimmedCommand)) {
-          commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
-        }
-      }
-
-      if (commandDirectories.size > 0) {
-        const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
-        env.PATH = Array.from(new Set([...commandDirectories, ...existingPathEntries])).join(path.delimiter);
-      }
+    const prioritizedPathEntries = this.getPrioritizedBaseExecutionPathEntries();
+    if (prioritizedPathEntries.length > 0) {
+      const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+      env.PATH = Array.from(new Set([...prioritizedPathEntries, ...existingPathEntries])).join(path.delimiter);
     }
 
     if (process.platform === 'win32') {
@@ -6989,19 +7108,98 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return env;
   }
 
+  private async resolveExecutionEnvironment(target: 'agent' | 'terminal'): Promise<NodeJS.ProcessEnv> {
+    const baseEnv = this.buildBaseExecutionEnvironment();
+    if (
+      !shouldResolveShellEnvironmentPatchForExecutionTarget(target, process.platform, {
+        terminalInheritEnv: this.getTerminalInheritEnv()
+      })
+    ) {
+      return baseEnv;
+    }
+
+    const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(
+      baseEnv,
+      this.getShellEnvironmentProbeMode(target)
+    );
+    return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch, process.platform, {
+      prioritizedBasePathEntries: this.getPrioritizedBaseExecutionPathEntries()
+    });
+  }
+
+  private getShellEnvironmentProbeMode(target: 'agent' | 'terminal'): ShellEnvironmentProbeMode {
+    return target === 'terminal' && process.platform !== 'win32' ? 'login' : 'interactive-login';
+  }
+
+  private invalidateResolvedShellEnvironmentPatch(): void {
+    this.resolvedShellEnvironmentPatchPromises.clear();
+    this.resolvedShellEnvironmentPatches.clear();
+  }
+
+  private getResolvedShellEnvironmentPatch(
+    baseEnv: NodeJS.ProcessEnv,
+    probeMode: ShellEnvironmentProbeMode = 'interactive-login'
+  ): Promise<ResolvedShellEnvironmentPatch> {
+    const existingPromise = this.resolvedShellEnvironmentPatchPromises.get(probeMode);
+    if (!existingPromise) {
+      const shellPath = this.getTerminalShellPath();
+      const cwd = this.getTerminalWorkingDirectory();
+      const nextPromise = resolveShellEnvironmentPatch({
+        env: baseEnv,
+        shellPath,
+        cwd,
+        probeMode
+      }).then((result) => {
+        this.resolvedShellEnvironmentPatches.set(probeMode, result);
+        if (result.source !== 'none') {
+          this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchResolved', {
+            source: result.source,
+            shellFamily: result.shellFamily,
+            probeMode: result.probeMode,
+            shellPath: result.shellPath,
+            appliedKeys: result.appliedKeys
+          });
+        } else if (result.skippedReason === 'shell-resolution-failed') {
+          this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchFailed', {
+            source: result.source,
+            shellFamily: result.shellFamily,
+            probeMode: result.probeMode,
+            skippedReason: result.skippedReason,
+            shellPath: result.shellPath,
+            error: result.error
+          });
+        } else {
+          this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchSkipped', {
+            source: result.source,
+            shellFamily: result.shellFamily,
+            probeMode: result.probeMode,
+            skippedReason: result.skippedReason,
+            shellPath: result.shellPath
+          });
+        }
+        return result;
+      });
+      this.resolvedShellEnvironmentPatchPromises.set(probeMode, nextPromise);
+      return nextPromise;
+    }
+
+    return existingPromise;
+  }
+
   private buildTerminalLaunchSpec(
     shellPath: string,
     cwd: string,
     cols: number,
-    rows: number
+    rows: number,
+    env: NodeJS.ProcessEnv
   ): ExecutionSessionLaunchSpec {
     return {
       file: shellPath,
-      args: [],
+      args: this.getTerminalShellArgs(),
       cwd,
       cols,
       rows,
-      env: this.buildExecutionEnvironment()
+      env
     };
   }
 
@@ -7011,11 +7209,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     cwd: string,
     cols: number,
     rows: number,
+    env: NodeJS.ProcessEnv,
     launchMode: PendingExecutionLaunch,
     resumeContext: AgentResumeContext,
     fileActivitySession?: AgentFileActivitySession
   ): ExecutionSessionLaunchSpec {
-    const env = this.buildExecutionEnvironment();
     const args: string[] = launchMode === 'start' ? [...launchArgs] : [];
 
     if (looksLikeFakeAgentProviderCommand(spec.command)) {
@@ -7183,10 +7381,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
     const sessionId = createExecutionSessionId(nodeId, 'terminal');
+    const executionEnv = await this.resolveExecutionEnvironment('terminal');
 
     try {
       const process = createExecutionSessionProcess(
-        this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows)
+        this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows, executionEnv)
       );
 
       const session: LocalExecutionSession = {
@@ -11853,6 +12052,20 @@ function normalizeAgentCliCacheWorkspaceCwd(workspaceCwd: string | undefined): s
   return process.platform === 'win32' ? resolvedWorkspaceCwd.toLowerCase() : resolvedWorkspaceCwd;
 }
 
+function normalizeAgentCliCacheAuthority(shellAuthority: string | undefined, workspaceCwd?: string): string {
+  const normalizedShellAuthority = shellAuthority?.trim();
+  if (!normalizedShellAuthority) {
+    return '<no-shell-authority>';
+  }
+
+  if (isExplicitRelativePath(normalizedShellAuthority)) {
+    const resolvedShellAuthority = path.resolve(workspaceCwd ?? process.cwd(), normalizedShellAuthority);
+    return process.platform === 'win32' ? resolvedShellAuthority.toLowerCase() : resolvedShellAuthority;
+  }
+
+  return process.platform === 'win32' ? normalizedShellAuthority.toLowerCase() : normalizedShellAuthority;
+}
+
 function shouldResetIdleAgentNode(
   node: CanvasNodeSummary,
   metadata: AgentNodeMetadata
@@ -12198,34 +12411,6 @@ function isLegacyPlaceholderTerminal(node: CanvasNodeSummary): boolean {
     node.summary === '宿主终端已关闭，可重新创建。' ||
     node.summary === '已匹配到现存宿主终端，可直接显示。'
   );
-}
-
-function readAgentCliResolutionCache(value: unknown): Record<string, AgentCliResolutionCacheEntry> {
-  if (!isRecord(value)) {
-    return {};
-  }
-
-  const cache: Record<string, AgentCliResolutionCacheEntry> = {};
-  for (const [cacheKey, entry] of Object.entries(value)) {
-    if (!isRecord(entry)) {
-      continue;
-    }
-
-    const requestedCommand =
-      typeof entry.requestedCommand === 'string' ? entry.requestedCommand.trim() : '';
-    const resolvedCommand =
-      typeof entry.resolvedCommand === 'string' ? entry.resolvedCommand.trim() : '';
-    if (!requestedCommand || !resolvedCommand) {
-      continue;
-    }
-
-    cache[cacheKey] = {
-      requestedCommand,
-      resolvedCommand
-    };
-  }
-
-  return cache;
 }
 
 function buildCanvasTemplateStorageLocations(context: vscode.ExtensionContext): CanvasTemplateStorageLocation[] {

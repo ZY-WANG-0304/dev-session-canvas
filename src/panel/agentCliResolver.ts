@@ -241,7 +241,7 @@ async function resolveCommandFromPathEnv(
     return undefined;
   }
 
-  const pathValue = env.PATH?.trim();
+  const pathValue = readPathEnvironmentValue(env);
   if (!pathValue) {
     return undefined;
   }
@@ -265,7 +265,7 @@ async function resolveCommandFromPathEnv(
 }
 
 function readWindowsPathExt(env: NodeJS.ProcessEnv): string[] {
-  const pathExt = env.PATHEXT?.trim();
+  const pathExt = readEnvironmentValueCaseInsensitive(env, 'PATHEXT')?.trim();
   const configured =
     pathExt && pathExt.length > 0
       ? pathExt
@@ -276,6 +276,25 @@ function readWindowsPathExt(env: NodeJS.ProcessEnv): string[] {
   const normalized = new Set<string>(configured);
   normalized.add('');
   return Array.from(normalized);
+}
+
+function readPathEnvironmentValue(env: NodeJS.ProcessEnv): string | undefined {
+  return readEnvironmentValueCaseInsensitive(env, 'PATH')?.trim();
+}
+
+function readEnvironmentValueCaseInsensitive(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  if (typeof env[key] === 'string') {
+    return env[key] as string;
+  }
+
+  if (process.platform !== 'win32') {
+    return undefined;
+  }
+
+  const normalizedKey = key.toLowerCase();
+  const matchedKey = Object.keys(env).find((candidateKey) => candidateKey.toLowerCase() === normalizedKey);
+  const value = matchedKey ? env[matchedKey] : undefined;
+  return typeof value === 'string' ? value : undefined;
 }
 
 async function resolveCommandViaPosixLoginShell(
