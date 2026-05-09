@@ -48,7 +48,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ## Environment Requirements
 
-- VS Code `1.85.0` or later
+- VS Code `1.80.0` or later
 - A standard filesystem workspace
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side

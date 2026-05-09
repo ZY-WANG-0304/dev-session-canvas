@@ -36,7 +36,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 运行前提
 
-- VS Code `1.85.0` 或更高版本
+- VS Code `1.80.0` 或更高版本
 - 标准文件系统工作区（本地磁盘或 `Remote SSH` workspace）
 - 对应的 CLI 运行环境：
   - `Agent` 节点依赖 `codex` 或 `claude`

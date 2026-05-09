@@ -36,7 +36,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Runtime Requirements
 
-- VS Code `1.85.0` or later
+- VS Code `1.80.0` or later
 - A standard filesystem workspace, either on local disk or in a `Remote SSH` workspace
 - The required CLI runtime:
   - `Agent` nodes depend on `codex` or `claude`
