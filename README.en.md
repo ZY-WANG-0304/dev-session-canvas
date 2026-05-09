@@ -22,6 +22,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Basic canvas interaction and layout built on React Flow
 - `Note` Markdown preview, interactive checklists, workspace file links, and editor-mode line-number / indentation affordances
 - Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, and reset entry points
+- Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
 - Limited capability handling under `Restricted Mode`
 - A public `Preview` release path targeting the `Visual Studio Marketplace`
 - Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
@@ -46,7 +47,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.7.0` is to consolidate canvas templates, the default onboarding template, custom template management, template apply / reset behavior, and the release materials for this milestone, while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.7.1` is to consolidate `Agent` / `Terminal` shell-environment inheritance, CLI resolution caching, cross-platform smoke evidence, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -54,7 +55,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel is now `Visual Studio Marketplace`. Whether to publish to `Open VSX` remains deferred.
-- The current main path has now been functionally validated across Linux, macOS, Windows local workspaces, and `Remote SSH`. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The current main path has now been functionally validated across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.7.1` update specifically tightens execution-node shell-environment inheritance, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -124,7 +125,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 ## Capability Boundaries
 
 - `Agent` nodes require `codex` or `claude` CLI that can be resolved by the local or remote Extension Host
-- `Terminal` nodes require a shell environment available on the workspace side
+- `Terminal` nodes require a shell environment available on the workspace side. macOS / Linux inherit a controlled shell env patch by default, while Windows lets the real shell run profile / AutoRun itself; `devSessionCanvas.terminal.inheritEnv` and `devSessionCanvas.terminal.shellArgs` provide explicit controls
 - `Note` nodes keep raw Markdown text as the authoritative body data; preview-mode links are limited to allowlisted external schemes and files inside the current workspace
 - `devSessionCanvas.runtimePersistence.enabled = false`: baseline capability only, with no promise that real processes continue across VS Code lifecycle boundaries
 - `devSessionCanvas.runtimePersistence.enabled = true`: now has substantial automation and manual validation evidence, especially around the `Remote SSH` real-reopen path. The user-visible guarantee still depends on the backend and platform combination. On Linux local and `Remote SSH`, the extension prefers a stronger guarantee when `systemd --user` is available, and otherwise falls back automatically to `best-effort`

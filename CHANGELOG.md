@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.7.1 - Preview Shell Environment Compatibility Update
+
+相对 `0.7.0`，`0.7.1` 是同一公开 `Preview` 里程碑下的一轮兼容性修复更新，重点收口 `Agent` 与嵌入式 `Terminal` 的 shell 环境继承、CLI 解析缓存、Windows 真实 smoke 覆盖和发布验证口径。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 收口 `Agent` 启动环境：CLI resolver 与真实 spawn 共用同一份受控 shell env patch，避免“命令能找到，但运行时 `PATH` / `node` / 工具链变量不同步”的分叉失败
+- macOS / Linux 的 `Agent` 继续从当前 shell 解析受控环境增量；Windows 的 `Agent` 改为基于当前配置或默认 `Terminal` shell，覆盖 PowerShell、`cmd.exe`、Git Bash / MSYS2 等 POSIX family shell 的主路径
+- 修正 `PATH` / `PATHEXT` 合并和缓存边界：shell 导出的主体顺序优先，测试或宿主显式注入目录可保留优先级，Agent CLI 缓存绑定 shell authority 与 workspace `cwd`
+- 对齐嵌入式 `Terminal` 的跨平台语义：Windows 不预应用 shell env patch，让真实 shell 自己执行 profile / AutoRun；macOS / Linux 默认继承 login-only shell env patch，补齐 GUI 启动时常见的 Homebrew、NVM、PATH 或工具链变量
+- 新增 `devSessionCanvas.terminal.inheritEnv` 与 `devSessionCanvas.terminal.shellArgs`，分别控制 `Terminal` 是否继承 shell environment，以及 Terminal shell 启动时附加的 argv 参数
+- 扩充 host diagnostics、脚本级回归和 Windows real Codex smoke，覆盖 PowerShell、`cmd.exe`、Git Bash、MSYS2 `bash` / `sh` 等 shell authority 场景
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 在 GUI 启动 VS Code 后，如果 `Agent` 或 `Terminal` 看不到 shell profile 中的工具链变量，优先升级到本版本并复核 host diagnostics
+- 如果 macOS / Linux 的 `Terminal` profile 存在重复追加 `PATH` 或重复执行 rc/profile 的副作用，可关闭 `devSessionCanvas.terminal.inheritEnv`，或用 `devSessionCanvas.terminal.shellArgs` 显式调整 shell 启动参数
+- 使用 `Agent` 节点前，请确保 `codex` 或 `claude` CLI 已安装且可用
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- Windows 下少量更少见的 POSIX family shell 名称或非常规 `terminal.shellPath` 组合仍缺真实 smoke 覆盖；当前自动化和真实 smoke 已覆盖 PowerShell、`cmd.exe`、Git Bash、MSYS2 `bash` 与 MSYS2 `sh`
+- shell env patch 只作为受控增量使用，不会 wholesale 覆盖 `HOME`、`USERPROFILE`、`PWD`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等宿主关键变量；如果用户 profile 自身存在副作用，仍可能需要通过配置显式关闭或调整
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.7.0` 升级到 `0.7.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.7.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.7.1`，不引入新的通知行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.7.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.7.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.7.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.7.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.7.0 - Preview Canvas Templates Update
 
 相对 `0.6.0`，`0.7.0` 主要把画布模板纳入公开 `Preview` 主路径：首次打开不再只是空白画布，用户可以通过内置模板、自定义模板和默认模板快速复用一组 `Agent` / `Terminal` / `Note` 工作面。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
