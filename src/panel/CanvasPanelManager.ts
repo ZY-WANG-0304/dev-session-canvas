@@ -25,6 +25,7 @@ import {
   type ExecutionAttentionSignal,
   type ExecutionAttentionSignalState
 } from '../common/executionAttentionSignals';
+import { prepareExecutionTerminalPasteText } from '../common/executionTerminalClipboard';
 import {
   COMMAND_IDS,
   CONTEXT_KEYS,
@@ -5073,6 +5074,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           parsedMessage.payload.data
         );
         return;
+      case 'webview/copyExecutionSelection':
+        void this.copyExecutionSelection(
+          sourceSurface,
+          parsedMessage.payload.kind,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.text
+        );
+        return;
+      case 'webview/requestExecutionPaste':
+        void this.handleExecutionPasteRequest(
+          sourceSurface,
+          parsedMessage.payload.kind,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.requestId,
+          parsedMessage.payload.bracketedPasteMode
+        );
+        return;
       case 'webview/dropExecutionResource':
         void this.handleDroppedExecutionResource(
           parsedMessage.payload.kind,
@@ -7747,6 +7765,131 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.recordDiagnosticEvent('execution/inputWritten', {
       ...inputDetail,
       sessionId: session.sessionId
+    });
+  }
+
+  private async copyExecutionSelection(
+    sourceSurface: CanvasSurfaceLocation,
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    text: string
+  ): Promise<void> {
+    try {
+      await vscode.env.clipboard.writeText(text);
+      this.recordDiagnosticEvent('execution/selectionCopied', {
+        kind,
+        nodeId,
+        bytes: Buffer.byteLength(text, 'utf8'),
+        preview: summarizeDiagnosticInput(text)
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('execution/selectionCopyFailed', {
+        kind,
+        nodeId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '复制终端选区失败。'
+        }
+      });
+    }
+  }
+
+  private async handleExecutionPasteRequest(
+    sourceSurface: CanvasSurfaceLocation,
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    requestId: string,
+    bracketedPasteMode: boolean
+  ): Promise<void> {
+    if (!this.getExecutionSessions(kind).has(nodeId)) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: kind === 'agent' ? '当前 Agent 没有可输入的运行中会话。' : '当前 Terminal 没有可输入的运行中会话。'
+        }
+      });
+      return;
+    }
+
+    let clipboardText: string;
+    try {
+      clipboardText = await vscode.env.clipboard.readText();
+    } catch (error) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/pasteReadFailed', {
+        kind,
+        nodeId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '读取剪贴板失败。'
+        }
+      });
+      return;
+    }
+
+    const preparedPaste = prepareExecutionTerminalPasteText(clipboardText, bracketedPasteMode);
+    if (preparedPaste.kind === 'cancel') {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      return;
+    }
+
+    if (preparedPaste.kind === 'confirm') {
+      const pasteAction = '继续粘贴';
+      const selection = await vscode.window.showWarningMessage(
+        `确定要向当前${kind === 'agent' ? ' Agent' : ' Terminal'}粘贴 ${preparedPaste.lineCount} 行文本吗？`,
+        { modal: true },
+        pasteAction
+      );
+      if (selection !== pasteAction) {
+        this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+        return;
+      }
+    }
+
+    if (!this.getExecutionSessions(kind).has(nodeId)) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      return;
+    }
+
+    const pasteText = preparedPaste.text;
+    this.postMessageToSurface(sourceSurface, {
+      type: 'host/executionPasteText',
+      payload: {
+        requestId,
+        nodeId,
+        kind,
+        text: pasteText
+      }
+    });
+    this.recordDiagnosticEvent('execution/pastePrepared', {
+      kind,
+      nodeId,
+      requestId,
+      bytes: Buffer.byteLength(pasteText, 'utf8'),
+      preview: summarizeDiagnosticInput(pasteText)
+    });
+  }
+
+  private postExecutionPasteCancelled(
+    surface: CanvasSurfaceLocation,
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    requestId: string
+  ): void {
+    this.postMessageToSurface(surface, {
+      type: 'host/executionPasteCancelled',
+      payload: {
+        requestId,
+        nodeId,
+        kind
+      }
     });
   }
 
@@ -10618,6 +10761,20 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
         nodeId: message.payload.nodeId,
         kind: message.payload.kind,
         resolvedLinkCount: message.payload.resolvedLinks.length
+      };
+    case 'host/executionPasteText':
+      return {
+        requestId: message.payload.requestId,
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind,
+        textLength: message.payload.text.length,
+        textPreview: summarizeDiagnosticInput(message.payload.text)
+      };
+    case 'host/executionPasteCancelled':
+      return {
+        requestId: message.payload.requestId,
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind
       };
     case 'host/requestCreateNode':
       return {
