@@ -271,6 +271,84 @@ try {
   });
   assert.strictEqual(capturedPerAgent.template.nodes[0].metadata.agent.provider, 'default');
 
+  const objectAgentId = 'agent-7-11111111-1111-4111-8111-111111111111';
+  const objectTerminalId = 'terminal-8-22222222-2222-4222-8222-222222222222';
+  const objectNoteId = 'note-9-33333333-3333-4333-8333-333333333333';
+  const capturedObjectIds = captureCanvasTemplateFromState({
+    state: {
+      version: 1,
+      updatedAt: '2026-05-09T00:00:00.000Z',
+      nodes: [
+        {
+          id: objectAgentId,
+          kind: 'agent',
+          title: 'Object Identity Agent',
+          status: 'idle',
+          summary: '',
+          position: { x: 20, y: 30 },
+          size: { width: 320, height: 240 },
+          metadata: { agent: { provider: 'codex', templateArgv: ['--yolo'] } }
+        },
+        {
+          id: objectTerminalId,
+          kind: 'terminal',
+          title: 'Object Identity Terminal',
+          status: 'idle',
+          summary: '',
+          position: { x: 380, y: 30 },
+          size: { width: 320, height: 240 },
+          metadata: { terminal: {} }
+        },
+        {
+          id: objectNoteId,
+          kind: 'note',
+          title: 'Object Identity Note',
+          status: 'ready',
+          summary: '',
+          position: { x: 20, y: 320 },
+          size: { width: 320, height: 180 },
+          metadata: { note: { content: 'saved without object ids' } }
+        }
+      ],
+      edges: [
+        {
+          id: 'object-edge',
+          sourceNodeId: objectAgentId,
+          targetNodeId: objectNoteId,
+          sourceAnchor: 'bottom',
+          targetAnchor: 'top',
+          arrowMode: 'forward',
+          owner: 'user'
+        }
+      ],
+      fileReferences: [],
+      suppressedFileActivityEdgeIds: [],
+      suppressedAutomaticFileArtifactNodeIds: []
+    },
+    name: 'Captured Object Identity Template',
+    templateId: 'captured-object-identity-template',
+    category: 'user',
+    agentProviderSelection: {
+      [objectAgentId]: 'claude'
+    },
+    now: '2026-05-09T00:00:00.000Z'
+  });
+  assert.strictEqual(capturedObjectIds.template.nodes[0].metadata.agent.provider, 'claude');
+  assert.deepStrictEqual(capturedObjectIds.template.nodes[0].metadata.agent.argv, ['--yolo']);
+  assert.deepStrictEqual(capturedObjectIds.template.edges[0], {
+    sourceNodeIndex: 0,
+    targetNodeIndex: 2,
+    sourceAnchor: 'bottom',
+    targetAnchor: 'top',
+    arrowMode: 'forward',
+    color: undefined,
+    label: undefined
+  });
+  const capturedObjectIdTemplateText = JSON.stringify(capturedObjectIds.template);
+  assert.ok(!capturedObjectIdTemplateText.includes(objectAgentId));
+  assert.ok(!capturedObjectIdTemplateText.includes(objectTerminalId));
+  assert.ok(!capturedObjectIdTemplateText.includes(objectNoteId));
+
   assert.strictEqual(
     sanitizeCanvasTemplateFileStem('  team workflow / draft  ', 'user-template-1234567890'),
     'team-workflow-draft-user-templat'
@@ -419,6 +497,20 @@ try {
     'function materializeTemplateNode'
   );
   assert.match(applyTemplateHelperSource, /nodeIds: materializedNodes\.map\(\(node\) => node\.id\)/u);
+  const createNodeSource = sliceBetween(
+    panelManagerSource,
+    'function createNode(',
+    'function createNodePosition'
+  );
+  assert.match(createNodeSource, /createCanvasNodeObjectId\(kind, sequence\)/u);
+  assert.match(createNodeSource, /randomUUID\(\)/u);
+  const nodeSequenceSource = sliceBetween(
+    panelManagerSource,
+    'function readCanvasNodeDisplaySequence',
+    'function createNodeMetadata'
+  );
+  assert.match(nodeSequenceSource, /agent\|terminal\|note/u);
+  assert.match(nodeSequenceSource, /\(\?:-\.\+\)\?/u);
   const templateGroupFocusSource = sliceBetween(
     panelManagerSource,
     'private requestTemplateNodeGroupFocus',
