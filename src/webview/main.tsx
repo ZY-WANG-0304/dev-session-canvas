@@ -14,12 +14,14 @@ import ReactFlow, {
   ConnectionMode,
   Controls,
   EdgeLabelRenderer,
+  getBoundsOfRects,
   getNodesBounds,
   Handle,
   MarkerType,
   MiniMap,
   NodeResizer,
   Position,
+  useStore,
   useViewport,
   type Connection,
   type Edge,
@@ -27,6 +29,7 @@ import ReactFlow, {
   type EdgeProps,
   type MiniMapNodeProps,
   type ReactFlowInstance,
+  type ReactFlowState,
   type Node,
   type NodeMouseHandler,
   type NodeProps,
@@ -140,6 +143,18 @@ interface CanvasViewportSize {
 interface CanvasOverviewViewportState {
   active: boolean;
   titleScale: number;
+}
+
+interface CanvasMiniMapRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface CanvasMiniMapViewportOutlineState {
+  viewBB: CanvasMiniMapRect;
+  boundingRect: CanvasMiniMapRect;
 }
 
 interface EdgeLabelEditorState {
@@ -503,6 +518,10 @@ const CANVAS_FIT_VIEW_PADDING = 0.05;
 const CANVAS_COMFORT_MIN_ZOOM = 0.4;
 const CANVAS_MAX_ZOOM = 1.8;
 const CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.35;
+const CANVAS_MINIMAP_WIDTH = 194;
+const CANVAS_MINIMAP_HEIGHT = 126;
+const CANVAS_MINIMAP_OFFSET_SCALE = 5;
+const CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH = 0.5;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
@@ -2100,7 +2119,7 @@ function App(): JSX.Element {
         <MiniMap
           className="canvas-corner-panel canvas-minimap"
           position="bottom-right"
-          style={{ width: 194, height: 126 }}
+          style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
           pannable
           zoomable
           nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
@@ -2110,9 +2129,10 @@ function App(): JSX.Element {
           nodeBorderRadius={4}
           nodeStrokeWidth={1.2}
           maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
-          maskStrokeColor="var(--vscode-focusBorder)"
-          maskStrokeWidth={1.5}
+          maskStrokeColor="none"
+          maskStrokeWidth={0}
         />
+        <CanvasMiniMapViewportOutline />
         <Controls
           className="canvas-corner-panel canvas-controls"
           showInteractive={false}
@@ -3501,6 +3521,76 @@ function CanvasMiniMapNode(props: MiniMapNodeProps): JSX.Element {
       style={style}
       onClick={props.onClick ? (event) => props.onClick?.(event, props.id) : undefined}
     />
+  );
+}
+
+function selectCanvasMiniMapViewportOutlineState(
+  state: ReactFlowState
+): CanvasMiniMapViewportOutlineState {
+  const zoom = state.transform[2];
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const viewBB = {
+    x: -state.transform[0] / safeZoom,
+    y: -state.transform[1] / safeZoom,
+    width: state.width / safeZoom,
+    height: state.height / safeZoom
+  };
+  const nodes = state.getNodes();
+  const boundingRect =
+    nodes.length > 0 ? getBoundsOfRects(getNodesBounds(nodes, state.nodeOrigin), viewBB) : viewBB;
+
+  return {
+    viewBB,
+    boundingRect
+  };
+}
+
+function resolveCanvasMiniMapViewBox(
+  boundingRect: CanvasMiniMapRect
+): CanvasMiniMapRect {
+  const scaledWidth = boundingRect.width / CANVAS_MINIMAP_WIDTH;
+  const scaledHeight = boundingRect.height / CANVAS_MINIMAP_HEIGHT;
+  const viewScale = Math.max(scaledWidth, scaledHeight);
+  const safeViewScale = Number.isFinite(viewScale) && viewScale > 0 ? viewScale : 1;
+  const viewWidth = safeViewScale * CANVAS_MINIMAP_WIDTH;
+  const viewHeight = safeViewScale * CANVAS_MINIMAP_HEIGHT;
+  const offset = CANVAS_MINIMAP_OFFSET_SCALE * safeViewScale;
+
+  return {
+    x: boundingRect.x - (viewWidth - boundingRect.width) / 2 - offset,
+    y: boundingRect.y - (viewHeight - boundingRect.height) / 2 - offset,
+    width: viewWidth + offset * 2,
+    height: viewHeight + offset * 2
+  };
+}
+
+function CanvasMiniMapViewportOutline(): JSX.Element {
+  const { boundingRect, viewBB } = useStore(selectCanvasMiniMapViewportOutlineState);
+  const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
+
+  return (
+    <div
+      className="canvas-minimap-viewport-outline"
+      style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
+      aria-hidden="true"
+    >
+      <svg
+        width={CANVAS_MINIMAP_WIDTH}
+        height={CANVAS_MINIMAP_HEIGHT}
+        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+        focusable="false"
+      >
+        <rect
+          className="canvas-minimap-viewport-outline-rect"
+          x={viewBB.x}
+          y={viewBB.y}
+          width={viewBB.width}
+          height={viewBB.height}
+          fill="none"
+          strokeWidth={CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH}
+        />
+      </svg>
+    </div>
   );
 }
 

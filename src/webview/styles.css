@@ -125,6 +125,33 @@ body {
   filter: none;
 }
 
+.canvas-shell .canvas-minimap-viewport-outline,
+.canvas-shell .canvas-minimap-viewport-outline * {
+  pointer-events: none;
+}
+
+.canvas-shell .canvas-minimap-viewport-outline {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 6;
+  margin: 15px;
+  padding: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.canvas-shell .canvas-minimap-viewport-outline svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-shell .canvas-minimap-viewport-outline-rect {
+  stroke: var(--vscode-focusBorder);
+  vector-effect: non-scaling-stroke;
+}
+
 .canvas-shell .canvas-minimap .react-flow__minimap-node {
   opacity: 0.82;
   transform-box: fill-box;
