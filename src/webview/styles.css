@@ -360,6 +360,81 @@ body {
   border-color: color-mix(in srgb, #f97316 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
 }
 
+.canvas-shell.is-overview-mode .canvas-node {
+  background: color-mix(in srgb, var(--vscode-editor-background) 98%, var(--vscode-focusBorder) 2%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-widget-border, var(--vscode-panel-border)) 72%, transparent);
+}
+
+.canvas-shell.is-overview-mode .canvas-node.is-selected {
+  box-shadow:
+    0 0 0 1px var(--vscode-focusBorder),
+    0 0 0 4px color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
+}
+
+.canvas-shell.is-overview-mode .window-chrome,
+.canvas-shell.is-overview-mode .file-list-minimal-header {
+  padding: 8px 10px;
+  border-bottom-color: color-mix(in srgb, var(--vscode-panel-border) 60%, transparent);
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-focusBorder) 6%);
+}
+
+.canvas-shell.is-overview-mode .window-title-input {
+  pointer-events: none;
+}
+
+.canvas-shell.is-overview-mode .window-title-subtitle-row,
+.canvas-shell.is-overview-mode .execution-help-trigger,
+.canvas-shell.is-overview-mode .action-button,
+.canvas-shell.is-overview-mode .action-split-button,
+.canvas-shell.is-overview-mode .file-list-view-toggle,
+.canvas-shell.is-overview-mode .file-node-copy span,
+.canvas-shell.is-overview-mode .file-list-entry-copy span,
+.canvas-shell.is-overview-mode .node-hint,
+.canvas-shell.is-overview-mode .compact-node-actions,
+.canvas-shell.is-overview-mode .compact-node p {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-shell.is-overview-mode .session-body,
+.canvas-shell.is-overview-mode .object-body,
+.canvas-shell.is-overview-mode .file-list-body {
+  position: relative;
+  pointer-events: none;
+}
+
+.canvas-shell.is-overview-mode .terminal-viewport,
+.canvas-shell.is-overview-mode .terminal-overlay,
+.canvas-shell.is-overview-mode .note-editor-surface,
+.canvas-shell.is-overview-mode .file-list-entries,
+.canvas-shell.is-overview-mode .file-list-tree,
+.canvas-shell.is-overview-mode .file-list-empty {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-shell.is-overview-mode .terminal-frame::after,
+.canvas-shell.is-overview-mode .object-body::after,
+.canvas-shell.is-overview-mode .file-list-body::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: var(--canvas-node-radius-inner);
+  border: 1px dashed color-mix(in srgb, var(--vscode-descriptionForeground) 28%, transparent);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent) 25%,
+      transparent 25%,
+      transparent 50%,
+      color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent) 50%,
+      color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent) 75%,
+      transparent 75%
+    );
+  background-size: 18px 18px;
+  pointer-events: none;
+}
+
 .canvas-node-handle {
   width: 10px;
   height: 10px;
