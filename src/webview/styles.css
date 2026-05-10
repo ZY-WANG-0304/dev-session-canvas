@@ -319,6 +319,7 @@ body {
 }
 
 .canvas-node {
+  --canvas-node-color: var(--vscode-focusBorder);
   --execution-node-attention-color: var(--vscode-focusBorder);
   display: flex;
   flex-direction: column;
@@ -339,25 +340,30 @@ body {
 }
 
 .canvas-node.kind-agent {
-  --execution-node-attention-color: color-mix(in srgb, #22c55e 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
+  --canvas-node-color: #22c55e;
+  --execution-node-attention-color: color-mix(in srgb, var(--canvas-node-color) 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
   border-color: var(--execution-node-attention-color);
 }
 
 .canvas-node.kind-terminal {
-  --execution-node-attention-color: color-mix(in srgb, #38bdf8 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
+  --canvas-node-color: #38bdf8;
+  --execution-node-attention-color: color-mix(in srgb, var(--canvas-node-color) 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
   border-color: var(--execution-node-attention-color);
 }
 
 .canvas-node.kind-note {
-  border-color: color-mix(in srgb, #a78bfa 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
+  --canvas-node-color: #a78bfa;
+  border-color: color-mix(in srgb, var(--canvas-node-color) 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%);
 }
 
 .canvas-node.kind-file {
-  border-color: color-mix(in srgb, #f59e0b 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
+  --canvas-node-color: #f59e0b;
+  border-color: color-mix(in srgb, var(--canvas-node-color) 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
 }
 
 .canvas-node.kind-file-list {
-  border-color: color-mix(in srgb, #f97316 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
+  --canvas-node-color: #f97316;
+  border-color: color-mix(in srgb, var(--canvas-node-color) 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
 }
 
 .canvas-shell.is-overview-mode .canvas-node {
@@ -422,15 +428,15 @@ body {
   position: absolute;
   inset: 8px;
   border-radius: var(--canvas-node-radius-inner);
-  border: 1px dashed color-mix(in srgb, var(--vscode-descriptionForeground) 28%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--canvas-node-color) 32%, transparent);
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent) 25%,
+      color-mix(in srgb, var(--canvas-node-color) 9%, transparent) 25%,
       transparent 25%,
       transparent 50%,
-      color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent) 50%,
-      color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent) 75%,
+      color-mix(in srgb, var(--canvas-node-color) 9%, transparent) 50%,
+      color-mix(in srgb, var(--canvas-node-color) 9%, transparent) 75%,
       transparent 75%
     );
   background-size: 18px 18px;
