@@ -7,7 +7,7 @@ description: Use when the user asks to record, generate, or update the marketpla
 
 ## Overview
 
-AI 实时驱动的录制系统。通过 CLI 工具启动 VS Code 录制环境，根据剧本和实时截图动态执行操作，生成 MP4/GIF/PNG 预览媒体。
+AI 实时驱动的录制系统。通过 CLI 工具启动真实 VS Code Extension Development Host，根据剧本和实时截图动态执行操作，生成 MP4/GIF/PNG 预览媒体。
 
 ## 工作流
 
@@ -20,7 +20,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 3. 等待 session 文件出现（约 15-30s）
 4. 逐场景执行：
    - `record-start` 开始录制视频片段
-   - 执行操作（click/key/paste/command/dispatch）
+   - 执行操作（录制片段内只用 click/key/paste 模拟用户鼠标/键盘）
    - `gif-frame <label>` 截取 GIF 帧
    - `record-stop` 停止片段
    - 思考/验证时间不录制（不在 record-start/stop 之间）
@@ -36,8 +36,8 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 | `click <x> <y> [--right] [--double]` | 原生鼠标点击 |
 | `key <combo>` | 按键（Return, Escape, Ctrl+A, Shift+Insert） |
 | `paste <text>` | 剪贴板粘贴 |
-| `command <cmd> [json_args]` | VS Code 命令（通过 recording control） |
-| `dispatch <json>` | 发送 webview 消息 |
+| `command <cmd> [json_args]` | 仅限旧测试宿主/场景初始化；真实录制环境不支持 |
+| `dispatch <json>` | 仅限旧测试宿主/场景初始化；真实录制环境不支持 |
 | `state` | 读取画布节点/边状态 |
 | `record-start` | 开始录制视频片段 |
 | `record-stop` | 停止当前片段 |
@@ -48,11 +48,11 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 
 ## 关键技巧
 
-**Control 文件超时（最重要）：**
-- smoke test 的 `waitForCompletion` 有 **60 秒超时**，超时后 control 文件不再被轮询
-- 必须在环境启动后 60 秒内完成所有 control 文件写入（`command`、`dispatch` 等）
-- 推荐流程：环境就绪 → 通过 UI 操作（click/key）逐场景录制 → 仅在 UI 无法完成时才用 command/dispatch
-- 如果超时了，唯一的恢复方式是 `stop` 后重新 `start`
+**真实环境优先（最重要）：**
+- `start` 启动的是非测试模式的 VS Code Extension Development Host，尽量保持与真实用户环境一致
+- 除场景初始化外，录制过程不要用 `command` / `dispatch` / 直接改状态来绕过 UI
+- VS Code 原生确认框、Quick Input、右键菜单都应作为真实交互录入视频；用 `click` / `key` / `paste` 完成
+- `locate`、`screenshot`、`state` 只用于观察和定位，不应替代用户操作
 
 **定位元素坐标：**
 - workbench 级元素（侧栏按钮、对话框）: 用 `locate` 命令
@@ -77,14 +77,13 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 **状态操作：**
 - `setPersistedState` — 仅用于两种场景：(1) 录制开始前初始化画布状态；(2) 剧本明确要求切换到一段新故事线的初始状态。录制过程中的状态变更不应使用它，否则视频中会出现不自然的突变
 - UI 操作（click/key/paste）— 录制过程中的首选，产生真实用户交互画面
-- `command` 执行 VS Code 命令 — 用于绕过模态对话框（如 `createNode`、`startExecutionSession`）
-- `dispatch` 发送 webview 消息 — 用于 fitView 等无 UI 反馈的操作
+- `command` / `dispatch` — 不用于真实录制片段；如必须用于场景初始化，应在 `record-start` 之前完成并在剧本中说明
 - `file-list` 类型节点是运行时动态创建的，不能通过 `setPersistedState` 持久化
 - webview 消息格式: `{type: "webview/updateNodeTitle", payload: {nodeId, title}}`
 
 **注意事项：**
 - 环境启动后需等待 15-30s session 文件才出现
-- 模态对话框会阻塞 smoke test，避免触发（用 test 命令绕过）
+- 模态对话框是录制内容的一部分；重置模板时用真实鼠标/键盘点击 VS Code 原生确认框，不要绕过
 - `setPersistedState` 不能删除有活跃运行时的节点
 - 鼠标滚轮: button 5 = 向下滚动
 - `saveCanvasAsTemplate` 命令会弹出 Quick Input，可用 `paste` + `key Return` 输入模板名
@@ -99,5 +98,4 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 
 - `docs/marketplace-media-scenario.md` — 录制剧本
 - `scripts/recording-session.mjs` — 录制工具
-- `scripts/generate-marketplace-media.mjs` — 环境搭建（RECORDING_INTERACTIVE=1 模式）
 - `scripts/x11-native-input.py` — X11 原生输入
