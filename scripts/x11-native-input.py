@@ -35,8 +35,11 @@ X11.XOpenDisplay.argtypes = [ctypes.c_char_p]
 X11.XOpenDisplay.restype = DisplayP
 X11.XCloseDisplay.argtypes = [DisplayP]
 X11.XFlush.argtypes = [DisplayP]
+X11.XSync.argtypes = [DisplayP, Bool]
 X11.XDefaultRootWindow.argtypes = [DisplayP]
 X11.XDefaultRootWindow.restype = Window
+X11.XRaiseWindow.argtypes = [DisplayP, Window]
+X11.XSetInputFocus.argtypes = [DisplayP, Window, ctypes.c_int, ctypes.c_ulong]
 X11.XQueryPointer.argtypes = [
     DisplayP,
     Window,
@@ -68,6 +71,13 @@ def parse_args():
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    move = subparsers.add_parser("move", help="Move the pointer to a screen point without clicking.")
+    move.add_argument("--x", type=float, required=True)
+    move.add_argument("--y", type=float, required=True)
+    move.add_argument("--move-duration-ms", type=int, default=180)
+    move.add_argument("--move-steps", type=int, default=12)
+    move.add_argument("--window-id", help="X11 window id to raise and focus before moving.")
+
     click = subparsers.add_parser("click", help="Move to a screen point and click.")
     click.add_argument("--x", type=float, required=True)
     click.add_argument("--y", type=float, required=True)
@@ -76,10 +86,12 @@ def parse_args():
     click.add_argument("--move-duration-ms", type=int, default=180)
     click.add_argument("--move-steps", type=int, default=12)
     click.add_argument("--between-clicks-ms", type=int, default=80)
+    click.add_argument("--window-id", help="X11 window id to raise and focus before clicking.")
 
     key = subparsers.add_parser("key", help="Press a key combo such as ctrl+a or Shift+Insert.")
     key.add_argument("--combo", required=True)
     key.add_argument("--delay-ms", type=int, default=40)
+    key.add_argument("--window-id", help="X11 window id to raise and focus before pressing keys.")
 
     return parser.parse_args()
 
@@ -88,7 +100,7 @@ def connect(display_name):
     encoded = display_name.encode("utf-8") if display_name else None
     display = X11.XOpenDisplay(encoded)
     if not display:
-      raise RuntimeError(f"Failed to open X11 display {display_name or '(default)'}")
+        raise RuntimeError(f"Failed to open X11 display {display_name or '(default)'}")
     return display
 
 
@@ -117,6 +129,15 @@ def get_pointer_position(display):
     return (root_x.value, root_y.value)
 
 
+def focus_window(display, window_id):
+    if not window_id:
+        return
+    window = Window(int(window_id, 0))
+    X11.XRaiseWindow(display, window)
+    X11.XSetInputFocus(display, window, 1, 0)
+    X11.XSync(display, 0)
+
+
 def move_pointer(display, target_x, target_y, duration_ms, steps):
     start_x, start_y = get_pointer_position(display)
     steps = max(1, steps)
@@ -136,9 +157,13 @@ def click_pointer(display, x, y, button_name, count, move_duration_ms, move_step
     time.sleep(0.02)
     button = BUTTON_NAMES[button_name]
     for index in range(max(1, count)):
-        XTST.XTestFakeButtonEvent(display, button, 1, 0)
-        XTST.XTestFakeButtonEvent(display, button, 0, 0)
-        X11.XFlush(display)
+        if XTST.XTestFakeButtonEvent(display, button, 1, 0) == 0:
+            raise RuntimeError("Failed to send XTest button press.")
+        X11.XSync(display, 0)
+        time.sleep(0.04)
+        if XTST.XTestFakeButtonEvent(display, button, 0, 0) == 0:
+            raise RuntimeError("Failed to send XTest button release.")
+        X11.XSync(display, 0)
         if index + 1 < count:
             time.sleep(max(0.0, between_clicks_ms / 1000.0))
 
@@ -180,6 +205,7 @@ def main():
     display = connect(args.display)
     try:
         if args.command == "click":
+            focus_window(display, args.window_id)
             click_pointer(
                 display,
                 args.x,
@@ -190,7 +216,17 @@ def main():
                 args.move_steps,
                 args.between_clicks_ms,
             )
+        elif args.command == "move":
+            focus_window(display, args.window_id)
+            move_pointer(
+                display,
+                int(round(args.x)),
+                int(round(args.y)),
+                args.move_duration_ms,
+                args.move_steps,
+            )
         elif args.command == "key":
+            focus_window(display, args.window_id)
             press_key_combo(display, args.combo, args.delay_ms)
         else:
             raise RuntimeError(f"Unsupported command: {args.command}")

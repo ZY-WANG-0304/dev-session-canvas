@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-template-feature.md
 related_plans:
   - docs/exec-plans/active/canvas-template-feature.md
-updated_at: 2026-05-09
+updated_at: 2026-05-10
 ---
 
 # 画布模板功能设计
@@ -196,6 +196,7 @@ updated_at: 2026-05-09
 - 若模板要求的固定 Provider 当前不可用（例如 CLI 命令无法解析），宿主提示用户并阻止整次应用；不静默降级。
 - 若当前 workspace 未受信任，含 `agent` / `terminal` 的模板不可应用；仅 `note` 模板允许通过。
 - 显式 `apply` / `reset` 成功后，宿主会把本次物化出的新节点 id 作为一组发送给 Webview；Webview 对这组节点执行组级 `fitView`，让用户视口自动追到新增模板节点，而不是只停留在发起操作前的画布位置。
+- Marketplace 预览媒体录制应运行在非测试模式的 VS Code Extension Development Host 中，并通过真实鼠标/键盘确认 `reset` 的宿主 modal；录制工具不为视频路径增加自动确认特例。
 - `src/panel/CanvasPanelManager.ts` 中的手工/模板节点 id 是对象身份，不再等同于可读编号：新建 `agent` / `terminal` / `note` 节点时，标题仍使用 `Agent 1`、`Terminal 2` 这类递增展示编号，但 `node.id` 会带随机 object identity 后缀。这样同一个模板被反复 reset 后，也会物化成新的 React Flow / 执行终端对象，不复用旧 Webview 节点实例或旧 xterm 缓冲区。
 - 为兼容已有 workspace 快照，宿主继续接受历史 `agent-1`、`terminal-2`、`note-3` 这类旧 id；计算下一个展示编号时只读取手工节点 id 中的展示编号前缀，不把自动文件节点或随机 identity 后缀当成编号来源。
 
@@ -275,4 +276,5 @@ updated_at: 2026-05-09
 - 画布空白区右键菜单根层已移除说明文案，只保留“画布操作”标题和具体操作项；Playwright harness 已补充断言覆盖根层不再出现“先创建节点”提示。本轮再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过。
 - Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过。
 - 模板 sidebar 第二行位置标签已从 `内置 / 用户` 扩展为 `内置 / 工作区 / 用户`，用于区分内置模板、workspace 模板和当前设备用户模板。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖 workspace 模板映射为 `工作区` 标签。
+- Marketplace 预览媒体录制入口已改为启动真实 Extension Development Host，不再依赖 VS Code extension test host；右键重置模板路径保留原生 modal，并在录制片段内通过鼠标/键盘完成确认。
 - 验证覆盖了“首次默认模板”“保存/应用不自动启动”“导入/导出/删除与默认模板回退”“组级避碰落位”“restricted note-only 限制”以及 Agent `argv` 在模板保存/加载链路中的保留。
