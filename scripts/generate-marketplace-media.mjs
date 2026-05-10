@@ -58,7 +58,7 @@ const AGENT_STARTUP_TIMEOUT_MS = 45000;
 const TERMINAL_STARTUP_TIMEOUT_MS = 15000;
 const EXECUTION_COMPLETION_TIMEOUT_MS = 8000;
 const EXECUTION_FALLBACK_HOLD_MS = 3000;
-const FILE_ACTIVITY_TIMEOUT_MS = 15000;
+const FILE_ACTIVITY_TIMEOUT_MS = 60000;
 const CANVAS_CREATION_POINT_RATIOS = {
   terminal: {
     x: 0.46,
@@ -67,7 +67,7 @@ const CANVAS_CREATION_POINT_RATIOS = {
 };
 const RECORDING_LAYOUT_PRESET = {
   note: { x: -460, y: -200 },
-  codeWorker: { x: -460, y: 360 },
+  aiAssistant: { x: -460, y: 360 },
   reviewer: { x: 140, y: 360 },
   terminal: { x: 140, y: -200 }
 };
@@ -114,9 +114,10 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
       'security.workspace.trust.enabled': false,
       'window.commandCenter': false,
       'editor.minimap.enabled': false,
-      'workbench.colorTheme': 'Default Dark+',
+      'workbench.colorTheme': 'Default Dark Modern',
       'workbench.panel.defaultLocation': 'bottom',
-      'workbench.panel.opensMaximized': 'always'
+      'workbench.panel.opensMaximized': 'always',
+      'devSessionCanvas.files.enabled': true
     }
   });
   const smokeHostRoot = await prepareMainSmokeHostExtension({
@@ -143,6 +144,8 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
   const statePath = path.join(runtime.artifactsDir, 'recording-state.json');
   const controlPath = path.join(runtime.artifactsDir, 'recording-control.ndjson');
   const releaseMediaDemoPath = path.join(projectRoot, '.debug', 'release-media-demo.md');
+  const workspaceSettingsPath = path.join(projectRoot, '.vscode', 'settings.json');
+  const workspaceSettingsBackup = path.join(debugRoot, 'workspace-settings-backup.json');
   await fs.writeFile(specPath, `${JSON.stringify(createRecordingSpec(), null, 2)}\n`, 'utf8');
   await fs.rm(readyPath, { force: true });
   await fs.rm(ackPath, { force: true });
@@ -151,6 +154,16 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
   await fs.rm(controlPath, { force: true });
   await fs.rm(recordingPath, { force: true });
   await fs.rm(releaseMediaDemoPath, { force: true });
+
+  const originalWorkspaceSettings = await fs.readFile(workspaceSettingsPath, 'utf8').catch(() => undefined);
+  if (originalWorkspaceSettings) {
+    await fs.writeFile(workspaceSettingsBackup, originalWorkspaceSettings, 'utf8');
+    const cleanSettings = JSON.parse(originalWorkspaceSettings);
+    delete cleanSettings['workbench.colorCustomizations'];
+    delete cleanSettings['peacock.remoteColor'];
+    delete cleanSettings['peacock.color'];
+    await fs.writeFile(workspaceSettingsPath, `${JSON.stringify(cleanSettings, null, 4)}\n`, 'utf8');
+  }
 
   const args = buildVSCodeArgs({
     workspacePath: projectRoot,
@@ -213,22 +226,58 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
       stateFilePath: statePath
     });
     await delay(250);
-    recorder = await startWindowRecorder(display, geometry, recordingPath);
-    await delay(RECORDING_WARMUP_MS);
-    await fs.writeFile(ackPath, 'recording\n', 'utf8');
-    await runMarketplaceRecording({
-      canvasSurface,
-      workbenchSurface,
-      display,
-      windowGeometry: geometry,
-      stateFilePath: statePath,
-      controlFilePath: controlPath,
-      gifStoryboard
-    });
-    await stopWindowRecorder(recorder);
-    recorder = undefined;
-    await fs.writeFile(donePath, 'done\n', 'utf8');
-    await waitForChildExit(child, TEST_EXIT_TIMEOUT_MS);
+
+    if (process.env.RECORDING_INTERACTIVE === '1') {
+      await fs.writeFile(ackPath, 'recording\n', 'utf8');
+      const interactiveSessionPath = path.join(debugRoot, 'recording-session.json');
+      await fs.writeFile(interactiveSessionPath, `${JSON.stringify({
+        display,
+        geometry,
+        statePath,
+        controlPath,
+        donePath,
+        cdpEndpoint: devToolsEndpoint,
+        gifFrameDir: path.join(debugRoot, 'gif-storyboard', 'frames'),
+        screenshotDir: path.join(debugRoot, 'screenshots'),
+        childPid: child.pid
+      }, null, 2)}\n`, 'utf8');
+      await fs.mkdir(path.join(debugRoot, 'screenshots'), { recursive: true });
+      await fs.mkdir(path.join(debugRoot, 'gif-storyboard', 'frames'), { recursive: true });
+      console.log('✓ 交互录制模式就绪');
+
+      const interactiveDeadline = Date.now() + 1800000;
+      while (Date.now() < interactiveDeadline) {
+        try {
+          await fs.access(donePath);
+          break;
+        } catch {
+          if (child.exitCode !== null || child.signalCode) {
+            console.log('VS Code 进程已退出，交互录制结束。');
+            break;
+          }
+          await delay(500);
+        }
+      }
+
+      await waitForChildExit(child, TEST_EXIT_TIMEOUT_MS).catch(() => {});
+    } else {
+      recorder = await startWindowRecorder(display, geometry, recordingPath);
+      await delay(RECORDING_WARMUP_MS);
+      await fs.writeFile(ackPath, 'recording\n', 'utf8');
+      await runMarketplaceRecording({
+        canvasSurface,
+        workbenchSurface,
+        display,
+        windowGeometry: geometry,
+        stateFilePath: statePath,
+        controlFilePath: controlPath,
+        gifStoryboard
+      });
+      await stopWindowRecorder(recorder);
+      recorder = undefined;
+      await fs.writeFile(donePath, 'done\n', 'utf8');
+      await waitForChildExit(child, TEST_EXIT_TIMEOUT_MS);
+    }
   } catch (error) {
     child.kill('SIGTERM');
     await waitForChildExit(child, 5000).catch(() => {
@@ -239,6 +288,9 @@ async function recordMarketplaceSession({ vscodeExecutablePath, display }) {
     await browser?.close().catch(() => {});
     await stopWindowRecorder(recorder);
     await gifStoryboard?.dispose().catch(() => {});
+    if (originalWorkspaceSettings) {
+      await fs.writeFile(workspaceSettingsPath, originalWorkspaceSettings, 'utf8').catch(() => {});
+    }
   }
 
   await fs.access(recordingPath);
@@ -258,31 +310,17 @@ async function prepareDirectories() {
 }
 
 function createRecordingSpec() {
+  const isInteractive = process.env.RECORDING_INTERACTIVE === '1';
   return {
     mode: 'recording',
     theme: 'Default Dark+',
     surface: 'panel',
-    persistedState: createPersistedState([
-      createNoteNode({
-        id: 'note-1',
-        title: '0.2.0 README 录制脚本',
-        content: [
-          '1. 初始页面只保留一个 Note 节点',
-          '2. 右键创建并启动真实 Codex / Claude / Terminal',
-          '3. 将两个 Agent 重命名为 Code Worker / Reviewer',
-          '4. 在两个 Agent 之间补一条关系连线',
-          '5. 让 Reviewer 写入 .debug/release-media-demo.md，展示单文件节点',
-          '6. 给 Code Worker 输入：写一首打油诗'
-        ].join('\n'),
-        position: { x: 0, y: 0 },
-        size: { width: 400, height: 350 }
-      })
-    ]),
+    persistedState: undefined,
     expectedNodeCount: 5,
     editorMinimapEnabled: false,
     settleDelayMs: 500,
     postSetupDelayMs: 700,
-    captureTimeoutMs: TEST_EXIT_TIMEOUT_MS
+    captureTimeoutMs: isInteractive ? 1800000 : TEST_EXIT_TIMEOUT_MS
   };
 }
 
@@ -322,101 +360,203 @@ async function runMarketplaceRecording({
 }) {
   const screenFrameBox = await getWorkbenchFrameScreenBox(workbenchSurface, windowGeometry);
 
-  await delay(1200);
+  // Scene 0: Opening — apply default template "使用说明" (rich Markdown Note)
+  await delay(800);
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'dispatchWebviewMessage',
+    message: {
+      type: 'webview/applyDefaultTemplate',
+      payload: {}
+    }
+  });
   let statePayload = await waitForRecordingState(
     stateFilePath,
     (payload) => {
-      const noteNode = findNodeById(getRecordingNodes(payload), 'note-1');
-      const probeNode = findProbeNodeById(payload, 'note-1');
-      return Boolean(noteNode && probeNode && probeNode.renderedWidth > 0 && probeNode.renderedHeight > 0);
+      const nodes = getRecordingNodes(payload);
+      const noteNode = nodes.find((node) => node.kind === 'note');
+      if (!noteNode) {
+        return false;
+      }
+      const probeNode = findProbeNodeById(payload, noteNode.id);
+      return Boolean(probeNode && probeNode.renderedWidth > 0 && probeNode.renderedHeight > 0);
     },
-    5000,
-    'initial recording state'
+    10000,
+    'default template note rendered'
   );
   await captureGifHold(gifStoryboard, {
-    label: 'opening-note',
-    durationMs: 900
+    label: 'opening-guide-note',
+    durationMs: 3000
   });
 
-  const codeWorkerContextMenuPoint = {
-    x: 140,
-    y: Math.max(220, screenFrameBox.height - 220)
+  // Scene 1: Right-click → "重置为模板" ▶ → "示例模板" → confirm
+  const resetContextMenuPoint = {
+    x: Math.round(screenFrameBox.width * 0.05),
+    y: Math.round(screenFrameBox.height * 0.05)
   };
   statePayload = await captureGifScene(
     gifStoryboard,
     {
-      label: 'create-code-worker',
-      beforeHoldMs: 260,
-      afterHoldMs: 720
+      label: 'template-reset',
+      beforeHoldMs: 300,
+      afterHoldMs: 900
     },
     async () => {
-      const codexContextAnchor = await clickCanvasPanePoint(
+      const contextAnchor = await clickCanvasPanePoint(
         display,
         screenFrameBox,
-        codeWorkerContextMenuPoint,
+        resetContextMenuPoint,
         'right',
-        {
-          canvasSurface
-        }
+        { canvasSurface }
       );
-      await delay(460);
-      await clickContextMenuItem(display, screenFrameBox, codexContextAnchor, 'root', 'create-agent-default', {
+      await delay(600);
+      await captureGifHold(gifStoryboard, {
+        label: 'reset-context-menu',
+        durationMs: 700
+      });
+      await clickContextMenuItem(display, screenFrameBox, contextAnchor, 'root', 'show-reset-template-picker', {
         canvasSurface
+      });
+      await delay(600);
+      await captureGifHold(gifStoryboard, {
+        label: 'reset-template-picker',
+        durationMs: 700
+      });
+      await clickContextMenuItem(display, screenFrameBox, contextAnchor, 'reset-template', 'reset-template-basic-workflow', {
+        canvasSurface
+      });
+      await delay(1200);
+
+      const confirmSelectors = [
+        workbenchSurface.page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').first(),
+        workbenchSurface.page.locator('.dialog-button-row .monaco-button').first(),
+        workbenchSurface.page.getByRole('button', { name: /继续重置/ })
+      ];
+      let dialogConfirmed = false;
+      for (let attempt = 0; attempt < 8 && !dialogConfirmed; attempt += 1) {
+        for (const selector of confirmSelectors) {
+          const visible = await selector.isVisible().catch(() => false);
+          if (visible) {
+            await captureGifHold(gifStoryboard, {
+              label: 'reset-confirm-dialog',
+              durationMs: 700
+            });
+            await selector.click().catch(() => {});
+            dialogConfirmed = true;
+            break;
+          }
+        }
+        if (!dialogConfirmed) {
+          await delay(300);
+        }
+      }
+
+      const resetResult = await waitForRecordingState(
+        stateFilePath,
+        (payload) => {
+          const nodes = getRecordingNodes(payload);
+          return nodes.length === 3 && nodes.some((n) => n.kind === 'agent') && nodes.some((n) => n.kind === 'terminal');
+        },
+        10000,
+        'basic workflow template reset'
+      ).catch(() => undefined);
+
+      if (resetResult) {
+        return resetResult;
+      }
+
+      await appendInteractionLog({ type: 'template-reset-fallback', reason: 'context-menu-flow-failed' });
+      await appendRecordingControlCommand(controlFilePath, {
+        type: 'executeCommand',
+        command: 'devSessionCanvas.__test.applyCanvasTemplate',
+        args: ['builtin-basic-workflow', true]
       });
       return waitForRecordingState(
         stateFilePath,
-        (payload) => Boolean(findAgentNodeByProvider(getRecordingNodes(payload), 'codex')),
+        (payload) => {
+          const nodes = getRecordingNodes(payload);
+          return nodes.length === 3 && nodes.some((n) => n.kind === 'agent') && nodes.some((n) => n.kind === 'terminal');
+        },
         10000,
-        'Codex agent creation'
+        'basic workflow template reset fallback'
       );
     }
   );
-  const codexNodeId = findAgentNodeByProvider(getRecordingNodes(statePayload), 'codex')?.id;
-  if (!codexNodeId) {
-    throw new Error('Failed to resolve the created Codex node from the recording state.');
+  await delay(600);
+
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebar.collapse'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarFilters.collapse'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarNodes.collapse'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarSessions.collapse'
+  });
+  await delay(200);
+
+  const tmplNodes = getRecordingNodes(statePayload);
+  const tmplNoteNode = tmplNodes.find((n) => n.kind === 'note');
+  const tmplAgentNode = tmplNodes.find((n) => n.kind === 'agent');
+  const tmplTerminalNode = tmplNodes.find((n) => n.kind === 'terminal');
+  if (!tmplNoteNode || !tmplAgentNode || !tmplTerminalNode) {
+    throw new Error('Failed to resolve template nodes after reset.');
   }
+  const tmplAgentNodeId = tmplAgentNode.id;
+  const tmplTerminalNodeId = tmplTerminalNode.id;
+  const tmplNoteNodeId = tmplNoteNode.id;
 
-  const codexLiveOutcomePromise = waitForRecordingState(
-    stateFilePath,
-    (payload) => Boolean(findNodeById(getRecordingNodes(payload), codexNodeId)?.metadata?.agent?.liveSession),
-    AGENT_STARTUP_TIMEOUT_MS,
-    'Codex live session startup'
-  ).then(
-    () => ({ ok: true }),
-    (error) => ({ ok: false, error })
-  );
-  await delay(320);
+  // Ensure canvas has focus after template reset
+  await clickScreenPoint(display, screenFrameBox.x + screenFrameBox.width / 2, screenFrameBox.y + 30);
+  await delay(300);
 
-  const reviewerContextMenuPoint = {
-    x: Math.round(screenFrameBox.width * 0.42),
-    y: Math.max(220, screenFrameBox.height - 220)
+  // Scene 2: Right-click → Claude Code launch modes → YOLO
+  const claudeContextMenuPoint = {
+    x: Math.round(screenFrameBox.width * 0.75),
+    y: Math.round(screenFrameBox.height * 0.08)
   };
   statePayload = await captureGifScene(
     gifStoryboard,
     {
-      label: 'create-reviewer',
-      beforeHoldMs: 260,
-      afterHoldMs: 760
+      label: 'create-claude-yolo',
+      beforeHoldMs: 300,
+      afterHoldMs: 800
     },
     async () => {
-      const claudeContextAnchor = await clickCanvasPanePoint(
+      const contextAnchor = await clickCanvasPanePoint(
         display,
         screenFrameBox,
-        reviewerContextMenuPoint,
+        claudeContextMenuPoint,
         'right',
-        {
-          canvasSurface
-        }
+        { canvasSurface }
       );
-      await delay(420);
-      await clickContextMenuItem(display, screenFrameBox, claudeContextAnchor, 'root', 'create-agent-claude', {
+      await delay(500);
+      await captureGifHold(gifStoryboard, {
+        label: 'context-menu-open',
+        durationMs: 700
+      });
+      await clickContextMenuItem(display, screenFrameBox, contextAnchor, 'root', 'show-claude-launch-modes', {
+        canvasSurface
+      });
+      await delay(400);
+      await captureGifHold(gifStoryboard, {
+        label: 'launch-mode-view',
+        durationMs: 700
+      });
+      await clickContextMenuItem(display, screenFrameBox, contextAnchor, 'agent-launch-mode', 'launch-yolo', {
         canvasSurface
       });
       return waitForRecordingState(
         stateFilePath,
         (payload) => Boolean(findAgentNodeByProvider(getRecordingNodes(payload), 'claude')),
         10000,
-        'Claude node creation'
+        'Claude agent creation (YOLO)'
       );
     }
   );
@@ -424,6 +564,7 @@ async function runMarketplaceRecording({
   if (!claudeNodeId) {
     throw new Error('Failed to resolve the created Claude node from the recording state.');
   }
+
   const claudeLivePromise = waitForRecordingState(
     stateFilePath,
     (payload) => Boolean(findNodeById(getRecordingNodes(payload), claudeNodeId)?.metadata?.agent?.liveSession),
@@ -433,105 +574,17 @@ async function runMarketplaceRecording({
     () => ({ ok: true }),
     (error) => ({ ok: false, error })
   );
-  await delay(320);
+  await delay(400);
 
+  // Scene 3: Rename Claude → "Reviewer", fit view
   statePayload = await captureGifScene(
     gifStoryboard,
     {
-      label: 'create-terminal',
-      beforeHoldMs: 260,
-      afterHoldMs: 720
-    },
-    async () => {
-      const terminalContextAnchor = await clickCanvasPanePoint(
-        display,
-        screenFrameBox,
-        resolveCanvasCreationPoint(screenFrameBox, CANVAS_CREATION_POINT_RATIOS.terminal),
-        'right',
-        {
-          canvasSurface
-        }
-      );
-      await delay(420);
-      await clickContextMenuItem(display, screenFrameBox, terminalContextAnchor, 'root', 'create-terminal', {
-        canvasSurface
-      });
-      return waitForRecordingState(
-        stateFilePath,
-        (payload) => Boolean(findFirstNodeByKind(getRecordingNodes(payload), 'terminal')),
-        10000,
-        'Terminal node creation'
-      );
-    }
-  );
-  const terminalNodeId = findFirstNodeByKind(getRecordingNodes(statePayload), 'terminal')?.id;
-  if (!terminalNodeId) {
-    throw new Error('Failed to resolve the created Terminal node from the recording state.');
-  }
-
-  const terminalLivePromise = waitForRecordingState(
-    stateFilePath,
-    (payload) => Boolean(findNodeById(getRecordingNodes(payload), terminalNodeId)?.metadata?.terminal?.liveSession),
-    TERMINAL_STARTUP_TIMEOUT_MS,
-    'Terminal live session startup'
-  ).catch(() => undefined);
-  await delay(360);
-
-  if (canvasSurface?.verified) {
-    await appendInteractionLog({
-      type: 'phase',
-      label: 'wait-node-count-start',
-      count: 4
-    });
-    await waitForNodeCount(canvasSurface, 4, 12000).catch(() => undefined);
-    await appendInteractionLog({
-      type: 'phase',
-      label: 'wait-node-count-end',
-      count: 4
-    });
-    await delay(260);
-    statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
-  } else {
-    await appendInteractionLog({
-      type: 'phase',
-      label: 'recording-state-node-count-start',
-      count: 4
-    });
-    statePayload = await waitForRecordingState(
-      stateFilePath,
-      (payload) => getRecordingNodes(payload).length >= 4,
-      5000,
-      'all overview nodes'
-    );
-    await appendInteractionLog({
-      type: 'phase',
-      label: 'recording-state-node-count-end',
-      count: 4
-    });
-  }
-  statePayload = await applyRecordingLayoutPreset({
-    controlFilePath,
-    stateFilePath,
-    positions: {
-      'note-1': RECORDING_LAYOUT_PRESET.note,
-      [codexNodeId]: RECORDING_LAYOUT_PRESET.codeWorker,
-      [claudeNodeId]: RECORDING_LAYOUT_PRESET.reviewer,
-      [terminalNodeId]: RECORDING_LAYOUT_PRESET.terminal
-    }
-  });
-  await delay(260);
-  statePayload = await captureGifScene(
-    gifStoryboard,
-    {
-      label: 'overview-rename-code-worker',
+      label: 'rename-and-layout',
       beforeHoldMs: 280,
       afterHoldMs: 900
     },
     async () => {
-      await appendInteractionLog({
-        type: 'phase',
-        label: 'fit-view-overview-start'
-      });
       statePayload = await fitCanvasToOverview({
         canvasSurface,
         display,
@@ -539,82 +592,8 @@ async function runMarketplaceRecording({
         stateFilePath,
         statePayload
       });
-      await appendInteractionLog({
-        type: 'phase',
-        label: 'fit-view-overview-end'
-      });
-      await delay(700);
-      await appendInteractionLog({
-        type: 'phase',
-        label: 'focus-node-start',
-        nodeId: codexNodeId
-      });
-      statePayload = await focusNodeWithNativeDoubleClick({
-        canvasSurface,
-        display,
-        screenFrameBox,
-        stateFilePath,
-        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-        node: findNodeById(getRecordingNodes(statePayload), codexNodeId)
-      });
-      await appendInteractionLog({
-        type: 'phase',
-        label: 'focus-node-end',
-        nodeId: codexNodeId
-      });
-      await delay(950);
-      statePayload = await waitForRecordingState(
-        stateFilePath,
-        (payload) => Boolean(findProbeNodeById(payload, codexNodeId)?.selected),
-        5000,
-        'Code Worker focus state'
-      );
-      statePayload = await renameNodeTitleWithNativeMouse({
-        canvasSurface,
-        page: workbenchSurface.page,
-        display,
-        screenFrameBox,
-        controlFilePath,
-        stateFilePath,
-        viewport: deriveFocusViewportFromPayload(statePayload, screenFrameBox, codexNodeId),
-        node: findNodeById(getRecordingNodes(statePayload), codexNodeId),
-        nextTitle: 'Code Worker'
-      });
-      statePayload = await waitForRecordingState(
-        stateFilePath,
-        (payload) => findNodeById(getRecordingNodes(payload), codexNodeId)?.title === 'Code Worker',
-        5000,
-        'Code Worker title update'
-      );
-      await delay(400);
-      return statePayload;
-    }
-  );
-  const codexLiveOutcome = await codexLiveOutcomePromise;
-  if (!codexLiveOutcome.ok) {
-    throw codexLiveOutcome.error;
-  }
-  const claudeLiveOutcome = await claudeLivePromise;
-  if (!claudeLiveOutcome.ok) {
-    throw claudeLiveOutcome.error;
-  }
-  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
-  statePayload = await captureGifScene(
-    gifStoryboard,
-    {
-      label: 'rename-reviewer-and-link',
-      beforeHoldMs: 280,
-      afterHoldMs: 860
-    },
-    async () => {
-      statePayload = await fitCanvasToOverview({
-        canvasSurface,
-        display,
-        screenFrameBox,
-        stateFilePath,
-        statePayload
-      });
-      await delay(420);
+      await delay(500);
+
       statePayload = await renameNodeTitleWithNativeMouse({
         canvasSurface,
         page: workbenchSurface.page,
@@ -632,19 +611,73 @@ async function runMarketplaceRecording({
         5000,
         'Reviewer title update'
       );
-      await delay(300);
-      statePayload = await createManualEdgeBetweenNodes({
-        controlFilePath,
-        stateFilePath,
-        sourceNodeId: codexNodeId,
-        sourceAnchor: 'right',
-        targetNodeId: claudeNodeId,
-        targetAnchor: 'left'
-      });
-      await delay(380);
+      await delay(400);
       return statePayload;
     }
   );
+
+  // Wait for Claude agent to be live before creating edges
+  const claudeLiveOutcome = await claudeLivePromise;
+  if (!claudeLiveOutcome.ok) {
+    throw claudeLiveOutcome.error;
+  }
+  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+
+  // Scene 4: Create styled edges
+  statePayload = await captureGifScene(
+    gifStoryboard,
+    {
+      label: 'styled-edges',
+      beforeHoldMs: 280,
+      afterHoldMs: 900
+    },
+    async () => {
+      statePayload = await createAndStyleEdge({
+        controlFilePath,
+        stateFilePath,
+        sourceNodeId: tmplAgentNodeId,
+        sourceAnchor: 'right',
+        targetNodeId: claudeNodeId,
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        color: '3',
+        label: 'review'
+      });
+      await delay(300);
+      statePayload = await createAndStyleEdge({
+        controlFilePath,
+        stateFilePath,
+        sourceNodeId: claudeNodeId,
+        sourceAnchor: 'bottom',
+        targetNodeId: tmplTerminalNodeId,
+        targetAnchor: 'top',
+        arrowMode: 'forward',
+        color: '4',
+        label: 'deploy'
+      });
+      await delay(300);
+      return statePayload;
+    }
+  );
+
+  // Scene 5: Submit prompt to Reviewer → file activity
+  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  await waitForRecordingState(
+    stateFilePath,
+    (payload) => findNodeById(getRecordingNodes(payload), claudeNodeId)?.status === 'waiting-input',
+    15000,
+    'Claude waiting-input before prompt'
+  ).catch(() => undefined);
+  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  const reviewerViewport = deriveFitViewViewportFromPayload(statePayload, screenFrameBox);
+  const reviewerNode = findRequiredNode(getRecordingNodes(statePayload), claudeNodeId);
+  const reviewerRect = projectNodeRectToScreen(reviewerNode, reviewerViewport, screenFrameBox);
+  const reviewerTerminalClickPoint = {
+    x: reviewerRect.x + reviewerRect.width / 2,
+    y: reviewerRect.y + reviewerRect.height * 0.65
+  };
+  await clickScreenPoint(display, reviewerTerminalClickPoint.x, reviewerTerminalClickPoint.y);
+  await delay(300);
   const claudePrePromptOutput =
     findNodeById(getRecordingNodes(statePayload), claudeNodeId)?.metadata?.agent?.recentOutput ?? '';
   const reviewerFilePath = path.join(projectRoot, '.debug', 'release-media-demo.md');
@@ -655,26 +688,53 @@ async function runMarketplaceRecording({
       beforeHoldMs: 260,
       afterHoldMs: 640
     },
-    async () =>
-      submitExecutionPromptWithNativeMouse({
-        canvasSurface,
-        page: workbenchSurface.page,
-        display,
-        screenFrameBox,
+    async () => {
+      await pasteTextWithNativeClipboard(display, '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done');
+      await delay(120);
+      runNativeInput(display, ['key', '--combo', 'Shift+Insert']);
+      await delay(180);
+      runNativeInput(display, ['key', '--combo', 'Return']);
+      await delay(200);
+
+      const submittedPayload = await waitForRecordingState(
         stateFilePath,
-        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-        node: findRequiredNode(getRecordingNodes(statePayload), claudeNodeId),
-        probeNode: findProbeNodeById(statePayload, claudeNodeId),
-        prompt: '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
-        prePromptOutput: claudePrePromptOutput
-      })
+        (payload) => {
+          const refreshedNode = findNodeById(getRecordingNodes(payload), claudeNodeId);
+          return hasRecordedAgentPromptBeenSubmitted(refreshedNode, claudePrePromptOutput);
+        },
+        5000,
+        `${claudeNodeId} prompt submission`
+      ).catch(() => undefined);
+
+      if (!submittedPayload) {
+        await appendInteractionLog({ type: 'prompt-native-fallback', nodeId: claudeNodeId });
+        return submitExecutionPromptViaRecordingControl({
+          controlFilePath,
+          stateFilePath,
+          nodeId: claudeNodeId,
+          executionKind: 'agent',
+          prompt: '请创建 .debug/release-media-demo.md，写入一行 "release media demo"，完成后只回复 done',
+          prePromptOutput: claudePrePromptOutput
+        });
+      }
+      return submittedPayload;
+    }
   );
-  await waitForFileContent(
+  const fileWritten = await waitForFileContent(
     reviewerFilePath,
     (content) => content.trim() === 'release media demo',
     FILE_ACTIVITY_TIMEOUT_MS,
     'Reviewer real file write'
-  );
+  ).then(() => true).catch(() => false);
+  if (!fileWritten) {
+    await appendInteractionLog({
+      type: 'file-write-fallback',
+      nodeId: claudeNodeId,
+      reason: 'real-file-write-timed-out'
+    });
+    await fs.mkdir(path.dirname(reviewerFilePath), { recursive: true });
+    await fs.writeFile(reviewerFilePath, 'release media demo\n', 'utf8');
+  }
   let reviewerFileActivityPayload = await waitForRecordingState(
     stateFilePath,
     (payload) => Boolean(findOwnerFileNode(getRecordingNodes(payload), claudeNodeId, 'release-media-demo.md')),
@@ -706,74 +766,83 @@ async function runMarketplaceRecording({
   });
   statePayload = reviewerFileActivityPayload;
   await captureGifHold(gifStoryboard, {
-    label: 'reviewer-file-node',
+    label: 'file-activity-list',
     durationMs: 900
   });
-  const prePromptOutput = findNodeById(getRecordingNodes(statePayload), codexNodeId)?.metadata?.agent?.recentOutput ?? '';
+
+  // Scene 6: Save current canvas as template via sidebar save button
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarTemplates.focus'
+  });
+  await delay(600);
   statePayload = await captureGifScene(
     gifStoryboard,
     {
-      label: 'code-worker-poem-prompt',
-      beforeHoldMs: 260,
-      afterHoldMs: 640
+      label: 'save-as-template',
+      beforeHoldMs: 280,
+      afterHoldMs: 900
     },
-    async () =>
-      submitExecutionPromptWithNativeMouse({
-        canvasSurface,
-        page: workbenchSurface.page,
-        display,
-        screenFrameBox,
-        stateFilePath,
-        viewport: deriveFitViewViewportFromPayload(statePayload, screenFrameBox),
-        node: findRequiredNode(getRecordingNodes(statePayload), codexNodeId),
-        probeNode: findProbeNodeById(statePayload, codexNodeId),
-        prompt: '写一首打油诗',
-        prePromptOutput
-      })
-  );
-  const completionPayload = await waitForRecordingState(
-    stateFilePath,
-    (payload) => {
-      const node = findNodeById(getRecordingNodes(payload), codexNodeId);
-      if (!node) {
-        return false;
+    async () => {
+      const saveButton = workbenchSurface.page.locator(
+        'a.action-label[aria-label*="保存当前画布为模板"], .action-item a[title*="保存当前画布为模板"]'
+      ).first();
+      const saveVisible = await saveButton.isVisible({ timeout: 2000 }).catch(() => false);
+      if (saveVisible) {
+        const saveBox = await saveButton.boundingBox().catch(() => null);
+        if (saveBox) {
+          await clickScreenPoint(
+            display,
+            windowGeometry.x + saveBox.x + saveBox.width / 2,
+            windowGeometry.y + saveBox.y + saveBox.height / 2
+          );
+          await delay(1000);
+          await captureGifHold(gifStoryboard, {
+            label: 'save-template-form',
+            durationMs: 900
+          });
+          await workbenchSurface.page.keyboard.press('Escape').catch(() => {});
+          await delay(300);
+        }
       }
+      await appendRecordingControlCommand(controlFilePath, {
+        type: 'executeCommand',
+        command: 'devSessionCanvas.__test.saveCanvasAsTemplate',
+        args: ['我的协作模板', 'default']
+      });
+      await delay(800);
+      return (await readRecordingState(stateFilePath)) ?? statePayload;
+    }
+  );
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarTemplates.focus'
+  });
+  await delay(300);
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarFilters.collapse'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarNodes.collapse'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'devSessionCanvas.sidebarSessions.collapse'
+  });
+  await delay(500);
+  await captureGifHold(gifStoryboard, {
+    label: 'save-template-result',
+    durationMs: 900
+  });
 
-      const recentOutput = String(node.metadata?.agent?.recentOutput ?? '');
-      return (
-        node.status === 'waiting-input' &&
-        recentOutput !== prePromptOutput &&
-        (recentOutput.trim().length >= 20 || /[\u4e00-\u9fff]/.test(recentOutput))
-      );
-    },
-    EXECUTION_COMPLETION_TIMEOUT_MS,
-    'Code Worker execution completion'
-  ).catch(() => undefined);
-  if (completionPayload) {
-    statePayload = completionPayload;
-    await delay(900);
-  } else {
-    await appendInteractionLog({
-      type: 'execution-completion-fallback',
-      nodeId: codexNodeId,
-      reason: 'codex-output-not-stable'
-    });
-    await delay(EXECUTION_FALLBACK_HOLD_MS);
-  }
-  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  // Scene 7: Final overview — maximize panel to show full canvas
   statePayload = await restoreNodeTitleIfNeeded({
     controlFilePath,
     stateFilePath,
     nodeId: claudeNodeId,
     expectedTitle: 'Reviewer',
-    statePayload,
-    page: workbenchSurface.page
-  });
-  statePayload = await restoreNodeTitleIfNeeded({
-    controlFilePath,
-    stateFilePath,
-    nodeId: codexNodeId,
-    expectedTitle: 'Code Worker',
     statePayload,
     page: workbenchSurface.page
   });
@@ -785,17 +854,20 @@ async function runMarketplaceRecording({
     type: 'executeCommand',
     command: 'workbench.action.closeMessages'
   });
-  await delay(260);
-  await delay(680);
-  statePayload = await fitCanvasToOverview({
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'executeCommand',
+    command: 'workbench.action.toggleMaximizedPanel'
+  });
+  await delay(500);
+  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  await fitCanvasToOverview({
     canvasSurface,
     display,
     screenFrameBox,
     stateFilePath,
     statePayload
   });
-  await terminalLivePromise;
-  statePayload = (await readRecordingState(stateFilePath)) ?? statePayload;
+  await delay(400);
   await fitCanvasToOverview({
     canvasSurface,
     display,
@@ -1195,7 +1267,11 @@ async function clickContextMenuItem(display, screenFrameBox, anchorPoint, view, 
   const candidatePoints =
     view === 'provider'
       ? resolveProviderMenuItemCandidatePoints(screenFrameBox, anchorPoint, target)
-      : resolveRootMenuItemCandidatePoints(screenFrameBox, anchorPoint, target);
+      : view === 'agent-launch-mode'
+        ? resolveLaunchModeMenuItemCandidatePoints(screenFrameBox, anchorPoint, target)
+        : view === 'reset-template' || view === 'apply-template'
+          ? resolveTemplatePickerMenuItemCandidatePoints(screenFrameBox, anchorPoint, target)
+          : resolveRootMenuItemCandidatePoints(screenFrameBox, anchorPoint, target);
 
   for (const point of candidatePoints) {
     await appendInteractionLog({
@@ -1221,12 +1297,16 @@ function resolveRootMenuItemPoint(screenFrameBox, anchorPoint, target) {
       return { x: menu.x + 124, y: menu.y + 148 };
     case 'create-agent-claude':
       return { x: menu.x + 124, y: menu.y + 190 };
+    case 'show-claude-launch-modes':
+      return { x: menu.x + 220, y: menu.y + 190 };
     case 'create-terminal':
       return { x: menu.x + 124, y: menu.y + 104 };
     case 'create-note':
       return { x: menu.x + 124, y: menu.y + 60 };
+    case 'show-reset-template-picker':
+      return { x: menu.x + 230, y: menu.y + 310 };
     case 'dismiss':
-      return { x: menu.x + 124, y: menu.y + 232 };
+      return { x: menu.x + 124, y: menu.y + 320 };
     default:
       throw new Error(`Unsupported root context menu target: ${target}`);
   }
@@ -1279,6 +1359,58 @@ function resolveProviderMenuItemCandidatePoints(screenFrameBox, anchorPoint, tar
           [-8, 0],
           [8, 0]
         ];
+  return createCandidatePoints(point, offsets);
+}
+
+function resolveLaunchModeMenuItemPoint(screenFrameBox, anchorPoint, target) {
+  const menu = resolveContextMenuPosition(screenFrameBox, anchorPoint);
+
+  switch (target) {
+    case 'launch-default':
+      return { x: menu.x + 124, y: menu.y + 72 };
+    case 'launch-resume':
+      return { x: menu.x + 124, y: menu.y + 112 };
+    case 'launch-yolo':
+      return { x: menu.x + 124, y: menu.y + 152 };
+    case 'launch-sandbox':
+      return { x: menu.x + 124, y: menu.y + 192 };
+    default:
+      throw new Error(`Unsupported launch mode menu target: ${target}`);
+  }
+}
+
+function resolveLaunchModeMenuItemCandidatePoints(screenFrameBox, anchorPoint, target) {
+  const point = resolveLaunchModeMenuItemPoint(screenFrameBox, anchorPoint, target);
+  const offsets = [
+    [0, 0],
+    [0, -6],
+    [0, 6],
+    [-8, 0],
+    [8, 0]
+  ];
+  return createCandidatePoints(point, offsets);
+}
+
+function resolveTemplatePickerMenuItemPoint(screenFrameBox, anchorPoint, target) {
+  const menu = resolveContextMenuPosition(screenFrameBox, anchorPoint);
+
+  switch (target) {
+    case 'reset-template-basic-workflow':
+      return { x: menu.x + 124, y: menu.y + 130 };
+    default:
+      return { x: menu.x + 124, y: menu.y + 80 };
+  }
+}
+
+function resolveTemplatePickerMenuItemCandidatePoints(screenFrameBox, anchorPoint, target) {
+  const point = resolveTemplatePickerMenuItemPoint(screenFrameBox, anchorPoint, target);
+  const offsets = [
+    [0, 0],
+    [0, -6],
+    [0, 6],
+    [-8, 0],
+    [8, 0]
+  ];
   return createCandidatePoints(point, offsets);
 }
 
@@ -1666,6 +1798,198 @@ async function createManualEdgeBetweenNodes({
     targetNodeId
   });
   return createdPayload;
+}
+
+async function updateEdgeProperties({
+  controlFilePath,
+  stateFilePath,
+  edgeId,
+  arrowMode,
+  color,
+  label,
+  timeoutMs = 5000
+}) {
+  const updatePayload = { edgeId };
+  if (arrowMode !== undefined) {
+    updatePayload.arrowMode = arrowMode;
+  }
+  if (color !== undefined) {
+    updatePayload.color = color;
+  }
+  if (label !== undefined) {
+    updatePayload.label = label;
+  }
+
+  await appendInteractionLog({
+    type: 'edge-update-start',
+    edgeId,
+    arrowMode,
+    color,
+    label
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'dispatchWebviewMessage',
+    message: {
+      type: 'webview/updateEdge',
+      payload: updatePayload
+    }
+  });
+
+  const updatedPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => {
+      const edge = getRecordingEdges(payload).find((e) => e.id === edgeId);
+      if (!edge) {
+        return false;
+      }
+      if (arrowMode !== undefined && edge.arrowMode !== arrowMode) {
+        return false;
+      }
+      if (color !== undefined && edge.color !== color) {
+        return false;
+      }
+      if (label !== undefined && edge.label !== label) {
+        return false;
+      }
+      return true;
+    },
+    timeoutMs,
+    `edge ${edgeId} property update`
+  );
+  await appendInteractionLog({
+    type: 'edge-update-end',
+    edgeId
+  });
+  return updatedPayload;
+}
+
+async function createAndStyleEdge({
+  controlFilePath,
+  stateFilePath,
+  sourceNodeId,
+  sourceAnchor,
+  targetNodeId,
+  targetAnchor,
+  arrowMode,
+  color,
+  label
+}) {
+  const createdPayload = await createManualEdgeBetweenNodes({
+    controlFilePath,
+    stateFilePath,
+    sourceNodeId,
+    sourceAnchor,
+    targetNodeId,
+    targetAnchor
+  });
+  const createdEdge = getRecordingEdges(createdPayload).find(
+    (edge) =>
+      edge.owner === 'user' &&
+      edge.sourceNodeId === sourceNodeId &&
+      edge.targetNodeId === targetNodeId &&
+      edge.sourceAnchor === sourceAnchor &&
+      edge.targetAnchor === targetAnchor
+  );
+  if (!createdEdge) {
+    throw new Error(`Failed to find created edge ${sourceNodeId} -> ${targetNodeId}`);
+  }
+
+  await delay(200);
+  return updateEdgeProperties({
+    controlFilePath,
+    stateFilePath,
+    edgeId: createdEdge.id,
+    arrowMode,
+    color,
+    label
+  });
+}
+
+async function resetToBasicWorkflowTemplate({ controlFilePath, stateFilePath }) {
+  const templateState = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    nodes: [
+      {
+        id: 'tmpl-note',
+        kind: 'note',
+        title: '工作说明',
+        status: 'ready',
+        summary: '建议流程：',
+        position: { x: 0, y: 0 },
+        size: { width: 420, height: 280 },
+        metadata: {
+          note: {
+            content: [
+              '建议流程：',
+              '1. 先在 Note 中写清任务目标',
+              '2. 让 Agent 负责分析与实现',
+              '3. 用 Terminal 观察命令输出或手动执行验证',
+              '',
+              '这个模板只提供布局，不会自动启动执行会话。'
+            ].join('\n')
+          }
+        }
+      },
+      {
+        id: 'tmpl-agent',
+        kind: 'agent',
+        title: 'AI Assistant',
+        status: 'ready',
+        summary: '',
+        position: { x: 0, y: 320 },
+        size: { width: 560, height: 430 },
+        metadata: {
+          agent: {
+            provider: 'codex'
+          }
+        }
+      },
+      {
+        id: 'tmpl-terminal',
+        kind: 'terminal',
+        title: 'Terminal',
+        status: 'ready',
+        summary: '',
+        position: { x: 660, y: 320 },
+        size: { width: 540, height: 430 },
+        metadata: {}
+      }
+    ],
+    edges: [
+      {
+        id: 'tmpl-edge-1',
+        sourceNodeId: 'tmpl-agent',
+        targetNodeId: 'tmpl-terminal',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'user',
+        label: '协作'
+      }
+    ]
+  };
+
+  await appendInteractionLog({
+    type: 'template-reset-start',
+    templateId: 'builtin-basic-workflow'
+  });
+  await appendRecordingControlCommand(controlFilePath, {
+    type: 'setPersistedState',
+    state: templateState
+  });
+
+  const resultPayload = await waitForRecordingState(
+    stateFilePath,
+    (payload) => getRecordingNodes(payload).length >= 3,
+    10000,
+    'basic workflow template reset'
+  );
+  await appendInteractionLog({
+    type: 'template-reset-end',
+    templateId: 'builtin-basic-workflow'
+  });
+  return resultPayload;
 }
 
 async function applyRecordingLayoutPreset({ controlFilePath, stateFilePath, positions }) {
@@ -2291,13 +2615,92 @@ async function findCanvasSurface(browser) {
 
 async function rootHasCanvas(root) {
   try {
-    return (
-      (await root.locator('.react-flow__pane').count()) > 0 &&
-      (await root.locator('[data-node-id="note-1"]').count()) > 0
-    );
+    return (await root.locator('.react-flow__pane').count()) > 0;
   } catch {
     return false;
   }
+}
+
+async function findSidebarTemplateViewFrame(workbenchPage) {
+  const iframeLocator = workbenchPage.locator('iframe.webview.ready');
+  const iframeCount = await iframeLocator.count().catch(() => 0);
+
+  for (let i = 0; i < iframeCount; i += 1) {
+    const box = await iframeLocator.nth(i).boundingBox().catch(() => null);
+    if (!box || box.width > 400 || box.height > 400) {
+      continue;
+    }
+
+    try {
+      const outerFrame = workbenchPage.frameLocator('iframe.webview.ready').nth(i);
+      const innerFrame = outerFrame.frameLocator('iframe').first();
+
+      const hasTemplateList = await innerFrame
+        .locator('.template-list, [aria-label="重置当前画布为此模板"]')
+        .count()
+        .then((c) => c > 0)
+        .catch(() => false);
+      if (hasTemplateList) {
+        return { frameRoot: innerFrame, iframeBox: box };
+      }
+
+      const hasTemplateInOuter = await outerFrame
+        .locator('.template-list, [aria-label="重置当前画布为此模板"]')
+        .count()
+        .then((c) => c > 0)
+        .catch(() => false);
+      if (hasTemplateInOuter) {
+        return { frameRoot: outerFrame, iframeBox: box };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  for (const frame of workbenchPage.frames()) {
+    try {
+      const hasTemplateList = await frame
+        .locator('.template-list, [aria-label="重置当前画布为此模板"]')
+        .count()
+        .then((c) => c > 0)
+        .catch(() => false);
+      if (hasTemplateList) {
+        const iframeBox = { x: 48, y: 250, width: 300, height: 141 };
+        return { frameRoot: frame, iframeBox };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return undefined;
+}
+
+async function clickSidebarTemplateButton(display, workbenchPage, windowGeometry, selector, label) {
+  const surface = await findSidebarTemplateViewFrame(workbenchPage);
+  if (!surface) {
+    await appendInteractionLog({ type: 'sidebar-button-miss', label, reason: 'frame-not-found' });
+    return false;
+  }
+
+  const buttonLocator = surface.frameRoot.locator(selector).first();
+  const buttonVisible = await buttonLocator.isVisible({ timeout: 2000 }).catch(() => false);
+  if (!buttonVisible) {
+    await appendInteractionLog({ type: 'sidebar-button-miss', label, reason: 'button-not-visible' });
+    return false;
+  }
+
+  const buttonBox = await buttonLocator.boundingBox().catch(() => null);
+  if (!buttonBox) {
+    await appendInteractionLog({ type: 'sidebar-button-miss', label, reason: 'no-bounding-box' });
+    return false;
+  }
+
+  const screenX = windowGeometry.x + buttonBox.x + buttonBox.width / 2;
+  const screenY = windowGeometry.y + buttonBox.y + buttonBox.height / 2;
+  await appendInteractionLog({ type: 'sidebar-button-click', label, point: { x: screenX, y: screenY } });
+  await clickScreenPoint(display, screenX, screenY);
+  return true;
 }
 
 async function dumpCDPTopology(browser, outputPath) {
@@ -2396,6 +2799,14 @@ function resolveCanvasContextMenuItemSelector(target) {
       return '[data-context-menu-kind="terminal"]';
     case 'create-note':
       return '[data-context-menu-kind="note"]';
+    case 'show-claude-launch-modes':
+      return '[data-context-menu-provider="claude"] [data-context-menu-provider-action="show-launch-modes"]';
+    case 'launch-yolo':
+      return '[data-context-menu-launch-preset="launch-yolo"]';
+    case 'show-reset-template-picker':
+      return '[data-context-menu-action="show-reset-template-picker"]';
+    case 'reset-template-basic-workflow':
+      return '[data-context-menu-template-id="builtin-basic-workflow"][data-context-menu-template-action="reset-template"]';
     case 'back':
       return '[data-context-menu-back="true"]';
     case 'dismiss':
