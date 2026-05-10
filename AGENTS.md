@@ -27,6 +27,10 @@
 
 评估质量、可靠性和安全时分别读 `docs/QUALITY_SCORE.md`、`docs/RELIABILITY.md` 和 `docs/SECURITY.md`；`docs/generated/` 不能替代人工确认后的正式结论，`docs/references/` 只能作为输入，不能直接当作仓库结论。
 
+## 预览媒体录制
+
+录制 Marketplace 预览图/MP4/GIF 时读 `docs/marketplace-media-scenario.md`（剧本）和 `docs/skills/recording-marketplace-media/SKILL.md`（录制方法与工具参考）。
+
 ## 重要原则
 
 不要把未确认内容写成已确认内容，也不要从当前仓库文档中脑补具体方案。文档为空白或占位是有意为之；任何实质性实现前都应先补齐对应文档。
