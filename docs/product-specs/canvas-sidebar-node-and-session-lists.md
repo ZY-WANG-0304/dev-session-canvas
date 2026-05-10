@@ -66,7 +66,7 @@
 
 ### 布局与视觉
 
-- 两个区域使用 VSCode Sidebar 中的两个独立 view section。
+- 两个区域使用 Dev Session Canvas sidebar 容器中的两个独立 view section：`节点` 与 `会话历史`。
 - 整体视觉风格跟随 VSCode 原生列表组件，保持极简和一致性。
 - 不引入额外的装饰线条、阴影或复杂层级。
 - 颜色优先来自 `--vscode-*` token，跟随用户当前主题。
@@ -81,6 +81,7 @@
 - 会话的导出、分享或云端同步功能。
 - 在侧栏中复刻画布的可视化视图或关系图。
 - 新增独立的 Activity Bar 图标（集成到现有侧栏即可）。
+- 在侧栏中复制选中节点正文、终端连续输出或完整 inspector；节点列表只作为导航入口与状态摘要存在。
 
 ## 6. 关键对象与状态
 
@@ -123,7 +124,7 @@
 ### 侧栏容器
 
 - **布局方式**：
-  - 两个独立的侧栏容器
+  - 同一个 Dev Session Canvas sidebar 容器中的两个独立 view section
   - 可折叠/展开
 - **视觉风格**：
   - 使用 VSCode 原生 TreeView 或 WebviewView
