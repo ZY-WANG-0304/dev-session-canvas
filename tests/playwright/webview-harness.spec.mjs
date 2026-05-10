@@ -1891,6 +1891,71 @@ for (const themeName of ['dark', 'light']) {
   });
 }
 
+test('minimap viewport outline remains visible after fitting distant nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  await bootstrap(page, createDistantOverviewState());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+
+  const outlineStyle = await page.locator('.canvas-minimap-viewport-outline-rect').evaluate((outline) => {
+    const styles = getComputedStyle(outline);
+    return {
+      strokeWidth: Number.parseFloat(styles.strokeWidth),
+      vectorEffect: styles.vectorEffect
+    };
+  });
+  const maskStroke = await page
+    .locator('.canvas-minimap .react-flow__minimap-mask')
+    .evaluate((mask) => getComputedStyle(mask).stroke);
+
+  expect(maskStroke).toBe('none');
+  expect(outlineStyle.vectorEffect).toBe('non-scaling-stroke');
+  expect(outlineStyle.strokeWidth).toBe(0.5);
+});
+
+test('minimap remains pannable with the viewport outline overlay', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1.25
+      }
+    }
+  });
+  await bootstrap(page, createMinimapContrastState());
+  await settleWebview(page, 4);
+
+  const beforeDragTransform = await readCanvasViewportTransform(page);
+  const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
+  expect(minimapBox).not.toBeNull();
+
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2, minimapBox.y + minimapBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2 + 24, minimapBox.y + minimapBox.height / 2, {
+    steps: 4
+  });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeDragTransform ? transform : null;
+    })
+    .not.toBeNull();
+});
+
 test('agent start button posts a startExecutionSession message', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createAgentNodeState());
