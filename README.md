@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.7.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.8.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![DevSessionCanvas 动态演示](images/marketplace/canvas-overview.gif)
 
@@ -23,6 +23,8 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - `Note` Markdown 预览、交互式 checklist、workspace 文件链接与编辑态行号 / 缩进辅助
 - 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏与重置入口
 - `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
+- 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义
+- 侧栏与命令面板中的 `Codex` / `Claude Code` CLI 选择和配置文件打开入口
 - `Restricted Mode` 下的有限能力声明
 - 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
 - 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -47,7 +49,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.7.1` 收口 `Agent` / `Terminal` shell 环境继承、CLI 解析缓存、跨平台 smoke 证据与发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.8.0` 收口执行终端复制粘贴、Agent CLI 配置入口、文件活动默认列表视图、回归验证与发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -55,7 +57,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道已收口为 `Visual Studio Marketplace`；是否同步 `Open VSX` 延后决策。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径的当前轮功能可用性验证均已完成；其中 `0.7.1` 已重点收口执行节点 shell 环境继承，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.8.0` 的 repo-local 验证重点收口执行终端复制粘贴、Agent CLI 配置入口、文件活动默认列表视图和打包材料，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -69,7 +71,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 对外分发目标是通过 `Visual Studio Marketplace` 发布。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.7.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
+- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.8.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
 - `Open VSX` 不是本次 `Preview` 的首发路径
 
 ## 桌面通知 companion（自动安装）
@@ -108,6 +110,7 @@ npm run build
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
 - `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑。
 - 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、文件活动、缩略图、云同步或模板历史。
+- 执行终端复制粘贴快捷键第一版不读取用户自定义 keybindings，也不覆盖 Linux selection clipboard、右键 copyPaste 或 HTML 富文本复制。
 - 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的 `Codex` / `Claude Code` 记录；缺少工作目录信息的旧会话会被保守跳过。
 - 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。
 
@@ -116,9 +119,9 @@ npm run build
 | 场景 | 状态 | 用户可预期行为 |
 | --- | --- | --- |
 | `Remote SSH` workspace | `Preview`，主路径已验证且验证最充分 | 可体验画布、`Agent`、`Terminal` 和恢复等主路径；当前是最推荐环境 |
-| Linux 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证 |
-| macOS 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证 |
-| Windows 本地 workspace | `Preview`，主路径已验证（含已知限制） | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已完成当前轮功能可用性验证；使用 `Codex` 时执行节点内历史仍无法向上翻页 |
+| Linux 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已有 Preview 功能可用性验证证据 |
+| macOS 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已有 Preview 功能可用性验证证据 |
+| Windows 本地 workspace | `Preview`，主路径已验证（含已知限制） | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已有 Preview 功能可用性验证证据；使用 `Codex` 时执行节点内历史仍无法向上翻页 |
 | `Restricted Mode` | 有限支持 | 可打开画布并查看已保存布局；`Agent` / `Terminal` 等执行型入口被禁用 |
 | `Virtual Workspace` | 不支持 | 不在 Preview 范围内 |
 

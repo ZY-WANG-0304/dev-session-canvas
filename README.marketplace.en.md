@@ -54,22 +54,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.7.1 Highlights
+## 0.8.0 Highlights
 
-The public `0.7.1` release focuses on shell-environment compatibility, making `Agent` and embedded `Terminal` nodes more reliable when VS Code is launched from a GUI, when platform shells differ, or when local toolchains are configured from shell profiles.
+The public `0.8.0` release focuses on day-to-day Agent usability: familiar copy / paste shortcuts inside canvas execution nodes, `Codex` / `Claude Code` CLI configuration entry points, and a more compact default file-activity list view.
 
-- The `Agent` CLI resolver and the real launch environment now share the same controlled shell env patch, avoiding splits where a command resolves but launch-time `PATH`, `node`, or toolchain variables differ
-- macOS / Linux read controlled increments from the current shell, while Windows resolves the current configured or default Terminal shell across PowerShell, `cmd.exe`, Git Bash / MSYS2, and related main paths
-- Embedded `Terminal` behavior is platform-aware: Windows lets the real shell run profile / AutoRun itself, while macOS / Linux inherit a login-only shell env patch by default
-- `devSessionCanvas.terminal.inheritEnv` lets macOS / Linux users opt out of Terminal shell env inheritance when duplicate `PATH` entries or profile side effects appear
-- `devSessionCanvas.terminal.shellArgs` lets users pass explicit shell argv such as `-l`, `--login`, or other arguments supported by the selected shell
-- Host diagnostics and Windows real Codex smoke coverage now include common shell-authority scenarios such as PowerShell, `cmd.exe`, Git Bash, and MSYS2 `bash` / `sh`
+- `Agent` / `Terminal` execution terminals now support platform-aware copy / paste shortcuts: macOS uses `Cmd+C` / `Cmd+V`, Windows copies with `Ctrl+C` when a selection exists and interrupts when it does not, and Linux uses `Ctrl+Shift+C` / `Ctrl+Shift+V` while preserving `Ctrl+C` interrupt semantics
+- Paste handling includes multi-line safety confirmation: single-line text pastes directly, bracketed paste mode pastes directly, and other multi-line content requires confirmation before it enters the current session
+- The sidebar and command palette now provide `Codex` / `Claude Code` CLI selection entry points, making it easier to bind the current workspace to the provider command that actually resolves
+- The command palette can open `Codex config.toml`, `Codex auth.json`, and `Claude Code settings.json`, creating restricted baseline config files when they are missing
+- When file activity is enabled, the default presentation is now file-list nodes, which better fits per-Agent and shared-file read/write relationships; users can still switch back to independent file nodes in settings
+- Template reset node identity, Claude onboarding markers, and proxy address placeholders have been tightened
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.7.0` to `0.7.1` all go through the `Visual Studio Marketplace`; later `0.7.x` updates follow the same Marketplace upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.7.1` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.7.1` to `0.8.0` all go through the `Visual Studio Marketplace`; later `0.8.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.8.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -105,7 +105,7 @@ The public `0.7.1` release focuses on shell-environment compatibility, making `A
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.7.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.8.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

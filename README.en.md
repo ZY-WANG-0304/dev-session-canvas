@@ -4,7 +4,7 @@
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.7.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.8.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![DevSessionCanvas Animated Demo](images/marketplace/canvas-overview.gif)
 
@@ -23,6 +23,8 @@ The product has entered the public `Preview` phase and already completed its fir
 - `Note` Markdown preview, interactive checklists, workspace file links, and editor-mode line-number / indentation affordances
 - Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, and reset entry points
 - Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
+- Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
+- Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands and opening their config files
 - Limited capability handling under `Restricted Mode`
 - A public `Preview` release path targeting the `Visual Studio Marketplace`
 - Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
@@ -47,7 +49,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.7.1` is to consolidate `Agent` / `Terminal` shell-environment inheritance, CLI resolution caching, cross-platform smoke evidence, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.8.0` is to consolidate execution-terminal copy / paste, Agent CLI configuration entry points, file-activity default list views, regression verification, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -55,7 +57,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel is now `Visual Studio Marketplace`. Whether to publish to `Open VSX` remains deferred.
-- The current main path has now been functionally validated across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.7.1` update specifically tightens execution-node shell-environment inheritance, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.8.0` repo-local validation focuses on execution-terminal copy / paste, Agent CLI configuration entry points, file-activity default list views, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -69,7 +71,7 @@ Related entry points:
 Public distribution is intended to happen through `Visual Studio Marketplace`. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
 - Public `Preview` users should install through Marketplace rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` is already the public installation path; later `0.7.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
+- `Visual Studio Marketplace` is already the public installation path; later `0.8.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
 - `Open VSX` is not part of the initial `Preview` launch path
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -108,6 +110,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
 - Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.
+- The first execution-terminal copy / paste shortcut release does not read custom user keybindings, and it does not cover Linux selection clipboard, right-click copyPaste, or HTML rich-text copying.
 - The sidebar `Session History` list only shows `Codex` / `Claude Code` records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively.
 - If the machine does not have a usable `codex` or `claude` CLI, `Agent` nodes cannot provide the full experience.
 
@@ -116,9 +119,9 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 | Scenario | Status | What Users Should Expect |
 | --- | --- | --- |
 | `Remote SSH` workspace | `Preview`, main path validated and best-validated | Users can try the main canvas, `Agent`, `Terminal`, and recovery flows; this remains the most recommended environment |
-| Linux local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path has completed this round of functional validation |
-| macOS local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path has completed this round of functional validation |
-| Windows local workspace | `Preview`, main path validated with known limitation | The local canvas, `Agent`, and `Terminal` main path has completed this round of functional validation, but embedded `Codex` history still cannot page upward |
+| Linux local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path already has Preview functional validation evidence |
+| macOS local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path already has Preview functional validation evidence |
+| Windows local workspace | `Preview`, main path validated with known limitation | The local canvas, `Agent`, and `Terminal` main path already has Preview functional validation evidence, but embedded `Codex` history still cannot page upward |
 | `Restricted Mode` | Limited support | The canvas can be opened and saved layouts can be viewed, but execution entry points such as `Agent` and `Terminal` are disabled |
 | `Virtual Workspace` | Unsupported | Outside the Preview scope |
 

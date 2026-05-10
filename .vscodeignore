@@ -8,6 +8,8 @@
 .claude
 .claude/**
 .codex
+.dev-session-canvas
+.dev-session-canvas/**
 .playwright-browsers
 .playwright-browsers/**
 .git
