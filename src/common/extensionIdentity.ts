@@ -101,6 +101,7 @@ export const CONFIG_KEYS = {
   legacyNotificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   legacyNotificationPreferNotifierCompanion: 'devSessionCanvas.notifications.preferNotifierCompanion',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
+  canvasOverviewMode: 'devSessionCanvas.canvas.overviewMode',
   terminalShell: 'devSessionCanvas.terminal.shell',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   terminalInheritEnv: 'devSessionCanvas.terminal.inheritEnv',

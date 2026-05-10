@@ -61,6 +61,7 @@ import type {
   CanvasNodeFootprint,
   CanvasNodeMetadata,
   CanvasNodePosition,
+  CanvasOverviewMode,
   CanvasRuntimeContext,
   CanvasStrongTerminalAttentionReminderMode,
   CanvasNodeSummary,
@@ -77,6 +78,7 @@ import type {
 } from '../common/protocol';
 import {
   canvasEdgePresetColors,
+  normalizeCanvasOverviewMode,
   normalizeCanvasStrongTerminalAttentionReminderMode,
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
@@ -133,6 +135,11 @@ interface LocalUiState {
 interface CanvasViewportSize {
   width: number;
   height: number;
+}
+
+interface CanvasOverviewViewportState {
+  active: boolean;
+  titleScale: number;
 }
 
 interface EdgeLabelEditorState {
@@ -643,6 +650,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
   editorMultiCursorModifier: 'alt',
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
+  overviewMode: 'title',
   filePresentationMode: 'nodes',
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
@@ -689,6 +697,7 @@ function normalizeRuntimeContext(
       typeof runtimeContext?.terminalWordSeparators === 'string'
         ? runtimeContext.terminalWordSeparators
         : normalizeExecutionTerminalWordSeparators(undefined),
+    overviewMode: normalizeCanvasOverviewMode(runtimeContext?.overviewMode),
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
     fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
     fileNodeDisplayMode:
@@ -753,6 +762,7 @@ function App(): JSX.Element {
     terminalScrollback: latestRuntimeContext.terminalScrollback,
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
+    overviewMode: latestRuntimeContext.overviewMode,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
@@ -810,7 +820,12 @@ function App(): JSX.Element {
     height: Math.max(1, window.innerHeight)
   }));
   const [canvasOverviewMode, setCanvasOverviewMode] = useState(
-    () => (initialPersistedState.viewport?.zoom ?? 1) < CANVAS_OVERVIEW_ZOOM_THRESHOLD
+    () =>
+      latestRuntimeContext.overviewMode !== 'none' &&
+      (initialPersistedState.viewport?.zoom ?? 1) < CANVAS_OVERVIEW_ZOOM_THRESHOLD
+  );
+  const [canvasOverviewTitleScale, setCanvasOverviewTitleScale] = useState(() =>
+    resolveCanvasOverviewTitleScale(initialPersistedState.viewport?.zoom ?? 1)
   );
 
   useEffect(() => {
@@ -2018,15 +2033,28 @@ function App(): JSX.Element {
     stopCanvasEvent(event);
   };
 
-  const handleCanvasOverviewModeChange = useCallback((nextOverviewMode: boolean): void => {
-    setCanvasOverviewMode((current) => (current === nextOverviewMode ? current : nextOverviewMode));
+  const handleCanvasOverviewViewportStateChange = useCallback((nextState: CanvasOverviewViewportState): void => {
+    setCanvasOverviewMode((current) => (current === nextState.active ? current : nextState.active));
+    setCanvasOverviewTitleScale((current) =>
+      Math.abs(current - nextState.titleScale) < 0.01 ? current : nextState.titleScale
+    );
   }, []);
+
+  const canvasShellStyle = useMemo(
+    () =>
+      ({
+        '--canvas-overview-title-scale': canvasOverviewTitleScale
+      }) as CSSProperties,
+    [canvasOverviewTitleScale]
+  );
 
   return (
     <div
       ref={canvasShellRef}
       className={`canvas-shell ${canvasOverviewMode ? 'is-overview-mode' : ''}`.trim()}
       data-canvas-overview-mode={canvasOverviewMode ? 'true' : 'false'}
+      data-canvas-overview-config={runtimeContext.overviewMode}
+      style={canvasShellStyle}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
     >
       <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
@@ -2064,8 +2092,9 @@ function App(): JSX.Element {
         proOptions={{ hideAttribution: true }}
       >
         <CanvasOverviewModeBridge
+          mode={runtimeContext.overviewMode}
           threshold={CANVAS_OVERVIEW_ZOOM_THRESHOLD}
-          onOverviewModeChange={handleCanvasOverviewModeChange}
+          onViewportStateChange={handleCanvasOverviewViewportStateChange}
         />
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
         <MiniMap
@@ -2395,16 +2424,29 @@ function resolveDynamicCanvasMinZoom(
     : CANVAS_COMFORT_MIN_ZOOM;
 }
 
+function resolveCanvasOverviewTitleScale(zoom: number): number {
+  if (!Number.isFinite(zoom) || zoom <= 0) {
+    return 1;
+  }
+
+  return Math.min(12, Math.max(1, 1 / zoom));
+}
+
 function CanvasOverviewModeBridge(props: {
+  mode: CanvasOverviewMode;
   threshold: number;
-  onOverviewModeChange: (overviewMode: boolean) => void;
+  onViewportStateChange: (state: CanvasOverviewViewportState) => void;
 }): null {
-  const { onOverviewModeChange, threshold } = props;
+  const { mode, onViewportStateChange, threshold } = props;
   const { zoom } = useViewport();
 
   useEffect(() => {
-    onOverviewModeChange(zoom < threshold);
-  }, [onOverviewModeChange, threshold, zoom]);
+    const active = mode !== 'none' && zoom < threshold;
+    onViewportStateChange({
+      active,
+      titleScale: active && mode === 'title' ? resolveCanvasOverviewTitleScale(zoom) : 1
+    });
+  }, [mode, onViewportStateChange, threshold, zoom]);
 
   return null;
 }
@@ -2943,6 +2985,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
+          <NodeOverviewTitle title={data.title} />
           {!agentMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3366,6 +3409,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
+          <NodeOverviewTitle title={data.title} />
           {!terminalMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3465,6 +3509,14 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
     <div className="restricted-banner">
       <strong>{props.title}</strong>
       <span>{props.description}</span>
+    </div>
+  );
+}
+
+function NodeOverviewTitle(props: { title: string }): JSX.Element {
+  return (
+    <div className="node-overview-title" aria-hidden="true">
+      <span>{props.title}</span>
     </div>
   );
 }
@@ -3643,6 +3695,7 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
         }}
         onFocus={() => data.onSelectNode?.(id)}
       >
+        <NodeOverviewTitle title={data.title} />
         {showIcon ? (
           <span className="file-node-icon" aria-hidden="true">
             {renderFileIcon(fileMetadata.icon, primaryLabel)}
@@ -3764,6 +3817,7 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
         className={`file-list-body nowheel ${isMinimalStyle ? 'minimal' : 'object-surface'}`}
         onWheel={stopCanvasEvent}
       >
+        <NodeOverviewTitle title={data.title} />
         {fileListMetadata.entries.length === 0 ? (
           <div className="file-list-empty">当前还没有可显示的文件活动。</div>
         ) : !isMinimalStyle ? (
@@ -4368,6 +4422,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       </div>
 
       <div className="object-body object-surface note-surface">
+        <NodeOverviewTitle title={data.title} />
         <div className="note-editor-surface">
           {isEditingBody ? (
             <div className="note-document-editor">
@@ -4457,6 +4512,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
+      <NodeOverviewTitle title={data.title} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>

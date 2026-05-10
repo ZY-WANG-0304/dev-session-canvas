@@ -3590,11 +3590,13 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
   await settleWebview(page, 4);
 
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
 
   await page.locator('.react-flow__controls-fitview').click();
 
   await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
 
   const fitZoom = await readCanvasViewportScale(page);
   expect(fitZoom).toBeGreaterThan(0);
@@ -3612,12 +3614,42 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
 
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toBeVisible();
   await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const body = document.querySelector('[data-node-id="note-1"] .note-editor-surface');
-        return body instanceof HTMLElement ? getComputedStyle(body).opacity : null;
-      })
-    )
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('0');
+  await expect(nodeById(page, 'note-1').locator('.node-overview-title')).toContainText('回看 smoke test');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
+    .toBe('1');
+});
+
+test('overview mode none keeps regular node rendering when fit view zooms below the comfort minimum', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createDistantOverviewState();
+  await bootstrap(page, state, createRuntimeContext({ overviewMode: 'none' }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'none');
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'none');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('1');
+  await expect(nodeById(page, 'note-1').locator('.node-overview-title')).toContainText('回看 smoke test');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('0');
 });
 
@@ -5645,6 +5677,7 @@ function createRuntimeContext(overrides = {}) {
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
+    overviewMode: 'title',
     filesEnabled: true,
     filePresentationMode: 'nodes',
     fileNodeDisplayStyle: 'minimal',
@@ -5702,6 +5735,13 @@ async function readCanvasViewportScale(page) {
   const transform = await readCanvasViewportTransform(page);
   const scaleMatch = transform?.match(/scale\(([-\d.]+)\)/);
   return scaleMatch ? Number(scaleMatch[1]) : null;
+}
+
+async function readComputedOpacity(page, selector) {
+  return page.evaluate((targetSelector) => {
+    const target = document.querySelector(targetSelector);
+    return target instanceof HTMLElement ? getComputedStyle(target).opacity : null;
+  }, selector);
 }
 
 async function waitForNodeFocusAnimation(page) {

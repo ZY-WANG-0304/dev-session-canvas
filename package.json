@@ -333,6 +333,24 @@
           "scope": "window",
           "markdownDescription": "%configuration.canvas.defaultSurface.description%"
         },
+        "devSessionCanvas.canvas.overviewMode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "title"
+          ],
+          "enumItemLabels": [
+            "%configuration.canvas.overviewMode.none.label%",
+            "%configuration.canvas.overviewMode.title.label%"
+          ],
+          "default": "title",
+          "scope": "window",
+          "markdownDescription": "%configuration.canvas.overviewMode.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.canvas.overviewMode.none.description%",
+            "%configuration.canvas.overviewMode.title.description%"
+          ]
+        },
         "devSessionCanvas.runtimePersistence.enabled": {
           "type": "boolean",
           "default": false,
