@@ -3575,6 +3575,52 @@ test('double-clicking the chrome focus region recenters the node and updates per
   expect(afterState.viewport.y).not.toBe(beforeState.viewport.y);
 });
 
+test('fit view can zoom below the comfort minimum and enters overview mode for distant nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createDistantOverviewState();
+  await bootstrap(page, state);
+  await settleWebview(page, 4);
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+
+  const fitZoom = await readCanvasViewportScale(page);
+  expect(fitZoom).toBeGreaterThan(0);
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  for (const node of state.nodes) {
+    const box = await nodeById(page, node.id).boundingBox();
+    expect(box, `${node.id} should be rendered in the viewport after fit view`).not.toBeNull();
+    expect(box.x + box.width).toBeGreaterThanOrEqual(-2);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(-2);
+    expect(box.x).toBeLessThanOrEqual(viewportSize.width + 2);
+    expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
+  }
+
+  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const body = document.querySelector('[data-node-id="note-1"] .note-editor-surface');
+        return body instanceof HTMLElement ? getComputedStyle(body).opacity : null;
+      })
+    )
+    .toBe('0');
+});
+
 test('host center node request recenters without selecting or acknowledging attention', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -5652,6 +5698,12 @@ async function readCanvasViewportTransform(page) {
   });
 }
 
+async function readCanvasViewportScale(page) {
+  const transform = await readCanvasViewportTransform(page);
+  const scaleMatch = transform?.match(/scale\(([-\d.]+)\)/);
+  return scaleMatch ? Number(scaleMatch[1]) : null;
+}
+
 async function waitForNodeFocusAnimation(page) {
   await page.waitForTimeout(NODE_FOCUS_ANIMATION_DURATION_MS + 80);
   await settleWebview(page, 4);
@@ -6404,6 +6456,19 @@ function createCanvasScreenshotState() {
       }
     ]
   };
+}
+
+function createDistantOverviewState() {
+  const state = JSON.parse(JSON.stringify(createCanvasScreenshotState()));
+  state.nodes[1] = {
+    ...state.nodes[1],
+    position: { x: 7200, y: 120 }
+  };
+  state.nodes[2] = {
+    ...state.nodes[2],
+    position: { x: 3500, y: 4300 }
+  };
+  return state;
 }
 
 function createFileNodeState() {

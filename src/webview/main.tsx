@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
@@ -14,6 +14,7 @@ import ReactFlow, {
   ConnectionMode,
   Controls,
   EdgeLabelRenderer,
+  getNodesBounds,
   Handle,
   MarkerType,
   MiniMap,
@@ -127,6 +128,11 @@ interface LocalUiState {
   fileListViewModes?: Record<string, FileListViewMode>;
   selectedFileListEntries?: Record<string, string>;
   collapsedFileListTreeBranches?: Record<string, string[]>;
+}
+
+interface CanvasViewportSize {
+  width: number;
+  height: number;
 }
 
 interface EdgeLabelEditorState {
@@ -487,6 +493,9 @@ registerRuntimeDiagnosticListeners();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
 let executionTerminalDrainFrame: number | undefined;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
+const CANVAS_COMFORT_MIN_ZOOM = 0.4;
+const CANVAS_MAX_ZOOM = 1.8;
+const CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.35;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
@@ -796,6 +805,13 @@ function App(): JSX.Element {
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
+  const [canvasViewportSize, setCanvasViewportSize] = useState<CanvasViewportSize>(() => ({
+    width: Math.max(1, window.innerWidth),
+    height: Math.max(1, window.innerHeight)
+  }));
+  const [canvasOverviewMode, setCanvasOverviewMode] = useState(
+    () => (initialPersistedState.viewport?.zoom ?? 1) < CANVAS_OVERVIEW_ZOOM_THRESHOLD
+  );
 
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
@@ -963,6 +979,38 @@ function App(): JSX.Element {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const element = canvasShellRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateCanvasViewportSize = (): void => {
+      const nextSize = {
+        width: Math.max(1, Math.round(element.clientWidth || window.innerWidth)),
+        height: Math.max(1, Math.round(element.clientHeight || window.innerHeight))
+      };
+      setCanvasViewportSize((current) =>
+        current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+      );
+    };
+
+    updateCanvasViewportSize();
+
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(updateCanvasViewportSize);
+      observer.observe(element);
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener('resize', updateCanvasViewportSize);
+    return () => {
+      window.removeEventListener('resize', updateCanvasViewportSize);
     };
   }, []);
 
@@ -1621,6 +1669,18 @@ function App(): JSX.Element {
     onDeleteNode: deleteNode
   });
   const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+  const dynamicCanvasMinZoom = useMemo(
+    () => resolveDynamicCanvasMinZoom(nodes, canvasViewportSize),
+    [canvasViewportSize, nodes]
+  );
+  const canvasFitViewOptions = useMemo(
+    () => ({
+      padding: CANVAS_FIT_VIEW_PADDING,
+      minZoom: dynamicCanvasMinZoom,
+      maxZoom: CANVAS_MAX_ZOOM
+    }),
+    [dynamicCanvasMinZoom]
+  );
   const edges = toFlowEdges({
     edges: hostState?.edges ?? [],
     selectedEdgeId,
@@ -1958,10 +2018,15 @@ function App(): JSX.Element {
     stopCanvasEvent(event);
   };
 
+  const handleCanvasOverviewModeChange = useCallback((nextOverviewMode: boolean): void => {
+    setCanvasOverviewMode((current) => (current === nextOverviewMode ? current : nextOverviewMode));
+  }, []);
+
   return (
     <div
       ref={canvasShellRef}
-      className="canvas-shell"
+      className={`canvas-shell ${canvasOverviewMode ? 'is-overview-mode' : ''}`.trim()}
+      data-canvas-overview-mode={canvasOverviewMode ? 'true' : 'false'}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
     >
       <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
@@ -1972,10 +2037,10 @@ function App(): JSX.Element {
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView={!localUiState.viewport}
-        fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
+        fitViewOptions={canvasFitViewOptions}
         defaultViewport={localUiState.viewport}
-        minZoom={0.4}
-        maxZoom={1.8}
+        minZoom={dynamicCanvasMinZoom}
+        maxZoom={CANVAS_MAX_ZOOM}
         onInit={(instance) => {
           reactFlowRef.current = instance;
           setReactFlowReadyVersion((current) => current + 1);
@@ -1998,6 +2063,10 @@ function App(): JSX.Element {
         onMoveEnd={handleMoveEnd}
         proOptions={{ hideAttribution: true }}
       >
+        <CanvasOverviewModeBridge
+          threshold={CANVAS_OVERVIEW_ZOOM_THRESHOLD}
+          onOverviewModeChange={handleCanvasOverviewModeChange}
+        />
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
         <MiniMap
           className="canvas-corner-panel canvas-minimap"
@@ -2018,7 +2087,7 @@ function App(): JSX.Element {
         <Controls
           className="canvas-corner-panel canvas-controls"
           showInteractive={false}
-          fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
+          fitViewOptions={canvasFitViewOptions}
         />
       </ReactFlow>
 
@@ -2302,6 +2371,42 @@ function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosit
 
 function createManualNodeCreateRequestId(): string {
   return `create-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function resolveDynamicCanvasMinZoom(
+  nodes: readonly CanvasFlowNode[],
+  viewportSize: CanvasViewportSize
+): number {
+  if (nodes.length === 0 || viewportSize.width <= 0 || viewportSize.height <= 0) {
+    return CANVAS_COMFORT_MIN_ZOOM;
+  }
+
+  const bounds = getNodesBounds(nodes as CanvasFlowNode[]);
+  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
+    return CANVAS_COMFORT_MIN_ZOOM;
+  }
+
+  const xZoom = viewportSize.width / (bounds.width * (1 + CANVAS_FIT_VIEW_PADDING));
+  const yZoom = viewportSize.height / (bounds.height * (1 + CANVAS_FIT_VIEW_PADDING));
+  const fitAllZoom = Math.min(xZoom, yZoom);
+
+  return Number.isFinite(fitAllZoom)
+    ? Math.min(CANVAS_COMFORT_MIN_ZOOM, fitAllZoom)
+    : CANVAS_COMFORT_MIN_ZOOM;
+}
+
+function CanvasOverviewModeBridge(props: {
+  threshold: number;
+  onOverviewModeChange: (overviewMode: boolean) => void;
+}): null {
+  const { onOverviewModeChange, threshold } = props;
+  const { zoom } = useViewport();
+
+  useEffect(() => {
+    onOverviewModeChange(zoom < threshold);
+  }, [onOverviewModeChange, threshold, zoom]);
+
+  return null;
 }
 
 function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
