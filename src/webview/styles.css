@@ -452,19 +452,18 @@ body {
 .node-overview-title span {
   max-width: 92%;
   overflow: hidden;
-  padding:
-    calc(4px * var(--canvas-overview-title-scale, 1))
-    calc(8px * var(--canvas-overview-title-scale, 1));
-  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 36%, transparent);
-  border-radius: calc(6px * var(--canvas-overview-title-scale, 1));
-  background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-focusBorder) 18%);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--vscode-editor-foreground);
   font-size: calc(12px * var(--canvas-overview-title-scale, 1));
   font-weight: 700;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 48%, transparent);
+  text-shadow:
+    0 1px 2px var(--vscode-editor-background),
+    0 0 8px color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
 }
 
 .canvas-shell.is-overview-mode[data-canvas-overview-config='title'] .node-overview-title {
