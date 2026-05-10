@@ -161,7 +161,7 @@
   - 支持用户手动从模板目录复制 JSON 文件
 
 ### 4.10 交互方式
-- **侧边栏面板**：模板管理视图
+- **侧边栏模板 section**：模板管理视图作为 Dev Session Canvas sidebar 容器中的 `模板` section 存在
   - 显示所有模板（内置 + workspace 用户模板 + 当前设备用户模板）
   - 视觉风格应尽量贴近 VSCode 原生 sidebar，采用紧凑列表行和分隔线，而不是厚重卡片式布局
   - 保存当前画布、导入模板、刷新列表等管理动作优先放在 view title actions 中，而不是在内容区重复放一排自定义按钮
@@ -338,5 +338,5 @@ interface CanvasTemplateEdgeSnapshot {
 
 - **产品方向依据**：`docs/PRODUCT_SENSE.md` - 核心产品价值和目标用户定义
 - **架构约束**：`ARCHITECTURE.md` - 存储路径、协议边界、宿主集成方式
-- **设计文档**：`docs/design-docs/template-design-doc.md` - 技术实现方案和架构设计（待补充）
-- **执行计划**：待创建对应的 ExecPlan（如果实现复杂度需要）
+- **设计文档**：`docs/design-docs/canvas-template-feature.md` - 模板模型、存储边界、应用语义、侧栏 / 命令 / 右键入口分工和验证证据
+- **执行计划**：`docs/exec-plans/active/canvas-template-feature.md` - 模板功能实现过程、决策记录和回归验证记录
