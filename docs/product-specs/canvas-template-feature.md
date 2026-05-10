@@ -338,5 +338,5 @@ interface CanvasTemplateEdgeSnapshot {
 
 - **产品方向依据**：`docs/PRODUCT_SENSE.md` - 核心产品价值和目标用户定义
 - **架构约束**：`ARCHITECTURE.md` - 存储路径、协议边界、宿主集成方式
-- **设计文档**：`docs/design-docs/template-design-doc.md` - 技术实现方案和架构设计（待补充）
-- **执行计划**：待创建对应的 ExecPlan（如果实现复杂度需要）
+- **设计文档**：`docs/design-docs/canvas-template-feature.md` - 模板模型、存储边界、应用语义、侧栏 / 命令 / 右键入口分工和验证证据
+- **执行计划**：`docs/exec-plans/active/canvas-template-feature.md` - 模板功能实现过程、决策记录和回归验证记录
