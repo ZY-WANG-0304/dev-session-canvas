@@ -49,39 +49,8 @@
     "workspace"
   ],
   "activationEvents": [
-    "onCommand:devSessionCanvas.openCanvas",
-    "onCommand:devSessionCanvas.openCanvasInEditor",
-    "onCommand:devSessionCanvas.openCanvasInPanel",
-    "onCommand:devSessionCanvas.openSettings",
-    "onCommand:devSessionCanvas.selectTerminalShell",
-    "onCommand:devSessionCanvas.selectCodexCli",
-    "onCommand:devSessionCanvas.selectClaudeCli",
-    "onCommand:devSessionCanvas.openCodexConfigFile",
-    "onCommand:devSessionCanvas.openCodexAuthFile",
-    "onCommand:devSessionCanvas.openClaudeSettingsFile",
-    "onCommand:devSessionCanvas.createNode",
-    "onCommand:devSessionCanvas.showNodeList",
-    "onCommand:devSessionCanvas.showSessionHistory",
-    "onCommand:devSessionCanvas.refreshSessionHistory",
-    "onCommand:devSessionCanvas.resetCanvasState",
-    "onCommand:devSessionCanvas.dumpHostDiagnostics",
     "onCommand:devSessionCanvas.__internal.centerAttentionNode",
-    "onView:devSessionCanvas.sidebar",
-    "onView:devSessionCanvas.sidebarFilters",
-    "onView:devSessionCanvas.sidebarNodes",
-    "onView:devSessionCanvas.sidebarSessions",
-    "onView:devSessionCanvas.canvasPanel",
-    "onWebviewPanel:devSessionCanvas.canvas",
-    "onCommand:devSessionCanvas.applyTemplate",
-    "onCommand:devSessionCanvas.applyDefaultTemplate",
-    "onCommand:devSessionCanvas.resetToDefaultTemplate",
-    "onCommand:devSessionCanvas.saveCanvasAsTemplate",
-    "onCommand:devSessionCanvas.importTemplate",
-    "onCommand:devSessionCanvas.exportTemplate",
-    "onCommand:devSessionCanvas.deleteTemplate",
-    "onCommand:devSessionCanvas.setDefaultTemplate",
-    "onCommand:devSessionCanvas.refreshTemplates",
-    "onView:devSessionCanvas.sidebarTemplates"
+    "onWebviewPanel:devSessionCanvas.canvas"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -127,26 +96,31 @@
       "devSessionCanvas": [
         {
           "id": "devSessionCanvas.sidebar",
-          "name": "%view.canvas.sidebar.summary.title%"
+          "name": "%view.canvas.sidebar.summary.title%",
+          "icon": "images/dev-session-canvas-activitybar.svg"
         },
         {
           "id": "devSessionCanvas.sidebarTemplates",
           "name": "%view.canvas.sidebar.templates.title%",
+          "icon": "images/dev-session-canvas-templates-activitybar.svg",
           "type": "webview"
         },
         {
           "id": "devSessionCanvas.sidebarFilters",
           "name": "%view.canvas.sidebar.actions.title%",
+          "icon": "images/dev-session-canvas-activitybar.svg",
           "type": "webview"
         },
         {
           "id": "devSessionCanvas.sidebarNodes",
           "name": "%view.canvas.sidebar.nodes.title%",
+          "icon": "images/dev-session-canvas-activitybar.svg",
           "type": "webview"
         },
         {
           "id": "devSessionCanvas.sidebarSessions",
           "name": "%view.canvas.sidebar.sessions.title%",
+          "icon": "images/dev-session-canvas-activitybar.svg",
           "type": "webview"
         }
       ],
@@ -155,6 +129,7 @@
           "type": "webview",
           "id": "devSessionCanvas.canvasPanel",
           "name": "%view.canvas.panel.title%",
+          "icon": "images/dev-session-canvas-activitybar.svg",
           "when": "devSessionCanvas.canvas.panelViewVisible"
         }
       ]
