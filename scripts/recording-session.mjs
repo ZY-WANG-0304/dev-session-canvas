@@ -53,7 +53,9 @@ function delay(ms) {
 
 async function cmdStart() {
   await fs.mkdir(debugRoot, { recursive: true });
-  const logPath = path.join(debugRoot, 'session-output.log');
+  const logPath = path.join(projectRoot, '.debug', 'marketplace-media-session-output.log');
+  await fs.rm(sessionFile, { force: true });
+  await fs.rm(logPath, { force: true });
   console.log('启动交互录制环境...');
 
   const child = spawn('bash', ['-c', `exec ${process.execPath} scripts/generate-marketplace-media.mjs > "${logPath}" 2>&1`], {
