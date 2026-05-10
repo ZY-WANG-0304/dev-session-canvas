@@ -406,6 +406,8 @@ body {
 .canvas-shell.is-overview-mode .terminal-viewport,
 .canvas-shell.is-overview-mode .terminal-overlay,
 .canvas-shell.is-overview-mode .note-editor-surface,
+.canvas-shell.is-overview-mode .file-node-icon,
+.canvas-shell.is-overview-mode .file-node-copy,
 .canvas-shell.is-overview-mode .file-list-entries,
 .canvas-shell.is-overview-mode .file-list-tree,
 .canvas-shell.is-overview-mode .file-list-empty {
@@ -433,6 +435,40 @@ body {
     );
   background-size: 18px 18px;
   pointer-events: none;
+  z-index: 1;
+}
+
+.node-overview-title {
+  position: absolute;
+  inset: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.node-overview-title span {
+  max-width: 92%;
+  overflow: hidden;
+  padding:
+    calc(4px * var(--canvas-overview-title-scale, 1))
+    calc(8px * var(--canvas-overview-title-scale, 1));
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 36%, transparent);
+  border-radius: calc(6px * var(--canvas-overview-title-scale, 1));
+  background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-focusBorder) 18%);
+  color: var(--vscode-editor-foreground);
+  font-size: calc(12px * var(--canvas-overview-title-scale, 1));
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 48%, transparent);
+}
+
+.canvas-shell.is-overview-mode[data-canvas-overview-config='title'] .node-overview-title {
+  opacity: 1;
 }
 
 .canvas-node-handle {
@@ -718,6 +754,7 @@ body {
 }
 
 .compact-node {
+  position: relative;
   justify-content: space-between;
   padding: 14px 14px 12px;
 }
@@ -1190,6 +1227,7 @@ body {
 }
 
 .file-node-action {
+  position: relative;
   display: grid;
   gap: 10px;
   align-items: center;

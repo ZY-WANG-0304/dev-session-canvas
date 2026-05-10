@@ -58,6 +58,7 @@ import {
   type CanvasFilePathDisplayMode,
   type CanvasFilePresentationMode,
   type CanvasFileIconDescriptor,
+  type CanvasOverviewMode,
   type CanvasStrongTerminalAttentionReminderMode,
   type CanvasFileReferenceOwnerSummary,
   type CanvasFileReferenceSummary,
@@ -92,6 +93,7 @@ import {
   isCanvasNodeKind,
   isExecutionNodeKind,
   normalizeCanvasAttentionNotificationBridgeMode,
+  normalizeCanvasOverviewMode,
   normalizeCanvasStrongTerminalAttentionReminderMode,
   normalizeCanvasNodeFootprint,
   parseWebviewMessage,
@@ -672,6 +674,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const agentClaudeCommandChanged = event.affectsConfiguration(CONFIG_KEYS.agentClaudeCommand);
         const agentCodexDefaultArgsChanged = event.affectsConfiguration(CONFIG_KEYS.agentCodexDefaultArgs);
         const agentClaudeDefaultArgsChanged = event.affectsConfiguration(CONFIG_KEYS.agentClaudeDefaultArgs);
+        const canvasOverviewModeChanged = event.affectsConfiguration(CONFIG_KEYS.canvasOverviewMode);
         const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
@@ -723,6 +726,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !agentClaudeCommandChanged &&
           !agentCodexDefaultArgsChanged &&
           !agentClaudeDefaultArgsChanged &&
+          !canvasOverviewModeChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -751,6 +755,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             agentClaudeCommandChanged,
             agentCodexDefaultArgsChanged,
             agentClaudeDefaultArgsChanged,
+            canvasOverviewModeChanged,
             filesPresentationModeChanged,
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
@@ -2729,6 +2734,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       terminalWordSeparators: normalizeExecutionTerminalWordSeparators(
         vscode.workspace.getConfiguration('terminal.integrated').get<string>('wordSeparators')
       ),
+      overviewMode: this.getCanvasOverviewMode(),
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
@@ -2741,6 +2747,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return normalizeTerminalScrollback(
       vscode.workspace.getConfiguration('terminal.integrated').get<number>('scrollback'),
       DEFAULT_TERMINAL_SCROLLBACK
+    );
+  }
+
+  private getCanvasOverviewMode(): CanvasOverviewMode {
+    return normalizeCanvasOverviewMode(
+      getConfigurationValue<CanvasOverviewMode>('canvasOverviewMode', 'title')
     );
   }
 
@@ -2967,6 +2979,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     agentClaudeCommandChanged: boolean;
     agentCodexDefaultArgsChanged: boolean;
     agentClaudeDefaultArgsChanged: boolean;
+    canvasOverviewModeChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -3053,6 +3066,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.agentClaudeCommandChanged ||
       options.agentCodexDefaultArgsChanged ||
       options.agentClaudeDefaultArgsChanged ||
+      options.canvasOverviewModeChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
