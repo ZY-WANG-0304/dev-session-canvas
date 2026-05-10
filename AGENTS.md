@@ -17,7 +17,7 @@
 
 ## 架构与设计
 
-理解系统边界、依赖方向与稳定接口时读 `ARCHITECTURE.md`。涉及设计决策、方案比较、取舍或验证证据时按 `docs/DESIGN.md` 的机制更新 `docs/design-docs/index.md`、`docs/design-docs/core-beliefs.md` 和 `docs/design-docs/`；仅在任务涉及 UI、交互或前端实现时读 `docs/FRONTEND.md`。
+理解系统边界、依赖方向与稳定接口时读 `ARCHITECTURE.md`。涉及设计决策、方案比较、取舍或验证证据时按 `docs/DESIGN.md` 的机制更新 `docs/design-docs/index.md`、`docs/design-docs/core-beliefs.md` 和 `docs/design-docs/`；涉及 UI design-system 基线、视觉 token、组件语言或跨功能 UI 规则时读 `docs/UI.md`；涉及具体 UI、交互或前端实现维度时读 `docs/FRONTEND.md`。
 
 ## 工作流
 
