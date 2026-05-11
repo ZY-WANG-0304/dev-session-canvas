@@ -54,7 +54,7 @@ updated_at: 2026-05-12
 
 - 保留上下两个终端面板的结构，作为主 icon 的最终语义。
 - `images/icon.png` 由该 SVG 渲染生成，作为 `package.json` 的正式打包资产。
-- `images/avatar.png` 以 `images/icon.png` 为来源缩放到 `512x512` 透明画布内，确保主 icon 主体在圆形头像裁切区域内完整显示。
+- `images/avatar.png` 由 `images/dev-session-canvas-icon.svg` 矢量源直接渲染到 `512x512` 透明画布内，确保主 icon 主体在圆形头像裁切区域内完整显示，同时避免从 `images/icon.png` 二次放大造成锯齿。
 
 ### 5.2 Activity Bar Icon
 
@@ -100,7 +100,7 @@ updated_at: 2026-05-12
 
 ## 6. 风险与取舍
 
-- 主 icon 的最终 PNG 依赖渲染链生成；如果后续 SVG 继续微调，应重新导出 `images/icon.png`，并同步重新生成 `images/avatar.png`。
+- 主 icon 的最终 PNG 依赖渲染链生成；如果后续 SVG 继续微调，应重新导出 `images/icon.png`，并从 SVG 矢量源同步重新生成 `images/avatar.png`。
 - notifier companion 的最终 PNG 同样依赖渲染链；如果后续调整 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`，应同步重新导出 `extensions/vscode/dev-session-canvas-notifier/images/icon.png`。
 - 当前已经完成文件级同步与渲染验证，但还没有补充 Marketplace 或 VS Code 实景截图类人工校验。
 - badge 约定依赖手写 SVG mask；后续新增专属 icon 时应至少做 XML/路径存在检查，并在需要时补 VS Code 实景截图确认 24px 可读性。
