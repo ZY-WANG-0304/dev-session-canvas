@@ -17,7 +17,7 @@
   - Linux：`notify-send`
   - Windows：Toast Notification
 - 显式区分通知回调能力：支持点击回到 VS Code 的完整路径，与“只保证通知出现”的退化路径不会混写
-- 提供独立 sidebar，用于查看当前通知后端、点击回调能力、声音请求状态、前置依赖与最近一次投递结果，并可通过标题行齿轮直接打开配置
+- 提供独立 sidebar，拆成 `概览`、`注意事项`、平台说明与 Agent 配置多个 section；可在 `概览` 标题行通过齿轮直接打开配置
 - 提供两条人工验收命令：
   - `Dev Session Canvas Notifier: 发送测试桌面通知`
   - `Dev Session Canvas Notifier: 打开通知诊断输出`

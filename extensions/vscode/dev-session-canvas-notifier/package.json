@@ -64,7 +64,7 @@
       "devSessionCanvasNotifier": [
         {
           "id": "devSessionCanvasNotifier.status",
-          "name": "通知状态",
+          "name": "概览",
           "type": "webview"
         },
         {

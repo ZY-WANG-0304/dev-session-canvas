@@ -82,10 +82,12 @@
   - 功能：控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音
 - 开启后：
   - notifier 会在当前平台支持的后端上 best-effort 请求提示音
-  - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会额外播放一次系统 alert sound
+  - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会在 `display notification` 上请求内建声音名（当前实现为 `Submarine`），不再额外 `beep`
 - 关闭后：
   - notifier 会尽量走静音路径，但不影响通知弹出、点击回跳和 `attentionPending` 状态机
-- 用户可从 `Dev Session Canvas Notifier` sidebar 的 `通知环境` 标题行尾部齿轮按钮打开 companion 配置；该入口只负责跳转设置，不改变通知投递或回跳语义
+- `Dev Session Canvas Notifier` sidebar 当前拆成多个独立 view section：`概览`、`注意事项`、`macOS`、`Linux`、`Windows`、`Codex`、`Claude Code`
+- 用户可从 `概览` view title 行尾部的齿轮按钮打开 companion 配置；该按钮只挂在承载通知状态、测试按钮和诊断入口的概览 section 上，不会出现在其他平台或 Agent section
+- 该入口只负责跳转设置，不改变通知投递或回跳语义
 
 ### 4.3 强提醒模式
 
