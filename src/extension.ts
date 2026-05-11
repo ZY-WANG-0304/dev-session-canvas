@@ -1012,6 +1012,7 @@ function promptAgentLaunchRequestWithQuickPick(
     let suppressNextAcceptAfterPresetSelection = false;
     let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
     let presetSelectionAcceptResetTimer: ReturnType<typeof setTimeout> | undefined;
+    let activePresetClearTimer: ReturnType<typeof setTimeout> | undefined;
 
     const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
       if (resolved) {
@@ -1020,6 +1021,9 @@ function promptAgentLaunchRequestWithQuickPick(
       resolved = true;
       if (presetSelectionAcceptResetTimer) {
         clearTimeout(presetSelectionAcceptResetTimer);
+      }
+      if (activePresetClearTimer) {
+        clearTimeout(activePresetClearTimer);
       }
       quickPick.hide();
       quickPick.dispose();
@@ -1041,6 +1045,23 @@ function promptAgentLaunchRequestWithQuickPick(
     const updateTitle = (): void => {
       const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
       quickPick.title = validation.valid ? baseTitle : `${baseTitle} · ${validation.error}`;
+    };
+
+    const clearActivePresetItem = (): void => {
+      if (quickPick.activeItems.some((item) => item.launchPreset)) {
+        quickPick.activeItems = [];
+      }
+    };
+
+    const scheduleActivePresetClear = (): void => {
+      clearActivePresetItem();
+      if (activePresetClearTimer) {
+        clearTimeout(activePresetClearTimer);
+      }
+      activePresetClearTimer = setTimeout(() => {
+        activePresetClearTimer = undefined;
+        clearActivePresetItem();
+      }, 0);
     };
 
     quickPick.title = baseTitle;
@@ -1066,11 +1087,17 @@ function promptAgentLaunchRequestWithQuickPick(
 
     quickPick.onDidChangeValue(() => {
       updateTitle();
+      scheduleActivePresetClear();
+    });
+
+    quickPick.onDidChangeActive((items) => {
+      if (items.some((item) => item.launchPreset)) {
+        scheduleActivePresetClear();
+      }
     });
 
     quickPick.onDidAccept(() => {
-      // VS Code may keep the first preset item active while the user edits the text.
-      // Enter must commit the text box value, not reinterpret that highlight as intent.
+      // Enter must commit the text box value, even if VS Code briefly reactivates a preset item.
       if (suppressNextAcceptAfterPresetSelection) {
         return;
       }
@@ -1096,7 +1123,7 @@ function promptAgentLaunchRequestWithQuickPick(
 
     updateTitle();
     quickPick.show();
-    quickPick.activeItems = [];
+    scheduleActivePresetClear();
   });
 }
 
