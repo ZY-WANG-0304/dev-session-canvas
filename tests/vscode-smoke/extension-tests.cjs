@@ -8829,6 +8829,22 @@ async function writeSmokeUserSettings(updates) {
 
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
   await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+  await forceSmokeSettingsConfigurationRefresh(updates);
+}
+
+async function forceSmokeSettingsConfigurationRefresh(updates) {
+  const bridgeSettingKey = 'devSessionCanvas.notifications.attentionSignalBridge';
+  const configuration = vscode.workspace.getConfiguration();
+  const desiredBridgeSetting = Object.prototype.hasOwnProperty.call(updates, bridgeSettingKey)
+    ? updates[bridgeSettingKey]
+    : undefined;
+
+  // Legacy notification keys are intentionally absent from package.json, so
+  // vscode.workspace.update rejects them. Toggle the registered v2 key after
+  // writing settings.json to drive the same configuration-change path without
+  // depending on file watchers in inotify-constrained smoke hosts.
+  await configuration.update(bridgeSettingKey, 'none', vscode.ConfigurationTarget.Global);
+  await configuration.update(bridgeSettingKey, desiredBridgeSetting, vscode.ConfigurationTarget.Global);
 }
 
 function normalizeAttentionNotificationBridgeMode(value) {
