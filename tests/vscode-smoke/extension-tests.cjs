@@ -668,6 +668,7 @@ async function runTrustedSmoke() {
   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyCreateNodeCommandQuickPickKeepsTypedValueWhenPresetIsActive();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
@@ -1417,6 +1418,71 @@ async function verifyCreateNodeCommandQuickPick() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+}
+
+async function verifyCreateNodeCommandQuickPickKeepsTypedValueWhenPresetIsActive() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+  await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+
+  const customMarker = `--quick-input-enter-regression-${Date.now()}`;
+
+  await setQuickPickSelections(['create-agent-default']);
+  await withInterceptedCreateQuickPicks(
+    async () => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+    },
+    async ({ quickPick, emitChangeValue, emitAccept }) => {
+      const defaultPresetItem = quickPick.items.find((item) => item && item.launchPreset === 'default');
+      assert.ok(defaultPresetItem, 'Expected the Agent launch Quick Input to include the default preset item.');
+
+      quickPick.value = `${quickPick.value} ${customMarker}`;
+      quickPick.activeItems = [defaultPresetItem];
+      emitChangeValue(quickPick.value);
+      emitAccept();
+
+      await sleep(25);
+      if (!quickPick.disposed) {
+        quickPick.activeItems = [];
+        emitAccept();
+      }
+    }
+  );
+
+  const snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          node.kind === 'agent' &&
+          node.metadata?.agent?.provider === 'codex' &&
+          node.metadata?.agent?.launchPreset === 'custom' &&
+          typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(customMarker)
+      ),
+    20000
+  );
+  const customAgentNode = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'agent' &&
+      node.metadata?.agent?.provider === 'codex' &&
+      node.metadata?.agent?.launchPreset === 'custom' &&
+      typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+      node.metadata.agent.customLaunchCommand.includes(customMarker)
+  );
+  assert.ok(customAgentNode, 'Expected Enter to create an Agent from the typed command even while a preset is active.');
+
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.nodeId === customAgentNode.id &&
+          event.detail?.provider === 'codex' &&
+          event.detail?.launchPreset === 'custom'
+      ),
+    20000
+  );
 }
 
 async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
@@ -9089,6 +9155,113 @@ async function withInterceptedQuickPicks(runIntercepted, resolveSelection) {
     return await runIntercepted(calls);
   } finally {
     vscode.window.showQuickPick = originalShowQuickPick;
+  }
+}
+
+async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation) {
+  const originalCreateQuickPick = vscode.window.createQuickPick;
+  const calls = [];
+
+  vscode.window.createQuickPick = () => {
+    const listeners = {
+      changeSelection: [],
+      changeValue: [],
+      accept: [],
+      triggerButton: [],
+      hide: []
+    };
+    const quickPick = {
+      title: undefined,
+      placeholder: undefined,
+      matchOnDescription: false,
+      matchOnDetail: false,
+      value: '',
+      items: [],
+      buttons: [],
+      ignoreFocusOut: false,
+      activeItems: [],
+      selectedItems: [],
+      canSelectMany: false,
+      disposed: false,
+      visible: false,
+      onDidChangeSelection(listener) {
+        listeners.changeSelection.push(listener);
+        return { dispose() {} };
+      },
+      onDidChangeValue(listener) {
+        listeners.changeValue.push(listener);
+        return { dispose() {} };
+      },
+      onDidAccept(listener) {
+        listeners.accept.push(listener);
+        return { dispose() {} };
+      },
+      onDidTriggerButton(listener) {
+        listeners.triggerButton.push(listener);
+        return { dispose() {} };
+      },
+      onDidHide(listener) {
+        listeners.hide.push(listener);
+        return { dispose() {} };
+      },
+      show() {
+        this.visible = true;
+        setTimeout(() => {
+          if (typeof resolveSimulation === 'function') {
+            resolveSimulation({
+              quickPick,
+              listeners,
+              emitChangeSelection: (items) => {
+                for (const listener of listeners.changeSelection) {
+                  listener(items);
+                }
+              },
+              emitChangeValue: (value) => {
+                for (const listener of listeners.changeValue) {
+                  listener(value);
+                }
+              },
+              emitAccept: () => {
+                for (const listener of listeners.accept) {
+                  listener();
+                }
+              },
+              emitTriggerButton: (button) => {
+                for (const listener of listeners.triggerButton) {
+                  listener(button);
+                }
+              }
+            });
+          }
+        }, 0);
+      },
+      hide() {
+        if (!this.visible) {
+          return;
+        }
+        this.visible = false;
+        for (const listener of listeners.hide) {
+          listener();
+        }
+      },
+      dispose() {
+        this.disposed = true;
+      }
+    };
+    calls.push({ quickPick, listeners });
+    return quickPick;
+  };
+
+  assert.notStrictEqual(
+    vscode.window.createQuickPick,
+    originalCreateQuickPick,
+    'Failed to intercept vscode.window.createQuickPick.'
+  );
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.window.createQuickPick = originalCreateQuickPick;
   }
 }
 
