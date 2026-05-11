@@ -6,6 +6,7 @@ import {
   type NotifierAgentConfigurationGuide,
   type NotifierEnvironmentSnapshot,
   type NotifierExtensionModeLabel,
+  type NotifierInstallRequirement,
   type NotifierPlatformGuide
 } from './sidebarEnvironment';
 
@@ -23,19 +24,32 @@ interface NotifierSidebarCallbacks {
   openDiagnosticOutput: () => void;
 }
 
-export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-  public static readonly viewType = 'devSessionCanvasNotifier.sidebar';
+export type NotifierSidebarSection = 'status' | 'notes' | 'macOS' | 'linux' | 'windows' | 'codex' | 'claudeCode';
 
+export const NOTIFIER_SIDEBAR_VIEW_IDS: Record<NotifierSidebarSection, string> = {
+  status: 'devSessionCanvasNotifier.status',
+  notes: 'devSessionCanvasNotifier.notes',
+  macOS: 'devSessionCanvasNotifier.macOS',
+  linux: 'devSessionCanvasNotifier.linux',
+  windows: 'devSessionCanvasNotifier.windows',
+  codex: 'devSessionCanvasNotifier.codex',
+  claudeCode: 'devSessionCanvasNotifier.claudeCode'
+};
+
+export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
-  private view: vscode.WebviewView | undefined;
+  private readonly sectionViews = new Map<NotifierSidebarSection, vscode.WebviewView>();
 
   public constructor(private readonly callbacks: NotifierSidebarCallbacks) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
-    this.view = webviewView;
-    webviewView.webview.options = {
-      enableScripts: true
-    };
+    const section = this.resolveSection(webviewView.viewType);
+    if (!section) {
+      return;
+    }
+
+    this.sectionViews.set(section, webviewView);
+    webviewView.webview.options = { enableScripts: true };
 
     this.disposables.push(
       webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -44,362 +58,163 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
           await this.refresh();
           return;
         }
-
         if (message?.command === 'open-diagnostic-output') {
           this.callbacks.openDiagnosticOutput();
         }
       }),
       webviewView.onDidChangeVisibility(() => {
         if (webviewView.visible) {
-          void this.refresh();
+          void this.refreshSection(section);
         }
       })
     );
 
-    void this.refresh();
+    void this.refreshSection(section);
   }
 
   public async refresh(): Promise<void> {
-    if (!this.view) {
+    const snapshot = await this.probeSnapshot();
+    for (const section of this.sectionViews.keys()) {
+      this.renderSection(section, snapshot);
+    }
+  }
+
+  public dispose(): void {
+    this.disposables.splice(0).forEach((d) => d.dispose());
+  }
+
+  private async refreshSection(section: NotifierSidebarSection): Promise<void> {
+    const snapshot = await this.probeSnapshot();
+    this.renderSection(section, snapshot);
+  }
+
+  private renderSection(section: NotifierSidebarSection, snapshot: NotifierEnvironmentSnapshot): void {
+    const view = this.sectionViews.get(section);
+    if (!view) {
       return;
     }
+    view.webview.html = renderSectionHtml(view.webview, section, snapshot, {
+      latestRecord: this.callbacks.getLatestRecord(),
+      latestManualAttempt: this.callbacks.getLatestManualAttempt()
+    });
+  }
 
-    const snapshot = await probeNotifierEnvironmentSnapshot(
+  private async probeSnapshot(): Promise<NotifierEnvironmentSnapshot> {
+    return probeNotifierEnvironmentSnapshot(
       process.platform,
       this.callbacks.getModeLabel(),
       this.callbacks.getPlaySoundEnabled()
     );
-    this.view.webview.html = renderSidebarHtml(
-      this.view.webview,
-      snapshot,
-      this.callbacks.getLatestRecord(),
-      this.callbacks.getLatestManualAttempt()
-    );
   }
 
-  public dispose(): void {
-    this.disposables.splice(0).forEach((disposable) => disposable.dispose());
+  private resolveSection(viewType: string): NotifierSidebarSection | undefined {
+    for (const [section, id] of Object.entries(NOTIFIER_SIDEBAR_VIEW_IDS)) {
+      if (id === viewType) {
+        return section as NotifierSidebarSection;
+      }
+    }
+    return undefined;
   }
 }
 
-function renderSidebarHtml(
+interface SectionRenderContext {
+  latestRecord: AttentionNotificationDebugRecord | undefined;
+  latestManualAttempt: NotifierSidebarLatestAttempt | undefined;
+}
+
+function renderSectionHtml(
   webview: vscode.Webview,
+  section: NotifierSidebarSection,
   snapshot: NotifierEnvironmentSnapshot,
-  latestRecord: AttentionNotificationDebugRecord | undefined,
-  latestManualAttempt: NotifierSidebarLatestAttempt | undefined
+  ctx: SectionRenderContext
 ): string {
   const nonce = createNonce();
-  const statusHtml = renderNotificationStatus(snapshot, latestRecord, latestManualAttempt);
-  const environmentHtml = renderEnvironmentInfo(snapshot);
-  const setupHtml = renderEnvironmentGuidance(snapshot);
-  const agentConfigurationHtml = renderAgentConfigurationGuidance(snapshot);
-  const notesHtml = renderNotes(snapshot);
+  let bodyHtml = '';
+
+  switch (section) {
+    case 'status':
+      bodyHtml = renderStatusSection(snapshot, ctx);
+      break;
+    case 'notes':
+      bodyHtml = renderNotesSection(snapshot);
+      break;
+    case 'macOS':
+      bodyHtml = renderPlatformSection(snapshot, 'macOS');
+      break;
+    case 'linux':
+      bodyHtml = renderPlatformSection(snapshot, 'Linux');
+      break;
+    case 'windows':
+      bodyHtml = renderPlatformSection(snapshot, 'Windows');
+      break;
+    case 'codex':
+      bodyHtml = renderAgentSection(snapshot, 'Codex');
+      break;
+    case 'claudeCode':
+      bodyHtml = renderAgentSection(snapshot, 'Claude Code');
+      break;
+  }
 
   return `<!DOCTYPE html>
-  <html lang="zh-CN">
-    <head>
-      <meta charset="UTF-8" />
-      <meta
-        http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
-      />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>通知设置</title>
-      <style>
-        body {
-          padding: 0;
-          margin: 0;
-          font-family: var(--vscode-font-family);
-          font-size: var(--vscode-font-size);
-          color: var(--vscode-foreground);
-        }
-
-        .section {
-          padding: 12px 20px;
-        }
-
-        .section + .section {
-          border-top: 1px solid var(--vscode-sideBarSectionHeader-border);
-        }
-
-        h2 {
-          margin: 0 0 12px 0;
-          font-size: 11px;
-          font-weight: 600;
-          text-transform: uppercase;
-          color: var(--vscode-sideBarTitle-foreground);
-        }
-
-        p {
-          margin: 0 0 8px 0;
-          line-height: 1.4;
-        }
-
-        .status-card {
-          padding: 12px;
-          background: var(--vscode-sideBarSectionHeader-background);
-          border-left: 3px solid var(--vscode-testing-iconPassed);
-          margin-bottom: 12px;
-        }
-
-        .status-card.warning {
-          border-left-color: var(--vscode-notificationsWarningIcon-foreground);
-        }
-
-        .status-card-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 6px;
-        }
-
-        .status-icon {
-          width: 16px;
-          height: 16px;
-          min-width: 16px;
-          min-height: 16px;
-          flex-shrink: 0;
-        }
-
-        .status-icon.success {
-          color: var(--vscode-testing-iconPassed);
-        }
-
-        .status-icon.warning {
-          color: var(--vscode-notificationsWarningIcon-foreground);
-        }
-
-        .status-title {
-          font-weight: 600;
-          font-size: 13px;
-        }
-
-        .status-detail {
-          color: var(--vscode-descriptionForeground);
-          font-size: 12px;
-          line-height: 1.4;
-          margin-left: 24px;
-        }
-
-        .info-list {
-          display: grid;
-          gap: 8px;
-        }
-
-        .info-item {
-          display: grid;
-          grid-template-columns: 80px 1fr;
-          gap: 8px;
-          font-size: 13px;
-        }
-
-        .info-label {
-          color: var(--vscode-descriptionForeground);
-        }
-
-        .info-value {
-          font-weight: 500;
-        }
-
-        .help-text {
-          color: var(--vscode-descriptionForeground);
-          font-size: 12px;
-          line-height: 1.4;
-          margin-bottom: 12px;
-        }
-
-        .action-button {
-          width: 100%;
-          padding: 6px 12px;
-          margin-bottom: 8px;
-          background: var(--vscode-button-background);
-          color: var(--vscode-button-foreground);
-          border: none;
-          cursor: pointer;
-          font-family: var(--vscode-font-family);
-          font-size: 13px;
-          text-align: center;
-        }
-
-        .action-button:hover {
-          background: var(--vscode-button-hoverBackground);
-        }
-
-        .action-button.secondary {
-          background: var(--vscode-button-secondaryBackground);
-          color: var(--vscode-button-secondaryForeground);
-        }
-
-        .action-button.secondary:hover {
-          background: var(--vscode-button-secondaryHoverBackground);
-        }
-
-        .setup-item {
-          padding: 10px 0;
-        }
-
-        .setup-item + .setup-item {
-          border-top: 1px solid var(--vscode-sideBarSectionHeader-border);
-        }
-
-        .setup-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 4px;
-        }
-
-        .setup-name {
-          font-weight: 600;
-          font-size: 13px;
-        }
-
-        .setup-badge {
-          padding: 2px 6px;
-          background: var(--vscode-badge-background);
-          color: var(--vscode-badge-foreground);
-          font-size: 11px;
-          border-radius: 2px;
-        }
-
-        .setup-detail {
-          color: var(--vscode-descriptionForeground);
-          font-size: 12px;
-          line-height: 1.4;
-        }
-
-        .setup-detail + .setup-detail {
-          margin-top: 6px;
-        }
-
-        .setup-hint-list,
-        .notes-list {
-          margin: 8px 0 0 0;
-          padding-left: 18px;
-          color: var(--vscode-descriptionForeground);
-          font-size: 12px;
-          line-height: 1.5;
-        }
-
-        .setup-hint-list li,
-        .notes-list li {
-          margin: 0 0 4px 0;
-        }
-
-        .snippet-block {
-          margin: 8px 0 0 0;
-          padding: 8px 10px;
-          background: var(--vscode-textCodeBlock-background);
-          border-radius: 6px;
-          font-family: var(--vscode-editor-font-family);
-          font-size: 12px;
-          line-height: 1.45;
-          white-space: pre-wrap;
-          overflow-wrap: anywhere;
-        }
-
-        .code {
-          font-family: var(--vscode-editor-font-family);
-          background: var(--vscode-textCodeBlock-background);
-          padding: 2px 4px;
-          border-radius: 3px;
-          font-size: 12px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="section">
-        <h2>系统环境</h2>
-        ${environmentHtml}
-      </div>
-
-      <div class="section">
-        <h2>快速操作</h2>
-        <p class="help-text">点击下方按钮测试通知功能，或查看详细的诊断日志排查问题。</p>
-        <button class="action-button" data-command="send-test-notification">发送测试通知</button>
-        <button class="action-button secondary" data-command="open-diagnostic-output">查看诊断日志</button>
-      </div>
-
-      <div class="section">
-        <h2>通知状态</h2>
-        ${statusHtml}
-      </div>
-
-      ${setupHtml}
-      ${agentConfigurationHtml}
-      ${notesHtml}
-
-      <script nonce="${nonce}">
-        const vscode = acquireVsCodeApi();
-        document.querySelectorAll('[data-command]').forEach(button => {
-          button.addEventListener('click', () => {
-            vscode.postMessage({ command: button.dataset.command });
-          });
-        });
-      </script>
-    </body>
-  </html>`;
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>${sectionStyles()}</style>
+</head>
+<body>
+  ${bodyHtml}
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    document.querySelectorAll('[data-command]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        vscode.postMessage({ command: btn.dataset.command });
+      });
+    });
+  </script>
+</body>
+</html>`;
 }
 
-function renderNotificationStatus(
+function renderStatusSection(
   snapshot: NotifierEnvironmentSnapshot,
-  latestRecord: AttentionNotificationDebugRecord | undefined,
-  latestManualAttempt: NotifierSidebarLatestAttempt | undefined
+  ctx: SectionRenderContext
 ): string {
-  const hasRecentTest = latestManualAttempt?.requestedAt !== undefined;
-  const notificationPosted = latestRecord?.result.status === 'posted';
-  const callbackActivated = latestManualAttempt?.activatedAt !== undefined;
+  const hasRecentTest = ctx.latestManualAttempt?.requestedAt !== undefined;
+  const notificationPosted = ctx.latestRecord?.result.status === 'posted';
+  const callbackActivated = ctx.latestManualAttempt?.activatedAt !== undefined;
   const supportsCallback = snapshot.activationKind === 'protocol' || snapshot.activationKind === 'direct-action';
 
-  let statusIcon = '';
-  let statusTitle = '';
-  let statusDetail = '';
+  let statusIcon: string;
+  let statusTitle: string;
+  let statusDetail: string;
   let cardClass = 'status-card';
 
   if (!hasRecentTest) {
     cardClass += ' warning';
-    statusIcon = '<svg class="status-icon warning" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M7.56 1h.88l6.54 12.26-.44.74H1.44L1 13.26 7.56 1zM8 2.28L2.28 13H13.7L8 2.28zM8.625 12v-1h-1.25v1h1.25zm0-2V6h-1.25v4h1.25z"/></svg>';
+    statusIcon = svgWarning;
     statusTitle = '尚未测试';
-    statusDetail = '建议先发送一次测试通知，验证当前环境的通知功能是否正常。';
+    statusDetail = '点击下方按钮发送一次测试通知，验证当前环境是否正常工作。';
   } else if (!notificationPosted) {
     cardClass += ' warning';
-    statusIcon = '<svg class="status-icon warning" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M7.56 1h.88l6.54 12.26-.44.74H1.44L1 13.26 7.56 1zM8 2.28L2.28 13H13.7L8 2.28zM8.625 12v-1h-1.25v1h1.25zm0-2V6h-1.25v4h1.25z"/></svg>';
+    statusIcon = svgWarning;
     statusTitle = '通知发送失败';
-    statusDetail = latestRecord?.result.detail || '通知未能成功发送，请查看诊断日志了解详情。';
+    statusDetail = ctx.latestRecord?.result.detail || '通知未能成功发送，请查看诊断日志了解详情。';
   } else if (supportsCallback && !callbackActivated) {
-    statusIcon = '<svg class="status-icon success" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm3.354 4.646l-.708-.706L6.5 9.086 5.354 7.94l-.708.706 1.5 1.5.354.354.354-.354 4.5-4.5z"/></svg>';
+    statusIcon = svgSuccess;
     statusTitle = '通知已发送';
-    statusDetail = '桌面通知已成功弹出，点击通知可验证回跳功能。';
+    statusDetail = '桌面通知已弹出。点击通知可验证回跳功能是否正常。';
   } else {
-    statusIcon = '<svg class="status-icon success" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm3.354 4.646l-.708-.706L6.5 9.086 5.354 7.94l-.708.706 1.5 1.5.354.354.354-.354 4.5-4.5z"/></svg>';
+    statusIcon = svgSuccess;
     statusTitle = '通知功能正常';
-    if (supportsCallback && callbackActivated) {
-      statusDetail = '通知已成功发送并接收回跳，功能完整可用。';
-    } else {
-      statusDetail = '通知已成功发送，当前环境不支持点击回跳。';
-    }
+    statusDetail = supportsCallback && callbackActivated
+      ? '通知发送与点击回跳均已验证通过。'
+      : '通知已成功发送。当前环境不支持点击回跳。';
   }
 
-  return `
-    <div class="${cardClass}">
-      <div class="status-card-header">
-        ${statusIcon}
-        <span class="status-title">${escapeHtml(statusTitle)}</span>
-      </div>
-      <div class="status-detail">${escapeHtml(statusDetail)}</div>
-    </div>
-  `;
-}
-
-function renderEnvironmentInfo(snapshot: NotifierEnvironmentSnapshot): string {
-  let routeDescription = '';
-  if (snapshot.modeLabel === 'test') {
-    routeDescription = '测试模式，通知不会触达真实系统';
-  } else {
-    routeDescription = snapshot.currentRouteDetail;
-  }
-
-  return `
+  const infoHtml = `
     <div class="info-list">
       <div class="info-item">
         <span class="info-label">平台</span>
@@ -418,94 +233,89 @@ function renderEnvironmentInfo(snapshot: NotifierEnvironmentSnapshot): string {
         <span class="info-value">${escapeHtml(snapshot.soundLabel)}</span>
       </div>
     </div>
-    <p class="help-text" style="margin-top: 12px;">${escapeHtml(routeDescription)}</p>
-    <p class="help-text">${escapeHtml(snapshot.activationDetail)}</p>
-    <p class="help-text">${escapeHtml(snapshot.soundDetail)}</p>
   `;
-}
 
-function renderEnvironmentGuidance(snapshot: NotifierEnvironmentSnapshot): string {
-  const itemsHtml = snapshot.installRequirements
-    .map(
-      (req) => `
-      <div class="setup-item">
-        <div class="setup-header">
-          <span class="setup-name">${escapeHtml(req.name)}</span>
-          <span class="setup-badge">${escapeHtml(req.statusLabel)}</span>
+  return `
+    <div class="content">
+      ${infoHtml}
+      <div class="divider"></div>
+      <button class="action-button" data-command="send-test-notification">发送测试通知</button>
+      <button class="action-button secondary" data-command="open-diagnostic-output">查看诊断日志</button>
+      <div class="${cardClass}">
+        <div class="status-card-header">
+          ${statusIcon}
+          <span class="status-title">${escapeHtml(statusTitle)}</span>
         </div>
-        <p class="setup-detail">${escapeHtml(req.detail)}</p>
-        ${renderHintList(req.hints)}
+        <div class="status-detail">${escapeHtml(statusDetail)}</div>
       </div>
-    `
-    )
-    .join('');
-  const platformGuidesHtml = snapshot.platformGuides
-    .map((guide) => renderPlatformGuideCard(guide))
-    .join('');
-
-  return `
-    <div class="section">
-      <h2>环境接入</h2>
-      <p class="help-text">这些工具安装在当前本机 UI 环境；即使 workspace 跑在 Remote SSH、WSL 或 Dev Container，也不要把桌面通知后端只装在远端。</p>
-      ${itemsHtml}
-      <p class="help-text" style="margin-top: 12px;">其他本机 UI 环境可参考以下平台说明：</p>
-      ${platformGuidesHtml}
     </div>
   `;
 }
 
-function renderPlatformGuideCard(guide: NotifierPlatformGuide): string {
-  return `
-    <div class="setup-item">
-      <div class="setup-header">
-        <span class="setup-name">${escapeHtml(guide.platformLabel)}</span>
-        <span class="setup-badge">${escapeHtml(guide.statusLabel)}</span>
-      </div>
-      <p class="setup-detail">${escapeHtml(guide.detail)}</p>
-      ${renderHintList(guide.hints)}
-    </div>
-  `;
-}
-
-function renderAgentConfigurationGuidance(snapshot: NotifierEnvironmentSnapshot): string {
-  const itemsHtml = snapshot.agentConfigurationGuides
-    .map((guide) => renderAgentConfigurationCard(guide))
-    .join('');
-
-  return `
-    <div class="section">
-      <h2>Agent 通知配置</h2>
-      <p class="help-text">桌面通知 companion 只负责把 attention signal 送回本机桌面；要让 Agent 主动发出 BEL、OSC 9、OSC 777，还需要在 Agent 实际运行宿主上配置 CLI。</p>
-      ${itemsHtml}
-    </div>
-  `;
-}
-
-function renderAgentConfigurationCard(guide: NotifierAgentConfigurationGuide): string {
-  return `
-    <div class="setup-item">
-      <div class="setup-header">
-        <span class="setup-name">${escapeHtml(guide.agentLabel)}</span>
-        <span class="setup-badge">推荐配置</span>
-      </div>
-      <p class="setup-detail">${escapeHtml(guide.detail)}</p>
-      <p class="setup-detail">配置文件：<span class="code">${escapeHtml(guide.configPath)}</span></p>
-      <pre class="snippet-block">${escapeHtml(guide.recommendedSnippet)}</pre>
-      ${renderHintList(guide.hints)}
-    </div>
-  `;
-}
-
-function renderNotes(snapshot: NotifierEnvironmentSnapshot): string {
+function renderNotesSection(snapshot: NotifierEnvironmentSnapshot): string {
   if (snapshot.notes.length === 0) {
-    return '';
+    return '<div class="content"><p class="help-text">暂无注意事项。</p></div>';
   }
 
   const itemsHtml = snapshot.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
   return `
-    <div class="section">
-      <h2>使用提示</h2>
+    <div class="content">
       <ul class="notes-list">${itemsHtml}</ul>
+    </div>
+  `;
+}
+
+function renderPlatformSection(snapshot: NotifierEnvironmentSnapshot, platformLabel: string): string {
+  const guide = snapshot.platformGuides.find((g) => g.platformLabel === platformLabel);
+  if (!guide) {
+    return '<div class="content"><p class="help-text">无平台信息。</p></div>';
+  }
+
+  const isCurrent = guide.statusLabel === '当前平台';
+
+  if (isCurrent) {
+    const requirementsHtml = snapshot.installRequirements.map((req) => renderRequirementItem(req)).join('');
+    return `
+      <div class="content">
+        <p class="badge-line"><span class="setup-badge current">当前平台</span></p>
+        ${requirementsHtml}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="content">
+      <p class="help-text">${escapeHtml(guide.detail)}</p>
+      ${renderHintList(guide.hints)}
+    </div>
+  `;
+}
+
+function renderRequirementItem(req: NotifierInstallRequirement): string {
+  return `
+    <div class="setup-item">
+      <div class="setup-header">
+        <span class="setup-name">${escapeHtml(req.name)}</span>
+        <span class="setup-badge">${escapeHtml(req.statusLabel)}</span>
+      </div>
+      <p class="setup-detail">${escapeHtml(req.detail)}</p>
+      ${renderHintList(req.hints)}
+    </div>
+  `;
+}
+
+function renderAgentSection(snapshot: NotifierEnvironmentSnapshot, agentLabel: string): string {
+  const guide = snapshot.agentConfigurationGuides.find((g) => g.agentLabel === agentLabel);
+  if (!guide) {
+    return '<div class="content"><p class="help-text">无配置信息。</p></div>';
+  }
+
+  return `
+    <div class="content">
+      <p class="help-text">${escapeHtml(guide.detail)}</p>
+      <p class="setup-detail">配置路径：<span class="code">${escapeHtml(guide.configPath)}</span></p>
+      <pre class="snippet-block">${escapeHtml(guide.recommendedSnippet)}</pre>
+      ${renderHintList(guide.hints)}
     </div>
   `;
 }
@@ -514,9 +324,8 @@ function renderHintList(hints: string[] | undefined): string {
   if (!hints || hints.length === 0) {
     return '';
   }
-
   const itemsHtml = hints.map((hint) => `<li>${formatInlineCodeSegments(hint)}</li>`).join('');
-  return `<ul class="setup-hint-list">${itemsHtml}</ul>`;
+  return `<ul class="hint-list">${itemsHtml}</ul>`;
 }
 
 function formatInlineCodeSegments(value: string): string {
@@ -524,6 +333,212 @@ function formatInlineCodeSegments(value: string): string {
     .split(/`([^`]+)`/g)
     .map((segment, index) => (index % 2 === 1 ? `<span class="code">${escapeHtml(segment)}</span>` : escapeHtml(segment)))
     .join('');
+}
+
+const svgWarning = '<svg class="status-icon warning" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M7.56 1h.88l6.54 12.26-.44.74H1.44L1 13.26 7.56 1zM8 2.28L2.28 13H13.7L8 2.28zM8.625 12v-1h-1.25v1h1.25zm0-2V6h-1.25v4h1.25z"/></svg>';
+const svgSuccess = '<svg class="status-icon success" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm3.354 4.646l-.708-.706L6.5 9.086 5.354 7.94l-.708.706 1.5 1.5.354.354.354-.354 4.5-4.5z"/></svg>';
+
+function sectionStyles(): string {
+  return `
+    body {
+      padding: 0;
+      margin: 0;
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+    }
+
+    .content {
+      padding: 12px 14px;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--vscode-sideBarSectionHeader-border);
+      margin: 12px 0;
+    }
+
+    p {
+      margin: 0 0 8px 0;
+      line-height: 1.4;
+    }
+
+    .badge-line {
+      margin: 0 0 10px 0;
+    }
+
+    .status-card {
+      padding: 10px 12px;
+      background: var(--vscode-sideBarSectionHeader-background);
+      border-left: 3px solid var(--vscode-testing-iconPassed);
+      margin-bottom: 12px;
+    }
+
+    .status-card.warning {
+      border-left-color: var(--vscode-notificationsWarningIcon-foreground);
+    }
+
+    .status-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .status-icon {
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      flex-shrink: 0;
+    }
+
+    .status-icon.success { color: var(--vscode-testing-iconPassed); }
+    .status-icon.warning { color: var(--vscode-notificationsWarningIcon-foreground); }
+
+    .status-title {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .status-detail {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.4;
+      margin-left: 24px;
+    }
+
+    .info-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .info-item {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .info-label {
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .info-value {
+      font-weight: 500;
+    }
+
+    .help-text {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .action-button {
+      width: 100%;
+      padding: 6px 12px;
+      margin-bottom: 8px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      cursor: pointer;
+      font-family: var(--vscode-font-family);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .action-button:hover {
+      background: var(--vscode-button-hoverBackground);
+    }
+
+    .action-button.secondary {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+    }
+
+    .action-button.secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
+
+    .setup-item {
+      padding: 10px 0;
+    }
+
+    .setup-item + .setup-item {
+      border-top: 1px solid var(--vscode-sideBarSectionHeader-border);
+    }
+
+    .setup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .setup-name {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .setup-badge {
+      padding: 2px 6px;
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      font-size: 11px;
+      border-radius: 2px;
+    }
+
+    .setup-badge.current {
+      background: var(--vscode-testing-iconPassed);
+      color: var(--vscode-button-foreground);
+    }
+
+    .setup-detail {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .setup-detail + .setup-detail {
+      margin-top: 6px;
+    }
+
+    .hint-list,
+    .notes-list {
+      margin: 8px 0 0 0;
+      padding-left: 18px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .hint-list li,
+    .notes-list li {
+      margin: 0 0 4px 0;
+    }
+
+    .snippet-block {
+      margin: 8px 0 0 0;
+      padding: 10px 12px;
+      background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
+      border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
+      border-radius: 4px;
+      font-family: var(--vscode-editor-font-family);
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .code {
+      font-family: var(--vscode-editor-font-family);
+      background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
+      border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  `;
 }
 
 function escapeHtml(value: string): string {

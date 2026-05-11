@@ -37,7 +37,13 @@
     "ui"
   ],
   "activationEvents": [
-    "onView:devSessionCanvasNotifier.sidebar",
+    "onView:devSessionCanvasNotifier.status",
+    "onView:devSessionCanvasNotifier.notes",
+    "onView:devSessionCanvasNotifier.macOS",
+    "onView:devSessionCanvasNotifier.linux",
+    "onView:devSessionCanvasNotifier.windows",
+    "onView:devSessionCanvasNotifier.codex",
+    "onView:devSessionCanvasNotifier.claudeCode",
     "onCommand:devSessionCanvasNotifier.postSystemNotification",
     "onCommand:devSessionCanvasNotifier.sendTestNotification",
     "onCommand:devSessionCanvasNotifier.openDiagnosticOutput",
@@ -57,8 +63,38 @@
     "views": {
       "devSessionCanvasNotifier": [
         {
-          "id": "devSessionCanvasNotifier.sidebar",
-          "name": "通知环境",
+          "id": "devSessionCanvasNotifier.status",
+          "name": "通知状态",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvasNotifier.notes",
+          "name": "注意事项",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvasNotifier.macOS",
+          "name": "macOS",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvasNotifier.linux",
+          "name": "Linux",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvasNotifier.windows",
+          "name": "Windows",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvasNotifier.codex",
+          "name": "Codex",
+          "type": "webview"
+        },
+        {
+          "id": "devSessionCanvasNotifier.claudeCode",
+          "name": "Claude Code",
           "type": "webview"
         }
       ]
@@ -67,7 +103,7 @@
       "view/title": [
         {
           "command": "devSessionCanvasNotifier.openSettings",
-          "when": "view == devSessionCanvasNotifier.sidebar",
+          "when": "view == devSessionCanvasNotifier.status",
           "group": "navigation@99"
         }
       ]
