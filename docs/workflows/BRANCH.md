@@ -39,9 +39,9 @@ area-topic-goal
 
 当前已登记的长期特性集成分支：
 
-- `feature/templates-marketplace`：模板市场的共享集成分支。模板市场相关子主题分支在特性完成前先合入这里，不直接合入 `main`。
+- `feature/templates-marketplace`：模板市场的共享集成分支；首次创建时，以本分支策略合入后的 `origin/main` 为基线创建远端分支。模板市场相关功能或未完成行为子主题分支在特性完成前先合入这里，不直接合入 `main`。
 
-长期特性集成分支是共享分支，不应 rebase 或强制推送；从它切出的子主题分支仍按普通主题分支命名，例如 `templates-marketplace-card-ui`、`templates-marketplace-install-flow`。
+长期特性集成分支是共享分支，不应 rebase 或强制推送；远端分支存在后，从它切出的子主题分支仍按普通主题分支命名，例如 `templates-marketplace-card-ui`、`templates-marketplace-install-flow`。普通、非复杂的模板功能更新不属于模板市场集成范围，仍从 `main` 切出并合入 `main`。
 
 ## 示例
 
