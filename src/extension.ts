@@ -1015,7 +1015,7 @@ function promptAgentLaunchRequestWithQuickPick(
     const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
     let resolved = false;
     let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
-    let presetValueChange: Exclude<AgentLaunchPresetKind, 'custom'> | undefined;
+    let presetValueChange: Exclude<AgentLaunchPresetKind, 'custom'> | undefined = 'default';
 
     const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
       if (resolved) {
