@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 import { chromium } from 'playwright';
 
-const avatarPath = 'extensions/vscode/dev-session-canvas-notifier/images/avatar.png';
+const avatarPath = 'images/avatar.png';
 const avatarSize = 512;
 const safeCircleRadius = 244;
 const minUsefulRadius = 232;
@@ -31,9 +31,7 @@ try {
     `${avatarPath} visible pixels should use the circular avatar area; got ${metrics.maxRadius.toFixed(2)}.`
   );
 
-  console.log(
-    `notifier avatar safe-area test passed: max radius ${metrics.maxRadius.toFixed(2)} / ${safeCircleRadius}`
-  );
+  console.log(`avatar safe-area test passed: max radius ${metrics.maxRadius.toFixed(2)} / ${safeCircleRadius}`);
 } finally {
   await browser.close();
 }

@@ -10,7 +10,6 @@
 - release notes：`extensions/vscode/dev-session-canvas-notifier/CHANGELOG.md`
 - 图标资产：`extensions/vscode/dev-session-canvas-notifier/images/icon.png`
 - 图标矢量源：`extensions/vscode/dev-session-canvas-notifier/images/icon.svg`
-- 圆形头像安全区图：`extensions/vscode/dev-session-canvas-notifier/images/avatar.png`
 - Activity Bar icon：`extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg`
 - 许可证：`extensions/vscode/dev-session-canvas-notifier/LICENSE`
 - manifest：`extensions/vscode/dev-session-canvas-notifier/package.json`
