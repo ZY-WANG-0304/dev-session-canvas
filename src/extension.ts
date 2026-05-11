@@ -1069,15 +1069,8 @@ function promptAgentLaunchRequestWithQuickPick(
     });
 
     quickPick.onDidAccept(() => {
-      const activeItem = quickPick.activeItems[0];
-      if (activeItem?.launchPreset) {
-        explicitPresetSelection = activeItem.launchPreset;
-        quickPick.value = presetCommandLines[activeItem.launchPreset];
-        quickPick.activeItems = [];
-        updateTitle();
-        return;
-      }
-
+      // VS Code may keep the first preset item active while the user edits the text.
+      // Enter must commit the text box value, not reinterpret that highlight as intent.
       if (suppressNextAcceptAfterPresetSelection) {
         return;
       }
