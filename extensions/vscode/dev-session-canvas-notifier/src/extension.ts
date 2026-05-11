@@ -16,7 +16,7 @@ import {
 import { COMMAND_IDS } from '../../../../src/common/extensionIdentity';
 import { isTestHarnessMode } from '../../../../src/common/testHarness';
 import { postDesktopNotification } from './platformNotification';
-import { NotifierSidebarViewProvider } from './sidebarView';
+import { NotifierSidebarViewProvider, NOTIFIER_SIDEBAR_VIEW_IDS } from './sidebarView';
 import type { NotifierExtensionModeLabel } from './sidebarEnvironment';
 
 const FOCUS_URI_PATH = '/focus';
@@ -297,7 +297,9 @@ export function activate(context: vscode.ExtensionContext): void {
         void handleFocusUri(uri);
       }
     }),
-    vscode.window.registerWebviewViewProvider(NotifierSidebarViewProvider.viewType, sidebarViewProvider),
+    ...Object.values(NOTIFIER_SIDEBAR_VIEW_IDS).map((viewId) =>
+      vscode.window.registerWebviewViewProvider(viewId, sidebarViewProvider)
+    ),
     vscode.commands.registerCommand(NOTIFIER_COMMAND_IDS.postSystemNotification, async (rawRequest?: unknown) => {
       const outcome = await postNotificationRequest(rawRequest, 'main-extension');
       return outcome.result;

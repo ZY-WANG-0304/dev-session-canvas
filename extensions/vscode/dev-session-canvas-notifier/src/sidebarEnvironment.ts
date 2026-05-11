@@ -73,9 +73,9 @@ export function buildNotifierEnvironmentSnapshot(
   const agentConfigurationGuides = buildAgentConfigurationGuides();
   const platformGuides = buildPlatformGuides(input.platform);
   const notes = [
-    '当前显示的是本机 UI 环境的通知后端；Remote SSH、WSL、Dev Container 也应把桌面通知工具装在本机 UI 侧。',
-    'Codex / Claude Code 的通知配置要写到 Agent 实际运行宿主；如果 Agent 跑在远端，就改远端宿主上的配置文件。',
-    '发送测试通知只能验证 companion 的本机桌面链路；Agent 是否会发出 BEL、OSC 9、OSC 777 仍取决于 CLI 配置。',
+    '通知后端需安装在本机 UI 端，而不是 Remote SSH、WSL、Dev Container 等远端。',
+    'Agent 通知配置写在 Agent 实际运行宿主上；远端 Agent 改远端配置。',
+    '测试通知只验证 companion 本机桌面链路；Agent 是否发出信号取决于 CLI 配置。',
     '声音开关默认开启，实际响铃取决于系统通知设置。'
   ];
 
