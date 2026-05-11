@@ -119,9 +119,9 @@
 - `npm run test:runtime-supervisor-protocol` 通过
 - `npm run test:webview` 通过（133 passed）
 - `npm audit` 通过（0 vulnerabilities）
-- `npm run package:vsix` 已在当前 `0.9.0` 发布准备工作树生成 `dev-session-canvas-0.9.0.vsix`；该次打包日志打印了 `VSCE README doc ref: 146b05681f367ae3239ace5354df8bf3a2f8aefb`，确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写，并确认最终 VSIX 包含 112 个文件、约 3.24 MB。该 ref 是当前发布准备分支的基底 `HEAD`，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- `npm run package:vsix` 已在当前 `0.9.0` 发布准备工作树生成 `dev-session-canvas-0.9.0.vsix`；该次打包日志打印了 `VSCE README doc ref: c015f279164a56968bee90cbdd076c57776dabc8`，确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写，并确认最终 VSIX 包含 112 个文件、约 3.24 MB。该 ref 是当前发布准备分支的已提交 `HEAD`，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - `npm run test:notifier-source` 通过
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在当前 `0.9.0` 发布准备工作树生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.9.0.vsix`；该次打包日志打印了 `VSCE README doc ref: 146b05681f367ae3239ace5354df8bf3a2f8aefb`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.96 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在当前 `0.9.0` 发布准备工作树生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.9.0.vsix`；该次打包日志打印了 `VSCE README doc ref: c015f279164a56968bee90cbdd076c57776dabc8`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.96 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - `git diff --check` 通过
 
 ## 发布命令
