@@ -55,6 +55,11 @@ export interface RuntimeSupervisorSessionSnapshot {
   lastExitMessage?: string;
 }
 
+export interface RuntimeSupervisorErrorPayload {
+  message: string;
+  code?: string;
+}
+
 export interface RuntimeSupervisorCreateSessionParams {
   kind: ExecutionNodeKind;
   sessionId?: string;
@@ -161,9 +166,7 @@ export type RuntimeSupervisorResponse =
       type: 'response';
       id: string;
       ok: false;
-      error: {
-        message: string;
-      };
+      error: RuntimeSupervisorErrorPayload;
     };
 
 export type RuntimeSupervisorEvent =
@@ -237,4 +240,31 @@ export function deserializeExecutionSessionLaunchSpec(
     },
     terminalName: spec.terminalName
   };
+}
+
+export function serializeRuntimeSupervisorError(error: unknown): RuntimeSupervisorErrorPayload {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = readRuntimeSupervisorErrorCode(error);
+  return code ? { message, code } : { message };
+}
+
+export function createRuntimeSupervisorError(payload: RuntimeSupervisorErrorPayload): Error & { code?: string } {
+  const error = new Error(payload.message) as Error & { code?: string };
+  if (payload.code) {
+    error.code = payload.code;
+  }
+  return error;
+}
+
+function readRuntimeSupervisorErrorCode(error: unknown): string | undefined {
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  const code = error.code;
+  return typeof code === 'string' && code.trim() ? code.trim() : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

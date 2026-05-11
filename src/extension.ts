@@ -37,6 +37,8 @@ import {
   discoverAgentCliCandidates,
   getAgentCliDefaultCommand,
   getAgentCliDisplayName,
+  getAgentCliInstallationInfo,
+  shouldOfferAgentCliInstallation,
   type AgentCliCandidate,
   type AgentCliCandidateSource
 } from './panel/agentCliSelection';
@@ -100,6 +102,11 @@ interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
 interface AgentCliQuickPickItem extends vscode.QuickPickItem {
   command?: string;
   manualInput?: boolean;
+  install?: boolean;
+}
+
+interface AgentCliInstallQuickPickItem extends vscode.QuickPickItem {
+  installMethod: 'command-line' | 'vscode-extension';
 }
 
 interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
@@ -266,11 +273,11 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   registerCommand(context, COMMAND_IDS.selectCodexCli, async () => {
-    await promptAgentCliSelection('codex');
+    await promptAgentCliSelection('codex', panelManager);
   });
 
   registerCommand(context, COMMAND_IDS.selectClaudeCli, async () => {
-    await promptAgentCliSelection('claude');
+    await promptAgentCliSelection('claude', panelManager);
   });
 
   registerCommand(context, COMMAND_IDS.openCodexConfigFile, async () => {
@@ -534,7 +541,7 @@ async function createMissingAgentSettingsFileIfRequested(
   return true;
 }
 
-async function promptAgentCliSelection(provider: AgentProviderKind): Promise<void> {
+async function promptAgentCliSelection(provider: AgentProviderKind, panelManager: CanvasPanelManager): Promise<void> {
   const configuration = vscode.workspace.getConfiguration();
   const providerLabelText = getAgentCliDisplayName(provider);
   const configuredCommand = getConfiguredAgentCliCommand(provider);
@@ -553,6 +560,11 @@ async function promptAgentCliSelection(provider: AgentProviderKind): Promise<voi
     return;
   }
 
+  if (picked.install) {
+    await promptAgentCliInstallation(provider, panelManager);
+    return;
+  }
+
   const selectedCommand = picked.manualInput
     ? await promptManualAgentCliCommand(provider, configuredCommand)
     : picked.command;
@@ -563,6 +575,85 @@ async function promptAgentCliSelection(provider: AgentProviderKind): Promise<voi
   const configKey = provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand;
   await configuration.update(configKey, selectedCommand, vscode.ConfigurationTarget.Global);
   await vscode.window.showInformationMessage(`已将当前设备的 ${providerLabelText} CLI 更新为：${selectedCommand}`);
+}
+
+async function promptAgentCliInstallation(
+  provider: AgentProviderKind,
+  panelManager: CanvasPanelManager
+): Promise<void> {
+  const installationInfo = getAgentCliInstallationInfo(provider);
+  const picked = await vscode.window.showQuickPick(buildAgentCliInstallQuickPickItems(installationInfo), {
+    placeHolder: `选择 ${installationInfo.label} 的安装方式`
+  });
+
+  if (!picked) {
+    return;
+  }
+
+  if (picked.installMethod === 'command-line') {
+    const result = await panelManager.createTerminalAndRunCommand(installationInfo.cliInstallCommand, {
+      titleOverride: `安装 ${installationInfo.label}`
+    });
+    if (!result.created) {
+      await vscode.window.showWarningMessage(
+        result.errorMessage ?? `无法在画布 Terminal 中执行 ${installationInfo.label} 安装命令。`
+      );
+      return;
+    }
+
+    if (!result.commandDispatched) {
+      await vscode.window.showWarningMessage(
+        result.errorMessage ??
+          `已创建画布 Terminal，但尚未确认 ${installationInfo.label} 安装命令已输入；请检查 Terminal 节点状态。`
+      );
+      return;
+    }
+
+    await vscode.window.showInformationMessage(
+      `已在画布 Terminal 中输入并执行：${installationInfo.cliInstallCommand}。安装完成后请重新点击 ${installationInfo.label} 命令并选择 CLI。`
+    );
+    return;
+  }
+
+  await openAgentVsCodeExtensionInstallPage(installationInfo);
+}
+
+function buildAgentCliInstallQuickPickItems(
+  installationInfo: ReturnType<typeof getAgentCliInstallationInfo>
+): AgentCliInstallQuickPickItem[] {
+  return [
+    {
+      label: 'npm 全局安装',
+      description: installationInfo.cliInstallCommand,
+      detail: `在画布 Terminal 中执行安装命令。`,
+      installMethod: 'command-line'
+    },
+    {
+      label: '安装 VS Code 插件',
+      description: installationInfo.vscodeExtensionId,
+      detail: `跳转到 ${installationInfo.label} 扩展安装页，点击 Install 完成安装。`,
+      installMethod: 'vscode-extension'
+    }
+  ];
+}
+
+async function openAgentVsCodeExtensionInstallPage(
+  installationInfo: ReturnType<typeof getAgentCliInstallationInfo>
+): Promise<void> {
+  const uri = vscode.Uri.parse(installationInfo.vscodeExtensionUri);
+  try {
+    const opened = await vscode.env.openExternal(uri);
+    if (!opened) {
+      await vscode.commands.executeCommand('workbench.extensions.search', `@id:${installationInfo.vscodeExtensionId}`);
+    }
+    await vscode.window.showInformationMessage(
+      `已打开 ${installationInfo.label} VS Code 插件页面，请在扩展页点击 Install 完成安装。`
+    );
+  } catch {
+    await vscode.window.showWarningMessage(
+      `无法自动打开 ${installationInfo.label} VS Code 插件页面；请在扩展面板手动搜索 ${installationInfo.vscodeExtensionId}。`
+    );
+  }
 }
 
 function getConfiguredAgentCliCommand(provider: AgentProviderKind): string {
@@ -590,7 +681,24 @@ function buildAgentCliQuickPickItems(
   candidates: readonly AgentCliCandidate[],
   currentCommand: string
 ): AgentCliQuickPickItem[] {
-  const items: AgentCliQuickPickItem[] = candidates.map((candidate) => {
+  const providerLabelText = getAgentCliDisplayName(provider);
+  const installationInfo = getAgentCliInstallationInfo(provider);
+  const items: AgentCliQuickPickItem[] = [];
+
+  if (shouldOfferAgentCliInstallation(candidates)) {
+    items.push({
+      label: `安装 ${providerLabelText}...`,
+      description: '系统中未检测到',
+      detail: `通过 npm 全局安装 CLI，或安装对应的 VS Code 插件。`,
+      install: true
+    });
+    items.push({
+      label: '',
+      kind: vscode.QuickPickItemKind.Separator
+    });
+  }
+
+  items.push(...candidates.map((candidate) => {
     const sourceLabel = formatAgentCliCandidateSource(candidate.source);
     const isCurrent = agentCliCommandValuesEqual(candidate.command, currentCommand);
     return {
@@ -599,7 +707,7 @@ function buildAgentCliQuickPickItems(
       detail: buildAgentCliCandidateDetail(candidate),
       command: candidate.command
     } satisfies AgentCliQuickPickItem;
-  });
+  }));
 
   if (items.length > 0) {
     items.push({
@@ -610,8 +718,8 @@ function buildAgentCliQuickPickItems(
 
   items.push({
     label: '手动输入命令或路径...',
-    description: '命令名或绝对路径',
-    detail: `例如：${getAgentCliDefaultCommand(provider)}，或当前执行宿主上的 CLI 绝对路径。`,
+    description: '自定义',
+    detail: `输入命令名（如 ${getAgentCliDefaultCommand(provider)}）或 CLI 可执行文件的绝对路径。`,
     manualInput: true
   });
 
@@ -629,20 +737,23 @@ function formatAgentCliCandidateSource(source: AgentCliCandidateSource): string 
     case 'login-shell':
       return '登录 shell';
     case 'extension-bundled':
-      return 'VS Code 扩展内置';
+      return '扩展内置';
     case 'common-location':
       return '常见位置';
   }
 }
 
 function buildAgentCliCandidateDetail(candidate: AgentCliCandidate): string {
-  const lines = [`命令值：${candidate.command}`];
+  const lines = [`命令：${candidate.command}`];
   if (candidate.resolvedPath && !agentCliCommandValuesEqual(candidate.resolvedPath, candidate.command)) {
-    lines.push(`解析路径：${candidate.resolvedPath}`);
+    lines.push(`实际路径：${candidate.resolvedPath}`);
+  }
+  if (!candidate.resolvedPath) {
+    lines.push('未找到可执行文件，可能需要安装或配置 PATH。');
   }
   if (candidate.extensionRoot) {
     lines.push(`扩展目录：${candidate.extensionRoot}`);
-    lines.push('提示：扩展升级后该路径可能变化。');
+    lines.push('注意：路径可能随扩展更新而变化。');
   }
   return lines.join('\n');
 }

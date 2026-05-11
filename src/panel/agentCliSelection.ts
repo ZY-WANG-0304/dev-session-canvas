@@ -22,6 +22,17 @@ export interface AgentCliCandidate {
   extensionRoot?: string;
 }
 
+export interface AgentCliInstallationInfo {
+  provider: AgentProviderKind;
+  label: string;
+  defaultCommand: string;
+  cliInstallCommand: string;
+  vscodeExtensionId: string;
+  vscodeExtensionUri: string;
+  docsUrl: string;
+  marketplaceUrl: string;
+}
+
 export interface DiscoverAgentCliCandidatesOptions {
   provider: AgentProviderKind;
   configuredCommand: string;
@@ -41,6 +52,39 @@ export function getAgentCliDefaultCommand(provider: AgentProviderKind): string {
 
 export function getAgentCliDisplayName(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+export function getAgentCliInstallationInfo(provider: AgentProviderKind): AgentCliInstallationInfo {
+  const label = getAgentCliDisplayName(provider);
+  if (provider === 'claude') {
+    return {
+      provider,
+      label,
+      defaultCommand: getAgentCliDefaultCommand(provider),
+      cliInstallCommand: 'npm install -g @anthropic-ai/claude-code',
+      vscodeExtensionId: 'anthropic.claude-code',
+      vscodeExtensionUri: 'vscode:extension/anthropic.claude-code',
+      docsUrl: 'https://docs.anthropic.com/en/docs/claude-code/setup#install-with-npm',
+      marketplaceUrl: 'https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code'
+    };
+  }
+
+  return {
+    provider,
+    label,
+    defaultCommand: getAgentCliDefaultCommand(provider),
+    cliInstallCommand: 'npm i -g @openai/codex',
+    vscodeExtensionId: 'openai.chatgpt',
+    vscodeExtensionUri: 'vscode:extension/openai.chatgpt',
+    docsUrl: 'https://developers.openai.com/codex/cli',
+    marketplaceUrl: 'https://marketplace.visualstudio.com/items?itemName=openai.chatgpt'
+  };
+}
+
+export function shouldOfferAgentCliInstallation(
+  candidates: readonly Pick<AgentCliCandidate, 'resolvedPath'>[]
+): boolean {
+  return !candidates.some((candidate) => candidate.resolvedPath?.trim());
 }
 
 export function shortenMiddle(value: string, maxLength = SIDEBAR_CONFIG_DESCRIPTION_MAX_LENGTH): string {

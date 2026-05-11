@@ -137,7 +137,7 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
       id: 'summary/codex-cli',
       label: 'Codex 命令',
       description: formatConfigSummaryValue(state.agentCodexCommand),
-      tooltip: ['点击选择 Codex 命令。', `当前配置：${state.agentCodexCommand}`].join('\n'),
+      tooltip: ['点击选择或安装 Codex 命令。', `当前配置：${state.agentCodexCommand}`].join('\n'),
       command: {
         command: COMMAND_IDS.selectCodexCli,
         title: '选择 Codex CLI'
@@ -148,7 +148,7 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
       id: 'summary/claude-cli',
       label: 'Claude Code 命令',
       description: formatConfigSummaryValue(state.agentClaudeCommand),
-      tooltip: ['点击选择 Claude Code 命令。', `当前配置：${state.agentClaudeCommand}`].join('\n'),
+      tooltip: ['点击选择或安装 Claude Code 命令。', `当前配置：${state.agentClaudeCommand}`].join('\n'),
       command: {
         command: COMMAND_IDS.selectClaudeCli,
         title: '选择 Claude Code CLI'
