@@ -1,26 +1,27 @@
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    <!-- Badge content guide: center 18.75,5.25; outer radius 3.85. -->
     <mask id="notifier-badge-clearance">
       <rect width="24" height="24" fill="white"/>
       <circle cx="18.75" cy="5.25" r="6.35" fill="black"/>
     </mask>
     <mask id="notifier-badge-cutout">
       <rect width="24" height="24" fill="white"/>
-      <g>
+      <g transform="translate(18.75 5.25) scale(0.823) translate(-18.75 -5.25)">
         <path
-          d="M18.75 2.98V3.35"
+          d="M18.75 1.69V2.27"
           stroke="black"
           stroke-width="1.5"
           stroke-linecap="round"
         />
         <path
-          d="M17.45 4.71C17.45 3.79 17.97 3.35 18.75 3.35C19.53 3.35 20.05 3.79 20.05 4.71V5.25C20.05 5.73 20.22 6.19 20.51 6.55L20.71 6.82H16.79L16.99 6.55C17.28 6.19 17.45 5.73 17.45 5.25V4.71Z"
+          d="M16.71 4.41C16.71 2.97 17.53 2.27 18.75 2.27C19.97 2.27 20.79 2.97 20.79 4.41V5.25C20.79 6.01 21.06 6.72 21.51 7.29L21.82 7.71H15.68L15.99 7.29C16.44 6.72 16.71 6.01 16.71 5.25V4.41Z"
           stroke="black"
           stroke-width="1.5"
           stroke-linejoin="round"
         />
         <path
-          d="M18.15 7.14C18.3 7.42 18.5 7.53 18.75 7.53C19 7.53 19.2 7.42 19.35 7.14"
+          d="M17.81 8.22C18.05 8.65 18.36 8.82 18.75 8.82C19.14 8.82 19.45 8.65 19.69 8.22"
           stroke="black"
           stroke-width="1.5"
           stroke-linecap="round"
