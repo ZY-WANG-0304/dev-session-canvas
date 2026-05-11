@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-04-30
+updated_at: 2026-05-11
 ---
 
 # Agent 启动方式与重启交互设计
@@ -218,6 +218,7 @@ updated_at: 2026-04-30
 - 当用户点击停止后 split button 的主按钮或菜单里的 `Resume 恢复原会话`，且节点持有可信恢复上下文时，仍走当前显式 session resume 路径；这条路径恢复的是“当前节点前面停止的那条会话”，不依赖 `launchPreset`。
 - 当用户点击 `新会话` 时，才走上面的 fresh-start 路径。
 - 若节点 `launchPreset = resume`，fresh-start 路径始终执行 provider 的“进入 resume 选择入口”预设命令，而不是偷偷替用户选择最近一条会话。
+- 若 fresh-start 期间 `resolveAgentCliCommand()` 抛出命令解析失败，或最终 `node-pty` / runtime supervisor 启动阶段返回 `ENOENT`，宿主在把节点更新为明确错误态之后，还要触发与侧栏概览 `Codex 命令` / `Claude Code 命令` 行相同的 CLI 选择命令（`devSessionCanvas.selectCodexCli` / `devSessionCanvas.selectClaudeCli`）。这条补救入口只针对真实用户会话启用，测试模式不自动打开 Quick Input，以免 smoke 中的失败路径被交互弹窗阻塞。CLI 选择命令继续复用 `src/extension.ts` 中的安装分流：未解析到候选 CLI 时先展示安装入口，再让用户选择命令行安装或 VS Code 插件安装。
 - 对 `Claude Code` 的 fresh-start，会在启动时继续传入候选 `--session-id`，并主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经出现；一旦文件存在，就把该 id 升级为可恢复上下文。停止时若再读到 `claude --resume <session-id>`，宿主会把它当作后续校验/更正信号；若两者都没有，才回退成不可恢复。停止按钮当前对 Claude 已回滚到更早的 provider-specific stop signal：不再发送 `Ctrl-C`，而是直接沿用此前的终止信号路径；Codex 才继续保留单次 `Ctrl-C` + 5 秒兜底的 graceful-stop 语义。
 - 若 Claude 的 fresh-start 命令里已经显式给出 `--session-id=<id>`、`--resume=<id>`、`--continue=<id>` 或等价的空格分隔写法，宿主与 runtime supervisor 都要把这条显式 session id 当作后续文件确认的候选值，而不是继续沿用自动生成的随机 UUID。只有显式 flag 不带 session id 时，才保留“等待 stop-time hint 再确认”的语义。
 - 对 `Claude Code` 的 fresh-start，只要自定义命令已经显式包含 `--session-id` / `--resume` / `--continue`，宿主就不再补写候选 session 参数；这里既覆盖 `--flag value`，也覆盖 `--flag=value`。
@@ -247,6 +248,7 @@ updated_at: 2026-04-30
 3. VSCode smoke 覆盖命令面板 / 侧栏“创建节点”的两层 Quick Input，确认 Agent 选择后会进入完整命令编辑，并能用预设创建出持久化了正确 launchPreset 的节点。
 4. 自动化验证 fresh-start 路径会把 `launchPreset/customLaunchCommand` 带入宿主执行，而不是丢失为默认命令。
 5. `npm run typecheck`、`npm run test:webview` 至少通过；若 smoke 未跑全，要在结果中显式写明原因。
+6. 手动验证真实 Extension Development Host 中，右键创建缺失 CLI 的 `Codex` / `Claude Code` Agent 会先显示节点错误态，再自动弹出和侧栏概览命令行相同的 CLI 选择/安装 Quick Input。
 
 ## 9. 当前验证状态
 
@@ -260,6 +262,7 @@ updated_at: 2026-04-30
 - 2026-04-25：已给 VSCode Quick Input 第二步补回 `默认` 快捷替换项，使其和节点 metadata 的 `default` 预设一一对应；该项和 `Resume / YOLO / 沙盒` 一样，只改写顶部完整命令输入。
 - 2026-04-25：已把 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 的 VSCode 配置 scope 改成 `window`，使其可在窗口 / 工作区层直接配置和覆盖。
 - 2026-04-25：Agent 节点副标题改为显示最近一次实际启动指令；若文本被截断，hover 时通过原生 title 浮窗显示完整指令。尚未真正启动的节点则回退为显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。
+- 2026-05-11：补齐右键创建 Agent 时 CLI 缺失的补救入口；本轮已完成 `npm run typecheck`、`npm run build`，真实 Extension Development Host 自动弹出 Quick Input 仍需人工验证。
 - 2026-04-24：已重新运行 `npm run test:webview -- --grep "agent restart"`，当前为 `2 passed`，覆盖“可恢复时显示 split restart”与“不可恢复时退化为单个启动按钮”两条标题栏路径。
 - 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；新增覆盖 Windows 绝对路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令的分类回退。
 - 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。

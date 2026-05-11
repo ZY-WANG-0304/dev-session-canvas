@@ -6531,6 +6531,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             message
           }
         });
+        this.promptAgentCliSelectionAfterCommandNotFound(provider, error);
       }
       return;
     }
@@ -6853,7 +6854,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           message
         }
       });
+      this.promptAgentCliSelectionAfterCommandNotFound(provider, error);
     }
+  }
+
+  private promptAgentCliSelectionAfterCommandNotFound(provider: AgentProviderKind, error: unknown): void {
+    if (
+      isTestHarnessMode(this.context.extensionMode) ||
+      !isAgentCliCommandNotFoundLaunchError(error)
+    ) {
+      return;
+    }
+
+    const command = provider === 'claude' ? COMMAND_IDS.selectClaudeCli : COMMAND_IDS.selectCodexCli;
+    this.recordDiagnosticEvent('agentCli/selectionPromptRequested', {
+      provider,
+      reason: isAgentCliResolutionError(error) ? 'resolution-failed' : 'spawn-enoent'
+    });
+    void vscode.commands.executeCommand(command);
   }
 
   private cancelAllAgentSessions(): void {
@@ -12571,6 +12589,10 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
   }
 
   return `启动 ${spec.label} 失败。`;
+}
+
+function isAgentCliCommandNotFoundLaunchError(error: unknown): boolean {
+  return isAgentCliResolutionError(error) || (isRecord(error) && error.code === 'ENOENT');
 }
 
 function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): string {
