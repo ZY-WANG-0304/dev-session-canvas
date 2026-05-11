@@ -9,6 +9,8 @@
 - 仓库 README 默认中文：`README.md`（引用 `images/marketplace/canvas-overview.gif`）
 - 仓库 README 英文对应版：`README.en.md`（引用 `images/marketplace/canvas-overview.gif`）
 - release notes：`CHANGELOG.md`
+- 主扩展图标资产：`images/icon.png`
+- 圆形头像安全区图：`images/avatar.png`
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
 - 发布判断与背景：`docs/design-docs/public-marketplace-release-readiness.md`
