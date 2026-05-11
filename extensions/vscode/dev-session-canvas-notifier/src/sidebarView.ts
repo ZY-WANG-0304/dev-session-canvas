@@ -9,6 +9,11 @@ import {
   type NotifierInstallRequirement,
   type NotifierPlatformGuide
 } from './sidebarEnvironment';
+import {
+  renderSidebarRichContent,
+  renderHighlightedSidebarCodeBlock,
+  renderSidebarInlineCode
+} from './sidebarRichText';
 
 export interface NotifierSidebarLatestAttempt {
   requestedAt: string;
@@ -257,7 +262,9 @@ function renderNotesSection(snapshot: NotifierEnvironmentSnapshot): string {
     return '<div class="content"><p class="help-text">暂无注意事项。</p></div>';
   }
 
-  const itemsHtml = snapshot.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
+  const itemsHtml = snapshot.notes
+    .map((note) => `<li>${renderSidebarRichContent(note, { textClassName: 'list-text' })}</li>`)
+    .join('');
   return `
     <div class="content">
       <ul class="notes-list">${itemsHtml}</ul>
@@ -285,7 +292,7 @@ function renderPlatformSection(snapshot: NotifierEnvironmentSnapshot, platformLa
 
   return `
     <div class="content">
-      <p class="help-text">${escapeHtml(guide.detail)}</p>
+      ${renderSidebarRichContent(guide.detail, { textClassName: 'help-text' })}
       ${renderHintList(guide.hints)}
     </div>
   `;
@@ -298,7 +305,7 @@ function renderRequirementItem(req: NotifierInstallRequirement): string {
         <span class="setup-name">${escapeHtml(req.name)}</span>
         <span class="setup-badge">${escapeHtml(req.statusLabel)}</span>
       </div>
-      <p class="setup-detail">${escapeHtml(req.detail)}</p>
+      ${renderSidebarRichContent(req.detail, { textClassName: 'setup-detail' })}
       ${renderHintList(req.hints)}
     </div>
   `;
@@ -312,9 +319,9 @@ function renderAgentSection(snapshot: NotifierEnvironmentSnapshot, agentLabel: s
 
   return `
     <div class="content">
-      <p class="help-text">${escapeHtml(guide.detail)}</p>
-      <p class="setup-detail">配置路径：<span class="code">${escapeHtml(guide.configPath)}</span></p>
-      <pre class="snippet-block">${escapeHtml(guide.recommendedSnippet)}</pre>
+      ${renderSidebarRichContent(guide.detail, { textClassName: 'help-text' })}
+      <p class="setup-detail">配置路径：${renderSidebarInlineCode(guide.configPath)}</p>
+      ${renderHighlightedSidebarCodeBlock(guide.recommendedSnippet)}
       ${renderHintList(guide.hints)}
     </div>
   `;
@@ -324,15 +331,10 @@ function renderHintList(hints: string[] | undefined): string {
   if (!hints || hints.length === 0) {
     return '';
   }
-  const itemsHtml = hints.map((hint) => `<li>${formatInlineCodeSegments(hint)}</li>`).join('');
-  return `<ul class="hint-list">${itemsHtml}</ul>`;
-}
-
-function formatInlineCodeSegments(value: string): string {
-  return value
-    .split(/`([^`]+)`/g)
-    .map((segment, index) => (index % 2 === 1 ? `<span class="code">${escapeHtml(segment)}</span>` : escapeHtml(segment)))
+  const itemsHtml = hints
+    .map((hint) => `<li>${renderSidebarRichContent(hint, { textClassName: 'list-text' })}</li>`)
     .join('');
+  return `<ul class="hint-list">${itemsHtml}</ul>`;
 }
 
 const svgWarning = '<svg class="status-icon warning" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M7.56 1h.88l6.54 12.26-.44.74H1.44L1 13.26 7.56 1zM8 2.28L2.28 13H13.7L8 2.28zM8.625 12v-1h-1.25v1h1.25zm0-2V6h-1.25v4h1.25z"/></svg>';
@@ -346,6 +348,43 @@ function sectionStyles(): string {
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
+      --sidebar-code-foreground: var(--vscode-editor-foreground, var(--vscode-foreground));
+      --sidebar-code-muted: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+      --sidebar-code-keyword: #b57edc;
+      --sidebar-code-string: #7fdc8a;
+      --sidebar-code-number: #64d2ff;
+      --sidebar-code-attr: #79c0ff;
+      --sidebar-code-variable: #ffd580;
+      --sidebar-code-punctuation: rgba(255, 255, 255, 0.88);
+      --sidebar-code-background: var(
+        --vscode-editorWidget-background,
+        var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.04))
+      );
+      --sidebar-code-border: var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+    }
+
+    body.vscode-light {
+      --sidebar-code-keyword: #9b26b6;
+      --sidebar-code-string: #1a7f37;
+      --sidebar-code-number: #0b84c6;
+      --sidebar-code-attr: #005fb8;
+      --sidebar-code-variable: #8b5a00;
+      --sidebar-code-punctuation: rgba(36, 41, 46, 0.72);
+      --sidebar-code-background: var(
+        --vscode-editorWidget-background,
+        var(--vscode-textCodeBlock-background, rgba(15, 23, 42, 0.04))
+      );
+      --sidebar-code-border: var(--vscode-widget-border, rgba(15, 23, 42, 0.12));
+    }
+
+    body.vscode-high-contrast,
+    body.vscode-high-contrast-light {
+      --sidebar-code-keyword: #d59dff;
+      --sidebar-code-string: #8ae234;
+      --sidebar-code-number: #66d9ef;
+      --sidebar-code-attr: #8cc6ff;
+      --sidebar-code-variable: #ffd75e;
+      --sidebar-code-punctuation: var(--sidebar-code-foreground);
     }
 
     .content {
@@ -517,26 +556,105 @@ function sectionStyles(): string {
       margin: 0 0 4px 0;
     }
 
+    .hint-list li > :last-child,
+    .notes-list li > :last-child {
+      margin-bottom: 0;
+    }
+
+    .list-text {
+      margin: 0 0 8px 0;
+      color: inherit;
+      font-size: inherit;
+      line-height: inherit;
+    }
+
     .snippet-block {
       margin: 8px 0 0 0;
       padding: 10px 12px;
-      background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
-      border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
+      background: var(--sidebar-code-background);
+      border: 1px solid var(--sidebar-code-border);
       border-radius: 4px;
       font-family: var(--vscode-editor-font-family);
       font-size: 12px;
       line-height: 1.5;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
+      white-space: pre;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
 
-    .code {
+    .snippet-block code {
+      padding: 0;
+      background: transparent;
+      border: 0;
+      font-size: inherit;
+    }
+
+    .snippet-block .hljs {
+      display: block;
+      color: var(--sidebar-code-foreground);
+    }
+
+    .snippet-block .hljs-comment,
+    .snippet-block .hljs-quote {
+      color: var(--sidebar-code-muted);
+    }
+
+    .snippet-block .hljs-keyword,
+    .snippet-block .hljs-selector-tag,
+    .snippet-block .hljs-meta,
+    .snippet-block .hljs-built_in {
+      color: var(--sidebar-code-keyword);
+    }
+
+    .snippet-block .hljs-string,
+    .snippet-block .hljs-regexp,
+    .snippet-block .hljs-addition {
+      color: var(--sidebar-code-string);
+    }
+
+    .snippet-block .hljs-number,
+    .snippet-block .hljs-literal,
+    .snippet-block .hljs-symbol,
+    .snippet-block .hljs-bullet {
+      color: var(--sidebar-code-number);
+    }
+
+    .snippet-block .hljs-title,
+    .snippet-block .hljs-section,
+    .snippet-block .hljs-type,
+    .snippet-block .hljs-attr,
+    .snippet-block .hljs-attribute {
+      color: var(--sidebar-code-attr);
+    }
+
+    .snippet-block .hljs-variable,
+    .snippet-block .hljs-template-variable,
+    .snippet-block .hljs-property,
+    .snippet-block .hljs-link {
+      color: var(--sidebar-code-variable);
+    }
+
+    .snippet-block .hljs-punctuation,
+    .snippet-block .hljs-operator {
+      color: var(--sidebar-code-punctuation);
+    }
+
+    .snippet-block .hljs-subst {
+      color: var(--sidebar-code-foreground);
+    }
+
+    .inline-code {
+      display: inline-block;
       font-family: var(--vscode-editor-font-family);
-      background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
+      color: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
+      background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.1));
       border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
-      padding: 2px 6px;
+      padding: 1px 6px;
       border-radius: 4px;
       font-size: 12px;
+      line-height: 1.4;
+      white-space: nowrap;
+      vertical-align: baseline;
     }
   `;
 }
