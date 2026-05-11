@@ -927,8 +927,10 @@ function buildCreateNodeQuickPickItems(
   return items;
 }
 
-interface AgentLaunchInputButton extends vscode.QuickInputButton {
+interface AgentLaunchQuickPickItem extends vscode.QuickPickItem {
+  selectionId?: CreateNodeQuickPickSelectionId;
   launchPreset?: Exclude<AgentLaunchPresetKind, 'custom'>;
+  action?: 'accept-current';
 }
 
 async function promptAgentLaunchRequest(
@@ -950,7 +952,7 @@ async function promptAgentLaunchRequest(
     return scriptedResult;
   }
 
-  return promptAgentLaunchRequestWithInputBox(provider, launchDefaults, presetCommandLines);
+  return promptAgentLaunchRequestWithQuickPick(provider, launchDefaults, presetCommandLines);
 }
 
 function consumeQueuedAgentLaunchRequest(
@@ -999,13 +1001,15 @@ function consumeQueuedAgentLaunchRequest(
   return undefined;
 }
 
-function promptAgentLaunchRequestWithInputBox(
+function promptAgentLaunchRequestWithQuickPick(
   provider: AgentProviderKind,
   launchDefaults: AgentProviderLaunchDefaults,
   presetCommandLines: Record<Exclude<AgentLaunchPresetKind, 'custom'>, string>
 ): Promise<CreateNodeRequest | 'back' | undefined> {
   return new Promise((resolve) => {
-    const inputBox = vscode.window.createInputBox();
+    const quickPick = vscode.window.createQuickPick<AgentLaunchQuickPickItem>();
+    const items = buildAgentLaunchQuickPickItems(presetCommandLines);
+    const acceptCurrentItem = items.find((item) => item.action === 'accept-current');
     const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
     let resolved = false;
     let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
@@ -1015,84 +1019,116 @@ function promptAgentLaunchRequestWithInputBox(
         return;
       }
       resolved = true;
-      inputBox.hide();
-      inputBox.dispose();
+      quickPick.hide();
+      quickPick.dispose();
       resolve(result);
     };
 
-    const updateValidation = (): boolean => {
-      const validation = validateAgentCommandLine(inputBox.value, provider, launchDefaults);
-      inputBox.validationMessage = validation.valid ? undefined : validation.error;
-      return validation.valid;
+    const updateTitle = (): void => {
+      const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
+      quickPick.title = validation.valid ? baseTitle : `${baseTitle} · ${validation.error}`;
     };
 
-    inputBox.title = baseTitle;
-    inputBox.placeholder = '编辑本次创建将使用的完整启动命令；按 Enter 直接创建';
-    inputBox.prompt = '标题栏按钮可快速替换为 默认 / Resume / YOLO / 沙盒；按钮只替换输入框，不会直接创建。';
-    inputBox.value = presetCommandLines.default;
-    inputBox.valueSelection = [inputBox.value.length, inputBox.value.length];
-    inputBox.buttons = [vscode.QuickInputButtons.Back, ...buildAgentLaunchInputButtons()];
-    inputBox.ignoreFocusOut = true;
+    const focusAcceptCurrentItem = (): void => {
+      if (acceptCurrentItem) {
+        quickPick.activeItems = [acceptCurrentItem];
+      }
+    };
 
-    inputBox.onDidChangeValue(() => {
-      updateValidation();
+    quickPick.title = baseTitle;
+    quickPick.placeholder = '编辑完整启动命令；按 Enter 使用当前输入创建';
+    quickPick.matchOnDescription = true;
+    quickPick.matchOnDetail = true;
+    quickPick.value = presetCommandLines.default;
+    quickPick.items = items;
+    quickPick.buttons = [vscode.QuickInputButtons.Back];
+    quickPick.ignoreFocusOut = true;
+
+    quickPick.onDidChangeValue(() => {
+      updateTitle();
+      focusAcceptCurrentItem();
     });
 
-    inputBox.onDidAccept(() => {
-      if (!updateValidation()) {
+    quickPick.onDidAccept(() => {
+      const activeItem = quickPick.activeItems[0] ?? acceptCurrentItem;
+      if (activeItem?.launchPreset) {
+        explicitPresetSelection = activeItem.launchPreset;
+        quickPick.value = presetCommandLines[activeItem.launchPreset];
+        updateTitle();
+        focusAcceptCurrentItem();
         return;
       }
 
-      finish(createAgentRequestFromCommandLine(provider, launchDefaults, inputBox.value, explicitPresetSelection));
+      const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
+      if (!validation.valid) {
+        updateTitle();
+        focusAcceptCurrentItem();
+        return;
+      }
+
+      finish(createAgentRequestFromCommandLine(provider, launchDefaults, quickPick.value, explicitPresetSelection));
     });
 
-    inputBox.onDidTriggerButton((button) => {
+    quickPick.onDidTriggerButton((button) => {
       if (button === vscode.QuickInputButtons.Back) {
         finish('back');
-        return;
       }
-
-      const launchPreset = (button as AgentLaunchInputButton).launchPreset;
-      if (!launchPreset) {
-        return;
-      }
-
-      explicitPresetSelection = launchPreset;
-      inputBox.value = presetCommandLines[launchPreset];
-      inputBox.valueSelection = [inputBox.value.length, inputBox.value.length];
-      updateValidation();
     });
 
-    inputBox.onDidHide(() => {
+    quickPick.onDidHide(() => {
       finish(undefined);
     });
 
-    updateValidation();
-    inputBox.show();
+    updateTitle();
+    quickPick.show();
+    focusAcceptCurrentItem();
   });
 }
 
-function buildAgentLaunchInputButtons(): AgentLaunchInputButton[] {
+function buildAgentLaunchQuickPickItems(
+  presetCommandLines: Record<Exclude<AgentLaunchPresetKind, 'custom'>, string>
+): AgentLaunchQuickPickItem[] {
   return [
     {
-      iconPath: new vscode.ThemeIcon('settings'),
-      tooltip: '默认：替换为当前 provider 的默认启动命令',
-      launchPreset: 'default'
+      label: '确认创建',
+      description: 'Enter',
+      detail: '使用输入框当前命令创建 Agent',
+      selectionId: 'agent-launch-accept-current',
+      action: 'accept-current',
+      alwaysShow: true
     },
     {
-      iconPath: new vscode.ThemeIcon('history'),
-      tooltip: 'Resume：替换为 provider 的 resume 选择入口',
-      launchPreset: 'resume'
+      label: '快捷替换启动命令',
+      kind: vscode.QuickPickItemKind.Separator,
+      alwaysShow: true
     },
     {
-      iconPath: new vscode.ThemeIcon('rocket'),
-      tooltip: 'YOLO：替换为自动批准执行模式',
-      launchPreset: 'yolo'
+      label: '默认',
+      detail: presetCommandLines.default,
+      selectionId: 'agent-launch-apply-default',
+      launchPreset: 'default',
+      alwaysShow: true
     },
     {
-      iconPath: new vscode.ThemeIcon('shield'),
-      tooltip: '沙盒：替换为受限权限安全模式',
-      launchPreset: 'sandbox'
+      label: 'Resume',
+      detail: presetCommandLines.resume,
+      selectionId: 'agent-launch-apply-resume',
+      launchPreset: 'resume',
+      alwaysShow: true
+    },
+    {
+      label: 'YOLO',
+      detail: presetCommandLines.yolo,
+      selectionId: 'agent-launch-apply-yolo',
+      launchPreset: 'yolo',
+      alwaysShow: true
+    },
+    {
+      label: '沙盒',
+      detail: presetCommandLines.sandbox,
+      selectionId: 'agent-launch-apply-sandbox',
+      launchPreset: 'sandbox',
+      alwaysShow: true
     }
   ];
 }
