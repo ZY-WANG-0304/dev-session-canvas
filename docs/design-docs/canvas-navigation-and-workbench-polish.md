@@ -193,8 +193,9 @@ updated_at: 2026-05-11
 - 初始 fit view 与左下角 `<Controls>` 的 fit view 使用同一个动态 `minZoom` 和 `CANVAS_MAX_ZOOM = 1.8`，确保“回到全局视图”不会被旧的 `0.4` 下限卡住。
 - 单节点聚焦和创建后追焦继续使用 `NODE_FOCUS_MIN_ZOOM = 0.55` 与 `NODE_FOCUS_MAX_ZOOM = 1.15`。这条路径服务节点阅读与定位，不跟全局概览共用动态下限。
 - 概览模式由 `devSessionCanvas.canvas.overviewMode` 控制。`src/common/protocol.ts` 只接受 `none` 与 `title` 两个值，并通过 `CanvasRuntimeContext.overviewMode` 从 `src/panel/CanvasPanelManager.ts` 传到 `src/webview/main.tsx`；未知值统一归一为默认值 `title`。
-- `none` 表示无概览：即使当前 viewport `zoom < 0.35`，`CanvasOverviewModeBridge` 也不会给 `.canvas-shell` 加上 `.is-overview-mode`，节点继续按普通表面渲染。这个选项只关闭概览视觉收口，不改变动态 `minZoom`、fit view 或手动缩小能力。
-- `title` 表示标题概览：当当前 viewport `zoom < 0.35` 时，`CanvasOverviewModeBridge` 给 `.canvas-shell` 加上概览模式标记，并通过 `data-canvas-overview-config="title"` 与 `--canvas-overview-title-scale` 驱动 `src/webview/styles.css`；节点内容区内的 `.node-overview-title` 显示节点标题，同时弱化 `Terminal` / `Agent` 的终端正文、Note 正文、文件节点内容和文件列表明细，隐藏主要操作按钮与次级文本，保留节点标题、状态、轮廓、连线和 minimap 作为低倍率导航线索。
+- 概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 控制，默认值来自 `DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2`。`normalizeCanvasOverviewZoomThreshold` 将非有限数字回退到默认值，并把有效数字钳制在 `[0, 1]`；归一后的值通过 `CanvasRuntimeContext.overviewZoomThreshold` 下发给 Webview。修改 `overviewMode` 或 `overviewZoomThreshold` 都会触发 `CanvasPanelManager` 重新 post runtime state，当前画布无需重新加载即可更新概览判定。
+- `none` 表示无概览：即使当前 viewport `zoom < overviewZoomThreshold`，`CanvasOverviewModeBridge` 也不会给 `.canvas-shell` 加上 `.is-overview-mode`，节点继续按普通表面渲染。这个选项只关闭概览视觉收口，不改变动态 `minZoom`、fit view 或手动缩小能力。
+- `title` 表示标题概览：当当前 viewport `zoom < overviewZoomThreshold` 时，`CanvasOverviewModeBridge` 给 `.canvas-shell` 加上概览模式标记，并通过 `data-canvas-overview-config="title"` 与 `--canvas-overview-title-scale` 驱动 `src/webview/styles.css`；节点内容区内的 `.node-overview-title` 显示节点标题，同时弱化 `Terminal` / `Agent` 的终端正文、Note 正文、文件节点内容和文件列表明细，隐藏主要操作按钮与次级文本，保留节点标题、状态、轮廓、连线和 minimap 作为低倍率导航线索。
 - `NodeOverviewTitle` 是纯展示层叠加，覆盖 `Agent` / `Terminal` 的 `.terminal-frame`、Note 的 `.object-body`、File 的 `.file-node-action`、FileList 的 `.file-list-body` 以及 fallback card；概览模式不销毁节点内的真实 `xterm`、Note 编辑器或文件列表 DOM，不改变宿主状态，也不重算 PTY 行列数。用户聚焦回某个节点后仍回到原有节点表面。
 
 ## 8. 验证方法
@@ -208,8 +209,9 @@ updated_at: 2026-05-11
 5. 运行 `npm run typecheck`、`npm run test:webview`、`npm run test:smoke`。
 6. 浏览器 harness 截图基线应能直接体现节点外轮廓与 minimap 的小圆角 widget 化收口。
 7. 在浏览器 harness 中验证 `Agent` 与 `Terminal` 节点里的 `xterm` 会在不重建实例的前提下，随 VSCode 深浅主题切换一起刷新背景、前景与 ANSI 调色板。
-8. 在浏览器 harness 中验证远距离节点点击 fit view 后 zoom 可低于 `0.4`，全部节点仍进入视口，且默认 `title` 配置下 `zoom < 0.35` 时概览模式标记、正文弱化样式与内容区标题都生效。
-9. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewMode = none` 时，即使 fit view 把 zoom 降到 `0.4` 以下，也不会进入概览模式，节点正文继续按普通表面显示。
+8. 在浏览器 harness 中验证远距离节点点击 fit view 后 zoom 可低于 `0.4`，全部节点仍进入视口，且默认 `title` 配置和默认 `overviewZoomThreshold = 0.2` 下 `zoom < 0.2` 时概览模式标记、正文弱化样式与内容区标题都生效。
+9. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewMode = none` 时，即使 fit view 把 zoom 降到概览触发倍率以下，也不会进入概览模式，节点正文继续按普通表面显示。
+10. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewZoomThreshold` 运行时变更会立即改变概览模式判定，例如当前 zoom 位于默认 `0.2` 与自定义 `0.5` 之间时，提高阈值会进入 `title` 概览，降回默认值会退出概览。
 
 ## 9. 验证结果
 
@@ -221,3 +223,4 @@ updated_at: 2026-05-11
 - “用户手动把 view 拖到 Secondary Sidebar 后再 reveal” 这一工作台布局动作，本轮未单独脚本化自动化；当前仅确认扩展继续使用可移动 `WebviewView` / view container 路线，且所有文案都明确写为“位置由 VSCode 原生记住”，没有把它误写成固定底部 Panel。
 - 2026-05-11 运行 `npm run typecheck`，通过。
 - 2026-05-11 运行 `npm run test:webview`，129 个 Playwright 用例全部通过；其中新增覆盖远距离节点状态下点击 fit view 后 viewport scale 可低于 `0.4`、全部节点仍进入浏览器视口，默认 `title` 概览会弱化 Note 正文并在内容区显示标题，且 `overviewMode = none` 时即使低于概览倍率也不会进入概览模式。
+- 2026-05-11 追加运行 `node scripts/run-playwright-webview.mjs -g "overview zoom threshold runtime config|fit view can zoom below|overview mode none"`，3 个 Playwright 用例通过；其中新增覆盖 `overviewZoomThreshold` 运行时从自定义 `0.5` 降回默认 `0.2` 后，当前画布可即时进入或退出 `title` 概览。
