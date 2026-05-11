@@ -668,7 +668,7 @@ async function runTrustedSmoke() {
   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
-  await verifyCreateNodeCommandQuickPickConfirmItemKeepsTypedValueWhenUsingPresetItems();
+  await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
@@ -1420,7 +1420,7 @@ async function verifyCreateNodeCommandQuickPick() {
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 }
 
-async function verifyCreateNodeCommandQuickPickConfirmItemKeepsTypedValueWhenUsingPresetItems() {
+async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits() {
   await clearHostMessages();
   await clearDiagnosticEvents();
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
@@ -1434,19 +1434,27 @@ async function verifyCreateNodeCommandQuickPickConfirmItemKeepsTypedValueWhenUsi
       await vscode.commands.executeCommand(COMMAND_IDS.createNode);
     },
     async ({ quickPick, emitChangeValue, emitAccept }) => {
-      const acceptCurrentItem = quickPick.items.find((item) => item?.selectionId === 'agent-launch-accept-current');
-      assert.ok(acceptCurrentItem, 'Expected the Agent launch QuickPick to include an explicit confirmation item.');
+      const customCreateItem = quickPick.items.find((item) => item?.selectionId === 'agent-launch-accept-current');
+      assert.ok(customCreateItem, 'Expected the Agent launch QuickPick to include a custom command creation item.');
       assert.strictEqual(
-        quickPick.items[0],
-        acceptCurrentItem,
-        'Expected VS Code auto-activation to land on confirmation instead of the first preset.'
+        customCreateItem.label,
+        '使用自定义命令创建',
+        'Expected the first Agent launch QuickPick item to create from a custom command.'
       );
 
       const presetItems = quickPick.items.filter((item) => item && item.launchPreset);
       assert.deepStrictEqual(
         presetItems.map((item) => item.launchPreset),
         ['default', 'resume', 'yolo', 'sandbox'],
-        'Expected the Agent launch QuickPick to expose preset replacement items below confirmation.'
+        'Expected the Agent launch QuickPick to expose preset replacement items below custom command creation.'
+      );
+
+      const defaultItem = presetItems.find((item) => item.launchPreset === 'default');
+      assert.ok(defaultItem, 'Expected the Agent launch QuickPick to include a default preset item.');
+      assert.deepStrictEqual(
+        quickPick.activeItems,
+        [defaultItem],
+        'Expected the Agent launch QuickPick to start on the default preset.'
       );
 
       const yoloItem = presetItems.find((item) => item.launchPreset === 'yolo');
@@ -1457,13 +1465,17 @@ async function verifyCreateNodeCommandQuickPickConfirmItemKeepsTypedValueWhenUsi
       assert.strictEqual(quickPick.disposed, false, 'Preset items should not create or close the Agent launch QuickPick.');
       assert.deepStrictEqual(
         quickPick.activeItems,
-        [acceptCurrentItem],
-        'Expected applying a preset to return focus to the confirmation item.'
+        [yoloItem],
+        'Expected applying a preset to keep focus on that preset until the user edits.'
       );
 
       quickPick.value = `${quickPick.value} ${customMarker}`;
-      quickPick.activeItems = [acceptCurrentItem];
       emitChangeValue(quickPick.value);
+      assert.deepStrictEqual(
+        quickPick.activeItems,
+        [customCreateItem],
+        'Expected manually editing the command to switch focus to custom command creation.'
+      );
       emitAccept();
     }
   );
@@ -1488,7 +1500,7 @@ async function verifyCreateNodeCommandQuickPickConfirmItemKeepsTypedValueWhenUsi
       typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
       node.metadata.agent.customLaunchCommand.includes(customMarker)
   );
-  assert.ok(customAgentNode, 'Expected Enter on the confirmation item to create an Agent from the typed command.');
+  assert.ok(customAgentNode, 'Expected Enter on the custom command item to create an Agent from the typed command.');
 
   await waitForDiagnosticEvents(
     (events) =>

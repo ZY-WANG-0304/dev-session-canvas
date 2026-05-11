@@ -930,7 +930,7 @@ function buildCreateNodeQuickPickItems(
 interface AgentLaunchQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
   launchPreset?: Exclude<AgentLaunchPresetKind, 'custom'>;
-  action?: 'accept-current';
+  action?: 'create-custom';
 }
 
 async function promptAgentLaunchRequest(
@@ -1009,10 +1009,13 @@ function promptAgentLaunchRequestWithQuickPick(
   return new Promise((resolve) => {
     const quickPick = vscode.window.createQuickPick<AgentLaunchQuickPickItem>();
     const items = buildAgentLaunchQuickPickItems(presetCommandLines);
-    const acceptCurrentItem = items.find((item) => item.action === 'accept-current');
+    const customCreateItem = items.find((item) => item.action === 'create-custom');
+    const presetItems = items.filter((item) => item.launchPreset);
+    const defaultPresetItem = presetItems.find((item) => item.launchPreset === 'default');
     const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
     let resolved = false;
     let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
+    let presetValueChange: Exclude<AgentLaunchPresetKind, 'custom'> | undefined;
 
     const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
       if (resolved) {
@@ -1029,14 +1032,36 @@ function promptAgentLaunchRequestWithQuickPick(
       quickPick.title = validation.valid ? baseTitle : `${baseTitle} · ${validation.error}`;
     };
 
-    const focusAcceptCurrentItem = (): void => {
-      if (acceptCurrentItem) {
-        quickPick.activeItems = [acceptCurrentItem];
+    const focusCustomCreateItem = (): void => {
+      if (customCreateItem) {
+        quickPick.activeItems = [customCreateItem];
       }
     };
 
+    const focusPresetItem = (launchPreset: Exclude<AgentLaunchPresetKind, 'custom'>): void => {
+      const presetItem = presetItems.find((item) => item.launchPreset === launchPreset);
+      if (presetItem) {
+        quickPick.activeItems = [presetItem];
+      }
+    };
+
+    const applyPreset = (launchPreset: Exclude<AgentLaunchPresetKind, 'custom'>): void => {
+      explicitPresetSelection = launchPreset;
+      presetValueChange = launchPreset;
+      quickPick.value = presetCommandLines[launchPreset];
+      updateTitle();
+      focusPresetItem(launchPreset);
+    };
+
+    const createCustomRequest = (): CreateNodeRequest => ({
+      kind: 'agent',
+      agentProvider: provider,
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: quickPick.value.trim()
+    });
+
     quickPick.title = baseTitle;
-    quickPick.placeholder = '编辑完整启动命令；按 Enter 使用当前输入创建';
+    quickPick.placeholder = '编辑完整启动命令；手动编辑后使用自定义命令创建';
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = true;
     quickPick.value = presetCommandLines.default;
@@ -1044,25 +1069,39 @@ function promptAgentLaunchRequestWithQuickPick(
     quickPick.buttons = [vscode.QuickInputButtons.Back];
     quickPick.ignoreFocusOut = true;
 
-    quickPick.onDidChangeValue(() => {
+    quickPick.onDidChangeValue((value) => {
       updateTitle();
-      focusAcceptCurrentItem();
+      if (presetValueChange && value === presetCommandLines[presetValueChange]) {
+        focusPresetItem(presetValueChange);
+        presetValueChange = undefined;
+        return;
+      }
+
+      presetValueChange = undefined;
+      focusCustomCreateItem();
     });
 
     quickPick.onDidAccept(() => {
-      const activeItem = quickPick.activeItems[0] ?? acceptCurrentItem;
+      const activeItem = quickPick.activeItems[0] ?? customCreateItem;
       if (activeItem?.launchPreset) {
-        explicitPresetSelection = activeItem.launchPreset;
-        quickPick.value = presetCommandLines[activeItem.launchPreset];
-        updateTitle();
-        focusAcceptCurrentItem();
+        if (quickPick.value.trim() === presetCommandLines[activeItem.launchPreset].trim()) {
+          finish(createAgentRequestFromCommandLine(provider, launchDefaults, quickPick.value, activeItem.launchPreset));
+          return;
+        }
+
+        applyPreset(activeItem.launchPreset);
         return;
       }
 
       const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
       if (!validation.valid) {
         updateTitle();
-        focusAcceptCurrentItem();
+        focusCustomCreateItem();
+        return;
+      }
+
+      if (activeItem?.action === 'create-custom') {
+        finish(createCustomRequest());
         return;
       }
 
@@ -1080,8 +1119,11 @@ function promptAgentLaunchRequestWithQuickPick(
     });
 
     updateTitle();
+    if (defaultPresetItem) {
+      quickPick.activeItems = [defaultPresetItem];
+    }
     quickPick.show();
-    focusAcceptCurrentItem();
+    focusPresetItem('default');
   });
 }
 
@@ -1090,11 +1132,11 @@ function buildAgentLaunchQuickPickItems(
 ): AgentLaunchQuickPickItem[] {
   return [
     {
-      label: '确认创建',
+      label: '使用自定义命令创建',
       description: 'Enter',
-      detail: '使用输入框当前命令创建 Agent',
+      detail: '按输入框当前命令创建自定义 Agent',
       selectionId: 'agent-launch-accept-current',
-      action: 'accept-current',
+      action: 'create-custom',
       alwaysShow: true
     },
     {
