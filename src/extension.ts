@@ -930,6 +930,7 @@ function buildCreateNodeQuickPickItems(
 interface AgentLaunchQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
   launchPreset?: Exclude<AgentLaunchPresetKind, 'custom'>;
+  action?: 'create-custom';
 }
 
 async function promptAgentLaunchRequest(
@@ -1007,35 +1008,23 @@ function promptAgentLaunchRequestWithQuickPick(
 ): Promise<CreateNodeRequest | 'back' | undefined> {
   return new Promise((resolve) => {
     const quickPick = vscode.window.createQuickPick<AgentLaunchQuickPickItem>();
+    const items = buildAgentLaunchQuickPickItems(presetCommandLines);
+    const customCreateItem = items.find((item) => item.action === 'create-custom');
+    const presetItems = items.filter((item) => item.launchPreset);
+    const defaultPresetItem = presetItems.find((item) => item.launchPreset === 'default');
     const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
     let resolved = false;
-    let suppressNextAcceptAfterPresetSelection = false;
     let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
-    let presetSelectionAcceptResetTimer: ReturnType<typeof setTimeout> | undefined;
+    let presetValueChange: Exclude<AgentLaunchPresetKind, 'custom'> | undefined = 'default';
 
     const finish = (result: CreateNodeRequest | 'back' | undefined): void => {
       if (resolved) {
         return;
       }
       resolved = true;
-      if (presetSelectionAcceptResetTimer) {
-        clearTimeout(presetSelectionAcceptResetTimer);
-      }
       quickPick.hide();
       quickPick.dispose();
       resolve(result);
-    };
-
-    const armPresetSelectionAcceptSuppression = (): void => {
-      suppressNextAcceptAfterPresetSelection = true;
-      if (presetSelectionAcceptResetTimer) {
-        clearTimeout(presetSelectionAcceptResetTimer);
-      }
-      // VS Code may emit onDidAccept immediately after a mouse-click selection.
-      presetSelectionAcceptResetTimer = setTimeout(() => {
-        suppressNextAcceptAfterPresetSelection = false;
-        presetSelectionAcceptResetTimer = undefined;
-      }, 0);
     };
 
     const updateTitle = (): void => {
@@ -1043,48 +1032,76 @@ function promptAgentLaunchRequestWithQuickPick(
       quickPick.title = validation.valid ? baseTitle : `${baseTitle} · ${validation.error}`;
     };
 
+    const focusCustomCreateItem = (): void => {
+      if (customCreateItem) {
+        quickPick.activeItems = [customCreateItem];
+      }
+    };
+
+    const focusPresetItem = (launchPreset: Exclude<AgentLaunchPresetKind, 'custom'>): void => {
+      const presetItem = presetItems.find((item) => item.launchPreset === launchPreset);
+      if (presetItem) {
+        quickPick.activeItems = [presetItem];
+      }
+    };
+
+    const applyPreset = (launchPreset: Exclude<AgentLaunchPresetKind, 'custom'>): void => {
+      explicitPresetSelection = launchPreset;
+      presetValueChange = launchPreset;
+      quickPick.value = presetCommandLines[launchPreset];
+      updateTitle();
+      focusPresetItem(launchPreset);
+    };
+
+    const createCustomRequest = (): CreateNodeRequest => ({
+      kind: 'agent',
+      agentProvider: provider,
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: quickPick.value.trim()
+    });
+
     quickPick.title = baseTitle;
-    quickPick.placeholder = '编辑本次创建将使用的完整启动命令；按 Enter 直接创建';
+    quickPick.placeholder = '编辑完整启动命令；手动编辑后使用自定义命令创建';
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = true;
     quickPick.value = presetCommandLines.default;
-    quickPick.items = buildAgentLaunchQuickPickItems(presetCommandLines);
+    quickPick.items = items;
     quickPick.buttons = [vscode.QuickInputButtons.Back];
     quickPick.ignoreFocusOut = true;
 
-    quickPick.onDidChangeSelection((items) => {
-      const selectedItem = items[0];
-      if (!selectedItem?.launchPreset) {
+    quickPick.onDidChangeValue((value) => {
+      updateTitle();
+      if (presetValueChange && value === presetCommandLines[presetValueChange]) {
+        focusPresetItem(presetValueChange);
+        presetValueChange = undefined;
         return;
       }
-      explicitPresetSelection = selectedItem.launchPreset;
-      quickPick.value = presetCommandLines[selectedItem.launchPreset];
-      quickPick.activeItems = [];
-      armPresetSelectionAcceptSuppression();
-      updateTitle();
-    });
 
-    quickPick.onDidChangeValue(() => {
-      updateTitle();
+      presetValueChange = undefined;
+      focusCustomCreateItem();
     });
 
     quickPick.onDidAccept(() => {
-      const activeItem = quickPick.activeItems[0];
+      const activeItem = quickPick.activeItems[0] ?? customCreateItem;
       if (activeItem?.launchPreset) {
-        explicitPresetSelection = activeItem.launchPreset;
-        quickPick.value = presetCommandLines[activeItem.launchPreset];
-        quickPick.activeItems = [];
-        updateTitle();
-        return;
-      }
+        if (quickPick.value.trim() === presetCommandLines[activeItem.launchPreset].trim()) {
+          finish(createAgentRequestFromCommandLine(provider, launchDefaults, quickPick.value, activeItem.launchPreset));
+          return;
+        }
 
-      if (suppressNextAcceptAfterPresetSelection) {
+        applyPreset(activeItem.launchPreset);
         return;
       }
 
       const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
       if (!validation.valid) {
         updateTitle();
+        focusCustomCreateItem();
+        return;
+      }
+
+      if (activeItem?.action === 'create-custom') {
+        finish(createCustomRequest());
         return;
       }
 
@@ -1102,8 +1119,11 @@ function promptAgentLaunchRequestWithQuickPick(
     });
 
     updateTitle();
+    if (defaultPresetItem) {
+      quickPick.activeItems = [defaultPresetItem];
+    }
     quickPick.show();
-    quickPick.activeItems = [];
+    focusPresetItem('default');
   });
 }
 
@@ -1112,7 +1132,15 @@ function buildAgentLaunchQuickPickItems(
 ): AgentLaunchQuickPickItem[] {
   return [
     {
-      label: '启动方式快捷替换',
+      label: '使用自定义命令创建',
+      description: 'Enter',
+      detail: '按输入框当前命令创建自定义 Agent',
+      selectionId: 'agent-launch-accept-current',
+      action: 'create-custom',
+      alwaysShow: true
+    },
+    {
+      label: '快捷替换启动命令',
       kind: vscode.QuickPickItemKind.Separator,
       alwaysShow: true
     },
