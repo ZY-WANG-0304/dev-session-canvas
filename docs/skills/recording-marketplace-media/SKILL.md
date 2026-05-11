@@ -16,7 +16,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 ```
 
 1. 读剧本 `docs/marketplace-media-scenario.md`
-2. `node scripts/recording-session.mjs start` 启动环境
+2. `node scripts/recording-session.mjs start` 启动环境（也可用兼容入口 `npm run generate:marketplace-media -- start`）
 3. 等待 session 文件出现（约 15-30s）
 4. 逐场景执行：
    - `record-start` 开始录制视频片段
@@ -44,7 +44,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 | `gif-frame <label>` | 截取 GIF 帧 |
 | `stop` | 停止环境，拼接 MP4 + 合成 GIF + PNG |
 
-所有命令前缀: `node scripts/recording-session.mjs`
+所有命令前缀: `node scripts/recording-session.mjs`；兼容 npm 入口为 `npm run generate:marketplace-media -- <command>`。不带子命令运行 `npm run generate:marketplace-media` 时只输出交互式录制流程，不会一次性无头生成完整素材。
 
 ## 关键技巧
 
@@ -53,6 +53,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 - 除场景初始化外，录制过程不要用 `command` / `dispatch` / 直接改状态来绕过 UI
 - VS Code 原生确认框、Quick Input、右键菜单都应作为真实交互录入视频；用 `click` / `key` / `paste` 完成
 - `locate`、`screenshot`、`state` 只用于观察和定位，不应替代用户操作
+- 当前正式录制默认用录制专用 `claude` wrapper 稳定 Claude provider 输出；这是媒体录制边界，必须在 PR/验证说明中显式标注，不能写成真实 Claude CLI 输出。
 
 **定位元素坐标：**
 - workbench 级元素（侧栏按钮、对话框）: 用 `locate` 命令
@@ -87,6 +88,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 - `setPersistedState` 不能删除有活跃运行时的节点
 - 鼠标滚轮: button 5 = 向下滚动
 - `saveCanvasAsTemplate` 命令会弹出 Quick Input，可用 `paste` + `key Return` 输入模板名
+- 抓最终全景前必须等待或关闭 VS Code notification，确保 PNG、GIF 最后一帧和 MP4 尾帧没有 toast 遮挡画布/小地图。
 
 ## 产物
 
@@ -97,5 +99,6 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 ## 相关文件
 
 - `docs/marketplace-media-scenario.md` — 录制剧本
+- `scripts/generate-marketplace-media.mjs` — 历史 npm 入口兼容 wrapper
 - `scripts/recording-session.mjs` — 录制工具
 - `scripts/x11-native-input.py` — X11 原生输入

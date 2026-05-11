@@ -99,7 +99,10 @@ async function cmdStart() {
       'workbench.panel.defaultLocation': 'bottom',
       'workbench.panel.opensMaximized': 'always',
       'devSessionCanvas.canvas.defaultSurface': 'panel',
-      'devSessionCanvas.files.enabled': true
+      'devSessionCanvas.files.enabled': true,
+      'devSessionCanvas.files.presentationMode': 'nodes',
+      'devSessionCanvas.fileNode.displayStyle': 'minimal',
+      'devSessionCanvas.files.nodeDisplayMode': 'icon-path'
     }
   });
   const providerBinPath = await prepareRecordingProviderBin();
