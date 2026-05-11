@@ -1891,6 +1891,71 @@ for (const themeName of ['dark', 'light']) {
   });
 }
 
+test('minimap viewport outline remains visible after fitting distant nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  await bootstrap(page, createDistantOverviewState());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.2);
+
+  const outlineStyle = await page.locator('.canvas-minimap-viewport-outline-rect').evaluate((outline) => {
+    const styles = getComputedStyle(outline);
+    return {
+      strokeWidth: Number.parseFloat(styles.strokeWidth),
+      vectorEffect: styles.vectorEffect
+    };
+  });
+  const maskStroke = await page
+    .locator('.canvas-minimap .react-flow__minimap-mask')
+    .evaluate((mask) => getComputedStyle(mask).stroke);
+
+  expect(maskStroke).toBe('none');
+  expect(outlineStyle.vectorEffect).toBe('non-scaling-stroke');
+  expect(outlineStyle.strokeWidth).toBe(0.5);
+});
+
+test('minimap remains pannable with the viewport outline overlay', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1.25
+      }
+    }
+  });
+  await bootstrap(page, createMinimapContrastState());
+  await settleWebview(page, 4);
+
+  const beforeDragTransform = await readCanvasViewportTransform(page);
+  const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
+  expect(minimapBox).not.toBeNull();
+
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2, minimapBox.y + minimapBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2 + 24, minimapBox.y + minimapBox.height / 2, {
+    steps: 4
+  });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeDragTransform ? transform : null;
+    })
+    .not.toBeNull();
+});
+
 test('agent start button posts a startExecutionSession message', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createAgentNodeState());
@@ -3573,6 +3638,151 @@ test('double-clicking the chrome focus region recenters the node and updates per
   expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
   expect(afterState.viewport.x).not.toBe(beforeState.viewport.x);
   expect(afterState.viewport.y).not.toBe(beforeState.viewport.y);
+});
+
+test('fit view can zoom below the comfort minimum and enters overview mode for distant nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createDistantOverviewState();
+  await bootstrap(page, state);
+  await settleWebview(page, 4);
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.2);
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
+
+  const fitZoom = await readCanvasViewportScale(page);
+  expect(fitZoom).toBeGreaterThan(0);
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  for (const node of state.nodes) {
+    const box = await nodeById(page, node.id).boundingBox();
+    expect(box, `${node.id} should be rendered in the viewport after fit view`).not.toBeNull();
+    expect(box.x + box.width).toBeGreaterThanOrEqual(-2);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(-2);
+    expect(box.x).toBeLessThanOrEqual(viewportSize.width + 2);
+    expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
+  }
+
+  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toBeVisible();
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('0');
+  await expect(nodeById(page, 'note-1').locator('.node-overview-title')).toContainText('回看 smoke test');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
+    .toBe('1');
+});
+
+test('overview mode none keeps regular node rendering when fit view zooms below the overview threshold', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createDistantOverviewState();
+  await bootstrap(page, state, createRuntimeContext({ overviewMode: 'none' }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'none');
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.2);
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'none');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('1');
+  await expect(nodeById(page, 'note-1').locator('.node-overview-title')).toContainText('回看 smoke test');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
+    .toBe('0');
+});
+
+test('overview zoom threshold runtime config controls title overview activation', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createCanvasScreenshotState();
+  await bootstrap(page, state, createRuntimeContext({ overviewZoomThreshold: 0.5 }));
+  await settleWebview(page, 4);
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeCloseTo(0.4, 2);
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('0');
+
+  await updateHostState(page, state, createRuntimeContext({ overviewZoomThreshold: 0.2 }));
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('1');
+});
+
+test('overview mode keeps hidden node controls out of the keyboard focus path', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState(), createRuntimeContext({ overviewZoomThreshold: 0.5 }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  await clearPostedMessages(page);
+
+  const hiddenFocusSnapshots = [];
+  for (let index = 0; index < 24; index += 1) {
+    await page.keyboard.press('Tab');
+    const snapshot = await readActiveElementOverviewFocusSnapshot(page);
+    if (snapshot?.hiddenNodeControl) {
+      hiddenFocusSnapshots.push(snapshot);
+    }
+  }
+
+  expect(hiddenFocusSnapshots).toEqual([]);
+  await page.keyboard.press('Enter');
+  await settleWebview(page, 2);
+
+  const deleteMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/deleteNode')
+  );
+  expect(deleteMessages).toEqual([]);
 });
 
 test('host center node request recenters without selecting or acknowledging attention', async ({ page }) => {
@@ -5599,6 +5809,8 @@ function createRuntimeContext(overrides = {}) {
     terminalScrollback: 1000,
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
+    overviewMode: 'title',
+    overviewZoomThreshold: 0.2,
     filesEnabled: true,
     filePresentationMode: 'nodes',
     fileNodeDisplayStyle: 'minimal',
@@ -5649,6 +5861,56 @@ async function readCanvasViewportTransform(page) {
   return page.evaluate(() => {
     const viewport = document.querySelector('.react-flow__viewport');
     return viewport instanceof HTMLElement ? viewport.style.transform : null;
+  });
+}
+
+async function readCanvasViewportScale(page) {
+  const transform = await readCanvasViewportTransform(page);
+  const scaleMatch = transform?.match(/scale\(([-\d.]+)\)/);
+  return scaleMatch ? Number(scaleMatch[1]) : null;
+}
+
+async function readComputedOpacity(page, selector) {
+  return page.evaluate((targetSelector) => {
+    const target = document.querySelector(targetSelector);
+    return target instanceof HTMLElement ? getComputedStyle(target).opacity : null;
+  }, selector);
+}
+
+async function readActiveElementOverviewFocusSnapshot(page) {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) {
+      return null;
+    }
+
+    let hiddenByOverviewStyle = false;
+    let current = active;
+    while (current) {
+      const style = getComputedStyle(current);
+      if (style.opacity === '0' || style.visibility === 'hidden' || current.hasAttribute('inert')) {
+        hiddenByOverviewStyle = true;
+        break;
+      }
+      current = current.parentElement;
+    }
+
+    const node = active.closest('[data-node-id]');
+    const hiddenNodeControl =
+      Boolean(node) &&
+      hiddenByOverviewStyle &&
+      (
+        active.matches('button, input, textarea, [tabindex]') ||
+        active.closest('button, input, textarea, [tabindex]')
+      );
+
+    return {
+      tagName: active.tagName,
+      className: active.className,
+      text: active.textContent?.trim() ?? '',
+      nodeId: node?.getAttribute('data-node-id') ?? null,
+      hiddenNodeControl
+    };
   });
 }
 
@@ -6404,6 +6666,19 @@ function createCanvasScreenshotState() {
       }
     ]
   };
+}
+
+function createDistantOverviewState() {
+  const state = JSON.parse(JSON.stringify(createCanvasScreenshotState()));
+  state.nodes[1] = {
+    ...state.nodes[1],
+    position: { x: 15000, y: 120 }
+  };
+  state.nodes[2] = {
+    ...state.nodes[2],
+    position: { x: 7200, y: 9000 }
+  };
+  return state;
 }
 
 function createFileNodeState() {
