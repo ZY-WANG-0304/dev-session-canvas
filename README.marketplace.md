@@ -54,22 +54,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.8.0 版本亮点
+## 0.9.0 版本亮点
 
-当前公开的 `0.8.0` 版本聚焦 Agent 日常可用性：在画布执行节点中补齐熟悉的复制粘贴快捷键，提供 `Codex` / `Claude Code` CLI 配置入口，并让文件活动默认以更紧凑的列表节点呈现。
+当前公开的 `0.9.0` 版本聚焦大画布可导航性和 Agent 启动补救：节点分散时可以缩到更低倍率看全画布，低倍率概览默认显示节点标题，`Codex` / `Claude Code` CLI 缺失时会直接引导用户选择或安装命令。
 
-- `Agent` / `Terminal` 执行终端支持平台化复制粘贴快捷键：macOS 使用 `Cmd+C` / `Cmd+V`，Windows 支持有选区 `Ctrl+C` 复制和无选区 `Ctrl+C` 打断，Linux 使用 `Ctrl+Shift+C` / `Ctrl+Shift+V` 并保留 `Ctrl+C` 打断
-- 粘贴链路带有多行安全确认：单行直接粘贴，bracketed paste mode 下直接粘贴，其他多行内容需要确认后才进入当前会话
-- 侧栏和命令面板新增 `Codex` / `Claude Code` CLI 选择入口，便于把当前 workspace 绑定到实际可用的 provider 命令
-- 命令面板可直接打开 `Codex config.toml`、`Codex auth.json` 和 `Claude Code settings.json`，并在缺失时创建受限权限的基础配置文件
-- 文件活动功能开启时默认使用文件列表节点，更适合查看单个 Agent 或多个 Agent 共享的文件读写关系；仍可在设置中切回独立文件节点
-- 修正模板重置复用节点身份、Claude onboarding 标记和代理地址占位等细节问题
+- fit view 与手动缩小支持动态全局最小倍率：节点分布很宽时不再被固定 `0.4` 下限卡住，仍可一次看全完整画布
+- 新增 `devSessionCanvas.canvas.overviewMode` 与 `devSessionCanvas.canvas.overviewZoomThreshold`，默认在低倍率概览中把节点标题显示到内容区；需要完整保留普通节点表面时可切到 `none`
+- 概览态会弱化节点正文和次级操作，保留标题、状态、轮廓、连线和 minimap，帮助在全局视图中快速辨认节点
+- 创建或启动 `Agent` 时如果当前宿主找不到 `Codex` / `Claude Code` CLI，节点会进入明确错误态，并自动打开同一套 CLI 选择 / 安装入口
+- Agent 创建 Quick Input 修正自定义命令被预设覆盖、启动模式误选和 Enter 误触问题，`默认` / `Resume` / `YOLO` / `沙盒` / 自定义启动语义更稳定
+- Marketplace 预览媒体更新为真实 VS Code Extension Development Host 下的可重复录制素材，展示模板、右键创建、关系连线和文件活动路径
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.7.1` 升级到 `0.8.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.8.x` 更新同样通过 Marketplace 升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.8.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.8.0` 升级到 `0.9.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -103,7 +103,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.8.x` 修复版本，而非尝试手动降级
+- 优先等待后续 `0.9.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 

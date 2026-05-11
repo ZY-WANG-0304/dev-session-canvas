@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的 Marketplace 发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.8.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的 Marketplace 发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.9.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.8.0` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.9.0` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
 
 ## 当前发布素材
 
@@ -89,5 +89,5 @@
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 截至 `2026-05-10`，当前 `0.8.0` 发布准备分支已重新通过 `npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；其中 notifier VSIX 已在 `600b998283d83a228fde1dc64dcf636440febe62` 上重新生成到 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.8.0.vsix`，该次打包日志打印了 `VSCE README doc ref: 600b998283d83a228fde1dc64dcf636440febe62`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.95 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- 截至 `2026-05-11`，当前 `0.9.0` 发布准备工作树已重新通过 `npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；其中 notifier VSIX 已生成到 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.9.0.vsix`，该次打包日志打印了 `VSCE README doc ref: 146b05681f367ae3239ace5354df8bf3a2f8aefb`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.96 KB 的 VSIX。该 ref 是当前发布准备分支的基底 `HEAD`，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。
