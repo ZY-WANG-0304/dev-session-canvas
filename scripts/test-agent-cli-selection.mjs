@@ -20,10 +20,27 @@ try {
   });
 
   const require = createRequire(import.meta.url);
-  const { discoverAgentCliCandidates, shortenMiddle } = require(outfile);
+  const {
+    discoverAgentCliCandidates,
+    getAgentCliInstallationInfo,
+    shouldOfferAgentCliInstallation,
+    shortenMiddle
+  } = require(outfile);
 
   assert.equal(shortenMiddle('abcdefghijklmnopqrstuvwxyz', 10), 'abc...wxyz');
   assert.equal(shortenMiddle('/short/path', 64), '/short/path');
+  assert.equal(shouldOfferAgentCliInstallation([{ command: 'codex' }]), true);
+  assert.equal(shouldOfferAgentCliInstallation([{ command: 'codex', resolvedPath: '/usr/local/bin/codex' }]), false);
+
+  const codexInstallation = getAgentCliInstallationInfo('codex');
+  assert.equal(codexInstallation.cliInstallCommand, 'npm i -g @openai/codex');
+  assert.equal(codexInstallation.vscodeExtensionId, 'openai.chatgpt');
+  assert.equal(codexInstallation.vscodeExtensionUri, 'vscode:extension/openai.chatgpt');
+
+  const claudeInstallation = getAgentCliInstallationInfo('claude');
+  assert.equal(claudeInstallation.cliInstallCommand, 'npm install -g @anthropic-ai/claude-code');
+  assert.equal(claudeInstallation.vscodeExtensionId, 'anthropic.claude-code');
+  assert.equal(claudeInstallation.vscodeExtensionUri, 'vscode:extension/anthropic.claude-code');
 
   const binDir = path.join(tempDir, 'bin');
   const extensionRoot = path.join(tempDir, 'openai.chatgpt-test-linux-x64');

@@ -554,6 +554,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly pendingVisibilityRestoreFocus: Partial<Record<CanvasSurfaceLocation, boolean>> = {};
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
+  private readonly pendingTerminalInitialInputs = new Map<string, string>();
   private readonly runtimeSessionBindings = new Map<
     string,
     { nodeId: string; kind: ExecutionNodeKind; runtimeSessionId: string; runtimeStoragePath: string }
@@ -1309,6 +1310,47 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  public async createTerminalAndRunCommand(
+    commandLine: string,
+    options: { titleOverride?: string } = {}
+  ): Promise<{ created: boolean; nodeId?: string; errorMessage?: string }> {
+    const trimmedCommandLine = commandLine.trim();
+    if (!trimmedCommandLine) {
+      return {
+        created: false,
+        errorMessage: '安装命令不能为空。'
+      };
+    }
+
+    if (!vscode.workspace.isTrusted) {
+      return {
+        created: false,
+        errorMessage: '当前 workspace 未受信任，不能在画布中启动 Terminal 执行安装命令。'
+      };
+    }
+
+    await this.revealOrCreate();
+    const createdNode = this.applyCreateNode('terminal', undefined, {
+      titleOverride: options.titleOverride
+    });
+    if (!createdNode) {
+      return {
+        created: false,
+        errorMessage: '无法创建用于安装的 Terminal 节点。'
+      };
+    }
+
+    this.pendingTerminalInitialInputs.set(createdNode.id, `${trimmedCommandLine}\n`);
+    void this.focusNodeInCanvas(createdNode.id).catch(() => {
+      // The node still exists and will auto-launch; focus is only a convenience.
+    });
+
+    return {
+      created: true,
+      nodeId: createdNode.id
+    };
+  }
+
   public createNodeForTest(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
@@ -1610,6 +1652,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.agentSessions.clear();
     this.terminalSessions.clear();
+    this.pendingTerminalInitialInputs.clear();
     this.runtimeSessionBindings.clear();
 
     if (persistedRuntimeSessions.length > 0) {
@@ -7369,6 +7412,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         reason: 'workspace-untrusted'
       });
+      this.pendingTerminalInitialInputs.delete(nodeId);
       return;
     }
 
@@ -7385,6 +7429,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           message: '未找到可启动的终端节点。'
         }
       });
+      this.pendingTerminalInitialInputs.delete(nodeId);
       return;
     }
 
@@ -7401,6 +7446,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       });
       this.attachExecutionSession('terminal', nodeId);
+      this.pendingTerminalInitialInputs.delete(nodeId);
       return;
     }
 
@@ -7410,6 +7456,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (this.isRuntimePersistenceEnabled()) {
       try {
         await this.startTerminalSessionWithSupervisor(nodeId, normalizedCols, normalizedRows);
+        this.flushPendingTerminalInitialInput(nodeId);
       } catch (error) {
         const message = describeEmbeddedTerminalSpawnError(shellPath, error);
         this.recordDiagnosticEvent('execution/spawnError', {
@@ -7448,6 +7495,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             message
           }
         });
+        this.pendingTerminalInitialInputs.delete(nodeId);
       }
       return;
     }
@@ -7649,6 +7697,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.persistState();
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('terminal', nodeId);
+      this.flushPendingTerminalInitialInput(nodeId);
 
       session.lifecycleTimer = setTimeout(() => {
         const activeSession = this.terminalSessions.get(nodeId);
@@ -7698,11 +7747,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           message
         }
       });
+      this.pendingTerminalInitialInputs.delete(nodeId);
     }
   }
 
   private getExecutionSessions(kind: ExecutionNodeKind): Map<string, ManagedExecutionSession> {
     return kind === 'agent' ? this.agentSessions : this.terminalSessions;
+  }
+
+  private flushPendingTerminalInitialInput(nodeId: string): void {
+    const input = this.pendingTerminalInitialInputs.get(nodeId);
+    if (!input) {
+      return;
+    }
+
+    this.pendingTerminalInitialInputs.delete(nodeId);
+    if (!this.terminalSessions.has(nodeId)) {
+      this.recordDiagnosticEvent('execution/initialInputDropped', {
+        kind: 'terminal',
+        nodeId,
+        reason: 'missing-session',
+        preview: summarizeDiagnosticInput(input)
+      });
+      return;
+    }
+
+    this.writeExecutionInput('terminal', nodeId, input);
   }
 
   private attachExecutionSession(kind: ExecutionNodeKind, nodeId: string): void {
@@ -8131,6 +8201,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       return;
     }
+
+    this.pendingTerminalInitialInputs.delete(nodeId);
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
