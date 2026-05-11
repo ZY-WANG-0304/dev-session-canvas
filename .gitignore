@@ -12,5 +12,6 @@ test-results/
 .vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json
+.dev-session-canvas/
 core
 core.*

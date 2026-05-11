@@ -550,6 +550,8 @@
     "test:vsix-smoke": "node scripts/run-vscode-vsix-smoke.mjs",
     "test:webview": "npm run build && node scripts/run-playwright-webview.mjs",
     "generate:marketplace-media": "node scripts/generate-marketplace-media.mjs",
+    "recording:start": "node scripts/recording-session.mjs start",
+    "recording:stop": "node scripts/recording-session.mjs stop",
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
