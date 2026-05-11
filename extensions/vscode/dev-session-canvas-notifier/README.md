@@ -44,7 +44,7 @@
 - 设置项：`devSessionCanvasNotifier.notifications.playSound`
 - 默认值：`true`
 - 作用：控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音
-- 说明：这是 best-effort 开关；Linux / Windows 是否真正响铃仍取决于通知服务，macOS `osascript` 回退路径则会在开启时额外播放一次系统 alert sound
+- 说明：这是 best-effort 开关；Linux / Windows 是否真正响铃仍取决于通知服务，macOS `osascript` 回退路径会在开启时直接使用 `display notification` 的内建声音名（当前为 `Submarine`），避免额外 `beep`
 
 本地人工验收时，优先使用以下命令：
 
