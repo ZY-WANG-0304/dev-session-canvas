@@ -1451,10 +1451,12 @@ async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits()
 
       const defaultItem = presetItems.find((item) => item.launchPreset === 'default');
       assert.ok(defaultItem, 'Expected the Agent launch QuickPick to include a default preset item.');
+      quickPick.activeItems = [customCreateItem];
+      emitChangeValue(quickPick.value);
       assert.deepStrictEqual(
         quickPick.activeItems,
         [defaultItem],
-        'Expected the Agent launch QuickPick to start on the default preset.'
+        'Expected the Agent launch QuickPick to keep the default preset selected during the initial value sync.'
       );
 
       const yoloItem = presetItems.find((item) => item.launchPreset === 'yolo');
