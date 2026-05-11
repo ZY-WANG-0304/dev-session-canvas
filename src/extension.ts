@@ -601,8 +601,16 @@ async function promptAgentCliInstallation(
       return;
     }
 
+    if (!result.commandDispatched) {
+      await vscode.window.showWarningMessage(
+        result.errorMessage ??
+          `已创建画布 Terminal，但尚未确认 ${installationInfo.label} 安装命令已输入；请检查 Terminal 节点状态。`
+      );
+      return;
+    }
+
     await vscode.window.showInformationMessage(
-      `已在画布 Terminal 中执行：${installationInfo.cliInstallCommand}。安装完成后请重新点击 ${installationInfo.label} 命令并选择 CLI。`
+      `已在画布 Terminal 中输入并执行：${installationInfo.cliInstallCommand}。安装完成后请重新点击 ${installationInfo.label} 命令并选择 CLI。`
     );
     return;
   }
