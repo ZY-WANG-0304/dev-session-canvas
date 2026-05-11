@@ -33,6 +33,16 @@ area-topic-goal
 - 工作流或协作规则分支：优先使用 `workflow-...` 开头。
 - 修复类分支：可以直接把问题域和修复目标写进名称，不强制增加 `fix-` 前缀。
 
+## 长期特性集成分支
+
+长期特性集成分支不是普通短生命周期主题分支，可使用 `feature/<domain>` 形式让 MR 目标和保护边界更清楚；`<domain>` 仍使用英文小写 kebab-case。
+
+当前已登记的长期特性集成分支：
+
+- `feature/templates-marketplace`：模板市场的共享集成分支。模板市场相关子主题分支在特性完成前先合入这里，不直接合入 `main`。
+
+长期特性集成分支是共享分支，不应 rebase 或强制推送；从它切出的子主题分支仍按普通主题分支命名，例如 `templates-marketplace-card-ui`、`templates-marketplace-install-flow`。
+
 ## 示例
 
 - `mac-basic-typing-language-engine-foundation`
