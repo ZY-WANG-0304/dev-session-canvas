@@ -114,7 +114,7 @@
         {
           "id": "devSessionCanvas.sidebarNodes",
           "name": "%view.canvas.sidebar.nodes.title%",
-          "icon": "images/dev-session-canvas-activitybar.svg",
+          "icon": "images/dev-session-canvas-nodes-activitybar.svg",
           "type": "webview"
         },
         {
@@ -541,7 +541,7 @@
     "package": "npm run typecheck && node scripts/build.mjs --production",
     "package:vsix": "npm run package && node scripts/package-vsix.mjs",
     "postinstall": "node scripts/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:runtime-supervisor-protocol && npm run test:agent-cli-resolver && npm run test:agent-cli-selection && npm run test:agent-settings-files && npm run test:shell-environment-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:note-markdown-links && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:execution-terminal-clipboard && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:runtime-supervisor-protocol && npm run test:agent-cli-resolver && npm run test:agent-cli-selection && npm run test:agent-settings-files && npm run test:shell-environment-resolver && npm run test:execution-session-bridge && npm run test:package-vsix-command && npm run test:sidebar-codicon-bundle && npm run test:activitybar-badges && npm run test:note-markdown-links && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:execution-terminal-clipboard && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
     "test:agent-cli-resolver": "node scripts/test-agent-cli-resolver.mjs",
     "test:agent-cli-selection": "node scripts/test-agent-cli-selection.mjs",
     "test:agent-settings-files": "node scripts/test-agent-settings-files.mjs",
@@ -560,6 +560,7 @@
     "test:note-markdown-checklists": "node --no-warnings --experimental-transform-types scripts/test-note-markdown-checklists.mts",
     "test:package-vsix-command": "node scripts/test-package-vsix-command.mjs",
     "test:sidebar-codicon-bundle": "node scripts/test-sidebar-codicon-bundle.mjs",
+    "test:activitybar-badges": "node scripts/test-activitybar-badge-geometry.mjs",
     "test:execution-attention-signals": "node scripts/test-execution-attention-signals.mjs",
     "test:execution-terminal-clipboard": "node --no-warnings --experimental-transform-types scripts/test-execution-terminal-clipboard.mts",
     "test:execution-terminal-line-context-tracker": "node scripts/test-execution-terminal-line-context-tracker.mjs",
