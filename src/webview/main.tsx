@@ -81,7 +81,9 @@ import type {
 } from '../common/protocol';
 import {
   canvasEdgePresetColors,
+  DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   normalizeCanvasOverviewMode,
+  normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
@@ -517,7 +519,6 @@ let executionTerminalDrainFrame: number | undefined;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 const CANVAS_COMFORT_MIN_ZOOM = 0.4;
 const CANVAS_MAX_ZOOM = 1.8;
-const CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.35;
 const CANVAS_MINIMAP_WIDTH = 194;
 const CANVAS_MINIMAP_HEIGHT = 126;
 const CANVAS_MINIMAP_OFFSET_SCALE = 5;
@@ -670,6 +671,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   editorMultiCursorModifier: 'alt',
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
   overviewMode: 'title',
+  overviewZoomThreshold: DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   filePresentationMode: 'nodes',
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
@@ -717,6 +719,7 @@ function normalizeRuntimeContext(
         ? runtimeContext.terminalWordSeparators
         : normalizeExecutionTerminalWordSeparators(undefined),
     overviewMode: normalizeCanvasOverviewMode(runtimeContext?.overviewMode),
+    overviewZoomThreshold: normalizeCanvasOverviewZoomThreshold(runtimeContext?.overviewZoomThreshold),
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
     fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
     fileNodeDisplayMode:
@@ -782,6 +785,7 @@ function App(): JSX.Element {
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
     overviewMode: latestRuntimeContext.overviewMode,
+    overviewZoomThreshold: latestRuntimeContext.overviewZoomThreshold,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
@@ -841,7 +845,7 @@ function App(): JSX.Element {
   const [canvasOverviewMode, setCanvasOverviewMode] = useState(
     () =>
       latestRuntimeContext.overviewMode !== 'none' &&
-      (initialPersistedState.viewport?.zoom ?? 1) < CANVAS_OVERVIEW_ZOOM_THRESHOLD
+      (initialPersistedState.viewport?.zoom ?? 1) < latestRuntimeContext.overviewZoomThreshold
   );
   const [canvasOverviewTitleScale, setCanvasOverviewTitleScale] = useState(() =>
     resolveCanvasOverviewTitleScale(initialPersistedState.viewport?.zoom ?? 1)
@@ -2112,7 +2116,7 @@ function App(): JSX.Element {
       >
         <CanvasOverviewModeBridge
           mode={runtimeContext.overviewMode}
-          threshold={CANVAS_OVERVIEW_ZOOM_THRESHOLD}
+          threshold={runtimeContext.overviewZoomThreshold}
           onViewportStateChange={handleCanvasOverviewViewportStateChange}
         />
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />

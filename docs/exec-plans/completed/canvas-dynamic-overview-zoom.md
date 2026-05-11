@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-当前主画布在 `src/webview/main.tsx` 中把 React Flow 的 `minZoom` 固定为 `0.4`。当节点数量增加或空间分布变宽时，`0.4` 已经不足以把全部节点纳入视口，fit view 也会被这个固定下限卡住。完成本计划后，画布保留 `0.4` 作为日常编辑的舒适下限，但会根据全部节点外接矩形和当前 Webview 尺寸动态降低 `minZoom`；本次按用户要求不设置额外绝对下限。用户可以继续缩小直到完整概览可见，缩放低于 `0.35` 时画布进入概览模式，节点正文细节被弱化，标题、状态、轮廓、连线和 minimap 成为主要线索。
+当前主画布在 `src/webview/main.tsx` 中把 React Flow 的 `minZoom` 固定为 `0.4`。当节点数量增加或空间分布变宽时，`0.4` 已经不足以把全部节点纳入视口，fit view 也会被这个固定下限卡住。完成本计划后，画布保留 `0.4` 作为日常编辑的舒适下限，但会根据全部节点外接矩形和当前 Webview 尺寸动态降低 `minZoom`；本次按用户要求不设置额外绝对下限。用户可以继续缩小直到完整概览可见，概览触发倍率默认 `0.2` 且可通过 `devSessionCanvas.canvas.overviewZoomThreshold` 配置；缩放低于该倍率时，节点正文细节被弱化，标题、状态、轮廓、连线和 minimap 成为主要线索。
 
 ## 进度
 
@@ -17,6 +17,7 @@
 - [x] (2026-05-10T16:25:00Z) 已更新 `docs/design-docs/` 正式设计文档与索引，记录动态缩放和不设绝对下限的决策。
 - [x] (2026-05-10T16:25:00Z) 已补充 Playwright Webview 回归测试，覆盖分散节点下 fit view 可突破 `0.4`，以及低倍率概览模式生效。
 - [x] (2026-05-10T16:35:00Z) 已运行 `npm run typecheck` 与 `npm run test:webview`，均通过。
+- [x] (2026-05-11T00:00:00Z) 已将概览触发倍率抽成 `devSessionCanvas.canvas.overviewZoomThreshold` 配置，默认 `0.2`，运行时下发到当前 Webview。
 
 ## 意外与发现
 
@@ -31,10 +32,13 @@
 - 决策：本次不设置额外绝对下限，动态最小值直接由全部节点 bounds、视口尺寸和 fit view padding 推导。
   理由：用户明确要求“除了设置绝对下限改成不设绝对下限之外，按照最终策略”实现；因此不引入 `HARD_MIN_ZOOM`。
   日期/作者：2026-05-10 / Codex。
+- 决策：概览触发倍率不继续作为 Webview 私有常量，而是暴露为 `devSessionCanvas.canvas.overviewZoomThreshold` 窗口级配置，默认 `0.2`，有效值钳制在 `[0, 1]`。
+  理由：不同画布规模、节点密度和用户偏好下，“多小才进入概览”的口径需要可调整；配置只影响概览视觉判定，不改变动态最小缩放和 fit view 能力。
+  日期/作者：2026-05-11 / Codex。
 
 ## 结果与复盘
 
-已完成动态全局最小缩放与概览模式实现。用户在节点远距离分散时可以点击 fit view 缩到 `0.4` 以下看全局；低于 `0.35` 时节点正文弱化，标题、状态、轮廓和连线保留为主要导航线索。本轮没有新增需要登记到 `docs/exec-plans/tech-debt-tracker.md` 的遗留技术债。
+已完成动态全局最小缩放与概览模式实现。用户在节点远距离分散时可以点击 fit view 缩到 `0.4` 以下看全局；低于当前 `overviewZoomThreshold` 时节点正文弱化，标题、状态、轮廓和连线保留为主要导航线索，默认阈值为 `0.2`。本轮没有新增需要登记到 `docs/exec-plans/tech-debt-tracker.md` 的遗留技术债。
 
 ## 上下文与定向
 
@@ -46,11 +50,11 @@
 
 ## 工作计划
 
-先把硬编码缩放常量改为命名常量：`CANVAS_COMFORT_MIN_ZOOM = 0.4`、`CANVAS_MAX_ZOOM = 1.8`、`CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.35`。在 `App` 中使用 `ResizeObserver` 跟踪 `.canvas-shell` 的宽高，并根据 `nodes` 的外接矩形计算 `dynamicCanvasMinZoom`。计算规则是用 React Flow 的节点 bounds、当前视口宽高和 `CANVAS_FIT_VIEW_PADDING` 推导“完整概览所需倍率”，再取 `Math.min(CANVAS_COMFORT_MIN_ZOOM, fitAllZoom)`；如果没有节点或尺寸不可用，回退到舒适下限。按用户要求，算法不再用 `Math.max` 套一个绝对硬下限。
+先把硬编码缩放常量改为命名常量：`CANVAS_COMFORT_MIN_ZOOM = 0.4`、`CANVAS_MAX_ZOOM = 1.8`、`DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2`。在 `App` 中使用 `ResizeObserver` 跟踪 `.canvas-shell` 的宽高，并根据 `nodes` 的外接矩形计算 `dynamicCanvasMinZoom`。计算规则是用 React Flow 的节点 bounds、当前视口宽高和 `CANVAS_FIT_VIEW_PADDING` 推导“完整概览所需倍率”，再取 `Math.min(CANVAS_COMFORT_MIN_ZOOM, fitAllZoom)`；如果没有节点或尺寸不可用，回退到舒适下限。按用户要求，算法不再用 `Math.max` 套一个绝对硬下限。
 
 然后把 `<ReactFlow>` 的 `minZoom` 改为 `dynamicCanvasMinZoom`，并把初始 fit view 和 `<Controls>` 的 fit view 都传入同一组 `padding`、`minZoom` 和 `maxZoom`，确保按钮不会被旧的 `0.4` 限制。节点聚焦继续保留现有 `0.55` 到 `1.15`。
 
-最后在 React Flow 内新增一个轻量桥接组件读取当前 viewport zoom，并在 `zoom < 0.35` 时把 `.canvas-shell` 标记为概览模式。CSS 在该模式下隐藏或弱化正文编辑表面和操作按钮，保留标题、状态、节点边界、连线和 minimap。
+最后在 React Flow 内新增一个轻量桥接组件读取当前 viewport zoom，并在 `zoom < overviewZoomThreshold` 时把 `.canvas-shell` 标记为概览模式。CSS 在该模式下隐藏或弱化正文编辑表面和操作按钮，保留标题、状态、节点边界、连线和 minimap。`overviewZoomThreshold` 由宿主读取 `devSessionCanvas.canvas.overviewZoomThreshold` 后随 `CanvasRuntimeContext` 下发，当前画布可随配置变更即时更新。
 
 ## 具体步骤
 
@@ -76,7 +80,7 @@
 
 ## 验证与验收
 
-验收标准是：在测试构造的多个远距离节点状态下，点击 fit view 后 persisted viewport 或 DOM transform 中的 zoom 小于 `0.4`，并且远端节点的 bounding box 出现在浏览器视口内；在 zoom 低于 `0.35` 的状态下，`.canvas-shell` 标记为概览模式，节点正文不可见或被弱化，而标题仍然可读。`npm run typecheck` 和 `npm run test:webview` 已通过。
+验收标准是：在测试构造的多个远距离节点状态下，点击 fit view 后 persisted viewport 或 DOM transform 中的 zoom 小于 `0.4`，并且远端节点的 bounding box 出现在浏览器视口内；在 zoom 低于当前 `overviewZoomThreshold` 的状态下，`.canvas-shell` 标记为概览模式，节点正文不可见或被弱化，而标题仍然可读；调整 `overviewZoomThreshold` 后，当前 Webview 无需重载即可进入或退出概览。`npm run typecheck` 和 `npm run test:webview` 已通过。
 
 ## 幂等性与恢复
 
@@ -96,5 +100,11 @@
     Running 128 tests using 1 worker
     128 passed
     Playwright webview tests passed.
+
+    2026-05-11 追加运行：
+
+    node scripts/run-playwright-webview.mjs -g "overview zoom threshold runtime config|fit view can zoom below|overview mode none"
+
+    3 passed
 
 本次修订说明：2026-05-10 完成实现、测试和文档同步；计划已具备移动到 `docs/exec-plans/completed/` 的条件。

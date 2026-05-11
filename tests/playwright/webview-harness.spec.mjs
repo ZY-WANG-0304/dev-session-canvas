@@ -1906,7 +1906,7 @@ test('minimap viewport outline remains visible after fitting distant nodes', asy
 
   await page.locator('.react-flow__controls-fitview').click();
 
-  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.2);
 
   const outlineStyle = await page.locator('.canvas-minimap-viewport-outline-rect').evaluate((outline) => {
     const styles = getComputedStyle(outline);
@@ -3659,7 +3659,7 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
 
   await page.locator('.react-flow__controls-fitview').click();
 
-  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.2);
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
 
@@ -3687,7 +3687,7 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
     .toBe('1');
 });
 
-test('overview mode none keeps regular node rendering when fit view zooms below the comfort minimum', async ({ page }) => {
+test('overview mode none keeps regular node rendering when fit view zooms below the overview threshold', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
       viewport: {
@@ -3706,7 +3706,7 @@ test('overview mode none keeps regular node rendering when fit view zooms below 
 
   await page.locator('.react-flow__controls-fitview').click();
 
-  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.2);
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'none');
   await expect
@@ -3716,6 +3716,36 @@ test('overview mode none keeps regular node rendering when fit view zooms below 
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('0');
+});
+
+test('overview zoom threshold runtime config controls title overview activation', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createCanvasScreenshotState();
+  await bootstrap(page, state, createRuntimeContext({ overviewZoomThreshold: 0.5 }));
+  await settleWebview(page, 4);
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeCloseTo(0.4, 2);
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('0');
+
+  await updateHostState(page, state, createRuntimeContext({ overviewZoomThreshold: 0.2 }));
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-config', 'title');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
+    .toBe('1');
 });
 
 test('host center node request recenters without selecting or acknowledging attention', async ({ page }) => {
@@ -5743,6 +5773,7 @@ function createRuntimeContext(overrides = {}) {
     editorMultiCursorModifier: 'alt',
     terminalWordSeparators: ' ()[]{}\',"`',
     overviewMode: 'title',
+    overviewZoomThreshold: 0.2,
     filesEnabled: true,
     filePresentationMode: 'nodes',
     fileNodeDisplayStyle: 'minimal',
@@ -6567,11 +6598,11 @@ function createDistantOverviewState() {
   const state = JSON.parse(JSON.stringify(createCanvasScreenshotState()));
   state.nodes[1] = {
     ...state.nodes[1],
-    position: { x: 7200, y: 120 }
+    position: { x: 15000, y: 120 }
   };
   state.nodes[2] = {
     ...state.nodes[2],
-    position: { x: 3500, y: 4300 }
+    position: { x: 7200, y: 9000 }
   };
   return state;
 }
