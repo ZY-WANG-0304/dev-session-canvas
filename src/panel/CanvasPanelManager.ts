@@ -230,6 +230,7 @@ const EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS = 4000;
 const EXECUTION_ATTENTION_BELL_NOTIFICATION_COOLDOWN_MS = 8000;
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS = 20000;
+const TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS = 20000;
 const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
@@ -253,6 +254,23 @@ interface AgentCliSpec {
   requestedCommand: string;
   command: string;
   resolutionSource: AgentCliResolutionSource;
+}
+
+interface CreateTerminalCommandResult {
+  created: boolean;
+  nodeId?: string;
+  commandDispatched?: boolean;
+  errorMessage?: string;
+}
+
+interface TerminalInitialInputDispatchResult {
+  dispatched: boolean;
+  errorMessage?: string;
+}
+
+interface PendingTerminalInitialInputDispatch {
+  resolve: (result: TerminalInitialInputDispatchResult) => void;
+  timeout: NodeJS.Timeout;
 }
 
 interface AgentResumeContext {
@@ -555,6 +573,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
   private readonly pendingTerminalInitialInputs = new Map<string, string>();
+  private readonly pendingTerminalInitialInputDispatches = new Map<string, PendingTerminalInitialInputDispatch>();
   private readonly runtimeSessionBindings = new Map<
     string,
     { nodeId: string; kind: ExecutionNodeKind; runtimeSessionId: string; runtimeStoragePath: string }
@@ -1313,7 +1332,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async createTerminalAndRunCommand(
     commandLine: string,
     options: { titleOverride?: string } = {}
-  ): Promise<{ created: boolean; nodeId?: string; errorMessage?: string }> {
+  ): Promise<CreateTerminalCommandResult> {
     const trimmedCommandLine = commandLine.trim();
     if (!trimmedCommandLine) {
       return {
@@ -1329,7 +1348,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
-    await this.revealOrCreate();
+    try {
+      await this.revealOrCreate();
+      await this.waitForCanvasReady(undefined, TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS);
+    } catch (error) {
+      return {
+        created: false,
+        errorMessage: error instanceof Error ? error.message : '无法打开画布 Terminal。'
+      };
+    }
+
     const createdNode = this.applyCreateNode('terminal', undefined, {
       titleOverride: options.titleOverride
     });
@@ -1340,14 +1368,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
+    const dispatchResult = this.waitForPendingTerminalInitialInputDispatch(
+      createdNode.id,
+      trimmedCommandLine
+    );
     this.pendingTerminalInitialInputs.set(createdNode.id, `${trimmedCommandLine}\n`);
     void this.focusNodeInCanvas(createdNode.id).catch(() => {
       // The node still exists and will auto-launch; focus is only a convenience.
     });
 
+    const completedDispatch = await dispatchResult;
+    if (!completedDispatch.dispatched) {
+      return {
+        created: true,
+        nodeId: createdNode.id,
+        commandDispatched: false,
+        errorMessage:
+          completedDispatch.errorMessage ??
+          '已创建画布 Terminal，但尚未确认安装命令已输入；请检查 Terminal 节点状态。'
+      };
+    }
+
     return {
       created: true,
-      nodeId: createdNode.id
+      nodeId: createdNode.id,
+      commandDispatched: true
     };
   }
 
@@ -1652,7 +1697,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.agentSessions.clear();
     this.terminalSessions.clear();
-    this.pendingTerminalInitialInputs.clear();
+    this.clearPendingTerminalInitialInputs('扩展宿主正在切换，安装命令未写入。');
     this.runtimeSessionBindings.clear();
 
     if (persistedRuntimeSessions.length > 0) {
@@ -7430,7 +7475,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         reason: 'workspace-untrusted'
       });
-      this.pendingTerminalInitialInputs.delete(nodeId);
+      this.dropPendingTerminalInitialInput(nodeId, '当前 workspace 未受信任，安装命令未写入。');
       return;
     }
 
@@ -7447,7 +7492,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           message: '未找到可启动的终端节点。'
         }
       });
-      this.pendingTerminalInitialInputs.delete(nodeId);
+      this.dropPendingTerminalInitialInput(nodeId, '未找到可启动的终端节点，安装命令未写入。');
       return;
     }
 
@@ -7464,7 +7509,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       });
       this.attachExecutionSession('terminal', nodeId);
-      this.pendingTerminalInitialInputs.delete(nodeId);
+      this.dropPendingTerminalInitialInput(nodeId, '该终端已在运行中，安装命令未写入。');
       return;
     }
 
@@ -7513,7 +7558,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             message
           }
         });
-        this.pendingTerminalInitialInputs.delete(nodeId);
+        this.dropPendingTerminalInitialInput(nodeId, message);
       }
       return;
     }
@@ -7765,12 +7810,73 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           message
         }
       });
-      this.pendingTerminalInitialInputs.delete(nodeId);
+      this.dropPendingTerminalInitialInput(nodeId, message);
     }
   }
 
   private getExecutionSessions(kind: ExecutionNodeKind): Map<string, ManagedExecutionSession> {
     return kind === 'agent' ? this.agentSessions : this.terminalSessions;
+  }
+
+  private waitForPendingTerminalInitialInputDispatch(
+    nodeId: string,
+    commandLine: string
+  ): Promise<TerminalInitialInputDispatchResult> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.pendingTerminalInitialInputDispatches.delete(nodeId);
+        this.recordDiagnosticEvent('execution/initialInputDispatchTimedOut', {
+          kind: 'terminal',
+          nodeId,
+          preview: summarizeDiagnosticInput(commandLine)
+        });
+        resolve({
+          dispatched: false,
+          errorMessage: '已创建画布 Terminal，但尚未确认安装命令已输入；请检查 Terminal 节点状态。'
+        });
+      }, TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS);
+
+      this.pendingTerminalInitialInputDispatches.set(nodeId, {
+        resolve,
+        timeout
+      });
+    });
+  }
+
+  private completePendingTerminalInitialInputDispatch(
+    nodeId: string,
+    result: TerminalInitialInputDispatchResult
+  ): void {
+    const pendingDispatch = this.pendingTerminalInitialInputDispatches.get(nodeId);
+    if (!pendingDispatch) {
+      return;
+    }
+
+    this.pendingTerminalInitialInputDispatches.delete(nodeId);
+    clearTimeout(pendingDispatch.timeout);
+    pendingDispatch.resolve(result);
+  }
+
+  private dropPendingTerminalInitialInput(nodeId: string, errorMessage: string): void {
+    this.pendingTerminalInitialInputs.delete(nodeId);
+    this.completePendingTerminalInitialInputDispatch(nodeId, {
+      dispatched: false,
+      errorMessage
+    });
+  }
+
+  private clearPendingTerminalInitialInputs(errorMessage: string): void {
+    const pendingNodeIds = new Set([
+      ...this.pendingTerminalInitialInputs.keys(),
+      ...this.pendingTerminalInitialInputDispatches.keys()
+    ]);
+    this.pendingTerminalInitialInputs.clear();
+    for (const nodeId of pendingNodeIds) {
+      this.completePendingTerminalInitialInputDispatch(nodeId, {
+        dispatched: false,
+        errorMessage
+      });
+    }
   }
 
   private flushPendingTerminalInitialInput(nodeId: string): void {
@@ -7787,10 +7893,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         reason: 'missing-session',
         preview: summarizeDiagnosticInput(input)
       });
+      this.completePendingTerminalInitialInputDispatch(nodeId, {
+        dispatched: false,
+        errorMessage: 'Terminal 会话未成功启动，安装命令未写入。'
+      });
       return;
     }
 
-    this.writeExecutionInput('terminal', nodeId, input);
+    const inputWritten = this.writeExecutionInput('terminal', nodeId, input);
+    this.completePendingTerminalInitialInputDispatch(nodeId, {
+      dispatched: inputWritten,
+      errorMessage: inputWritten ? undefined : 'Terminal 已启动，但安装命令未能写入。'
+    });
   }
 
   private attachExecutionSession(kind: ExecutionNodeKind, nodeId: string): void {
@@ -7832,7 +7946,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postExecutionSnapshot(kind, nodeId);
   }
 
-  private writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): void {
+  private writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): boolean {
     const inputDetail = {
       kind,
       nodeId,
@@ -7849,7 +7963,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ...inputDetail,
         reason: 'workspace-untrusted'
       });
-      return;
+      return false;
     }
 
     const session = this.getExecutionSessions(kind).get(nodeId);
@@ -7858,7 +7972,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ...inputDetail,
         reason: 'missing-session'
       });
-      return;
+      return false;
     }
 
     if (kind === 'agent') {
@@ -7907,6 +8021,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ...inputDetail,
       sessionId: session.sessionId
     });
+    return true;
   }
 
   private async copyExecutionSelection(
@@ -8220,7 +8335,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.pendingTerminalInitialInputs.delete(nodeId);
+    this.dropPendingTerminalInitialInput(nodeId, '节点已删除，安装命令未写入。');
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
