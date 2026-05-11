@@ -26,6 +26,7 @@ import { SerializedTerminalStateTracker } from '../common/serializedTerminalStat
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   deserializeExecutionSessionLaunchSpec,
+  serializeRuntimeSupervisorError,
   type RuntimeSupervisorAttachSessionParams,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
@@ -238,9 +239,7 @@ class RuntimeSupervisorServer {
         type: 'response',
         id: request.id,
         ok: false,
-        error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+        error: serializeRuntimeSupervisorError(error)
       });
     }
   }

@@ -262,7 +262,7 @@ updated_at: 2026-05-11
 - 2026-04-25：已给 VSCode Quick Input 第二步补回 `默认` 快捷替换项，使其和节点 metadata 的 `default` 预设一一对应；该项和 `Resume / YOLO / 沙盒` 一样，只改写顶部完整命令输入。
 - 2026-04-25：已把 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 的 VSCode 配置 scope 改成 `window`，使其可在窗口 / 工作区层直接配置和覆盖。
 - 2026-04-25：Agent 节点副标题改为显示最近一次实际启动指令；若文本被截断，hover 时通过原生 title 浮窗显示完整指令。尚未真正启动的节点则回退为显示按当前 metadata 与设置推导出的下一次 fresh-start 指令。
-- 2026-05-11：补齐右键创建 Agent 时 CLI 缺失的补救入口；本轮已完成 `npm run typecheck`、`npm run build`，真实 Extension Development Host 自动弹出 Quick Input 仍需人工验证。
+- 2026-05-11：补齐右键创建 Agent 时 CLI 缺失的补救入口，并让 runtime supervisor 错误响应保留 `ENOENT` code；本轮已完成 `npm run test:runtime-supervisor-protocol`、`npm run typecheck`、`npm run build`，真实 Extension Development Host 自动弹出 Quick Input 仍需人工验证。
 - 2026-04-24：已重新运行 `npm run test:webview -- --grep "agent restart"`，当前为 `2 passed`，覆盖“可恢复时显示 split restart”与“不可恢复时退化为单个启动按钮”两条标题栏路径。
 - 2026-04-26：已运行 `npm run test:agent-launch-presets`，通过；新增覆盖 Windows 绝对路径解析、默认启动参数 parse error 显式报错，以及 invalid default args 下 custom 命令的分类回退。
 - 2026-04-26：已运行 `npm run typecheck`、`npm run build`、`node --check tests/playwright/webview-harness.spec.mjs`、`git diff --check`，均通过。
