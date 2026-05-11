@@ -20,6 +20,9 @@ export type CanvasFilePresentationMode = 'nodes' | 'lists';
 export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
 export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
+export const canvasOverviewModes = ['none', 'title'] as const;
+export type CanvasOverviewMode = (typeof canvasOverviewModes)[number];
+export const DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2;
 export const canvasAttentionNotificationBridgeModes = ['none', 'workbench', 'system'] as const;
 export type CanvasAttentionNotificationBridgeMode =
   (typeof canvasAttentionNotificationBridgeModes)[number];
@@ -49,6 +52,22 @@ export function normalizeCanvasAttentionNotificationBridgeMode(
   }
 
   return 'system';
+}
+
+export function isCanvasOverviewMode(value: unknown): value is CanvasOverviewMode {
+  return value === 'none' || value === 'title';
+}
+
+export function normalizeCanvasOverviewMode(value: unknown): CanvasOverviewMode {
+  return isCanvasOverviewMode(value) ? value : 'title';
+}
+
+export function normalizeCanvasOverviewZoomThreshold(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD;
+  }
+
+  return Math.min(1, Math.max(0, value));
 }
 
 export function isCanvasStrongTerminalAttentionReminderMode(
@@ -296,6 +315,8 @@ export interface CanvasRuntimeContext {
   terminalScrollback: number;
   editorMultiCursorModifier: 'ctrlCmd' | 'alt';
   terminalWordSeparators: string;
+  overviewMode: CanvasOverviewMode;
+  overviewZoomThreshold: number;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;

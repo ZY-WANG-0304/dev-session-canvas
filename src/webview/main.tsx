@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FitAddon } from '@xterm/addon-fit';
@@ -14,11 +14,14 @@ import ReactFlow, {
   ConnectionMode,
   Controls,
   EdgeLabelRenderer,
+  getBoundsOfRects,
+  getNodesBounds,
   Handle,
   MarkerType,
   MiniMap,
   NodeResizer,
   Position,
+  useStore,
   useViewport,
   type Connection,
   type Edge,
@@ -26,6 +29,7 @@ import ReactFlow, {
   type EdgeProps,
   type MiniMapNodeProps,
   type ReactFlowInstance,
+  type ReactFlowState,
   type Node,
   type NodeMouseHandler,
   type NodeProps,
@@ -60,6 +64,7 @@ import type {
   CanvasNodeFootprint,
   CanvasNodeMetadata,
   CanvasNodePosition,
+  CanvasOverviewMode,
   CanvasRuntimeContext,
   CanvasStrongTerminalAttentionReminderMode,
   CanvasNodeSummary,
@@ -76,6 +81,9 @@ import type {
 } from '../common/protocol';
 import {
   canvasEdgePresetColors,
+  DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  normalizeCanvasOverviewMode,
+  normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
@@ -129,6 +137,50 @@ interface LocalUiState {
   collapsedFileListTreeBranches?: Record<string, string[]>;
 }
 
+interface CanvasViewportSize {
+  width: number;
+  height: number;
+}
+
+interface CanvasOverviewViewportState {
+  active: boolean;
+  titleScale: number;
+}
+
+interface CanvasMiniMapRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface CanvasMiniMapViewportOutlineState {
+  viewBB: CanvasMiniMapRect;
+  boundingRect: CanvasMiniMapRect;
+}
+
+const CanvasOverviewInteractionContext = React.createContext(false);
+const overviewInertAttributes = { inert: '' } as unknown as React.HTMLAttributes<HTMLElement>;
+
+function useCanvasOverviewInteractionsDisabled(): boolean {
+  return React.useContext(CanvasOverviewInteractionContext);
+}
+
+function canvasOverviewInertProps(disabled: boolean): React.HTMLAttributes<HTMLElement> {
+  return disabled ? overviewInertAttributes : {};
+}
+
+function CanvasNodeInteractionBoundary(props: {
+  disabled: boolean;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <CanvasOverviewInteractionContext.Provider value={props.disabled}>
+      {props.children}
+    </CanvasOverviewInteractionContext.Provider>
+  );
+}
+
 interface EdgeLabelEditorState {
   edgeId: string;
 }
@@ -141,6 +193,7 @@ interface CanvasNodeData {
   selected: boolean;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
+  overviewInteractionsDisabled: boolean;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   size: CanvasNodeFootprint;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
@@ -487,6 +540,12 @@ registerRuntimeDiagnosticListeners();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
 let executionTerminalDrainFrame: number | undefined;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
+const CANVAS_COMFORT_MIN_ZOOM = 0.4;
+const CANVAS_MAX_ZOOM = 1.8;
+const CANVAS_MINIMAP_WIDTH = 194;
+const CANVAS_MINIMAP_HEIGHT = 126;
+const CANVAS_MINIMAP_OFFSET_SCALE = 5;
+const CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH = 0.5;
 const NODE_FOCUS_VIEW_PADDING = 0.22;
 const NODE_FOCUS_MAX_ZOOM = 1.15;
 const NODE_FOCUS_MIN_ZOOM = 0.55;
@@ -634,6 +693,8 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   terminalScrollback: DEFAULT_TERMINAL_SCROLLBACK,
   editorMultiCursorModifier: 'alt',
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
+  overviewMode: 'title',
+  overviewZoomThreshold: DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   filePresentationMode: 'nodes',
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
@@ -680,6 +741,8 @@ function normalizeRuntimeContext(
       typeof runtimeContext?.terminalWordSeparators === 'string'
         ? runtimeContext.terminalWordSeparators
         : normalizeExecutionTerminalWordSeparators(undefined),
+    overviewMode: normalizeCanvasOverviewMode(runtimeContext?.overviewMode),
+    overviewZoomThreshold: normalizeCanvasOverviewZoomThreshold(runtimeContext?.overviewZoomThreshold),
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
     fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
     fileNodeDisplayMode:
@@ -744,6 +807,8 @@ function App(): JSX.Element {
     terminalScrollback: latestRuntimeContext.terminalScrollback,
     editorMultiCursorModifier: latestRuntimeContext.editorMultiCursorModifier,
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
+    overviewMode: latestRuntimeContext.overviewMode,
+    overviewZoomThreshold: latestRuntimeContext.overviewZoomThreshold,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
@@ -796,6 +861,18 @@ function App(): JSX.Element {
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
+  const [canvasViewportSize, setCanvasViewportSize] = useState<CanvasViewportSize>(() => ({
+    width: Math.max(1, window.innerWidth),
+    height: Math.max(1, window.innerHeight)
+  }));
+  const [canvasOverviewMode, setCanvasOverviewMode] = useState(
+    () =>
+      latestRuntimeContext.overviewMode !== 'none' &&
+      (initialPersistedState.viewport?.zoom ?? 1) < latestRuntimeContext.overviewZoomThreshold
+  );
+  const [canvasOverviewTitleScale, setCanvasOverviewTitleScale] = useState(() =>
+    resolveCanvasOverviewTitleScale(initialPersistedState.viewport?.zoom ?? 1)
+  );
 
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
@@ -963,6 +1040,38 @@ function App(): JSX.Element {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const element = canvasShellRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateCanvasViewportSize = (): void => {
+      const nextSize = {
+        width: Math.max(1, Math.round(element.clientWidth || window.innerWidth)),
+        height: Math.max(1, Math.round(element.clientHeight || window.innerHeight))
+      };
+      setCanvasViewportSize((current) =>
+        current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+      );
+    };
+
+    updateCanvasViewportSize();
+
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(updateCanvasViewportSize);
+      observer.observe(element);
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener('resize', updateCanvasViewportSize);
+    return () => {
+      window.removeEventListener('resize', updateCanvasViewportSize);
     };
   }, []);
 
@@ -1515,6 +1624,7 @@ function App(): JSX.Element {
     selectedNodeId: localUiState.selectedNodeId,
     documentHasFocus,
     workspaceTrusted,
+    overviewInteractionsDisabled: canvasOverviewMode,
     strongTerminalAttentionReminderMode: runtimeContext.strongTerminalAttentionReminderMode,
     fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
@@ -1621,6 +1731,18 @@ function App(): JSX.Element {
     onDeleteNode: deleteNode
   });
   const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+  const dynamicCanvasMinZoom = useMemo(
+    () => resolveDynamicCanvasMinZoom(nodes, canvasViewportSize),
+    [canvasViewportSize, nodes]
+  );
+  const canvasFitViewOptions = useMemo(
+    () => ({
+      padding: CANVAS_FIT_VIEW_PADDING,
+      minZoom: dynamicCanvasMinZoom,
+      maxZoom: CANVAS_MAX_ZOOM
+    }),
+    [dynamicCanvasMinZoom]
+  );
   const edges = toFlowEdges({
     edges: hostState?.edges ?? [],
     selectedEdgeId,
@@ -1958,69 +2080,95 @@ function App(): JSX.Element {
     stopCanvasEvent(event);
   };
 
+  const handleCanvasOverviewViewportStateChange = useCallback((nextState: CanvasOverviewViewportState): void => {
+    setCanvasOverviewMode((current) => (current === nextState.active ? current : nextState.active));
+    setCanvasOverviewTitleScale((current) =>
+      Math.abs(current - nextState.titleScale) < 0.01 ? current : nextState.titleScale
+    );
+  }, []);
+
+  const canvasShellStyle = useMemo(
+    () =>
+      ({
+        '--canvas-overview-title-scale': canvasOverviewTitleScale
+      }) as CSSProperties,
+    [canvasOverviewTitleScale]
+  );
+
   return (
     <div
       ref={canvasShellRef}
-      className="canvas-shell"
+      className={`canvas-shell ${canvasOverviewMode ? 'is-overview-mode' : ''}`.trim()}
+      data-canvas-overview-mode={canvasOverviewMode ? 'true' : 'false'}
+      data-canvas-overview-config={runtimeContext.overviewMode}
+      style={canvasShellStyle}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
     >
-      <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionMode={ConnectionMode.Loose}
-        fitView={!localUiState.viewport}
-        fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
-        defaultViewport={localUiState.viewport}
-        minZoom={0.4}
-        maxZoom={1.8}
-        onInit={(instance) => {
-          reactFlowRef.current = instance;
-          setReactFlowReadyVersion((current) => current + 1);
-        }}
-        onNodesChange={handleNodesChange}
-        onConnect={handleConnect}
-        onEdgeClick={handleEdgeClick}
-        onEdgeDoubleClick={handleEdgeDoubleClick}
-        onReconnect={handleEdgeReconnect}
-        onEdgeContextMenu={handleEdgeContextMenu}
-        connectionLineStyle={{
-          stroke: 'var(--canvas-edge-stroke-default)',
-          strokeWidth: 2
-        }}
-        onNodeClick={handleNodeClick}
-        onNodeDragStop={handleNodeDragStop}
-        onMoveStart={handleMoveStart}
-        onPaneClick={handlePaneClick}
-        onPaneContextMenu={handlePaneContextMenu}
-        onMoveEnd={handleMoveEnd}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
-        <MiniMap
-          className="canvas-corner-panel canvas-minimap"
-          position="bottom-right"
-          style={{ width: 194, height: 126 }}
-          pannable
-          zoomable
-          nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
-          nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
-          nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
-          nodeComponent={CanvasMiniMapNode}
-          nodeBorderRadius={4}
-          nodeStrokeWidth={1.2}
-          maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
-          maskStrokeColor="var(--vscode-focusBorder)"
-          maskStrokeWidth={1.5}
-        />
-        <Controls
-          className="canvas-corner-panel canvas-controls"
-          showInteractive={false}
-          fitViewOptions={{ padding: CANVAS_FIT_VIEW_PADDING }}
-        />
-      </ReactFlow>
+      <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
+        <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          fitView={!localUiState.viewport}
+          fitViewOptions={canvasFitViewOptions}
+          defaultViewport={localUiState.viewport}
+          minZoom={dynamicCanvasMinZoom}
+          maxZoom={CANVAS_MAX_ZOOM}
+          onInit={(instance) => {
+            reactFlowRef.current = instance;
+            setReactFlowReadyVersion((current) => current + 1);
+          }}
+          onNodesChange={handleNodesChange}
+          onConnect={handleConnect}
+          onEdgeClick={handleEdgeClick}
+          onEdgeDoubleClick={handleEdgeDoubleClick}
+          onReconnect={handleEdgeReconnect}
+          onEdgeContextMenu={handleEdgeContextMenu}
+          connectionLineStyle={{
+            stroke: 'var(--canvas-edge-stroke-default)',
+            strokeWidth: 2
+          }}
+          onNodeClick={handleNodeClick}
+          onNodeDragStop={handleNodeDragStop}
+          onMoveStart={handleMoveStart}
+          onPaneClick={handlePaneClick}
+          onPaneContextMenu={handlePaneContextMenu}
+          onMoveEnd={handleMoveEnd}
+          proOptions={{ hideAttribution: true }}
+        >
+          <CanvasOverviewModeBridge
+            mode={runtimeContext.overviewMode}
+            threshold={runtimeContext.overviewZoomThreshold}
+            onViewportStateChange={handleCanvasOverviewViewportStateChange}
+          />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+          <MiniMap
+            className="canvas-corner-panel canvas-minimap"
+            position="bottom-right"
+            style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
+            pannable
+            zoomable
+            nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
+            nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
+            nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
+            nodeComponent={CanvasMiniMapNode}
+            nodeBorderRadius={4}
+            nodeStrokeWidth={1.2}
+            maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
+            maskStrokeColor="none"
+            maskStrokeWidth={0}
+          />
+          <CanvasMiniMapViewportOutline />
+          <Controls
+            className="canvas-corner-panel canvas-controls"
+            showInteractive={false}
+            fitViewOptions={canvasFitViewOptions}
+          />
+        </ReactFlow>
+      </CanvasOverviewInteractionContext.Provider>
 
       {contextMenu ? (
         <CanvasContextMenu
@@ -2304,12 +2452,62 @@ function createManualNodeCreateRequestId(): string {
   return `create-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function resolveDynamicCanvasMinZoom(
+  nodes: readonly CanvasFlowNode[],
+  viewportSize: CanvasViewportSize
+): number {
+  if (nodes.length === 0 || viewportSize.width <= 0 || viewportSize.height <= 0) {
+    return CANVAS_COMFORT_MIN_ZOOM;
+  }
+
+  const bounds = getNodesBounds(nodes as CanvasFlowNode[]);
+  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
+    return CANVAS_COMFORT_MIN_ZOOM;
+  }
+
+  const xZoom = viewportSize.width / (bounds.width * (1 + CANVAS_FIT_VIEW_PADDING));
+  const yZoom = viewportSize.height / (bounds.height * (1 + CANVAS_FIT_VIEW_PADDING));
+  const fitAllZoom = Math.min(xZoom, yZoom);
+
+  return Number.isFinite(fitAllZoom)
+    ? Math.min(CANVAS_COMFORT_MIN_ZOOM, fitAllZoom)
+    : CANVAS_COMFORT_MIN_ZOOM;
+}
+
+function resolveCanvasOverviewTitleScale(zoom: number): number {
+  if (!Number.isFinite(zoom) || zoom <= 0) {
+    return 1;
+  }
+
+  return Math.min(12, Math.max(1, 1 / zoom));
+}
+
+function CanvasOverviewModeBridge(props: {
+  mode: CanvasOverviewMode;
+  threshold: number;
+  onViewportStateChange: (state: CanvasOverviewViewportState) => void;
+}): null {
+  const { mode, onViewportStateChange, threshold } = props;
+  const { zoom } = useViewport();
+
+  useEffect(() => {
+    const active = mode !== 'none' && zoom < threshold;
+    onViewportStateChange({
+      active,
+      titleScale: active && mode === 'title' ? resolveCanvasOverviewTitleScale(zoom) : 1
+    });
+  }, [mode, onViewportStateChange, threshold, zoom]);
+
+  return null;
+}
+
 function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const agentMetadata = data.metadata?.agent;
   if (!agentMetadata) {
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const { zoom } = useViewport();
   const provider = agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
@@ -2675,13 +2873,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const actionDisabled = executionBlocked || reattaching;
 
   useEffect(() => {
-    if (!showRestartSplitButton && restartMenuOpen) {
+    if ((overviewInteractionsDisabled || !showRestartSplitButton) && restartMenuOpen) {
       setRestartMenuOpen(false);
     }
-  }, [restartMenuOpen, showRestartSplitButton]);
+  }, [overviewInteractionsDisabled, restartMenuOpen, showRestartSplitButton]);
 
   return (
-    <div
+    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+      <div
       className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
@@ -2773,10 +2972,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     className="action-split-button-menu-item interactive nodrag nopan"
                     data-agent-restart-action="resume"
                     role="menuitem"
-                    disabled={!canResumeOriginalSession}
+                    disabled={overviewInteractionsDisabled || !canResumeOriginalSession}
+                    tabIndex={overviewInteractionsDisabled ? -1 : undefined}
                     onMouseDown={stopCanvasEvent}
                     onClick={(event) => {
                       stopCanvasEvent(event);
+                      if (overviewInteractionsDisabled) {
+                        return;
+                      }
                       startAgent(true);
                     }}
                     title={!canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话'}
@@ -2788,9 +2991,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     className="action-split-button-menu-item interactive nodrag nopan"
                     data-agent-restart-action="new-session"
                     role="menuitem"
+                    disabled={overviewInteractionsDisabled}
+                    tabIndex={overviewInteractionsDisabled ? -1 : undefined}
                     onMouseDown={stopCanvasEvent}
                     onClick={(event) => {
                       stopCanvasEvent(event);
+                      if (overviewInteractionsDisabled) {
+                        return;
+                      }
                       startAgent(false);
                     }}
                   >
@@ -2826,6 +3034,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           ref={frameRef}
           className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'}`}
           data-node-interactive="true"
+          {...canvasOverviewInertProps(overviewInteractionsDisabled)}
           onMouseDown={(event) => {
             stopCanvasEvent(event);
             data.onSelectNode?.(id);
@@ -2838,6 +3047,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
+          <NodeOverviewTitle title={data.title} />
           {!agentMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -2874,7 +3084,8 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </CanvasNodeInteractionBoundary>
   );
 }
 
@@ -2884,6 +3095,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const { zoom } = useViewport();
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
@@ -3191,7 +3403,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }, [executionBlocked, id, terminalMetadata.liveSession, terminalMetadata.pendingLaunch]);
 
   return (
-    <div
+    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+      <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
@@ -3249,6 +3462,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           ref={frameRef}
           className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'}`}
           data-node-interactive="true"
+          {...canvasOverviewInertProps(overviewInteractionsDisabled)}
           onMouseDown={(event) => {
             stopCanvasEvent(event);
             data.onSelectNode?.(id);
@@ -3261,6 +3475,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
+          <NodeOverviewTitle title={data.title} />
           {!terminalMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3293,7 +3508,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </CanvasNodeInteractionBoundary>
   );
 }
 
@@ -3355,11 +3571,89 @@ function CanvasMiniMapNode(props: MiniMapNodeProps): JSX.Element {
   );
 }
 
+function selectCanvasMiniMapViewportOutlineState(
+  state: ReactFlowState
+): CanvasMiniMapViewportOutlineState {
+  const zoom = state.transform[2];
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const viewBB = {
+    x: -state.transform[0] / safeZoom,
+    y: -state.transform[1] / safeZoom,
+    width: state.width / safeZoom,
+    height: state.height / safeZoom
+  };
+  const nodes = state.getNodes();
+  const boundingRect =
+    nodes.length > 0 ? getBoundsOfRects(getNodesBounds(nodes, state.nodeOrigin), viewBB) : viewBB;
+
+  return {
+    viewBB,
+    boundingRect
+  };
+}
+
+function resolveCanvasMiniMapViewBox(
+  boundingRect: CanvasMiniMapRect
+): CanvasMiniMapRect {
+  const scaledWidth = boundingRect.width / CANVAS_MINIMAP_WIDTH;
+  const scaledHeight = boundingRect.height / CANVAS_MINIMAP_HEIGHT;
+  const viewScale = Math.max(scaledWidth, scaledHeight);
+  const safeViewScale = Number.isFinite(viewScale) && viewScale > 0 ? viewScale : 1;
+  const viewWidth = safeViewScale * CANVAS_MINIMAP_WIDTH;
+  const viewHeight = safeViewScale * CANVAS_MINIMAP_HEIGHT;
+  const offset = CANVAS_MINIMAP_OFFSET_SCALE * safeViewScale;
+
+  return {
+    x: boundingRect.x - (viewWidth - boundingRect.width) / 2 - offset,
+    y: boundingRect.y - (viewHeight - boundingRect.height) / 2 - offset,
+    width: viewWidth + offset * 2,
+    height: viewHeight + offset * 2
+  };
+}
+
+function CanvasMiniMapViewportOutline(): JSX.Element {
+  const { boundingRect, viewBB } = useStore(selectCanvasMiniMapViewportOutlineState);
+  const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
+
+  return (
+    <div
+      className="canvas-minimap-viewport-outline"
+      style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
+      aria-hidden="true"
+    >
+      <svg
+        width={CANVAS_MINIMAP_WIDTH}
+        height={CANVAS_MINIMAP_HEIGHT}
+        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+        focusable="false"
+      >
+        <rect
+          className="canvas-minimap-viewport-outline-rect"
+          x={viewBB.x}
+          y={viewBB.y}
+          width={viewBB.width}
+          height={viewBB.height}
+          fill="none"
+          strokeWidth={CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH}
+        />
+      </svg>
+    </div>
+  );
+}
+
 function RestrictedBanner(props: { title: string; description: string }): JSX.Element {
   return (
     <div className="restricted-banner">
       <strong>{props.title}</strong>
       <span>{props.description}</span>
+    </div>
+  );
+}
+
+function NodeOverviewTitle(props: { title: string }): JSX.Element {
+  return (
+    <div className="node-overview-title" aria-hidden="true">
+      <span>{props.title}</span>
     </div>
   );
 }
@@ -3445,6 +3739,7 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   if (!fileMetadata) {
     return <CanvasCardNode id={id} data={data} />;
   }
+  const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const fileActionPointerStateRef = useRef<{
     pointerId: number | null;
     originX: number;
@@ -3472,7 +3767,8 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const showText = data.fileNodeDisplayMode !== 'icon-only';
 
   return (
-    <div
+    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+      <div
       className={`canvas-node file-node kind-file display-style-${data.fileNodeDisplayStyle} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
@@ -3487,8 +3783,15 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
         } ${showText && !showIcon ? 'is-path-only' : ''}`}
         data-node-interactive="true"
         data-file-entry-path={fileMetadata.filePath}
+        disabled={overviewInteractionsDisabled}
+        tabIndex={overviewInteractionsDisabled ? -1 : undefined}
+        aria-hidden={overviewInteractionsDisabled ? true : undefined}
         onPointerDown={(event) => {
           if (!event.isPrimary || event.button !== 0) {
+            return;
+          }
+          if (overviewInteractionsDisabled) {
+            stopCanvasEvent(event);
             return;
           }
 
@@ -3525,6 +3828,9 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
         }}
         onClick={(event) => {
           stopCanvasEvent(event);
+          if (overviewInteractionsDisabled) {
+            return;
+          }
           const current = fileActionPointerStateRef.current;
           const shouldOpen = !current.dragged;
           current.pointerId = null;
@@ -3538,6 +3844,7 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
         }}
         onFocus={() => data.onSelectNode?.(id)}
       >
+        <NodeOverviewTitle title={data.title} />
         {showIcon ? (
           <span className="file-node-icon" aria-hidden="true">
             {renderFileIcon(fileMetadata.icon, primaryLabel)}
@@ -3555,7 +3862,8 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
           </span>
         ) : null}
       </button>
-    </div>
+      </div>
+    </CanvasNodeInteractionBoundary>
   );
 }
 
@@ -3565,6 +3873,7 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const fileListTree = useMemo(() => buildFileListTree(fileListMetadata.entries), [fileListMetadata.entries]);
 
   const deleteFileList = (): void => {
@@ -3576,7 +3885,8 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     data.selected && data.documentHasFocus ? 'active' : 'inactive';
 
   return (
-    <div
+    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+      <div
       className={`canvas-node file-list-node kind-file-list display-style-${data.fileNodeDisplayStyle} ${
         data.selected ? 'is-selected' : ''
       }`}
@@ -3606,9 +3916,14 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
                 }`}
                 data-node-interactive="true"
                 data-file-list-view-mode="list"
+                disabled={overviewInteractionsDisabled}
+                tabIndex={overviewInteractionsDisabled ? -1 : undefined}
                 onMouseDown={stopCanvasEvent}
                 onClick={(event) => {
                   stopCanvasEvent(event);
+                  if (overviewInteractionsDisabled) {
+                    return;
+                  }
                   data.onSelectNode?.(id);
                   data.onSetFileListViewMode?.(id, 'list');
                 }}
@@ -3622,9 +3937,14 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
                 }`}
                 data-node-interactive="true"
                 data-file-list-view-mode="tree"
+                disabled={overviewInteractionsDisabled}
+                tabIndex={overviewInteractionsDisabled ? -1 : undefined}
                 onMouseDown={stopCanvasEvent}
                 onClick={(event) => {
                   stopCanvasEvent(event);
+                  if (overviewInteractionsDisabled) {
+                    return;
+                  }
                   data.onSelectNode?.(id);
                   data.onSetFileListViewMode?.(id, 'tree');
                 }}
@@ -3657,8 +3977,10 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
       </div>
       <div
         className={`file-list-body nowheel ${isMinimalStyle ? 'minimal' : 'object-surface'}`}
+        {...canvasOverviewInertProps(overviewInteractionsDisabled)}
         onWheel={stopCanvasEvent}
       >
+        <NodeOverviewTitle title={data.title} />
         {fileListMetadata.entries.length === 0 ? (
           <div className="file-list-empty">当前还没有可显示的文件活动。</div>
         ) : !isMinimalStyle ? (
@@ -3713,7 +4035,8 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </CanvasNodeInteractionBoundary>
   );
 }
 
@@ -4059,6 +4382,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     return <CanvasCardNode id={id} data={data} />;
   }
 
+  const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
@@ -4122,6 +4446,19 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     textarea.setSelectionRange(pendingSelection.selectionStart, pendingSelection.selectionEnd);
   }, [content, isEditingBody]);
 
+  useEffect(() => {
+    if (!overviewInteractionsDisabled) {
+      return;
+    }
+
+    pendingBodyFocusRef.current = false;
+    pendingBodySelectionRef.current = null;
+    if (document.activeElement === bodyInputRef.current) {
+      bodyInputRef.current?.blur();
+    }
+    setIsEditingBody(false);
+  }, [overviewInteractionsDisabled]);
+
   const submitNote = (nextContent: string): void => {
     const baselineContent = committedContentRef.current;
     if (nextContent === baselineContent) {
@@ -4142,6 +4479,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const startEditingBody = (): void => {
+    if (overviewInteractionsDisabled) {
+      return;
+    }
     pendingBodyFocusRef.current = true;
     data.onSelectNode?.(id);
     setBodyScrollTop(0);
@@ -4179,6 +4519,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     if (checkbox) {
       event.preventDefault();
       stopCanvasEvent(event);
+      if (overviewInteractionsDisabled) {
+        return;
+      }
       toggleChecklistFromPreview(checkbox);
       return;
     }
@@ -4189,6 +4532,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       stopCanvasEvent(event);
       const href = link.getAttribute('href');
       if (href) {
+        if (overviewInteractionsDisabled) {
+          return;
+        }
         data.onSelectNode?.(id);
         data.onOpenNoteLink?.(id, href);
       }
@@ -4198,6 +4544,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
   const handlePreviewDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
     if (findNoteMarkdownChecklistInputTarget(event.target) || findNoteMarkdownLinkTarget(event.target)) {
+      return;
+    }
+    if (overviewInteractionsDisabled) {
       return;
     }
 
@@ -4234,7 +4583,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   return (
-    <div
+    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+      <div
       className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
@@ -4263,7 +4613,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       </div>
 
       <div className="object-body object-surface note-surface">
-        <div className="note-editor-surface">
+        <NodeOverviewTitle title={data.title} />
+        <div className="note-editor-surface" {...canvasOverviewInertProps(overviewInteractionsDisabled)}>
           {isEditingBody ? (
             <div className="note-document-editor">
               <div className="note-document-line-number-gutter" aria-hidden="true">
@@ -4284,7 +4635,13 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                 data-node-interactive="true"
                 data-probe-field="body"
                 value={content}
+                disabled={overviewInteractionsDisabled}
+                tabIndex={overviewInteractionsDisabled ? -1 : undefined}
                 onFocus={() => {
+                  if (overviewInteractionsDisabled) {
+                    bodyInputRef.current?.blur();
+                    return;
+                  }
                   setIsEditingBody(true);
                   data.onSelectNode?.(id);
                 }}
@@ -4315,9 +4672,16 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               data-node-interactive="true"
               data-probe-field="body"
               data-probe-value={content}
-              tabIndex={0}
+              tabIndex={overviewInteractionsDisabled ? -1 : 0}
+              aria-hidden={overviewInteractionsDisabled ? true : undefined}
               aria-label="Note 正文预览，按 Enter 或双击开始编辑"
-              onFocus={() => data.onSelectNode?.(id)}
+              onFocus={(event) => {
+                if (overviewInteractionsDisabled) {
+                  event.currentTarget.blur();
+                  return;
+                }
+                data.onSelectNode?.(id);
+              }}
               onMouseDown={stopCanvasEvent}
               onClick={handlePreviewClick}
               onDoubleClick={handlePreviewDoubleClick}
@@ -4335,7 +4699,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </CanvasNodeInteractionBoundary>
   );
 }
 
@@ -4344,7 +4709,8 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
   const terminalMetadata = data.metadata?.terminal;
 
   return (
-    <div
+    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+      <div
       className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
@@ -4352,6 +4718,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
+      <NodeOverviewTitle title={data.title} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
@@ -4382,7 +4749,8 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
           onFocus={() => data.onSelectNode?.(id)}
         />
       </div>
-    </div>
+      </div>
+    </CanvasNodeInteractionBoundary>
   );
 }
 
@@ -4411,19 +4779,29 @@ function ExecutionHelpTrigger(props: {
   help: ExecutionNodeHelpContent;
   variant: ExecutionHelpTriggerVariant;
 }): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const tooltipIdRef = useRef<string>('');
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
-  const visible = hovered || focused;
+  const visible = !overviewInteractionsDisabled && (hovered || focused);
   const label = props.variant === 'canvas' ? '使用提示' : undefined;
   const showGlyph = props.variant === 'inline';
 
   if (!tooltipIdRef.current) {
     tooltipIdRef.current = `execution-node-help-tooltip-${nextExecutionNodeHelpTooltipId++}`;
   }
+
+  useEffect(() => {
+    if (!overviewInteractionsDisabled) {
+      return;
+    }
+
+    setHovered(false);
+    setFocused(false);
+  }, [overviewInteractionsDisabled]);
 
   useLayoutEffect(() => {
     if (!visible) {
@@ -4475,6 +4853,9 @@ function ExecutionHelpTrigger(props: {
         data-node-interactive="true"
         aria-label={EXECUTION_TERMINAL_HELP_TOOLTIP}
         aria-describedby={visible ? tooltipIdRef.current : undefined}
+        aria-hidden={overviewInteractionsDisabled ? true : undefined}
+        disabled={overviewInteractionsDisabled}
+        tabIndex={overviewInteractionsDisabled ? -1 : undefined}
         onMouseDown={stopCanvasEvent}
         onClick={stopCanvasEvent}
         onKeyDown={(event) => {
@@ -4545,6 +4926,8 @@ function ActionButton(props: {
   > &
     Record<`data-${string}`, string | number | boolean | undefined>;
 }): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
+  const disabled = props.disabled || overviewInteractionsDisabled;
   const toneClass =
     props.tone === 'primary'
       ? 'primary'
@@ -4558,13 +4941,18 @@ function ActionButton(props: {
       {...props.buttonProps}
       data-node-interactive={props.interactive ? 'true' : undefined}
       className={`action-button ${toneClass} ${props.className ?? ''}`.trim()}
-      disabled={props.disabled}
+      disabled={disabled}
+      tabIndex={overviewInteractionsDisabled ? -1 : props.buttonProps?.tabIndex}
+      aria-hidden={overviewInteractionsDisabled ? true : props.buttonProps?.['aria-hidden']}
       onFocus={props.onFocus}
       onPointerDown={props.interactive ? stopCanvasEvent : undefined}
       onMouseDown={props.interactive ? stopCanvasEvent : undefined}
       onClick={(event) => {
         if (props.interactive) {
           stopCanvasEvent(event);
+        }
+        if (disabled) {
+          return;
         }
         props.onClick();
       }}
@@ -6066,12 +6454,14 @@ function ChromeTitleEditor(props: {
   onSelectNode?: () => void;
   onSubmit: (title: string) => void;
 }): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
   const [draft, setDraft] = useState(props.value);
   const [isEditing, setIsEditing] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const committedTitleRef = useRef(props.value);
   const pendingTitleRef = useRef<string | null>(null);
   const lastPropValueRef = useRef(props.value);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useLayoutEffect(() => {
     const previousPropValue = lastPropValueRef.current;
@@ -6089,6 +6479,17 @@ function ChromeTitleEditor(props: {
     }
   }, [isEditing, props.value]);
 
+  useEffect(() => {
+    if (!overviewInteractionsDisabled) {
+      return;
+    }
+
+    setIsEditing(false);
+    if (document.activeElement === inputRef.current) {
+      inputRef.current?.blur();
+    }
+  }, [overviewInteractionsDisabled]);
+
   const commitTitle = (rawValue: string): void => {
     const baselineTitle = committedTitleRef.current;
     const nextTitle = rawValue.trim() || baselineTitle;
@@ -6104,11 +6505,18 @@ function ChromeTitleEditor(props: {
     <div className={`window-title ${props.className ?? ''}`.trim()}>
       <div className="window-title-copy">
         <input
+          ref={inputRef}
           className="window-title-input nodrag nopan"
           data-node-interactive="true"
           data-probe-field="title"
           value={draft}
+          readOnly={overviewInteractionsDisabled}
+          tabIndex={overviewInteractionsDisabled ? -1 : undefined}
           onFocus={() => {
+            if (overviewInteractionsDisabled) {
+              inputRef.current?.blur();
+              return;
+            }
             setIsEditing(true);
             props.onSelectNode?.();
           }}
@@ -6201,6 +6609,7 @@ function toFlowNodes(params: {
   selectedNodeId: string | undefined;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
+  overviewInteractionsDisabled: boolean;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
@@ -6287,6 +6696,7 @@ function toFlowNodes(params: {
         selected: node.id === params.selectedNodeId,
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
+        overviewInteractionsDisabled: params.overviewInteractionsDisabled,
         strongTerminalAttentionReminderMode: params.strongTerminalAttentionReminderMode,
         size,
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
