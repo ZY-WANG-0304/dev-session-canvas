@@ -65,10 +65,10 @@ const osascriptInvocation = buildMacOSAppleScriptInvocation({ request, playSound
 assert.equal(osascriptInvocation.command, 'osascript');
 assert.equal(osascriptInvocation.activationMode, 'none');
 assert.match(osascriptInvocation.args.join(' '), /display notification/);
-assert.match(osascriptInvocation.args.join(' '), /beep/);
+assert.match(osascriptInvocation.args.join(' '), /sound name "Submarine"/);
 
 const silentOsascriptInvocation = buildMacOSAppleScriptInvocation({ request, playSound: false });
-assert.doesNotMatch(silentOsascriptInvocation.args.join(' '), /beep/);
+assert.doesNotMatch(silentOsascriptInvocation.args.join(' '), /sound name "Submarine"/);
 
 const windowsInvocation = buildWindowsToastInvocation({
   request,
