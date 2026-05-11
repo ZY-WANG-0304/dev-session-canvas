@@ -3748,6 +3748,43 @@ test('overview zoom threshold runtime config controls title overview activation'
     .toBe('1');
 });
 
+test('overview mode keeps hidden node controls out of the keyboard focus path', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState(), createRuntimeContext({ overviewZoomThreshold: 0.5 }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  await clearPostedMessages(page);
+
+  const hiddenFocusSnapshots = [];
+  for (let index = 0; index < 24; index += 1) {
+    await page.keyboard.press('Tab');
+    const snapshot = await readActiveElementOverviewFocusSnapshot(page);
+    if (snapshot?.hiddenNodeControl) {
+      hiddenFocusSnapshots.push(snapshot);
+    }
+  }
+
+  expect(hiddenFocusSnapshots).toEqual([]);
+  await page.keyboard.press('Enter');
+  await settleWebview(page, 2);
+
+  const deleteMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/deleteNode')
+  );
+  expect(deleteMessages).toEqual([]);
+});
+
 test('host center node request recenters without selecting or acknowledging attention', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -5838,6 +5875,43 @@ async function readComputedOpacity(page, selector) {
     const target = document.querySelector(targetSelector);
     return target instanceof HTMLElement ? getComputedStyle(target).opacity : null;
   }, selector);
+}
+
+async function readActiveElementOverviewFocusSnapshot(page) {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) {
+      return null;
+    }
+
+    let hiddenByOverviewStyle = false;
+    let current = active;
+    while (current) {
+      const style = getComputedStyle(current);
+      if (style.opacity === '0' || style.visibility === 'hidden' || current.hasAttribute('inert')) {
+        hiddenByOverviewStyle = true;
+        break;
+      }
+      current = current.parentElement;
+    }
+
+    const node = active.closest('[data-node-id]');
+    const hiddenNodeControl =
+      Boolean(node) &&
+      hiddenByOverviewStyle &&
+      (
+        active.matches('button, input, textarea, [tabindex]') ||
+        active.closest('button, input, textarea, [tabindex]')
+      );
+
+    return {
+      tagName: active.tagName,
+      className: active.className,
+      text: active.textContent?.trim() ?? '',
+      nodeId: node?.getAttribute('data-node-id') ?? null,
+      hiddenNodeControl
+    };
+  });
 }
 
 async function waitForNodeFocusAnimation(page) {

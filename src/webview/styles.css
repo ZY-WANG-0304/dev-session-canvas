@@ -425,8 +425,13 @@ body {
 .canvas-shell.is-overview-mode .node-hint,
 .canvas-shell.is-overview-mode .compact-node-actions,
 .canvas-shell.is-overview-mode .compact-node p {
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
+}
+
+.canvas-shell.is-overview-mode .file-node-action:disabled {
+  cursor: default;
 }
 
 .canvas-shell.is-overview-mode .session-body,
@@ -444,6 +449,7 @@ body {
 .canvas-shell.is-overview-mode .file-list-entries,
 .canvas-shell.is-overview-mode .file-list-tree,
 .canvas-shell.is-overview-mode .file-list-empty {
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
@@ -478,6 +484,7 @@ body {
   display: grid;
   place-items: center;
   text-align: center;
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
@@ -500,6 +507,7 @@ body {
 }
 
 .canvas-shell.is-overview-mode[data-canvas-overview-config='title'] .node-overview-title {
+  visibility: visible;
   opacity: 1;
 }
 
