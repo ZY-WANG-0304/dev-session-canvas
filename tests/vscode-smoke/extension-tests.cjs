@@ -1433,13 +1433,29 @@ async function verifyCreateNodeCommandQuickPickKeepsTypedValueWhenPresetIsActive
     async () => {
       await vscode.commands.executeCommand(COMMAND_IDS.createNode);
     },
-    async ({ quickPick, emitChangeValue, emitAccept }) => {
+    async ({ quickPick, emitChangeValue, emitChangeActive, emitAccept }) => {
       const defaultPresetItem = quickPick.items.find((item) => item && item.launchPreset === 'default');
       assert.ok(defaultPresetItem, 'Expected the Agent launch Quick Input to include the default preset item.');
 
       quickPick.value = `${quickPick.value} ${customMarker}`;
       quickPick.activeItems = [defaultPresetItem];
       emitChangeValue(quickPick.value);
+      assert.deepStrictEqual(
+        quickPick.activeItems,
+        [],
+        'Expected editing the command input to clear the auto-activated preset item.'
+      );
+
+      quickPick.activeItems = [defaultPresetItem];
+      emitChangeActive(quickPick.activeItems);
+      await sleep(25);
+      assert.deepStrictEqual(
+        quickPick.activeItems,
+        [],
+        'Expected a preset item reactivated by VS Code to be cleared while editing the command input.'
+      );
+
+      quickPick.activeItems = [defaultPresetItem];
       emitAccept();
 
       await sleep(25);
@@ -9166,6 +9182,7 @@ async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation
     const listeners = {
       changeSelection: [],
       changeValue: [],
+      changeActive: [],
       accept: [],
       triggerButton: [],
       hide: []
@@ -9190,6 +9207,10 @@ async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation
       },
       onDidChangeValue(listener) {
         listeners.changeValue.push(listener);
+        return { dispose() {} };
+      },
+      onDidChangeActive(listener) {
+        listeners.changeActive.push(listener);
         return { dispose() {} };
       },
       onDidAccept(listener) {
@@ -9219,6 +9240,11 @@ async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation
               emitChangeValue: (value) => {
                 for (const listener of listeners.changeValue) {
                   listener(value);
+                }
+              },
+              emitChangeActive: (items) => {
+                for (const listener of listeners.changeActive) {
+                  listener(items);
                 }
               },
               emitAccept: () => {
