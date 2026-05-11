@@ -14,7 +14,7 @@ related_specs: []
 related_plans:
   - docs/exec-plans/completed/marketplace-gif-keyframe-storyboard.md
   - docs/exec-plans/completed/marketplace-real-vscode-media-automation.md
-updated_at: 2026-05-10
+updated_at: 2026-05-11
 ---
 
 # Marketplace README 素材自动化
@@ -40,7 +40,7 @@ updated_at: 2026-05-10
 - 为仓库 `README.md` / `README.en.md` 保留来自同一次真实录制会话、但按关键动作单独采集并拼装的短 `GIF`。
 - 让素材生成成为仓库内可重复执行的脚本，而不是手工录屏。
 - 让 README 继续通过仓库内稳定路径引用这些资产。
-- 在动态素材里展示真实 `Codex` / `Claude Code` / shell 会话，而不是 fake provider。
+- 在动态素材里展示真实 VS Code 宿主、真实画布 UI 和真实 shell / 文件活动链路；Claude provider 输出允许使用录制专用 deterministic wrapper，避免 README 素材受登录态、联网和模型输出漂移影响。
 - 在 `0.2.0` 版本素材里显式覆盖新的主路径能力，而不继续停留在 `0.1.2` 的旧场景。
 
 ## 4. 非目标
@@ -69,15 +69,15 @@ updated_at: 2026-05-10
 
 ### 5.5 基于真实 VS Code Extension Development Host 动态录制，并在录制期抓取 GIF 关键帧
 
-这是当前最终选定方案。脚本启动非测试模式的真实 VS Code `Extension Development Host`（只使用 `--extensionDevelopmentPath`，不使用 `--extensionTestsPath`），按默认 surface 打开画布，在同一次真实会话里先展示仅含 Note 的正常尺寸开场，再由 `scripts/recording-session.mjs` 配合原生 X11 鼠标键盘事件，依次完成模板重置、右键菜单、Quick Input、modal 确认、节点创建、重命名、关系连线和文件节点出现等真实 UI 过程。除录制开始前的场景初始化外，录制片段内不通过测试消息、命令直调或 Webview state mutation 伪装用户操作。
+这是当前最终选定方案。脚本启动非测试模式的真实 VS Code `Extension Development Host`（只使用 `--extensionDevelopmentPath`，不使用 `--extensionTestsPath`），按默认 surface 打开画布，在同一次真实会话里先展示仅含 Note 的正常尺寸开场，再由 `scripts/recording-session.mjs` 配合原生 X11 鼠标键盘事件，依次完成模板重置、右键菜单、Quick Input、modal 确认、节点创建、重命名、关系连线和文件节点出现等真实 UI 过程。除录制开始前的场景初始化外，录制片段内不通过测试消息、命令直调或 Webview state mutation 伪装用户操作；为了让素材可重复，Claude CLI 进程默认由录制专用 deterministic wrapper 提供稳定输出。
 
 与旧方案不同的是：完整 `MP4` 仍然保留，但 `GIF` 不再由视频 clip 组成，而是在同一次真实录制过程中只抓取关键操作前后的静态截图，再在录制结束后按既定顺序和停留时长拼成最终 `GIF`。这样既能保留真实宿主的一致性，也能把中间等待时间完全排除在 GIF 之外。
 
 ## 6. 风险与取舍
 
 - 真实宿主导出比 harness 更重，依赖 `Xvfb`、`xwininfo`、`ffmpeg` 和 VS Code stable 下载缓存。
-- 真实 provider 比 fake fixture 更接近用户现场，但时序和可用性也更不稳定；特别是 `Claude Code` 启动会依赖认证与联网。
-- 为了让真实 CLI 在隔离 recording runtime 里复用用户已有登录态，脚本需要把 `~/.codex/auth.json`、`~/.codex/config.toml`、`~/.claude.json` 等最小认证配置复制进临时 home。
+- 真实 provider 比 deterministic wrapper 更接近用户现场，但时序、认证、联网和模型输出都更不稳定；本轮正式素材优先保证 UI 流程、文件活动链路和媒体资产可重复。
+- Claude provider 的 deterministic wrapper 是录制边界，不是产品行为；后续若要切回真实 provider，需要补回隔离 runtime 中的最小认证配置透传，并重新生成素材。
 - 真实窗口抓图在 Linux/X11 环境下最容易自动化；如果未来要做跨平台素材导出，还需要补充平台适配。
 - 录制期并行采集 `GIF` 会多一条 `ffmpeg` 关键帧抓取链路，但它只在 checkpoint 时刻抓单帧截图；相比录 clip，更贴近“说明性 GIF”的诉求，也能彻底去掉等待过程。
 
@@ -86,10 +86,11 @@ updated_at: 2026-05-10
 ### 7.1 适用范围与边界
 
 - 正式 README 素材使用真实 VS Code 宿主窗口自动导出，不再使用 harness 作为最终来源。
-- 动态录制入口以 `docs/skills/recording-marketplace-media/SKILL.md` 为准：先运行 `node scripts/recording-session.mjs start`，再按剧本用 `record-start` / `click` / `key` / `paste` / `gif-frame` / `record-stop` / `stop` 分段录制。
+- 动态录制入口以 `docs/skills/recording-marketplace-media/SKILL.md` 为准：先运行 `node scripts/recording-session.mjs start`，再按剧本用 `record-start` / `click` / `key` / `paste` / `gif-frame` / `record-stop` / `stop` 分段录制；历史兼容入口 `npm run generate:marketplace-media` 只输出/转发该交互式工作流，不再承诺一次性无头生成完整素材。
 - `README.marketplace.md` 继续使用 `images/marketplace/canvas-overview.png` 与 `images/marketplace/canvas-overview.mp4`，仓库 `README.md` / `README.en.md` 继续使用 `images/marketplace/canvas-overview.gif`。
 - 脚本通过真实 Extension Development Host 按默认 surface 打开画布；录制开始前允许做可解释的场景初始化，但 `record-start` 与 `record-stop` 之间只允许通过原生鼠标、键盘和剪贴板完成用户可见操作。
 - 录制脚本里的节点创建、模板选择、provider 选择和 modal 确认都来自真实 VS Code UI，不再预摆节点，也不再通过“多次启动 VS Code + 每一帧抓图”伪装成连续流程。
+- 当前正式媒体资产的 Claude 节点由 `scripts/recording-session.mjs` 在 `PATH` 前置录制专用 `claude` wrapper 驱动；wrapper 复用 smoke fixture 的确定性输出，并把文件活动事件写回录制 runtime，确保最终画面稳定包含单文件节点。
 - 若剧本需要准备示例文件、固定初始布局或切换到另一条故事线，初始化必须发生在对应片段开始前，并在剧本或录制说明中显式说明；不能把初始化通道产生的状态变化剪进视频并当作用户操作。
 - 录制 runtime 会显式把 `devSessionCanvas.files.presentationMode` 设为 `nodes`、`devSessionCanvas.fileNode.displayStyle` 设为 `minimal`、`devSessionCanvas.files.nodeDisplayMode` 设为 `icon-path`，确保 `0.2.0` 的文件活动视图以单文件节点形态稳定进入最终素材，而不是继续沿用 `0.1.2` 的旧录制口径。
 - 最终概览画面需要同时保留一个用户手工关系连线和一个围绕 `.debug/release-media-demo.md` 展开的自动单文件节点，用来覆盖 `0.2.0` 的两条核心新能力。
@@ -103,6 +104,7 @@ updated_at: 2026-05-10
 
 ### 7.2 产物链路与代码锚点
 
+- `scripts/generate-marketplace-media.mjs` 保留历史 npm 入口：无参数时输出交互式录制流程，有参数时把子命令转发给 `scripts/recording-session.mjs`。
 - `scripts/recording-session.mjs start` 负责构建扩展、准备 main-only extension 目录、启动 `Xvfb` + `xfwm4`、启动真实 VS Code Extension Development Host、通过 activity bar / sidebar 打开 panel 画布，并写入 `.debug/marketplace-media/recording-session.json`。
 - `scripts/recording-session.mjs click` / `key` / `paste` 负责录制片段内的真实用户输入；它们通过 `scripts/x11-native-input.py` 和 X11 clipboard 发送原生事件，不通过 Playwright synthetic click 或 Webview message 替代用户操作。
 - `scripts/recording-session.mjs record-start` / `record-stop` / `gif-frame` / `stop` 负责把真实窗口区域录成 MP4 clip、抓取 GIF storyboard frame，并在收尾时拼出 `images/marketplace/canvas-overview.mp4`、`images/marketplace/canvas-overview.gif` 与 `images/marketplace/canvas-overview.png`。
@@ -113,8 +115,8 @@ updated_at: 2026-05-10
 
 - `GIF` 与 `MP4` 来自同一次真实 VS Code 会话，但它们不是同一条时间轴的两个转码视图：`MP4` 保留完整过程，`GIF` 只保留脚本显式选择的关键帧截图。
 - 正式 `GIF` 的输入来源必须是录制期实时采到的 storyboard frame，不能再回退成“完整 `MP4` 完成后统一抽帧”，也不能继续回退成“关键阶段短 clip”。
-- `PNG` 仍从完整录屏尾部的稳定概览帧导出；这条静态图链路不需要为了 `GIF` 重构而重新启动 VS Code 抓图。
-- 无论 `GIF` 如何收口，README 中展示的节点内容、布局、provider 与文件活动效果都必须继续来自真实 `Codex` / `Claude Code` / shell 会话，而不是 fake fixture。
+- `PNG` 仍从最后一个稳定概览 storyboard frame 导出；抓取最终全景前必须等待或关闭 VS Code notification，避免 toast 遮挡画布或小地图。
+- 无论 `GIF` 如何收口，README 中展示的节点内容、布局与文件活动效果都必须来自真实 VS Code 宿主中的画布运行时；provider 输出的 deterministic wrapper 必须在设计文档和 PR 描述中显式标注，不能误写成真实 Claude CLI 输出。
 - GIF 中间产物只允许落在 `.debug/marketplace-media/` 下，最终对外资产仍只保留 `images/marketplace/` 中的 `PNG` / `MP4` / `GIF`。
 - 录制宿主必须是非测试模式的 Extension Development Host；VS Code 原生 modal、Quick Input 与右键菜单都应进入真实录制路径，不允许为了媒体录制在产品代码里增加自动确认或绕过逻辑。
 - 录制片段内只允许 `click` / `key` / `paste` 这类真实输入命令驱动画面；`locate`、`screenshot`、`state` 只能用于观察和定位。
@@ -132,3 +134,5 @@ updated_at: 2026-05-10
 截至 2026-04-24，本设计已经完成一轮真实验证：`node --check scripts/generate-marketplace-media.mjs`、`npm run build`、`npm run typecheck` 与 `git diff --check` 全部通过；随后通过批准过的 `/bin/bash -lc "npm run generate:marketplace-media >/tmp/marketplace-media.log 2>&1"` 生成了新的素材，日志明确输出 `Composing GIF from 17 storyboard frames.`，并产出 `images/marketplace/canvas-overview.png`、`images/marketplace/canvas-overview.gif` 与 `images/marketplace/canvas-overview.mp4`。最终 `GIF` 经 `ffprobe` 验证为 `1180x738`、`11.320000s`、`18` 帧，对应的 storyboard metadata 记录了 17 张关键帧截图。
 
 截至 2026-05-10，本设计完成动态录制路径修订验证：`node scripts/recording-session.mjs start` 能启动真实 Extension Development Host；通过原生 `click` 触发“示例模板”的重置按钮后，VS Code 原生确认框正常居中显示并可通过鼠标确认；确认后 `node scripts/recording-session.mjs state` 从真实 workspaceStorage 读取到 3 个节点和 1 条连线。同步执行 `node --check scripts/recording-session.mjs`、`python3 -c "import py_compile; py_compile.compile('scripts/x11-native-input.py', cfile='/tmp/x11-native-input.pyc', doraise=True)"`、`git diff --check`、`npm run typecheck` 与 `npm run test:canvas-templates`，均通过。
+
+截至 2026-05-11，本设计针对复审意见补齐兼容入口、单文件节点配置和 deterministic provider 边界说明；重新导出最终 `PNG`、`GIF` 最后一帧与 `MP4` 尾帧，确认不再包含 VS Code notification toast。同步执行 `npm run generate:marketplace-media`、`node --check scripts/generate-marketplace-media.mjs`、`node --check scripts/recording-session.mjs`、`python3 -c "import py_compile; py_compile.compile('scripts/x11-native-input.py', cfile='/tmp/x11-native-input.pyc', doraise=True)"`、`git diff --check`、`npm run typecheck`、`npm run test:canvas-templates`、`file images/marketplace/canvas-overview.*` 与 `ffprobe`，均通过。

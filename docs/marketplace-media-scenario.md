@@ -78,7 +78,7 @@ fit view 让所有节点可见，在 AI Assistant 和 Reviewer 之间创建一�
 
 ### 场景 8: 最终全景
 
-最大化 panel 区域，fit view 显示完整画布全貌。
+最大化 panel 区域，等待或关闭保存模板产生的 VS Code notification 后，fit view 显示完整画布全貌。
 
 **GIF 帧:** 完整工作区全景（作为 PNG 截图和 GIF 最后一帧）
 
