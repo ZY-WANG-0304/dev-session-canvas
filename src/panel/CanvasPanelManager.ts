@@ -3264,7 +3264,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       source: resource.source,
       valueKind: resource.valueKind
     });
-    this.writeExecutionInput(kind, nodeId, preparedPath);
+    await this.writeExecutionInput(kind, nodeId, preparedPath);
   }
 
   private async handleResolveExecutionFileLinks(
@@ -5202,7 +5202,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
         return;
       case 'webview/executionInput':
-        this.writeExecutionInput(
+        void this.writeExecutionInput(
           parsedMessage.payload.kind,
           parsedMessage.payload.nodeId,
           parsedMessage.payload.data
@@ -7519,7 +7519,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (this.isRuntimePersistenceEnabled()) {
       try {
         await this.startTerminalSessionWithSupervisor(nodeId, normalizedCols, normalizedRows);
-        this.flushPendingTerminalInitialInput(nodeId);
+        await this.flushPendingTerminalInitialInput(nodeId);
       } catch (error) {
         const message = describeEmbeddedTerminalSpawnError(shellPath, error);
         this.recordDiagnosticEvent('execution/spawnError', {
@@ -7760,7 +7760,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.persistState();
       this.postState('host/stateUpdated');
       this.postExecutionSnapshot('terminal', nodeId);
-      this.flushPendingTerminalInitialInput(nodeId);
+      await this.flushPendingTerminalInitialInput(nodeId);
 
       session.lifecycleTimer = setTimeout(() => {
         const activeSession = this.terminalSessions.get(nodeId);
@@ -7879,7 +7879,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private flushPendingTerminalInitialInput(nodeId: string): void {
+  private async flushPendingTerminalInitialInput(nodeId: string): Promise<void> {
     const input = this.pendingTerminalInitialInputs.get(nodeId);
     if (!input) {
       return;
@@ -7900,7 +7900,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const inputWritten = this.writeExecutionInput('terminal', nodeId, input);
+    const inputWritten = await this.writeExecutionInput('terminal', nodeId, input);
     this.completePendingTerminalInitialInputDispatch(nodeId, {
       dispatched: inputWritten,
       errorMessage: inputWritten ? undefined : 'Terminal 已启动，但安装命令未能写入。'
@@ -7946,7 +7946,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postExecutionSnapshot(kind, nodeId);
   }
 
-  private writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): boolean {
+  private async writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): Promise<boolean> {
     const inputDetail = {
       kind,
       nodeId,
@@ -7995,28 +7995,40 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (kind === 'terminal') {
       session.lineContextTracker.recordInput(data);
     }
-    if (session.owner === 'local') {
-      session.process.write(data);
-    } else {
-      const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
-      this.trackRuntimeSupervisorOperation(
-        this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
-          .then((client) =>
-            client.writeInput({
-              sessionId: session.runtimeSessionId,
-              data
-            })
-          )
-          .catch((error) => {
-            this.postMessage({
-              type: 'host/error',
-              payload: {
-                message: error instanceof Error ? error.message : '向 live runtime 写入输入失败。'
-              }
-            });
+    try {
+      if (session.owner === 'local') {
+        session.process.write(data);
+      } else {
+        const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+        const operation = this.getRuntimeSupervisorClientForKind(
+          backendKind,
+          {},
+          session.runtimeStoragePath
+        ).then((client) =>
+          client.writeInput({
+            sessionId: session.runtimeSessionId,
+            data
           })
-      );
+        );
+        this.trackRuntimeSupervisorOperation(operation.catch(() => undefined));
+        await operation;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '向 live runtime 写入输入失败。';
+      this.recordDiagnosticEvent('execution/inputRejected', {
+        ...inputDetail,
+        reason: 'write-failed',
+        message
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+      return false;
     }
+
     this.recordDiagnosticEvent('execution/inputWritten', {
       ...inputDetail,
       sessionId: session.sessionId
