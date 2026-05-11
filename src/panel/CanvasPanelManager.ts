@@ -3476,8 +3476,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.agentFileActivitySessions.delete(nodeId);
     await existing.dispose();
+    if (this.agentFileActivitySessions.get(nodeId) === existing) {
+      this.agentFileActivitySessions.delete(nodeId);
+    }
   }
 
   private handleAgentFileActivityEvent(nodeId: string, event: AgentFileActivityEvent): void {
