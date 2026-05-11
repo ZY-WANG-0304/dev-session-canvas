@@ -65,11 +65,13 @@ updated_at: 2026-05-12
 - `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg`
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png`
+- `extensions/vscode/dev-session-canvas-notifier/images/avatar.png`
 
 - notifier companion 的 Marketplace icon 继续沿用“从 activity bar icon 出发，再放大并上色导出 PNG”的策略，不单独发明新的轮廓语言。
 - 颜色策略沿用主扩展的上下双终端分色：上层 terminal 使用 `#4CB6A3`，下层 terminal 使用 `#497BF0`；右上角通知徽标也对齐为上层 terminal 的绿色，保持更统一的视觉语言。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 是放大并上色后的独立矢量源，用于收口 notifier 的 Marketplace icon 造型。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png` 由 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 渲染导出，作为 notifier 后续接入 Marketplace icon 时的正式 PNG 资产。
+- `extensions/vscode/dev-session-canvas-notifier/images/avatar.png` 由同一 `icon.svg` 渲染生成，但画面缩放到 `512x512` 透明画布的圆形安全区内，确保被头像圆形裁切时仍完整显示 icon 主体。
 
 ### 5.4 Activity Bar Badge 约定
 
@@ -97,6 +99,7 @@ updated_at: 2026-05-12
 
 - 主 icon 的最终 PNG 依赖渲染链生成；如果后续 SVG 继续微调，应重新导出 `images/icon.png`。
 - notifier companion 的最终 PNG 同样依赖渲染链；如果后续调整 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`，应同步重新导出 `extensions/vscode/dev-session-canvas-notifier/images/icon.png`。
+- notifier companion 的头像 PNG 同样依赖 `icon.svg`；如果后续调整 icon 主体或 badge，应同步重新导出 `extensions/vscode/dev-session-canvas-notifier/images/avatar.png` 并运行 `npm run test:notifier-avatar`。
 - 当前已经完成文件级同步与渲染验证，但还没有补充 Marketplace 或 VS Code 实景截图类人工校验。
 - badge 约定依赖手写 SVG mask；后续新增专属 icon 时应至少做 XML/路径存在检查，并在需要时补 VS Code 实景截图确认 24px 可读性。
 
@@ -110,12 +113,14 @@ updated_at: 2026-05-12
 - `extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg` 是 notifier companion activity bar icon 的唯一源文件。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 是 notifier companion Marketplace icon 的唯一矢量源文件。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png` 是 notifier companion 的正式 PNG icon 资产。
+- `extensions/vscode/dev-session-canvas-notifier/images/avatar.png` 是 notifier companion 可用于圆形头像场景的 PNG 资产，要求可见像素保留在头像圆形安全区内。
 - 未来新增专属 sidebar view icon 时，应优先复用 5.4 的 badge 约定：保留主 glyph、右上角单色圆形 badge、内部 glyph 用 mask 镂空。
 - 其他历史 icon 草稿应从仓库中移除。
 
 ## 8. 验证方法
 
 - 2026-05-12 已按 badge 内容外径圆 `r=3.85` 约定检查并调整 `images/dev-session-canvas-templates-activitybar.svg`、`images/dev-session-canvas-nodes-activitybar.svg`、`extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg`；同时同步检查仓库内保留的 `images/dev-session-canvas-notifier-activitybar.svg` 草稿资产，避免同语义 activitybar 图标继续漂移。已新增 `npm run test:activitybar-badges`，用 Playwright 按 100x 渲染 SVG 并量测 badge cutout 的最大半径是否贴近 `3.85`。
+- 2026-05-12 已新增 notifier 头像图 `extensions/vscode/dev-session-canvas-notifier/images/avatar.png`，并通过 `npm run test:notifier-avatar` 验证 `512x512` 头像可见像素位于半径 `244px` 的圆形安全区内。
 - 已验证 `images/dev-session-canvas-icon.svg` 与 `images/dev-session-canvas-activitybar.svg` 的 SVG XML 语法有效。
 - 已使用本地渲染链将 `images/dev-session-canvas-icon.svg` 渲染为正式 `images/icon.png`。
 - 已新增 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg`，将 notifier 的放大上色版正式收口为独立矢量源。
