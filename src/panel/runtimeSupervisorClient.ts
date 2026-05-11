@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import * as net from 'net';
 
+import { createRuntimeSupervisorError } from '../common/runtimeSupervisorProtocol';
 import type {
   RuntimeSupervisorAttachSessionParams,
   RuntimeSupervisorClientEventHandlers,
@@ -257,7 +258,7 @@ export class RuntimeSupervisorClient {
       if (message.ok) {
         pending.resolve(message.result);
       } else {
-        pending.reject(new Error(message.error.message));
+        pending.reject(createRuntimeSupervisorError(message.error));
       }
       return;
     }

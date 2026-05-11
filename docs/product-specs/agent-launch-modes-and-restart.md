@@ -71,6 +71,8 @@
   - 右键菜单和停止节点的下拉菜单都支持 `Escape` 关闭。
   - 在右键菜单的 Agent 分层里，`Escape` 优先返回上一级；只有在根层才关闭整个菜单。
   - 自定义启动输入打开后，第一次 `Escape` 必须先关闭输入框，而不是整个菜单；即使焦点已经移到“确定”按钮或同层其他控件，也仍然遵循这条规则。
+- CLI 缺失补救：
+  - 右键创建 `Codex` / `Claude Code` Agent 后，如果启动阶段因为当前执行宿主没有找到对应 CLI 命令而失败，宿主必须自动打开与侧栏概览 `Codex 命令` / `Claude Code 命令` 行相同的 CLI 选择 Quick Input；如果仍未发现可用 CLI，该 Quick Input 继续提供 `命令行安装` 与 `安装 VS Code 插件` 两级安装分流。
 
 ## 5. 不在范围内
 
@@ -127,6 +129,7 @@
 - 停止后的 Agent 节点标题栏显示 split button；主按钮默认恢复原会话，下拉菜单允许改成“新会话”。
 - 当节点缺少可恢复上下文时，标题栏只显示单个 `启动` 按钮，不再显示 disabled 的 `重启 | ▼` split button；也不会偷偷改成恢复 provider 的最近会话。
 - 对 `Claude Code` 的 fresh-start，如果启动后已根据候选 `session-id` 确认 provider 会话文件存在，即使 stop-time 没再额外打印 resume 提示，节点也应继续保留“恢复原会话”入口；只有既没有文件确认也没有 stop-time 提示时，才退化为单个 `启动` 按钮。
+- 通过右键创建 `Codex` / `Claude Code` Agent 时，若 CLI 未安装或命令无法解析，节点会进入明确错误态，同时自动弹出和侧栏概览命令行相同的 CLI 选择/安装 Quick Input，用户不需要再去侧栏手动寻找修复入口。
 
 ## 8. 开放问题
 
