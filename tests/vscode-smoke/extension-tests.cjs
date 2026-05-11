@@ -668,7 +668,7 @@ async function runTrustedSmoke() {
   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
-  await verifyCreateNodeCommandQuickPickKeepsTypedValueWhenPresetIsActive();
+  await verifyCreateNodeCommandInputBoxKeepsTypedValueWhenUsingPresetButtons();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
@@ -1420,7 +1420,7 @@ async function verifyCreateNodeCommandQuickPick() {
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 }
 
-async function verifyCreateNodeCommandQuickPickKeepsTypedValueWhenPresetIsActive() {
+async function verifyCreateNodeCommandInputBoxKeepsTypedValueWhenUsingPresetButtons() {
   await clearHostMessages();
   await clearDiagnosticEvents();
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
@@ -1429,40 +1429,27 @@ async function verifyCreateNodeCommandQuickPickKeepsTypedValueWhenPresetIsActive
   const customMarker = `--quick-input-enter-regression-${Date.now()}`;
 
   await setQuickPickSelections(['create-agent-default']);
-  await withInterceptedCreateQuickPicks(
+  await withInterceptedCreateInputBoxes(
     async () => {
       await vscode.commands.executeCommand(COMMAND_IDS.createNode);
     },
-    async ({ quickPick, emitChangeValue, emitChangeActive, emitAccept }) => {
-      const defaultPresetItem = quickPick.items.find((item) => item && item.launchPreset === 'default');
-      assert.ok(defaultPresetItem, 'Expected the Agent launch Quick Input to include the default preset item.');
-
-      quickPick.value = `${quickPick.value} ${customMarker}`;
-      quickPick.activeItems = [defaultPresetItem];
-      emitChangeValue(quickPick.value);
+    async ({ inputBox, emitChangeValue, emitAccept, emitTriggerButton }) => {
+      const presetButtons = inputBox.buttons.filter((button) => button && button.launchPreset);
       assert.deepStrictEqual(
-        quickPick.activeItems,
-        [],
-        'Expected editing the command input to clear the auto-activated preset item.'
+        presetButtons.map((button) => button.launchPreset),
+        ['default', 'resume', 'yolo', 'sandbox'],
+        'Expected the Agent launch InputBox to expose preset replacement buttons instead of selectable list items.'
       );
 
-      quickPick.activeItems = [defaultPresetItem];
-      emitChangeActive(quickPick.activeItems);
-      await sleep(25);
-      assert.deepStrictEqual(
-        quickPick.activeItems,
-        [],
-        'Expected a preset item reactivated by VS Code to be cleared while editing the command input.'
-      );
+      const yoloButton = presetButtons.find((button) => button.launchPreset === 'yolo');
+      assert.ok(yoloButton, 'Expected the Agent launch InputBox to include a YOLO preset button.');
+      emitTriggerButton(yoloButton);
+      assert.ok(inputBox.value.includes('--yolo'), 'Expected the YOLO preset button to replace the command input.');
+      assert.strictEqual(inputBox.disposed, false, 'Preset buttons should not create or close the Agent launch InputBox.');
 
-      quickPick.activeItems = [defaultPresetItem];
+      inputBox.value = `${inputBox.value} ${customMarker}`;
+      emitChangeValue(inputBox.value);
       emitAccept();
-
-      await sleep(25);
-      if (!quickPick.disposed) {
-        quickPick.activeItems = [];
-        emitAccept();
-      }
     }
   );
 
@@ -9174,43 +9161,30 @@ async function withInterceptedQuickPicks(runIntercepted, resolveSelection) {
   }
 }
 
-async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation) {
-  const originalCreateQuickPick = vscode.window.createQuickPick;
+async function withInterceptedCreateInputBoxes(runIntercepted, resolveSimulation) {
+  const originalCreateInputBox = vscode.window.createInputBox;
   const calls = [];
 
-  vscode.window.createQuickPick = () => {
+  vscode.window.createInputBox = () => {
     const listeners = {
-      changeSelection: [],
       changeValue: [],
-      changeActive: [],
       accept: [],
       triggerButton: [],
       hide: []
     };
-    const quickPick = {
+    const inputBox = {
       title: undefined,
       placeholder: undefined,
-      matchOnDescription: false,
-      matchOnDetail: false,
+      prompt: undefined,
+      validationMessage: undefined,
       value: '',
-      items: [],
+      valueSelection: undefined,
       buttons: [],
       ignoreFocusOut: false,
-      activeItems: [],
-      selectedItems: [],
-      canSelectMany: false,
       disposed: false,
       visible: false,
-      onDidChangeSelection(listener) {
-        listeners.changeSelection.push(listener);
-        return { dispose() {} };
-      },
       onDidChangeValue(listener) {
         listeners.changeValue.push(listener);
-        return { dispose() {} };
-      },
-      onDidChangeActive(listener) {
-        listeners.changeActive.push(listener);
         return { dispose() {} };
       },
       onDidAccept(listener) {
@@ -9230,21 +9204,11 @@ async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation
         setTimeout(() => {
           if (typeof resolveSimulation === 'function') {
             resolveSimulation({
-              quickPick,
+              inputBox,
               listeners,
-              emitChangeSelection: (items) => {
-                for (const listener of listeners.changeSelection) {
-                  listener(items);
-                }
-              },
               emitChangeValue: (value) => {
                 for (const listener of listeners.changeValue) {
                   listener(value);
-                }
-              },
-              emitChangeActive: (items) => {
-                for (const listener of listeners.changeActive) {
-                  listener(items);
                 }
               },
               emitAccept: () => {
@@ -9274,20 +9238,20 @@ async function withInterceptedCreateQuickPicks(runIntercepted, resolveSimulation
         this.disposed = true;
       }
     };
-    calls.push({ quickPick, listeners });
-    return quickPick;
+    calls.push({ inputBox, listeners });
+    return inputBox;
   };
 
   assert.notStrictEqual(
-    vscode.window.createQuickPick,
-    originalCreateQuickPick,
-    'Failed to intercept vscode.window.createQuickPick.'
+    vscode.window.createInputBox,
+    originalCreateInputBox,
+    'Failed to intercept vscode.window.createInputBox.'
   );
 
   try {
     return await runIntercepted(calls);
   } finally {
-    vscode.window.createQuickPick = originalCreateQuickPick;
+    vscode.window.createInputBox = originalCreateInputBox;
   }
 }
 

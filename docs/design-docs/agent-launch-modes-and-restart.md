@@ -192,14 +192,15 @@ updated_at: 2026-04-30
 `src/extension.ts` 中的 `Dev Session Canvas: 创建节点` 命令保持两层：
 
 - 第一层：延续当前“创建对象 / 按类型创建 Agent”的分组与 provider 选择。
-- 第二层：只对 Agent 打开，顶部输入框显示完整命令，下方 `默认 / Resume / YOLO / 沙盒` 项是快捷替换器。
+- 第二层：只对 Agent 打开，输入框显示完整命令，标题栏 `默认 / Resume / YOLO / 沙盒` 快捷按钮是替换器。
 
 正式规则：
 
 - Enter 始终按输入框当前值创建，不额外增加“创建”按钮。
-- 点击下方预设项只改写输入框，不直接创建。
+- 点击标题栏预设快捷按钮只改写输入框，不直接创建。
 - 如果用户显式点击了某个预设，而最终输入框内容在语义上仍等价于该预设生成的完整命令，则节点 metadata 里的 `launchPreset` 保留这次显式选择，而不是仅靠字符串反推后回落成 `default`。
 - 第二层允许通过 Back 返回第一层。
+- 第二层使用 `InputBox` + 标题栏按钮，而不是把预设做成 `QuickPick` 可选列表；原因是 VSCode `QuickPick` 会在输入过滤时自动激活第一个可选项，无法稳定表达“列表项只是非提交快捷替换器”。
 - 测试环境保留可脚本化 override，避免 smoke 依赖真实 Quick Input 自动化。
 
 ### 7.5 宿主执行路径
@@ -266,4 +267,5 @@ updated_at: 2026-04-30
 - 2026-04-26：本轮继续按“结构化 argv + 文档化 Windows quoting 兼容层”收口：新 formatter 改成更接近原生 Windows 的最小转义，parser 同时接受新 canonical output、旧版“全量双写反斜杠”的历史文本，以及自然输入的 quoted UNC path；已新增绝对路径 / UNC / 尾部反斜杠回归。
 - 2026-04-29：本轮继续收口“显式预设 vs 默认模式参数”冲突：共享命令层改成只对白名单里的 provider-owned execution mode flags 做有限覆盖，再回填 `YOLO / 沙盒`；未知组合明确要求用户改走自定义启动。`Codex` 的 `resume` 子命令及其参数继续保留，因为它们和执行策略参数并不互斥。同时 Quick Input 第二步会在显式点击预设且最终命令仍等价时保留该 preset 的 metadata，而不是仅靠字符串反推回落成 `default`。相关回归新增覆盖右键菜单文案、命令层归一化，以及 QuickPick 在“默认命令已含 `--yolo`”场景下仍持久化 `launchPreset: 'yolo'`。
 - 2026-04-30：按最新 UI polish 继续收口右键菜单与节点标题栏：根层右键菜单改成 `Note / Terminal / provider 列表`，默认 provider 排在第一位；启动方式说明区新增固定高度与 hover 完整命令；Agent 节点标题/副标题在宽节点上改成固定可读上限；共享命令层把显式 `Resume / YOLO / 沙盒` argv 尽量前置到命令前部。
+- 2026-05-11：命令面板 / 侧栏创建 Agent 的第二步 Quick Input 改为 `InputBox` + 标题栏快捷按钮，避免 `QuickPick` 在用户编辑完整命令时自动高亮第一个预设并造成误导或闪烁；Enter 仍始终按当前输入框内容创建。
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。
