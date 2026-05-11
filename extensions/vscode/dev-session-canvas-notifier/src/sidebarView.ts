@@ -1,13 +1,12 @@
 import * as vscode from 'vscode';
 
-import type {
-  AttentionNotificationActivationMode,
-  AttentionNotificationDebugRecord
-} from '../../../../packages/attention-protocol/src/index';
+import type { AttentionNotificationDebugRecord } from '../../../../packages/attention-protocol/src/index';
 import {
   probeNotifierEnvironmentSnapshot,
+  type NotifierAgentConfigurationGuide,
   type NotifierEnvironmentSnapshot,
-  type NotifierExtensionModeLabel
+  type NotifierExtensionModeLabel,
+  type NotifierPlatformGuide
 } from './sidebarEnvironment';
 
 export interface NotifierSidebarLatestAttempt {
@@ -92,7 +91,9 @@ function renderSidebarHtml(
   const nonce = createNonce();
   const statusHtml = renderNotificationStatus(snapshot, latestRecord, latestManualAttempt);
   const environmentHtml = renderEnvironmentInfo(snapshot);
-  const setupHtml = renderSetupGuidance(snapshot);
+  const setupHtml = renderEnvironmentGuidance(snapshot);
+  const agentConfigurationHtml = renderAgentConfigurationGuidance(snapshot);
+  const notesHtml = renderNotes(snapshot);
 
   return `<!DOCTYPE html>
   <html lang="zh-CN">
@@ -234,7 +235,7 @@ function renderSidebarHtml(
         }
 
         .setup-item {
-          padding: 8px 0;
+          padding: 10px 0;
         }
 
         .setup-item + .setup-item {
@@ -267,6 +268,36 @@ function renderSidebarHtml(
           line-height: 1.4;
         }
 
+        .setup-detail + .setup-detail {
+          margin-top: 6px;
+        }
+
+        .setup-hint-list,
+        .notes-list {
+          margin: 8px 0 0 0;
+          padding-left: 18px;
+          color: var(--vscode-descriptionForeground);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .setup-hint-list li,
+        .notes-list li {
+          margin: 0 0 4px 0;
+        }
+
+        .snippet-block {
+          margin: 8px 0 0 0;
+          padding: 8px 10px;
+          background: var(--vscode-textCodeBlock-background);
+          border-radius: 6px;
+          font-family: var(--vscode-editor-font-family);
+          font-size: 12px;
+          line-height: 1.45;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+
         .code {
           font-family: var(--vscode-editor-font-family);
           background: var(--vscode-textCodeBlock-background);
@@ -295,6 +326,8 @@ function renderSidebarHtml(
       </div>
 
       ${setupHtml}
+      ${agentConfigurationHtml}
+      ${notesHtml}
 
       <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
@@ -316,7 +349,7 @@ function renderNotificationStatus(
   const hasRecentTest = latestManualAttempt?.requestedAt !== undefined;
   const notificationPosted = latestRecord?.result.status === 'posted';
   const callbackActivated = latestManualAttempt?.activatedAt !== undefined;
-  const supportsCallback = snapshot.activationLabel === 'protocol' || snapshot.activationLabel === 'direct-action';
+  const supportsCallback = snapshot.activationKind === 'protocol' || snapshot.activationKind === 'direct-action';
 
   let statusIcon = '';
   let statusTitle = '';
@@ -359,9 +392,6 @@ function renderNotificationStatus(
 }
 
 function renderEnvironmentInfo(snapshot: NotifierEnvironmentSnapshot): string {
-  const canClickToReturn = snapshot.activationLabel === 'protocol' || snapshot.activationLabel === 'direct-action';
-  const clickSupportText = canClickToReturn ? '支持' : '不支持';
-
   let routeDescription = '';
   if (snapshot.modeLabel === 'test') {
     routeDescription = '测试模式，通知不会触达真实系统';
@@ -381,7 +411,7 @@ function renderEnvironmentInfo(snapshot: NotifierEnvironmentSnapshot): string {
       </div>
       <div class="info-item">
         <span class="info-label">点击回跳</span>
-        <span class="info-value">${escapeHtml(clickSupportText)}</span>
+        <span class="info-value">${escapeHtml(snapshot.activationLabel)}</span>
       </div>
       <div class="info-item">
         <span class="info-label">声音提醒</span>
@@ -389,21 +419,13 @@ function renderEnvironmentInfo(snapshot: NotifierEnvironmentSnapshot): string {
       </div>
     </div>
     <p class="help-text" style="margin-top: 12px;">${escapeHtml(routeDescription)}</p>
+    <p class="help-text">${escapeHtml(snapshot.activationDetail)}</p>
     <p class="help-text">${escapeHtml(snapshot.soundDetail)}</p>
   `;
 }
 
-function renderSetupGuidance(snapshot: NotifierEnvironmentSnapshot): string {
-  const needsSetup = snapshot.installRequirements.some(
-    (req) => req.statusLabel === '未检测到' || req.statusLabel === '未支持'
-  );
-
-  if (!needsSetup) {
-    return '';
-  }
-
+function renderEnvironmentGuidance(snapshot: NotifierEnvironmentSnapshot): string {
   const itemsHtml = snapshot.installRequirements
-    .filter((req) => req.statusLabel === '未检测到' || req.statusLabel === '未支持')
     .map(
       (req) => `
       <div class="setup-item">
@@ -412,27 +434,96 @@ function renderSetupGuidance(snapshot: NotifierEnvironmentSnapshot): string {
           <span class="setup-badge">${escapeHtml(req.statusLabel)}</span>
         </div>
         <p class="setup-detail">${escapeHtml(req.detail)}</p>
-        ${req.installHint ? `<p class="setup-detail">${formatInstallHint(req.installHint)}</p>` : ''}
+        ${renderHintList(req.hints)}
       </div>
     `
     )
     .join('');
+  const platformGuidesHtml = snapshot.platformGuides
+    .map((guide) => renderPlatformGuideCard(guide))
+    .join('');
 
   return `
     <div class="section">
-      <h2>需要安装</h2>
+      <h2>环境接入</h2>
+      <p class="help-text">这些工具安装在当前本机 UI 环境；即使 workspace 跑在 Remote SSH、WSL 或 Dev Container，也不要把桌面通知后端只装在远端。</p>
+      ${itemsHtml}
+      <p class="help-text" style="margin-top: 12px;">其他本机 UI 环境可参考以下平台说明：</p>
+      ${platformGuidesHtml}
+    </div>
+  `;
+}
+
+function renderPlatformGuideCard(guide: NotifierPlatformGuide): string {
+  return `
+    <div class="setup-item">
+      <div class="setup-header">
+        <span class="setup-name">${escapeHtml(guide.platformLabel)}</span>
+        <span class="setup-badge">${escapeHtml(guide.statusLabel)}</span>
+      </div>
+      <p class="setup-detail">${escapeHtml(guide.detail)}</p>
+      ${renderHintList(guide.hints)}
+    </div>
+  `;
+}
+
+function renderAgentConfigurationGuidance(snapshot: NotifierEnvironmentSnapshot): string {
+  const itemsHtml = snapshot.agentConfigurationGuides
+    .map((guide) => renderAgentConfigurationCard(guide))
+    .join('');
+
+  return `
+    <div class="section">
+      <h2>Agent 通知配置</h2>
+      <p class="help-text">桌面通知 companion 只负责把 attention signal 送回本机桌面；要让 Agent 主动发出 BEL、OSC 9、OSC 777，还需要在 Agent 实际运行宿主上配置 CLI。</p>
       ${itemsHtml}
     </div>
   `;
 }
 
-function formatInstallHint(hint: string): string {
-  const commandMatch = hint.match(/(brew install|apt install|sudo apt install)\s+([^\s.]+)/);
-  if (commandMatch) {
-    const [, cmd, pkg] = commandMatch;
-    return `安装命令：<span class="code">${escapeHtml(`${cmd} ${pkg}`)}</span>`;
+function renderAgentConfigurationCard(guide: NotifierAgentConfigurationGuide): string {
+  return `
+    <div class="setup-item">
+      <div class="setup-header">
+        <span class="setup-name">${escapeHtml(guide.agentLabel)}</span>
+        <span class="setup-badge">推荐配置</span>
+      </div>
+      <p class="setup-detail">${escapeHtml(guide.detail)}</p>
+      <p class="setup-detail">配置文件：<span class="code">${escapeHtml(guide.configPath)}</span></p>
+      <pre class="snippet-block">${escapeHtml(guide.recommendedSnippet)}</pre>
+      ${renderHintList(guide.hints)}
+    </div>
+  `;
+}
+
+function renderNotes(snapshot: NotifierEnvironmentSnapshot): string {
+  if (snapshot.notes.length === 0) {
+    return '';
   }
-  return escapeHtml(hint);
+
+  const itemsHtml = snapshot.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
+  return `
+    <div class="section">
+      <h2>使用提示</h2>
+      <ul class="notes-list">${itemsHtml}</ul>
+    </div>
+  `;
+}
+
+function renderHintList(hints: string[] | undefined): string {
+  if (!hints || hints.length === 0) {
+    return '';
+  }
+
+  const itemsHtml = hints.map((hint) => `<li>${formatInlineCodeSegments(hint)}</li>`).join('');
+  return `<ul class="setup-hint-list">${itemsHtml}</ul>`;
+}
+
+function formatInlineCodeSegments(value: string): string {
+  return value
+    .split(/`([^`]+)`/g)
+    .map((segment, index) => (index % 2 === 1 ? `<span class="code">${escapeHtml(segment)}</span>` : escapeHtml(segment)))
+    .join('');
 }
 
 function escapeHtml(value: string): string {

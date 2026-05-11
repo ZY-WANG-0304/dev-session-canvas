@@ -35,6 +35,8 @@
 - 该路径是否支持点击系统通知后回到 VS Code
 - 当前是否请求系统播放提示音
 - 当前机器还需要用户预安装什么（例如 macOS 上是否已安装 `terminal-notifier`、Linux 上是否已检测到 `notify-send`）
+- 当前本机 UI 环境对应的工具安装指导，以及 macOS / Linux / Windows 三套平台参考说明
+- Codex 与 Claude Code 在 Agent 实际运行宿主上开启 attention signal 的推荐配置片段
 - 最近一次 notifier 投递结果，便于对照诊断输出
 
 `通知环境` 标题行最右侧的齿轮按钮可直接打开本扩展配置。
