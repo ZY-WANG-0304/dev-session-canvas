@@ -54,22 +54,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.8.0 Highlights
+## 0.9.0 Highlights
 
-The public `0.8.0` release focuses on day-to-day Agent usability: familiar copy / paste shortcuts inside canvas execution nodes, `Codex` / `Claude Code` CLI configuration entry points, and a more compact default file-activity list view.
+The public `0.9.0` release focuses on large-canvas navigation and Agent launch recovery: spread-out canvases can zoom farther out, the default low-zoom overview shows node titles, and missing `Codex` / `Claude Code` CLIs now lead users directly to command selection or installation.
 
-- `Agent` / `Terminal` execution terminals now support platform-aware copy / paste shortcuts: macOS uses `Cmd+C` / `Cmd+V`, Windows copies with `Ctrl+C` when a selection exists and interrupts when it does not, and Linux uses `Ctrl+Shift+C` / `Ctrl+Shift+V` while preserving `Ctrl+C` interrupt semantics
-- Paste handling includes multi-line safety confirmation: single-line text pastes directly, bracketed paste mode pastes directly, and other multi-line content requires confirmation before it enters the current session
-- The sidebar and command palette now provide `Codex` / `Claude Code` CLI selection entry points, making it easier to bind the current workspace to the provider command that actually resolves
-- The command palette can open `Codex config.toml`, `Codex auth.json`, and `Claude Code settings.json`, creating restricted baseline config files when they are missing
-- When file activity is enabled, the default presentation is now file-list nodes, which better fits per-Agent and shared-file read/write relationships; users can still switch back to independent file nodes in settings
-- Template reset node identity, Claude onboarding markers, and proxy address placeholders have been tightened
+- Fit view and manual zoom now use a dynamic global minimum zoom: when nodes are far apart, the canvas is no longer blocked by the fixed `0.4` floor and can still show the full graph
+- New `devSessionCanvas.canvas.overviewMode` and `devSessionCanvas.canvas.overviewZoomThreshold` settings control low-zoom overview behavior; the default mode shows node titles in the content area, while `none` keeps normal node rendering
+- Overview mode reduces body/detail emphasis while preserving titles, status, outlines, edges, and the minimap, making the global view easier to scan
+- If an `Agent` creation or launch cannot resolve the current `Codex` / `Claude Code` CLI, the node enters a clear error state and opens the same CLI selection / installation flow
+- The Agent creation Quick Input now avoids custom-command overwrite, launch-mode misselection, and accidental Enter confirmation across `Default`, `Resume`, `YOLO`, `Sandbox`, and custom launches
+- Marketplace preview media has been refreshed from a repeatable real VS Code Extension Development Host recording that shows templates, context-menu creation, styled edges, and file activity
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.7.1` to `0.8.0` all go through the `Visual Studio Marketplace`; later `0.8.x` updates follow the same Marketplace upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.8.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.8.0` to `0.9.0` all go through the `Visual Studio Marketplace`; later `0.9.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.9.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -105,7 +105,7 @@ The public `0.8.0` release focuses on day-to-day Agent usability: familiar copy 
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.8.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.9.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

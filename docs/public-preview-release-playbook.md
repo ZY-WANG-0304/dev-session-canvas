@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.8.0`。当前版本范围已经收口到“相对 `0.7.1`，把执行终端复制粘贴快捷键、Agent CLI 配置入口、文件活动默认列表节点、模板重置身份修复和相关 onboarding 修复作为新的公开 `Preview` 里程碑”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.9.0`。当前版本范围已经收口到“相对 `0.8.0`，把动态全局概览缩放、低倍率标题概览、Agent CLI 缺失补救、Quick Input 启动命令修复、Marketplace 预览媒体刷新和侧栏 manifest 警告修复作为新的公开 `Preview` 里程碑”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -29,13 +29,13 @@
 
 ## release notes 定稿口径
 
-当前 `0.8.0` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
+当前 `0.9.0` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.8.0 - Preview Agent Usability Update`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.9.0 - Preview Canvas Overview Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：执行终端平台化复制粘贴快捷键、多行粘贴安全确认、Agent CLI 选择入口、`Codex config.toml` / `Codex auth.json` / `Claude Code settings.json` 打开入口、文件活动默认列表节点、模板重置节点身份修复、Claude onboarding 标记与代理地址占位修复、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
+- release notes 应覆盖以下当前已确认范围：动态全局概览缩放、`overviewMode` / `overviewZoomThreshold` 低倍率概览配置、Agent CLI 缺失时的选择 / 安装补救、Quick Input 启动命令预设修复、Marketplace 预览媒体刷新、侧栏 manifest 警告修复、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -43,33 +43,33 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.8.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.7.1` 升级到 `0.8.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.8.x` 更新也通过 Marketplace 常规升级获取。
+1. 当前目标版本为 `0.9.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.8.0` 升级到 `0.9.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.9.x` 更新也通过 Marketplace 常规升级获取。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
-4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.8.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
+4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
 5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.8.0` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.9.0` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
-2. 关注后续 `0.8.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
+2. 关注后续 `0.9.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
 3. 若确需回退，以重新安装目标版本并重新验证工作区状态为准；当前不承诺 `Preview` 版本之间的回退兼容。
 
 ### 维护者侧回滚
 
 若发布后发现 P0 / P1 blocker，默认按以下顺序处理：
 
-1. 优先评估能否在短时间内发布后续 `0.8.x` hotfix。
+1. 优先评估能否在短时间内发布后续 `0.9.x` hotfix。
 2. 若短时间内无法修复，且当前版本会阻塞主路径使用或引发宿主崩溃，再考虑临时下架当前版本。
 3. 无论选择 hotfix 还是临时下架，都需要同步更新 GitHub issue、`docs/support.md` 与对外说明，避免用户只看到失真状态。
 
 ## 截图策略
 
-当前 `0.8.0` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.9.0` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -111,19 +111,17 @@
 
 ## 当前验证备注
 
-截至 `2026-05-10`，当前 `0.8.0` 发布准备分支已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行 ref/工作树上可打包，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 复跑：
+截至 `2026-05-11`，当前 `0.9.0` 发布准备工作树已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行工作树上可打包，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 复跑：
 
-- `npm run test:execution-terminal-clipboard` 通过
-- `npm run test:agent-cli-selection` 通过
-- `npm run test:agent-settings-files` 通过
-- `npm run test:canvas-templates` 通过
 - `npm run typecheck` 通过
 - `npm run build` 通过
+- `npm run test:agent-cli-selection` 通过
+- `npm run test:runtime-supervisor-protocol` 通过
+- `npm run test:webview` 通过（133 passed）
 - `npm audit` 通过（0 vulnerabilities）
-- `npm run test:webview` 通过（127 passed）
-- `npm run package:vsix` 已在 `600b998283d83a228fde1dc64dcf636440febe62`（包含 `.dev-session-canvas/` VSIX 忽略规则）上重新生成 `dev-session-canvas-0.8.0.vsix`；该次打包日志打印了 `VSCE README doc ref: 600b998283d83a228fde1dc64dcf636440febe62`，确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写，并确认最终 VSIX 包含 111 个文件、约 3.23 MB
+- `npm run package:vsix` 已在当前 `0.9.0` 发布准备工作树生成 `dev-session-canvas-0.9.0.vsix`；该次打包日志打印了 `VSCE README doc ref: c015f279164a56968bee90cbdd076c57776dabc8`，确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写，并确认最终 VSIX 包含 112 个文件、约 3.24 MB。该 ref 是本次 repo-local 打包执行时的已提交 ref，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - `npm run test:notifier-source` 通过
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在 `600b998283d83a228fde1dc64dcf636440febe62` 上重新生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.8.0.vsix`；该次打包日志打印了 `VSCE README doc ref: 600b998283d83a228fde1dc64dcf636440febe62`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.95 KB 的 VSIX
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在当前 `0.9.0` 发布准备工作树生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.9.0.vsix`；该次打包日志打印了 `VSCE README doc ref: c015f279164a56968bee90cbdd076c57776dabc8`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.96 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - `git diff --check` 通过
 
 ## 发布命令
@@ -133,9 +131,9 @@
 注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
     node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.8.0.vsix
+      --packagePath dev-session-canvas-0.9.0.vsix
 
-若最终版本号不是 `0.8.0`，应先同步更新命令中的 VSIX 文件名。
+若最终版本号不是 `0.9.0`，应先同步更新命令中的 VSIX 文件名。
 
 ## publish 后补 tag
 
@@ -143,15 +141,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.8.0
-    git push origin v0.8.0
+    git tag v0.9.0
+    git push origin v0.9.0
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.8.0 <final-ref-or-sha>
-    git push origin v0.8.0
+    git tag v0.9.0 <final-ref-or-sha>
+    git push origin v0.9.0
 
-若最终版本号不是 `0.8.0`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.9.0`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.9.0 - Preview Canvas Overview Update
+
+相对 `0.8.0`，`0.9.0` 是一轮新的公开 `Preview` 里程碑更新，重点改善大画布导航、低倍率概览和 Agent CLI 缺失时的补救路径：fit view 可在节点分散时缩到 `0.4` 以下，默认概览态会在节点内容区显示标题，Agent 启动找不到 `Codex` / `Claude Code` 命令时会直接打开 CLI 选择与安装入口，并修正 Quick Input 启动命令预设误选等问题。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 新增动态全局概览缩放：节点分布很宽时，fit view 与手动缩小不再被固定 `0.4` 下限阻挡，可以一次看全完整画布
+- 新增 `devSessionCanvas.canvas.overviewMode` 与 `devSessionCanvas.canvas.overviewZoomThreshold`：默认 `title` 模式会在低倍率节点内容区显示节点标题；需要保留普通节点渲染时可切到 `none`
+- 收口概览态视觉：低倍率下弱化节点正文和次级操作，保留节点标题、状态、轮廓、连线和 minimap 作为导航线索
+- Agent 启动阶段发现 `Codex` / `Claude Code` CLI 缺失时，节点会进入明确错误态，并自动打开与侧栏命令行配置一致的 CLI 选择 / 安装 Quick Input
+- CLI 安装补救入口补齐“命令行安装 / 安装 VS Code 插件”分流；写入 supervisor 输入后再提示成功，并保留 supervisor 错误码用于诊断
+- 修正 Agent 创建 Quick Input 中自定义命令被预设自动高亮覆盖、启动模式误选和 Enter 误触的问题，让 `默认` / `Resume` / `YOLO` / `沙盒` / 自定义启动语义更稳定
+- 更新 Marketplace 预览媒体录制链路和最终 PNG / GIF / MP4 素材，使用真实 VS Code Extension Development Host 与录制专用 deterministic provider wrapper 生成可重复素材
+- 修复侧栏 view manifest 警告，降低 VS Code 扩展清单噪音
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 使用大画布时，优先通过 fit view 回到全局视图；如果低倍率概览不符合当前工作方式，可把 `devSessionCanvas.canvas.overviewMode` 改为 `none`
+- 使用 `Agent` 节点前，请先通过侧栏或命令面板确认 `codex` / `claude` CLI 命令可解析；如果创建后才发现命令缺失，可直接沿自动弹出的安装 / 选择入口修复
+- 录制或复核 Marketplace 素材时，以 `docs/marketplace-media-scenario.md` 和 `docs/skills/recording-marketplace-media/SKILL.md` 为准，避免把旧的一次性录屏流程当成正式路径
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 概览模式只影响低倍率视觉收口，不改变节点运行状态、终端行列数或画布持久化语义
+- CLI 缺失补救入口只负责帮助用户重新选择或安装命令；如果本机 / 远端 Extension Host 本身仍无法解析该 CLI，`Agent` 节点仍无法完整运行
+- 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.8.0` 升级到 `0.9.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.9.0`，不引入新的通知行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.9.0` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.9.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.9.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.8.0 - Preview Agent Usability Update
 
 相对 `0.7.1`，`0.8.0` 是一轮新的公开 `Preview` 里程碑更新，重点改善 `Agent` / `Terminal` 节点的日常可用性：补齐执行终端复制粘贴快捷键、增加 Agent CLI 配置入口、让文件活动默认以列表节点呈现，并修正模板重置、Claude onboarding 与配置文件创建等体验问题。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。

@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.8.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.9.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![DevSessionCanvas 动态演示](images/marketplace/canvas-overview.gif)
 
@@ -20,11 +20,13 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - `Agent` 与 `Terminal` 节点的最小可运行链路
 - `Note` 轻量辅助协作对象
 - 基于 React Flow 的基础画布交互与布局
+- 动态全局概览缩放与可配置低倍率概览，节点分散时仍可通过 fit view 看全完整画布
 - `Note` Markdown 预览、交互式 checklist、workspace 文件链接与编辑态行号 / 缩进辅助
 - 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏与重置入口
 - `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
 - 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义
 - 侧栏与命令面板中的 `Codex` / `Claude Code` CLI 选择和配置文件打开入口
+- `Agent` 启动时 CLI 缺失的自动选择 / 安装补救入口
 - `Restricted Mode` 下的有限能力声明
 - 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
 - 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -49,7 +51,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.8.0` 收口执行终端复制粘贴、Agent CLI 配置入口、文件活动默认列表视图、回归验证与发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.9.0` 收口动态概览缩放、低倍率标题概览、Agent CLI 缺失补救入口、Marketplace 预览媒体和发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -57,7 +59,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道已收口为 `Visual Studio Marketplace`；是否同步 `Open VSX` 延后决策。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.8.0` 的 repo-local 验证重点收口执行终端复制粘贴、Agent CLI 配置入口、文件活动默认列表视图和打包材料，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.9.0` 的 repo-local 验证重点收口动态概览缩放、Agent CLI 缺失补救入口、Quick Input 启动命令修复、预览媒体和打包材料，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -71,7 +73,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 对外分发目标是通过 `Visual Studio Marketplace` 发布。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.8.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
+- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.9.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
 - `Open VSX` 不是本次 `Preview` 的首发路径
 
 ## 桌面通知 companion（自动安装）
