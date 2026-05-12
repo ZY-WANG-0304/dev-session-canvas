@@ -54,22 +54,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.9.0 Highlights
+## 0.9.1 Highlights
 
-The public `0.9.0` release focuses on large-canvas navigation and Agent launch recovery: spread-out canvases can zoom farther out, the default low-zoom overview shows node titles, and missing `Codex` / `Claude Code` CLIs now lead users directly to command selection or installation.
+The public `0.9.1` release focuses on desktop-notification onboarding and sidebar visual consistency: `Dev Session Canvas Notifier` now exposes clearer Overview, Notes, platform, and Agent-configuration sections, configuration snippets are easier to read, and the Activity Bar badge language is aligned across the main extension, Nodes, Templates, and Notifier entries.
 
-- Fit view and manual zoom now use a dynamic global minimum zoom: when nodes are far apart, the canvas is no longer blocked by the fixed `0.4` floor and can still show the full graph
-- New `devSessionCanvas.canvas.overviewMode` and `devSessionCanvas.canvas.overviewZoomThreshold` settings control low-zoom overview behavior; the default mode shows node titles in the content area, while `none` keeps normal node rendering
-- Overview mode reduces body/detail emphasis while preserving titles, status, outlines, edges, and the minimap, making the global view easier to scan
-- If an `Agent` creation or launch cannot resolve the current `Codex` / `Claude Code` CLI, the node enters a clear error state and opens the same CLI selection / installation flow
-- The Agent creation Quick Input now avoids custom-command overwrite, launch-mode misselection, and accidental Enter confirmation across `Default`, `Resume`, `YOLO`, `Sandbox`, and custom launches
-- Marketplace preview media has been refreshed from a repeatable real VS Code Extension Development Host recording that shows templates, context-menu creation, styled edges, and file activity
+- `Dev Session Canvas Notifier` now uses a multi-section sidebar: `Overview` shows the current backend and latest delivery result, `Notes` and platform sections explain local notification prerequisites, and the `Codex` / `Claude Code` sections describe the Agent-host configuration path
+- Notifier Agent setup guidance is easier to scan, with `Codex` / `Claude Code` examples staying clear in light and dark themes
+- Marketplace documentation now clarifies the host boundary: desktop notification backends belong in the local VS Code UI environment, while provider notification settings belong on the host where the Agent actually runs
+- Notifier status rendering prefers the latest delivery result's `activationMode`, avoiding misleading click-back claims on degraded Linux paths and similar cases
+- The macOS `osascript` fallback no longer triggers an extra `beep`; it directly requests the `display notification` system sound path instead
+- `Nodes`, Templates, and Notifier Activity Bar badge icons now use one composition language, with regenerated Notifier icons and a main-extension circular avatar safe-area asset
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.8.0` to `0.9.0` all go through the `Visual Studio Marketplace`; later `0.9.x` updates follow the same Marketplace upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.9.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.9.0` to `0.9.1` all go through the `Visual Studio Marketplace`; later `0.9.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.9.1` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
