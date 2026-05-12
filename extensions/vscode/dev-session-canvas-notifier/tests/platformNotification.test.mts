@@ -65,10 +65,10 @@ const osascriptInvocation = buildMacOSAppleScriptInvocation({ request, playSound
 assert.equal(osascriptInvocation.command, 'osascript');
 assert.equal(osascriptInvocation.activationMode, 'none');
 assert.match(osascriptInvocation.args.join(' '), /display notification/);
-assert.match(osascriptInvocation.args.join(' '), /beep/);
+assert.match(osascriptInvocation.args.join(' '), /sound name "Submarine"/);
 
 const silentOsascriptInvocation = buildMacOSAppleScriptInvocation({ request, playSound: false });
-assert.doesNotMatch(silentOsascriptInvocation.args.join(' '), /beep/);
+assert.doesNotMatch(silentOsascriptInvocation.args.join(' '), /sound name "Submarine"/);
 
 const windowsInvocation = buildWindowsToastInvocation({
   request,
@@ -101,6 +101,28 @@ const sidebarSnapshot = buildNotifierEnvironmentSnapshot({
 });
 assert.equal(sidebarSnapshot.soundLabel, '已关闭');
 assert.match(sidebarSnapshot.soundDetail, /静音发送/);
+assert.equal(sidebarSnapshot.activationKind, 'protocol');
+assert.equal(sidebarSnapshot.installRequirements[0]?.statusLabel, '已安装');
+assert.match(sidebarSnapshot.installRequirements[0]?.hints?.join('\n') ?? '', /brew install terminal-notifier/);
+assert.equal(sidebarSnapshot.platformGuides.length, 3);
+assert.equal(sidebarSnapshot.platformGuides[0]?.platformLabel, 'macOS');
+assert.equal(sidebarSnapshot.platformGuides[1]?.platformLabel, 'Linux');
+assert.equal(sidebarSnapshot.platformGuides[2]?.platformLabel, 'Windows');
+assert.equal(sidebarSnapshot.agentConfigurationGuides[0]?.agentLabel, 'Codex');
+assert.match(sidebarSnapshot.agentConfigurationGuides[0]?.recommendedSnippet ?? '', /\[tui\]/);
+assert.match(sidebarSnapshot.agentConfigurationGuides[1]?.recommendedSnippet ?? '', /preferredNotifChannel/);
+assert.match(sidebarSnapshot.notes.join('\n'), /Agent 实际运行宿主/);
+
+const linuxSnapshot = buildNotifierEnvironmentSnapshot({
+  platform: 'linux',
+  modeLabel: 'production',
+  playSoundEnabled: true,
+  notifySendAvailable: false
+});
+assert.equal(linuxSnapshot.activationKind, 'none');
+assert.equal(linuxSnapshot.installRequirements[0]?.statusLabel, '未安装');
+assert.match(linuxSnapshot.installRequirements[0]?.hints?.join('\n') ?? '', /libnotify-bin/);
+assert.equal(linuxSnapshot.platformGuides[1]?.statusLabel, '当前平台');
 
 const downgradedLinuxResult = await launchShellInvocation(
   {
