@@ -27,6 +27,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
 - Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands and opening their config files
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
+- Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance
 - Limited capability handling under `Restricted Mode`
 - A public `Preview` release path targeting the `Visual Studio Marketplace`
 - Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
@@ -51,7 +52,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.9.0` is to consolidate dynamic overview zoom, low-zoom title overview rendering, Agent CLI missing-command recovery, Marketplace preview media, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.9.1` is to consolidate desktop-notification companion onboarding, the notifier sidebar multi-section structure, Activity Bar badge visual consistency, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -59,7 +60,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel is now `Visual Studio Marketplace`. Whether to publish to `Open VSX` remains deferred.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.9.0` repo-local validation focuses on dynamic overview zoom, Agent CLI missing-command recovery, Quick Input launch-command fixes, preview media, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.9.1` repo-local validation focuses on the notifier sidebar structure, configuration-snippet highlighting, Activity Bar badge icons, avatar safe areas, preview copy, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
