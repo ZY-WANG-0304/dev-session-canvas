@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1
+
+- 与主扩展 `0.9.1` 对齐：notifier sidebar 拆成 `概览`、`注意事项`、平台说明与 Agent 配置多个 section，帮助用户从本机 UI 环境和远端 Agent 运行宿主两个维度完成通知接入。
+- 新增 sidebar 富文本渲染与 `JSON` / `TOML` 配置片段语法高亮，提升 `Codex` / `Claude Code` 通知配置说明的可读性。
+- 优先使用最近一次投递结果的 `activationMode` 展示点击回跳能力，并在 sidebar 未打开时跳过无意义的环境探测。
+- 修正 macOS `osascript` 回退路径，不再额外触发 `beep`，并同步更新 Marketplace 环境配置说明和图标资产。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.9.0
 
 - 与主扩展 `0.9.0` 对齐：本轮 notifier companion 不引入新的通知行为变更，继续作为主扩展 `system` attention bridge 的本机 UI 侧投递组件。
