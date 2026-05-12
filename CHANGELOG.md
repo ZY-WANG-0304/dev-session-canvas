@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.9.1 - Preview Notifier Guidance Update
+
+相对 `0.9.0`，`0.9.1` 是同一公开 `Preview` 里程碑下的一轮收口更新，重点收口桌面通知 companion 的可理解性与侧栏入口一致性：`Dev Session Canvas Notifier` 侧栏拆成 `概览`、`注意事项`、平台说明和 Agent 配置多个 section，配置片段支持更清晰的代码高亮，Marketplace 文案补齐本机系统环境与远端 Agent 配置边界，同时统一主扩展 / 节点 / 模板 / notifier 的 Activity Bar badge 视觉。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 收口 `Dev Session Canvas Notifier` sidebar 结构：从单个通知环境视图拆成 `概览`、`注意事项`、`macOS`、`Linux`、`Windows`、`Codex` 与 `Claude Code` 多个 section，并把设置齿轮固定在 `概览` 标题行
+- 新增 notifier sidebar 富文本渲染：支持行内代码与 fenced code block 混排，并为 `JSON` / `TOML` 配置片段提供深浅主题下可读的语法高亮
+- 补齐 notifier 接入指导：Marketplace 文案明确桌面通知后端应安装在本机 UI 侧，`Codex` / `Claude Code` 通知配置应写在 Agent 实际运行宿主上
+- 修正 notifier 状态判断：优先使用最近一次投递结果的 `activationMode` 展示点击回跳能力，并在 sidebar 未打开时跳过无意义的环境探测
+- 修正 macOS `osascript` 回退通知行为：不再额外触发 `beep`，改为直接请求 `display notification` 的系统声音，降低通知出现时的闪屏与噪音感
+- 统一 Activity Bar badge 图标体系：新增 `节点` sidebar section 专属图标，统一 nodes / templates / notifier badge 构图，并重新生成 notifier 图标与主扩展圆形头像安全区图
+- 新增 badge 几何与头像安全区自动化测试，并把 notifier rich text / status 测试纳入 `test:notifier-source`，提高发布前视觉与文案结构回归覆盖
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 需要桌面通知时，优先打开 `Dev Session Canvas Notifier` 的 `概览` 与对应平台 section，确认本机 UI 侧通知后端、最近一次投递结果和点击回跳能力
+- 如果 Agent 运行在 `Remote SSH`、WSL 或 Dev Container，请把 `Codex` / `Claude Code` 的通知配置写到 Agent 实际运行宿主，而不是只写在本机 UI 侧
+- 如果旧版 VS Code view layout 缓存导致 sidebar 图标或 view 位置异常，可手动移动 view，或执行 `View: Reset View Locations` 恢复默认布局
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- notifier companion 只负责把已收到的 attention signal 投递到本机 UI 侧桌面通知；是否产生 attention signal 仍取决于 provider CLI 与运行宿主配置
+- notifier 的点击回跳能力取决于平台后端、系统通知服务与当前 VS Code URI 处理能力；不支持点击回跳时仍会尽量保证通知可见
+- Activity Bar 图标与 badge 更新不改变已有 workspace 的 view layout 缓存；极少数旧布局仍可能需要手动重置
+- 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.9.0` 升级到 `0.9.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.9.1`，并包含 sidebar 结构、接入指导、代码高亮、状态判断和图标更新
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.9.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.9.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.9.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.9.0 - Preview Canvas Overview Update
 
 相对 `0.8.0`，`0.9.0` 是一轮新的公开 `Preview` 里程碑更新，重点改善大画布导航、低倍率概览和 Agent CLI 缺失时的补救路径：fit view 可在节点分散时缩到 `0.4` 以下，默认概览态会在节点内容区显示标题，Agent 启动找不到 `Codex` / `Claude Code` 命令时会直接打开 CLI 选择与安装入口，并修正 Quick Input 启动命令预设误选等问题。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。

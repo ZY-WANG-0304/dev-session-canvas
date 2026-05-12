@@ -54,22 +54,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.9.0 版本亮点
+## 0.9.1 版本亮点
 
-当前公开的 `0.9.0` 版本聚焦大画布可导航性和 Agent 启动补救：节点分散时可以缩到更低倍率看全画布，低倍率概览默认显示节点标题，`Codex` / `Claude Code` CLI 缺失时会直接引导用户选择或安装命令。
+当前公开的 `0.9.1` 版本聚焦桌面通知接入指导和侧栏视觉一致性：`Dev Session Canvas Notifier` sidebar 拆成更清晰的概览、注意事项、平台说明和 Agent 配置 section，代码片段更易读，同时主扩展、节点、模板与 notifier 的 Activity Bar badge 图标体系完成统一。
 
-- fit view 与手动缩小支持动态全局最小倍率：节点分布很宽时不再被固定 `0.4` 下限卡住，仍可一次看全完整画布
-- 新增 `devSessionCanvas.canvas.overviewMode` 与 `devSessionCanvas.canvas.overviewZoomThreshold`，默认在低倍率概览中把节点标题显示到内容区；需要完整保留普通节点表面时可切到 `none`
-- 概览态会弱化节点正文和次级操作，保留标题、状态、轮廓、连线和 minimap，帮助在全局视图中快速辨认节点
-- 创建或启动 `Agent` 时如果当前宿主找不到 `Codex` / `Claude Code` CLI，节点会进入明确错误态，并自动打开同一套 CLI 选择 / 安装入口
-- Agent 创建 Quick Input 修正自定义命令被预设覆盖、启动模式误选和 Enter 误触问题，`默认` / `Resume` / `YOLO` / `沙盒` / 自定义启动语义更稳定
-- Marketplace 预览媒体更新为真实 VS Code Extension Development Host 下的可重复录制素材，展示模板、右键创建、关系连线和文件活动路径
+- `Dev Session Canvas Notifier` sidebar 新增多 section 结构：`概览` 展示当前后端与最近一次投递状态，`注意事项` 与平台 section 解释本机通知前置条件，`Codex` / `Claude Code` section 给出 Agent 运行宿主上的配置建议
+- notifier 的 Agent 配置说明更易读，`Codex` / `Claude Code` 示例在深浅主题下都能清楚区分关键配置
+- Marketplace 文案补齐本机系统环境配置：桌面通知后端应安装在当前 VS Code 本机 UI 环境；如果 Agent 跑在远端，provider 通知配置应写在远端运行宿主
+- notifier 状态判断优先使用最近一次投递结果的 `activationMode`，避免把 Linux 等降级路径误显示为可点击回跳
+- macOS `osascript` 回退路径不再额外触发 `beep`，改为直接请求 `display notification` 的系统声音
+- `节点`、模板与 notifier Activity Bar badge 图标完成统一，并重新生成 notifier 图标和主扩展圆形头像安全区图
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.8.0` 升级到 `0.9.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.9.0` 升级到 `0.9.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
