@@ -14,6 +14,7 @@ import {
   renderHighlightedSidebarCodeBlock,
   renderSidebarInlineCode
 } from './sidebarRichText';
+import { activationModeSupportsCallback, resolveSidebarActivationMode } from './sidebarStatus';
 
 export interface NotifierSidebarLatestAttempt {
   requestedAt: string;
@@ -78,6 +79,10 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
   }
 
   public async refresh(): Promise<void> {
+    if (this.sectionViews.size === 0) {
+      return;
+    }
+
     const snapshot = await this.probeSnapshot();
     for (const section of this.sectionViews.keys()) {
       this.renderSection(section, snapshot);
@@ -89,6 +94,10 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
   }
 
   private async refreshSection(section: NotifierSidebarSection): Promise<void> {
+    if (!this.sectionViews.has(section)) {
+      return;
+    }
+
     const snapshot = await this.probeSnapshot();
     this.renderSection(section, snapshot);
   }
@@ -190,7 +199,7 @@ function renderStatusSection(
   const hasRecentTest = ctx.latestManualAttempt?.requestedAt !== undefined;
   const notificationPosted = ctx.latestRecord?.result.status === 'posted';
   const callbackActivated = ctx.latestManualAttempt?.activatedAt !== undefined;
-  const supportsCallback = snapshot.activationKind === 'protocol' || snapshot.activationKind === 'direct-action';
+  const supportsCallback = activationModeSupportsCallback(resolveSidebarActivationMode(snapshot, ctx.latestRecord));
 
   let statusIcon: string;
   let statusTitle: string;

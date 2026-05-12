@@ -553,7 +553,7 @@
     "test:attention-protocol": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/attention-protocol.test.mts",
     "prepare:debug-main-only-extension": "node scripts/prepare-debug-main-only-extension.mjs",
     "test:debug-launch-config": "node scripts/test-debug-launch-config.mjs",
-    "test:notifier-source": "node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/platformNotification.test.mts",
+    "test:notifier-source": "node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/platformNotification.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarRichText.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarStatus.test.mts",
     "test:notifier-smoke": "npm run build && npm run build:notifier && node scripts/run-vscode-notifier-smoke.mjs",
     "test:note-body-indent": "node --no-warnings --experimental-transform-types scripts/test-note-body-indent.mts",
     "test:note-markdown-links": "node --no-warnings --experimental-transform-types scripts/test-note-markdown-links.mts",
