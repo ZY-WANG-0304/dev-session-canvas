@@ -17,7 +17,7 @@
   - Linux：`notify-send`
   - Windows：Toast Notification
 - 显式区分通知回调能力：支持点击回到 VS Code 的完整路径，与“只保证通知出现”的退化路径不会混写
-- 提供独立 sidebar，用于查看当前通知后端、点击回调能力、声音请求状态、前置依赖与最近一次投递结果，并可通过标题行齿轮直接打开配置
+- 提供独立 sidebar，拆成 `概览`、`注意事项`、平台说明与 Agent 配置多个 section；可在 `概览` 标题行通过齿轮直接打开配置
 - 提供两条人工验收命令：
   - `Dev Session Canvas Notifier: 发送测试桌面通知`
   - `Dev Session Canvas Notifier: 打开通知诊断输出`
@@ -34,11 +34,62 @@
 
 如果你主要使用 `Codex` provider，请确认你的 `Codex` 环境会输出 attention signal；当前仓库内的常见配置键是 `notification_method` 与 `notification_condition`。不同 `Codex` 版本支持的具体取值可能不同；若默认没有发出提醒，可优先检查这两项配置。
 
-## 平台说明
+## 本机系统环境配置
 
-- macOS：如需点击系统通知后回到 VS Code，建议预装 `terminal-notifier`；否则会退回 `osascript`，只保证通知出现
-- Linux：需要 `notify-send`；是否支持点击回跳取决于桌面环境与通知服务实现
-- Windows：通常不需要额外 CLI，但系统通知权限或 Focus Assist 可能拦截弹窗
+无论你的 workspace / Agent 跑在本地、`Remote SSH`、WSL 还是 Dev Container，`Dev Session Canvas Notifier` 和桌面通知后端都应安装在当前 VS Code 的本机 UI 环境，而不是远端宿主。
+
+### macOS
+
+- 如需点击系统通知后回到 VS Code，建议预装 `terminal-notifier`
+- 常用安装命令：`brew install terminal-notifier`
+- 若未安装，notifier 会回退到系统自带的 `osascript display notification`，只保证通知出现，不承诺点击回跳
+
+### Linux
+
+- 需要 `notify-send` 才能发送桌面通知
+- 常见安装命令：
+  - Debian / Ubuntu：`sudo apt install libnotify-bin`
+  - Fedora：`sudo dnf install libnotify`
+  - Arch：`sudo pacman -S libnotify`
+- 是否支持点击回跳取决于桌面环境与通知服务是否支持 `notify-send --action --wait`
+
+### Windows
+
+- 通常不需要额外安装通知 CLI
+- 需要确认系统通知权限、通知中心和 Focus Assist / 勿扰模式没有拦截 VS Code Toast
+- 如果通知未出现，优先检查 `Windows 设置 -> 系统 -> 通知` 中是否允许 VS Code 发出通知
+
+## Provider / Agent 运行宿主配置
+
+桌面通知 companion 只负责把提醒送到本机桌面；要让不同 Provider 真正发出 attention signal，还需要在 Agent 实际运行的宿主上完成各自的 CLI 配置。  
+如果 Agent 跑在远端机器，这些 Provider 配置也应该写在远端宿主，而不是本机 UI 侧。
+
+### Codex
+
+推荐在 Agent 运行宿主上的 `~/.codex/config.toml` 中开启通知：
+
+```toml
+[tui]
+notifications = true
+notification_method = "osc9"
+notification_condition = "always"
+```
+
+- 如果文件里已有其它模型、审批或 sandbox 配置，只补 `[tui]` 相关项即可
+- 若你使用主扩展生成默认模板，这几项通知配置通常已默认带入
+
+### Claude Code
+
+推荐在 Agent 运行宿主上的 `~/.claude/settings.json` 中启用 iTerm2 风格通知通道：
+
+```json
+{
+  "preferredNotifChannel": "iterm2"
+}
+```
+
+- 如果 `settings.json` 已有其它字段，只合并 `preferredNotifChannel`，不要整文件替换
+- 若你使用主扩展生成默认模板，这项配置通常已默认带入，无需额外 hooks
 
 ## Preview 边界
 
