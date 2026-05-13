@@ -785,8 +785,8 @@ try {
   assert.match(marketplacePanelSource, /formatInstallResultStatus/u);
   assert.match(marketplacePanelSource, /更新到 v/u);
   assert.match(marketplacePanelSource, /split-install/u);
-  assert.match(marketplacePanelSource, /选择安装版本/u);
-  assert.match(marketplacePanelSource, /选择下载版本/u);
+  assert.match(marketplacePanelSource, /切换安装版本/u);
+  assert.match(marketplacePanelSource, /切换下载版本/u);
   assert.match(marketplacePanelSource, /openDownloadVersionMenuSlug/u);
   assert.match(marketplacePanelSource, /loadTemplateDetail/u);
   assert.match(marketplacePanelSource, /collectInstallableVersions/u);
@@ -816,7 +816,7 @@ try {
   assert.match(marketplacePanelSource, /vscode\.ExtensionMode\.Production/u);
   assert.match(marketplacePanelSource, /resolveCompatibleMarketplaceSourceUrl/u);
   assert.match(marketplacePanelSource, /formatMarketplaceSourceMismatchError/u);
-  assert.match(marketplacePanelSource, /当前扩展是\$\{expectedInstall\}/u);
+  assert.match(marketplacePanelSource, /当前扩展为\$\{expectedInstall\}/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES/u);
   assert.match(marketplacePanelSource, /'http:\/\/\[::1\]:\*'/u);
   assert.match(marketplacePanelSource, /'https:\/\/\[::1\]:\*'/u);
@@ -858,7 +858,7 @@ try {
     'function createInstallSplitButton(template, installedTemplate, preferredVersionId) {'
   );
   assert.match(marketplaceListInstallButtonSource, /已安装 v/u);
-  assert.match(marketplaceListInstallButtonSource, /打开已安装模板详情/u);
+  assert.match(marketplaceListInstallButtonSource, /查看模板详情/u);
 
   const marketplaceDownloadButtonSource = sliceBetween(
     marketplacePanelSource,
