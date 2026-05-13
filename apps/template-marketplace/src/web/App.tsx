@@ -126,24 +126,24 @@ export function App(): JSX.Element {
         <div className={`mx-auto ${isDetailPage ? 'max-w-6xl' : 'max-w-7xl'}`}>
           {isDetailPage ? (
             detailState.loading ? (
-              <div className="border border-canvas-line bg-canvas-paper p-10 text-canvas-muted shadow-card">Loading template detail...</div>
+              <div className="border border-canvas-line bg-canvas-paper p-10 text-canvas-muted shadow-card">Loading template details...</div>
             ) : detailState.template ? (
               <TemplateDetailView template={detailState.template} source={detailState.source} storageMode={detailState.storageMode} />
             ) : (
               <div className="border border-dashed border-canvas-line bg-canvas-paper p-10 text-center text-canvas-muted">
                 <a className="font-semibold text-canvas-moss hover:underline" href={getMarketplaceHomeHref()}>
-                  Back to templates
+                  Back to all templates
                 </a>
-                <p className="mt-4">Template was not found.</p>
+                <p className="mt-4">Template not found. It may have been removed or the link is invalid.</p>
               </div>
             )
           ) : (
             <>
               <h1 className="text-center text-4xl font-light leading-tight text-canvas-ink sm:text-5xl">
-                Templates for DevSessionCanvas
+                DevSessionCanvas Templates
               </h1>
               <p className="mx-auto mt-4 max-w-3xl text-center text-base leading-7 text-canvas-muted">
-                Browse community workflow templates, install them into VSCode, or download the template JSON.
+                Discover workflow templates for Dev Session Canvas. One-click install or download as JSON.
               </p>
 
               <div className="mx-auto mt-9 flex max-w-4xl shadow-search">
@@ -153,7 +153,7 @@ export function App(): JSX.Element {
                 <input
                   id="templateSearch"
                   className="h-14 min-w-0 flex-1 border border-canvas-line bg-canvas-paper px-5 text-xl text-canvas-ink outline-none ring-canvas-accent/25 transition placeholder:text-canvas-muted focus:ring-4"
-                  placeholder="Search DevSessionCanvas templates"
+                  placeholder="Search templates by name, tag, or keyword..."
                   maxLength={MARKETPLACE_QUERY_MAX_LENGTH}
                   value={query}
                   onChange={(event) => setQuery(event.currentTarget.value.slice(0, MARKETPLACE_QUERY_MAX_LENGTH))}
@@ -229,7 +229,7 @@ export function App(): JSX.Element {
 
               {!state.loading && state.templates.length === 0 ? (
                 <div className="mt-8 border border-dashed border-canvas-line bg-canvas-paper p-10 text-center text-canvas-muted">
-                  No templates matched this search.
+                  No templates match your search. Try different keywords or clear the filters.
                 </div>
               ) : null}
             </>

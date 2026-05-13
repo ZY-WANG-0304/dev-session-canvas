@@ -176,7 +176,7 @@ export class TemplateMarketplaceClient {
     const detailUrl = buildTemplateDetailApiUrl(request);
     const detailResponse = await requestText(detailUrl);
     if (detailResponse.statusCode < 200 || detailResponse.statusCode >= 300) {
-      throw new Error(`市场详情接口返回 HTTP ${detailResponse.statusCode}。`);
+      throw new Error(`获取模板详情失败：HTTP ${detailResponse.statusCode}。`);
     }
 
     const detail = parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
@@ -184,12 +184,12 @@ export class TemplateMarketplaceClient {
     const downloadUrl = buildTemplateDownloadApiUrl(request, version.id);
     const downloadResponse = await requestText(downloadUrl);
     if (downloadResponse.statusCode < 200 || downloadResponse.statusCode >= 300) {
-      throw new Error(`市场模板下载接口返回 HTTP ${downloadResponse.statusCode}。`);
+      throw new Error(`下载模板失败：HTTP ${downloadResponse.statusCode}。`);
     }
 
     const actualSha256 = createHash('sha256').update(downloadResponse.text).digest('hex');
     if (version.sha256 && actualSha256 !== version.sha256) {
-      throw new Error('下载的模板文件校验失败，已停止安装。');
+      throw new Error('模板文件校验失败（SHA-256 不匹配），已中止安装。');
     }
 
     const document = JSON.parse(downloadResponse.text) as unknown;
@@ -226,7 +226,7 @@ export class TemplateMarketplaceClient {
     const actualSha256 = createHash('sha256').update(request.inlineTemplateJson ?? '').digest('hex');
     const expectedSha256 = request.inlineSha256 ?? request.sha256;
     if (expectedSha256 && actualSha256 !== expectedSha256) {
-      throw new Error('安装链接内联模板校验失败，已停止安装。');
+      throw new Error('内联模板校验失败（SHA-256 不匹配），已中止安装。');
     }
 
     const document = JSON.parse(request.inlineTemplateJson ?? '') as unknown;
@@ -319,7 +319,7 @@ export class TemplateMarketplaceClient {
     if (targetStorageLocationId) {
       const explicitLocation = locations.find((location) => location.id === targetStorageLocationId);
       if (!explicitLocation) {
-        throw new Error('目标模板安装位置不存在。');
+        throw new Error('指定的安装位置不存在。');
       }
       return {
         id: explicitLocation.id,
@@ -349,7 +349,7 @@ function resolveMarketplaceInstallOperation(
 
 function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
   if (uri.path !== MARKETPLACE_INSTALL_URI_PATH) {
-    throw new Error('不支持的模板市场安装链接。');
+    throw new Error('不支持的安装链接路径。');
   }
 
   const params = new URLSearchParams(uri.query);
@@ -359,7 +359,7 @@ function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
   const inlinePayloadSha256 = readOptionalQueryParam(params, 'payloadSha256');
   // 外部 vscode:// 安装链接不接受内联 payload；inline 安装只允许从 Webview message bridge 进入。
   if (inlinePayload || inlinePayloadSha256) {
-    throw new Error('外部模板市场安装链接不支持内联 payload，请从市场页面重新打开安装链接。');
+    throw new Error('外部安装链接不支持内联 payload，请从市场页面重新操作。');
   }
   const sourceUrl = parseTrustedMarketplaceSourceUrl(
     readOptionalQueryParam(params, 'source') ?? `${DEFAULT_MARKETPLACE_SOURCE_ORIGIN}/templates/${encodeURIComponent(templateIdOrSlug)}`
@@ -381,7 +381,7 @@ function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
 function readRequiredQueryParam(params: URLSearchParams, key: string): string {
   const value = readOptionalQueryParam(params, key);
   if (!value) {
-    throw new Error(`安装链接缺少 ${key} 参数。`);
+    throw new Error(`安装链接缺少必要参数 ${key}。`);
   }
   return value;
 }
@@ -423,16 +423,16 @@ function normalizePublisherForResult(publisher: CanvasTemplateMarketMetadata['pu
   };
 }
 
-function parseTrustedMarketplaceSourceUrl(value: string): URL {
+export function parseTrustedMarketplaceSourceUrl(value: string): URL {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error('安装链接中的市场来源地址无效。');
+    throw new Error('市场来源地址无效。');
   }
 
   if (!isTrustedMarketplaceUrl(url)) {
-    throw new Error('安装链接中的市场来源不在当前扩展允许的模板市场域名内。');
+    throw new Error('市场来源不在允许的域名列表内。');
   }
   return url;
 }
@@ -465,7 +465,7 @@ function buildTemplateDownloadApiUrl(request: TemplateMarketplaceInstallRequest,
 
 function parseTemplateDetailResponse(value: unknown): MarketplaceTemplateDetailResponseShape {
   if (!isRecord(value) || !isRecord(value.template)) {
-    throw new Error('市场详情接口返回了无法识别的数据。');
+    throw new Error('详情接口返回了无法识别的数据格式。');
   }
   return {
     template: parseTemplateDetail(value.template)
@@ -491,7 +491,7 @@ function parseTemplateDetail(value: Record<string, unknown>): MarketplaceTemplat
 
 function parsePublisher(value: unknown): MarketplacePublisherShape {
   if (!isRecord(value)) {
-    throw new Error('市场详情接口缺少发布者信息。');
+    throw new Error('详情接口缺少发布者信息。');
   }
   return {
     id: readRequiredString(value.id, 'publisher.id'),
@@ -503,7 +503,7 @@ function parsePublisher(value: unknown): MarketplacePublisherShape {
 
 function parseVersion(value: unknown, fieldName: string): MarketplaceTemplateVersionShape {
   if (!isRecord(value)) {
-    throw new Error(`市场详情接口缺少 ${fieldName}。`);
+    throw new Error(`详情接口缺少字段 ${fieldName}。`);
   }
   return {
     id: readRequiredString(value.id, `${fieldName}.id`),
@@ -521,21 +521,21 @@ function resolveTemplateVersion(detail: MarketplaceTemplateDetailShape, versionI
 
   const version = detail.versions.find((entry) => entry.id === versionId) ?? (detail.latestVersion.id === versionId ? detail.latestVersion : undefined);
   if (!version) {
-    throw new Error('市场详情接口未返回安装链接指定的模板版本。');
+    throw new Error('详情接口未返回指定版本。');
   }
   return version;
 }
 
 function readRequiredString(value: unknown, fieldName: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`市场详情接口缺少 ${fieldName}。`);
+    throw new Error(`详情接口缺少字段 ${fieldName}。`);
   }
   return value.trim();
 }
 
 function readRequiredNumber(value: unknown, fieldName: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`市场详情接口缺少 ${fieldName}。`);
+    throw new Error(`详情接口缺少字段 ${fieldName}。`);
   }
   return value;
 }
@@ -560,12 +560,12 @@ async function requestText(url: URL, redirectCount = 0): Promise<HttpTextRespons
         if (location && isRedirectStatus(statusCode)) {
           response.resume();
           if (redirectCount >= MAX_REDIRECTS) {
-            reject(new Error('市场请求重定向次数过多。'));
+            reject(new Error('请求重定向次数过多。'));
             return;
           }
           const nextUrl = new URL(location, url);
           if (!isTrustedMarketplaceUrl(nextUrl) && !isTrustedApiUrl(nextUrl, url)) {
-            reject(new Error('市场请求被重定向到不受信任的地址。'));
+            reject(new Error('请求被重定向到不受信任的地址。'));
             return;
           }
           void requestText(nextUrl, redirectCount + 1).then(resolve, reject);
@@ -577,7 +577,7 @@ async function requestText(url: URL, redirectCount = 0): Promise<HttpTextRespons
         response.on('data', (chunk: Buffer) => {
           byteLength += chunk.length;
           if (byteLength > MAX_TEMPLATE_DOWNLOAD_BYTES) {
-            request.destroy(new Error('市场模板文件超过当前安装大小限制。'));
+            request.destroy(new Error('模板文件超过大小限制。'));
             return;
           }
           chunks.push(chunk);

@@ -115,8 +115,8 @@
   理由：该菜单已经通过顺序和分隔线表达结构，额外说明显得重复且占用首屏空间；根层应聚焦标题与可执行操作。
   日期/作者：2026-05-07 / Codex
 
-- 决策：模板 sidebar 的标签使用 `来源 · 位置`，来源区分 `插件内置`、`用户保存/导入`、`市场下载`，位置区分 `扩展内`、`本地`、`工作区`。
-  理由：workspace 模板和当前设备用户模板都属于用户可写模板，但作用域不同；市场模板也仍是本地用户模板格式，需要在侧栏同时区分来源和保存位置，避免用户误判模板资产来源或操作目标。
+- 决策：模板 sidebar 的标签使用精简组合：内置模板显示 `内置`，市场模板显示 `市场 · 本地/工作区`，用户保存或导入的模板显示 `自建 · 本地/工作区`。
+  理由：workspace 模板和当前设备用户模板都属于用户可写模板，但作用域不同；市场模板也仍是本地用户模板格式，需要在侧栏同时区分来源和保存位置，避免用户误判模板资产来源或操作目标；内置模板没有用户可选保存位置，因此不显示位置。
   日期/作者：2026-05-07，2026-05-12 更新 / Codex
 
 - 决策：模板应用后的自动追焦以“本次物化出的节点 id 组”为单位，由宿主在状态更新后发送 `host/focusNodes`，Webview 再对整组节点执行 `fitView`。
@@ -153,7 +153,7 @@
 
 右键菜单也继续收口：根层标题区不再显示“先创建节点，再通过横线下方的模板分组执行模板操作”这类说明句，只保留“画布操作”标题和实际操作项。
 
-模板 sidebar 的第二行标签已收敛为 `来源 · 位置`：内置模板显示 `插件内置 · 扩展内`，用户保存或导入的模板显示 `用户保存/导入 · 本地/工作区`，市场下载安装的模板显示 `市场下载 · 本地/工作区`；tooltip 继续展示更具体的保存位置与相对层级。
+模板 sidebar 的第二行标签已收敛为精简组合：内置模板显示 `内置`，用户保存或导入的模板显示 `自建 · 本地/工作区`，市场下载安装的模板显示 `市场 · 本地/工作区`；tooltip 继续展示更具体的保存位置与相对层级。
 
 显式应用模板和重置为模板现在会在状态更新后自动追焦到本次新增的节点组。宿主的模板物化函数会返回新增节点 id，`CanvasPanelManager` 在用户发起的模板应用路径上发送 `host/focusNodes`，Webview 收到后对整组节点执行 `fitView`；如果新节点还没完成渲染，Webview 会暂存这次组级聚焦请求，等下一次状态/React Flow ready 后再执行。首次打开自动套用默认模板仍沿用初始 `fitView`，不会额外制造一次追焦动画。
 
@@ -180,7 +180,7 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 - 模板 sidebar 按钮同标题行、第二行 nowrap + ellipsis 布局调整后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖按钮挂载位置和不换行退化规则。
 - 模板 sidebar 底部保存条件提示移除后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 `hintNote` / `hint-note` / `canSaveCurrentCanvas` 不再出现在模板 sidebar 源码中。
 - 画布空白区右键菜单根层说明文案移除后，再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过；Playwright harness 已补充断言覆盖根层仍显示“画布操作”标题且不再显示“先创建节点”说明。
-- 模板 sidebar `来源 · 位置` 标签补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 workspace scope 映射为 `工作区`、市场来源映射为 `市场下载`，以及行内 badge 使用 `item.locationLabel`。
+- 模板 sidebar 精简组合标签补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 workspace scope 映射为 `工作区`、市场来源映射为 `市场`，以及行内 badge 使用 `item.locationLabel`。
 - 模板应用后组级追焦补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖宿主返回新增节点 id、发送 `host/focusNodes`，以及 Webview 对该节点组执行 `fitView`。
 - 组级追焦延后一拍修复后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 Webview 使用 `latestHostNodeIdsRef` 判定目标节点，并在首次 `fitView` 失败时调度追焦重试。
 - Webview 重置确认与跨 surface 命令追焦修复后，再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过；`test:canvas-templates` 已补充静态断言覆盖命令入口在 reveal 最终承载面后再触发组级追焦。

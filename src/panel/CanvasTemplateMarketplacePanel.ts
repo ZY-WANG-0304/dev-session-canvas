@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import {
+  parseTrustedMarketplaceSourceUrl,
   TemplateMarketplaceClient,
   type TemplateMarketplaceInstallTargetSummary,
   type TemplateMarketplaceInstalledTemplateSummary,
@@ -8,9 +9,38 @@ import {
 } from './TemplateMarketplaceClient';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 
-const MARKETPLACE_PREVIEW_ORIGIN = 'https://dscanvas-template-marketplace.wzy0304.workers.dev';
+const MARKETPLACE_OFFICIAL_ORIGIN = 'https://dscanvas.dev';
+const MARKETPLACE_DEBUG_ORIGIN = 'https://dscanvas-template-marketplace.wzy0304.workers.dev';
+const MARKETPLACE_OFFICIAL_SOURCE_URL = `${MARKETPLACE_OFFICIAL_ORIGIN}/templates`;
+const MARKETPLACE_DEBUG_SOURCE_URL = `${MARKETPLACE_DEBUG_ORIGIN}/templates`;
+const MARKETPLACE_OFFICIAL_HOSTS = new Set(['dscanvas.dev', 'www.dscanvas.dev', 'templates.dscanvas.dev']);
+const MARKETPLACE_DEBUG_HOSTS = new Set(['dscanvas-template-marketplace.wzy0304.workers.dev']);
+const MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES = [
+  'http://localhost:*',
+  'https://localhost:*',
+  'http://127.0.0.1:*',
+  'https://127.0.0.1:*',
+  'http://0.0.0.0:*',
+  'https://0.0.0.0:*',
+  'http://[::1]:*',
+  'https://[::1]:*'
+];
+const MARKETPLACE_CONNECT_SOURCES = [
+  MARKETPLACE_OFFICIAL_ORIGIN,
+  'https://www.dscanvas.dev',
+  'https://templates.dscanvas.dev',
+  MARKETPLACE_DEBUG_ORIGIN,
+  ...MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES
+].join(' ');
+const MARKETPLACE_IMAGE_SOURCES = [
+  'https:',
+  'data:',
+  ...MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES
+].join(' ');
 const MARKETPLACE_PANEL_VIEW_TYPE = 'devSessionCanvas.templateMarketplace';
 const MARKETPLACE_BUNDLED_CODICON_PATH_SEGMENTS = ['dist', 'sidebar-codicon.css'] as const;
+
+type MarketplaceSourceFlavor = 'official' | 'debug';
 
 type MarketplacePanelInboundMessage =
   | {
@@ -19,6 +49,9 @@ type MarketplacePanelInboundMessage =
     }
   | {
       type: 'marketplace/openInBrowser';
+      payload?: {
+        sourceUrl?: string;
+      };
     }
   | {
       type: 'marketplace/refreshInstalledTemplates';
@@ -27,6 +60,7 @@ type MarketplacePanelInboundMessage =
 interface MarketplaceTemplateDetailRequest {
   templateIdOrSlug: string;
   versionId?: string;
+  sourceUrl?: string;
 }
 
 type MarketplacePanelOutboundMessage =
@@ -60,6 +94,12 @@ type MarketplacePanelOutboundMessage =
       };
     }
   | {
+      type: 'marketplace/openTemplateIndex';
+      payload: {
+        sourceUrl: string;
+      };
+    }
+  | {
       type: 'marketplace/openTemplateDetail';
       payload: MarketplaceTemplateDetailRequest;
     };
@@ -68,17 +108,67 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
   private panel: vscode.WebviewPanel | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private pendingDetailRequest: MarketplaceTemplateDetailRequest | undefined;
+  private readonly defaultMarketplaceSourceUrl: URL;
+  private marketplaceSourceUrl: URL;
 
   public constructor(
     private readonly marketplaceClient: TemplateMarketplaceClient,
-    private readonly extensionUri: vscode.Uri
-  ) {}
+    private readonly extensionUri: vscode.Uri,
+    extensionMode: vscode.ExtensionMode
+  ) {
+    this.defaultMarketplaceSourceUrl = resolveDefaultMarketplaceSourceUrl(extensionMode);
+    this.marketplaceSourceUrl = new URL(this.defaultMarketplaceSourceUrl);
+  }
 
   public reveal(): void {
+    this.marketplaceSourceUrl = new URL(this.defaultMarketplaceSourceUrl);
+    this.pendingDetailRequest = undefined;
+    this.revealPanel();
+    void this.postOpenTemplateIndex();
+  }
+
+  public openTemplateDetail(templateIdOrSlug: string, versionId?: string, sourceUrl?: URL): void {
+    const resolvedSourceUrl = sourceUrl
+      ? resolveCompatibleMarketplaceSourceUrl(sourceUrl, this.defaultMarketplaceSourceUrl)
+      : undefined;
+    if (resolvedSourceUrl) {
+      this.marketplaceSourceUrl = resolvedSourceUrl;
+    }
+    this.pendingDetailRequest = {
+      templateIdOrSlug,
+      versionId,
+      sourceUrl: resolvedSourceUrl?.toString()
+    };
+    this.revealPanel();
+    void this.postOpenTemplateDetail();
+  }
+
+  public openTemplateDetailFromUri(uri: vscode.Uri): void {
+    const detailRequest = parseMarketplaceTemplateDetailRequest(uri);
+    const sourceUrl = detailRequest.sourceUrl
+      ? parseTrustedMarketplaceSourceUrl(detailRequest.sourceUrl)
+      : new URL(this.defaultMarketplaceSourceUrl);
+    this.openTemplateDetail(
+      detailRequest.templateIdOrSlug,
+      detailRequest.versionId,
+      sourceUrl
+    );
+  }
+
+  public dispose(): void {
+    this.panel?.dispose();
+    this.panel = undefined;
+    this.pendingDetailRequest = undefined;
+    this.marketplaceSourceUrl = new URL(this.defaultMarketplaceSourceUrl);
+    while (this.disposables.length > 0) {
+      this.disposables.pop()?.dispose();
+    }
+  }
+
+  private revealPanel(): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.One);
       void this.postInstalledTemplates();
-      void this.postOpenTemplateDetail();
       return;
     }
 
@@ -92,7 +182,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
       }
     );
     this.panel = panel;
-    panel.webview.html = buildTemplateMarketplaceHtml(panel.webview, this.extensionUri);
+    panel.webview.html = buildTemplateMarketplaceHtml(panel.webview, this.extensionUri, this.marketplaceSourceUrl);
     panel.webview.onDidReceiveMessage((message) => {
       void this.handleMessage(message);
     }, undefined, this.disposables);
@@ -100,29 +190,6 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
       this.panel = undefined;
     }, undefined, this.disposables);
     void this.postInstalledTemplates();
-    void this.postOpenTemplateDetail();
-  }
-
-  public openTemplateDetail(templateIdOrSlug: string, versionId?: string): void {
-    this.pendingDetailRequest = {
-      templateIdOrSlug,
-      versionId
-    };
-    this.reveal();
-  }
-
-  public openTemplateDetailFromUri(uri: vscode.Uri): void {
-    const detailRequest = parseMarketplaceTemplateDetailRequest(uri);
-    this.openTemplateDetail(detailRequest.templateIdOrSlug, detailRequest.versionId);
-  }
-
-  public dispose(): void {
-    this.panel?.dispose();
-    this.panel = undefined;
-    this.pendingDetailRequest = undefined;
-    while (this.disposables.length > 0) {
-      this.disposables.pop()?.dispose();
-    }
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -133,7 +200,16 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
 
     switch (parsed.type) {
       case 'marketplace/openInBrowser':
-        await vscode.env.openExternal(vscode.Uri.parse(`${MARKETPLACE_PREVIEW_ORIGIN}/templates`));
+        try {
+          this.marketplaceSourceUrl = resolveCompatibleMarketplaceSourceUrl(
+            parseTrustedMarketplaceSourceUrl(parsed.payload?.sourceUrl ?? this.marketplaceSourceUrl.toString()),
+            this.defaultMarketplaceSourceUrl
+          );
+          await vscode.env.openExternal(vscode.Uri.parse(this.marketplaceSourceUrl.toString()));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await vscode.window.showErrorMessage(`打开模板市场失败：${message}`);
+        }
         return;
       case 'marketplace/installTemplate':
         await this.installTemplate(parsed.payload);
@@ -146,6 +222,10 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
 
   private async installTemplate(payload: TemplateMarketplaceInlineInstallParams): Promise<void> {
     try {
+      resolveCompatibleMarketplaceSourceUrl(
+        parseTrustedMarketplaceSourceUrl(payload.sourceUrl),
+        this.defaultMarketplaceSourceUrl
+      );
       const result = await this.marketplaceClient.installTemplateFromInlinePayload(payload);
       const installedTemplates = await this.marketplaceClient.listInstalledTemplates();
       const installTargets = this.marketplaceClient.listInstallTargets();
@@ -215,6 +295,83 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
       payload: detailRequest
     } satisfies MarketplacePanelOutboundMessage);
   }
+
+  private async postOpenTemplateIndex(): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+    await this.panel.webview.postMessage({
+      type: 'marketplace/openTemplateIndex',
+      payload: {
+        sourceUrl: this.marketplaceSourceUrl.toString()
+      }
+    } satisfies MarketplacePanelOutboundMessage);
+  }
+}
+
+function resolveDefaultMarketplaceSourceUrl(extensionMode: vscode.ExtensionMode): URL {
+  return new URL(
+    extensionMode === vscode.ExtensionMode.Production
+      ? MARKETPLACE_OFFICIAL_SOURCE_URL
+      : MARKETPLACE_DEBUG_SOURCE_URL
+  );
+}
+
+function resolveCompatibleMarketplaceSourceUrl(sourceUrl: URL, defaultMarketplaceSourceUrl: URL): URL {
+  const expectedFlavor = getMarketplaceSourceFlavor(defaultMarketplaceSourceUrl);
+  const actualFlavor = getMarketplaceSourceFlavor(sourceUrl);
+  if (!expectedFlavor || !actualFlavor || expectedFlavor !== actualFlavor) {
+    throw new Error(formatMarketplaceSourceMismatchError(expectedFlavor, actualFlavor));
+  }
+  return sourceUrl;
+}
+
+function getMarketplaceSourceFlavor(sourceUrl: URL): MarketplaceSourceFlavor | undefined {
+  if (sourceUrl.protocol === 'https:' && MARKETPLACE_OFFICIAL_HOSTS.has(sourceUrl.hostname)) {
+    return 'official';
+  }
+  if (sourceUrl.protocol === 'https:' && MARKETPLACE_DEBUG_HOSTS.has(sourceUrl.hostname)) {
+    return 'debug';
+  }
+  if (
+    (sourceUrl.protocol === 'http:' || sourceUrl.protocol === 'https:') &&
+    isLocalDevelopmentHost(sourceUrl.hostname)
+  ) {
+    return 'debug';
+  }
+  return undefined;
+}
+
+function formatMarketplaceSourceMismatchError(
+  expectedFlavor: MarketplaceSourceFlavor | undefined,
+  actualFlavor: MarketplaceSourceFlavor | undefined
+): string {
+  const expectedInstall = expectedFlavor === 'official'
+    ? '正式版'
+    : expectedFlavor === 'debug'
+      ? '调试版'
+      : '当前版本';
+  const expectedMarket = expectedFlavor === 'official'
+    ? '正式市场'
+    : expectedFlavor === 'debug'
+      ? '调试市场'
+      : '对应市场';
+  const actualMarket = actualFlavor === 'official'
+    ? '正式市场'
+    : actualFlavor === 'debug'
+      ? '调试市场'
+      : '未知来源';
+  return `当前扩展为${expectedInstall}，仅支持${expectedMarket}链接；该链接来自${actualMarket}，请从对应市场重新打开。`;
+}
+
+function isLocalDevelopmentHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
 }
 
 function formatMarketplaceInstallOperationLabel(operation: 'installed' | 'updated' | 'reinstalled'): string {
@@ -234,7 +391,12 @@ function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInbound
 
   if (message.type === 'marketplace/openInBrowser') {
     return {
-      type: 'marketplace/openInBrowser'
+      type: 'marketplace/openInBrowser',
+      payload: isRecord(message.payload)
+        ? {
+            sourceUrl: readOptionalString(message.payload.sourceUrl)
+          }
+        : undefined
     };
   }
 
@@ -285,26 +447,31 @@ function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInbound
 
 function parseMarketplaceTemplateDetailRequest(uri: vscode.Uri): MarketplaceTemplateDetailRequest {
   if (uri.path !== '/install-template') {
-    throw new Error('不支持的模板市场详情链接。');
+    throw new Error('不支持的市场链接路径。');
   }
 
   const params = new URLSearchParams(uri.query);
   const templateIdOrSlug = readRequiredQueryParam(params, 'template');
   return {
     templateIdOrSlug,
-    versionId: readOptionalString(params.get('version'))
+    versionId: readOptionalString(params.get('version')),
+    sourceUrl: readOptionalString(params.get('source'))
   };
 }
 
 function readRequiredQueryParam(params: URLSearchParams, key: string): string {
   const value = readOptionalString(params.get(key));
   if (!value) {
-    throw new Error(`模板市场链接缺少 ${key} 参数。`);
+    throw new Error(`市场链接缺少必要参数 ${key}。`);
   }
   return value;
 }
 
-function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+function buildTemplateMarketplaceHtml(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  marketplaceSourceUrl: URL
+): string {
   const nonce = createNonce();
   const codiconCssUri = getVersionedWebviewResourceUri(
     webview,
@@ -312,7 +479,8 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
     ...MARKETPLACE_BUNDLED_CODICON_PATH_SEGMENTS
   );
   const stateJson = JSON.stringify({
-    apiOrigin: MARKETPLACE_PREVIEW_ORIGIN
+    apiOrigin: marketplaceSourceUrl.origin,
+    marketplaceSourceUrl: marketplaceSourceUrl.toString()
   });
 
   return `<!DOCTYPE html>
@@ -321,7 +489,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; connect-src ${MARKETPLACE_PREVIEW_ORIGIN}; img-src https: data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
+      content="default-src 'none'; connect-src ${MARKETPLACE_CONNECT_SOURCES}; img-src ${MARKETPLACE_IMAGE_SOURCES}; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="${codiconCssUri}" />
@@ -1050,13 +1218,13 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
       <section class="panel-header">
         <div class="panel-title-row">
           <h1>模板市场</h1>
-          <button class="open-browser" id="openBrowserButton" type="button">在浏览器打开</button>
+          <button class="open-browser" id="openBrowserButton" type="button">浏览器中打开</button>
         </div>
-        <p class="panel-note">先打开模板详情，再在详情页安装到本地模板库。</p>
+        <p class="panel-note">在详情页中选择版本并安装到本地模板库。</p>
       </section>
 
       <section class="toolbar" id="marketplaceToolbar" aria-label="模板市场筛选">
-        <input id="searchInput" type="search" placeholder="搜索 review / release / starter..." />
+        <input id="searchInput" type="search" placeholder="搜索模板名称、标签或关键词..." />
         <select id="sortSelect" aria-label="排序">
           <option value="hot">Hot</option>
           <option value="downloads">Downloads</option>
@@ -1066,7 +1234,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         </select>
       </section>
 
-      <p class="status" id="status">正在加载模板市场...</p>
+      <p class="status" id="status">正在加载...</p>
       <section class="grid" id="templateGrid" aria-label="模板列表"></section>
       <section class="detail-view" id="detailView" aria-label="模板详情" hidden></section>
     </main>
@@ -1074,7 +1242,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const initialState = ${stateJson};
-      const apiOrigin = initialState.apiOrigin;
+      let apiOrigin = normalizeApiOrigin(initialState.apiOrigin, initialState.marketplaceSourceUrl);
       const persistedState = normalizePersistedState(vscode.getState && vscode.getState());
       const initialInstallTargets = normalizeInstallTargets(initialState.installTargets);
       const state = {
@@ -1092,7 +1260,9 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         loadingVersionMenuSlug: undefined,
         templateDetailsBySlug: {},
         detailLoadErrorsBySlug: {},
-        versionMenuErrorsBySlug: {}
+        versionMenuErrorsBySlug: {},
+        apiOrigin,
+        marketplaceSourceUrl: normalizeMarketplaceSourceUrl(initialState.marketplaceSourceUrl, apiOrigin)
       };
 
       const searchInput = document.getElementById('searchInput');
@@ -1108,7 +1278,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
       }
 
       openBrowserButton.addEventListener('click', () => {
-        vscode.postMessage({ type: 'marketplace/openInBrowser' });
+        postOpenInBrowserMessage();
       });
       searchInput.addEventListener('input', debounce(() => {
         closeVersionMenus();
@@ -1146,7 +1316,16 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         }
 
         if (message.type === 'marketplace/installedTemplatesError') {
-          statusElement.textContent = '读取已安装状态失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误') + '。市场浏览不受影响，已安装模板仍可从侧栏使用。';
+          statusElement.textContent = '读取已安装状态失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误') + '。浏览不受影响，已安装模板可从侧栏使用。';
+          return;
+        }
+
+        if (message.type === 'marketplace/openTemplateIndex') {
+          const sourceChanged = setMarketplaceSourceUrl(message.payload && message.payload.sourceUrl);
+          closeTemplateDetail();
+          if (sourceChanged || state.templates.length === 0) {
+            void loadTemplates();
+          }
           return;
         }
 
@@ -1154,6 +1333,10 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           const templateIdOrSlug = message.payload && message.payload.templateIdOrSlug ? String(message.payload.templateIdOrSlug).trim() : '';
           if (!templateIdOrSlug) {
             return;
+          }
+          const sourceChanged = setMarketplaceSourceUrl(message.payload && message.payload.sourceUrl);
+          if (sourceChanged) {
+            void loadTemplates();
           }
           openTemplateDetail(
             templateIdOrSlug,
@@ -1171,10 +1354,71 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           syncInstallTargets(normalizeInstallTargets(message.payload.installTargets));
           statusElement.textContent = formatInstallResultStatus(message.payload);
         } else {
-          statusElement.textContent = '安装失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误') + '。模板没有写入本地库，请检查安装位置后重试。';
+          statusElement.textContent = '安装失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误') + '。模板未写入本地，请确认安装位置后重试。';
         }
         renderTemplates();
       });
+
+      function postOpenInBrowserMessage() {
+        vscode.postMessage({
+          type: 'marketplace/openInBrowser',
+          payload: {
+            sourceUrl: buildMarketplaceBrowserUrl()
+          }
+        });
+      }
+
+      function setMarketplaceSourceUrl(value) {
+        const nextSourceUrl = normalizeMarketplaceSourceUrl(value, apiOrigin);
+        const nextApiOrigin = normalizeApiOrigin(nextSourceUrl, apiOrigin);
+        if (!nextApiOrigin || nextApiOrigin === apiOrigin) {
+          state.marketplaceSourceUrl = nextSourceUrl;
+          return false;
+        }
+        apiOrigin = nextApiOrigin;
+        state.apiOrigin = nextApiOrigin;
+        state.marketplaceSourceUrl = nextSourceUrl;
+        state.templates = [];
+        state.storageMode = undefined;
+        state.loadError = undefined;
+        state.templateDetailsBySlug = {};
+        state.detailLoadErrorsBySlug = {};
+        state.versionMenuErrorsBySlug = {};
+        return true;
+      }
+
+      function normalizeApiOrigin(value, fallback) {
+        try {
+          return new URL(String(value || '')).origin;
+        } catch {
+          try {
+            return new URL(String(fallback || '')).origin;
+          } catch {
+            return '';
+          }
+        }
+      }
+
+      function normalizeMarketplaceSourceUrl(value, fallbackApiOrigin) {
+        try {
+          const url = new URL(String(value || ''));
+          return url.toString();
+        } catch {
+          return new URL('/templates', fallbackApiOrigin || apiOrigin).toString();
+        }
+      }
+
+      function buildMarketplaceBrowserUrl() {
+        return state.activeTemplateSlug ? buildTemplateSourceUrl(state.activeTemplateSlug) : buildMarketplaceIndexUrl();
+      }
+
+      function buildMarketplaceIndexUrl() {
+        return new URL('/templates', apiOrigin).toString();
+      }
+
+      function buildTemplateSourceUrl(templateSlug) {
+        return new URL('/templates/' + encodeURIComponent(templateSlug), apiOrigin).toString();
+      }
 
       async function loadTemplates() {
         const params = new URLSearchParams();
@@ -1183,7 +1427,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           params.set('q', query);
         }
         params.set('sort', sortSelect.value);
-        statusElement.textContent = '正在加载模板市场...';
+        statusElement.textContent = '正在加载...';
         try {
           const response = await fetch(apiOrigin + '/api/v1/templates?' + params.toString(), {
             headers: { accept: 'application/json' }
@@ -1212,14 +1456,14 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
 
         if (state.loadError) {
           statusElement.textContent = state.templates.length > 0
-            ? '刷新市场失败，继续显示上次加载结果：' + state.loadError
-            : '暂时无法连接模板市场：' + state.loadError + '。已安装模板仍可从侧栏使用。';
+            ? '刷新失败，显示上次结果：' + state.loadError
+            : '无法连接市场：' + state.loadError + '。已安装模板可从侧栏使用。';
           return;
         }
 
         statusElement.textContent = state.templates.length > 0
-          ? '共 ' + state.templates.length + ' 个模板，数据来源：' + (state.storageMode || 'unknown')
-          : '没有匹配的模板。';
+          ? '共 ' + state.templates.length + ' 个模板'
+          : '没有匹配的模板，试试其他关键词。';
       }
 
       function renderTemplates() {
@@ -1272,9 +1516,9 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const article = document.createElement('article');
         article.className = 'card notice-card';
         const title = document.createElement('h2');
-        title.textContent = '无法连接模板市场';
+        title.textContent = '无法连接市场';
         const body = document.createElement('p');
-        body.textContent = '请检查网络、代理或 workers.dev 访问权限。已安装模板仍保留在侧栏，可以继续从侧栏应用到 Canvas。';
+        body.textContent = '请检查网络连接或代理设置。已安装模板仍可从侧栏应用到画布。';
         const detail = document.createElement('p');
         detail.textContent = state.loadError ? '错误信息：' + state.loadError : '';
         const actions = document.createElement('div');
@@ -1282,16 +1526,16 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const retryButton = document.createElement('button');
         retryButton.className = 'primary';
         retryButton.type = 'button';
-        retryButton.textContent = '重试加载';
+        retryButton.textContent = '重试';
         retryButton.addEventListener('click', () => {
           void loadTemplates();
         });
         const browserButton = document.createElement('button');
         browserButton.className = 'secondary';
         browserButton.type = 'button';
-        browserButton.textContent = '在浏览器打开';
+        browserButton.textContent = '浏览器中打开';
         browserButton.addEventListener('click', () => {
-          vscode.postMessage({ type: 'marketplace/openInBrowser' });
+          postOpenInBrowserMessage();
         });
         actions.append(retryButton, browserButton);
         article.append(title, body);
@@ -1312,16 +1556,16 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '返回列表';
+        backButton.textContent = '← 返回列表';
         backButton.addEventListener('click', closeTemplateDetail);
 
         const loadingTitle = document.createElement('h2');
         loadingTitle.className = 'detail-title';
-        loadingTitle.textContent = '正在读取模板详情...';
+        loadingTitle.textContent = '正在加载模板详情...';
 
         const loadingDescription = document.createElement('p');
         loadingDescription.className = 'detail-description';
-        loadingDescription.textContent = '模板 ' + templateIdOrSlug + ' 的详情正在加载。';
+        loadingDescription.textContent = '正在获取 ' + templateIdOrSlug + ' 的信息。';
 
         header.append(backButton, loadingTitle, loadingDescription);
 
@@ -1335,7 +1579,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         loadingReadmeTitle.textContent = 'README';
         const loadingReadmeBody = document.createElement('div');
         loadingReadmeBody.className = 'detail-readme-body';
-        loadingReadmeBody.textContent = '正在加载模板内容...';
+        loadingReadmeBody.textContent = '加载中...';
         loadingReadme.append(loadingReadmeTitle, loadingReadmeBody);
 
         const loadingSidebar = document.createElement('aside');
@@ -1347,7 +1591,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         loadingSidebarTitle.textContent = '详情';
         const loadingSidebarText = document.createElement('p');
         loadingSidebarText.className = 'detail-section-body';
-        loadingSidebarText.textContent = '详情页加载完成后，这里会显示安装、下载、版本与校验信息。';
+        loadingSidebarText.textContent = '加载完成后将显示安装、下载和版本信息。';
         loadingSidebarBody.append(loadingSidebarTitle, loadingSidebarText);
         loadingSidebar.append(loadingSidebarBody);
 
@@ -1366,16 +1610,16 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '返回列表';
+        backButton.textContent = '← 返回列表';
         backButton.addEventListener('click', closeTemplateDetail);
 
         const title = document.createElement('h2');
         title.className = 'detail-title';
-        title.textContent = '无法读取模板详情';
+        title.textContent = '加载模板详情失败';
 
         const description = document.createElement('p');
         description.className = 'detail-description';
-        description.textContent = '模板 ' + templateIdOrSlug + ' 的详情接口返回了错误。';
+        description.textContent = '无法获取 ' + templateIdOrSlug + ' 的详情信息。';
 
         header.append(backButton, title, description);
 
@@ -1397,7 +1641,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const retryButton = document.createElement('button');
         retryButton.className = 'primary';
         retryButton.type = 'button';
-        retryButton.textContent = '重试加载';
+        retryButton.textContent = '重试';
         retryButton.addEventListener('click', () => {
           delete state.detailLoadErrorsBySlug[templateIdOrSlug];
           renderTemplates();
@@ -1405,7 +1649,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         });
         const backHint = document.createElement('p');
         backHint.className = 'detail-section-body';
-        backHint.textContent = '如果仍然失败，可以先返回列表，再重新打开该模板详情。';
+        backHint.textContent = '多次失败时，可返回列表后重新打开。';
         sidebar.append(retryButton, backHint);
 
         body.append(readme, sidebar);
@@ -1414,6 +1658,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
       }
 
       function buildDetailShell(template) {
+        const selectedVersion = resolvePreferredDetailVersion(template, state.activeTemplateVersionId);
         const shell = document.createElement('article');
         shell.className = 'detail-shell';
 
@@ -1423,7 +1668,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '返回列表';
+        backButton.textContent = '← 返回列表';
         backButton.addEventListener('click', closeTemplateDetail);
 
         const summary = document.createElement('div');
@@ -1483,8 +1728,8 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const controls = document.createElement('div');
         controls.className = 'detail-controls';
         const installTargetRow = createInstallTargetSelectRow(template);
-        const installButtonGroup = createInstallSplitButton(template, installedTemplate, state.activeTemplateVersionId);
-        const downloadButtonGroup = createDownloadSplitButton(template, state.activeTemplateVersionId, {
+        const installButtonGroup = createInstallSplitButton(template, installedTemplate, selectedVersion.id);
+        const downloadButtonGroup = createDownloadSplitButton(template, selectedVersion.id, {
           openDetailFirst: false
         });
         controls.append(installButtonGroup, downloadButtonGroup, installTargetRow);
@@ -1516,7 +1761,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           label.className = 'detail-version-label';
           const status = document.createElement('span');
           status.className = 'detail-version-status';
-          const isSelectedVersion = state.activeTemplateVersionId === version.id;
+          const isSelectedVersion = selectedVersion.id === version.id;
           status.textContent = isSelectedVersion
             ? '当前'
             : version.status;
@@ -1534,12 +1779,12 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         integritySection.className = 'detail-section';
         const integrityTitle = document.createElement('h3');
         integrityTitle.className = 'detail-section-title';
-        integrityTitle.textContent = '校验';
+        integrityTitle.textContent = '校验 · v' + selectedVersion.versionNumber;
         const integrityBody = document.createElement('div');
         integrityBody.className = 'detail-section-body';
         const integrityValue = document.createElement('p');
         integrityValue.className = 'detail-integrity-value';
-        integrityValue.textContent = template.latestVersion.sha256;
+        integrityValue.textContent = selectedVersion.sha256;
         integrityBody.append(integrityValue);
         integritySection.append(integrityTitle, integrityBody);
 
@@ -1551,7 +1796,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const sourceBody = document.createElement('div');
         sourceBody.className = 'detail-section-body';
         const sourceText = document.createElement('p');
-        sourceText.textContent = 'Worker API / preview origin';
+        sourceText.textContent = '来源：当前市场 API';
         sourceBody.append(sourceText);
         sourceSection.append(sourceTitle, sourceBody);
 
@@ -1580,8 +1825,8 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         delete state.detailLoadErrorsBySlug[templateIdOrSlug];
         const cachedDetail = state.templateDetailsBySlug[templateIdOrSlug];
         statusElement.textContent = cachedDetail
-          ? '模板详情：' + cachedDetail.name
-          : '正在查看模板详情：' + templateIdOrSlug;
+          ? cachedDetail.name
+          : '加载中：' + templateIdOrSlug;
         renderTemplates();
         if (!cachedDetail) {
           void loadTemplateDetail(templateIdOrSlug);
@@ -1613,7 +1858,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
 
         const description = document.createElement('p');
         description.className = 'description';
-        description.textContent = '已安装到 ' + formatInstalledTemplateLocationLabel(installedTemplate) + '。请在模板侧栏应用到 Canvas。';
+        description.textContent = '已安装到' + formatInstalledTemplateLocationLabel(installedTemplate) + '，可在侧栏模板列表中应用到画布。';
 
         const badge = document.createElement('div');
         badge.className = 'installed-badge';
@@ -1625,7 +1870,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           const detailButton = document.createElement('button');
           detailButton.className = 'secondary detail-link';
           detailButton.type = 'button';
-          detailButton.textContent = '浏览器详情';
+          detailButton.textContent = '在浏览器查看';
           detailButton.addEventListener('click', () => {
             window.open(installedTemplate.sourceUrl, '_blank', 'noopener');
           });
@@ -1721,8 +1966,8 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         installButton.textContent = isLatestVersionInstalled
           ? '已安装 v' + installedTemplate.installedVersionNumber
           : installedTemplate
-            ? '查看更新'
-          : '查看并安装';
+            ? '有新版本'
+          : '查看详情';
         installButton.disabled = isLatestVersionInstalled;
         if (isLatestVersionInstalled) {
           installButton.classList.add('is-installed');
@@ -1735,7 +1980,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           const detailButton = document.createElement('button');
           detailButton.className = 'primary split-toggle';
           detailButton.type = 'button';
-          detailButton.setAttribute('aria-label', '打开已安装模板详情');
+          detailButton.setAttribute('aria-label', '查看模板详情');
           detailButton.append(createDropdownChevronIcon());
           detailButton.addEventListener('click', () => {
             openTemplateDetail(template.slug, template.latestVersion.id);
@@ -1762,17 +2007,17 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const installButton = document.createElement('button');
         installButton.className = 'primary split-primary';
         installButton.type = 'button';
-        let installButtonLabel = '安装到 VSCode';
+        let installButtonLabel = '安装';
         if (state.installingSlug === template.slug) {
           installButtonLabel = '安装中...';
         } else if (!resolveTemplateInstallTargetId(template)) {
-          installButtonLabel = '选择安装位置';
+          installButtonLabel = '请先选择位置';
         } else if (isPreferredVersionInstalled) {
           installButtonLabel = '已安装 v' + installedTemplate.installedVersionNumber;
         } else if (installedTemplate) {
           installButtonLabel = '更新到 v' + installVersion.versionNumber;
         } else if (installVersion.versionNumber === template.latestVersion.versionNumber) {
-          installButtonLabel = '安装到 VSCode';
+          installButtonLabel = '安装';
         } else {
           installButtonLabel = '安装 v' + installVersion.versionNumber;
         }
@@ -1789,7 +2034,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const versionButton = document.createElement('button');
         versionButton.className = 'primary split-toggle';
         versionButton.type = 'button';
-        versionButton.setAttribute('aria-label', '选择安装版本');
+        versionButton.setAttribute('aria-label', '切换安装版本');
         versionButton.append(createDropdownChevronIcon());
         versionButton.disabled = state.installingSlug === template.slug || !resolveTemplateInstallTargetId(template);
         versionButton.addEventListener('click', () => {
@@ -1820,7 +2065,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         const versionButton = document.createElement('button');
         versionButton.className = 'secondary split-toggle';
         versionButton.type = 'button';
-        versionButton.setAttribute('aria-label', '选择下载版本');
+        versionButton.setAttribute('aria-label', '切换下载版本');
         versionButton.append(createDropdownChevronIcon());
         versionButton.addEventListener('click', () => {
           void toggleVersionMenu(template, 'download');
@@ -1895,7 +2140,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         if (state.loadingVersionMenuSlug === key) {
           const note = document.createElement('div');
           note.className = 'version-menu-note';
-          note.textContent = '正在读取可安装版本...';
+          note.textContent = '正在加载版本列表...';
           menu.append(note);
           return menu;
         }
@@ -1904,7 +2149,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
         if (error) {
           const note = document.createElement('div');
           note.className = 'version-menu-note';
-          note.textContent = '读取版本失败：' + error;
+          note.textContent = '加载版本失败：' + error;
           menu.append(note);
           return menu;
         }
@@ -1949,20 +2194,20 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
           }
           const body = await response.json();
           if (!body || typeof body !== 'object' || !body.template) {
-            throw new Error('版本接口返回了无法识别的数据');
+            throw new Error('接口返回了无法识别的数据');
           }
           state.templateDetailsBySlug[key] = body.template;
           delete state.detailLoadErrorsBySlug[key];
           delete state.versionMenuErrorsBySlug[key];
           if (state.activeTemplateSlug === key) {
-            statusElement.textContent = '模板详情：' + body.template.name;
+            statusElement.textContent = body.template.name;
           }
         } catch (error) {
           const message = formatErrorMessage(error);
           state.detailLoadErrorsBySlug[key] = message;
           state.versionMenuErrorsBySlug[key] = message;
           if (state.activeTemplateSlug === key) {
-            statusElement.textContent = '读取模板详情失败：' + message;
+            statusElement.textContent = '加载失败：' + message;
           }
         } finally {
           if (state.loadingVersionMenuSlug === key) {
@@ -2004,7 +2249,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
               templateIdOrSlug: template.slug,
               versionId: version.id,
               targetStorageLocationId: targetId,
-              sourceUrl: apiOrigin + '/templates/' + encodeURIComponent(template.slug),
+              sourceUrl: buildTemplateSourceUrl(template.slug),
               templateJson,
               payloadSha256: version.sha256,
               marketTemplateId: template.id,
@@ -2196,7 +2441,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview, extensionUri: vsc
       function formatErrorMessage(error) {
         const message = String(error && error.message ? error.message : error || '未知错误');
         if (/Failed to fetch/i.test(message)) {
-          return '网络请求失败，可能无法访问 workers.dev 或代理阻断';
+          return '网络请求失败，可能无法访问模板市场 API 或代理阻断';
         }
         return message;
       }

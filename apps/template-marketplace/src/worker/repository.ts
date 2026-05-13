@@ -175,8 +175,12 @@ FROM templates t
 JOIN users u ON u.id = t.publisher_id
 LEFT JOIN template_versions AS latest_published_version
   ON latest_published_version.id = t.latest_version_id
+  AND latest_published_version.template_id = t.id
   AND latest_published_version.status = 'published'
-JOIN template_versions v ON v.id = ${latestPublishedVersionSql}
+JOIN template_versions v
+  ON v.id = ${latestPublishedVersionSql}
+  AND v.template_id = t.id
+  AND v.status = 'published'
 LEFT JOIN template_tags tt ON tt.template_id = t.id`;
 
 interface TemplateRow {

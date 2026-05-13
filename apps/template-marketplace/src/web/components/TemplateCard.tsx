@@ -19,7 +19,7 @@ export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
       <a
         className="market-thumbnail block h-36 overflow-hidden border-b border-canvas-line outline-none ring-canvas-accent/25 transition focus:ring-4"
         href={detailHref}
-        aria-label={`View ${template.name} details`}
+        aria-label={`View details for ${template.name}`}
       >
         <img
           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
@@ -55,7 +55,7 @@ export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
           <InstallInVSCodeLink
             className="bg-canvas-accent px-3 py-2 text-xs font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
             template={template}
-            ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
+            ariaLabel={`Install ${template.name} v${template.latestVersion.versionNumber} in VS Code`}
             noticeClassName="basis-full text-right text-xs leading-5 text-canvas-muted"
           >
             Install
@@ -64,7 +64,7 @@ export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
             className="border border-canvas-line px-3 py-2 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
             href={downloadHref}
             download
-            aria-label={`Download ${template.name} version ${template.latestVersion.versionNumber} template JSON`}
+            aria-label={`Download ${template.name} v${template.latestVersion.versionNumber} as JSON`}
           >
             JSON
           </a>
