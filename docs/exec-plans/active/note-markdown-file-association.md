@@ -38,6 +38,7 @@
 - [x] (2026-05-13 19:40 +0800) 将关联 Markdown Note subtitle 改为与 Agent / Terminal 一致的完整人类可读文本加布局省略，不再在 Host 侧做 56 字符中间压缩；同步 `docs/UI.md` 中节点标题/副标题规范。
 - [x] (2026-05-13 21:10 +0800) 补齐关联 Markdown Note 未解决冲突的草稿持久化：Webview 编辑时上报 draft，Host 在 stale 写回或外部刷新后持久化 `conflictDraft`，窗口焦点刷新不再自动清除 `dirty-conflict`。
 - [x] (2026-05-13 23:16 +0800) 补充并运行本轮针对 `conflictDraft` 的 Playwright、smoke 片段与文档验证记录。
+- [x] (2026-05-14 10:32 +0800) 根据手动验证反馈补强编辑态外部变更提醒：Webview 开始编辑时向 Host 登记运行时 edit session，Host 文件刷新能在提交前进入 `dirty-conflict` 并持久化草稿；冲突提示不再把 textarea 设为只读，用户可继续编辑后再重新加载、复制或覆盖。
 - [x] (2026-05-13 23:57 +0800) 将关联 Markdown Note 的冲突草稿正文迁移到 `storageUri/note-markdown-drafts/<draftId>.md`；Host 持久化状态和 debug snapshot 只保留 draft 引用，发给 Webview 时再按需 hydrate 草稿内容。
 - [x] (2026-05-14 00:16 +0800) 在关联 Markdown 冲突提示中增加 `复制草稿` 动作；Webview 发送草稿内容给 Host，由 Host 写入系统剪贴板，并补充 Playwright 回归。
 
@@ -172,6 +173,14 @@
   理由：重新加载会丢弃草稿，覆盖文件会改写权威 Markdown；复制草稿提供一个非破坏性出口，让用户先把本地内容保存到剪贴板，再决定如何解决冲突。Host 负责剪贴板写入可以复用现有终端复制的权限和错误处理边界。
   日期/作者：2026-05-14 / Codex
 
+- 决策：关联 Markdown Note 进入正文编辑时，Webview 向 Host 登记不持久化的运行时 edit session；文件 watcher、保存事件或焦点刷新一旦发现磁盘 revision 已不同，Host 用当前 edit session 内容生成 storage-backed `conflictDraft` 并进入 `dirty-conflict`。冲突提示保持 textarea 可编辑，但阻止失焦或快捷提交静默写回。
+  理由：只在失焦写回前做 stale revision 检查会让用户编辑期间看不到外部落盘变化；把 edit session 放在 Host 内存态可以让文件刷新提前提示，同时避免把“尚未产生差异”的普通编辑开始动作写入持久化状态。保持可编辑可减少用户在冲突提示出现后被迫中断整理草稿的体验成本，真正改写文件仍必须点击显式动作。
+  日期/作者：2026-05-14 / Codex
+
+- 决策：运行时 edit session 记录 `baseContent` 和 `baseContentRevision`，冲突判定必须同时满足“用户已编辑草稿”与“关联文件相对编辑基线发生变化”：`draftContent !== baseContent` 且 `latestRemoteContent !== baseContent` 或 revision/mtime/ctime 变化。冲突一旦出现，不因后续草稿文本又等于最新远端内容而自动消失，必须由用户显式重新加载或覆盖。
+  理由：用户指出“textarea 与 Markdown 不同”本身可能只是正常本地草稿，不能作为冲突提示条件；但用户已经编辑草稿后，关联文件发生任何落盘变化都需要提示，否则会出现草稿先等于远端、继续编辑后又等于远端导致提示状态来回消失的问题。
+  日期/作者：2026-05-14 / Codex
+
 ## 结果与复盘
 
 以下内容记录当前实现结果；本轮已根据用户纠正把关联 Markdown 的同步基线重新收回到磁盘。
@@ -179,11 +188,11 @@
 已落地内容：
 
 - `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
-- `src/common/protocol.ts` 继续扩展 Webview -> Host 消息：关联 Markdown 编辑时上报/清理未提交 draft，使 Host 能在 Reload Window 或关闭 VSCode 后保留未解决冲突的草稿引用；冲突提示的 `复制草稿` 会发送 `webview/copyAssociatedNoteMarkdownDraft`。
+- `src/common/protocol.ts` 继续扩展 Webview -> Host 消息：关联 Markdown 编辑开始/结束时登记运行时 edit session，编辑时上报/清理未提交 draft，使 Host 能在 Reload Window 或关闭 VSCode 后保留未解决冲突的草稿引用；冲突提示的 `复制草稿` 会发送 `webview/copyAssociatedNoteMarkdownDraft`。
 - `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型；`NoteMarkdownConflictDraft` 支持 storage-backed `draftId` 与只面向 Webview hydration 的可选 `content`，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
-- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取；普通焦点恢复和 watcher 刷新会保留未处理 `dirty-conflict`，只有显式重新加载或覆盖才清理 `conflictDraft`。冲突草稿正文写入 `note-markdown-drafts/<draftId>.md`，持久化状态和 debug snapshot 会剥离 `content`，Host 给 Webview 广播状态时再读取 draft 文件 hydrate；复制草稿请求由 Host 写入系统剪贴板。
-- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、带已 hydrate `conflictDraft.content` 的 Host `dirty-conflict` 重新 bootstrap 草稿恢复、无草稿内容 `dirty-conflict` 的 reload-only 恢复警告、冲突时的 `复制草稿` 按钮，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
-- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、关联 Markdown draft 上报、Host dirty-conflict 后保留草稿引用、带 hydrate 草稿的 Host dirty-conflict 重新 bootstrap 的恢复/覆盖入口、只有 draft 引用但无内容时的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
+- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取；运行时 edit session 让 watcher/保存/焦点刷新可以在用户仍处于编辑态时发现外部落盘变化并生成 storage-backed conflict draft；普通焦点恢复和 watcher 刷新会保留未处理 `dirty-conflict`，只有显式重新加载或覆盖才清理 `conflictDraft`。冲突草稿正文写入 `note-markdown-drafts/<draftId>.md`，持久化状态和 debug snapshot 会剥离 `content`，Host 给 Webview 广播状态时再读取 draft 文件 hydrate；复制草稿请求由 Host 写入系统剪贴板。
+- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、带已 hydrate `conflictDraft.content` 的 Host `dirty-conflict` 重新 bootstrap 草稿恢复、无草稿内容 `dirty-conflict` 的 reload-only 恢复警告、冲突时的 `复制草稿` 按钮，以及空白画布拖放 Markdown 文件创建关联 Note；冲突提示出现后 textarea 仍可编辑，但 blur / Ctrl+Enter 只同步草稿，不会静默提交；空白画布与终端拖拽共享潜在资源判断。
+- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、冲突提示后继续编辑草稿、关联 Markdown draft 上报、Host dirty-conflict 后保留草稿引用、带 hydrate 草稿的 Host dirty-conflict 重新 bootstrap 的恢复/覆盖入口、只有 draft 引用但无内容时的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
 
@@ -219,6 +228,24 @@
 
        DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
        Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 dirty-conflict 且不覆盖真实文件、conflictDraft 随 dirty-conflict 持久化并在 reloadPersistedStateForTest 后保留、重新 bootstrap 持久化 dirty-conflict 只显示恢复警告、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮。本轮已把这一路径改成 storage-backed draft，待下次完整 smoke 复核真实宿主 draft 文件内容断言。
+
+       git diff --check
+       通过
+
+       npm run typecheck
+       通过；本轮复核运行时 edit session / 协议扩展 / Webview 可编辑冲突提示类型
+
+       npm run test:webview -- --grep "associated markdown note (editing blocks|warns when an edited draft sees a file revision change|accepts a file revision change before the draft is edited|keeps|restores a persisted dirty-conflict draft|persists an edit draft)"
+       Playwright webview tests passed；覆盖编辑期外部刷新后立即显示冲突提示、textarea 继续可编辑、失焦不静默写回、显式覆盖携带原始 base revision、用户已编辑草稿后同内容 revision-only 变化也提示、用户尚未编辑草稿时 revision 变化只更新基线、Host dirty-conflict 和持久化 dirty-conflict 草稿恢复后仍可编辑
+
+       npm run test:note-markdown-file-association
+       note markdown file association tests passed；复核关联 Markdown 纯函数基线
+
+       node --check tests/vscode-smoke/extension-tests.cjs
+       通过
+
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       Trusted workspace smoke passed；VS Code smoke test passed；覆盖真实 VSCode 宿主中 begin edit session 后外部落盘修改会在提交前进入 dirty-conflict，并把当前编辑态内容写入 storage-backed draft 文件
 
        git diff --check
        通过

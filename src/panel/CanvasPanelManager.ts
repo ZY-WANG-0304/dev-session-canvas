@@ -557,6 +557,13 @@ interface NoteMarkdownFileWatcher {
   close(): void;
 }
 
+interface ActiveAssociatedNoteMarkdownEdit {
+  content: string;
+  baseContent: string;
+  baseContentRevision?: string;
+  updatedAt: number;
+}
+
 interface ReadNoteMarkdownFileResult {
   status: NoteMarkdownFileStatus;
   content: string;
@@ -642,6 +649,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
   private readonly noteMarkdownFileWatchers = new Map<string, NoteMarkdownFileWatcher>();
   private readonly noteMarkdownFileRefreshTimers = new Map<string, NodeJS.Timeout>();
+  private readonly activeAssociatedNoteMarkdownEdits = new Map<string, ActiveAssociatedNoteMarkdownEdit>();
   private readonly noteMarkdownDropResourceKeysInProgress = new Set<string>();
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
   private readonly resolvedShellEnvironmentPatchPromises = new Map<
@@ -3959,6 +3967,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    this.activeAssociatedNoteMarkdownEdits.delete(payload.nodeId);
     this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
       ...noteMetadata.contentSource,
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
@@ -3971,11 +3980,55 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
   }
 
-  private handleUpdateAssociatedNoteMarkdownDraft(payload: {
+  private async handleBeginAssociatedNoteMarkdownEdit(payload: {
     nodeId: string;
     content: string;
     baseContentRevision?: string;
-  }): void {
+  }): Promise<void> {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!node || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    this.activeAssociatedNoteMarkdownEdits.set(payload.nodeId, {
+      content: payload.content,
+      baseContent: payload.content,
+      baseContentRevision: payload.baseContentRevision ?? source.contentRevision,
+      updatedAt: Date.now()
+    });
+    await this.refreshAssociatedMarkdownNote(payload.nodeId);
+  }
+
+  private handleEndAssociatedNoteMarkdownEdit(nodeId: string): void {
+    this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+  }
+
+  private async handleUpdateAssociatedNoteMarkdownDraft(payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }): Promise<void> {
+    const initialNode = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const initialNoteMetadata = initialNode ? ensureNoteMetadata(initialNode) : undefined;
+    const initialSource = initialNoteMetadata?.contentSource;
+    if (!initialNode || !initialNoteMetadata || initialSource?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const previousActiveEdit = this.activeAssociatedNoteMarkdownEdits.get(payload.nodeId);
+    const baseContentRevision =
+      previousActiveEdit?.baseContent === initialNoteMetadata.content
+        ? previousActiveEdit.baseContentRevision ?? payload.baseContentRevision ?? initialSource.contentRevision
+        : payload.baseContentRevision ?? previousActiveEdit?.baseContentRevision ?? initialSource.contentRevision;
+    this.activeAssociatedNoteMarkdownEdits.set(payload.nodeId, {
+      content: payload.content,
+      baseContent: previousActiveEdit?.baseContent ?? initialNoteMetadata.content,
+      baseContentRevision,
+      updatedAt: Date.now()
+    });
+    await this.refreshAssociatedMarkdownNote(payload.nodeId);
+
     const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
     const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
     const source = noteMetadata?.contentSource;
@@ -3983,12 +4036,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const baseContentRevision = payload.baseContentRevision ?? source.contentRevision;
+    const refreshedActiveEdit = this.activeAssociatedNoteMarkdownEdits.get(payload.nodeId);
+    const effectiveBaseContentRevision = refreshedActiveEdit?.baseContentRevision ?? baseContentRevision;
     const isDraftConflict =
       source.status === 'dirty-conflict' ||
-      (Boolean(baseContentRevision) &&
+      (Boolean(effectiveBaseContentRevision) &&
         Boolean(source.contentRevision) &&
-        baseContentRevision !== source.contentRevision);
+        effectiveBaseContentRevision !== source.contentRevision);
     if (payload.content === noteMetadata.content && source.status !== 'dirty-conflict') {
       this.handleClearAssociatedNoteMarkdownDraft(payload.nodeId);
       return;
@@ -4002,7 +4056,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : source.lastError,
       conflictDraft: this.createStoredNoteMarkdownConflictDraft(
         payload.content,
-        baseContentRevision,
+        effectiveBaseContentRevision,
         isDraftConflict ? source.contentRevision : undefined,
         source.conflictDraft
       )
@@ -4025,9 +4079,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       !node ||
       !noteMetadata ||
       source?.kind !== 'markdown-file' ||
-      !source.conflictDraft ||
       source.status === 'dirty-conflict'
     ) {
+      return;
+    }
+
+    this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+    if (!source.conflictDraft) {
       return;
     }
 
@@ -4602,6 +4660,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     options: { clearConflictDraft?: boolean } = {}
   ): Promise<void> {
+    if (options.clearConflictDraft) {
+      this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+    }
+
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
     const source = node ? ensureNoteMetadata(node).contentSource : undefined;
     if (!node || !source || source.kind !== 'markdown-file') {
@@ -4632,18 +4694,60 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       Boolean(source.contentRevision) &&
       Boolean(readResult.contentRevision) &&
       source.contentRevision !== readResult.contentRevision;
+    const activeEdit = this.activeAssociatedNoteMarkdownEdits.get(nodeId);
+    const activeEditBaseRevision = activeEdit?.baseContentRevision ?? source.contentRevision;
+    const didActiveEditDraftChange = Boolean(activeEdit) && activeEdit?.content !== activeEdit?.baseContent;
+    const didActiveEditRemoteRevisionChange =
+      readResult.status === 'ok' &&
+      Boolean(activeEdit) &&
+      Boolean(activeEditBaseRevision) &&
+      Boolean(readResult.contentRevision) &&
+      activeEditBaseRevision !== readResult.contentRevision;
+    const didActiveEditRemoteContentChange =
+      readResult.status === 'ok' &&
+      !readResult.contentSkipped &&
+      Boolean(activeEdit) &&
+      activeEdit?.baseContent !== readResult.content;
+    const didActiveEditConflict =
+      didActiveEditDraftChange &&
+      (didActiveEditRemoteContentChange || didActiveEditRemoteRevisionChange);
+    if (
+      activeEdit &&
+      readResult.status === 'ok' &&
+      !readResult.contentSkipped &&
+      readResult.contentRevision &&
+      activeEditBaseRevision !== readResult.contentRevision &&
+      !didActiveEditDraftChange
+    ) {
+      this.activeAssociatedNoteMarkdownEdits.set(nodeId, {
+        ...activeEdit,
+        baseContent: readResult.content,
+        baseContentRevision: readResult.contentRevision,
+        updatedAt: Date.now()
+      });
+    }
     const shouldKeepConflict =
       !options.clearConflictDraft &&
-      (source.status === 'dirty-conflict' || (Boolean(source.conflictDraft) && didRevisionChange));
-    const nextConflictDraft =
-      shouldKeepConflict && source.conflictDraft
-        ? {
-            ...source.conflictDraft,
-            remoteContentRevision: readResult.status === 'ok'
-              ? readResult.contentRevision
-              : source.conflictDraft.remoteContentRevision
-          }
-        : undefined;
+      (source.status === 'dirty-conflict' ||
+        (Boolean(source.conflictDraft) && didRevisionChange) ||
+        didActiveEditConflict);
+    const nextConflictDraft = shouldKeepConflict
+      ? didActiveEditConflict && activeEdit
+        ? this.createStoredNoteMarkdownConflictDraft(
+            activeEdit.content,
+            activeEditBaseRevision,
+            readResult.contentRevision,
+            source.conflictDraft
+          )
+        : source.conflictDraft
+          ? {
+              ...source.conflictDraft,
+              remoteContentRevision: readResult.status === 'ok'
+                ? readResult.contentRevision
+                : source.conflictDraft.remoteContentRevision
+            }
+          : undefined
+      : undefined;
     const nextStatus = shouldKeepConflict ? 'dirty-conflict' : readResult.status;
     const nextLastError = shouldKeepConflict
       ? (source.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
@@ -6600,8 +6704,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/updateNoteNode':
         void this.handleUpdateNoteNode(parsedMessage.payload);
         return;
+      case 'webview/beginAssociatedNoteMarkdownEdit':
+        void this.handleBeginAssociatedNoteMarkdownEdit(parsedMessage.payload);
+        return;
+      case 'webview/endAssociatedNoteMarkdownEdit':
+        this.handleEndAssociatedNoteMarkdownEdit(parsedMessage.payload.nodeId);
+        return;
       case 'webview/updateAssociatedNoteMarkdownDraft':
-        this.handleUpdateAssociatedNoteMarkdownDraft(parsedMessage.payload);
+        void this.handleUpdateAssociatedNoteMarkdownDraft(parsedMessage.payload);
         return;
       case 'webview/clearAssociatedNoteMarkdownDraft':
         this.handleClearAssociatedNoteMarkdownDraft(parsedMessage.payload.nodeId);
@@ -9707,6 +9817,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.dropPendingTerminalInitialInput(nodeId, '节点已删除，安装命令未写入。');
+    this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);

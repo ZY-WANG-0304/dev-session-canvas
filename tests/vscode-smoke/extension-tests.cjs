@@ -35,6 +35,7 @@ const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
+  focusNode: 'devSessionCanvas.__internal.focusNode',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
@@ -4076,6 +4077,154 @@ async function verifyNoteMarkdownFileAssociation() {
     REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
     'Expected restoring the Markdown file on disk to bring the Note back to the disk content.'
   );
+  const activeEditRevision = findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.ok(activeEditRevision, 'Expected restored associated Markdown Note to have a revision before editing.');
+  await dispatchWebviewMessage({
+    type: 'webview/beginAssociatedNoteMarkdownEdit',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+      baseContentRevision: activeEditRevision
+    }
+  });
+  const activeEditDraftContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nin-progress note draft`;
+  await dispatchWebviewMessage({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id,
+      content: activeEditDraftContent,
+      baseContentRevision: activeEditRevision
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.contentSource?.conflictDraft?.draftId);
+  });
+  const activeEditRemoteContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit while note is open`;
+  await fs.writeFile(associatedFilePath, activeEditRemoteContent, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'dirty-conflict';
+  });
+  const activeEditConflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    activeEditConflictNote.metadata.note.content,
+    activeEditRemoteContent,
+    'Expected editing an associated Markdown Note to surface external disk changes before submit.'
+  );
+  const activeEditConflictDraft = activeEditConflictNote.metadata.note.contentSource.conflictDraft;
+  assert.match(
+    String(activeEditConflictDraft?.draftId),
+    /^[0-9a-f-]{36}$/i,
+    'Expected active edit conflict to persist the in-progress note draft.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(activeEditConflictDraft.draftId),
+    activeEditDraftContent,
+    'Expected active edit conflict to keep the edit-session content as the recoverable draft.'
+  );
+  await vscode.commands.executeCommand(COMMAND_IDS.focusNode, associatedNote.id);
+  await waitForWebviewProbe(
+    (currentProbe) => currentProbe.nodes.some((node) => node.nodeId === associatedNote.id),
+    10000
+  );
+  await performWebviewDomAction(
+    {
+      kind: 'clickNodeActionButton',
+      nodeId: associatedNote.id,
+      label: '重新加载'
+    },
+    'editor',
+    10000
+  );
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === activeEditRemoteContent
+    );
+  });
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    );
+  });
+
+  const revertedDraftBaseRevision =
+    findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.ok(
+    revertedDraftBaseRevision,
+    'Expected associated Markdown Note to have a revision before testing reverted edit drafts.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/beginAssociatedNoteMarkdownEdit',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+      baseContentRevision: revertedDraftBaseRevision
+    }
+  });
+  const abandonedDraftContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nabandoned local draft`;
+  await dispatchWebviewMessage({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id,
+      content: abandonedDraftContent,
+      baseContentRevision: revertedDraftBaseRevision
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+        currentNote.metadata.note.contentSource.conflictDraft?.draftId
+    );
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected syncing an edit draft not to replace the associated Markdown file content.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/clearAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+        !currentNote.metadata.note.contentSource.conflictDraft
+    );
+  });
+  const externalContentAfterRevertedDraft =
+    `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit after reverted draft`;
+  await fs.writeFile(associatedFilePath, externalContentAfterRevertedDraft, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === externalContentAfterRevertedDraft
+    );
+  });
+  const revertedDraftRefreshNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    revertedDraftRefreshNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected clearing a reverted edit draft to prevent stale active edit conflicts.'
+  );
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    );
+  });
 
   const existingAssociatedFileDropMessage = {
     type: 'webview/dropNoteMarkdownFiles',
