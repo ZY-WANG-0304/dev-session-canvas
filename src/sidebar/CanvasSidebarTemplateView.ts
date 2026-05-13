@@ -202,14 +202,24 @@ export function getCanvasSidebarTemplateItems(
 }
 
 function resolveCanvasSidebarTemplateLocationLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  return `${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)} · ${resolveCanvasSidebarTemplatePositionLabel(storedTemplate)}`;
+}
+
+function resolveCanvasSidebarTemplateSourceLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
-    return '内置';
+    return '插件内置';
   }
   if (storedTemplate.marketplace) {
-    return storedTemplate.storageLocation?.scope === 'workspace' ? '市场 · 工作区' : '市场 · 本地';
+    return '市场下载';
   }
+  return '用户保存/导入';
+}
 
-  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '用户';
+function resolveCanvasSidebarTemplatePositionLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  if (storedTemplate.template.category === 'builtin') {
+    return '扩展内';
+  }
+  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '本地';
 }
 
 function resolveCanvasSidebarTemplateSourceKind(storedTemplate: CanvasTemplateCatalog['templates'][number]): 'builtin' | 'user' | 'market' {
@@ -231,12 +241,12 @@ function buildCanvasTemplateTooltip(storedTemplate: CanvasTemplateCatalog['templ
 function buildCanvasTemplateLocationTooltipLine(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
     const builtinLayer = storedTemplate.relativeDirectory || '根目录';
-    return `模板所在层级：内置模板 / ${builtinLayer}`;
+    return `模板来源：插件内置；保存位置：扩展内 / ${builtinLayer}`;
   }
 
   const locationLabel = storedTemplate.storageLocation?.label ?? '用户模板';
   const relativeDirectory = storedTemplate.relativeDirectory || '根目录';
-  return `模板所在层级：${locationLabel} / ${relativeDirectory}`;
+  return `模板来源：${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)}；保存位置：${locationLabel} / ${relativeDirectory}`;
 }
 
 function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMessage | null {

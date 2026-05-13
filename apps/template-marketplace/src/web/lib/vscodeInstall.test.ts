@@ -31,7 +31,7 @@ describe('marketplace VSCode install links', () => {
     );
   });
 
-  it('can include a small browser-fetched template payload for remote extension hosts', () => {
+  it('does not include inline payload parameters in external install links', () => {
     const href = buildVSCodeInstallHref(
       {
         id: 'tmpl-review-loop',
@@ -44,14 +44,12 @@ describe('marketplace VSCode install links', () => {
         }
       },
       'https://dscanvas-template-marketplace.wzy0304.workers.dev',
-      {
-        inlineTemplateJson: '{"version":1}'
-      }
     );
 
-    expect(href).toContain('marketTemplateId=tmpl-review-loop');
-    expect(href).toContain('versionNumber=1');
-    expect(href).toContain('payload=eyJ2ZXJzaW9uIjoxfQ');
-    expect(href).toContain('payloadSha256=005e90644dae8084a612d6a9d2e198508618eaa792648eb19bc56113cbcc4e92');
+    expect(href).not.toContain('payload=');
+    expect(href).not.toContain('payloadSha256=');
+    expect(href).toBe(
+      'vscode://devsessioncanvas.dev-session-canvas/install-template?template=review-loop&version=tmpl-review-loop-v1&source=https%3A%2F%2Fdscanvas-template-marketplace.wzy0304.workers.dev%2Ftemplates%2Freview-loop'
+    );
   });
 });

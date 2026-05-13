@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const MARKETPLACE_API_VERSION = 'v1' as const;
 export const MARKETPLACE_DEFAULT_PAGE_SIZE = 12;
 export const MARKETPLACE_MAX_PAGE_SIZE = 50;
+export const MARKETPLACE_QUERY_MAX_LENGTH = 80;
 export const MARKETPLACE_SORT_VALUES = ['hot', 'downloads', 'likes', 'newest', 'updated'] as const;
 export const MARKETPLACE_TEMPLATE_STATUS_VALUES = ['published', 'delisted'] as const;
 export const MARKETPLACE_VERSION_STATUS_VALUES = ['published', 'rejected'] as const;
@@ -101,7 +102,7 @@ export interface MarketplaceApiError {
 }
 
 export const marketplaceListTemplatesRequestSchema = z.object({
-  q: z.string().trim().max(80).optional(),
+  q: z.string().trim().max(MARKETPLACE_QUERY_MAX_LENGTH).optional(),
   tags: z.array(z.string().trim().min(1).max(32)).max(10).optional(),
   sort: z.enum(MARKETPLACE_SORT_VALUES).optional(),
   page: z.number().int().positive().optional(),
@@ -316,9 +317,11 @@ export function makeMarketplaceApiError(code: string, message: string): Marketpl
 }
 
 function normalizeListQuery(query: MarketplaceListTemplatesRequest): MarketplaceListTemplatesRequest {
+  const normalizedQuery = query.q?.trim();
+
   return {
     ...query,
-    q: query.q?.trim() || undefined,
+    q: normalizedQuery ? normalizedQuery.slice(0, MARKETPLACE_QUERY_MAX_LENGTH) : undefined,
     tags: query.tags?.map((tag) => tag.trim()).filter(Boolean),
     page: query.page && query.page > 0 ? query.page : undefined,
     pageSize: query.pageSize && query.pageSize > 0 ? Math.min(query.pageSize, MARKETPLACE_MAX_PAGE_SIZE) : undefined

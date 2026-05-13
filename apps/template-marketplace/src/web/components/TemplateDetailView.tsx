@@ -62,7 +62,6 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
           <InstallInVSCodeLink
             className="inline-flex w-full justify-center bg-canvas-accent px-4 py-3 text-xs font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
             template={template}
-            downloadHref={downloadHref}
             ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
           >
             Install in VSCode

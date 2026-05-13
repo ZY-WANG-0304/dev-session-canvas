@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { loadMarketplaceTemplateDetail, loadMarketplaceTemplates } from './api';
+import { loadMarketplaceTemplateDetail, loadMarketplaceTemplates, normalizeTemplateSearchQuery } from './api';
 
 describe('marketplace web api client', () => {
   afterEach(() => {
@@ -66,6 +66,28 @@ describe('marketplace web api client', () => {
 
     expect(result.source).toBe('seed-fallback');
     expect(result.templates.map((template) => template.slug)).toEqual(['review-loop']);
+  });
+
+  it('clamps overlong search queries for API and seed fallback paths', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response('not found', { status: 404 });
+      })
+    );
+
+    const result = await loadMarketplaceTemplates({ q: 'x'.repeat(120), sort: 'hot' });
+    const requestUrl = new URL(requests[0] ?? '', 'http://localhost');
+
+    expect(requestUrl.searchParams.get('q')).toHaveLength(80);
+    expect(result.source).toBe('seed-fallback');
+    expect(result.templates).toHaveLength(0);
+  });
+
+  it('normalizes search queries to the public schema limit', () => {
+    expect(normalizeTemplateSearchQuery(`  ${'x'.repeat(120)}  `)).toHaveLength(80);
   });
 
   it('loads template detail from the Worker API', async () => {

@@ -355,18 +355,21 @@ function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
   const params = new URLSearchParams(uri.query);
   const templateIdOrSlug = readRequiredQueryParam(params, 'template');
   const versionId = readOptionalQueryParam(params, 'version');
+  const inlinePayload = readOptionalQueryParam(params, 'payload');
+  const inlinePayloadSha256 = readOptionalQueryParam(params, 'payloadSha256');
+  // 外部 vscode:// 安装链接不接受内联 payload；inline 安装只允许从 Webview message bridge 进入。
+  if (inlinePayload || inlinePayloadSha256) {
+    throw new Error('外部模板市场安装链接不支持内联 payload，请从市场页面重新打开安装链接。');
+  }
   const sourceUrl = parseTrustedMarketplaceSourceUrl(
     readOptionalQueryParam(params, 'source') ?? `${DEFAULT_MARKETPLACE_SOURCE_ORIGIN}/templates/${encodeURIComponent(templateIdOrSlug)}`
   );
-  const payload = readOptionalQueryParam(params, 'payload');
 
   return {
     templateIdOrSlug,
     versionId,
     targetStorageLocationId: readOptionalQueryParam(params, 'targetStorageLocationId'),
     sourceUrl,
-    inlineTemplateJson: payload ? decodeTemplatePayload(payload) : undefined,
-    inlineSha256: readOptionalQueryParam(params, 'payloadSha256'),
     marketTemplateId: readOptionalQueryParam(params, 'marketTemplateId'),
     installedVersionNumber: parseOptionalNumber(readOptionalQueryParam(params, 'versionNumber')),
     sha256: readOptionalQueryParam(params, 'sha256'),
@@ -394,12 +397,6 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function decodeTemplatePayload(value: string): string {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-  return Buffer.from(padded, 'base64').toString('utf8');
 }
 
 function parsePublisherFromQuery(params: URLSearchParams): CanvasTemplateMarketMetadata['publisher'] {

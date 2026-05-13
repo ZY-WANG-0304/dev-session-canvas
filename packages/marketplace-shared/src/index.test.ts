@@ -25,6 +25,12 @@ describe('marketplace shared seed repository', () => {
     expect(response.items.map((item) => item.slug)).toEqual(['review-loop']);
   });
 
+  it('clamps overlong search queries before schema validation', () => {
+    const response = listSeedTemplates({ q: 'x'.repeat(120) });
+
+    expect(response.items).toHaveLength(0);
+  });
+
   it('sorts by downloads and likes deterministically', () => {
     expect(listSeedTemplates({ sort: 'downloads' }).items[0]?.slug).toBe('getting-started-canvas');
     expect(listSeedTemplates({ sort: 'likes' }).items[0]?.slug).toBe('review-loop');

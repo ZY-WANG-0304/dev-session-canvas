@@ -289,7 +289,7 @@ function escapeWindowsCmdArgument(value) {
   return normalizedValue.replace(WINDOWS_CMD_META_CHARS_REGEXP, '^$1');
 }
 
-function resolveVsceEntry(rootDir) {
+export function resolveVsceEntry(rootDir) {
   const binName = isWindows ? 'vsce.cmd' : 'vsce';
   const localBinPath = path.resolve(rootDir, 'node_modules', '.bin', binName);
   if (existsSync(localBinPath)) {

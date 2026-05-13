@@ -55,7 +55,6 @@ export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
           <InstallInVSCodeLink
             className="bg-canvas-accent px-3 py-2 text-xs font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
             template={template}
-            downloadHref={downloadHref}
             ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
             noticeClassName="basis-full text-right text-xs leading-5 text-canvas-muted"
           >

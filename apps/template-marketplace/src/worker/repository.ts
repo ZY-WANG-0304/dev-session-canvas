@@ -130,6 +130,20 @@ export function createTemplateRepository(database?: D1Database): MarketplaceTemp
   return database ? new D1TemplateRepository(database) : new SeedTemplateRepository();
 }
 
+// Prefer the template's latest pointer when it still resolves to a published version;
+// otherwise fall back to the newest published version for that template.
+const latestPublishedVersionSql = `COALESCE(
+  latest_published_version.id,
+  (
+    SELECT fallback_version.id
+    FROM template_versions AS fallback_version
+    WHERE fallback_version.template_id = t.id
+      AND fallback_version.status = 'published'
+    ORDER BY fallback_version.version_number DESC, fallback_version.created_at DESC, fallback_version.id DESC
+    LIMIT 1
+  )
+)`;
+
 const templateSelectSql = `SELECT
   t.id AS template_id,
   t.slug AS slug,
@@ -159,7 +173,10 @@ const templateSelectSql = `SELECT
   COALESCE(group_concat(tt.display_text, ','), '') AS tags
 FROM templates t
 JOIN users u ON u.id = t.publisher_id
-JOIN template_versions v ON v.id = t.latest_version_id
+LEFT JOIN template_versions AS latest_published_version
+  ON latest_published_version.id = t.latest_version_id
+  AND latest_published_version.status = 'published'
+JOIN template_versions v ON v.id = ${latestPublishedVersionSql}
 LEFT JOIN template_tags tt ON tt.template_id = t.id`;
 
 interface TemplateRow {
