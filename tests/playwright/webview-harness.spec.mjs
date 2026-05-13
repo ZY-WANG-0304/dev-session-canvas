@@ -3900,7 +3900,7 @@ test('ordinary note empty placeholder and editor show the 8000 character limit',
 
   const noteNode = nodeById(page, 'note-1');
   await expect(noteNode.locator('.note-markdown-preview-placeholder')).toContainText(
-    `普通 Note 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符`
+    `最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符`
   );
 
   await noteNode.locator('.note-markdown-preview').dblclick();
@@ -3911,7 +3911,7 @@ test('ordinary note empty placeholder and editor show the 8000 character limit',
   await bodyInput.fill(overLimitContent);
   await expect(bodyInput).toHaveValue('a'.repeat(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
   await expect(noteNode.locator('.note-limit-hint')).toContainText(
-    `普通 Note 已达到 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限`
+    `已达 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限`
   );
 });
 
@@ -4450,7 +4450,7 @@ test('associated markdown note keeps a rejected stale draft after host dirty-con
     fullDisplayPath: '/workspace/docs/conflict.md',
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
-    lastError: '关联 Markdown 文件已在编辑期间发生变化。请重新加载文件内容，或显式确认覆盖。'
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
   };
   await updateHostState(page, conflictState);
 
@@ -4496,14 +4496,14 @@ test('associated markdown note bootstrapped with dirty-conflict shows reload rec
     fullDisplayPath: '/workspace/docs/conflict.md',
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
-    lastError: '关联 Markdown 文件已在编辑期间发生变化。请重新加载文件内容，或显式确认覆盖。'
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
   };
   await bootstrap(page, state);
   await clearPostedMessages(page);
 
   const noteNode = nodeById(page, 'note-1');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('关联的 Markdown 文件存在编辑冲突');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('关联 Markdown 文件已在编辑期间发生变化');
+  await expect(noteNode.locator('.note-file-warning')).toContainText('关联文件存在编辑冲突');
+  await expect(noteNode.locator('.note-file-warning')).toContainText('关联文件在编辑期间被外部修改');
   await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
   await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toHaveCount(0);
   await expect(noteNode.locator('.note-markdown-preview')).toHaveCount(0);
@@ -4555,12 +4555,12 @@ test('missing associated markdown notes show a warning instead of stale markdown
     displayPath: missingDisplayPath,
     fullDisplayPath: missingDisplayPath,
     status: 'missing',
-    lastError: '关联的 Markdown 文件不可用：docs/missing.md'
+    lastError: '关联文件不可用：docs/missing.md'
   };
   await bootstrap(page, state);
 
   const noteNode = nodeById(page, 'note-1');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('关联的 Markdown 文件不可用');
+  await expect(noteNode.locator('.note-file-warning')).toContainText('关联文件不可用');
   await expect(noteNode.locator('.window-title-subtitle')).toHaveText(missingDisplayPath);
   await expect(noteNode.locator('.note-file-warning')).toContainText(missingDisplayPath);
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
