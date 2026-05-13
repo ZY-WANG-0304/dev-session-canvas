@@ -255,7 +255,7 @@ Webview 需要在画布空白区域支持文件拖放创建关联 `Note`：
 - Webview 将释放点转换为画布坐标，并把拖拽资源上报 Host。
 - Host 逐个校验资源是否为可访问文件、扩展名是否为 `.md` / `.markdown`。
 - Host 必须按规范化资源 URI 对单次 drop payload 去重；同一个文件即使同时通过 `resourceUrls`、`codeFiles`、`uriList` 或 `files` 等多个拖拽通道上报，本次拖放也只能创建或处理一次。
-- 如果被拖拽的 Markdown 文件已经在画板上有关联 `Note`，Host 弹出 modal 让用户选择“继续添加新 Note”或“定位已关联 Note”；选择继续添加时允许同一个 Markdown 文件在画板上拥有多个关联 `Note`。
+- 如果被拖拽的 Markdown 文件已经在画板上有关联 `Note`，Host 弹出 modal 让用户选择“添加新 Note”或“定位已有 Note”；选择添加时允许同一个 Markdown 文件在画板上拥有多个关联 `Note`。
 - 对每个合法 Markdown 文件，在释放点附近创建一个关联 Markdown `Note`；多个文件轻微错位排列。
 - 节点 title 默认取文件名去扩展名，例如 `design.md` -> `design`。
 - 节点 subtitle 显示路径。
@@ -298,7 +298,7 @@ Workspace Trust：
 12. 删除关联 Markdown `Note` 不删除关联文件。
 13. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
 14. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
-15. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择继续添加新的关联 `Note`，也可选择定位已关联 `Note`。
+15. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
 16. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
 17. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
 18. `npm run typecheck` 通过。
@@ -312,5 +312,5 @@ Workspace Trust：
 - `npm run test:webview -- --grep "ordinary note empty|associated markdown|missing associated markdown|ordinary note save-as-markdown|dropping markdown"` 通过，本轮重跑 9 个相关 Webview 用例，覆盖普通 Note 上限提示、关联 Markdown 渲染/编辑/冲突恢复、缺失警告、保存为 Markdown 按钮与空白画布拖拽消息。
 - `npm run test:webview -- --grep "associated markdown notes render|missing associated markdown notes"` 通过，本轮覆盖关联 Markdown Note 使用完整 subtitle 文本、节点宽度不足时显示完整 tooltip，以及缺失状态继续显示同一条人类可读路径。
 - `npm run build` 通过。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，覆盖真实 VSCode 宿主中的拖拽创建关联 Note、超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 `dirty-conflict` 且不覆盖真实文件、重新 bootstrap 持久化 `dirty-conflict` 只显示恢复警告、单次重复拖拽资源/并发消息只创建一个 Note、已关联文件再次拖入时的“继续添加新 Note”和“定位已关联 Note”modal 分支、modal 路径复用 subtitle `displayPath`、不传入重复“取消”按钮、关联文件 `displayPath` / `fullDisplayPath`、关联文件写回、删除节点不删除文件，以及关联文件缺失后的警告状态。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 通过，覆盖真实 VSCode 宿主中的拖拽创建关联 Note、超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 `dirty-conflict` 且不覆盖真实文件、重新 bootstrap 持久化 `dirty-conflict` 只显示恢复警告、单次重复拖拽资源/并发消息只创建一个 Note、已关联文件再次拖入时的“添加新 Note”和“定位已有 Note”modal 分支、modal 路径复用 subtitle `displayPath`、不传入重复“取消”按钮、关联文件 `displayPath` / `fullDisplayPath`、关联文件写回、删除节点不删除文件，以及关联文件缺失后的警告状态。
 - Quick Input 真实键盘导航和已有文件三选项当前仍停留在实现与代码审查层面，尚未由自动化直接模拟用户选择，因此本文验证状态保持为“验证中”。

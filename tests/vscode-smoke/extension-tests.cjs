@@ -4204,7 +4204,7 @@ async function verifyNoteMarkdownFileAssociation() {
   );
   assert.match(
     String(conflictNote.metadata.note.contentSource.lastError),
-    /编辑期间发生变化/,
+    /编辑期间被外部修改/,
     'Expected stale associated Markdown draft submission to explain the edit conflict.'
   );
   assert.strictEqual(
