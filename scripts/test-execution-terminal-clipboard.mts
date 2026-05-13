@@ -163,6 +163,26 @@ function runProtocolChecks(): void {
 
   assert.deepEqual(
     parseWebviewMessage({
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: 'docs/design.md',
+        source: 'note-markdown-subtitle',
+        nodeId: 'note-1'
+      }
+    }),
+    {
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: 'docs/design.md',
+        source: 'note-markdown-subtitle',
+        nodeId: 'note-1'
+      }
+    },
+    '通用剪贴板文本协议应通过 validator。'
+  );
+
+  assert.deepEqual(
+    parseWebviewMessage({
       type: 'webview/requestExecutionPaste',
       payload: {
         requestId: 'paste-1',
