@@ -36,6 +36,10 @@
 - [x] (2026-05-13 17:29 +0800) 根据用户纠正把关联 Markdown 的内容权威切回磁盘：移除 open dirty buffer 参与读取/写回基线的逻辑，并补充“未保存 editor 草稿不影响 Note 展示、保存后才刷新”的回归测试。
 - [x] (2026-05-13 17:58 +0800) 根据用户确认把写回冲突检测从完整内容 hash 改为 `FileStat` 磁盘状态 revision；刷新展示先比较 revision，未变化时不读完整文件。
 - [x] (2026-05-13 19:40 +0800) 将关联 Markdown Note subtitle 改为与 Agent / Terminal 一致的完整人类可读文本加布局省略，不再在 Host 侧做 56 字符中间压缩；同步 `docs/UI.md` 中节点标题/副标题规范。
+- [x] (2026-05-13 21:10 +0800) 补齐关联 Markdown Note 未解决冲突的草稿持久化：Webview 编辑时上报 draft，Host 在 stale 写回或外部刷新后持久化 `conflictDraft`，窗口焦点刷新不再自动清除 `dirty-conflict`。
+- [x] (2026-05-13 23:16 +0800) 补充并运行本轮针对 `conflictDraft` 的 Playwright、smoke 片段与文档验证记录。
+- [x] (2026-05-13 23:57 +0800) 将关联 Markdown Note 的冲突草稿正文迁移到 `storageUri/note-markdown-drafts/<draftId>.md`；Host 持久化状态和 debug snapshot 只保留 draft 引用，发给 Webview 时再按需 hydrate 草稿内容。
+- [x] (2026-05-14 00:16 +0800) 在关联 Markdown 冲突提示中增加 `复制草稿` 动作；Webview 发送草稿内容给 Host，由 Host 写入系统剪贴板，并补充 Playwright 回归。
 
 ## 意外与发现
 
@@ -83,6 +87,12 @@
 
 - 观察：`dirty-conflict` 是 Host 会持久化到画布状态里的状态，Webview 重新加载、重新 bootstrap 或另一个 surface 首次接收该状态时不会拥有本地 `associatedMarkdownEditConflict` 草稿。
   证据：PR review 指出该路径会显示普通预览但禁止编辑，且 checklist 可能绕过显式恢复继续写回；本轮改为渲染恢复警告并补充直接以 `dirty-conflict` bootstrap 的 Playwright 回归。
+
+- 观察：在本轮补强前，`refreshAllAssociatedMarkdownNotes()` 会在 VSCode 窗口重新获得焦点时对所有关联 Markdown Note 执行刷新；如果节点已经是 `dirty-conflict`，原实现会重新读取文件并把状态改回 `ok`。
+  证据：`src/panel/CanvasPanelManager.ts` 的窗口焦点监听调用 `refreshAllAssociatedMarkdownNotes()`，而旧版 `refreshAssociatedMarkdownNote()` 在 `source.status !== 'ok'` 时仍会把 `readResult.status === 'ok'` 写回状态。这意味着用户未处理冲突时切换窗口可能错误清除冲突。
+
+- 观察：把草稿正文直接内联到 `metadata.note.contentSource.conflictDraft.content` 会让大 Markdown 草稿进入 `canvas-state.json`、`workspaceState` 和 debug snapshot，虽然没有污染关联文件权威模型，但会放大画布状态并重新绕开普通 Note 8,000 字符上限的初衷。
+  证据：用户指出此前讨论过“草稿放到 storageUri 下的 draft 文件，状态里只保存 draft id/base revision/remote revision/时间戳”的更稳妥方案；本轮代码改为写入 `note-markdown-drafts/<draftId>.md` 并在持久化前剥离 `conflictDraft.content`。
 
 ## 决策记录
 
@@ -150,6 +160,18 @@
   理由：没有本地草稿时无法安全表达“覆盖”的内容；普通预览中的 checklist 会形成绕过显式冲突恢复的写回路径。
   日期/作者：2026-05-13 / Codex
 
+- 决策：关联 Markdown Note 的未提交草稿正文不再内联到持久化画布状态，而是写入 `storageUri/note-markdown-drafts/<draftId>.md`；`MarkdownFileNoteContentSource.conflictDraft` 在持久化状态中只保存 `draftId`、开始编辑时的 `baseContentRevision`、远端 revision 和更新时间，Host 发给 Webview 时再临时 hydrate `content`。
+  理由：用户要求未处理 conflict 在切换窗口、Reload Window 或关闭 VSCode 后不能被错误处理，同时不能让大草稿污染画布状态。storage-backed draft 保留 `重新加载` / `覆盖文件` 恢复能力，又避免把草稿正文写入 `canvas-state.json`、`workspaceState` 或 debug snapshot；该字段仍只服务未解决冲突恢复，不改变“磁盘文件是正文权威”的原则。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：普通焦点恢复、保存事件或 watcher 触发的刷新不得自动清除 `dirty-conflict`；只有用户显式点击 `重新加载` 或 `覆盖文件` 后才允许清除 `conflictDraft` 并恢复 `ok`。
+  理由：窗口切换是环境事件，不代表用户已经解决冲突。自动清除会让旧草稿丢失，或让 checklist/预览路径绕过显式恢复。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：在有可用草稿内容的冲突提示中增加 `复制草稿`，复制动作由 Host 使用 `vscode.env.clipboard.writeText()` 完成；没有草稿内容时仍只提供 `重新加载`。
+  理由：重新加载会丢弃草稿，覆盖文件会改写权威 Markdown；复制草稿提供一个非破坏性出口，让用户先把本地内容保存到剪贴板，再决定如何解决冲突。Host 负责剪贴板写入可以复用现有终端复制的权限和错误处理边界。
+  日期/作者：2026-05-14 / Codex
+
 ## 结果与复盘
 
 以下内容记录当前实现结果；本轮已根据用户纠正把关联 Markdown 的同步基线重新收回到磁盘。
@@ -157,10 +179,11 @@
 已落地内容：
 
 - `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
-- `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
-- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取。
-- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、Host `dirty-conflict` 重新 bootstrap 恢复警告，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
-- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、Host dirty-conflict 后保留草稿、Host dirty-conflict 重新 bootstrap 的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
+- `src/common/protocol.ts` 继续扩展 Webview -> Host 消息：关联 Markdown 编辑时上报/清理未提交 draft，使 Host 能在 Reload Window 或关闭 VSCode 后保留未解决冲突的草稿引用；冲突提示的 `复制草稿` 会发送 `webview/copyAssociatedNoteMarkdownDraft`。
+- `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型；`NoteMarkdownConflictDraft` 支持 storage-backed `draftId` 与只面向 Webview hydration 的可选 `content`，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
+- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取；普通焦点恢复和 watcher 刷新会保留未处理 `dirty-conflict`，只有显式重新加载或覆盖才清理 `conflictDraft`。冲突草稿正文写入 `note-markdown-drafts/<draftId>.md`，持久化状态和 debug snapshot 会剥离 `content`，Host 给 Webview 广播状态时再读取 draft 文件 hydrate；复制草稿请求由 Host 写入系统剪贴板。
+- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、带已 hydrate `conflictDraft.content` 的 Host `dirty-conflict` 重新 bootstrap 草稿恢复、无草稿内容 `dirty-conflict` 的 reload-only 恢复警告、冲突时的 `复制草稿` 按钮，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
+- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、关联 Markdown draft 上报、Host dirty-conflict 后保留草稿引用、带 hydrate 草稿的 Host dirty-conflict 重新 bootstrap 的恢复/覆盖入口、只有 draft 引用但无内容时的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
 
@@ -179,6 +202,15 @@
        npm run test:webview -- --grep "associated markdown notes render|missing associated markdown notes"
        Playwright webview tests passed；本轮覆盖关联 Markdown Note 使用完整 subtitle 文本、节点宽度不足时显示完整 tooltip，以及缺失状态继续显示同一条人类可读路径
 
+       npm run test:webview -- --grep "associated markdown note (persists|restores|editing blocks|keeps|bootstrapped)"
+       Playwright webview tests passed；本轮覆盖编辑 draft 上报、外部刷新冲突保护、Host dirty-conflict 保留草稿引用、带已 hydrate conflictDraft content 重新 bootstrap 的草稿恢复/覆盖入口，以及无草稿内容 dirty-conflict 只提供重新加载
+
+       npm run test:webview -- --grep "associated markdown note (persists|restores|bootstrapped)"
+       Playwright webview tests passed；本轮覆盖 storage-backed draft 方案下的编辑 draft 上报、Host hydrate 后恢复/覆盖入口，以及只有 draft 引用但无 content 时只提供重新加载
+
+       npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft"
+       Playwright webview tests passed；本轮覆盖复制草稿按钮发出 webview/copyAssociatedNoteMarkdownDraft，且不影响后续覆盖文件动作
+
        node --check tests/vscode-smoke/extension-tests.cjs
        通过
 
@@ -186,7 +218,7 @@
        通过
 
        DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
-       Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 dirty-conflict 且不覆盖真实文件、重新 bootstrap 持久化 dirty-conflict 只显示恢复警告、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮
+       Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 dirty-conflict 且不覆盖真实文件、conflictDraft 随 dirty-conflict 持久化并在 reloadPersistedStateForTest 后保留、重新 bootstrap 持久化 dirty-conflict 只显示恢复警告、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮。本轮已把这一路径改成 storage-backed draft，待下次完整 smoke 复核真实宿主 draft 文件内容断言。
 
        git diff --check
        通过

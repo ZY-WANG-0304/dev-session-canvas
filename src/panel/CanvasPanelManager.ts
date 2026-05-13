@@ -140,6 +140,7 @@ import {
   isSupportedNoteMarkdownFilePath,
   type MarkdownFileNoteContentSource,
   type NoteContentSource,
+  type NoteMarkdownConflictDraft,
   type NoteMarkdownFileStatus
 } from '../common/noteMarkdownFileAssociation';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
@@ -573,12 +574,16 @@ interface NoteMarkdownFileStatResult {
 type NoteMarkdownExistingFileChoice = 'overwrite' | 'keep';
 type NoteMarkdownExistingDropChoice = 'create' | 'locate';
 
+const NOTE_MARKDOWN_CONFLICT_DRAFTS_STORAGE_DIRECTORY = 'note-markdown-drafts';
+const NOTE_MARKDOWN_CONFLICT_DRAFT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
   public static readonly panelContainerId = VIEW_IDS.panelContainer;
   private static readonly RECOVERABLE_STORAGE_RELATIVE_PATHS = [
     'canvas-state.json',
+    NOTE_MARKDOWN_CONFLICT_DRAFTS_STORAGE_DIRECTORY,
     'agent-runtime'
   ] as const;
 
@@ -1194,7 +1199,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeSurface: this.activeSurface,
       configuration: cloneJsonValue(this.buildDebugConfigurationSnapshot()),
       sidebar: cloneJsonValue(this.getSidebarState()),
-      state: cloneJsonValue(this.state),
+      state: cloneJsonValue(stripNoteMarkdownConflictDraftContentFromCanvasState(this.state)),
       surfaceMode: cloneJsonValue(this.surfaceMode),
       surfaceReady: cloneJsonValue(this.surfaceReady)
     };
@@ -2637,6 +2642,209 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.rawExtensionStoragePath;
   }
 
+  private getNoteMarkdownConflictDraftsStoragePath(): string {
+    return path.join(this.getExtensionStoragePath(), NOTE_MARKDOWN_CONFLICT_DRAFTS_STORAGE_DIRECTORY);
+  }
+
+  private getNoteMarkdownConflictDraftPath(draftId: string | undefined): string | undefined {
+    if (!draftId || !NOTE_MARKDOWN_CONFLICT_DRAFT_ID_PATTERN.test(draftId)) {
+      return undefined;
+    }
+
+    return path.join(this.getNoteMarkdownConflictDraftsStoragePath(), `${draftId}.md`);
+  }
+
+  private readNoteMarkdownConflictDraftContent(draftId: string | undefined): string | undefined {
+    const draftPath = this.getNoteMarkdownConflictDraftPath(draftId);
+    if (!draftPath) {
+      return undefined;
+    }
+
+    try {
+      return fs.readFileSync(draftPath, 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+
+  private writeNoteMarkdownConflictDraftContent(content: string, draftId?: string): string {
+    const nextDraftId =
+      draftId && NOTE_MARKDOWN_CONFLICT_DRAFT_ID_PATTERN.test(draftId) ? draftId : randomUUID();
+    const draftPath = this.getNoteMarkdownConflictDraftPath(nextDraftId);
+    if (!draftPath) {
+      throw new Error('无法生成关联 Markdown 草稿文件路径。');
+    }
+
+    fs.mkdirSync(path.dirname(draftPath), {
+      recursive: true
+    });
+    const tempDraftPath = `${draftPath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempDraftPath, content, 'utf8');
+    fs.renameSync(tempDraftPath, draftPath);
+    return nextDraftId;
+  }
+
+  private cleanupUnreferencedNoteMarkdownConflictDraftFiles(): void {
+    const draftsPath = this.getNoteMarkdownConflictDraftsStoragePath();
+    if (!fs.existsSync(draftsPath)) {
+      return;
+    }
+
+    const referencedDraftIds = new Set<string>();
+    for (const node of this.state.nodes) {
+      if (node.kind !== 'note') {
+        continue;
+      }
+
+      const source = ensureNoteMetadata(node).contentSource;
+      const draftId = source?.kind === 'markdown-file' ? source.conflictDraft?.draftId : undefined;
+      if (draftId && NOTE_MARKDOWN_CONFLICT_DRAFT_ID_PATTERN.test(draftId)) {
+        referencedDraftIds.add(draftId);
+      }
+    }
+
+    try {
+      for (const entry of fs.readdirSync(draftsPath, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) {
+          continue;
+        }
+        const draftId = entry.name.slice(0, -'.md'.length);
+        if (!NOTE_MARKDOWN_CONFLICT_DRAFT_ID_PATTERN.test(draftId) || referencedDraftIds.has(draftId)) {
+          continue;
+        }
+        fs.rmSync(path.join(draftsPath, entry.name), { force: true });
+      }
+    } catch {
+      // Do not let internal draft garbage collection block canvas persistence.
+    }
+  }
+
+  private createStoredNoteMarkdownConflictDraft(
+    content: string,
+    baseContentRevision?: string,
+    remoteContentRevision?: string,
+    previousDraft?: NoteMarkdownConflictDraft
+  ): NoteMarkdownConflictDraft {
+    try {
+      const draftId = this.writeNoteMarkdownConflictDraftContent(content, previousDraft?.draftId);
+      return createNoteMarkdownConflictDraft({
+        draftId,
+        baseContentRevision,
+        remoteContentRevision
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('noteMarkdownDraft/writeFailed', {
+        message: formatUnknownError(error)
+      });
+      return createNoteMarkdownConflictDraft({
+        content,
+        baseContentRevision,
+        remoteContentRevision
+      });
+    }
+  }
+
+  private materializeNoteMarkdownConflictDraftFiles(state: CanvasPrototypeState): CanvasPrototypeState {
+    let didChange = false;
+    const nodes = state.nodes.map((node) => {
+      if (node.kind !== 'note') {
+        return node;
+      }
+
+      const noteMetadata = ensureNoteMetadata(node);
+      const source = noteMetadata.contentSource;
+      if (source?.kind !== 'markdown-file' || !source.conflictDraft) {
+        return node;
+      }
+
+      const draft = source.conflictDraft;
+      if (typeof draft.content !== 'string') {
+        return node;
+      }
+
+      const nextDraft = this.createStoredNoteMarkdownConflictDraft(
+        draft.content,
+        draft.baseContentRevision,
+        draft.remoteContentRevision,
+        draft
+      );
+      didChange = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...noteMetadata,
+            contentSource: {
+              ...source,
+              conflictDraft: {
+                ...nextDraft,
+                updatedAt: draft.updatedAt
+              }
+            }
+          }
+        }
+      };
+    });
+
+    return didChange
+      ? {
+          ...state,
+          nodes
+        }
+      : state;
+  }
+
+  private hydrateNoteMarkdownConflictDraftsForWebview(state: CanvasPrototypeState): CanvasPrototypeState {
+    let didChange = false;
+    const nodes = state.nodes.map((node) => {
+      if (node.kind !== 'note') {
+        return node;
+      }
+
+      const noteMetadata = ensureNoteMetadata(node);
+      const source = noteMetadata.contentSource;
+      if (source?.kind !== 'markdown-file' || !source.conflictDraft) {
+        return node;
+      }
+
+      const draft = source.conflictDraft;
+      if (typeof draft.content === 'string') {
+        return node;
+      }
+
+      const content = this.readNoteMarkdownConflictDraftContent(draft.draftId);
+      if (typeof content !== 'string') {
+        return node;
+      }
+
+      didChange = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...noteMetadata,
+            contentSource: {
+              ...source,
+              conflictDraft: {
+                ...draft,
+                content
+              }
+            }
+          }
+        }
+      };
+    });
+
+    return didChange
+      ? {
+          ...state,
+          nodes
+        }
+      : state;
+  }
+
   private resolveRuntimeStoragePath(runtimeStoragePath: string | undefined): string {
     return normalizeRuntimeStoragePath(runtimeStoragePath) ?? this.getExtensionStoragePath();
   }
@@ -2766,14 +2974,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const persistedFileFilterState = this.appliedStartupConfiguration.filesFeatureEnabled
       ? normalizeCanvasFileFilterState(this.fileFilterState)
       : createEmptyCanvasFileFilterState();
+    const state = stripNoteMarkdownConflictDraftContentFromCanvasState(snapshot.state);
     return {
       ...snapshot,
+      state,
       fileFilterState: persistedFileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       writtenAt: new Date().toISOString(),
-      stateHash: buildDiagnosticStateHash(snapshot.state)
+      stateHash: buildDiagnosticStateHash(state)
     };
   }
 
@@ -2872,7 +3082,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
         ? normalizedState
         : clearFileDomainState(normalizedState);
-    return hydrateRuntimeStoragePaths(sanitizedState, this.storageRecoverySelection.sourcePath);
+    return hydrateRuntimeStoragePaths(
+      this.materializeNoteMarkdownConflictDraftFiles(sanitizedState),
+      this.storageRecoverySelection.sourcePath
+    );
   }
 
   private loadReconciledState(): CanvasPrototypeState {
@@ -2892,7 +3105,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? normalizedState
       : clearFileDomainState(normalizedState);
     const hydratedState = hydrateRuntimeStoragePaths(
-      sanitizedState,
+      this.materializeNoteMarkdownConflictDraftFiles(sanitizedState),
       this.storageRecoverySelection.sourcePath
     );
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
@@ -2907,6 +3120,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private persistState(): void {
     this.syncNoteMarkdownFileWatchers();
+    this.cleanupUnreferencedNoteMarkdownConflictDraftFiles();
     void this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
@@ -2925,7 +3139,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postMessage({
       type,
       payload: {
-        state: stripSerializedTerminalStateFromCanvasState(this.state),
+        state: stripSerializedTerminalStateFromCanvasState(
+          this.hydrateNoteMarkdownConflictDraftsForWebview(this.state)
+        ),
         runtime: this.getRuntimeContext()
       }
     });
@@ -3711,12 +3927,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const currentReadResult = await this.readNoteMarkdownFile(uri);
         const currentContent =
           currentReadResult.status === 'ok' ? currentReadResult.content : noteMetadata.content;
+        const conflictDraft = this.createStoredNoteMarkdownConflictDraft(
+          nextContent,
+          payload.baseContentRevision,
+          currentReadResult.contentRevision ?? currentRevision,
+          noteMetadata.contentSource.conflictDraft
+        );
         this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
           ...noteMetadata.contentSource,
           ...this.formatNoteMarkdownDisplayPathInfo(uri),
           contentRevision: currentReadResult.contentRevision ?? currentRevision,
           status: 'dirty-conflict',
-          lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
+          lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+          conflictDraft
         }, currentContent);
         this.persistState();
         this.postState('host/stateUpdated');
@@ -3741,10 +3964,121 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
       contentRevision: writeResult.contentRevision ?? noteMetadata.contentSource.contentRevision,
       status: 'ok',
-      lastError: undefined
+      lastError: undefined,
+      conflictDraft: undefined
     }, nextContent);
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  private handleUpdateAssociatedNoteMarkdownDraft(payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }): void {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    const source = noteMetadata?.contentSource;
+    if (!node || !noteMetadata || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const baseContentRevision = payload.baseContentRevision ?? source.contentRevision;
+    const isDraftConflict =
+      source.status === 'dirty-conflict' ||
+      (Boolean(baseContentRevision) &&
+        Boolean(source.contentRevision) &&
+        baseContentRevision !== source.contentRevision);
+    if (payload.content === noteMetadata.content && source.status !== 'dirty-conflict') {
+      this.handleClearAssociatedNoteMarkdownDraft(payload.nodeId);
+      return;
+    }
+
+    const nextSource: MarkdownFileNoteContentSource = {
+      ...source,
+      status: isDraftConflict ? 'dirty-conflict' : source.status,
+      lastError: isDraftConflict
+        ? '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
+        : source.lastError,
+      conflictDraft: this.createStoredNoteMarkdownConflictDraft(
+        payload.content,
+        baseContentRevision,
+        isDraftConflict ? source.contentRevision : undefined,
+        source.conflictDraft
+      )
+    };
+    const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, nextSource, noteMetadata.content);
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private handleClearAssociatedNoteMarkdownDraft(nodeId: string): void {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    const source = noteMetadata?.contentSource;
+    if (
+      !node ||
+      !noteMetadata ||
+      source?.kind !== 'markdown-file' ||
+      !source.conflictDraft ||
+      source.status === 'dirty-conflict'
+    ) {
+      return;
+    }
+
+    const nextState = updateAssociatedNoteMarkdownFileStatus(
+      this.state,
+      nodeId,
+      {
+        ...source,
+        conflictDraft: undefined
+      },
+      noteMetadata.content
+    );
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async copyAssociatedNoteMarkdownDraft(
+    sourceSurface: CanvasSurfaceLocation,
+    nodeId: string,
+    content: string
+  ): Promise<void> {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!node || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    try {
+      await vscode.env.clipboard.writeText(content);
+      this.recordDiagnosticEvent('noteMarkdownDraft/copied', {
+        nodeId,
+        bytes: Buffer.byteLength(content, 'utf8')
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '复制关联 Markdown 草稿失败。';
+      this.recordDiagnosticEvent('noteMarkdownDraft/copyFailed', {
+        nodeId,
+        message
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+    }
   }
 
   private async openAssociatedNoteMarkdownFile(
@@ -4264,7 +4598,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private async refreshAssociatedMarkdownNote(nodeId: string): Promise<void> {
+  private async refreshAssociatedMarkdownNote(
+    nodeId: string,
+    options: { clearConflictDraft?: boolean } = {}
+  ): Promise<void> {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
     const source = node ? ensureNoteMetadata(node).contentSource : undefined;
     if (!node || !source || source.kind !== 'markdown-file') {
@@ -4285,16 +4622,39 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const currentMetadata = ensureNoteMetadata(node);
     const readResult = await this.readNoteMarkdownFile(uri, {
-      skipContentIfRevision: source.status === 'ok' ? source.contentRevision : undefined
+      skipContentIfRevision:
+        source.status === 'ok' && !source.conflictDraft ? source.contentRevision : undefined
     });
     const nextContent =
       readResult.status === 'ok' && !readResult.contentSkipped ? readResult.content : currentMetadata.content;
+    const didRevisionChange =
+      readResult.status === 'ok' &&
+      Boolean(source.contentRevision) &&
+      Boolean(readResult.contentRevision) &&
+      source.contentRevision !== readResult.contentRevision;
+    const shouldKeepConflict =
+      !options.clearConflictDraft &&
+      (source.status === 'dirty-conflict' || (Boolean(source.conflictDraft) && didRevisionChange));
+    const nextConflictDraft =
+      shouldKeepConflict && source.conflictDraft
+        ? {
+            ...source.conflictDraft,
+            remoteContentRevision: readResult.status === 'ok'
+              ? readResult.contentRevision
+              : source.conflictDraft.remoteContentRevision
+          }
+        : undefined;
+    const nextStatus = shouldKeepConflict ? 'dirty-conflict' : readResult.status;
+    const nextLastError = shouldKeepConflict
+      ? (source.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
+      : readResult.lastError;
     const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
       ...source,
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
       contentRevision: readResult.status === 'ok' ? readResult.contentRevision : source.contentRevision,
-      status: readResult.status,
-      lastError: readResult.lastError
+      status: nextStatus,
+      lastError: nextLastError,
+      conflictDraft: nextConflictDraft
     }, nextContent);
     if (nextState === this.state) {
       return;
@@ -6240,6 +6600,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/updateNoteNode':
         void this.handleUpdateNoteNode(parsedMessage.payload);
         return;
+      case 'webview/updateAssociatedNoteMarkdownDraft':
+        this.handleUpdateAssociatedNoteMarkdownDraft(parsedMessage.payload);
+        return;
+      case 'webview/clearAssociatedNoteMarkdownDraft':
+        this.handleClearAssociatedNoteMarkdownDraft(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/copyAssociatedNoteMarkdownDraft':
+        void this.copyAssociatedNoteMarkdownDraft(
+          sourceSurface,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.content
+        );
+        return;
       case 'webview/saveNoteAsMarkdownFile':
         void this.saveNoteAsMarkdownFile(parsedMessage.payload.nodeId);
         return;
@@ -6247,7 +6620,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this.openAssociatedNoteMarkdownFile(parsedMessage.payload.nodeId, sourceSurface);
         return;
       case 'webview/reloadAssociatedNoteMarkdownFile':
-        void this.refreshAssociatedMarkdownNote(parsedMessage.payload.nodeId);
+        void this.refreshAssociatedMarkdownNote(parsedMessage.payload.nodeId, { clearConflictDraft: true });
         return;
       case 'webview/dropNoteMarkdownFiles':
         void this.handleDroppedNoteMarkdownFiles(
@@ -13390,8 +13763,34 @@ function normalizeStoredNoteContentSource(value: unknown): NoteContentSource | u
     contentRevision:
       typeof value.contentRevision === 'string' ? trimStoredNodeText(value.contentRevision) : undefined,
     status: normalizeNoteMarkdownFileStatus(value.status),
-    lastError: typeof value.lastError === 'string' ? trimStoredNodeText(value.lastError) : undefined
+    lastError: typeof value.lastError === 'string' ? trimStoredNodeText(value.lastError) : undefined,
+    conflictDraft: normalizeStoredNoteMarkdownConflictDraft(value.conflictDraft)
   };
+}
+
+function normalizeStoredNoteMarkdownConflictDraft(value: unknown): NoteMarkdownConflictDraft | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const draftId =
+    typeof value.draftId === 'string' && NOTE_MARKDOWN_CONFLICT_DRAFT_ID_PATTERN.test(value.draftId)
+      ? value.draftId
+      : undefined;
+  const content = typeof value.content === 'string' ? value.content : undefined;
+  if (!draftId && content === undefined) {
+    return undefined;
+  }
+
+  return createNoteMarkdownConflictDraft({
+    draftId,
+    content,
+    baseContentRevision:
+      typeof value.baseContentRevision === 'string' ? trimStoredNodeText(value.baseContentRevision) : undefined,
+    remoteContentRevision:
+      typeof value.remoteContentRevision === 'string' ? trimStoredNodeText(value.remoteContentRevision) : undefined,
+    updatedAt: typeof value.updatedAt === 'string' ? trimStoredNodeText(value.updatedAt) : undefined
+  });
 }
 
 function normalizeNoteMarkdownFileStatus(value: unknown): NoteMarkdownFileStatus {
@@ -13460,6 +13859,24 @@ function updateAssociatedNoteMarkdownFileStatus(
   };
 }
 
+function createNoteMarkdownConflictDraft(
+  options: {
+    draftId?: string;
+    content?: string;
+    baseContentRevision?: string;
+    remoteContentRevision?: string;
+    updatedAt?: string;
+  }
+): NoteMarkdownConflictDraft {
+  return {
+    draftId: options.draftId,
+    content: options.content,
+    baseContentRevision: options.baseContentRevision,
+    remoteContentRevision: options.remoteContentRevision,
+    updatedAt: options.updatedAt ?? new Date().toISOString()
+  };
+}
+
 function areNoteContentSourcesEqual(
   left: NoteContentSource | undefined,
   right: NoteContentSource | undefined
@@ -13477,10 +13894,28 @@ function areNoteContentSourcesEqual(
       left.fullDisplayPath === right.fullDisplayPath &&
       left.contentRevision === right.contentRevision &&
       left.status === right.status &&
-      left.lastError === right.lastError
+      left.lastError === right.lastError &&
+      areNoteMarkdownConflictDraftsEqual(left.conflictDraft, right.conflictDraft)
     );
   }
   return false;
+}
+
+function areNoteMarkdownConflictDraftsEqual(
+  left: NoteMarkdownConflictDraft | undefined,
+  right: NoteMarkdownConflictDraft | undefined
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return (
+    left.draftId === right.draftId &&
+    left.content === right.content &&
+    left.baseContentRevision === right.baseContentRevision &&
+    left.remoteContentRevision === right.remoteContentRevision &&
+    left.updatedAt === right.updatedAt
+  );
 }
 
 function parseStoredNoteMarkdownResourceUri(value: string): vscode.Uri | undefined {
@@ -13708,6 +14143,52 @@ function stripSerializedTerminalStateFromCanvasState(state: CanvasPrototypeState
             : node.metadata
     }))
   };
+}
+
+function stripNoteMarkdownConflictDraftContentFromCanvasState<T>(state: T): T {
+  if (!isRecord(state) || !Array.isArray(state.nodes)) {
+    return state;
+  }
+
+  let didChange = false;
+  const nodes = state.nodes.map((node) => {
+    if (!isRecord(node) || !isRecord(node.metadata) || !isRecord(node.metadata.note)) {
+      return node;
+    }
+
+    const note = node.metadata.note;
+    if (!isRecord(note.contentSource) || note.contentSource.kind !== 'markdown-file') {
+      return node;
+    }
+
+    const conflictDraft = note.contentSource.conflictDraft;
+    if (!isRecord(conflictDraft) || !('content' in conflictDraft)) {
+      return node;
+    }
+
+    const { content: _content, ...draftWithoutContent } = conflictDraft;
+    didChange = true;
+    return {
+      ...node,
+      metadata: {
+        ...node.metadata,
+        note: {
+          ...note,
+          contentSource: {
+            ...note.contentSource,
+            conflictDraft: draftWithoutContent
+          }
+        }
+      }
+    };
+  });
+
+  return didChange
+    ? ({
+        ...state,
+        nodes
+      } as T)
+    : state;
 }
 
 function shouldPreserveStoredExecutionViewportDuringReattach(

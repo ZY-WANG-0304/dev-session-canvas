@@ -652,6 +652,27 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/updateAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+        content: string;
+        baseContentRevision?: string;
+      };
+    }
+  | {
+      type: 'webview/clearAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/copyAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+        content: string;
+      };
+    }
+  | {
       type: 'webview/saveNoteAsMarkdownFile';
       payload: {
         nodeId: string;
@@ -1255,6 +1276,56 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         baseContentRevision:
           typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined,
         force: payload.force === true
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/clearAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/clearAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/copyAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.content !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/copyAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content
       }
     };
   }

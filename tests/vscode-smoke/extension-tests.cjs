@@ -4212,8 +4212,52 @@ async function verifyNoteMarkdownFileAssociation() {
     REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
     'Expected stale associated Markdown draft submission not to overwrite the file.'
   );
+  const conflictDraft = conflictNote.metadata.note.contentSource.conflictDraft;
+  assert.match(
+    String(conflictDraft?.draftId),
+    /^[0-9a-f-]{36}$/i,
+    'Expected dirty-conflict associated Markdown Note to persist a storage-backed draft id.'
+  );
+  assert.strictEqual(
+    conflictDraft?.content,
+    undefined,
+    'Expected debug state not to inline the rejected local draft content.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(conflictDraft.draftId),
+    '# Associated Note\n\n- stale local draft',
+    'Expected dirty-conflict associated Markdown Note to persist the rejected local draft in storage.'
+  );
+  assert.strictEqual(
+    conflictDraft?.baseContentRevision,
+    'stale-revision',
+    'Expected persisted conflict draft to keep the stale base revision for explicit overwrite.'
+  );
 
-  const currentContentRevision = conflictNote.metadata.note.contentSource.contentRevision;
+  snapshot = await reloadPersistedState();
+  const reloadedConflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.status,
+    'dirty-conflict',
+    'Expected reloading persisted state not to auto-resolve an associated Markdown conflict.'
+  );
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.conflictDraft?.draftId,
+    conflictDraft.draftId,
+    'Expected reloading persisted state to keep the unresolved conflict draft reference.'
+  );
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.conflictDraft?.content,
+    undefined,
+    'Expected reloading persisted state not to inline the unresolved conflict draft.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(conflictDraft.draftId),
+    '# Associated Note\n\n- stale local draft',
+    'Expected reloading persisted state to keep the unresolved conflict draft file.'
+  );
+
+  const currentContentRevision = reloadedConflictNote.metadata.note.contentSource.contentRevision;
   assert.ok(currentContentRevision, 'Expected dirty-conflict associated Markdown Note to keep a content revision.');
   await dispatchWebviewMessage({
     type: 'webview/updateNoteNode',
@@ -8737,6 +8781,18 @@ async function getHostMessages() {
 
 async function getDiagnosticEvents() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+}
+
+async function readInternalNoteMarkdownDraftContent(draftId) {
+  const diagnosticEvents = await getDiagnosticEvents();
+  const latestStorageEvent = [...diagnosticEvents]
+    .reverse()
+    .find((event) => typeof event.detail?.writePath === 'string');
+  assert.ok(latestStorageEvent, 'Expected diagnostics to expose the extension storage write path.');
+  return fs.readFile(
+    path.join(latestStorageEvent.detail.writePath, 'note-markdown-drafts', `${draftId}.md`),
+    'utf8'
+  );
 }
 
 async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutMs }) {
