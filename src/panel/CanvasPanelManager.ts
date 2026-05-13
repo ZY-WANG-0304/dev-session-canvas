@@ -70,6 +70,7 @@ import {
   type CanvasNodeMetadata,
   type CanvasNodePosition,
   type CanvasRuntimeContext,
+  type WebviewClipboardTextSource,
   type CanvasTemplateMenuEntry,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
@@ -6653,6 +6654,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           parsedMessage.payload.text
         );
         return;
+      case 'webview/copyTextToClipboard':
+        void this.copyTextToClipboard(sourceSurface, parsedMessage.payload.text, {
+          source: parsedMessage.payload.source,
+          nodeId: parsedMessage.payload.nodeId
+        });
+        return;
       case 'webview/requestExecutionPaste':
         void this.handleExecutionPasteRequest(
           sourceSurface,
@@ -9529,6 +9536,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         type: 'host/error',
         payload: {
           message: error instanceof Error ? error.message : '复制终端选区失败。'
+        }
+      });
+    }
+  }
+
+  private async copyTextToClipboard(
+    sourceSurface: CanvasSurfaceLocation,
+    text: string,
+    detail: {
+      source: WebviewClipboardTextSource;
+      nodeId?: string;
+    }
+  ): Promise<void> {
+    try {
+      await vscode.env.clipboard.writeText(text);
+      this.recordDiagnosticEvent('clipboard/textCopied', {
+        source: detail.source,
+        nodeId: detail.nodeId,
+        bytes: Buffer.byteLength(text, 'utf8'),
+        preview: summarizeDiagnosticInput(text)
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('clipboard/textCopyFailed', {
+        source: detail.source,
+        nodeId: detail.nodeId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '复制到剪贴板失败。'
         }
       });
     }

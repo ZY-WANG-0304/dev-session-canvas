@@ -74,6 +74,7 @@ import type {
   FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
+  WebviewClipboardTextSource,
   WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -218,6 +219,7 @@ interface CanvasNodeData {
   onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onCopyTextToClipboard?: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -1706,6 +1708,15 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/reloadAssociatedNoteMarkdownFile',
         payload: {
+          nodeId
+        }
+      }),
+    onCopyTextToClipboard: (text, source, nodeId) =>
+      postMessage({
+        type: 'webview/copyTextToClipboard',
+        payload: {
+          text,
+          source,
           nodeId
         }
       }),
@@ -5105,6 +5116,15 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onOpenAssociatedNoteMarkdownFile?.(id);
   };
 
+  const copyAssociatedMarkdownSubtitlePath = (): void => {
+    if (!associatedMarkdownSubtitle) {
+      return;
+    }
+
+    data.onSelectNode?.(id);
+    data.onCopyTextToClipboard?.(associatedMarkdownSubtitle, 'note-markdown-subtitle', id);
+  };
+
   const reloadAssociatedMarkdownDraft = (): void => {
     if (!associatedMarkdownEditConflict && !hasAssociatedMarkdownHostConflict) {
       return;
@@ -5328,6 +5348,16 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           placeholder="Note 标题"
           className="note-window-title"
           subtitle={associatedMarkdownSubtitle}
+          subtitleAccessory={
+            associatedMarkdownSubtitle ? (
+              <SubtitleCopyButton
+                label="复制 Markdown 路径"
+                copiedLabel="已复制 Markdown 路径"
+                onCopy={copyAssociatedMarkdownSubtitlePath}
+                onFocus={() => data.onSelectNode?.(id)}
+              />
+            ) : undefined
+          }
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
@@ -7288,6 +7318,68 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   );
 }
 
+function SubtitleCopyButton(props: {
+  label: string;
+  copiedLabel: string;
+  onCopy: () => void;
+  onFocus?: () => void;
+}): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
+  const [copied, setCopied] = useState(false);
+  const copiedResetTimeoutRef = useRef<number | undefined>(undefined);
+  const currentLabel = copied ? props.copiedLabel : props.label;
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimeoutRef.current !== undefined) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = (): void => {
+    if (overviewInteractionsDisabled) {
+      return;
+    }
+
+    props.onCopy();
+    setCopied(true);
+    if (copiedResetTimeoutRef.current !== undefined) {
+      window.clearTimeout(copiedResetTimeoutRef.current);
+    }
+    copiedResetTimeoutRef.current = window.setTimeout(() => {
+      copiedResetTimeoutRef.current = undefined;
+      setCopied(false);
+    }, 1200);
+  };
+
+  return (
+    <button
+      type="button"
+      className="window-title-subtitle-copy nodrag nopan"
+      data-node-interactive="true"
+      title={currentLabel}
+      aria-label={currentLabel}
+      aria-hidden={overviewInteractionsDisabled ? true : undefined}
+      disabled={overviewInteractionsDisabled}
+      tabIndex={overviewInteractionsDisabled ? -1 : undefined}
+      onFocus={props.onFocus}
+      onMouseDown={stopCanvasEvent}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        handleCopy();
+      }}
+      onKeyDown={stopCanvasEvent}
+      onKeyUp={stopCanvasEvent}
+    >
+      <span
+        className={`window-title-subtitle-copy-icon codicon codicon-${copied ? 'check' : 'copy'}`}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
@@ -7472,6 +7564,7 @@ function toFlowNodes(params: {
   onSaveNoteAsMarkdownFile: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onCopyTextToClipboard: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -7579,6 +7672,7 @@ function toFlowNodes(params: {
         onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
         onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
         onReloadAssociatedNoteMarkdownFile: params.onReloadAssociatedNoteMarkdownFile,
+        onCopyTextToClipboard: params.onCopyTextToClipboard,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,

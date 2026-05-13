@@ -4372,6 +4372,21 @@ test('associated markdown notes render the file path subtitle and open-file acti
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('文件笔记');
   await expect(noteNode.getByRole('button', { name: '保存为 Markdown' })).toHaveCount(0);
 
+  const copyPathButton = noteNode.getByRole('button', { name: '复制 Markdown 路径' });
+  await expect(copyPathButton.locator('.codicon.codicon-copy')).toHaveCount(1);
+  await copyPathButton.click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyTextToClipboard');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyTextToClipboard',
+    payload: {
+      text: longDisplayPath,
+      source: 'note-markdown-subtitle',
+      nodeId: 'note-1'
+    }
+  });
+  await expect(noteNode.getByRole('button', { name: '已复制 Markdown 路径' })).toBeVisible();
+  await clearPostedMessages(page);
+
   await noteNode.getByRole('button', { name: '打开文件' }).click();
   const message = await waitForPostedMessageByType(page, 'webview/openAssociatedNoteMarkdownFile');
   expect(message).toEqual({
