@@ -34,6 +34,7 @@
 - [x] (2026-05-13 14:21 +0800) 根据 PR review 修复空白画布 Markdown 拖拽 `dragover` 判断、Host `dirty-conflict` 后草稿丢失/无法恢复，以及无 workspace 时 Quick Input 相对路径基准不一致的问题。
 - [x] (2026-05-13 15:02 +0800) 根据 PR review 修复重新 bootstrap 已持久化 `dirty-conflict` 时没有恢复入口的问题；该状态只显示重新加载恢复，不提供无草稿覆盖，也不渲染 checklist 预览。
 - [x] (2026-05-13 17:29 +0800) 根据用户纠正把关联 Markdown 的内容权威切回磁盘：移除 open dirty buffer 参与读取/写回基线的逻辑，并补充“未保存 editor 草稿不影响 Note 展示、保存后才刷新”的回归测试。
+- [x] (2026-05-13 17:58 +0800) 根据用户确认把写回冲突检测从完整内容 hash 改为 `FileStat` 磁盘状态 revision；刷新展示先比较 revision，未变化时不读完整文件。
 
 ## 意外与发现
 
@@ -45,6 +46,9 @@
 
 - 观察：用户希望关联 Markdown Note 严格以磁盘内容为权威来源，VS Code 中打开但未保存的 editor buffer 不应驱动节点刷新。
   证据：用户明确指出“Note 节点应该以硬盘上的文件内容为准”，因此 `onDidChangeTextDocument` 不能再被用作 Note 内容同步输入。
+
+- 观察：每次写回前完整读取 Markdown 文件并计算内容 hash 会带来不必要的内存和 I/O 成本。
+  证据：用户明确询问“有不需要读完整内容的可靠方式吗”，并确认采用 `FileStat` / `mtime + size` 风格的第二种方案；本轮实现把写回前冲突检测收敛为 stat 比较，仅在 revision 变化进入冲突时读取当前内容用于恢复提示。
 
 - 观察：只用 `fs.watch(filePath)` 监听关联文件删除，在 smoke 环境里没有稳定触发缺失状态刷新。
   证据：第一次 trusted smoke 在删除 `.debug/vscode-smoke/missing-associated-note.md` 后，节点 `contentSource.status` 仍为 `ok`，测试超时。
@@ -125,6 +129,10 @@
   理由：文件是权威来源；Webview 编辑草稿只能基于开始编辑时的 revision 写回。若文件在编辑期间变化，默认写回会造成数据丢失，必须进入冲突状态并要求用户重新加载或显式覆盖。
   日期/作者：2026-05-13 / Codex
 
+- 决策：`contentRevision` 使用 Host 可观测的磁盘状态 revision，而不是完整内容 hash。
+  理由：刷新展示和写回冲突检测不应为了比较 revision 每次读取完整 Markdown 内容；本地 `file:` 使用 `dev + ino + size + mtime + ctime`，其他 VSCode 文件系统资源使用 provider 暴露的 `type + size + mtime + ctime`。这会在极端“外部工具保留同大小和时间戳”的场景存在理论漏判，但普通 VSCode 保存、Agent 写文件和常规 shell 写入都能被检测，同时显著降低大文件内存和 I/O 成本。
+  日期/作者：2026-05-13 / Codex
+
 - 决策：关联 Markdown Note 的 Host 侧同步只认磁盘内容，打开但未保存的 editor buffer 不参与读取、刷新或写回基线。
   理由：用户明确要求 Note 节点以硬盘上的文件内容为准。把 dirty 草稿纳入同步会让节点跟随未保存状态，违反产品定义；只有保存或文件系统变化才应该刷新 Note。
   日期/作者：2026-05-13 / Codex
@@ -149,7 +157,7 @@
 
 - `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
 - `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、display path 压缩与内容来源类型，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
-- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer。
+- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取。
 - `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、完整路径 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、Host `dirty-conflict` 重新 bootstrap 恢复警告，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
 - `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、Host dirty-conflict 后保留草稿、Host dirty-conflict 重新 bootstrap 的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 

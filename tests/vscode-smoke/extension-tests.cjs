@@ -4001,6 +4001,12 @@ async function verifyNoteMarkdownFileAssociation() {
     associatedNote.metadata.note.contentSource.contentRevision,
     'Expected associated Markdown Note to carry a content revision.'
   );
+  assert.match(
+    associatedNote.metadata.note.contentSource.contentRevision,
+    /^stat:/,
+    'Expected associated Markdown Note revision to be based on file stat metadata.'
+  );
+  const initialAssociatedContentRevision = associatedNote.metadata.note.contentSource.contentRevision;
   assert.strictEqual(associatedNote.metadata.note.contentSource.status, 'ok');
   assert.strictEqual(
     snapshot.state.nodes.filter(
@@ -4051,6 +4057,13 @@ async function verifyNoteMarkdownFileAssociation() {
     findNodeById(snapshot, associatedNote.id).metadata.note.content,
     dirtyEditorContent,
     'Expected the associated Note to refresh after the Markdown editor saves.'
+  );
+  const savedAssociatedContentRevision =
+    findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.notStrictEqual(
+    savedAssociatedContentRevision,
+    initialAssociatedContentRevision,
+    'Expected saving the Markdown file to update the stat-based associated Note revision.'
   );
 
   await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');

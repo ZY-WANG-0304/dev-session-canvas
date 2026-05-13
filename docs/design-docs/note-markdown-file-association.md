@@ -119,6 +119,9 @@ updated_at: 2026-05-13
 - 风险：文件在 VSCode 编辑器中已打开且有未保存修改时，Note 只认磁盘内容，可能和编辑器里的草稿短暂分叉。
   缓解：关联 Markdown Note 的读取、写回和冲突判断都只以已落盘内容为准；`onDidChangeTextDocument` 不驱动节点同步，只有保存或文件系统变化才刷新节点。这样可以避免节点跟随未保存草稿，但也意味着 editor 草稿不在本功能的内容权威范围内。
 
+- 风险：写回冲突保护基于 Host 可观测的磁盘状态 revision，而不是每次写回前完整读取文件并计算内容 hash；如果外部工具刻意保留相同大小和时间戳，理论上可能绕过冲突检测。
+  缓解：普通 VSCode 保存、Agent 写文件和常规 shell 写入都会改变 `mtime` / `ctime` 或文件大小；本地文件还会纳入 `dev` / `ino`。该方案避免大文件每次写回前被完整读入内存，并把完整读取收敛到首次展示、磁盘状态变化、显式重新加载和已确认冲突恢复等确实需要内容的路径。
+
 - 风险：Webview 拖拽在 Local、Remote、浏览器化宿主或不同操作系统中的文件路径可用性不一致。
   缓解：Webview 只上报可获得的拖拽资源标识；Host 侧必须重新校验资源是否可由 Extension Host 读取、是否是文件、扩展名是否支持。无法验证时 fail closed，并给出轻量提示。
 
@@ -155,7 +158,7 @@ interface NoteNodeMetadata {
 - `embedded` Note 继续使用普通 Note 的 8,000 字符上限；Webview 在空 Note 占位提示中说明上限，并在编辑达到上限时阻止继续输入、提示用户改用 Markdown 文件。
 - `markdown-file` Note 的 `content` 只表示当前 Host 已读取并发送给 Webview 的展示/编辑缓冲；文件才是权威来源。
 - `markdown-file` Note 的展示/编辑缓冲不复用普通 Note 的 8,000 字符持久化截断上限；节点内编辑、checklist 切换或 Host 刷新都不能把超过 8,000 字符的 Markdown 文件截断后写回真实文件。
-- `contentRevision` 表示 Host 侧最近一次确认的磁盘内容版本。Webview 在开始编辑时记录该 revision，提交时带回；Host 在写文件前若发现当前磁盘内容版本已变化，必须进入 `dirty-conflict` 而不是写回旧草稿。
+- `contentRevision` 表示 Host 侧最近一次确认的磁盘状态版本，默认由 `FileStat` 可观测信息生成；本地 `file:` 资源优先使用 `dev + ino + size + mtime + ctime`，其他 VSCode 文件系统资源使用 provider 暴露的 `type + size + mtime + ctime`。Webview 在开始编辑时记录该 revision，提交时带回；Host 在写文件前若发现当前磁盘状态版本已变化，必须进入 `dirty-conflict` 而不是写回旧草稿。
 - 实现时不应依赖 `markdown-file` Note 的 `content` 作为文件缺失后的长期 fallback。即使持久化层因兼容需要保留最近一次 buffer，UI 也必须在文件不可用时优先显示警告状态，不能把缓存伪装成最新文件内容。
 - `resourceUri` 使用 VSCode 资源 URI 字符串作为持久化身份，避免只保存本地 `fsPath` 后无法解释 Remote 或非当前工作区资源。
 - `displayPath` 只服务 UI subtitle 展示；读取、写入、stat 与 watcher 必须基于 `resourceUri` 重新解析。
@@ -213,7 +216,7 @@ interface NoteNodeMetadata {
 文件写回规则：
 
 - 节点内编辑提交时，Host 将正文写入 `resourceUri` 对应文件。
-- 写回请求必须携带编辑开始时的 `contentRevision`；Host 写入前重新读取当前文件或检查当前磁盘 revision。若 revision 不匹配，Host 不写文件，节点进入 `dirty-conflict`，并提示用户重新加载或显式覆盖；Webview 在 Host 确认写回成功前不能提前推进本地 committed baseline。
+- 写回请求必须携带编辑开始时的 `contentRevision`；Host 写入前先 `stat` 当前文件并比较磁盘状态 revision，不为了冲突检测默认读取完整文件内容。若 revision 不匹配，Host 不写文件，节点进入 `dirty-conflict`，并在此时读取当前文件内容用于冲突恢复提示；Webview 在 Host 确认写回成功前不能提前推进本地 committed baseline。
 - Host 写回时直接操作磁盘文件；同一文件若在 VS Code 编辑器中有未保存草稿，这些草稿不参与 Note 的内容基线，也不会在 `onDidChangeTextDocument` 阶段驱动 Note 刷新。
 - 写入失败时，节点进入 `unreadable` 或更精确的错误状态，并在正文区域显示警告。
 
@@ -222,7 +225,7 @@ interface NoteNodeMetadata {
 Host 是关联文件状态的权威判断者。
 
 - 文件存在、是文件、扩展名受支持且可读时，状态为 `ok`，节点展示最新落盘内容。
-- 文件被外部修改时，Host 应重新读取并广播最新内容；如果节点内存在未提交编辑草稿或已提交但尚未被 Host 接受的草稿，则不能静默覆盖草稿，应提示用户文件已变化并要求用户重新确认。
+- 文件被外部修改时，Host 先比较磁盘状态 revision；revision 未变化时不读取完整内容也不广播；revision 变化后才重新读取并广播最新内容。如果节点内存在未提交编辑草稿或已提交但尚未被 Host 接受的草稿，则不能静默覆盖草稿，应提示用户文件已变化并要求用户重新确认。
 - VS Code 编辑器里尚未保存的同路径草稿不算作“文件被外部修改”；只有文件真正落盘后，Host 才会刷新 Note。
 - 文件被删除、移动、替换为目录、权限变更或当前 Extension Host 不可访问时，节点进入不可用状态。
 - 不可用状态下，正文区域显示警告，而不是展示过期缓存内容作为正常正文。
