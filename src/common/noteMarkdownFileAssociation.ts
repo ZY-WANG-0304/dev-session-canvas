@@ -46,9 +46,18 @@ export interface MarkdownFileNoteContentSource {
   contentRevision?: string;
   status: NoteMarkdownFileStatus;
   lastError?: string;
+  conflictDraft?: NoteMarkdownConflictDraft;
 }
 
 export type NoteContentSource = EmbeddedNoteContentSource | MarkdownFileNoteContentSource;
+
+export interface NoteMarkdownConflictDraft {
+  draftId?: string;
+  content?: string;
+  baseContentRevision?: string;
+  remoteContentRevision?: string;
+  updatedAt: string;
+}
 
 export function isSupportedNoteMarkdownFilePath(value: string): boolean {
   return NOTE_MARKDOWN_FILE_EXTENSIONS.has(resolveNoteMarkdownFileExtension(value));

@@ -261,6 +261,13 @@ interface CanvasNodeData {
     baseContentRevision?: string;
     force?: boolean;
   }) => void;
+  onUpdateAssociatedNoteMarkdownDraft?: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onClearAssociatedNoteMarkdownDraft?: (nodeId: string) => void;
+  onCopyAssociatedNoteMarkdownDraft?: (nodeId: string, content: string) => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
@@ -1761,6 +1768,26 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/updateNoteNode',
         payload
+      }),
+    onUpdateAssociatedNoteMarkdownDraft: (payload) =>
+      postMessage({
+        type: 'webview/updateAssociatedNoteMarkdownDraft',
+        payload
+      }),
+    onClearAssociatedNoteMarkdownDraft: (nodeId) =>
+      postMessage({
+        type: 'webview/clearAssociatedNoteMarkdownDraft',
+        payload: {
+          nodeId
+        }
+      }),
+    onCopyAssociatedNoteMarkdownDraft: (nodeId, content) =>
+      postMessage({
+        type: 'webview/copyAssociatedNoteMarkdownDraft',
+        payload: {
+          nodeId,
+          content
+        }
       }),
     onResizeNode: (nodeId, position, size) =>
       postMessage({
@@ -4485,6 +4512,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath;
   const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
   const associatedMarkdownStatus = associatedMarkdownFile?.status;
+  const associatedMarkdownConflictDraft = associatedMarkdownFile?.conflictDraft;
+  const associatedMarkdownConflictDraftContent =
+    typeof associatedMarkdownConflictDraft?.content === 'string'
+      ? associatedMarkdownConflictDraft.content
+      : undefined;
   const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
   const associatedMarkdownFileAvailable =
     !associatedMarkdownFile || associatedMarkdownStatus === 'ok' || hasAssociatedMarkdownHostConflict;
@@ -4502,6 +4534,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [isEmbeddedLimitNoticeVisible, setIsEmbeddedLimitNoticeVisible] = useState(false);
   const [associatedMarkdownEditConflict, setAssociatedMarkdownEditConflict] =
     useState<AssociatedMarkdownEditConflict | null>(null);
+  const [associatedMarkdownDraftCopied, setAssociatedMarkdownDraftCopied] = useState(false);
   const showAssociatedMarkdownHostConflictPanel =
     hasAssociatedMarkdownHostConflict && !associatedMarkdownEditConflict;
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
@@ -4512,6 +4545,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const pendingAssociatedMarkdownSubmissionRef = useRef<PendingAssociatedMarkdownSubmission | null>(null);
   const editBaselineContentRef = useRef<string | null>(null);
   const editBaselineRevisionRef = useRef<string | undefined>(associatedMarkdownContentRevision);
+  const associatedMarkdownDraftSyncTimerRef = useRef<number | undefined>();
+  const associatedMarkdownDraftCopiedTimerRef = useRef<number | undefined>();
+  const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingBodyFocusRef = useRef(false);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
@@ -4521,6 +4557,62 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     [content]
   );
 
+  const clearAssociatedMarkdownDraftSyncTimer = (): void => {
+    if (associatedMarkdownDraftSyncTimerRef.current !== undefined) {
+      window.clearTimeout(associatedMarkdownDraftSyncTimerRef.current);
+      associatedMarkdownDraftSyncTimerRef.current = undefined;
+    }
+  };
+
+  const clearAssociatedMarkdownDraftCopiedTimer = (): void => {
+    if (associatedMarkdownDraftCopiedTimerRef.current !== undefined) {
+      window.clearTimeout(associatedMarkdownDraftCopiedTimerRef.current);
+      associatedMarkdownDraftCopiedTimerRef.current = undefined;
+    }
+  };
+
+  const clearAssociatedMarkdownDraft = (): void => {
+    clearAssociatedMarkdownDraftSyncTimer();
+    lastAssociatedMarkdownDraftSyncKeyRef.current = undefined;
+    data.onClearAssociatedNoteMarkdownDraft?.(id);
+  };
+
+  const persistAssociatedMarkdownDraft = (draftContent: string, options: { immediate?: boolean } = {}): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    const baseContentRevision = editBaselineRevisionRef.current ?? associatedMarkdownContentRevision;
+    const baselineContent = editBaselineContentRef.current ?? committedContentRef.current;
+    if (draftContent === baselineContent && !hasAssociatedMarkdownHostConflict) {
+      clearAssociatedMarkdownDraft();
+      return;
+    }
+
+    const syncKey = `${baseContentRevision ?? ''}\n${draftContent}`;
+    if (lastAssociatedMarkdownDraftSyncKeyRef.current === syncKey) {
+      return;
+    }
+
+    const sendDraft = (): void => {
+      associatedMarkdownDraftSyncTimerRef.current = undefined;
+      lastAssociatedMarkdownDraftSyncKeyRef.current = syncKey;
+      data.onUpdateAssociatedNoteMarkdownDraft?.({
+        nodeId: id,
+        content: draftContent,
+        baseContentRevision
+      });
+    };
+
+    clearAssociatedMarkdownDraftSyncTimer();
+    if (options.immediate === true) {
+      sendDraft();
+      return;
+    }
+
+    associatedMarkdownDraftSyncTimerRef.current = window.setTimeout(sendDraft, 450);
+  };
+
   useLayoutEffect(() => {
     const previousPropContent = lastPropContentRef.current;
     const previousPropStatus = lastPropStatusRef.current;
@@ -4529,6 +4621,27 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const didPropContentChange = noteMetadata.content !== previousPropContent;
     const didPropStatusChange = associatedMarkdownStatus !== previousPropStatus;
     const didMatchPendingContent = pendingContentRef.current === noteMetadata.content;
+
+    if (
+      associatedMarkdownFile &&
+      hasAssociatedMarkdownHostConflict &&
+      associatedMarkdownConflictDraftContent !== undefined &&
+      !associatedMarkdownEditConflict
+    ) {
+      pendingAssociatedMarkdownSubmissionRef.current = null;
+      committedContentRef.current = noteMetadata.content;
+      editBaselineContentRef.current = noteMetadata.content;
+      editBaselineRevisionRef.current =
+        associatedMarkdownConflictDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
+      setContent(associatedMarkdownConflictDraftContent);
+      setIsEditingBody(true);
+      setAssociatedMarkdownEditConflict({
+        remoteContent: noteMetadata.content,
+        remoteContentRevision:
+          associatedMarkdownConflictDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
+      });
+      return;
+    }
 
     if (didMatchPendingContent) {
       pendingContentRef.current = null;
@@ -4602,6 +4715,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     ) {
       const editBaselineContent = editBaselineContentRef.current ?? previousPropContent;
       if (content !== editBaselineContent) {
+        persistAssociatedMarkdownDraft(content, { immediate: true });
         setAssociatedMarkdownEditConflict({
           remoteContent: noteMetadata.content,
           remoteContentRevision: associatedMarkdownContentRevision
@@ -4624,6 +4738,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     }
   }, [
     associatedMarkdownContentRevision,
+    associatedMarkdownConflictDraft,
+    associatedMarkdownConflictDraftContent,
+    associatedMarkdownEditConflict,
     associatedMarkdownFile,
     associatedMarkdownStatus,
     content,
@@ -4633,6 +4750,18 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     isEditingBody,
     noteMetadata.content
   ]);
+
+  useEffect(() => {
+    return () => {
+      clearAssociatedMarkdownDraftSyncTimer();
+      clearAssociatedMarkdownDraftCopiedTimer();
+    };
+  }, []);
+
+  useEffect(() => {
+    clearAssociatedMarkdownDraftCopiedTimer();
+    setAssociatedMarkdownDraftCopied(false);
+  }, [content]);
 
   useLayoutEffect(() => {
     if (!isEditingBody || !pendingBodyFocusRef.current) {
@@ -4696,6 +4825,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const updateBodyContent = (nextContent: string): string => {
     const normalizedContent = normalizeEditableNoteContent(nextContent);
     setContent(normalizedContent);
+    if (associatedMarkdownFile && isEditingBody) {
+      persistAssociatedMarkdownDraft(normalizedContent);
+    }
     if (isEmbeddedNote && normalizedContent.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
       setIsEmbeddedLimitNoticeVisible(true);
     }
@@ -4717,6 +4849,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     const baselineContent = committedContentRef.current;
     if (normalizedContent === baselineContent) {
+      if (associatedMarkdownFile) {
+        clearAssociatedMarkdownDraft();
+      }
       return;
     }
 
@@ -4795,6 +4930,20 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     setAssociatedMarkdownEditConflict(null);
     submitNote(content, { force: true });
     setIsEditingBody(false);
+  };
+
+  const copyAssociatedMarkdownDraft = (): void => {
+    if (!associatedMarkdownEditConflict) {
+      return;
+    }
+
+    data.onCopyAssociatedNoteMarkdownDraft?.(id, content);
+    clearAssociatedMarkdownDraftCopiedTimer();
+    setAssociatedMarkdownDraftCopied(true);
+    associatedMarkdownDraftCopiedTimerRef.current = window.setTimeout(() => {
+      associatedMarkdownDraftCopiedTimerRef.current = undefined;
+      setAssociatedMarkdownDraftCopied(false);
+    }, 1600);
   };
 
   const startEditingBody = (): void => {
@@ -5034,6 +5183,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   const nextContent = event.currentTarget.value;
                   updateBodyContent(nextContent);
                   if (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) {
+                    persistAssociatedMarkdownDraft(nextContent, { immediate: true });
                     return;
                   }
                   setIsEditingBody(false);
@@ -5060,6 +5210,14 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     onClick={reloadAssociatedMarkdownDraft}
                   >
                     重新加载
+                  </button>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action"
+                    onMouseDown={stopCanvasEvent}
+                    onClick={copyAssociatedMarkdownDraft}
+                  >
+                    {associatedMarkdownDraftCopied ? '已复制' : '复制草稿'}
                   </button>
                   <button
                     type="button"
@@ -7078,6 +7236,13 @@ function toFlowNodes(params: {
     baseContentRevision?: string;
     force?: boolean;
   }) => void;
+  onUpdateAssociatedNoteMarkdownDraft: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onClearAssociatedNoteMarkdownDraft: (nodeId: string) => void;
+  onCopyAssociatedNoteMarkdownDraft: (nodeId: string, content: string) => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -7143,6 +7308,9 @@ function toFlowNodes(params: {
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
+        onUpdateAssociatedNoteMarkdownDraft: params.onUpdateAssociatedNoteMarkdownDraft,
+        onClearAssociatedNoteMarkdownDraft: params.onClearAssociatedNoteMarkdownDraft,
+        onCopyAssociatedNoteMarkdownDraft: params.onCopyAssociatedNoteMarkdownDraft,
         onResizeNode: params.onResizeNode,
         onFocusNodeInViewport: params.onFocusNodeInViewport,
         onDeleteNode: params.onDeleteNode

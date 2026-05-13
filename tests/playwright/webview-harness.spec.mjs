@@ -4408,6 +4408,38 @@ test('associated markdown note editing blocks stale drafts after an external fil
   });
 });
 
+test('associated markdown note persists an edit draft with its base revision', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/draft.md',
+    displayPath: 'docs/draft.md',
+    fullDisplayPath: '/workspace/docs/draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+
+  const draftMessage = await waitForPostedMessageByType(page, 'webview/updateAssociatedNoteMarkdownDraft');
+  expect(draftMessage).toEqual({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-a'
+    }
+  });
+});
+
 test('associated markdown note keeps a rejected stale draft after host dirty-conflict', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -4450,7 +4482,13 @@ test('associated markdown note keeps a rejected stale draft after host dirty-con
     fullDisplayPath: '/workspace/docs/conflict.md',
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
-    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    conflictDraft: {
+      draftId: '11111111-1111-4111-8111-111111111111',
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
   };
   await updateHostState(page, conflictState);
 
@@ -4485,6 +4523,64 @@ test('associated markdown note keeps a rejected stale draft after host dirty-con
   await expect(noteNode.locator('.note-markdown-preview')).toContainText('外部更新');
 });
 
+test('associated markdown note restores a persisted dirty-conflict draft after bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    conflictDraft: {
+      draftId: '22222222-2222-4222-8222-222222222222',
+      content: '# 文件笔记\n\n本地草稿',
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue('# 文件笔记\n\n本地草稿');
+  await expect(bodyInput).toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText(
+    '关联文件已在外部更新'
+  );
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '复制草稿' }).click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyAssociatedNoteMarkdownDraft');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: '# 文件笔记\n\n本地草稿'
+    }
+  });
+  await expect(noteNode.getByRole('button', { name: '已复制' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: '# 文件笔记\n\n本地草稿',
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
 test('associated markdown note bootstrapped with dirty-conflict shows reload recovery only', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -4496,7 +4592,13 @@ test('associated markdown note bootstrapped with dirty-conflict shows reload rec
     fullDisplayPath: '/workspace/docs/conflict.md',
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
-    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    conflictDraft: {
+      draftId: '11111111-1111-4111-8111-111111111111',
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
   };
   await bootstrap(page, state);
   await clearPostedMessages(page);
