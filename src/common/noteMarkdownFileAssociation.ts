@@ -1,7 +1,6 @@
 import * as path from 'path';
 
 const NOTE_MARKDOWN_FILE_EXTENSIONS = new Set(['.md', '.markdown']);
-const DEFAULT_DISPLAY_PATH_MAX_LENGTH = 56;
 const WINDOWS_RESERVED_FILE_NAMES = new Set([
   'con',
   'prn',
@@ -80,26 +79,6 @@ export function createDefaultNoteMarkdownFileName(title: string): string {
   return sanitizeNoteMarkdownFileName(title);
 }
 
-export function compactNoteMarkdownDisplayPath(
-  value: string,
-  maxLength = DEFAULT_DISPLAY_PATH_MAX_LENGTH
-): string {
-  const normalizedMaxLength = Math.max(16, Math.floor(maxLength));
-  if (value.length <= normalizedMaxLength) {
-    return value;
-  }
-
-  const remoteSeparator = ' · ';
-  const remoteSeparatorIndex = value.indexOf(remoteSeparator);
-  if (remoteSeparatorIndex > 0) {
-    const prefix = value.slice(0, remoteSeparatorIndex + remoteSeparator.length);
-    const pathPart = value.slice(remoteSeparatorIndex + remoteSeparator.length);
-    return `${prefix}${compactPathTail(pathPart, normalizedMaxLength - prefix.length)}`;
-  }
-
-  return compactPathTail(value, normalizedMaxLength);
-}
-
 export function formatNoteMarkdownRemoteAuthorityPrefix(
   scheme: string,
   authority: string
@@ -153,30 +132,6 @@ function stripUriQueryAndFragment(value: string): string {
   }
 
   return value.slice(0, Math.min(...cutIndexes));
-}
-
-function compactPathTail(value: string, maxLength: number): string {
-  const normalizedMaxLength = Math.max(16, maxLength);
-  if (value.length <= normalizedMaxLength) {
-    return value;
-  }
-
-  const normalized = value.replace(/\\/g, '/');
-  const parts = normalized.split('/').filter((part) => part.length > 0);
-  const fileName = parts[parts.length - 1] ?? normalized;
-  const parentName = parts.length >= 2 ? parts[parts.length - 2] : undefined;
-  const tail = parentName ? `${parentName}/${fileName}` : fileName;
-  const compactTail = `…/${tail}`;
-  if (compactTail.length <= normalizedMaxLength) {
-    return compactTail;
-  }
-
-  const fileTail = `…/${fileName}`;
-  if (fileTail.length <= normalizedMaxLength) {
-    return fileTail;
-  }
-
-  return `…${fileName.slice(-(normalizedMaxLength - 1))}`;
 }
 
 function safeDecodeURIComponent(value: string): string {

@@ -26,15 +26,16 @@
 - [x] (2026-05-13 07:26 +0800) 补充自动化测试，覆盖共享纯函数、Webview 呈现/拖放消息，以及真实 VSCode smoke 中的拖拽创建、写回、删除节点不删文件和缺失警告。
 - [x] (2026-05-13 07:26 +0800) 执行验证命令，并把结果同步回本计划和设计文档；Quick Input 既有文件三选项已实现但尚未由自动化直接驱动验证。
 - [x] (2026-05-13 07:54 +0800) 修复 Markdown 文件拖放时同一文件以多个拖拽资源或重复消息上报会创建重复 Note 的问题，并补充 smoke 回归断言。
-- [x] (2026-05-13 08:27 +0800) 调整关联 Markdown Note 的 subtitle 显示规则，避免 raw `vscode-remote://...` 暴露到 UI，并为长路径增加中间省略与人类可读 tooltip。
+- [x] (2026-05-13 08:27 +0800) 调整关联 Markdown Note 的 subtitle 显示规则，避免 raw `vscode-remote://...` 暴露到 UI，并加入人类可读路径处理。
 - [x] (2026-05-13 08:59 +0800) 放开“一个 Markdown 只能对应一个 Note”的长期限制；已关联文件再次拖入时改为 modal 选择继续添加新 Note 或定位已关联 Note。
-- [x] (2026-05-13 09:47 +0800) 调整 Markdown 关联相关 modal：不再额外传入“取消”按钮，避免和 VSCode modal 默认 Cancel 重复；提示文案中的文件路径改用与 subtitle 一致的短 `displayPath`。
+- [x] (2026-05-13 09:47 +0800) 调整 Markdown 关联相关 modal：不再额外传入“取消”按钮，避免和 VSCode modal 默认 Cancel 重复；提示文案中的文件路径改用与 subtitle 一致的 `displayPath`。
 - [x] (2026-05-13 10:35 +0800) 修复关联 Markdown 内容复用普通 Note 8,000 字符截断上限的问题；普通 Note 编辑器显式展示并执行 8,000 字符上限；设计文档同步确认“保存为 Markdown”作为普通 Note 常驻按钮。
 - [x] (2026-05-13 11:31 +0800) 修复关联 Markdown Note 编辑期间外部文件刷新后旧草稿可静默覆盖新内容的问题；新增 content revision 写回保护、Webview 冲突提示和回归测试。
 - [x] (2026-05-13 14:21 +0800) 根据 PR review 修复空白画布 Markdown 拖拽 `dragover` 判断、Host `dirty-conflict` 后草稿丢失/无法恢复，以及无 workspace 时 Quick Input 相对路径基准不一致的问题。
 - [x] (2026-05-13 15:02 +0800) 根据 PR review 修复重新 bootstrap 已持久化 `dirty-conflict` 时没有恢复入口的问题；该状态只显示重新加载恢复，不提供无草稿覆盖，也不渲染 checklist 预览。
 - [x] (2026-05-13 17:29 +0800) 根据用户纠正把关联 Markdown 的内容权威切回磁盘：移除 open dirty buffer 参与读取/写回基线的逻辑，并补充“未保存 editor 草稿不影响 Note 展示、保存后才刷新”的回归测试。
 - [x] (2026-05-13 17:58 +0800) 根据用户确认把写回冲突检测从完整内容 hash 改为 `FileStat` 磁盘状态 revision；刷新展示先比较 revision，未变化时不读完整文件。
+- [x] (2026-05-13 19:40 +0800) 将关联 Markdown Note subtitle 改为与 Agent / Terminal 一致的完整人类可读文本加布局省略，不再在 Host 侧做 56 字符中间压缩；同步 `docs/UI.md` 中节点标题/副标题规范。
 
 ## 意外与发现
 
@@ -109,8 +110,8 @@
   理由：Webview 的 DataTransfer 类型和事件到达顺序不稳定；Host 是文件与画布状态的权威边界，只有 Host 侧去重才能覆盖单次拖拽内的多资源表示和重复消息竞态。这个去重只约束一次拖拽动作，不再禁止用户显式为同一个 Markdown 添加多个关联 Note。
   日期/作者：2026-05-13 / Codex
 
-- 决策：关联 Markdown Note 的 subtitle 显示 `displayPath`，完整 hover/警告路径使用 `fullDisplayPath`；两者都必须是人类可读路径，不能是 raw `resourceUri`。
-  理由：`resourceUri` 是持久化与 IO 身份，不适合作为 UI 文案；分离短路径和完整路径后，subtitle 可以保留文件名与最近目录，tooltip 仍能给出完整上下文。
+- 决策：关联 Markdown Note 的 subtitle 显示完整人类可读 `displayPath` / `fullDisplayPath`，不再在 Host 侧做固定字符上限或中间压缩；可视截断、ellipsis 与溢出 tooltip 统一交给节点标题栏规则处理，且不能显示 raw `resourceUri`。
+  理由：`resourceUri` 是持久化与 IO 身份，不适合作为 UI 文案；关联 Markdown Note 应与 Agent 启动命令、Terminal shell path 一样保留原始人类可读信息，再由 UI 根据节点宽度退化。
   日期/作者：2026-05-13 / Codex
 
 - 决策：同一个 Markdown 文件可以有多个关联 Note；当文件已经在画板上有关联 Note 时，再次拖入必须用 modal 让用户选择“继续添加新 Note”或“定位已关联 Note”。
@@ -156,9 +157,9 @@
 已落地内容：
 
 - `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
-- `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、display path 压缩与内容来源类型，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
+- `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
 - `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取。
-- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、完整路径 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、Host `dirty-conflict` 重新 bootstrap 恢复警告，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
+- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、Host `dirty-conflict` 重新 bootstrap 恢复警告，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
 - `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、Host dirty-conflict 后保留草稿、Host dirty-conflict 重新 bootstrap 的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
@@ -167,13 +168,16 @@
        通过
 
        npm run test:note-markdown-file-association
-       note markdown file association tests passed；覆盖 display path 中间省略和 Remote authority 轻量前缀
+       note markdown file association tests passed；覆盖扩展名、文件名安全化和 Remote authority 轻量前缀
 
        npm run test:webview -- --grep "associated markdown note editor|associated markdown note editing blocks|associated markdown note keeps|associated markdown note bootstrapped|ordinary note empty placeholder|associated markdown notes|missing associated markdown notes|dropping markdown files"
        Playwright webview tests passed；覆盖普通 Note 8,000 字符占位提示/编辑上限、关联 Markdown Note 不使用普通 Note 编辑上限、编辑期外部刷新、Host dirty-conflict 阻止旧草稿静默写回或丢失、Host dirty-conflict 重新 bootstrap 只提供重新加载并阻止 checklist 绕过恢复、subtitle、完整路径警告、缺失警告和空白画布拖拽消息
 
        npm run test:webview -- --grep "ordinary note empty|associated markdown|missing associated markdown|ordinary note save-as-markdown|dropping markdown"
        Playwright webview tests passed；本轮重跑 9 个相关用例，覆盖普通 Note 上限提示、关联 Markdown 渲染/编辑/冲突恢复、缺失警告、保存为 Markdown 按钮与空白画布拖拽消息
+
+       npm run test:webview -- --grep "associated markdown notes render|missing associated markdown notes"
+       Playwright webview tests passed；本轮覆盖关联 Markdown Note 使用完整 subtitle 文本、节点宽度不足时显示完整 tooltip，以及缺失状态继续显示同一条人类可读路径
 
        node --check tests/vscode-smoke/extension-tests.cjs
        通过

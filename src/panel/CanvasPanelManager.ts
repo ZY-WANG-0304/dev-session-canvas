@@ -135,7 +135,6 @@ import {
   type NoteMarkdownWorkspaceRoot
 } from '../common/noteMarkdownLinks';
 import {
-  compactNoteMarkdownDisplayPath,
   createDefaultNoteMarkdownFileName,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
@@ -4195,7 +4194,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Pick<MarkdownFileNoteContentSource, 'displayPath' | 'fullDisplayPath'> {
     const fullDisplayPath = this.formatNoteMarkdownFullDisplayPath(uri);
     return {
-      displayPath: compactNoteMarkdownDisplayPath(fullDisplayPath),
+      displayPath: fullDisplayPath,
       fullDisplayPath
     };
   }

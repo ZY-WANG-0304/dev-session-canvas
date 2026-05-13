@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 
 import {
-  compactNoteMarkdownDisplayPath,
   createDefaultNoteMarkdownFileName,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
@@ -26,14 +25,6 @@ assert.equal(sanitizeNoteMarkdownFileName('   '), 'note.md');
 assert.equal(sanitizeNoteMarkdownFileName('CON'), 'CON-note.md');
 assert.equal(createDefaultNoteMarkdownFileName('产品方案'), '产品方案.md');
 
-assert.equal(
-  compactNoteMarkdownDisplayPath('~/projects/MiniCPM-V-CookBook-main.worktrees/test-branch/Note 2.md', 40),
-  '…/test-branch/Note 2.md'
-);
-assert.equal(
-  compactNoteMarkdownDisplayPath('ssh:dev_labs · ~/projects/MiniCPM-V-CookBook-main.worktrees/test-branch/Note 2.md', 56),
-  'ssh:dev_labs · …/test-branch/Note 2.md'
-);
 assert.equal(
   formatNoteMarkdownRemoteAuthorityPrefix('vscode-remote', 'ssh-remote+dev_labs'),
   'ssh:dev_labs'
