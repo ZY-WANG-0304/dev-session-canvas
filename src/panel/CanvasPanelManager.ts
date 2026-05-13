@@ -118,8 +118,11 @@ import {
   cloneCanvasTemplate,
   encodeCanvasTemplateDocument,
   formatCanvasTemplateStats,
+  normalizeCanvasTemplateWorkspaceRelativePath,
   resolveCanvasTemplateAgentProvider,
   type CanvasTemplate,
+  type CanvasTemplateAssociatedNoteSaveMode,
+  type CanvasTemplateAssociatedNoteSaveSelection,
   type CanvasTemplateCaptureResult,
   type CanvasTemplateSaveAgentProviderSelection
 } from '../common/canvasTemplates';
@@ -549,6 +552,20 @@ interface CanvasTemplateApplyStateResult {
   nodeIds: string[];
 }
 
+interface CanvasTemplateNoteMaterialization {
+  content: string;
+  contentSource?: NoteContentSource;
+}
+
+interface CanvasTemplateAssociatedNoteSaveFormItem {
+  nodeId: string;
+  title: string;
+  displayPath: string;
+  status: string;
+  isWorkspaceRelative: boolean;
+  defaultMode: CanvasTemplateAssociatedNoteSaveMode;
+}
+
 interface NoteMarkdownFileQuickPickItem extends vscode.QuickPickItem {
   itemKind: 'use-input' | 'directory' | 'file';
   filePath?: string;
@@ -934,6 +951,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return cloneJsonValue(this.state.nodes);
   }
 
+  public getCanvasTemplateAssociatedNoteSaveItems(): CanvasTemplateAssociatedNoteSaveFormItem[] {
+    return this.state.nodes.flatMap((node) => {
+      if (node.kind !== 'note') {
+        return [];
+      }
+
+      const source = ensureNoteMetadata(node).contentSource;
+      if (source?.kind !== 'markdown-file') {
+        return [];
+      }
+
+      const relativePath = this.resolveCanvasTemplateRelativePathForAssociatedNoteSource(source);
+      return [
+        {
+          nodeId: node.id,
+          title: node.title,
+          displayPath: source.fullDisplayPath ?? source.displayPath,
+          status: source.status,
+          isWorkspaceRelative: relativePath !== undefined,
+          defaultMode: relativePath ? 'workspace-file-path-only' : 'embedded-snapshot'
+        }
+      ];
+    });
+  }
+
   public getCanvasFileFilterState(): CanvasFileFilterState {
     return cloneJsonValue(this.fileFilterState);
   }
@@ -970,6 +1012,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       overwriteTemplateId?: string;
       targetRootPath?: string;
       relativeDirectory?: string;
+      associatedNoteSaveModes?: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>>;
     }
   ): Promise<CanvasStoredTemplate> {
     const catalog = await this.getCanvasTemplateCatalog();
@@ -981,12 +1024,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const now = new Date().toISOString();
+    const associatedNoteSaveSelection = await this.resolveAssociatedNoteTemplateSaveSelection(
+      options?.associatedNoteSaveModes ?? {}
+    );
     const capture = captureCanvasTemplateFromState({
       state: this.buildStateForCanvasTemplateCapture(),
       name,
       templateId: overwriteTemplate?.template.id ?? `user-template-${randomUUID()}`,
       category: 'user',
       agentProviderSelection,
+      associatedNoteSaveSelection,
       now
     });
     const template = capture.template;
@@ -1031,6 +1078,94 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
       })
     };
+  }
+
+  private async resolveAssociatedNoteTemplateSaveSelection(
+    modes: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>>
+  ): Promise<Record<string, CanvasTemplateAssociatedNoteSaveSelection>> {
+    const selection: Record<string, CanvasTemplateAssociatedNoteSaveSelection> = {};
+
+    for (const [nodeId, mode] of Object.entries(modes)) {
+      const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+      const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+      const source = noteMetadata?.contentSource;
+      if (!node || !noteMetadata || source?.kind !== 'markdown-file') {
+        continue;
+      }
+
+      if (mode === 'skip') {
+        selection[nodeId] = { mode };
+        continue;
+      }
+
+      if (mode === 'workspace-file-path-only') {
+        selection[nodeId] = {
+          mode,
+          relativePath: this.requireCanvasTemplateRelativePathForAssociatedNote(node, source)
+        };
+        continue;
+      }
+
+      const content = await this.readAssociatedMarkdownContentForTemplateSave(node, source, mode);
+      if (mode === 'embedded-snapshot') {
+        if (content.length > NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+          throw new Error(
+            `关联 Markdown Note「${node.title}」的内容超过普通 Note 8,000 字符上限，请改选“保留 workspace 相对路径和文件内容”或“不保存此 Note”。`
+          );
+        }
+        selection[nodeId] = { mode, content };
+        continue;
+      }
+
+      selection[nodeId] = {
+        mode,
+        content,
+        relativePath: this.requireCanvasTemplateRelativePathForAssociatedNote(node, source)
+      };
+    }
+
+    return selection;
+  }
+
+  private async readAssociatedMarkdownContentForTemplateSave(
+    node: CanvasNodeSummary,
+    source: MarkdownFileNoteContentSource,
+    mode: CanvasTemplateAssociatedNoteSaveMode
+  ): Promise<string> {
+    if (source.status !== 'ok' || source.conflictDraft) {
+      throw new Error(
+        `关联 Markdown Note「${node.title}」当前不是可保存状态（${source.status}），请先恢复关联文件或改选“不保存此 Note”。`
+      );
+    }
+
+    const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+    if (!uri) {
+      throw new Error(`关联 Markdown Note「${node.title}」的文件 URI 无法解析。`);
+    }
+
+    if (mode === 'workspace-file-with-content') {
+      this.requireCanvasTemplateRelativePathForAssociatedNote(node, source);
+    }
+
+    const readResult = await this.readNoteMarkdownFile(uri);
+    if (readResult.status !== 'ok') {
+      throw new Error(
+        `无法读取关联 Markdown Note「${node.title}」的落盘内容：${readResult.lastError ?? readResult.status}`
+      );
+    }
+
+    return readResult.content;
+  }
+
+  private requireCanvasTemplateRelativePathForAssociatedNote(
+    node: CanvasNodeSummary,
+    source: MarkdownFileNoteContentSource
+  ): string {
+    const relativePath = this.resolveCanvasTemplateRelativePathForAssociatedNoteSource(source);
+    if (!relativePath) {
+      throw new Error(`关联 Markdown Note「${node.title}」不在当前 workspace 内，不能保存为 workspace 相对文件关联。`);
+    }
+    return relativePath;
   }
 
   public async importCanvasTemplateFromPath(
@@ -2458,6 +2593,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   ): Promise<string[]> {
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
+    const noteMaterializations = await this.resolveCanvasTemplateNoteMaterializations(storedTemplate.template, {
+      quiet: options?.quietOnFailure === true
+    });
     const preferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
     const nextBaseState = options?.reset
       ? createDefaultState(this.getAgentCliConfig().defaultProvider)
@@ -2473,7 +2611,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const applyResult = applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
       preferredCenter,
-      resolvedAgentProviders
+      resolvedAgentProviders,
+      noteMaterializations
     });
     this.state = this.reconcileCanvasFileArtifacts(applyResult.state);
     this.canvasTemplateInitialized = true;
@@ -2534,6 +2673,247 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return resolvedAgentProviders;
+  }
+
+  private async resolveCanvasTemplateNoteMaterializations(
+    template: CanvasTemplate,
+    options: { quiet: boolean }
+  ): Promise<Map<number, CanvasTemplateNoteMaterialization>> {
+    const materializations = new Map<number, CanvasTemplateNoteMaterialization>();
+
+    for (const [index, node] of template.nodes.entries()) {
+      if (node.kind !== 'note') {
+        continue;
+      }
+
+      const note = node.metadata?.note;
+      const mode = note?.templateContentMode ?? 'embedded-snapshot';
+      if (mode === 'embedded-snapshot') {
+        continue;
+      }
+
+      const relativePath = normalizeCanvasTemplateWorkspaceRelativePath(note?.relativePath ?? '');
+      if (!relativePath) {
+        throw new Error(`模板「${template.name}」中的 Note「${node.title}」缺少合法 workspace 相对路径。`);
+      }
+
+      const uri = this.resolveCanvasTemplateWorkspaceRelativeMarkdownUri(relativePath);
+      if (!uri) {
+        throw new Error(`当前 workspace 无法解析模板 Note「${node.title}」的相对路径：${relativePath}`);
+      }
+
+      const materialization =
+        mode === 'workspace-file-path-only'
+          ? await this.resolvePathOnlyCanvasTemplateNoteMaterialization(template.name, node.title, relativePath, uri, options)
+          : await this.resolveContentBackedCanvasTemplateNoteMaterialization(
+              template.name,
+              node.title,
+              relativePath,
+              uri,
+              note?.content ?? '',
+              options
+            );
+      materializations.set(index, materialization);
+    }
+
+    return materializations;
+  }
+
+  private resolveCanvasTemplateWorkspaceRelativeMarkdownUri(relativePath: string): vscode.Uri | undefined {
+    const normalizedPath = normalizeCanvasTemplateWorkspaceRelativePath(relativePath);
+    if (!normalizedPath || !isSupportedNoteMarkdownFilePath(normalizedPath)) {
+      return undefined;
+    }
+
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    if (workspaceFolders.length === 0) {
+      return undefined;
+    }
+
+    const parts = normalizedPath.split('/');
+    if (workspaceFolders.length === 1) {
+      return vscode.Uri.joinPath(workspaceFolders[0].uri, ...parts);
+    }
+
+    const [folderName, ...fileParts] = parts;
+    if (fileParts.length === 0) {
+      return undefined;
+    }
+
+    const workspaceFolder = workspaceFolders.find((folder) => folder.name === folderName);
+    return workspaceFolder ? vscode.Uri.joinPath(workspaceFolder.uri, ...fileParts) : undefined;
+  }
+
+  private async resolvePathOnlyCanvasTemplateNoteMaterialization(
+    templateName: string,
+    noteTitle: string,
+    relativePath: string,
+    uri: vscode.Uri,
+    options: { quiet: boolean }
+  ): Promise<CanvasTemplateNoteMaterialization> {
+    const readResult = await this.readNoteMarkdownFile(uri);
+    if (readResult.status === 'ok') {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+        status: 'ok',
+        contentRevision: readResult.contentRevision
+      });
+    }
+
+    if (readResult.status !== 'missing') {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, '', {
+        status: readResult.status,
+        lastError: readResult.lastError
+      });
+    }
+
+    if (!options.quiet) {
+      const create = '创建空文件并关联';
+      const keepMissing = '保留缺失关联';
+      const selected = await vscode.window.showWarningMessage(
+        `模板「${templateName}」中的 Note「${noteTitle}」关联 ${relativePath}，但当前 workspace 中没有该文件。`,
+        { modal: true },
+        create,
+        keepMissing
+      );
+      if (selected === create) {
+        return this.createCanvasTemplateMarkdownFileAndMaterialization(uri, '');
+      }
+      if (selected !== keepMissing) {
+        throw new Error('已取消应用模板。');
+      }
+    }
+
+    return this.createCanvasTemplateAssociatedNoteMaterialization(uri, '', {
+      status: 'missing',
+      lastError: readResult.lastError ?? `关联文件不可用：${relativePath}`
+    });
+  }
+
+  private async resolveContentBackedCanvasTemplateNoteMaterialization(
+    templateName: string,
+    noteTitle: string,
+    relativePath: string,
+    uri: vscode.Uri,
+    templateContent: string,
+    options: { quiet: boolean }
+  ): Promise<CanvasTemplateNoteMaterialization> {
+    const readResult = await this.readNoteMarkdownFile(uri);
+    if (readResult.status === 'missing') {
+      return this.createCanvasTemplateMarkdownFileAndMaterialization(uri, templateContent);
+    }
+
+    if (readResult.status !== 'ok') {
+      throw new Error(`无法为模板「${templateName}」应用 Note「${noteTitle}」：${readResult.lastError ?? readResult.status}`);
+    }
+
+    if (readResult.content === templateContent) {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+        status: 'ok',
+        contentRevision: readResult.contentRevision
+      });
+    }
+
+    if (options.quiet) {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+        status: 'ok',
+        contentRevision: readResult.contentRevision
+      });
+    }
+
+    const useExisting = '使用现有文件并关联';
+    const overwrite = '覆盖文件并关联';
+    const saveAs = '另存为新文件';
+    const selected = await vscode.window.showWarningMessage(
+      `模板「${templateName}」中的 Note「${noteTitle}」要写入 ${relativePath}，但该文件已存在且内容不同。`,
+      { modal: true },
+      useExisting,
+      overwrite,
+      saveAs
+    );
+
+    if (selected === useExisting) {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+        status: 'ok',
+        contentRevision: readResult.contentRevision
+      });
+    }
+
+    if (selected === overwrite) {
+      return this.createCanvasTemplateMarkdownFileAndMaterialization(uri, templateContent);
+    }
+
+    if (selected === saveAs) {
+      const alternativeUri = await this.promptCanvasTemplateMarkdownFileSaveAsUri(uri);
+      if (!alternativeUri) {
+        throw new Error('已取消应用模板。');
+      }
+      return this.createCanvasTemplateMarkdownFileAndMaterialization(alternativeUri, templateContent);
+    }
+
+    throw new Error('已取消应用模板。');
+  }
+
+  private async promptCanvasTemplateMarkdownFileSaveAsUri(defaultUri: vscode.Uri): Promise<vscode.Uri | undefined> {
+    const selectedUri = await vscode.window.showSaveDialog({
+      defaultUri,
+      saveLabel: '另存并关联',
+      filters: {
+        Markdown: ['md', 'markdown']
+      }
+    });
+    if (!selectedUri) {
+      return undefined;
+    }
+
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(selectedUri))) {
+      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
+      return undefined;
+    }
+
+    if (!this.resolveNoteMarkdownWorkspaceRelativeDisplayPath(selectedUri)) {
+      await vscode.window.showWarningMessage('另存路径必须位于当前 workspace 内。');
+      return undefined;
+    }
+
+    return selectedUri;
+  }
+
+  private async createCanvasTemplateMarkdownFileAndMaterialization(
+    uri: vscode.Uri,
+    content: string
+  ): Promise<CanvasTemplateNoteMaterialization> {
+    await vscode.workspace.fs.createDirectory(getUriDirectory(uri));
+    const writeResult = await this.writeNoteMarkdownFile(uri, content);
+    if (!writeResult.ok) {
+      throw new Error(writeResult.errorMessage);
+    }
+
+    return this.createCanvasTemplateAssociatedNoteMaterialization(uri, content, {
+      status: 'ok',
+      contentRevision: writeResult.contentRevision
+    });
+  }
+
+  private createCanvasTemplateAssociatedNoteMaterialization(
+    uri: vscode.Uri,
+    content: string,
+    params: {
+      status: NoteMarkdownFileStatus;
+      contentRevision?: string;
+      lastError?: string;
+    }
+  ): CanvasTemplateNoteMaterialization {
+    return {
+      content,
+      contentSource: {
+        kind: 'markdown-file',
+        resourceUri: uri.toString(),
+        ...this.formatNoteMarkdownDisplayPathInfo(uri),
+        contentRevision: params.contentRevision,
+        status: params.status,
+        lastError: params.lastError
+      }
+    };
   }
 
   private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
@@ -4622,6 +5002,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return undefined;
+  }
+
+  private resolveCanvasTemplateRelativePathForAssociatedNoteSource(
+    source: MarkdownFileNoteContentSource
+  ): string | undefined {
+    const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+    if (!uri || !isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+      return undefined;
+    }
+
+    const relativePath = this.resolveNoteMarkdownWorkspaceRelativeDisplayPath(uri);
+    return relativePath ? normalizeCanvasTemplateWorkspaceRelativePath(relativePath) : undefined;
   }
 
   private formatNoteMarkdownReadableAbsolutePath(uri: vscode.Uri): string {
@@ -10866,6 +11258,7 @@ function applyCanvasTemplateToState(
   options: {
     preferredCenter?: CanvasNodePosition;
     resolvedAgentProviders: Map<number, AgentProviderKind>;
+    noteMaterializations?: ReadonlyMap<number, CanvasTemplateNoteMaterialization>;
   }
 ): CanvasTemplateApplyStateResult {
   const bounds = measureCanvasTemplateBounds(template.nodes);
@@ -10893,7 +11286,14 @@ function applyCanvasTemplateToState(
     nextSequence += 1;
     nodeIdByTemplateIndex.set(index, baseNode.id);
 
-    return materializeTemplateNode(baseNode, templateNode, bounds.origin, resolvedTopLeft, resolvedAgentProvider);
+    return materializeTemplateNode(
+      baseNode,
+      templateNode,
+      bounds.origin,
+      resolvedTopLeft,
+      resolvedAgentProvider,
+      templateNode.kind === 'note' ? options.noteMaterializations?.get(index) : undefined
+    );
   });
 
   const materializedEdges = template.edges.flatMap((edge) => {
@@ -10934,7 +11334,8 @@ function materializeTemplateNode(
   templateNode: CanvasTemplate['nodes'][number],
   templateOrigin: CanvasNodePosition,
   placedTopLeft: CanvasNodePosition,
-  resolvedAgentProvider?: AgentProviderKind
+  resolvedAgentProvider?: AgentProviderKind,
+  noteMaterialization?: CanvasTemplateNoteMaterialization
 ): CanvasNodeSummary {
   const position = snapCanvasPosition({
     x: placedTopLeft.x + (templateNode.position.x - templateOrigin.x),
@@ -10942,17 +11343,36 @@ function materializeTemplateNode(
   });
 
   if (templateNode.kind === 'note') {
-    const content = trimStoredNodeText(templateNode.metadata?.note?.content ?? '');
+    const isAssociatedMarkdownNote = noteMaterialization?.contentSource?.kind === 'markdown-file';
+    const content = isAssociatedMarkdownNote
+      ? noteMaterialization.content
+      : trimStoredNodeText(noteMaterialization?.content ?? templateNode.metadata?.note?.content ?? '');
+    const associatedSource = isAssociatedMarkdownNote
+      ? noteMaterialization.contentSource as MarkdownFileNoteContentSource
+      : undefined;
+    const status = associatedSource
+      ? associatedSource.status === 'ok'
+        ? 'ready'
+        : associatedSource.status
+      : 'ready';
+    const summary = associatedSource
+      ? associatedSource.status === 'ok'
+        ? summarizeNoteNode(content)
+        : associatedSource.status === 'dirty-conflict'
+          ? '关联文件存在编辑冲突。'
+          : '关联文件不可用。'
+      : summarizeNoteNode(content);
     return {
       ...baseNode,
       title: templateNode.title,
       position,
       size: normalizeCanvasNodeFootprint('note', templateNode.size),
-      status: 'ready',
-      summary: summarizeNoteNode(content),
+      status,
+      summary,
       metadata: {
         note: {
-          content
+          content,
+          contentSource: associatedSource
         }
       }
     };

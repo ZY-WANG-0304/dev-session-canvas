@@ -1525,6 +1525,7 @@ async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelM
     title: '保存当前画布为模板',
     submitLabel: '保存模板',
     storageLocations: panelManager.getCanvasTemplateStorageLocations(),
+    associatedNoteNodes: panelManager.getCanvasTemplateAssociatedNoteSaveItems(),
     agentNodes: canvasNodes
       .filter(
         (node): node is typeof node & {
@@ -1550,7 +1551,8 @@ async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelM
   }
 
   const savedTemplate = await panelManager.saveCurrentCanvasAsTemplate(formResult.name, formResult.agentProviderSelection, {
-    targetRootPath: targetStorageLocation.rootPath
+    targetRootPath: targetStorageLocation.rootPath,
+    associatedNoteSaveModes: formResult.associatedNoteSaveModes
   });
   await vscode.window.showInformationMessage(`已保存模板「${savedTemplate.template.name}」。`);
 }

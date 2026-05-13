@@ -15,6 +15,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
+  - docs/exec-plans/active/canvas-template-associated-note-modes.md
 updated_at: 2026-05-14
 ---
 
@@ -291,6 +292,17 @@ Workspace Trust：
 - Markdown 文件关联不启动进程、不执行脚本，也不应放宽执行节点限制。
 - 在 Restricted Workspace 下是否允许“保存为 Markdown 并关联”和拖拽创建，可以按 VSCode 当前 API 能力与扩展安全声明保守收口；若允许，也只能处理用户显式确认的 `.md` / `.markdown` 文件，并继续执行所有 Host 侧校验。
 - 任何情况下，Webview 侧的路径判断都只是用户体验优化，不能代替 Host 侧安全边界。
+
+### 7.7 保存为模板时的关联处理
+
+关联 Markdown `Note` 参与画布模板保存时，不能静默退化为普通 `Note`。保存模板表单在检测到关联 Markdown `Note` 后，必须逐节点展示处理策略：
+
+- `保存为普通 Note 内容快照`：读取关联 Markdown 文件当前落盘内容，把正文写入模板；应用模板后生成普通内嵌 `Note`，不保留文件关联。
+- `仅保留 workspace 相对路径`：只把当前 workspace 内的 `.md` / `.markdown` 相对路径写入模板；应用模板时自动关联对应文件，文件不存在时提示用户创建空文件或保留缺失关联。
+- `保留 workspace 相对路径和文件内容`：把相对路径和当前落盘正文一起写入模板；应用模板时文件不存在则创建并写入内容，文件已存在但内容不同时提示用户使用现有文件或覆盖。
+- `不保存此 Note`：节点不进入模板，相关连线也随之被排除。
+
+只有 workspace 内文件可使用两种相对路径策略；workspace 外文件只能保存内容快照或跳过。模板不得保存 raw `resourceUri`、本机绝对路径或 `vscode-remote://...` 实现层 URI。快照和“路径+内容”策略都必须以磁盘落盘内容为输入；如果文件缺失、不可读或处于 `dirty-conflict`，保存流程不能静默使用旧 buffer。
 
 ## 8. 验证方法
 
