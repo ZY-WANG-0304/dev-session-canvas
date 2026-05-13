@@ -5,10 +5,12 @@ import type {
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
+import type { NoteContentSource } from './noteMarkdownFileAssociation';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
+export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
 export type CanvasEdgeOwner = 'user' | 'file-activity';
@@ -192,6 +194,7 @@ export interface TerminalNodeMetadata extends ExecutionSessionMetadata {
 
 export interface NoteNodeMetadata {
   content: string;
+  contentSource?: NoteContentSource;
 }
 
 export interface CanvasFileIconFontFace {
@@ -409,7 +412,7 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label: '删除' | '启动' | '停止' | '重启' | '恢复';
+      label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件';
       delayMs?: number;
     }
   | {
@@ -644,6 +647,68 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
         content: string;
+        baseContentRevision?: string;
+        force?: boolean;
+      };
+    }
+  | {
+      type: 'webview/beginAssociatedNoteMarkdownEdit';
+      payload: {
+        nodeId: string;
+        content: string;
+        baseContentRevision?: string;
+      };
+    }
+  | {
+      type: 'webview/endAssociatedNoteMarkdownEdit';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/updateAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+        content: string;
+        baseContentRevision?: string;
+      };
+    }
+  | {
+      type: 'webview/clearAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/copyAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+        content: string;
+      };
+    }
+  | {
+      type: 'webview/saveNoteAsMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/openAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/reloadAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/dropNoteMarkdownFiles';
+      payload: {
+        resources: ExecutionTerminalDroppedResource[];
+        position: CanvasNodePosition;
       };
     }
   | {
@@ -1221,7 +1286,165 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/updateNoteNode',
       payload: {
         nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined,
+        force: payload.force === true
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/beginAssociatedNoteMarkdownEdit') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/beginAssociatedNoteMarkdownEdit',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/endAssociatedNoteMarkdownEdit') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/endAssociatedNoteMarkdownEdit',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/clearAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/clearAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/copyAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.content !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/copyAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId,
         content: payload.content
+      }
+    };
+  }
+
+  if (value.type === 'webview/saveNoteAsMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/saveNoteAsMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/openAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/openAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/reloadAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/reloadAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/dropNoteMarkdownFiles') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const position = payload && isRecord(payload.position) ? payload.position : null;
+    if (
+      !payload ||
+      !Array.isArray(payload.resources) ||
+      !payload.resources.every((resource) => isExecutionTerminalDroppedResource(resource)) ||
+      !position ||
+      typeof position.x !== 'number' ||
+      typeof position.y !== 'number' ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/dropNoteMarkdownFiles',
+      payload: {
+        resources: payload.resources,
+        position: {
+          x: Math.round(position.x),
+          y: Math.round(position.y)
+        }
       }
     };
   }
@@ -1557,7 +1780,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
         value.label === '启动' ||
         value.label === '停止' ||
         value.label === '重启' ||
-        value.label === '恢复'
+        value.label === '恢复' ||
+        value.label === '重新加载' ||
+        value.label === '复制草稿' ||
+        value.label === '覆盖文件'
       );
   }
 

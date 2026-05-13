@@ -82,6 +82,7 @@ import type {
 import {
   canvasEdgePresetColors,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -121,6 +122,13 @@ import {
   setupExecutionTerminalNativeInteractions,
   type ExecutionTerminalNativeInteractionsHandle
 } from './executionTerminalNativeInteractions';
+import {
+  CODE_FILES_DATA_TRANSFER,
+  RESOURCE_URLS_DATA_TRANSFER,
+  URI_LIST_DATA_TRANSFER,
+  hasPotentialDroppedResource,
+  parseDroppedStringArray
+} from './droppedResources';
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 
 declare function acquireVsCodeApi<T>(): {
@@ -207,6 +215,9 @@ interface CanvasNodeData {
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onOpenNoteLink?: (nodeId: string, href: string) => void;
+  onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
+  onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onReloadAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -247,7 +258,22 @@ interface CanvasNodeData {
   onUpdateNote?: (payload: {
     nodeId: string;
     content: string;
+    baseContentRevision?: string;
+    force?: boolean;
   }) => void;
+  onBeginAssociatedNoteMarkdownEdit?: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onEndAssociatedNoteMarkdownEdit?: (nodeId: string) => void;
+  onUpdateAssociatedNoteMarkdownDraft?: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onClearAssociatedNoteMarkdownDraft?: (nodeId: string) => void;
+  onCopyAssociatedNoteMarkdownDraft?: (nodeId: string, content: string) => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
@@ -256,9 +282,20 @@ interface CanvasNodeData {
 type CanvasFlowNode = Node<CanvasNodeData>;
 type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
+interface AssociatedMarkdownEditConflict {
+  remoteContent: string;
+  remoteContentRevision?: string;
+}
+type AssociatedMarkdownConflictResolution = 'reload' | 'overwrite';
+interface PendingAssociatedMarkdownSubmission {
+  content: string;
+  force: boolean;
+}
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
+const EMBEDDED_NOTE_BODY_PLACEHOLDER =
+  `${NOTE_BODY_PLACEHOLDER} 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符。更长内容可保存为 Markdown 文件。`;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
@@ -1650,6 +1687,27 @@ function App(): JSX.Element {
           href
         }
       }),
+    onSaveNoteAsMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/saveNoteAsMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onOpenAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/openAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onReloadAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/reloadAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
     onSelectFileListEntry: selectFileListEntry,
     onSetFileListViewMode: setFileListViewMode,
     onToggleFileListTreeBranch: toggleFileListTreeBranch,
@@ -1717,6 +1775,38 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/updateNoteNode',
         payload
+      }),
+    onBeginAssociatedNoteMarkdownEdit: (payload) =>
+      postMessage({
+        type: 'webview/beginAssociatedNoteMarkdownEdit',
+        payload
+      }),
+    onEndAssociatedNoteMarkdownEdit: (nodeId) =>
+      postMessage({
+        type: 'webview/endAssociatedNoteMarkdownEdit',
+        payload: {
+          nodeId
+        }
+      }),
+    onUpdateAssociatedNoteMarkdownDraft: (payload) =>
+      postMessage({
+        type: 'webview/updateAssociatedNoteMarkdownDraft',
+        payload
+      }),
+    onClearAssociatedNoteMarkdownDraft: (nodeId) =>
+      postMessage({
+        type: 'webview/clearAssociatedNoteMarkdownDraft',
+        payload: {
+          nodeId
+        }
+      }),
+    onCopyAssociatedNoteMarkdownDraft: (nodeId, content) =>
+      postMessage({
+        type: 'webview/copyAssociatedNoteMarkdownDraft',
+        payload: {
+          nodeId,
+          content
+        }
       }),
     onResizeNode: (nodeId, position, size) =>
       postMessage({
@@ -1896,6 +1986,55 @@ function App(): JSX.Element {
         y: Math.round(flowAnchor.y)
       },
       view: 'root'
+    });
+  };
+
+  const handleCanvasDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isCanvasBlankDropTarget(event.target)) {
+      return;
+    }
+    if (!hasPotentialDroppedResource(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isCanvasBlankDropTarget(event.target)) {
+      return;
+    }
+
+    const hasPotentialDroppedMarkdownResource = hasPotentialDroppedResource(event.dataTransfer);
+    const resources = extractDroppedNoteMarkdownResources(event.dataTransfer);
+    if (resources.length === 0) {
+      if (hasPotentialDroppedMarkdownResource) {
+        event.preventDefault();
+        stopCanvasEvent(event);
+      }
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    const reactFlowInstance = reactFlowRef.current;
+    if (!reactFlowInstance?.viewportInitialized) {
+      return;
+    }
+
+    const flowPosition = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    postMessage({
+      type: 'webview/dropNoteMarkdownFiles',
+      payload: {
+        resources,
+        position: {
+          x: Math.round(flowPosition.x),
+          y: Math.round(flowPosition.y)
+        }
+      }
     });
   };
 
@@ -2103,6 +2242,8 @@ function App(): JSX.Element {
       data-canvas-overview-config={runtimeContext.overviewMode}
       style={canvasShellStyle}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
     >
       <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
@@ -4383,37 +4524,358 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
+  const noteContentSource = noteMetadata.contentSource;
+  const associatedMarkdownFile =
+    noteContentSource?.kind === 'markdown-file' ? noteContentSource : undefined;
+  const associatedMarkdownSubtitle =
+    associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath;
+  const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
+  const associatedMarkdownStatus = associatedMarkdownFile?.status;
+  const associatedMarkdownConflictDraft = associatedMarkdownFile?.conflictDraft;
+  const associatedMarkdownConflictDraftContent =
+    typeof associatedMarkdownConflictDraft?.content === 'string'
+      ? associatedMarkdownConflictDraft.content
+      : undefined;
+  const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
+  const associatedMarkdownFileAvailable =
+    !associatedMarkdownFile || associatedMarkdownStatus === 'ok' || hasAssociatedMarkdownHostConflict;
+  const associatedMarkdownFileEditable =
+    !associatedMarkdownFile || associatedMarkdownStatus === 'ok';
+  const associatedMarkdownWarningTitle =
+    hasAssociatedMarkdownHostConflict
+      ? '关联文件存在编辑冲突'
+      : '关联文件不可用';
+  const isEmbeddedNote = !associatedMarkdownFile;
+  const bodyPlaceholder = isEmbeddedNote ? EMBEDDED_NOTE_BODY_PLACEHOLDER : NOTE_BODY_PLACEHOLDER;
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [isEmbeddedLimitNoticeVisible, setIsEmbeddedLimitNoticeVisible] = useState(false);
+  const [associatedMarkdownEditConflict, setAssociatedMarkdownEditConflict] =
+    useState<AssociatedMarkdownEditConflict | null>(null);
+  const [associatedMarkdownDraftCopied, setAssociatedMarkdownDraftCopied] = useState(false);
+  const [associatedMarkdownConflictResolution, setAssociatedMarkdownConflictResolution] =
+    useState<AssociatedMarkdownConflictResolution | null>(null);
+  const showAssociatedMarkdownHostConflictPanel =
+    hasAssociatedMarkdownHostConflict &&
+    !associatedMarkdownEditConflict &&
+    !isEditingBody &&
+    !associatedMarkdownConflictResolution;
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const committedContentRef = useRef(noteMetadata.content);
   const pendingContentRef = useRef<string | null>(null);
   const lastPropContentRef = useRef(noteMetadata.content);
+  const lastPropStatusRef = useRef(associatedMarkdownStatus);
+  const lastPropContentRevisionRef = useRef(associatedMarkdownContentRevision);
+  const pendingAssociatedMarkdownSubmissionRef = useRef<PendingAssociatedMarkdownSubmission | null>(null);
+  const editBaselineContentRef = useRef<string | null>(null);
+  const editBaselineRevisionRef = useRef<string | undefined>(associatedMarkdownContentRevision);
+  const associatedMarkdownDraftSyncTimerRef = useRef<number | undefined>();
+  const associatedMarkdownDraftCopiedTimerRef = useRef<number | undefined>();
+  const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingBodyFocusRef = useRef(false);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
+  const pendingBodyFocusSelectionRef = useRef<{
+    selectionStart: number;
+    selectionEnd: number;
+    selectionDirection: HTMLTextAreaElement['selectionDirection'];
+  } | null>(null);
   const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
   const bodyLineNumbers = useMemo(
     () => Array.from({ length: countTextLines(content) }, (_, index) => index + 1),
     [content]
   );
 
+  const clearAssociatedMarkdownDraftSyncTimer = (): void => {
+    if (associatedMarkdownDraftSyncTimerRef.current !== undefined) {
+      window.clearTimeout(associatedMarkdownDraftSyncTimerRef.current);
+      associatedMarkdownDraftSyncTimerRef.current = undefined;
+    }
+  };
+
+  const clearAssociatedMarkdownDraftCopiedTimer = (): void => {
+    if (associatedMarkdownDraftCopiedTimerRef.current !== undefined) {
+      window.clearTimeout(associatedMarkdownDraftCopiedTimerRef.current);
+      associatedMarkdownDraftCopiedTimerRef.current = undefined;
+    }
+  };
+
+  const clearAssociatedMarkdownDraft = (): void => {
+    clearAssociatedMarkdownDraftSyncTimer();
+    lastAssociatedMarkdownDraftSyncKeyRef.current = undefined;
+    data.onClearAssociatedNoteMarkdownDraft?.(id);
+  };
+
+  const readCurrentBodyContent = (): string => bodyInputRef.current?.value ?? content;
+
+  const isAssociatedMarkdownConflictActionTarget = (target: EventTarget | null): boolean =>
+    target instanceof HTMLElement && Boolean(target.closest('[data-note-conflict-action="true"]'));
+
+  const preserveFocusedBodySelection = (): void => {
+    const textarea = bodyInputRef.current;
+    if (!textarea || document.activeElement !== textarea) {
+      return;
+    }
+
+    pendingBodyFocusSelectionRef.current = {
+      selectionStart: textarea.selectionStart,
+      selectionEnd: textarea.selectionEnd,
+      selectionDirection: textarea.selectionDirection
+    };
+  };
+
+  const beginAssociatedMarkdownEdit = (draftContent: string): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    const baseContentRevision = editBaselineRevisionRef.current ?? associatedMarkdownContentRevision;
+    data.onBeginAssociatedNoteMarkdownEdit?.({
+      nodeId: id,
+      content: draftContent,
+      baseContentRevision
+    });
+  };
+
+  const endAssociatedMarkdownEdit = (): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    clearAssociatedMarkdownDraftSyncTimer();
+    data.onEndAssociatedNoteMarkdownEdit?.(id);
+  };
+
+  const persistAssociatedMarkdownDraft = (draftContent: string, options: { immediate?: boolean } = {}): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    const baseContentRevision = editBaselineRevisionRef.current ?? associatedMarkdownContentRevision;
+    const baselineContent = editBaselineContentRef.current ?? committedContentRef.current;
+    if (draftContent === baselineContent && !hasAssociatedMarkdownHostConflict) {
+      clearAssociatedMarkdownDraft();
+      return;
+    }
+
+    const syncKey = `${baseContentRevision ?? ''}\n${draftContent}`;
+    if (lastAssociatedMarkdownDraftSyncKeyRef.current === syncKey) {
+      return;
+    }
+
+    const sendDraft = (): void => {
+      associatedMarkdownDraftSyncTimerRef.current = undefined;
+      lastAssociatedMarkdownDraftSyncKeyRef.current = syncKey;
+      data.onUpdateAssociatedNoteMarkdownDraft?.({
+        nodeId: id,
+        content: draftContent,
+        baseContentRevision
+      });
+    };
+
+    clearAssociatedMarkdownDraftSyncTimer();
+    if (options.immediate === true) {
+      sendDraft();
+      return;
+    }
+
+    associatedMarkdownDraftSyncTimerRef.current = window.setTimeout(sendDraft, 450);
+  };
+
   useLayoutEffect(() => {
     const previousPropContent = lastPropContentRef.current;
+    const previousPropStatus = lastPropStatusRef.current;
+    const previousPropContentRevision = lastPropContentRevisionRef.current;
     lastPropContentRef.current = noteMetadata.content;
+    lastPropStatusRef.current = associatedMarkdownStatus;
+    lastPropContentRevisionRef.current = associatedMarkdownContentRevision;
+    const didPropContentChange = noteMetadata.content !== previousPropContent;
+    const didPropStatusChange = associatedMarkdownStatus !== previousPropStatus;
+    const didPropContentRevisionChange = associatedMarkdownContentRevision !== previousPropContentRevision;
+    const didMatchPendingContent = pendingContentRef.current === noteMetadata.content;
 
-    if (pendingContentRef.current === noteMetadata.content) {
+    if (
+      associatedMarkdownFile &&
+      hasAssociatedMarkdownHostConflict &&
+      associatedMarkdownConflictDraftContent !== undefined &&
+      !associatedMarkdownEditConflict &&
+      !associatedMarkdownConflictResolution
+    ) {
+      preserveFocusedBodySelection();
+      pendingAssociatedMarkdownSubmissionRef.current = null;
+      setAssociatedMarkdownConflictResolution(null);
+      committedContentRef.current = noteMetadata.content;
+      editBaselineContentRef.current = noteMetadata.content;
+      editBaselineRevisionRef.current =
+        associatedMarkdownConflictDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
+      setContent(associatedMarkdownConflictDraftContent);
+      setIsEditingBody(true);
+      setAssociatedMarkdownEditConflict({
+        remoteContent: noteMetadata.content,
+        remoteContentRevision:
+          associatedMarkdownConflictDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
+      });
+      return;
+    }
+
+    if (didMatchPendingContent) {
       pendingContentRef.current = null;
     } else if (pendingContentRef.current && noteMetadata.content !== previousPropContent) {
       pendingContentRef.current = null;
     }
 
+    const pendingAssociatedSubmission = associatedMarkdownFile
+      ? pendingAssociatedMarkdownSubmissionRef.current
+      : null;
+    if (pendingAssociatedSubmission) {
+      if (
+        associatedMarkdownStatus === 'ok' &&
+        noteMetadata.content === pendingAssociatedSubmission.content
+      ) {
+        pendingAssociatedMarkdownSubmissionRef.current = null;
+        committedContentRef.current = noteMetadata.content;
+        editBaselineContentRef.current = null;
+        editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+        setAssociatedMarkdownConflictResolution(null);
+        setAssociatedMarkdownEditConflict(null);
+        if (!isEditingBody && !isComposing) {
+          setContent(noteMetadata.content);
+        }
+        return;
+      }
+
+      if (
+        !pendingAssociatedSubmission.force &&
+        hasAssociatedMarkdownHostConflict &&
+        (didPropContentChange || didPropStatusChange)
+      ) {
+        preserveFocusedBodySelection();
+        committedContentRef.current = noteMetadata.content;
+        editBaselineContentRef.current = noteMetadata.content;
+        editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+        setAssociatedMarkdownConflictResolution(null);
+        setContent(pendingAssociatedSubmission.content);
+        setIsEditingBody(true);
+        setAssociatedMarkdownEditConflict({
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      if (
+        associatedMarkdownStatus === 'ok' &&
+        noteMetadata.content !== pendingAssociatedSubmission.content &&
+        (didPropContentChange || didPropStatusChange)
+      ) {
+        preserveFocusedBodySelection();
+        committedContentRef.current = noteMetadata.content;
+        editBaselineContentRef.current = noteMetadata.content;
+        editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+        setAssociatedMarkdownConflictResolution(null);
+        setContent(pendingAssociatedSubmission.content);
+        setIsEditingBody(true);
+        setAssociatedMarkdownEditConflict({
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      if (!didPropContentChange && !didPropStatusChange) {
+        return;
+      }
+    }
+
+    if (
+      associatedMarkdownFile &&
+      isEditingBody &&
+      (didPropContentChange || (hasAssociatedMarkdownHostConflict && didPropStatusChange)) &&
+      !didMatchPendingContent
+    ) {
+      const editBaselineContent = editBaselineContentRef.current ?? previousPropContent;
+      if (content !== editBaselineContent || hasAssociatedMarkdownHostConflict) {
+        preserveFocusedBodySelection();
+        persistAssociatedMarkdownDraft(content, { immediate: true });
+        setAssociatedMarkdownConflictResolution(null);
+        setAssociatedMarkdownEditConflict({
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      editBaselineContentRef.current = noteMetadata.content;
+      editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+      setAssociatedMarkdownConflictResolution(null);
+      setAssociatedMarkdownEditConflict(null);
+      setContent(noteMetadata.content);
+      return;
+    }
+
+    if (
+      associatedMarkdownFile &&
+      isEditingBody &&
+      didPropContentRevisionChange &&
+      !didPropContentChange &&
+      !associatedMarkdownEditConflict &&
+      associatedMarkdownStatus === 'ok'
+    ) {
+      const editBaselineContent = editBaselineContentRef.current ?? noteMetadata.content;
+      if (content !== editBaselineContent) {
+        preserveFocusedBodySelection();
+        persistAssociatedMarkdownDraft(content, { immediate: true });
+        setAssociatedMarkdownConflictResolution(null);
+        setAssociatedMarkdownEditConflict({
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+      beginAssociatedMarkdownEdit(content);
+    }
+
     committedContentRef.current = pendingContentRef.current ?? noteMetadata.content;
     if (!isEditingBody && !isComposing) {
+      editBaselineContentRef.current = null;
+      editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+      if (associatedMarkdownStatus === 'ok') {
+        setAssociatedMarkdownConflictResolution(null);
+      }
+      setAssociatedMarkdownEditConflict(null);
       setContent(pendingContentRef.current ?? noteMetadata.content);
     }
-  }, [id, isComposing, isEditingBody, noteMetadata.content]);
+  }, [
+    associatedMarkdownContentRevision,
+    associatedMarkdownConflictDraft,
+    associatedMarkdownConflictDraftContent,
+    associatedMarkdownConflictResolution,
+    associatedMarkdownEditConflict,
+    associatedMarkdownFile,
+    associatedMarkdownStatus,
+    content,
+    hasAssociatedMarkdownHostConflict,
+    id,
+    isComposing,
+    isEditingBody,
+    noteMetadata.content
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearAssociatedMarkdownDraftSyncTimer();
+      clearAssociatedMarkdownDraftCopiedTimer();
+      data.onEndAssociatedNoteMarkdownEdit?.(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    clearAssociatedMarkdownDraftCopiedTimer();
+    setAssociatedMarkdownDraftCopied(false);
+  }, [content]);
 
   useLayoutEffect(() => {
     if (!isEditingBody || !pendingBodyFocusRef.current) {
@@ -4446,6 +4908,24 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     textarea.setSelectionRange(pendingSelection.selectionStart, pendingSelection.selectionEnd);
   }, [content, isEditingBody]);
 
+  useLayoutEffect(() => {
+    if (!isEditingBody || !pendingBodyFocusSelectionRef.current) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    const pendingSelection = pendingBodyFocusSelectionRef.current;
+    pendingBodyFocusSelectionRef.current = null;
+    if (!textarea) {
+      return;
+    }
+
+    const selectionStart = Math.min(pendingSelection.selectionStart, textarea.value.length);
+    const selectionEnd = Math.min(pendingSelection.selectionEnd, textarea.value.length);
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(selectionStart, selectionEnd, pendingSelection.selectionDirection);
+  }, [associatedMarkdownEditConflict, content, isEditingBody]);
+
   useEffect(() => {
     if (!overviewInteractionsDisabled) {
       return;
@@ -4456,21 +4936,90 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     if (document.activeElement === bodyInputRef.current) {
       bodyInputRef.current?.blur();
     }
+    endAssociatedMarkdownEdit();
     setIsEditingBody(false);
   }, [overviewInteractionsDisabled]);
 
-  const submitNote = (nextContent: string): void => {
-    const baselineContent = committedContentRef.current;
-    if (nextContent === baselineContent) {
+  useEffect(() => {
+    setIsEmbeddedLimitNoticeVisible(
+      isEmbeddedNote && isEditingBody && content.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH
+    );
+  }, [content.length, isEditingBody, isEmbeddedNote]);
+
+  const normalizeEditableNoteContent = (nextContent: string): string => {
+    if (!isEmbeddedNote || nextContent.length <= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+      return nextContent;
+    }
+
+    setIsEmbeddedLimitNoticeVisible(true);
+    return nextContent.slice(0, NOTE_EMBEDDED_CONTENT_MAX_LENGTH);
+  };
+
+  const updateBodyContent = (nextContent: string): string => {
+    const normalizedContent = normalizeEditableNoteContent(nextContent);
+    setContent(normalizedContent);
+    if (associatedMarkdownFile && isEditingBody) {
+      persistAssociatedMarkdownDraft(normalizedContent);
+    }
+    if (isEmbeddedNote && normalizedContent.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+      setIsEmbeddedLimitNoticeVisible(true);
+    }
+    return normalizedContent;
+  };
+
+  const submitNote = (nextContent: string, options: { force?: boolean } = {}): void => {
+    if (associatedMarkdownFile && associatedMarkdownEditConflict && !options.force) {
+      return;
+    }
+    if (associatedMarkdownFile && hasAssociatedMarkdownHostConflict && !options.force) {
       return;
     }
 
-    committedContentRef.current = nextContent;
-    pendingContentRef.current = nextContent;
-    data.onUpdateNote?.({
+    const normalizedContent = normalizeEditableNoteContent(nextContent);
+    if (normalizedContent !== nextContent) {
+      setContent(normalizedContent);
+    }
+
+    const baselineContent = committedContentRef.current;
+    if (normalizedContent === baselineContent) {
+      if (associatedMarkdownFile) {
+        clearAssociatedMarkdownDraft();
+      }
+      return;
+    }
+
+    const baseContentRevision = associatedMarkdownFile
+      ? isEditingBody
+        ? editBaselineRevisionRef.current
+        : associatedMarkdownContentRevision
+      : undefined;
+    const updatePayload: {
+      nodeId: string;
+      content: string;
+      baseContentRevision?: string;
+      force?: boolean;
+    } = {
       nodeId: id,
-      content: nextContent
-    });
+      content: normalizedContent
+    };
+    if (baseContentRevision) {
+      updatePayload.baseContentRevision = baseContentRevision;
+    }
+    if (options.force === true) {
+      updatePayload.force = true;
+    }
+    if (associatedMarkdownFile) {
+      pendingAssociatedMarkdownSubmissionRef.current = {
+        content: normalizedContent,
+        force: options.force === true
+      };
+      data.onUpdateNote?.(updatePayload);
+      return;
+    }
+
+    committedContentRef.current = normalizedContent;
+    pendingContentRef.current = normalizedContent;
+    data.onUpdateNote?.(updatePayload);
   };
 
   const deleteNote = (): void => {
@@ -4478,18 +5027,127 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onDeleteNode?.(id);
   };
 
+  const saveAsMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onSaveNoteAsMarkdownFile?.(id);
+  };
+
+  const openAssociatedMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onOpenAssociatedNoteMarkdownFile?.(id);
+  };
+
+  const reloadAssociatedMarkdownDraft = (): void => {
+    if (!associatedMarkdownEditConflict && !hasAssociatedMarkdownHostConflict) {
+      return;
+    }
+
+    const nextContent = associatedMarkdownEditConflict?.remoteContent ?? noteMetadata.content;
+    pendingAssociatedMarkdownSubmissionRef.current = null;
+    setContent(nextContent);
+    committedContentRef.current = nextContent;
+    pendingContentRef.current = null;
+    editBaselineContentRef.current = nextContent;
+    editBaselineRevisionRef.current =
+      associatedMarkdownEditConflict?.remoteContentRevision ?? associatedMarkdownContentRevision;
+    setAssociatedMarkdownConflictResolution('reload');
+    setAssociatedMarkdownEditConflict(null);
+    setIsEditingBody(false);
+    data.onReloadAssociatedNoteMarkdownFile?.(id);
+    endAssociatedMarkdownEdit();
+  };
+
+  const overwriteAssociatedMarkdownFile = (): void => {
+    if (!associatedMarkdownEditConflict) {
+      return;
+    }
+
+    const nextContent = readCurrentBodyContent();
+    setContent(nextContent);
+    setAssociatedMarkdownConflictResolution('overwrite');
+    setAssociatedMarkdownEditConflict(null);
+    submitNote(nextContent, { force: true });
+    setIsEditingBody(false);
+    endAssociatedMarkdownEdit();
+  };
+
+  const copyAssociatedMarkdownDraft = (): void => {
+    if (!associatedMarkdownEditConflict) {
+      return;
+    }
+
+    data.onCopyAssociatedNoteMarkdownDraft?.(id, readCurrentBodyContent());
+    clearAssociatedMarkdownDraftCopiedTimer();
+    setAssociatedMarkdownDraftCopied(true);
+    associatedMarkdownDraftCopiedTimerRef.current = window.setTimeout(() => {
+      associatedMarkdownDraftCopiedTimerRef.current = undefined;
+      setAssociatedMarkdownDraftCopied(false);
+    }, 1600);
+    bodyInputRef.current?.focus({ preventScroll: true });
+  };
+
+  const handleAssociatedMarkdownConflictActionPointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+  };
+
+  const handleAssociatedMarkdownConflictActionMouseDown = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+  };
+
+  const handleReloadAssociatedMarkdownDraftClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    reloadAssociatedMarkdownDraft();
+  };
+
+  const handleCopyAssociatedMarkdownDraftClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    copyAssociatedMarkdownDraft();
+  };
+
+  const handleOverwriteAssociatedMarkdownFileClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    overwriteAssociatedMarkdownFile();
+  };
+
   const startEditingBody = (): void => {
-    if (overviewInteractionsDisabled) {
+    if (overviewInteractionsDisabled || !associatedMarkdownFileEditable) {
       return;
     }
     pendingBodyFocusRef.current = true;
     data.onSelectNode?.(id);
+    editBaselineContentRef.current = noteMetadata.content;
+    editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+    setAssociatedMarkdownConflictResolution(null);
+    setAssociatedMarkdownEditConflict(null);
     setBodyScrollTop(0);
+    beginAssociatedMarkdownEdit(noteMetadata.content);
     setIsEditingBody(true);
   };
 
   const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (handleNoteBodyIndentKeyDown(event, setContent, pendingBodySelectionRef)) {
+    if (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) {
+      if (handleNoteBodyIndentKeyDown(event, updateBodyContent, pendingBodySelectionRef)) {
+        return;
+      }
+      handleEditableFieldKeyDown(event, () => persistAssociatedMarkdownDraft(event.currentTarget.value, {
+        immediate: true
+      }), {
+        isComposing
+      });
+      return;
+    }
+
+    if (handleNoteBodyIndentKeyDown(event, updateBodyContent, pendingBodySelectionRef)) {
       return;
     }
 
@@ -4499,6 +5157,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const toggleChecklistFromPreview = (input: HTMLInputElement): void => {
+    if (hasAssociatedMarkdownHostConflict) {
+      return;
+    }
+
     const lineNumber = readNoteMarkdownChecklistLineNumber(input);
     if (!lineNumber) {
       return;
@@ -4597,10 +5259,30 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           value={data.title}
           placeholder="Note 标题"
           className="note-window-title"
+          subtitle={associatedMarkdownSubtitle}
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
+          {associatedMarkdownFile ? (
+            <ActionButton
+              label="打开文件"
+              tone="secondary"
+              onClick={openAssociatedMarkdownFile}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          ) : (
+            <ActionButton
+              label="保存为 Markdown"
+              tone="secondary"
+              onClick={saveAsMarkdownFile}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          )}
           <ActionButton
             label="删除"
             tone="danger"
@@ -4615,7 +5297,34 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       <div className="object-body object-surface note-surface">
         <NodeOverviewTitle title={data.title} />
         <div className="note-editor-surface" {...canvasOverviewInertProps(overviewInteractionsDisabled)}>
-          {isEditingBody ? (
+          {!associatedMarkdownFileAvailable || showAssociatedMarkdownHostConflictPanel ? (
+            <div
+              className="note-file-warning nowheel nodrag nopan"
+              data-node-interactive="true"
+              data-probe-field="body"
+              data-probe-value={content}
+              role="status"
+            >
+              <strong>{associatedMarkdownWarningTitle}</strong>
+              <span>{associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}</span>
+              <p>{associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。'}</p>
+              {showAssociatedMarkdownHostConflictPanel ? (
+                <div className="note-file-warning-actions">
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleReloadAssociatedMarkdownDraftClick}
+                  >
+                    重新加载
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : isEditingBody ? (
             <div className="note-document-editor">
               <div className="note-document-line-number-gutter" aria-hidden="true">
                 <div
@@ -4652,19 +5361,75 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={(event) => {
                   setIsComposing(false);
-                  setContent(event.currentTarget.value);
+                  updateBodyContent(event.currentTarget.value);
                 }}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(event) => updateBodyContent(event.target.value)}
                 onBlur={(event) => {
+                  if (
+                    (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) &&
+                    isAssociatedMarkdownConflictActionTarget(event.relatedTarget)
+                  ) {
+                    return;
+                  }
+
                   const nextContent = event.currentTarget.value;
-                  setContent(nextContent);
+                  updateBodyContent(nextContent);
+                  if (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) {
+                    persistAssociatedMarkdownDraft(nextContent, { immediate: true });
+                    return;
+                  }
                   setIsEditingBody(false);
                   submitNote(nextContent);
+                  endAssociatedMarkdownEdit();
                 }}
                 onKeyDown={handleBodyKeyDown}
-                placeholder={NOTE_BODY_PLACEHOLDER}
+                maxLength={isEmbeddedNote ? NOTE_EMBEDDED_CONTENT_MAX_LENGTH : undefined}
+                placeholder={bodyPlaceholder}
                 spellCheck={false}
               />
+              {isEmbeddedLimitNoticeVisible ? (
+                <div className="note-limit-hint" role="status">
+                  已达 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限，更长内容请保存为 Markdown 文件。
+                </div>
+              ) : null}
+              {associatedMarkdownEditConflict ? (
+                <div className="note-edit-conflict-hint" role="alert">
+                  <span>关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。</span>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleReloadAssociatedMarkdownDraftClick}
+                  >
+                    重新加载
+                  </button>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleCopyAssociatedMarkdownDraftClick}
+                  >
+                    {associatedMarkdownDraftCopied ? '已复制' : '复制草稿'}
+                  </button>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action is-danger nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleOverwriteAssociatedMarkdownFileClick}
+                  >
+                    覆盖文件
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div
@@ -4693,7 +5458,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   dangerouslySetInnerHTML={{ __html: previewHtml }}
                 />
               ) : (
-                <p className="note-markdown-preview-placeholder">{NOTE_BODY_PLACEHOLDER}</p>
+                <p className="note-markdown-preview-placeholder">{bodyPlaceholder}</p>
               )}
             </div>
           )}
@@ -6449,6 +7214,7 @@ function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
   subtitle?: string;
+  subtitleTooltip?: string;
   subtitleAccessory?: React.ReactNode;
   className?: string;
   onSelectNode?: () => void;
@@ -6542,7 +7308,11 @@ function ChromeTitleEditor(props: {
         />
         {props.subtitle ? (
           <div className="window-title-subtitle-row">
-            <OverflowAwareText className="window-title-subtitle" text={props.subtitle} />
+            <OverflowAwareText
+              className="window-title-subtitle"
+              text={props.subtitle}
+              tooltipText={props.subtitleTooltip}
+            />
             {props.subtitleAccessory}
           </div>
         ) : null}
@@ -6621,6 +7391,9 @@ function toFlowNodes(params: {
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onOpenNoteLink: (nodeId: string, href: string) => void;
+  onSaveNoteAsMarkdownFile: (nodeId: string) => void;
+  onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onReloadAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -6661,7 +7434,22 @@ function toFlowNodes(params: {
   onUpdateNote: (payload: {
     nodeId: string;
     content: string;
+    baseContentRevision?: string;
+    force?: boolean;
   }) => void;
+  onBeginAssociatedNoteMarkdownEdit: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onEndAssociatedNoteMarkdownEdit: (nodeId: string) => void;
+  onUpdateAssociatedNoteMarkdownDraft: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onClearAssociatedNoteMarkdownDraft: (nodeId: string) => void;
+  onCopyAssociatedNoteMarkdownDraft: (nodeId: string, content: string) => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -6710,6 +7498,9 @@ function toFlowNodes(params: {
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
         onOpenNoteLink: params.onOpenNoteLink,
+        onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
+        onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
+        onReloadAssociatedNoteMarkdownFile: params.onReloadAssociatedNoteMarkdownFile,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
@@ -6724,6 +7515,11 @@ function toFlowNodes(params: {
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
+        onBeginAssociatedNoteMarkdownEdit: params.onBeginAssociatedNoteMarkdownEdit,
+        onEndAssociatedNoteMarkdownEdit: params.onEndAssociatedNoteMarkdownEdit,
+        onUpdateAssociatedNoteMarkdownDraft: params.onUpdateAssociatedNoteMarkdownDraft,
+        onClearAssociatedNoteMarkdownDraft: params.onClearAssociatedNoteMarkdownDraft,
+        onCopyAssociatedNoteMarkdownDraft: params.onCopyAssociatedNoteMarkdownDraft,
         onResizeNode: params.onResizeNode,
         onFocusNodeInViewport: params.onFocusNodeInViewport,
         onDeleteNode: params.onDeleteNode
@@ -7399,7 +8195,7 @@ function countTextLines(value: string): number {
 
 function handleNoteBodyIndentKeyDown(
   event: React.KeyboardEvent<HTMLTextAreaElement>,
-  setContent: React.Dispatch<React.SetStateAction<string>>,
+  applyContentChange: (value: string) => string,
   pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>
 ): boolean {
   if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
@@ -7410,7 +8206,7 @@ function handleNoteBodyIndentKeyDown(
   stopCanvasEvent(event);
   applyNoteBodyIndentChange(
     event.currentTarget,
-    setContent,
+    applyContentChange,
     pendingSelectionRef,
     event.shiftKey ? 'outdent' : 'indent'
   );
@@ -7419,7 +8215,7 @@ function handleNoteBodyIndentKeyDown(
 
 function applyNoteBodyIndentChange(
   textarea: HTMLTextAreaElement,
-  setContent: React.Dispatch<React.SetStateAction<string>>,
+  applyContentChange: (value: string) => string,
   pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>,
   direction: 'indent' | 'outdent'
 ): void {
@@ -7432,17 +8228,19 @@ function applyNoteBodyIndentChange(
     return;
   }
 
+  const appliedValue = applyContentChange(edit.value);
+  const selectionStart = Math.min(edit.selectionStart, appliedValue.length);
+  const selectionEnd = Math.min(edit.selectionEnd, appliedValue.length);
   pendingSelectionRef.current = {
-    selectionStart: edit.selectionStart,
-    selectionEnd: edit.selectionEnd
+    selectionStart,
+    selectionEnd
   };
-  setContent(edit.value);
   window.requestAnimationFrame(() => {
     if (document.activeElement !== textarea) {
       return;
     }
 
-    textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+    textarea.setSelectionRange(selectionStart, selectionEnd);
   });
 }
 
@@ -8359,7 +9157,7 @@ async function queryNodeTextField(
 
 function queryNodeActionButton(
   nodeId: string,
-  label: '删除' | '启动' | '停止' | '重启' | '恢复'
+  label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件'
 ): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
   const button = Array.from(nodeRoot.querySelectorAll('button')).find(
@@ -8496,6 +9294,65 @@ function delayTestAction(delayMs?: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+}
+
+function isCanvasBlankDropTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return !target.closest('.react-flow__node, .canvas-node, [data-node-interactive="true"], [data-context-menu="true"]');
+}
+
+function extractDroppedNoteMarkdownResources(dataTransfer: DataTransfer | null): ExecutionTerminalDroppedResource[] {
+  if (!dataTransfer) {
+    return [];
+  }
+
+  const resources: ExecutionTerminalDroppedResource[] = [];
+  const rawResources = dataTransfer.getData(RESOURCE_URLS_DATA_TRANSFER);
+  for (const value of parseDroppedStringArray(rawResources)) {
+    resources.push({
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value
+    });
+  }
+
+  const rawCodeFiles = dataTransfer.getData(CODE_FILES_DATA_TRANSFER);
+  for (const value of parseDroppedStringArray(rawCodeFiles)) {
+    resources.push({
+      source: 'codeFiles',
+      valueKind: 'path',
+      value
+    });
+  }
+
+  const rawUriList = dataTransfer.getData(URI_LIST_DATA_TRANSFER);
+  if (rawUriList) {
+    for (const value of rawUriList
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0 && !entry.startsWith('#'))) {
+      resources.push({
+        source: 'uriList',
+        valueKind: 'uri',
+        value
+      });
+    }
+  }
+
+  for (const file of Array.from(dataTransfer.files) as Array<File & { path?: string }>) {
+    if (typeof file.path === 'string' && file.path.trim().length > 0) {
+      resources.push({
+        source: 'files',
+        valueKind: 'path',
+        value: file.path
+      });
+    }
+  }
+
+  return resources;
 }
 
 function createNoteMarkdownRenderer(): MarkdownIt {
