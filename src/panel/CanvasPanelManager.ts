@@ -1486,23 +1486,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(targetUri))) {
-      await vscode.window.showWarningMessage('Note 只能关联 .md 或 .markdown 文件。');
+      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
       return;
     }
 
     const targetStatus = await this.statNoteMarkdownTarget(targetUri);
     if (targetStatus === 'directory') {
-      await vscode.window.showWarningMessage('目标路径是目录，请选择或输入一个 .md / .markdown 文件。');
+      await vscode.window.showWarningMessage('选择的路径是目录，请指定一个 Markdown 文件。');
       return;
     }
 
     if (targetStatus === 'missing-parent') {
-      await vscode.window.showWarningMessage('目标文件所在目录不存在，无法保存 Markdown 文件。');
+      await vscode.window.showWarningMessage('所选目录不存在，无法保存文件。');
       return;
     }
 
     if (targetStatus === 'other') {
-      await vscode.window.showWarningMessage('目标路径不是普通文件，无法保存 Markdown 文件。');
+      await vscode.window.showWarningMessage('所选路径不是有效文件，无法保存。');
       return;
     }
 
@@ -1518,7 +1518,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (choice === 'keep') {
         const readResult = await this.readNoteMarkdownFile(targetUri);
         if (readResult.status !== 'ok') {
-          await vscode.window.showWarningMessage(readResult.lastError ?? '无法读取目标 Markdown 文件。');
+          await vscode.window.showWarningMessage(readResult.lastError ?? '无法读取 Markdown 文件。');
           return;
         }
         nextContent = readResult.content;
@@ -3716,7 +3716,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ...this.formatNoteMarkdownDisplayPathInfo(uri),
           contentRevision: currentReadResult.contentRevision ?? currentRevision,
           status: 'dirty-conflict',
-          lastError: '关联 Markdown 文件已在编辑期间发生变化。请重新加载文件内容，或显式确认覆盖。'
+          lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
         }, currentContent);
         this.persistState();
         this.postState('host/stateUpdated');
@@ -3838,7 +3838,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (node) => node.kind === 'note' && ensureNoteMetadata(node).contentSource?.kind !== 'markdown-file'
     );
     if (noteNodes.length === 0) {
-      await vscode.window.showInformationMessage('当前画布没有可保存为 Markdown 的普通 Note。');
+      await vscode.window.showInformationMessage('当前画布没有可保存为 Markdown 的 Note。');
       return undefined;
     }
 
@@ -3849,8 +3849,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         node
       })),
       {
-        title: '选择要保存为 Markdown 的 Note',
-        placeHolder: '选择一个普通 Note'
+        title: '保存为 Markdown',
+        placeHolder: '选择 Note'
       }
     );
     return selected?.node;
@@ -3885,7 +3885,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const items: NoteMarkdownFileQuickPickItem[] = [
           {
             itemKind: 'use-input',
-            label: '$(check) 使用当前输入路径',
+            label: '$(check) 使用此路径',
             description: inputPath,
             alwaysShow: true
           }
@@ -3920,8 +3920,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         quickPick.items = items;
       };
 
-      quickPick.title = '保存 Note 为 Markdown 并关联';
-      quickPick.placeholder = '输入或选择 .md / .markdown 文件路径';
+      quickPick.title = '保存为关联 Markdown 文件';
+      quickPick.placeholder = '输入或选择 Markdown 文件路径';
       quickPick.value = initialPath;
       quickPick.matchOnDescription = true;
       quickPick.ignoreFocusOut = true;
@@ -3994,10 +3994,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async confirmExistingNoteMarkdownFile(
     uri: vscode.Uri
   ): Promise<NoteMarkdownExistingFileChoice | undefined> {
-    const overwrite = '覆盖文件并关联';
-    const keep = '保留文件内容并关联';
+    const overwrite = '覆盖并关联';
+    const keep = '保留并关联';
     const selected = await vscode.window.showWarningMessage(
-      `目标文件已存在：${this.formatNoteMarkdownUriForMessage(uri)}。你想覆盖它，还是保留现有文件内容并关联？`,
+      `${this.formatNoteMarkdownUriForMessage(uri)} 已存在。覆盖文件内容，还是保留现有内容直接关联？`,
       { modal: true },
       overwrite,
       keep
@@ -4015,13 +4015,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     uri: vscode.Uri,
     existingNodeCount: number
   ): Promise<NoteMarkdownExistingDropChoice | undefined> {
-    const create = '继续添加新 Note';
-    const locate = '定位已关联 Note';
+    const create = '添加新 Note';
+    const locate = '定位已有 Note';
     const countText = existingNodeCount > 1
-      ? `已经关联到 ${existingNodeCount} 个 Note 节点`
-      : '已经关联到一个 Note 节点';
+      ? `已关联到 ${existingNodeCount} 个 Note`
+      : '已关联到一个 Note';
     const selected = await vscode.window.showWarningMessage(
-      `${this.formatNoteMarkdownUriForMessage(uri)} ${countText}。你想继续在画板上添加一个新的关联 Note，还是定位已关联的 Note？`,
+      `${this.formatNoteMarkdownUriForMessage(uri)} ${countText}。添加新的关联 Note，还是定位到已有的？`,
       { modal: true },
       create,
       locate
@@ -4039,7 +4039,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
       return {
         status: 'unsupported-extension',
-        lastError: 'Note 只能关联 .md 或 .markdown 文件。'
+        lastError: '只能关联 Markdown 文件（.md / .markdown）。'
       };
     }
 
@@ -4049,20 +4049,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch {
       return {
         status: 'missing',
-        lastError: `关联的 Markdown 文件不可用：${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: `关联文件不可用：${this.formatNoteMarkdownUriForMessage(uri)}`
       };
     }
 
     if (stat.type === vscode.FileType.Directory) {
       return {
         status: 'not-file',
-        lastError: `目标路径是目录：${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: `所选路径是目录：${this.formatNoteMarkdownUriForMessage(uri)}`
       };
     }
     if (stat.type !== vscode.FileType.File) {
       return {
         status: 'unreadable',
-        lastError: `目标路径不是普通文件：${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: `所选路径不是有效文件：${this.formatNoteMarkdownUriForMessage(uri)}`
       };
     }
 
@@ -4121,7 +4121,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
       return {
         ok: false,
-        errorMessage: 'Note 只能关联 .md 或 .markdown 文件。'
+        errorMessage: '只能关联 Markdown 文件（.md / .markdown）。'
       };
     }
 
@@ -13430,8 +13430,8 @@ function updateAssociatedNoteMarkdownFileStatus(
     source.status === 'ok'
       ? summarizeNoteNode(nextContent)
       : source.status === 'dirty-conflict'
-        ? '关联的 Markdown 文件存在编辑冲突。'
-      : '关联的 Markdown 文件不可用。';
+        ? '关联文件存在编辑冲突。'
+      : '关联文件不可用。';
 
   const nextNodes = state.nodes.map((candidate) =>
     candidate.id === nodeId

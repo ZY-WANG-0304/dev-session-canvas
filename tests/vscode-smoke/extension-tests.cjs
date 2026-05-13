@@ -4106,7 +4106,7 @@ async function verifyNoteMarkdownFileAssociation() {
         10000
       );
       assert.strictEqual(warningCalls.length, 1, 'Expected dropping an already associated Markdown file to confirm.');
-      assert.match(String(warningCalls[0].message), /已经关联到一个 Note 节点/);
+      assert.match(String(warningCalls[0].message), /已关联到一个 Note/);
       assert.ok(
         String(warningCalls[0].message).includes(associatedNote.metadata.note.contentSource.displayPath),
         'Expected the existing-file drop confirmation to use the same display path as the Note subtitle.'
@@ -4116,7 +4116,7 @@ async function verifyNoteMarkdownFileAssociation() {
         'Expected the existing-file drop confirmation not to show the absolute file path.'
       );
       assert.ok(
-        warningCalls[0].items.includes('定位已关联 Note'),
+        warningCalls[0].items.includes('定位已有 Note'),
         'Expected the existing-file drop confirmation to offer locating the associated Note.'
       );
       assert.ok(
@@ -4124,7 +4124,7 @@ async function verifyNoteMarkdownFileAssociation() {
         'Expected the existing-file drop confirmation to rely on the modal default cancel button.'
       );
     },
-    ({ items }) => items.find((item) => item === '定位已关联 Note')
+    ({ items }) => items.find((item) => item === '定位已有 Note')
   );
   snapshot = await getDebugSnapshot();
   assert.strictEqual(
@@ -4151,7 +4151,7 @@ async function verifyNoteMarkdownFileAssociation() {
       );
       assert.strictEqual(warningCalls.length, 1, 'Expected adding another associated Note to confirm.');
       assert.ok(
-        warningCalls[0].items.includes('继续添加新 Note'),
+        warningCalls[0].items.includes('添加新 Note'),
         'Expected the existing-file drop confirmation to offer creating another associated Note.'
       );
       assert.ok(
@@ -4159,7 +4159,7 @@ async function verifyNoteMarkdownFileAssociation() {
         'Expected the existing-file drop confirmation not to duplicate the modal cancel button.'
       );
     },
-    ({ items }) => items.find((item) => item === '继续添加新 Note')
+    ({ items }) => items.find((item) => item === '添加新 Note')
   );
   const duplicateAssociatedNote = snapshot.state.nodes.find(
     (node) =>

@@ -281,7 +281,7 @@ const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
 const EMBEDDED_NOTE_BODY_PLACEHOLDER =
-  `${NOTE_BODY_PLACEHOLDER} 普通 Note 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符；更长内容请保存为 Markdown 文件。`;
+  `${NOTE_BODY_PLACEHOLDER} 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符。更长内容可保存为 Markdown 文件。`;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
@@ -4492,8 +4492,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     !associatedMarkdownFile || associatedMarkdownStatus === 'ok';
   const associatedMarkdownWarningTitle =
     hasAssociatedMarkdownHostConflict
-      ? '关联的 Markdown 文件存在编辑冲突'
-      : '关联的 Markdown 文件不可用';
+      ? '关联文件存在编辑冲突'
+      : '关联文件不可用';
   const isEmbeddedNote = !associatedMarkdownFile;
   const bodyPlaceholder = isEmbeddedNote ? EMBEDDED_NOTE_BODY_PLACEHOLDER : NOTE_BODY_PLACEHOLDER;
   const [content, setContent] = useState(noteMetadata.content);
@@ -5047,12 +5047,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               />
               {isEmbeddedLimitNoticeVisible ? (
                 <div className="note-limit-hint" role="status">
-                  普通 Note 已达到 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限；更长内容请保存为 Markdown 文件。
+                  已达 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限，更长内容请保存为 Markdown 文件。
                 </div>
               ) : null}
               {associatedMarkdownEditConflict ? (
                 <div className="note-edit-conflict-hint" role="alert">
-                  <span>关联文件已在外部更新。为避免覆盖新内容，请选择重新加载或显式覆盖文件。</span>
+                  <span>关联文件已在外部更新。请重新加载，或覆盖为当前内容。</span>
                   <button
                     type="button"
                     className="note-edit-conflict-action"
