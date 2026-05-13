@@ -10,7 +10,7 @@ import {
 import { TemplateDetailView } from './components/TemplateDetailView';
 import { TemplateCard } from './components/TemplateCard';
 import { loadMarketplaceTemplateDetail, loadMarketplaceTemplates } from './lib/api';
-import { readTemplateSlugFromPath } from './lib/routing';
+import { getMarketplaceHomeHref, readTemplateSlugFromPath } from './lib/routing';
 
 interface LoadState {
   templates: MarketplaceTemplateSummary[];
@@ -40,7 +40,7 @@ export function App(): JSX.Element {
   const [detailState, setDetailState] = useState<DetailState>({
     source: 'seed-fallback',
     storageMode: 'seed',
-    loading: false
+    loading: true
   });
 
   useEffect(() => {
@@ -50,6 +50,11 @@ export function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (detailSlug) {
+      setState((current) => (current.loading ? { ...current, loading: false } : current));
+      return;
+    }
+
     let cancelled = false;
     setState((current) => ({ ...current, loading: true }));
     void loadMarketplaceTemplates({ q: query, sort, tags: selectedTags }).then((result) => {
@@ -66,7 +71,7 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [query, sort, selectedTags]);
+  }, [query, sort, selectedTags, detailSlug]);
 
   const availableTags = useMemo(() => collectVisibleTags(state.templates, selectedTags), [state.templates, selectedTags]);
 
@@ -93,110 +98,140 @@ export function App(): JSX.Element {
     };
   }, [detailSlug]);
 
+  const isDetailPage = Boolean(detailSlug);
+  const statusLabel = `${state.source === 'api' ? 'Worker API' : 'Seed fallback'} · Storage: ${state.storageMode}`;
+
   return (
-    <main className="min-h-screen overflow-hidden bg-canvas-mist text-canvas-ink">
-      <section className="relative px-6 py-10 sm:px-10 lg:px-16">
-        <div className="absolute -right-32 -top-28 h-80 w-80 rounded-full bg-canvas-sand/70 blur-3xl" />
-        <div className="absolute left-8 top-48 h-44 w-44 rounded-full bg-canvas-ember/20 blur-2xl" />
-        <div className="relative mx-auto max-w-7xl">
-          <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
-            <div>
-              <p className="mb-4 inline-flex rounded-full border border-canvas-moss/20 bg-white/70 px-4 py-2 text-xs font-bold uppercase tracking-[0.28em] text-canvas-moss">
-                dscanvas.dev/templates
-              </p>
-              <h1 className="max-w-4xl font-display text-5xl leading-[0.95] tracking-tight text-canvas-ink sm:text-7xl">
-                Community templates for durable agent work.
-              </h1>
-            </div>
-            <div className="rounded-[2rem] border border-canvas-ink/10 bg-white/70 p-5 shadow-card backdrop-blur">
-              <p className="text-sm leading-6 text-canvas-ink/70">
-                Browse the first marketplace foundation build. Data is served by the Worker API when available and falls back to explicit seed data during local development.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-canvas-moss">
-                <span>{state.source === 'api' ? 'Worker API' : 'Seed fallback'}</span>
-                <span>Storage: {state.storageMode}</span>
-              </div>
-            </div>
+    <main className="min-h-screen bg-canvas-mist text-canvas-ink">
+      <header className="bg-canvas-nav text-canvas-navText">
+        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-6 text-sm sm:px-8">
+          <div className="flex items-center gap-3">
+            <span className="text-lg font-semibold">DevSessionCanvas</span>
+            <span className="text-canvas-navText/45">|</span>
+            <span className="text-base">Templates</span>
           </div>
+          <a className="hidden font-semibold underline underline-offset-4 sm:inline" href="https://github.com/ZY-WANG-0304/dev-session-canvas">
+            GitHub
+          </a>
+        </div>
+      </header>
+      <nav className="border-b border-canvas-line bg-canvas-paper">
+        <div className="mx-auto max-w-7xl px-6 text-sm font-semibold sm:px-8">
+          <span className="inline-flex bg-canvas-accent px-10 py-4 text-canvas-accentText">Templates</span>
+        </div>
+      </nav>
 
-          <div className="mt-10 grid gap-4 rounded-[2rem] border border-canvas-ink/10 bg-white/75 p-4 shadow-card backdrop-blur md:grid-cols-[1fr_14rem]">
-            <label className="block">
-              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-canvas-ink/50">Search templates</span>
-              <input
-                className="h-12 w-full rounded-2xl border border-canvas-ink/10 bg-white px-4 text-base outline-none ring-canvas-moss/20 transition focus:ring-4"
-                placeholder="Try review, release, starter..."
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-canvas-ink/50">Sort</span>
-              <select
-                className="h-12 w-full rounded-2xl border border-canvas-ink/10 bg-white px-4 text-base capitalize outline-none ring-canvas-moss/20 transition focus:ring-4"
-                value={sort}
-                onChange={(event) => setSort(event.currentTarget.value as MarketplaceSort)}
-              >
-                {MARKETPLACE_SORT_VALUES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[1.5rem] border border-canvas-ink/10 bg-white/55 p-3 shadow-card backdrop-blur">
-            <span className="mr-1 text-xs font-bold uppercase tracking-[0.22em] text-canvas-ink/45">Tags</span>
-            {availableTags.map((tag) => {
-              const selected = selectedTags.includes(tag);
-              return (
-                <button
-                  key={tag}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                    selected ? 'bg-canvas-ink text-white shadow-sm' : 'bg-canvas-mist text-canvas-moss hover:bg-canvas-sand/45'
-                  }`}
-                  type="button"
-                  onClick={() => setSelectedTags((current) => toggleTag(current, tag))}
-                  aria-pressed={selected}
-                >
-                  #{tag}
-                </button>
-              );
-            })}
-            {selectedTags.length > 0 ? (
-              <button
-                className="rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-canvas-ink/45 transition hover:text-canvas-ink"
-                type="button"
-                onClick={() => setSelectedTags([])}
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-
-          {detailSlug ? (
+      <section className={`px-6 sm:px-8 ${isDetailPage ? 'py-8 lg:py-10' : 'py-16 lg:py-20'}`}>
+        <div className={`mx-auto ${isDetailPage ? 'max-w-6xl' : 'max-w-7xl'}`}>
+          {isDetailPage ? (
             detailState.loading ? (
-              <div className="mt-10 rounded-[2rem] border border-canvas-ink/10 bg-white/70 p-10 text-canvas-ink/60 shadow-card">Loading template detail...</div>
+              <div className="border border-canvas-line bg-canvas-paper p-10 text-canvas-muted shadow-card">Loading template detail...</div>
             ) : detailState.template ? (
               <TemplateDetailView template={detailState.template} source={detailState.source} storageMode={detailState.storageMode} />
             ) : (
-              <div className="mt-10 rounded-[2rem] border border-dashed border-canvas-ink/20 bg-white/60 p-10 text-center text-canvas-ink/60">
-                Template was not found.
+              <div className="border border-dashed border-canvas-line bg-canvas-paper p-10 text-center text-canvas-muted">
+                <a className="font-semibold text-canvas-moss hover:underline" href={getMarketplaceHomeHref()}>
+                  Back to templates
+                </a>
+                <p className="mt-4">Template was not found.</p>
               </div>
             )
-          ) : null}
+          ) : (
+            <>
+              <h1 className="text-center text-4xl font-light leading-tight text-canvas-ink sm:text-5xl">
+                Templates for DevSessionCanvas
+              </h1>
+              <p className="mx-auto mt-4 max-w-3xl text-center text-base leading-7 text-canvas-muted">
+                Browse community workflow templates, install them into VSCode, or download the template JSON.
+              </p>
 
-          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {state.templates.map((template) => (
-              <TemplateCard key={template.id} template={template} />
-            ))}
-          </div>
+              <div className="mx-auto mt-9 flex max-w-4xl shadow-search">
+                <label className="sr-only" htmlFor="templateSearch">
+                  Search templates
+                </label>
+                <input
+                  id="templateSearch"
+                  className="h-14 min-w-0 flex-1 border border-canvas-line bg-canvas-paper px-5 text-xl text-canvas-ink outline-none ring-canvas-accent/25 transition placeholder:text-canvas-muted focus:ring-4"
+                  placeholder="Search DevSessionCanvas templates"
+                  value={query}
+                  onChange={(event) => setQuery(event.currentTarget.value)}
+                />
+                <button
+                  className="grid h-14 w-16 place-items-center bg-canvas-accent text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+                  type="button"
+                  aria-label="Search templates"
+                >
+                  <svg aria-hidden="true" className="h-7 w-7" viewBox="0 0 24 24" fill="none">
+                    <path d="m21 21-4.7-4.7m2.7-5.3a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
 
-          {!state.loading && state.templates.length === 0 ? (
-            <div className="mt-8 rounded-[2rem] border border-dashed border-canvas-ink/20 bg-white/60 p-10 text-center text-canvas-ink/60">
-              No templates matched this search.
-            </div>
-          ) : null}
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+                <p className="text-sm text-canvas-muted">{statusLabel}</p>
+                <label className="flex items-center gap-2 text-sm font-semibold text-canvas-ink">
+                  Sort
+                  <select
+                    className="h-10 border border-canvas-line bg-canvas-paper px-3 text-sm font-normal capitalize outline-none ring-canvas-accent/25 transition focus:ring-4"
+                    value={sort}
+                    onChange={(event) => setSort(event.currentTarget.value as MarketplaceSort)}
+                  >
+                    {MARKETPLACE_SORT_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="font-semibold text-canvas-ink">Tags</span>
+                {availableTags.map((tag) => {
+                  const selected = selectedTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      className={`font-semibold transition hover:underline ${
+                        selected ? 'text-canvas-accent underline underline-offset-4' : 'text-canvas-moss'
+                      }`}
+                      type="button"
+                      onClick={() => setSelectedTags((current) => toggleTag(current, tag))}
+                      aria-pressed={selected}
+                    >
+                      #{tag}
+                    </button>
+                  );
+                })}
+                {selectedTags.length > 0 ? (
+                  <button
+                    className="font-semibold text-canvas-muted transition hover:text-canvas-ink hover:underline"
+                    type="button"
+                    onClick={() => setSelectedTags([])}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-12 flex items-center justify-between">
+                <h2 className="text-2xl font-semibold text-canvas-ink">Featured</h2>
+                <span className="text-sm text-canvas-muted">{state.templates.length} templates</span>
+              </div>
+
+              <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {state.templates.map((template) => (
+                  <TemplateCard key={template.id} template={template} />
+                ))}
+              </div>
+
+              {!state.loading && state.templates.length === 0 ? (
+                <div className="mt-8 border border-dashed border-canvas-line bg-canvas-paper p-10 text-center text-canvas-muted">
+                  No templates matched this search.
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
     </main>

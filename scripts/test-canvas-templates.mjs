@@ -751,8 +751,17 @@ try {
   assert.match(marketplacePanelSource, /operation: result\.operation/u);
   assert.match(marketplacePanelSource, /formatInstallResultStatus/u);
   assert.match(marketplacePanelSource, /更新到 v/u);
+  assert.match(marketplacePanelSource, /split-install/u);
+  assert.match(marketplacePanelSource, /选择安装版本/u);
+  assert.match(marketplacePanelSource, /选择下载版本/u);
+  assert.match(marketplacePanelSource, /openDownloadVersionMenuSlug/u);
+  assert.match(marketplacePanelSource, /loadTemplateDetail/u);
+  assert.match(marketplacePanelSource, /collectInstallableVersions/u);
+  assert.match(marketplacePanelSource, /installTemplateVersion\(template, version\)/u);
+  assert.match(marketplacePanelSource, /下载 v/u);
   assert.match(marketplacePanelSource, /下载 JSON/u);
   assert.match(marketplacePanelSource, /buildTemplateDownloadUrl/u);
+  assert.match(marketplacePanelSource, /buildTemplateThumbnailUrl/u);
   assert.doesNotMatch(marketplacePanelSource, /Button\.textContent = ['"][^'"]*应用到 Canvas/u);
   assert.doesNotMatch(marketplacePanelSource, /marketplace\/applyInstalledTemplate/u);
   assert.match(marketplacePanelSource, /installedTemplate\.storageLocationId === selectedInstallTargetId/u);

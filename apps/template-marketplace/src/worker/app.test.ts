@@ -64,7 +64,7 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(200);
     expect(body.storageMode).toBe('seed');
-    expect(body.objectKey).toContain('/versions/1/template.json');
+    expect(body.objectKey).toContain('/versions/2/template.json');
   });
 
   it('streams template JSON from R2 when the bucket binding is present', async () => {
@@ -109,6 +109,42 @@ describe('template marketplace worker api', () => {
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', expectedDay]);
   });
 
+  it('streams thumbnails from R2 without recording a download', async () => {
+    const thumbnailKey = 'templates/tmpl-d1-review/versions/2/thumbnail.png';
+    const runLog: Array<{ sql: string; boundValues: unknown[] }> = [];
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/thumbnail',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(runLog),
+        TEMPLATE_BUCKET: createFakeR2Bucket({
+          [thumbnailKey]: {
+            content: new Uint8Array([137, 80, 78, 71]),
+            contentType: 'image/png'
+          }
+        })
+      }
+    );
+    const body = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('cache-control')).toContain('s-maxage=86400');
+    expect(response.headers.get('x-marketplace-storage-mode')).toBe('r2');
+    expect(Array.from(body)).toEqual([137, 80, 78, 71]);
+    expect(runLog).toHaveLength(0);
+  });
+
+  it('returns a generated seed thumbnail when no bucket binding is present', async () => {
+    const response = await app.request('http://localhost/api/v1/templates/review-loop/thumbnail');
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('image/svg+xml');
+    expect(response.headers.get('x-marketplace-storage-mode')).toBe('seed');
+    expect(body).toContain('Review Loop');
+  });
+
   it('returns a structured 404 when D1 metadata points to a missing R2 object', async () => {
     const response = await app.request(
       'http://localhost/api/v1/templates/d1-review-loop/download',
@@ -122,6 +158,29 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(404);
     expect(body.error.code).toBe('template_object_not_found');
+  });
+
+  it('returns a structured 404 when a thumbnail object is missing', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/thumbnail',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe('thumbnail_object_not_found');
+  });
+
+  it('returns a structured 404 when a thumbnail version is unknown', async () => {
+    const response = await app.request('http://localhost/api/v1/templates/review-loop/thumbnail?version=missing-version');
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe('template_version_not_found');
   });
 
   it('returns structured 404 errors', async () => {

@@ -5,6 +5,7 @@ import { appRootDir, assertLocalObjectsMatchExpected, previewR2BucketName, previ
 assertLocalObjectsMatchExpected();
 
 for (const object of previewTemplateObjects) {
+  runWrangler(['r2', 'object', 'delete', `${previewR2BucketName}/${object.key}`, '--remote']);
   runWrangler([
     'r2',
     'object',

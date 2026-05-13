@@ -3,6 +3,7 @@ import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
 import { buildTemplateDownloadHref } from '../lib/download';
 import { getMarketplaceHomeHref } from '../lib/routing';
+import { buildTemplateThumbnailHref } from '../lib/thumbnail';
 
 interface TemplateDetailViewProps {
   template: MarketplaceTemplateDetail;
@@ -12,93 +13,113 @@ interface TemplateDetailViewProps {
 
 export function TemplateDetailView({ template, storageMode, source }: TemplateDetailViewProps): JSX.Element {
   const downloadHref = buildTemplateDownloadHref(template);
+  const thumbnailHref = buildTemplateThumbnailHref(template);
+  const readme = template.readme.trim() || 'No README was provided.';
+  const sourceLabel = source === 'api' ? 'Worker API' : 'Seed fallback';
 
   return (
-    <section className="mt-10 overflow-hidden rounded-[2.5rem] border border-canvas-ink/10 bg-white/80 shadow-card backdrop-blur">
-      <div className="grid lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="min-h-80 bg-[radial-gradient(circle_at_28%_20%,#fff4d8,transparent_28%),linear-gradient(145deg,#365346,#d8bf96)] p-8 text-white">
-          <a className="text-xs font-bold uppercase tracking-[0.24em] text-white/70 hover:text-white" href={getMarketplaceHomeHref()}>
-            Back to marketplace
-          </a>
-          <div className="mt-20">
-            <p className="text-xs uppercase tracking-[0.32em] text-white/70">Template detail</p>
-            <h2 className="mt-4 font-display text-5xl leading-none sm:text-6xl">{template.name}</h2>
-            <p className="mt-5 max-w-xl text-base leading-7 text-white/78">{template.description}</p>
+    <section className="border border-canvas-line bg-canvas-paper shadow-card">
+      <div className="border-b border-canvas-line p-5 sm:p-6">
+        <a className="text-sm font-semibold text-canvas-moss hover:underline" href={getMarketplaceHomeHref()}>
+          Back to templates
+        </a>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[10rem_1fr]">
+          <div className="market-thumbnail h-28 border border-canvas-line sm:h-32">
+            <img
+              className="h-full w-full object-cover"
+              src={thumbnailHref}
+              alt=""
+              onError={(event) => {
+                event.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
-        </div>
-
-        <div className="p-6 sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+          <div>
+            <h2 className="text-3xl font-light leading-tight text-canvas-ink sm:text-4xl">{template.name}</h2>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-canvas-muted">{template.description}</p>
+            <div className="mt-5 flex flex-wrap gap-x-3 gap-y-1">
               {template.tags.map((tag) => (
-                <span key={tag} className="rounded-full bg-canvas-mist px-3 py-1 text-xs font-bold text-canvas-moss">
+                <span key={tag} className="text-xs font-semibold text-canvas-moss">
                   #{tag}
                 </span>
               ))}
             </div>
-            <span className="rounded-full border border-canvas-moss/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-canvas-moss">
-              {source === 'api' ? 'Worker API' : 'Seed fallback'} / {storageMode}
-            </span>
-          </div>
-
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <MetricCard label="Downloads" value={template.downloadCount.toLocaleString()} />
-            <MetricCard label="Likes" value={template.likeCount.toLocaleString()} />
-            <MetricCard label="Latest" value={`v${template.latestVersion.versionNumber}`} />
-          </div>
-
-          <div className="mt-8 rounded-[1.5rem] bg-canvas-mist/70 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-canvas-ink/50">Readme</p>
-            <p className="mt-3 text-sm leading-7 text-canvas-ink/72">{template.readme}</p>
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-            <div className="rounded-[1.5rem] border border-canvas-ink/10 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-canvas-ink/50">Version history</p>
-              <div className="mt-4 space-y-3">
-                {template.versions.map((version) => (
-                  <div key={version.id} className="flex items-start justify-between gap-3 rounded-2xl bg-canvas-mist/60 px-4 py-3">
-                    <div>
-                      <p className="font-semibold text-canvas-ink">v{version.versionNumber}</p>
-                      <p className="mt-1 text-sm leading-6 text-canvas-ink/65">{version.changelog}</p>
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-[0.16em] text-canvas-moss">{version.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[1.5rem] border border-canvas-ink/10 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-canvas-ink/50">Install file</p>
-              <p className="mt-3 break-all text-sm leading-6 text-canvas-ink/65">{template.latestVersion.sha256}</p>
-              <InstallInVSCodeLink
-                className="mt-5 inline-flex w-full justify-center rounded-full bg-canvas-ink px-5 py-3 text-xs font-bold uppercase tracking-[0.18em] text-white transition hover:-translate-y-0.5 hover:bg-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
-                template={template}
-                downloadHref={downloadHref}
-                ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
-              >
-                Install in VSCode
-              </InstallInVSCodeLink>
-              <a
-                className="mt-3 inline-flex w-full justify-center rounded-full border border-canvas-ink/15 px-5 py-3 text-xs font-bold uppercase tracking-[0.18em] text-canvas-ink transition hover:-translate-y-0.5 hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
-                href={downloadHref}
-                download
-              >
-                Download JSON
-              </a>
-            </div>
           </div>
         </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <article className="min-h-[28rem] px-5 py-7 sm:px-8 sm:py-9 lg:pr-10">
+          <div className="border-b border-canvas-line pb-3">
+            <h3 className="text-2xl font-semibold text-canvas-ink">README</h3>
+          </div>
+          <div className="mt-6 max-w-5xl whitespace-pre-wrap text-base leading-8 text-canvas-ink">
+            {readme}
+          </div>
+        </article>
+
+        <aside className="border-t border-canvas-line px-5 py-6 lg:border-l lg:border-t-0">
+          <InstallInVSCodeLink
+            className="inline-flex w-full justify-center bg-canvas-accent px-4 py-3 text-xs font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+            template={template}
+            downloadHref={downloadHref}
+            ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
+          >
+            Install in VSCode
+          </InstallInVSCodeLink>
+          <a
+            className="mt-3 inline-flex w-full justify-center border border-canvas-line px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+            href={downloadHref}
+            download
+            aria-label={`Download ${template.name} version ${template.latestVersion.versionNumber} template JSON`}
+          >
+            Download JSON
+          </a>
+
+          <dl className="mt-6 divide-y divide-canvas-line border-y border-canvas-line">
+            <MetaItem label="Downloads" value={template.downloadCount.toLocaleString()} />
+            <MetaItem label="Likes" value={template.likeCount.toLocaleString()} />
+            <MetaItem label="Latest" value={`v${template.latestVersion.versionNumber}`} />
+          </dl>
+
+          <details className="mt-5 border-t border-canvas-line pt-4">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-canvas-muted focus:outline-none focus:ring-4 focus:ring-canvas-accent/25">
+              Version history
+            </summary>
+            <ol className="mt-3 space-y-3">
+              {template.versions.map((version) => (
+                <li key={version.id}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-canvas-ink">v{version.versionNumber}</span>
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-canvas-moss">{version.status}</span>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-canvas-muted">{version.changelog}</p>
+                </li>
+              ))}
+            </ol>
+          </details>
+
+          <details className="mt-5 border-t border-canvas-line pt-4">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-canvas-muted focus:outline-none focus:ring-4 focus:ring-canvas-accent/25">
+              Integrity
+            </summary>
+            <p className="mt-2 break-all text-xs leading-5 text-canvas-muted">{template.latestVersion.sha256}</p>
+          </details>
+
+          <p className="mt-5 border-t border-canvas-line pt-4 text-xs leading-5 text-canvas-muted">
+            {sourceLabel} / {storageMode}
+          </p>
+        </aside>
       </div>
     </section>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }): JSX.Element {
+function MetaItem({ label, value }: { label: string; value: string }): JSX.Element {
   return (
-    <div className="rounded-[1.25rem] border border-canvas-ink/10 bg-white px-4 py-3">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-canvas-ink/45">{label}</p>
-      <p className="mt-2 font-display text-3xl leading-none text-canvas-ink">{value}</p>
+    <div className="py-3 first:pt-0 last:pb-0">
+      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-canvas-muted">{label}</dt>
+      <dd className="mt-1 text-xl font-light text-canvas-ink">{value}</dd>
     </div>
   );
 }

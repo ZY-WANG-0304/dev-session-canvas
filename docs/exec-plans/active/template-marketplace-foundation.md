@@ -8,7 +8,7 @@
 
 这次变更把已经选定的模板市场方案从文档推进到可运行的基础工程。完成后，开发者可以在本仓库内安装依赖，启动一个 `apps/template-marketplace` 应用，看到 React + Vite 的市场首页，并通过同一个应用的 Hono Worker API 访问 `/api/v1/templates`、`/api/v1/templates/:id` 和 `/api/v1/templates/:id/download`。这些接口先基于内存种子数据和共享类型实现，用来证明浏览、详情和下载主路径的 API 合约、前端调用、Vite `/templates/` base path、Workers runtime 入口和测试脚本已经连通。
 
-这不是完整 Phase 1-4 生产实现。本轮的可观察目标是“本地可跑、可测、结构正确，并把 preview D1/R2 只读下载主路径接通”，为后续接入 GitHub OAuth、VSCode Webview 安装流、写接口、缩略图和治理后台留出明确边界，而不是把尚未完成的 Phase 4 能力伪装成已完成线上产品。
+这不是完整 Phase 1-4 生产实现。本轮的可观察目标是“本地可跑、可测、结构正确，并把 preview D1/R2 只读下载主路径接通”，为后续接入 GitHub OAuth、共享 React Webview bundle、写接口、生产资源分离和治理后台留出明确边界，而不是把尚未完成的 Phase 4 能力伪装成已完成线上产品。
 
 ## 进度
 
@@ -76,6 +76,28 @@
 - [x] (2026-05-10 17:16 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run build`、`npm run test:package-vsix-command`、`npm audit` 和 `git diff --check`，全部通过；本轮只改扩展端 Webview UX，无需重新部署 Worker。
 - [x] (2026-05-10 17:50 +0800) 继续完善安装/下载主路径：插件内市场卡片新增 `下载 JSON` 入口；市场模板安装时会按市场模板 id / slug 和安装位置覆盖既有副本，同版本重复安装显示为重新安装，不同版本显示为更新，并保留本地模板 id 和创建时间。
 - [x] (2026-05-10 17:54 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run build`、`npm run test:package-vsix-command`、`npm audit` 和 `git diff --check`，全部通过；本轮只改扩展端下载/安装策略，无需重新部署 Worker。
+- [x] (2026-05-10 18:16 +0800) 为 `review-loop` 增加 preview v2：新增本地 R2 fixture、共享 seed、D1 seed 与幂等 patch、R2 对象清单和验证；已把 v2 JSON 上传到 preview R2，并把 preview D1 的 `review-loop` latest version 指到 `ver-review-loop-2`。
+- [x] (2026-05-10 18:17 +0800) 运行 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run test:canvas-templates`、`npm run typecheck:marketplace`、`npm run typecheck`、`npm run build:marketplace`、`npm run build`、`npm run test:package-vsix-command`、`npm audit` 和 `git diff --check`，全部通过；本轮未重新部署 Worker 代码，只更新 preview D1/R2 数据。
+- [x] (2026-05-10 18:33 +0800) 补齐 preview 缩略图读路径：为 4 个已发布版本生成 PNG 缩略图 fixture，纳入 R2 对象清单和校验脚本；Worker 新增 `GET /api/v1/templates/:id/thumbnail?version=`，有 R2 binding 时返回真实 PNG，无 R2 时返回显式 seed SVG；浏览器卡片、详情页和插件内 Webview 卡片都改为优先展示该缩略图并保留渐变降级。
+- [x] (2026-05-10 18:35 +0800) 重新上传并校验 preview R2 的 4 个 `template.json` 与 4 个 `thumbnail.png` 对象；运行 `npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run test:canvas-templates`、`npm run typecheck:marketplace`、`npm run typecheck`、`npm run build:marketplace`、`npm run build`、`npm run test:package-vsix-command`、`npm audit` 和 `git diff --check`，全部通过；重新部署 workers.dev preview，当前版本 ID 为 `4e08d963-ed0b-4c75-9274-178b63fb7975`。
+- [x] (2026-05-10 19:12 +0800) 用户确认预览环境能看到 3 张模板卡片和卡片预览图；由于未先安装 `Review Loop` v1，当前无法仅靠默认按钮验证更新到 v2。
+- [x] (2026-05-10 19:20 +0800) 按用户确认的 VSCode 插件市场式交互，插件内市场安装入口改为 split button：主按钮安装/更新最新版本，右侧下拉读取详情 API 的版本列表并允许安装指定版本。
+- [x] (2026-05-10 19:30 +0800) 按用户补充，插件内市场下载入口也改为 split button：主按钮下载最新版本，右侧下拉读取同一份版本列表并允许下载指定版本。
+- [x] (2026-05-10 19:47 +0800) 用户手动验证 split 安装/下载指定版本路径通过；同步把 `docs/product-specs/template-marketplace.md` 的 Phase 1 浏览与安装验收项标记为 preview 环境已通过。
+- [x] (2026-05-10 22:29 +0800) 按 `docs/UI.md` 重定义市场页 UI：浏览器市场支持 `Light 2026` / `Dark 2026` 主题变量，插件内市场面板移除固定白/黑/绿棕色视觉并改为完全由当前 VSCode Color Theme token 派生；同步更新 `docs/design-docs/template-marketplace.md` 的 UI 定义和 `docs/product-specs/template-marketplace.md` 的验收口径。
+- [x] (2026-05-10 22:31 +0800) 运行 `npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run build:marketplace`、`npm run typecheck`、`npm run build`、`git diff --check`，全部通过；并用 `rg` 确认市场 Web 与插件内市场面板样式中不再残留固定 `white` / hex / `rgba` / `color-mix(... #...)`。
+- [x] (2026-05-10 22:34 +0800) 重新执行 `npm run -w @dev-session-canvas/template-marketplace deploy:preview`，workers.dev 预览已更新到版本 `5bcc91d0-871e-4a4d-839d-e10868722b83`。
+- [x] (2026-05-10 23:08 +0800) 根据用户截图继续收口市场视觉：浏览器市场改为对齐 Visual Studio Marketplace 的黑色品牌栏、tab、居中标题、矩形搜索和矩形卡片；插件内市场移除背景渐变、超大标题、胶囊按钮和大圆角卡片。重新运行 `npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run build:marketplace`、`npm run typecheck`、`npm run build`、`git diff --check` 并重新部署 preview，当前版本 ID 为 `5e5e138e-471e-430b-8479-2c26c9251ea2`。
+- [x] (2026-05-10 23:26 +0800) 按用户微调浏览器市场：顶部文案从 Marketplace 改为 Templates，只保留单一 Templates tab，移除 Canvas / Agents / Resources 占位章节，主题主色从 Visual Studio Marketplace 玫红色改为 DevSessionCanvas 图标蓝色 #4878f0 和绿色 #48b0a0。运行 `npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run build:marketplace`、`git diff --check` 并重新部署 preview，当前版本 ID 为 `e2273ac0-fd5c-4a76-84bf-0844cb439f27`。
+- [x] (2026-05-10 23:52 +0800) 根据用户截图继续收敛模板详情页：`/templates/:slug` 不再展示首页搜索、筛选、Featured 列表和模板网格；详情视图改为 README 主栏 + 紧凑侧栏，缩略图、安装 / 下载、统计、版本历史、sha256 和来源信息都降级为辅助内容，版本历史和完整性校验默认折叠；同步更新 `docs/UI.md`、`docs/design-docs/template-marketplace.md` 和 `docs/product-specs/template-marketplace.md` 的详情页规则。
+- [x] (2026-05-10 23:57 +0800) 运行 `npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run build:marketplace`、`git diff --check` 和“文档 hex 颜色不加反引号”扫描，全部通过；重新执行 `npm run -w @dev-session-canvas/template-marketplace deploy:preview`，workers.dev 预览已更新到版本 `dfd3f4a0-28e4-4185-8a19-02a1766777bf`。
+- [x] (2026-05-11 00:14 +0800) 根据用户截图继续收敛 VSCode 插件内模板市场：Webview 顶部移除大标题 / 双栏说明和大工具卡，模板展示从三列大卡片墙改为单列紧凑行，小缩略图 + 文本摘要 + 右侧安装 / 下载动作；继续使用 `--vscode-*` token 与 `color-mix` 派生 hover、边框、输入框、按钮和菜单颜色，并同步更新 UI / 设计 / 产品规格中的插件内市场密度规则。
+- [x] (2026-05-11 00:16 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run build`、`npm run test:package-vsix-command`、`git diff --check` 和“文档 hex 颜色不加反引号”扫描，全部通过；本轮只改 VSCode 插件内 Webview 和文档，不需要重新部署浏览器市场 Worker。
+- [x] (2026-05-11 00:30 +0800) 根据用户截图继续整理插件内市场按钮区：安装和下载 split button 改为右侧控件区两列对齐，浏览器详情降为次级文本动作；安装 / 下载版本菜单现在会在点击外部、搜索 / 排序变化或按 Escape 时关闭，避免未选择时浮层一直停留。
+- [x] (2026-05-11 00:36 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run build`、`npm run test:package-vsix-command`、`git diff --check` 和“文档 hex 颜色不加反引号”扫描，全部通过；本轮只改 VSCode 插件内 Webview 和文档，不需要重新部署浏览器市场 Worker。
+- [x] (2026-05-11 00:44 +0800) 根据用户截图继续调整插件内市场信息位置：每个模板的“浏览器详情”从右侧安装 / 下载按钮区移到模板标题旁，作为标题附近的次级文本动作，右侧按钮区只保留安装 / 下载主动作。
+- [x] (2026-05-11 00:45 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run build`、`npm run test:package-vsix-command`、`git diff --check` 和“文档 hex 颜色不加反引号”扫描，全部通过；本轮只改 VSCode 插件内 Webview 和文档，不需要重新部署浏览器市场 Worker。
+- [x] (2026-05-12 00:13 +0800) 用户在 Extension Development Host 中人工验证插件内模板市场视觉 UI，确认当前视觉没有问题，可以继续后续收口。
 
 ## 意外与发现
 
@@ -141,6 +163,9 @@
 
 - 观察：CORS 修复部署后，插件内 Webview 匿名浏览和 payload 安装主路径已经通过真实 VSCode 宿主人工 smoke。
   证据：用户截图显示“模板市场”Webview 内 3 张模板卡片正常渲染，状态行显示“已安装模板：Getting Started Canvas v1”；用户同时确认点击安装按钮后模板安装成功。
+
+- 观察：Wrangler 对已声明但远端不可见的新增 R2 key 执行 `object put --force` 后，立即 `object get` 仍可能返回 key 不存在；先执行一次 `object delete` 再 `object put` 后对象可被稳定读回。
+  证据：`thumbnail.png` 首次上传后 `r2:verify:preview` 在 `templates/tmpl-getting-started/versions/1/thumbnail.png` 返回 `The specified key does not exist`；将 `seed-preview-r2.mjs` 改为 delete-then-put 后，8 个 manifest 对象均通过 `r2:verify:preview` 的 size / sha256 校验。
 
 ## 决策记录
 
@@ -208,6 +233,14 @@
   理由：正式路径仍应由扩展端从可信市场下载并校验；但当前 `*.workers.dev` 预览在 Remote SSH extension host 所在机器上可能不可达，而浏览器侧已经能访问并下载模板。8KB 阈值可以覆盖当前官方 seed 模板，同时避免把大型模板塞进外部协议 URI 导致系统兼容问题。
   日期/作者：2026-05-10 / Codex
 
+- 决策：市场页 UI 按宿主拆分主题来源：浏览器互联网网站使用 `Light 2026` / `Dark 2026` 两套市场 CSS 变量，VSCode 插件内市场面板只使用当前 `--vscode-*` Color Theme token 与 token 派生的 `color-mix`。
+  理由：浏览器端需要完整浅色/深色公开站点视觉，但 VSCode Webview 的可读性和一致性必须服从用户当前工作台主题；把两者都收口到角色 token，可以共享信息结构，同时避免把公网主题色误带进插件内面板。
+  日期/作者：2026-05-10 / Codex
+
+- 决策：浏览器市场页的视觉参考不再是独立品牌 landing，而是 Visual Studio Marketplace 的产品市场布局；插件内市场页不使用公网市场的 hero 结构，而使用紧凑 VSCode Webview 工具面板结构。
+  理由：用户截图显示原网站与 VSCode Marketplace 风格差异过大，插件内市场也因背景渐变、大标题、胶囊按钮和大圆角卡片显得不像 VSCode 原生面板。收敛到矩形搜索、矩形卡片、小圆角控件和主题 token 能同时降低视觉漂移并提升 VSCode Color Theme 适配一致性。
+  日期/作者：2026-05-10 / Codex
+
 - 决策：匿名公开 API `/api/v1/*` 对 GET / OPTIONS 启用 CORS `origin: *`，并只暴露下载所需的市场元数据响应头；认证、上传和管理写接口后续不能直接复用这个宽松策略。
   理由：浏览器市场页、未来自定义域名、workers.dev preview 和 VSCode Webview 都需要读取同一组公开列表、详情和下载接口；这些端点本身不依赖 cookie 或 token，允许跨源读取不会扩大当前匿名能力。把方法限定为 GET / OPTIONS、headers 限定为 `accept` / `content-type`，可以避免把后续 GitHub OAuth、发布、点赞、举报或管理员接口误暴露成同一 CORS 策略。
   日期/作者：2026-05-10 / Codex
@@ -224,15 +257,23 @@
   理由：已安装模板来自本地 catalog / sidecar，不依赖 workers.dev；网络异常不应让用户误以为模板库为空，也不应阻断从侧栏继续使用已经安装的模板。
   日期/作者：2026-05-10 / Codex
 
+- 决策：插件内市场卡片的安装入口采用 split button，主按钮只处理最新版本的安装/更新，下拉菜单用于安装任意已发布版本。
+  理由：这复用 VSCode 插件市场的更新心智；用户无需先找到旧包手动落盘，就可以先安装历史版本再验证更新，也可以在后续需要时手动回滚到历史版本。
+  日期/作者：2026-05-10 / Codex
+
+- 决策：插件内市场卡片的下载入口同样采用 split button，主按钮下载最新版本，下拉菜单用于下载任意已发布版本。
+  理由：下载和安装应使用一致的版本选择心智；用户可以在不写入本地模板库的情况下获取旧版本 JSON，用于对比、归档或手动排查更新问题。
+  日期/作者：2026-05-10 / Codex
+
 ## 结果与复盘
 
-本轮已经交付模板市场基础工程：新增 `packages/marketplace-shared/` 共享合约与 seed repository，新增 `apps/template-marketplace/` React + Vite 浏览器应用和 Hono Worker API，并在根 `package.json` 中补齐 `build:marketplace`、`test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 与 `typecheck:marketplace` 脚本。浏览器构建使用 `/templates/` base path，Worker API 暴露 `/api/v1/health`、`/api/v1/templates`、`/api/v1/templates/:id` 和 `/api/v1/templates/:id/download`。
+本轮已经交付模板市场基础工程：新增 `packages/marketplace-shared/` 共享合约与 seed repository，新增 `apps/template-marketplace/` React + Vite 浏览器应用和 Hono Worker API，并在根 `package.json` 中补齐 `build:marketplace`、`test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 与 `typecheck:marketplace` 脚本。浏览器构建使用 `/templates/` base path，Worker API 暴露 `/api/v1/health`、`/api/v1/templates`、`/api/v1/templates/:id`、`/api/v1/templates/:id/download` 和 `/api/v1/templates/:id/thumbnail`。
 
 本轮续做已经把 D1 元数据模型推进到可验证边界：`packages/marketplace-shared/src/schema.ts` 定义 Phase 1-4 核心表并通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，`apps/template-marketplace/migrations/0001_marketplace_core.sql` 提供 D1 migration，`apps/template-marketplace/src/worker/repository.ts` 让 public list/detail/download API 可以在 D1 binding 存在时读取 D1 元数据，在 binding 缺席时继续使用 seed fallback。
 
-Cloudflare preview 资源也已经接入：`apps/template-marketplace/wrangler.toml` 绑定真实 D1 database id `0944dc87-a603-4a59-8a59-b75ab3a796c5` 和 R2 bucket `template-marketplace-preview`，远端 D1 已执行 migration 和 preview seed，当前包含 3 个官方模板、3 个版本和对应标签/日统计。R2 bucket 已写入 3 个真实 `template.json` 对象，并通过 Wrangler 读回校验 size / sha256；缩略图对象仍未写入，后续需要在卡片缩略图接入时补齐。
+Cloudflare preview 资源也已经接入：`apps/template-marketplace/wrangler.toml` 绑定真实 D1 database id `0944dc87-a603-4a59-8a59-b75ab3a796c5` 和 R2 bucket `template-marketplace-preview`，远端 D1 已执行 migration 和 preview seed，当前包含 3 个官方模板、4 个已发布版本和对应标签/日统计，其中 `review-loop` 的 latest version 已指向 v2。R2 bucket 已写入 4 个真实 `template.json` 对象和 4 个 `thumbnail.png` 对象，并通过 Wrangler 读回校验 size / sha256。
 
-Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现在能把 `/templates/assets/...` 重写到实际 Vite asset 路径，并且 `apps/template-marketplace/package.json` 提供 `deploy:preview`。当前 workers.dev 预览地址是 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，该地址绑定 preview D1、preview R2 和 Static Assets；`/api/*`、`/templates` 和 `/templates/*` 已配置为 Worker 优先路由，避免 API 直访和 `/templates` asset 请求被 SPA fallback 接管。当前版本 ID 为 `d28208d5-7dc4-44ed-86a1-efd5de9c17a2`。
+Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现在能把 `/templates/assets/...` 重写到实际 Vite asset 路径，并且 `apps/template-marketplace/package.json` 提供 `deploy:preview`。当前 workers.dev 预览地址是 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，该地址绑定 preview D1、preview R2 和 Static Assets；`/api/*`、`/templates` 和 `/templates/*` 已配置为 Worker 优先路由，避免 API 直访和 `/templates` asset 请求被 SPA fallback 接管。当前版本 ID 为 `4e08d963-ed0b-4c75-9274-178b63fb7975`。
 
 用户已用浏览器人工确认 `review-loop` 下载端点会下载 `tmpl-review-loop-v1.json`。这补齐了当前 shell 环境无法 `curl` workers.dev 的端到端验证缺口。
 
@@ -250,11 +291,13 @@ Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现�
 
 Web 端现在支持基础标签筛选：列表结果上方展示 tag chips，选中后会把 tag 作为 Worker API 查询参数传给列表接口；seed fallback 也使用同一组 tags 过滤。当前 tag chips 只从当前可见结果与已选标签生成，后续如果要在筛选后仍显示全量 tag vocabulary，需要 API 增加 facet/metadata 响应。
 
-VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，`TemplateMarketplaceClient` 只接受可信市场来源，优先校验浏览器内联的小模板 payload；没有 payload 时再由扩展宿主请求 Worker API，下载文件后校验 D1 详情中的 sha256，并通过 `CanvasTemplateStore` 写入所选目标模板目录的 `marketplace/` 子目录与相邻 `*.market.json` sidecar。插件内市场面板允许在每张模板卡片上分别选择“本地（当前设备）”或当前 workspace 模板目录作为安装目标；未选择时默认沿用本地安装，保持此前行为。workspace 选项文案显示为 `当前workspace · <title>`，避免出现双重前缀。侧栏模板列表会把带 sidecar 的模板显示为“市场 · 本地”或“市场 · 工作区”，并继续使用 cloud download 图标。插件内市场面板打开和安装完成后，会从本地 catalog 读取 sidecar 并回传所选目标下的已安装市场版本，让 Webview 卡片显示“已安装到 本地 · 当前设备 · vN”或“已安装到 当前workspace · <title> · vN”并禁用同版本重复安装；如果市场返回更高版本，则卡片显示更新到目标版本，安装时覆盖同一位置下的既有副本并更新 sidecar，不创建重复模板。插件内市场卡片也提供 `下载 JSON` 入口，直接打开当前版本匿名下载端点。模板市场不提供应用入口；安装成功消息会提示用户到模板侧栏应用到 Canvas，已安装模板继续从侧栏模板列表应用。当前已完成本地单元/类型/构建验证、浏览器深链生成验证，以及插件内 Webview 匿名浏览/安装的真实 VSCode Development Host smoke；侧栏离线应用、更新提醒和回滚仍需后续 smoke 覆盖。
+浏览器端和插件内 Webview 现在都能展示真实缩略图：卡片和详情页会请求 `GET /api/v1/templates/:slug/thumbnail?version=:versionId`，Worker 在 preview 环境从 R2 返回 PNG 并设置公开缓存头；本地无 R2 binding 时返回显式 seed SVG，前端图片加载失败时继续显示原有渐变占位，避免缩略图对象缺失导致卡片空白。用户已确认预览环境能看到 3 张模板卡片和卡片预览图。
+
+VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，`TemplateMarketplaceClient` 只接受可信市场来源，优先校验浏览器内联的小模板 payload；没有 payload 时再由扩展宿主请求 Worker API，下载文件后校验 D1 详情中的 sha256，并通过 `CanvasTemplateStore` 写入所选目标模板目录的 `marketplace/` 子目录与相邻 `*.market.json` sidecar。插件内市场面板允许在每张模板卡片上分别选择“本地（当前设备）”或当前 workspace 模板目录作为安装目标；未选择时默认沿用本地安装，保持此前行为。workspace 选项文案显示为 `当前workspace · <title>`，避免出现双重前缀。侧栏模板列表会把带 sidecar 的模板显示为“市场 · 本地”或“市场 · 工作区”，并继续使用 cloud download 图标。插件内市场面板打开和安装完成后，会从本地 catalog 读取 sidecar 并回传所选目标下的已安装市场版本，让 Webview 卡片显示“已安装到 本地 · 当前设备 · vN”或“已安装到 当前workspace · <title> · vN”；安装入口现在复用 VSCode 插件市场式 split button，主按钮安装/更新最新版本，右侧版本下拉读取详情 API 后允许安装 v1/v2 等指定版本。安装指定版本仍覆盖同一位置下的既有副本并更新 sidecar，不创建重复模板。插件内市场卡片的 `下载 JSON` 入口也采用 split button，主按钮打开最新版本匿名下载端点，右侧版本下拉可下载 v1/v2 等指定版本但不写入本地模板库。模板市场不提供应用入口；安装成功消息会提示用户到模板侧栏应用到 Canvas，已安装模板继续从侧栏模板列表应用。当前已完成本地单元/类型/构建验证、浏览器深链生成验证，以及插件内 Webview 匿名浏览/安装的真实 VSCode Development Host smoke；侧栏离线应用、更新提醒和完整回滚 smoke 仍需后续覆盖。
 
 插件内独立 Webview Editor 市场页也已经有基础实现：命令面板和模板侧栏标题栏都可以触发 `devSessionCanvas.openTemplateMarketplace`，打开 `src/panel/CanvasTemplateMarketplacePanel.ts` 生成的本地 Webview。当前 Webview 读取 preview Worker API 并通过 payload 安装模板，不加载远程脚本，也不 iframe 远程站点；Worker `/api/v1/*` 已允许匿名 GET / OPTIONS CORS，解决 Webview 从 `vscode-webview://...` origin 访问公开 API 的浏览器安全限制。用户已在真实 VSCode Extension Development Host 中人工确认 Webview 可加载 3 个模板并通过“安装到 VSCode”完成安装；后续代码补充了已安装状态回显、卡片级安装目标选择、安装成功侧栏引导、Webview 状态持久化和网络错误 fallback，减少重复安装误操作，并保持市场只负责发现与安装。但 UI 仍是基础 HTML shell，后续应收敛到共享 React Webview bundle。
 
-仍未完成的能力是真实 GitHub OAuth、共享 React Webview bundle、完整 VSCode 宿主 smoke（侧栏来源、离线应用、更新提醒、回滚等）、发布/点赞/举报写接口、缩略图对象读写、治理后台、下载去重/防刷和生产环境资源分离；这些是后续里程碑，不是本轮临时绕过造成的技术债。本轮没有向 `docs/exec-plans/tech-debt-tracker.md` 新增技术债。设计文档状态保持为 `validation_status: 验证中`，因为基础工程、D1 只读边界、preview D1 初始化、R2 对象下载边界、基础下载计数、浏览器到扩展的安装主路径和插件内 Webview 市场页已经开始验证，但完整 Phase 1-4 尚未验证完成。
+仍未完成的能力是真实 GitHub OAuth、共享 React Webview bundle、完整 VSCode 宿主 smoke（离线应用、更新提醒、回滚等）、发布/点赞/举报写接口、缩略图上传与自动生成发布路径、治理后台、下载去重/防刷和生产环境资源分离；这些是后续里程碑，不是本轮临时绕过造成的技术债。本轮没有向 `docs/exec-plans/tech-debt-tracker.md` 新增技术债。设计文档状态保持为 `validation_status: 验证中`，因为 Phase 1 浏览与安装已在 preview 环境验证通过，但完整 Phase 1-4 尚未验证完成。
 
 ## 上下文与定向
 
@@ -328,11 +371,11 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
 
     npm run test:marketplace-api
     # Test Files  5 passed (5)
-    # Tests  22 passed (22)
+    # Tests  27 passed (27)
 
     npm run test:marketplace-web
-    # Test Files  4 passed (4)
-    # Tests  12 passed (12)
+    # Test Files  5 passed (5)
+    # Tests  14 passed (14)
 
     npm run test:canvas-templates
     # 通过，无输出错误
@@ -378,17 +421,29 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
     # sha256 / size_bytes match the R2 fixture manifest
 
     npm run -w @dev-session-canvas/template-marketplace r2:seed:preview
-    # Upload complete for 3 template.json objects
+    # delete-then-put 完成 4 个 template.json 和 4 个 thumbnail.png 对象
 
     npm run -w @dev-session-canvas/template-marketplace r2:verify:preview
     # verified templates/tmpl-getting-started/versions/1/template.json 1497 031e1f491c5e7b4b39c3c2a84dcf2d81e9833bad6228e32fa8f710dfccc00a7e
+    # verified templates/tmpl-getting-started/versions/1/thumbnail.png 48922 454d6e9225cb01987cbcc0211f54519c359c44adcd42bf1ecb6ae7e6903bccf3
     # verified templates/tmpl-review-loop/versions/1/template.json 1897 005e90644dae8084a612d6a9d2e198508618eaa792648eb19bc56113cbcc4e92
+    # verified templates/tmpl-review-loop/versions/1/thumbnail.png 43053 60a83bd7100cbbb8bab14867ce38b837cffddbf57edc42bc5aef34567d8b709c
+    # verified templates/tmpl-review-loop/versions/2/template.json 2470 d74f3887ad39c05912629b771635bf8c3e110a498a559ec6b56d8aee390e8ead
+    # verified templates/tmpl-review-loop/versions/2/thumbnail.png 53548 3157578492cccc717eb9275fd92ced163acc5ed1c467039d223f0d182329b6fd
     # verified templates/tmpl-release-readiness/versions/1/template.json 2045 e63a9f3666284df207184414a75afb1a86f6536a53668279fe825577a400bef0
+    # verified templates/tmpl-release-readiness/versions/1/thumbnail.png 43145 76b80d6197d7847d1cb81db1701e31d9ad7ef3c5cbb9be5f8f5b07f54c920138
+
+    npm run -w @dev-session-canvas/template-marketplace db:seed:preview:v2
+    # Processed 2 queries; rows_written: 6
+
+    npm run -w @dev-session-canvas/template-marketplace db:verify:preview
+    # review-loop => templates/tmpl-review-loop/versions/2/template.json
+    # sha256 d74f3887ad39c05912629b771635bf8c3e110a498a559ec6b56d8aee390e8ead; size_bytes 2470
 
     npm run -w @dev-session-canvas/template-marketplace deploy:preview
     # Deployed dscanvas-template-marketplace triggers
     # https://dscanvas-template-marketplace.wzy0304.workers.dev
-    # Current Version ID: d28208d5-7dc4-44ed-86a1-efd5de9c17a2
+    # Current Version ID: 4e08d963-ed0b-4c75-9274-178b63fb7975
 
     浏览器人工验证
     # https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates/review-loop/download
@@ -471,3 +526,7 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
 - 2026-05-10 17:16 +0800 / Codex：刷新 Webview UX 收口后的扩展端验证结果，原因是安装引导、错误 fallback 和状态持久化已通过测试、类型检查、构建、VSIX 前置、审计和空白检查。
 - 2026-05-10 17:50 +0800 / Codex：补充插件内直接下载入口和同位置覆盖更新策略，原因是 v1 preview 需要把下载、重复安装和后续版本更新主路径收口清楚。
 - 2026-05-10 17:54 +0800 / Codex：刷新下载/安装策略后的扩展端验证结果，原因是直接下载入口和覆盖更新逻辑已通过测试、类型检查、构建、VSIX 前置、审计和空白检查。
+- 2026-05-10 18:16 +0800 / Codex：补充 `review-loop` preview v2 的 D1/R2 数据、脚本和远端验证结果，原因是需要让更新安装路径在 preview 环境中真实可调试。
+- 2026-05-10 18:17 +0800 / Codex：刷新 preview v2 后的完整本地验证结果，原因是共享 seed、Worker API、Web fallback、扩展端安装策略和构建均受本轮数据变更影响。
+- 2026-05-10 18:33 +0800 / Codex：补充缩略图读取路径、R2 PNG fixture 和 Web/Webview 展示方式，原因是 Phase 1 卡片展示需要真实缩略图而不是长期依赖渐变占位。
+- 2026-05-10 18:35 +0800 / Codex：刷新缩略图接入后的 R2 远端校验、完整本地验证和 workers.dev 部署结果，原因是 Worker API、浏览器 bundle、插件 Webview 与 preview R2 对象清单均受本轮变更影响。

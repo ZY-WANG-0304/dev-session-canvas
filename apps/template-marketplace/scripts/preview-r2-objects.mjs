@@ -15,6 +15,13 @@ export const previewTemplateObjects = [
     sizeBytes: 1497
   },
   {
+    key: 'templates/tmpl-getting-started/versions/1/thumbnail.png',
+    file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-getting-started/versions/1/thumbnail.png'),
+    contentType: 'image/png',
+    sha256: '454d6e9225cb01987cbcc0211f54519c359c44adcd42bf1ecb6ae7e6903bccf3',
+    sizeBytes: 48922
+  },
+  {
     key: 'templates/tmpl-review-loop/versions/1/template.json',
     file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-review-loop/versions/1/template.json'),
     contentType: 'application/json',
@@ -22,11 +29,39 @@ export const previewTemplateObjects = [
     sizeBytes: 1897
   },
   {
+    key: 'templates/tmpl-review-loop/versions/1/thumbnail.png',
+    file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-review-loop/versions/1/thumbnail.png'),
+    contentType: 'image/png',
+    sha256: '60a83bd7100cbbb8bab14867ce38b837cffddbf57edc42bc5aef34567d8b709c',
+    sizeBytes: 43053
+  },
+  {
+    key: 'templates/tmpl-review-loop/versions/2/template.json',
+    file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-review-loop/versions/2/template.json'),
+    contentType: 'application/json',
+    sha256: 'd74f3887ad39c05912629b771635bf8c3e110a498a559ec6b56d8aee390e8ead',
+    sizeBytes: 2470
+  },
+  {
+    key: 'templates/tmpl-review-loop/versions/2/thumbnail.png',
+    file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-review-loop/versions/2/thumbnail.png'),
+    contentType: 'image/png',
+    sha256: '3157578492cccc717eb9275fd92ced163acc5ed1c467039d223f0d182329b6fd',
+    sizeBytes: 53548
+  },
+  {
     key: 'templates/tmpl-release-readiness/versions/1/template.json',
     file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-release-readiness/versions/1/template.json'),
     contentType: 'application/json',
     sha256: 'e63a9f3666284df207184414a75afb1a86f6536a53668279fe825577a400bef0',
     sizeBytes: 2045
+  },
+  {
+    key: 'templates/tmpl-release-readiness/versions/1/thumbnail.png',
+    file: resolve(appRootDir, 'fixtures/r2/templates/tmpl-release-readiness/versions/1/thumbnail.png'),
+    contentType: 'image/png',
+    sha256: '76b80d6197d7847d1cb81db1701e31d9ad7ef3c5cbb9be5f8f5b07f54c920138',
+    sizeBytes: 43145
   }
 ];
 
@@ -47,6 +82,8 @@ export function assertLocalObjectsMatchExpected() {
           `Expected ${object.sizeBytes}/${object.sha256}, got ${actual.sizeBytes}/${actual.sha256}.`
       );
     }
-    JSON.parse(readFileSync(object.file, 'utf8'));
+    if (object.contentType === 'application/json') {
+      JSON.parse(readFileSync(object.file, 'utf8'));
+    }
   }
 }

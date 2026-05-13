@@ -1,6 +1,7 @@
 import type { MarketplaceDownloadResponse } from '@dev-session-canvas/marketplace-shared';
 
 const TEMPLATE_JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
+const THUMBNAIL_CONTENT_TYPE = 'image/png';
 
 export async function buildR2TemplateDownloadResponse(
   bucket: R2Bucket,
@@ -25,6 +26,25 @@ export async function buildR2TemplateDownloadResponse(
   headers.set('x-marketplace-template-id', metadata.templateId);
   headers.set('x-marketplace-version-id', metadata.versionId);
   headers.set('x-marketplace-sha256', metadata.sha256);
+
+  return new Response(object.body, { headers });
+}
+
+export async function buildR2TemplateThumbnailResponse(bucket: R2Bucket, thumbnailKey: string): Promise<Response | undefined> {
+  const object = await bucket.get(thumbnailKey);
+  if (!object) {
+    return undefined;
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  if (!headers.has('content-type')) {
+    headers.set('content-type', THUMBNAIL_CONTENT_TYPE);
+  }
+  headers.set('content-length', String(object.size));
+  headers.set('cache-control', 'public, max-age=3600, s-maxage=86400');
+  headers.set('etag', object.httpEtag);
+  headers.set('x-marketplace-storage-mode', 'r2');
 
   return new Response(object.body, { headers });
 }
