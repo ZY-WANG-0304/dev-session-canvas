@@ -29,6 +29,7 @@
 - [x] (2026-05-13 08:27 +0800) 调整关联 Markdown Note 的 subtitle 显示规则，避免 raw `vscode-remote://...` 暴露到 UI，并为长路径增加中间省略与人类可读 tooltip。
 - [x] (2026-05-13 08:59 +0800) 放开“一个 Markdown 只能对应一个 Note”的长期限制；已关联文件再次拖入时改为 modal 选择继续添加新 Note 或定位已关联 Note。
 - [x] (2026-05-13 09:47 +0800) 调整 Markdown 关联相关 modal：不再额外传入“取消”按钮，避免和 VSCode modal 默认 Cancel 重复；提示文案中的文件路径改用与 subtitle 一致的短 `displayPath`。
+- [x] (2026-05-13 10:35 +0800) 修复关联 Markdown 内容复用普通 Note 8,000 字符截断上限的问题；普通 Note 编辑器显式展示并执行 8,000 字符上限；设计文档同步确认“保存为 Markdown”作为普通 Note 常驻按钮。
 
 ## 意外与发现
 
@@ -55,6 +56,9 @@
 
 - 观察：VSCode modal warning 在启用 `{ modal: true }` 时会提供默认 Cancel；如果扩展再显式传入“取消”，用户会看到 `Cancel` 和 `取消` 两个取消项。
   证据：用户截图显示已关联 Markdown 文件确认框中同时出现 `Cancel` 与 `取消`，且路径仍使用较长绝对路径。
+
+- 观察：关联 Markdown 文件如果复用普通 Note 的持久化截断函数，超过 8,000 字符的真实 Markdown 文件会在节点编辑或 checklist 更新后被截断写回。
+  证据：Review 指出 `handleUpdateNoteNode()`、拖拽创建和关联状态更新均调用普通 Note 的 `trimStoredNodeText()`；本轮 smoke 改为使用超过 8,000 字符的关联 Markdown 正文验证读写不截断。
 
 ## 决策记录
 
@@ -90,6 +94,14 @@
   理由：同一文档可能需要出现在不同画布区域作为局部上下文；但重复添加可能是误操作，所以需要在创建第二个及后续节点前显式确认，并提供不创建节点的定位路径。
   日期/作者：2026-05-13 / Codex
 
+- 决策：普通 Note 保留 8,000 字符上限，并在空内容占位与达到上限时提示；关联 Markdown Note 不复用该上限。
+  理由：普通 Note 是轻量画布内上下文，持久化上限能控制画布状态体积；Markdown 文件是外部文件权威来源，截断后写回会造成数据丢失。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：“保存为 Markdown”作为普通 Note 节点 chrome 的常驻 secondary button。
+  理由：这是普通 Note 升级为文件 Note 的关键发现入口；关联 Markdown Note 在同位置显示“打开文件”，避免动作竞争。
+  日期/作者：2026-05-13 / Codex
+
 ## 结果与复盘
 
 本轮已经完成 Note 与 Markdown 文件关联的跨层实现。
@@ -98,8 +110,8 @@
 
 - `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、拖拽 Markdown 文件创建 Note。
 - `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、display path 压缩与内容来源类型，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
-- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、dirty 文档更新、缺失/不可读状态刷新、打开关联文件和本地文件监听。
-- `src/webview/main.tsx` 和 `src/webview/styles.css` 实现关联文件 subtitle、完整路径 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口，以及空白画布拖放 Markdown 文件创建关联 Note。
+- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、dirty 文档更新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断。
+- `src/webview/main.tsx` 和 `src/webview/styles.css` 实现关联文件 subtitle、完整路径 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示，以及空白画布拖放 Markdown 文件创建关联 Note。
 - `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
@@ -110,14 +122,14 @@
        npm run test:note-markdown-file-association
        note markdown file association tests passed；覆盖 display path 中间省略和 Remote authority 轻量前缀
 
-       npm run test:webview -- --grep "associated markdown notes|missing associated markdown notes|dropping markdown files"
-       3 passed；Playwright webview tests passed
+       npm run test:webview -- --grep "associated markdown note editor|ordinary note empty placeholder|associated markdown notes|missing associated markdown notes|dropping markdown files"
+       5 passed；Playwright webview tests passed；覆盖普通 Note 8,000 字符占位提示/编辑上限、关联 Markdown Note 不使用普通 Note 编辑上限、subtitle、完整路径警告、缺失警告和空白画布拖拽消息
 
        node --check tests/vscode-smoke/extension-tests.cjs
        通过
 
        npm run build && DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
-       Trusted workspace smoke passed；VS Code smoke test passed；覆盖关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮
+       Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮
 
        git diff --check
        通过

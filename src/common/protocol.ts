@@ -10,6 +10,7 @@ import type { NoteContentSource } from './noteMarkdownFileAssociation';
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
+export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
 export type CanvasEdgeOwner = 'user' | 'file-activity';

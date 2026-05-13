@@ -88,6 +88,7 @@ import {
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   estimateMinimalFileNodeFootprint,
   estimatedCanvasNodeFootprint,
   isCanvasCreatableNodeKind,
@@ -3522,7 +3523,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const title = noteMarkdownTitleFromUri(uri);
     const displayPathInfo = this.formatNoteMarkdownDisplayPathInfo(uri);
     const noteMetadata: NoteNodeMetadata = {
-      content: trimStoredNodeText(content),
+      content,
       contentSource: {
         kind: 'markdown-file',
         resourceUri: uri.toString(),
@@ -3669,7 +3670,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const nextContent = trimStoredNodeText(payload.content);
+    const nextContent = payload.content;
     const writeResult = await this.writeNoteMarkdownFile(uri, nextContent);
     if (!writeResult.ok) {
       this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
@@ -3682,7 +3683,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.state = updateNoteContent(this.state, payload);
     this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
       ...noteMetadata.contentSource,
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
@@ -12559,14 +12559,13 @@ function normalizeMetadata(
   if (kind === 'note') {
     const note = isRecord(record.note) ? record.note : {};
     const fallback = createNoteMetadata();
+    const contentSource = normalizeStoredNoteContentSource(note.contentSource);
+    const content = typeof note.content === 'string' ? note.content : fallback.content;
 
     return {
       note: {
-        content:
-          typeof note.content === 'string'
-            ? trimStoredNodeText(note.content)
-            : fallback.content,
-        contentSource: normalizeStoredNoteContentSource(note.contentSource)
+        content: contentSource?.kind === 'markdown-file' ? content : trimStoredNodeText(content),
+        contentSource
       }
     };
   }
@@ -13307,7 +13306,7 @@ function updateAssociatedNoteMarkdownFileStatus(
     return state;
   }
 
-  const nextContent = trimStoredNodeText(content);
+  const nextContent = content;
   const nextMetadata: CanvasNodeMetadata = {
     ...node.metadata,
     note: {
@@ -13732,7 +13731,9 @@ function trimStoredTerminalText(value: string): string {
 }
 
 function trimStoredNodeText(value: string): string {
-  return value.length > 8000 ? value.slice(0, 8000) : value;
+  return value.length > NOTE_EMBEDDED_CONTENT_MAX_LENGTH
+    ? value.slice(0, NOTE_EMBEDDED_CONTENT_MAX_LENGTH)
+    : value;
 }
 
 function appendTerminalBuffer(existing: string, nextChunk: string): string {

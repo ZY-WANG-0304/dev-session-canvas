@@ -151,7 +151,9 @@ interface NoteNodeMetadata {
 
 - 省略 `contentSource` 时等价于 `{ kind: 'embedded' }`，保持历史状态兼容。
 - `embedded` Note 的 `content` 仍是画布持久化中的正文权威数据。
+- `embedded` Note 继续使用普通 Note 的 8,000 字符上限；Webview 在空 Note 占位提示中说明上限，并在编辑达到上限时阻止继续输入、提示用户改用 Markdown 文件。
 - `markdown-file` Note 的 `content` 只表示当前 Host 已读取并发送给 Webview 的展示/编辑缓冲；文件才是权威来源。
+- `markdown-file` Note 的展示/编辑缓冲不复用普通 Note 的 8,000 字符持久化截断上限；节点内编辑、checklist 切换或 Host 刷新都不能把超过 8,000 字符的 Markdown 文件截断后写回真实文件。
 - 实现时不应依赖 `markdown-file` Note 的 `content` 作为文件缺失后的长期 fallback。即使持久化层因兼容需要保留最近一次 buffer，UI 也必须在文件不可用时优先显示警告状态，不能把缓存伪装成最新文件内容。
 - `resourceUri` 使用 VSCode 资源 URI 字符串作为持久化身份，避免只保存本地 `fsPath` 后无法解释 Remote 或非当前工作区资源。
 - `displayPath` 只服务 UI subtitle 展示；读取、写入、stat 与 watcher 必须基于 `resourceUri` 重新解析。
@@ -165,7 +167,7 @@ interface NoteNodeMetadata {
 
 ### 7.2 普通 Note 转成 Markdown 文件 Note
 
-普通 `Note` 节点新增“保存为 Markdown 并关联”动作。入口可以放在节点上下文菜单、命令面板或节点动作菜单中；不应为了这个低频动作在节点 chrome 上增加显著常驻按钮。
+普通 `Note` 节点新增常驻的“保存为 Markdown 并关联”动作按钮。虽然这是低频动作，但它是普通 Note 升级为文件 Note 的关键发现入口；因此第一版允许它作为普通 Note 的节点 chrome secondary button 常驻显示。关联 Markdown Note 的同一位置显示“打开文件”，避免同时出现保存与打开两个文件动作。
 
 转换流程由 `CanvasPanelManager` 在 Extension Host 侧主导：
 
@@ -272,26 +274,28 @@ Workspace Trust：
 实现阶段至少需要完成以下验证：
 
 1. 普通 `Note` 仍可创建、编辑、持久化，并且没有文件 subtitle。
-2. 普通 `Note` 执行“保存为 Markdown 并关联”时，默认推荐 `<workspace root>/<title>.md`。
-3. Quick Input 能在当前目录下提示子目录和 `.md` / `.markdown` 文件；选择目录会继续导航，选择 Markdown 文件会填入路径。
-4. 目标文件不存在时，会创建文件、写入当前 Note 正文，并把节点切换为关联 Markdown `Note`。
-5. 目标文件已存在时，用户可以选择“覆盖文件并关联”“保留文件内容并关联”或“取消”，三条路径都不产生静默覆盖。
-6. 关联后 title 下方以 subtitle 显示路径，且不出现路径胶囊、链接视觉或 raw `vscode-remote://...`。
-7. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
-8. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
-9. 删除关联 Markdown `Note` 不删除关联文件。
-10. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；拖到执行节点时不破坏既有节点拖放行为。
-11. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
-12. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择继续添加新的关联 `Note`，也可选择定位已关联 `Note`。
-13. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
-14. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
-15. `npm run typecheck` 通过。
-16. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告和拖拽创建的 Playwright / smoke 或纯函数测试通过。
+2. 普通 `Note` 的空内容占位提示显示 8,000 字符上限，编辑达到上限后不能继续输入并显示提示。
+3. 普通 `Note` 执行“保存为 Markdown 并关联”时，默认推荐 `<workspace root>/<title>.md`。
+4. Quick Input 能在当前目录下提示子目录和 `.md` / `.markdown` 文件；选择目录会继续导航，选择 Markdown 文件会填入路径。
+5. 目标文件不存在时，会创建文件、写入当前 Note 正文，并把节点切换为关联 Markdown `Note`。
+6. 目标文件已存在时，用户可以选择“覆盖文件并关联”“保留文件内容并关联”或“取消”，三条路径都不产生静默覆盖。
+7. 关联后 title 下方以 subtitle 显示路径，且不出现路径胶囊、链接视觉或 raw `vscode-remote://...`。
+8. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
+9. 超过 8,000 字符的关联 Markdown 文件拖入、显示、编辑或 checklist 更新后，真实文件不会被普通 Note 上限截断。
+10. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
+11. 删除关联 Markdown `Note` 不删除关联文件。
+12. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；拖到执行节点时不破坏既有节点拖放行为。
+13. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
+14. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择继续添加新的关联 `Note`，也可选择定位已关联 `Note`。
+15. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
+16. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
+17. `npm run typecheck` 通过。
+18. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告和拖拽创建的 Playwright / smoke 或纯函数测试通过。
 
 当前验证记录（2026-05-13）：
 
 - `npm run typecheck` 通过。
 - `npm run test:note-markdown-file-association` 通过，覆盖扩展名、文件名安全化、display path 中间省略和 Remote authority 轻量前缀。
-- `npm run test:webview -- --grep "associated markdown notes|missing associated markdown notes|dropping markdown files"` 通过，覆盖 subtitle、完整路径警告、缺失警告和空白画布拖拽消息。
-- `npm run build && DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，覆盖真实 VSCode 宿主中的拖拽创建关联 Note、单次重复拖拽资源/并发消息只创建一个 Note、已关联文件再次拖入时的“继续添加新 Note”和“定位已关联 Note”modal 分支、modal 路径复用 subtitle `displayPath`、不传入重复“取消”按钮、关联文件 `displayPath` / `fullDisplayPath`、关联文件写回、删除节点不删除文件，以及关联文件缺失后的警告状态。
+- `npm run test:webview -- --grep "associated markdown note editor|ordinary note empty placeholder|associated markdown notes|missing associated markdown notes|dropping markdown files"` 通过，覆盖普通 Note 8,000 字符占位提示/编辑上限、关联 Markdown Note 不使用普通 Note 编辑上限、subtitle、完整路径警告、缺失警告和空白画布拖拽消息。
+- `npm run build && DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，覆盖真实 VSCode 宿主中的拖拽创建关联 Note、超过 8,000 字符的关联 Markdown 读取与写回不截断、单次重复拖拽资源/并发消息只创建一个 Note、已关联文件再次拖入时的“继续添加新 Note”和“定位已关联 Note”modal 分支、modal 路径复用 subtitle `displayPath`、不传入重复“取消”按钮、关联文件 `displayPath` / `fullDisplayPath`、关联文件写回、删除节点不删除文件，以及关联文件缺失后的警告状态。
 - Quick Input 真实键盘导航和已有文件三选项当前仍停留在实现与代码审查层面，尚未由自动化直接模拟用户选择，因此本文验证状态保持为“验证中”。
