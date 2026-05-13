@@ -1,4 +1,5 @@
 import {
+  MARKETPLACE_QUERY_MAX_LENGTH,
   getSeedTemplateDetail,
   listSeedTemplates,
   type MarketplaceListTemplatesResponse,
@@ -27,9 +28,10 @@ export interface MarketplaceTemplateDetailLoadResult {
 }
 
 export async function loadMarketplaceTemplates(query: TemplateQueryState): Promise<MarketplaceTemplateLoadResult> {
+  const normalizedQuery = normalizeTemplateSearchQuery(query.q);
   const params = new URLSearchParams();
-  if (query.q.trim()) {
-    params.set('q', query.q.trim());
+  if (normalizedQuery) {
+    params.set('q', normalizedQuery);
   }
   for (const tag of query.tags ?? []) {
     params.append('tag', tag);
@@ -48,13 +50,17 @@ export async function loadMarketplaceTemplates(query: TemplateQueryState): Promi
       source: 'api'
     };
   } catch {
-    const fallback = listSeedTemplates({ q: query.q, sort: query.sort, tags: query.tags });
+    const fallback = listSeedTemplates({ q: normalizedQuery, sort: query.sort, tags: query.tags });
     return {
       templates: fallback.items,
       storageMode: fallback.storageMode,
       source: 'seed-fallback'
     };
   }
+}
+
+export function normalizeTemplateSearchQuery(value: string): string {
+  return value.trim().slice(0, MARKETPLACE_QUERY_MAX_LENGTH);
 }
 
 export async function loadMarketplaceTemplateDetail(templateIdOrSlug: string): Promise<MarketplaceTemplateDetailLoadResult> {

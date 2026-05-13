@@ -98,6 +98,13 @@
 - [x] (2026-05-11 00:44 +0800) 根据用户截图继续调整插件内市场信息位置：每个模板的“浏览器详情”从右侧安装 / 下载按钮区移到模板标题旁，作为标题附近的次级文本动作，右侧按钮区只保留安装 / 下载主动作。
 - [x] (2026-05-11 00:45 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run build`、`npm run test:package-vsix-command`、`git diff --check` 和“文档 hex 颜色不加反引号”扫描，全部通过；本轮只改 VSCode 插件内 Webview 和文档，不需要重新部署浏览器市场 Worker。
 - [x] (2026-05-12 00:13 +0800) 用户在 Extension Development Host 中人工验证插件内模板市场视觉 UI，确认当前视觉没有问题，可以继续后续收口。
+- [x] (2026-05-12 07:05 +0800) 按 review 收口外部模板市场安装链接：浏览器安装入口改为 payload-free 的 `vscode://.../install-template?template=...&version=...&source=...`，外部 URI 统一走详情 + 下载 API；随后重新执行 `npm run -w @dev-session-canvas/template-marketplace deploy:preview`，当前 workers.dev 预览版本 ID 更新为 `2075264f-fee0-4a0c-9111-a82da7e97ad2`。
+- [x] (2026-05-12 08:24 +0800) 按用户反馈把外部 `vscode://.../install-template` 与插件内列表安装入口改成“先打开 VSCode 内详情页，再点安装”：URI handler 打开 `CanvasTemplateMarketplacePanel` 的详情视图并预选模板 / 版本，列表快捷入口进入详情页动作上下文，详情页承载 README、安装位置、安装 / 下载 split button、版本历史和校验信息；同步更新 UI / 设计 / 产品规格 / 设计索引，并运行 `git diff --check`、`npm run typecheck`、`npm run test:package-vsix-command`、`npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run build`、`npm run build:marketplace`、文档 hex 扫描、Webview JS `node --check`、`npm run test:canvas-templates` 和 `npm run -w @dev-session-canvas/template-marketplace deploy:preview`，全部通过；workers.dev 当前版本 ID 更新为 `ea2fee85-3a1e-465b-bbc0-d1f7b7266cbc`。
+- [x] (2026-05-12 13:43 +0800) 按新的 review 意见收口 D1 模板仓库的 latest 指针容错：`latest_version_id` 若指向 rejected 版本，则回退到同模板最新 published 版本，避免在 list/detail/default download 中泄漏 rejected 版本；补充 repository 测试覆盖 list、detail、默认下载和显式 rejected 版本下载的行为。
+- [x] (2026-05-12 18:29 +0800) 按最新 review 选择保留插件内列表级安装位置预选和详情快捷入口，并同步更新 `docs/marketplace/UI.md`、`docs/design-docs/template-marketplace.md` 与 `docs/product-specs/template-marketplace.md`：安装 / 更新 / 已安装 / 下载 JSON 等列表快捷动作统一表述为打开模板详情页并执行对应动作，安装位置作为详情页默认目标。
+- [x] (2026-05-12 19:41 +0800) 按用户反馈将模板市场详细 UI 从通用 `docs/UI.md` 拆到 `docs/marketplace/UI.md`，并把安装 / 下载 JSON 等列表快捷动作改为正向表述：打开模板详情页并执行对应动作；`docs/UI.md` 只保留跨功能 VSCode design-system 基线，产品规格索引同步指向市场专属 UI 文档。
+- [x] (2026-05-12 21:40 +0800) 按最新 review 收口插件内列表下载动作：列表行 `下载 JSON` 主按钮和版本菜单现在先打开模板详情页并预选对应版本，再执行下载；详情页内下载 split button 仍在当前详情上下文直接下载，源码断言同步覆盖该边界；运行 `git diff --check`、`npm run test:canvas-templates`、`npm run typecheck`、`npm run test:package-vsix-file-list`、Webview JS `node --check`、`npm run build`、`npm run test:marketplace-web`、`npm run test:marketplace-api` 和 `npm run typecheck:marketplace`，全部通过。
+- [x] (2026-05-12 23:34 +0800) 按最新 review 收口同一市场模板跨安装位置的本地身份：市场模板首次安装到某个目标位置时生成 `market-template-<uuid>` 本地模板 id，同一位置更新 / 重装继续保留既有 id；侧栏模板标签同步改为 `来源 · 位置`，来源区分 `插件内置`、`用户保存/导入`、`市场下载`，位置区分 `扩展内`、`本地`、`工作区`；运行 `git diff --check`、`npm run test:canvas-templates`、`npm run typecheck`、`npm run test:package-vsix-file-list`、`npm run build`、`npm run test:package-vsix-command` 和 `npm run test:marketplace-web`，全部通过。
 
 ## 意外与发现
 
@@ -155,8 +162,8 @@
 - 观察：VSCode 1.80 扩展宿主不应假设全局 `fetch` 一定可用，因此扩展端市场安装 client 使用 Node `http` / `https` 模块发起详情与下载请求。
   证据：`package.json` 的 `engines.vscode` 仍是 `^1.80.0`；`TemplateMarketplaceClient` 没有依赖浏览器 fetch，而是用 Node 请求模块并保留 5MB 下载上限、30 秒超时和最多 3 次重定向。
 
-- 观察：在 Remote SSH 场景里，浏览器能打开 workers.dev，但 workspace extension host 所在远端机器不一定能访问同一个 workers.dev 地址。
-  证据：用户截图显示点击 Web 安装后 VSCode URI handler 已显示确认弹窗并进入“正在安装”进度；本机同一远端环境下 `node:https` 直连 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates/review-loop` 报 `ETIMEDOUT`，通过当前 `HTTPS_PROXY` 执行 `curl -v` 时也卡在 HTTP CONNECT 阶段。当前缓解是浏览器对小模板内联 payload，避免扩展端必须再次访问 workers.dev。
+- 观察：在 Remote SSH 场景里，浏览器和 VSCode Webview 能打开 workers.dev，但 workspace extension host 所在远端机器不一定能访问同一个 workers.dev 地址。
+  证据：用户截图显示点击 Web 安装后 VSCode URI handler 已显示确认弹窗；本机同一远端环境下 `node:https` 直连 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates/review-loop` 报 `ETIMEDOUT`，通过当前 `HTTPS_PROXY` 执行 `curl -v` 时也卡在 HTTP CONNECT 阶段。当前缓解已收敛为外部 URI 打开插件内详情页并预选模板 / 版本，详情页再通过受控 Webview message bridge 把下载到的模板 payload 交给 Extension Host 安装，避免外部 URI 携带 payload。
 
 - 观察：插件内 Webview 的 DOM 可以加载本地 HTML，但从 `vscode-webview://...` origin 直接 `fetch` workers.dev API 会被浏览器安全模型当作跨源请求处理；如果 Worker 没有返回 CORS 响应头，Webview 只会暴露 `Failed to fetch`。
   证据：用户截图显示 Webview 面板标题、搜索框和排序控件都已渲染，状态行显示 `加载失败：Failed to fetch`；本轮在 Hono 测试中增加 `Origin: vscode-webview://dev-session-canvas` 的 OPTIONS preflight，期望 204 且 `access-control-allow-origin: *`，并确认列表和下载响应也带 CORS / exposed headers。
@@ -166,6 +173,9 @@
 
 - 观察：Wrangler 对已声明但远端不可见的新增 R2 key 执行 `object put --force` 后，立即 `object get` 仍可能返回 key 不存在；先执行一次 `object delete` 再 `object put` 后对象可被稳定读回。
   证据：`thumbnail.png` 首次上传后 `r2:verify:preview` 在 `templates/tmpl-getting-started/versions/1/thumbnail.png` 返回 `The specified key does not exist`；将 `seed-preview-r2.mjs` 改为 delete-then-put 后，8 个 manifest 对象均通过 `r2:verify:preview` 的 size / sha256 校验。
+
+- 观察：`npm run test:canvas-templates` 里存在面向源码结构的市场 URI handler 断言，旧断言会把“外部 URI 安装链路返回 `result.operation`”当成必需行为。
+  证据：详情确认流改完后第一次运行该脚本报 `AssertionError`，期望 `result.operation === 'updated'`；本轮已把断言改为检查 `templateMarketplacePanel.openTemplateDetailFromUri(uri)`、`marketplace/openTemplateDetail` 和详情页相关 DOM 字符串，测试随后通过。
 
 ## 决策记录
 
@@ -221,17 +231,17 @@
   理由：浏览器页面需要 SPA fallback 支持 `/templates` 子路径和未来详情页刷新；API 路径则必须始终由 Worker 处理，否则直接在地址栏打开下载端点时会被资产层当作 HTML fallback 返回 `index.html`。同时 Vite bundle 使用 `/templates/` base path，真实上传的 asset key 仍在 `/assets/...`，因此 `/templates/assets/...` 也必须先进入 Worker 才能被重写。
   日期/作者：2026-05-10 / Codex
 
-- 决策：浏览器安装入口使用 VSCode extension URI deep link，而不是让浏览器直接写本地模板目录。
-  理由：浏览器没有本地文件系统权限；`vscode://devsessioncanvas.dev-session-canvas/install-template` 可以把安装动作交回已安装的扩展宿主，由宿主校验来源、下载模板、写入全局模板目录并刷新侧栏。当前扩展端只信任 `dscanvas.dev`、当前 workers.dev preview 域名和 localhost 开发域名下的 `/templates` 来源，避免任意网页构造安装链接让扩展下载不受信任内容。
-  日期/作者：2026-05-10 / Codex
+- 决策：浏览器安装入口继续使用 VSCode extension URI deep link；外部 URI 打开插件内模板详情页并继续安装动作。
+  理由：浏览器没有本地文件系统权限，也不应把 inline payload 放进外部 URI；`vscode://devsessioncanvas.dev-session-canvas/install-template` 现在只把模板 slug、版本 id 和来源带回已安装的扩展，由扩展打开 VSCode Webview 内详情页。用户在详情页再次点击安装后，受控 Webview 才从市场 API 下载模板 JSON 并通过 message bridge 交给 Extension Host 校验和落盘。
+  日期/作者：2026-05-10，2026-05-12 更新 / Codex
 
 - 决策：市场安装后的本地来源信息写入相邻 `*.market.json` sidecar，不把市场字段写进 `CanvasTemplateDocument` 主体，也不新增 `market` category。
   理由：模板主体需要保持现有本地模板格式，确保离线可用和可手动分享；sidecar 可支持侧栏来源标记、后续更新检查和回滚，同时模板目录扫描明确忽略 sidecar，避免把元数据文件当作损坏模板。
   日期/作者：2026-05-10 / Codex
 
-- 决策：预览阶段允许浏览器把小模板 JSON 内联进 VSCode URI，扩展端优先用 payload 安装，超出 8KB 时回退到扩展端直接下载。
-  理由：正式路径仍应由扩展端从可信市场下载并校验；但当前 `*.workers.dev` 预览在 Remote SSH extension host 所在机器上可能不可达，而浏览器侧已经能访问并下载模板。8KB 阈值可以覆盖当前官方 seed 模板，同时避免把大型模板塞进外部协议 URI 导致系统兼容问题。
-  日期/作者：2026-05-10 / Codex
+- 决策：废弃浏览器把小模板 JSON 内联进外部 VSCode URI 的预览路径，inline payload 只允许从受控插件内 Webview message bridge 进入安装。
+  理由：外部 URI 携带 payload 会混淆“浏览器唤起 VSCode”和“确认安装”两个阶段，也会让用户在未看到 VSCode 内详情页前触发本地写入。当前方案用外部 URI 打开插件内详情页，再由详情页下载模板 JSON 并通过 message bridge 交给 Extension Host，可以同时保留 Remote SSH 场景下的 Webview 下载优势和安装确认步骤。
+  日期/作者：2026-05-10 初版，2026-05-12 更新 / Codex
 
 - 决策：市场页 UI 按宿主拆分主题来源：浏览器互联网网站使用 `Light 2026` / `Dark 2026` 两套市场 CSS 变量，VSCode 插件内市场面板只使用当前 `--vscode-*` Color Theme token 与 token 派生的 `color-mix`。
   理由：浏览器端需要完整浅色/深色公开站点视觉，但 VSCode Webview 的可读性和一致性必须服从用户当前工作台主题；把两者都收口到角色 token，可以共享信息结构，同时避免把公网主题色误带进插件内面板。
@@ -249,8 +259,8 @@
   理由：侧栏已安装模板本身已经提供应用到 Canvas 的能力；在市场卡片上重复放置应用入口会扩大 UI 概念面，让“发现/安装”和“使用已安装模板”两个任务混在一起。
   日期/作者：2026-05-10 / Codex
 
-- 决策：同一市场模板在同一安装位置重复安装或更新时覆盖原有本地副本，不创建第二份模板；覆盖时保留本地模板 id 和创建时间，只更新模板内容与 sidecar 版本元数据。
-  理由：用户把市场模板视为同一个可更新资产，而不是每次下载得到一个新模板；保留本地 id 能避免默认模板引用和侧栏选择状态因版本更新而失效，按安装位置匹配则允许本地和 workspace 各自拥有独立副本。
+- 决策：同一市场模板在同一安装位置重复安装或更新时覆盖原有本地副本，不创建第二份模板；首次安装到某个位置时生成本地唯一模板 id，覆盖时保留该本地模板 id 和创建时间，只更新模板内容与 sidecar 版本元数据。
+  理由：用户把市场模板视为同一个可更新资产，而不是每次下载得到一个新模板；保留同位置本地 id 能避免默认模板引用和侧栏选择状态因版本更新而失效，首次安装生成本地唯一 id 则能让本地和 workspace 的同一市场模板成为两个可被侧栏操作精确命中的独立副本。
   日期/作者：2026-05-10 / Codex
 
 - 决策：插件内市场 Webview 在市场 API 不可达时保留本地已安装模板状态，并只把远端模板列表标记为不可刷新。
@@ -262,7 +272,7 @@
   日期/作者：2026-05-10 / Codex
 
 - 决策：插件内市场卡片的下载入口同样采用 split button，主按钮下载最新版本，下拉菜单用于下载任意已发布版本。
-  理由：下载和安装应使用一致的版本选择心智；用户可以在不写入本地模板库的情况下获取旧版本 JSON，用于对比、归档或手动排查更新问题。
+  理由：下载和安装应使用一致的版本选择心智；用户可以获取旧版本 JSON，用于对比、归档或手动排查更新问题。
   日期/作者：2026-05-10 / Codex
 
 ## 结果与复盘
@@ -273,11 +283,11 @@
 
 Cloudflare preview 资源也已经接入：`apps/template-marketplace/wrangler.toml` 绑定真实 D1 database id `0944dc87-a603-4a59-8a59-b75ab3a796c5` 和 R2 bucket `template-marketplace-preview`，远端 D1 已执行 migration 和 preview seed，当前包含 3 个官方模板、4 个已发布版本和对应标签/日统计，其中 `review-loop` 的 latest version 已指向 v2。R2 bucket 已写入 4 个真实 `template.json` 对象和 4 个 `thumbnail.png` 对象，并通过 Wrangler 读回校验 size / sha256。
 
-Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现在能把 `/templates/assets/...` 重写到实际 Vite asset 路径，并且 `apps/template-marketplace/package.json` 提供 `deploy:preview`。当前 workers.dev 预览地址是 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，该地址绑定 preview D1、preview R2 和 Static Assets；`/api/*`、`/templates` 和 `/templates/*` 已配置为 Worker 优先路由，避免 API 直访和 `/templates` asset 请求被 SPA fallback 接管。当前版本 ID 为 `4e08d963-ed0b-4c75-9274-178b63fb7975`。
+Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现在能把 `/templates/assets/...` 重写到实际 Vite asset 路径，并且 `apps/template-marketplace/package.json` 提供 `deploy:preview`。当前 workers.dev 预览地址是 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，该地址绑定 preview D1、preview R2 和 Static Assets；`/api/*`、`/templates` 和 `/templates/*` 已配置为 Worker 优先路由，避免 API 直访和 `/templates` asset 请求被 SPA fallback 接管。当前版本 ID 为 `ea2fee85-3a1e-465b-bbc0-d1f7b7266cbc`。
 
 用户已用浏览器人工确认 `review-loop` 下载端点会下载 `tmpl-review-loop-v1.json`。这补齐了当前 shell 环境无法 `curl` workers.dev 的端到端验证缺口。
 
-市场页面现在已经有卡片级安装和下载入口：每张模板卡片底部显示 `Install` 和 `JSON`，详情页显示 `Install in VSCode` 和 `Download JSON`。`Install` 会打开 `vscode://devsessioncanvas.dev-session-canvas/install-template?...`，扩展端 URI handler 会从同源 Worker API 下载模板、校验 sha256 并写入本地用户模板目录；`JSON` 仍保留浏览器直接下载文件的匿名路径。
+市场页面现在已经有卡片级安装和下载入口：每张模板卡片底部显示 `Install` 和 `JSON`，详情页显示 `Install in VSCode` 和 `Download JSON`。`Install` 会打开 `vscode://devsessioncanvas.dev-session-canvas/install-template?...`，扩展端 URI handler 会先打开 VSCode 插件内详情页并预选对应版本；只有用户在该详情页点击安装后，Webview 才下载模板 JSON 并交给 Extension Host 写入本地模板目录。`JSON` 仍保留浏览器直接下载文件的匿名路径。
 
 用户已在浏览器人工确认 preview 根路径可正常渲染 3 张模板卡片，且卡片级 `Download` 按钮可见。
 
@@ -293,9 +303,9 @@ Web 端现在支持基础标签筛选：列表结果上方展示 tag chips，选
 
 浏览器端和插件内 Webview 现在都能展示真实缩略图：卡片和详情页会请求 `GET /api/v1/templates/:slug/thumbnail?version=:versionId`，Worker 在 preview 环境从 R2 返回 PNG 并设置公开缓存头；本地无 R2 binding 时返回显式 seed SVG，前端图片加载失败时继续显示原有渐变占位，避免缩略图对象缺失导致卡片空白。用户已确认预览环境能看到 3 张模板卡片和卡片预览图。
 
-VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，`TemplateMarketplaceClient` 只接受可信市场来源，优先校验浏览器内联的小模板 payload；没有 payload 时再由扩展宿主请求 Worker API，下载文件后校验 D1 详情中的 sha256，并通过 `CanvasTemplateStore` 写入所选目标模板目录的 `marketplace/` 子目录与相邻 `*.market.json` sidecar。插件内市场面板允许在每张模板卡片上分别选择“本地（当前设备）”或当前 workspace 模板目录作为安装目标；未选择时默认沿用本地安装，保持此前行为。workspace 选项文案显示为 `当前workspace · <title>`，避免出现双重前缀。侧栏模板列表会把带 sidecar 的模板显示为“市场 · 本地”或“市场 · 工作区”，并继续使用 cloud download 图标。插件内市场面板打开和安装完成后，会从本地 catalog 读取 sidecar 并回传所选目标下的已安装市场版本，让 Webview 卡片显示“已安装到 本地 · 当前设备 · vN”或“已安装到 当前workspace · <title> · vN”；安装入口现在复用 VSCode 插件市场式 split button，主按钮安装/更新最新版本，右侧版本下拉读取详情 API 后允许安装 v1/v2 等指定版本。安装指定版本仍覆盖同一位置下的既有副本并更新 sidecar，不创建重复模板。插件内市场卡片的 `下载 JSON` 入口也采用 split button，主按钮打开最新版本匿名下载端点，右侧版本下拉可下载 v1/v2 等指定版本但不写入本地模板库。模板市场不提供应用入口；安装成功消息会提示用户到模板侧栏应用到 Canvas，已安装模板继续从侧栏模板列表应用。当前已完成本地单元/类型/构建验证、浏览器深链生成验证，以及插件内 Webview 匿名浏览/安装的真实 VSCode Development Host smoke；侧栏离线应用、更新提醒和完整回滚 smoke 仍需后续覆盖。
+VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，外部 `vscode://.../install-template` 现在打开插件内模板详情页并预选版本；插件内详情页通过 Webview fetch 下载模板 JSON，再用 message bridge 把受控 inline payload 交给 `TemplateMarketplaceClient` 校验和落盘。安装会通过 `CanvasTemplateStore` 写入所选目标模板目录的 `marketplace/` 子目录与相邻 `*.market.json` sidecar。插件内列表页保留搜索、排序、标题附近的“查看详情”、安装位置预选、“查看并安装 / 查看更新 / 已安装”详情快捷入口和下载入口；这些列表快捷动作以详情页作为执行上下文，安装位置作为详情页默认安装目标，列表下载主按钮和版本菜单也会先进入详情页并预选下载版本。实际安装 split button、下载 split button、版本历史和 sha256 位于详情页右侧。workspace 选项文案显示为 `当前workspace · <title>`，避免出现双重前缀。侧栏模板列表用 `来源 · 位置` 标签区分 `插件内置 · 扩展内`、`用户保存/导入 · 本地/工作区`、`市场下载 · 本地/工作区`，并继续用 cloud download 图标标识市场来源。市场模板首次安装到某个位置时生成本地唯一 id，安装指定版本仍覆盖同一位置下的既有副本并保留该 id / 更新 sidecar，不创建重复模板。模板市场不提供应用入口；安装成功消息会提示用户到模板侧栏应用到 Canvas，已安装模板继续从侧栏模板列表应用。当前已完成本地单元/类型/构建验证、浏览器深链生成验证、插件内 Webview 匿名浏览/安装的真实 VSCode Development Host smoke，以及本轮详情确认流的源码级回归；侧栏离线应用、更新提醒和完整回滚 smoke 仍需后续覆盖。
 
-插件内独立 Webview Editor 市场页也已经有基础实现：命令面板和模板侧栏标题栏都可以触发 `devSessionCanvas.openTemplateMarketplace`，打开 `src/panel/CanvasTemplateMarketplacePanel.ts` 生成的本地 Webview。当前 Webview 读取 preview Worker API 并通过 payload 安装模板，不加载远程脚本，也不 iframe 远程站点；Worker `/api/v1/*` 已允许匿名 GET / OPTIONS CORS，解决 Webview 从 `vscode-webview://...` origin 访问公开 API 的浏览器安全限制。用户已在真实 VSCode Extension Development Host 中人工确认 Webview 可加载 3 个模板并通过“安装到 VSCode”完成安装；后续代码补充了已安装状态回显、卡片级安装目标选择、安装成功侧栏引导、Webview 状态持久化和网络错误 fallback，减少重复安装误操作，并保持市场只负责发现与安装。但 UI 仍是基础 HTML shell，后续应收敛到共享 React Webview bundle。
+插件内独立 Webview Editor 市场页也已经有基础实现：命令面板和模板侧栏标题栏都可以触发 `devSessionCanvas.openTemplateMarketplace`，打开 `src/panel/CanvasTemplateMarketplacePanel.ts` 生成的本地 Webview。当前 Webview 读取 preview Worker API，不加载远程脚本，也不 iframe 远程站点；Worker `/api/v1/*` 已允许匿名 GET / OPTIONS CORS，解决 Webview 从 `vscode-webview://...` origin 访问公开 API 的浏览器安全限制。用户已在真实 VSCode Extension Development Host 中人工确认 Webview 可加载 3 个模板并完成安装；后续代码补充了已安装状态回显、详情页安装目标选择、安装成功侧栏引导、Webview 状态持久化、网络错误 fallback 和外部 URI 进入详情页，减少重复安装误操作，并保持市场只负责发现与安装。但 UI 仍是基础 HTML shell，后续应收敛到共享 React Webview bundle。
 
 仍未完成的能力是真实 GitHub OAuth、共享 React Webview bundle、完整 VSCode 宿主 smoke（离线应用、更新提醒、回滚等）、发布/点赞/举报写接口、缩略图上传与自动生成发布路径、治理后台、下载去重/防刷和生产环境资源分离；这些是后续里程碑，不是本轮临时绕过造成的技术债。本轮没有向 `docs/exec-plans/tech-debt-tracker.md` 新增技术债。设计文档状态保持为 `validation_status: 验证中`，因为 Phase 1 浏览与安装已在 preview 环境验证通过，但完整 Phase 1-4 尚未验证完成。
 
@@ -530,3 +540,5 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
 - 2026-05-10 18:17 +0800 / Codex：刷新 preview v2 后的完整本地验证结果，原因是共享 seed、Worker API、Web fallback、扩展端安装策略和构建均受本轮数据变更影响。
 - 2026-05-10 18:33 +0800 / Codex：补充缩略图读取路径、R2 PNG fixture 和 Web/Webview 展示方式，原因是 Phase 1 卡片展示需要真实缩略图而不是长期依赖渐变占位。
 - 2026-05-10 18:35 +0800 / Codex：刷新缩略图接入后的 R2 远端校验、完整本地验证和 workers.dev 部署结果，原因是 Worker API、浏览器 bundle、插件 Webview 与 preview R2 对象清单均受本轮变更影响。
+- 2026-05-12 08:24 +0800 / Codex：补充外部安装链接与插件内列表的详情确认流、验证命令和最新 preview 版本 ID，原因是用户明确要求先在 VSCode 内打开详情页再点击安装。
+- 2026-05-12 18:29 +0800 / Codex：补充插件内列表级安装位置预选与详情确认入口的正式文档口径，原因是 review 指出代码与“安装位置只在详情页”旧验收文案冲突。

@@ -25,6 +25,24 @@ describe('D1TemplateRepository', () => {
     expect(response?.template.providerWarnings).toEqual(['Requires GitHub provider']);
   });
 
+  it('falls back to the latest published version when the latest pointer is rejected', async () => {
+    const repository = new D1TemplateRepository(createFallbackAwareD1Database());
+
+    const listResponse = await repository.listTemplates({ q: 'review', tags: ['d1'] });
+    expect(listResponse.items).toHaveLength(1);
+    expect(listResponse.items[0]?.latestVersion.versionNumber).toBe(1);
+
+    const detailResponse = await repository.getTemplateDetail('d1-review-loop');
+    expect(detailResponse?.template.latestVersion.versionNumber).toBe(1);
+    expect(detailResponse?.template.versions.map((version) => version.versionNumber)).toEqual([1]);
+
+    const defaultDownloadResponse = await repository.buildDownloadResponse('d1-review-loop');
+    expect(defaultDownloadResponse?.versionNumber).toBe(1);
+
+    const rejectedVersionResponse = await repository.buildDownloadResponse('d1-review-loop', 'ver-d1-review-2');
+    expect(rejectedVersionResponse).toBeUndefined();
+  });
+
   it('builds D1 download metadata for a requested version', async () => {
     const repository = new D1TemplateRepository(createFakeD1Database());
 
@@ -48,3 +66,96 @@ describe('D1TemplateRepository', () => {
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', '2026-05-10']);
   });
 });
+
+function createFallbackAwareD1Database(): D1Database {
+  const publishedVersionRow = {
+    id: 'ver-d1-review-1',
+    template_id: 'tmpl-d1-review',
+    version_number: 1,
+    changelog: 'Initial D1 version.',
+    object_key: 'templates/tmpl-d1-review/versions/1/template.json',
+    thumbnail_key: 'templates/tmpl-d1-review/versions/1/thumbnail.png',
+    sha256: 'd1-review-sha-v1',
+    size_bytes: 1000,
+    schema_version: 1,
+    status: 'published',
+    created_at: '2026-05-10T01:00:00.000Z'
+  } as const;
+
+  const rejectedLatestTemplateRow = {
+    template_id: 'tmpl-d1-review',
+    slug: 'd1-review-loop',
+    name: 'D1 Review Loop',
+    description: 'Review template loaded from D1 metadata.',
+    readme: 'D1 detail readme.',
+    template_status: 'published',
+    download_count: 44,
+    like_count: 9,
+    provider_warnings_json: '["Requires GitHub provider"]',
+    template_created_at: '2026-05-10T01:00:00.000Z',
+    template_updated_at: '2026-05-10T02:00:00.000Z',
+    publisher_id: 'user-admin',
+    publisher_github_login: 'dscanvas-admin',
+    publisher_display_name: 'DS Canvas Admin',
+    publisher_avatar_url: 'https://example.test/avatar.png',
+    version_id: 'ver-d1-review-2',
+    version_number: 2,
+    changelog: 'Second D1 version.',
+    object_key: 'templates/tmpl-d1-review/versions/2/template.json',
+    thumbnail_key: 'templates/tmpl-d1-review/versions/2/thumbnail.png',
+    sha256: 'd1-review-sha',
+    size_bytes: 1234,
+    schema_version: 1,
+    version_status: 'rejected',
+    version_created_at: '2026-05-10T02:00:00.000Z',
+    tags: 'review,d1'
+  } as const;
+
+  const fallbackTemplateRow = {
+    ...rejectedLatestTemplateRow,
+    version_id: publishedVersionRow.id,
+    version_number: publishedVersionRow.version_number,
+    changelog: publishedVersionRow.changelog,
+    object_key: publishedVersionRow.object_key,
+    thumbnail_key: publishedVersionRow.thumbnail_key,
+    sha256: publishedVersionRow.sha256,
+    size_bytes: publishedVersionRow.size_bytes,
+    version_status: publishedVersionRow.status,
+    version_created_at: publishedVersionRow.created_at
+  } as const;
+
+  return {
+    prepare(sql: string) {
+      let boundValues: unknown[] = [];
+      return {
+        bind(...values: unknown[]) {
+          boundValues = values;
+          return this;
+        },
+        async all() {
+          if (sql.includes("template_id = ?1 AND status = 'published'")) {
+            return { results: [publishedVersionRow], success: true, meta: {} };
+          }
+          if (sql.includes('latest_published_version')) {
+            return { results: [fallbackTemplateRow], success: true, meta: {} };
+          }
+          return { results: [rejectedLatestTemplateRow], success: true, meta: {} };
+        },
+        async first() {
+          if (sql.includes('latest_published_version')) {
+            return fallbackTemplateRow;
+          }
+          return rejectedLatestTemplateRow;
+        },
+        async run() {
+          return { results: [], success: true, meta: {} };
+        },
+        raw: async () => [],
+        firstWithMetadata: async () => ({ results: null, meta: {} })
+      };
+    },
+    dump: async () => new ArrayBuffer(0),
+    batch: async () => [],
+    exec: async () => ({ count: 0, duration: 0 })
+  } as unknown as D1Database;
+}

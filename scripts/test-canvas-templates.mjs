@@ -486,7 +486,7 @@ try {
   assert.ok(packageManifest.activationEvents.includes('onCommand:devSessionCanvas.openTemplateMarketplace'));
   assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.openTemplateMarketplace'));
   assert.match(extensionSource, /new TemplateMarketplaceClient\(panelManager\)/u);
-  assert.match(extensionSource, /new CanvasTemplateMarketplacePanelController\(templateMarketplaceClient\)/u);
+  assert.match(extensionSource, /new CanvasTemplateMarketplacePanelController\(\s*templateMarketplaceClient,\s*context\.extensionUri\s*\)/u);
   assert.match(extensionSource, /registerCommand\(context, COMMAND_IDS\.openTemplateMarketplace/u);
   assert.match(extensionSource, /vscode\.window\.registerUriHandler/u);
   const exportCommandSource = sliceBetween(
@@ -689,10 +689,14 @@ try {
   assert.doesNotMatch(sidebarTemplateViewSource, /hintNote|hint-note|canSaveCurrentCanvas/u);
   assert.match(sidebarTemplateViewSource, /sourceKind: resolveCanvasSidebarTemplateSourceKind\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
-  assert.match(sidebarTemplateViewSource, /市场 · 工作区/u);
-  assert.match(sidebarTemplateViewSource, /市场 · 本地/u);
+  assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplateSourceLabel/u);
+  assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplatePositionLabel/u);
+  assert.match(sidebarTemplateViewSource, /插件内置/u);
+  assert.match(sidebarTemplateViewSource, /用户保存\/导入/u);
+  assert.match(sidebarTemplateViewSource, /市场下载/u);
+  assert.match(sidebarTemplateViewSource, /扩展内/u);
+  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '本地'/u);
   assert.match(sidebarTemplateViewSource, /codicon-cloud-download/u);
-  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '用户'/u);
   assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /textContent = item\.category === 'builtin' \? '内置' : '用户';/u);
   assert.match(sidebarTemplateViewSource, /title\.textContent = item\.isDefault \? '\(默认\) ' \+ item\.name : item\.name;/u);
@@ -726,6 +730,7 @@ try {
   assert.match(panelManagerSource, /overwriteFilePath\?: string/u);
   assert.match(panelManagerSource, /preserveTemplateId\?: string/u);
   assert.match(panelManagerSource, /preserveCreatedAt\?: string/u);
+  assert.match(panelManagerSource, /template\.id = options\?\.preserveTemplateId \?\? `market-template-\$\{randomUUID\(\)\}`;/u);
   assert.match(panelManagerSource, /filePath: options\?\.overwriteFilePath/u);
   assert.match(marketplaceClientSource, /listInstalledTemplates/u);
   assert.match(marketplaceClientSource, /listInstallTargets/u);
@@ -739,12 +744,29 @@ try {
   assert.match(marketplaceClientSource, /resolveMarketplaceInstallOperation/u);
   assert.match(marketplaceClientSource, /getCanvasTemplateCatalog/u);
   assert.match(marketplaceClientSource, /marketTemplateSlug/u);
-  assert.match(extensionSource, /result\.operation === 'updated'/u);
-  assert.match(extensionSource, /result\.operation === 'reinstalled'/u);
+  assert.match(extensionSource, /templateMarketplacePanel\.openTemplateDetailFromUri\(uri\)/u);
+  assert.match(extensionSource, /打开市场模板详情失败/u);
+  assert.doesNotMatch(extensionSource, /installTemplateFromUri\(uri\)/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplates/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplatesError/u);
+  assert.match(marketplacePanelSource, /marketplace\/openTemplateDetail/u);
   assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
+  assert.match(marketplacePanelSource, /查看详情/u);
+  assert.match(marketplacePanelSource, /detail-view/u);
+  assert.match(marketplacePanelSource, /getVersionedWebviewResourceUri/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_BUNDLED_CODICON_PATH_SEGMENTS/u);
+  assert.match(marketplacePanelSource, /font-src \$\{webview\.cspSource\}/u);
+  assert.match(marketplacePanelSource, /<link rel="stylesheet" href="\$\{codiconCssUri\}" \/>/u);
+  assert.match(marketplacePanelSource, /codicon-chevron-down/u);
+  assert.match(marketplacePanelSource, /createDropdownChevronIcon/u);
+  assert.doesNotMatch(marketplacePanelSource, /textContent = '▼'/u);
+  assert.match(marketplacePanelSource, /\[hidden\]\s*\{\s*display: none !important;/u);
+  assert.match(marketplacePanelSource, /grid-template-columns: 112px minmax\(0, 1fr\) minmax\(224px, 284px\);/u);
+  assert.match(marketplacePanelSource, /\.detail-controls[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/u);
+  assert.match(marketplacePanelSource, /\.detail-controls \.install-target-row[\s\S]*grid-column: 1 \/ -1;/u);
   assert.match(marketplacePanelSource, /createInstallTargetSelect/u);
+  assert.match(marketplacePanelSource, /createInstallTargetSelectRow/u);
+  assert.match(marketplacePanelSource, /createOpenDetailInstallButton/u);
   assert.match(marketplacePanelSource, /installTargetIdsByTemplateSlug/u);
   assert.match(marketplacePanelSource, /formatInstallTargetLabel/u);
   assert.match(marketplacePanelSource, /targetStorageLocationId: targetId/u);
@@ -760,6 +782,7 @@ try {
   assert.match(marketplacePanelSource, /installTemplateVersion\(template, version\)/u);
   assert.match(marketplacePanelSource, /下载 v/u);
   assert.match(marketplacePanelSource, /下载 JSON/u);
+  assert.match(marketplacePanelSource, /downloadTemplateVersion/u);
   assert.match(marketplacePanelSource, /buildTemplateDownloadUrl/u);
   assert.match(marketplacePanelSource, /buildTemplateThumbnailUrl/u);
   assert.doesNotMatch(marketplacePanelSource, /Button\.textContent = ['"][^'"]*应用到 Canvas/u);
@@ -780,6 +803,39 @@ try {
   assert.match(marketplacePanelSource, /connect-src \$\{MARKETPLACE_PREVIEW_ORIGIN\}/u);
   assert.match(marketplacePanelSource, /installTemplateFromInlinePayload/u);
   assert.doesNotMatch(marketplacePanelSource, /<iframe/u);
+
+  const marketplaceCardSource = sliceBetween(
+    marketplacePanelSource,
+    'function renderTemplateCard(template) {',
+    'function createOpenDetailInstallButton(template, installedTemplate) {'
+  );
+  assert.match(marketplaceCardSource, /createOpenDetailInstallButton\(template, installedTemplate\)/u);
+  assert.match(marketplaceCardSource, /createDownloadSplitButton\(template, undefined, \{\s*openDetailFirst: true\s*\}\)/u);
+  assert.match(marketplaceCardSource, /article\.append\(installTargetRow\);/u);
+  assert.doesNotMatch(marketplaceCardSource, /createInstallSplitButton/u);
+
+  const marketplaceListInstallButtonSource = sliceBetween(
+    marketplacePanelSource,
+    'function createOpenDetailInstallButton(template, installedTemplate) {',
+    'function createInstallSplitButton(template, installedTemplate, preferredVersionId) {'
+  );
+  assert.match(marketplaceListInstallButtonSource, /已安装 v/u);
+  assert.match(marketplaceListInstallButtonSource, /打开已安装模板详情/u);
+
+  const marketplaceDownloadButtonSource = sliceBetween(
+    marketplacePanelSource,
+    'function downloadTemplateVersion(template, version, options) {',
+    'function renderVersionMenu(template, action, options) {'
+  );
+  assert.match(marketplaceDownloadButtonSource, /openTemplateDetail\(template\.slug, targetVersion\.id\)/u);
+  assert.match(marketplaceDownloadButtonSource, /window\.open\(buildTemplateDownloadUrl\(template, targetVersion\), '_blank', 'noopener'\)/u);
+
+  const marketplaceDetailControlsSource = sliceBetween(
+    marketplacePanelSource,
+    "const controls = document.createElement('div');",
+    "const metrics = document.createElement('dl');"
+  );
+  assert.match(marketplaceDetailControlsSource, /controls\.append\(installButtonGroup, downloadButtonGroup, installTargetRow\);/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

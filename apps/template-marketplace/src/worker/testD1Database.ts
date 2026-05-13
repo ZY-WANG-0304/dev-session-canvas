@@ -73,7 +73,7 @@ export function createFakeD1Database(runLog: FakeD1Run[] = []): D1Database {
           return this;
         },
         async all() {
-          if (sql.includes('FROM template_versions')) {
+          if (sql.includes("template_id = ?1 AND status = 'published'")) {
             return { results: versionRows.slice(), success: true, meta: {} };
           }
           return { results: templateRows.slice(), success: true, meta: {} };

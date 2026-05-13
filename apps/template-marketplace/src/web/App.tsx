@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  MARKETPLACE_QUERY_MAX_LENGTH,
   MARKETPLACE_SORT_VALUES,
   type MarketplaceSort,
   type MarketplaceTemplateDetail,
@@ -153,8 +154,9 @@ export function App(): JSX.Element {
                   id="templateSearch"
                   className="h-14 min-w-0 flex-1 border border-canvas-line bg-canvas-paper px-5 text-xl text-canvas-ink outline-none ring-canvas-accent/25 transition placeholder:text-canvas-muted focus:ring-4"
                   placeholder="Search DevSessionCanvas templates"
+                  maxLength={MARKETPLACE_QUERY_MAX_LENGTH}
                   value={query}
-                  onChange={(event) => setQuery(event.currentTarget.value)}
+                  onChange={(event) => setQuery(event.currentTarget.value.slice(0, MARKETPLACE_QUERY_MAX_LENGTH))}
                 />
                 <button
                   className="grid h-14 w-16 place-items-center bg-canvas-accent text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"

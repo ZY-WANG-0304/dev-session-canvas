@@ -1021,9 +1021,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     const template = cloneCanvasTemplate(parsedDocument.document.template);
     template.category = 'user';
-    if (options?.preserveTemplateId) {
-      template.id = options.preserveTemplateId;
-    }
+    template.id = options?.preserveTemplateId ?? `market-template-${randomUUID()}`;
     if (options?.preserveCreatedAt) {
       template.createdAt = options.preserveCreatedAt;
     }

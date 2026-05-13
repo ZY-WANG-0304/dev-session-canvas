@@ -50,7 +50,7 @@
 ### 文档分流
 
 - 如果改变长期产品判断、视觉原则或体验取舍标准，更新 `docs/PRODUCT_SENSE.md`。
-- 如果改变颜色、字体、形状、组件语言或跨功能 UI 规则，更新 `docs/UI.md`。
+- 如果改变跨功能 UI 规则，更新 `docs/UI.md`；如果改变某个功能自己的 palette、页面结构或组件语言，更新对应功能 UI 文档，例如模板市场更新 `docs/marketplace/UI.md`。
 - 如果改变某个功能的目标、非目标、候选方案、风险或正式方案，更新 `docs/design-docs/` 对应文档和索引。
 - 如果改变用户需求范围或验收口径，更新 `docs/product-specs/`。
 - 涉及 UI / 交互实现时优先补 Playwright Webview 回归；涉及宿主行为时补 VSCode smoke；无法自动化时写明手动验证路径。
