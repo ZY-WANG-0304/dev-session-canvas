@@ -30,6 +30,8 @@ import {
   sanitizeCanvasTemplateFileStem
 } from './common/canvasTemplates';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import { CanvasTemplateMarketplacePanelController } from './panel/CanvasTemplateMarketplacePanel';
+import { TemplateMarketplaceClient } from './panel/TemplateMarketplaceClient';
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
@@ -125,6 +127,12 @@ function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTa
 
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
+  const templateMarketplaceClient = new TemplateMarketplaceClient(panelManager);
+  const templateMarketplacePanel = new CanvasTemplateMarketplacePanelController(
+    templateMarketplaceClient,
+    context.extensionUri,
+    context.extensionMode
+  );
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
@@ -150,6 +158,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sidebarTemplateView,
     sidebarNodeListView,
     sidebarSessionHistoryView,
+    templateMarketplacePanel,
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
     vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
       webviewOptions: {
@@ -173,6 +182,18 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      async handleUri(uri) {
+        try {
+          templateMarketplacePanel.openTemplateDetailFromUri(uri);
+        } catch (error) {
+          await showCanvasTemplateError('打开市场模板详情失败', error);
+        }
+      }
+    })
+  );
+
   registerCommand(context, COMMAND_IDS.openCanvas, async () => {
     await panelManager.revealOrCreate();
   });
@@ -183,6 +204,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.openCanvasInPanel, async () => {
     await panelManager.revealInPanel();
+  });
+
+  registerCommand(context, COMMAND_IDS.openTemplateMarketplace, async () => {
+    templateMarketplacePanel.reveal();
   });
 
   registerCommand(context, COMMAND_IDS.openSettings, async () => {

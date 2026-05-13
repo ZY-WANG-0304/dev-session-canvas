@@ -17,6 +17,7 @@ export interface CanvasSidebarTemplateItemSnapshot {
   templateId: string;
   name: string;
   category: CanvasTemplate['category'];
+  sourceKind: 'builtin' | 'user' | 'market';
   locationLabel: string;
   statsLabel: string;
   detailTooltip: string;
@@ -191,6 +192,7 @@ export function getCanvasSidebarTemplateItems(
     templateId: storedTemplate.template.id,
     name: storedTemplate.template.name,
     category: storedTemplate.template.category,
+    sourceKind: resolveCanvasSidebarTemplateSourceKind(storedTemplate),
     locationLabel: resolveCanvasSidebarTemplateLocationLabel(storedTemplate),
     statsLabel: formatCanvasTemplateStats(storedTemplate.template),
     detailTooltip: buildCanvasTemplateTooltip(storedTemplate),
@@ -201,27 +203,53 @@ export function getCanvasSidebarTemplateItems(
 
 function resolveCanvasSidebarTemplateLocationLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
+    return resolveCanvasSidebarTemplateSourceLabel(storedTemplate);
+  }
+  return `${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)} · ${resolveCanvasSidebarTemplatePositionLabel(storedTemplate)}`;
+}
+
+function resolveCanvasSidebarTemplateSourceLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  if (storedTemplate.template.category === 'builtin') {
     return '内置';
   }
+  if (storedTemplate.marketplace) {
+    return '市场';
+  }
+  return '自建';
+}
 
-  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '用户';
+function resolveCanvasSidebarTemplatePositionLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  if (storedTemplate.template.category === 'builtin') {
+    return '';
+  }
+  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '本地';
+}
+
+function resolveCanvasSidebarTemplateSourceKind(storedTemplate: CanvasTemplateCatalog['templates'][number]): 'builtin' | 'user' | 'market' {
+  if (storedTemplate.template.category === 'builtin') {
+    return 'builtin';
+  }
+  return storedTemplate.marketplace ? 'market' : 'user';
 }
 
 function buildCanvasTemplateTooltip(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   const detailLines = buildCanvasTemplateNodeDetailLines(storedTemplate.template);
   const locationLine = buildCanvasTemplateLocationTooltipLine(storedTemplate);
-  return [...detailLines, '', locationLine].join('\n');
+  const marketLine = storedTemplate.marketplace
+    ? `市场来源：${storedTemplate.marketplace.marketTemplateSlug ?? storedTemplate.marketplace.marketTemplateId} / v${storedTemplate.marketplace.installedVersionNumber}`
+    : undefined;
+  return [...detailLines, '', locationLine, marketLine].filter(Boolean).join('\n');
 }
 
 function buildCanvasTemplateLocationTooltipLine(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
     const builtinLayer = storedTemplate.relativeDirectory || '根目录';
-    return `模板所在层级：内置模板 / ${builtinLayer}`;
+    return `模板来源：内置；模板所在层级：${builtinLayer}`;
   }
 
   const locationLabel = storedTemplate.storageLocation?.label ?? '用户模板';
   const relativeDirectory = storedTemplate.relativeDirectory || '根目录';
-  return `模板所在层级：${locationLabel} / ${relativeDirectory}`;
+  return `模板来源：${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)}；保存位置：${locationLabel} / ${relativeDirectory}`;
 }
 
 function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMessage | null {
@@ -596,7 +624,9 @@ function buildSidebarTemplateHtml(
         titleLine.className = 'template-title-line';
 
         const icon = document.createElement('span');
-        icon.className = 'template-icon codicon ' + (item.category === 'builtin' ? 'codicon-library' : 'codicon-file-code');
+        const iconName =
+          item.sourceKind === 'builtin' ? 'codicon-library' : item.sourceKind === 'market' ? 'codicon-cloud-download' : 'codicon-file-code';
+        icon.className = 'template-icon codicon ' + iconName;
         icon.setAttribute('aria-hidden', 'true');
 
         const title = document.createElement('div');
@@ -708,7 +738,7 @@ function buildSidebarTemplateHtml(
         renderStatusNote(currentState.issueMessages);
 
         if (currentState.isLoading) {
-          emptyState.textContent = '正在加载模板列表...';
+          emptyState.textContent = '正在加载...';
           emptyState.classList.add('is-visible');
           return;
         }
@@ -720,7 +750,7 @@ function buildSidebarTemplateHtml(
         }
 
         if (items.length === 0) {
-          emptyState.textContent = '当前还没有可显示的模板。';
+          emptyState.textContent = '暂无模板。可从市场安装或手动保存画布为模板。';
           emptyState.classList.add('is-visible');
           return;
         }

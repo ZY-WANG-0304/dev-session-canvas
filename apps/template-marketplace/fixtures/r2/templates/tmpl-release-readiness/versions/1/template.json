@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "template": {
+    "id": "market-release-readiness",
+    "name": "Release Readiness",
+    "category": "user",
+    "createdAt": "2026-05-08T00:00:00.000Z",
+    "updatedAt": "2026-05-08T00:00:00.000Z",
+    "nodes": [
+      {
+        "kind": "note",
+        "title": "Release checklist",
+        "position": { "x": 0, "y": 0 },
+        "size": { "width": 560, "height": 360 },
+        "metadata": {
+          "note": {
+            "content": "- Confirm version and changelog\n- Build the package\n- Run smoke validation\n- Record rollback notes\n- Prepare final handoff"
+          }
+        }
+      },
+      {
+        "kind": "terminal",
+        "title": "Packaging commands",
+        "position": { "x": 660, "y": 0 },
+        "size": { "width": 560, "height": 360 }
+      },
+      {
+        "kind": "agent",
+        "title": "Smoke validation agent",
+        "position": { "x": 0, "y": 450 },
+        "size": { "width": 560, "height": 410 },
+        "metadata": {
+          "agent": {
+            "provider": "default"
+          }
+        }
+      },
+      {
+        "kind": "note",
+        "title": "Handoff notes",
+        "position": { "x": 660, "y": 450 },
+        "size": { "width": 560, "height": 410 },
+        "metadata": {
+          "note": {
+            "content": "Write the deployed version, validation evidence, known risks, and follow-up owner here."
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "sourceNodeIndex": 0,
+        "targetNodeIndex": 1,
+        "sourceAnchor": "right",
+        "targetAnchor": "left",
+        "arrowMode": "forward",
+        "label": "package"
+      },
+      {
+        "sourceNodeIndex": 1,
+        "targetNodeIndex": 2,
+        "sourceAnchor": "bottom",
+        "targetAnchor": "top",
+        "arrowMode": "forward",
+        "label": "smoke"
+      },
+      {
+        "sourceNodeIndex": 2,
+        "targetNodeIndex": 3,
+        "sourceAnchor": "right",
+        "targetAnchor": "left",
+        "arrowMode": "forward",
+        "label": "handoff"
+      }
+    ]
+  }
+}

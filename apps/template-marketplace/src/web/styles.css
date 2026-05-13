@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --market-ink: 26 26 26;
+  --market-muted: 104 104 104;
+  --market-mist: 248 248 248;
+  --market-paper: 255 255 255;
+  --market-line: 222 222 222;
+  --market-accent: 72 120 240;
+  --market-accent-text: 255 255 255;
+  --market-nav: 0 0 0;
+  --market-nav-text: 255 255 255;
+  --market-sand: 242 242 242;
+  --market-moss: 72 176 160;
+  --market-ember: 72 176 160;
+  --market-thumbnail-foreground: 26 26 26;
+  --market-thumbnail-muted: 104 104 104;
+  --market-shadow-card: 0 2px 8px rgb(0 0 0 / 0.16);
+  --market-shadow-search: 0 2px 8px rgb(0 0 0 / 0.24);
+  color-scheme: light;
+  background: rgb(var(--market-mist));
+}
+
+:root[data-market-theme='light-2026'] {
+  --market-ink: 26 26 26;
+  --market-muted: 104 104 104;
+  --market-mist: 248 248 248;
+  --market-paper: 255 255 255;
+  --market-line: 222 222 222;
+  --market-accent: 72 120 240;
+  --market-accent-text: 255 255 255;
+  --market-nav: 0 0 0;
+  --market-nav-text: 255 255 255;
+  --market-sand: 242 242 242;
+  --market-moss: 72 176 160;
+  --market-ember: 72 176 160;
+  --market-thumbnail-foreground: 26 26 26;
+  --market-thumbnail-muted: 104 104 104;
+  --market-shadow-card: 0 2px 8px rgb(0 0 0 / 0.16);
+  --market-shadow-search: 0 2px 8px rgb(0 0 0 / 0.24);
+  color-scheme: light;
+}
+
+:root[data-market-theme='dark-2026'] {
+  --market-ink: 230 230 230;
+  --market-muted: 174 174 174;
+  --market-mist: 30 30 30;
+  --market-paper: 37 37 38;
+  --market-line: 63 63 70;
+  --market-accent: 72 120 240;
+  --market-accent-text: 255 255 255;
+  --market-nav: 0 0 0;
+  --market-nav-text: 255 255 255;
+  --market-sand: 45 45 48;
+  --market-moss: 86 194 178;
+  --market-ember: 72 176 160;
+  --market-thumbnail-foreground: 230 230 230;
+  --market-thumbnail-muted: 174 174 174;
+  --market-shadow-card: 0 2px 10px rgb(0 0 0 / 0.34);
+  --market-shadow-search: 0 2px 10px rgb(0 0 0 / 0.46);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-market-theme]) {
+    --market-ink: 230 230 230;
+    --market-muted: 174 174 174;
+    --market-mist: 30 30 30;
+    --market-paper: 37 37 38;
+    --market-line: 63 63 70;
+    --market-accent: 72 120 240;
+    --market-accent-text: 255 255 255;
+    --market-nav: 0 0 0;
+    --market-nav-text: 255 255 255;
+    --market-sand: 45 45 48;
+    --market-moss: 86 194 178;
+    --market-ember: 72 176 160;
+    --market-thumbnail-foreground: 230 230 230;
+    --market-thumbnail-muted: 174 174 174;
+    --market-shadow-card: 0 2px 10px rgb(0 0 0 / 0.34);
+    --market-shadow-search: 0 2px 10px rgb(0 0 0 / 0.46);
+    color-scheme: dark;
+  }
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  font-family: Segoe UI, Aptos, sans-serif;
+  background: rgb(var(--market-mist));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.market-thumbnail {
+  background: rgb(var(--market-sand));
+  color: rgb(var(--market-thumbnail-foreground));
+}
+
+.market-thumbnail-caption {
+  color: rgb(var(--market-thumbnail-muted));
+}
