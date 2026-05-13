@@ -5,6 +5,7 @@ import type {
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
+import type { NoteContentSource } from './noteMarkdownFileAssociation';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
@@ -192,6 +193,7 @@ export interface TerminalNodeMetadata extends ExecutionSessionMetadata {
 
 export interface NoteNodeMetadata {
   content: string;
+  contentSource?: NoteContentSource;
 }
 
 export interface CanvasFileIconFontFace {
@@ -644,6 +646,25 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
         content: string;
+      };
+    }
+  | {
+      type: 'webview/saveNoteAsMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/openAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/dropNoteMarkdownFiles';
+      payload: {
+        resources: ExecutionTerminalDroppedResource[];
+        position: CanvasNodePosition;
       };
     }
   | {
@@ -1222,6 +1243,62 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       payload: {
         nodeId: payload.nodeId,
         content: payload.content
+      }
+    };
+  }
+
+  if (value.type === 'webview/saveNoteAsMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/saveNoteAsMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/openAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/openAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/dropNoteMarkdownFiles') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const position = payload && isRecord(payload.position) ? payload.position : null;
+    if (
+      !payload ||
+      !Array.isArray(payload.resources) ||
+      !payload.resources.every((resource) => isExecutionTerminalDroppedResource(resource)) ||
+      !position ||
+      typeof position.x !== 'number' ||
+      typeof position.y !== 'number' ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/dropNoteMarkdownFiles',
+      payload: {
+        resources: payload.resources,
+        position: {
+          x: Math.round(position.x),
+          y: Math.round(position.y)
+        }
       }
     };
   }
