@@ -104,7 +104,26 @@
 - [x] (2026-05-12 18:29 +0800) 按最新 review 选择保留插件内列表级安装位置预选和详情快捷入口，并同步更新 `docs/marketplace/UI.md`、`docs/design-docs/template-marketplace.md` 与 `docs/product-specs/template-marketplace.md`：安装 / 更新 / 已安装 / 下载 JSON 等列表快捷动作统一表述为打开模板详情页并执行对应动作，安装位置作为详情页默认目标。
 - [x] (2026-05-12 19:41 +0800) 按用户反馈将模板市场详细 UI 从通用 `docs/UI.md` 拆到 `docs/marketplace/UI.md`，并把安装 / 下载 JSON 等列表快捷动作改为正向表述：打开模板详情页并执行对应动作；`docs/UI.md` 只保留跨功能 VSCode design-system 基线，产品规格索引同步指向市场专属 UI 文档。
 - [x] (2026-05-12 21:40 +0800) 按最新 review 收口插件内列表下载动作：列表行 `下载 JSON` 主按钮和版本菜单现在先打开模板详情页并预选对应版本，再执行下载；详情页内下载 split button 仍在当前详情上下文直接下载，源码断言同步覆盖该边界；运行 `git diff --check`、`npm run test:canvas-templates`、`npm run typecheck`、`npm run test:package-vsix-file-list`、Webview JS `node --check`、`npm run build`、`npm run test:marketplace-web`、`npm run test:marketplace-api` 和 `npm run typecheck:marketplace`，全部通过。
-- [x] (2026-05-12 23:34 +0800) 按最新 review 收口同一市场模板跨安装位置的本地身份：市场模板首次安装到某个目标位置时生成 `market-template-<uuid>` 本地模板 id，同一位置更新 / 重装继续保留既有 id；侧栏模板标签同步改为 `来源 · 位置`，来源区分 `插件内置`、`用户保存/导入`、`市场下载`，位置区分 `扩展内`、`本地`、`工作区`；运行 `git diff --check`、`npm run test:canvas-templates`、`npm run typecheck`、`npm run test:package-vsix-file-list`、`npm run build`、`npm run test:package-vsix-command` 和 `npm run test:marketplace-web`，全部通过。
+- [x] (2026-05-12 23:34 +0800) 按最新 review 收口同一市场模板跨安装位置的本地身份：市场模板首次安装到某个目标位置时生成 `market-template-<uuid>` 本地模板 id，同一位置更新 / 重装继续保留既有 id；侧栏模板标签同步改为精简组合：`内置`、`市场 · 本地/工作区`、`自建 · 本地/工作区`；运行 `git diff --check`、`npm run test:canvas-templates`、`npm run typecheck`、`npm run test:package-vsix-file-list`、`npm run build`、`npm run test:package-vsix-command` 和 `npm run test:marketplace-web`，全部通过。
+- [x] (2026-05-13 00:41 +0800) 按用户截图继续精简侧栏模板组合标签：内置模板只显示 `内置`，不显示位置；市场模板显示 `市场 · 本地/工作区`；用户保存或导入模板显示 `自建 · 本地/工作区`。运行 `git diff --check`、`npm run test:canvas-templates`、`npm run typecheck`、`npm run build` 和 `npm run test:package-vsix-file-list`，全部通过。
+
+- [x] (2026-05-13 07:20 +0800) 处理最新 review：D1 public repository 对 `latest_version_id` 指向的 published 版本增加同模板约束，并硬化最终版本 join；新增跨模板 pointer 回归测试；插件内详情页统一用当前选中版本驱动安装、下载、版本状态和 sha256；同步 `CanvasTemplateStore` 的本地 / workspace 安装目录文档口径。
+- [x] (2026-05-13 07:21 +0800) 运行 `npm run test:marketplace-api`、`npm run test:canvas-templates`、`npm run test:marketplace-shared`、`npm run test:marketplace-web`、`npm run typecheck`、`npm run typecheck:marketplace`、`npm run build`、`npm run build:marketplace`、`npm run test:package-vsix-file-list`、Webview JS `node --check`、`npm audit --audit-level=none` 和 `git diff --check`，全部通过。
+
+- [x] (2026-05-13 07:58 +0800) 继续处理 review follow-up：新增 `npm run test:marketplace` 聚合 `typecheck:marketplace`、`test:marketplace-shared`、`test:marketplace-api` 和 `test:marketplace-web`，并把该聚合串入根 `npm test` 默认回归入口；`test:canvas-templates` 增加源码断言防止 marketplace 回归入口再次脱链。
+- [x] (2026-05-13 08:00 +0800) 运行 `npm run test:marketplace`、`npm run test:canvas-templates`、`npm run typecheck` 和 `git diff --check`，全部通过。
+
+- [x] (2026-05-13 14:25 +0800) 修复 review 指出的市场来源漂移：浏览器外部安装 URI 的 `source` 现在会传递到插件内详情页；Webview 根据该来源切换 `apiOrigin`、详情/下载/缩略图请求、浏览器回跳和安装 sidecar `sourceUrl`，默认命令入口仍使用 preview 来源。
+- [x] (2026-05-13 14:27 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run test:marketplace-web`、`npm run test:marketplace`、`npm run build`、`npm run build:marketplace`、Webview JS `node --check` 和 `git diff --check`，全部通过。
+
+- [x] (2026-05-13 15:54 +0800) 处理最新 review：把默认命令入口与外部 URI 来源详情入口拆开。`devSessionCanvas.openTemplateMarketplace` 每次复位到默认 index 并向 Webview 发送 `marketplace/openTemplateIndex`；只有 `openTemplateDetailFromUri()` / 显式带 `source` 的详情路径才切换到可信外部 origin，避免默认入口被上一次外部来源粘住。
+- [x] (2026-05-13 15:57 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run test:marketplace`、`npm run test:marketplace-web`、`npm run build`、`npm run build:marketplace`、`npm run test:package-vsix-file-list`、Webview JS `node --check` 和 `git diff --check`，全部通过。
+
+- [x] (2026-05-13 16:44 +0800) 根据用户反馈修正默认来源策略：默认命令入口按当前扩展安装模式选择来源，正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源；外部 `source` 必须与当前安装模式一致，正式安装遇到调试链接、调试安装遇到正式链接时直接报错提示。
+- [x] (2026-05-13 16:55 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run test:marketplace`、`npm run build`、`npm run build:marketplace`、Webview JS `node --check`、`git diff --check` 和 `npm run test:package-vsix-file-list`，全部通过。
+
+- [x] (2026-05-13 17:43 +0800) 处理最新 review：把 IPv6 loopback `http://[::1]:*` / `https://[::1]:*` 纳入 Webview `connect-src`，并把本地调试来源补进 `img-src`，让本地 Worker dev server 的详情、下载和缩略图 CSP 边界与 trusted debug source 一致。
+- [x] (2026-05-13 17:43 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run test:marketplace`、`npm run build`、`npm run build:marketplace`、Webview JS `node --check`、`npm run test:package-vsix-file-list` 和 `git diff --check`，全部通过。
 
 ## 意外与发现
 
@@ -176,6 +195,27 @@
 
 - 观察：`npm run test:canvas-templates` 里存在面向源码结构的市场 URI handler 断言，旧断言会把“外部 URI 安装链路返回 `result.operation`”当成必需行为。
   证据：详情确认流改完后第一次运行该脚本报 `AssertionError`，期望 `result.operation === 'updated'`；本轮已把断言改为检查 `templateMarketplacePanel.openTemplateDetailFromUri(uri)`、`marketplace/openTemplateDetail` 和详情页相关 DOM 字符串，测试随后通过。
+
+- 观察：D1 `templates.latest_version_id` 只是版本 id 指针，公开查询不能只校验指针目标是 published，还必须校验该版本属于当前模板。
+  证据：最新 review 指出如果 `latest_published_version` join 缺少 `template_id = t.id`，一个模板可以把 latest 指向另一个模板的 published version，列表、详情和默认下载都会混入错误对象；本轮在 `repository.test.ts` 增加跨模板 pointer 假库，只有 SQL 同时包含 `latest_published_version.template_id = t.id`、`v.template_id = t.id` 和 `v.status = 'published'` 时才返回当前模板 v1，`npm run test:marketplace-api` 已覆盖该回归。
+
+- 观察：插件内详情页存在历史版本预选时，详情页右侧所有版本相关 UI 必须共享同一个 resolved version，而不能让操作使用 v1、校验信息仍展示 latest v2。
+  证据：review 指出安装/下载历史版本时完整性面板仍显示 `template.latestVersion.sha256`；本轮改为在 `buildDetailShell()` 中解析 `selectedVersion`，安装、下载、版本历史“当前”状态和 sha256 都使用该对象，并通过 `npm run test:canvas-templates` 的源码断言防止回退。
+
+- 观察：模板市场 workspace 已经不再只是独立预览脚本，默认回归入口需要覆盖 shared / Worker / Web 和 marketplace 类型检查，否则 reviewer 单独跑过的市场回归不会被后续 `npm test` 自动覆盖。
+  证据：review follow-up 指出根 `npm test` 未包含 `test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 或 `typecheck:marketplace`；本轮新增 `test:marketplace` 聚合并串入根 `test`，同时在 `scripts/test-canvas-templates.mjs` 中断言该聚合和根入口关系。
+
+- 观察：外部安装 URI 的 `source` 不能只在 URI handler 入口被校验，还必须贯穿插件内详情页的 API origin、浏览器回跳和 sidecar 元数据，否则从正式 `https://dscanvas.dev/templates` 进入后仍会漂回 preview workers.dev。
+  证据：review 指出 Web 端已写入当前市场详情页 `source`，但 `CanvasTemplateMarketplacePanel` 当时仍硬编码 preview origin；本轮把 `sourceUrl` 加入 `MarketplaceTemplateDetailRequest`，Webview 收到详情请求后用 `setMarketplaceSourceUrl()` 切换 origin，并通过 `buildTemplateSourceUrl()` 写入安装 payload 的 `sourceUrl`。
+
+- 观察：把外部安装 `source` 贯穿到 Webview 后，控制器不能把该 source 作为长期默认来源保存给命令入口。
+  证据：review 指出如果 `openTemplateDetailFromUri()` 把控制器级 `marketplaceSourceUrl` 改成正式域名，随后 `devSessionCanvas.openTemplateMarketplace` 只调用 `reveal()` 就会继续打开正式来源；本轮让 `reveal()` 显式复位 `defaultMarketplaceSourceUrl` 并发送 `marketplace/openTemplateIndex`，而外部详情路径改用 `revealPanel()` + `postOpenTemplateDetail()` 保留临时来源。
+
+- 观察：默认来源不能固定写死为 preview；它必须跟扩展安装模式绑定，否则正式安装的插件会打开调试市场，调试安装的插件也可能被正式链接带到生产市场。
+  证据：本轮把默认来源收口到 `resolveDefaultMarketplaceSourceUrl(extensionMode)`，`ExtensionMode.Production` 使用正式入口，`ExtensionMode.Development` / `ExtensionMode.Test` 使用调试入口；`resolveCompatibleMarketplaceSourceUrl()` 对外部 `source` 做同模式校验，正式 / 调试互相不自动切换。
+
+- 观察：Webview CSP 必须与 trusted debug source 使用同一组本地来源，否则调试来源校验通过后仍会在详情请求或缩略图加载阶段失败。
+  证据：review 指出 `[::1]` 已被 source 校验接受但不在 `connect-src`，并且 `img-src https: data:` 会拦截本地 HTTP thumbnail；本轮抽出 `MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES` 同时用于 `connect-src` 和 `img-src`。
 
 ## 决策记录
 
@@ -277,7 +317,7 @@
 
 ## 结果与复盘
 
-本轮已经交付模板市场基础工程：新增 `packages/marketplace-shared/` 共享合约与 seed repository，新增 `apps/template-marketplace/` React + Vite 浏览器应用和 Hono Worker API，并在根 `package.json` 中补齐 `build:marketplace`、`test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 与 `typecheck:marketplace` 脚本。浏览器构建使用 `/templates/` base path，Worker API 暴露 `/api/v1/health`、`/api/v1/templates`、`/api/v1/templates/:id`、`/api/v1/templates/:id/download` 和 `/api/v1/templates/:id/thumbnail`。
+本轮已经交付模板市场基础工程：新增 `packages/marketplace-shared/` 共享合约与 seed repository，新增 `apps/template-marketplace/` React + Vite 浏览器应用和 Hono Worker API，并在根 `package.json` 中补齐 `build:marketplace`、`test:marketplace`、`test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 与 `typecheck:marketplace` 脚本；其中 `test:marketplace` 已纳入根 `npm test` 默认回归入口。浏览器构建使用 `/templates/` base path，Worker API 暴露 `/api/v1/health`、`/api/v1/templates`、`/api/v1/templates/:id`、`/api/v1/templates/:id/download` 和 `/api/v1/templates/:id/thumbnail`。
 
 本轮续做已经把 D1 元数据模型推进到可验证边界：`packages/marketplace-shared/src/schema.ts` 定义 Phase 1-4 核心表并通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，`apps/template-marketplace/migrations/0001_marketplace_core.sql` 提供 D1 migration，`apps/template-marketplace/src/worker/repository.ts` 让 public list/detail/download API 可以在 D1 binding 存在时读取 D1 元数据，在 binding 缺席时继续使用 seed fallback。
 
@@ -303,9 +343,9 @@ Web 端现在支持基础标签筛选：列表结果上方展示 tag chips，选
 
 浏览器端和插件内 Webview 现在都能展示真实缩略图：卡片和详情页会请求 `GET /api/v1/templates/:slug/thumbnail?version=:versionId`，Worker 在 preview 环境从 R2 返回 PNG 并设置公开缓存头；本地无 R2 binding 时返回显式 seed SVG，前端图片加载失败时继续显示原有渐变占位，避免缩略图对象缺失导致卡片空白。用户已确认预览环境能看到 3 张模板卡片和卡片预览图。
 
-VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，外部 `vscode://.../install-template` 现在打开插件内模板详情页并预选版本；插件内详情页通过 Webview fetch 下载模板 JSON，再用 message bridge 把受控 inline payload 交给 `TemplateMarketplaceClient` 校验和落盘。安装会通过 `CanvasTemplateStore` 写入所选目标模板目录的 `marketplace/` 子目录与相邻 `*.market.json` sidecar。插件内列表页保留搜索、排序、标题附近的“查看详情”、安装位置预选、“查看并安装 / 查看更新 / 已安装”详情快捷入口和下载入口；这些列表快捷动作以详情页作为执行上下文，安装位置作为详情页默认安装目标，列表下载主按钮和版本菜单也会先进入详情页并预选下载版本。实际安装 split button、下载 split button、版本历史和 sha256 位于详情页右侧。workspace 选项文案显示为 `当前workspace · <title>`，避免出现双重前缀。侧栏模板列表用 `来源 · 位置` 标签区分 `插件内置 · 扩展内`、`用户保存/导入 · 本地/工作区`、`市场下载 · 本地/工作区`，并继续用 cloud download 图标标识市场来源。市场模板首次安装到某个位置时生成本地唯一 id，安装指定版本仍覆盖同一位置下的既有副本并保留该 id / 更新 sidecar，不创建重复模板。模板市场不提供应用入口；安装成功消息会提示用户到模板侧栏应用到 Canvas，已安装模板继续从侧栏模板列表应用。当前已完成本地单元/类型/构建验证、浏览器深链生成验证、插件内 Webview 匿名浏览/安装的真实 VSCode Development Host smoke，以及本轮详情确认流的源码级回归；侧栏离线应用、更新提醒和完整回滚 smoke 仍需后续覆盖。
+VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，外部 `vscode://.../install-template` 现在打开插件内模板详情页并预选版本；插件内详情页通过 Webview fetch 下载模板 JSON，再用 message bridge 把受控 inline payload 交给 `TemplateMarketplaceClient` 校验和落盘。安装会通过 `CanvasTemplateStore` 写入所选目标模板目录的 `marketplace/` 子目录与相邻 `*.market.json` sidecar。插件内列表页保留搜索、排序、标题附近的“查看详情”、安装位置预选、“查看并安装 / 查看更新 / 已安装”详情快捷入口和下载入口；这些列表快捷动作以详情页作为执行上下文，安装位置作为详情页默认安装目标，列表下载主按钮和版本菜单也会先进入详情页并预选下载版本。实际安装 split button、下载 split button、版本历史和随选中版本变化的 sha256 位于详情页右侧。workspace 选项文案显示为 `当前workspace · <title>`，避免出现双重前缀。侧栏模板列表用精简组合标签区分 `内置`、`自建 · 本地/工作区`、`市场 · 本地/工作区`，并继续用 cloud download 图标标识市场来源。市场模板首次安装到某个位置时生成本地唯一 id，安装指定版本仍覆盖同一位置下的既有副本并保留该 id / 更新 sidecar，不创建重复模板。模板市场不提供应用入口；安装成功消息会提示用户到模板侧栏应用到 Canvas，已安装模板继续从侧栏模板列表应用。当前已完成本地单元/类型/构建验证、浏览器深链生成验证、插件内 Webview 匿名浏览/安装的真实 VSCode Development Host smoke，以及本轮详情确认流的源码级回归；侧栏离线应用、更新提醒和完整回滚 smoke 仍需后续覆盖。
 
-插件内独立 Webview Editor 市场页也已经有基础实现：命令面板和模板侧栏标题栏都可以触发 `devSessionCanvas.openTemplateMarketplace`，打开 `src/panel/CanvasTemplateMarketplacePanel.ts` 生成的本地 Webview。当前 Webview 读取 preview Worker API，不加载远程脚本，也不 iframe 远程站点；Worker `/api/v1/*` 已允许匿名 GET / OPTIONS CORS，解决 Webview 从 `vscode-webview://...` origin 访问公开 API 的浏览器安全限制。用户已在真实 VSCode Extension Development Host 中人工确认 Webview 可加载 3 个模板并完成安装；后续代码补充了已安装状态回显、详情页安装目标选择、安装成功侧栏引导、Webview 状态持久化、网络错误 fallback 和外部 URI 进入详情页，减少重复安装误操作，并保持市场只负责发现与安装。但 UI 仍是基础 HTML shell，后续应收敛到共享 React Webview bundle。
+插件内独立 Webview Editor 市场页也已经有基础实现：命令面板和模板侧栏标题栏都可以触发 `devSessionCanvas.openTemplateMarketplace`，打开 `src/panel/CanvasTemplateMarketplacePanel.ts` 生成的本地 Webview。默认命令入口每次复位到当前扩展安装模式对应的默认市场来源：正式安装使用正式入口，调试 / 测试安装使用 preview / 本地调试来源；如果从浏览器 `vscode://.../install-template?source=...` 进入，扩展端先校验该 `source` 与当前安装模式一致，再让 Webview 在该详情上下文切到可信 `source` 所在 origin，并用同一 origin 完成详情、下载、缩略图、浏览器回跳和 sidecar `sourceUrl`。正式安装遇到调试来源、调试安装遇到正式来源时会报错提醒，不会自动跨环境切换。Webview 不加载远程脚本，也不 iframe 远程站点；Worker `/api/v1/*` 已允许匿名 GET / OPTIONS CORS，解决 Webview 从 `vscode-webview://...` origin 访问公开 API 的浏览器安全限制。用户已在真实 VSCode Extension Development Host 中人工确认 Webview 可加载 3 个模板并完成安装；后续代码补充了已安装状态回显、详情页安装目标选择、安装成功侧栏引导、Webview 状态持久化、网络错误 fallback 和外部 URI 进入详情页，减少重复安装误操作，并保持市场只负责发现与安装。但 UI 仍是基础 HTML shell，后续应收敛到共享 React Webview bundle。
 
 仍未完成的能力是真实 GitHub OAuth、共享 React Webview bundle、完整 VSCode 宿主 smoke（离线应用、更新提醒、回滚等）、发布/点赞/举报写接口、缩略图上传与自动生成发布路径、治理后台、下载去重/防刷和生产环境资源分离；这些是后续里程碑，不是本轮临时绕过造成的技术债。本轮没有向 `docs/exec-plans/tech-debt-tracker.md` 新增技术债。设计文档状态保持为 `validation_status: 验证中`，因为 Phase 1 浏览与安装已在 preview 环境验证通过，但完整 Phase 1-4 尚未验证完成。
 
@@ -321,7 +361,7 @@ VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，外�
 
 接着创建市场应用包。Worker 入口使用 Hono，暴露健康检查、模板列表、模板详情和下载接口。最初没有 D1/R2 binding 时，Worker 通过共享包的 repository 函数读取种子数据，并在响应中明确 `storageMode: "seed"`，避免把模拟数据误写成生产持久化。续做里程碑已经让 Worker 在存在 D1 binding 时读取 D1 公开元数据，在存在 R2 binding 时从 R2 返回真实 `template.json` attachment。Web 入口使用 React + Vite，渲染市场标题、搜索框、排序选择、模板卡片、详情占位和安装按钮。UI 不接入 VSCode 文件系统，只展示浏览器主路径和 `/templates/` base path 是否生效。
 
-最后补验证脚本。新增 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run typecheck:marketplace` 和 `npm run build:marketplace`，并在根 `test` 脚本中暂不强行串入完整市场测试，避免给现有扩展测试引入未稳定的云端依赖。preview 云资源脚本单独放在 app workspace 中，D1 用 `db:*:preview`，R2 用 `r2:*:preview`；等 OAuth、上传写接口和 VSCode 安装流成熟后，再评估哪些测试纳入根 `npm test`。
+最后补验证脚本。新增 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run typecheck:marketplace` 和 `npm run build:marketplace`；随着 shared / Worker / Web 回归已稳定，本轮又新增 `npm run test:marketplace` 聚合并串入根 `npm test` 默认入口，防止市场 workspace 变更绕过常规回归。preview 云资源脚本单独放在 app workspace 中，D1 用 `db:*:preview`，R2 用 `r2:*:preview`；远端部署、D1/R2 preview 种子和真实 VSCode smoke 仍保留为按需验证，不放进默认 `npm test`。
 
 续做 D1 里程碑时，在共享包中引入 Drizzle schema，并在应用包中新增 D1 SQL migration、repository 接口和 fake D1 测试夹具。Worker 路由不直接散落 SQL，而是只依赖 `MarketplaceTemplateRepository`；R2 里程碑进一步把下载文件响应放在独立 helper 中，让后续下载计数、OAuth 权限和 admin API 可以继续在 repository / service 层扩展，不需要重写已有 public API 路由。
 
@@ -496,6 +536,13 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
 `apps/template-marketplace/src/web/App.tsx` 必须渲染一个无需认证即可使用的浏览页面。它可以先调用 `/api/v1/templates`，也可以在 API 不可用时展示本地 seed fallback，但 fallback 必须显式标注为开发模式，不能冒充生产数据。
 
 ## 修订记录
+
+- 2026-05-13 17:43 +0800 / Codex：补充 Webview CSP 本地调试来源收口，原因是 review 指出 `[::1]` 与本地 HTTP thumbnail 已在 trusted debug source 范围内但未被 CSP 放行。
+- 2026-05-13 16:44 +0800 / Codex：补充默认来源按扩展安装模式选择、外部 `source` 按模式校验的收口，原因是用户确认正式安装应打开正式入口、调试安装应打开调试入口，并且跨环境链接必须报错。
+- 2026-05-13 15:54 +0800 / Codex：补充默认入口 source 复位收口，原因是 review 指出上一次外部来源会粘住命令入口，与固定默认入口语义冲突。
+- 2026-05-13 14:25 +0800 / Codex：补充外部安装来源贯穿插件内详情页的收口，原因是 review 指出正式入口进入后仍会漂回 preview origin。
+- 2026-05-13 07:58 +0800 / Codex：补充 marketplace 默认回归入口收口，原因是 review follow-up 指出根 `npm test` 未覆盖新增 workspace 的类型检查和单元测试。
+- 2026-05-13 07:21 +0800 / Codex：补充最新 review 修复与验证结果，原因是 D1 latest 指针同模板约束、插件内详情页选中版本校验展示和本地 / workspace 安装目录文档口径已完成收口。
 
 - 2026-05-10 04:59 +0800 / Codex：补充 D1/Drizzle schema、migration、repository 边界和相关验证结果，原因是模板市场基础工程已从 seed-only 继续推进到 D1 只读元数据里程碑。
 - 2026-05-10 05:02 +0800 / Codex：补充最终验证命令和结果，原因是本轮 D1 里程碑已完成本地测试、类型检查、构建、审计和空白检查。

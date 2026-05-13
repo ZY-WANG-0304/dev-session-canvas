@@ -482,11 +482,19 @@ try {
 
   const extensionSource = await readFile('src/extension.ts', 'utf8');
   const packageManifest = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.match(packageManifest.scripts.test, /npm run test:marketplace/u);
+  assert.match(packageManifest.scripts['test:marketplace'], /npm run typecheck:marketplace/u);
+  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-shared/u);
+  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-api/u);
+  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-web/u);
   assert.ok(packageManifest.activationEvents.includes('onUri'));
   assert.ok(packageManifest.activationEvents.includes('onCommand:devSessionCanvas.openTemplateMarketplace'));
   assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.openTemplateMarketplace'));
   assert.match(extensionSource, /new TemplateMarketplaceClient\(panelManager\)/u);
-  assert.match(extensionSource, /new CanvasTemplateMarketplacePanelController\(\s*templateMarketplaceClient,\s*context\.extensionUri\s*\)/u);
+  assert.match(
+    extensionSource,
+    /new CanvasTemplateMarketplacePanelController\(\s*templateMarketplaceClient,\s*context\.extensionUri,\s*context\.extensionMode\s*\)/u
+  );
   assert.match(extensionSource, /registerCommand\(context, COMMAND_IDS\.openTemplateMarketplace/u);
   assert.match(extensionSource, /vscode\.window\.registerUriHandler/u);
   const exportCommandSource = sliceBetween(
@@ -691,10 +699,10 @@ try {
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplateSourceLabel/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplatePositionLabel/u);
-  assert.match(sidebarTemplateViewSource, /插件内置/u);
-  assert.match(sidebarTemplateViewSource, /用户保存\/导入/u);
-  assert.match(sidebarTemplateViewSource, /市场下载/u);
-  assert.match(sidebarTemplateViewSource, /扩展内/u);
+  assert.match(sidebarTemplateViewSource, /return '内置';/u);
+  assert.match(sidebarTemplateViewSource, /return '自建';/u);
+  assert.match(sidebarTemplateViewSource, /return '市场';/u);
+  assert.doesNotMatch(sidebarTemplateViewSource, /插件内置|用户保存\/导入|市场下载|扩展内/u);
   assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '本地'/u);
   assert.match(sidebarTemplateViewSource, /codicon-cloud-download/u);
   assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
@@ -736,6 +744,7 @@ try {
   assert.match(marketplaceClientSource, /listInstallTargets/u);
   assert.match(marketplaceClientSource, /targetStorageLocationId/u);
   assert.match(marketplaceClientSource, /TemplateMarketplaceInstallOperation = 'installed' \| 'updated' \| 'reinstalled'/u);
+  assert.match(marketplaceClientSource, /export function parseTrustedMarketplaceSourceUrl/u);
   assert.match(marketplaceClientSource, /saveMarketplaceTemplateDocument/u);
   assert.match(marketplaceClientSource, /findInstalledMarketplaceTemplate/u);
   assert.match(marketplaceClientSource, /resolveInstallTarget/u);
@@ -744,12 +753,14 @@ try {
   assert.match(marketplaceClientSource, /resolveMarketplaceInstallOperation/u);
   assert.match(marketplaceClientSource, /getCanvasTemplateCatalog/u);
   assert.match(marketplaceClientSource, /marketTemplateSlug/u);
+  assert.match(extensionSource, /context\.extensionMode/u);
   assert.match(extensionSource, /templateMarketplacePanel\.openTemplateDetailFromUri\(uri\)/u);
   assert.match(extensionSource, /打开市场模板详情失败/u);
   assert.doesNotMatch(extensionSource, /installTemplateFromUri\(uri\)/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplates/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplatesError/u);
   assert.match(marketplacePanelSource, /marketplace\/openTemplateDetail/u);
+  assert.match(marketplacePanelSource, /marketplace\/openTemplateIndex/u);
   assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
   assert.match(marketplacePanelSource, /查看详情/u);
   assert.match(marketplacePanelSource, /detail-view/u);
@@ -793,14 +804,41 @@ try {
   assert.match(marketplacePanelSource, /persistState/u);
   assert.match(marketplacePanelSource, /renderLoadErrorCard/u);
   assert.match(marketplacePanelSource, /renderOfflineInstalledTemplateCard/u);
-  assert.match(marketplacePanelSource, /网络请求失败，可能无法访问 workers\.dev 或代理阻断/u);
+  assert.match(marketplacePanelSource, /网络请求失败，可能无法访问模板市场 API 或代理阻断/u);
   assert.match(marketplacePanelSource, /请到模板侧栏应用到 Canvas/u);
   assert.match(marketplacePanelSource, /已安装到/u);
   assert.match(marketplacePanelSource, /本地 ·/u);
   assert.match(marketplacePanelSource, /当前workspace/u);
   assert.match(marketplacePanelSource, /已安装 v/u);
-  assert.match(marketplacePanelSource, /MARKETPLACE_PREVIEW_ORIGIN/u);
-  assert.match(marketplacePanelSource, /connect-src \$\{MARKETPLACE_PREVIEW_ORIGIN\}/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_OFFICIAL_SOURCE_URL/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_DEBUG_SOURCE_URL/u);
+  assert.match(marketplacePanelSource, /resolveDefaultMarketplaceSourceUrl/u);
+  assert.match(marketplacePanelSource, /vscode\.ExtensionMode\.Production/u);
+  assert.match(marketplacePanelSource, /resolveCompatibleMarketplaceSourceUrl/u);
+  assert.match(marketplacePanelSource, /formatMarketplaceSourceMismatchError/u);
+  assert.match(marketplacePanelSource, /当前扩展是\$\{expectedInstall\}/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES/u);
+  assert.match(marketplacePanelSource, /'http:\/\/\[::1\]:\*'/u);
+  assert.match(marketplacePanelSource, /'https:\/\/\[::1\]:\*'/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_CONNECT_SOURCES/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_IMAGE_SOURCES/u);
+  assert.match(marketplacePanelSource, /connect-src \$\{MARKETPLACE_CONNECT_SOURCES\}/u);
+  assert.match(marketplacePanelSource, /img-src \$\{MARKETPLACE_IMAGE_SOURCES\}/u);
+  assert.match(marketplacePanelSource, /parseTrustedMarketplaceSourceUrl/u);
+  assert.match(marketplacePanelSource, /sourceUrl: resolvedSourceUrl\?\.toString\(\)/u);
+  assert.match(marketplacePanelSource, /marketplaceSourceUrl: marketplaceSourceUrl\.toString\(\)/u);
+  assert.match(marketplacePanelSource, /setMarketplaceSourceUrl\(message\.payload && message\.payload\.sourceUrl\)/u);
+  assert.match(marketplacePanelSource, /sourceUrl: buildMarketplaceBrowserUrl\(\)/u);
+  assert.match(marketplacePanelSource, /sourceUrl: buildTemplateSourceUrl\(template\.slug\)/u);
+  assert.match(marketplacePanelSource, /this\.defaultMarketplaceSourceUrl = resolveDefaultMarketplaceSourceUrl\(extensionMode\);/u);
+  assert.match(marketplacePanelSource, /this\.marketplaceSourceUrl = new URL\(this\.defaultMarketplaceSourceUrl\);/u);
+  assert.match(marketplacePanelSource, /this\.pendingDetailRequest = undefined;/u);
+  assert.match(marketplacePanelSource, /void this\.postOpenTemplateIndex\(\);/u);
+  assert.match(marketplacePanelSource, /private revealPanel\(\): void/u);
+  assert.match(marketplacePanelSource, /this\.revealPanel\(\);\s*void this\.postOpenTemplateDetail\(\);/u);
+  assert.match(marketplacePanelSource, /setMarketplaceSourceUrl\(message\.payload && message\.payload\.sourceUrl\);[\s\S]*closeTemplateDetail\(\);/u);
+  assert.doesNotMatch(marketplacePanelSource, /openExternal\(vscode\.Uri\.parse\(`\$\{MARKETPLACE_DEBUG_ORIGIN\}\/templates`\)\)/u);
+  assert.doesNotMatch(marketplacePanelSource, /sourceUrl: apiOrigin \+ '\/templates\//u);
   assert.match(marketplacePanelSource, /installTemplateFromInlinePayload/u);
   assert.doesNotMatch(marketplacePanelSource, /<iframe/u);
 
@@ -836,6 +874,18 @@ try {
     "const metrics = document.createElement('dl');"
   );
   assert.match(marketplaceDetailControlsSource, /controls\.append\(installButtonGroup, downloadButtonGroup, installTargetRow\);/u);
+
+  const marketplaceDetailSource = sliceBetween(
+    marketplacePanelSource,
+    'function buildDetailShell(template) {',
+    'function closeTemplateDetail() {'
+  );
+  assert.match(marketplaceDetailSource, /const selectedVersion = resolvePreferredDetailVersion\(template, state\.activeTemplateVersionId\);/u);
+  assert.match(marketplaceDetailSource, /createInstallSplitButton\(template, installedTemplate, selectedVersion\.id\)/u);
+  assert.match(marketplaceDetailSource, /createDownloadSplitButton\(template, selectedVersion\.id/u);
+  assert.match(marketplaceDetailSource, /selectedVersion\.id === version\.id/u);
+  assert.match(marketplaceDetailSource, /integrityValue\.textContent = selectedVersion\.sha256;/u);
+  assert.doesNotMatch(marketplaceDetailSource, /integrityValue\.textContent = template\.latestVersion\.sha256;/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

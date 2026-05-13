@@ -202,22 +202,25 @@ export function getCanvasSidebarTemplateItems(
 }
 
 function resolveCanvasSidebarTemplateLocationLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  if (storedTemplate.template.category === 'builtin') {
+    return resolveCanvasSidebarTemplateSourceLabel(storedTemplate);
+  }
   return `${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)} · ${resolveCanvasSidebarTemplatePositionLabel(storedTemplate)}`;
 }
 
 function resolveCanvasSidebarTemplateSourceLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
-    return '插件内置';
+    return '内置';
   }
   if (storedTemplate.marketplace) {
-    return '市场下载';
+    return '市场';
   }
-  return '用户保存/导入';
+  return '自建';
 }
 
 function resolveCanvasSidebarTemplatePositionLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
-    return '扩展内';
+    return '';
   }
   return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '本地';
 }
@@ -241,7 +244,7 @@ function buildCanvasTemplateTooltip(storedTemplate: CanvasTemplateCatalog['templ
 function buildCanvasTemplateLocationTooltipLine(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
     const builtinLayer = storedTemplate.relativeDirectory || '根目录';
-    return `模板来源：插件内置；保存位置：扩展内 / ${builtinLayer}`;
+    return `模板来源：内置；模板所在层级：${builtinLayer}`;
   }
 
   const locationLabel = storedTemplate.storageLocation?.label ?? '用户模板';
@@ -735,7 +738,7 @@ function buildSidebarTemplateHtml(
         renderStatusNote(currentState.issueMessages);
 
         if (currentState.isLoading) {
-          emptyState.textContent = '正在加载模板列表...';
+          emptyState.textContent = '正在加载...';
           emptyState.classList.add('is-visible');
           return;
         }
@@ -747,7 +750,7 @@ function buildSidebarTemplateHtml(
         }
 
         if (items.length === 0) {
-          emptyState.textContent = '当前还没有可显示的模板。';
+          emptyState.textContent = '暂无模板。可从市场安装或手动保存画布为模板。';
           emptyState.classList.add('is-visible');
           return;
         }

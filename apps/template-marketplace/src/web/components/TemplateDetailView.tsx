@@ -14,14 +14,14 @@ interface TemplateDetailViewProps {
 export function TemplateDetailView({ template, storageMode, source }: TemplateDetailViewProps): JSX.Element {
   const downloadHref = buildTemplateDownloadHref(template);
   const thumbnailHref = buildTemplateThumbnailHref(template);
-  const readme = template.readme.trim() || 'No README was provided.';
+  const readme = template.readme.trim() || 'This template does not have a README yet.';
   const sourceLabel = source === 'api' ? 'Worker API' : 'Seed fallback';
 
   return (
     <section className="border border-canvas-line bg-canvas-paper shadow-card">
       <div className="border-b border-canvas-line p-5 sm:p-6">
         <a className="text-sm font-semibold text-canvas-moss hover:underline" href={getMarketplaceHomeHref()}>
-          Back to templates
+          Back to all templates
         </a>
         <div className="mt-5 grid gap-5 lg:grid-cols-[10rem_1fr]">
           <div className="market-thumbnail h-28 border border-canvas-line sm:h-32">
@@ -62,15 +62,15 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
           <InstallInVSCodeLink
             className="inline-flex w-full justify-center bg-canvas-accent px-4 py-3 text-xs font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
             template={template}
-            ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
+            ariaLabel={`Install ${template.name} v${template.latestVersion.versionNumber} in VS Code`}
           >
-            Install in VSCode
+            Install in VS Code
           </InstallInVSCodeLink>
           <a
             className="mt-3 inline-flex w-full justify-center border border-canvas-line px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
             href={downloadHref}
             download
-            aria-label={`Download ${template.name} version ${template.latestVersion.versionNumber} template JSON`}
+            aria-label={`Download ${template.name} v${template.latestVersion.versionNumber} as JSON`}
           >
             Download JSON
           </a>

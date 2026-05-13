@@ -130,7 +130,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const templateMarketplaceClient = new TemplateMarketplaceClient(panelManager);
   const templateMarketplacePanel = new CanvasTemplateMarketplacePanelController(
     templateMarketplaceClient,
-    context.extensionUri
+    context.extensionUri,
+    context.extensionMode
   );
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);

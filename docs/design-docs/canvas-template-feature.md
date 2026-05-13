@@ -219,8 +219,8 @@ updated_at: 2026-05-10
 - 模板 section 内容区只承载模板列表本身；当前画布是否有可保存节点这类保存动作提示不在模板列表底部展示。
 - 侧栏列表按“内置模板固定在前 + 用户模板按创建时间倒序”展示；每项显示：
   - 模板标题行按 `图标 / 模板名称 / 行内动作` 排布，按钮始终和标题保持在同一行；当前默认模板不再使用独立 badge，而是在标题文本前增加 `(默认)` 前缀
-  - 第二行摘要用 `来源 · 位置` 标签与 `Agent / Terminal / Note` 统计排布；来源分为 `插件内置`、`用户保存/导入`、`市场下载`，位置分为 `扩展内`、`本地`、`工作区`
-  - `默认 / 插件内置 · 扩展内 / 用户保存/导入 · 本地 / 用户保存/导入 · 工作区 / 市场下载 · 本地 / 市场下载 · 工作区 / Agent / Terminal / Note` 摘要
+  - 第二行摘要用精简组合标签与 `Agent / Terminal / Note` 统计排布：内置模板显示 `内置`；市场模板显示 `市场 · 本地` 或 `市场 · 工作区`；用户保存或导入的模板显示 `自建 · 本地` 或 `自建 · 工作区`；内置模板不显示位置
+  - `默认 / 内置 / 市场 · 本地 / 市场 · 工作区 / 自建 · 本地 / 自建 · 工作区 / Agent / Terminal / Note` 摘要
   - hover tooltip 中的节点命名列表，以及“模板来源；保存位置 / 相对目录”提示
   - 单击整行只更新侧栏选中态，不对画布产生应用副作用
   - 右侧轻量行内动作：追加到当前画布、重置当前画布为该模板、设为默认、导出；用户模板额外可删除。设为默认按钮对非默认模板显示空心星标并写入默认模板设置，对当前默认模板显示填满星标且点击只保持当前设置不变。
@@ -275,6 +275,6 @@ updated_at: 2026-05-10
 - 模板 sidebar 已移除底部“当前画布还没有可保存的 Agent / Terminal / Note 节点”提示，内容区只保留模板列表及模板列表自身的加载 / 空 / 错误状态。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖不再输出 `hintNote` / `hint-note` / `canSaveCurrentCanvas`。
 - 画布空白区右键菜单根层已移除说明文案，只保留“画布操作”标题和具体操作项；Playwright harness 已补充断言覆盖根层不再出现“先创建节点”提示。本轮再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过。
 - Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过。
-- 模板 sidebar 第二行标签已收敛为 `来源 · 位置`：来源区分 `插件内置`、`用户保存/导入`、`市场下载`，位置区分 `扩展内`、`本地`、`工作区`。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖 workspace 模板映射为 `工作区` 标签和来源标签文案。
+- 模板 sidebar 第二行标签已按来源与位置精简为 `内置`、`市场 · 本地/工作区`、`自建 · 本地/工作区`；内置模板不显示位置。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖 workspace 模板映射为 `工作区` 标签和来源标签文案。
 - Marketplace 预览媒体录制入口已改为启动真实 Extension Development Host，不再依赖 VS Code extension test host；右键重置模板路径保留原生 modal，并在录制片段内通过鼠标/键盘完成确认。
 - 验证覆盖了“首次默认模板”“保存/应用不自动启动”“导入/导出/删除与默认模板回退”“组级避碰落位”“restricted note-only 限制”以及 Agent `argv` 在模板保存/加载链路中的保留。

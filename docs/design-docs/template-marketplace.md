@@ -18,7 +18,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/template-marketplace-tech-selection.md
   - docs/exec-plans/active/template-marketplace-foundation.md
-updated_at: 2026-05-12
+updated_at: 2026-05-13
 ---
 
 # 模板市场技术选型
@@ -130,15 +130,15 @@ updated_at: 2026-05-12
 - `apps/template-marketplace/src/worker/`：Cloudflare Workers + Hono API 服务，包含路由、中间件、认证、上传校验和 D1/R2 操作。
 - `packages/marketplace-shared/`：市场共享包。包含 Drizzle schema 定义、API request/response 类型、Zod 验证 schema、模板包 manifest 类型、错误码和分页类型。该包不能依赖 `vscode`、React、DOM 或 Cloudflare runtime binding；根入口保持浏览器安全，Drizzle schema 通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，避免浏览器市场 bundle 引入 Drizzle runtime。
 - `src/panel/TemplateMarketplaceClient.ts`：Extension Host 侧市场 API client、安装模板写入、更新检查和认证换取逻辑。它只能通过宿主发起网络请求和写本地模板目录，不能让 Webview 自己写入文件系统。
-- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取 preview Worker API，并通过 message passing 把浏览器侧下载到的模板 payload 交给 Extension Host 安装；后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
+- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取市场 API；命令入口每次都复位到当前扩展安装模式对应的默认来源：正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源，不继承上一次外部来源；从浏览器入口进入时必须先校验外部安装 URI 的可信 `source` 与当前安装模式一致，正式安装遇到调试来源、调试安装遇到正式来源都应报错提示；通过校验后，详情上下文沿用该 `source` origin，并通过 message passing 把浏览器侧下载到的模板 payload 交给 Extension Host 安装；后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
 - `src/common/canvasTemplates.ts`：继续作为本地模板语义来源；若需要共享到 `packages/marketplace-shared`，应通过提取纯类型/解析函数完成，不在这里直接引入远端 API 字段。
-- `src/panel/CanvasTemplateStore.ts`：安装市场模板时继续写入全局用户模板目录，并额外写入 market sidecar；本地模板 JSON 主体仍保持普通用户模板可离线应用。
+- `src/panel/CanvasTemplateStore.ts`：安装市场模板时写入用户选择的本地或 workspace 模板目录的 `marketplace/` 子目录，并额外写入 market sidecar；本地模板 JSON 主体仍保持普通用户模板可离线应用。
 
 ### 7.3 前端运行模型
 
 浏览器市场页和 VSCode Webview 市场页共享 `MarketplaceApp`、数据 query hooks、卡片、详情页、发布表单、Dashboard 和管理后台组件，但由 Vite 产出两个 entry，并分别注入 host adapter：
 
-- `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接。当前浏览器安装链接格式固定为 `vscode://devsessioncanvas.dev-session-canvas/install-template?template=<slug>&version=<versionId>&source=<detailUrl>`；`source` 指向 `/templates/:slug` 详情页。外部 `vscode://` 安装链接不携带内联 payload；扩展端收到链接后打开插件内模板详情页并预选对应版本，安装动作在详情页继续确认。实际安装从受控 Webview message bridge 进入，由详情页从市场 API 下载模板 JSON 后把 inline payload 交给 Extension Host 校验并写入模板库，不能把 payload 放进外部 URI。
+- `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接。当前浏览器安装链接格式固定为 `vscode://devsessioncanvas.dev-session-canvas/install-template?template=<slug>&version=<versionId>&source=<detailUrl>`；`source` 指向 `/templates/:slug` 详情页。外部 `vscode://` 安装链接不携带内联 payload；扩展端收到链接后先按当前安装模式校验 `source`：正式安装只接受正式市场来源，调试安装只接受 preview / 本地调试来源，来源不匹配时停止并给出错误提示。通过校验后，扩展端打开插件内模板详情页并预选对应版本，插件内详情页继续使用 `source` 所在 origin 读取详情、下载、缩略图、打开浏览器和写入 sidecar `sourceUrl`，安装动作在详情页继续确认。实际安装从受控 Webview message bridge 进入，由详情页从市场 API 下载模板 JSON 后把 inline payload 交给 Extension Host 校验并写入模板库，不能把 payload 放进外部 URI。
 - `VSCodeMarketplaceHost` 使用 Webview message passing、hash 或内存路由、扩展打包资源 URI、宿主触发的 GitHub 登录和宿主安装命令；市场列表中的模板行可以预选安装位置、提供“查看详情”文本动作，以及安装、更新、已安装和下载 JSON 等快捷动作；这些快捷动作统一打开模板详情页并执行对应动作。列表安装位置作为详情页默认安装目标，详情页承载最终安装确认、安装 / 下载版本选择和 README 阅读。
 
 浏览器端正式入口计划为 `https://dscanvas.dev/templates`，预览入口继续使用 `*.workers.dev`。因此浏览器构建必须支持 `/templates/` base path，前端详情路径使用 `/templates/:slug`，模板详情分享链接和 Web 端安装入口也以该路径生成。这个决定只确认浏览器页面入口，不改变当前 `/api/v1` API 前缀；若后续希望把市场 API 也收敛到 `/templates/api/v1`，需要在实现前新增设计补充并同步产品规格。
@@ -147,7 +147,7 @@ Cloudflare Workers Static Assets 只负责浏览器 SPA 和静态资源 fallback
 
 浏览器端使用 SPA fallback 保证模板详情页有独立 URL；Phase 1-4 不承诺搜索引擎级 SSR/SSG。若后续 SEO 成为核心目标，应新增设计补充重新比较 Next.js 或静态预渲染方案。
 
-Webview 不加载远程 JavaScript，也不把远程站点 iframe 进插件。远程 API 的 base URL 由宿主注入，默认指向生产市场域名；开发模式可通过配置指向本地 Worker dev server。Webview 与宿主之间只传递用户动作和 API 结果，不把 GitHub token 或市场 session 暴露给 DOM 可持久化状态。
+Webview 不加载远程 JavaScript，也不把远程站点 iframe 进插件。远程 API 的 base URL 由宿主按扩展安装模式注入：`ExtensionMode.Production` 默认指向正式市场域名，`ExtensionMode.Development` / `ExtensionMode.Test` 默认指向调试市场来源；调试模式中的本地 Worker dev server 仍属于调试来源族。Webview 与宿主之间只传递用户动作和 API 结果，不把 GitHub token 或市场 session 暴露给 DOM 可持久化状态。
 
 #### 7.3.1 市场页 UI 定义
 
@@ -203,7 +203,7 @@ R2 对象按不可变版本组织，示例 key：
 2. `manifest.json`：市场包 manifest，记录市场模板 id、版本 id、版本号、发布者、标签、描述、对象 hash、最小扩展版本、provider 标注和缩略图引用。
 3. `thumbnail.png`：卡片和详情页缩略图。
 
-插件安装市场模板时，让用户为目标模板选择“本地（当前设备）”或可用 workspace 模板目录作为安装目标。插件内列表行可以展示同一安装位置下拉作为默认目标预选；安装快捷动作打开详情页并进入安装确认上下文，用户在详情页点击安装 split button 后，本地目标写入 `globalStorageUri/templates/marketplace/`，workspace 目标写入当前 workspace 下 `.dev-session-canvas/templates/marketplace/`，并在相邻位置写入 sidecar，例如 `Review-Loop.market.json`。sidecar 记录 `marketTemplateId`、`marketTemplateSlug`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`thumbnailKey` 和 `checksum`。这样模板即使离线也可以作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。模板目录扫描会忽略 `*.market.json`，避免 sidecar 被误解析成模板文件；用户手动保存或导入覆盖同一路径时会移除 sidecar，防止普通本地模板继续被标记为市场来源。市场模板首次安装到某个目标位置时会生成本地唯一模板 id；同一目标位置内更新或重装时保留原本地 id 和创建时间，避免默认模板引用、侧栏选择态与行级操作在版本更新后失效，同时允许同一市场模板在本地和 workspace 各有独立可操作副本。侧栏模板标签统一显示 `来源 · 位置`，市场模板显示为 `市场下载 · 本地` 或 `市场下载 · 工作区`。
+插件安装市场模板时，让用户为目标模板选择“本地（当前设备）”或可用 workspace 模板目录作为安装目标。插件内列表行可以展示同一安装位置下拉作为默认目标预选；安装快捷动作打开详情页并进入安装确认上下文，用户在详情页点击安装 split button 后，本地目标写入 `globalStorageUri/templates/marketplace/`，workspace 目标写入当前 workspace 下 `.dev-session-canvas/templates/marketplace/`，并在相邻位置写入 sidecar，例如 `Review-Loop.market.json`。sidecar 记录 `marketTemplateId`、`marketTemplateSlug`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`thumbnailKey` 和 `checksum`。这样模板即使离线也可以作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。模板目录扫描会忽略 `*.market.json`，避免 sidecar 被误解析成模板文件；用户手动保存或导入覆盖同一路径时会移除 sidecar，防止普通本地模板继续被标记为市场来源。市场模板首次安装到某个目标位置时会生成本地唯一模板 id；同一目标位置内更新或重装时保留原本地 id 和创建时间，避免默认模板引用、侧栏选择态与行级操作在版本更新后失效，同时允许同一市场模板在本地和 workspace 各有独立可操作副本。侧栏市场模板标签显示为 `市场 · 本地` 或 `市场 · 工作区`。
 
 
 本地模板格式不新增 `market` category。UI 可以把“市场来源”作为存储层派生标签展示，但 `CanvasTemplateDocument` 中的 `category` 仍只表达模板主体在本地模板系统中的兼容分类。
@@ -265,7 +265,7 @@ Phase 4 在本方案中的承载方式如下：
 4. 扩展 VSCode smoke：已确认独立 Webview Editor 市场页可加载并安装市场模板；后续还需覆盖多种真实 VSCode Color Theme、高对比主题、离线时仍可应用模板、更新提醒与回滚。
 5. 验证 VSCode 端发布流程使用 `vscode.authentication.getSession('github', ...)`，且 GitHub access token 不写入 `workspaceState`、`globalState`、模板 JSON 或 Webview local state。
 6. 对上传大小、缩略图格式、重复点赞、被封禁用户发布、非作者发布新版本、非管理员访问后台等失败路径执行自动化测试。
-7. 执行 `git diff --check`、`npm run typecheck`，并为新增 app / package 补齐对应 `npm run test:marketplace-api` 和 `npm run test:marketplace-web` 脚本。
+7. 执行 `git diff --check`、`npm run typecheck`，并为新增 app / package 补齐对应 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web` 和 `npm run typecheck:marketplace`；这些市场回归通过 `npm run test:marketplace` 纳入根 `npm test` 默认入口。
 
 ## 9. 外部依据
 

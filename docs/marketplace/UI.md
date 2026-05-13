@@ -488,7 +488,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 ### Image Behavior
 - 浏览器 thumbnail 使用 lazy-load 和 `object-cover`；当前市场不存在 above-fold hero imagery。
-- VSCode thumbnail 从 preview API lazy-load；失败时移除失败 image node，保留主题派生 fallback surface。
+- VSCode thumbnail 从宿主注入的当前市场 API lazy-load；图片请求失败时移除失败 image node，保留主题派生 fallback surface。
 - 自动生成的 thumbnail screenshot 在插件列表的 112px x 72px 尺寸下仍应可读，才可视为可发布。
 - 不要依赖图片颜色解释分类、已安装状态、版本新旧或信任程度。
 

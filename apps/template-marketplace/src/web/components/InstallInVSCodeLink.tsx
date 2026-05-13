@@ -25,7 +25,7 @@ export function InstallInVSCodeLink({
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>): void {
     event.preventDefault();
-    setNotice('正在唤起 VSCode 模板详情页；如果窗口没有自动前置，请切到 VSCode 并在详情页点击安装。');
+    setNotice('正在唤起 VS Code；如果窗口没有自动前置，请手动切换到 VS Code 并在模板详情页完成安装。');
     window.location.href = fallbackHref;
   }
 
