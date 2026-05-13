@@ -4481,6 +4481,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const noteContentSource = noteMetadata.contentSource;
   const associatedMarkdownFile =
     noteContentSource?.kind === 'markdown-file' ? noteContentSource : undefined;
+  const associatedMarkdownSubtitle =
+    associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath;
   const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
   const associatedMarkdownStatus = associatedMarkdownFile?.status;
   const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
@@ -4926,8 +4928,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           value={data.title}
           placeholder="Note 标题"
           className="note-window-title"
-          subtitle={associatedMarkdownFile?.displayPath}
-          subtitleTooltip={associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}
+          subtitle={associatedMarkdownSubtitle}
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />

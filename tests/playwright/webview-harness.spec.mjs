@@ -4271,19 +4271,24 @@ test('clicking a note workspace file link posts openNoteLink with the raw relati
 test('associated markdown notes render the file path subtitle and open-file action', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
+  const longDisplayPath =
+    'ssh:dev_labs · ~/projects/MiniCPM-V-CookBook-main.worktrees/test-branch/docs/design.md';
   state.nodes[0].metadata.note.content = '# 文件笔记';
+  state.nodes[0].size = { width: 280, height: state.nodes[0].size.height };
   state.nodes[0].metadata.note.contentSource = {
     kind: 'markdown-file',
     resourceUri: 'file:///workspace/docs/design.md',
-    displayPath: 'docs/design.md',
-    fullDisplayPath: '/workspace/docs/design.md',
+    displayPath: longDisplayPath,
+    fullDisplayPath: longDisplayPath,
     status: 'ok'
   };
   await bootstrap(page, state);
   await clearPostedMessages(page);
 
   const noteNode = nodeById(page, 'note-1');
-  await expect(noteNode.locator('.window-title-subtitle')).toHaveText('docs/design.md');
+  const subtitle = noteNode.locator('.window-title-subtitle');
+  await expect(subtitle).toHaveText(longDisplayPath);
+  await expect(subtitle).toHaveAttribute('title', longDisplayPath);
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('文件笔记');
   await expect(noteNode.getByRole('button', { name: '保存为 Markdown' })).toHaveCount(0);
 
@@ -4542,12 +4547,13 @@ test('associated markdown note bootstrapped with dirty-conflict shows reload rec
 test('missing associated markdown notes show a warning instead of stale markdown content', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
+  const missingDisplayPath = '/workspace/docs/missing.md';
   state.nodes[0].metadata.note.content = '# 旧内容';
   state.nodes[0].metadata.note.contentSource = {
     kind: 'markdown-file',
     resourceUri: 'file:///workspace/docs/missing.md',
-    displayPath: '…/docs/missing.md',
-    fullDisplayPath: '/workspace/docs/missing.md',
+    displayPath: missingDisplayPath,
+    fullDisplayPath: missingDisplayPath,
     status: 'missing',
     lastError: '关联的 Markdown 文件不可用：docs/missing.md'
   };
@@ -4555,8 +4561,8 @@ test('missing associated markdown notes show a warning instead of stale markdown
 
   const noteNode = nodeById(page, 'note-1');
   await expect(noteNode.locator('.note-file-warning')).toContainText('关联的 Markdown 文件不可用');
-  await expect(noteNode.locator('.window-title-subtitle')).toHaveText('…/docs/missing.md');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('/workspace/docs/missing.md');
+  await expect(noteNode.locator('.window-title-subtitle')).toHaveText(missingDisplayPath);
+  await expect(noteNode.locator('.note-file-warning')).toContainText(missingDisplayPath);
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
 });

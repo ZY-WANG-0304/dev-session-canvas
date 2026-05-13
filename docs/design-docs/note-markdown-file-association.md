@@ -201,10 +201,10 @@ interface NoteNodeMetadata {
 - Title 下方显示 subtitle，内容为 `displayPath`。
 - subtitle 不显示 raw `vscode-remote://...`；raw `resourceUri` 只作为内部身份保存。
 - workspace 内文件优先显示 workspace-relative path：单根 workspace 显示 `docs/plan.md`，多根 workspace 显示 `workspace-name/docs/plan.md`，workspace root 下文件只显示文件名。
-- workspace 外文件显示人类可读压缩路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 只在 workspace 外等必要场景加轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，不暴露 `ssh-remote+dev_labs`。
-- 长路径在 subtitle 中做中间省略，保留文件名和最近目录，例如 `…/test-branch/Note 2.md`。
-- modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在短提示框中显示 raw URI 或完整绝对路径。
-- subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。hover tooltip 如需显示完整路径，也显示人类可读路径而不是 raw URI。
+- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 只在 workspace 外等必要场景加轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，不暴露 `ssh-remote+dev_labs`。
+- 长路径不在 Host 或持久化字段中按字符数预截断；subtitle 与 Agent / Terminal 一样交给标题栏布局做单行 ellipsis，实际溢出时 hover tooltip 显示同一条完整人类可读路径。
+- modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在提示中显示 raw URI。
+- subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。
 - 正文阅读态继续复用现有 Markdown 预览渲染能力。
 - 正文编辑态仍使用纯文本 Markdown 输入；提交后写回关联文件。
 - 长篇编辑可通过现有或新增“打开文件”动作交给 VSCode 原生编辑器；该动作可以放在上下文菜单或低频操作菜单中。
@@ -307,9 +307,10 @@ Workspace Trust：
 当前验证记录（2026-05-13）：
 
 - `npm run typecheck` 通过。
-- `npm run test:note-markdown-file-association` 通过，覆盖扩展名、文件名安全化、display path 中间省略和 Remote authority 轻量前缀。
+- `npm run test:note-markdown-file-association` 通过，覆盖扩展名、文件名安全化和 Remote authority 轻量前缀。
 - `npm run test:webview -- --grep "associated markdown note editor|associated markdown note editing blocks|associated markdown note keeps|associated markdown note bootstrapped|ordinary note empty placeholder|associated markdown notes|missing associated markdown notes|dropping markdown files"` 通过，覆盖普通 Note 8,000 字符占位提示/编辑上限、关联 Markdown Note 不使用普通 Note 编辑上限、编辑期外部刷新、Host `dirty-conflict` 阻止旧草稿静默写回或丢失、重新 bootstrap 已持久化 `dirty-conflict` 时只提供重新加载且不渲染 checklist 预览、subtitle、完整路径警告、缺失警告和空白画布拖拽消息；空白画布拖拽覆盖 `dragover` 只暴露资源类型但 drop 才暴露真实 payload 的场景。
 - `npm run test:webview -- --grep "ordinary note empty|associated markdown|missing associated markdown|ordinary note save-as-markdown|dropping markdown"` 通过，本轮重跑 9 个相关 Webview 用例，覆盖普通 Note 上限提示、关联 Markdown 渲染/编辑/冲突恢复、缺失警告、保存为 Markdown 按钮与空白画布拖拽消息。
+- `npm run test:webview -- --grep "associated markdown notes render|missing associated markdown notes"` 通过，本轮覆盖关联 Markdown Note 使用完整 subtitle 文本、节点宽度不足时显示完整 tooltip，以及缺失状态继续显示同一条人类可读路径。
 - `npm run build` 通过。
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，覆盖真实 VSCode 宿主中的拖拽创建关联 Note、超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 `dirty-conflict` 且不覆盖真实文件、重新 bootstrap 持久化 `dirty-conflict` 只显示恢复警告、单次重复拖拽资源/并发消息只创建一个 Note、已关联文件再次拖入时的“继续添加新 Note”和“定位已关联 Note”modal 分支、modal 路径复用 subtitle `displayPath`、不传入重复“取消”按钮、关联文件 `displayPath` / `fullDisplayPath`、关联文件写回、删除节点不删除文件，以及关联文件缺失后的警告状态。
 - Quick Input 真实键盘导航和已有文件三选项当前仍停留在实现与代码审查层面，尚未由自动化直接模拟用户选择，因此本文验证状态保持为“验证中”。
