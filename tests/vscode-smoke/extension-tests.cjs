@@ -3997,6 +3997,10 @@ async function verifyNoteMarkdownFileAssociation() {
     associatedNote.metadata.note.contentSource.fullDisplayPath,
     '.debug/vscode-smoke/associated-note.md'
   );
+  assert.ok(
+    associatedNote.metadata.note.contentSource.contentRevision,
+    'Expected associated Markdown Note to carry a content revision.'
+  );
   assert.strictEqual(associatedNote.metadata.note.contentSource.status, 'ok');
   assert.strictEqual(
     snapshot.state.nodes.filter(
@@ -4006,6 +4010,58 @@ async function verifyNoteMarkdownFileAssociation() {
     ).length,
     1,
     'Expected duplicate drag resources/messages for the same Markdown file to create only one associated Note.'
+  );
+
+  const associatedDocument = await vscode.workspace.openTextDocument(associatedFileUri);
+  const associatedEditor = await vscode.window.showTextDocument(associatedDocument, {
+    preview: false,
+    preserveFocus: false
+  });
+  const openedAssociatedEditor = await waitForActiveEditor(
+    (editor) => editor.document.uri.fsPath === associatedFilePath,
+    10000
+  );
+  assert.strictEqual(openedAssociatedEditor.document.isDirty, false);
+
+  const dirtyEditorContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY}\neditor draft tail`;
+  const dirtyEditApplied = await associatedEditor.edit((editBuilder) => {
+    const fullRange = new vscode.Range(
+      associatedEditor.document.positionAt(0),
+      associatedEditor.document.positionAt(associatedEditor.document.getText().length)
+    );
+    editBuilder.replace(fullRange, dirtyEditorContent);
+  });
+  assert.ok(dirtyEditApplied, 'Expected the associated Markdown editor to accept a dirty draft edit.');
+  assert.strictEqual(associatedEditor.document.isDirty, true);
+
+  await sleep(900);
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected an unsaved VS Code editor draft not to change the associated Note content.'
+  );
+
+  await associatedEditor.document.save();
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === dirtyEditorContent);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    dirtyEditorContent,
+    'Expected the associated Note to refresh after the Markdown editor saves.'
+  );
+
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected restoring the Markdown file on disk to bring the Note back to the disk content.'
   );
 
   const existingAssociatedFileDropMessage = {
@@ -4119,7 +4175,39 @@ async function verifyNoteMarkdownFileAssociation() {
     type: 'webview/updateNoteNode',
     payload: {
       nodeId: associatedNote.id,
-      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY
+      content: '# Associated Note\n\n- stale local draft',
+      baseContentRevision: 'stale-revision'
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'dirty-conflict';
+  });
+  const conflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    conflictNote.metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected stale associated Markdown draft submission not to replace the node buffer.'
+  );
+  assert.match(
+    String(conflictNote.metadata.note.contentSource.lastError),
+    /编辑期间发生变化/,
+    'Expected stale associated Markdown draft submission to explain the edit conflict.'
+  );
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected stale associated Markdown draft submission not to overwrite the file.'
+  );
+
+  const currentContentRevision = conflictNote.metadata.note.contentSource.contentRevision;
+  assert.ok(currentContentRevision, 'Expected dirty-conflict associated Markdown Note to keep a content revision.');
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY,
+      baseContentRevision: currentContentRevision
     }
   });
   await waitForSnapshot((currentSnapshot) => {

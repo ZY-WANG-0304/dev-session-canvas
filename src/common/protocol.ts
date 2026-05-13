@@ -647,6 +647,8 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
         content: string;
+        baseContentRevision?: string;
+        force?: boolean;
       };
     }
   | {
@@ -657,6 +659,12 @@ export type WebviewToHostMessage =
     }
   | {
       type: 'webview/openAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/reloadAssociatedNoteMarkdownFile';
       payload: {
         nodeId: string;
       };
@@ -1243,7 +1251,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/updateNoteNode',
       payload: {
         nodeId: payload.nodeId,
-        content: payload.content
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined,
+        force: payload.force === true
       }
     };
   }
@@ -1270,6 +1281,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
     return {
       type: 'webview/openAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/reloadAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/reloadAssociatedNoteMarkdownFile',
       payload: {
         nodeId: payload.nodeId
       }
