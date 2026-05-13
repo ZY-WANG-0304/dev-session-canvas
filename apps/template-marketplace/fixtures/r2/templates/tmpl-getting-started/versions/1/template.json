@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "template": {
+    "id": "market-getting-started-canvas",
+    "name": "Getting Started Canvas",
+    "category": "user",
+    "createdAt": "2026-05-10T00:00:00.000Z",
+    "updatedAt": "2026-05-10T00:00:00.000Z",
+    "nodes": [
+      {
+        "kind": "note",
+        "title": "How to use this canvas",
+        "position": { "x": 0, "y": 0 },
+        "size": { "width": 520, "height": 300 },
+        "metadata": {
+          "note": {
+            "content": "Start here. Write the job to be done, add acceptance checks, then connect the note to an agent and terminal."
+          }
+        }
+      },
+      {
+        "kind": "agent",
+        "title": "Implementation Agent",
+        "position": { "x": 0, "y": 360 },
+        "size": { "width": 560, "height": 420 },
+        "metadata": {
+          "agent": {
+            "provider": "default"
+          }
+        }
+      },
+      {
+        "kind": "terminal",
+        "title": "Verification Terminal",
+        "position": { "x": 660, "y": 360 },
+        "size": { "width": 560, "height": 420 }
+      }
+    ],
+    "edges": [
+      {
+        "sourceNodeIndex": 0,
+        "targetNodeIndex": 1,
+        "sourceAnchor": "bottom",
+        "targetAnchor": "top",
+        "arrowMode": "forward",
+        "label": "task"
+      },
+      {
+        "sourceNodeIndex": 1,
+        "targetNodeIndex": 2,
+        "sourceAnchor": "right",
+        "targetAnchor": "left",
+        "arrowMode": "forward",
+        "label": "verify"
+      }
+    ]
+  }
+}

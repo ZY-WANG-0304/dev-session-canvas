@@ -280,4 +280,4 @@
 - **产品方向**：`docs/PRODUCT_SENSE.md` — 核心产品价值和目标用户
 - **架构约束**：`ARCHITECTURE.md` — 协议边界、宿主集成方式
 - **设计文档**：`docs/design-docs/template-marketplace.md` — 模板市场技术选型正式方案与 Phase 4 承载边界
-- **执行计划**：`docs/exec-plans/active/template-marketplace-tech-selection.md`
+- **执行计划**：`docs/exec-plans/active/template-marketplace-tech-selection.md`、`docs/exec-plans/active/template-marketplace-foundation.md`

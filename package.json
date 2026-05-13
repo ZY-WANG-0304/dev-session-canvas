@@ -5,7 +5,9 @@
   "version": "0.9.0",
   "workspaces": [
     "extensions/vscode/dev-session-canvas-notifier",
-    "packages/attention-protocol"
+    "packages/attention-protocol",
+    "apps/template-marketplace",
+    "packages/marketplace-shared"
   ],
   "publisher": "devsessioncanvas",
   "license": "Apache-2.0",
@@ -582,7 +584,12 @@
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck"
+    "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck",
+    "build:marketplace": "npm run -w @dev-session-canvas/template-marketplace build",
+    "test:marketplace-api": "npm run -w @dev-session-canvas/template-marketplace test:api",
+    "test:marketplace-shared": "npm run -w @dev-session-canvas/marketplace-shared test",
+    "typecheck:marketplace": "npm run -w @dev-session-canvas/marketplace-shared typecheck && npm run -w @dev-session-canvas/template-marketplace typecheck",
+    "test:marketplace-web": "npm run -w @dev-session-canvas/template-marketplace test:web"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.45",
@@ -606,7 +613,7 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@types/markdown-it": "^14.1.2",
-    "@types/node": "^18.19.80",
+    "@types/node": "^20.19.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "1.80.0",
@@ -614,7 +621,15 @@
     "@vscode/vsce": "^3.9.1",
     "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.25.12",
-    "typescript": "5.0.4"
+    "typescript": "5.0.4",
+    "@cloudflare/workers-types": "^4.20260509.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^3.4.17",
+    "vite": "^7.3.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.90.0"
   },
   "api": "none",
   "extensionPack": [
