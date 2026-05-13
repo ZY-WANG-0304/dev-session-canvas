@@ -23,6 +23,7 @@ export const COMMAND_IDS = {
   openCodexAuthFile: 'devSessionCanvas.openCodexAuthFile',
   openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
+  saveNoteAsMarkdownFile: 'devSessionCanvas.saveNoteAsMarkdownFile',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',

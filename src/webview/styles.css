@@ -884,6 +884,8 @@ body {
   min-width: 0;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
+  cursor: default;
+  text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1907,6 +1909,72 @@ body {
   tab-size: 2;
 }
 
+.note-limit-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 2;
+  max-width: calc(100% - 74px);
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-inputValidation-warningBorder, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)) 88%, transparent);
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-descriptionForeground));
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.note-edit-conflict-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  left: 58px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
+  border-radius: var(--canvas-widget-radius-sm);
+  background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)) 92%, var(--vscode-editor-background) 8%);
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 22%, transparent);
+}
+
+.note-edit-conflict-hint span {
+  min-width: 0;
+  flex: 1;
+}
+
+.note-edit-conflict-action {
+  flex: 0 0 auto;
+  min-height: 22px;
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-widget-border, var(--vscode-panel-border)));
+  border-radius: var(--canvas-widget-radius-sm);
+  padding: 0 8px;
+  background: var(--vscode-button-secondaryBackground, var(--vscode-editor-background));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.note-edit-conflict-action:hover,
+.note-edit-conflict-action:focus-visible {
+  background: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, var(--vscode-editor-background) 90%));
+}
+
+.note-edit-conflict-action.is-danger {
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 32%, var(--vscode-panel-border) 68%);
+  color: var(--vscode-errorForeground, #fca5a5);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 10%, var(--vscode-editor-background));
+}
+
 .note-markdown-preview {
   flex: 1;
   min-height: 0;
@@ -1929,6 +1997,46 @@ body {
 
 .note-markdown-preview.is-empty {
   color: var(--vscode-descriptionForeground);
+}
+
+.note-file-warning {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)) 68%, transparent);
+}
+
+.note-file-warning strong {
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+  font-size: 13px;
+}
+
+.note-file-warning span,
+.note-file-warning p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.note-file-warning span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.note-file-warning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .note-markdown-preview-copy > :first-child,

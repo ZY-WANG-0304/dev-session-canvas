@@ -22,6 +22,7 @@
   "command.openCodexAuthFile.title": "Dev Session Canvas: 打开 Codex auth.json",
   "command.openClaudeSettingsFile.title": "Dev Session Canvas: 打开 Claude Code settings.json",
   "command.createNode.title": "Dev Session Canvas: 创建节点",
+  "command.saveNoteAsMarkdownFile.title": "Dev Session Canvas: 保存为关联 Markdown 文件",
   "command.showNodeList.title": "Dev Session Canvas: 显示节点列表",
   "command.showSessionHistory.title": "Dev Session Canvas: 显示会话历史",
   "command.refreshSessionHistory.title": "Dev Session Canvas: 刷新会话历史",

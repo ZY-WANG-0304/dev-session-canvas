@@ -1,5 +1,5 @@
 ---
-version: 2026-05-10
+version: 2026-05-13
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -275,6 +275,17 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。
+
+### Node Title And Subtitle
+
+节点标题与副标题共享同一套标题栏信息层级：
+
+- 标题是对象身份，使用 `window-title` 字体层级，可编辑，保持单行，不承载来源路径、启动命令或长说明。
+- 副标题是可选元信息行，使用 `subtitle` 字体层级，可表达 Agent 启动命令、Terminal shell path、关联 Markdown 文件路径等来源信息。
+- 副标题文本必须保留完整的人类可读值，不在数据层按字符数预截断，也不为 Canvas 节点做中间省略；`resourceUri` 这类内部身份不能直接进入可见副标题。
+- 可视最大长度由标题栏布局决定：Agent 标题副本区当前最多 `340px`，Terminal 与 Note 使用扣除右侧动作区后的标题栏剩余宽度；超出时统一单行 ellipsis。
+- 溢出 tooltip 只在实际溢出时出现，内容应是同一条完整人类可读副标题；不要为了常驻 tooltip 单独维护另一份缩写/完整文案。
+- 副标题不使用链接视觉，不加下划线、不使用 pointer cursor；打开文件、查看帮助等动作放在标题栏按钮或明确菜单中。
 
 ### Edges & Anchors
 

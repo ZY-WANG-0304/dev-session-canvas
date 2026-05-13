@@ -306,6 +306,10 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
+  registerCommand(context, COMMAND_IDS.saveNoteAsMarkdownFile, async (nodeId?: unknown) => {
+    await panelManager.saveNoteAsMarkdownFile(typeof nodeId === 'string' ? nodeId : undefined);
+  });
+
   registerCommand(context, COMMAND_IDS.showNodeList, async () => {
     await showSidebarNodeListQuickPick(panelManager);
   });

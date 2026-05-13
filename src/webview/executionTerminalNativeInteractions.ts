@@ -17,6 +17,13 @@ import {
   type ExecutionTerminalPathStyle,
   type ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
+import {
+  CODE_FILES_DATA_TRANSFER,
+  RESOURCE_URLS_DATA_TRANSFER,
+  URI_LIST_DATA_TRANSFER,
+  hasPotentialDroppedResource,
+  parseDroppedStringArray
+} from './droppedResources';
 
 interface ExecutionTerminalNativeInteractionsOptions {
   nodeId: string;
@@ -82,9 +89,6 @@ interface TooltipController {
   hide: () => void;
 }
 
-const RESOURCE_URLS_DATA_TRANSFER = 'ResourceURLs';
-const CODE_FILES_DATA_TRANSFER = 'CodeFiles';
-const URI_LIST_DATA_TRANSFER = 'text/uri-list';
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
 const EXECUTION_LINK_TOOLTIP_VISIBLE_CLASS = 'is-visible';
 const DEFAULT_WORKBENCH_HOVER_DELAY = 500;
@@ -232,7 +236,7 @@ export function setupExecutionTerminalNativeInteractions(
   });
 
   const handleDragEnter = (event: DragEvent): void => {
-    if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
+    if (!hasPotentialDroppedResource(event.dataTransfer)) {
       return;
     }
 
@@ -242,7 +246,7 @@ export function setupExecutionTerminalNativeInteractions(
   };
 
   const handleDragOver = (event: DragEvent): void => {
-    if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
+    if (!hasPotentialDroppedResource(event.dataTransfer)) {
       return;
     }
 
@@ -257,7 +261,7 @@ export function setupExecutionTerminalNativeInteractions(
 
   const handleDrop = (event: DragEvent): void => {
     clearDropTarget();
-    if (hasPotentialDroppedExecutionResource(event.dataTransfer)) {
+    if (hasPotentialDroppedResource(event.dataTransfer)) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -1734,43 +1738,6 @@ function extractDroppedExecutionResource(
   }
 
   return undefined;
-}
-
-function hasPotentialDroppedExecutionResource(dataTransfer: DataTransfer | null): boolean {
-  if (!dataTransfer) {
-    return false;
-  }
-
-  if (dataTransfer.files.length > 0) {
-    return true;
-  }
-
-  return [RESOURCE_URLS_DATA_TRANSFER, CODE_FILES_DATA_TRANSFER, URI_LIST_DATA_TRANSFER].some((type) =>
-    hasDataTransferType(dataTransfer, type)
-  );
-}
-
-function hasDataTransferType(dataTransfer: DataTransfer, type: string): boolean {
-  const dataTransferTypes = dataTransfer.types;
-  if (!dataTransferTypes) {
-    return false;
-  }
-
-  const contains = (dataTransferTypes as { contains?: (value: string) => boolean }).contains;
-  if (typeof contains === 'function') {
-    return contains.call(dataTransferTypes, type);
-  }
-
-  return Array.from(dataTransferTypes).some((entry) => entry === type);
-}
-
-function parseDroppedStringArray(rawValue: string): string[] {
-  try {
-    const parsed = JSON.parse(rawValue);
-    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : [];
-  } catch {
-    return [];
-  }
 }
 
 async function findInteractionLinkByText(

@@ -35,6 +35,7 @@ const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
+  focusNode: 'devSessionCanvas.__internal.focusNode',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
@@ -86,6 +87,11 @@ const REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED = ['- [x] 补齐 smoke', '- [x] 保�
 const REAL_DOM_NOTE_FILE_LINK_RELATIVE_PATH = 'note-link-open-target.txt';
 const REAL_DOM_NOTE_FILE_LINK_BODY =
   '[打开 Note 链接目标](.debug/vscode-smoke/note-link-open-target.txt#L2C3)';
+const REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL = '0123456789abcdef'.repeat(520);
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY =
+  `# Associated Note\n\n- from workspace file\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}`;
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY =
+  `# Associated Note\n\n- updated from canvas\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}\nupdated tail`;
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
@@ -729,6 +735,7 @@ async function runTrustedSmoke() {
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyInteractiveNoteChecklist(noteNode.id);
   await verifyNoteWorkspaceFileLinks(noteNode.id);
+  await verifyNoteMarkdownFileAssociation();
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
@@ -3929,6 +3936,564 @@ async function verifyNoteWorkspaceFileLinks(noteNodeId) {
     return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_BODY);
   });
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
+}
+
+async function verifyNoteMarkdownFileAssociation() {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+  assert.ok(
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY.length > 8000 &&
+      REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY.length > 8000,
+    'Expected associated Markdown smoke bodies to exceed the ordinary Note storage limit.'
+  );
+
+  const associationDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke');
+  await fs.mkdir(associationDir, { recursive: true });
+
+  const associatedFilePath = path.join(associationDir, 'associated-note.md');
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  const associatedFileUri = vscode.Uri.file(associatedFilePath);
+
+  const associatedFileDropMessage = {
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: associatedFileUri.toString()
+        },
+        {
+          source: 'codeFiles',
+          valueKind: 'path',
+          value: associatedFilePath
+        }
+      ],
+      position: { x: 820, y: 320 }
+    }
+  };
+  await Promise.all([
+    dispatchWebviewMessage(associatedFileDropMessage),
+    dispatchWebviewMessage(associatedFileDropMessage)
+  ]);
+
+  let snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.some(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.kind === 'markdown-file' &&
+        node.metadata.note.contentSource.resourceUri === associatedFileUri.toString() &&
+        node.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    )
+  );
+  const associatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(associatedNote, 'Expected dropping a Markdown file onto the canvas to create an associated Note.');
+  assert.strictEqual(associatedNote.title, 'associated-note');
+  assert.strictEqual(associatedNote.metadata.note.contentSource.displayPath, '.debug/vscode-smoke/associated-note.md');
+  assert.strictEqual(
+    associatedNote.metadata.note.contentSource.fullDisplayPath,
+    '.debug/vscode-smoke/associated-note.md'
+  );
+  assert.ok(
+    associatedNote.metadata.note.contentSource.contentRevision,
+    'Expected associated Markdown Note to carry a content revision.'
+  );
+  assert.match(
+    associatedNote.metadata.note.contentSource.contentRevision,
+    /^stat:/,
+    'Expected associated Markdown Note revision to be based on file stat metadata.'
+  );
+  const initialAssociatedContentRevision = associatedNote.metadata.note.contentSource.contentRevision;
+  assert.strictEqual(associatedNote.metadata.note.contentSource.status, 'ok');
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected duplicate drag resources/messages for the same Markdown file to create only one associated Note.'
+  );
+
+  const associatedDocument = await vscode.workspace.openTextDocument(associatedFileUri);
+  const associatedEditor = await vscode.window.showTextDocument(associatedDocument, {
+    preview: false,
+    preserveFocus: false
+  });
+  const openedAssociatedEditor = await waitForActiveEditor(
+    (editor) => editor.document.uri.fsPath === associatedFilePath,
+    10000
+  );
+  assert.strictEqual(openedAssociatedEditor.document.isDirty, false);
+
+  const dirtyEditorContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY}\neditor draft tail`;
+  const dirtyEditApplied = await associatedEditor.edit((editBuilder) => {
+    const fullRange = new vscode.Range(
+      associatedEditor.document.positionAt(0),
+      associatedEditor.document.positionAt(associatedEditor.document.getText().length)
+    );
+    editBuilder.replace(fullRange, dirtyEditorContent);
+  });
+  assert.ok(dirtyEditApplied, 'Expected the associated Markdown editor to accept a dirty draft edit.');
+  assert.strictEqual(associatedEditor.document.isDirty, true);
+
+  await sleep(900);
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected an unsaved VS Code editor draft not to change the associated Note content.'
+  );
+
+  await associatedEditor.document.save();
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === dirtyEditorContent);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    dirtyEditorContent,
+    'Expected the associated Note to refresh after the Markdown editor saves.'
+  );
+  const savedAssociatedContentRevision =
+    findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.notStrictEqual(
+    savedAssociatedContentRevision,
+    initialAssociatedContentRevision,
+    'Expected saving the Markdown file to update the stat-based associated Note revision.'
+  );
+
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected restoring the Markdown file on disk to bring the Note back to the disk content.'
+  );
+  const activeEditRevision = findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.ok(activeEditRevision, 'Expected restored associated Markdown Note to have a revision before editing.');
+  await dispatchWebviewMessage({
+    type: 'webview/beginAssociatedNoteMarkdownEdit',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+      baseContentRevision: activeEditRevision
+    }
+  });
+  const activeEditDraftContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nin-progress note draft`;
+  await dispatchWebviewMessage({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id,
+      content: activeEditDraftContent,
+      baseContentRevision: activeEditRevision
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.contentSource?.conflictDraft?.draftId);
+  });
+  const activeEditRemoteContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit while note is open`;
+  await fs.writeFile(associatedFilePath, activeEditRemoteContent, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'dirty-conflict';
+  });
+  const activeEditConflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    activeEditConflictNote.metadata.note.content,
+    activeEditRemoteContent,
+    'Expected editing an associated Markdown Note to surface external disk changes before submit.'
+  );
+  const activeEditConflictDraft = activeEditConflictNote.metadata.note.contentSource.conflictDraft;
+  assert.match(
+    String(activeEditConflictDraft?.draftId),
+    /^[0-9a-f-]{36}$/i,
+    'Expected active edit conflict to persist the in-progress note draft.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(activeEditConflictDraft.draftId),
+    activeEditDraftContent,
+    'Expected active edit conflict to keep the edit-session content as the recoverable draft.'
+  );
+  await vscode.commands.executeCommand(COMMAND_IDS.focusNode, associatedNote.id);
+  await waitForWebviewProbe(
+    (currentProbe) => currentProbe.nodes.some((node) => node.nodeId === associatedNote.id),
+    10000
+  );
+  await performWebviewDomAction(
+    {
+      kind: 'clickNodeActionButton',
+      nodeId: associatedNote.id,
+      label: '重新加载'
+    },
+    'editor',
+    10000
+  );
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === activeEditRemoteContent
+    );
+  });
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    );
+  });
+
+  const revertedDraftBaseRevision =
+    findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.ok(
+    revertedDraftBaseRevision,
+    'Expected associated Markdown Note to have a revision before testing reverted edit drafts.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/beginAssociatedNoteMarkdownEdit',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+      baseContentRevision: revertedDraftBaseRevision
+    }
+  });
+  const abandonedDraftContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nabandoned local draft`;
+  await dispatchWebviewMessage({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id,
+      content: abandonedDraftContent,
+      baseContentRevision: revertedDraftBaseRevision
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+        currentNote.metadata.note.contentSource.conflictDraft?.draftId
+    );
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected syncing an edit draft not to replace the associated Markdown file content.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/clearAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+        !currentNote.metadata.note.contentSource.conflictDraft
+    );
+  });
+  const externalContentAfterRevertedDraft =
+    `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit after reverted draft`;
+  await fs.writeFile(associatedFilePath, externalContentAfterRevertedDraft, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === externalContentAfterRevertedDraft
+    );
+  });
+  const revertedDraftRefreshNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    revertedDraftRefreshNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected clearing a reverted edit draft to prevent stale active edit conflicts.'
+  );
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    );
+  });
+
+  const existingAssociatedFileDropMessage = {
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: associatedFileUri.toString()
+        }
+      ],
+      position: { x: 840, y: 340 }
+    }
+  };
+
+  await clearHostMessages();
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage(existingAssociatedFileDropMessage);
+      await waitForHostMessages(
+        (messages) =>
+          messages.some(
+            (message) =>
+              message.type === 'host/focusNodes' &&
+              Array.isArray(message.payload?.nodeIds) &&
+              message.payload.nodeIds.includes(associatedNote.id)
+          ),
+        10000
+      );
+      assert.strictEqual(warningCalls.length, 1, 'Expected dropping an already associated Markdown file to confirm.');
+      assert.match(String(warningCalls[0].message), /已关联到一个 Note/);
+      assert.ok(
+        String(warningCalls[0].message).includes(associatedNote.metadata.note.contentSource.displayPath),
+        'Expected the existing-file drop confirmation to use the same display path as the Note subtitle.'
+      );
+      assert.ok(
+        !String(warningCalls[0].message).includes(associatedFilePath),
+        'Expected the existing-file drop confirmation not to show the absolute file path.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('定位已有 Note'),
+        'Expected the existing-file drop confirmation to offer locating the associated Note.'
+      );
+      assert.ok(
+        !warningCalls[0].items.includes('取消'),
+        'Expected the existing-file drop confirmation to rely on the modal default cancel button.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '定位已有 Note')
+  );
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected choosing locate for an already associated Markdown file not to create another Note.'
+  );
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage(existingAssociatedFileDropMessage);
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.filter(
+            (node) =>
+              node.kind === 'note' &&
+              node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+          ).length === 2,
+        10000
+      );
+      assert.strictEqual(warningCalls.length, 1, 'Expected adding another associated Note to confirm.');
+      assert.ok(
+        warningCalls[0].items.includes('添加新 Note'),
+        'Expected the existing-file drop confirmation to offer creating another associated Note.'
+      );
+      assert.ok(
+        !warningCalls[0].items.includes('取消'),
+        'Expected the existing-file drop confirmation not to duplicate the modal cancel button.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '添加新 Note')
+  );
+  const duplicateAssociatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.id !== associatedNote.id &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(duplicateAssociatedNote, 'Expected choosing continue to create a second associated Note.');
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: duplicateAssociatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'note' &&
+          node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+      ).length === 1,
+    10000
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: associatedNote.id,
+      content: '# Associated Note\n\n- stale local draft',
+      baseContentRevision: 'stale-revision'
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'dirty-conflict';
+  });
+  const conflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    conflictNote.metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected stale associated Markdown draft submission not to replace the node buffer.'
+  );
+  assert.match(
+    String(conflictNote.metadata.note.contentSource.lastError),
+    /编辑期间被外部修改/,
+    'Expected stale associated Markdown draft submission to explain the edit conflict.'
+  );
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected stale associated Markdown draft submission not to overwrite the file.'
+  );
+  const conflictDraft = conflictNote.metadata.note.contentSource.conflictDraft;
+  assert.match(
+    String(conflictDraft?.draftId),
+    /^[0-9a-f-]{36}$/i,
+    'Expected dirty-conflict associated Markdown Note to persist a storage-backed draft id.'
+  );
+  assert.strictEqual(
+    conflictDraft?.content,
+    undefined,
+    'Expected debug state not to inline the rejected local draft content.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(conflictDraft.draftId),
+    '# Associated Note\n\n- stale local draft',
+    'Expected dirty-conflict associated Markdown Note to persist the rejected local draft in storage.'
+  );
+  assert.strictEqual(
+    conflictDraft?.baseContentRevision,
+    'stale-revision',
+    'Expected persisted conflict draft to keep the stale base revision for explicit overwrite.'
+  );
+
+  snapshot = await reloadPersistedState();
+  const reloadedConflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.status,
+    'dirty-conflict',
+    'Expected reloading persisted state not to auto-resolve an associated Markdown conflict.'
+  );
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.conflictDraft?.draftId,
+    conflictDraft.draftId,
+    'Expected reloading persisted state to keep the unresolved conflict draft reference.'
+  );
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.conflictDraft?.content,
+    undefined,
+    'Expected reloading persisted state not to inline the unresolved conflict draft.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(conflictDraft.draftId),
+    '# Associated Note\n\n- stale local draft',
+    'Expected reloading persisted state to keep the unresolved conflict draft file.'
+  );
+
+  const currentContentRevision = reloadedConflictNote.metadata.note.contentSource.contentRevision;
+  assert.ok(currentContentRevision, 'Expected dirty-conflict associated Markdown Note to keep a content revision.');
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY,
+      baseContentRevision: currentContentRevision
+    }
+  });
+  await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY);
+  });
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: associatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.every((node) => node.id !== associatedNote.id)
+  );
+  assert.ok(
+    snapshot.state.nodes.every((node) => node.id !== associatedNote.id),
+    'Expected deleting an associated Note to remove only the node.'
+  );
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY,
+    'Expected deleting an associated Note to leave the Markdown file untouched.'
+  );
+
+  const missingFilePath = path.join(associationDir, 'missing-associated-note.md');
+  await fs.writeFile(missingFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  const missingFileUri = vscode.Uri.file(missingFilePath);
+  await dispatchWebviewMessage({
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: missingFileUri.toString()
+        }
+      ],
+      position: { x: 860, y: 360 }
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.some(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === missingFileUri.toString()
+    )
+  );
+  const missingNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.metadata?.note?.contentSource?.resourceUri === missingFileUri.toString()
+  );
+  assert.ok(missingNote, 'Expected the second dropped Markdown file to create an associated Note.');
+
+  await fs.unlink(missingFilePath);
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === missingNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'missing';
+  }, 10000);
+  assert.strictEqual(
+    findNodeById(snapshot, missingNote.id).metadata.note.contentSource.status,
+    'missing',
+    'Expected deleting an associated Markdown file to mark the Note as missing.'
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: missingNote.id
+    }
+  });
+  await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.every((node) => node.id !== missingNote.id)
+  );
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {
@@ -8365,6 +8930,18 @@ async function getHostMessages() {
 
 async function getDiagnosticEvents() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+}
+
+async function readInternalNoteMarkdownDraftContent(draftId) {
+  const diagnosticEvents = await getDiagnosticEvents();
+  const latestStorageEvent = [...diagnosticEvents]
+    .reverse()
+    .find((event) => typeof event.detail?.writePath === 'string');
+  assert.ok(latestStorageEvent, 'Expected diagnostics to expose the extension storage write path.');
+  return fs.readFile(
+    path.join(latestStorageEvent.detail.writePath, 'note-markdown-drafts', `${draftId}.md`),
+    'utf8'
+  );
 }
 
 async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutMs }) {
