@@ -412,7 +412,7 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label: '删除' | '启动' | '停止' | '重启' | '恢复';
+      label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件';
       delayMs?: number;
     }
   | {
@@ -649,6 +649,20 @@ export type WebviewToHostMessage =
         content: string;
         baseContentRevision?: string;
         force?: boolean;
+      };
+    }
+  | {
+      type: 'webview/beginAssociatedNoteMarkdownEdit';
+      payload: {
+        nodeId: string;
+        content: string;
+        baseContentRevision?: string;
+      };
+    }
+  | {
+      type: 'webview/endAssociatedNoteMarkdownEdit';
+      payload: {
+        nodeId: string;
       };
     }
   | {
@@ -1301,6 +1315,41 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/beginAssociatedNoteMarkdownEdit') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/beginAssociatedNoteMarkdownEdit',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/endAssociatedNoteMarkdownEdit') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/endAssociatedNoteMarkdownEdit',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
   if (value.type === 'webview/clearAssociatedNoteMarkdownDraft') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (!payload || typeof payload.nodeId !== 'string') {
@@ -1731,7 +1780,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
         value.label === '启动' ||
         value.label === '停止' ||
         value.label === '重启' ||
-        value.label === '恢复'
+        value.label === '恢复' ||
+        value.label === '重新加载' ||
+        value.label === '复制草稿' ||
+        value.label === '覆盖文件'
       );
   }
 
