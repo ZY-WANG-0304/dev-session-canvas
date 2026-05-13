@@ -1,0 +1,20 @@
+name = "dscanvas-template-marketplace"
+main = "src/worker/index.ts"
+compatibility_date = "2026-05-10"
+workers_dev = true
+preview_urls = true
+
+[assets]
+directory = "./dist/web"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/templates", "/templates/*"]
+
+[[d1_databases]]
+binding = "MARKETPLACE_DB"
+database_name = "template_marketplace_preview"
+database_id = "0944dc87-a603-4a59-8a59-b75ab3a796c5"
+
+[[r2_buckets]]
+binding = "TEMPLATE_BUCKET"
+bucket_name = "template-marketplace-preview"
