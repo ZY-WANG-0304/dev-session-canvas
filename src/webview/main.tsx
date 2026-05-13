@@ -207,6 +207,8 @@ interface CanvasNodeData {
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onOpenNoteLink?: (nodeId: string, href: string) => void;
+  onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
+  onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -262,6 +264,9 @@ const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待�
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
+const RESOURCE_URLS_DATA_TRANSFER = 'ResourceURLs';
+const CODE_FILES_DATA_TRANSFER = 'CodeFiles';
+const URI_LIST_DATA_TRANSFER = 'text/uri-list';
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
@@ -1650,6 +1655,20 @@ function App(): JSX.Element {
           href
         }
       }),
+    onSaveNoteAsMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/saveNoteAsMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onOpenAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/openAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
     onSelectFileListEntry: selectFileListEntry,
     onSetFileListViewMode: setFileListViewMode,
     onToggleFileListTreeBranch: toggleFileListTreeBranch,
@@ -1899,6 +1918,50 @@ function App(): JSX.Element {
     });
   };
 
+  const handleCanvasDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isCanvasBlankDropTarget(event.target)) {
+      return;
+    }
+    if (extractDroppedNoteMarkdownResources(event.dataTransfer).length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isCanvasBlankDropTarget(event.target)) {
+      return;
+    }
+
+    const resources = extractDroppedNoteMarkdownResources(event.dataTransfer);
+    if (resources.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    const reactFlowInstance = reactFlowRef.current;
+    if (!reactFlowInstance?.viewportInitialized) {
+      return;
+    }
+
+    const flowPosition = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    postMessage({
+      type: 'webview/dropNoteMarkdownFiles',
+      payload: {
+        resources,
+        position: {
+          x: Math.round(flowPosition.x),
+          y: Math.round(flowPosition.y)
+        }
+      }
+    });
+  };
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const visibleCenter = resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current);
@@ -2103,6 +2166,8 @@ function App(): JSX.Element {
       data-canvas-overview-config={runtimeContext.overviewMode}
       style={canvasShellStyle}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
     >
       <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
@@ -4383,6 +4448,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
+  const noteContentSource = noteMetadata.contentSource;
+  const associatedMarkdownFile =
+    noteContentSource?.kind === 'markdown-file' ? noteContentSource : undefined;
+  const associatedMarkdownFileAvailable =
+    !associatedMarkdownFile || associatedMarkdownFile.status === 'ok';
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
@@ -4478,8 +4548,18 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onDeleteNode?.(id);
   };
 
+  const saveAsMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onSaveNoteAsMarkdownFile?.(id);
+  };
+
+  const openAssociatedMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onOpenAssociatedNoteMarkdownFile?.(id);
+  };
+
   const startEditingBody = (): void => {
-    if (overviewInteractionsDisabled) {
+    if (overviewInteractionsDisabled || !associatedMarkdownFileAvailable) {
       return;
     }
     pendingBodyFocusRef.current = true;
@@ -4597,10 +4677,31 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           value={data.title}
           placeholder="Note 标题"
           className="note-window-title"
+          subtitle={associatedMarkdownFile?.displayPath}
+          subtitleTooltip={associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
+          {associatedMarkdownFile ? (
+            <ActionButton
+              label="打开文件"
+              tone="secondary"
+              onClick={openAssociatedMarkdownFile}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          ) : (
+            <ActionButton
+              label="保存为 Markdown"
+              tone="secondary"
+              onClick={saveAsMarkdownFile}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          )}
           <ActionButton
             label="删除"
             tone="danger"
@@ -4615,7 +4716,19 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       <div className="object-body object-surface note-surface">
         <NodeOverviewTitle title={data.title} />
         <div className="note-editor-surface" {...canvasOverviewInertProps(overviewInteractionsDisabled)}>
-          {isEditingBody ? (
+          {!associatedMarkdownFileAvailable ? (
+            <div
+              className="note-file-warning nowheel nodrag nopan"
+              data-node-interactive="true"
+              data-probe-field="body"
+              data-probe-value={content}
+              role="status"
+            >
+              <strong>关联的 Markdown 文件不可用</strong>
+              <span>{associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}</span>
+              <p>{associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。'}</p>
+            </div>
+          ) : isEditingBody ? (
             <div className="note-document-editor">
               <div className="note-document-line-number-gutter" aria-hidden="true">
                 <div
@@ -6449,6 +6562,7 @@ function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
   subtitle?: string;
+  subtitleTooltip?: string;
   subtitleAccessory?: React.ReactNode;
   className?: string;
   onSelectNode?: () => void;
@@ -6542,7 +6656,11 @@ function ChromeTitleEditor(props: {
         />
         {props.subtitle ? (
           <div className="window-title-subtitle-row">
-            <OverflowAwareText className="window-title-subtitle" text={props.subtitle} />
+            <OverflowAwareText
+              className="window-title-subtitle"
+              text={props.subtitle}
+              tooltipText={props.subtitleTooltip}
+            />
             {props.subtitleAccessory}
           </div>
         ) : null}
@@ -6621,6 +6739,8 @@ function toFlowNodes(params: {
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onOpenNoteLink: (nodeId: string, href: string) => void;
+  onSaveNoteAsMarkdownFile: (nodeId: string) => void;
+  onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -6710,6 +6830,8 @@ function toFlowNodes(params: {
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
         onOpenNoteLink: params.onOpenNoteLink,
+        onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
+        onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
@@ -8496,6 +8618,78 @@ function delayTestAction(delayMs?: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+}
+
+function isCanvasBlankDropTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return !target.closest('.react-flow__node, .canvas-node, [data-node-interactive="true"], [data-context-menu="true"]');
+}
+
+function extractDroppedNoteMarkdownResources(dataTransfer: DataTransfer | null): ExecutionTerminalDroppedResource[] {
+  if (!dataTransfer) {
+    return [];
+  }
+
+  const resources: ExecutionTerminalDroppedResource[] = [];
+  const rawResources = dataTransfer.getData(RESOURCE_URLS_DATA_TRANSFER);
+  for (const value of parseDroppedStringArray(rawResources)) {
+    resources.push({
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value
+    });
+  }
+
+  const rawCodeFiles = dataTransfer.getData(CODE_FILES_DATA_TRANSFER);
+  for (const value of parseDroppedStringArray(rawCodeFiles)) {
+    resources.push({
+      source: 'codeFiles',
+      valueKind: 'path',
+      value
+    });
+  }
+
+  const rawUriList = dataTransfer.getData(URI_LIST_DATA_TRANSFER);
+  if (rawUriList) {
+    for (const value of rawUriList
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0 && !entry.startsWith('#'))) {
+      resources.push({
+        source: 'uriList',
+        valueKind: 'uri',
+        value
+      });
+    }
+  }
+
+  for (const file of Array.from(dataTransfer.files) as Array<File & { path?: string }>) {
+    if (typeof file.path === 'string' && file.path.trim().length > 0) {
+      resources.push({
+        source: 'files',
+        valueKind: 'path',
+        value: file.path
+      });
+    }
+  }
+
+  return resources;
+}
+
+function parseDroppedStringArray(rawValue: string): string[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function createNoteMarkdownRenderer(): MarkdownIt {

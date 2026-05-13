@@ -86,6 +86,8 @@ const REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED = ['- [x] 补齐 smoke', '- [x] 保�
 const REAL_DOM_NOTE_FILE_LINK_RELATIVE_PATH = 'note-link-open-target.txt';
 const REAL_DOM_NOTE_FILE_LINK_BODY =
   '[打开 Note 链接目标](.debug/vscode-smoke/note-link-open-target.txt#L2C3)';
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY = '# Associated Note\n\n- from workspace file';
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY = '# Associated Note\n\n- updated from canvas';
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
@@ -729,6 +731,7 @@ async function runTrustedSmoke() {
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyInteractiveNoteChecklist(noteNode.id);
   await verifyNoteWorkspaceFileLinks(noteNode.id);
+  await verifyNoteMarkdownFileAssociation();
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
@@ -3929,6 +3932,266 @@ async function verifyNoteWorkspaceFileLinks(noteNodeId) {
     return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_BODY);
   });
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
+}
+
+async function verifyNoteMarkdownFileAssociation() {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+
+  const associationDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke');
+  await fs.mkdir(associationDir, { recursive: true });
+
+  const associatedFilePath = path.join(associationDir, 'associated-note.md');
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  const associatedFileUri = vscode.Uri.file(associatedFilePath);
+
+  const associatedFileDropMessage = {
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: associatedFileUri.toString()
+        },
+        {
+          source: 'codeFiles',
+          valueKind: 'path',
+          value: associatedFilePath
+        }
+      ],
+      position: { x: 820, y: 320 }
+    }
+  };
+  await Promise.all([
+    dispatchWebviewMessage(associatedFileDropMessage),
+    dispatchWebviewMessage(associatedFileDropMessage)
+  ]);
+
+  let snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.some(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.kind === 'markdown-file' &&
+        node.metadata.note.contentSource.resourceUri === associatedFileUri.toString() &&
+        node.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    )
+  );
+  const associatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(associatedNote, 'Expected dropping a Markdown file onto the canvas to create an associated Note.');
+  assert.strictEqual(associatedNote.title, 'associated-note');
+  assert.strictEqual(associatedNote.metadata.note.contentSource.displayPath, '.debug/vscode-smoke/associated-note.md');
+  assert.strictEqual(
+    associatedNote.metadata.note.contentSource.fullDisplayPath,
+    '.debug/vscode-smoke/associated-note.md'
+  );
+  assert.strictEqual(associatedNote.metadata.note.contentSource.status, 'ok');
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected duplicate drag resources/messages for the same Markdown file to create only one associated Note.'
+  );
+
+  const existingAssociatedFileDropMessage = {
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: associatedFileUri.toString()
+        }
+      ],
+      position: { x: 840, y: 340 }
+    }
+  };
+
+  await clearHostMessages();
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage(existingAssociatedFileDropMessage);
+      await waitForHostMessages(
+        (messages) =>
+          messages.some(
+            (message) =>
+              message.type === 'host/focusNodes' &&
+              Array.isArray(message.payload?.nodeIds) &&
+              message.payload.nodeIds.includes(associatedNote.id)
+          ),
+        10000
+      );
+      assert.strictEqual(warningCalls.length, 1, 'Expected dropping an already associated Markdown file to confirm.');
+      assert.match(String(warningCalls[0].message), /已经关联到一个 Note 节点/);
+      assert.ok(
+        String(warningCalls[0].message).includes(associatedNote.metadata.note.contentSource.displayPath),
+        'Expected the existing-file drop confirmation to use the same display path as the Note subtitle.'
+      );
+      assert.ok(
+        !String(warningCalls[0].message).includes(associatedFilePath),
+        'Expected the existing-file drop confirmation not to show the absolute file path.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('定位已关联 Note'),
+        'Expected the existing-file drop confirmation to offer locating the associated Note.'
+      );
+      assert.ok(
+        !warningCalls[0].items.includes('取消'),
+        'Expected the existing-file drop confirmation to rely on the modal default cancel button.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '定位已关联 Note')
+  );
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected choosing locate for an already associated Markdown file not to create another Note.'
+  );
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage(existingAssociatedFileDropMessage);
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.filter(
+            (node) =>
+              node.kind === 'note' &&
+              node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+          ).length === 2,
+        10000
+      );
+      assert.strictEqual(warningCalls.length, 1, 'Expected adding another associated Note to confirm.');
+      assert.ok(
+        warningCalls[0].items.includes('继续添加新 Note'),
+        'Expected the existing-file drop confirmation to offer creating another associated Note.'
+      );
+      assert.ok(
+        !warningCalls[0].items.includes('取消'),
+        'Expected the existing-file drop confirmation not to duplicate the modal cancel button.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '继续添加新 Note')
+  );
+  const duplicateAssociatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.id !== associatedNote.id &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(duplicateAssociatedNote, 'Expected choosing continue to create a second associated Note.');
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: duplicateAssociatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'note' &&
+          node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+      ).length === 1,
+    10000
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY
+    }
+  });
+  await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY);
+  });
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: associatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.every((node) => node.id !== associatedNote.id)
+  );
+  assert.ok(
+    snapshot.state.nodes.every((node) => node.id !== associatedNote.id),
+    'Expected deleting an associated Note to remove only the node.'
+  );
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY,
+    'Expected deleting an associated Note to leave the Markdown file untouched.'
+  );
+
+  const missingFilePath = path.join(associationDir, 'missing-associated-note.md');
+  await fs.writeFile(missingFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  const missingFileUri = vscode.Uri.file(missingFilePath);
+  await dispatchWebviewMessage({
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: missingFileUri.toString()
+        }
+      ],
+      position: { x: 860, y: 360 }
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.some(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === missingFileUri.toString()
+    )
+  );
+  const missingNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.metadata?.note?.contentSource?.resourceUri === missingFileUri.toString()
+  );
+  assert.ok(missingNote, 'Expected the second dropped Markdown file to create an associated Note.');
+
+  await fs.unlink(missingFilePath);
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === missingNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'missing';
+  }, 10000);
+  assert.strictEqual(
+    findNodeById(snapshot, missingNote.id).metadata.note.contentSource.status,
+    'missing',
+    'Expected deleting an associated Markdown file to mark the Note as missing.'
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: missingNote.id
+    }
+  });
+  await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.every((node) => node.id !== missingNote.id)
+  );
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {

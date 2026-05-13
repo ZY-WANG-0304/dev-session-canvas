@@ -4244,6 +4244,156 @@ test('clicking a note workspace file link posts openNoteLink with the raw relati
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
 });
 
+test('associated markdown notes render the file path subtitle and open-file action', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/design.md',
+    displayPath: 'docs/design.md',
+    fullDisplayPath: '/workspace/docs/design.md',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.window-title-subtitle')).toHaveText('docs/design.md');
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('文件笔记');
+  await expect(noteNode.getByRole('button', { name: '保存为 Markdown' })).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '打开文件' }).click();
+  const message = await waitForPostedMessageByType(page, 'webview/openAssociatedNoteMarkdownFile');
+  expect(message).toEqual({
+    type: 'webview/openAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('missing associated markdown notes show a warning instead of stale markdown content', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 旧内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/missing.md',
+    displayPath: '…/docs/missing.md',
+    fullDisplayPath: '/workspace/docs/missing.md',
+    status: 'missing',
+    lastError: '关联的 Markdown 文件不可用：docs/missing.md'
+  };
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-file-warning')).toContainText('关联的 Markdown 文件不可用');
+  await expect(noteNode.locator('.window-title-subtitle')).toHaveText('…/docs/missing.md');
+  await expect(noteNode.locator('.note-file-warning')).toContainText('/workspace/docs/missing.md');
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+});
+
+test('ordinary note save-as-markdown action posts saveNoteAsMarkdownFile', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.getByRole('button', { name: '保存为 Markdown' }).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/saveNoteAsMarkdownFile');
+  expect(message).toEqual({
+    type: 'webview/saveNoteAsMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('dropping markdown files on the empty canvas posts markdown note resources', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+  await clearPostedMessages(page);
+
+  const dropResult = await page.evaluate(() => {
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) {
+      throw new Error('React Flow pane not found.');
+    }
+
+    const attachDataTransfer = (event, dataTransfer) => {
+      Object.defineProperty(event, 'dataTransfer', {
+        configurable: true,
+        value: dataTransfer
+      });
+      return event;
+    };
+    const dataTransfer = {
+      dropEffect: 'copy',
+      effectAllowed: 'all',
+      files: [],
+      items: [],
+      types: ['ResourceURLs'],
+      getData: (type) =>
+        type === 'ResourceURLs'
+          ? JSON.stringify(['file:///workspace/docs/one.md', 'file:///workspace/docs/two.markdown'])
+          : '',
+      setData: () => {},
+      clearData: () => {},
+      setDragImage: () => {}
+    };
+    const dragOverEvent = attachDataTransfer(
+      new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 320,
+        clientY: 260
+      }),
+      dataTransfer
+    );
+    const dropEvent = attachDataTransfer(
+      new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 320,
+        clientY: 260
+      }),
+      dataTransfer
+    );
+
+    pane.dispatchEvent(dragOverEvent);
+    pane.dispatchEvent(dropEvent);
+
+    return {
+      dragOverDefaultPrevented: dragOverEvent.defaultPrevented,
+      dropDefaultPrevented: dropEvent.defaultPrevented
+    };
+  });
+
+  expect(dropResult).toEqual({
+    dragOverDefaultPrevented: true,
+    dropDefaultPrevented: true
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/dropNoteMarkdownFiles');
+  expect(message.payload.resources).toEqual([
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///workspace/docs/one.md'
+    },
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///workspace/docs/two.markdown'
+    }
+  ]);
+  expect(Number.isFinite(message.payload.position.x)).toBe(true);
+  expect(Number.isFinite(message.payload.position.y)).toBe(true);
+});
+
 test('note markdown unsafe command links do not render clickable hrefs', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();

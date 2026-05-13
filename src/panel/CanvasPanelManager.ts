@@ -133,6 +133,15 @@ import {
   type NoteMarkdownFileSelection,
   type NoteMarkdownWorkspaceRoot
 } from '../common/noteMarkdownLinks';
+import {
+  compactNoteMarkdownDisplayPath,
+  createDefaultNoteMarkdownFileName,
+  formatNoteMarkdownRemoteAuthorityPrefix,
+  isSupportedNoteMarkdownFilePath,
+  type MarkdownFileNoteContentSource,
+  type NoteContentSource,
+  type NoteMarkdownFileStatus
+} from '../common/noteMarkdownFileAssociation';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
 import {
   createExecutionSessionProcess,
@@ -538,6 +547,24 @@ interface CanvasTemplateApplyStateResult {
   nodeIds: string[];
 }
 
+interface NoteMarkdownFileQuickPickItem extends vscode.QuickPickItem {
+  itemKind: 'use-input' | 'directory' | 'file';
+  filePath?: string;
+}
+
+interface NoteMarkdownFileWatcher {
+  close(): void;
+}
+
+interface ReadNoteMarkdownFileResult {
+  status: NoteMarkdownFileStatus;
+  content: string;
+  lastError?: string;
+}
+
+type NoteMarkdownExistingFileChoice = 'overwrite' | 'keep';
+type NoteMarkdownExistingDropChoice = 'create' | 'locate';
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
@@ -600,6 +627,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
+  private readonly noteMarkdownFileWatchers = new Map<string, NoteMarkdownFileWatcher>();
+  private readonly noteMarkdownFileRefreshTimers = new Map<string, NodeJS.Timeout>();
+  private readonly noteMarkdownDropResourceKeysInProgress = new Set<string>();
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
   private readonly resolvedShellEnvironmentPatchPromises = new Map<
     ShellEnvironmentProbeMode,
@@ -809,9 +839,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     context.subscriptions.push(
       new vscode.Disposable(() => {
         this.disposeRuntimeSupervisorClients();
+        this.disposeNoteMarkdownFileWatchers();
       })
     );
 
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeTextDocument((event) => {
+        void this.refreshAssociatedMarkdownNotesForDocument(event.document);
+      }),
+      vscode.workspace.onDidSaveTextDocument((document) => {
+        void this.refreshAssociatedMarkdownNotesForDocument(document);
+      }),
+      vscode.window.onDidChangeWindowState((windowState) => {
+        if (windowState.focused) {
+          void this.refreshAllAssociatedMarkdownNotes();
+        }
+      })
+    );
+
+    this.syncNoteMarkdownFileWatchers();
+    void this.refreshAllAssociatedMarkdownNotes();
     this.scheduleRestoreLiveRuntimeSessions();
     void this.notifyIfConfiguredTerminalShellUnavailable();
   }
@@ -1412,6 +1459,83 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
       titleOverride: options?.titleOverride
     });
+  }
+
+  public async saveNoteAsMarkdownFile(nodeId?: string): Promise<void> {
+    const node = nodeId
+      ? this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note')
+      : await this.pickEmbeddedNoteForMarkdownAssociation();
+    if (!node || node.kind !== 'note') {
+      return;
+    }
+
+    const noteMetadata = ensureNoteMetadata(node);
+    if (noteMetadata.contentSource?.kind === 'markdown-file') {
+      await this.openAssociatedNoteMarkdownFile(node.id, this.activeSurface ?? this.getConfiguredSurface());
+      return;
+    }
+
+    const targetUri = await this.promptNoteMarkdownFileTarget(node);
+    if (!targetUri) {
+      return;
+    }
+
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(targetUri))) {
+      await vscode.window.showWarningMessage('Note 只能关联 .md 或 .markdown 文件。');
+      return;
+    }
+
+    const targetStatus = await this.statNoteMarkdownTarget(targetUri);
+    if (targetStatus === 'directory') {
+      await vscode.window.showWarningMessage('目标路径是目录，请选择或输入一个 .md / .markdown 文件。');
+      return;
+    }
+
+    if (targetStatus === 'missing-parent') {
+      await vscode.window.showWarningMessage('目标文件所在目录不存在，无法保存 Markdown 文件。');
+      return;
+    }
+
+    if (targetStatus === 'other') {
+      await vscode.window.showWarningMessage('目标路径不是普通文件，无法保存 Markdown 文件。');
+      return;
+    }
+
+    let nextContent = noteMetadata.content;
+    let shouldWriteCurrentNoteContent = targetStatus !== 'file';
+    if (targetStatus === 'file') {
+      const choice = await this.confirmExistingNoteMarkdownFile(targetUri);
+      if (!choice) {
+        return;
+      }
+
+      if (choice === 'keep') {
+        const readResult = await this.readNoteMarkdownFile(targetUri);
+        if (readResult.status !== 'ok') {
+          await vscode.window.showWarningMessage(readResult.lastError ?? '无法读取目标 Markdown 文件。');
+          return;
+        }
+        nextContent = readResult.content;
+      } else {
+        shouldWriteCurrentNoteContent = true;
+      }
+    }
+
+    if (shouldWriteCurrentNoteContent) {
+      const writeResult = await this.writeNoteMarkdownFile(targetUri, noteMetadata.content);
+      if (!writeResult.ok) {
+        await vscode.window.showWarningMessage(writeResult.errorMessage);
+        return;
+      }
+      nextContent = noteMetadata.content;
+    }
+
+    this.state = this.updateNoteMarkdownFileAssociationState(this.state, node.id, targetUri, {
+      status: 'ok',
+      content: nextContent
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
   }
 
   public async focusNodeById(nodeId: string): Promise<boolean> {
@@ -2773,6 +2897,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private persistState(): void {
+    this.syncNoteMarkdownFileWatchers();
     void this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
@@ -3267,6 +3392,162 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.writeExecutionInput(kind, nodeId, preparedPath);
   }
 
+  private async handleDroppedNoteMarkdownFiles(
+    resources: ExecutionTerminalDroppedResource[],
+    position: CanvasNodePosition
+  ): Promise<void> {
+    const droppedResourceKeys = new Set<string>();
+    const createdNodeIds: string[] = [];
+    const locatedNodeIds: string[] = [];
+    const rejectedReasons: string[] = [];
+    let offsetIndex = 0;
+
+    for (const resource of resources) {
+      const uri = resolveDroppedNoteMarkdownResourceUri(resource);
+      if (!uri) {
+        rejectedReasons.push('无法识别拖拽资源。');
+        continue;
+      }
+
+      if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+        rejectedReasons.push(`${this.formatNoteMarkdownUriForMessage(uri)} 不是 Markdown 文件。`);
+        continue;
+      }
+
+      const resourceKey = normalizeNoteMarkdownResourceKey(uri);
+      if (droppedResourceKeys.has(resourceKey)) {
+        continue;
+      }
+      droppedResourceKeys.add(resourceKey);
+
+      if (this.noteMarkdownDropResourceKeysInProgress.has(resourceKey)) {
+        continue;
+      }
+
+      this.noteMarkdownDropResourceKeysInProgress.add(resourceKey);
+      try {
+        const existingNodeIds = this.getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey);
+        if (existingNodeIds.length > 0) {
+          const choice = await this.confirmExistingDroppedNoteMarkdownFile(uri, existingNodeIds.length);
+          if (choice === 'locate') {
+            locatedNodeIds.push(...existingNodeIds);
+            continue;
+          }
+          if (choice !== 'create') {
+            continue;
+          }
+        }
+
+        const readResult = await this.readNoteMarkdownFile(uri);
+        if (readResult.status !== 'ok') {
+          rejectedReasons.push(readResult.lastError ?? `无法读取 ${this.formatNoteMarkdownUriForMessage(uri)}。`);
+          continue;
+        }
+
+        if (existingNodeIds.length === 0) {
+          const latestExistingNodeIds = this.getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey);
+          if (latestExistingNodeIds.length > 0) {
+            const choice = await this.confirmExistingDroppedNoteMarkdownFile(uri, latestExistingNodeIds.length);
+            if (choice === 'locate') {
+              locatedNodeIds.push(...latestExistingNodeIds);
+              continue;
+            }
+            if (choice !== 'create') {
+              continue;
+            }
+          }
+        }
+
+        const createdNode = this.createAssociatedNoteMarkdownNode(uri, readResult.content, {
+          x: position.x + offsetIndex * 28,
+          y: position.y + offsetIndex * 28
+        });
+        if (createdNode) {
+          createdNodeIds.push(createdNode.id);
+          offsetIndex += 1;
+        }
+      } finally {
+        this.noteMarkdownDropResourceKeysInProgress.delete(resourceKey);
+      }
+    }
+
+    const focusNodeIds = Array.from(new Set([...createdNodeIds, ...locatedNodeIds]));
+    if (focusNodeIds.length === 0) {
+      if (rejectedReasons.length === 0) {
+        return;
+      }
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: rejectedReasons[0] ?? '没有可创建关联 Note 的 Markdown 文件。'
+        }
+      });
+      return;
+    }
+
+    if (createdNodeIds.length > 0) {
+      this.persistState();
+      this.postState('host/stateUpdated');
+    }
+    this.focusCanvasTemplateNodeGroup(focusNodeIds);
+  }
+
+  private getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey: string): string[] {
+    return this.state.nodes
+      .filter((node) => this.getAssociatedNoteMarkdownResourceKey(node) === resourceKey)
+      .map((node) => node.id);
+  }
+
+  private getAssociatedNoteMarkdownResourceKey(node: CanvasNodeSummary): string | undefined {
+    const source = node.kind === 'note' ? ensureNoteMetadata(node).contentSource : undefined;
+    if (source?.kind !== 'markdown-file') {
+      return undefined;
+    }
+
+    const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+    return uri ? normalizeNoteMarkdownResourceKey(uri) : source.resourceUri;
+  }
+
+  private createAssociatedNoteMarkdownNode(
+    uri: vscode.Uri,
+    content: string,
+    preferredPosition: CanvasNodePosition
+  ): CanvasNodeSummary | undefined {
+    const nextState = createNextState(this.state, 'note', 'codex', 'default', undefined, preferredPosition);
+    const createdNode = nextState.nodes[nextState.nodes.length - 1];
+    if (!createdNode) {
+      return undefined;
+    }
+
+    const title = noteMarkdownTitleFromUri(uri);
+    const displayPathInfo = this.formatNoteMarkdownDisplayPathInfo(uri);
+    const noteMetadata: NoteNodeMetadata = {
+      content: trimStoredNodeText(content),
+      contentSource: {
+        kind: 'markdown-file',
+        resourceUri: uri.toString(),
+        ...displayPathInfo,
+        status: 'ok'
+      }
+    };
+    const associatedNode: CanvasNodeSummary = {
+      ...createdNode,
+      title,
+      status: 'ready',
+      summary: summarizeNoteNode(noteMetadata.content),
+      metadata: {
+        ...createdNode.metadata,
+        note: noteMetadata
+      }
+    };
+
+    this.state = {
+      ...nextState,
+      nodes: [...nextState.nodes.slice(0, -1), associatedNode]
+    };
+    return associatedNode;
+  }
+
   private async handleResolveExecutionFileLinks(
     surface: CanvasSurfaceLocation,
     kind: ExecutionNodeKind,
@@ -3366,6 +3647,75 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private async handleUpdateNoteNode(payload: { nodeId: string; content: string }): Promise<void> {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    if (!node || noteMetadata?.contentSource?.kind !== 'markdown-file') {
+      this.state = updateNoteContent(this.state, payload);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const uri = parseStoredNoteMarkdownResourceUri(noteMetadata.contentSource.resourceUri);
+    if (!uri) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+        ...noteMetadata.contentSource,
+        status: 'unreadable',
+        lastError: '关联 Markdown 文件 URI 无法解析。'
+      }, noteMetadata.content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const nextContent = trimStoredNodeText(payload.content);
+    const writeResult = await this.writeNoteMarkdownFile(uri, nextContent);
+    if (!writeResult.ok) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+        ...noteMetadata.contentSource,
+        status: 'unreadable',
+        lastError: writeResult.errorMessage
+      }, noteMetadata.content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    this.state = updateNoteContent(this.state, payload);
+    this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+      ...noteMetadata.contentSource,
+      ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      status: 'ok',
+      lastError: undefined
+    }, nextContent);
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async openAssociatedNoteMarkdownFile(
+    nodeId: string,
+    sourceSurface: CanvasSurfaceLocation
+  ): Promise<void> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!source || source.kind !== 'markdown-file') {
+      return;
+    }
+
+    const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+    if (!uri) {
+      return;
+    }
+
+    if (uri.scheme === 'file') {
+      await this.openCanvasFile(uri.fsPath, sourceSurface);
+      return;
+    }
+
+    await vscode.commands.executeCommand('vscode.open', uri);
+  }
+
   private async openNoteLink(
     nodeId: string,
     href: string,
@@ -3427,6 +3777,522 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       name: workspaceFolder.name,
       path: workspaceFolder.uri.fsPath
     }));
+  }
+
+  private async pickEmbeddedNoteForMarkdownAssociation(): Promise<CanvasNodeSummary | undefined> {
+    const noteNodes = this.state.nodes.filter(
+      (node) => node.kind === 'note' && ensureNoteMetadata(node).contentSource?.kind !== 'markdown-file'
+    );
+    if (noteNodes.length === 0) {
+      await vscode.window.showInformationMessage('当前画布没有可保存为 Markdown 的普通 Note。');
+      return undefined;
+    }
+
+    const selected = await vscode.window.showQuickPick(
+      noteNodes.map((node) => ({
+        label: node.title,
+        description: summarizeNoteNode(ensureNoteMetadata(node).content),
+        node
+      })),
+      {
+        title: '选择要保存为 Markdown 的 Note',
+        placeHolder: '选择一个普通 Note'
+      }
+    );
+    return selected?.node;
+  }
+
+  private async promptNoteMarkdownFileTarget(node: CanvasNodeSummary): Promise<vscode.Uri | undefined> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const defaultDirectory = workspaceRoot ?? process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+    const defaultPath = path.join(defaultDirectory, createDefaultNoteMarkdownFileName(node.title));
+    return this.showNoteMarkdownFileQuickInput(defaultPath);
+  }
+
+  private async showNoteMarkdownFileQuickInput(initialPath: string): Promise<vscode.Uri | undefined> {
+    return new Promise((resolve) => {
+      const quickPick = vscode.window.createQuickPick<NoteMarkdownFileQuickPickItem>();
+      let disposed = false;
+
+      const resolveOnce = (uri: vscode.Uri | undefined): void => {
+        if (disposed) {
+          return;
+        }
+        disposed = true;
+        quickPick.dispose();
+        resolve(uri);
+      };
+
+      const updateItems = (): void => {
+        const inputPath = this.resolveNoteMarkdownInputPath(quickPick.value);
+        const directoryPath = resolveExistingDirectoryForNoteMarkdownInput(inputPath);
+        const items: NoteMarkdownFileQuickPickItem[] = [
+          {
+            itemKind: 'use-input',
+            label: '$(check) 使用当前输入路径',
+            description: inputPath,
+            alwaysShow: true
+          }
+        ];
+
+        if (directoryPath) {
+          try {
+            const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+            for (const entry of entries) {
+              const entryPath = path.join(directoryPath, entry.name);
+              if (entry.isDirectory()) {
+                items.push({
+                  itemKind: 'directory',
+                  label: `$(folder) ${entry.name}`,
+                  description: entryPath,
+                  filePath: entryPath
+                });
+              } else if (entry.isFile() && isSupportedNoteMarkdownFilePath(entry.name)) {
+                items.push({
+                  itemKind: 'file',
+                  label: `$(markdown) ${entry.name}`,
+                  description: entryPath,
+                  filePath: entryPath
+                });
+              }
+            }
+          } catch {
+            // Keep the current input item available even if the directory cannot be listed.
+          }
+        }
+
+        quickPick.items = items;
+      };
+
+      quickPick.title = '保存 Note 为 Markdown 并关联';
+      quickPick.placeholder = '输入或选择 .md / .markdown 文件路径';
+      quickPick.value = initialPath;
+      quickPick.matchOnDescription = true;
+      quickPick.ignoreFocusOut = true;
+      quickPick.onDidChangeValue(updateItems);
+      quickPick.onDidHide(() => resolveOnce(undefined));
+      quickPick.onDidAccept(() => {
+        const selected = quickPick.selectedItems[0];
+        if (selected?.itemKind === 'directory' && selected.filePath) {
+          quickPick.value = `${selected.filePath}${path.sep}`;
+          updateItems();
+          return;
+        }
+
+        const targetPath = selected?.itemKind === 'file' && selected.filePath
+          ? selected.filePath
+          : this.resolveNoteMarkdownInputPath(quickPick.value);
+        resolveOnce(vscode.Uri.file(targetPath));
+      });
+      updateItems();
+      quickPick.show();
+    });
+  }
+
+  private resolveNoteMarkdownInputPath(value: string): string {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return path.join(
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
+        createDefaultNoteMarkdownFileName('note')
+      );
+    }
+
+    if (path.isAbsolute(trimmedValue)) {
+      return path.normalize(trimmedValue);
+    }
+
+    const basePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    return path.resolve(basePath, trimmedValue);
+  }
+
+  private async statNoteMarkdownTarget(
+    uri: vscode.Uri
+  ): Promise<'file' | 'directory' | 'missing' | 'missing-parent' | 'other'> {
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type === vscode.FileType.File) {
+        return 'file';
+      }
+      if (stat.type === vscode.FileType.Directory) {
+        return 'directory';
+      }
+      return 'other';
+    } catch {
+      const parentUri = vscode.Uri.joinPath(uri, '..');
+      try {
+        const parentStat = await vscode.workspace.fs.stat(parentUri);
+        return parentStat.type === vscode.FileType.Directory ? 'missing' : 'missing-parent';
+      } catch {
+        return 'missing-parent';
+      }
+    }
+  }
+
+  private async confirmExistingNoteMarkdownFile(
+    uri: vscode.Uri
+  ): Promise<NoteMarkdownExistingFileChoice | undefined> {
+    const overwrite = '覆盖文件并关联';
+    const keep = '保留文件内容并关联';
+    const selected = await vscode.window.showWarningMessage(
+      `目标文件已存在：${this.formatNoteMarkdownUriForMessage(uri)}。你想覆盖它，还是保留现有文件内容并关联？`,
+      { modal: true },
+      overwrite,
+      keep
+    );
+    if (selected === overwrite) {
+      return 'overwrite';
+    }
+    if (selected === keep) {
+      return 'keep';
+    }
+    return undefined;
+  }
+
+  private async confirmExistingDroppedNoteMarkdownFile(
+    uri: vscode.Uri,
+    existingNodeCount: number
+  ): Promise<NoteMarkdownExistingDropChoice | undefined> {
+    const create = '继续添加新 Note';
+    const locate = '定位已关联 Note';
+    const countText = existingNodeCount > 1
+      ? `已经关联到 ${existingNodeCount} 个 Note 节点`
+      : '已经关联到一个 Note 节点';
+    const selected = await vscode.window.showWarningMessage(
+      `${this.formatNoteMarkdownUriForMessage(uri)} ${countText}。你想继续在画板上添加一个新的关联 Note，还是定位已关联的 Note？`,
+      { modal: true },
+      create,
+      locate
+    );
+    if (selected === create) {
+      return 'create';
+    }
+    if (selected === locate) {
+      return 'locate';
+    }
+    return undefined;
+  }
+
+  private async readNoteMarkdownFile(uri: vscode.Uri): Promise<ReadNoteMarkdownFileResult> {
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+      return {
+        status: 'unsupported-extension',
+        content: '',
+        lastError: 'Note 只能关联 .md 或 .markdown 文件。'
+      };
+    }
+
+    let stat: vscode.FileStat;
+    try {
+      stat = await vscode.workspace.fs.stat(uri);
+    } catch {
+      return {
+        status: 'missing',
+        content: '',
+        lastError: `关联的 Markdown 文件不可用：${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+
+    if (stat.type === vscode.FileType.Directory) {
+      return {
+        status: 'not-file',
+        content: '',
+        lastError: `目标路径是目录：${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+    if (stat.type !== vscode.FileType.File) {
+      return {
+        status: 'unreadable',
+        content: '',
+        lastError: `目标路径不是普通文件：${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+
+    const openedDocument = vscode.workspace.textDocuments.find(
+      (document) => document.uri.toString() === uri.toString()
+    );
+    if (openedDocument) {
+      return {
+        status: 'ok',
+        content: openedDocument.getText()
+      };
+    }
+
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      return {
+        status: 'ok',
+        content: Buffer.from(bytes).toString('utf8')
+      };
+    } catch (error) {
+      return {
+        status: 'unreadable',
+        content: '',
+        lastError: error instanceof Error ? error.message : `无法读取 ${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+  }
+
+  private async writeNoteMarkdownFile(
+    uri: vscode.Uri,
+    content: string
+  ): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+      return {
+        ok: false,
+        errorMessage: 'Note 只能关联 .md 或 .markdown 文件。'
+      };
+    }
+
+    const openedDocument = vscode.workspace.textDocuments.find(
+      (document) => document.uri.toString() === uri.toString()
+    );
+    if (openedDocument?.isDirty) {
+      const fullRange = new vscode.Range(
+        openedDocument.positionAt(0),
+        openedDocument.positionAt(openedDocument.getText().length)
+      );
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, fullRange, content);
+      const applied = await vscode.workspace.applyEdit(edit);
+      return applied
+        ? { ok: true }
+        : { ok: false, errorMessage: '目标 Markdown 文件在编辑器中有未保存修改，无法更新。' };
+    }
+
+    try {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        errorMessage: error instanceof Error ? error.message : `无法写入 ${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+  }
+
+  private updateNoteMarkdownFileAssociationState(
+    state: CanvasPrototypeState,
+    nodeId: string,
+    uri: vscode.Uri,
+    params: {
+      status: NoteMarkdownFileStatus;
+      content: string;
+      lastError?: string;
+    }
+  ): CanvasPrototypeState {
+    return updateAssociatedNoteMarkdownFileStatus(state, nodeId, {
+      kind: 'markdown-file',
+      resourceUri: uri.toString(),
+      ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      status: params.status,
+      lastError: params.lastError
+    }, params.content);
+  }
+
+  private formatNoteMarkdownDisplayPathInfo(
+    uri: vscode.Uri
+  ): Pick<MarkdownFileNoteContentSource, 'displayPath' | 'fullDisplayPath'> {
+    const fullDisplayPath = this.formatNoteMarkdownFullDisplayPath(uri);
+    return {
+      displayPath: compactNoteMarkdownDisplayPath(fullDisplayPath),
+      fullDisplayPath
+    };
+  }
+
+  private formatNoteMarkdownUriForMessage(uri: vscode.Uri): string {
+    return this.formatNoteMarkdownDisplayPathInfo(uri).displayPath;
+  }
+
+  private formatNoteMarkdownFullDisplayPath(uri: vscode.Uri): string {
+    const workspaceRelativePath = this.resolveNoteMarkdownWorkspaceRelativeDisplayPath(uri);
+    if (workspaceRelativePath) {
+      return workspaceRelativePath;
+    }
+
+    const readablePath = this.formatNoteMarkdownReadableAbsolutePath(uri);
+    const remotePrefix =
+      uri.scheme === 'file' ? undefined : formatNoteMarkdownRemoteAuthorityPrefix(uri.scheme, uri.authority);
+    return remotePrefix ? `${remotePrefix} · ${readablePath}` : readablePath;
+  }
+
+  private resolveNoteMarkdownWorkspaceRelativeDisplayPath(uri: vscode.Uri): string | undefined {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    for (const workspaceFolder of workspaceFolders) {
+      const relativePath = resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
+        uri,
+        workspaceFolder,
+        workspaceFolders.length > 1
+      );
+      if (relativePath) {
+        return relativePath;
+      }
+    }
+
+    return undefined;
+  }
+
+  private formatNoteMarkdownReadableAbsolutePath(uri: vscode.Uri): string {
+    const rawPath = uri.scheme === 'file' ? uri.fsPath : uri.path || uri.toString(true);
+    const userHome = process.env.HOME ?? process.env.USERPROFILE;
+    if (userHome) {
+      const relativeToHome = resolveNoteMarkdownPathRelativeToHome(rawPath, userHome, uri.scheme === 'file');
+      if (relativeToHome) {
+        return relativeToHome;
+      }
+    }
+
+    return uri.scheme === 'file' ? rawPath : rawPath.replace(/\\/g, '/');
+  }
+
+  private async refreshAssociatedMarkdownNotesForDocument(document: vscode.TextDocument): Promise<void> {
+    const matchingNodeIds = this.state.nodes
+      .filter((node) => {
+        const source = node.kind === 'note' ? ensureNoteMetadata(node).contentSource : undefined;
+        return source?.kind === 'markdown-file' && source.resourceUri === document.uri.toString();
+      })
+      .map((node) => node.id);
+    for (const nodeId of matchingNodeIds) {
+      await this.refreshAssociatedMarkdownNote(nodeId);
+    }
+  }
+
+  private async refreshAllAssociatedMarkdownNotes(): Promise<void> {
+    for (const node of this.state.nodes) {
+      if (node.kind === 'note' && ensureNoteMetadata(node).contentSource?.kind === 'markdown-file') {
+        await this.refreshAssociatedMarkdownNote(node.id);
+      }
+    }
+  }
+
+  private async refreshAssociatedMarkdownNote(nodeId: string): Promise<void> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!node || !source || source.kind !== 'markdown-file') {
+      return;
+    }
+
+    const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+    if (!uri) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+        ...source,
+        status: 'unreadable',
+        lastError: '关联 Markdown 文件 URI 无法解析。'
+      }, ensureNoteMetadata(node).content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const readResult = await this.readNoteMarkdownFile(uri);
+    const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+      ...source,
+      ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      status: readResult.status,
+      lastError: readResult.lastError
+    }, readResult.status === 'ok' ? readResult.content : ensureNoteMetadata(node).content);
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private syncNoteMarkdownFileWatchers(): void {
+    const expected = new Map<string, vscode.Uri>();
+    for (const node of this.state.nodes) {
+      if (node.kind !== 'note') {
+        continue;
+      }
+      const source = ensureNoteMetadata(node).contentSource;
+      if (source?.kind !== 'markdown-file') {
+        continue;
+      }
+      const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+      if (uri?.scheme === 'file') {
+        expected.set(node.id, uri);
+      }
+    }
+
+    for (const [nodeId, watcher] of this.noteMarkdownFileWatchers.entries()) {
+      if (!expected.has(nodeId)) {
+        watcher.close();
+        this.noteMarkdownFileWatchers.delete(nodeId);
+      }
+    }
+
+    for (const [nodeId, uri] of expected.entries()) {
+      if (this.noteMarkdownFileWatchers.has(nodeId)) {
+        continue;
+      }
+
+      const watcher = this.createNoteMarkdownFileWatcher(nodeId, uri);
+      if (watcher) {
+        this.noteMarkdownFileWatchers.set(nodeId, watcher);
+      }
+    }
+  }
+
+  private createNoteMarkdownFileWatcher(nodeId: string, uri: vscode.Uri): NoteMarkdownFileWatcher | undefined {
+    const parentDirectory = path.dirname(uri.fsPath);
+    const closeCallbacks: Array<() => void> = [];
+
+    const fileListener = (): void => {
+      this.scheduleNoteMarkdownFileRefresh(nodeId);
+    };
+    try {
+      fs.watchFile(uri.fsPath, { interval: 750, persistent: false }, fileListener);
+      closeCallbacks.push(() => fs.unwatchFile(uri.fsPath, fileListener));
+    } catch {
+      // Parent directory watching below may still catch create/delete events.
+    }
+
+    try {
+      const parentWatcher = fs.watch(parentDirectory, { persistent: false }, () => {
+        this.scheduleNoteMarkdownFileRefresh(nodeId);
+      });
+      closeCallbacks.push(() => parentWatcher.close());
+    } catch {
+      // Missing or inaccessible parents are represented in node state by refreshAssociatedMarkdownNote.
+    }
+
+    if (closeCallbacks.length === 0) {
+      return undefined;
+    }
+
+    return {
+      close: () => {
+        for (const close of closeCallbacks) {
+          close();
+        }
+      }
+    };
+  }
+
+  private scheduleNoteMarkdownFileRefresh(nodeId: string): void {
+    const existingTimer = this.noteMarkdownFileRefreshTimers.get(nodeId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      this.noteMarkdownFileRefreshTimers.delete(nodeId);
+      void this.refreshAssociatedMarkdownNote(nodeId);
+    }, 120);
+    this.noteMarkdownFileRefreshTimers.set(nodeId, timer);
+  }
+
+  private disposeNoteMarkdownFileWatchers(): void {
+    for (const timer of this.noteMarkdownFileRefreshTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.noteMarkdownFileRefreshTimers.clear();
+    for (const watcher of this.noteMarkdownFileWatchers.values()) {
+      watcher.close();
+    }
+    this.noteMarkdownFileWatchers.clear();
   }
 
   private async refocusInteractiveSurface(
@@ -5267,9 +6133,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/updateNoteNode':
-        this.state = updateNoteContent(this.state, parsedMessage.payload);
-        this.persistState();
-        this.postState('host/stateUpdated');
+        void this.handleUpdateNoteNode(parsedMessage.payload);
+        return;
+      case 'webview/saveNoteAsMarkdownFile':
+        void this.saveNoteAsMarkdownFile(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/openAssociatedNoteMarkdownFile':
+        void this.openAssociatedNoteMarkdownFile(parsedMessage.payload.nodeId, sourceSurface);
+        return;
+      case 'webview/dropNoteMarkdownFiles':
+        void this.handleDroppedNoteMarkdownFiles(
+          parsedMessage.payload.resources,
+          parsedMessage.payload.position
+        );
         return;
       case 'webview/createEdge':
         this.state = createUserCanvasEdge(this.state, {
@@ -11689,7 +12565,8 @@ function normalizeMetadata(
         content:
           typeof note.content === 'string'
             ? trimStoredNodeText(note.content)
-            : fallback.content
+            : fallback.content,
+        contentSource: normalizeStoredNoteContentSource(note.contentSource)
       }
     };
   }
@@ -12378,6 +13255,265 @@ function readTerminalSummary(state: CanvasPrototypeState, nodeId: string): strin
 
 function ensureNoteMetadata(node: CanvasNodeSummary): NoteNodeMetadata {
   return node.metadata?.note ?? createNoteMetadata();
+}
+
+function normalizeStoredNoteContentSource(value: unknown): NoteContentSource | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  if (value.kind === 'embedded') {
+    return { kind: 'embedded' };
+  }
+
+  if (
+    value.kind !== 'markdown-file' ||
+    typeof value.resourceUri !== 'string' ||
+    typeof value.displayPath !== 'string'
+  ) {
+    return undefined;
+  }
+
+  return {
+    kind: 'markdown-file',
+    resourceUri: value.resourceUri,
+    displayPath: value.displayPath,
+    fullDisplayPath:
+      typeof value.fullDisplayPath === 'string' ? trimStoredNodeText(value.fullDisplayPath) : undefined,
+    status: normalizeNoteMarkdownFileStatus(value.status),
+    lastError: typeof value.lastError === 'string' ? trimStoredNodeText(value.lastError) : undefined
+  };
+}
+
+function normalizeNoteMarkdownFileStatus(value: unknown): NoteMarkdownFileStatus {
+  return value === 'ok' ||
+    value === 'missing' ||
+    value === 'not-file' ||
+    value === 'unsupported-extension' ||
+    value === 'unreadable' ||
+    value === 'dirty-conflict'
+    ? value
+    : 'unreadable';
+}
+
+function updateAssociatedNoteMarkdownFileStatus(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  source: MarkdownFileNoteContentSource,
+  content: string
+): CanvasPrototypeState {
+  const node = state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+  if (!node) {
+    return state;
+  }
+
+  const nextContent = trimStoredNodeText(content);
+  const nextMetadata: CanvasNodeMetadata = {
+    ...node.metadata,
+    note: {
+      ...ensureNoteMetadata(node),
+      content: nextContent,
+      contentSource: source
+    }
+  };
+  const nextStatus = source.status === 'ok' ? 'ready' : source.status;
+  const nextSummary =
+    source.status === 'ok'
+      ? summarizeNoteNode(nextContent)
+      : '关联的 Markdown 文件不可用。';
+
+  const nextNodes = state.nodes.map((candidate) =>
+    candidate.id === nodeId
+      ? {
+          ...candidate,
+          status: nextStatus,
+          summary: nextSummary,
+          metadata: nextMetadata
+        }
+      : candidate
+  );
+
+  if (
+    node.status === nextStatus &&
+    node.summary === nextSummary &&
+    ensureNoteMetadata(node).content === nextContent &&
+    areNoteContentSourcesEqual(ensureNoteMetadata(node).contentSource, source)
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
+function areNoteContentSourcesEqual(
+  left: NoteContentSource | undefined,
+  right: NoteContentSource | undefined
+): boolean {
+  if (!left || !right || left.kind !== right.kind) {
+    return left === right;
+  }
+  if (left.kind === 'embedded' && right.kind === 'embedded') {
+    return true;
+  }
+  if (left.kind === 'markdown-file' && right.kind === 'markdown-file') {
+    return (
+      left.resourceUri === right.resourceUri &&
+      left.displayPath === right.displayPath &&
+      left.fullDisplayPath === right.fullDisplayPath &&
+      left.status === right.status &&
+      left.lastError === right.lastError
+    );
+  }
+  return false;
+}
+
+function parseStoredNoteMarkdownResourceUri(value: string): vscode.Uri | undefined {
+  try {
+    return vscode.Uri.parse(value, true);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveDroppedNoteMarkdownResourceUri(
+  resource: ExecutionTerminalDroppedResource
+): vscode.Uri | undefined {
+  const rawValue = resource.value.trim();
+  if (!rawValue) {
+    return undefined;
+  }
+
+  if (resource.valueKind === 'uri') {
+    return parseNoteMarkdownUriOrPath(rawValue);
+  }
+
+  return parseNoteMarkdownUriOrPath(rawValue);
+}
+
+function parseNoteMarkdownUriOrPath(value: string): vscode.Uri | undefined {
+  if (/^[A-Za-z]:[\\/]/u.test(value) || value.startsWith('/') || value.startsWith('\\\\')) {
+    return vscode.Uri.file(value);
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(value);
+  if (schemeMatch) {
+    try {
+      return vscode.Uri.parse(value, true);
+    } catch {
+      return undefined;
+    }
+  }
+
+  return vscode.Uri.file(value);
+}
+
+function normalizeNoteMarkdownResourceKey(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? vscode.Uri.file(uri.fsPath).toString() : uri.toString();
+}
+
+function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
+  uri: vscode.Uri,
+  workspaceFolder: vscode.WorkspaceFolder,
+  includeWorkspaceFolderPrefix: boolean
+): string | undefined {
+  if (uri.scheme === 'file' && workspaceFolder.uri.scheme === 'file') {
+    return resolveContainedWorkspaceRelativePath({
+      filePath: uri.fsPath,
+      workspaceFolderPath: workspaceFolder.uri.fsPath,
+      workspaceFolderName: workspaceFolder.name,
+      includeWorkspaceFolderPrefix
+    });
+  }
+
+  if (!canCompareNoteMarkdownUriWithWorkspaceFolder(uri, workspaceFolder.uri)) {
+    return undefined;
+  }
+
+  const filePath = normalizeNoteMarkdownPosixDisplayPath(noteMarkdownUriPathLike(uri));
+  const workspaceFolderPath = normalizeNoteMarkdownPosixDisplayPath(
+    workspaceFolder.uri.scheme === 'file' ? workspaceFolder.uri.fsPath : workspaceFolder.uri.path
+  );
+  const relativePath = path.posix.relative(workspaceFolderPath, filePath);
+  if (!relativePath || relativePath.startsWith('..') || path.posix.isAbsolute(relativePath)) {
+    return undefined;
+  }
+
+  if (!includeWorkspaceFolderPrefix) {
+    return relativePath;
+  }
+
+  const normalizedWorkspaceFolderName = workspaceFolder.name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return normalizedWorkspaceFolderName ? `${normalizedWorkspaceFolderName}/${relativePath}` : relativePath;
+}
+
+function canCompareNoteMarkdownUriWithWorkspaceFolder(uri: vscode.Uri, workspaceFolderUri: vscode.Uri): boolean {
+  if (uri.scheme === workspaceFolderUri.scheme && uri.authority === workspaceFolderUri.authority) {
+    return true;
+  }
+
+  return uri.scheme === 'vscode-remote' && workspaceFolderUri.scheme === 'file';
+}
+
+function resolveNoteMarkdownPathRelativeToHome(
+  rawPath: string,
+  userHome: string,
+  usePlatformPath: boolean
+): string | undefined {
+  const relativePath = usePlatformPath
+    ? path.relative(userHome, rawPath)
+    : path.posix.relative(
+        normalizeNoteMarkdownPosixDisplayPath(userHome),
+        normalizeNoteMarkdownPosixDisplayPath(rawPath)
+      );
+  const isAbsolutePath = usePlatformPath ? path.isAbsolute(relativePath) : path.posix.isAbsolute(relativePath);
+  if (!relativePath || relativePath.startsWith('..') || isAbsolutePath) {
+    return undefined;
+  }
+
+  return `~/${relativePath.replace(/\\/g, '/')}`;
+}
+
+function normalizeNoteMarkdownPosixDisplayPath(value: string): string {
+  const normalized = value.replace(/\\/g, '/');
+  return normalized.length > 1 ? normalized.replace(/\/+$/u, '') : normalized;
+}
+
+function noteMarkdownUriPathLike(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? uri.fsPath : uri.path || uri.toString(true);
+}
+
+function noteMarkdownTitleFromUri(uri: vscode.Uri): string {
+  const rawPath = noteMarkdownUriPathLike(uri).replace(/\\/g, '/');
+  const baseName = path.posix.basename(rawPath);
+  const extension = path.posix.extname(baseName);
+  return (extension ? baseName.slice(0, -extension.length) : baseName).trim() || 'Markdown Note';
+}
+
+function resolveExistingDirectoryForNoteMarkdownInput(inputPath: string): string | undefined {
+  const candidate = inputPath.endsWith(path.sep) ? inputPath : path.dirname(inputPath);
+  if (!candidate) {
+    return undefined;
+  }
+
+  try {
+    const stat = fs.statSync(candidate);
+    return stat.isDirectory() ? candidate : undefined;
+  } catch {
+    const parent = path.dirname(candidate);
+    if (!parent || parent === candidate) {
+      return undefined;
+    }
+    try {
+      const parentStat = fs.statSync(parent);
+      return parentStat.isDirectory() ? parent : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 function buildAgentMetadataPatch(
