@@ -137,6 +137,7 @@ import {
 import {
   compactNoteMarkdownDisplayPath,
   createDefaultNoteMarkdownFileName,
+  createNoteMarkdownContentRevision,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
   type MarkdownFileNoteContentSource,
@@ -845,9 +846,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
 
     context.subscriptions.push(
-      vscode.workspace.onDidChangeTextDocument((event) => {
-        void this.refreshAssociatedMarkdownNotesForDocument(event.document);
-      }),
       vscode.workspace.onDidSaveTextDocument((document) => {
         void this.refreshAssociatedMarkdownNotesForDocument(document);
       }),
@@ -3528,6 +3526,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind: 'markdown-file',
         resourceUri: uri.toString(),
         ...displayPathInfo,
+        contentRevision: createNoteMarkdownContentRevision(content),
         status: 'ok'
       }
     };
@@ -3648,7 +3647,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private async handleUpdateNoteNode(payload: { nodeId: string; content: string }): Promise<void> {
+  private async handleUpdateNoteNode(payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+    force?: boolean;
+  }): Promise<void> {
     const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
     const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
     if (!node || noteMetadata?.contentSource?.kind !== 'markdown-file') {
@@ -3671,6 +3675,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const nextContent = payload.content;
+    if (!payload.force && payload.baseContentRevision) {
+      const currentReadResult = await this.readNoteMarkdownFile(uri);
+      const currentRevision =
+        currentReadResult.status === 'ok'
+          ? createNoteMarkdownContentRevision(currentReadResult.content)
+          : noteMetadata.contentSource.contentRevision;
+      if (currentRevision && currentRevision !== payload.baseContentRevision) {
+        const currentContent =
+          currentReadResult.status === 'ok' ? currentReadResult.content : noteMetadata.content;
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+          ...noteMetadata.contentSource,
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: currentRevision,
+          status: 'dirty-conflict',
+          lastError: '关联 Markdown 文件已在编辑期间发生变化。请重新加载文件内容，或显式确认覆盖。'
+        }, currentContent);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+    }
+
     const writeResult = await this.writeNoteMarkdownFile(uri, nextContent);
     if (!writeResult.ok) {
       this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
@@ -3686,6 +3712,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
       ...noteMetadata.contentSource,
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      contentRevision: createNoteMarkdownContentRevision(nextContent),
       status: 'ok',
       lastError: undefined
     }, nextContent);
@@ -3803,13 +3830,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async promptNoteMarkdownFileTarget(node: CanvasNodeSummary): Promise<vscode.Uri | undefined> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const defaultDirectory = workspaceRoot ?? process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+    const defaultDirectory = this.resolveDefaultNoteMarkdownDirectory();
     const defaultPath = path.join(defaultDirectory, createDefaultNoteMarkdownFileName(node.title));
-    return this.showNoteMarkdownFileQuickInput(defaultPath);
+    return this.showNoteMarkdownFileQuickInput(defaultPath, defaultDirectory);
   }
 
-  private async showNoteMarkdownFileQuickInput(initialPath: string): Promise<vscode.Uri | undefined> {
+  private async showNoteMarkdownFileQuickInput(
+    initialPath: string,
+    baseDirectory: string
+  ): Promise<vscode.Uri | undefined> {
     return new Promise((resolve) => {
       const quickPick = vscode.window.createQuickPick<NoteMarkdownFileQuickPickItem>();
       let disposed = false;
@@ -3824,7 +3853,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
 
       const updateItems = (): void => {
-        const inputPath = this.resolveNoteMarkdownInputPath(quickPick.value);
+        const inputPath = this.resolveNoteMarkdownInputPath(quickPick.value, baseDirectory);
         const directoryPath = resolveExistingDirectoryForNoteMarkdownInput(inputPath);
         const items: NoteMarkdownFileQuickPickItem[] = [
           {
@@ -3881,7 +3910,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         const targetPath = selected?.itemKind === 'file' && selected.filePath
           ? selected.filePath
-          : this.resolveNoteMarkdownInputPath(quickPick.value);
+          : this.resolveNoteMarkdownInputPath(quickPick.value, baseDirectory);
         resolveOnce(vscode.Uri.file(targetPath));
       });
       updateItems();
@@ -3889,11 +3918,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private resolveNoteMarkdownInputPath(value: string): string {
+  private resolveDefaultNoteMarkdownDirectory(): string {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
+      process.env.HOME ??
+      process.env.USERPROFILE ??
+      process.cwd();
+  }
+
+  private resolveNoteMarkdownInputPath(value: string, baseDirectory: string): string {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return path.join(
-        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
+        baseDirectory,
         createDefaultNoteMarkdownFileName('note')
       );
     }
@@ -3902,8 +3938,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return path.normalize(trimmedValue);
     }
 
-    const basePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-    return path.resolve(basePath, trimmedValue);
+    return path.resolve(baseDirectory, trimmedValue);
   }
 
   private async statNoteMarkdownTarget(
@@ -4008,16 +4043,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
-    const openedDocument = vscode.workspace.textDocuments.find(
-      (document) => document.uri.toString() === uri.toString()
-    );
-    if (openedDocument) {
-      return {
-        status: 'ok',
-        content: openedDocument.getText()
-      };
-    }
-
     try {
       const bytes = await vscode.workspace.fs.readFile(uri);
       return {
@@ -4042,22 +4067,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ok: false,
         errorMessage: 'Note 只能关联 .md 或 .markdown 文件。'
       };
-    }
-
-    const openedDocument = vscode.workspace.textDocuments.find(
-      (document) => document.uri.toString() === uri.toString()
-    );
-    if (openedDocument?.isDirty) {
-      const fullRange = new vscode.Range(
-        openedDocument.positionAt(0),
-        openedDocument.positionAt(openedDocument.getText().length)
-      );
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(uri, fullRange, content);
-      const applied = await vscode.workspace.applyEdit(edit);
-      return applied
-        ? { ok: true }
-        : { ok: false, errorMessage: '目标 Markdown 文件在编辑器中有未保存修改，无法更新。' };
     }
 
     try {
@@ -4085,6 +4094,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind: 'markdown-file',
       resourceUri: uri.toString(),
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      contentRevision: createNoteMarkdownContentRevision(params.content),
       status: params.status,
       lastError: params.lastError
     }, params.content);
@@ -4185,12 +4195,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const readResult = await this.readNoteMarkdownFile(uri);
+    const nextContent = readResult.status === 'ok' ? readResult.content : ensureNoteMetadata(node).content;
     const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
       ...source,
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      contentRevision:
+        readResult.status === 'ok' ? createNoteMarkdownContentRevision(readResult.content) : source.contentRevision,
       status: readResult.status,
       lastError: readResult.lastError
-    }, readResult.status === 'ok' ? readResult.content : ensureNoteMetadata(node).content);
+    }, nextContent);
     if (nextState === this.state) {
       return;
     }
@@ -6140,6 +6153,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/openAssociatedNoteMarkdownFile':
         void this.openAssociatedNoteMarkdownFile(parsedMessage.payload.nodeId, sourceSurface);
+        return;
+      case 'webview/reloadAssociatedNoteMarkdownFile':
+        void this.refreshAssociatedMarkdownNote(parsedMessage.payload.nodeId);
         return;
       case 'webview/dropNoteMarkdownFiles':
         void this.handleDroppedNoteMarkdownFiles(
@@ -12559,8 +12575,8 @@ function normalizeMetadata(
   if (kind === 'note') {
     const note = isRecord(record.note) ? record.note : {};
     const fallback = createNoteMetadata();
-    const contentSource = normalizeStoredNoteContentSource(note.contentSource);
     const content = typeof note.content === 'string' ? note.content : fallback.content;
+    const contentSource = normalizeStoredNoteContentSource(note.contentSource, content);
 
     return {
       note: {
@@ -13256,7 +13272,7 @@ function ensureNoteMetadata(node: CanvasNodeSummary): NoteNodeMetadata {
   return node.metadata?.note ?? createNoteMetadata();
 }
 
-function normalizeStoredNoteContentSource(value: unknown): NoteContentSource | undefined {
+function normalizeStoredNoteContentSource(value: unknown, content?: string): NoteContentSource | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -13279,6 +13295,12 @@ function normalizeStoredNoteContentSource(value: unknown): NoteContentSource | u
     displayPath: value.displayPath,
     fullDisplayPath:
       typeof value.fullDisplayPath === 'string' ? trimStoredNodeText(value.fullDisplayPath) : undefined,
+    contentRevision:
+      typeof value.contentRevision === 'string'
+        ? trimStoredNodeText(value.contentRevision)
+        : typeof content === 'string'
+          ? createNoteMarkdownContentRevision(content)
+          : undefined,
     status: normalizeNoteMarkdownFileStatus(value.status),
     lastError: typeof value.lastError === 'string' ? trimStoredNodeText(value.lastError) : undefined
   };
@@ -13319,6 +13341,8 @@ function updateAssociatedNoteMarkdownFileStatus(
   const nextSummary =
     source.status === 'ok'
       ? summarizeNoteNode(nextContent)
+      : source.status === 'dirty-conflict'
+        ? '关联的 Markdown 文件存在编辑冲突。'
       : '关联的 Markdown 文件不可用。';
 
   const nextNodes = state.nodes.map((candidate) =>
@@ -13363,6 +13387,7 @@ function areNoteContentSourcesEqual(
       left.resourceUri === right.resourceUri &&
       left.displayPath === right.displayPath &&
       left.fullDisplayPath === right.fullDisplayPath &&
+      left.contentRevision === right.contentRevision &&
       left.status === right.status &&
       left.lastError === right.lastError
     );

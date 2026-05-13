@@ -21,7 +21,7 @@
 - [x] (2026-05-13 06:52 +0800) 更新设计文档 frontmatter 与索引，把本执行计划登记到 `related_plans`。
 - [x] (2026-05-13 07:26 +0800) 盘点现有 Note 创建、编辑、持久化、Markdown 链接打开、Webview 拖放与 smoke 测试路径，确认最小改动点。
 - [x] (2026-05-13 07:26 +0800) 实现共享协议与纯函数：Note 内容来源模型、Markdown 文件扩展名校验、文件名安全化、display path 计算和解析辅助。
-- [x] (2026-05-13 07:26 +0800) 实现 Host 侧 Markdown 文件 Note 编排：转换 Quick Input、已有文件冲突选择、文件读写、dirty 文档处理、watcher、缺失状态和持久化恢复。
+- [x] (2026-05-13 07:26 +0800) 实现 Host 侧 Markdown 文件 Note 编排：转换 Quick Input、已有文件冲突选择、文件读写、保存/文件系统刷新、watcher、缺失状态和持久化恢复。
 - [x] (2026-05-13 07:26 +0800) 实现 Webview 呈现与交互：subtitle、不可用警告、关联文件编辑提交、打开文件动作、画布空白区 Markdown 文件拖放创建。
 - [x] (2026-05-13 07:26 +0800) 补充自动化测试，覆盖共享纯函数、Webview 呈现/拖放消息，以及真实 VSCode smoke 中的拖拽创建、写回、删除节点不删文件和缺失警告。
 - [x] (2026-05-13 07:26 +0800) 执行验证命令，并把结果同步回本计划和设计文档；Quick Input 既有文件三选项已实现但尚未由自动化直接驱动验证。
@@ -30,6 +30,10 @@
 - [x] (2026-05-13 08:59 +0800) 放开“一个 Markdown 只能对应一个 Note”的长期限制；已关联文件再次拖入时改为 modal 选择继续添加新 Note 或定位已关联 Note。
 - [x] (2026-05-13 09:47 +0800) 调整 Markdown 关联相关 modal：不再额外传入“取消”按钮，避免和 VSCode modal 默认 Cancel 重复；提示文案中的文件路径改用与 subtitle 一致的短 `displayPath`。
 - [x] (2026-05-13 10:35 +0800) 修复关联 Markdown 内容复用普通 Note 8,000 字符截断上限的问题；普通 Note 编辑器显式展示并执行 8,000 字符上限；设计文档同步确认“保存为 Markdown”作为普通 Note 常驻按钮。
+- [x] (2026-05-13 11:31 +0800) 修复关联 Markdown Note 编辑期间外部文件刷新后旧草稿可静默覆盖新内容的问题；新增 content revision 写回保护、Webview 冲突提示和回归测试。
+- [x] (2026-05-13 14:21 +0800) 根据 PR review 修复空白画布 Markdown 拖拽 `dragover` 判断、Host `dirty-conflict` 后草稿丢失/无法恢复，以及无 workspace 时 Quick Input 相对路径基准不一致的问题。
+- [x] (2026-05-13 15:02 +0800) 根据 PR review 修复重新 bootstrap 已持久化 `dirty-conflict` 时没有恢复入口的问题；该状态只显示重新加载恢复，不提供无草稿覆盖，也不渲染 checklist 预览。
+- [x] (2026-05-13 17:29 +0800) 根据用户纠正把关联 Markdown 的内容权威切回磁盘：移除 open dirty buffer 参与读取/写回基线的逻辑，并补充“未保存 editor 草稿不影响 Note 展示、保存后才刷新”的回归测试。
 
 ## 意外与发现
 
@@ -38,6 +42,9 @@
 
 - 观察：`NoteNodeMetadata` 当前只有 `content: string`，因此需要以向后兼容方式新增内容来源字段，不能让旧快照失效。
   证据：`src/common/protocol.ts` 中 `export interface NoteNodeMetadata { content: string; }`，宿主 `createNoteMetadata()` / `ensureNoteMetadata()` 都围绕这一个字段工作。
+
+- 观察：用户希望关联 Markdown Note 严格以磁盘内容为权威来源，VS Code 中打开但未保存的 editor buffer 不应驱动节点刷新。
+  证据：用户明确指出“Note 节点应该以硬盘上的文件内容为准”，因此 `onDidChangeTextDocument` 不能再被用作 Note 内容同步输入。
 
 - 观察：只用 `fs.watch(filePath)` 监听关联文件删除，在 smoke 环境里没有稳定触发缺失状态刷新。
   证据：第一次 trusted smoke 在删除 `.debug/vscode-smoke/missing-associated-note.md` 后，节点 `contentSource.status` 仍为 `ok`，测试超时。
@@ -59,6 +66,18 @@
 
 - 观察：关联 Markdown 文件如果复用普通 Note 的持久化截断函数，超过 8,000 字符的真实 Markdown 文件会在节点编辑或 checklist 更新后被截断写回。
   证据：Review 指出 `handleUpdateNoteNode()`、拖拽创建和关联状态更新均调用普通 Note 的 `trimStoredNodeText()`；本轮 smoke 改为使用超过 8,000 字符的关联 Markdown 正文验证读写不截断。
+
+- 观察：关联 Markdown Note 在 textarea 编辑期间收到 Host 文件刷新时，旧本地草稿会保留在 textarea 中；如果失焦提交不带编辑基线，旧草稿会覆盖外部新内容。
+  证据：Review 指出 Webview `committedContentRef` 被外部刷新推进但本地 textarea 不覆盖，随后 `submitNote()` 会把旧草稿写回；本轮新增 content revision 写回保护和 Playwright/smoke 回归。
+
+- 观察：VSCode Webview 在 `dragover` 阶段可能只暴露 `DataTransfer.types`，不暴露 `ResourceURLs` / `CodeFiles` / `files[].path` 的真实内容。
+  证据：PR review 指出空白画布 Markdown drop 如果在 `dragover` 阶段解析真实 payload，会因为资源为空而不 `preventDefault()`；本轮复用终端拖拽的潜在资源判断并补充 Playwright 回归。
+
+- 观察：Host 因 stale `contentRevision` 返回 `dirty-conflict` 后，Webview 不能把被拒绝的本地草稿当作已提交或直接替换为 Host 返回的当前文件内容。
+  证据：PR review 指出 `committedContentRef` / `pendingContentRef` 过早推进会导致本地草稿丢失，且 `dirty-conflict` 只显示不可用 warning、无法重新加载或覆盖；本轮改为等待 Host ack 后才推进 baseline。
+
+- 观察：`dirty-conflict` 是 Host 会持久化到画布状态里的状态，Webview 重新加载、重新 bootstrap 或另一个 surface 首次接收该状态时不会拥有本地 `associatedMarkdownEditConflict` 草稿。
+  证据：PR review 指出该路径会显示普通预览但禁止编辑，且 checklist 可能绕过显式恢复继续写回；本轮改为渲染恢复警告并补充直接以 `dirty-conflict` bootstrap 的 Playwright 回归。
 
 ## 决策记录
 
@@ -102,17 +121,37 @@
   理由：这是普通 Note 升级为文件 Note 的关键发现入口；关联 Markdown Note 在同位置显示“打开文件”，避免动作竞争。
   日期/作者：2026-05-13 / Codex
 
+- 决策：关联 Markdown 写回必须基于 Host 颁发的 `contentRevision` 做乐观并发保护。
+  理由：文件是权威来源；Webview 编辑草稿只能基于开始编辑时的 revision 写回。若文件在编辑期间变化，默认写回会造成数据丢失，必须进入冲突状态并要求用户重新加载或显式覆盖。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：关联 Markdown Note 的 Host 侧同步只认磁盘内容，打开但未保存的 editor buffer 不参与读取、刷新或写回基线。
+  理由：用户明确要求 Note 节点以硬盘上的文件内容为准。把 dirty 草稿纳入同步会让节点跟随未保存状态，违反产品定义；只有保存或文件系统变化才应该刷新 Note。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：空白画布 Markdown drop 的 `dragover` 阶段复用终端拖拽的“潜在资源”判断，只看 `DataTransfer.types` / `files` 是否可能携带资源；真实资源解析和 Markdown 扩展名过滤留到 `drop` 与 Host 侧执行。
+  理由：`dragover` 阶段拿不到完整 payload 是 VSCode Webview 的正常约束；过早解析会导致 drop 不被允许。复用共享 helper 可以避免终端拖拽和画布拖拽判断漂移。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：关联 Markdown Webview 只有在 Host 返回 `ok` 且内容匹配本次提交后，才推进 committed baseline；Host 返回 `dirty-conflict` 时保留本地草稿并提供重新加载或 force overwrite。
+  理由：文件是权威来源，但用户草稿也是未被接受的本地事实；提前确认会在并发冲突时丢失草稿，无法让用户做显式恢复选择。
+  日期/作者：2026-05-13 / Codex
+
+- 决策：Webview 首次接收 Host `dirty-conflict` 但没有本地草稿时，只显示冲突警告和 `重新加载`，不显示普通预览、不提供 `覆盖文件`。
+  理由：没有本地草稿时无法安全表达“覆盖”的内容；普通预览中的 checklist 会形成绕过显式冲突恢复的写回路径。
+  日期/作者：2026-05-13 / Codex
+
 ## 结果与复盘
 
-本轮已经完成 Note 与 Markdown 文件关联的跨层实现。
+以下内容记录当前实现结果；本轮已根据用户纠正把关联 Markdown 的同步基线重新收回到磁盘。
 
 已落地内容：
 
-- `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、拖拽 Markdown 文件创建 Note。
+- `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
 - `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、display path 压缩与内容来源类型，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
-- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、dirty 文档更新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断。
-- `src/webview/main.tsx` 和 `src/webview/styles.css` 实现关联文件 subtitle、完整路径 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示，以及空白画布拖放 Markdown 文件创建关联 Note。
-- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
+- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer。
+- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、完整路径 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、Host `dirty-conflict` 重新 bootstrap 恢复警告，以及空白画布拖放 Markdown 文件创建关联 Note；空白画布与终端拖拽共享潜在资源判断。
+- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、Host dirty-conflict 后保留草稿、Host dirty-conflict 重新 bootstrap 的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
 
@@ -122,14 +161,20 @@
        npm run test:note-markdown-file-association
        note markdown file association tests passed；覆盖 display path 中间省略和 Remote authority 轻量前缀
 
-       npm run test:webview -- --grep "associated markdown note editor|ordinary note empty placeholder|associated markdown notes|missing associated markdown notes|dropping markdown files"
-       5 passed；Playwright webview tests passed；覆盖普通 Note 8,000 字符占位提示/编辑上限、关联 Markdown Note 不使用普通 Note 编辑上限、subtitle、完整路径警告、缺失警告和空白画布拖拽消息
+       npm run test:webview -- --grep "associated markdown note editor|associated markdown note editing blocks|associated markdown note keeps|associated markdown note bootstrapped|ordinary note empty placeholder|associated markdown notes|missing associated markdown notes|dropping markdown files"
+       Playwright webview tests passed；覆盖普通 Note 8,000 字符占位提示/编辑上限、关联 Markdown Note 不使用普通 Note 编辑上限、编辑期外部刷新、Host dirty-conflict 阻止旧草稿静默写回或丢失、Host dirty-conflict 重新 bootstrap 只提供重新加载并阻止 checklist 绕过恢复、subtitle、完整路径警告、缺失警告和空白画布拖拽消息
+
+       npm run test:webview -- --grep "ordinary note empty|associated markdown|missing associated markdown|ordinary note save-as-markdown|dropping markdown"
+       Playwright webview tests passed；本轮重跑 9 个相关用例，覆盖普通 Note 上限提示、关联 Markdown 渲染/编辑/冲突恢复、缺失警告、保存为 Markdown 按钮与空白画布拖拽消息
 
        node --check tests/vscode-smoke/extension-tests.cjs
        通过
 
-       npm run build && DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
-       Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮
+       npm run build
+       通过
+
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 dirty-conflict 且不覆盖真实文件、重新 bootstrap 持久化 dirty-conflict 只显示恢复警告、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮
 
        git diff --check
        通过
@@ -168,7 +213,7 @@
 
 第二步盘点现有代码并补共享模型。先在 `src/common/protocol.ts` 为 `NoteNodeMetadata` 增加向后兼容的 `contentSource` 字段，并扩展或新增 Webview -> Host 消息：普通编辑继续使用 `webview/updateNoteNode`；保存为 Markdown、拖拽 Markdown 文件创建关联 Note、打开关联文件可以使用新消息。再新增一个 `src/common/noteMarkdownFileAssociation.ts` 纯函数模块，放置扩展名校验、文件名安全化、标题到默认文件名、URI/display path 的纯逻辑。纯函数要能被脚本测试直接覆盖。
 
-第三步实现 Host 侧能力。优先在 `src/panel/CanvasPanelManager.ts` 中添加入口方法，必要时拆出 `src/panel/noteMarkdownFileAssociation.ts` 保存 Host 侧 IO helper。Host 需要完成：默认路径生成、Quick Input 导航、目标文件 stat、已有文件冲突选择、写入或读取文件、把节点 metadata 切换为 `markdown-file`、打开关联文件、监控文件变化、恢复时重新读取文件、文件不可用时设置状态。所有写入必须检查 VSCode 已打开 dirty 文档，避免绕过用户未保存内容。
+第三步实现 Host 侧能力。优先在 `src/panel/CanvasPanelManager.ts` 中添加入口方法，必要时拆出 `src/panel/noteMarkdownFileAssociation.ts` 保存 Host 侧 IO helper。Host 需要完成：默认路径生成、Quick Input 导航、目标文件 stat、已有文件冲突选择、写入或读取文件、把节点 metadata 切换为 `markdown-file`、打开关联文件、监控文件变化、恢复时重新读取文件、文件不可用时设置状态。所有写入和读取都以磁盘落盘内容为准，打开但未保存的 dirty 文档不参与同步。
 
 第四步实现 Webview 呈现与拖拽。`NoteEditableNode` 读取 metadata 后，如果是关联 Markdown Note，就在标题下方显示 subtitle；如果状态不是 `ok`，正文区显示不可用警告，不显示普通 Markdown 正文。编辑提交仍发送内容到 Host，由 Host 决定写入画布状态还是关联文件。画布空白区拖拽 `.md` / `.markdown` 文件时，Webview 把释放点和拖拽资源发给 Host；Host 创建一个或多个关联 Note，并在释放点附近轻微错位。
 
@@ -226,7 +271,7 @@
        package.nls.json
        src/extension.ts
 
-   命令和 UI 入口命名应遵循现有 `devSessionCanvas.*` 约定。保存为 Markdown 的流程必须由 Host 执行，因为只有 Host 能可靠访问 VSCode workspace、Quick Input、文件系统、dirty 文档和 Remote URI。Quick Input 导航应展示当前目录子目录和 `.md` / `.markdown` 文件；如果完整复刻 VSCode 打开文件体验成本过高，第一版也必须满足“输入路径时可看到当前目录下可选目录和 Markdown 文件”的验收要求。
+   命令和 UI 入口命名应遵循现有 `devSessionCanvas.*` 约定。保存为 Markdown 的流程必须由 Host 执行，因为只有 Host 能可靠访问 VSCode workspace、Quick Input、文件系统和 Remote URI。Quick Input 导航应展示当前目录子目录和 `.md` / `.markdown` 文件；如果完整复刻 VSCode 打开文件体验成本过高，第一版也必须满足“输入路径时可看到当前目录下可选目录和 Markdown 文件”的验收要求。
 
 5. Webview 实现。更新：
 
@@ -266,7 +311,7 @@
 
 当目标文件已存在时，用户会看到明确选择。如果选“覆盖文件并关联”，文件内容变成原 Note 正文；如果选“保留文件内容并关联”，节点正文显示现有文件内容；如果选“取消”，原普通 Note 和目标文件都不变。
 
-关联 Markdown Note 编辑正文后，关联文件内容随提交更新。若文件在 VSCode 中已有 dirty 文档，扩展不会绕过 dirty buffer 静默覆盖磁盘；必须通过文档编辑模型或提示用户处理冲突。
+关联 Markdown Note 编辑正文后，关联文件内容随提交更新。该内容以磁盘落盘内容为唯一基线；VS Code 中打开但未保存的 editor buffer 不参与 Note 同步。若提交时磁盘版本已经变化，扩展会进入 `dirty-conflict` 并要求用户重新加载或显式覆盖。
 
 关联文件被删除、移动、替换为目录或变得不可读后，节点显示“关联的 Markdown 文件不可用”警告，并继续显示 title 与 subtitle。节点不提供解除关联。删除节点不删除文件。
 
@@ -336,3 +381,4 @@ Webview -> Host 消息必须通过 `parseWebviewToHostMessage()` 校验。任何
 
 - 2026-05-13 / Codex：创建本计划，承接 `docs/design-docs/note-markdown-file-association.md` 的已选定方案，准备进入实现阶段。
 - 2026-05-13 / Codex：完成实现、测试与验证记录；保留 Quick Input 既有文件三选项自动化验证缺口。
+- 2026-05-13 / Codex：按用户纠正重梳同步模型，关联 Markdown 只以磁盘内容为权威；打开但未保存的 VSCode editor buffer 不再参与读取、刷新或写回基线。
