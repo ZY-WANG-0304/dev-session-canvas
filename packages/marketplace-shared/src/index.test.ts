@@ -39,6 +39,13 @@ describe('marketplace shared seed repository', () => {
     const response = buildSeedDownloadResponse('review-loop');
 
     expect(response?.storageMode).toBe('seed');
+    expect(response?.versionNumber).toBe(2);
+    expect(response?.objectKey).toContain('/versions/2/template.json');
+  });
+
+  it('keeps previous review-loop versions downloadable by explicit version id', () => {
+    const response = buildSeedDownloadResponse('review-loop', 'ver-review-loop-1');
+
     expect(response?.versionNumber).toBe(1);
     expect(response?.objectKey).toContain('/versions/1/template.json');
   });

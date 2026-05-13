@@ -115,7 +115,11 @@ const seedPublisher: MarketplacePublisherSummary = {
   avatarUrl: 'https://github.com/ZY-WANG-0304.png'
 };
 
-const rawMarketplaceSeedTemplates: Array<Omit<MarketplaceTemplateDetail, 'versions' | 'hotScore'>> = [
+const rawMarketplaceSeedTemplates: Array<
+  Omit<MarketplaceTemplateDetail, 'versions' | 'hotScore'> & {
+    previousVersions?: MarketplaceTemplateVersion[];
+  }
+> = [
   {
     id: 'tmpl-getting-started',
     slug: 'getting-started-canvas',
@@ -148,28 +152,43 @@ const rawMarketplaceSeedTemplates: Array<Omit<MarketplaceTemplateDetail, 'versio
     id: 'tmpl-review-loop',
     slug: 'review-loop',
     name: 'Review Loop',
-    description: 'A focused review workflow with one implementation agent, one reviewer note, and a terminal checkpoint.',
+    description: 'A focused review workflow with implementation, reviewer, test checkpoint, and decision log nodes.',
     tags: ['review', 'quality', 'terminal'],
     publisher: seedPublisher,
     latestVersion: {
-      id: 'ver-review-loop-1',
+      id: 'ver-review-loop-2',
       templateId: 'tmpl-review-loop',
-      versionNumber: 1,
-      changelog: 'Initial review workflow seed.',
-      objectKey: 'templates/tmpl-review-loop/versions/1/template.json',
-      thumbnailKey: 'templates/tmpl-review-loop/versions/1/thumbnail.png',
-      sha256: '005e90644dae8084a612d6a9d2e198508618eaa792648eb19bc56113cbcc4e92',
-      sizeBytes: 1897,
+      versionNumber: 2,
+      changelog: 'Adds a decision log note and clearer review handoff guidance.',
+      objectKey: 'templates/tmpl-review-loop/versions/2/template.json',
+      thumbnailKey: 'templates/tmpl-review-loop/versions/2/thumbnail.png',
+      sha256: 'd74f3887ad39c05912629b771635bf8c3e110a498a559ec6b56d8aee390e8ead',
+      sizeBytes: 2470,
       schemaVersion: 1,
       status: 'published',
-      createdAt: '2026-05-09T00:00:00.000Z'
+      createdAt: '2026-05-10T09:00:00.000Z'
     },
+    previousVersions: [
+      {
+        id: 'ver-review-loop-1',
+        templateId: 'tmpl-review-loop',
+        versionNumber: 1,
+        changelog: 'Initial review workflow seed.',
+        objectKey: 'templates/tmpl-review-loop/versions/1/template.json',
+        thumbnailKey: 'templates/tmpl-review-loop/versions/1/thumbnail.png',
+        sha256: '005e90644dae8084a612d6a9d2e198508618eaa792648eb19bc56113cbcc4e92',
+        sizeBytes: 1897,
+        schemaVersion: 1,
+        status: 'published',
+        createdAt: '2026-05-09T00:00:00.000Z'
+      }
+    ],
     status: 'published',
     downloadCount: 72,
     likeCount: 33,
     createdAt: '2026-05-09T00:00:00.000Z',
-    updatedAt: '2026-05-09T00:00:00.000Z',
-    readme: 'Use this template when a change needs an explicit implementation and review rhythm.',
+    updatedAt: '2026-05-10T09:00:00.000Z',
+    readme: 'Use this template when a change needs an explicit implementation, review, test, and handoff rhythm.',
     providerWarnings: []
   },
   {
@@ -202,11 +221,13 @@ const rawMarketplaceSeedTemplates: Array<Omit<MarketplaceTemplateDetail, 'versio
   }
 ];
 
-export const marketplaceSeedTemplates: MarketplaceTemplateDetail[] = rawMarketplaceSeedTemplates.map((template) => ({
-  ...template,
-  versions: [template.latestVersion],
-  hotScore: calculateHotScore(template.downloadCount, template.likeCount, template.updatedAt)
-}));
+export const marketplaceSeedTemplates: MarketplaceTemplateDetail[] = rawMarketplaceSeedTemplates.map(
+  ({ previousVersions, ...template }) => ({
+    ...template,
+    versions: [template.latestVersion, ...(previousVersions ?? [])],
+    hotScore: calculateHotScore(template.downloadCount, template.likeCount, template.updatedAt)
+  })
+);
 
 export function listSeedTemplates(query: MarketplaceListTemplatesRequest = {}): MarketplaceListTemplatesResponse {
   return listMarketplaceTemplatesFromCatalog(marketplaceSeedTemplates, query, 'seed');

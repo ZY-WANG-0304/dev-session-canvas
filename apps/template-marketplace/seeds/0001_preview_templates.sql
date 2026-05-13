@@ -36,18 +36,18 @@ VALUES
   (
     'tmpl-review-loop',
     'review-loop',
-    'ver-review-loop-1',
+    'ver-review-loop-2',
     'Review Loop',
-    'A focused review workflow with one implementation agent, one reviewer note, and a terminal checkpoint.',
-    'Use this template when a change needs an explicit implementation and review rhythm.',
+    'A focused review workflow with implementation, reviewer, test checkpoint, and decision log nodes.',
+    'Use this template when a change needs an explicit implementation, review, test, and handoff rhythm.',
     'github-zy-wang-0304',
     'published',
     72,
     33,
-    'review loop a focused review workflow with one implementation agent one reviewer note and a terminal checkpoint review quality terminal dev session canvas',
+    'review loop a focused review workflow with implementation reviewer test checkpoint and decision log nodes review quality terminal decision dev session canvas',
     '[]',
     '2026-05-09T00:00:00.000Z',
-    '2026-05-09T00:00:00.000Z'
+    '2026-05-10T09:00:00.000Z'
   ),
   (
     'tmpl-release-readiness',
@@ -106,6 +106,19 @@ VALUES
     1,
     'published',
     '2026-05-09T00:00:00.000Z'
+  ),
+  (
+    'ver-review-loop-2',
+    'tmpl-review-loop',
+    2,
+    'Adds a decision log note and clearer review handoff guidance.',
+    'templates/tmpl-review-loop/versions/2/template.json',
+    'templates/tmpl-review-loop/versions/2/thumbnail.png',
+    'd74f3887ad39c05912629b771635bf8c3e110a498a559ec6b56d8aee390e8ead',
+    2470,
+    1,
+    'published',
+    '2026-05-10T09:00:00.000Z'
   ),
   (
     'ver-release-readiness-1',

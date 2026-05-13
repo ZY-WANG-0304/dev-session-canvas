@@ -260,14 +260,15 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
         --bg: var(--vscode-editor-background);
         --fg: var(--vscode-editor-foreground);
         --muted: var(--vscode-descriptionForeground);
-        --border: color-mix(in srgb, var(--vscode-panel-border, var(--vscode-focusBorder)) 70%, transparent);
-        --card: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
-        --input-bg: var(--vscode-input-background);
-        --input-fg: var(--vscode-input-foreground);
+        --border: color-mix(in srgb, var(--vscode-widget-border, var(--vscode-panel-border, var(--vscode-focusBorder))) 70%, transparent);
+        --row-hover: color-mix(in srgb, var(--vscode-list-hoverBackground, var(--vscode-editor-foreground)) 16%, transparent);
+        --surface: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+        --input-bg: var(--vscode-input-background, var(--bg));
+        --input-fg: var(--vscode-input-foreground, var(--fg));
         --input-border: var(--vscode-input-border, var(--border));
         --primary-bg: var(--vscode-button-background);
         --primary-fg: var(--vscode-button-foreground);
-        --primary-hover: var(--vscode-button-hoverBackground);
+        --primary-hover: var(--vscode-button-hoverBackground, var(--primary-bg));
         --secondary-bg: var(--vscode-button-secondaryBackground, transparent);
         --secondary-fg: var(--vscode-button-secondaryForeground, var(--fg));
         --focus: var(--vscode-focusBorder);
@@ -279,11 +280,16 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
 
       body {
         margin: 0;
-        background:
-          radial-gradient(circle at top left, color-mix(in srgb, var(--focus) 18%, transparent), transparent 32rem),
-          var(--bg);
+        background: var(--bg);
         color: var(--fg);
         font-family: var(--vscode-font-family);
+      }
+
+      body.vscode-high-contrast,
+      body.vscode-high-contrast-light {
+        --border: var(--vscode-contrastBorder, var(--focus));
+        --row-hover: transparent;
+        --surface: var(--bg);
       }
 
       button,
@@ -294,69 +300,65 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
 
       .shell {
         min-height: 100vh;
-        padding: 28px;
+        padding: 12px 16px 20px;
       }
 
-      .hero {
-        display: grid;
-        gap: 18px;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: end;
+      .panel-header,
+      .toolbar,
+      .status,
+      .grid {
+        max-width: 1180px;
       }
 
-      .eyebrow {
-        margin: 0 0 10px;
-        color: var(--muted);
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
+      .panel-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
       }
 
       h1 {
         margin: 0;
-        max-width: 760px;
-        font-size: clamp(30px, 5vw, 56px);
-        line-height: 0.96;
-        letter-spacing: -0.05em;
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 1.3;
       }
 
-      .hero-note {
-        max-width: 460px;
-        margin: 0;
+      .panel-note {
+        max-width: 720px;
+        margin: 4px 0 0;
         color: var(--muted);
-        line-height: 1.65;
+        font-size: 12px;
+        line-height: 1.5;
       }
 
       .open-browser {
         border: 1px solid var(--border);
         background: var(--secondary-bg);
         color: var(--secondary-fg);
-        padding: 9px 12px;
-        border-radius: 999px;
+        min-height: 26px;
+        padding: 3px 8px;
+        border-radius: 2px;
         cursor: pointer;
+        white-space: nowrap;
       }
 
       .toolbar {
         display: grid;
-        gap: 10px;
-        grid-template-columns: minmax(0, 1fr) 180px;
-        margin-top: 26px;
-        padding: 14px;
-        border: 1px solid var(--border);
-        border-radius: 18px;
-        background: color-mix(in srgb, var(--card) 86%, transparent);
+        gap: 8px;
+        grid-template-columns: minmax(0, 1fr) 148px;
+        margin-top: 12px;
       }
 
       input,
       select {
         width: 100%;
-        min-height: 38px;
+        min-height: 28px;
         border: 1px solid var(--input-border);
-        border-radius: 12px;
+        border-radius: 2px;
         background: var(--input-bg);
         color: var(--input-fg);
-        padding: 0 12px;
+        padding: 0 8px;
         outline: none;
       }
 
@@ -368,37 +370,72 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
       }
 
       .status {
-        min-height: 24px;
-        margin: 16px 0 0;
+        min-height: 20px;
+        margin: 10px 0 0;
         color: var(--muted);
+        font-size: 12px;
       }
 
       .grid {
         display: grid;
-        gap: 14px;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        margin-top: 16px;
+        gap: 0;
+        grid-template-columns: 1fr;
+        margin-top: 6px;
+        border-top: 1px solid var(--border);
       }
 
       .card {
         display: grid;
-        gap: 14px;
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        background: var(--card);
-        padding: 16px;
-        box-shadow: 0 18px 50px color-mix(in srgb, #000 18%, transparent);
+        grid-template-columns: 112px minmax(0, 1fr) minmax(224px, 284px);
+        grid-template-areas:
+          "thumb title target"
+          "thumb description target"
+          "thumb tags actions"
+          "thumb meta actions"
+          "thumb badge actions";
+        align-items: start;
+        gap: 5px 12px;
+        border: 0;
+        border-bottom: 1px solid var(--border);
+        border-radius: 0;
+        background: transparent;
+        padding: 10px 0;
+        box-shadow: none;
+      }
+
+      .card:hover {
+        background: var(--row-hover);
       }
 
       .notice-card {
+        grid-template-columns: 1fr;
+        grid-template-areas: none;
         align-content: start;
-        border-style: dashed;
+        gap: 8px;
+        border: 1px dashed var(--border);
+        padding: 12px;
       }
 
       .notice-card h2 {
         margin: 0;
         font-size: 20px;
         letter-spacing: -0.02em;
+      }
+
+      .title-row {
+        grid-area: title;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+      }
+
+      .card-title {
+        margin: 0;
+        color: var(--fg);
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.25;
       }
 
       .notice-card p {
@@ -408,64 +445,93 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
       }
 
       .offline-template-card .thumb {
-        background:
-          radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--focus) 22%, white), transparent 32%),
-          linear-gradient(135deg, color-mix(in srgb, var(--card) 72%, #38513d), color-mix(in srgb, var(--focus) 24%, #5b5a42));
+        background: var(--surface);
+        padding: 8px;
       }
 
       .thumb {
-        min-height: 118px;
-        border-radius: 16px;
-        padding: 16px;
-        background:
-          radial-gradient(circle at 18% 20%, color-mix(in srgb, var(--focus) 35%, white), transparent 34%),
-          linear-gradient(135deg, color-mix(in srgb, var(--focus) 34%, #1d332a), #8b7652);
-        color: white;
+        grid-area: thumb;
+        position: relative;
+        overflow: hidden;
+        height: 72px;
+        min-height: 0;
+        border: 1px solid var(--border);
+        border-radius: 2px;
+        padding: 0;
+        background: var(--surface);
+        color: var(--fg);
+      }
+
+      .thumb::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: none;
+      }
+
+      .thumb img {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .thumb p,
       .thumb h2 {
+        position: relative;
+        z-index: 2;
         margin: 0;
       }
 
       .thumb p {
         opacity: 0.75;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
         letter-spacing: 0.24em;
         text-transform: uppercase;
       }
 
       .thumb h2 {
-        margin-top: 10px;
-        max-width: 240px;
-        font-size: 26px;
-        line-height: 1;
-        letter-spacing: -0.04em;
+        margin-top: 8px;
+        max-width: 96px;
+        font-size: 12px;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
       }
 
       .description {
+        grid-area: description;
         margin: 0;
-        min-height: 56px;
         color: var(--muted);
-        line-height: 1.55;
+        font-size: 12px;
+        line-height: 1.5;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
       }
 
       .tags {
+        grid-area: tags;
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 5px 8px;
       }
 
       .tag {
-        border-radius: 999px;
-        padding: 3px 8px;
-        background: color-mix(in srgb, var(--focus) 14%, transparent);
-        color: var(--fg);
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--muted);
         font-size: 11px;
+        font-weight: 600;
       }
 
       .meta {
+        grid-area: meta;
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
@@ -474,43 +540,55 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
       }
 
       .installed-badge {
+        grid-area: badge;
         width: fit-content;
         border: 1px solid color-mix(in srgb, var(--focus) 42%, transparent);
-        border-radius: 999px;
-        padding: 4px 9px;
+        border-radius: 2px;
+        padding: 2px 6px;
         background: color-mix(in srgb, var(--focus) 18%, transparent);
         color: var(--fg);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
       }
 
       .install-target-row {
+        grid-area: target;
         display: grid;
-        gap: 8px;
+        gap: 4px;
       }
 
       .install-target-label {
         color: var(--muted);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
       }
 
       .install-target {
-        min-height: 34px;
+        min-height: 28px;
       }
 
       .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
+        grid-area: actions;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        align-items: start;
+      }
+
+      .split-install {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 26px;
+        min-width: 0;
       }
 
       .primary,
       .secondary {
-        min-height: 34px;
-        border-radius: 999px;
-        padding: 0 14px;
+        min-height: 26px;
+        border-radius: 2px;
+        padding: 0 8px;
         cursor: pointer;
+        white-space: nowrap;
       }
 
       .primary {
@@ -524,10 +602,84 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
         background: var(--primary-hover);
       }
 
+      .split-primary {
+        border-radius: 2px 0 0 2px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .split-toggle {
+        min-width: 26px;
+        margin-left: 1px;
+        border-radius: 0 2px 2px 0;
+        padding: 0 7px;
+      }
+
+      .version-menu {
+        position: absolute;
+        z-index: 10;
+        top: calc(100% + 6px);
+        left: 0;
+        display: grid;
+        min-width: 184px;
+        gap: 4px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--surface);
+        padding: 4px;
+        box-shadow: 0 16px 38px color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent);
+      }
+
+      .version-menu-item,
+      .version-menu-note {
+        min-height: 30px;
+        border: 0;
+        border-radius: 2px;
+        background: transparent;
+        color: var(--fg);
+        padding: 0 10px;
+        text-align: left;
+      }
+
+      .version-menu-item {
+        cursor: pointer;
+      }
+
+      .version-menu-item:hover {
+        background: color-mix(in srgb, var(--focus) 16%, transparent);
+      }
+
+      .version-menu-item[disabled] {
+        cursor: default;
+        color: var(--muted);
+      }
+
+      .version-menu-note {
+        display: flex;
+        align-items: center;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
       .secondary {
         border: 1px solid var(--border);
         background: var(--secondary-bg);
         color: var(--secondary-fg);
+      }
+
+      .detail-link {
+        min-height: 22px;
+        border: 0;
+        background: transparent;
+        color: var(--vscode-textLink-foreground, var(--secondary-fg));
+        padding: 0;
+        font-size: 12px;
+      }
+
+      .detail-link:hover {
+        text-decoration: underline;
       }
 
       .primary[disabled],
@@ -543,27 +695,48 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
 
       @media (max-width: 720px) {
         .shell {
-          padding: 18px;
+          padding: 12px;
         }
 
-        .hero,
         .toolbar {
           grid-template-columns: 1fr;
+        }
+
+        .panel-title-row {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .card {
+          grid-template-columns: 96px minmax(0, 1fr);
+          grid-template-areas:
+            "thumb title"
+            "thumb description"
+            "thumb tags"
+            "thumb meta"
+            "thumb badge"
+            "target target"
+            "actions actions";
+        }
+
+        .actions {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .thumb {
+          height: 64px;
         }
       }
     </style>
   </head>
   <body>
     <main class="shell">
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Dev Session Canvas / Template Marketplace</p>
-          <h1>在 VSCode 内浏览并安装市场模板。</h1>
-        </div>
-        <div>
-          <p class="hero-note">当前面板使用 preview Worker API 读取公开模板，并通过 Webview payload 安装到本地模板库。</p>
+      <section class="panel-header">
+        <div class="panel-title-row">
+          <h1>模板市场</h1>
           <button class="open-browser" id="openBrowserButton" type="button">在浏览器打开</button>
         </div>
+        <p class="panel-note">读取公开模板，并通过 Webview payload 安装到本地模板库。</p>
       </section>
 
       <section class="toolbar" aria-label="模板市场筛选">
@@ -593,7 +766,12 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
         loadError: undefined,
         installedTemplates: normalizeInstalledTemplates(initialState.installedTemplates),
         installTargets: initialInstallTargets,
-        installTargetIdsByTemplateSlug: persistedState.installTargetIdsByTemplateSlug
+        installTargetIdsByTemplateSlug: persistedState.installTargetIdsByTemplateSlug,
+        openInstallVersionMenuSlug: undefined,
+        openDownloadVersionMenuSlug: undefined,
+        loadingVersionMenuSlug: undefined,
+        templateDetailsBySlug: {},
+        versionMenuErrorsBySlug: {}
       };
 
       const searchInput = document.getElementById('searchInput');
@@ -610,12 +788,26 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
         vscode.postMessage({ type: 'marketplace/openInBrowser' });
       });
       searchInput.addEventListener('input', debounce(() => {
+        closeVersionMenus();
         persistState();
         void loadTemplates();
       }, 180));
       sortSelect.addEventListener('change', () => {
+        closeVersionMenus();
         persistState();
         void loadTemplates();
+      });
+      document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest('.split-install')) {
+          return;
+        }
+        closeVersionMenus(false);
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && closeVersionMenus(false)) {
+          event.preventDefault();
+        }
       });
       window.addEventListener('message', (event) => {
         const message = event.data;
@@ -756,7 +948,7 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
         actions.className = 'actions';
         if (installedTemplate.sourceUrl) {
           const detailButton = document.createElement('button');
-          detailButton.className = 'secondary';
+          detailButton.className = 'secondary detail-link';
           detailButton.type = 'button';
           detailButton.textContent = '浏览器详情';
           detailButton.addEventListener('click', () => {
@@ -778,11 +970,28 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
 
         const thumb = document.createElement('div');
         thumb.className = 'thumb';
-        const eyebrow = document.createElement('p');
-        eyebrow.textContent = 'Template';
+        const thumbnailImage = document.createElement('img');
+        thumbnailImage.src = buildTemplateThumbnailUrl(template);
+        thumbnailImage.alt = '';
+        thumbnailImage.loading = 'lazy';
+        thumbnailImage.addEventListener('error', () => {
+          thumbnailImage.remove();
+        });
+        thumb.append(thumbnailImage);
+
+        const titleRow = document.createElement('div');
+        titleRow.className = 'title-row';
         const title = document.createElement('h2');
+        title.className = 'card-title';
         title.textContent = template.name;
-        thumb.append(eyebrow, title);
+        const detailButton = document.createElement('button');
+        detailButton.className = 'secondary detail-link';
+        detailButton.type = 'button';
+        detailButton.textContent = '浏览器详情';
+        detailButton.addEventListener('click', () => {
+          window.open(apiOrigin + '/templates/' + encodeURIComponent(template.slug), '_blank', 'noopener');
+        });
+        titleRow.append(title, detailButton);
 
         const description = document.createElement('p');
         description.className = 'description';
@@ -819,8 +1028,24 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
 
         const actions = document.createElement('div');
         actions.className = 'actions';
+        const installButtonGroup = createInstallSplitButton(template, installedTemplate, isCurrentVersionInstalled);
+        const downloadButtonGroup = createDownloadSplitButton(template);
+        actions.append(installButtonGroup, downloadButtonGroup);
+
+        article.append(thumb, titleRow, description, tags, meta);
+        if (installedTemplate) {
+          article.append(installedBadge);
+        }
+        article.append(installTargetRow);
+        article.append(actions);
+        return article;
+      }
+
+      function createInstallSplitButton(template, installedTemplate, isCurrentVersionInstalled) {
+        const group = document.createElement('div');
+        group.className = 'split-install';
         const installButton = document.createElement('button');
-        installButton.className = 'primary';
+        installButton.className = 'primary split-primary';
         installButton.type = 'button';
         let installButtonLabel = '安装到 VSCode';
         if (state.installingSlug === template.slug) {
@@ -838,39 +1063,189 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
           installButton.classList.add('is-installed');
         }
         installButton.addEventListener('click', () => {
-          void installTemplate(template);
+          closeVersionMenus();
+          void installTemplateVersion(template, template.latestVersion);
         });
-        const detailButton = document.createElement('button');
-        detailButton.className = 'secondary';
-        detailButton.type = 'button';
-        detailButton.textContent = '浏览器详情';
-        detailButton.addEventListener('click', () => {
-          window.open(apiOrigin + '/templates/' + encodeURIComponent(template.slug), '_blank', 'noopener');
+
+        const versionButton = document.createElement('button');
+        versionButton.className = 'primary split-toggle';
+        versionButton.type = 'button';
+        versionButton.textContent = '▼';
+        versionButton.setAttribute('aria-label', '选择安装版本');
+        versionButton.disabled = state.installingSlug === template.slug || !resolveTemplateInstallTargetId(template);
+        versionButton.addEventListener('click', () => {
+          void toggleVersionMenu(template, 'install');
         });
+
+        group.append(installButton, versionButton);
+        if (state.openInstallVersionMenuSlug === getTemplateInstallTargetKey(template)) {
+          group.append(renderVersionMenu(template, 'install'));
+        }
+        return group;
+      }
+
+      function createDownloadSplitButton(template) {
+        const group = document.createElement('div');
+        group.className = 'split-install';
         const downloadButton = document.createElement('button');
-        downloadButton.className = 'secondary';
+        downloadButton.className = 'secondary split-primary';
         downloadButton.type = 'button';
         downloadButton.textContent = '下载 JSON';
         downloadButton.addEventListener('click', () => {
-          window.open(buildTemplateDownloadUrl(template), '_blank', 'noopener');
+          closeVersionMenus();
+          window.open(buildTemplateDownloadUrl(template, template.latestVersion), '_blank', 'noopener');
         });
-        actions.append(installButton, downloadButton, detailButton);
 
-        article.append(thumb, description, tags, meta);
-        if (installedTemplate) {
-          article.append(installedBadge);
+        const versionButton = document.createElement('button');
+        versionButton.className = 'secondary split-toggle';
+        versionButton.type = 'button';
+        versionButton.textContent = '▼';
+        versionButton.setAttribute('aria-label', '选择下载版本');
+        versionButton.addEventListener('click', () => {
+          void toggleVersionMenu(template, 'download');
+        });
+
+        group.append(downloadButton, versionButton);
+        if (state.openDownloadVersionMenuSlug === getTemplateInstallTargetKey(template)) {
+          group.append(renderVersionMenu(template, 'download'));
         }
-        article.append(installTargetRow);
-        article.append(actions);
-        return article;
+        return group;
       }
 
-      async function installTemplate(template) {
-        const version = template.latestVersion;
+      function closeVersionMenus(render = true) {
+        const hadOpenMenu = Boolean(state.openInstallVersionMenuSlug || state.openDownloadVersionMenuSlug);
+        if (!hadOpenMenu) {
+          return false;
+        }
+        state.openInstallVersionMenuSlug = undefined;
+        state.openDownloadVersionMenuSlug = undefined;
+        if (render) {
+          renderTemplates();
+        } else {
+          document.querySelectorAll('.version-menu').forEach((menu) => {
+            menu.remove();
+          });
+        }
+        return true;
+      }
+
+      async function toggleVersionMenu(template, action) {
+        const key = getTemplateInstallTargetKey(template);
+        const openKey = action === 'download' ? 'openDownloadVersionMenuSlug' : 'openInstallVersionMenuSlug';
+        const closedKey = action === 'download' ? 'openInstallVersionMenuSlug' : 'openDownloadVersionMenuSlug';
+        if (state[openKey] === key) {
+          state[openKey] = undefined;
+          renderTemplates();
+          return;
+        }
+
+        state[openKey] = key;
+        state[closedKey] = undefined;
+        if (!state.templateDetailsBySlug[key]) {
+          state.loadingVersionMenuSlug = key;
+          delete state.versionMenuErrorsBySlug[key];
+          renderTemplates();
+          await loadTemplateDetail(template);
+          return;
+        }
+        renderTemplates();
+      }
+
+      function renderVersionMenu(template, action) {
+        const key = getTemplateInstallTargetKey(template);
+        const menu = document.createElement('div');
+        menu.className = 'version-menu';
+        menu.setAttribute('role', 'menu');
+
+        if (state.loadingVersionMenuSlug === key) {
+          const note = document.createElement('div');
+          note.className = 'version-menu-note';
+          note.textContent = '正在读取可安装版本...';
+          menu.append(note);
+          return menu;
+        }
+
+        const error = state.versionMenuErrorsBySlug[key];
+        if (error) {
+          const note = document.createElement('div');
+          note.className = 'version-menu-note';
+          note.textContent = '读取版本失败：' + error;
+          menu.append(note);
+          return menu;
+        }
+
+        const versions = collectInstallableVersions(template);
+        for (const version of versions) {
+          const item = document.createElement('button');
+          item.className = 'version-menu-item';
+          item.type = 'button';
+          item.setAttribute('role', 'menuitem');
+          const installedTemplate = findInstalledTemplate(template);
+          const isInstalledVersion = Boolean(installedTemplate && installedTemplate.marketVersionId === version.id);
+          item.textContent = action === 'download'
+            ? '下载 v' + version.versionNumber
+            : isInstalledVersion
+            ? '已安装 v' + version.versionNumber
+            : '安装 v' + version.versionNumber;
+          item.disabled = action === 'install'
+            ? state.installingSlug === template.slug || isInstalledVersion || !resolveTemplateInstallTargetId(template)
+            : false;
+          item.addEventListener('click', () => {
+            if (action === 'download') {
+              state.openDownloadVersionMenuSlug = undefined;
+              window.open(buildTemplateDownloadUrl(template, version), '_blank', 'noopener');
+              renderTemplates();
+              return;
+            }
+            state.openInstallVersionMenuSlug = undefined;
+            void installTemplateVersion(template, version);
+          });
+          menu.append(item);
+        }
+        return menu;
+      }
+
+      async function loadTemplateDetail(template) {
+        const key = getTemplateInstallTargetKey(template);
+        try {
+          const response = await fetch(apiOrigin + '/api/v1/templates/' + encodeURIComponent(template.slug), {
+            headers: { accept: 'application/json' }
+          });
+          if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+          }
+          const body = await response.json();
+          if (!body || typeof body !== 'object' || !body.template) {
+            throw new Error('版本接口返回了无法识别的数据');
+          }
+          state.templateDetailsBySlug[key] = body.template;
+        } catch (error) {
+          state.versionMenuErrorsBySlug[key] = formatErrorMessage(error);
+        } finally {
+          if (state.loadingVersionMenuSlug === key) {
+            state.loadingVersionMenuSlug = undefined;
+          }
+          renderTemplates();
+        }
+      }
+
+      function collectInstallableVersions(template) {
+        const detail = state.templateDetailsBySlug[getTemplateInstallTargetKey(template)];
+        const candidateVersions = Array.isArray(detail && detail.versions) ? detail.versions : [];
+        const versionsById = new Map();
+        for (const version of [template.latestVersion, ...candidateVersions]) {
+          if (version && typeof version.id === 'string' && typeof version.versionNumber === 'number') {
+            versionsById.set(version.id, version);
+          }
+        }
+        return [...versionsById.values()].sort((left, right) => right.versionNumber - left.versionNumber);
+      }
+
+      async function installTemplateVersion(template, version) {
         const targetId = resolveTemplateInstallTargetId(template);
         const target = resolveInstallTargetById(targetId);
         state.installingSlug = template.slug;
-        statusElement.textContent = '正在下载并安装 ' + template.name + (target ? ' 到 ' + formatInstallTargetLabel(target) : '') + '...';
+        statusElement.textContent = '正在下载并安装 ' + template.name + ' v' + version.versionNumber + (target ? ' 到 ' + formatInstallTargetLabel(target) : '') + '...';
         renderTemplates();
         try {
           const response = await fetch(apiOrigin + '/api/v1/templates/' + encodeURIComponent(template.slug) + '/download?version=' + encodeURIComponent(version.id), {
@@ -920,8 +1295,13 @@ function buildTemplateMarketplaceHtml(webview: vscode.Webview): string {
         });
       }
 
-      function buildTemplateDownloadUrl(template) {
-        return apiOrigin + '/api/v1/templates/' + encodeURIComponent(template.slug) + '/download?version=' + encodeURIComponent(template.latestVersion.id);
+      function buildTemplateDownloadUrl(template, version) {
+        const targetVersion = version || template.latestVersion;
+        return apiOrigin + '/api/v1/templates/' + encodeURIComponent(template.slug) + '/download?version=' + encodeURIComponent(targetVersion.id);
+      }
+
+      function buildTemplateThumbnailUrl(template) {
+        return apiOrigin + '/api/v1/templates/' + encodeURIComponent(template.slug) + '/thumbnail?version=' + encodeURIComponent(template.latestVersion.id);
       }
 
       function createInstallTargetSelect(template) {

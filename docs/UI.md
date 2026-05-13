@@ -145,6 +145,26 @@ components:
 3. 低占比固定强调色，例如对象类型边框、状态胶囊或关系预设色。
 4. 禁止把固定背景色、固定渐变或固定深色混色作为默认产品底色。
 
+### Marketplace Theme Contract
+
+模板市场同时存在浏览器互联网网站和 VSCode 插件内 Webview Editor 面板，两者共用信息架构和组件密度，但不共用取色来源：
+
+- **插件内市场面板**：视为 VSCode 工作台 UI，必须完整跟随当前 VSCode Color Theme。背景、卡片、输入框、按钮、边框、阴影、focus、菜单和状态都从 `--vscode-*` token 或当前 token 的 `color-mix` 派生；不得把浏览器端 `Light 2026` / `Dark 2026` 固定色、固定白色卡片或固定深色渐变带入 Webview。
+- **浏览器市场网站**：没有 VSCode 运行时 token，因此使用与 VSCode Color Theme 角色对齐的市场主题变量。浅色风格命名为 `Light 2026`，深色风格命名为 `Dark 2026`；站点必须同时支持 `prefers-color-scheme` 和显式主题覆盖，例如 `data-market-theme="light-2026"` / `data-market-theme="dark-2026"`。
+- **共享规则**：两端都使用 `canvas / surface / text / border / focus / button / semantic` 这些角色组织视觉层级；缩略图、占位图和搜索主按钮只能从当前主题变量派生，不得成为独立品牌色事实来源。
+
+浏览器市场的当前主题角色：
+
+| 角色 | Light 2026 | Dark 2026 | 用途 |
+| --- | --- | --- | --- |
+| `market-canvas` | #f8f8f8 | #1e1e1e | 页面底色和大面积背景。 |
+| `market-surface` | #ffffff | #252526 | 卡片、筛选条、详情正文和输入框。 |
+| `market-text` | #1a1a1a | #e6e6e6 | 主文本、标题和强按钮对比色。 |
+| `market-muted` | #686868 | #aeaeae | 副文本、统计和弱元信息。 |
+| `market-accent` | #4878f0 | #4878f0 | 来源于 DevSessionCanvas 图标蓝色，用于 Templates tab、搜索按钮和主安装入口。 |
+| `market-link` | #48b0a0 | #56c2b2 | 来源于 DevSessionCanvas 图标绿色，用于标签、链接 hover 和弱强调。 |
+| `market-border` | #dedede | #3f3f46 | 弱分割、卡片边界和 dashed 空状态。 |
+
 ### Token Roles
 
 - `canvas` / `surface` / `surface-muted` / `surface-chrome`：只负责建立画布、widget、对象正文和标题栏层级。
@@ -254,6 +274,17 @@ components:
 - 常驻 widget 只能服务导航、定位或当前状态理解。
 - 菜单、toolbar、tooltip 和编辑浮层应短生命周期、小面积、低装饰。
 
+### Marketplace Surfaces
+
+- 浏览器市场网站对齐 Visual Studio Marketplace 的信息布局，但主题色使用 DevSessionCanvas 图标的蓝色与绿色：顶部黑色品牌栏、单一 Templates tab、居中页面标题、大号矩形搜索框、Featured 卡片区和矩形扩展卡片；不显示尚未存在的 Canvas、Agents、Resources 等章节，也不使用营销式大 hero、毛玻璃光斑、胶囊按钮或大圆角卡片。
+- 浏览器市场卡片、详情页和 metric 块使用 `Light 2026` / `Dark 2026` 的 `market-surface`、`market-border`、`market-text`、`market-muted`、`market-accent` 和 `market-link` 变量；浅色与深色必须是同一信息架构下的两套主题，不应维护两套页面结构。
+- 浏览器模板详情页是 README 阅读页，不是市场首页的附属区域：独立详情路径不展示搜索、筛选、Featured 列表或其他模板网格；README 占据主栏，缩略图、安装 / 下载、统计、版本历史、完整性校验和来源信息只能进入紧凑侧栏或折叠区。
+- 详情页不得把辅助信息做成多层 card-in-card；允许一个矩形详情容器和少量 1px 分割线，避免让 metric、版本、hash 或来源信息在视觉上压过 README。
+- 插件内市场面板使用 VSCode `editor` / `editorWidget` / `input` / `button` / `menu` / `focusBorder` / `panelBorder` 等 token，表现为紧凑 Webview Editor 工具面板，而不是公网营销页；禁止独立背景渐变、大标题 hero、大量胶囊按钮和大圆角矩形。
+- 插件内市场面板优先使用 VSCode 列表式密度：顶部只保留一行标题、短说明和浏览器打开入口，搜索 / 排序不包成大工具卡；模板项用单列紧凑行展示小缩略图、标题、标题附近的浏览器详情文本动作、描述、标签、统计和右侧安装 / 下载动作，不使用三列大卡片墙。
+- 市场缩略图优先展示真实模板预览图；图片失败或离线快照时，浏览器用当前 `market-*` 变量生成降级图，插件内面板用当前 `--vscode-*` token 生成降级图。
+- 插件内市场的已安装状态、安装位置、版本 split button 和下载 split button 必须保留可键盘 focus、可读文字和非颜色状态文案；安装 / 下载版本菜单属于短生命周期浮层，点击外部或按 Escape 时应关闭。
+
 ### Sidebar Section
 
 Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 数量、功能范围或宿主 API 形态：
@@ -313,6 +344,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 不要固定深色画布、渐变背景或强品牌色作为默认视觉身份。
 - 不要把节点内部做成多层 card-in-card、表单面板或 dashboard。
 - 不要用颜色替代结构化状态；颜色只能辅助，不是事实来源。
+- 不要把浏览器市场的 `Light 2026` / `Dark 2026` 固定色带入 VSCode Webview；插件内市场必须始终跟随用户当前 Color Theme。
 
 ## Implementation Handoff
 

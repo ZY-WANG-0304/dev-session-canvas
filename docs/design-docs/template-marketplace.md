@@ -149,7 +149,31 @@ Cloudflare Workers Static Assets 只负责浏览器 SPA 和静态资源 fallback
 
 Webview 不加载远程 JavaScript，也不把远程站点 iframe 进插件。远程 API 的 base URL 由宿主注入，默认指向生产市场域名；开发模式可通过配置指向本地 Worker dev server。Webview 与宿主之间只传递用户动作和 API 结果，不把 GitHub token 或市场 session 暴露给 DOM 可持久化状态。
 
-视觉上，浏览器页面可以使用市场品牌 token + Tailwind 主题；VSCode Webview 必须映射到 `--vscode-*` token，延续 `docs/PRODUCT_SENSE.md` 对 VSCode 原生语境和主题跟随的要求。shadcn/ui 只作为源码级组件起点，不直接照搬默认 SaaS dashboard 风格。
+#### 7.3.1 市场页 UI 定义
+
+市场页 UI 以 `docs/UI.md` 的 Theme Contract 为上层约束，但按宿主拆成两套取色来源。浏览器端和插件内端共享搜索、排序、标签、模板卡片、详情、安装、下载、版本 split button 和已安装状态这些信息结构；风格差异只来自宿主主题，而不是来自不同功能模型。
+
+浏览器互联网网站使用 `apps/template-marketplace/src/web/styles.css` 中的市场主题变量，并通过 `apps/template-marketplace/tailwind.config.cjs` 把 Tailwind `canvas.*` token 映射到 CSS 变量。浅色风格固定对应 `Light 2026`，深色风格固定对应 `Dark 2026`；页面默认跟随 `prefers-color-scheme`，也允许通过 `data-market-theme="light-2026"` / `data-market-theme="dark-2026"` 做显式覆盖。当前角色值以 `docs/UI.md` 的 `Marketplace Theme Contract` 为准：`market-canvas` 负责页面底色，`market-surface` 负责卡片、筛选条和详情正文，`market-text` 负责主文本，`market-muted` 负责副文本，`market-accent` 使用 DevSessionCanvas 图标蓝色，`market-link` 使用 DevSessionCanvas 图标绿色。
+
+浏览器端组件规则如下：
+
+- `App.tsx` 的页面外壳对齐 Visual Studio Marketplace 的布局语言：黑色品牌栏、单一 Templates tab、居中页面标题、大号矩形搜索框、Featured 区块和卡片网格；当前只展示 Templates，不预留 Canvas、Agents、Resources 这些尚不存在的章节；不得再出现营销式大 hero、背景光斑、玻璃面板、胶囊标签栏或大圆角筛选面板。
+- `TemplateCard.tsx` 的卡片用矩形 `market-surface` 承载模板摘要；缩略图作为卡片顶部预览图，不再把模板名称大字叠在缩略图上；模板名、版本、描述、标签、下载/点赞和安装/下载动作回到卡片正文。
+- `/templates/:slug` 独立详情路径不再展示首页搜索、筛选、Featured 列表和模板网格，避免把详情页退化成首页附属模块。
+- `TemplateDetailView.tsx` 的详情页以 README 为主内容：顶部只保留返回、紧凑缩略图、模板名、描述和标签；主体左栏展示 README；安装 / 下载、下载量、点赞数、最新版本、版本历史、sha256 和数据来源都进入右侧紧凑侧栏，其中版本历史和完整性校验默认作为折叠辅助信息处理。
+- 详情页允许一个矩形详情容器、header 分割线和侧栏分割线；不得再把 metric、readme、版本、sha256、安装等辅助信息分别包成多层卡片，避免 card-in-card 视觉压过 README。
+- 浏览器端 `Install in VSCode` 与 `Download JSON` 是外部跳转 / 下载动作，按钮对齐 Visual Studio Marketplace 的矩形按钮语言，仍必须有可见 focus ring、明确 aria label 和点击后提示。
+
+VSCode 插件内市场面板以 `src/panel/CanvasTemplateMarketplacePanel.ts` 为当前实现落点。它是 VSCode Webview Editor 面板，不使用浏览器端 `Light 2026` / `Dark 2026` palette，而是完整适配用户当前 VSCode Color Theme：
+
+- 背景、正文、弱文本、卡片、输入框、按钮、secondary 按钮、边框、focus、菜单和阴影分别从 `--vscode-editor-background`、`--vscode-editor-foreground`、`--vscode-descriptionForeground`、`--vscode-input-*`、`--vscode-button-*`、`--vscode-widget-border` / `--vscode-panel-border`、`--vscode-focusBorder` 和当前文本 token 派生。
+- 背景不得使用独立渐变或装饰光斑；缩略图降级图、离线卡片和 hover 背景只能用当前 `--vscode-*` token 与 `color-mix` 生成；禁止固定白色卡片、固定黑色阴影、固定绿色/棕色缩略图或固定公网主题色。
+- high contrast 主题下应优先使用 `--vscode-contrastBorder`、关闭非必要阴影，并通过文本、badge 和按钮状态表达安装位置、已安装版本、加载失败和离线快照，不能只靠颜色区分。
+- 面板密度保持 VSCode 工具面板语义：顶部只保留单行紧凑标题、短说明和浏览器打开入口，搜索 / 排序靠近顶部且不再包成大工具卡；模板项默认用单列紧凑行展示，左侧是小缩略图，中间是标题、浏览器详情文本动作、描述、标签和统计，右侧是安装位置、安装 split button 和下载 split button；不使用三列大卡片墙、超大缩略图或营销页式大留白。
+- 安装位置下拉、安装 split button 和下载 split button 都保留至少 24px 可操作热区；安装 / 下载动作在右侧控件区按两列对齐，浏览器详情必须靠近模板标题而不是混入安装 / 下载动作区，避免按钮挤在一起形成不稳定换行。
+- 版本菜单是短生命周期浮层：点击其他区域、搜索 / 排序变化或按 Escape 必须关闭；按钮、badge、menu 和输入框使用小圆角或直角，不使用胶囊按钮和大圆角矩形。
+
+shadcn/ui 仍只作为后续共享 React 组件的源码级起点，不直接照搬默认 SaaS dashboard 风格；后续把插件内面板收敛到共享 React Webview bundle 时，必须保留上述 VSCode token adapter，不得把浏览器网站 CSS 变量直接复用为插件内主题。
 
 ### 7.4 API 与数据模型
 
@@ -158,6 +182,7 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 - `GET /api/v1/templates`：列表、关键词、标签、排序和分页。
 - `GET /api/v1/templates/:id`：模板详情、版本列表、发布者摘要和当前用户互动状态。
 - `GET /api/v1/templates/:id/download?version=`：记录下载并返回模板包内容或短期下载地址。
+- `GET /api/v1/templates/:id/thumbnail?version=`：返回指定版本缩略图；preview / production 有 R2 binding 时读取 R2 PNG，本地无 R2 时返回显式 seed SVG 降级图。
 - `POST /api/v1/templates`：发布新模板，需要认证。
 - `POST /api/v1/templates/:id/versions`：发布新版本，需要作者权限。
 - `POST /api/v1/templates/:id/like`：点赞或取消点赞，需要认证。
@@ -167,7 +192,7 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 
 匿名公开读取端点需要同时服务浏览器页面、workers.dev preview、自定义域名和 VSCode Webview。本方案允许 `/api/v1/*` 中的 GET / OPTIONS 公开 CORS 访问，并暴露下载响应所需的 `content-disposition`、`x-marketplace-storage-mode`、`x-marketplace-catalog-storage-mode`、`x-marketplace-template-id`、`x-marketplace-version-id` 和 `x-marketplace-sha256` 响应头。该策略只适用于不携带 cookie/token 的公开读取与下载；GitHub OAuth、发布、点赞、举报和治理后台写接口需要在实现时单独收紧 origin、credentials 与权限校验，不能默认继承匿名读取 CORS 策略。
 
-下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 / seed repository 解析模板版本元数据，再从 R2 读取 `template.json` 并以 `Content-Disposition: attachment` 返回真实文件，响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，作为 seed / D1 降级路径，不冒充真实对象下载。
+下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 / seed repository 解析模板版本元数据，再从 R2 读取 `template.json` 并以 `Content-Disposition: attachment` 返回真实文件，响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，作为 seed / D1 降级路径，不冒充真实对象下载。缩略图端点同样先通过 D1 / seed repository 解析版本，再读取该版本的 `thumbnailKey`；R2 对象存在时返回 `image/png` 和公开缓存头，不记录下载计数；无 R2 binding 时返回 seed SVG，前端仍保留渐变占位防止图片加载失败导致卡片空白。
 
 D1 在 Phase 1-4 范围内的核心表（通过 Drizzle ORM 定义在 `packages/marketplace-shared/src/schema.ts`）包括：
 
@@ -198,7 +223,7 @@ R2 对象按不可变版本组织，示例 key：
 
 插件安装市场模板时，让用户在每张模板卡片上选择“本地（当前设备）”或可用 workspace 模板目录作为安装目标；本地目标写入 `globalStorageUri/templates/marketplace/`，workspace 目标写入当前 workspace 下 `.dev-session-canvas/templates/marketplace/`，并在相邻位置写入 sidecar，例如 `Review-Loop.market.json`。sidecar 记录 `marketTemplateId`、`marketTemplateSlug`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`thumbnailKey` 和 `checksum`。这样模板即使离线也可以作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。模板目录扫描会忽略 `*.market.json`，避免 sidecar 被误解析成模板文件；用户手动保存或导入覆盖同一路径时会移除 sidecar，防止普通本地模板继续被标记为市场来源。侧栏展示市场模板时必须同时体现市场来源与存储范围，例如 `市场 · 本地` 或 `市场 · 工作区`。
 
-浏览器唤起 VSCode 的安装主路径由扩展 `onUri` activation + `vscode.window.registerUriHandler` 承载。扩展端只接受 `dscanvas.dev`、当前 workers.dev 预览域名和 localhost 开发域名下的 `/templates` 来源；收到安装链接后优先校验内联 payload 的 sha256 并写入本地模板目录。如果链接没有 payload，则先读取详情 API，再下载指定版本 `template.json`，校验 D1 详情中的 sha256 与下载内容一致后写入本地模板目录和 sidecar。插件内独立 Webview 市场页也复用同一条 payload 安装路径，只是跳过外部 `vscode://` 确认弹窗；Webview 打开或安装完成后由 Extension Host 读取本地模板 catalog 中的 sidecar，把已安装版本回传给 Webview，用于卡片级“已安装到 本地 · 当前设备 / 当前workspace · <title> · vN”状态展示。同一个市场模板安装到同一目标位置时按 `marketTemplateId` / slug 和 storage location 覆盖既有本地副本，保留本地模板 id 和创建时间，避免更新或重复安装产生重复模板文件；同版本重复安装视为重新安装，不同版本视为更新。模板市场不提供“应用到 Canvas”入口；它只负责浏览、下载、安装和更新状态，安装成功后提示用户去模板侧栏应用，已安装模板继续通过侧栏模板列表应用到 Canvas，避免市场卡片和侧栏产生重复操作入口。Webview 读取市场 API 失败时不清空已安装状态：若曾加载过市场结果则继续显示旧结果，若没有市场结果则显示网络错误和已安装模板快照，提醒用户侧栏仍可使用。插件内市场卡片提供 `下载 JSON` 入口，直接打开当前版本的匿名下载端点；安装按钮仍通过 Extension Host 校验并写入模板库。当前实现已覆盖匿名安装、重复安装覆盖、更新覆盖和直接下载主路径；更新提醒、回滚、共享 React Webview bundle 和插件内发布仍是后续里程碑。
+浏览器唤起 VSCode 的安装主路径由扩展 `onUri` activation + `vscode.window.registerUriHandler` 承载。扩展端只接受 `dscanvas.dev`、当前 workers.dev 预览域名和 localhost 开发域名下的 `/templates` 来源；收到安装链接后优先校验内联 payload 的 sha256 并写入本地模板目录。如果链接没有 payload，则先读取详情 API，再下载指定版本 `template.json`，校验 D1 详情中的 sha256 与下载内容一致后写入本地模板目录和 sidecar。插件内独立 Webview 市场页也复用同一条 payload 安装路径，只是跳过外部 `vscode://` 确认弹窗；Webview 打开或安装完成后由 Extension Host 读取本地模板 catalog 中的 sidecar，把已安装版本回传给 Webview，用于卡片级“已安装到 本地 · 当前设备 / 当前workspace · <title> · vN”状态展示。同一个市场模板安装到同一目标位置时按 `marketTemplateId` / slug 和 storage location 覆盖既有本地副本，保留本地模板 id 和创建时间，避免更新或重复安装产生重复模板文件；同版本重复安装视为重新安装，不同版本视为更新。插件内市场卡片的安装入口采用类似 VSCode 插件市场的 split button：主按钮安装或更新到最新版本，右侧版本下拉读取模板详情中的 `versions`，允许用户直接安装特定版本，用于调试更新路径或手动回滚。模板市场不提供“应用到 Canvas”入口；它只负责浏览、下载、安装和更新状态，安装成功后提示用户去模板侧栏应用，已安装模板继续通过侧栏模板列表应用到 Canvas，避免市场卡片和侧栏产生重复操作入口。Webview 读取市场 API 失败时不清空已安装状态：若曾加载过市场结果则继续显示旧结果，若没有市场结果则显示网络错误和已安装模板快照，提醒用户侧栏仍可使用。插件内市场卡片的 `下载 JSON` 入口也采用 split button：主按钮下载最新版本，右侧版本下拉复用同一份详情版本列表下载特定版本；下载动作只打开匿名下载端点，不写本地模板库。安装按钮仍通过 Extension Host 校验并写入模板库。浏览器卡片、浏览器详情页和插件内市场卡片会读取当前版本缩略图端点，图片失败时回退到本地渐变占位。当前实现已覆盖匿名安装、重复安装覆盖、更新覆盖、指定版本安装、指定版本下载和缩略图读取主路径；更新提醒、共享 React Webview bundle 和插件内发布仍是后续里程碑。
 
 本地模板格式不新增 `market` category。UI 可以把“市场来源”作为存储层派生标签展示，但 `CanvasTemplateDocument` 中的 `category` 仍只表达模板主体在本地模板系统中的兼容分类。
 
@@ -234,7 +259,7 @@ GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers
 
 `freshness_boost` 只按最近 30 天更新时间给小幅加分，避免老模板永久霸榜。这个公式只是初始口径，需在 Phase 3 前用真实数据复核；如果产品侧调整权重，应更新本设计文档和产品规格。
 
-下载接口先确认 R2 对象存在，再记录计数并返回对象或重定向到短期对象 URL。当前 D1 实现会在真实 R2 文件响应前把 `templates.download_count` 累加 1，并对 `template_daily_stats(template_id, day)` 做 upsert 日下载计数；如果 R2 对象缺失并返回 404，不写下载计数。模板详情、列表和缩略图使用 HTTP cache headers；登录用户互动状态单独请求或短缓存，避免因为全页缓存泄漏个性化状态。
+下载接口先确认 R2 对象存在，再记录计数并返回对象或重定向到短期对象 URL。当前 D1 实现会在真实 R2 文件响应前把 `templates.download_count` 累加 1，并对 `template_daily_stats(template_id, day)` 做 upsert 日下载计数；如果 R2 对象缺失并返回 404，不写下载计数。缩略图接口只读取 R2 对象并设置 `public, max-age=3600, s-maxage=86400`，不写下载统计。模板详情、列表和缩略图使用 HTTP cache headers；登录用户互动状态单独请求或短缓存，避免因为全页缓存泄漏个性化状态。
 
 ### 7.9 Phase 4 承载边界与退出条件
 
@@ -251,12 +276,12 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` seed 对象写入与摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke，以及插件内市场直接下载和重复安装覆盖的源码/脚本验证，证明技术栈可以在仓库内连通；但 GitHub OAuth、共享 React Webview bundle、完整 VSCode 宿主 smoke（侧栏来源、离线应用、更新提醒、回滚等）、发布/点赞/举报写接口和治理后台尚未完成，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场直接下载、指定版本安装/下载、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；但 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、发布/点赞/举报写接口和治理后台尚未完成，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
 3. 在浏览器运行 Vite dev server，验证搜索、标签、排序、详情、发布表单和登录态切换；使用 Playwright 编写 E2E 测试覆盖核心路径。
-4. 扩展 VSCode smoke：已确认独立 Webview Editor 市场页可加载并安装一个市场模板；后续还需确认侧栏模板列表显示市场来源、离线时仍可应用模板，并覆盖更新提醒与回滚。
+4. 扩展 VSCode smoke：已确认独立 Webview Editor 市场页可加载并安装市场模板；后续还需覆盖多种真实 VSCode Color Theme、高对比主题、离线时仍可应用模板、更新提醒与回滚。
 5. 验证 VSCode 端发布流程使用 `vscode.authentication.getSession('github', ...)`，且 GitHub access token 不写入 `workspaceState`、`globalState`、模板 JSON 或 Webview local state。
 6. 对上传大小、缩略图格式、重复点赞、被封禁用户发布、非作者发布新版本、非管理员访问后台等失败路径执行自动化测试。
 7. 执行 `git diff --check`、`npm run typecheck`，并为新增 app / package 补齐对应 `npm run test:marketplace-api` 和 `npm run test:marketplace-web` 脚本。
