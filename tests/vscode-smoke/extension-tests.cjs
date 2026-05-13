@@ -86,8 +86,11 @@ const REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED = ['- [x] 补齐 smoke', '- [x] 保�
 const REAL_DOM_NOTE_FILE_LINK_RELATIVE_PATH = 'note-link-open-target.txt';
 const REAL_DOM_NOTE_FILE_LINK_BODY =
   '[打开 Note 链接目标](.debug/vscode-smoke/note-link-open-target.txt#L2C3)';
-const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY = '# Associated Note\n\n- from workspace file';
-const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY = '# Associated Note\n\n- updated from canvas';
+const REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL = '0123456789abcdef'.repeat(520);
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY =
+  `# Associated Note\n\n- from workspace file\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}`;
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY =
+  `# Associated Note\n\n- updated from canvas\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}\nupdated tail`;
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
@@ -3937,6 +3940,11 @@ async function verifyNoteWorkspaceFileLinks(noteNodeId) {
 async function verifyNoteMarkdownFileAssociation() {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+  assert.ok(
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY.length > 8000 &&
+      REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY.length > 8000,
+    'Expected associated Markdown smoke bodies to exceed the ordinary Note storage limit.'
+  );
 
   const associationDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke');
   await fs.mkdir(associationDir, { recursive: true });

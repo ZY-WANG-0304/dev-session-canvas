@@ -1909,6 +1909,23 @@ body {
   tab-size: 2;
 }
 
+.note-limit-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 2;
+  max-width: calc(100% - 74px);
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-inputValidation-warningBorder, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)) 88%, transparent);
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-descriptionForeground));
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
 .note-markdown-preview {
   flex: 1;
   min-height: 0;

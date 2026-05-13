@@ -82,6 +82,7 @@ import type {
 import {
   canvasEdgePresetColors,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -261,6 +262,8 @@ type FileListEntrySelectionTone = 'active' | 'inactive';
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
+const EMBEDDED_NOTE_BODY_PLACEHOLDER =
+  `${NOTE_BODY_PLACEHOLDER} 普通 Note 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符；更长内容请保存为 Markdown 文件。`;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
@@ -4453,9 +4456,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     noteContentSource?.kind === 'markdown-file' ? noteContentSource : undefined;
   const associatedMarkdownFileAvailable =
     !associatedMarkdownFile || associatedMarkdownFile.status === 'ok';
+  const isEmbeddedNote = !associatedMarkdownFile;
+  const bodyPlaceholder = isEmbeddedNote ? EMBEDDED_NOTE_BODY_PLACEHOLDER : NOTE_BODY_PLACEHOLDER;
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [isEmbeddedLimitNoticeVisible, setIsEmbeddedLimitNoticeVisible] = useState(false);
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const committedContentRef = useRef(noteMetadata.content);
   const pendingContentRef = useRef<string | null>(null);
@@ -4529,17 +4535,46 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     setIsEditingBody(false);
   }, [overviewInteractionsDisabled]);
 
+  useEffect(() => {
+    setIsEmbeddedLimitNoticeVisible(
+      isEmbeddedNote && isEditingBody && content.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH
+    );
+  }, [content.length, isEditingBody, isEmbeddedNote]);
+
+  const normalizeEditableNoteContent = (nextContent: string): string => {
+    if (!isEmbeddedNote || nextContent.length <= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+      return nextContent;
+    }
+
+    setIsEmbeddedLimitNoticeVisible(true);
+    return nextContent.slice(0, NOTE_EMBEDDED_CONTENT_MAX_LENGTH);
+  };
+
+  const updateBodyContent = (nextContent: string): string => {
+    const normalizedContent = normalizeEditableNoteContent(nextContent);
+    setContent(normalizedContent);
+    if (isEmbeddedNote && normalizedContent.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+      setIsEmbeddedLimitNoticeVisible(true);
+    }
+    return normalizedContent;
+  };
+
   const submitNote = (nextContent: string): void => {
+    const normalizedContent = normalizeEditableNoteContent(nextContent);
+    if (normalizedContent !== nextContent) {
+      setContent(normalizedContent);
+    }
+
     const baselineContent = committedContentRef.current;
-    if (nextContent === baselineContent) {
+    if (normalizedContent === baselineContent) {
       return;
     }
 
-    committedContentRef.current = nextContent;
-    pendingContentRef.current = nextContent;
+    committedContentRef.current = normalizedContent;
+    pendingContentRef.current = normalizedContent;
     data.onUpdateNote?.({
       nodeId: id,
-      content: nextContent
+      content: normalizedContent
     });
   };
 
@@ -4569,7 +4604,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (handleNoteBodyIndentKeyDown(event, setContent, pendingBodySelectionRef)) {
+    if (handleNoteBodyIndentKeyDown(event, updateBodyContent, pendingBodySelectionRef)) {
       return;
     }
 
@@ -4765,19 +4800,25 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={(event) => {
                   setIsComposing(false);
-                  setContent(event.currentTarget.value);
+                  updateBodyContent(event.currentTarget.value);
                 }}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(event) => updateBodyContent(event.target.value)}
                 onBlur={(event) => {
                   const nextContent = event.currentTarget.value;
-                  setContent(nextContent);
+                  updateBodyContent(nextContent);
                   setIsEditingBody(false);
                   submitNote(nextContent);
                 }}
                 onKeyDown={handleBodyKeyDown}
-                placeholder={NOTE_BODY_PLACEHOLDER}
+                maxLength={isEmbeddedNote ? NOTE_EMBEDDED_CONTENT_MAX_LENGTH : undefined}
+                placeholder={bodyPlaceholder}
                 spellCheck={false}
               />
+              {isEmbeddedLimitNoticeVisible ? (
+                <div className="note-limit-hint" role="status">
+                  普通 Note 已达到 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限；更长内容请保存为 Markdown 文件。
+                </div>
+              ) : null}
             </div>
           ) : (
             <div
@@ -4806,7 +4847,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   dangerouslySetInnerHTML={{ __html: previewHtml }}
                 />
               ) : (
-                <p className="note-markdown-preview-placeholder">{NOTE_BODY_PLACEHOLDER}</p>
+                <p className="note-markdown-preview-placeholder">{bodyPlaceholder}</p>
               )}
             </div>
           )}
@@ -7521,7 +7562,7 @@ function countTextLines(value: string): number {
 
 function handleNoteBodyIndentKeyDown(
   event: React.KeyboardEvent<HTMLTextAreaElement>,
-  setContent: React.Dispatch<React.SetStateAction<string>>,
+  applyContentChange: (value: string) => string,
   pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>
 ): boolean {
   if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
@@ -7532,7 +7573,7 @@ function handleNoteBodyIndentKeyDown(
   stopCanvasEvent(event);
   applyNoteBodyIndentChange(
     event.currentTarget,
-    setContent,
+    applyContentChange,
     pendingSelectionRef,
     event.shiftKey ? 'outdent' : 'indent'
   );
@@ -7541,7 +7582,7 @@ function handleNoteBodyIndentKeyDown(
 
 function applyNoteBodyIndentChange(
   textarea: HTMLTextAreaElement,
-  setContent: React.Dispatch<React.SetStateAction<string>>,
+  applyContentChange: (value: string) => string,
   pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>,
   direction: 'indent' | 'outdent'
 ): void {
@@ -7554,17 +7595,19 @@ function applyNoteBodyIndentChange(
     return;
   }
 
+  const appliedValue = applyContentChange(edit.value);
+  const selectionStart = Math.min(edit.selectionStart, appliedValue.length);
+  const selectionEnd = Math.min(edit.selectionEnd, appliedValue.length);
   pendingSelectionRef.current = {
-    selectionStart: edit.selectionStart,
-    selectionEnd: edit.selectionEnd
+    selectionStart,
+    selectionEnd
   };
-  setContent(edit.value);
   window.requestAnimationFrame(() => {
     if (document.activeElement !== textarea) {
       return;
     }
 
-    textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+    textarea.setSelectionRange(selectionStart, selectionEnd);
   });
 }
 

@@ -14,6 +14,7 @@ const harnessUrl = pathToFileURL(
 const pageDiagnosticsByPage = new WeakMap();
 const TERMINAL_VIEWPORT_ZOOM = 1.6;
 const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
+const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 const WORKBENCH_THEME_VARS = {
   dark: {
     '--vscode-editor-background': '#1e1e1e',
@@ -3891,6 +3892,29 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
     .toBe('matched');
 });
 
+test('ordinary note empty placeholder and editor show the 8000 character limit', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview-placeholder')).toContainText(
+    `普通 Note 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符`
+  );
+
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveAttribute('maxlength', String(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
+
+  const overLimitContent = 'a'.repeat(NOTE_EMBEDDED_CONTENT_MAX_LENGTH + 5);
+  await bodyInput.fill(overLimitContent);
+  await expect(bodyInput).toHaveValue('a'.repeat(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
+  await expect(noteNode.locator('.note-limit-hint')).toContainText(
+    `普通 Note 已达到 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限`
+  );
+});
+
 test('note body requires double click to switch from markdown preview to plain text editing', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -4269,6 +4293,45 @@ test('associated markdown notes render the file path subtitle and open-file acti
     type: 'webview/openAssociatedNoteMarkdownFile',
     payload: {
       nodeId: 'note-1'
+    }
+  });
+});
+
+test('associated markdown note editor does not apply the ordinary note 8000 character limit', async ({ page }) => {
+  await openHarness(page);
+  const longMarkdownContent = `# 文件笔记\n\n${'long markdown body\n'.repeat(510)}`;
+  expect(longMarkdownContent.length).toBeGreaterThan(NOTE_EMBEDDED_CONTENT_MAX_LENGTH);
+
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = longMarkdownContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/large.md',
+    displayPath: 'docs/large.md',
+    fullDisplayPath: '/workspace/docs/large.md',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', longMarkdownContent);
+
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).not.toHaveAttribute('maxlength', String(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
+  await expect(bodyInput).toHaveValue(longMarkdownContent);
+
+  const updatedLongMarkdownContent = `${longMarkdownContent}\n追加内容`;
+  await bodyInput.fill(updatedLongMarkdownContent);
+  await bodyInput.blur();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: updatedLongMarkdownContent
     }
   });
 });
