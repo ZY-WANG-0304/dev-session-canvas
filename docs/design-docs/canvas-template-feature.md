@@ -16,7 +16,8 @@ related_specs:
   - docs/product-specs/canvas-template-feature.md
 related_plans:
   - docs/exec-plans/active/canvas-template-feature.md
-updated_at: 2026-05-10
+  - docs/exec-plans/active/canvas-template-associated-note-modes.md
+updated_at: 2026-05-14
 ---
 
 # 画布模板功能设计
@@ -56,6 +57,7 @@ updated_at: 2026-05-10
 - 不在本轮实现模板云同步、模板市场、标签系统或使用统计。
 - 不在本轮保存 `Agent` 的运行时输出、会话 id、自定义 command line、resume 信息或 `Terminal` scrollback。
 - 不在本轮把文件节点、文件列表节点、文件活动边纳入模板可保存范围。
+- 不把关联 Markdown `Note` 的 raw `resourceUri`、本机绝对路径或 `vscode-remote://...` 这类实现层 URI 直接写入模板；需要保留文件关联时，只使用 workspace 相对路径。
 - 不在本轮实现缩略图预览、拖拽排序、批量操作或模板版本历史。
 
 ## 5. 候选方案
@@ -143,7 +145,7 @@ updated_at: 2026-05-10
 - `CanvasTemplate` 本体包含 `id`、`name`、`category`、`nodes`、`edges`、`createdAt`、`updatedAt`。
 - 模板节点只允许 `agent`、`terminal`、`note` 三类；`file` 与 `file-list` 不进入模板。
 - 模板边只保存用户可见的几何与样式字段：源/目标节点索引、anchor、arrowMode、color、label。
-- `Note` 只保存 `content`；`Terminal` 不保存运行时字段；`Agent` 只保存模板专属 `provider` 和可选 `argv`/后续兼容位，不保存 resume、command line、recentOutput、pendingLaunch 等宿主运行态。
+- 普通 `Note` 默认只保存内容快照；关联 Markdown `Note` 在保存模板时由用户选择内容模式：普通内容快照、仅 workspace 相对路径、workspace 相对路径加文件内容，或不保存该节点。`Terminal` 不保存运行时字段；`Agent` 只保存模板专属 `provider` 和可选 `argv`/后续兼容位，不保存 resume、command line、recentOutput、pendingLaunch 等宿主运行态。
 
 这意味着导出的模板文件是稳定的“可分享布局对象”，而不是某个 workspace 的宿主快照副本。
 
@@ -171,11 +173,18 @@ updated_at: 2026-05-10
   - 模板名称
   - 保存位置（workspace 级模板库 / 当前设备模板库这类模板库根位置）
   - 当前画布中每个 Agent 节点各自的 Provider 选择
+  - 当前画布中每个关联 Markdown `Note` 的保存策略
 - Provider 不再只支持“整份模板统一 default / preserve”二选一；保存面板会列出当前所有 Agent 节点，并允许每个节点分别保存为：
   - `default`：模板不固定该节点 Provider，应用时解析为用户当前默认 Provider。
   - `codex` / `claude`：模板固定该节点使用指定 Provider。
 - Agent 的 `argv` 会在保存前先由宿主按当前节点启动配置解析成结构化参数数组，再写入模板；这样模板保存的是“这组参数本身”，而不是某次运行使用的完整命令字符串。
 - 保存出的 Agent 节点一律不带 `pendingLaunch`、`recentOutput`、`resumeSessionId`、`lastLaunchCommandLine` 等运行态字段，因此模板只描述工作面，不描述运行时。
+- 关联 Markdown `Note` 的保存策略按节点逐项选择：
+  - `保存为普通 Note 内容快照`：宿主读取 Markdown 文件当前落盘内容并写入模板，应用模板后物化为普通内嵌 `Note`，不再保留文件关联；如果文件不可读或存在编辑冲突，保存流程必须提示用户先处理文件或改选“不保存此 Note”，不能静默保存旧 buffer。
+  - `仅保留 workspace 相对路径`：模板只保存规范化相对路径，例如 `docs/plan.md`；应用模板时尝试关联当前 workspace 中对应文件，不把文件正文写入模板。
+  - `保留 workspace 相对路径和文件内容`：模板保存相对路径和当前落盘正文；应用模板时如果文件不存在则创建文件并写入模板正文，如果文件已存在但内容不同则提示用户使用现有文件或覆盖为模板内容。
+  - `不保存此 Note`：该节点不进入模板，与它相连的用户边也会因为端点不存在而被排除。
+- 只有能解析到当前 workspace 内 `.md` / `.markdown` 文件的关联 `Note` 才能选择两种 workspace 相对路径策略；workspace 外文件只能保存为普通内容快照或不保存。相对路径必须拒绝绝对路径、空路径和 `..` 越界段。
 - “导入模板”复用同一套表单骨架，但隐藏 Agent Provider 区，仅保留名称与保存位置输入；这样用户在导入时也能决定模板落在哪个模板库中。
 
 ### 7.4 模板应用语义
@@ -195,6 +204,10 @@ updated_at: 2026-05-10
 - 若模板携带 `argv`，宿主会把它暂存到节点 metadata 中，并在真正启动时再与当前 Provider 命令组合，避免把用户机器上的 command path 固化进模板或运行态快照。
 - 若模板要求的固定 Provider 当前不可用（例如 CLI 命令无法解析），宿主提示用户并阻止整次应用；不静默降级。
 - 若当前 workspace 未受信任，含 `agent` / `terminal` 的模板不可应用；仅 `note` 模板允许通过。
+- 应用含 workspace 文件 `Note` 的模板时，宿主先解析模板相对路径，再物化节点：
+  - `仅保留 workspace 相对路径` 且目标文件存在时，节点恢复为关联 Markdown `Note`；目标文件缺失时，用户可选择创建空 Markdown 文件并关联，或保留一个状态为“关联文件缺失”的节点。
+  - `保留 workspace 相对路径和文件内容` 且目标文件不存在时，宿主创建父目录和文件并写入模板正文；目标文件存在且内容不同，则通过 modal 让用户选择使用现有文件并关联或覆盖文件并关联。默认不静默覆盖。
+  - 如果应用发生在首次打开默认模板这类不适合弹出复杂确认的路径，宿主应优先保留缺失关联或让整个默认模板回退，而不是静默写入用户 workspace。
 - 显式 `apply` / `reset` 成功后，宿主会把本次物化出的新节点 id 作为一组发送给 Webview；Webview 对这组节点执行组级 `fitView`，让用户视口自动追到新增模板节点，而不是只停留在发起操作前的画布位置。
 - Marketplace 预览媒体录制应运行在非测试模式的 VS Code Extension Development Host 中，并通过真实鼠标/键盘确认 `reset` 的宿主 modal；录制工具不为视频路径增加自动确认特例。
 - `src/panel/CanvasPanelManager.ts` 中的手工/模板节点 id 是对象身份，不再等同于可读编号：新建 `agent` / `terminal` / `note` 节点时，标题仍使用 `Agent 1`、`Terminal 2` 这类递增展示编号，但 `node.id` 会带随机 object identity 后缀。这样同一个模板被反复 reset 后，也会物化成新的 React Flow / 执行终端对象，不复用旧 Webview 节点实例或旧 xterm 缓冲区。
