@@ -296,6 +296,7 @@ const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
 const EMBEDDED_NOTE_BODY_PLACEHOLDER =
   `${NOTE_BODY_PLACEHOLDER} 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符。更长内容可保存为 Markdown 文件。`;
+const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
@@ -4562,6 +4563,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     !isEditingBody &&
     !associatedMarkdownConflictResolution;
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
+  const [bodyVisualLineCounts, setBodyVisualLineCounts] = useState<number[]>(() =>
+    createFallbackVisualLineCounts(splitTextLines(noteMetadata.content).length)
+  );
   const committedContentRef = useRef(noteMetadata.content);
   const pendingContentRef = useRef<string | null>(null);
   const lastPropContentRef = useRef(noteMetadata.content);
@@ -4574,6 +4578,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const associatedMarkdownDraftCopiedTimerRef = useRef<number | undefined>();
   const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const bodyMeasureRef = useRef<HTMLDivElement | null>(null);
   const pendingBodyFocusRef = useRef(false);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
   const pendingBodyFocusSelectionRef = useRef<{
@@ -4582,9 +4587,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     selectionDirection: HTMLTextAreaElement['selectionDirection'];
   } | null>(null);
   const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
-  const bodyLineNumbers = useMemo(
-    () => Array.from({ length: countTextLines(content) }, (_, index) => index + 1),
-    [content]
+  const bodyLines = useMemo(() => splitTextLines(content), [content]);
+  const bodyLineNumberRows = useMemo(
+    () => createNoteBodyLineNumberRows(bodyLines, bodyVisualLineCounts),
+    [bodyLines, bodyVisualLineCounts]
   );
 
   const clearAssociatedMarkdownDraftSyncTimer = (): void => {
@@ -4682,6 +4688,26 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     associatedMarkdownDraftSyncTimerRef.current = window.setTimeout(sendDraft, 450);
   };
+
+  const measureBodyVisualLineCounts = useCallback((): void => {
+    const measureElement = bodyMeasureRef.current;
+    const textarea = bodyInputRef.current;
+    if (!measureElement || !textarea) {
+      return;
+    }
+
+    measureElement.style.width = `${textarea.clientWidth}px`;
+    const lineHeight = readElementLineHeightPx(measureElement);
+    const nextCounts = Array.from(
+      measureElement.querySelectorAll<HTMLElement>('.note-document-line-measure-line'),
+      (lineElement) => Math.max(1, Math.round(lineElement.offsetHeight / lineHeight))
+    );
+    if (nextCounts.length === 0) {
+      nextCounts.push(1);
+    }
+
+    setBodyVisualLineCounts((current) => (areNumberListsEqual(current, nextCounts) ? current : nextCounts));
+  }, []);
 
   useLayoutEffect(() => {
     const previousPropContent = lastPropContentRef.current;
@@ -4892,6 +4918,48 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const selectionEnd = textarea.value.length;
     textarea.setSelectionRange(selectionEnd, selectionEnd);
   }, [isEditingBody]);
+
+  useLayoutEffect(() => {
+    if (!isEditingBody) {
+      return;
+    }
+
+    measureBodyVisualLineCounts();
+  }, [bodyLines, isEditingBody, measureBodyVisualLineCounts]);
+
+  useEffect(() => {
+    if (!isEditingBody) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    let pendingFrame: number | undefined;
+    const scheduleMeasurement = (): void => {
+      if (pendingFrame !== undefined) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+
+      pendingFrame = window.requestAnimationFrame(() => {
+        pendingFrame = undefined;
+        measureBodyVisualLineCounts();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleMeasurement);
+    resizeObserver.observe(textarea);
+    scheduleMeasurement();
+
+    return () => {
+      resizeObserver.disconnect();
+      if (pendingFrame !== undefined) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+    };
+  }, [isEditingBody, measureBodyVisualLineCounts]);
 
   useLayoutEffect(() => {
     if (!isEditingBody || !pendingBodySelectionRef.current) {
@@ -5331,12 +5399,22 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   className="note-document-line-number-list"
                   style={{ transform: `translateY(-${bodyScrollTop}px)` }}
                 >
-                  {bodyLineNumbers.map((lineNumber) => (
-                    <span className="note-document-line-number" key={lineNumber}>
-                      {lineNumber}
+                  {bodyLineNumberRows.map((row) => (
+                    <span
+                      className={`note-document-line-number${row.lineNumber === null ? ' is-continuation' : ''}`}
+                      key={row.key}
+                    >
+                      {row.lineNumber ?? ''}
                     </span>
                   ))}
                 </div>
+              </div>
+              <div ref={bodyMeasureRef} className="note-document-line-measure" aria-hidden="true">
+                {bodyLines.map((line, index) => (
+                  <span className="note-document-line-measure-line" key={index}>
+                    {line}
+                  </span>
+                ))}
               </div>
               <textarea
                 ref={bodyInputRef}
@@ -8189,8 +8267,59 @@ function normalizeCanvasNodeFootprintForDisplayStyle(
   return normalizeCanvasNodeFootprint(kind, size);
 }
 
-function countTextLines(value: string): number {
-  return value.split('\n').length;
+interface NoteBodyLineNumberRow {
+  key: string;
+  lineNumber: number | null;
+}
+
+function splitTextLines(value: string): string[] {
+  return value.split('\n');
+}
+
+function createFallbackVisualLineCounts(lineCount: number): number[] {
+  return Array.from({ length: Math.max(1, lineCount) }, () => 1);
+}
+
+function createNoteBodyLineNumberRows(
+  lines: readonly string[],
+  visualLineCounts: readonly number[]
+): NoteBodyLineNumberRow[] {
+  const rows: NoteBodyLineNumberRow[] = [];
+  lines.forEach((_line, index) => {
+    const lineNumber = index + 1;
+    const visualLineCount = Math.max(1, visualLineCounts[index] ?? 1);
+    for (let visualLineIndex = 0; visualLineIndex < visualLineCount; visualLineIndex += 1) {
+      rows.push({
+        key: `${lineNumber}:${visualLineIndex}`,
+        lineNumber: visualLineIndex === 0 ? lineNumber : null
+      });
+    }
+  });
+
+  return rows;
+}
+
+function readElementLineHeightPx(element: HTMLElement): number {
+  const computedStyle = window.getComputedStyle(element);
+  const lineHeight = Number.parseFloat(computedStyle.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) {
+    return lineHeight;
+  }
+
+  const fontSize = Number.parseFloat(computedStyle.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) {
+    return fontSize * 1.6;
+  }
+
+  return NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX;
+}
+
+function areNumberListsEqual(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
 }
 
 function handleNoteBodyIndentKeyDown(
