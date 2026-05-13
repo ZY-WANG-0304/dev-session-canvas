@@ -21,8 +21,23 @@ describe('template marketplace worker api', () => {
     const body = await response.json<{ items: Array<{ slug: string }>; storageMode: string }>();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
     expect(body.storageMode).toBe('seed');
     expect(body.items.map((item) => item.slug)).toEqual(['review-loop']);
+  });
+
+  it('allows Webview and browser clients to preflight public API requests', async () => {
+    const response = await app.request('http://localhost/api/v1/templates', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'vscode-webview://dev-session-canvas',
+        'access-control-request-method': 'GET'
+      }
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-methods')).toContain('GET');
   });
 
   it('uses D1 repository when the binding is present', async () => {
@@ -81,6 +96,8 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="tmpl-d1-review-v2.json"');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-expose-headers')).toContain('x-marketplace-sha256');
     expect(response.headers.get('x-marketplace-storage-mode')).toBe('r2');
     expect(response.headers.get('x-marketplace-catalog-storage-mode')).toBe('d1');
     expect(response.headers.get('x-marketplace-template-id')).toBe('tmpl-d1-review');

@@ -31,6 +31,7 @@ try {
   const {
     CanvasTemplateStore,
     buildCanvasTemplateDocument,
+    buildCanvasTemplateMarketMetadataPath,
     captureCanvasTemplateFromState,
     encodeCanvasTemplateDocument,
     formatCanvasTemplateStats,
@@ -153,6 +154,128 @@ try {
   assert.strictEqual(catalog.issues.length, 1);
   assert.match(catalog.issues[0].message, /JSON/);
   assert.strictEqual(formatCanvasTemplateStats(builtinTemplateB), '1 Agent, 1 Terminal');
+
+  const marketTemplate = {
+    ...userTemplate,
+    id: 'market-review-loop',
+    name: 'Review Loop',
+    createdAt: '2026-05-09T00:00:00.000Z',
+    updatedAt: '2026-05-09T00:00:00.000Z'
+  };
+  const savedMarketTemplate = await store.writeUserTemplate(marketTemplate, {
+    relativeDirectory: 'marketplace',
+    marketMetadata: {
+      marketTemplateId: 'tmpl-review-loop',
+      marketTemplateSlug: 'review-loop',
+      marketVersionId: 'tmpl-review-loop-v1',
+      installedVersionNumber: 1,
+      installedAt: '2026-05-10T14:00:00.000Z',
+      sourceUrl: 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates/review-loop',
+      publisher: {
+        id: 'official',
+        githubLogin: 'devsessioncanvas',
+        displayName: 'Dev Session Canvas',
+        avatarUrl: ''
+      },
+      thumbnailKey: 'templates/tmpl-review-loop/versions/1/thumbnail.png',
+      checksum: {
+        sha256: '005e90644dae8084a612d6a9d2e198508618eaa792648eb19bc56113cbcc4e92',
+        sizeBytes: 1897
+      }
+    }
+  });
+  assert.strictEqual(savedMarketTemplate.relativeDirectory, 'marketplace');
+  assert.strictEqual(savedMarketTemplate.storageLocation?.scope, 'global');
+  assert.strictEqual(savedMarketTemplate.marketplace?.marketTemplateSlug, 'review-loop');
+  const marketSidecarPath = buildCanvasTemplateMarketMetadataPath(savedMarketTemplate.filePath);
+  const marketSidecarDocument = JSON.parse(await readFile(marketSidecarPath, 'utf8'));
+  assert.strictEqual(marketSidecarDocument.marketTemplateId, 'tmpl-review-loop');
+
+  const catalogWithMarket = await store.listTemplates();
+  assert.deepStrictEqual(
+    catalogWithMarket.templates.map((entry) => entry.template.id),
+    ['builtin-a', 'builtin-b', 'market-review-loop', 'user-workspace', 'user-a']
+  );
+  assert.strictEqual(catalogWithMarket.issues.length, 1);
+  assert.strictEqual(
+    catalogWithMarket.templates.find((entry) => entry.template.id === 'market-review-loop')?.marketplace?.marketVersionId,
+    'tmpl-review-loop-v1'
+  );
+
+  const workspaceMarketTemplate = {
+    ...marketTemplate,
+    id: 'market-release-readiness',
+    name: 'Release Readiness',
+    createdAt: '2026-05-10T00:00:00.000Z',
+    updatedAt: '2026-05-10T00:00:00.000Z'
+  };
+  const savedWorkspaceMarketTemplate = await store.writeUserTemplate(workspaceMarketTemplate, {
+    targetRootPath: workspaceUserDir,
+    relativeDirectory: 'marketplace',
+    marketMetadata: {
+      marketTemplateId: 'tmpl-release-readiness',
+      marketTemplateSlug: 'release-readiness',
+      marketVersionId: 'tmpl-release-readiness-v1',
+      installedVersionNumber: 1,
+      installedAt: '2026-05-10T15:00:00.000Z',
+      sourceUrl: 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates/release-readiness',
+      checksum: {
+        sha256: 'e63a9f3666284df207184414a75afb1a86f6536a53668279fe825577a400bef0',
+        sizeBytes: 2045
+      }
+    }
+  });
+  assert.strictEqual(savedWorkspaceMarketTemplate.storageLocation?.scope, 'workspace');
+  assert.strictEqual(savedWorkspaceMarketTemplate.relativeDirectory, 'marketplace');
+  assert.strictEqual(
+    JSON.parse(await readFile(buildCanvasTemplateMarketMetadataPath(savedWorkspaceMarketTemplate.filePath), 'utf8')).marketTemplateSlug,
+    'release-readiness'
+  );
+
+  const catalogWithWorkspaceMarket = await store.listTemplates();
+  assert.strictEqual(
+    catalogWithWorkspaceMarket.templates.find((entry) => entry.template.id === 'market-release-readiness')?.storageLocation?.scope,
+    'workspace'
+  );
+
+  const updatedSavedMarketTemplate = await store.writeUserTemplate(
+    {
+      ...marketTemplate,
+      name: 'Review Loop Updated',
+      updatedAt: '2026-05-10T16:00:00.000Z'
+    },
+    {
+      filePath: savedMarketTemplate.filePath,
+      marketMetadata: {
+        marketTemplateId: 'tmpl-review-loop',
+        marketTemplateSlug: 'review-loop',
+        marketVersionId: 'tmpl-review-loop-v2',
+        installedVersionNumber: 2,
+        installedAt: '2026-05-10T16:00:00.000Z',
+        sourceUrl: 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates/review-loop',
+        checksum: {
+          sha256: '2e0d6d5e9bc0f5b8a5a3d12f822bdcb05da0f7ff1d9e2d2b52f2c43886c42d5a',
+          sizeBytes: 1999
+        }
+      }
+    }
+  );
+  assert.strictEqual(updatedSavedMarketTemplate.filePath, savedMarketTemplate.filePath);
+  assert.strictEqual(updatedSavedMarketTemplate.marketplace?.marketVersionId, 'tmpl-review-loop-v2');
+  assert.strictEqual(
+    JSON.parse(await readFile(buildCanvasTemplateMarketMetadataPath(savedMarketTemplate.filePath), 'utf8')).installedVersionNumber,
+    2
+  );
+
+  const rewrittenMarketTemplate = await store.writeUserTemplate(marketTemplate, {
+    filePath: savedMarketTemplate.filePath
+  });
+  assert.strictEqual(rewrittenMarketTemplate.marketplace, undefined);
+  const catalogAfterMarketRewrite = await store.listTemplates();
+  assert.strictEqual(
+    catalogAfterMarketRewrite.templates.find((entry) => entry.template.id === 'market-review-loop')?.marketplace,
+    undefined
+  );
 
   const exportPath = path.join(tempDir, 'exports', 'template-export.json');
   await store.exportTemplateToFile(userTemplate, exportPath);
@@ -358,6 +481,14 @@ try {
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
 
   const extensionSource = await readFile('src/extension.ts', 'utf8');
+  const packageManifest = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.ok(packageManifest.activationEvents.includes('onUri'));
+  assert.ok(packageManifest.activationEvents.includes('onCommand:devSessionCanvas.openTemplateMarketplace'));
+  assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.openTemplateMarketplace'));
+  assert.match(extensionSource, /new TemplateMarketplaceClient\(panelManager\)/u);
+  assert.match(extensionSource, /new CanvasTemplateMarketplacePanelController\(templateMarketplaceClient\)/u);
+  assert.match(extensionSource, /registerCommand\(context, COMMAND_IDS\.openTemplateMarketplace/u);
+  assert.match(extensionSource, /vscode\.window\.registerUriHandler/u);
   const exportCommandSource = sliceBetween(
     extensionSource,
     'async function exportCanvasTemplateFromCommand',
@@ -556,7 +687,11 @@ try {
   assert.match(sidebarTemplateViewSource, /flex-wrap: nowrap;/u);
   assert.match(sidebarTemplateViewSource, /text-overflow: ellipsis;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /hintNote|hint-note|canSaveCurrentCanvas/u);
+  assert.match(sidebarTemplateViewSource, /sourceKind: resolveCanvasSidebarTemplateSourceKind\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
+  assert.match(sidebarTemplateViewSource, /市场 · 工作区/u);
+  assert.match(sidebarTemplateViewSource, /市场 · 本地/u);
+  assert.match(sidebarTemplateViewSource, /codicon-cloud-download/u);
   assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '用户'/u);
   assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /textContent = item\.category === 'builtin' \? '内置' : '用户';/u);
@@ -584,6 +719,58 @@ try {
   }
   assert.match(templateProductSpecSource, /内置模板（2 个）/u);
   assert.match(templateProductSpecSource, /示例模板 - 1 Agent, 1 Terminal, 1 Note/u);
+
+  const marketplacePanelSource = await readFile('src/panel/CanvasTemplateMarketplacePanel.ts', 'utf8');
+  const marketplaceClientSource = await readFile('src/panel/TemplateMarketplaceClient.ts', 'utf8');
+  assert.match(panelManagerSource, /installMarketplaceTemplateDocument\([\s\S]*targetRootPath\?: string/u);
+  assert.match(panelManagerSource, /overwriteFilePath\?: string/u);
+  assert.match(panelManagerSource, /preserveTemplateId\?: string/u);
+  assert.match(panelManagerSource, /preserveCreatedAt\?: string/u);
+  assert.match(panelManagerSource, /filePath: options\?\.overwriteFilePath/u);
+  assert.match(marketplaceClientSource, /listInstalledTemplates/u);
+  assert.match(marketplaceClientSource, /listInstallTargets/u);
+  assert.match(marketplaceClientSource, /targetStorageLocationId/u);
+  assert.match(marketplaceClientSource, /TemplateMarketplaceInstallOperation = 'installed' \| 'updated' \| 'reinstalled'/u);
+  assert.match(marketplaceClientSource, /saveMarketplaceTemplateDocument/u);
+  assert.match(marketplaceClientSource, /findInstalledMarketplaceTemplate/u);
+  assert.match(marketplaceClientSource, /resolveInstallTarget/u);
+  assert.match(marketplaceClientSource, /overwriteFilePath: existingTemplate\?\.filePath/u);
+  assert.match(marketplaceClientSource, /preserveTemplateId: existingTemplate\?\.template\.id/u);
+  assert.match(marketplaceClientSource, /resolveMarketplaceInstallOperation/u);
+  assert.match(marketplaceClientSource, /getCanvasTemplateCatalog/u);
+  assert.match(marketplaceClientSource, /marketTemplateSlug/u);
+  assert.match(extensionSource, /result\.operation === 'updated'/u);
+  assert.match(extensionSource, /result\.operation === 'reinstalled'/u);
+  assert.match(marketplacePanelSource, /marketplace\/installedTemplates/u);
+  assert.match(marketplacePanelSource, /marketplace\/installedTemplatesError/u);
+  assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
+  assert.match(marketplacePanelSource, /createInstallTargetSelect/u);
+  assert.match(marketplacePanelSource, /installTargetIdsByTemplateSlug/u);
+  assert.match(marketplacePanelSource, /formatInstallTargetLabel/u);
+  assert.match(marketplacePanelSource, /targetStorageLocationId: targetId/u);
+  assert.match(marketplacePanelSource, /operation: result\.operation/u);
+  assert.match(marketplacePanelSource, /formatInstallResultStatus/u);
+  assert.match(marketplacePanelSource, /更新到 v/u);
+  assert.match(marketplacePanelSource, /下载 JSON/u);
+  assert.match(marketplacePanelSource, /buildTemplateDownloadUrl/u);
+  assert.doesNotMatch(marketplacePanelSource, /Button\.textContent = ['"][^'"]*应用到 Canvas/u);
+  assert.doesNotMatch(marketplacePanelSource, /marketplace\/applyInstalledTemplate/u);
+  assert.match(marketplacePanelSource, /installedTemplate\.storageLocationId === selectedInstallTargetId/u);
+  assert.match(marketplacePanelSource, /normalizeInstalledTemplates/u);
+  assert.match(marketplacePanelSource, /normalizePersistedState/u);
+  assert.match(marketplacePanelSource, /persistState/u);
+  assert.match(marketplacePanelSource, /renderLoadErrorCard/u);
+  assert.match(marketplacePanelSource, /renderOfflineInstalledTemplateCard/u);
+  assert.match(marketplacePanelSource, /网络请求失败，可能无法访问 workers\.dev 或代理阻断/u);
+  assert.match(marketplacePanelSource, /请到模板侧栏应用到 Canvas/u);
+  assert.match(marketplacePanelSource, /已安装到/u);
+  assert.match(marketplacePanelSource, /本地 ·/u);
+  assert.match(marketplacePanelSource, /当前workspace/u);
+  assert.match(marketplacePanelSource, /已安装 v/u);
+  assert.match(marketplacePanelSource, /MARKETPLACE_PREVIEW_ORIGIN/u);
+  assert.match(marketplacePanelSource, /connect-src \$\{MARKETPLACE_PREVIEW_ORIGIN\}/u);
+  assert.match(marketplacePanelSource, /installTemplateFromInlinePayload/u);
+  assert.doesNotMatch(marketplacePanelSource, /<iframe/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

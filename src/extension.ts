@@ -30,6 +30,8 @@ import {
   sanitizeCanvasTemplateFileStem
 } from './common/canvasTemplates';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import { CanvasTemplateMarketplacePanelController } from './panel/CanvasTemplateMarketplacePanel';
+import { TemplateMarketplaceClient } from './panel/TemplateMarketplaceClient';
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
@@ -125,6 +127,8 @@ function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTa
 
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
+  const templateMarketplaceClient = new TemplateMarketplaceClient(panelManager);
+  const templateMarketplacePanel = new CanvasTemplateMarketplacePanelController(templateMarketplaceClient);
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
@@ -150,6 +154,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sidebarTemplateView,
     sidebarNodeListView,
     sidebarSessionHistoryView,
+    templateMarketplacePanel,
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
     vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
       webviewOptions: {
@@ -173,6 +178,33 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      async handleUri(uri) {
+        try {
+          const result = await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: '正在安装 Dev Session Canvas 市场模板...',
+              cancellable: false
+            },
+            () => templateMarketplaceClient.installTemplateFromUri(uri)
+          );
+          const actionLabel = result.operation === 'updated'
+            ? '已更新'
+            : result.operation === 'reinstalled'
+              ? '已重新安装'
+              : '已安装';
+          await vscode.window.showInformationMessage(
+            `${actionLabel}市场模板「${result.savedTemplate.template.name}」v${result.version.versionNumber}。`
+          );
+        } catch (error) {
+          await showCanvasTemplateError('安装市场模板失败', error);
+        }
+      }
+    })
+  );
+
   registerCommand(context, COMMAND_IDS.openCanvas, async () => {
     await panelManager.revealOrCreate();
   });
@@ -183,6 +215,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.openCanvasInPanel, async () => {
     await panelManager.revealInPanel();
+  });
+
+  registerCommand(context, COMMAND_IDS.openTemplateMarketplace, async () => {
+    templateMarketplacePanel.reveal();
   });
 
   registerCommand(context, COMMAND_IDS.openSettings, async () => {

@@ -1,5 +1,6 @@
 import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
 
+import { InstallInVSCodeLink } from './InstallInVSCodeLink';
 import { buildTemplateDownloadHref } from '../lib/download';
 import { getMarketplaceHomeHref } from '../lib/routing';
 
@@ -70,8 +71,16 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
             <div className="rounded-[1.5rem] border border-canvas-ink/10 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-canvas-ink/50">Install file</p>
               <p className="mt-3 break-all text-sm leading-6 text-canvas-ink/65">{template.latestVersion.sha256}</p>
-              <a
+              <InstallInVSCodeLink
                 className="mt-5 inline-flex w-full justify-center rounded-full bg-canvas-ink px-5 py-3 text-xs font-bold uppercase tracking-[0.18em] text-white transition hover:-translate-y-0.5 hover:bg-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
+                template={template}
+                downloadHref={downloadHref}
+                ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
+              >
+                Install in VSCode
+              </InstallInVSCodeLink>
+              <a
+                className="mt-3 inline-flex w-full justify-center rounded-full border border-canvas-ink/15 px-5 py-3 text-xs font-bold uppercase tracking-[0.18em] text-canvas-ink transition hover:-translate-y-0.5 hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
                 href={downloadHref}
                 download
               >

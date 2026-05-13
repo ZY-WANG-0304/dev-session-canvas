@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 
 import {
   makeMarketplaceApiError,
@@ -17,6 +18,24 @@ export interface MarketplaceWorkerEnv {
 
 export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorkerEnv }> {
   const app = new Hono<{ Bindings: MarketplaceWorkerEnv }>();
+
+  app.use(
+    '/api/v1/*',
+    cors({
+      origin: '*',
+      allowMethods: ['GET', 'OPTIONS'],
+      allowHeaders: ['accept', 'content-type'],
+      exposeHeaders: [
+        'content-disposition',
+        'x-marketplace-storage-mode',
+        'x-marketplace-catalog-storage-mode',
+        'x-marketplace-template-id',
+        'x-marketplace-version-id',
+        'x-marketplace-sha256'
+      ],
+      maxAge: 600
+    })
+  );
 
   app.get('/api/v1/health', (context) =>
     context.json({

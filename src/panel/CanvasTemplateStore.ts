@@ -18,6 +18,7 @@ export interface CanvasStoredTemplate {
   builtinOrder?: number;
   storageLocation?: CanvasTemplateStorageLocation;
   relativeDirectory?: string;
+  marketplace?: CanvasTemplateMarketMetadata;
 }
 
 export interface CanvasTemplateCatalog {
@@ -37,6 +38,26 @@ export interface CanvasTemplateStoreIssue {
   filePath: string;
   fileName: string;
   message: string;
+}
+
+export interface CanvasTemplateMarketMetadata {
+  marketTemplateId: string;
+  marketTemplateSlug?: string;
+  marketVersionId: string;
+  installedVersionNumber: number;
+  installedAt: string;
+  sourceUrl: string;
+  publisher?: {
+    id?: string;
+    githubLogin?: string;
+    displayName?: string;
+    avatarUrl?: string;
+  };
+  thumbnailKey?: string;
+  checksum?: {
+    sha256: string;
+    sizeBytes?: number;
+  };
 }
 
 export class CanvasTemplateStore {
@@ -111,14 +132,18 @@ export class CanvasTemplateStore {
       forceCategory: options.forceCategory
     });
 
+    const normalizedPath = path.normalize(filePath);
+    const marketplace = options.storageLocation ? await readCanvasTemplateMarketMetadata(normalizedPath) : undefined;
+
     return {
       template: parsedDocument.document.template,
-      filePath: path.normalize(filePath),
+      filePath: normalizedPath,
       fileName: path.basename(filePath),
       builtinOrder: options.builtinOrder,
       storageLocation: options.storageLocation ? { ...options.storageLocation } : undefined,
+      marketplace,
       relativeDirectory: options.storageLocation
-        ? getRelativeTemplateDirectory(path.normalize(filePath), options.storageLocation.rootPath)
+        ? getRelativeTemplateDirectory(normalizedPath, options.storageLocation.rootPath)
         : undefined
     };
   }
@@ -129,6 +154,7 @@ export class CanvasTemplateStore {
       filePath?: string;
       targetRootPath?: string;
       relativeDirectory?: string;
+      marketMetadata?: CanvasTemplateMarketMetadata;
     } = {}
   ): Promise<CanvasStoredTemplate> {
     const relativeDirectory = normalizeUserTemplateRelativeDirectory(options.relativeDirectory);
@@ -142,11 +168,14 @@ export class CanvasTemplateStore {
     const storageLocation = this.assertUserTemplatePath(filePath);
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     await fs.promises.writeFile(filePath, encodeCanvasTemplateDocument(template), 'utf8');
+    const marketplace = options.marketMetadata ? cloneMarketMetadata(options.marketMetadata) : undefined;
+    await writeOrRemoveMarketMetadata(filePath, marketplace);
     return {
       template: cloneCanvasTemplate(template),
       filePath,
       fileName: path.basename(filePath),
       storageLocation,
+      marketplace,
       relativeDirectory: getRelativeTemplateDirectory(filePath, storageLocation.rootPath)
     };
   }
@@ -155,6 +184,7 @@ export class CanvasTemplateStore {
     const normalizedPath = path.normalize(filePath);
     this.assertUserTemplatePath(normalizedPath);
     await fs.promises.rm(normalizedPath, { force: true });
+    await fs.promises.rm(buildCanvasTemplateMarketMetadataPath(normalizedPath), { force: true });
   }
 
   public async exportTemplateToFile(template: CanvasTemplate, filePath: string): Promise<void> {
@@ -232,7 +262,7 @@ async function listJsonFilePaths(directoryPath: string): Promise<string[]> {
         await visit(entryPath);
         continue;
       }
-      if (entry.isFile() && entry.name.toLowerCase().endsWith('.json')) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith('.json') && !isCanvasTemplateMarketMetadataFile(entry.name)) {
         files.push(entryPath);
       }
     }
@@ -251,6 +281,119 @@ async function listJsonFilePaths(directoryPath: string): Promise<string[]> {
     }
     throw error;
   }
+}
+
+export function buildCanvasTemplateMarketMetadataPath(templateFilePath: string): string {
+  return templateFilePath.replace(/\.json$/iu, '.market.json');
+}
+
+function isCanvasTemplateMarketMetadataFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.market.json');
+}
+
+async function readCanvasTemplateMarketMetadata(templateFilePath: string): Promise<CanvasTemplateMarketMetadata | undefined> {
+  const metadataPath = buildCanvasTemplateMarketMetadataPath(templateFilePath);
+  let text: string;
+  try {
+    text = await fs.promises.readFile(metadataPath, 'utf8');
+  } catch (error) {
+    if (isMissingDirectoryError(error) || (isNodeError(error) && error.code === 'ENOENT')) {
+      return undefined;
+    }
+    throw error;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  return parseCanvasTemplateMarketMetadata(parsed);
+}
+
+async function writeOrRemoveMarketMetadata(
+  templateFilePath: string,
+  metadata: CanvasTemplateMarketMetadata | undefined
+): Promise<void> {
+  const metadataPath = buildCanvasTemplateMarketMetadataPath(templateFilePath);
+  if (!metadata) {
+    await fs.promises.rm(metadataPath, { force: true });
+    return;
+  }
+
+  await fs.promises.writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+}
+
+function parseCanvasTemplateMarketMetadata(value: unknown): CanvasTemplateMarketMetadata | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const marketTemplateId = readNonEmptyString(value.marketTemplateId);
+  const marketVersionId = readNonEmptyString(value.marketVersionId);
+  const installedVersionNumber = typeof value.installedVersionNumber === 'number' && Number.isFinite(value.installedVersionNumber)
+    ? value.installedVersionNumber
+    : undefined;
+  const installedAt = readNonEmptyString(value.installedAt);
+  const sourceUrl = readNonEmptyString(value.sourceUrl);
+  if (!marketTemplateId || !marketVersionId || installedVersionNumber === undefined || !installedAt || !sourceUrl) {
+    return undefined;
+  }
+
+  return {
+    marketTemplateId,
+    marketTemplateSlug: readOptionalString(value.marketTemplateSlug),
+    marketVersionId,
+    installedVersionNumber,
+    installedAt,
+    sourceUrl,
+    publisher: parseMarketPublisher(value.publisher),
+    thumbnailKey: readOptionalString(value.thumbnailKey),
+    checksum: parseMarketChecksum(value.checksum)
+  };
+}
+
+function parseMarketPublisher(value: unknown): CanvasTemplateMarketMetadata['publisher'] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return {
+    id: readOptionalString(value.id),
+    githubLogin: readOptionalString(value.githubLogin),
+    displayName: readOptionalString(value.displayName),
+    avatarUrl: readOptionalString(value.avatarUrl)
+  };
+}
+
+function parseMarketChecksum(value: unknown): CanvasTemplateMarketMetadata['checksum'] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const sha256 = readNonEmptyString(value.sha256);
+  if (!sha256) {
+    return undefined;
+  }
+  return {
+    sha256,
+    sizeBytes: typeof value.sizeBytes === 'number' && Number.isFinite(value.sizeBytes) ? value.sizeBytes : undefined
+  };
+}
+
+function cloneMarketMetadata(metadata: CanvasTemplateMarketMetadata): CanvasTemplateMarketMetadata {
+  return JSON.parse(JSON.stringify(metadata)) as CanvasTemplateMarketMetadata;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function normalizeUserTemplateRelativeDirectory(value: string | undefined): string {

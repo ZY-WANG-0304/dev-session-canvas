@@ -1,5 +1,6 @@
 import type { MarketplaceTemplateSummary } from '@dev-session-canvas/marketplace-shared';
 
+import { InstallInVSCodeLink } from './InstallInVSCodeLink';
 import { buildTemplateDownloadHref } from '../lib/download';
 import { buildTemplateDetailHref } from '../lib/routing';
 
@@ -37,14 +38,25 @@ export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
           <span>{template.downloadCount.toLocaleString()} downloads</span>
           <span>{template.likeCount.toLocaleString()} likes</span>
         </div>
-        <a
-          className="rounded-full bg-canvas-ink px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
-          href={downloadHref}
-          download
-          aria-label={`Download ${template.name} version ${template.latestVersion.versionNumber} template JSON`}
-        >
-          Download
-        </a>
+        <div className="flex flex-wrap justify-end gap-2">
+          <InstallInVSCodeLink
+            className="rounded-full bg-canvas-ink px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
+            template={template}
+            downloadHref={downloadHref}
+            ariaLabel={`Install ${template.name} version ${template.latestVersion.versionNumber} in VSCode`}
+            noticeClassName="basis-full text-right text-xs leading-5 text-canvas-ink/55"
+          >
+            Install
+          </InstallInVSCodeLink>
+          <a
+            className="rounded-full border border-canvas-ink/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-canvas-ink transition hover:-translate-y-0.5 hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-moss/20"
+            href={downloadHref}
+            download
+            aria-label={`Download ${template.name} version ${template.latestVersion.versionNumber} template JSON`}
+          >
+            JSON
+          </a>
+        </div>
       </div>
     </article>
   );
