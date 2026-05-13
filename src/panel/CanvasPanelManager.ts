@@ -116,6 +116,7 @@ import {
   cloneCanvasTemplate,
   encodeCanvasTemplateDocument,
   formatCanvasTemplateStats,
+  parseCanvasTemplateDocument,
   resolveCanvasTemplateAgentProvider,
   type CanvasTemplate,
   type CanvasTemplateCaptureResult,
@@ -170,6 +171,7 @@ import {
   CanvasTemplateStore,
   type CanvasStoredTemplate,
   type CanvasTemplateCatalog,
+  type CanvasTemplateMarketMetadata,
   type CanvasTemplateStorageLocation
 } from './CanvasTemplateStore';
 import {
@@ -999,6 +1001,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       filePath: overwriteTemplate?.filePath,
       targetRootPath: options?.targetRootPath,
       relativeDirectory: options?.relativeDirectory
+    });
+    this.notifyTemplateCatalogChanged();
+    return savedTemplate;
+  }
+
+  public async installMarketplaceTemplateDocument(
+    document: unknown,
+    metadata: CanvasTemplateMarketMetadata,
+    options?: {
+      targetRootPath?: string;
+      overwriteFilePath?: string;
+      preserveTemplateId?: string;
+      preserveCreatedAt?: string;
+    }
+  ): Promise<CanvasStoredTemplate> {
+    const parsedDocument = parseCanvasTemplateDocument(document, {
+      forceCategory: 'user'
+    });
+    const template = cloneCanvasTemplate(parsedDocument.document.template);
+    template.category = 'user';
+    template.id = options?.preserveTemplateId ?? `market-template-${randomUUID()}`;
+    if (options?.preserveCreatedAt) {
+      template.createdAt = options.preserveCreatedAt;
+    }
+
+    const savedTemplate = await this.canvasTemplateStore.writeUserTemplate(template, {
+      filePath: options?.overwriteFilePath,
+      targetRootPath: options?.targetRootPath,
+      relativeDirectory: 'marketplace',
+      marketMetadata: metadata
     });
     this.notifyTemplateCatalogChanged();
     return savedTemplate;

@@ -67,7 +67,7 @@ updated_at: 2026-05-04
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png`
 
 - notifier companion 的 Marketplace icon 继续沿用“从 activity bar icon 出发，再放大并上色导出 PNG”的策略，不单独发明新的轮廓语言。
-- 颜色策略沿用主扩展的上下双终端分色：上层 terminal 使用 `#4CB6A3`，下层 terminal 使用 `#497BF0`；右上角通知徽标也对齐为上层 terminal 的绿色，保持更统一的视觉语言。
+- 颜色策略沿用主扩展的上下双终端分色：上层 terminal 使用 #4CB6A3，下层 terminal 使用 #497BF0；右上角通知徽标也对齐为上层 terminal 的绿色，保持更统一的视觉语言。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 是放大并上色后的独立矢量源，用于收口 notifier 的 Marketplace icon 造型。
 - `extensions/vscode/dev-session-canvas-notifier/images/icon.png` 由 `extensions/vscode/dev-session-canvas-notifier/images/icon.svg` 渲染导出，作为 notifier 后续接入 Marketplace icon 时的正式 PNG 资产。
 

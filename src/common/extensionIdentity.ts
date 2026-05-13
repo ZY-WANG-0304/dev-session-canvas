@@ -11,6 +11,7 @@ export const COMMAND_IDS = {
   resetToTemplate: 'devSessionCanvas.resetToTemplate',
   resetToDefaultTemplate: 'devSessionCanvas.resetToDefaultTemplate',
   saveCanvasAsTemplate: 'devSessionCanvas.saveCanvasAsTemplate',
+  openTemplateMarketplace: 'devSessionCanvas.openTemplateMarketplace',
   importTemplate: 'devSessionCanvas.importTemplate',
   exportTemplate: 'devSessionCanvas.exportTemplate',
   deleteTemplate: 'devSessionCanvas.deleteTemplate',

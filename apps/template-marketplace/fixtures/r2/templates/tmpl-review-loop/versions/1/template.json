@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "template": {
+    "id": "market-review-loop",
+    "name": "Review Loop",
+    "category": "user",
+    "createdAt": "2026-05-09T00:00:00.000Z",
+    "updatedAt": "2026-05-09T00:00:00.000Z",
+    "nodes": [
+      {
+        "kind": "note",
+        "title": "Review brief",
+        "position": { "x": 0, "y": 0 },
+        "size": { "width": 500, "height": 260 },
+        "metadata": {
+          "note": {
+            "content": "Capture the change summary, risky files, manual checks, and open questions before review starts."
+          }
+        }
+      },
+      {
+        "kind": "agent",
+        "title": "Builder",
+        "position": { "x": 0, "y": 330 },
+        "size": { "width": 520, "height": 390 },
+        "metadata": {
+          "agent": {
+            "provider": "default"
+          }
+        }
+      },
+      {
+        "kind": "agent",
+        "title": "Reviewer",
+        "position": { "x": 620, "y": 330 },
+        "size": { "width": 520, "height": 390 },
+        "metadata": {
+          "agent": {
+            "provider": "default"
+          }
+        }
+      },
+      {
+        "kind": "terminal",
+        "title": "Test checkpoint",
+        "position": { "x": 1240, "y": 330 },
+        "size": { "width": 520, "height": 390 }
+      }
+    ],
+    "edges": [
+      {
+        "sourceNodeIndex": 0,
+        "targetNodeIndex": 1,
+        "sourceAnchor": "bottom",
+        "targetAnchor": "top",
+        "arrowMode": "forward",
+        "label": "scope"
+      },
+      {
+        "sourceNodeIndex": 1,
+        "targetNodeIndex": 2,
+        "sourceAnchor": "right",
+        "targetAnchor": "left",
+        "arrowMode": "forward",
+        "label": "diff"
+      },
+      {
+        "sourceNodeIndex": 2,
+        "targetNodeIndex": 3,
+        "sourceAnchor": "right",
+        "targetAnchor": "left",
+        "arrowMode": "forward",
+        "label": "checks"
+      }
+    ]
+  }
+}

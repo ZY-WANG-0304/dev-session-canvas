@@ -1,0 +1,43 @@
+{
+  "name": "@dev-session-canvas/template-marketplace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "React + Vite frontend and Cloudflare Workers API for the Dev Session Canvas template marketplace.",
+  "type": "module",
+  "scripts": {
+    "build": "npm run typecheck && vite build --config vite.config.ts",
+    "dev": "vite --host 127.0.0.1 --config vite.config.ts",
+    "test:api": "vitest run --config vitest.api.config.ts",
+    "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "worker:dev": "wrangler dev",
+    "test:web": "vitest run --config vitest.web.config.ts",
+    "db:migrate:preview": "wrangler d1 execute template_marketplace_preview --remote --file=./migrations/0001_marketplace_core.sql",
+    "db:seed:preview": "wrangler d1 execute template_marketplace_preview --remote --file=./seeds/0001_preview_templates.sql",
+    "db:seed:preview:v2": "wrangler d1 execute template_marketplace_preview --remote --file=./seeds/0002_preview_review_loop_v2.sql",
+    "db:verify:preview": "wrangler d1 execute template_marketplace_preview --remote --command=\"SELECT t.slug, v.object_key, v.sha256, v.size_bytes FROM templates t JOIN template_versions v ON v.id = t.latest_version_id ORDER BY t.slug\"",
+    "deploy:preview": "npm run build && wrangler deploy",
+    "thumbnails:generate": "node scripts/generate-preview-thumbnails.mjs",
+    "r2:seed:preview": "node scripts/seed-preview-r2.mjs",
+    "r2:verify:preview": "node scripts/verify-preview-r2.mjs"
+  },
+  "dependencies": {
+    "@dev-session-canvas/marketplace-shared": "0.1.0",
+    "hono": "^4.12.18",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "*",
+    "@types/node": "^20.19.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^3.4.17",
+    "typescript": "5.0.4",
+    "vite": "^7.3.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.90.0"
+  }
+}

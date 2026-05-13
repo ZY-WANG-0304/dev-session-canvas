@@ -1,5 +1,5 @@
 ---
-version: 2026-05-10
+version: 2026-05-12
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -253,6 +253,11 @@ components:
 - widget 使用 VSCode token、1px border、小圆角和轻阴影。
 - 常驻 widget 只能服务导航、定位或当前状态理解。
 - 菜单、toolbar、tooltip 和编辑浮层应短生命周期、小面积、低装饰。
+
+### Feature-Specific Surfaces
+
+- 专属功能如果需要独立视觉系统，应放入对应功能文档，而不是扩写本文的通用 VSCode design-system 基线。
+- 模板市场的浏览器网站与插件内市场面板 UI 详见 `docs/marketplace/UI.md`；本文不维护其 palette、页面结构或业务动作语义。
 
 ### Sidebar Section
 
