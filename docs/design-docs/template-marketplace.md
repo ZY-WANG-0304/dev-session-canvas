@@ -130,7 +130,7 @@ updated_at: 2026-05-10
 - `apps/template-marketplace/src/worker/`：Cloudflare Workers + Hono API 服务，包含路由、中间件、认证、上传校验和 D1/R2 操作。
 - `packages/marketplace-shared/`：市场共享包。包含 Drizzle schema 定义、API request/response 类型、Zod 验证 schema、模板包 manifest 类型、错误码和分页类型。该包不能依赖 `vscode`、React、DOM 或 Cloudflare runtime binding；根入口保持浏览器安全，Drizzle schema 通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，避免浏览器市场 bundle 引入 Drizzle runtime。
 - `src/panel/TemplateMarketplaceClient.ts`：Extension Host 侧市场 API client、安装模板写入、更新检查和认证换取逻辑。它只能通过宿主发起网络请求和写本地模板目录，不能让 Webview 自己写入文件系统。
-- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。它复用市场前端组件 bundle，但 host adapter 必须是 VSCode Webview 专用实现。
+- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取 preview Worker API，并通过 message passing 把浏览器侧下载到的模板 payload 交给 Extension Host 安装；后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
 - `src/common/canvasTemplates.ts`：继续作为本地模板语义来源；若需要共享到 `packages/marketplace-shared`，应通过提取纯类型/解析函数完成，不在这里直接引入远端 API 字段。
 - `src/panel/CanvasTemplateStore.ts`：安装市场模板时继续写入全局用户模板目录，并额外写入 market sidecar；本地模板 JSON 主体仍保持普通用户模板可离线应用。
 
@@ -138,7 +138,7 @@ updated_at: 2026-05-10
 
 浏览器市场页和 VSCode Webview 市场页共享 `MarketplaceApp`、数据 query hooks、卡片、详情页、发布表单、Dashboard 和管理后台组件，但由 Vite 产出两个 entry，并分别注入 host adapter：
 
-- `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接；具体 VSCode URI scheme 由后续实现根据扩展 URI handler 配置生成。
+- `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接。当前浏览器安装链接格式固定为 `vscode://devsessioncanvas.dev-session-canvas/install-template?template=<slug>&version=<versionId>&source=<detailUrl>`；`source` 指向 `/templates/:slug` 详情页，用于让扩展端确认市场来源 origin 并构造同源 `/api/v1/templates/:slug` 与 `/api/v1/templates/:slug/download` 请求。预览阶段为了兼容 Remote SSH extension host 无法访问 `*.workers.dev` 的情况，浏览器会先尝试下载小于 8KB 的模板 JSON，并把 base64url payload 附在同一个 VSCode URI 上；扩展端优先校验并安装 payload，只有没有 payload 或文件超过阈值时才由扩展宿主直接请求市场 API。
 - `VSCodeMarketplaceHost` 使用 Webview message passing、hash 或内存路由、扩展打包资源 URI、宿主触发的 GitHub 登录和宿主安装命令。
 
 浏览器端正式入口计划为 `https://dscanvas.dev/templates`，预览入口继续使用 `*.workers.dev`。因此浏览器构建必须支持 `/templates/` base path，前端详情路径使用 `/templates/:slug`，模板详情分享链接和 Web 端安装入口也以该路径生成。这个决定只确认浏览器页面入口，不改变当前 `/api/v1` API 前缀；若后续希望把市场 API 也收敛到 `/templates/api/v1`，需要在实现前新增设计补充并同步产品规格。
@@ -164,6 +164,8 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 - `POST /api/v1/templates/:id/report`：举报，需要认证。
 - `GET /api/v1/me/templates`、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`：个人页面与 Dashboard。
 - `GET /api/v1/admin/reports`、`PATCH /api/v1/admin/templates/:id`、`PATCH /api/v1/admin/users/:id`：治理后台，需要管理员角色。
+
+匿名公开读取端点需要同时服务浏览器页面、workers.dev preview、自定义域名和 VSCode Webview。本方案允许 `/api/v1/*` 中的 GET / OPTIONS 公开 CORS 访问，并暴露下载响应所需的 `content-disposition`、`x-marketplace-storage-mode`、`x-marketplace-catalog-storage-mode`、`x-marketplace-template-id`、`x-marketplace-version-id` 和 `x-marketplace-sha256` 响应头。该策略只适用于不携带 cookie/token 的公开读取与下载；GitHub OAuth、发布、点赞、举报和治理后台写接口需要在实现时单独收紧 origin、credentials 与权限校验，不能默认继承匿名读取 CORS 策略。
 
 下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 / seed repository 解析模板版本元数据，再从 R2 读取 `template.json` 并以 `Content-Disposition: attachment` 返回真实文件，响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，作为 seed / D1 降级路径，不冒充真实对象下载。
 
@@ -194,7 +196,9 @@ R2 对象按不可变版本组织，示例 key：
 2. `manifest.json`：市场包 manifest，记录市场模板 id、版本 id、版本号、发布者、标签、描述、对象 hash、最小扩展版本、provider 标注和缩略图引用。
 3. `thumbnail.png`：卡片和详情页缩略图。
 
-插件安装市场模板时，把 `template.json` 写入 `globalStorageUri/templates/` 下的用户模板目录，并在相邻位置写入 sidecar，例如 `template.market.json`。sidecar 记录 `marketTemplateId`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`thumbnailKey` 和 `checksum`。这样模板即使离线也可以作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。
+插件安装市场模板时，让用户在每张模板卡片上选择“本地（当前设备）”或可用 workspace 模板目录作为安装目标；本地目标写入 `globalStorageUri/templates/marketplace/`，workspace 目标写入当前 workspace 下 `.dev-session-canvas/templates/marketplace/`，并在相邻位置写入 sidecar，例如 `Review-Loop.market.json`。sidecar 记录 `marketTemplateId`、`marketTemplateSlug`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`thumbnailKey` 和 `checksum`。这样模板即使离线也可以作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。模板目录扫描会忽略 `*.market.json`，避免 sidecar 被误解析成模板文件；用户手动保存或导入覆盖同一路径时会移除 sidecar，防止普通本地模板继续被标记为市场来源。侧栏展示市场模板时必须同时体现市场来源与存储范围，例如 `市场 · 本地` 或 `市场 · 工作区`。
+
+浏览器唤起 VSCode 的安装主路径由扩展 `onUri` activation + `vscode.window.registerUriHandler` 承载。扩展端只接受 `dscanvas.dev`、当前 workers.dev 预览域名和 localhost 开发域名下的 `/templates` 来源；收到安装链接后优先校验内联 payload 的 sha256 并写入本地模板目录。如果链接没有 payload，则先读取详情 API，再下载指定版本 `template.json`，校验 D1 详情中的 sha256 与下载内容一致后写入本地模板目录和 sidecar。插件内独立 Webview 市场页也复用同一条 payload 安装路径，只是跳过外部 `vscode://` 确认弹窗；Webview 打开或安装完成后由 Extension Host 读取本地模板 catalog 中的 sidecar，把已安装版本回传给 Webview，用于卡片级“已安装到 本地 · 当前设备 / 当前workspace · <title> · vN”状态展示。同一个市场模板安装到同一目标位置时按 `marketTemplateId` / slug 和 storage location 覆盖既有本地副本，保留本地模板 id 和创建时间，避免更新或重复安装产生重复模板文件；同版本重复安装视为重新安装，不同版本视为更新。模板市场不提供“应用到 Canvas”入口；它只负责浏览、下载、安装和更新状态，安装成功后提示用户去模板侧栏应用，已安装模板继续通过侧栏模板列表应用到 Canvas，避免市场卡片和侧栏产生重复操作入口。Webview 读取市场 API 失败时不清空已安装状态：若曾加载过市场结果则继续显示旧结果，若没有市场结果则显示网络错误和已安装模板快照，提醒用户侧栏仍可使用。插件内市场卡片提供 `下载 JSON` 入口，直接打开当前版本的匿名下载端点；安装按钮仍通过 Extension Host 校验并写入模板库。当前实现已覆盖匿名安装、重复安装覆盖、更新覆盖和直接下载主路径；更新提醒、回滚、共享 React Webview bundle 和插件内发布仍是后续里程碑。
 
 本地模板格式不新增 `market` category。UI 可以把“市场来源”作为存储层派生标签展示，但 `CanvasTemplateDocument` 中的 `category` 仍只表达模板主体在本地模板系统中的兼容分类。
 
@@ -247,12 +251,12 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` seed 对象写入与摘要校验、workers.dev 预览部署、Hono Worker API、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建和本地测试，证明技术栈可以在仓库内连通；但 GitHub OAuth、VSCode 安装流、发布/点赞/举报写接口、下载计数写入和治理后台尚未完成，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` seed 对象写入与摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke，以及插件内市场直接下载和重复安装覆盖的源码/脚本验证，证明技术栈可以在仓库内连通；但 GitHub OAuth、共享 React Webview bundle、完整 VSCode 宿主 smoke（侧栏来源、离线应用、更新提醒、回滚等）、发布/点赞/举报写接口和治理后台尚未完成，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
 3. 在浏览器运行 Vite dev server，验证搜索、标签、排序、详情、发布表单和登录态切换；使用 Playwright 编写 E2E 测试覆盖核心路径。
-4. 在 VSCode smoke 中打开独立 Webview Editor 市场页，安装一个市场模板到全局用户模板目录，确认侧栏模板列表显示市场来源，离线时仍可应用模板。
+4. 扩展 VSCode smoke：已确认独立 Webview Editor 市场页可加载并安装一个市场模板；后续还需确认侧栏模板列表显示市场来源、离线时仍可应用模板，并覆盖更新提醒与回滚。
 5. 验证 VSCode 端发布流程使用 `vscode.authentication.getSession('github', ...)`，且 GitHub access token 不写入 `workspaceState`、`globalState`、模板 JSON 或 Webview local state。
 6. 对上传大小、缩略图格式、重复点赞、被封禁用户发布、非作者发布新版本、非管理员访问后台等失败路径执行自动化测试。
 7. 执行 `git diff --check`、`npm run typecheck`，并为新增 app / package 补齐对应 `npm run test:marketplace-api` 和 `npm run test:marketplace-web` 脚本。

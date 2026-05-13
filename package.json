@@ -51,8 +51,41 @@
     "workspace"
   ],
   "activationEvents": [
+    "onUri",
+    "onCommand:devSessionCanvas.openCanvas",
+    "onCommand:devSessionCanvas.openCanvasInEditor",
+    "onCommand:devSessionCanvas.openCanvasInPanel",
+    "onCommand:devSessionCanvas.openSettings",
+    "onCommand:devSessionCanvas.selectTerminalShell",
+    "onCommand:devSessionCanvas.selectCodexCli",
+    "onCommand:devSessionCanvas.selectClaudeCli",
+    "onCommand:devSessionCanvas.openCodexConfigFile",
+    "onCommand:devSessionCanvas.openCodexAuthFile",
+    "onCommand:devSessionCanvas.openClaudeSettingsFile",
+    "onCommand:devSessionCanvas.createNode",
+    "onCommand:devSessionCanvas.showNodeList",
+    "onCommand:devSessionCanvas.showSessionHistory",
+    "onCommand:devSessionCanvas.refreshSessionHistory",
+    "onCommand:devSessionCanvas.resetCanvasState",
+    "onCommand:devSessionCanvas.dumpHostDiagnostics",
     "onCommand:devSessionCanvas.__internal.centerAttentionNode",
-    "onWebviewPanel:devSessionCanvas.canvas"
+    "onView:devSessionCanvas.sidebar",
+    "onView:devSessionCanvas.sidebarFilters",
+    "onView:devSessionCanvas.sidebarNodes",
+    "onView:devSessionCanvas.sidebarSessions",
+    "onView:devSessionCanvas.canvasPanel",
+    "onWebviewPanel:devSessionCanvas.canvas",
+    "onCommand:devSessionCanvas.applyTemplate",
+    "onCommand:devSessionCanvas.applyDefaultTemplate",
+    "onCommand:devSessionCanvas.resetToDefaultTemplate",
+    "onCommand:devSessionCanvas.saveCanvasAsTemplate",
+    "onCommand:devSessionCanvas.openTemplateMarketplace",
+    "onCommand:devSessionCanvas.importTemplate",
+    "onCommand:devSessionCanvas.exportTemplate",
+    "onCommand:devSessionCanvas.deleteTemplate",
+    "onCommand:devSessionCanvas.setDefaultTemplate",
+    "onCommand:devSessionCanvas.refreshTemplates",
+    "onView:devSessionCanvas.sidebarTemplates"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -236,6 +269,11 @@
         "icon": "$(save-as)"
       },
       {
+        "command": "devSessionCanvas.openTemplateMarketplace",
+        "title": "%command.openTemplateMarketplace.title%",
+        "icon": "$(globe)"
+      },
+      {
         "command": "devSessionCanvas.importTemplate",
         "title": "%command.importTemplate.title%",
         "icon": "$(add)"
@@ -294,14 +332,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "devSessionCanvas.importTemplate",
+          "command": "devSessionCanvas.openTemplateMarketplace",
           "when": "view == devSessionCanvas.sidebarTemplates",
           "group": "navigation@2"
         },
         {
-          "command": "devSessionCanvas.saveCanvasAsTemplate",
+          "command": "devSessionCanvas.importTemplate",
           "when": "view == devSessionCanvas.sidebarTemplates",
           "group": "navigation@3"
+        },
+        {
+          "command": "devSessionCanvas.saveCanvasAsTemplate",
+          "when": "view == devSessionCanvas.sidebarTemplates",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [

@@ -17,6 +17,7 @@ export interface CanvasSidebarTemplateItemSnapshot {
   templateId: string;
   name: string;
   category: CanvasTemplate['category'];
+  sourceKind: 'builtin' | 'user' | 'market';
   locationLabel: string;
   statsLabel: string;
   detailTooltip: string;
@@ -191,6 +192,7 @@ export function getCanvasSidebarTemplateItems(
     templateId: storedTemplate.template.id,
     name: storedTemplate.template.name,
     category: storedTemplate.template.category,
+    sourceKind: resolveCanvasSidebarTemplateSourceKind(storedTemplate),
     locationLabel: resolveCanvasSidebarTemplateLocationLabel(storedTemplate),
     statsLabel: formatCanvasTemplateStats(storedTemplate.template),
     detailTooltip: buildCanvasTemplateTooltip(storedTemplate),
@@ -203,14 +205,27 @@ function resolveCanvasSidebarTemplateLocationLabel(storedTemplate: CanvasTemplat
   if (storedTemplate.template.category === 'builtin') {
     return '内置';
   }
+  if (storedTemplate.marketplace) {
+    return storedTemplate.storageLocation?.scope === 'workspace' ? '市场 · 工作区' : '市场 · 本地';
+  }
 
   return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '用户';
+}
+
+function resolveCanvasSidebarTemplateSourceKind(storedTemplate: CanvasTemplateCatalog['templates'][number]): 'builtin' | 'user' | 'market' {
+  if (storedTemplate.template.category === 'builtin') {
+    return 'builtin';
+  }
+  return storedTemplate.marketplace ? 'market' : 'user';
 }
 
 function buildCanvasTemplateTooltip(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   const detailLines = buildCanvasTemplateNodeDetailLines(storedTemplate.template);
   const locationLine = buildCanvasTemplateLocationTooltipLine(storedTemplate);
-  return [...detailLines, '', locationLine].join('\n');
+  const marketLine = storedTemplate.marketplace
+    ? `市场来源：${storedTemplate.marketplace.marketTemplateSlug ?? storedTemplate.marketplace.marketTemplateId} / v${storedTemplate.marketplace.installedVersionNumber}`
+    : undefined;
+  return [...detailLines, '', locationLine, marketLine].filter(Boolean).join('\n');
 }
 
 function buildCanvasTemplateLocationTooltipLine(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
@@ -596,7 +611,9 @@ function buildSidebarTemplateHtml(
         titleLine.className = 'template-title-line';
 
         const icon = document.createElement('span');
-        icon.className = 'template-icon codicon ' + (item.category === 'builtin' ? 'codicon-library' : 'codicon-file-code');
+        const iconName =
+          item.sourceKind === 'builtin' ? 'codicon-library' : item.sourceKind === 'market' ? 'codicon-cloud-download' : 'codicon-file-code';
+        icon.className = 'template-icon codicon ' + iconName;
         icon.setAttribute('aria-hidden', 'true');
 
         const title = document.createElement('div');
