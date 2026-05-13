@@ -4026,6 +4026,86 @@ test('note body editor supports tab indentation and line numbers', async ({ page
   await expect(bodyInput).toBeFocused();
 });
 
+test('note body editor reserves blank gutter rows for soft-wrapped lines', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 25 }, (_value, index) => `line ${index + 1}`);
+  lines[17] = '18 的点点滴滴发的发发发发发发发发发发发发发发发发发发发发发发发发发发';
+  lines[23] = '24 的点点滴滴发的发发发发发发发发发发发发发发发发发发发发发发发发发发';
+  state.nodes[0].metadata.note.content = lines.join('\n');
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  await expect
+    .poll(async () =>
+      noteNode.locator('.note-document-editor').evaluate((editor) => {
+        const rows = Array.from(editor.querySelectorAll('.note-document-line-number')).map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            text: element.textContent?.trim() ?? '',
+            top: rect.top
+          };
+        });
+        const firstRow = editor.querySelector('.note-document-line-number');
+        const lineHeight = firstRow ? Number.parseFloat(getComputedStyle(firstRow).lineHeight) : 0;
+        const visibleNumbers = rows.map((row) => row.text).filter(Boolean);
+        const index18 = rows.findIndex((row) => row.text === '18');
+        const index19 = rows.findIndex((row) => row.text === '19');
+        const index24 = rows.findIndex((row) => row.text === '24');
+        const index25 = rows.findIndex((row) => row.text === '25');
+
+        const hasExpectedNumbers =
+          visibleNumbers.join(',') === Array.from({ length: 25 }, (_value, index) => String(index + 1)).join(',');
+        const hasContinuationAfter18 =
+          index18 >= 0 && index19 > index18 + 1 && rows.slice(index18 + 1, index19).every((row) => row.text === '');
+        const hasContinuationAfter24 =
+          index24 >= 0 && index25 > index24 + 1 && rows.slice(index24 + 1, index25).every((row) => row.text === '');
+        const line18VisualRows =
+          index18 >= 0 && index19 >= 0 && Number.isFinite(lineHeight) && lineHeight > 0
+            ? Math.round((rows[index19].top - rows[index18].top) / lineHeight)
+            : 0;
+        const line24VisualRows =
+          index24 >= 0 && index25 >= 0 && Number.isFinite(lineHeight) && lineHeight > 0
+            ? Math.round((rows[index25].top - rows[index24].top) / lineHeight)
+            : 0;
+
+        return (
+          hasExpectedNumbers &&
+          hasContinuationAfter18 &&
+          hasContinuationAfter24 &&
+          line18VisualRows > 1 &&
+          line24VisualRows > 1
+        );
+      })
+    )
+    .toBe(true);
+
+  const wrappedLineRows = await noteNode.locator('.note-document-editor').evaluate((editor) => {
+    const rows = Array.from(editor.querySelectorAll('.note-document-line-number')).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        text: element.textContent?.trim() ?? '',
+        top: rect.top
+      };
+    });
+    const firstRow = editor.querySelector('.note-document-line-number');
+    const lineHeight = firstRow ? Number.parseFloat(getComputedStyle(firstRow).lineHeight) : 0;
+    const index18 = rows.findIndex((row) => row.text === '18');
+    const index19 = rows.findIndex((row) => row.text === '19');
+    const index24 = rows.findIndex((row) => row.text === '24');
+    const index25 = rows.findIndex((row) => row.text === '25');
+
+    return {
+      line18: Math.round((rows[index19].top - rows[index18].top) / lineHeight),
+      line24: Math.round((rows[index25].top - rows[index24].top) / lineHeight)
+    };
+  });
+  expect(wrappedLineRows.line18).toBeGreaterThan(1);
+  expect(wrappedLineRows.line24).toBeGreaterThan(1);
+});
+
 test('note markdown preview text remains selectable in read mode', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
