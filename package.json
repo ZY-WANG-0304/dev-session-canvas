@@ -24,19 +24,18 @@
   "categories": [
     "Visualization",
     "AI",
-    "Other"
+    "Machine Learning"
   ],
   "keywords": [
-    "ai",
-    "agent",
-    "canvas",
-    "workbench",
     "multi-agent",
+    "canvas",
+    "ai workflow",
     "terminal",
-    "note",
+    "session",
+    "agent",
+    "workbench",
     "collaboration",
-    "画布",
-    "协作"
+    "dscanvas"
   ],
   "icon": "images/icon.png",
   "galleryBanner": {

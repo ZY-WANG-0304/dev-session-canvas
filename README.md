@@ -1,161 +1,161 @@
 # DevSessionCanvas
 
-简体中文（默认） | [English](README.en.md)
+English | [简体中文](README.zh-CN.md)
 
-DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
+DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是围绕后续 `0.10.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.10.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
-![DevSessionCanvas 动态演示](images/marketplace/canvas-overview.gif)
+![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](images/marketplace/canvas-overview.gif)
 
-## 适合谁
+## Who It Is For
 
-- 需要在同一个 VS Code 工作区里并行运行多个 `Agent` 或终端会话的开发者
-- 希望通过画布获得全局上下文，而非在终端标签之间来回切换的用户
-- 愿意使用 `Preview` 版本，并能自行准备 `codex` 或 `claude` CLI 的高级用户
+- Developers who need to run multiple `Agent` or terminal sessions in parallel inside the same VS Code workspace
+- Users who want a canvas-level global context instead of switching back and forth between terminal tabs
+- Advanced users who are willing to use a `Preview` build and can prepare `codex` or `claude` CLI themselves
 
-## Preview 提供什么
+## What The Preview Includes
 
-- 一张默认走 `panel` route、也可切回编辑区的主画布
-- `Agent` 与 `Terminal` 节点的最小可运行链路
-- `Note` 轻量辅助协作对象
-- 基于 React Flow 的基础画布交互与布局
-- 动态全局概览缩放与可配置低倍率概览，节点分散时仍可通过 fit view 看全完整画布
-- 支持 Markdown 语法的 `Note` 节点
-- `Note` 节点可关联 workspace 中的 `.md` / `.markdown` 文件
-- 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏与重置入口
-- `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
-- 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义
-- 侧栏与命令面板中的 `Codex` / `Claude Code` CLI 选择和配置文件打开入口
-- `Agent` 启动时 CLI 缺失的自动选择 / 安装补救入口
-- 桌面通知 companion 的多 section sidebar、平台接入说明与 `Codex` / `Claude Code` 通知配置指引
-- `Restricted Mode` 下的有限能力声明
-- 以 `Visual Studio Marketplace` 为目标的公开 `Preview` 发布链路
-- 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复新 `Agent` 节点
+- A primary canvas that defaults to the `panel` route and can also be switched back to the editor area
+- A minimal working path for `Agent` and `Terminal` nodes
+- Lightweight `Note` nodes for supporting collaboration
+- Basic canvas interaction and layout built on React Flow
+- Dynamic global overview zoom and configurable low-zoom overview rendering, so fit view can still show the full canvas when nodes are spread out
+- `Note` nodes with Markdown syntax support
+- `Note` nodes can be associated with `.md` / `.markdown` files in the workspace
+- Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, and reset entry points
+- Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
+- Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
+- Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands and opening their config files
+- Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
+- Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance
+- Limited capability handling under `Restricted Mode`
+- A public `Preview` release path targeting the `Visual Studio Marketplace`
+- Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
 
-## Preview 不提供什么
+## What The Preview Does Not Include
 
-- 稳定版承诺
-- `Virtual Workspace` 支持
-- 面向所有用户的零配置开箱体验
-- 稳定版级别的三平台支持承诺
-- 完整的稳定版发布链路
+- A stable-release guarantee
+- `Virtual Workspace` support
+- A zero-configuration out-of-the-box experience for all users
+- A stable-release-grade support commitment across all three desktop platforms
+- A full stable-release delivery process
 
-## 运行前提
+## Runtime Requirements
 
-- VS Code `1.80.0` 或更高版本
-- 标准文件系统工作区（本地磁盘或 `Remote SSH` workspace）
-- 对应的 CLI 运行环境：
-  - `Agent` 节点依赖 `codex` 或 `claude`
-  - `Terminal` 节点依赖本机 shell
-- 受信任工作区
-  - 未信任 workspace 下仍可打开画布，但执行型入口会被禁用
+- VS Code `1.80.0` or later
+- A standard filesystem workspace, either on local disk or in a `Remote SSH` workspace
+- The required CLI runtime:
+  - `Agent` nodes depend on `codex` or `claude`
+  - `Terminal` nodes depend on a local shell
+- A trusted workspace
+  - In an untrusted workspace, the canvas can still be opened, but execution entry points are disabled
 
-## 项目状态
+## Project Status
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前工作重点是围绕 `0.10.0` 收口 Note 关联 Markdown 文件、冲突恢复、拖拽创建和发布材料，并继续按 Marketplace `Preview` 口径迭代。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.10.0` is to consolidate Note-to-Markdown file association, conflict recovery, drag-and-drop creation, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
-明确结论：
+Explicit conclusions:
 
-- 版本定位为 `Preview`，尚未达到稳定正式版。
-- 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
-- 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
-- 公开发布主渠道已收口为 `Visual Studio Marketplace`；是否同步 `Open VSX` 延后决策。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.10.0` 的 repo-local 验证重点收口 Note 关联 Markdown 文件、storage-backed 冲突草稿、拖拽创建、路径复制、编辑态行号修正、预览文案和打包材料，但 Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
-- 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
+- The current version is `Preview`, not a stable release.
+- `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
+- `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
+- The primary public distribution channel is now `Visual Studio Marketplace`. Whether to publish to `Open VSX` remains deferred.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.10.0` repo-local validation focuses on associated Markdown Notes, storage-backed conflict drafts, drag-and-drop creation, path copying, editor line-number alignment, preview copy, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
-相关入口：
+Related entry points:
 
-- 发布执行手册：[`docs/public-preview-release-playbook.md`](docs/public-preview-release-playbook.md)
-- 公开支持边界：[`docs/support.md`](docs/support.md)
-- 设计结论与发布判断：[`docs/design-docs/public-marketplace-release-readiness.md`](docs/design-docs/public-marketplace-release-readiness.md)
+- Release playbook: [`docs/public-preview-release-playbook.md`](docs/public-preview-release-playbook.md)
+- Public support boundaries: [`docs/support.md`](docs/support.md)
+- Design conclusions and release judgment: [`docs/design-docs/public-marketplace-release-readiness.md`](docs/design-docs/public-marketplace-release-readiness.md)
 
-## Preview 分发
+## Preview Distribution
 
-对外分发目标是通过 `Visual Studio Marketplace` 发布。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
+Public distribution is intended to happen through `Visual Studio Marketplace`. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
-- 公开 `Preview` 用户应通过 Marketplace 安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.10.x` 更新仍需按发布手册锁定最终 git ref、执行发布并完成发布后验证
-- `Open VSX` 不是本次 `Preview` 的首发路径
+- Public `Preview` users should install through Marketplace rather than by manually distributing a `.vsix`
+- `Visual Studio Marketplace` is already the public installation path; later `0.10.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
+- `Open VSX` is not part of the initial `Preview` launch path
 
-## 桌面通知 companion（自动安装）
+## Desktop Notification Companion (Auto-Installed)
 
-安装 `Dev Session Canvas` 时，VS Code 会自动安装 companion 扩展 `Dev Session Canvas Notifier`（`devsessioncanvas.dev-session-canvas-notifier`）。如果你是从 notifier 页面单独安装，VS Code 也会自动补齐主扩展 `Dev Session Canvas`。
+Installing `Dev Session Canvas` automatically installs the companion extension `Dev Session Canvas Notifier` (`devsessioncanvas.dev-session-canvas-notifier`). If a user installs from the notifier page first, VS Code also auto-installs the main extension `Dev Session Canvas`.
 
-- 执行节点的 attention signal 默认会通过 `devSessionCanvas.notifications.attentionSignalBridge = system` 优先桥接到本机桌面；如需改回工作台消息或关闭桥接，可在主扩展设置中调整
-- `system` 模式下会优先调用本机 UI 侧 notifier companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到工作台消息
-- 该 companion 尤其适合 `Remote SSH`、WSL、Dev Container 等“主扩展运行在远端，而提醒需要回到本机桌面”的场景
-- notifier 自己的发布与复核口径见 [`docs/notifier-preview-release-playbook.md`](docs/notifier-preview-release-playbook.md)
+- Execution-node attention signals now prefer the local desktop by default through `devSessionCanvas.notifications.attentionSignalBridge = system`; switch the setting if you want `workbench` or `none` instead
+- In `system` mode, the main extension prefers the local UI-side notifier companion and falls back to workbench notifications when the companion is missing, unsupported, or delivery fails
+- The companion is especially useful in `Remote SSH`, WSL, and Dev Container scenarios where the main extension runs on the workspace side but the notification must return to the local desktop
+- Notifier-specific release and verification guidance lives in [`docs/notifier-preview-release-playbook.md`](docs/notifier-preview-release-playbook.md)
 
-## 源码编译与开发安装
+## Build From Source And Install For Development
 
-开发者推荐通过源码编译与 Development Host 方式安装和调试，而非手动安装 `.vsix`。
+For developers, the recommended path is to build from source and install through an Extension Development Host, rather than manually installing a `.vsix`.
 
-最小流程：
+Minimum workflow:
 
 ```bash
 npm install
 npm run build
 ```
 
-然后在仓库窗口中：
+Then in the repository window:
 
-1. 打开 `Run and Debug`
-2. 选择 `Run Dev Session Canvas (Main Only)`
-3. 按 `F5` 启动 `Extension Development Host`
+1. Open `Run and Debug`
+2. Select `Run Dev Session Canvas (Main Only)`
+3. Press `F5` to launch the `Extension Development Host`
 
-更完整的源码开发、`Remote SSH` 调试和自动化验证说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+For more complete instructions on source development, `Remote SSH` debugging, and automated verification, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 已知限制
+## Known Limitations
 
-- 仍处于 `Preview`，不应按稳定生产工具看待。
-- 不支持 `Virtual Workspace`。
-- 公开 `Preview` 的分发主路径已收口到 `Visual Studio Marketplace`，但 release-day 仍需手工执行与复核。
-- `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
-- `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑。
-- 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、文件活动、缩略图、云同步或模板历史。
-- 执行终端复制粘贴快捷键第一版不读取用户自定义 keybindings，也不覆盖 Linux selection clipboard、右键 copyPaste 或 HTML 富文本复制。
-- 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的 `Codex` / `Claude Code` 记录；缺少工作目录信息的旧会话会被保守跳过。
-- 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。
+- The product is still in `Preview` and should not be treated as a stable production tool.
+- `Virtual Workspace` is not supported.
+- The public `Preview` distribution path has been consolidated around `Visual Studio Marketplace`, but release-day publication still requires manual execution and review.
+- The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
+- `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
+- Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.
+- The first execution-terminal copy / paste shortcut release does not read custom user keybindings, and it does not cover Linux selection clipboard, right-click copyPaste, or HTML rich-text copying.
+- The sidebar `Session History` list only shows `Codex` / `Claude Code` records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively.
+- If the machine does not have a usable `codex` or `claude` CLI, `Agent` nodes cannot provide the full experience.
 
-## 支持矩阵
+## Support Matrix
 
-| 场景 | 状态 | 用户可预期行为 |
+| Scenario | Status | What Users Should Expect |
 | --- | --- | --- |
-| `Remote SSH` workspace | `Preview`，主路径已验证且验证最充分 | 可体验画布、`Agent`、`Terminal` 和恢复等主路径；当前是最推荐环境 |
-| Linux 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已有 Preview 功能可用性验证证据 |
-| macOS 本地 workspace | `Preview`，主路径已验证 | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已有 Preview 功能可用性验证证据 |
-| Windows 本地 workspace | `Preview`，主路径已验证（含已知限制） | 本地工作区的画布、`Agent` 与 `Terminal` 主路径已有 Preview 功能可用性验证证据；使用 `Codex` 时执行节点内历史仍无法向上翻页 |
-| `Restricted Mode` | 有限支持 | 可打开画布并查看已保存布局；`Agent` / `Terminal` 等执行型入口被禁用 |
-| `Virtual Workspace` | 不支持 | 不在 Preview 范围内 |
+| `Remote SSH` workspace | `Preview`, main path validated and best-validated | Users can try the main canvas, `Agent`, `Terminal`, and recovery flows; this remains the most recommended environment |
+| Linux local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path already has Preview functional validation evidence |
+| macOS local workspace | `Preview`, main path validated | The local canvas, `Agent`, and `Terminal` main path already has Preview functional validation evidence |
+| Windows local workspace | `Preview`, main path validated with known limitation | The local canvas, `Agent`, and `Terminal` main path already has Preview functional validation evidence, but embedded `Codex` history still cannot page upward |
+| `Restricted Mode` | Limited support | The canvas can be opened and saved layouts can be viewed, but execution entry points such as `Agent` and `Terminal` are disabled |
+| `Virtual Workspace` | Unsupported | Outside the Preview scope |
 
-## 能力边界
+## Capability Boundaries
 
-- `Agent` 节点：需要本机或远端 Extension Host 可解析的 `codex` 或 `claude` CLI
-- `Terminal` 节点：需要工作区侧可用的 shell 环境；macOS / Linux 默认继承受控 shell env patch，Windows 让真实 shell 自己执行 profile / AutoRun，可通过 `devSessionCanvas.terminal.inheritEnv` 与 `devSessionCanvas.terminal.shellArgs` 调整
-- `Note` 节点：普通 Note 的正文权威数据仍为画布内原始 Markdown 文本；关联 Markdown Note 以 `.md` / `.markdown` 磁盘文件为权威来源，预览态只允许安全白名单链接与当前 workspace 内文件目标
-- `devSessionCanvas.runtimePersistence.enabled = false`：基线能力，不承诺真实进程跨 VS Code 生命周期持续存在
-- `devSessionCanvas.runtimePersistence.enabled = true`：已具备较多自动化与人工验证证据，尤其覆盖 `Remote SSH` real-reopen 主路径；用户可见 guarantee 取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则自动回退到 `best-effort`
+- `Agent` nodes require `codex` or `claude` CLI that can be resolved by the local or remote Extension Host
+- `Terminal` nodes require a shell environment available on the workspace side. macOS / Linux inherit a controlled shell env patch by default, while Windows lets the real shell run profile / AutoRun itself; `devSessionCanvas.terminal.inheritEnv` and `devSessionCanvas.terminal.shellArgs` provide explicit controls
+- ordinary `Note` nodes keep raw Markdown text in canvas state as the authoritative body data; associated Markdown Notes use `.md` / `.markdown` files on disk as the authoritative source, and preview-mode links are limited to allowlisted external schemes and files inside the current workspace
+- `devSessionCanvas.runtimePersistence.enabled = false`: baseline capability only, with no promise that real processes continue across VS Code lifecycle boundaries
+- `devSessionCanvas.runtimePersistence.enabled = true`: now has substantial automation and manual validation evidence, especially around the `Remote SSH` real-reopen path. The user-visible guarantee still depends on the backend and platform combination. On Linux local and `Remote SSH`, the extension prefers a stronger guarantee when `systemd --user` is available, and otherwise falls back automatically to `best-effort`
 
-## 反馈与交流
+## Feedback And Contact
 
-- 提 issue 前的适用范围、所需环境信息和受理边界：[`docs/support.md`](docs/support.md)
-- 问题与功能反馈：<https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
-- 安全问题：`wzy0304@outlook.com`
-- 飞书交流群：
+- Scope, required environment details, and support boundaries before filing an issue: [`docs/support.md`](docs/support.md)
+- Bugs and feature feedback: <https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
+- Security issues: `wzy0304@outlook.com`
+- Feishu discussion group:
 
-  <img src="images/lark-group-qr.png" alt="Dev Session Canvas 飞书交流群" width="240" />
+  <img src="images/lark-group-qr.png" alt="Dev Session Canvas Feishu Group" width="240" />
 
-## 开发与贡献
+## Development And Contribution
 
-开发环境准备、本地调试、主路径验证和提交约定，统一见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Development setup, local debugging, main-path verification, and commit conventions are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-如需继续推进开发，建议先阅读 `docs/WORKFLOW.md`、`ARCHITECTURE.md` 和 `docs/PRODUCT_SENSE.md`。
+If you want to continue development, start with `docs/WORKFLOW.md`, `ARCHITECTURE.md`, and `docs/PRODUCT_SENSE.md`.
 
-## 背景与动机
+## Background And Motivation
 
-本项目的直接灵感来自 [OpenCove](https://github.com/DeadWaveWave/opencove)。它"在一张画布中管理多个开发会话"的方式很有启发性——当同时开启多个终端后，开发者往往需要在不同终端之间频繁切换，才能了解每个会话的状态与进度。
+The direct inspiration for this project came from [OpenCove](https://github.com/DeadWaveWave/opencove). Its approach of managing multiple development sessions on a single canvas was especially compelling. When several terminals are active at once, developers often have to jump back and forth between them just to understand the state and progress of each session.
 
-启动这个项目，是因为日常开发主要在 VS Code 中完成，希望把面向多开发会话的全局视角带到熟悉的编辑器工作流中。当时在 VS Code 插件生态里没有找到足够接近的现成方案，因此决定以扩展的形式自行实现。
+This project started from the observation that day-to-day development already happens mostly inside VS Code, and that it would be valuable to bring a global multi-session view into that familiar editor workflow. At the time, there was no existing VS Code extension that felt close enough, so building one as an extension became the practical path.
 
-项目目标不是在 VS Code 中复刻 OpenCove 的全部功能，而是吸收其产品启发，围绕 VS Code 场景做收敛：优先解决 `Agent` / `Terminal` 的全局可见性与管理问题，与现有插件生态配合，补足 AI 开发时代的体验。
+The goal is not to recreate all of OpenCove inside VS Code. The point is to take inspiration from it, then narrow the product around the VS Code context: prioritize global visibility and management for `Agent` and `Terminal` sessions, work with the existing extension ecosystem, and improve the development experience for the AI era.
