@@ -22,6 +22,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 基于 React Flow 的基础画布交互与布局
 - 动态全局概览缩放与可配置低倍率概览，节点分散时仍可通过 fit view 看全完整画布
 - 支持 Markdown 语法的 `Note` 节点
+- `Note` 节点可关联 workspace 中的 `.md` / `.markdown` 文件
 - 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏与重置入口
 - `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
 - 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义

@@ -25,6 +25,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Run `Terminal` nodes through the embedded terminal surface
 - Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
 - Write contextual notes with Markdown syntax inside `Note` nodes
+- Associate `Note` nodes with `.md` / `.markdown` files in the workspace
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
