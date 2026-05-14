@@ -214,6 +214,8 @@ interface NoteNodeMetadata {
 - 长路径不在 Host 或持久化字段中按字符数预截断；subtitle 与 Agent / Terminal 一样交给标题栏布局做单行 ellipsis，实际溢出时 hover tooltip 显示同一条完整人类可读路径。
 - modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在提示中显示 raw URI。
 - subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。
+- subtitle 行允许提供一个低强调的 `复制 Markdown 路径` accessory 按钮；它是路径辅助操作，不把 subtitle 本身变成链接。按钮点击时由 Webview 发送 `webview/copyTextToClipboard`，`source` 固定为 `note-markdown-subtitle`，并携带当前 `nodeId`，由 Host 统一写入系统剪贴板。
+- 复制内容必须与当前标题栏对用户展示的完整人类可读路径一致：Webview 优先使用 `fullDisplayPath`，缺失时回退到 `displayPath`。因此即使标题栏因布局 ellipsis 截断，剪贴板中仍应得到同一条未截断的人类可读路径；不得复制 raw `resourceUri` 或 `vscode-remote://...`。
 - 正文阅读态继续复用现有 Markdown 预览渲染能力。
 - 正文编辑态仍使用纯文本 Markdown 输入；提交后写回关联文件。
 - 长篇编辑可通过现有或新增“打开文件”动作交给 VSCode 原生编辑器；该动作可以放在上下文菜单或低频操作菜单中。
@@ -301,18 +303,19 @@ Workspace Trust：
 5. 目标文件不存在时，会创建文件、写入当前 Note 正文，并把节点切换为关联 Markdown `Note`。
 6. 目标文件已存在时，用户可以选择“覆盖文件并关联”“保留文件内容并关联”或“取消”，三条路径都不产生静默覆盖。
 7. 关联后 title 下方以 subtitle 显示路径，且不出现路径胶囊、链接视觉或 raw `vscode-remote://...`。
-8. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
-9. 超过 8,000 字符的关联 Markdown 文件拖入、显示、编辑或 checklist 更新后，真实文件不会被普通 Note 上限截断。
-10. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
-11. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
-12. 删除关联 Markdown `Note` 不删除关联文件。
-13. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
-14. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
-15. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
-16. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
-17. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
-18. `npm run typecheck` 通过。
-19. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告和拖拽创建的 Playwright / smoke 或纯函数测试通过。
+8. 关联 Markdown subtitle 的复制按钮存在时，点击后发送 `webview/copyTextToClipboard`，payload 使用 `source: "note-markdown-subtitle"` 和当前 `nodeId`；复制文本为 `fullDisplayPath ?? displayPath`，不复制 raw `resourceUri`。
+9. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
+10. 超过 8,000 字符的关联 Markdown 文件拖入、显示、编辑或 checklist 更新后，真实文件不会被普通 Note 上限截断。
+11. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
+12. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
+13. 删除关联 Markdown `Note` 不删除关联文件。
+14. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
+15. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
+16. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
+17. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
+18. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
+19. `npm run typecheck` 通过。
+20. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告和拖拽创建的 Playwright / smoke 或纯函数测试通过。
 
 当前验证记录（2026-05-13）：
 
@@ -336,4 +339,5 @@ Workspace Trust：
 - `npm run typecheck && node --check tests/vscode-smoke/extension-tests.cjs && npm run test:note-markdown-file-association` 通过。
 - `npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `npm run test:webview -- --grep "associated markdown note (persists|restores|bootstrapped)"` 通过；本轮验证 storage-backed conflict draft 的 Webview 恢复入口、无内联内容的 reload-only 退化，以及 smoke 语法有效性。
 - `npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft"` 通过；本轮验证冲突提示里的 `复制草稿` 会向 Host 发送 `webview/copyAssociatedNoteMarkdownDraft`，并且复制后保留原有覆盖/重新加载恢复路径。
+- `git diff --check`、`npm run typecheck`、`npm run test:note-markdown-file-association` 和 `npm run test:execution-terminal-clipboard` 通过；本轮文档补齐后复核格式、关联 Markdown 纯函数基线和共享剪贴板消息基线。此前本 PR 的 `npm run test:webview` 全量通过，已覆盖关联 Markdown subtitle 的 `复制 Markdown 路径` 按钮向 Host 发送 `webview/copyTextToClipboard`，复制 `fullDisplayPath ?? displayPath`，同时保留打开文件入口、长路径 tooltip 与编辑态行号回归。
 - Quick Input 真实键盘导航和已有文件三选项当前仍停留在实现与代码审查层面，尚未由自动化直接模拟用户选择，因此本文验证状态保持为“验证中”。
