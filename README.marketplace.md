@@ -24,7 +24,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 通过 `codex` 或 `claude` CLI 驱动 `Agent` 节点执行
 - 通过嵌入式终端运行 `Terminal` 节点
 - 让 `Agent` 与嵌入式 `Terminal` 继承受控 shell 环境，并在诊断信息中暴露当前解析路径
-- 在 `Note` 节点中使用 Markdown 预览、交互式 checklist、workspace 文件链接、关联 Markdown 文件、代码块与公式
+- 在 `Note` 节点中使用 Markdown 语法记录上下文
 - 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
