@@ -5427,13 +5427,19 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               data-node-interactive="true"
               data-probe-field="body"
               data-probe-value={content}
-              role="status"
+              role={showAssociatedMarkdownHostConflictPanel ? 'alert' : 'status'}
             >
-              <strong>{associatedMarkdownWarningTitle}</strong>
-              <span>{associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}</span>
-              <p>{associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。'}</p>
-              {showAssociatedMarkdownHostConflictPanel ? (
-                <div className="note-file-warning-actions">
+              <div className="note-file-conflict-card">
+                <div className="note-file-conflict-copy">
+                  <strong>{associatedMarkdownWarningTitle}</strong>
+                  <span className="note-file-conflict-path">
+                    {associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}
+                  </span>
+                  <span className="note-file-conflict-detail">
+                    {associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。'}
+                  </span>
+                </div>
+                {showAssociatedMarkdownHostConflictPanel ? (
                   <button
                     type="button"
                     className="note-edit-conflict-action nodrag nopan"
@@ -5445,9 +5451,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   >
                     重新加载
                   </button>
-                </div>
-              ) : hasAssociatedMarkdownMissingFile ? (
-                <div className="note-file-warning-actions">
+                ) : hasAssociatedMarkdownMissingFile ? (
                   <button
                     type="button"
                     className="note-edit-conflict-action nodrag nopan"
@@ -5459,8 +5463,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   >
                     创建空文件并关联
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           ) : isEditingBody ? (
             <div className="note-document-editor">

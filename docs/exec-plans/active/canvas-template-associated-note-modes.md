@@ -21,6 +21,7 @@
 - [x] (2026-05-14 23:18 +0800) 已把普通快照、仅相对路径、相对路径加文件内容三种策略的设计定位补入正式设计文档和产品规格：内容型模板、仓库文件入口型模板、文件资产 / 脚手架型模板。
 - [x] (2026-05-15 09:20 +0800) 已将 path-only 模板缺失文件与运行中关联文件被删除 / 移动统一为“关联文件缺失”节点状态；节点内只提供“创建空文件并关联”，不提供重新检查、复制路径或改选文件。
 - [x] (2026-05-15 09:35 +0800) 已运行 `git diff --check`、`npm run typecheck`、`npm run test:canvas-templates`、`npm run test:webview -- --grep "missing associated markdown notes"` 与完整 `npm run test:webview`；完整 Webview 150 个用例通过。
+- [x] (2026-05-15 01:59 +0800) 已将关联文件缺失状态的正文提示改为与无草稿 `dirty-conflict` 恢复态一致的节点内冲突卡片，并补充针对缺失和无草稿冲突卡片的 Webview 回归断言。
 
 ## 意外与发现
 
@@ -32,6 +33,9 @@
 
 - 观察：执行 rebase 时 `src/webview/main.tsx` 出现一次冲突，冲突点是 `note-markdown-sync-rework` 新增的关联 Markdown 冲突草稿持久化逻辑与当前分支新增的 Note 视觉行测量逻辑相邻。
   证据：`git rebase --onto e31bed9962f449ed280753e089adcb8e0e25b6b2 6b36f72... HEAD` 在应用 `b5a08e6` 时冲突；已手动保留两边逻辑并继续 rebase。
+
+- 观察：关联文件缺失、文件移动/删除和无可恢复草稿的 `dirty-conflict` 都不能展示旧 Markdown 预览或进入普通编辑态，因此它们适合共享同一个“正文区域内的冲突卡片”视觉语言。
+  证据：`npm run test:webview -- --grep "associated markdown note bootstrapped with dirty-conflict shows reload recovery only|missing associated markdown notes"` 覆盖这两条路径并通过。
 
 ## 决策记录
 
@@ -63,9 +67,13 @@
   理由：模板 path-only 应用时缺文件、文件后续被删除或移动，本质都是节点关联到一个当前不存在的路径；这不是需要阻塞模板应用的 modal 冲突。重新检查由 watcher / refresh 自动完成，复制路径复用 subtitle 复制按钮；不提供“改选文件”，如果用户想关联到另一个文件，可以删除当前 `Note` 并拖入目标 Markdown 文件。
   日期/作者：2026-05-15 / Codex。
 
+- 决策：关联文件缺失 / 不可用与无草稿 `dirty-conflict` 恢复态共享同一套节点内冲突卡片样式。
+  理由：这几种状态都表示当前正文不能作为可信、可直接编辑的 Markdown 内容展示；共享冲突卡片能让用户把它们理解为同一类“需要在 Note 内处理的关联文件状态”，同时保留各自不同的动作：缺失只创建空文件并关联，无草稿冲突只重新加载。
+  日期/作者：2026-05-15 / Codex。
+
 ## 结果与复盘
 
-本轮已完成主体实现：保存模板表单会为关联 Markdown `Note` 展示策略选择，模板模型能表达普通快照、仅相对路径和相对路径加内容，保存路径会按用户选择读取磁盘内容或保存相对路径，应用路径会自动关联、创建文件，或在内容冲突时生成节点内 `dirty-conflict` 提示。目标测试 `npm run typecheck`、`npm run test:canvas-templates` 与 rebase 后的 `npm run test:webview` 均已通过。
+本轮已完成主体实现：保存模板表单会为关联 Markdown `Note` 展示策略选择，模板模型能表达普通快照、仅相对路径和相对路径加内容，保存路径会按用户选择读取磁盘内容或保存相对路径，应用路径会自动关联、创建文件，或在内容冲突时生成节点内 `dirty-conflict` 提示。后续反馈中的“缺失关联路径”也已下沉为 Note 内状态，并与无草稿 `dirty-conflict` 恢复态统一为同一套冲突卡片 UI。目标测试 `npm run typecheck`、`npm run test:canvas-templates` 与 rebase 后的 `npm run test:webview` 均已通过；本轮 UI 统一又重新通过完整 `npm run test:webview`。
 
 ## 上下文与定向
 
@@ -89,6 +97,8 @@
 
 第六步补测试。`scripts/test-canvas-templates.mjs` 应覆盖：旧模板继续解析；关联 `Note` 快照模式、路径-only、路径+内容捕获；路径模式模板 JSON 不含 raw resource URI；应用内容冲突不再走 modal，而是生成 `dirty-conflict` materialization。保存表单源码断言应覆盖新增 section、payload 字段和不出现“不保存此 Note”。必要时补充 Webview harness 测试以确认表单 UI 不影响导入模式。
 
+第七步统一 Note 内关联文件异常的视觉表达。`src/webview/main.tsx` 中正文区域不可用分支继续负责缺失、不可读和无草稿 `dirty-conflict` 恢复态，但内容结构统一为 `.note-file-conflict-card`；`src/webview/styles.css` 让该卡片复用 `.note-edit-conflict-hint` 的边框、背景、字号、阴影和 `.note-edit-conflict-action` 按钮语言。缺失状态仍只提供“创建空文件并关联”，无草稿 `dirty-conflict` 仍只提供“重新加载”。
+
 ## 具体步骤
 
 在仓库根目录执行以下命令进行验证：
@@ -100,6 +110,10 @@
 
     npm run test:webview
 
+若修改触及关联 Markdown Note 的缺失或冲突提示 UI，可先运行针对性回归：
+
+    npm run test:webview -- --grep "associated markdown note bootstrapped with dirty-conflict shows reload recovery only|missing associated markdown notes"
+
 当前已执行的版本控制步骤：
 
     base=$(git merge-base HEAD e31bed9962f449ed280753e089adcb8e0e25b6b2)
@@ -110,7 +124,7 @@
 
 验收标准如下：当画布中没有关联 Markdown `Note` 时，保存模板流程与当前一致；当存在关联 Markdown `Note` 时，保存表单出现策略选择区。选择“保存为普通 Note 内容快照”后，模板应用回来是普通 `Note`；选择“仅保留 workspace 相对路径”后，模板 JSON 只包含相对路径，应用时关联当前 workspace 中的对应文件，文件缺失时在 Note 节点内显示缺失提示并只提供“创建空文件并关联”；选择“保留相对路径和文件内容”后，模板 JSON 包含相对路径和 Markdown 正文，应用时可在文件缺失时创建文件，已有文件冲突时在 Note 节点内显示冲突提示并允许用户重新加载、复制草稿或覆盖文件。
 
-自动化验证需要证明旧模板兼容、新模板字段解析和捕获正确、应用模板时能生成期望的 `contentSource`。`npm run test:canvas-templates` 必须通过；`npm run typecheck` 必须通过。如果未运行完整 `npm test`，最终说明中需要明确剩余验证缺口。
+自动化验证需要证明旧模板兼容、新模板字段解析和捕获正确、应用模板时能生成期望的 `contentSource`。`npm run test:canvas-templates` 必须通过；`npm run typecheck` 必须通过。关联 Markdown Note 的缺失提示和无草稿 `dirty-conflict` 恢复态必须分别继续不渲染普通 Markdown 预览或 checklist，并在同一个节点内冲突卡片中显示各自动作。如果未运行完整 `npm test`，最终说明中需要明确剩余验证缺口。
 
 ## 幂等性与恢复
 
@@ -124,7 +138,16 @@ rebase 后的短日志应包含以下顺序，证明当前分支建立在用户�
     * 139e093 fix(note): 按视觉行对齐编辑态行号
     * e31bed9 feat(note): 完善关联 Markdown 冲突草稿恢复
 
-当前工作树仍有用户既有未跟踪图片文件：`image.png`、`image copy.png`、`image copy 2.png`、`image copy 3.png`、`image copy 6.png`。本计划不触碰这些文件。
+此前工作树存在用户既有未跟踪图片文件：`image.png`、`image copy.png`、`image copy 2.png`、`image copy 3.png`、`image copy 6.png`；本计划未触碰这些文件。本轮继续前用户已自行清理这些未跟踪文件。
+
+本轮 UI 统一的验证记录：
+
+    git diff --check
+    npm run typecheck
+    npm run test:webview -- --grep "associated markdown note bootstrapped with dirty-conflict shows reload recovery only|missing associated markdown notes"
+    2 passed (12.7s)
+    npm run test:webview
+    150 passed (4.3m)
 
 ## 接口与依赖
 
@@ -136,3 +159,4 @@ rebase 后的短日志应包含以下顺序，证明当前分支建立在用户�
 
 
 修订记录：2026-05-14 / Codex：完成代码、文档与测试验证记录，补充 Webview screenshot 残余风险。
+修订记录：2026-05-15 / Codex：补充缺失关联文件与无草稿 `dirty-conflict` 恢复态共享节点内冲突卡片的设计、步骤与验证记录。
