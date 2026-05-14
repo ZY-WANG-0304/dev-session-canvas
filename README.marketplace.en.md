@@ -15,7 +15,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - It should be described first as an `AI workbench with canvas`, not as a visualization tool with a thin AI layer
 - `Visualization` is the interaction surface: the canvas carries execution objects and their global relationships
 - `AI` is the primary usage context: multi-agent development workflows rather than a chat-first single-thread experience
-- `Other` captures the workbench aspect: the product is designed to work with VS Code's native editors, terminals, and extension ecosystem
+- `Machine Learning` captures the workbench aspect: built for AI/ML toolchain integration, designed to work with VS Code's native editors, terminals, and extension ecosystem
 
 ## Core Capabilities
 
@@ -24,7 +24,8 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
 - Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
-- Use Markdown preview, interactive checklists, workspace file links, code blocks, and math inside `Note` nodes
+- Write contextual notes with Markdown syntax inside `Note` nodes
+- Associate `Note` nodes with `.md` / `.markdown` files in the workspace
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
@@ -54,22 +55,23 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.9.1 Highlights
+## 0.10.0 Highlights
 
-The public `0.9.1` release focuses on desktop-notification onboarding and sidebar visual consistency: `Dev Session Canvas Notifier` now exposes clearer Overview, Notes, platform, and Agent-configuration sections, configuration snippets are easier to read, and the Activity Bar badge language is aligned across the main extension, Nodes, Templates, and Notifier entries.
+The public `0.10.0` release focuses on the workflow between Notes and workspace Markdown files: an ordinary Note can be saved as an associated `.md` file, existing `.md` / `.markdown` files can be dropped onto the canvas as Notes, and associated Notes treat the disk file as authoritative while adding path actions, external-save refresh, and conflict recovery.
 
-- `Dev Session Canvas Notifier` now uses a multi-section sidebar: `Overview` shows the current backend and latest delivery result, `Notes` and platform sections explain local notification prerequisites, and the `Codex` / `Claude Code` sections describe the Agent-host configuration path
-- Notifier Agent setup guidance is easier to scan, with `Codex` / `Claude Code` examples staying clear in light and dark themes
-- Marketplace documentation now clarifies the host boundary: desktop notification backends belong in the local VS Code UI environment, while provider notification settings belong on the host where the Agent actually runs
-- Notifier status rendering prefers the latest delivery result's `activationMode`, avoiding misleading click-back claims on degraded Linux paths and similar cases
-- The macOS `osascript` fallback no longer triggers an extra `beep`; it directly requests the `display notification` system sound path instead
-- `Nodes`, Templates, and Notifier Activity Bar badge icons now use one composition language, with regenerated Notifier icons and a main-extension circular avatar safe-area asset
+- Ordinary Notes now expose a `Save as Markdown` entry; existing target files require an explicit choice to overwrite, keep the file content and associate, or cancel
+- Dropping `.md` / `.markdown` files onto the blank canvas creates associated Notes; dropping an already associated file offers either adding another Note or locating the existing one
+- Associated Markdown Notes show a human-readable full path and provide actions to open the file or copy the Markdown path
+- Associated Notes use the disk file as the source of truth: unsaved editor buffers do not change canvas content until the file is saved or otherwise changes on disk
+- If the file changes during editing or before writeback, the Note enters a conflict prompt; the local draft is stored under workspace storage and can be reloaded, overwritten, or copied first
+- Ordinary Notes keep the lightweight 8,000-character limit, while associated Markdown Notes do not reuse that limit and avoid truncating large Markdown files
+- Note editor line numbers now align with visual rows, with added coverage for path copying, missing-file status, conflict recovery, and real VS Code smoke paths
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.9.0` to `0.9.1` all go through the `Visual Studio Marketplace`; later `0.9.x` updates follow the same Marketplace upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.9.1` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.9.1` to `0.10.0` all go through the `Visual Studio Marketplace`; later `0.10.x` updates follow the same Marketplace upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -105,7 +107,7 @@ The public `0.9.1` release focuses on desktop-notification onboarding and sideba
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for the next `0.9.x` fix release rather than trying to downgrade manually
+- Prefer waiting for the next `0.10.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
