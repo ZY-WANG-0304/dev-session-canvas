@@ -4,7 +4,7 @@
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.9.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on tightening follow-up `0.10.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![DevSessionCanvas Animated Demo](images/marketplace/canvas-overview.gif)
 
@@ -21,7 +21,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Lightweight `Note` nodes for supporting collaboration
 - Basic canvas interaction and layout built on React Flow
 - Dynamic global overview zoom and configurable low-zoom overview rendering, so fit view can still show the full canvas when nodes are spread out
-- `Note` Markdown preview, interactive checklists, workspace file links, and editor-mode line-number / indentation affordances
+- `Note` Markdown preview, interactive checklists, workspace file links, associated Markdown files, and editor-mode line-number / indentation affordances
 - Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, and reset entry points
 - Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
@@ -52,7 +52,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.9.1` is to consolidate desktop-notification companion onboarding, the notifier sidebar multi-section structure, Activity Bar badge visual consistency, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current focus for `0.10.0` is to consolidate Note-to-Markdown file association, conflict recovery, drag-and-drop creation, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -60,7 +60,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel is now `Visual Studio Marketplace`. Whether to publish to `Open VSX` remains deferred.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.9.1` repo-local validation focuses on the notifier sidebar structure, configuration-snippet highlighting, Activity Bar badge icons, avatar safe areas, preview copy, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.10.0` repo-local validation focuses on associated Markdown Notes, storage-backed conflict drafts, drag-and-drop creation, path copying, editor line-number alignment, preview copy, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -74,7 +74,7 @@ Related entry points:
 Public distribution is intended to happen through `Visual Studio Marketplace`. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
 - Public `Preview` users should install through Marketplace rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` is already the public installation path; later `0.9.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
+- `Visual Studio Marketplace` is already the public installation path; later `0.10.x` updates still need the final git ref to be locked, the release executed, and post-release verification completed
 - `Open VSX` is not part of the initial `Preview` launch path
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -132,7 +132,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
 - `Agent` nodes require `codex` or `claude` CLI that can be resolved by the local or remote Extension Host
 - `Terminal` nodes require a shell environment available on the workspace side. macOS / Linux inherit a controlled shell env patch by default, while Windows lets the real shell run profile / AutoRun itself; `devSessionCanvas.terminal.inheritEnv` and `devSessionCanvas.terminal.shellArgs` provide explicit controls
-- `Note` nodes keep raw Markdown text as the authoritative body data; preview-mode links are limited to allowlisted external schemes and files inside the current workspace
+- ordinary `Note` nodes keep raw Markdown text in canvas state as the authoritative body data; associated Markdown Notes use `.md` / `.markdown` files on disk as the authoritative source, and preview-mode links are limited to allowlisted external schemes and files inside the current workspace
 - `devSessionCanvas.runtimePersistence.enabled = false`: baseline capability only, with no promise that real processes continue across VS Code lifecycle boundaries
 - `devSessionCanvas.runtimePersistence.enabled = true`: now has substantial automation and manual validation evidence, especially around the `Remote SSH` real-reopen path. The user-visible guarantee still depends on the backend and platform combination. On Linux local and `Remote SSH`, the extension prefers a stronger guarantee when `systemd --user` is available, and otherwise falls back automatically to `best-effort`
 

@@ -24,7 +24,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 通过 `codex` 或 `claude` CLI 驱动 `Agent` 节点执行
 - 通过嵌入式终端运行 `Terminal` 节点
 - 让 `Agent` 与嵌入式 `Terminal` 继承受控 shell 环境，并在诊断信息中暴露当前解析路径
-- 在 `Note` 节点中使用 Markdown 预览、交互式 checklist、workspace 文件链接、代码块与公式
+- 在 `Note` 节点中使用 Markdown 预览、交互式 checklist、workspace 文件链接、关联 Markdown 文件、代码块与公式
 - 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
@@ -54,22 +54,23 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.9.1 版本亮点
+## 0.10.0 版本亮点
 
-当前公开的 `0.9.1` 版本聚焦桌面通知接入指导和侧栏视觉一致性：`Dev Session Canvas Notifier` sidebar 拆成更清晰的概览、注意事项、平台说明和 Agent 配置 section，代码片段更易读，同时主扩展、节点、模板与 notifier 的 Activity Bar badge 图标体系完成统一。
+当前公开的 `0.10.0` 版本聚焦 Note 与 workspace Markdown 文件的双向工作流：普通 Note 可以保存为关联 `.md` 文件，已有 `.md` / `.markdown` 文件可以拖入画布成为 Note，关联 Note 以磁盘文件为权威，并补齐路径操作、外部保存刷新和并发冲突恢复。
 
-- `Dev Session Canvas Notifier` sidebar 新增多 section 结构：`概览` 展示当前后端与最近一次投递状态，`注意事项` 与平台 section 解释本机通知前置条件，`Codex` / `Claude Code` section 给出 Agent 运行宿主上的配置建议
-- notifier 的 Agent 配置说明更易读，`Codex` / `Claude Code` 示例在深浅主题下都能清楚区分关键配置
-- Marketplace 文案补齐本机系统环境配置：桌面通知后端应安装在当前 VS Code 本机 UI 环境；如果 Agent 跑在远端，provider 通知配置应写在远端运行宿主
-- notifier 状态判断优先使用最近一次投递结果的 `activationMode`，避免把 Linux 等降级路径误显示为可点击回跳
-- macOS `osascript` 回退路径不再额外触发 `beep`，改为直接请求 `display notification` 的系统声音
-- `节点`、模板与 notifier Activity Bar badge 图标完成统一，并重新生成 notifier 图标和主扩展圆形头像安全区图
+- 普通 Note 新增 `保存为 Markdown` 入口；已有目标文件时会显式询问覆盖、保留文件内容并关联或取消，避免静默破坏文件
+- 空白画布支持拖放 `.md` / `.markdown` 文件创建关联 Note；已关联文件再次拖入时可选择继续添加新 Note 或定位已有 Note
+- 关联 Markdown Note 会显示人类可读完整路径，并提供打开文件与复制 Markdown 路径动作
+- 关联 Note 以磁盘文件内容为权威，未保存的 editor buffer 不会改变画布内容，保存或文件系统变化后才刷新
+- 编辑期或写回时发现外部文件变化会进入冲突提示；本地草稿会保存到 workspace storage，可重新加载、覆盖文件或先复制草稿
+- 普通 Note 继续保持轻量 8,000 字符上限；关联 Markdown Note 不复用该上限，避免大 Markdown 文件被截断
+- Note 编辑态行号按视觉行对齐，并补齐关联 Markdown 路径复制、缺失状态、冲突恢复和真实 VS Code smoke 覆盖
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.9.0` 升级到 `0.9.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.9.1` 升级到 `0.10.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.10.x` 更新同样通过 Marketplace 升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -103,7 +104,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.9.x` 修复版本，而非尝试手动降级
+- 优先等待后续 `0.10.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0
+
+- 与主扩展 `0.10.0` 对齐：本轮主扩展聚焦 Note 关联 Markdown 文件，notifier companion 不引入新的通知行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.9.1
 
 - 与主扩展 `0.9.1` 对齐：notifier sidebar 拆成 `概览`、`注意事项`、平台说明与 Agent 配置多个 section，帮助用户从本机 UI 环境和远端 Agent 运行宿主两个维度完成通知接入。
