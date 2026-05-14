@@ -2699,7 +2699,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       const materialization =
         mode === 'workspace-file-path-only'
-          ? await this.resolvePathOnlyCanvasTemplateNoteMaterialization(template.name, node.title, relativePath, uri, options)
+          ? await this.resolvePathOnlyCanvasTemplateNoteMaterialization(template.name, node.title, relativePath, uri)
           : await this.resolveContentBackedCanvasTemplateNoteMaterialization(
               template.name,
               node.title,
@@ -2742,8 +2742,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     templateName: string,
     noteTitle: string,
     relativePath: string,
-    uri: vscode.Uri,
-    options: { quiet: boolean }
+    uri: vscode.Uri
   ): Promise<CanvasTemplateNoteMaterialization> {
     const readResult = await this.readNoteMarkdownFile(uri);
     if (readResult.status === 'ok') {
@@ -2760,26 +2759,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
-    if (!options.quiet) {
-      const create = '创建空文件并关联';
-      const keepMissing = '保留缺失关联';
-      const selected = await vscode.window.showWarningMessage(
-        `模板「${templateName}」中的 Note「${noteTitle}」关联 ${relativePath}，但当前 workspace 中没有该文件。`,
-        { modal: true },
-        create,
-        keepMissing
-      );
-      if (selected === create) {
-        return this.createCanvasTemplateMarkdownFileAndMaterialization(uri, '');
-      }
-      if (selected !== keepMissing) {
-        throw new Error('已取消应用模板。');
-      }
-    }
-
     return this.createCanvasTemplateAssociatedNoteMaterialization(uri, '', {
       status: 'missing',
-      lastError: readResult.lastError ?? `关联文件不可用：${relativePath}`
+      lastError:
+        readResult.lastError ??
+        `模板「${templateName}」中的 Note「${noteTitle}」只保留了路径，但当前 workspace 中没有 ${relativePath}。`
     });
   }
 
@@ -4483,6 +4467,81 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await vscode.commands.executeCommand('vscode.open', uri);
+  }
+
+  private async createMissingAssociatedNoteMarkdownFile(
+    nodeId: string,
+    sourceSurface: CanvasSurfaceLocation
+  ): Promise<void> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    const source = noteMetadata?.contentSource;
+    if (!node || !noteMetadata || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+    if (!uri) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+        ...source,
+        status: 'unreadable',
+        lastError: '关联 Markdown 文件 URI 无法解析。'
+      }, noteMetadata.content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    try {
+      const readResult = await this.readNoteMarkdownFile(uri);
+      if (readResult.status === 'ok') {
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+          ...source,
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: readResult.contentRevision,
+          status: 'ok',
+          lastError: undefined,
+          conflictDraft: undefined
+        }, readResult.content);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+
+      if (readResult.status !== 'missing') {
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+          ...source,
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: readResult.contentRevision ?? source.contentRevision,
+          status: readResult.status,
+          lastError: readResult.lastError
+        }, noteMetadata.content);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+
+      const materialization = await this.createCanvasTemplateMarkdownFileAndMaterialization(uri, '');
+      if (materialization.contentSource?.kind !== 'markdown-file') {
+        return;
+      }
+
+      this.state = updateAssociatedNoteMarkdownFileStatus(
+        this.state,
+        nodeId,
+        materialization.contentSource,
+        materialization.content
+      );
+      this.persistState();
+      this.postState('host/stateUpdated');
+    } catch (error) {
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: formatUnknownError(error)
+        }
+      });
+    }
   }
 
   private async openNoteLink(
@@ -7072,6 +7131,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/reloadAssociatedNoteMarkdownFile':
         void this.refreshAssociatedMarkdownNote(parsedMessage.payload.nodeId, { clearConflictDraft: true });
+        return;
+      case 'webview/createMissingAssociatedNoteMarkdownFile':
+        void this.createMissingAssociatedNoteMarkdownFile(parsedMessage.payload.nodeId, sourceSurface);
         return;
       case 'webview/dropNoteMarkdownFiles':
         void this.handleDroppedNoteMarkdownFiles(

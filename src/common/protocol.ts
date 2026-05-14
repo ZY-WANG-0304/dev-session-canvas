@@ -413,7 +413,7 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件';
+      label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件' | '创建空文件并关联';
       delayMs?: number;
     }
   | {
@@ -709,6 +709,12 @@ export type WebviewToHostMessage =
     }
   | {
       type: 'webview/reloadAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/createMissingAssociatedNoteMarkdownFile';
       payload: {
         nodeId: string;
       };
@@ -1459,6 +1465,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/createMissingAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/createMissingAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
   if (value.type === 'webview/dropNoteMarkdownFiles') {
     const payload = isRecord(value.payload) ? value.payload : null;
     const position = payload && isRecord(payload.position) ? payload.position : null;
@@ -1821,7 +1841,8 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
         value.label === '恢复' ||
         value.label === '重新加载' ||
         value.label === '复制草稿' ||
-        value.label === '覆盖文件'
+        value.label === '覆盖文件' ||
+        value.label === '创建空文件并关联'
       );
   }
 

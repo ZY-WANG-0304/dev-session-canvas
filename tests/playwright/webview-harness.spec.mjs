@@ -5091,6 +5091,16 @@ test('missing associated markdown notes show a warning instead of stale markdown
   await expect(noteNode.locator('.note-file-warning')).toContainText(missingDisplayPath);
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '创建空文件并关联' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '创建空文件并关联' }).click();
+  const createMessage = await waitForPostedMessageByType(page, 'webview/createMissingAssociatedNoteMarkdownFile');
+  expect(createMessage).toEqual({
+    type: 'webview/createMissingAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
 });
 
 test('ordinary note save-as-markdown action posts saveNoteAsMarkdownFile', async ({ page }) => {

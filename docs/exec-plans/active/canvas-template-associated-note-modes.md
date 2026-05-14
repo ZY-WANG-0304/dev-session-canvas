@@ -14,11 +14,13 @@
 - [x] (2026-05-14 10:48 +0800) 已扩展模板数据模型，支持 `embedded-snapshot`、`workspace-file-path-only`、`workspace-file-with-content` 三种 `Note` 内容模式，并保持旧模板兼容。
 - [x] (2026-05-14 11:00 +0800) 已扩展保存模板表单，只有在当前画布存在关联 Markdown `Note` 时显示策略选择区；表单提交后把每个关联 `Note` 的选择传给宿主。
 - [x] (2026-05-14 11:15 +0800) 已实现保存时的策略落地：快照策略读取磁盘内容，路径策略只保存 workspace 相对路径，带内容策略保存相对路径和文件内容。
-- [x] (2026-05-14 11:32 +0800) 已实现应用模板时的文件处理：路径-only 自动关联已有文件，缺失时提示创建空文件或保留缺失关联；路径+内容在缺失时创建文件，已有内容冲突时转为节点内 `dirty-conflict`。
+- [x] (2026-05-14 11:32 +0800) 已实现应用模板时的文件处理：路径-only 自动关联已有文件，缺失时创建缺失状态关联 `Note`；路径+内容在缺失时创建文件，已有内容冲突时转为节点内 `dirty-conflict`。
 - [x] (2026-05-14 11:46 +0800) 已增加脚本测试和保存表单源码断言，并运行 `npm run typecheck`、`npm run test:canvas-templates`；`npm run test:webview` 中 144/145 通过，剩余 1 个既有基线截图差异需后续确认。
 - [x] (2026-05-14 22:45 +0800) 按用户反馈移除“不保存此 Note”保存选项；应用模板的路径+内容冲突改为物化 `dirty-conflict` Note，由节点内冲突提示承接处理，不再在应用前弹出冲突 modal。
 - [x] (2026-05-14 23:05 +0800) 已重新运行 `git diff --check`、`npm run typecheck`、`npm run test:canvas-templates` 和 `npm run test:webview`；本轮 150 个 Webview 用例全部通过。
 - [x] (2026-05-14 23:18 +0800) 已把普通快照、仅相对路径、相对路径加文件内容三种策略的设计定位补入正式设计文档和产品规格：内容型模板、仓库文件入口型模板、文件资产 / 脚手架型模板。
+- [x] (2026-05-15 09:20 +0800) 已将 path-only 模板缺失文件与运行中关联文件被删除 / 移动统一为“关联文件缺失”节点状态；节点内只提供“创建空文件并关联”，不提供重新检查、复制路径或改选文件。
+- [x] (2026-05-15 09:35 +0800) 已运行 `git diff --check`、`npm run typecheck`、`npm run test:canvas-templates`、`npm run test:webview -- --grep "missing associated markdown notes"` 与完整 `npm run test:webview`；完整 Webview 150 个用例通过。
 
 ## 意外与发现
 
@@ -57,6 +59,10 @@
   理由：普通快照服务内容型模板，路径不再重要；仅相对路径服务仓库文件入口型模板，真实文件继续作为内容权威来源；相对路径加文件内容服务文件资产 / 脚手架型模板，模板需要携带可创建的 Markdown 初始内容。明确定位能帮助用户理解隐私、可移植性和写文件风险。
   日期/作者：2026-05-14 / Codex。
 
+- 决策：关联 Markdown `Note` 的路径缺失统一在节点内处理，只提供“创建空文件并关联”。
+  理由：模板 path-only 应用时缺文件、文件后续被删除或移动，本质都是节点关联到一个当前不存在的路径；这不是需要阻塞模板应用的 modal 冲突。重新检查由 watcher / refresh 自动完成，复制路径复用 subtitle 复制按钮；不提供“改选文件”，如果用户想关联到另一个文件，可以删除当前 `Note` 并拖入目标 Markdown 文件。
+  日期/作者：2026-05-15 / Codex。
+
 ## 结果与复盘
 
 本轮已完成主体实现：保存模板表单会为关联 Markdown `Note` 展示策略选择，模板模型能表达普通快照、仅相对路径和相对路径加内容，保存路径会按用户选择读取磁盘内容或保存相对路径，应用路径会自动关联、创建文件，或在内容冲突时生成节点内 `dirty-conflict` 提示。目标测试 `npm run typecheck`、`npm run test:canvas-templates` 与 rebase 后的 `npm run test:webview` 均已通过。
@@ -79,7 +85,7 @@
 
 第四步实现宿主保存逻辑。`CanvasPanelManager` 增加方法构建保存表单需要的关联 `Note` 条目。保存提交后，`saveCurrentCanvasAsTemplate()` 根据用户策略读取磁盘文件或保存相对路径。快照和路径+内容策略在文件状态为 `ok` 时读取磁盘落盘内容；路径-only 不保存正文。文件缺失、不可读或 dirty-conflict 时不得静默保存旧 buffer，而是抛出带中文说明的错误，提示用户先恢复文件。
 
-第五步实现应用逻辑。应用模板前，`applyCanvasTemplateRecord()` 异步解析模板中的 workspace 文件 `Note`。路径-only：文件存在则读取并关联；文件不存在则提示创建空文件或保留缺失关联。路径+内容：文件不存在则创建父目录和文件并写入模板内容；文件存在且内容相同则关联；文件存在但内容不同则关联现有文件并进入 `dirty-conflict`，把模板正文作为节点内冲突草稿。完成解析后，把每个模板 note index 对应的 `content` 和 `contentSource` 传给 `applyCanvasTemplateToState()`，由物化逻辑创建真正的关联 Markdown `Note`。
+第五步实现应用逻辑。应用模板前，`applyCanvasTemplateRecord()` 异步解析模板中的 workspace 文件 `Note`。路径-only：文件存在则读取并关联；文件不存在则创建缺失状态关联 `Note`，由节点内“创建空文件并关联”动作恢复。路径+内容：文件不存在则创建父目录和文件并写入模板内容；文件存在且内容相同则关联；文件存在但内容不同则关联现有文件并进入 `dirty-conflict`，把模板正文作为节点内冲突草稿。完成解析后，把每个模板 note index 对应的 `content` 和 `contentSource` 传给 `applyCanvasTemplateToState()`，由物化逻辑创建真正的关联 Markdown `Note`。
 
 第六步补测试。`scripts/test-canvas-templates.mjs` 应覆盖：旧模板继续解析；关联 `Note` 快照模式、路径-only、路径+内容捕获；路径模式模板 JSON 不含 raw resource URI；应用内容冲突不再走 modal，而是生成 `dirty-conflict` materialization。保存表单源码断言应覆盖新增 section、payload 字段和不出现“不保存此 Note”。必要时补充 Webview harness 测试以确认表单 UI 不影响导入模式。
 
@@ -102,13 +108,13 @@
 
 ## 验证与验收
 
-验收标准如下：当画布中没有关联 Markdown `Note` 时，保存模板流程与当前一致；当存在关联 Markdown `Note` 时，保存表单出现策略选择区。选择“保存为普通 Note 内容快照”后，模板应用回来是普通 `Note`；选择“仅保留 workspace 相对路径”后，模板 JSON 只包含相对路径，应用时关联当前 workspace 中的对应文件；选择“保留相对路径和文件内容”后，模板 JSON 包含相对路径和 Markdown 正文，应用时可在文件缺失时创建文件，已有文件冲突时在 Note 节点内显示冲突提示并允许用户重新加载、复制草稿或覆盖文件。
+验收标准如下：当画布中没有关联 Markdown `Note` 时，保存模板流程与当前一致；当存在关联 Markdown `Note` 时，保存表单出现策略选择区。选择“保存为普通 Note 内容快照”后，模板应用回来是普通 `Note`；选择“仅保留 workspace 相对路径”后，模板 JSON 只包含相对路径，应用时关联当前 workspace 中的对应文件，文件缺失时在 Note 节点内显示缺失提示并只提供“创建空文件并关联”；选择“保留相对路径和文件内容”后，模板 JSON 包含相对路径和 Markdown 正文，应用时可在文件缺失时创建文件，已有文件冲突时在 Note 节点内显示冲突提示并允许用户重新加载、复制草稿或覆盖文件。
 
 自动化验证需要证明旧模板兼容、新模板字段解析和捕获正确、应用模板时能生成期望的 `contentSource`。`npm run test:canvas-templates` 必须通过；`npm run typecheck` 必须通过。如果未运行完整 `npm test`，最终说明中需要明确剩余验证缺口。
 
 ## 幂等性与恢复
 
-文档和源码修改可以重复应用。rebase 已完成并新建分支；若后续需要恢复到 rebase 前的原始分支，原分支 `fix-note-line-number-view-rows` 仍保留在本地。保存模板的实现不得删除用户 Markdown 文件；应用模板时只有用户选择覆盖，或文件不存在且模式要求自动创建时，才会写 workspace 文件。路径-only 缺失场景允许保留缺失关联，以避免强制创建用户不想要的文件。
+文档和源码修改可以重复应用。rebase 已完成并新建分支；若后续需要恢复到 rebase 前的原始分支，原分支 `fix-note-line-number-view-rows` 仍保留在本地。保存模板的实现不得删除用户 Markdown 文件；应用模板时只有用户选择覆盖、节点内点击“创建空文件并关联”，或文件不存在且模式要求自动创建时，才会写 workspace 文件。路径-only 缺失场景默认保留缺失关联，以避免强制创建用户不想要的文件。
 
 ## 证据与备注
 
