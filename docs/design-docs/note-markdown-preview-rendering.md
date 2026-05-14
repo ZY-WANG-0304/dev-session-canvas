@@ -16,7 +16,7 @@ related_plans:
   - docs/exec-plans/completed/note-markdown-preview-rendering.md
   - docs/exec-plans/completed/note-markdown-workspace-file-links.md
   - docs/exec-plans/completed/note-markdown-interactive-checklists.md
-updated_at: 2026-05-06
+updated_at: 2026-05-13
 ---
 
 # Note Markdown 预览展示模式
@@ -129,6 +129,7 @@ updated_at: 2026-05-06
 - 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；用户单击时应能直接选中和复制预览内容，其中 `Ctrl/Cmd+A` 只应全选当前 Note 正文预览而不是整张画布，`Ctrl/Cmd+C` 则继续走宿主原生复制链路；只有双击普通正文区域时才切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
 - 当用户失焦、按 `Ctrl/Cmd+Enter` 提交或结束当前编辑时，正文区回到预览态，并把最新内容写回宿主。
 - 编辑态的 `textarea` 应保留纯文本权威输入模型，但需要提供最小代码编辑器 affordance：左侧显示逻辑行号；`Tab` 在光标处插入两个空格或对多行选择整体缩进；`Shift+Tab` 对当前行或多行选择移除一个 tab 或最多两个前导空格，并且不把焦点移出正文编辑区。
+- 编辑态行号应采用接近 VSCode/Monaco 的 view line 思路：每个源文逻辑行只在第一条视觉行显示行号，软换行产生的续行在 gutter 中保留等高空 row，从而让后续行号继续落在对应源文行的真实起点。由于当前 Note 仍使用原生 `textarea`，Webview 侧通过隐藏 mirror 层复刻输入框的字体、行高、padding、tab size、内容宽度与 `pre-wrap` 换行规则，计算每个逻辑行折成多少条视觉行；mirror 宽度必须使用 `textarea.clientWidth`，避免垂直滚动条出现后与真实文本换行宽度分叉。
 - `Escape` 仍沿用当前退出编辑语义，避免节点内键盘行为分叉。
 
 ### 7.3 Markdown 预览使用受控渲染，不开启原始 HTML
@@ -179,7 +180,7 @@ updated_at: 2026-05-06
 4. 编辑结束后，正文会回到预览态，且任务列表、链接、代码高亮与数学公式等结构可见。
 5. 点击安全白名单内链接时，Webview 会请求宿主打开，且不会误切回编辑态；其中外部链接只允许显式白名单 scheme，workspace 文件链接只允许当前 workspace 内文件并支持可选行列定位。
 6. 宿主持久化的 `metadata.note.content` 仍是原始文本。
-7. 编辑态显示与正文逻辑行数一致的行号；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
+7. 编辑态显示与正文逻辑行数一致的行号；长逻辑行软换行时，续行在 gutter 中占空 row 但不额外显示行号，后续行号仍对齐到对应源文行起点；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
 8. `npm run typecheck` 通过。
 9. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
 
@@ -193,6 +194,7 @@ updated_at: 2026-05-06
 - `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
 - `scripts/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
+- `src/webview/main.tsx` 与 `src/webview/styles.css` 已把编辑态行号从固定逻辑行列表改成“隐藏 mirror 计算视觉行数 + gutter 续行空 row”：普通行继续显示一个 row，软换行后的长逻辑行会在 gutter 中保留空白续行 row，让后续行号按视觉行节奏对齐。
 - `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test-note-markdown-links.mts` 与 `scripts/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
 
 本轮验证结果：
@@ -217,3 +219,9 @@ updated_at: 2026-05-06
 
 1. 新增 Playwright 回归，验证普通 Markdown 链接 `[run](command:workbench.action.closeActiveEditor)` 不会在 `.note-markdown-preview` 内生成 `href="command:..."` 或 `data-note-markdown-link="true"` 的可激活链接。
 2. 将 Webview `enableCommandUris` 从 `true` 收窄到 `devSessionCanvas.openCanvas` / `openCanvasInEditor` / `openCanvasInPanel`，只保留 standby 页面需要的命令 URI。
+
+2026-05-13 软换行行号对齐追加验证：
+
+1. 新增 Playwright 回归，验证 25 行内容中第 18 / 24 行软换行后，gutter 会在续行位置保留空 row，且第 19 / 25 行号落在对应源文行起点。
+2. `npm run typecheck` 通过。
+3. `npm run test:webview -- --grep "note body editor"` 通过。

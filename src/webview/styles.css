@@ -891,6 +891,49 @@ body {
   text-overflow: ellipsis;
 }
 
+.window-title-subtitle-copy {
+  appearance: none;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--canvas-widget-radius-sm);
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.window-title-subtitle-copy:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
+  color: var(--vscode-editor-foreground);
+}
+
+.window-title-subtitle-copy:focus-visible {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent);
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
+  color: var(--vscode-editor-foreground);
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.window-title-subtitle-copy:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.window-title-subtitle-copy-icon {
+  font-size: 12px;
+}
+
 .window-chrome-actions {
   display: flex;
   align-items: center;
@@ -1899,6 +1942,32 @@ body {
   display: block;
   height: 1.6em;
   text-align: right;
+}
+
+.note-document-line-number.is-continuation {
+  color: transparent;
+}
+
+.note-document-line-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  padding: 16px 18px 16px 62px;
+  overflow: hidden;
+  color: transparent;
+  font: inherit;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  tab-size: 2;
+  visibility: hidden;
+  white-space: pre-wrap;
+}
+
+.note-document-line-measure-line {
+  display: block;
+  min-height: 1.6em;
 }
 
 .note-document-input {

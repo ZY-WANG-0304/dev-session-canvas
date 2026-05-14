@@ -74,6 +74,7 @@ import type {
   FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
+  WebviewClipboardTextSource,
   WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -218,6 +219,7 @@ interface CanvasNodeData {
   onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onCopyTextToClipboard?: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -296,6 +298,7 @@ const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
 const EMBEDDED_NOTE_BODY_PLACEHOLDER =
   `${NOTE_BODY_PLACEHOLDER} 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符。更长内容可保存为 Markdown 文件。`;
+const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
@@ -1705,6 +1708,15 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/reloadAssociatedNoteMarkdownFile',
         payload: {
+          nodeId
+        }
+      }),
+    onCopyTextToClipboard: (text, source, nodeId) =>
+      postMessage({
+        type: 'webview/copyTextToClipboard',
+        payload: {
+          text,
+          source,
           nodeId
         }
       }),
@@ -4562,6 +4574,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     !isEditingBody &&
     !associatedMarkdownConflictResolution;
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
+  const [bodyVisualLineCounts, setBodyVisualLineCounts] = useState<number[]>(() =>
+    createFallbackVisualLineCounts(splitTextLines(noteMetadata.content).length)
+  );
   const committedContentRef = useRef(noteMetadata.content);
   const pendingContentRef = useRef<string | null>(null);
   const lastPropContentRef = useRef(noteMetadata.content);
@@ -4574,6 +4589,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const associatedMarkdownDraftCopiedTimerRef = useRef<number | undefined>();
   const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const bodyMeasureRef = useRef<HTMLDivElement | null>(null);
   const pendingBodyFocusRef = useRef(false);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
   const pendingBodyFocusSelectionRef = useRef<{
@@ -4582,9 +4598,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     selectionDirection: HTMLTextAreaElement['selectionDirection'];
   } | null>(null);
   const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
-  const bodyLineNumbers = useMemo(
-    () => Array.from({ length: countTextLines(content) }, (_, index) => index + 1),
-    [content]
+  const bodyLines = useMemo(() => splitTextLines(content), [content]);
+  const bodyLineNumberRows = useMemo(
+    () => createNoteBodyLineNumberRows(bodyLines, bodyVisualLineCounts),
+    [bodyLines, bodyVisualLineCounts]
   );
 
   const clearAssociatedMarkdownDraftSyncTimer = (): void => {
@@ -4682,6 +4699,26 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     associatedMarkdownDraftSyncTimerRef.current = window.setTimeout(sendDraft, 450);
   };
+
+  const measureBodyVisualLineCounts = useCallback((): void => {
+    const measureElement = bodyMeasureRef.current;
+    const textarea = bodyInputRef.current;
+    if (!measureElement || !textarea) {
+      return;
+    }
+
+    measureElement.style.width = `${textarea.clientWidth}px`;
+    const lineHeight = readElementLineHeightPx(measureElement);
+    const nextCounts = Array.from(
+      measureElement.querySelectorAll<HTMLElement>('.note-document-line-measure-line'),
+      (lineElement) => Math.max(1, Math.round(lineElement.offsetHeight / lineHeight))
+    );
+    if (nextCounts.length === 0) {
+      nextCounts.push(1);
+    }
+
+    setBodyVisualLineCounts((current) => (areNumberListsEqual(current, nextCounts) ? current : nextCounts));
+  }, []);
 
   useLayoutEffect(() => {
     const previousPropContent = lastPropContentRef.current;
@@ -4894,6 +4931,48 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [isEditingBody]);
 
   useLayoutEffect(() => {
+    if (!isEditingBody) {
+      return;
+    }
+
+    measureBodyVisualLineCounts();
+  }, [bodyLines, isEditingBody, measureBodyVisualLineCounts]);
+
+  useEffect(() => {
+    if (!isEditingBody) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    let pendingFrame: number | undefined;
+    const scheduleMeasurement = (): void => {
+      if (pendingFrame !== undefined) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+
+      pendingFrame = window.requestAnimationFrame(() => {
+        pendingFrame = undefined;
+        measureBodyVisualLineCounts();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleMeasurement);
+    resizeObserver.observe(textarea);
+    scheduleMeasurement();
+
+    return () => {
+      resizeObserver.disconnect();
+      if (pendingFrame !== undefined) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+    };
+  }, [isEditingBody, measureBodyVisualLineCounts]);
+
+  useLayoutEffect(() => {
     if (!isEditingBody || !pendingBodySelectionRef.current) {
       return;
     }
@@ -5035,6 +5114,15 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const openAssociatedMarkdownFile = (): void => {
     data.onSelectNode?.(id);
     data.onOpenAssociatedNoteMarkdownFile?.(id);
+  };
+
+  const copyAssociatedMarkdownSubtitlePath = (): void => {
+    if (!associatedMarkdownSubtitle) {
+      return;
+    }
+
+    data.onSelectNode?.(id);
+    data.onCopyTextToClipboard?.(associatedMarkdownSubtitle, 'note-markdown-subtitle', id);
   };
 
   const reloadAssociatedMarkdownDraft = (): void => {
@@ -5260,6 +5348,16 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           placeholder="Note 标题"
           className="note-window-title"
           subtitle={associatedMarkdownSubtitle}
+          subtitleAccessory={
+            associatedMarkdownSubtitle ? (
+              <SubtitleCopyButton
+                label="复制 Markdown 路径"
+                copiedLabel="已复制 Markdown 路径"
+                onCopy={copyAssociatedMarkdownSubtitlePath}
+                onFocus={() => data.onSelectNode?.(id)}
+              />
+            ) : undefined
+          }
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
@@ -5331,12 +5429,22 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   className="note-document-line-number-list"
                   style={{ transform: `translateY(-${bodyScrollTop}px)` }}
                 >
-                  {bodyLineNumbers.map((lineNumber) => (
-                    <span className="note-document-line-number" key={lineNumber}>
-                      {lineNumber}
+                  {bodyLineNumberRows.map((row) => (
+                    <span
+                      className={`note-document-line-number${row.lineNumber === null ? ' is-continuation' : ''}`}
+                      key={row.key}
+                    >
+                      {row.lineNumber ?? ''}
                     </span>
                   ))}
                 </div>
+              </div>
+              <div ref={bodyMeasureRef} className="note-document-line-measure" aria-hidden="true">
+                {bodyLines.map((line, index) => (
+                  <span className="note-document-line-measure-line" key={index}>
+                    {line}
+                  </span>
+                ))}
               </div>
               <textarea
                 ref={bodyInputRef}
@@ -7210,6 +7318,68 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   );
 }
 
+function SubtitleCopyButton(props: {
+  label: string;
+  copiedLabel: string;
+  onCopy: () => void;
+  onFocus?: () => void;
+}): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
+  const [copied, setCopied] = useState(false);
+  const copiedResetTimeoutRef = useRef<number | undefined>(undefined);
+  const currentLabel = copied ? props.copiedLabel : props.label;
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimeoutRef.current !== undefined) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = (): void => {
+    if (overviewInteractionsDisabled) {
+      return;
+    }
+
+    props.onCopy();
+    setCopied(true);
+    if (copiedResetTimeoutRef.current !== undefined) {
+      window.clearTimeout(copiedResetTimeoutRef.current);
+    }
+    copiedResetTimeoutRef.current = window.setTimeout(() => {
+      copiedResetTimeoutRef.current = undefined;
+      setCopied(false);
+    }, 1200);
+  };
+
+  return (
+    <button
+      type="button"
+      className="window-title-subtitle-copy nodrag nopan"
+      data-node-interactive="true"
+      title={currentLabel}
+      aria-label={currentLabel}
+      aria-hidden={overviewInteractionsDisabled ? true : undefined}
+      disabled={overviewInteractionsDisabled}
+      tabIndex={overviewInteractionsDisabled ? -1 : undefined}
+      onFocus={props.onFocus}
+      onMouseDown={stopCanvasEvent}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        handleCopy();
+      }}
+      onKeyDown={stopCanvasEvent}
+      onKeyUp={stopCanvasEvent}
+    >
+      <span
+        className={`window-title-subtitle-copy-icon codicon codicon-${copied ? 'check' : 'copy'}`}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
@@ -7394,6 +7564,7 @@ function toFlowNodes(params: {
   onSaveNoteAsMarkdownFile: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onCopyTextToClipboard: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -7501,6 +7672,7 @@ function toFlowNodes(params: {
         onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
         onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
         onReloadAssociatedNoteMarkdownFile: params.onReloadAssociatedNoteMarkdownFile,
+        onCopyTextToClipboard: params.onCopyTextToClipboard,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
@@ -8189,8 +8361,59 @@ function normalizeCanvasNodeFootprintForDisplayStyle(
   return normalizeCanvasNodeFootprint(kind, size);
 }
 
-function countTextLines(value: string): number {
-  return value.split('\n').length;
+interface NoteBodyLineNumberRow {
+  key: string;
+  lineNumber: number | null;
+}
+
+function splitTextLines(value: string): string[] {
+  return value.split('\n');
+}
+
+function createFallbackVisualLineCounts(lineCount: number): number[] {
+  return Array.from({ length: Math.max(1, lineCount) }, () => 1);
+}
+
+function createNoteBodyLineNumberRows(
+  lines: readonly string[],
+  visualLineCounts: readonly number[]
+): NoteBodyLineNumberRow[] {
+  const rows: NoteBodyLineNumberRow[] = [];
+  lines.forEach((_line, index) => {
+    const lineNumber = index + 1;
+    const visualLineCount = Math.max(1, visualLineCounts[index] ?? 1);
+    for (let visualLineIndex = 0; visualLineIndex < visualLineCount; visualLineIndex += 1) {
+      rows.push({
+        key: `${lineNumber}:${visualLineIndex}`,
+        lineNumber: visualLineIndex === 0 ? lineNumber : null
+      });
+    }
+  });
+
+  return rows;
+}
+
+function readElementLineHeightPx(element: HTMLElement): number {
+  const computedStyle = window.getComputedStyle(element);
+  const lineHeight = Number.parseFloat(computedStyle.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) {
+    return lineHeight;
+  }
+
+  const fontSize = Number.parseFloat(computedStyle.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) {
+    return fontSize * 1.6;
+  }
+
+  return NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX;
+}
+
+function areNumberListsEqual(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
 }
 
 function handleNoteBodyIndentKeyDown(
