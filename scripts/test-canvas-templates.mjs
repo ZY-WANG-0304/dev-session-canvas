@@ -313,22 +313,6 @@ try {
   assert.strictEqual(capturedContentBackedNoteMetadata.relativePath, 'docs/from-template.markdown');
   assert.strictEqual(capturedContentBackedNoteMetadata.content, '# Template file\n');
 
-  const capturedSkippedNote = captureCanvasTemplateFromState({
-    state: captureState,
-    name: 'Captured Skipped Note',
-    templateId: 'captured-skipped-note',
-    category: 'user',
-    agentProviderSelection: 'default',
-    associatedNoteSaveSelection: {
-      'note-1': {
-        mode: 'skip'
-      }
-    },
-    now: '2026-05-06T10:00:00.000Z'
-  });
-  assert.deepStrictEqual(capturedSkippedNote.ignoredNodeIds, ['note-1', 'file-1']);
-  assert.strictEqual(capturedSkippedNote.template.nodes.length, 2);
-
   assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath(' ./docs/a.md '), 'docs/a.md');
   assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath('../secret.md'), undefined);
   assert.throws(
@@ -576,6 +560,14 @@ try {
   assert.match(applyTemplateMethodSource, /resolveCanvasTemplateNoteMaterializations/u);
   assert.match(applyTemplateMethodSource, /noteMaterializations/u);
   assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(applyResult\.nodeIds\)/u);
+  const contentBackedNoteMaterializationSource = sliceBetween(
+    panelManagerSource,
+    'private async resolveContentBackedCanvasTemplateNoteMaterialization',
+    'private async createCanvasTemplateMarkdownFileAndMaterialization'
+  );
+  assert.doesNotMatch(contentBackedNoteMaterializationSource, /showWarningMessage/u);
+  assert.match(contentBackedNoteMaterializationSource, /status: 'dirty-conflict'/u);
+  assert.match(contentBackedNoteMaterializationSource, /createStoredNoteMarkdownConflictDraft/u);
   const applyTemplateHelperSource = sliceBetween(
     panelManagerSource,
     'function applyCanvasTemplateToState',
@@ -617,6 +609,8 @@ try {
   assert.match(saveFormSource, /associatedNoteModes/u);
   assert.match(saveFormSource, /workspace-file-path-only/u);
   assert.match(saveFormSource, /workspace-file-with-content/u);
+  assert.doesNotMatch(saveFormSource, /不保存此 Note/u);
+  assert.ok(!saveFormSource.includes("['skip'"));
 
   const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
   const rowClickHandler = sliceBetween(

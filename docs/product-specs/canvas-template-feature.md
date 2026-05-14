@@ -43,7 +43,7 @@
 4. 输入模板名称
 5. 选择模板保存位置（当前 workspace 或当前设备）
 6. 查看当前画布中的 Agent 节点列表，并分别设置每个 Agent 在模板中的 Provider（`default` / `codex` / `claude`）
-7. 如果当前画布包含关联 Markdown 文件的 Note，逐个选择保存为普通内容快照、仅保留 workspace 相对路径、保留相对路径和文件内容，或不保存该 Note
+7. 如果当前画布包含关联 Markdown 文件的 Note，逐个选择保存为普通内容快照、仅保留 workspace 相对路径，或保留相对路径和文件内容
 8. 提交后模板保存到所选位置中
 
 ### 3.5 分享模板
@@ -65,7 +65,7 @@
 - ✅ 节点位置和大小（相对位置，基准点为模板边界框左上角）
 - ✅ 节点标题
 - ✅ Note 节点内容
-- ✅ 关联 Markdown Note 的显式保存策略：普通内容快照、workspace 相对路径、workspace 相对路径和文件内容，或跳过该节点
+- ✅ 关联 Markdown Note 的显式保存策略：普通内容快照、workspace 相对路径、workspace 相对路径和文件内容
 - ✅ 连线样式（颜色、箭头方向、标签）
 - ✅ Agent 类型和 argv
 - ✅ Agent Provider（`codex`、`claude` 或 `default`）
@@ -78,10 +78,9 @@
 
 - **保存为普通 Note 内容快照**：模板保存当前落盘 Markdown 正文；应用后生成普通 `Note`，不再关联文件。
 - **仅保留 workspace 相对路径**：模板保存 `docs/plan.md` 这类相对路径，不保存正文；应用后自动关联当前 workspace 中对应文件，文件缺失时提示用户创建空文件或保留缺失状态。
-- **保留 workspace 相对路径和文件内容**：模板保存相对路径和正文；应用时文件不存在则创建，文件存在但内容不同则提示用户选择使用现有文件或覆盖。
-- **不保存此 Note**：该节点和相关连线不进入模板。
+- **保留 workspace 相对路径和文件内容**：模板保存相对路径和正文；应用时文件不存在则创建，文件存在但内容不同则在 Note 节点内进入冲突提示，让用户重新加载现有文件、复制模板草稿或覆盖文件。
 
-两种 workspace 相对路径策略只对当前 workspace 内的 `.md` / `.markdown` 文件可用；workspace 外文件只能保存内容快照或跳过。任何策略都不能静默保存不可读文件、缺失文件或 dirty-conflict 状态下的旧 buffer。
+两种 workspace 相对路径策略只对当前 workspace 内的 `.md` / `.markdown` 文件可用；workspace 外文件只能保存内容快照。任何策略都不能静默保存不可读文件、缺失文件或 dirty-conflict 状态下的旧 buffer。
 
 ### 4.2 Agent Provider 配置
 - **Provider 类型**：
