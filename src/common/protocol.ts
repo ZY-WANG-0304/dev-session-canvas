@@ -121,6 +121,7 @@ export interface CanvasNodeFootprint {
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type AgentLaunchPresetKind = 'default' | 'resume' | 'yolo' | 'sandbox' | 'custom';
+export type WebviewClipboardTextSource = 'note-markdown-subtitle';
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
@@ -586,6 +587,14 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/copyTextToClipboard';
+      payload: {
+        text: string;
+        source: WebviewClipboardTextSource;
+        nodeId?: string;
+      };
+    }
+  | {
       type: 'webview/requestExecutionPaste';
       payload: {
         requestId: string;
@@ -918,6 +927,7 @@ const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
+const webviewClipboardTextSources: WebviewClipboardTextSource[] = ['note-markdown-subtitle'];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
@@ -940,6 +950,13 @@ export function isAgentLaunchPresetKind(value: unknown): value is AgentLaunchPre
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
   return value === 'agent' || value === 'terminal';
+}
+
+export function isWebviewClipboardTextSource(value: unknown): value is WebviewClipboardTextSource {
+  return (
+    typeof value === 'string' &&
+    webviewClipboardTextSources.includes(value as WebviewClipboardTextSource)
+  );
 }
 
 export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null {
@@ -1160,6 +1177,27 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         kind: payload.kind,
         text: payload.text,
         clearSelectionAfterCopy: payload.clearSelectionAfterCopy === true
+      }
+    };
+  }
+
+  if (value.type === 'webview/copyTextToClipboard') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.text !== 'string' ||
+      !isWebviewClipboardTextSource(payload.source) ||
+      (payload.nodeId !== undefined && typeof payload.nodeId !== 'string')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: payload.text,
+        source: payload.source,
+        nodeId: typeof payload.nodeId === 'string' ? payload.nodeId : undefined
       }
     };
   }
