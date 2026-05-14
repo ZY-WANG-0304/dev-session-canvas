@@ -24,6 +24,8 @@
 - [x] (2026-05-15 01:59 +0800) 已将关联文件缺失状态的正文提示改为与无草稿 `dirty-conflict` 恢复态一致的节点内冲突卡片，并补充针对缺失和无草稿冲突卡片的 Webview 回归断言。
 - [x] (2026-05-15 07:39 +0800) 已处理 PR review 的两个 blocker：路径+内容模板遇到已有文件冲突时，首次物化的 `conflictDraft` 直接携带运行时 `content` 以显示复制/覆盖动作；workspace 首次打开固定应用内置 `使用说明`，不再先应用用户默认模板，避免打开 workspace 时由用户默认模板静默写文件。
 - [x] (2026-05-15 07:39 +0800) 已运行 `git diff --check`、`npm run typecheck`、`npm run test:canvas-templates` 和 `npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft after bootstrap|associated markdown note bootstrapped with dirty-conflict shows reload recovery only"`；targeted Webview 2 个用例通过。
+- [x] (2026-05-15 07:46 +0800) 已处理 review 反馈：关联文件缺失时不再显示节点 chrome 的“打开文件”按钮，缺失态只保留正文冲突卡片里的“创建空文件并关联”恢复动作；已补 Webview 断言。
+- [x] (2026-05-15 07:46 +0800) 已运行 `git diff --check`、`npm run typecheck` 和 `npm run test:webview -- --grep "missing associated markdown notes"`；targeted Webview 1 个用例通过。
 
 ## 意外与发现
 
@@ -85,6 +87,10 @@
 
 - 决策：workspace 首次打开固定应用内置 `使用说明`，不读取用户当前默认模板；用户默认模板只服务显式应用或重置。
   理由：首次打开是 onboarding，不是用户显式应用模板。若复用用户默认模板，带文件内容的模板可能在打开 workspace 时自动创建文件，违反文件写入必须由显式模板应用触发的边界。
+  日期/作者：2026-05-15 / Codex。
+
+- 决策：关联 Markdown 文件处于 `missing` 状态时隐藏节点 chrome 的“打开文件”动作。
+  理由：缺失路径的唯一恢复动作应在节点正文冲突卡片内完成，即“创建空文件并关联”；保留“打开文件”会绕过新的恢复路径并对不存在的资源发起打开请求。
   日期/作者：2026-05-15 / Codex。
 
 ## 结果与复盘
@@ -172,6 +178,13 @@ PR review blocker 修复的验证记录：
     npm run test:canvas-templates
     npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft after bootstrap|associated markdown note bootstrapped with dirty-conflict shows reload recovery only"
     2 passed (12.5s)
+
+缺失态隐藏“打开文件”的验证记录：
+
+    git diff --check
+    npm run typecheck
+    npm run test:webview -- --grep "missing associated markdown notes"
+    1 passed (11.1s)
 
 ## 接口与依赖
 

@@ -4562,6 +4562,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     !associatedMarkdownFile || associatedMarkdownStatus === 'ok' || hasAssociatedMarkdownHostConflict;
   const associatedMarkdownFileEditable =
     !associatedMarkdownFile || associatedMarkdownStatus === 'ok';
+  const canOpenAssociatedMarkdownFile =
+    Boolean(associatedMarkdownFile) && !hasAssociatedMarkdownMissingFile;
   const associatedMarkdownWarningTitle =
     hasAssociatedMarkdownHostConflict
       ? '关联文件存在编辑冲突'
@@ -5388,7 +5390,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
-          {associatedMarkdownFile ? (
+          {canOpenAssociatedMarkdownFile ? (
             <ActionButton
               label="打开文件"
               tone="secondary"
@@ -5397,7 +5399,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               interactive
               onFocus={() => data.onSelectNode?.(id)}
             />
-          ) : (
+          ) : associatedMarkdownFile ? null : (
             <ActionButton
               label="保存为 Markdown"
               tone="secondary"
