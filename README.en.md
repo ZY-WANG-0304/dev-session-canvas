@@ -21,7 +21,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Lightweight `Note` nodes for supporting collaboration
 - Basic canvas interaction and layout built on React Flow
 - Dynamic global overview zoom and configurable low-zoom overview rendering, so fit view can still show the full canvas when nodes are spread out
-- `Note` Markdown preview, interactive checklists, workspace file links, associated Markdown files, and editor-mode line-number / indentation affordances
+- `Note` nodes with Markdown syntax support
 - Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, and reset entry points
 - Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
