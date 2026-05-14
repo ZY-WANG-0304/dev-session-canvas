@@ -2511,41 +2511,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const preferredCenter = this.resolvePreferredTemplatePlacementCenter();
-    const selectedDefaultTemplateId = this.getDefaultCanvasTemplateId();
+    const preservedDefaultTemplateId = this.getDefaultCanvasTemplateId();
     try {
-      await this.applyDefaultCanvasTemplate({
-        visibleCenter: preferredCenter
-      });
-      this.recordDiagnosticEvent('template/defaultAppliedOnFirstOpen', {
-        templateId: this.getDefaultCanvasTemplateId()
-      });
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.recordDiagnosticEvent('template/defaultApplyFailedOnFirstOpen', {
-        templateId: selectedDefaultTemplateId,
-        message
-      });
-    }
-
-    if (selectedDefaultTemplateId !== DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) {
-      try {
-        const fallbackTemplate = await this.resolveFirstOpenFallbackCanvasTemplateRecord();
-        if (fallbackTemplate) {
-          await this.applyCanvasTemplateRecord(fallbackTemplate, {
-            visibleCenter: preferredCenter
-          });
-          this.recordDiagnosticEvent('template/defaultFallbackAppliedOnFirstOpen', {
-            templateId: fallbackTemplate.template.id,
-            preservedDefaultTemplateId: selectedDefaultTemplateId
-          });
-          return;
-        }
-      } catch (error) {
-        this.recordDiagnosticEvent('template/defaultFallbackFailedOnFirstOpen', {
-          message: error instanceof Error ? error.message : String(error)
+      const firstOpenTemplate = await this.resolveFirstOpenCanvasTemplateRecord();
+      if (firstOpenTemplate) {
+        await this.applyCanvasTemplateRecord(firstOpenTemplate, {
+          visibleCenter: preferredCenter
         });
+        this.recordDiagnosticEvent('template/gettingStartedAppliedOnFirstOpen', {
+          templateId: firstOpenTemplate.template.id,
+          preservedDefaultTemplateId
+        });
+        return;
       }
+      this.recordDiagnosticEvent('template/gettingStartedMissingOnFirstOpen', {
+        preservedDefaultTemplateId
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('template/gettingStartedApplyFailedOnFirstOpen', {
+        preservedDefaultTemplateId,
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
 
     this.canvasTemplateInitialized = true;
@@ -2567,15 +2553,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return storedTemplate;
   }
 
-  private async resolveFirstOpenFallbackCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
+  private async resolveFirstOpenCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
     const catalog = await this.getCanvasTemplateCatalog();
-    return (
-      findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) ??
-      catalog.templates.find((storedTemplate) =>
-        storedTemplate.template.nodes.every((node) => node.kind === 'note')
-      ) ??
-      catalog.templates[0]
-    );
+    return findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID);
   }
 
   private async applyCanvasTemplateRecord(
@@ -2790,15 +2770,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
+    const conflictDraft = this.createStoredNoteMarkdownConflictDraft(
+      templateContent,
+      readResult.contentRevision,
+      readResult.contentRevision
+    );
     return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
       status: 'dirty-conflict',
       contentRevision: readResult.contentRevision,
       lastError: `模板「${templateName}」中的 Note「${noteTitle}」与现有文件 ${relativePath} 内容不同。请在节点内重新加载现有文件或覆盖为模板内容。`,
-      conflictDraft: this.createStoredNoteMarkdownConflictDraft(
-        templateContent,
-        readResult.contentRevision,
-        readResult.contentRevision
-      )
+      conflictDraft: {
+        ...conflictDraft,
+        content: templateContent
+      }
     });
   }
 

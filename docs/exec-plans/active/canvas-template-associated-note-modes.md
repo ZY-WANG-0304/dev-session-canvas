@@ -22,6 +22,8 @@
 - [x] (2026-05-15 09:20 +0800) 已将 path-only 模板缺失文件与运行中关联文件被删除 / 移动统一为“关联文件缺失”节点状态；节点内只提供“创建空文件并关联”，不提供重新检查、复制路径或改选文件。
 - [x] (2026-05-15 09:35 +0800) 已运行 `git diff --check`、`npm run typecheck`、`npm run test:canvas-templates`、`npm run test:webview -- --grep "missing associated markdown notes"` 与完整 `npm run test:webview`；完整 Webview 150 个用例通过。
 - [x] (2026-05-15 01:59 +0800) 已将关联文件缺失状态的正文提示改为与无草稿 `dirty-conflict` 恢复态一致的节点内冲突卡片，并补充针对缺失和无草稿冲突卡片的 Webview 回归断言。
+- [x] (2026-05-15 07:39 +0800) 已处理 PR review 的两个 blocker：路径+内容模板遇到已有文件冲突时，首次物化的 `conflictDraft` 直接携带运行时 `content` 以显示复制/覆盖动作；workspace 首次打开固定应用内置 `使用说明`，不再先应用用户默认模板，避免打开 workspace 时由用户默认模板静默写文件。
+- [x] (2026-05-15 07:39 +0800) 已运行 `git diff --check`、`npm run typecheck`、`npm run test:canvas-templates` 和 `npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft after bootstrap|associated markdown note bootstrapped with dirty-conflict shows reload recovery only"`；targeted Webview 2 个用例通过。
 
 ## 意外与发现
 
@@ -36,6 +38,12 @@
 
 - 观察：关联文件缺失、文件移动/删除和无可恢复草稿的 `dirty-conflict` 都不能展示旧 Markdown 预览或进入普通编辑态，因此它们适合共享同一个“正文区域内的冲突卡片”视觉语言。
   证据：`npm run test:webview -- --grep "associated markdown note bootstrapped with dirty-conflict shows reload recovery only|missing associated markdown notes"` 覆盖这两条路径并通过。
+
+- 观察：`createStoredNoteMarkdownConflictDraft()` 正常只返回 storage-backed draft id；Webview 广播路径会再 hydrate draft content，但模板内容冲突的首个 materialization 自身如果不携带 `content`，就会把“模板正文首屏可复制/覆盖”这个需求隐含依赖到后续广播实现。
+  证据：PR review 指出该路径可能只显示 `重新加载`，导致用户一点击就丢弃模板正文；本轮改为在 materialization 中保留 runtime-only `conflictDraft.content`，持久化前仍由现有剥离逻辑移除正文。
+
+- 观察：首次 workspace 打开如果复用用户当前默认模板，会让“相对路径 + 文件内容”模板的缺失文件自动创建能力变成打开 workspace 的副作用。
+  证据：`ensureDefaultTemplateAppliedIfNeeded()` 原本调用 `applyDefaultCanvasTemplate()`；本轮改为只解析 `DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID` 对应的内置 `使用说明`。
 
 ## 决策记录
 
@@ -71,9 +79,17 @@
   理由：这几种状态都表示当前正文不能作为可信、可直接编辑的 Markdown 内容展示；共享冲突卡片能让用户把它们理解为同一类“需要在 Note 内处理的关联文件状态”，同时保留各自不同的动作：缺失只创建空文件并关联，无草稿冲突只重新加载。
   日期/作者：2026-05-15 / Codex。
 
+- 决策：路径+内容模板遇到已有文件内容冲突时，创建 storage-backed `conflictDraft` 的同时，在当前 materialization 中携带 runtime-only `conflictDraft.content`。
+  理由：模板正文是用户需要处理的冲突草稿，首次应用模板后必须立即显示 `复制草稿` 和 `覆盖文件`；正文仍不写入持久化画布状态，现有持久化剥离逻辑继续保证长期状态只保存 draft id。
+  日期/作者：2026-05-15 / Codex。
+
+- 决策：workspace 首次打开固定应用内置 `使用说明`，不读取用户当前默认模板；用户默认模板只服务显式应用或重置。
+  理由：首次打开是 onboarding，不是用户显式应用模板。若复用用户默认模板，带文件内容的模板可能在打开 workspace 时自动创建文件，违反文件写入必须由显式模板应用触发的边界。
+  日期/作者：2026-05-15 / Codex。
+
 ## 结果与复盘
 
-本轮已完成主体实现：保存模板表单会为关联 Markdown `Note` 展示策略选择，模板模型能表达普通快照、仅相对路径和相对路径加内容，保存路径会按用户选择读取磁盘内容或保存相对路径，应用路径会自动关联、创建文件，或在内容冲突时生成节点内 `dirty-conflict` 提示。后续反馈中的“缺失关联路径”也已下沉为 Note 内状态，并与无草稿 `dirty-conflict` 恢复态统一为同一套冲突卡片 UI。目标测试 `npm run typecheck`、`npm run test:canvas-templates` 与 rebase 后的 `npm run test:webview` 均已通过；本轮 UI 统一又重新通过完整 `npm run test:webview`。
+本轮已完成主体实现：保存模板表单会为关联 Markdown `Note` 展示策略选择，模板模型能表达普通快照、仅相对路径和相对路径加内容，保存路径会按用户选择读取磁盘内容或保存相对路径，应用路径会自动关联、创建文件，或在内容冲突时生成节点内 `dirty-conflict` 提示。后续反馈中的“缺失关联路径”也已下沉为 Note 内状态，并与无草稿 `dirty-conflict` 恢复态统一为同一套冲突卡片 UI。PR review 后又补齐模板冲突草稿首屏恢复和首次打开不应用用户默认模板的安全边界。目标测试 `npm run typecheck`、`npm run test:canvas-templates` 与 rebase 后的 `npm run test:webview` 均已通过；本轮 UI 统一又重新通过完整 `npm run test:webview`。
 
 ## 上下文与定向
 
@@ -149,6 +165,14 @@ rebase 后的短日志应包含以下顺序，证明当前分支建立在用户�
     npm run test:webview
     150 passed (4.3m)
 
+PR review blocker 修复的验证记录：
+
+    git diff --check
+    npm run typecheck
+    npm run test:canvas-templates
+    npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft after bootstrap|associated markdown note bootstrapped with dirty-conflict shows reload recovery only"
+    2 passed (12.5s)
+
 ## 接口与依赖
 
 在 `src/common/canvasTemplates.ts` 中新增模板 note 内容模式和保存选择类型。`captureCanvasTemplateFromState()` 需要接受一个可选的关联 note 保存选择 map，并据此生成模板节点。`applyCanvasTemplateToState()` 需要接受一个可选的 note materialization map，让宿主传入已经解析好的关联文件内容和 `contentSource`。
@@ -160,3 +184,4 @@ rebase 后的短日志应包含以下顺序，证明当前分支建立在用户�
 
 修订记录：2026-05-14 / Codex：完成代码、文档与测试验证记录，补充 Webview screenshot 残余风险。
 修订记录：2026-05-15 / Codex：补充缺失关联文件与无草稿 `dirty-conflict` 恢复态共享节点内冲突卡片的设计、步骤与验证记录。
+修订记录：2026-05-15 / Codex：记录 PR review blocker 修复，覆盖模板冲突草稿首屏恢复与首次打开固定使用内置 `使用说明` 的安全边界。
