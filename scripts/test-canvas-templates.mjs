@@ -512,17 +512,19 @@ try {
     'private async ensureDefaultTemplateAppliedIfNeeded',
     'private async resolveDefaultCanvasTemplateRecord'
   );
-  assert.match(defaultTemplateInitializationSource, /resolveFirstOpenFallbackCanvasTemplateRecord/u);
-  assert.match(defaultTemplateInitializationSource, /preservedDefaultTemplateId: selectedDefaultTemplateId/u);
+  assert.match(defaultTemplateInitializationSource, /resolveFirstOpenCanvasTemplateRecord/u);
+  assert.match(defaultTemplateInitializationSource, /preservedDefaultTemplateId/u);
+  assert.doesNotMatch(defaultTemplateInitializationSource, /applyDefaultCanvasTemplate/u);
   assert.doesNotMatch(defaultTemplateInitializationSource, /globalState\.update/u);
-  const firstOpenFallbackResolverSource = sliceBetween(
+  const firstOpenResolverSource = sliceBetween(
     panelManagerSource,
-    'private async resolveFirstOpenFallbackCanvasTemplateRecord',
+    'private async resolveFirstOpenCanvasTemplateRecord',
     'private async applyCanvasTemplateRecord'
   );
-  assert.match(firstOpenFallbackResolverSource, /DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID/u);
-  assert.match(firstOpenFallbackResolverSource, /node\.kind === 'note'/u);
-  assert.doesNotMatch(firstOpenFallbackResolverSource, /globalState\.update/u);
+  assert.match(firstOpenResolverSource, /DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID/u);
+  assert.doesNotMatch(firstOpenResolverSource, /node\.kind === 'note'/u);
+  assert.doesNotMatch(firstOpenResolverSource, /catalog\.templates\[0\]/u);
+  assert.doesNotMatch(firstOpenResolverSource, /globalState\.update/u);
   const webviewReadyHandlerSource = sliceBetween(
     panelManagerSource,
     "if (parsedMessage.type === 'webview/ready')",
@@ -575,6 +577,7 @@ try {
   assert.doesNotMatch(contentBackedNoteMaterializationSource, /showWarningMessage/u);
   assert.match(contentBackedNoteMaterializationSource, /status: 'dirty-conflict'/u);
   assert.match(contentBackedNoteMaterializationSource, /createStoredNoteMarkdownConflictDraft/u);
+  assert.match(contentBackedNoteMaterializationSource, /content: templateContent/u);
   const applyTemplateHelperSource = sliceBetween(
     panelManagerSource,
     'function applyCanvasTemplateToState',
@@ -678,6 +681,8 @@ try {
   }
   assert.match(templateProductSpecSource, /内置模板（2 个）/u);
   assert.match(templateProductSpecSource, /示例模板 - 1 Agent, 1 Terminal, 1 Note/u);
+  assert.doesNotMatch(templateProductSpecSource, /首次打开(?:画布)?时[^\n]*当前设置的默认模板/u);
+  assert.doesNotMatch(templateDesignDocSource, /首次打开画布时[^\n]*当前默认模板/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }
