@@ -15,7 +15,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - It should be described first as an `AI workbench with canvas`, not as a visualization tool with a thin AI layer
 - `Visualization` is the interaction surface: the canvas carries execution objects and their global relationships
 - `AI` is the primary usage context: multi-agent development workflows rather than a chat-first single-thread experience
-- `Other` captures the workbench aspect: the product is designed to work with VS Code's native editors, terminals, and extension ecosystem
+- `Machine Learning` captures the workbench aspect: built for AI/ML toolchain integration, designed to work with VS Code's native editors, terminals, and extension ecosystem
 
 ## Core Capabilities
 
