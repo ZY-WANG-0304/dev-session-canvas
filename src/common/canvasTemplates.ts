@@ -21,8 +21,7 @@ export const CANVAS_TEMPLATE_NOTE_CONTENT_MODES = [
 export const CANVAS_TEMPLATE_ASSOCIATED_NOTE_SAVE_MODES = [
   'embedded-snapshot',
   'workspace-file-path-only',
-  'workspace-file-with-content',
-  'skip'
+  'workspace-file-with-content'
 ] as const;
 export const DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID = 'builtin-getting-started';
 
@@ -134,8 +133,7 @@ export function isCanvasTemplateAssociatedNoteSaveMode(value: unknown): value is
   return (
     value === 'embedded-snapshot' ||
     value === 'workspace-file-path-only' ||
-    value === 'workspace-file-with-content' ||
-    value === 'skip'
+    value === 'workspace-file-with-content'
   );
 }
 
@@ -315,14 +313,14 @@ export function captureCanvasTemplateFromState(params: {
   const associatedNoteSaveSelection = params.associatedNoteSaveSelection ?? {};
   const compatibleNodes = params.state.nodes.filter(
     (node): node is CanvasPrototypeState['nodes'][number] & { kind: CanvasTemplateNodeKind } =>
-      isCanvasTemplateCompatibleNode(node) && associatedNoteSaveSelection[node.id]?.mode !== 'skip'
+      isCanvasTemplateCompatibleNode(node)
   );
   if (compatibleNodes.length === 0) {
     throw new Error('当前画布没有可保存到模板的 Agent / Terminal / Note 节点。');
   }
 
   const ignoredNodeIds = params.state.nodes
-    .filter((node) => !isCanvasTemplateNodeKind(node.kind) || associatedNoteSaveSelection[node.id]?.mode === 'skip')
+    .filter((node) => !isCanvasTemplateNodeKind(node.kind))
     .map((node) => node.id);
 
   const minX = Math.min(...compatibleNodes.map((node) => node.position.x));
@@ -411,7 +409,7 @@ function buildCanvasTemplateNoteMetadata(
   selection: CanvasTemplateAssociatedNoteSaveSelection | undefined
 ): CanvasTemplateNoteMetadata {
   const fallbackContent = node.metadata?.note?.content ?? '';
-  if (!selection || selection.mode === 'embedded-snapshot' || selection.mode === 'skip') {
+  if (!selection || selection.mode === 'embedded-snapshot') {
     return {
       content: selection?.content ?? fallbackContent
     };

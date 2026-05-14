@@ -803,7 +803,6 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
             ['workspace-file-with-content', '保留相对路径和文件内容']
           );
         }
-        options.push(['skip', '不保存此 Note']);
         select.replaceChildren(...options.map(([value, label]) => {
           const option = document.createElement('option');
           option.value = value;

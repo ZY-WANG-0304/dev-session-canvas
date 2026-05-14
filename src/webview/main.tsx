@@ -4573,6 +4573,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     !associatedMarkdownEditConflict &&
     !isEditingBody &&
     !associatedMarkdownConflictResolution;
+  const associatedMarkdownEditConflictHint = associatedMarkdownFile?.lastError?.startsWith('模板')
+    ? '模板内容与现有文件不同；你可以继续编辑模板草稿，或选择重新加载 / 覆盖文件。'
+    : '关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。';
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const [bodyVisualLineCounts, setBodyVisualLineCounts] = useState<number[]>(() =>
     createFallbackVisualLineCounts(splitTextLines(noteMetadata.content).length)
@@ -5502,7 +5505,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               ) : null}
               {associatedMarkdownEditConflict ? (
                 <div className="note-edit-conflict-hint" role="alert">
-                  <span>关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。</span>
+                  <span>{associatedMarkdownEditConflictHint}</span>
                   <button
                     type="button"
                     className="note-edit-conflict-action nodrag nopan"

@@ -1093,11 +1093,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         continue;
       }
 
-      if (mode === 'skip') {
-        selection[nodeId] = { mode };
-        continue;
-      }
-
       if (mode === 'workspace-file-path-only') {
         selection[nodeId] = {
           mode,
@@ -1110,7 +1105,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (mode === 'embedded-snapshot') {
         if (content.length > NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
           throw new Error(
-            `关联 Markdown Note「${node.title}」的内容超过普通 Note 8,000 字符上限，请改选“保留 workspace 相对路径和文件内容”或“不保存此 Note”。`
+            `关联 Markdown Note「${node.title}」的内容超过普通 Note 8,000 字符上限，请改选“保留 workspace 相对路径和文件内容”（仅 workspace 内文件可用）或先调整关联文件。`
           );
         }
         selection[nodeId] = { mode, content };
@@ -1134,7 +1129,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<string> {
     if (source.status !== 'ok' || source.conflictDraft) {
       throw new Error(
-        `关联 Markdown Note「${node.title}」当前不是可保存状态（${source.status}），请先恢复关联文件或改选“不保存此 Note”。`
+        `关联 Markdown Note「${node.title}」当前不是可保存状态（${source.status}），请先恢复关联文件后再保存模板。`
       );
     }
 
@@ -2710,8 +2705,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               node.title,
               relativePath,
               uri,
-              note?.content ?? '',
-              options
+              note?.content ?? ''
             );
       materializations.set(index, materialization);
     }
@@ -2794,8 +2788,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     noteTitle: string,
     relativePath: string,
     uri: vscode.Uri,
-    templateContent: string,
-    options: { quiet: boolean }
+    templateContent: string
   ): Promise<CanvasTemplateNoteMaterialization> {
     const readResult = await this.readNoteMarkdownFile(uri);
     if (readResult.status === 'missing') {
@@ -2813,69 +2806,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
-    if (options.quiet) {
-      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
-        status: 'ok',
-        contentRevision: readResult.contentRevision
-      });
-    }
-
-    const useExisting = '使用现有文件并关联';
-    const overwrite = '覆盖文件并关联';
-    const saveAs = '另存为新文件';
-    const selected = await vscode.window.showWarningMessage(
-      `模板「${templateName}」中的 Note「${noteTitle}」要写入 ${relativePath}，但该文件已存在且内容不同。`,
-      { modal: true },
-      useExisting,
-      overwrite,
-      saveAs
-    );
-
-    if (selected === useExisting) {
-      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
-        status: 'ok',
-        contentRevision: readResult.contentRevision
-      });
-    }
-
-    if (selected === overwrite) {
-      return this.createCanvasTemplateMarkdownFileAndMaterialization(uri, templateContent);
-    }
-
-    if (selected === saveAs) {
-      const alternativeUri = await this.promptCanvasTemplateMarkdownFileSaveAsUri(uri);
-      if (!alternativeUri) {
-        throw new Error('已取消应用模板。');
-      }
-      return this.createCanvasTemplateMarkdownFileAndMaterialization(alternativeUri, templateContent);
-    }
-
-    throw new Error('已取消应用模板。');
-  }
-
-  private async promptCanvasTemplateMarkdownFileSaveAsUri(defaultUri: vscode.Uri): Promise<vscode.Uri | undefined> {
-    const selectedUri = await vscode.window.showSaveDialog({
-      defaultUri,
-      saveLabel: '另存并关联',
-      filters: {
-        Markdown: ['md', 'markdown']
-      }
+    return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+      status: 'dirty-conflict',
+      contentRevision: readResult.contentRevision,
+      lastError: `模板「${templateName}」中的 Note「${noteTitle}」与现有文件 ${relativePath} 内容不同。请在节点内重新加载现有文件或覆盖为模板内容。`,
+      conflictDraft: this.createStoredNoteMarkdownConflictDraft(
+        templateContent,
+        readResult.contentRevision,
+        readResult.contentRevision
+      )
     });
-    if (!selectedUri) {
-      return undefined;
-    }
-
-    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(selectedUri))) {
-      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
-      return undefined;
-    }
-
-    if (!this.resolveNoteMarkdownWorkspaceRelativeDisplayPath(selectedUri)) {
-      await vscode.window.showWarningMessage('另存路径必须位于当前 workspace 内。');
-      return undefined;
-    }
-
-    return selectedUri;
   }
 
   private async createCanvasTemplateMarkdownFileAndMaterialization(
@@ -2901,6 +2841,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       status: NoteMarkdownFileStatus;
       contentRevision?: string;
       lastError?: string;
+      conflictDraft?: NoteMarkdownConflictDraft;
     }
   ): CanvasTemplateNoteMaterialization {
     return {
@@ -2911,7 +2852,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ...this.formatNoteMarkdownDisplayPathInfo(uri),
         contentRevision: params.contentRevision,
         status: params.status,
-        lastError: params.lastError
+        lastError: params.lastError,
+        conflictDraft: params.conflictDraft
       }
     };
   }
