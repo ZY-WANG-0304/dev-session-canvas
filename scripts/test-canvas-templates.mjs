@@ -560,6 +560,13 @@ try {
   assert.match(applyTemplateMethodSource, /resolveCanvasTemplateNoteMaterializations/u);
   assert.match(applyTemplateMethodSource, /noteMaterializations/u);
   assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(applyResult\.nodeIds\)/u);
+  const pathOnlyNoteMaterializationSource = sliceBetween(
+    panelManagerSource,
+    'private async resolvePathOnlyCanvasTemplateNoteMaterialization',
+    'private async resolveContentBackedCanvasTemplateNoteMaterialization'
+  );
+  assert.doesNotMatch(pathOnlyNoteMaterializationSource, /showWarningMessage/u);
+  assert.match(pathOnlyNoteMaterializationSource, /status: 'missing'/u);
   const contentBackedNoteMaterializationSource = sliceBetween(
     panelManagerSource,
     'private async resolveContentBackedCanvasTemplateNoteMaterialization',
@@ -597,9 +604,11 @@ try {
 
   const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
   assert.match(protocolSource, /type: 'host\/focusNodes'/u);
+  assert.match(protocolSource, /webview\/createMissingAssociatedNoteMarkdownFile/u);
 
   const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
+  assert.match(webviewSource, /创建空文件并关联/u);
   assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
   assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
   assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);

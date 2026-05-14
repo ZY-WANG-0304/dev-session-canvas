@@ -219,6 +219,7 @@ interface CanvasNodeData {
   onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onCreateMissingAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onCopyTextToClipboard?: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
@@ -1707,6 +1708,13 @@ function App(): JSX.Element {
     onReloadAssociatedNoteMarkdownFile: (nodeId) =>
       postMessage({
         type: 'webview/reloadAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onCreateMissingAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/createMissingAssociatedNoteMarkdownFile',
         payload: {
           nodeId
         }
@@ -4543,6 +4551,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath;
   const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
   const associatedMarkdownStatus = associatedMarkdownFile?.status;
+  const hasAssociatedMarkdownMissingFile = associatedMarkdownStatus === 'missing';
   const associatedMarkdownConflictDraft = associatedMarkdownFile?.conflictDraft;
   const associatedMarkdownConflictDraftContent =
     typeof associatedMarkdownConflictDraft?.content === 'string'
@@ -4556,7 +4565,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const associatedMarkdownWarningTitle =
     hasAssociatedMarkdownHostConflict
       ? '关联文件存在编辑冲突'
-      : '关联文件不可用';
+      : hasAssociatedMarkdownMissingFile
+        ? '关联文件缺失'
+        : '关联文件不可用';
   const isEmbeddedNote = !associatedMarkdownFile;
   const bodyPlaceholder = isEmbeddedNote ? EMBEDDED_NOTE_BODY_PLACEHOLDER : NOTE_BODY_PLACEHOLDER;
   const [content, setContent] = useState(noteMetadata.content);
@@ -5119,6 +5130,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onOpenAssociatedNoteMarkdownFile?.(id);
   };
 
+  const createMissingAssociatedMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onCreateMissingAssociatedNoteMarkdownFile?.(id);
+  };
+
   const copyAssociatedMarkdownSubtitlePath = (): void => {
     if (!associatedMarkdownSubtitle) {
       return;
@@ -5208,6 +5224,13 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   ): void => {
     stopCanvasEvent(event);
     overwriteAssociatedMarkdownFile();
+  };
+
+  const handleCreateMissingAssociatedMarkdownFileClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    createMissingAssociatedMarkdownFile();
   };
 
   const startEditingBody = (): void => {
@@ -5421,6 +5444,20 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     onClick={handleReloadAssociatedMarkdownDraftClick}
                   >
                     重新加载
+                  </button>
+                </div>
+              ) : hasAssociatedMarkdownMissingFile ? (
+                <div className="note-file-warning-actions">
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleCreateMissingAssociatedMarkdownFileClick}
+                  >
+                    创建空文件并关联
                   </button>
                 </div>
               ) : null}
@@ -7567,6 +7604,7 @@ function toFlowNodes(params: {
   onSaveNoteAsMarkdownFile: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onCreateMissingAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onCopyTextToClipboard: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
@@ -7675,6 +7713,7 @@ function toFlowNodes(params: {
         onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
         onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
         onReloadAssociatedNoteMarkdownFile: params.onReloadAssociatedNoteMarkdownFile,
+        onCreateMissingAssociatedNoteMarkdownFile: params.onCreateMissingAssociatedNoteMarkdownFile,
         onCopyTextToClipboard: params.onCopyTextToClipboard,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
@@ -9383,7 +9422,7 @@ async function queryNodeTextField(
 
 function queryNodeActionButton(
   nodeId: string,
-  label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件'
+  label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件' | '创建空文件并关联'
 ): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
   const button = Array.from(nodeRoot.querySelectorAll('button')).find(
