@@ -89,5 +89,5 @@
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 截至 `2026-05-14`，当前 `0.10.0` 发布准备工作树已重新通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；其中 notifier VSIX 已生成到 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.10.0.vsix`，该次打包日志打印了 `VSCE README doc ref: eecd2c95c67e53661586df519e95df6d7c62ee33`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 90.78 KB 的 VSIX。该 ref 是本次 repo-local 打包执行时脚本解析到的当前 `HEAD`，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- 截至 `2026-05-14`，当前 `0.10.0` 发布准备工作树已重新通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；其中 notifier VSIX 已生成到 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.10.0.vsix`，打包日志已打印 VSCE README doc ref，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 90.78 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

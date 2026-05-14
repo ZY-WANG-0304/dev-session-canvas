@@ -122,9 +122,9 @@
 - `npm run test:notifier-source` 通过（platform notification、sidebar rich text、sidebar status）
 - `npm run test:webview -- --grep "ordinary note empty|associated markdown|missing associated markdown|ordinary note save-as-markdown|dropping markdown"` 通过（16 个 Playwright webview 用例）
 - `npm audit` 通过（0 vulnerabilities）
-- `npm run validate:clean-checkout:vsix -- --ref HEAD` 通过；隔离 clean checkout 使用 git ref `eecd2c95c67e53661586df519e95df6d7c62ee33`，生成 `dev-session-canvas-0.10.0.vsix`（114 个文件，约 3.27 MB），并完成 packaged-payload smoke
-- `npm run package:vsix` 已在当前 `0.10.0` 发布准备工作树生成 `dev-session-canvas-0.10.0.vsix`；该次打包日志打印了 `VSCE README doc ref: eecd2c95c67e53661586df519e95df6d7c62ee33`，确认 `README.marketplace.md` 中 3 个相对链接会按该 ref 重写，并确认最终 VSIX 包含 114 个文件、约 3.27 MB。该 ref 是本次 repo-local 打包执行时脚本解析到的当前 `HEAD`，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在当前 `0.10.0` 发布准备工作树生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.10.0.vsix`；该次打包日志打印了 `VSCE README doc ref: eecd2c95c67e53661586df519e95df6d7c62ee33`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 90.78 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- `npm run validate:clean-checkout:vsix -- --ref HEAD` 通过；隔离 clean checkout 生成 `dev-session-canvas-0.10.0.vsix`（114 个文件，约 3.27 MB），并完成 packaged-payload smoke
+- `npm run package:vsix` 已在当前 `0.10.0` 发布准备工作树生成 `dev-session-canvas-0.10.0.vsix`；打包日志已打印 VSCE README doc ref，确认 `README.marketplace.md` 中 3 个相对链接会按当前 HEAD 重写，并确认最终 VSIX 包含 114 个文件、约 3.27 MB。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在当前 `0.10.0` 发布准备工作树生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.10.0.vsix`；打包日志已打印 VSCE README doc ref，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 90.78 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
 - `git diff --check` 通过
 
 注：上述验证已在 Marketplace 搜索优化提交（`eecd2c9`）之后重新执行，覆盖了 `package.json` keywords/categories、`package.nls.json` displayName/description 和 README 文件结构变更后的完整打包链路。此前在 `74824fd` 上的验证记录仅作为搜索优化前的历史证据保留，不代表当前 head 的发布验证。
