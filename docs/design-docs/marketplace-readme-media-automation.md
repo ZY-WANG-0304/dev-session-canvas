@@ -21,7 +21,7 @@ updated_at: 2026-05-11
 
 ## 1. 背景
 
-仓库已经单独维护 `README.marketplace.md`，并通过打包脚本把它作为 Marketplace 页面展示的 README。当前素材边界已经收口为：Marketplace README 使用一张主截图和一段短 `MP4`，仓库 `README.md` / `README.en.md` 保留短 `GIF`，帮助用户快速理解“在 VS Code 里用一张画布并行管理多个开发会话”这件事。
+仓库已经单独维护 `README.marketplace.md`，并通过打包脚本把它作为 Marketplace 页面展示的 README。当前素材边界已经收口为：Marketplace README 使用一张主截图和一段短 `MP4`，仓库 `README.md` / `README.zh-CN.md` 保留短 `GIF`，帮助用户快速理解”在 VS Code 里用一张画布并行管理多个开发会话”这件事。
 
 本轮一开始尝试过基于现有 Webview harness 自动导出素材。那条路线可以稳定加载真实 `dist/webview.js`，也便于脚本化生成 GIF；但在人工对比里，harness 画面与真实 VS Code 宿主容器仍然存在明显观感差异。
 
@@ -37,7 +37,7 @@ updated_at: 2026-05-11
 ## 3. 目标
 
 - 为 `README.marketplace.md` 提供一张真实 VS Code 宿主里的主截图和一段短 `MP4`。
-- 为仓库 `README.md` / `README.en.md` 保留来自同一次真实录制会话、但按关键动作单独采集并拼装的短 `GIF`。
+- 为仓库 `README.md` / `README.zh-CN.md` 保留来自同一次真实录制会话、但按关键动作单独采集并拼装的短 `GIF`。
 - 让素材生成成为仓库内可重复执行的脚本，而不是手工录屏。
 - 让 README 继续通过仓库内稳定路径引用这些资产。
 - 在动态素材里展示真实 VS Code 宿主、真实画布 UI 和真实 shell / 文件活动链路；Claude provider 输出允许使用录制专用 deterministic wrapper，避免 README 素材受登录态、联网和模型输出漂移影响。
@@ -87,7 +87,7 @@ updated_at: 2026-05-11
 
 - 正式 README 素材使用真实 VS Code 宿主窗口自动导出，不再使用 harness 作为最终来源。
 - 动态录制入口以 `docs/skills/recording-marketplace-media/SKILL.md` 为准：先运行 `node scripts/recording-session.mjs start`，再按剧本用 `record-start` / `click` / `key` / `paste` / `gif-frame` / `record-stop` / `stop` 分段录制；历史兼容入口 `npm run generate:marketplace-media` 只输出/转发该交互式工作流，不再承诺一次性无头生成完整素材。
-- `README.marketplace.md` 继续使用 `images/marketplace/canvas-overview.png` 与 `images/marketplace/canvas-overview.mp4`，仓库 `README.md` / `README.en.md` 继续使用 `images/marketplace/canvas-overview.gif`。
+- `README.marketplace.md` 继续使用 `images/marketplace/canvas-overview.png` 与 `images/marketplace/canvas-overview.mp4`，仓库 `README.md` / `README.zh-CN.md` 继续使用 `images/marketplace/canvas-overview.gif`。
 - 脚本通过真实 Extension Development Host 按默认 surface 打开画布；录制开始前允许做可解释的场景初始化，但 `record-start` 与 `record-stop` 之间只允许通过原生鼠标、键盘和剪贴板完成用户可见操作。
 - 录制脚本里的节点创建、模板选择、provider 选择和 modal 确认都来自真实 VS Code UI，不再预摆节点，也不再通过“多次启动 VS Code + 每一帧抓图”伪装成连续流程。
 - 当前正式媒体资产的 Claude 节点由 `scripts/recording-session.mjs` 在 `PATH` 前置录制专用 `claude` wrapper 驱动；wrapper 复用 smoke fixture 的确定性输出，并把文件活动事件写回录制 runtime，确保最终画面稳定包含单文件节点。
@@ -129,7 +129,7 @@ updated_at: 2026-05-11
 2. 运行 `node scripts/recording-session.mjs start`，确认 session file 写入、真实 VS Code Extension Development Host 打开，且 `node scripts/recording-session.mjs screenshot` 能抓到完整宿主窗口。
 3. 人工打开生成的 `PNG` / `MP4` / `GIF`，确认画面带有真实 VS Code 宿主外框和编辑区容器，而不是普通浏览器页面。
 4. 人工检查动态素材，确认录制过程真实展示了 Note 正常尺寸开场、右键创建节点、中后段的 `fit view`、`Code Worker` / `Reviewer` 重命名、标题栏双击聚焦、用户手工关系连线、`Reviewer` 收到写文件指令后生成的 `.debug/release-media-demo.md` 单文件节点，以及不给 `Reviewer` 结果让路、直接继续输入 `写一首打油诗` 的并行节奏；同时确认 `GIF` 已经变成关键操作前后截图的切换，不再包含连续等待视频段。
-5. 检查 `README.marketplace.md` 继续引用 `PNG` + `MP4`、`README.md` / `README.en.md` 继续引用 `GIF`，并确认打包脚本对 README 相对资源的 final-ref 校验与 `.vscodeignore` 排除规则仍然成立。
+5. 检查 `README.marketplace.md` 继续引用 `PNG` + `MP4`、`README.md` / `README.zh-CN.md` 继续引用 `GIF`，并确认打包脚本对 README 相对资源的 final-ref 校验与 `.vscodeignore` 排除规则仍然成立。
 
 截至 2026-04-24，本设计已经完成一轮真实验证：`node --check scripts/generate-marketplace-media.mjs`、`npm run build`、`npm run typecheck` 与 `git diff --check` 全部通过；随后通过批准过的 `/bin/bash -lc "npm run generate:marketplace-media >/tmp/marketplace-media.log 2>&1"` 生成了新的素材，日志明确输出 `Composing GIF from 17 storyboard frames.`，并产出 `images/marketplace/canvas-overview.png`、`images/marketplace/canvas-overview.gif` 与 `images/marketplace/canvas-overview.mp4`。最终 `GIF` 经 `ffprobe` 验证为 `1180x738`、`11.320000s`、`18` 帧，对应的 storyboard metadata 记录了 17 张关键帧截图。
 
