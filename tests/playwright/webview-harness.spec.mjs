@@ -5092,6 +5092,7 @@ test('missing associated markdown notes show a warning instead of stale markdown
   await expect(noteNode.locator('.note-file-conflict-card')).toContainText(missingDisplayPath);
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '打开文件' })).toHaveCount(0);
   await expect(noteNode.locator('.note-file-conflict-card .note-edit-conflict-action')).toHaveText(
     '创建空文件并关联'
   );
