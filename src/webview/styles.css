@@ -1995,12 +1995,8 @@ body {
   pointer-events: none;
 }
 
-.note-edit-conflict-hint {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  left: 58px;
-  z-index: 3;
+.note-edit-conflict-hint,
+.note-file-conflict-card {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2015,7 +2011,16 @@ body {
   box-shadow: 0 10px 24px color-mix(in srgb, #000 22%, transparent);
 }
 
-.note-edit-conflict-hint span {
+.note-edit-conflict-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  left: 58px;
+  z-index: 3;
+}
+
+.note-edit-conflict-hint span,
+.note-file-conflict-copy {
   min-width: 0;
   flex: 1;
 }
@@ -2069,32 +2074,44 @@ body {
 }
 
 .note-file-warning {
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
   flex: 1;
   min-height: 0;
   width: 100%;
   box-sizing: border-box;
-  padding: 18px;
-  color: var(--vscode-descriptionForeground);
-  background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)) 68%, transparent);
-}
-
-.note-file-warning strong {
+  padding: 12px;
   color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
-  font-size: 13px;
 }
 
-.note-file-warning span,
-.note-file-warning p {
+.note-file-conflict-card {
+  width: 100%;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.note-file-conflict-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.note-file-conflict-copy strong {
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.note-file-conflict-path,
+.note-file-conflict-detail {
+  min-width: 0;
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
-.note-file-warning span {
+.note-file-conflict-path {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2102,10 +2119,8 @@ body {
   font-family: var(--vscode-editor-font-family, monospace);
 }
 
-.note-file-warning-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.note-file-conflict-detail {
+  color: var(--vscode-descriptionForeground);
 }
 
 .note-markdown-preview-copy > :first-child,

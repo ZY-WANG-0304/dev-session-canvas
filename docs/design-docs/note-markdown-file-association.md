@@ -15,7 +15,8 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
-updated_at: 2026-05-14
+  - docs/exec-plans/active/canvas-template-associated-note-modes.md
+updated_at: 2026-05-15
 ---
 
 # Note 与 Markdown 文件关联
@@ -221,7 +222,7 @@ interface NoteNodeMetadata {
 - 长篇编辑可通过现有或新增“打开文件”动作交给 VSCode 原生编辑器；该动作可以放在上下文菜单或低频操作菜单中。
 - 如果用户在画布内编辑关联 Markdown Note 时，Host 收到同一文件的外部刷新，Webview 必须保留当前 textarea 内容并进入非阻塞冲突提示；用户仍可继续编辑草稿，但失焦或快捷提交不得静默写回真实文件，必须通过 `重新加载` 或 `覆盖文件` 显式解决。
 - 如果 Host 在写回时因 `contentRevision` 不匹配拒绝旧草稿并进入 `dirty-conflict`，Webview 也必须保留本地已提交但未被 Host 接受的草稿，继续显示同一套冲突提示；不能把 Host 返回的文件当前内容当作已提交 baseline 覆盖本地草稿。
-- 如果 Webview 首次接收或重新 bootstrap 时已经是 Host 持久化的 `dirty-conflict`，且 Host 能通过 `conflictDraft.draftId` 读回草稿并把 `content` hydrate 到 Webview，则必须恢复草稿、显示冲突提示，并继续提供显式处理动作；如果没有可用草稿内容，只显示冲突警告和 `重新加载` 恢复入口，不得渲染普通预览或允许 checklist 直接写回。
+- 如果 Webview 首次接收或重新 bootstrap 时已经是 Host 持久化的 `dirty-conflict`，且 Host 能通过 `conflictDraft.draftId` 读回草稿并把 `content` hydrate 到 Webview，则必须恢复草稿、显示冲突提示，并继续提供显式处理动作；如果没有可用草稿内容，只显示与关联文件缺失 / 不可用一致的节点内冲突卡片和 `重新加载` 恢复入口，不得渲染普通预览或允许 checklist 直接写回。
 - 冲突提示在仍持有本地草稿或 Host 已 hydrate 的 `conflictDraft.content` 时提供三个显式动作，并保持 textarea 可编辑：`重新加载` 会丢弃草稿并请求 Host 重新读取关联文件以恢复 `ok` 状态；`复制草稿` 会把当前草稿写入系统剪贴板，方便用户先保留内容再决定恢复；`覆盖文件` 会用当前草稿发起 `force` 写回。没有草稿内容时只提供 `重新加载`，不提供 `复制草稿` 或 `覆盖文件`。
 
 文件写回规则：
@@ -239,23 +240,26 @@ Host 是关联文件状态的权威判断者。
 - 文件被外部修改时，Host 先比较磁盘状态 revision；revision 未变化时不读取完整内容也不广播；revision 变化后才重新读取并广播最新内容。如果节点内存在未提交编辑草稿或已提交但尚未被 Host 接受的草稿，Host 必须同时判断“用户是否已编辑草稿”和“关联文件是否相对编辑基线发生变化”：`draftContent !== baseContent` 表示用户已经编辑；`latestRemoteContent !== baseContent` 或 `contentRevision` / mtime / ctime 变化表示关联 Markdown 发生变化。两者同时成立时必须提示冲突；即使用户随后把草稿改到等于 `latestRemoteContent`，冲突也不能自动消失，必须由 `重新加载` 或 `覆盖文件` 显式解决。若用户尚未编辑草稿，则外部变化可以刷新基线而不提示。
 - 如果外部修改发生时 Host 已有该 Note 的未提交 `conflictDraft`、运行时 edit session，或者 Webview 随后带旧 `baseContentRevision` 上报草稿，Host 必须把节点置为 `dirty-conflict`，把草稿正文写入 storage draft 文件，并在持久化状态中只保留 draft 引用；普通窗口切换、焦点恢复、文件 watcher 刷新不得自动把 `dirty-conflict` 改回 `ok`。
 - VS Code 编辑器里尚未保存的同路径草稿不算作“文件被外部修改”；只有文件真正落盘后，Host 才会刷新 Note。
-- 文件被删除、移动、替换为目录、权限变更或当前 Extension Host 不可访问时，节点进入不可用状态。
-- 不可用状态下，正文区域显示警告，而不是展示过期缓存内容作为正常正文。
+- 文件被删除、移动、替换为目录、权限变更或当前 Extension Host 不可访问时，节点进入不可用状态；删除和移动都归入 `missing`，因为用户可观察到的本质都是节点关联到一个当前不存在的路径。
+- 不可用状态下，正文区域显示与无草稿 `dirty-conflict` 恢复态一致的节点内冲突卡片，而不是展示过期缓存内容作为正常正文。
 
 建议警告文案结构：
 
 ```text
-关联的 Markdown 文件不可用
-/path/or/uri/to/file.md
+关联文件缺失
+docs/plan.md 或 /path/to/file.md
 文件可能已被移动、删除，或当前环境无权访问。
+创建空文件并关联
 ```
+
+`missing` 状态只提供 `创建空文件并关联` 一个节点内动作；创建后由 watcher / refresh 自动检查并恢复关联，不提供手动“重新检查”。路径复制复用标题栏 subtitle 的复制按钮，不在冲突卡片里重复提供。节点不提供“改选文件”动作；如果用户想关联到另一个文件，可以删除当前 `Note` 并拖入目标 Markdown 文件。
 
 节点在不可用状态下仍保留：
 
 - 节点 title。
 - subtitle 文件路径。
 - 删除节点能力。
-- 尝试打开或重新读取时的失败提示。
+- 尝试打开或自动刷新时的失败提示。
 
 节点在不可用状态下不提供解除关联能力；用户可以删除节点并通过拖拽或普通 Note 流程重新创建。
 
@@ -291,6 +295,20 @@ Workspace Trust：
 - Markdown 文件关联不启动进程、不执行脚本，也不应放宽执行节点限制。
 - 在 Restricted Workspace 下是否允许“保存为 Markdown 并关联”和拖拽创建，可以按 VSCode 当前 API 能力与扩展安全声明保守收口；若允许，也只能处理用户显式确认的 `.md` / `.markdown` 文件，并继续执行所有 Host 侧校验。
 - 任何情况下，Webview 侧的路径判断都只是用户体验优化，不能代替 Host 侧安全边界。
+
+### 7.7 保存为模板时的关联处理
+
+关联 Markdown `Note` 参与画布模板保存时，不能静默退化为普通 `Note`。保存模板表单在检测到关联 Markdown `Note` 后，必须逐节点展示处理策略：
+
+- `保存为普通 Note 内容快照`：读取关联 Markdown 文件当前落盘内容，把正文写入模板；应用模板后生成普通内嵌 `Note`，不保留文件关联。
+- `仅保留 workspace 相对路径`：只把当前 workspace 内的 `.md` / `.markdown` 相对路径写入模板；应用模板时自动关联对应文件，文件不存在时创建缺失状态的关联 `Note`，由节点内提示承接恢复。
+- `保留 workspace 相对路径和文件内容`：把相对路径和当前落盘正文一起写入模板；应用模板时文件不存在则创建并写入内容，文件已存在但内容不同时创建关联 Markdown `Note` 并进入 `dirty-conflict`，把模板正文作为节点内可处理的冲突草稿。
+
+三种策略对应三种产品定位：普通快照是内容型模板，保存的是 Note 正文而不是文件关系；仅相对路径是仓库文件入口型模板，保存的是当前 workspace 中某个约定 Markdown 文件的入口，文件继续作为内容权威来源；相对路径加文件内容是文件资产 / 脚手架型模板，保存的是“这个路径下应该有这份 Markdown 初始内容”，应用时可以创建文件，并在已有文件内容不同时交给节点内冲突提示处理。
+
+只有 workspace 内文件可使用两种相对路径策略；workspace 外文件只能保存内容快照。模板不得保存 raw `resourceUri`、本机绝对路径或 `vscode-remote://...` 实现层 URI。快照和“路径+内容”策略都必须以磁盘落盘内容为输入；如果文件缺失、不可读或处于 `dirty-conflict`，保存流程不能静默使用旧 buffer。
+
+关联 Markdown `Note` 指向的路径不存在时，不区分来源是模板 path-only 应用、文件被删除、文件被移动，还是 workspace 中暂时没有该相对路径；都统一进入“关联文件缺失”节点状态。该状态不弹 modal、不阻塞模板应用，也不自动写入 workspace；节点内只提供“创建空文件并关联”。不提供“重新检查”和“复制路径”动作：前者依赖 watcher / refresh 自动完成，后者复用 subtitle 的复制路径按钮。不提供“改选文件”动作；如果用户想关联到另一个文件，可以删除当前 `Note`，并把目标 Markdown 文件拖入画板重新创建关联 `Note`。
 
 ## 8. 验证方法
 
