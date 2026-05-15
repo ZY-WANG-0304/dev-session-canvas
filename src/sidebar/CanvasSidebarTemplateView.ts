@@ -23,6 +23,7 @@ export interface CanvasSidebarTemplateItemSnapshot {
   detailTooltip: string;
   isDefault: boolean;
   canDelete: boolean;
+  canPublish: boolean;
 }
 
 interface CanvasSidebarTemplateStateSnapshot {
@@ -56,6 +57,12 @@ type SidebarTemplateInboundMessage =
     }
   | {
       type: 'sidebarTemplates/exportTemplate';
+      payload: {
+        templateId: string;
+      };
+    }
+  | {
+      type: 'sidebarTemplates/publishTemplate';
       payload: {
         templateId: string;
       };
@@ -176,6 +183,9 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       case 'sidebarTemplates/exportTemplate':
         await vscode.commands.executeCommand(COMMAND_IDS.exportTemplate, parsed.payload.templateId);
         return;
+      case 'sidebarTemplates/publishTemplate':
+        await vscode.commands.executeCommand(COMMAND_IDS.publishTemplateToMarketplace, parsed.payload.templateId);
+        return;
       case 'sidebarTemplates/deleteTemplate':
         await vscode.commands.executeCommand(COMMAND_IDS.deleteTemplate, parsed.payload.templateId);
         return;
@@ -197,7 +207,8 @@ export function getCanvasSidebarTemplateItems(
     statsLabel: formatCanvasTemplateStats(storedTemplate.template),
     detailTooltip: buildCanvasTemplateTooltip(storedTemplate),
     isDefault: storedTemplate.template.id === defaultTemplateId,
-    canDelete: storedTemplate.template.category === 'user'
+    canDelete: storedTemplate.template.category === 'user',
+    canPublish: storedTemplate.template.category === 'user' && !storedTemplate.marketplace
   }));
 }
 
@@ -268,6 +279,7 @@ function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMe
     message.type === 'sidebarTemplates/resetToTemplate' ||
     message.type === 'sidebarTemplates/setDefaultTemplate' ||
     message.type === 'sidebarTemplates/exportTemplate' ||
+    message.type === 'sidebarTemplates/publishTemplate' ||
     message.type === 'sidebarTemplates/deleteTemplate'
   ) {
     const payload = isRecord(message.payload) ? message.payload : null;
@@ -705,6 +717,18 @@ function buildSidebarTemplateHtml(
           postTemplateMessage('sidebarTemplates/exportTemplate', item.templateId);
         });
 
+        const publishAction = document.createElement('button');
+        publishAction.className = 'row-action';
+        publishAction.type = 'button';
+        publishAction.title = '发布到模板市场';
+        publishAction.setAttribute('aria-label', publishAction.title);
+        publishAction.hidden = !item.canPublish;
+        publishAction.innerHTML = '<span class="codicon codicon-cloud-upload" aria-hidden="true"></span>';
+        publishAction.addEventListener('click', (event) => {
+          event.stopPropagation();
+          postTemplateMessage('sidebarTemplates/publishTemplate', item.templateId);
+        });
+
         const deleteAction = document.createElement('button');
         deleteAction.className = 'row-action is-danger';
         deleteAction.type = 'button';
@@ -717,7 +741,7 @@ function buildSidebarTemplateHtml(
           postTemplateMessage('sidebarTemplates/deleteTemplate', item.templateId);
         });
 
-        actions.append(defaultAction, applyAction, resetAction, exportAction, deleteAction);
+        actions.append(defaultAction, applyAction, resetAction, publishAction, exportAction, deleteAction);
         titleLine.append(actions);
         row.append(main);
         return row;

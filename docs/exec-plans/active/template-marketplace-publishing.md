@@ -1,0 +1,394 @@
+# 模板市场发布能力
+
+本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。本文按照 `docs/PLANS.md` 的要求维护，目标是让后续任何协作者只靠这份计划和当前工作树，就能继续完成模板市场 Phase 2 的发布能力。
+
+## 目标与全局图景
+
+这次变更让模板市场从“只能浏览和安装官方种子模板”推进到“登录用户可以把本地模板发布到市场”。完成后，开发者可以在本地 Worker 测试环境中用 GitHub OAuth 配置或测试认证身份调用发布 API，Worker 会校验模板 JSON、写入 R2 对象、写入 D1 元数据，并让新模板出现在公开列表和详情接口中。浏览器 Web 端和 VSCode 插件内入口随后接入同一组发布接口，不另起一套模板格式。
+
+本计划不等于对外公布。模板市场仍在 `feature/templates-marketplace` 长期集成分支内推进，只有 `docs/product-specs/template-marketplace.md` 中 Phase 1-4 全部完成后才进入正式发布收口。
+
+## 进度
+
+- [x] (2026-05-14 14:20 +0800) 确认本地 OAuth secret 保存方式：真实 `apps/template-marketplace/.dev.vars` 被 `.gitignore` 忽略，仓库只跟踪 `apps/template-marketplace/.dev.vars.example`。
+- [x] (2026-05-14 14:30 +0800) 从最新 `origin/feature/templates-marketplace` 建立 `feat-template-marketplace-publishing` 主题分支，并保留 secret 示例文件改动。
+- [x] (2026-05-14 14:55 +0800) 梳理并扩展共享发布请求 schema，覆盖模板 JSON、描述、README、标签、缩略图和大小限制；新增 shared 测试覆盖合法请求、非法边索引和 slug 规范化。
+- [x] (2026-05-14 15:10 +0800) Worker 增加 GitHub OAuth / session 基础结构，并提供只在 `MARKETPLACE_ALLOW_TEST_AUTH=true` 时开启的 fake auth header。
+- [x] (2026-05-14 15:25 +0800) Worker 增加 `POST /api/v1/templates` 首版：认证后校验请求、写入 R2 `template.json` / `thumbnail.png`、写入 D1 用户 / 模板 / 版本 / 标签 / 发布日统计。
+- [x] (2026-05-14 16:05 +0800) Worker 增加 `POST /api/v1/templates/:id/versions`，要求当前 GitHub login 与原发布者一致，写入新版本 R2 对象、插入 `template_versions`、更新 `templates.latest_version_id` 和发布日统计。
+- [x] (2026-05-14 15:50 +0800) Web 端增加 `/templates/publish` 发布入口和发布表单，支持 GitHub 登录提示、模板 JSON 文件读取、PNG 缩略图读取、metadata 输入、提交发布和成功后查看详情。
+- [x] (2026-05-15 00:30 +0800) VSCode 插件内增加“从自建本地模板发布”入口：命令面板过滤自建模板，模板侧栏自建行显示发布 icon action，发布调用 VSCode GitHub authentication 与市场 token exchange。
+- [x] (2026-05-15 00:45 +0800) 增加 `GET /api/v1/me/templates` 和浏览器 `/templates/me` 页面，登录发布者可以查看当前 GitHub 账号发布的模板列表并跳转详情。
+- [x] (2026-05-15 01:05 +0800) 增加共享布局 PNG 缩略图生成器，浏览器发布页选择模板 JSON 后自动生成缩略图，VSCode 发布请求也自动携带 `thumbnailPngBase64`。
+- [x] (2026-05-15 01:15 +0800) 补齐画布右键发布入口：从当前画布保存为自建模板后继续走同一发布命令；侧边栏和命令面板仍只发布自建本地模板。
+- [x] (2026-05-15 01:25 +0800) 补齐发布路径自动化测试、构建验证，并同步产品 / 设计 / UI 文档中的新增口径。
+- [x] (2026-05-15 02:16 +0800) 在浏览器 Templates 列表和 VSCode 市场面板 header 增加上传/发布自建模板入口，并同步 UI / 产品 / 设计文档与源码断言。
+- [x] (2026-05-15 02:29 +0800) 完善浏览器 OAuth 发布体验：发布页和个人模板页登录后回到发起页面；Worker 只接受 `/templates...` 同源 return path，避免开放重定向。
+- [x] (2026-05-15 02:40 +0800) 增加浏览器市场退出登录入口和 `POST /api/v1/auth/logout`，便于发布者切换账号或重复执行 OAuth smoke。
+- [x] (2026-05-15 07:09 +0800) 对齐自动缩略图节点色板：Agent / Terminal / Note accent 色分别镜像插件画布节点主题色 #22c55e、#38bdf8、#a78bfa，并增加源码漂移断言。
+- [x] (2026-05-15 08:29 +0800) 修复浏览器发布页文本输入白屏：表单输入统一先提取字符串再更新 React state，并补充源码回归断言、本地 Playwright 输入烟测和 preview 部署。
+- [x] (2026-05-15 08:49 +0800) 补齐 publish 按钮交互反馈：发布页在缺少模板 JSON 时显示明确错误，提交中展示 loading 状态，提交成功后在按钮附近显示结果；新增 Playwright publish 页端到端烟测并纳入 `npm run test:marketplace`。
+- [x] (2026-05-15 19:50 +0800) 扩展完整 UI 操作 E2E：浏览器覆盖 Templates 列表 / 详情 / My Templates / Publish 页面；VSCode 覆盖市场面板列表筛选、详情切换、版本菜单关闭、详情返回、安装写入本地模板库，以及从插件市场面板发布自建模板后打开详情页。
+- [x] (2026-05-15 22:46 +0800) 收口发布页手动验收反馈：自动缩略图去掉左上装饰标题条；非法 JSON 上传立即显示错误；单行字段回车不再触发发布；Changelog 改为多行；发布成功跳转成功页；Templates 列表与详情页补充发布者信息。
+- [x] (2026-05-15 23:51 +0800) 继续收口发布页验收反馈：模板 JSON 错误提示移动到上传控件附近；新增 slug availability API，编辑 slug 时即时检查唯一性并在字段下方显示冲突 / 可用状态。
+
+## 意外与发现
+
+- 观察：当前仓库此前只在 `.vscodeignore` 排除了 `.env`，没有在 `.gitignore` 中忽略本地 Worker secret 文件。
+  证据：新增 `.gitignore` 规则后，`git check-ignore -v apps/template-marketplace/.dev.vars` 命中 `apps/template-marketplace/.dev.vars`，而 `.dev.vars.example` 被显式放行。
+
+- 观察：发布 API 可以在不访问真实 GitHub 网络的情况下自动化验证认证与写入边界。
+  证据：`npm run test:marketplace-api` 使用 `MARKETPLACE_ALLOW_TEST_AUTH=true` 和 `x-marketplace-test-github-login` 覆盖 201 发布、401 未认证、400 非法模板请求；fake auth 未开启时同一 header 不生效。
+
+- 观察：VSCode token exchange 返回的是认证用户形状（`githubUserId` / `githubLogin`），不是模板详情中的 publisher 形状（`id` / `githubLogin`）。
+  证据：插件侧 `parseMarketplaceTokenResponse()` 已单独解析认证用户，避免把 token exchange 响应误走模板详情 publisher parser。
+
+- 观察：自动缩略图可以在不依赖浏览器 Canvas 或服务端渲染的情况下由共享 TypeScript 生成。
+  证据：`packages/marketplace-shared/src/thumbnail.test.ts` 覆盖 PNG signature、base64 payload 和小于 1MB 的固定尺寸输出；`npm run test:marketplace-shared` 通过 14 个测试。
+
+- 观察：React 表单事件对象不能在 `setForm((current) => ...)` updater 中延迟读取。
+  证据：`/templates/publish` 上传模板 JSON 后编辑 Description 曾触发 `TypeError: Cannot read properties of null (reading 'value')`；修复后 headless Chromium 依次编辑 Name、Slug、Description、Tags、README、Changelog 和 Template JSON preview，无 `pageerror` 且发布按钮仍可见。
+
+- 观察：发布按钮“没有反应”通常是因为缺少显式状态回显，而不是没有触发提交。
+  证据：现在在未选择模板 JSON 时点击按钮会在按钮附近直接显示“Choose a template JSON before publishing.”；提交中会显示“Publishing template...”；提交成功后会显示结果和 `View template` 链接。
+
+- 观察：浏览器市场基路径使用 Vite `base: "/templates/"` 时，`/templates` 在本地 dev server 下会显示 base URL 提示页，不能作为可点击返回链接的唯一目标。
+  证据：浏览器详情页点击 `Back to all templates` 曾进入 “The server is configured with a public base URL of /templates/ ...”；`getMarketplaceHomeHref()` 改为 `/templates/` 后，详情返回列表 E2E 通过。
+
+- 观察：发布表单的单行输入字段默认会把 Enter 当成 submit，这和用户填写 metadata 的预期不一致。
+  证据：浏览器 E2E 现在在 Slug 单行字段按 Enter 后断言 `POST /api/v1/templates` 请求数量不变，随后点击按钮才提交；同一 E2E 还覆盖非法 JSON 错误、Changelog textarea、成功页跳转和作者信息展示。
+
+- 观察：slug 冲突如果只等到提交后由 `POST /api/v1/templates` 返回 409，用户会在填写表单末尾才知道需要改 slug。
+  证据：Worker 新增 `GET /api/v1/templates/slug-availability?slug=...`；浏览器 E2E 在发布页把 slug 改成 `review-loop` 时看到“Slug is already used by another template.”，再改成 `codex-smoke-template` 时看到“Slug is available.”。
+
+## 决策记录
+
+- 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；仓库跟踪 `.dev.vars.example` 作为空值模板。
+  理由：发布能力需要真实 OAuth 配置才能做浏览器登录 smoke，但 secret 不能进入 Git、文档或 VSIX 打包产物。示例文件能告诉协作者需要哪些 key，同时避免泄漏真实值。
+  日期/作者：2026-05-14 / Codex。
+
+- 决策：发布 API 第一版使用 JSON 请求体，而不是 multipart form-data；请求体中包含市场元数据、模板 JSON 对象和可选 PNG 缩略图 base64。
+  理由：当前 Worker、Web 测试和 fake R2 已经以 JSON contract 为主，先用 JSON 能快速获得可自动化验证的 D1/R2 写入闭环；后续 Web 表单仍可把用户选择的文件解析为同一个 JSON contract，再决定是否需要 multipart 优化。
+  日期/作者：2026-05-14 / Codex。
+
+- 决策：模板包大小第一版按可配置上限处理，默认值为 5MB。
+  理由：产品规格里仍把具体大小列为待确认并建议总包 5MB。实现需要一个安全默认值才能校验上传，本轮把 5MB 作为默认配置而不是不可更改的产品结论；若后续产品调整，只需同步常量、环境变量和文档。
+  日期/作者：2026-05-14 / Codex。
+
+- 决策：自动缩略图第一版使用共享客户端布局 PNG renderer，而不是服务端截图或外部图像依赖。
+  理由：浏览器发布页和 VSCode 宿主都能拿到同一份 `CanvasTemplateDocument`，共享 renderer 可以在两端生成同样的 640x360 PNG，并保持 R2 缩略图小于当前 1MB 上限；后续若要换成真实画布截图，只需要替换 renderer，不改变发布 API contract。
+  日期/作者：2026-05-15 / Codex。
+
+- 决策：自动缩略图中节点类型的 accent 色必须镜像插件画布节点主题色，不能使用独立市场色板。
+  理由：缩略图是模板布局的功能性预览，用户应能把市场预览中的 Agent / Terminal / Note 颜色直接映射到插件画布中的节点类型；市场品牌色只负责页面和整体背景，不替代节点类型语义。
+  日期/作者：2026-05-15 / Codex。
+
+## 结果与复盘
+
+当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏 / 画布右键发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
+
+2026-05-15 继续完成 VSCode 侧发布入口：`devSessionCanvas.publishTemplateToMarketplace` 命令、侧栏自建模板行 `cloud-upload` action、画布右键“发布到模板市场”、宿主 Quick Input 发布字段、VSCode GitHub session 换取 marketplace token、`context.secrets` token 存储和 `POST /api/v1/templates` 调用已接入。真实 preview OAuth smoke 与端到端 UI smoke 仍是发布前验证项；Phase 3-4 社区互动、统计、完整版本管理和治理能力不属于本 Phase 2 收口。
+
+同日继续补齐发布者个人页基础能力：Worker 新增 `GET /api/v1/me/templates`，D1 repository 可按当前 GitHub user id 过滤已发布模板，浏览器端新增 `/templates/me` 页面和 `My Templates` 入口。该页面当前只展示当前账号已发布模板列表和详情跳转，不包含 Phase 3 的趋势图或完整 Dashboard。
+
+2026-05-15 晚补齐完整 UI 操作 E2E：`scripts/test-template-marketplace-publish-page.mjs` 从单页 publish smoke 扩展为浏览器市场多页面 E2E，使用 Playwright route fixture 覆盖列表搜索 / tag / sort、详情 README 主体与下载链接、登录前后 My Templates、发布表单文件读取和发布成功跳转；新增 `scripts/run-template-marketplace-vscode-e2e.mjs` 与 `tests/vscode-smoke/template-marketplace-tests.cjs`，用本地 HTTP fixture 驱动 VSCode 市场 Webview 的真实操作，并通过测试命令 probe 验证详情不是嵌在列表下方、版本菜单可关闭、安装会写入本地模板目录、插件内发布会完成 GitHub token exchange 和 `POST /api/v1/templates`。
+
+同日晚继续按手动验收反馈收口浏览器市场细节：列表卡片和详情页标题区现在显示发布者；发布页上传非法 JSON 会在文件选择后立即报错；单行字段阻止 Enter 隐式提交；Changelog 改为 textarea；成功发布后进入 `/templates/publish/success` 成功页，再由用户点击跳转到模板详情。自动缩略图保留节点布局和类型色，不再绘制左上角标题 / 子标题装饰条。
+
+23:51 继续优化发布页错误反馈位置和 slug 唯一性提示：模板 JSON 相关错误现在绑定在 Step 1 上传控件附近；slug 字段在编辑时通过公开 availability API 检查 D1 / seed 中是否已有同名模板，并把检查中、可用、冲突、格式错误都显示在字段下方。提交时仍保留 Worker 侧唯一索引和 `POST /api/v1/templates` 409 作为最终保护。
+
+## 上下文与定向
+
+模板市场浏览与安装能力已经在 `apps/template-marketplace/` 和 `packages/marketplace-shared/` 中落地。`packages/marketplace-shared/src/index.ts` 定义浏览列表、详情、下载响应和 seed 数据；`packages/marketplace-shared/src/schema.ts` 定义 D1/Drizzle 表，包括 `users`、`templates`、`template_versions`、`template_tags`、`template_daily_stats`、`reports`、`admin_roles` 和 `admin_audit_logs`。`apps/template-marketplace/src/worker/app.ts` 暴露 Hono Worker API，目前只有公开读取接口：健康检查、列表、详情、下载和缩略图。`apps/template-marketplace/src/worker/repository.ts` 通过 `SeedTemplateRepository` 与 `D1TemplateRepository` 封装读取 D1 / seed 的逻辑，后续发布写入也应进入这个边界，不要把 SQL 散落在路由里。
+
+“模板 JSON”指 `src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。市场发布不能定义另一套不兼容格式；发布 API 必须校验这个结构，并把真正下载的 `template.json` 继续保存为同一格式。
+
+“R2”是 Cloudflare 对象存储，当前下载路径已经从 `TEMPLATE_BUCKET` 读取 `templates/{templateId}/versions/{versionNumber}/template.json` 和 `thumbnail.png`。“D1”是 Cloudflare SQLite 数据库，当前 public repository 只读取 `published` 模板和 `published` 版本，发布写入也必须维护这个可见性边界。
+
+## 工作计划
+
+第一步补本地配置保护：根 `.gitignore` 忽略 `.env`、`.env.local`、`.env.*.local`、`apps/template-marketplace/.dev.vars` 和 `apps/template-marketplace/.dev.vars.*`，并跟踪 `apps/template-marketplace/.dev.vars.example`。这一步已经完成。
+
+第二步在 `packages/marketplace-shared/src/index.ts` 增加发布请求和响应 contract。需要定义发布模板请求、发布新版本请求、发布响应、模板文档 schema、标签 / slug / README / changelog / thumbnail 的限制。schema 只描述跨端合同，不导入 VSCode 扩展源码。
+
+第三步在 Worker 中新增认证模块。`apps/template-marketplace/src/worker/auth.ts` 负责解析测试认证 header、校验浏览器 session cookie、生成 GitHub OAuth start URL、处理 callback code exchange、签发 HttpOnly session cookie。测试认证必须由 `MARKETPLACE_ALLOW_TEST_AUTH=true` 显式开启，避免公开部署接受伪造 header。
+
+第四步扩展 `D1TemplateRepository`。新增方法负责 upsert 发布者用户、检查 slug 是否存在、创建模板、创建版本、写 tags、记录 `template_daily_stats.publish_count`。路由层负责把模板 JSON 和缩略图写入 R2，repository 负责 D1 元数据。失败响应使用 `makeMarketplaceApiError()`，不要返回裸错误。
+
+第五步补 Web 端发布表单和 VSCode 发布入口。Web 表单读取本地 JSON 文件，允许填写名称、描述、README、tags、changelog 和可选 PNG 缩略图；VSCode 入口从已有自建本地模板列表中选择模板，宿主通过 VSCode GitHub authentication 换市场 token 后调用同一 API。这一步已经完成。
+
+第六步补自动缩略图和入口一致性。共享 `packages/marketplace-shared/src/thumbnail.ts` 根据节点布局生成 PNG，浏览器发布页在选择模板 JSON 后生成默认缩略图并允许自定义 PNG 覆盖，VSCode 发布请求自动带上生成结果。画布右键入口先把当前布局保存为用户模板，再复用同一发布命令。
+
+## 具体步骤
+
+在仓库根目录执行以下命令查看当前分支和本地改动：
+
+    git status --short --branch
+
+预期当前分支是 `feat-template-marketplace-publishing`，跟踪 `origin/feature/templates-marketplace`，并只包含 `.gitignore`、`.dev.vars.example` 以及用户已有截图等未跟踪素材。
+
+实现和验证时优先运行：
+
+    npm run test:marketplace-shared
+    npm run test:marketplace-api
+    npm run typecheck:marketplace
+    git diff --check
+
+发布能力与 VSCode 面板接入后，再补跑：
+
+    npm run test:canvas-templates
+    npm run build:marketplace
+    npm run build
+
+## 验证与验收
+
+发布 API 的最小验收是：在测试环境中使用 fake auth 调用 `POST /api/v1/templates`，响应 201，返回新模板 slug、版本号、sha256 和 `storageMode: "d1"`；随后调用 `GET /api/v1/templates/:slug` 能读到该模板，调用 `GET /api/v1/templates/:slug/download` 能从 fake R2 读取刚写入的模板 JSON。未经认证调用发布接口应返回 401；没有 D1 或 R2 binding 时应返回结构化 503；超出大小限制、非法模板 JSON、重复 slug 或非法缩略图应返回结构化 400/409。
+
+浏览器发布表单的验收是：本地打开市场 Web 页面，登录态可见时显示发布入口，选择模板 JSON 并提交后进入发布成功状态；如果模板不合法，应在表单中显示 Worker 返回的错误信息。VSCode 发布入口的验收是：从插件内选择一个用户模板，触发 GitHub 登录后能把该模板发布到同一市场 API。
+
+UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器和 VSCode 两段。浏览器段必须覆盖 Templates 列表、模板详情、My Templates、Publish；VSCode 段必须覆盖插件市场面板的筛选、详情、返回、版本菜单、安装和发布入口。
+
+## 幂等性与恢复
+
+`.dev.vars.example` 可以安全重复复制为 `.dev.vars`，真实 `.dev.vars` 已被 Git 忽略。发布 API 测试使用 fake D1 / fake R2，不写远端 Cloudflare 资源。真实 preview OAuth 和 R2/D1 写入只应在用户明确要求部署或 smoke 时执行，并通过 Wrangler secret 配置敏感值。
+
+如果发布 API 写入 R2 成功但 D1 写入失败，当前最小实现可能留下不可见的 R2 orphan object；后续需要在 Worker 支持 delete 或改为更严格的预检查 / 批处理后收口。此风险如果在本轮未解决，必须登记到 `docs/exec-plans/tech-debt-tracker.md`。
+
+## 证据与备注
+
+本轮初始化阶段的安全检查输出：
+
+    apps/template-marketplace/.dev.vars exists
+    .gitignore:23:apps/template-marketplace/.dev.vars apps/template-marketplace/.dev.vars
+    GITHUB_CLIENT_ID: set
+    GITHUB_CLIENT_SECRET: set
+    MARKETPLACE_ADMIN_GITHUB_LOGINS: set
+    MARKETPLACE_SESSION_SECRET: set
+    MARKETPLACE_TOKEN_SECRET: set
+
+本轮第一段后端验证输出：
+
+    npm run test:marketplace-shared
+    ✓ src/thumbnail.test.ts (2 tests)
+    ✓ src/index.test.ts (12 tests)
+
+    npm run test:marketplace-api
+    ✓ src/worker/app.test.ts (23 tests)
+    ✓ src/worker/repository.test.ts (8 tests)
+    Test Files  5 passed (5)
+    Tests  41 passed (41)
+
+本轮 Phase 2 收口验证输出：
+
+    npm run test:marketplace-shared
+    Test Files  2 passed (2)
+    Tests  14 passed (14)
+
+    npm run test:marketplace-api
+    Test Files  5 passed (5)
+    Tests  43 passed (43)
+
+    npm run test:marketplace
+    Test Files  12 passed (12)
+    Tests  80 passed (80)
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run typecheck
+    <passed>
+
+    npm run build:marketplace
+    ✓ built in 1.78s
+
+    npm run build
+    <passed>
+
+    git diff --check
+    <no output>
+
+本轮 JSON 错误位置与 slug 即时唯一性检查验证输出：
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run test:marketplace-api
+    Test Files  5 passed (5)
+    Tests  47 passed (47)
+
+    npm run test:marketplace-web
+    Test Files  5 passed (5)
+    Tests  24 passed (24)
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    npm run test:marketplace
+    Test Files  2 passed (2)   # marketplace-shared
+    Tests  16 passed (16)
+    Test Files  5 passed (5)   # marketplace-api
+    Tests  47 passed (47)
+    Test Files  5 passed (5)   # marketplace-web
+    Tests  24 passed (24)
+    marketplace browser page e2e passed
+    Template marketplace VS Code UI E2E passed.
+
+    npm run test:marketplace
+    Test Files  11 passed (11)
+    Tests  76 passed (76)
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run typecheck
+    <passed>
+
+    git diff --check
+    <no output>
+
+    npm run build:marketplace
+    ✓ built in 1.80s
+
+    npm run build
+    <passed>
+
+本轮 Phase 2 OAuth 回跳与 preview 更新验证输出：
+
+    npm run test:marketplace
+    Test Files  12 passed (12)
+    Tests  82 passed (82)
+
+    npm run build:marketplace
+    ✓ built in 1.84s
+
+    git diff --check
+    <no output>
+
+    npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: d85459b6-2b21-45d6-af48-af7ec4628163
+
+本轮 Phase 2 退出登录收口验证输出：
+
+    npm run test:marketplace
+    Test Files  12 passed (12)
+    Tests  83 passed (83)
+
+    npm run build:marketplace
+    ✓ built in 1.78s
+
+    git diff --check
+    <no output>
+
+    npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: ef9f1e8f-875f-46d6-ab0c-2824504805ac
+
+本轮自动缩略图节点色板对齐验证输出：
+
+    npm run test:marketplace-shared
+    Test Files  2 passed (2)
+    Tests  15 passed (15)
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run build:marketplace
+    ✓ built in 1.83s
+
+    git diff --check
+    <no output>
+
+    npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: 8242d36b-f162-41d9-ab82-0c19c821c3df
+
+本轮浏览器发布页输入白屏修复验证输出：
+
+    npm run test:marketplace
+    Test Files  12 passed (12)
+    Tests  84 passed (84)
+
+    npm run build:marketplace
+    ✓ built in 1.69s
+
+    npm run test:marketplace-e2e
+    marketplace publish page playwright smoke passed
+
+    npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: 0e4bf965-14f9-4f15-9f06-80a8959d6add
+
+本轮完整 UI 操作 E2E 验证输出：
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    npm run test:marketplace-vscode-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    npm run test:marketplace-e2e
+    marketplace browser page e2e passed
+    Template marketplace VS Code UI E2E passed.
+
+    npm run test:marketplace
+    Test Files  2 passed (2)   # marketplace-shared
+    Tests  15 passed (15)
+    Test Files  5 passed (5)   # marketplace-api
+    Tests  46 passed (46)
+    Test Files  5 passed (5)   # marketplace-web
+    Tests  23 passed (23)
+    marketplace browser page e2e passed
+    Template marketplace VS Code UI E2E passed.
+
+    npm run typecheck
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    git diff --check
+    <no output>
+
+本轮发布页细节与作者信息修复验证输出：
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run test:marketplace-shared
+    Test Files  2 passed (2)
+    Tests  16 passed (16)
+
+    npm run test:marketplace-web
+    Test Files  5 passed (5)
+    Tests  23 passed (23)
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    npm run test:marketplace
+    Test Files  2 passed (2)   # marketplace-shared
+    Tests  16 passed (16)
+    Test Files  5 passed (5)   # marketplace-api
+    Tests  46 passed (46)
+    Test Files  5 passed (5)   # marketplace-web
+    Tests  23 passed (23)
+    marketplace browser page e2e passed
+    Template marketplace VS Code UI E2E passed.
+
+    git diff --check
+    <no output>
+
+## 接口与依赖
+
+需要在 `packages/marketplace-shared/src/index.ts` 导出以下跨端 contract：发布请求 schema、发布新版本请求 schema、发布响应类型、模板包大小默认上限、缩略图大小上限和 canvas template document schema。Worker、Web 和 VSCode 只能依赖这些 contract，而不是复制校验规则。
+
+需要在 `apps/template-marketplace/src/worker/auth.ts` 提供认证 helper：从 request/env 解析当前用户、创建 GitHub OAuth URL、处理 callback、签发和校验 session cookie。需要在 `apps/template-marketplace/src/worker/publish.ts` 或 repository 中提供发布 helper：校验请求、生成 object key、计算 sha256、写 R2、写 D1。
+
+本计划当前修订记录：2026-05-15 / Codex 更新，原因是 Phase 2 发布能力已完成本地代码闭环，并补齐浏览器与 VSCode 插件内完整 UI 操作 E2E 验证证据；同日晚追加发布页手动验收反馈修复、slug 即时唯一性检查与验证证据。

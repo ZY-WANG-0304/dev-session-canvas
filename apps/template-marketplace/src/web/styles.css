@@ -8,6 +8,9 @@
   --market-mist: 248 248 248;
   --market-paper: 255 255 255;
   --market-line: 222 222 222;
+  --market-error: 198 40 40;
+  --market-error-bg: 255 241 240;
+  --market-error-line: 241 167 160;
   --market-accent: 72 120 240;
   --market-accent-text: 255 255 255;
   --market-nav: 0 0 0;
@@ -29,6 +32,9 @@
   --market-mist: 248 248 248;
   --market-paper: 255 255 255;
   --market-line: 222 222 222;
+  --market-error: 198 40 40;
+  --market-error-bg: 255 241 240;
+  --market-error-line: 241 167 160;
   --market-accent: 72 120 240;
   --market-accent-text: 255 255 255;
   --market-nav: 0 0 0;
@@ -49,6 +55,9 @@
   --market-mist: 30 30 30;
   --market-paper: 37 37 38;
   --market-line: 63 63 70;
+  --market-error: 255 180 171;
+  --market-error-bg: 58 29 27;
+  --market-error-line: 140 58 52;
   --market-accent: 72 120 240;
   --market-accent-text: 255 255 255;
   --market-nav: 0 0 0;
@@ -70,6 +79,9 @@
     --market-mist: 30 30 30;
     --market-paper: 37 37 38;
     --market-line: 63 63 70;
+    --market-error: 255 180 171;
+    --market-error-bg: 58 29 27;
+    --market-error-line: 140 58 52;
     --market-accent: 72 120 240;
     --market-accent-text: 255 255 255;
     --market-nav: 0 0 0;

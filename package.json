@@ -80,6 +80,7 @@
     "onCommand:devSessionCanvas.resetToDefaultTemplate",
     "onCommand:devSessionCanvas.saveCanvasAsTemplate",
     "onCommand:devSessionCanvas.openTemplateMarketplace",
+    "onCommand:devSessionCanvas.publishTemplateToMarketplace",
     "onCommand:devSessionCanvas.importTemplate",
     "onCommand:devSessionCanvas.exportTemplate",
     "onCommand:devSessionCanvas.deleteTemplate",
@@ -272,6 +273,11 @@
         "command": "devSessionCanvas.openTemplateMarketplace",
         "title": "%command.openTemplateMarketplace.title%",
         "icon": "$(globe)"
+      },
+      {
+        "command": "devSessionCanvas.publishTemplateToMarketplace",
+        "title": "%command.publishTemplateToMarketplace.title%",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "devSessionCanvas.importTemplate",
@@ -630,8 +636,11 @@
     "typecheck": "tsc --noEmit",
     "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck",
     "build:marketplace": "npm run -w @dev-session-canvas/template-marketplace build",
-    "test:marketplace": "npm run typecheck:marketplace && npm run test:marketplace-shared && npm run test:marketplace-api && npm run test:marketplace-web",
+    "test:marketplace": "npm run typecheck:marketplace && npm run test:marketplace-shared && npm run test:marketplace-api && npm run test:marketplace-web && npm run test:marketplace-e2e",
     "test:marketplace-api": "npm run -w @dev-session-canvas/template-marketplace test:api",
+    "test:marketplace-e2e": "npm run test:marketplace-browser-e2e && npm run test:marketplace-vscode-e2e",
+    "test:marketplace-browser-e2e": "node scripts/test-template-marketplace-publish-page.mjs",
+    "test:marketplace-vscode-e2e": "npm run build && node scripts/run-template-marketplace-vscode-e2e.mjs",
     "test:marketplace-shared": "npm run -w @dev-session-canvas/marketplace-shared test",
     "typecheck:marketplace": "npm run -w @dev-session-canvas/marketplace-shared typecheck && npm run -w @dev-session-canvas/template-marketplace typecheck",
     "test:marketplace-web": "npm run -w @dev-session-canvas/template-marketplace test:web"

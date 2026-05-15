@@ -5405,6 +5405,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/saveCanvasAsTemplate':
         void vscode.commands.executeCommand(COMMAND_IDS.saveCanvasAsTemplate);
         return;
+      case 'webview/publishCanvasTemplate':
+        void vscode.commands.executeCommand(COMMAND_IDS.publishTemplateToMarketplace, {
+          publishCurrentCanvas: true
+        });
+        return;
     }
   }
 
