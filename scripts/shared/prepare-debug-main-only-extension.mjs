@@ -2,9 +2,15 @@ import path from 'node:path';
 import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultOutputDir = path.join(repoRoot, '.debug', 'vscode-extension-main-only');
-const copiedEntries = ['dist', 'images', 'resources', 'package.nls.json'];
+const copiedEntries = [
+  'dist',
+  'images',
+  'resources',
+  'package.nls.json',
+  path.join('scripts', 'runtime', 'claude-file-event-hook.cjs')
+];
 
 async function pathExists(targetPath) {
   try {
@@ -22,6 +28,7 @@ async function copyIfPresent(sourcePath, targetPath) {
   if (!(await pathExists(sourcePath))) {
     return;
   }
+  await mkdir(path.dirname(targetPath), { recursive: true });
   await cp(sourcePath, targetPath, { recursive: true });
 }
 

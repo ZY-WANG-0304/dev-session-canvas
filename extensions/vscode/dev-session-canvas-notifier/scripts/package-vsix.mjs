@@ -13,7 +13,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-import { resolveCommand } from '../../../../scripts/package-vsix.mjs';
+import { resolveCommand } from '../../../../scripts/release/package-vsix.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(packageRoot, '../../..');

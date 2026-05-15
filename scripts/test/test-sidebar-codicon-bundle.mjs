@@ -8,7 +8,7 @@ import esbuild from 'esbuild';
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-sidebar-codicon-'));
 
 try {
-  const buildScriptContents = await readFile('scripts/build.mjs', 'utf8');
+  const buildScriptContents = await readFile('scripts/build/build.mjs', 'utf8');
   assert.match(
     buildScriptContents,
     /sidebar-codicon\.css/,

@@ -217,12 +217,12 @@ updated_at: 2026-05-15
 
 - 2026-04-13 运行 `npm run typecheck`，通过。
 - 2026-04-13 运行 `npm run test:webview`，23 个 Playwright 用例全部通过；其中新增覆盖 `body` 级 theme vars、同类主题切换、稀疏 `terminal.*` token 与当前 surface 背景 fallback，确认 `Agent` / `Terminal` 内嵌 `xterm` 不再只在少数主题下正确跟随。
-- 2026-04-13 追加运行 `node scripts/run-playwright-webview.mjs --update-snapshots`，23 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
+- 2026-04-13 追加运行 `node scripts/test/run-playwright-webview.mjs --update-snapshots`，23 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
 - 2026-04-13 运行 `npm run test:smoke`，通过；覆盖 trusted / restricted、real reopen、fake systemd-user / fallback 与 remote-ssh real reopen，确认默认 `Dev Session Canvas: 打开画布` 走 `panel` route。
-- 2026-04-13 追加运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，通过；真实验证 `Dark Modern` / `Light Modern` 在 `panel` 与 `editor` 两种 surface 下都能让内嵌 `xterm` 正确切换背景、前景与 ANSI 蓝色，并确认当主题缺失 `terminal.background` 时会按当前 surface 回退到 `panel.background` 或 `editor.background`。
+- 2026-04-13 追加运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，通过；真实验证 `Dark Modern` / `Light Modern` 在 `panel` 与 `editor` 两种 surface 下都能让内嵌 `xterm` 正确切换背景、前景与 ANSI 蓝色，并确认当主题缺失 `terminal.background` 时会按当前 surface 回退到 `panel.background` 或 `editor.background`。
 - “用户手动把 view 拖到 Secondary Sidebar 后再 reveal” 这一工作台布局动作，本轮未单独脚本化自动化；当前仅确认扩展继续使用可移动 `WebviewView` / view container 路线，且所有文案都明确写为“位置由 VSCode 原生记住”，没有把它误写成固定底部 Panel。
 - 2026-05-11 运行 `npm run typecheck`，通过。
 - 2026-05-11 运行 `npm run test:webview`，129 个 Playwright 用例全部通过；其中新增覆盖远距离节点状态下点击 fit view 后 viewport scale 可低于 `0.4`、全部节点仍进入浏览器视口，默认 `title` 概览会弱化 Note 正文并在内容区显示标题，且 `overviewMode = none` 时即使低于概览倍率也不会进入概览模式。
-- 2026-05-11 追加运行 `node scripts/run-playwright-webview.mjs -g "overview zoom threshold runtime config|fit view can zoom below|overview mode none"`，3 个 Playwright 用例通过；其中新增覆盖 `overviewZoomThreshold` 运行时从自定义 `0.5` 降回默认 `0.2` 后，当前画布可即时进入或退出 `title` 概览。
+- 2026-05-11 追加运行 `node scripts/test/run-playwright-webview.mjs -g "overview zoom threshold runtime config|fit view can zoom below|overview mode none"`，3 个 Playwright 用例通过；其中新增覆盖 `overviewZoomThreshold` 运行时从自定义 `0.5` 降回默认 `0.2` 后，当前画布可即时进入或退出 `title` 概览。
 - 2026-05-15 运行 `npm run typecheck`，通过。
 - 2026-05-15 运行 `npm run test:webview`，150 个 Playwright 用例全部通过；其中 `fit view can zoom below the comfort minimum and enters overview mode for distant nodes` 已覆盖低倍率 `title` 概览中 `Agent` 的 `.node-overview-status` 会显示当前状态文本与状态码，而 `Note` 不显示概览状态标记。

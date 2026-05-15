@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { toggleNoteMarkdownChecklistAtLine } from '../src/common/noteMarkdownChecklist.ts';
+import { toggleNoteMarkdownChecklistAtLine } from '../../src/common/noteMarkdownChecklist.ts';
 
 function run(): void {
   assert.equal(

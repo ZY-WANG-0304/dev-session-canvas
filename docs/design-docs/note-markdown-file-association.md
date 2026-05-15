@@ -352,7 +352,7 @@ Workspace Trust：
 - `npm run test:webview -- --grep "associated markdown note (editing blocks|warns when an edited draft sees a file revision change|accepts a file revision change before the draft is edited|keeps|restores a persisted dirty-conflict draft|persists an edit draft)"` 通过，覆盖编辑期外部刷新提示后 textarea 仍可继续编辑、失焦不静默写回、显式覆盖携带原始 base revision、用户已编辑草稿后同内容 revision-only 变化也提示、用户尚未编辑草稿时 revision 变化只更新基线，以及已持久化 `dirty-conflict` 草稿恢复后仍可编辑。
 - `npm run test:note-markdown-file-association` 通过，复核关联 Markdown 纯函数基线。
 - `node --check tests/vscode-smoke/extension-tests.cjs` 通过。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，覆盖真实 VSCode 宿主中 begin edit session 后外部落盘修改会在提交前进入 `dirty-conflict`，并把当前编辑态内容写入 storage-backed draft 文件。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过，覆盖真实 VSCode 宿主中 begin edit session 后外部落盘修改会在提交前进入 `dirty-conflict`，并把当前编辑态内容写入 storage-backed draft 文件。
 - `git diff --check` 通过。
 - `npm run typecheck && node --check tests/vscode-smoke/extension-tests.cjs && npm run test:note-markdown-file-association` 通过。
 - `npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `npm run test:webview -- --grep "associated markdown note (persists|restores|bootstrapped)"` 通过；本轮验证 storage-backed conflict draft 的 Webview 恢复入口、无内联内容的 reload-only 退化，以及 smoke 语法有效性。

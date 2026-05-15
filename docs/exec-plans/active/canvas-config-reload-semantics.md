@@ -71,8 +71,8 @@
 
 - `npm run build` 通过。
 - `npm run typecheck` 已通过；`src/webview/main.tsx` 里原有的 `isComposing` 类型报错已收口。
-- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyLegacyTaskFiltering` 断言处失败。
-- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言处失败。
+- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyLegacyTaskFiltering` 断言处失败。
+- 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言处失败。
 - 用户随后完成手动复验，确认 `panel -> editor` / `editor -> panel` 的 restart 行为均符合预期；因此 surface 设计文档现已恢复为 `已验证`，trusted smoke 的遗留阻塞继续作为独立测试债处理。
 
 额外复盘：这次 follow-up 说明“reload-only 配置语义”不能只看命令入口，还必须覆盖 serializer / view restore 这类启动恢复链路。用户本地未提交文件 `.gitignore`、`tmp_task.md`、`core.14` 本轮均未触碰。

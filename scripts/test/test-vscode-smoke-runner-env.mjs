@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 
-import { buildVSCodeChildEnv, prepareRuntime } from './vscode-smoke-runner.mjs';
+import { buildVSCodeChildEnv, prepareRuntime } from '../smoke/vscode-smoke-runner.mjs';
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
 const originalVscodeIpcHookCli = process.env.VSCODE_IPC_HOOK_CLI;
