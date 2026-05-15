@@ -151,17 +151,25 @@ function runStep(step) {
 
   const result = spawnSync(step.command, step.args, {
     cwd: step.cwd,
-    env: step.env ? { ...process.env, ...step.env } : process.env,
+    env: step.env ? { ...buildCliToolEnv(), ...step.env } : buildCliToolEnv(),
     stdio: 'inherit',
     windowsVerbatimArguments: step.windowsVerbatimArguments
   });
 
-  if (result.error) {
+  if (result.status !== 0) {
+    if (result.error) {
+      console.error(result.error.message);
+      return 1;
+    }
+    return result.status === null ? 1 : result.status;
+  }
+
+  if (result.error && result.status === null) {
     console.error(result.error.message);
     return 1;
   }
 
-  return result.status === null ? 1 : result.status;
+  return 0;
 }
 
 function wantsTarget(target) {
@@ -179,7 +187,7 @@ function resolveVscePublishCommand(vsceEntry, vsixPath) {
 
 function resolveOpenVsxPublishCommand(vsixPath) {
   if (options.openVsxClient === 'api') {
-    const args = ['scripts/openvsx-api.py'];
+    const args = ['scripts/release/openvsx-api.py'];
     if (options.openVsxPreferIpv4) {
       args.push('--prefer-ipv4');
     }
@@ -350,9 +358,21 @@ function shellQuote(value) {
   return `'${text.replace(/'/g, `'\\''`)}'`;
 }
 
+function buildCliToolEnv() {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.VSCODE_IPC_HOOK_CLI;
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('VSCODE_')) {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
 function printHelp() {
   console.log(`Usage:
-  node scripts/publish-marketplaces.mjs --yes [options]
+  node scripts/release/publish-marketplaces.mjs --yes [options]
 
 默认流程：
   1. 重新打包主扩展和 notifier VSIX

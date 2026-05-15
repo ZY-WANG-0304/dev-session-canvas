@@ -73,7 +73,7 @@
 - 观察：在遵循官方 Sidebar / Views 指南的前提下，如果产品要求 `include` / `exclude` 必须直接以内嵌输入框形式出现在 sidebar 中，那么只靠 `TreeView` 无法满足，因为扩展 API 没有提供可在 TreeView 里局部嵌入 textbox 的能力。
   证据：本轮实现检查中，现有扩展 API 仍只有 Tree item、view title actions、context actions 等原生入口；没有可用于 Search 视图那种 inline input 的 TreeView 扩展点。用户也明确拒绝继续使用“点击编辑后弹出菜单”的交互。
 - 观察：VS Code smoke 实际加载的是 `package.json#main` 指向的 `dist/extension.js`，而不是 `src/panel/CanvasPanelManager.ts`。当 `src` 已修正“风格切换复用旧位置”但未重新构建时，smoke 仍会执行旧版“碰撞或偏好不满足时重算位置”的逻辑，表现成文件节点在切换 `minimal -> card` 时漂移。
-  证据：`package.json` 的 `main` 指向 `./dist/extension.js`；失败时 `dist/extension.js` 的 `resolveAutomaticArtifactPosition()` 仍包含 `!doesPlacementCollide(...) && doesPlacementRespectPreference(...)` 判断，而重新执行 `npm run build` 后该逻辑与 `src` 同步，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 恢复通过。
+  证据：`package.json` 的 `main` 指向 `./dist/extension.js`；失败时 `dist/extension.js` 的 `resolveAutomaticArtifactPosition()` 仍包含 `!doesPlacementCollide(...) && doesPlacementRespectPreference(...)` 判断，而重新执行 `npm run build` 后该逻辑与 `src` 同步，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 恢复通过。
 
 ## 决策记录
 
@@ -209,7 +209,7 @@
 
     - `npm run typecheck`
     - `npm run test:webview`
-    - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`
+    - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`
 
 ## 验证与验收
 
@@ -230,11 +230,11 @@
 
 - `npm run typecheck`：通过。
 - `npm run test:webview`：59/59 通过；同步更新了 `canvas-shell-baseline-linux.png` 基线。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：通过。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`：通过。
 - 2026-04-20 增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：失败；当前卡在文件节点点击打开文件后的 panel 焦点保持断言，失败点位于 `tests/vscode-smoke/extension-tests.cjs` 的 `verifyFileActivityViewsAndOpenFiles()`，与新增 `readexit` drain 路径本身无直接冲突。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`：失败；当前卡在文件节点点击打开文件后的 panel 焦点保持断言，失败点位于 `tests/vscode-smoke/extension-tests.cjs` 的 `verifyFileActivityViewsAndOpenFiles()`，与新增 `readexit` drain 路径本身无直接冲突。
 - 2026-04-20 sidebar redesign 增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
@@ -260,12 +260,12 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `git diff --check`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：当次执行的失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）；相关焦点回归在 2026-04-21 的 trusted smoke rerun 里未再复现，但整套 run 仍卡在既有 live runtime scrollback 超时。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`：当次执行的失败点已从 `verifyFileActivityViewsAndOpenFiles()` 的 editor / panel 文件打开焦点链路后移到 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 的历史恢复场景（`tests/vscode-smoke/extension-tests.cjs:4595`）；相关焦点回归在 2026-04-21 的 trusted smoke rerun 里未再复现，但整套 run 仍卡在既有 live runtime scrollback 超时。
 - 2026-04-20 panel 文件打开语义校正增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `git diff --check`：通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：当次执行里 `verifyFileActivityViewsAndOpenFiles()` 已不再失败，失败点后移到 live runtime scrollback 历史恢复场景 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()`（`tests/vscode-smoke/extension-tests.cjs:4222`）；2026-04-21 的 rerun 也未再出现这条文件功能失败，但完整 trusted smoke 仍卡在同一条 live runtime scrollback 超时。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`：当次执行里 `verifyFileActivityViewsAndOpenFiles()` 已不再失败，失败点后移到 live runtime scrollback 历史恢复场景 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()`（`tests/vscode-smoke/extension-tests.cjs:4222`）；2026-04-21 的 rerun 也未再出现这条文件功能失败，但完整 trusted smoke 仍卡在同一条 live runtime scrollback 超时。
 - 本轮增量验证：
   - Playwright：补充颜色菜单、端点重接，以及文件活动边与手工边共用同一 toolbar 的回归。
   - VS Code smoke：补充文件活动自动边被用户编辑 / 删除后的 reload 持久化验证。
@@ -276,12 +276,12 @@
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `npm run test:webview`：通过；覆盖 `minimal` 文件节点紧贴内容边框、文件列表节点 `列表视图 / 树形视图` 切换，以及 `R/W` 尾标显示。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：通过；覆盖 `devSessionCanvas.fileNode.displayStyle` 切换后自动文件节点位置与文件活动边 ID 稳定。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`：通过；覆盖 `devSessionCanvas.fileNode.displayStyle` 切换后自动文件节点位置与文件活动边 ID 稳定。
 - 2026-04-21 `files.enabled` 语义改写增量验证：
   - `npm run typecheck`：通过。
   - `npm run build`：通过。
   - `npm run test:webview`：78/78 通过。
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`：未完全通过；`verifyFileActivityViewsAndOpenFiles()` 已补上“配置变更需等 reload 才生效、reload 后清空文件域与过滤状态、重新开启不恢复旧文件状态”的断言，本轮重新执行未再出现文件功能回归，当前失败点仍是既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`：未完全通过；`verifyFileActivityViewsAndOpenFiles()` 已补上“配置变更需等 reload 才生效、reload 后清空文件域与过滤状态、重新开启不恢复旧文件状态”的断言，本轮重新执行未再出现文件功能回归，当前失败点仍是既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。
 
 ## 接口与依赖
 

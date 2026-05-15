@@ -112,7 +112,7 @@
 7. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
 8. 确认 `Open VSX` 的 `devsessioncanvas` namespace 已完成 owner/verified 认领，发布 token 已写入 `~/.ovsx` 的 `devsessioncanvas` entry，且本地可执行：
 
-       python3 scripts/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas
+       python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas
 
 ## 当前验证备注
 
@@ -138,7 +138,7 @@
 
     npm run publish:marketplaces -- --yes
 
-该入口会按顺序重新打包主扩展与 notifier，然后先发布 notifier、再发布主扩展；每个扩展都会发布到 `Visual Studio Marketplace` 与 `Open VSX`。默认的 `Open VSX` 路径使用 `scripts/openvsx-api.py` 读取 `OVSX_PAT` 或 `~/.ovsx`，避免 headless Linux 环境中 `npx ovsx` 访问系统钥匙串或出现 TLS reset 时阻断发布。
+该入口会按顺序重新打包主扩展与 notifier，然后先发布 notifier、再发布主扩展；每个扩展都会发布到 `Visual Studio Marketplace` 与 `Open VSX`。默认的 `Open VSX` 路径使用 `scripts/release/openvsx-api.py` 读取 `OVSX_PAT` 或 `~/.ovsx`，避免 headless Linux 环境中 `npx ovsx` 访问系统钥匙串或出现 TLS reset 时阻断发布。
 
 发布前可先预览命令：
 

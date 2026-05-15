@@ -4,17 +4,17 @@
  * recording-session.mjs — AI 驱动录制的工具脚本
  *
  * 用法:
- *   node scripts/recording-session.mjs start          — 启动录制环境（后台）
- *   node scripts/recording-session.mjs screenshot     — 截取当前画面
- *   node scripts/recording-session.mjs locate <selector> [--frame canvas|workbench]  — 定位元素返回屏幕坐标
- *   node scripts/recording-session.mjs click <x> <y> [--right] [--double]
- *   node scripts/recording-session.mjs key <combo>    — 按键（Return, Escape, Ctrl+A, Shift+Insert）
- *   node scripts/recording-session.mjs paste <text>   — 剪贴板粘贴
- *   node scripts/recording-session.mjs command <cmd> [json_args] — legacy test-host only
- *   node scripts/recording-session.mjs dispatch <json_message>   — legacy test-host only
- *   node scripts/recording-session.mjs state          — 读取画布状态
- *   node scripts/recording-session.mjs gif-frame <label> [durationMs]
- *   node scripts/recording-session.mjs stop           — 停止录制，生成媒体文件
+ *   node scripts/media/recording-session.mjs start          — 启动录制环境（后台）
+ *   node scripts/media/recording-session.mjs screenshot     — 截取当前画面
+ *   node scripts/media/recording-session.mjs locate <selector> [--frame canvas|workbench]  — 定位元素返回屏幕坐标
+ *   node scripts/media/recording-session.mjs click <x> <y> [--right] [--double]
+ *   node scripts/media/recording-session.mjs key <combo>    — 按键（Return, Escape, Ctrl+A, Shift+Insert）
+ *   node scripts/media/recording-session.mjs paste <text>   — 剪贴板粘贴
+ *   node scripts/media/recording-session.mjs command <cmd> [json_args] — legacy test-host only
+ *   node scripts/media/recording-session.mjs dispatch <json_message>   — legacy test-host only
+ *   node scripts/media/recording-session.mjs state          — 读取画布状态
+ *   node scripts/media/recording-session.mjs gif-frame <label> [durationMs]
+ *   node scripts/media/recording-session.mjs stop           — 停止录制，生成媒体文件
  */
 
 import path from 'path';
@@ -27,14 +27,14 @@ import {
   buildVSCodeChildEnv,
   ensureVSCodeExecutable,
   prepareRuntime
-} from './vscode-smoke-runner.mjs';
-import { prepareDebugMainOnlyExtension } from './prepare-debug-main-only-extension.mjs';
+} from '../smoke/vscode-smoke-runner.mjs';
+import { prepareDebugMainOnlyExtension } from '../shared/prepare-debug-main-only-extension.mjs';
 
 const projectRoot = process.cwd();
 const debugRoot = path.join(projectRoot, '.debug', 'marketplace-media');
 const sessionFile = path.join(debugRoot, 'recording-session.json');
 const outputDir = path.join(projectRoot, 'images', 'marketplace');
-const nativeInputScriptPath = path.join(projectRoot, 'scripts', 'x11-native-input.py');
+const nativeInputScriptPath = path.join(projectRoot, 'scripts', 'media', 'x11-native-input.py');
 const GIF_WIDTH = 1180;
 const clipDir = path.join(debugRoot, 'clips');
 const providerBinDir = path.join(debugRoot, 'provider-bin');
@@ -54,7 +54,7 @@ const SIDEBAR_OPEN_CANVAS_BUTTON_SELECTOR = 'button[data-action="openCanvas"]';
 
 function readSession() {
   if (!existsSync(sessionFile)) {
-    throw new Error('录制会话未启动。请先运行: node scripts/recording-session.mjs start');
+    throw new Error('录制会话未启动。请先运行: node scripts/media/recording-session.mjs start');
   }
   return JSON.parse(readFileSync(sessionFile, 'utf8'));
 }
@@ -86,7 +86,7 @@ async function cmdStart() {
   ensureCommandAvailable('xwininfo', ['-version'], '缺少 xwininfo，无法定位 VS Code 窗口。');
   ensureCommandAvailable('ffmpeg', ['-version'], '缺少 ffmpeg，无法截图或录制。');
   ensureCommandAvailable('xsel', ['--help'], '缺少 xsel，无法通过 X11 剪贴板粘贴文本。');
-  runNodeCommand(['scripts/build.mjs'], '构建扩展 bundle 失败。');
+  runNodeCommand(['scripts/build/build.mjs'], '构建扩展 bundle 失败。');
 
   const runtime = await prepareRuntime({
     debugRoot,
@@ -1220,7 +1220,7 @@ const commands = {
 };
 
 if (!cmd || !commands[cmd]) {
-  console.error('用法: node scripts/recording-session.mjs <command>');
+  console.error('用法: node scripts/media/recording-session.mjs <command>');
   console.error('命令: start, screenshot, locate, click, key, paste, state, record-start, record-stop, gif-frame, stop');
   process.exit(1);
 }

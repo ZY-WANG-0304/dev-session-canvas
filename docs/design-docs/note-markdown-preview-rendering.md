@@ -193,9 +193,9 @@ updated_at: 2026-05-13
 - `src/common/noteMarkdownChecklist.ts` 已新增按源文行切换 Markdown checklist 标记的纯函数辅助逻辑，支持无序列表、有序列表和嵌套缩进场景。
 - `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
-- `scripts/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
+- `scripts/build/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
 - `src/webview/main.tsx` 与 `src/webview/styles.css` 已把编辑态行号从固定逻辑行列表改成“隐藏 mirror 计算视觉行数 + gutter 续行空 row”：普通行继续显示一个 row，软换行后的长逻辑行会在 gutter 中保留空白续行 row，让后续行号按视觉行节奏对齐。
-- `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test-note-markdown-links.mts` 与 `scripts/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
+- `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test/test-note-markdown-links.mts` 与 `scripts/test/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
 
 本轮验证结果：
 

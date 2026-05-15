@@ -276,7 +276,7 @@ updated_at: 2026-05-15
 
 ## 9. 当前验证状态
 
-- 当前处于 `已验证`：`npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs` 已于 2026-05-06 完成通过。
+- 当前处于 `已验证`：`npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 已于 2026-05-06 完成通过。
 - 模板 sidebar 改回 `WebviewView`、并按 `节点` / `会话历史` section 的扁平列表风格与首屏渲染模式重写后，再次执行 `npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、trusted smoke 与 restricted smoke，均通过。
 - 模板 sidebar 继续微调为“`内置 / 用户` 标签前置 + 行尾补充追加 / 重置快捷按钮”后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
 - 模板 sidebar 再次微调为“`内置 / 用户` 标签移到第二行摘要前、`默认` 标签保留在第一行标题后”后，再次执行 `npm run typecheck` 与 `npm run build`，均通过。
@@ -290,7 +290,7 @@ updated_at: 2026-05-15
 - 模板 sidebar 行尾动作已收口为与标题同一行，第二行摘要改为独立占用整行宽度，并在窄侧栏下用省略号退化而不是换行。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖按钮挂载在标题行、第二行 nowrap 与 ellipsis 的静态回归断言。
 - 模板 sidebar 已移除底部“当前画布还没有可保存的 Agent / Terminal / Note 节点”提示，内容区只保留模板列表及模板列表自身的加载 / 空 / 错误状态。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖不再输出 `hintNote` / `hint-note` / `canSaveCurrentCanvas`。
 - 画布空白区右键菜单根层已移除说明文案，只保留“画布操作”标题和具体操作项；Playwright harness 已补充断言覆盖根层不再出现“先创建节点”提示。本轮再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过。
-- Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过。
+- Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，均通过。
 - 模板 sidebar 第二行位置标签已从 `内置 / 用户` 扩展为 `内置 / 工作区 / 用户`，用于区分内置模板、workspace 模板和当前设备用户模板。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖 workspace 模板映射为 `工作区` 标签。
 - Marketplace 预览媒体录制入口已改为启动真实 Extension Development Host，不再依赖 VS Code extension test host；右键重置模板路径保留原生 modal，并在录制片段内通过鼠标/键盘完成确认。
 - 验证覆盖了“首次默认模板”“保存/应用不自动启动”“导入/导出/删除与默认模板回退”“组级避碰落位”“restricted note-only 限制”以及 Agent `argv` 在模板保存/加载链路中的保留。
