@@ -3683,6 +3683,15 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
     .toBe('0');
   await expect(nodeById(page, 'note-1').locator('.node-overview-title')).toContainText('回看 smoke test');
+  await expect(nodeById(page, 'note-1').locator('.node-overview-status')).toHaveCount(0);
+  await expect(nodeById(page, 'agent-1').locator('.node-overview-status')).toHaveAttribute(
+    'data-overview-status',
+    'draft'
+  );
+  await expect(nodeById(page, 'agent-1').locator('.node-overview-status')).toContainText('草稿');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="agent-1"] .node-overview-status'))
+    .toBe('1');
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('1');
