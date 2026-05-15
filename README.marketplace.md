@@ -70,7 +70,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.9.1` 升级到 `0.10.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.10.x` 更新同样通过 Marketplace 升级获取
+- 首次安装与从 `0.9.1` 升级到 `0.10.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
 - 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证

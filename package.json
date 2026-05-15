@@ -589,7 +589,8 @@
     "vscode:prepublish": "npm run package",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck"
+    "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck",
+    "publish:marketplaces": "node scripts/publish-marketplaces.mjs"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.45",
