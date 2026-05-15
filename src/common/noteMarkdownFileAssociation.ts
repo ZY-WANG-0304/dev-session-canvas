@@ -47,6 +47,7 @@ export interface MarkdownFileNoteContentSource {
   status: NoteMarkdownFileStatus;
   lastError?: string;
   conflictDraft?: NoteMarkdownConflictDraft;
+  webviewResourceBaseUri?: string;
 }
 
 export type NoteContentSource = EmbeddedNoteContentSource | MarkdownFileNoteContentSource;

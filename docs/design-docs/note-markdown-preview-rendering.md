@@ -16,14 +16,14 @@ related_plans:
   - docs/exec-plans/completed/note-markdown-preview-rendering.md
   - docs/exec-plans/completed/note-markdown-workspace-file-links.md
   - docs/exec-plans/completed/note-markdown-interactive-checklists.md
-updated_at: 2026-05-13
+updated_at: 2026-05-16
 ---
 
 # Note Markdown 预览展示模式
 
 ## 1. 背景
 
-上一轮已经把 `Note` 从“始终显示纯文本 `textarea`”升级成“编辑态纯文本输入、阅读态 Markdown 预览”，并补齐了任务列表、链接、代码高亮与数学公式的基础渲染能力。但初版任务列表仍停留在“语义化展示”层：checkbox 只是视觉元素，用户若想标记完成，仍要重新进入纯文本编辑态，手动把 `[ ]` 改成 `[x]`。这让 `Note` 在阅读态离真正可用的工作清单还差最后一步交互。
+上一轮已经把 `Note` 从“始终显示纯文本 `textarea`”升级成“编辑态纯文本输入、阅读态 Markdown 预览”，并补齐了任务列表、链接、代码高亮、数学公式与图片预览的基础渲染能力。但初版任务列表仍停留在“语义化展示”层：checkbox 只是视觉元素，用户若想标记完成，仍要重新进入纯文本编辑态，手动把 `[ ]` 改成 `[x]`。这让 `Note` 在阅读态离真正可用的工作清单还差最后一步交互。
 
 因此，本轮不是重新设计 `Note` 的编辑模型，而是在保持“原始 Markdown 文本仍是唯一权威数据”的前提下，把阅读态扩展成更完整的 Markdown 工作表面。
 
@@ -33,7 +33,7 @@ updated_at: 2026-05-13
 
 1. `Note` 的权威正文应保存什么格式。
 2. 用户什么时候看到纯文本，什么时候看到 Markdown 预览。
-3. checklist 在阅读态是只读展示，还是允许直接勾选并回写 Markdown 源文；链接、代码块和数学公式又分别支持到什么程度。
+3. checklist 在阅读态是只读展示，还是允许直接勾选并回写 Markdown 源文；链接、图片、代码块和数学公式又分别支持到什么程度。
 4. Markdown 预览是否允许原始 HTML、任意 scheme 链接点击等可能改变安全或交互语义的能力。
 5. 现有 probe、自动化测试和宿主持久化如何在不引入新对象模型的前提下继续工作。
 
@@ -41,17 +41,18 @@ updated_at: 2026-05-13
 
 - 保持 `Note` 正文的权威数据仍为原始 Markdown 文本。
 - 用户编辑正文时继续使用普通纯文本输入，而不是引入所见即所得富文本编辑器。
-- 用户结束编辑后，正文区回到 Markdown 预览展示，让标题、任务列表、链接、代码块和公式具有结构化层次。
+- 用户结束编辑后，正文区回到 Markdown 预览展示，让标题、任务列表、链接、图片、代码块和公式具有结构化层次。
 - 用户在阅读态点击 Markdown checklist checkbox 时，可以直接切换完成状态，而不必先回到纯文本编辑态。
 - 不改变宿主状态结构，不新增富文本持久化字段或二次缓存 HTML。
 - 让现有自动化测试仍能稳定驱动 `Note` 正文写路径。
 
 ## 4. 非目标
 
-- 不在本轮引入块编辑器、拖拽排版、图片上传或附件语义。
+- 不在本轮引入块编辑器、拖拽排版、图片上传、图片编辑、附件管理或图片作为独立画布资产的语义。
 - 不在本轮支持原始 HTML 透传、脚本执行或任意内嵌 DOM。
 - 不在本轮把 `Note` 升级成所见即所得富文本编辑器，也不在预览态直接改写任务文案、列表顺序或非 checklist 正文。
 - 不在本轮允许越出 workspace 边界的相对路径、绝对路径、目录目标、`command:` 或其他未显式白名单的 scheme 在阅读态通过链接打开。
+- 不在本轮把图片失败加载、图片尺寸元数据、图片缓存或远程图片代理写入 Note 持久化状态。
 - 不在本轮改变 `Note` 在对象模型中的轻量辅助定位。
 
 ## 5. 候选方案
@@ -143,14 +144,18 @@ updated_at: 2026-05-13
   - `markdown-it-task-lists`：把 `- [ ]` / `- [x]` 渲染成可交互 checkbox 列表，并保留足够的元数据把点击回写到源文。
   - `highlight.js`：为 fenced code block 生成语法高亮 token；声明语言时优先按语言高亮，无法识别时回退到自动识别或纯文本。
   - `katex`：通过 Webview 内自有 `markdown-it` inline / block 规则识别 `$...$` 行内公式和 `$$...$$` 块级公式，并调用 `katex.renderToString({ trust: false, throwOnError: false })` 生成受控 HTML；不使用会透传 malformed math raw HTML 的第三方 Markdown 插件。
+  - Markdown 图片语法：把 `![alt](src)` 渲染成只读图片预览；只允许 `https:`、受限 `data:image/*;base64` 和由宿主转换后的本地 workspace / 关联 Markdown 文件相对图片资源。
 - 最终视觉排版由 `src/webview/styles.css` 接管，继续遵循 VSCode 主题 token，而不是引入固定站点风格。
 
-### 7.4 任务列表可在预览态切换，链接通过宿主安全打开
+### 7.4 任务列表可在预览态切换，链接通过宿主安全打开，图片只做安全预览
 
 - `Note` 阅读态的首要职责仍然是展示 Markdown 结构，并允许用户在需要时通过双击进入编辑。
 - 如果用户单击的是普通正文区域，行为应保留在预览态，以便直接选择和复制内容；只有双击普通正文区域时，才进入编辑态。
 - 如果用户点击的是由 Markdown task list 语法渲染出来的 checkbox，则不进入编辑态，而是按源文行号切换对应 `[ ]` / `[x]` 标记，并立即复用现有 `webview/updateNoteNode` 写回宿主。
 - checkbox 的源文定位通过 `markdown-it` token `map` 行号注入到渲染后的 DOM 属性中；如果行号缺失、越界或命中的源文行不再是合法 checklist，则必须 fail closed，不切换内容也不报错污染宿主状态。
+- 如果用户点击的是 Markdown 图片元素，则保持阅读态，只作为预览内容参与选择、滚动和缩放，不进入编辑、不打开外部资源、不写回 Note 正文。
+- Markdown 图片资源按 fail closed 规则解析：`https:` 图片可直接作为远程只读预览；`data:` 只允许常见 base64 图片 MIME；关联 Markdown 文件中的相对图片路径优先按该 Markdown 文件所在目录解析；普通内嵌 Note 中的相对图片路径按现有 workspace 文件链接口径解析，单根 workspace 支持纯相对路径，多根 workspace 需要 workspace folder 前缀。
+- 宿主只把可被 Webview 安全加载的本地资源目录通过 `asWebviewUri` 和 `localResourceRoots` 暴露给当前 Webview；原始 `file:`、`vscode-remote:` 或绝对路径不进入 Markdown 预览 DOM。
 - 如果用户点击的是 Markdown 链接元素，则不进入编辑，而是发消息给宿主；宿主按两类目标处理：
   - 外部链接只允许 `http`、`https`、`mailto` 三类 scheme。
   - workspace 文件链接只允许当前 workspace 内文件，单根 workspace 支持纯相对路径，多根 workspace 要求 `workspace-folder/relative/path` 前缀。
@@ -177,23 +182,24 @@ updated_at: 2026-05-13
 1. `Note` 正文默认显示 Markdown 预览，而不是始终显示原始文本框。
 2. 单击正文区时，用户仍停留在预览态并可直接选择内容；双击正文区后，用户能进入纯文本编辑态，并看到原始 Markdown 源文。
 3. 点击阅读态 checklist checkbox 时，正文会在不进入编辑态的前提下切换 `[ ]` / `[x]`，并立即写回宿主持久化。
-4. 编辑结束后，正文会回到预览态，且任务列表、链接、代码高亮与数学公式等结构可见。
+4. 编辑结束后，正文会回到预览态，且任务列表、链接、图片、代码高亮与数学公式等结构可见。
 5. 点击安全白名单内链接时，Webview 会请求宿主打开，且不会误切回编辑态；其中外部链接只允许显式白名单 scheme，workspace 文件链接只允许当前 workspace 内文件并支持可选行列定位。
-6. 宿主持久化的 `metadata.note.content` 仍是原始文本。
-7. 编辑态显示与正文逻辑行数一致的行号；长逻辑行软换行时，续行在 gutter 中占空 row 但不额外显示行号，后续行号仍对齐到对应源文行起点；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
-8. `npm run typecheck` 通过。
-9. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
+6. Markdown 图片语法在阅读态能展示安全图片预览；不支持的 scheme、绝对路径和越界路径不会生成可加载图片。
+7. 宿主持久化的 `metadata.note.content` 仍是原始文本。
+8. 编辑态显示与正文逻辑行数一致的行号；长逻辑行软换行时，续行在 gutter 中占空 row 但不额外显示行号，后续行号仍对齐到对应源文行起点；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
+9. `npm run typecheck` 通过。
+10. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
 
 ## 9. 已完成实现与验证
 
 当前实现已经按上述方案落地：
 
-- `src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js` 和自有安全 KaTeX 规则，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”；malformed math 中的 raw HTML / `command:` 链接必须被 KaTeX 转义，不能生成真实标签。
+- `src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js`、自有安全 KaTeX 规则和受限图片渲染规则，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”；malformed math 中的 raw HTML / `command:` 链接必须被 KaTeX 转义，不能生成真实标签。
 - `src/webview/main.tsx` 的 Markdown link renderer 已覆盖 `validateLink` 并在 `link_open` 中二次检查 `href`，不为 `command:` 等 unsafe 链接生成可激活 DOM；`src/panel/CanvasPanelManager.ts` 的 `enableCommandUris` 也收窄到画布 standby 页面需要的扩展命令白名单。
 - `src/common/noteMarkdownChecklist.ts` 已新增按源文行切换 Markdown checklist 标记的纯函数辅助逻辑，支持无序列表、有序列表和嵌套缩进场景。
 - `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
-- `scripts/build/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
+- `scripts/build/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、图片预览、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
 - `src/webview/main.tsx` 与 `src/webview/styles.css` 已把编辑态行号从固定逻辑行列表改成“隐藏 mirror 计算视觉行数 + gutter 续行空 row”：普通行继续显示一个 row，软换行后的长逻辑行会在 gutter 中保留空白续行 row，让后续行号按视觉行节奏对齐。
 - `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test/test-note-markdown-links.mts` 与 `scripts/test/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
 
@@ -225,3 +231,9 @@ updated_at: 2026-05-13
 1. 新增 Playwright 回归，验证 25 行内容中第 18 / 24 行软换行后，gutter 会在续行位置保留空 row，且第 19 / 25 行号落在对应源文行起点。
 2. `npm run typecheck` 通过。
 3. `npm run test:webview -- --grep "note body editor"` 通过。
+
+2026-05-16 图片预览追加验证：
+
+1. Note Markdown 阅读态新增受限图片渲染：`https:`、安全 `data:image/*;base64`、关联 Markdown 文件相对图片和 workspace 相对图片可进入预览；不支持的 scheme、绝对路径和越界路径 fail closed。
+2. 宿主通过 `asWebviewUri` 为 workspace root 与关联 Markdown 文件目录生成 Webview 可加载基准 URI，并用 `localResourceRoots` 约束本地资源访问范围；该 URI 只随 `host/bootstrap` / `host/stateUpdated` 发送到 Webview，不进入持久化状态。
+3. `npm run typecheck`、`npm run test:note-markdown-front-matter`、`npm run test:note-markdown-links` 与 `npm run test:webview -- --grep "safe images|YAML metadata|original line numbers|malformed html|markdown link"` 通过。

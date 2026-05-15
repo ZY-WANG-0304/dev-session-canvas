@@ -4242,6 +4242,72 @@ test('note markdown preview renders task lists, syntax highlighting, and math fo
   await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
 });
 
+test('note markdown preview renders safe images and rewrites local image paths', async ({ page }) => {
+  await openHarness(page);
+  const dataImage = 'data:image/png;base64,iVBORw0KGgo=';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = [
+    `![Inline pixel](${dataImage})`,
+    '',
+    '![Remote chart](https://cdn.example.com/charts/roadmap.png)',
+    '',
+    '![Diagram](assets/diagram.png)',
+    '',
+    '![Unsupported](mailto:team@example.com)'
+  ].join('\n');
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/design.md',
+    displayPath: 'docs/design.md',
+    fullDisplayPath: '/workspace/docs/design.md',
+    contentRevision: 'image-revision',
+    status: 'ok',
+    webviewResourceBaseUri: 'https://webview.example/workspace/docs/'
+  };
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  const images = preview.locator('img.note-markdown-image');
+  await expect(images).toHaveCount(3);
+  await expect(images.nth(0)).toHaveAttribute('alt', 'Inline pixel');
+  await expect(images.nth(0)).toHaveAttribute('src', dataImage);
+  await expect(images.nth(1)).toHaveAttribute('alt', 'Remote chart');
+  await expect(images.nth(1)).toHaveAttribute(
+    'src',
+    'https://cdn.example.com/charts/roadmap.png'
+  );
+  await expect(images.nth(2)).toHaveAttribute('alt', 'Diagram');
+  await expect(images.nth(2)).toHaveAttribute(
+    'src',
+    'https://webview.example/workspace/docs/assets/diagram.png'
+  );
+  await expect(preview.locator('.note-markdown-image-fallback')).toContainText('Unsupported');
+  await expect(preview.locator('img[src^="mailto:"]')).toHaveCount(0);
+  await images.nth(2).evaluate((element) => {
+    element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  });
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  const embeddedState = createNoteNodeState();
+  embeddedState.nodes[0].metadata.note.content = '![Workspace diagram](workspace-a/assets/root.png)';
+  await bootstrap(
+    page,
+    embeddedState,
+    createRuntimeContext({
+      noteMarkdownImageWorkspaceRoots: [
+        { name: 'workspace-a', webviewResourceBaseUri: 'https://webview.example/workspace-a/' },
+        { name: 'workspace-b', webviewResourceBaseUri: 'https://webview.example/workspace-b/' }
+      ]
+    })
+  );
+  const embeddedPreview = nodeById(page, 'note-1').locator('.note-markdown-preview');
+  await expect(embeddedPreview.locator('img.note-markdown-image')).toHaveAttribute(
+    'src',
+    'https://webview.example/workspace-a/assets/root.png'
+  );
+});
+
 test('note markdown preview hides YAML metadata and exposes a titlebar popover', async ({ page }) => {
   await openHarness(page);
   const frontMatterBlock = [
