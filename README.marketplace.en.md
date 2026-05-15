@@ -70,7 +70,7 @@ The public `0.10.0` release focuses on the workflow between Notes and workspace 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.9.1` to `0.10.0` all go through the `Visual Studio Marketplace`; later `0.10.x` updates follow the same Marketplace upgrade path
+- First-time installs and upgrades from `0.9.1` to `0.10.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
 - If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.0` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
