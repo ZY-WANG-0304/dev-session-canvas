@@ -4242,6 +4242,112 @@ test('note markdown preview renders task lists, syntax highlighting, and math fo
   await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
 });
 
+test('note markdown preview hides YAML metadata and exposes a titlebar popover', async ({ page }) => {
+  await openHarness(page);
+  const frontMatterBlock = [
+    '---',
+    'title: Note 与 Markdown 文件关联',
+    'decision_status: 已选定',
+    'domains:',
+    '  - VSCode 集成域',
+    '  - 画布交互域',
+    'updated_at: 2026-05-15',
+    '---',
+    ''
+  ].join('\n');
+  const markdownBody = `${frontMatterBlock}# Note 与 Markdown 文件关联\n\n- [ ] 补齐 metadata popover`;
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = markdownBody;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/design.md',
+    displayPath: 'docs/design.md',
+    fullDisplayPath: '/workspace/docs/design.md',
+    contentRevision: 'metadata-revision',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('Note 与 Markdown 文件关联');
+  await expect(noteNode.locator('.note-markdown-preview')).not.toContainText('decision_status');
+  await expect(noteNode.locator('.note-markdown-preview hr')).toHaveCount(0);
+
+  const metadataButton = noteNode.getByRole('button', { name: '查看 Markdown metadata' });
+  await expect(metadataButton).toBeVisible();
+  await metadataButton.click();
+
+  const popover = page.getByRole('dialog', { name: 'Metadata' });
+  await expect(popover).toBeVisible();
+  await expect(metadataButton).not.toContainText('metadata');
+  await expect(popover.locator('.note-metadata-popover-header strong')).toHaveText('Metadata');
+  await expect(popover.locator('.note-metadata-popover-footer')).toHaveCount(0);
+  await expect(popover).toContainText('title');
+  await expect(popover).toContainText('Note 与 Markdown 文件关联');
+  await expect(popover).toContainText('domains');
+  await expect(popover).toContainText('VSCode 集成域 +1');
+  await expect
+    .poll(async () =>
+      popover.locator('.note-metadata-popover-value').first().evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          whiteSpace: style.whiteSpace,
+          overflowWrap: style.overflowWrap
+        };
+      })
+    )
+    .toEqual({
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere'
+    });
+
+  const copyMetadataButton = popover.getByRole('button', { name: '复制 Metadata' });
+  await expect(copyMetadataButton.locator('.codicon.codicon-copy')).toHaveCount(1);
+  await copyMetadataButton.click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyTextToClipboard');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyTextToClipboard',
+    payload: {
+      text: frontMatterBlock,
+      source: 'note-markdown-metadata',
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('note checklist updates keep original line numbers when YAML metadata is hidden', async ({ page }) => {
+  await openHarness(page);
+  const frontMatterBlock = [
+    '---',
+    'title: Checklist metadata',
+    'tags:',
+    '  - smoke',
+    '---',
+    ''
+  ].join('\n');
+  const initialBody = ['# Tasks', '- [ ] 补齐 metadata 行号', '- [x] 保留正文'].join('\n');
+  const expectedBody = ['# Tasks', '- [x] 补齐 metadata 行号', '- [x] 保留正文'].join('\n');
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = `${frontMatterBlock}${initialBody}`;
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await expect(taskCheckboxes).toHaveCount(2);
+  await taskCheckboxes.nth(0).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: `${frontMatterBlock}${expectedBody}`
+    }
+  });
+});
+
 test('note markdown math escapes malformed html and command links', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
