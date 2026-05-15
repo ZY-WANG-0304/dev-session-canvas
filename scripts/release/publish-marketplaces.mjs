@@ -63,21 +63,30 @@ function main() {
     return 1;
   }
 
-  const steps = [];
-
-  if (!options.skipPackage) {
-    for (const extension of extensions) {
-      steps.push({
+  const packageSteps = options.skipPackage
+    ? []
+    : extensions.map((extension) => ({
         label: `打包 ${extension.label}`,
         command: extension.packageCommand[0],
         args: extension.packageCommand[1],
-        cwd: projectRoot
-      });
+        cwd: projectRoot,
+        extension
+      }));
+
+  if (!options.skipPackage) {
+    const packageStatus = runPackageSteps(packageSteps);
+    if (packageStatus !== 0) {
+      return packageStatus;
+    }
+  } else {
+    const validationStatus = validateExistingVsixFiles(extensions);
+    if (validationStatus !== 0) {
+      return validationStatus;
     }
   }
 
   if (options.packageOnly) {
-    return runStepsAndValidate(steps, extensions);
+    return 0;
   }
 
   const publishOrder = [...extensions].sort((a, b) => extensionPublishRank(a) - extensionPublishRank(b));
@@ -87,10 +96,11 @@ function main() {
     return 1;
   }
 
+  const publishSteps = [];
   for (const extension of publishOrder) {
     if (wantsTarget('visual-studio')) {
       const vsceCommand = resolveVscePublishCommand(vsceEntry, extension.vsixPath);
-      steps.push({
+      publishSteps.push({
         label: `发布 ${extension.label} 到 Visual Studio Marketplace`,
         ...vsceCommand,
         cwd: projectRoot
@@ -98,7 +108,7 @@ function main() {
     }
 
     if (wantsTarget('open-vsx')) {
-      steps.push({
+      publishSteps.push({
         label: `发布 ${extension.label} 到 Open VSX`,
         ...resolveOpenVsxPublishCommand(extension.vsixPath),
         cwd: projectRoot
@@ -106,17 +116,38 @@ function main() {
     }
   }
 
-  return runStepsAndValidate(steps, extensions);
+  return runPublishSteps(publishSteps);
 }
 
-function runStepsAndValidate(steps, extensions) {
+function runPackageSteps(packageSteps) {
+  for (const step of packageSteps) {
+    const status = runStep(step);
+    if (status !== 0) {
+      console.error('打包失败，停止后续发布，避免复用工作区中残留的旧 VSIX。');
+      return status;
+    }
+
+    if (!options.dryRun && !existsSync(step.extension.vsixPath)) {
+      console.error(`打包后未找到 VSIX：${path.relative(projectRoot, step.extension.vsixPath)}`);
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+function validateExistingVsixFiles(extensions) {
   for (const extension of extensions) {
-    if (options.skipPackage && !options.dryRun && !existsSync(extension.vsixPath)) {
+    if (!options.dryRun && !existsSync(extension.vsixPath)) {
       console.error(`未找到 VSIX：${path.relative(projectRoot, extension.vsixPath)}`);
       return 1;
     }
   }
 
+  return 0;
+}
+
+function runPublishSteps(steps) {
   let failed = false;
 
   for (const step of steps) {
@@ -125,15 +156,6 @@ function runStepsAndValidate(steps, extensions) {
       failed = true;
       if (!options.continueOnError) {
         return status;
-      }
-    }
-  }
-
-  if (!options.skipPackage) {
-    for (const extension of extensions) {
-      if (!options.dryRun && !existsSync(extension.vsixPath)) {
-        console.error(`打包后未找到 VSIX：${path.relative(projectRoot, extension.vsixPath)}`);
-        return 1;
       }
     }
   }
@@ -389,7 +411,7 @@ Options:
   --extension all|main|notifier     选择发布扩展，默认 all
   --open-vsx-client api|ovsx        Open VSX 发布客户端，默认 api
   --open-vsx-no-prefer-ipv4         Python API helper 不强制 IPv4 优先
-  --continue-on-error               单个发布步骤失败后继续执行后续步骤
+  --continue-on-error               打包成功后，单个发布步骤失败仍继续执行后续发布步骤
   --help, -h                        显示帮助
 
 Examples:
