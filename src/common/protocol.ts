@@ -121,7 +121,7 @@ export interface CanvasNodeFootprint {
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type AgentLaunchPresetKind = 'default' | 'resume' | 'yolo' | 'sandbox' | 'custom';
-export type WebviewClipboardTextSource = 'note-markdown-subtitle';
+export type WebviewClipboardTextSource = 'note-markdown-subtitle' | 'note-markdown-metadata';
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
@@ -310,6 +310,11 @@ export interface AgentLaunchDefaultsByProvider {
   claude: AgentProviderLaunchDefaults;
 }
 
+export interface NoteMarkdownImageWorkspaceRoot {
+  name: string;
+  webviewResourceBaseUri: string;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
@@ -326,6 +331,7 @@ export interface CanvasRuntimeContext {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileIconFontFaces: CanvasFileIconFontFace[];
+  noteMarkdownImageWorkspaceRoots?: NoteMarkdownImageWorkspaceRoot[];
 }
 
 export interface CanvasTemplateMenuEntry {
@@ -933,7 +939,10 @@ const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
-const webviewClipboardTextSources: WebviewClipboardTextSource[] = ['note-markdown-subtitle'];
+const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
+  'note-markdown-subtitle',
+  'note-markdown-metadata'
+];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);

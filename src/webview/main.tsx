@@ -131,6 +131,7 @@ import {
   parseDroppedStringArray
 } from './droppedResources';
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
+import { parseNoteMarkdownFrontMatter, type NoteMarkdownFrontMatter } from './noteMarkdownFrontMatter';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -208,6 +209,7 @@ interface CanvasNodeData {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  noteMarkdownImageWorkspaceRoots: NoteMarkdownImageWorkspaceRoot[];
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
   collapsedFileListTreeBranchKeys?: string[];
@@ -294,6 +296,23 @@ interface PendingAssociatedMarkdownSubmission {
   content: string;
   force: boolean;
 }
+interface NoteMarkdownPreviewResult {
+  html: string;
+  frontMatter: NoteMarkdownFrontMatter;
+}
+type NoteMarkdownImageWorkspaceRoot = NonNullable<CanvasRuntimeContext['noteMarkdownImageWorkspaceRoots']>[number];
+interface NoteMarkdownPreviewRenderOptions {
+  imageBaseUri?: string;
+  imageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
+}
+interface NoteMarkdownNormalizedImagePath {
+  segments: string[];
+  relativePath: string;
+}
+interface NoteMarkdownResolvedImageResource {
+  baseUri: string;
+  relativePath: string;
+}
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
@@ -303,6 +322,8 @@ const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
+const NOTE_MARKDOWN_IMAGE_SELECTOR = 'img.note-markdown-image';
+const NOTE_MARKDOWN_DATA_IMAGE_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[A-Za-z0-9+/=\r\n]+$/iu;
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
@@ -381,6 +402,7 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
 let nextExecutionNodeHelpTooltipId = 0;
+let nextNoteMarkdownMetadataPopoverId = 0;
 type ExecutionHostEvent =
   | {
       type: 'snapshot';
@@ -740,7 +762,8 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
   filePathDisplayMode: 'basename',
-  fileIconFontFaces: []
+  fileIconFontFaces: [],
+  noteMarkdownImageWorkspaceRoots: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -757,6 +780,13 @@ function normalizeRuntimeContext(
   const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
     ? runtimeContext.fileIconFontFaces
     : [];
+  const noteMarkdownImageWorkspaceRoots =
+    runtimeContext && Array.isArray(runtimeContext.noteMarkdownImageWorkspaceRoots)
+      ? runtimeContext.noteMarkdownImageWorkspaceRoots.filter(
+          (root): root is NoteMarkdownImageWorkspaceRoot =>
+            typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : [];
   const legacyStrongTerminalAttentionReminderEnabled = runtimeContext
     ? (
         runtimeContext as Partial<CanvasRuntimeContext> & {
@@ -791,7 +821,8 @@ function normalizeRuntimeContext(
         ? runtimeContext.fileNodeDisplayMode
         : 'icon-path',
     filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
-    fileIconFontFaces
+    fileIconFontFaces,
+    noteMarkdownImageWorkspaceRoots
   };
 }
 
@@ -854,7 +885,8 @@ function App(): JSX.Element {
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
-    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces
+    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
+    noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -1670,6 +1702,7 @@ function App(): JSX.Element {
     fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
+    noteMarkdownImageWorkspaceRoots: runtimeContext.noteMarkdownImageWorkspaceRoots ?? [],
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
     collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
@@ -4626,7 +4659,17 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     selectionEnd: number;
     selectionDirection: HTMLTextAreaElement['selectionDirection'];
   } | null>(null);
-  const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
+  const associatedMarkdownImageBaseUri = associatedMarkdownFile?.webviewResourceBaseUri;
+  const markdownPreview = useMemo(
+    () =>
+      renderNoteMarkdownPreview(content, {
+        imageBaseUri: associatedMarkdownImageBaseUri,
+        imageWorkspaceRoots: data.noteMarkdownImageWorkspaceRoots
+      }),
+    [associatedMarkdownImageBaseUri, content, data.noteMarkdownImageWorkspaceRoots]
+  );
+  const previewHtml = markdownPreview.html;
+  const markdownFrontMatter = markdownPreview.frontMatter;
   const bodyLines = useMemo(() => splitTextLines(content), [content]);
   const bodyLineNumberRows = useMemo(
     () => createNoteBodyLineNumberRows(bodyLines, bodyVisualLineCounts),
@@ -5159,6 +5202,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onCopyTextToClipboard?.(associatedMarkdownSubtitle, 'note-markdown-subtitle', id);
   };
 
+  const copyNoteMarkdownMetadata = (rawBlock: string): void => {
+    data.onSelectNode?.(id);
+    data.onCopyTextToClipboard?.(rawBlock, 'note-markdown-metadata', id);
+  };
+
   const reloadAssociatedMarkdownDraft = (): void => {
     if (!associatedMarkdownEditConflict && !hasAssociatedMarkdownHostConflict) {
       return;
@@ -5334,7 +5382,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const handlePreviewDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
-    if (findNoteMarkdownChecklistInputTarget(event.target) || findNoteMarkdownLinkTarget(event.target)) {
+    if (
+      findNoteMarkdownChecklistInputTarget(event.target) ||
+      findNoteMarkdownLinkTarget(event.target) ||
+      findNoteMarkdownImageTarget(event.target)
+    ) {
       return;
     }
     if (overviewInteractionsDisabled) {
@@ -5390,13 +5442,27 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           className="note-window-title"
           subtitle={associatedMarkdownSubtitle}
           subtitleAccessory={
-            associatedMarkdownSubtitle ? (
-              <SubtitleCopyButton
-                label="复制 Markdown 路径"
-                copiedLabel="已复制 Markdown 路径"
-                onCopy={copyAssociatedMarkdownSubtitlePath}
-                onFocus={() => data.onSelectNode?.(id)}
-              />
+            associatedMarkdownSubtitle || markdownFrontMatter.kind !== 'none' ? (
+              <>
+                {associatedMarkdownSubtitle ? (
+                  <SubtitleCopyButton
+                    label="复制 Markdown 路径"
+                    copiedLabel="已复制 Markdown 路径"
+                    onCopy={copyAssociatedMarkdownSubtitlePath}
+                    onFocus={() => data.onSelectNode?.(id)}
+                  />
+                ) : null}
+                {markdownFrontMatter.kind !== 'none' ? (
+                  <NoteMarkdownMetadataTrigger
+                    frontMatter={markdownFrontMatter}
+                    sourceLabel={
+                      associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict ? '来自当前草稿' : undefined
+                    }
+                    onCopyMetadata={copyNoteMarkdownMetadata}
+                    onFocus={() => data.onSelectNode?.(id)}
+                  />
+                ) : null}
+              </>
             ) : undefined
           }
           onSelectNode={() => data.onSelectNode?.(id)}
@@ -7439,6 +7505,262 @@ function SubtitleCopyButton(props: {
   );
 }
 
+function NoteMarkdownMetadataTrigger(props: {
+  frontMatter: Exclude<NoteMarkdownFrontMatter, { kind: 'none' }>;
+  sourceLabel?: string;
+  onCopyMetadata: (rawBlock: string) => void;
+  onFocus?: () => void;
+}): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
+  const viewport = useViewport();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const popoverIdRef = useRef<string>('');
+  const copiedResetTimeoutRef = useRef<number | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
+  const [copied, setCopied] = useState(false);
+  const isInvalid = props.frontMatter.kind === 'invalid';
+  const title = isInvalid ? 'Metadata parse failed' : 'Metadata';
+  const buttonLabel = isInvalid ? '查看 Markdown metadata 解析问题' : '查看 Markdown metadata';
+  const copyLabel = copied ? '已复制 Metadata' : '复制 Metadata';
+
+  if (!popoverIdRef.current) {
+    popoverIdRef.current = `note-markdown-metadata-popover-${nextNoteMarkdownMetadataPopoverId++}`;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimeoutRef.current !== undefined) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!overviewInteractionsDisabled) {
+      return;
+    }
+
+    setOpen(false);
+  }, [overviewInteractionsDisabled]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof globalThis.Node)) {
+        setOpen(false);
+        return;
+      }
+
+      if (buttonRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+
+      setOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = (): void => {
+      const button = buttonRef.current;
+      const popover = popoverRef.current;
+      if (!button || !popover) {
+        return;
+      }
+
+      const margin = 12;
+      const gap = 6;
+      const buttonRect = button.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      const maxLeft = Math.max(margin, window.innerWidth - margin - popoverRect.width);
+      const maxTop = Math.max(margin, window.innerHeight - margin - popoverRect.height);
+      let left = buttonRect.left;
+      let top = buttonRect.bottom + gap;
+
+      if (left + popoverRect.width > window.innerWidth - margin) {
+        left = buttonRect.right - popoverRect.width;
+      }
+      if (top + popoverRect.height > window.innerHeight - margin) {
+        top = buttonRect.top - popoverRect.height - gap;
+      }
+
+      setPosition({
+        left: Math.min(Math.max(margin, left), maxLeft),
+        top: Math.min(Math.max(margin, top), maxTop)
+      });
+    };
+
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, viewport.x, viewport.y, viewport.zoom]);
+
+  const copyMetadata = (): void => {
+    props.onCopyMetadata(props.frontMatter.rawBlock);
+    setCopied(true);
+    if (copiedResetTimeoutRef.current !== undefined) {
+      window.clearTimeout(copiedResetTimeoutRef.current);
+    }
+    copiedResetTimeoutRef.current = window.setTimeout(() => {
+      copiedResetTimeoutRef.current = undefined;
+      setCopied(false);
+    }, 1200);
+  };
+
+  const closeOnEscape = (event: React.KeyboardEvent): void => {
+    stopCanvasEvent(event);
+    if (event.key !== 'Escape') {
+      return;
+    }
+
+    event.preventDefault();
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`note-metadata-trigger ${open ? 'is-open' : ''} ${isInvalid ? 'is-warning' : ''}`.trim()}
+        data-node-interactive="true"
+        title={buttonLabel}
+        aria-label={buttonLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? popoverIdRef.current : undefined}
+        aria-hidden={overviewInteractionsDisabled ? true : undefined}
+        disabled={overviewInteractionsDisabled}
+        tabIndex={overviewInteractionsDisabled ? -1 : undefined}
+        onFocus={props.onFocus}
+        onPointerDown={stopCanvasEvent}
+        onMouseDown={stopCanvasEvent}
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          if (overviewInteractionsDisabled) {
+            return;
+          }
+          props.onFocus?.();
+          setOpen((current) => !current);
+        }}
+        onKeyDown={closeOnEscape}
+      >
+        <span
+          className={`note-metadata-trigger-icon codicon codicon-${isInvalid ? 'warning' : 'json'}`}
+          aria-hidden="true"
+        />
+      </button>
+      {open
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              id={popoverIdRef.current}
+              role="dialog"
+              aria-label={title}
+              className={`note-metadata-popover nodrag nopan nowheel${position ? ' is-visible' : ''} ${
+                isInvalid ? 'is-warning' : ''
+              }`.trim()}
+              data-node-interactive="true"
+              style={
+                {
+                  '--note-metadata-popover-scale': String(viewport.zoom),
+                  ...(position
+                    ? {
+                        left: position.left,
+                        top: position.top
+                      }
+                    : {})
+                } as CSSProperties
+              }
+              onPointerDown={stopCanvasEvent}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onKeyDown={closeOnEscape}
+              onWheel={stopCanvasEvent}
+            >
+              <div className="note-metadata-popover-header">
+                <strong>{title}</strong>
+                {props.sourceLabel ? <span>{props.sourceLabel}</span> : null}
+                <button
+                  type="button"
+                  className="note-metadata-popover-copy"
+                  data-node-interactive="true"
+                  title={copyLabel}
+                  aria-label={copyLabel}
+                  onPointerDown={stopCanvasEvent}
+                  onMouseDown={stopCanvasEvent}
+                  onClick={(event) => {
+                    stopCanvasEvent(event);
+                    copyMetadata();
+                  }}
+                >
+                  <span
+                    className={`note-metadata-popover-copy-icon codicon codicon-${copied ? 'check' : 'copy'}`}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+              <div className="note-metadata-popover-body">
+                {props.frontMatter.kind === 'valid' ? (
+                  props.frontMatter.entries.length > 0 ? (
+                    props.frontMatter.entries.map((entry) => (
+                      <div key={entry.key} className="note-metadata-popover-row">
+                        <span className="note-metadata-popover-key" title={entry.key}>
+                          {entry.key}
+                        </span>
+                        <span className="note-metadata-popover-value" title={entry.title ?? entry.value}>
+                          {entry.value}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="note-metadata-popover-empty">没有可显示的 metadata 字段。</p>
+                  )
+                ) : (
+                  <p className="note-metadata-popover-error">{props.frontMatter.error}</p>
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
@@ -7535,13 +7857,15 @@ function ChromeTitleEditor(props: {
           }
           placeholder={props.placeholder}
         />
-        {props.subtitle ? (
+        {props.subtitle || props.subtitleAccessory ? (
           <div className="window-title-subtitle-row">
-            <OverflowAwareText
-              className="window-title-subtitle"
-              text={props.subtitle}
-              tooltipText={props.subtitleTooltip}
-            />
+            {props.subtitle ? (
+              <OverflowAwareText
+                className="window-title-subtitle"
+                text={props.subtitle}
+                tooltipText={props.subtitleTooltip}
+              />
+            ) : null}
             {props.subtitleAccessory}
           </div>
         ) : null}
@@ -7613,6 +7937,7 @@ function toFlowNodes(params: {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  noteMarkdownImageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   collapsedFileListTreeBranches: Record<string, string[]> | undefined;
@@ -7721,6 +8046,7 @@ function toFlowNodes(params: {
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
+        noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
@@ -9672,6 +9998,8 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   });
   registerSafeNoteMathRenderer(renderer);
   renderer.core.ruler.after('github-task-lists', 'note-task-list-metadata', (state) => {
+    const noteMarkdownLineOffset =
+      typeof state.env?.noteMarkdownLineOffset === 'number' ? state.env.noteMarkdownLineOffset : 0;
     for (const token of state.tokens) {
       if (token.type !== 'inline' || !token.map || !Array.isArray(token.children)) {
         continue;
@@ -9687,7 +10015,7 @@ function createNoteMarkdownRenderer(): MarkdownIt {
         continue;
       }
 
-      const lineNumber = token.map[0] + 1;
+      const lineNumber = token.map[0] + 1 + noteMarkdownLineOffset;
       checkboxChild.content = injectNoteMarkdownCheckboxAttributes(checkboxChild.content, {
         'data-note-markdown-task-line': String(lineNumber),
         'aria-label': checkboxChild.content.includes('checked=""') ? '取消待办完成状态' : '标记待办为已完成'
@@ -9698,9 +10026,13 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   const defaultLinkOpenRenderer =
     renderer.renderer.rules.link_open ??
     ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  const defaultImageRenderer =
+    renderer.renderer.rules.image ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   const defaultValidateLink = renderer.validateLink.bind(renderer);
   renderer.validateLink = (href) =>
-    defaultValidateLink(href) && isRenderableNoteMarkdownHref(href);
+    defaultValidateLink(href) &&
+    (isRenderableNoteMarkdownHref(href) || isRenderableNoteMarkdownImageReference(href));
   renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const href = token.attrGet('href');
@@ -9715,6 +10047,24 @@ function createNoteMarkdownRenderer(): MarkdownIt {
     token.attrJoin('class', 'note-markdown-link');
     token.attrSet('rel', 'noopener noreferrer');
     return defaultLinkOpenRenderer(tokens, idx, options, env, self);
+  };
+  renderer.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const src = token.attrGet('src');
+    const resolvedSrc = src ? resolveRenderableNoteMarkdownImageSrc(src, env) : null;
+    if (!resolvedSrc) {
+      const altText = token.content.trim() || src || '图片';
+      return `<span class="note-markdown-image-fallback" role="img" aria-label="${escapeHtml(altText)}">${escapeHtml(
+        altText
+      )}</span>`;
+    }
+
+    token.attrSet('src', resolvedSrc);
+    token.attrJoin('class', 'note-markdown-image');
+    token.attrSet('loading', 'lazy');
+    token.attrSet('decoding', 'async');
+    token.attrSet('draggable', 'false');
+    return defaultImageRenderer(tokens, idx, options, env, self);
   };
 
   return renderer;
@@ -9769,6 +10119,197 @@ function isRenderableNoteMarkdownWorkspaceHref(href: string): boolean {
 
   const pathSegments = normalizedPath.split('/').filter((segment) => segment.length > 0);
   return pathSegments.length > 0 && pathSegments.every((segment) => segment !== '..');
+}
+
+function isRenderableNoteMarkdownImageReference(src: string): boolean {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return false;
+  }
+
+  if (isRenderableNoteMarkdownDataImageSrc(trimmedSrc)) {
+    return true;
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(trimmedSrc);
+  if (schemeMatch) {
+    return schemeMatch[1].toLowerCase() === 'https';
+  }
+
+  return isRenderableNoteMarkdownWorkspaceHref(trimmedSrc);
+}
+
+function resolveRenderableNoteMarkdownImageSrc(src: string, env: unknown): string | null {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return null;
+  }
+
+  if (isRenderableNoteMarkdownDataImageSrc(trimmedSrc)) {
+    return trimmedSrc;
+  }
+
+  let parsedUrl: URL | null = null;
+  try {
+    parsedUrl = new URL(trimmedSrc);
+  } catch {
+    parsedUrl = null;
+  }
+  if (parsedUrl) {
+    return parsedUrl.protocol.toLowerCase() === 'https:' ? parsedUrl.toString() : null;
+  }
+
+  const normalizedPath = normalizeNoteMarkdownImageRelativePath(trimmedSrc);
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const options = readNoteMarkdownPreviewRenderOptions(env);
+  const associatedBaseUri = normalizeNoteMarkdownImageBaseUri(options.imageBaseUri);
+  if (associatedBaseUri) {
+    return resolveNoteMarkdownImageAgainstBaseUri(normalizedPath, associatedBaseUri);
+  }
+
+  const workspaceResource = resolveNoteMarkdownWorkspaceImageResource(normalizedPath, options.imageWorkspaceRoots);
+  return workspaceResource
+    ? resolveNoteMarkdownImageAgainstBaseUri(workspaceResource.relativePath, workspaceResource.baseUri)
+    : null;
+}
+
+function isRenderableNoteMarkdownDataImageSrc(src: string): boolean {
+  return NOTE_MARKDOWN_DATA_IMAGE_PATTERN.test(src);
+}
+
+function normalizeNoteMarkdownImageRelativePath(src: string): NoteMarkdownNormalizedImagePath | null {
+  const [rawPathPart] = splitNoteMarkdownImagePathAndFragment(src);
+  if (!rawPathPart || rawPathPart.includes('?')) {
+    return null;
+  }
+
+  let decodedPathPart: string;
+  try {
+    decodedPathPart = decodeURIComponent(rawPathPart);
+  } catch {
+    return null;
+  }
+
+  const normalizedPath = decodedPathPart.replace(/\\/g, '/');
+  if (
+    !normalizedPath ||
+    normalizedPath.startsWith('/') ||
+    normalizedPath.startsWith('//') ||
+    /^[A-Za-z]:[\\/]/u.test(decodedPathPart)
+  ) {
+    return null;
+  }
+
+  const segments: string[] = [];
+  for (const segment of normalizedPath.split('/')) {
+    if (!segment || segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      return null;
+    }
+    segments.push(segment);
+  }
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return {
+    segments,
+    relativePath: segments.map((segment) => encodeURIComponent(segment)).join('/')
+  };
+}
+
+function splitNoteMarkdownImagePathAndFragment(src: string): [string, string] {
+  const hashIndex = src.indexOf('#');
+  return hashIndex === -1 ? [src, ''] : [src.slice(0, hashIndex), src.slice(hashIndex + 1)];
+}
+
+function readNoteMarkdownPreviewRenderOptions(env: unknown): NoteMarkdownPreviewRenderOptions {
+  if (!env || typeof env !== 'object') {
+    return {
+      imageWorkspaceRoots: []
+    };
+  }
+
+  const candidate = env as Partial<NoteMarkdownPreviewRenderOptions>;
+  return {
+    imageBaseUri: typeof candidate.imageBaseUri === 'string' ? candidate.imageBaseUri : undefined,
+    imageWorkspaceRoots: Array.isArray(candidate.imageWorkspaceRoots)
+      ? candidate.imageWorkspaceRoots.filter(
+          (root): root is NoteMarkdownImageWorkspaceRoot =>
+            typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : []
+  };
+}
+
+function normalizeNoteMarkdownImageBaseUri(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.toString().endsWith('/') ? url.toString() : `${url.toString()}/`;
+  } catch {
+    return null;
+  }
+}
+
+function resolveNoteMarkdownWorkspaceImageResource(
+  normalizedPath: NoteMarkdownNormalizedImagePath,
+  workspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[]
+): NoteMarkdownResolvedImageResource | null {
+  if (workspaceRoots.length === 0) {
+    return null;
+  }
+
+  if (workspaceRoots.length === 1) {
+    const baseUri = normalizeNoteMarkdownImageBaseUri(workspaceRoots[0].webviewResourceBaseUri);
+    return baseUri ? { baseUri, relativePath: normalizedPath.relativePath } : null;
+  }
+
+  const [rootName] = normalizedPath.segments;
+  const normalizedRootName = normalizeNoteMarkdownWorkspaceRootName(rootName);
+  const matchingRoot = workspaceRoots.find(
+    (root) => normalizeNoteMarkdownWorkspaceRootName(root.name) === normalizedRootName
+  );
+  if (!matchingRoot || normalizedPath.segments.length < 2) {
+    return null;
+  }
+
+  const baseUri = normalizeNoteMarkdownImageBaseUri(matchingRoot.webviewResourceBaseUri);
+  if (!baseUri) {
+    return null;
+  }
+
+  return {
+    baseUri,
+    relativePath: normalizedPath.segments.slice(1).map((segment) => encodeURIComponent(segment)).join('/')
+  };
+}
+
+function normalizeNoteMarkdownWorkspaceRootName(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function resolveNoteMarkdownImageAgainstBaseUri(
+  normalizedPath: { relativePath: string } | string,
+  baseUri: string
+): string | null {
+  try {
+    return new URL(
+      typeof normalizedPath === 'string' ? normalizedPath : normalizedPath.relativePath,
+      baseUri
+    ).toString();
+  } catch {
+    return null;
+  }
 }
 
 function removeMarkdownTokenAttribute(token: Token, attributeName: string): void {
@@ -9928,6 +10469,14 @@ function findNoteMarkdownLinkTarget(target: EventTarget | null): HTMLAnchorEleme
   return target.closest<HTMLAnchorElement>(NOTE_MARKDOWN_LINK_SELECTOR);
 }
 
+function findNoteMarkdownImageTarget(target: EventTarget | null): HTMLImageElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLImageElement>(NOTE_MARKDOWN_IMAGE_SELECTOR);
+}
+
 function findNoteMarkdownChecklistInputTarget(target: EventTarget | null): HTMLInputElement | null {
   if (!(target instanceof HTMLElement)) {
     return null;
@@ -9947,8 +10496,22 @@ function readNoteMarkdownChecklistLineNumber(input: HTMLInputElement): number | 
   return Number.isSafeInteger(parsedLineNumber) && parsedLineNumber > 0 ? parsedLineNumber : null;
 }
 
-function renderNoteMarkdownPreview(content: string): string {
-  return content.trim() ? noteMarkdownRenderer.render(content) : '';
+function renderNoteMarkdownPreview(
+  content: string,
+  options: NoteMarkdownPreviewRenderOptions
+): NoteMarkdownPreviewResult {
+  const frontMatter = parseNoteMarkdownFrontMatter(content);
+  const renderContent = frontMatter.kind === 'valid' ? frontMatter.body : content;
+  return {
+    html: renderContent.trim()
+      ? noteMarkdownRenderer.render(renderContent, {
+          noteMarkdownLineOffset: frontMatter.lineOffset,
+          imageBaseUri: options.imageBaseUri,
+          imageWorkspaceRoots: options.imageWorkspaceRoots
+        })
+      : '',
+    frontMatter
+  };
 }
 
 function injectNoteMarkdownCheckboxAttributes(

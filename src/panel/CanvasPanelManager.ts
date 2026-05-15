@@ -78,6 +78,7 @@ import {
   type ExecutionSessionMetadata,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
+  type NoteMarkdownImageWorkspaceRoot,
   type PendingExecutionLaunch,
   type RuntimeAttachmentState,
   type RuntimeHostBackendKind,
@@ -2447,8 +2448,46 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         COMMAND_IDS.openCanvasInEditor,
         COMMAND_IDS.openCanvasInPanel
       ],
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')]
+      localResourceRoots: this.getWebviewLocalResourceRoots()
     };
+  }
+
+  private getWebviewLocalResourceRoots(): vscode.Uri[] {
+    const roots = [
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+      ...(vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => workspaceFolder.uri),
+      ...this.listAssociatedNoteMarkdownResourceDirectories()
+    ];
+    const seen = new Set<string>();
+    return roots.filter((root) => {
+      const key = root.toString();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private listAssociatedNoteMarkdownResourceDirectories(): vscode.Uri[] {
+    return this.state.nodes.flatMap((node) => {
+      if (node.kind !== 'note') {
+        return [];
+      }
+
+      const source = ensureNoteMetadata(node).contentSource;
+      if (source?.kind !== 'markdown-file') {
+        return [];
+      }
+
+      const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+      return uri ? [dirnameUri(uri)] : [];
+    });
+  }
+
+  private formatWebviewResourceBaseUri(webview: vscode.Webview, directoryUri: vscode.Uri): string {
+    const resourceUri = webview.asWebviewUri(directoryUri.with({ query: '', fragment: '' })).toString();
+    return resourceUri.endsWith('/') ? resourceUri : `${resourceUri}/`;
   }
 
   private getEditorWebviewPanelOptions(): vscode.WebviewOptions & vscode.WebviewPanelOptions {
@@ -3144,6 +3183,55 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : state;
   }
 
+  private hydrateNoteMarkdownImageResourceBasesForWebview(
+    state: CanvasPrototypeState,
+    webview: vscode.Webview | undefined
+  ): CanvasPrototypeState {
+    if (!webview) {
+      return state;
+    }
+
+    let didChange = false;
+    const nodes = state.nodes.map((node) => {
+      if (node.kind !== 'note') {
+        return node;
+      }
+
+      const noteMetadata = ensureNoteMetadata(node);
+      const source = noteMetadata.contentSource;
+      if (source?.kind !== 'markdown-file') {
+        return node;
+      }
+
+      const uri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+      if (!uri) {
+        return node;
+      }
+
+      didChange = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...noteMetadata,
+            contentSource: {
+              ...source,
+              webviewResourceBaseUri: this.formatWebviewResourceBaseUri(webview, dirnameUri(uri))
+            }
+          }
+        }
+      };
+    });
+
+    return didChange
+      ? {
+          ...state,
+          nodes
+        }
+      : state;
+  }
+
   private resolveRuntimeStoragePath(runtimeStoragePath: string | undefined): string {
     return normalizeRuntimeStoragePath(runtimeStoragePath) ?? this.getExtensionStoragePath();
   }
@@ -3435,16 +3523,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
+    const activeWebview = this.getActiveWebview();
+    if (activeWebview) {
+      activeWebview.options = this.getWebviewOptions();
+    }
     this.postMessage({
       type,
       payload: {
-        state: stripSerializedTerminalStateFromCanvasState(
-          this.hydrateNoteMarkdownConflictDraftsForWebview(this.state)
-        ),
-        runtime: this.getRuntimeContext()
+        state: this.prepareCanvasStateForWebview(activeWebview),
+        runtime: this.getRuntimeContext(activeWebview)
       }
     });
     this.notifySidebarStateChanged();
+  }
+
+  private prepareCanvasStateForWebview(webview: vscode.Webview | undefined): CanvasPrototypeState {
+    const state = this.hydrateNoteMarkdownConflictDraftsForWebview(this.state);
+    const stateWithImageResources = this.hydrateNoteMarkdownImageResourceBasesForWebview(state, webview);
+    return stripSerializedTerminalStateFromCanvasState(stateWithImageResources);
   }
 
   private postMessage(message: HostToWebviewMessage): void {
@@ -3461,7 +3557,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.sidebarStateEmitter.fire(this.getSidebarState());
   }
 
-  private getRuntimeContext(): CanvasRuntimeContext {
+  private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
     const fileConfiguration = this.getCanvasFileViewConfiguration();
     return {
       workspaceTrusted: vscode.workspace.isTrusted,
@@ -3484,8 +3580,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
-      fileIconFontFaces: []
+      fileIconFontFaces: [],
+      noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview)
     };
+  }
+
+  private getNoteMarkdownImageWorkspaceRoots(
+    webview: vscode.Webview | undefined
+  ): NoteMarkdownImageWorkspaceRoot[] | undefined {
+    if (!webview) {
+      return undefined;
+    }
+
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    if (workspaceFolders.length === 0) {
+      return undefined;
+    }
+
+    return workspaceFolders.map((workspaceFolder) => ({
+      name: workspaceFolder.name,
+      webviewResourceBaseUri: this.formatWebviewResourceBaseUri(webview, workspaceFolder.uri)
+    }));
   }
 
   private getTerminalScrollback(): number {
@@ -14481,6 +14596,19 @@ function parseStoredNoteMarkdownResourceUri(value: string): vscode.Uri | undefin
   } catch {
     return undefined;
   }
+}
+
+function dirnameUri(uri: vscode.Uri): vscode.Uri {
+  if (uri.scheme === 'file') {
+    return vscode.Uri.file(path.dirname(uri.fsPath));
+  }
+
+  const nextPath = path.posix.dirname(uri.path || '/');
+  return uri.with({
+    path: nextPath === '.' ? '/' : nextPath,
+    query: '',
+    fragment: ''
+  });
 }
 
 function resolveDroppedNoteMarkdownResourceUri(
