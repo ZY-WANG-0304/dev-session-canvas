@@ -117,7 +117,7 @@
 
 第五步实现应用逻辑。应用模板前，`applyCanvasTemplateRecord()` 异步解析模板中的 workspace 文件 `Note`。路径-only：文件存在则读取并关联；文件不存在则创建缺失状态关联 `Note`，由节点内“创建空文件并关联”动作恢复。路径+内容：文件不存在则创建父目录和文件并写入模板内容；文件存在且内容相同则关联；文件存在但内容不同则关联现有文件并进入 `dirty-conflict`，把模板正文作为节点内冲突草稿。完成解析后，把每个模板 note index 对应的 `content` 和 `contentSource` 传给 `applyCanvasTemplateToState()`，由物化逻辑创建真正的关联 Markdown `Note`。
 
-第六步补测试。`scripts/test-canvas-templates.mjs` 应覆盖：旧模板继续解析；关联 `Note` 快照模式、路径-only、路径+内容捕获；路径模式模板 JSON 不含 raw resource URI；应用内容冲突不再走 modal，而是生成 `dirty-conflict` materialization。保存表单源码断言应覆盖新增 section、payload 字段和不出现“不保存此 Note”。必要时补充 Webview harness 测试以确认表单 UI 不影响导入模式。
+第六步补测试。通过 `npm run test:canvas-templates` 运行模板回归，实际测试文件位于 `scripts/test/test-canvas-templates.mjs`；测试应覆盖：旧模板继续解析；关联 `Note` 快照模式、路径-only、路径+内容捕获；路径模式模板 JSON 不含 raw resource URI；应用内容冲突不再走 modal，而是生成 `dirty-conflict` materialization。保存表单源码断言应覆盖新增 section、payload 字段和不出现“不保存此 Note”。必要时补充 Webview harness 测试以确认表单 UI 不影响导入模式。
 
 第七步统一 Note 内关联文件异常的视觉表达。`src/webview/main.tsx` 中正文区域不可用分支继续负责缺失、不可读和无草稿 `dirty-conflict` 恢复态，但内容结构统一为 `.note-file-conflict-card`；`src/webview/styles.css` 让该卡片复用 `.note-edit-conflict-hint` 的边框、背景、字号、阴影和 `.note-edit-conflict-action` 按钮语言。缺失状态仍只提供“创建空文件并关联”，无草稿 `dirty-conflict` 仍只提供“重新加载”。
 
