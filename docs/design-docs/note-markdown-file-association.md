@@ -218,6 +218,10 @@ interface NoteNodeMetadata {
 - subtitle 行允许提供一个低强调的 `复制 Markdown 路径` accessory 按钮；它是路径辅助操作，不把 subtitle 本身变成链接。按钮点击时由 Webview 发送 `webview/copyTextToClipboard`，`source` 固定为 `note-markdown-subtitle`，并携带当前 `nodeId`，由 Host 统一写入系统剪贴板。
 - 复制内容必须与当前标题栏对用户展示的完整人类可读路径一致：Webview 优先使用 `fullDisplayPath`，缺失时回退到 `displayPath`。因此即使标题栏因布局 ellipsis 截断，剪贴板中仍应得到同一条未截断的人类可读路径；不得复制 raw `resourceUri` 或 `vscode-remote://...`。
 - 正文阅读态继续复用现有 Markdown 预览渲染能力。
+- 当 Markdown 正文以合法 YAML front matter 开头时，阅读态默认隐藏 front matter，只渲染正文 body；编辑态和磁盘文件仍保留完整原文。隐藏 front matter 不能改变 `Note` 节点标题、文件 subtitle、节点状态或关联文件权威关系。
+- 有 YAML front matter 的 `Note` 在标题栏 subtitle 行显示与复制路径按钮同尺寸的 `{}` icon-only metadata 按钮；若没有文件 subtitle，则按钮独占标题下方的辅助行。按钮锚定一个只读 popover，展示精简标题、解析出的 key/value 摘要，并在 popover 标题栏右侧提供复制原始 front matter 的 icon-only 按钮；popover 标题栏与正文分别沿用 Note 节点标题栏和正文 surface 的配色，是临时浮层，不改变节点尺寸、不进入正文流、不作为新的画布对象保存状态，并随当前画布缩放保持与节点一致的视觉倍率。metadata value 支持自动换行，避免长字段把 popover 横向撑开。
+- YAML front matter 解析失败时，不隐藏原文；`metadata` chip 使用 warning 变体，popover 显示解析失败原因。此时预览保守保留原始 Markdown，避免把未确认的 metadata 当成已生效结论。
+- 隐藏 front matter 后，checklist 预览仍必须使用原始 Markdown 行号写回；Webview 渲染时应把被隐藏 front matter 的行数作为 offset 注入任务 checkbox metadata，避免点击 checklist 改错正文行。
 - 正文编辑态仍使用纯文本 Markdown 输入；提交后写回关联文件。
 - 长篇编辑可通过现有或新增“打开文件”动作交给 VSCode 原生编辑器；该动作可以放在上下文菜单或低频操作菜单中。
 - 如果用户在画布内编辑关联 Markdown Note 时，Host 收到同一文件的外部刷新，Webview 必须保留当前 textarea 内容并进入非阻塞冲突提示；用户仍可继续编辑草稿，但失焦或快捷提交不得静默写回真实文件，必须通过 `重新加载` 或 `覆盖文件` 显式解决。
@@ -322,18 +326,20 @@ Workspace Trust：
 6. 目标文件已存在时，用户可以选择“覆盖文件并关联”“保留文件内容并关联”或“取消”，三条路径都不产生静默覆盖。
 7. 关联后 title 下方以 subtitle 显示路径，且不出现路径胶囊、链接视觉或 raw `vscode-remote://...`。
 8. 关联 Markdown subtitle 的复制按钮存在时，点击后发送 `webview/copyTextToClipboard`，payload 使用 `source: "note-markdown-subtitle"` 和当前 `nodeId`；复制文本为 `fullDisplayPath ?? displayPath`，不复制 raw `resourceUri`。
-9. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
-10. 超过 8,000 字符的关联 Markdown 文件拖入、显示、编辑或 checklist 更新后，真实文件不会被普通 Note 上限截断。
-11. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
-12. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
-13. 删除关联 Markdown `Note` 不删除关联文件。
-14. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
-15. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
-16. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
-17. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
-18. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
-19. `npm run typecheck` 通过。
-20. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告和拖拽创建的 Playwright / smoke 或纯函数测试通过。
+9. Markdown YAML front matter 在阅读态隐藏，并通过标题栏低强调 `metadata` chip 打开只读 popover；复制 metadata 时发送 `webview/copyTextToClipboard`，payload 使用 `source: "note-markdown-metadata"` 和当前 `nodeId`。
+10. 隐藏 YAML front matter 后，点击 checklist 仍按原始 Markdown 行号写回，不能改到 front matter 或正文错行。
+11. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
+12. 超过 8,000 字符的关联 Markdown 文件拖入、显示、编辑或 checklist 更新后，真实文件不会被普通 Note 上限截断。
+13. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
+14. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
+15. 删除关联 Markdown `Note` 不删除关联文件。
+16. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
+17. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
+18. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
+19. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
+20. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
+21. `npm run typecheck` 通过。
+22. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告、拖拽创建和 YAML metadata popover 的 Playwright / smoke 或纯函数测试通过。
 
 当前验证记录（2026-05-13）：
 
@@ -359,3 +365,9 @@ Workspace Trust：
 - `npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `npm run test:webview -- --grep "associated markdown note restores a persisted dirty-conflict draft"` 通过；本轮验证冲突提示里的 `复制草稿` 会向 Host 发送 `webview/copyAssociatedNoteMarkdownDraft`，并且复制后保留原有覆盖/重新加载恢复路径。
 - `git diff --check`、`npm run typecheck`、`npm run test:note-markdown-file-association` 和 `npm run test:execution-terminal-clipboard` 通过；本轮文档补齐后复核格式、关联 Markdown 纯函数基线和共享剪贴板消息基线。此前本 PR 的 `npm run test:webview` 全量通过，已覆盖关联 Markdown subtitle 的 `复制 Markdown 路径` 按钮向 Host 发送 `webview/copyTextToClipboard`，复制 `fullDisplayPath ?? displayPath`，同时保留打开文件入口、长路径 tooltip 与编辑态行号回归。
 - Quick Input 真实键盘导航和已有文件三选项当前仍停留在实现与代码审查层面，尚未由自动化直接模拟用户选择，因此本文验证状态保持为“验证中”。
+
+追加验证记录（2026-05-15）：
+
+- `npm run typecheck` 通过。
+- `npm run test:execution-terminal-clipboard` 通过，覆盖 `note-markdown-metadata` 作为通用剪贴板文本来源能通过协议 validator。
+- `npm run test:webview -- --grep "YAML metadata|original line numbers"` 通过，覆盖 YAML front matter 阅读态隐藏、标题栏 icon-only metadata 按钮、只读 popover、复制原始 front matter、popover 随画布缩放保持视觉倍率、metadata value 自动换行，以及隐藏 front matter 后 checklist 仍按原始 Markdown 行号写回。
