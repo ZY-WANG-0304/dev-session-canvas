@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { resolveContainedWorkspaceRelativePath } from '../src/common/workspaceRelativePath.ts';
+import { resolveContainedWorkspaceRelativePath } from '../../src/common/workspaceRelativePath.ts';
 
 function run(): void {
   assert.equal(

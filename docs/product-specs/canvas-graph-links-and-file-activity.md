@@ -1,6 +1,6 @@
 # 画布关系连线与文件活动视图规格
 
-当前状态：已确认。2026-04-21 已按本文规格完成通用连线、provider 文件活动投影、文件节点 / 文件列表节点的 `card` / `minimal` 双风格收口，以及文件对象投影总开关。当前实现以正式开发质量推进，而不是一次性原型；其中 Agent 文件活动事件必须来自 provider 原生结构化事件，不能依赖 PTY 输出解析。第一轮自动文件活动覆盖 `Claude Code` 与仓库内 `fake-agent-provider` 验证路径；`Codex` 因缺少已确认的 provider 原生文件事件接口，当前只保留 no-op 适配，不把未确认能力写成已支持。本轮已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`；最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 复跑中，文件功能相关断言已经通过，但整套 run 仍受既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` / `waitForRuntimeSupervisorState()` 超时阻塞。
+当前状态：已确认。2026-04-21 已按本文规格完成通用连线、provider 文件活动投影、文件节点 / 文件列表节点的 `card` / `minimal` 双风格收口，以及文件对象投影总开关。当前实现以正式开发质量推进，而不是一次性原型；其中 Agent 文件活动事件必须来自 provider 原生结构化事件，不能依赖 PTY 输出解析。第一轮自动文件活动覆盖 `Claude Code` 与仓库内 `fake-agent-provider` 验证路径；`Codex` 因缺少已确认的 provider 原生文件事件接口，当前只保留 no-op 适配，不把未确认能力写成已支持。本轮已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`；最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 复跑中，文件功能相关断言已经通过，但整套 run 仍受既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` / `waitForRuntimeSupervisorState()` 超时阻塞。
 
 ## 1. 用户问题
 

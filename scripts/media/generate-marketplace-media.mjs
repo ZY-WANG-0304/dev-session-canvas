@@ -13,7 +13,7 @@ import { spawnSync } from 'child_process';
 import path from 'path';
 
 const projectRoot = process.cwd();
-const recordingScriptPath = path.join(projectRoot, 'scripts', 'recording-session.mjs');
+const recordingScriptPath = path.join(projectRoot, 'scripts', 'media', 'recording-session.mjs');
 const args = process.argv.slice(2);
 
 if (args.length > 0) {

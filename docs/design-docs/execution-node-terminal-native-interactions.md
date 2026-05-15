@@ -211,7 +211,7 @@ updated_at: 2026-05-01
    - multiline link 检测。
    - 当前“过多链接”误判的回归样例，对齐到原生结果。
    - word / search link 的原生优先级与 fallback 行为。
-4. `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，并至少在真实宿主中覆盖：
+4. `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过，并至少在真实宿主中覆盖：
    - 跨行文件链接打开。
    - search link 的 exact-open / Quick Access fallback。
    - hover 修饰键文案与打开动作。

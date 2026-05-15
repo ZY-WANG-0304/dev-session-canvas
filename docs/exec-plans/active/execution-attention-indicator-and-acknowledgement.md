@@ -95,14 +95,14 @@
 - `npm run typecheck` 通过
 - `npm run test:execution-attention-signals` 通过
 - `npm run build` 通过
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 复跑通过（首次运行命中过一次与本变更无直接证据关联的历史恢复 smoke 超时，二次运行稳定通过）
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 复跑通过（首次运行命中过一次与本变更无直接证据关联的历史恢复 smoke 超时，二次运行稳定通过）
 
 review follow-up 增量验证：
 
 - `npm run typecheck` 通过
 - `npm run build` 通过
-- 基于 `scripts/vscode-smoke-runner.mjs` 的定向 VS Code 场景通过：确认“默认 `Panel` + 当前实例 `Editor`”时，侧栏 `画布状态` 显示 `已打开 · Editor`，且 tooltip 同时区分当前实例承载面与默认承载面
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 仍在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中既有超时；当前不把整套 trusted smoke 记为已通过
+- 基于 `scripts/smoke/vscode-smoke-runner.mjs` 的定向 VS Code 场景通过：确认“默认 `Panel` + 当前实例 `Editor`”时，侧栏 `画布状态` 显示 `已打开 · Editor`，且 tooltip 同时区分当前实例承载面与默认承载面
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 仍在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中既有超时；当前不把整套 trusted smoke 记为已通过
 
 剩余风险：
 
@@ -118,7 +118,7 @@ review follow-up 增量验证：
 
 第三处是 Webview UI。`src/webview/main.tsx` 中 `AgentSessionNode` 与 `TerminalSessionNode` 渲染执行节点标题栏；`src/webview/styles.css` 定义标题栏、状态 pill 和 node chrome 的视觉样式。本轮标题栏 icon 与闪烁都在这里实现。
 
-第四处是自动化验证。`tests/vscode-smoke/extension-tests.cjs` 已经覆盖 attention bridge、冷却和“查看节点”工作台动作，但还没有断言节点内 icon、标题栏闪烁和点击确认；`scripts/test-execution-attention-signals.mjs` 则继续负责底层解析器语义。
+第四处是自动化验证。`tests/vscode-smoke/extension-tests.cjs` 已经覆盖 attention bridge、冷却和“查看节点”工作台动作，但还没有断言节点内 icon、标题栏闪烁和点击确认；`scripts/test/test-execution-attention-signals.mjs` 则继续负责底层解析器语义。
 
 ## 工作计划
 
@@ -156,13 +156,13 @@ review follow-up 增量验证：
 
 5. 补验证并执行命令：
 
-    - `scripts/test-execution-attention-signals.mjs`
+    - `scripts/test/test-execution-attention-signals.mjs`
     - `tests/vscode-smoke/extension-tests.cjs`
     - 在仓库根目录运行：
 
           npm run typecheck
           npm run test:execution-attention-signals
-          DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+          DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
 
 ## 验证与验收
 
@@ -184,7 +184,7 @@ review follow-up 增量验证：
 
 ## 证据与备注
 
-- 2026-04-22 本轮 trusted smoke 首次运行在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中过一次超时，失败快照未指向 strong reminder 枚举逻辑；随后立即复跑 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过，当前先按一次性环境抖动记录。
+- 2026-04-22 本轮 trusted smoke 首次运行在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中过一次超时，失败快照未指向 strong reminder 枚举逻辑；随后立即复跑 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过，当前先按一次性环境抖动记录。
 
 ## 接口与依赖
 

@@ -91,7 +91,7 @@ function createNdjsonFileActivitySession(params: {
       throw new Error('Claude 文件活动会话缺少 extension root。');
     }
 
-    const hookScriptPath = path.join(extensionRootPath, 'scripts', 'claude-file-event-hook.cjs');
+    const hookScriptPath = path.join(extensionRootPath, 'scripts', 'runtime', 'claude-file-event-hook.cjs');
     const settingsPath = path.join(sessionRootPath, 'claude-file-activity-settings.json');
     const hookCommand = `${shellQuote(process.execPath)} ${shellQuote(hookScriptPath)}`;
     const settings = {

@@ -6,7 +6,7 @@ import {
   preparePlaywrightRuntime,
   projectRoot,
   runPlaywrightCli
-} from './playwright-environment.mjs';
+} from '../shared/playwright-environment.mjs';
 
 async function main() {
   const scriptArgs = process.argv.slice(2);

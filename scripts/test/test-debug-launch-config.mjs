@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFile, rm } from 'node:fs/promises';
+import { access, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { prepareDebugMainOnlyExtension } from './prepare-debug-main-only-extension.mjs';
+import { prepareDebugMainOnlyExtension } from '../shared/prepare-debug-main-only-extension.mjs';
 
 const workspaceFolder = '${workspaceFolder}';
 const localRepoRoot = '${input:devSessionCanvas.localRepoRoot}';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const launchJsonPath = path.join(repoRoot, '.vscode', 'launch.json');
 const launchJson = JSON.parse(await readFile(launchJsonPath, 'utf8'));
 
@@ -84,6 +84,7 @@ assert.equal(preparedManifest.name, sourceManifest.name);
 assert.equal(preparedManifest.main, sourceManifest.main);
 assert.equal('extensionDependencies' in preparedManifest, false);
 assert.equal('extensionPack' in preparedManifest, false);
+await access(path.join(preparedOutputDir, 'scripts', 'runtime', 'claude-file-event-hook.cjs'));
 
 await rm(preparedOutputDir, { recursive: true, force: true });
 

@@ -168,8 +168,8 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 - `npm run typecheck` 通过。
 - `npm run build` 通过。
 - `npm run test:canvas-templates` 通过。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs` 通过。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 通过。
 - 模板 sidebar 改为原生风格后再次执行 `npm run typecheck`、`npm run build`、`npm run test:canvas-templates`，均通过。
 - 模板 section 去掉内容区自定义工具栏、改为依赖 title actions 后再次执行 `npm run typecheck`、`npm run build`、`npm run test:canvas-templates`，均通过。
 - 模板 sidebar 首屏渲染链路重做后，再次执行 `npm run typecheck`、`npm run build`、`npm run test:canvas-templates`，均通过。
@@ -183,7 +183,7 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 - 模板 sidebar `工作区` 位置标签补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 workspace scope 映射为 `工作区`，以及行内 badge 使用 `item.locationLabel`。
 - 模板应用后组级追焦补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖宿主返回新增节点 id、发送 `host/focusNodes`，以及 Webview 对该节点组执行 `fitView`。
 - 组级追焦延后一拍修复后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 Webview 使用 `latestHostNodeIdsRef` 判定目标节点，并在首次 `fitView` 失败时调度追焦重试。
-- Webview 重置确认与跨 surface 命令追焦修复后，再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过；`test:canvas-templates` 已补充静态断言覆盖命令入口在 reveal 最终承载面后再触发组级追焦。
+- Webview 重置确认与跨 surface 命令追焦修复后，再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，均通过；`test:canvas-templates` 已补充静态断言覆盖命令入口在 reveal 最终承载面后再触发组级追焦。
 
 剩余取舍与已知边界：
 
@@ -247,13 +247,13 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 
 5. 测试与验证：
 
-   - 新增 / 更新相关 `scripts/test-*.mjs`
+   - 新增 / 更新相关 `scripts/test/test-*.mjs`
    - 更新 `tests/vscode-smoke/extension-tests.cjs`
    - 在仓库根目录运行：
 
          npm run typecheck
-         node scripts/test-canvas-templates.mjs
-         DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+         node scripts/test/test-canvas-templates.mjs
+         DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
 
 ## 验证与验收
 
@@ -278,8 +278,8 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 ## 证据与备注
 
 - 2026-05-06：`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 均通过。
-- 2026-05-06：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 输出 `Trusted workspace smoke passed.`。
-- 2026-05-06：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs` 输出 `Restricted workspace smoke passed.`。
+- 2026-05-06：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 输出 `Trusted workspace smoke passed.`。
+- 2026-05-06：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 输出 `Restricted workspace smoke passed.`。
 
 ## 接口与依赖
 

@@ -151,7 +151,7 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.log(`用法:
-  node scripts/run-clean-checkout-vsix-validation.mjs [--ref <git-ref>] [--source git-ref|working-tree] [--skip-vsix-smoke] [--keep-temp]
+  node scripts/release/run-clean-checkout-vsix-validation.mjs [--ref <git-ref>] [--source git-ref|working-tree] [--skip-vsix-smoke] [--keep-temp]
 
 说明:
   - 默认从当前仓库的 git ref HEAD 导出 clean checkout。
@@ -167,11 +167,10 @@ function resolveGitRevision(rootDir, revision) {
     encoding: 'utf8'
   });
 
-  if (result.error) {
-    throw result.error;
-  }
-
   if (result.status !== 0) {
+    if (result.error) {
+      throw result.error;
+    }
     throw new Error(`无法解析 git ref ${revision}。`);
   }
 
@@ -258,11 +257,10 @@ function runCommand(file, commandArgs, options, failureMessage) {
     ...options
   });
 
-  if (result.error) {
-    throw result.error;
-  }
-
   if (result.status !== 0) {
+    if (result.error) {
+      throw result.error;
+    }
     throw new Error(failureMessage);
   }
 }

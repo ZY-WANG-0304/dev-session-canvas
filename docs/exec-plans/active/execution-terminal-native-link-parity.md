@@ -45,7 +45,7 @@
   证据：2026-05-01 本地运行 `npm run test:webview`，失败点位于 `tests/playwright/webview-harness.spec.mjs:276` 的截图基线断言，而新增 / 既有 link case 均为绿色。
 
 - 观察：2026-05-01 记录过的 `verifyRealWebviewProbe()` 提前失败已不再重现；当前 head 的 trusted smoke 可以继续跑到 execution terminal native link 路径。当前覆盖拆成两层：更早的 trusted smoke 步骤会先验证未知消息是否既进入 `host/error`，也真实渲染到 editor surface Webview toast；`verifyRealWebviewProbe()` 本身则只保留 “editor surface ready + 真实 Webview 基线渲染” 断言，避免把多类语义绑在同一个 helper 里。
-  证据：2026-05-02 运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过；对应调整位于 `tests/vscode-smoke/extension-tests.cjs` 的 trusted smoke 前置断言与 `verifyRealWebviewProbe()`。
+  证据：2026-05-02 运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过；对应调整位于 `tests/vscode-smoke/extension-tests.cjs` 的 trusted smoke 前置断言与 `verifyRealWebviewProbe()`。
 
 - 观察：review 暴露出两类此前被误写成“已完成”的差异：一类是 Host 侧 search opener 仍会丢掉 `contextLine` 的 `line[:column]` 后缀，另一类是 multiline/file resolve cache 只按当前 wrapped line 文本缓存，未在终端 clear / redraw 后失效。
   证据：2026-05-01 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts` 与 `src/webview/executionTerminalNativeInteractions.ts` 对应实现。
@@ -156,7 +156,7 @@
 
        npm run typecheck
        npm run test:webview
-       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
 
    若出现某条用例与原生 Terminal 行为不一致，不允许直接改测试去迁就当前实现，而应回到 upstream 行为核对差异来源。
 
@@ -169,7 +169,7 @@
 3. 当前已知“过多链接”样例在执行节点中不再比原生 Terminal 注册更多 file-like link。
 4. `word/search link`、`search exact-open` 与 `Quick Access fallback` 语义与原生一致。
 5. hover 文案和修饰键与原生一致；如果实现了 allowed scheme 提示，则未放行 scheme 不会直接打开。
-6. `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 通过。
+6. `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
 
 ## 幂等性与恢复
 

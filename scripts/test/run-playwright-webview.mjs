@@ -1,4 +1,4 @@
-import { preparePlaywrightRuntime, runPlaywrightCli } from './playwright-environment.mjs';
+import { preparePlaywrightRuntime, runPlaywrightCli } from '../shared/playwright-environment.mjs';
 
 async function main() {
   await preparePlaywrightRuntime();

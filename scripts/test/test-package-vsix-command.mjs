@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { resolveCommand } from './package-vsix.mjs';
+import { resolveCommand } from '../release/package-vsix.mjs';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-package-vsix-command-'));
 

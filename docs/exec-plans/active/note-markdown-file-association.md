@@ -192,7 +192,7 @@
 - `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型；`NoteMarkdownConflictDraft` 支持 storage-backed `draftId` 与只面向 Webview hydration 的可选 `content`，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
 - `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取；运行时 edit session 让 watcher/保存/焦点刷新可以在用户仍处于编辑态时发现外部落盘变化并生成 storage-backed conflict draft；普通焦点恢复和 watcher 刷新会保留未处理 `dirty-conflict`，只有显式重新加载或覆盖才清理 `conflictDraft`。冲突草稿正文写入 `note-markdown-drafts/<draftId>.md`，持久化状态和 debug snapshot 会剥离 `content`，Host 给 Webview 广播状态时再读取 draft 文件 hydrate；复制草稿请求由 Host 写入系统剪贴板。
 - `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、带已 hydrate `conflictDraft.content` 的 Host `dirty-conflict` 重新 bootstrap 草稿恢复、无草稿内容 `dirty-conflict` 的 reload-only 恢复警告、冲突时的 `复制草稿` 按钮，以及空白画布拖放 Markdown 文件创建关联 Note；冲突提示出现后 textarea 仍可编辑，但 blur / Ctrl+Enter 只同步草稿，不会静默提交；空白画布与终端拖拽共享潜在资源判断。
-- `tests/playwright/webview-harness.spec.mjs`、`scripts/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、冲突提示后继续编辑草稿、关联 Markdown draft 上报、Host dirty-conflict 后保留草稿引用、带 hydrate 草稿的 Host dirty-conflict 重新 bootstrap 的恢复/覆盖入口、只有 draft 引用但无内容时的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
+- `tests/playwright/webview-harness.spec.mjs`、`scripts/test/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、冲突提示后继续编辑草稿、关联 Markdown draft 上报、Host dirty-conflict 后保留草稿引用、带 hydrate 草稿的 Host dirty-conflict 重新 bootstrap 的恢复/覆盖入口、只有 draft 引用但无内容时的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
 
@@ -226,7 +226,7 @@
        npm run build
        通过
 
-       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
        Trusted workspace smoke passed；VS Code smoke test passed；覆盖超过 8,000 字符的关联 Markdown 读取与写回不截断、打开但未保存的 VSCode editor 草稿不会改变 Note 内容且保存后才刷新、stale revision 写回进入 dirty-conflict 且不覆盖真实文件、conflictDraft 随 dirty-conflict 持久化并在 reloadPersistedStateForTest 后保留、重新 bootstrap 持久化 dirty-conflict 只显示恢复警告、关联文件 displayPath / fullDisplayPath、已关联文件再次拖入的添加/定位分支、modal 路径复用 subtitle displayPath，以及不再传入重复“取消”按钮。本轮已把这一路径改成 storage-backed draft，待下次完整 smoke 复核真实宿主 draft 文件内容断言。
 
        git diff --check
@@ -244,7 +244,7 @@
        node --check tests/vscode-smoke/extension-tests.cjs
        通过
 
-       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
        Trusted workspace smoke passed；VS Code smoke test passed；覆盖真实 VSCode 宿主中 begin edit session 后外部落盘修改会在提交前进入 dirty-conflict，并把当前编辑态内容写入 storage-backed draft 文件
 
        git diff --check
@@ -268,7 +268,7 @@
 
 `src/webview/styles.css` 定义 Note 表面样式。subtitle 与不可用警告应继续使用 VSCode 主题 token，保持低噪音工具型画布风格。
 
-测试主要在 `tests/playwright/webview-harness.spec.mjs` 和 `tests/vscode-smoke/extension-tests.cjs`。Playwright harness 适合验证 Webview DOM 呈现、菜单、拖放和消息；VSCode smoke 适合验证 Host 文件系统、Quick Input / 命令、持久化恢复和真实工作区文件写入。纯函数测试通常放在 `scripts/test-*.mjs` 或 `scripts/test-*.mts` 中，并通过 `package.json` 脚本接入。
+测试主要在 `tests/playwright/webview-harness.spec.mjs` 和 `tests/vscode-smoke/extension-tests.cjs`。Playwright harness 适合验证 Webview DOM 呈现、菜单、拖放和消息；VSCode smoke 适合验证 Host 文件系统、Quick Input / 命令、持久化恢复和真实工作区文件写入。纯函数测试通常放在 `scripts/test/test-*.mjs` 或 `scripts/test/test-*.mts` 中，并通过 `package.json` 脚本接入。
 
 这次实现需要新增三个普通术语：
 
@@ -311,7 +311,7 @@
 
        src/common/protocol.ts
        src/common/noteMarkdownFileAssociation.ts
-       scripts/test-note-markdown-file-association.mjs 或 .mts
+       scripts/test/test-note-markdown-file-association.mjs 或 .mts
        package.json
 
    在 `src/common/protocol.ts` 中引入类似以下模型，实际字段名可以根据实现调整，但必须保持设计文档的语义：
@@ -355,7 +355,7 @@
 
        npm run test:note-markdown-file-association
        npm run test:webview -- --grep "markdown file note|note file association"
-       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
 
    如果新增 smoke filter，需要在测试文件里登记清楚名称；如果没有新增 filter，则运行相关 trusted smoke 并记录实际命令。
 
@@ -368,7 +368,7 @@
 
    如果 smoke 成本可接受，再运行：
 
-       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs
+       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
 
    完成后把输出摘要写回本计划 `结果与复盘`，并把设计文档 `validation_status` 从 `未验证` 更新为与实际结果一致的状态。
 
@@ -425,7 +425,7 @@
        ?? docs/exec-plans/active/note-markdown-file-association.md
        ?? image copy.png
        ?? image.png
-       ?? scripts/test-note-markdown-file-association.mts
+       ?? scripts/test/test-note-markdown-file-association.mts
        ?? src/common/noteMarkdownFileAssociation.ts
        ?? xxxx.prompts.md
 

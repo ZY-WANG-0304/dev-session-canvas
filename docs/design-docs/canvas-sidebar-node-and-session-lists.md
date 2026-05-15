@@ -137,7 +137,7 @@ updated_at: 2026-05-11
 - `Codex`：扫描 `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`，读取首行 `session_meta` 中的 `sessionId`、`cwd` 与时间戳。
 - `Claude Code`：扫描 `~/.claude/projects/**/*.jsonl`。读取 transcript 前若干行中的显式 `cwd` 作为唯一 workspace 归属依据；若整段扫描窗口内都没有可确认的 `cwd`，则直接跳过该会话，不再把 project 目录名等价成精确 workspace 回退。
 
-对应实现集中在 `src/common/agentSessionHistory.ts`，并通过 `scripts/test-sidebar-session-history.mjs` 覆盖 workspace 过滤、去重、排序、Claude 跨行 `cwd` 提取、冲突目录 fail-closed，以及“跳过 provider 注入的 synthetic 首条 user message，提取第一条真实用户指令”。
+对应实现集中在 `src/common/agentSessionHistory.ts`，并通过 `scripts/test/test-sidebar-session-history.mjs` 覆盖 workspace 过滤、去重、排序、Claude 跨行 `cwd` 提取、冲突目录 fail-closed，以及“跳过 provider 注入的 synthetic 首条 user message，提取第一条真实用户指令”。
 
 过滤规则如下：
 
@@ -209,12 +209,12 @@ updated_at: 2026-05-11
 ## 9. 当前验证状态
 
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。
-- 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test-sidebar-codicon-bundle.mjs`、`node scripts/test-sidebar-session-history.mjs` 与 `node scripts/test-agent-launch-presets.mjs`。
-- 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
+- 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test/test-sidebar-codicon-bundle.mjs`、`node scripts/test/test-sidebar-session-history.mjs` 与 `node scripts/test/test-agent-launch-presets.mjs`。
+- 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
 - 2026-04-28 产品规格新增两条节点列表要求：次级描述只显示状态，不再显示副标题；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。
 - 2026-04-30：节点列表的次级描述继续保持紧凑，但对 `Agent` 节点改成显示 `provider · 状态`，以便在侧栏里更快区分 `Codex` / `Claude Code` 会话；对应 smoke 断言同步收口。
-- 2026-04-28 已按新规格更新实现：节点列表次级描述收口为“仅状态”，并先用 `resourceUri + FileDecorationProvider` 输出提醒徽标闭合主路径；这一版已经通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `node scripts/test-sidebar-session-history.mjs`。
-- 2026-04-28 会话历史列表已按最新视觉要求改成“两行原生列表”样式：首行显示 provider 图标和标题，次行显示相对更新时间；详情信息继续留在 tooltip 和搜索文本中；并已通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `node scripts/test-sidebar-session-history.mjs`。
+- 2026-04-28 已按新规格更新实现：节点列表次级描述收口为“仅状态”，并先用 `resourceUri + FileDecorationProvider` 输出提醒徽标闭合主路径；这一版已经通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `node scripts/test/test-sidebar-session-history.mjs`。
+- 2026-04-28 会话历史列表已按最新视觉要求改成“两行原生列表”样式：首行显示 provider 图标和标题，次行显示相对更新时间；详情信息继续留在 tooltip 和搜索文本中；并已通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `node scripts/test/test-sidebar-session-history.mjs`。
 - 2026-04-28 会话历史列表已进一步按最新规格收口：标题改为 provider 历史中的第一条真实用户指令，第二行改为“相对时间 + sessionId”，tooltip 移除画布节点标题/副标题；后续再补搜索体验时，搜索范围调整为“匹配会话标题 + provider / sessionId / 工作目录”，不再沿用“不匹配标题”的旧口径。
-- 2026-04-28 节点列表已切换到最小 `WebviewView`：左侧使用运行时配色的 `circle-filled` 图标，右侧提醒位改成与画布节点一致的 `bell`，并补专门 UI 回归覆盖点击聚焦与提醒图标呈现；已通过 `npm run typecheck`、`npm run build`、`node scripts/test-sidebar-session-history.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`。
+- 2026-04-28 节点列表已切换到最小 `WebviewView`：左侧使用运行时配色的 `circle-filled` 图标，右侧提醒位改成与画布节点一致的 `bell`，并补专门 UI 回归覆盖点击聚焦与提醒图标呈现；已通过 `npm run typecheck`、`npm run build`、`node scripts/test/test-sidebar-session-history.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`。
 - 当前仍保持 `验证中`：节点列表 Webview 化主路径已经通过自动化验证，但整份设计仍包含“会话历史依赖 provider 私有 session 文件格式”这条已登记技术债，因此暂不把整体文档改成 `已验证`。

@@ -192,5 +192,5 @@ Quick Pick 的正式规则如下：
 1. `npm run typecheck` 通过。
 2. `npm run build` 通过。
 3. `npm run test:terminal-shell-configuration` 通过，并覆盖“多个同名 shell 存在时，显式路径优先于按名称重新解析”“显式相对 shell 路径按 workspace cwd 检查可用性”以及“workspace 级 shell 配置不会再混入设备级 `shellPath`”三类回归。
-4. `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 已于 2026-05-05 通过，且 smoke 中包含“执行 `Dev Session Canvas: 选择 Terminal shell` 后，配置里保留被选中的精确路径”和“workspace 打开时命令生效结果会覆盖当前 workspace 而不是改写设备级默认值”的断言。
+4. `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 已于 2026-05-05 通过，且 smoke 中包含“执行 `Dev Session Canvas: 选择 Terminal shell` 后，配置里保留被选中的精确路径”和“workspace 打开时命令生效结果会覆盖当前 workspace 而不是改写设备级默认值”的断言。
 5. 设置描述与命令文案不再把“动态探测到的真实路径”误写成“只会落盘 shell 名称”，并明确 settings UI 同时支持设备级默认与 workspace 级覆盖。

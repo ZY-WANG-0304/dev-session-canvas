@@ -6,7 +6,7 @@ import {
   isSupportedNoteMarkdownFilePath,
   resolveNoteMarkdownFileExtension,
   sanitizeNoteMarkdownFileName
-} from '../src/common/noteMarkdownFileAssociation.ts';
+} from '../../src/common/noteMarkdownFileAssociation.ts';
 
 assert.equal(isSupportedNoteMarkdownFilePath('/workspace/docs/plan.md'), true);
 assert.equal(isSupportedNoteMarkdownFilePath('/workspace/docs/plan.markdown'), true);

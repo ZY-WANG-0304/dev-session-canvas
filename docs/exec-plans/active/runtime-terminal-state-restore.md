@@ -24,7 +24,7 @@
 - [x] (2026-04-15 11:09 +0800) 完成后把仍未收口的风险登记到 `docs/exec-plans/tech-debt-tracker.md`。
 - [x] (2026-04-15 15:51 +0800) 在 Editor `WebviewPanel` 创建路径补齐 `retainContextWhenHidden`，并让 Editor 可见性恢复时与 Panel 一样发送 `host/visibilityRestored`。
 - [x] (2026-04-15 15:51 +0800) 扩展 VS Code smoke，覆盖 Editor 区域切到普通文本编辑器再切回画布后的终端 viewport 保持与 live 会话继续可用。
-- [x] (2026-04-15 16:04 +0800) 重新执行 `npm run build`、`npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，确认 Editor / Panel 两条标签切换路径都通过自动化验证。
+- [x] (2026-04-15 16:04 +0800) 重新执行 `npm run build`、`npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，确认 Editor / Panel 两条标签切换路径都通过自动化验证。
 - [x] (2026-04-15 17:40 +0800) 收口 review 暴露的回归：`host/visibilityRestored` 改为仅做 non-destructive redraw，不再无条件 `fit()` 改写当前 viewport 行数；重新执行 `npm run build`、`npm run typecheck`、`npm run test:webview`，并完成 1 次沙箱内与 2 次沙箱外 trusted smoke 通过验证。
 - [x] (2026-04-15 18:42 +0800) 把 live xterm、宿主 serialized terminal state tracker、runtime supervisor snapshot 与落盘快照统一到 `terminal.integrated.scrollback`，移除 `4000` / `80` 私有预算，并把 `workspaceState` 改成只保留去掉 serialized terminal state 的轻量兜底。
 - [x] (2026-04-15 19:43 +0800) 保留直接调用 `xterm.scrollLines()` 的确定性 scrollback 回归，同时新增基于真实 `wheel` 事件的 Webview 重建后滚动验证；重新执行定向 `snapshot restore` 用例与全量 `npm run test:webview`。
@@ -50,7 +50,7 @@
   证据：`npm run test:webview` 在沙箱内以 `sandbox_host_linux.cc:41` 崩溃；2026-04-15 11:03 +0800 使用沙箱外同一命令重跑后，28 条用例全部通过。
 
 - 观察：`host/visibilityRestored` 上的无条件 `fitAddon.fit()` 会把 retain 下已保活的 xterm 当前 viewport 从 28 行改成 26 行，导致 Editor 标签切回 smoke 在同一 head 上可真实复现失败。
-  证据：2026-04-15 17 点后的本地复跑中，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 在 `tests/vscode-smoke/extension-tests.cjs:1368` 失败；artifact 里的 `failure-webview-probe.json` 显示 `terminalRows: 26`，同时 `failure-host-messages.json` 仅包含 `host/visibilityRestored` 与后续 probe 请求，没有新的 snapshot hydrate 参与。
+  证据：2026-04-15 17 点后的本地复跑中，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 在 `tests/vscode-smoke/extension-tests.cjs:1368` 失败；artifact 里的 `failure-webview-probe.json` 显示 `terminalRows: 26`，同时 `failure-host-messages.json` 仅包含 `host/visibilityRestored` 与后续 probe 请求，没有新的 snapshot hydrate 参与。
 
 - 观察：在当前 Codex 默认沙箱里，重复执行 trusted smoke 还可能命中 Electron 自身的沙箱崩溃；这类失败不会生成 viewport 断言相关 artifact，且与本次 `fit()` 回归不是同一问题。
   证据：2026-04-15 17:37 +0800 的重复验证中，首轮 trusted smoke 以 `sandbox_host_linux.cc:41` / `SIGTRAP` 退出，`artifacts/` 目录为空；随后把同一命令移到沙箱外重跑，两次都以 `Trusted workspace smoke passed.` 结束。
@@ -62,7 +62,7 @@
   证据：2026-04-15 21:49 +0800 的 review comment 明确指出 `CanvasPanelManager` 配置变更路径此前只发 `host/stateUpdated`，`src/webview/main.tsx` 会更新 live xterm 的 `terminal.options.scrollback`，但 local `SerializedTerminalStateTracker` 与 `runtimeSupervisorMain` 中的会话 scrollback 仍停留在启动时旧值；这与代码检查结果一致。
 
 - 观察：`runtimePersistence.enabled` 的应用语义已经收敛到“reload 后生效”；因此 smoke 在 `simulateRuntimeReload()` 之后不能再假设 editor surface 仍处于可交互状态，否则后续的 `createNode`、DOM probe 与 resize 断言会把 surface 未就绪误报成产品回归。
-  证据：2026-04-18 22:38 +0800 的复核中，`prepareTrustedBaseNodesForAppliedRuntimePersistenceMode()`、`prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode()` 与 `verifyRestrictedLiveRuntimeReconnectBlocked()` 在 reload 后补 `openCanvasInEditor` + `testWaitForCanvasReady('editor')` 后，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs` 均通过。
+  证据：2026-04-18 22:38 +0800 的复核中，`prepareTrustedBaseNodesForAppliedRuntimePersistenceMode()`、`prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode()` 与 `verifyRestrictedLiveRuntimeReconnectBlocked()` 在 reload 后补 `openCanvasInEditor` + `testWaitForCanvasReady('editor')` 后，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 均通过。
 
 - 观察：trusted smoke 里的旧名 `verifyLegacyTaskFiltering` 已不能准确描述当前断言；它实际验证的是“持久化状态 reload 时会过滤 legacy task 节点”，而不是泛化的任务过滤逻辑。
   证据：2026-04-18 22:38 +0800 的代码复核显示，该用例只向落盘状态注入 `kind: 'task'` 的历史节点，再断言 reload 后 `snapshot.state.nodes` 里不会保留这些 legacy task 项，因此更名为 `verifyPersistedStateFiltersLegacyTaskNodes()` 后，测试名与行为重新对齐。
@@ -128,16 +128,16 @@
 - `npm run test:webview` 通过 32 条回归；命令内已包含 `npm run build`。其中 scrollback 恢复相关新增了两层自动化：
   1. 继续保留直接调用 `xterm.scrollLines()` 的确定性断言，稳定验证“恢复后仍能回到最早历史行”。
   2. 新增基于真实 `wheel` 事件的 Playwright 回归，验证“Webview 重建后 restored xterm 仍响应真实滚轮滚动并能看到更早历史行”。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 在最新 head 再次通过；这次因执行机 `/tmp` 已满，改用仓库内 `TMPDIR` 并在沙箱外运行同一 smoke，新增的“live-runtime 会话启动后再修改 scrollback”断言通过。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 在最新 head 再次通过；这次因执行机 `/tmp` 已满，改用仓库内 `TMPDIR` 并在沙箱外运行同一 smoke，新增的“live-runtime 会话启动后再修改 scrollback”断言通过。
 - 重复验证里还额外命中过 1 次 Electron 自身的 `sandbox_host_linux.cc:41` / `SIGTRAP`；该失败没有生成 `failure-webview-probe.json` 等断言 artifact，因此记录为当前执行环境噪声，而不是本次 viewport 回归复发。
-- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs` 通过，说明真实 VS Code 窗口重开下的重新附着 / 历史恢复链路已闭合，且不再出现 `allowProposedApi` 运行时错误。
+- `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/smoke/run-vscode-smoke.mjs` 通过，说明真实 VS Code 窗口重开下的重新附着 / 历史恢复链路已闭合，且不再出现 `allowProposedApi` 运行时错误。
 - 后续补充的 VS Code smoke 继续覆盖了 Editor 区域切到普通文本编辑器、再切回画布时的 visibility restore 与 viewport 保持断言。
 - 2026-04-18 的 follow-up 复核没有再改产品实现，只收口 smoke 夹具与断言语义：
   1. trusted 路径把 `verifyLegacyTaskFiltering` 更名为 `verifyPersistedStateFiltersLegacyTaskNodes`，避免测试名继续暗示已不存在的通用 task 过滤语义。
   2. 所有依赖 `simulateRuntimeReload()` 的 trusted / restricted 前置路径都显式重新打开 editor 画布并等待 ready，确保后续交互发生在真实可用的 surface 上。
   3. `verifyRestrictedLiveRuntimeReconnectBlocked()` 额外断言 blocked reconnect 后节点仍保持 `history-restored`，且 resize 不会覆写已恢复的 `lastCols` / `lastRows`。
-- 2026-04-18 22:35 +0800 在当前工作树重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`，两条 smoke 均通过。
-- 2026-04-19 00:16 +0800 围绕这次 deferred shrink-fit 修复再次执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs`，两条 smoke 继续通过，说明补上的 follow-up `fit()` 没有破坏既有 runtime restore / reconnect 语义。
+- 2026-04-18 22:35 +0800 在当前工作树重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs`，两条 smoke 均通过。
+- 2026-04-19 00:16 +0800 围绕这次 deferred shrink-fit 修复再次执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs`，两条 smoke 继续通过，说明补上的 follow-up `fit()` 没有破坏既有 runtime restore / reconnect 语义。
 
 本轮留下的一项技术债已登记到 `docs/exec-plans/tech-debt-tracker.md`：当 snapshot 记录尺寸与当前容器尺寸漂移时，xterm alternate-buffer hydrate 仍缺更强的无损重绘语义。当前实现优先保证“不要恢复成空白或错画面”，而不是承诺任意尺寸漂移下都能完全无损复原。
 
