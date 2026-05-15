@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 
 import {
+  isCanvasTemplateAssociatedNoteSaveMode,
   type CanvasTemplateAgentProviderKind,
+  type CanvasTemplateAssociatedNoteSaveMode,
   type CanvasTemplateSaveAgentProviderSelection
 } from '../common/canvasTemplates';
 import { EXTENSION_DISPLAY_NAME } from '../common/extensionIdentity';
@@ -16,10 +18,20 @@ export interface CanvasTemplateSaveFormAgentItem {
   currentProvider: AgentProviderKind;
 }
 
+export interface CanvasTemplateSaveFormAssociatedNoteItem {
+  nodeId: string;
+  title: string;
+  displayPath: string;
+  status: string;
+  isWorkspaceRelative: boolean;
+  defaultMode: CanvasTemplateAssociatedNoteSaveMode;
+}
+
 export interface CanvasTemplateSaveFormResult {
   name: string;
   targetStorageLocationId: string;
   agentProviderSelection: CanvasTemplateSaveAgentProviderSelection;
+  associatedNoteSaveModes: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>>;
 }
 
 interface CanvasTemplateSaveFormOptions {
@@ -29,6 +41,7 @@ interface CanvasTemplateSaveFormOptions {
   initialName?: string;
   initialTargetStorageLocationId?: string;
   agentNodes: CanvasTemplateSaveFormAgentItem[];
+  associatedNoteNodes?: CanvasTemplateSaveFormAssociatedNoteItem[];
   storageLocations: CanvasTemplateStorageLocation[];
 }
 
@@ -39,6 +52,7 @@ interface CanvasTemplateSaveFormInlineState {
   initialName: string;
   initialTargetStorageLocationId: string;
   agentNodes: CanvasTemplateSaveFormAgentItem[];
+  associatedNoteNodes: CanvasTemplateSaveFormAssociatedNoteItem[];
   storageLocations: CanvasTemplateStorageLocation[];
 }
 
@@ -52,6 +66,7 @@ type SaveTemplateFormInboundMessage =
         name: string;
         targetStorageLocationId: string;
         agentProviders: Record<string, string>;
+        associatedNoteModes: Record<string, string>;
       };
     };
 
@@ -113,6 +128,7 @@ class CanvasTemplateSaveFormPanel implements vscode.Disposable {
       initialName: options.initialName?.trim() ?? '',
       initialTargetStorageLocationId: options.initialTargetStorageLocationId?.trim() ?? '',
       agentNodes: options.agentNodes,
+      associatedNoteNodes: options.associatedNoteNodes ?? [],
       storageLocations: options.storageLocations
     });
 
@@ -169,10 +185,17 @@ class CanvasTemplateSaveFormPanel implements vscode.Disposable {
       return;
     }
 
+    const associatedNoteSaveModes = buildAssociatedNoteModeSelection(parsed.payload.associatedNoteModes);
+    if (!associatedNoteSaveModes) {
+      await this.postError('存在无效的关联 Markdown Note 处理方式。');
+      return;
+    }
+
     this.finish({
       name,
       targetStorageLocationId: parsed.payload.targetStorageLocationId,
-      agentProviderSelection
+      agentProviderSelection,
+      associatedNoteSaveModes
     });
     this.panel.dispose();
   }
@@ -220,6 +243,21 @@ function buildAgentProviderSelection(
   return selection;
 }
 
+function buildAssociatedNoteModeSelection(
+  value: Record<string, string>
+): Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>> | null {
+  const selection: Record<string, CanvasTemplateAssociatedNoteSaveMode> = {};
+  for (const [nodeId, mode] of Object.entries(value)) {
+    const normalizedNodeId = nodeId.trim();
+    if (normalizedNodeId.length === 0 || !isCanvasTemplateAssociatedNoteSaveMode(mode)) {
+      return null;
+    }
+    selection[normalizedNodeId] = mode;
+  }
+
+  return selection;
+}
+
 function parseSaveTemplateFormMessage(message: unknown): SaveTemplateFormInboundMessage | null {
   if (!isRecord(message) || typeof message.type !== 'string') {
     return null;
@@ -253,12 +291,22 @@ function parseSaveTemplateFormMessage(message: unknown): SaveTemplateFormInbound
     agentProviders[nodeId] = provider;
   }
 
+  const associatedNoteModesValue = isRecord(payload.associatedNoteModes) ? payload.associatedNoteModes : {};
+  const associatedNoteModes: Record<string, string> = {};
+  for (const [nodeId, mode] of Object.entries(associatedNoteModesValue)) {
+    if (typeof mode !== 'string') {
+      return null;
+    }
+    associatedNoteModes[nodeId] = mode;
+  }
+
   return {
     type: 'saveTemplateForm/submit',
     payload: {
       name: payload.name,
       targetStorageLocationId: payload.targetStorageLocationId,
-      agentProviders
+      agentProviders,
+      associatedNoteModes
     }
   };
 }
@@ -441,14 +489,16 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         background: var(--secondary-hover);
       }
 
-      .agent-list {
+      .agent-list,
+      .associated-note-list {
         display: grid;
         border: 1px solid var(--border);
         border-radius: 4px;
         overflow: hidden;
       }
 
-      .agent-row {
+      .agent-row,
+      .associated-note-row {
         display: grid;
         grid-template-columns: 132px minmax(0, 1fr);
         justify-content: start;
@@ -458,15 +508,18 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         background: transparent;
       }
 
-      .agent-row + .agent-row {
+      .agent-row + .agent-row,
+      .associated-note-row + .associated-note-row {
         border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
       }
 
-      .agent-row:hover {
+      .agent-row:hover,
+      .associated-note-row:hover {
         background: var(--row-hover);
       }
 
-      .agent-title {
+      .agent-title,
+      .associated-note-title {
         min-width: 0;
         font-weight: 600;
         overflow: hidden;
@@ -474,7 +527,19 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         text-overflow: ellipsis;
       }
 
-      .agent-provider-select {
+      .associated-note-path {
+        min-width: 0;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.3;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .agent-provider-select,
+      .associated-note-mode-select {
         width: 100%;
       }
 
@@ -538,7 +603,8 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         }
 
         .field,
-        .agent-row {
+        .agent-row,
+        .associated-note-row {
           grid-template-columns: 1fr;
         }
 
@@ -546,11 +612,13 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
           padding-top: 0;
         }
 
-        .agent-row {
+        .agent-row,
+        .associated-note-row {
           gap: 6px;
         }
 
-        .agent-provider-select {
+        .agent-provider-select,
+        .associated-note-mode-select {
           width: 100%;
         }
 
@@ -605,6 +673,14 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
               <div id="agentEmptyNote" class="empty-note" hidden>当前画布没有 Agent 节点，本次只会保存 Terminal / Note 节点。</div>
             </div>
           </div>
+
+          <div id="associatedNoteField" class="field">
+            <div class="field-label">关联 Note:</div>
+            <div class="field-control">
+              <div class="field-help">为关联 Markdown 文件的 Note 选择模板保存方式；workspace 外文件不能保留相对路径关联。</div>
+              <div id="associatedNoteList" class="associated-note-list" hidden></div>
+            </div>
+          </div>
         </form>
 
         <div class="actions">
@@ -623,6 +699,8 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
       const agentToolbar = document.getElementById('agentToolbar');
       const agentList = document.getElementById('agentList');
       const agentEmptyNote = document.getElementById('agentEmptyNote');
+      const associatedNoteField = document.getElementById('associatedNoteField');
+      const associatedNoteList = document.getElementById('associatedNoteList');
       const errorMessage = document.getElementById('errorMessage');
       const submitButton = document.getElementById('submitButton');
       const cancelButton = document.getElementById('cancelButton');
@@ -632,8 +710,10 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
 
       const storageLocations = Array.isArray(state.storageLocations) ? state.storageLocations : [];
       const agentNodes = Array.isArray(state.agentNodes) ? state.agentNodes : [];
+      const associatedNoteNodes = Array.isArray(state.associatedNoteNodes) ? state.associatedNoteNodes : [];
       const showAgentSection = state.mode === 'save';
       const agentSelectsByNodeId = new Map();
+      const associatedNoteSelectsByNodeId = new Map();
 
       function renderError(message) {
         const nextMessage = typeof message === 'string' ? message.trim() : '';
@@ -695,6 +775,52 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         return row;
       }
 
+      function buildAssociatedNoteRow(note) {
+        const row = document.createElement('div');
+        row.className = 'associated-note-row';
+
+        const meta = document.createElement('div');
+
+        const title = document.createElement('div');
+        title.className = 'associated-note-title';
+        title.textContent = note.title;
+        meta.append(title);
+
+        const path = document.createElement('div');
+        path.className = 'associated-note-path';
+        path.textContent = String(note.displayPath || '') + (note.status && note.status !== 'ok' ? ' · ' + note.status : '');
+        path.title = path.textContent;
+        meta.append(path);
+
+        const select = document.createElement('select');
+        select.className = 'select-input associated-note-mode-select';
+        const options = [
+          ['embedded-snapshot', '保存为普通 Note 内容快照']
+        ];
+        if (note.isWorkspaceRelative) {
+          options.push(
+            ['workspace-file-path-only', '仅保留 workspace 相对路径'],
+            ['workspace-file-with-content', '保留相对路径和文件内容']
+          );
+        }
+        select.replaceChildren(...options.map(([value, label]) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          return option;
+        }));
+        select.value = options.some(([value]) => value === note.defaultMode)
+          ? note.defaultMode
+          : 'embedded-snapshot';
+        select.addEventListener('change', () => {
+          renderError('');
+        });
+        associatedNoteSelectsByNodeId.set(note.nodeId, select);
+
+        row.append(meta, select);
+        return row;
+      }
+
       function renderAgentSection() {
         if (!showAgentSection) {
           agentField.hidden = true;
@@ -722,6 +848,21 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         }
       }
 
+      function renderAssociatedNoteSection() {
+        if (state.mode !== 'save' || associatedNoteNodes.length === 0) {
+          associatedNoteField.hidden = true;
+          associatedNoteList.hidden = true;
+          return;
+        }
+
+        associatedNoteField.hidden = false;
+        associatedNoteList.hidden = false;
+        associatedNoteList.replaceChildren();
+        for (const note of associatedNoteNodes) {
+          associatedNoteList.append(buildAssociatedNoteRow(note));
+        }
+      }
+
       nameInput.value = typeof state.initialName === 'string' ? state.initialName : '';
       storageLocationSelect.replaceChildren(...storageLocations.map(buildStorageLocationOption));
       const initialStorageLocationId =
@@ -732,6 +873,7 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         storageLocationSelect.value = storageLocations[0].id;
       }
       renderAgentSection();
+      renderAssociatedNoteSection();
       syncSubmitState();
 
       form.addEventListener('submit', (event) => {
@@ -741,12 +883,17 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         for (const [nodeId, select] of agentSelectsByNodeId.entries()) {
           agentProviders[nodeId] = select.value;
         }
+        const associatedNoteModes = {};
+        for (const [nodeId, select] of associatedNoteSelectsByNodeId.entries()) {
+          associatedNoteModes[nodeId] = select.value;
+        }
         vscode.postMessage({
           type: 'saveTemplateForm/submit',
           payload: {
             name: nameInput.value,
             targetStorageLocationId: storageLocationSelect.value,
-            agentProviders
+            agentProviders,
+            associatedNoteModes
           }
         });
       });

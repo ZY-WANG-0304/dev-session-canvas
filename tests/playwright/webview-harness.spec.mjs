@@ -5028,8 +5028,8 @@ test('associated markdown note bootstrapped with dirty-conflict shows reload rec
   await clearPostedMessages(page);
 
   const noteNode = nodeById(page, 'note-1');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('关联文件存在编辑冲突');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('关联文件在编辑期间被外部修改');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件存在编辑冲突');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件在编辑期间被外部修改');
   await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
   await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toHaveCount(0);
   await expect(noteNode.locator('.note-markdown-preview')).toHaveCount(0);
@@ -5086,11 +5086,25 @@ test('missing associated markdown notes show a warning instead of stale markdown
   await bootstrap(page, state);
 
   const noteNode = nodeById(page, 'note-1');
-  await expect(noteNode.locator('.note-file-warning')).toContainText('关联文件不可用');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件缺失');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件不可用');
   await expect(noteNode.locator('.window-title-subtitle')).toHaveText(missingDisplayPath);
-  await expect(noteNode.locator('.note-file-warning')).toContainText(missingDisplayPath);
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText(missingDisplayPath);
   await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '打开文件' })).toHaveCount(0);
+  await expect(noteNode.locator('.note-file-conflict-card .note-edit-conflict-action')).toHaveText(
+    '创建空文件并关联'
+  );
+
+  await noteNode.getByRole('button', { name: '创建空文件并关联' }).click();
+  const createMessage = await waitForPostedMessageByType(page, 'webview/createMissingAssociatedNoteMarkdownFile');
+  expect(createMessage).toEqual({
+    type: 'webview/createMissingAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
 });
 
 test('ordinary note save-as-markdown action posts saveNoteAsMarkdownFile', async ({ page }) => {

@@ -34,6 +34,7 @@ try {
     captureCanvasTemplateFromState,
     encodeCanvasTemplateDocument,
     formatCanvasTemplateStats,
+    normalizeCanvasTemplateWorkspaceRelativePath,
     parseCanvasTemplateDocument,
     sanitizeCanvasTemplateFileStem
   } = require(outfile);
@@ -271,6 +272,70 @@ try {
   });
   assert.strictEqual(capturedPerAgent.template.nodes[0].metadata.agent.provider, 'default');
 
+  const capturedPathOnlyNote = captureCanvasTemplateFromState({
+    state: captureState,
+    name: 'Captured Path Only Note',
+    templateId: 'captured-path-only-note',
+    category: 'user',
+    agentProviderSelection: 'default',
+    associatedNoteSaveSelection: {
+      'note-1': {
+        mode: 'workspace-file-path-only',
+        relativePath: 'docs/plan.md',
+        content: 'must not be saved'
+      }
+    },
+    now: '2026-05-06T10:00:00.000Z'
+  });
+  const capturedPathOnlyNoteMetadata = capturedPathOnlyNote.template.nodes[2].metadata.note;
+  assert.strictEqual(capturedPathOnlyNoteMetadata.templateContentMode, 'workspace-file-path-only');
+  assert.strictEqual(capturedPathOnlyNoteMetadata.relativePath, 'docs/plan.md');
+  assert.strictEqual(capturedPathOnlyNoteMetadata.content, '');
+  assert.doesNotMatch(JSON.stringify(capturedPathOnlyNote.template), /resourceUri|must not be saved/u);
+
+  const capturedContentBackedNote = captureCanvasTemplateFromState({
+    state: captureState,
+    name: 'Captured Content Backed Note',
+    templateId: 'captured-content-backed-note',
+    category: 'user',
+    agentProviderSelection: 'default',
+    associatedNoteSaveSelection: {
+      'note-1': {
+        mode: 'workspace-file-with-content',
+        relativePath: './docs/from-template.markdown',
+        content: '# Template file\n'
+      }
+    },
+    now: '2026-05-06T10:00:00.000Z'
+  });
+  const capturedContentBackedNoteMetadata = capturedContentBackedNote.template.nodes[2].metadata.note;
+  assert.strictEqual(capturedContentBackedNoteMetadata.templateContentMode, 'workspace-file-with-content');
+  assert.strictEqual(capturedContentBackedNoteMetadata.relativePath, 'docs/from-template.markdown');
+  assert.strictEqual(capturedContentBackedNoteMetadata.content, '# Template file\n');
+
+  assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath(' ./docs/a.md '), 'docs/a.md');
+  assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath('../secret.md'), undefined);
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...capturedPathOnlyNote.template,
+        nodes: [
+          {
+            ...capturedPathOnlyNote.template.nodes[2],
+            metadata: {
+              note: {
+                templateContentMode: 'workspace-file-path-only',
+                relativePath: '../secret.md'
+              }
+            }
+          }
+        ]
+      }
+    }),
+    /缺少合法 workspace 相对 Markdown 路径/u
+  );
+
   const objectAgentId = 'agent-7-11111111-1111-4111-8111-111111111111';
   const objectTerminalId = 'terminal-8-22222222-2222-4222-8222-222222222222';
   const objectNoteId = 'note-9-33333333-3333-4333-8333-333333333333';
@@ -370,6 +435,8 @@ try {
   assert.doesNotMatch(exportCommandSource, /targetUri\.fsPath/u);
   assert.match(extensionSource, /resetDefaultCanvasTemplateWithConfirmation/u);
   assert.match(extensionSource, /resetCanvasTemplateByIdWithConfirmation\(selectedTemplate\.template\.id/u);
+  assert.match(extensionSource, /associatedNoteNodes: panelManager\.getCanvasTemplateAssociatedNoteSaveItems\(\)/u);
+  assert.match(extensionSource, /associatedNoteSaveModes: formResult\.associatedNoteSaveModes/u);
   const applyDefaultCommandSource = sliceBetween(
     extensionSource,
     'vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate',
@@ -445,17 +512,19 @@ try {
     'private async ensureDefaultTemplateAppliedIfNeeded',
     'private async resolveDefaultCanvasTemplateRecord'
   );
-  assert.match(defaultTemplateInitializationSource, /resolveFirstOpenFallbackCanvasTemplateRecord/u);
-  assert.match(defaultTemplateInitializationSource, /preservedDefaultTemplateId: selectedDefaultTemplateId/u);
+  assert.match(defaultTemplateInitializationSource, /resolveFirstOpenCanvasTemplateRecord/u);
+  assert.match(defaultTemplateInitializationSource, /preservedDefaultTemplateId/u);
+  assert.doesNotMatch(defaultTemplateInitializationSource, /applyDefaultCanvasTemplate/u);
   assert.doesNotMatch(defaultTemplateInitializationSource, /globalState\.update/u);
-  const firstOpenFallbackResolverSource = sliceBetween(
+  const firstOpenResolverSource = sliceBetween(
     panelManagerSource,
-    'private async resolveFirstOpenFallbackCanvasTemplateRecord',
+    'private async resolveFirstOpenCanvasTemplateRecord',
     'private async applyCanvasTemplateRecord'
   );
-  assert.match(firstOpenFallbackResolverSource, /DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID/u);
-  assert.match(firstOpenFallbackResolverSource, /node\.kind === 'note'/u);
-  assert.doesNotMatch(firstOpenFallbackResolverSource, /globalState\.update/u);
+  assert.match(firstOpenResolverSource, /DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID/u);
+  assert.doesNotMatch(firstOpenResolverSource, /node\.kind === 'note'/u);
+  assert.doesNotMatch(firstOpenResolverSource, /catalog\.templates\[0\]/u);
+  assert.doesNotMatch(firstOpenResolverSource, /globalState\.update/u);
   const webviewReadyHandlerSource = sliceBetween(
     panelManagerSource,
     "if (parsedMessage.type === 'webview/ready')",
@@ -490,7 +559,25 @@ try {
     'private async validateCanvasTemplateForApply'
   );
   assert.match(applyTemplateMethodSource, /focusAppliedNodes\?: boolean/u);
+  assert.match(applyTemplateMethodSource, /resolveCanvasTemplateNoteMaterializations/u);
+  assert.match(applyTemplateMethodSource, /noteMaterializations/u);
   assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(applyResult\.nodeIds\)/u);
+  const pathOnlyNoteMaterializationSource = sliceBetween(
+    panelManagerSource,
+    'private async resolvePathOnlyCanvasTemplateNoteMaterialization',
+    'private async resolveContentBackedCanvasTemplateNoteMaterialization'
+  );
+  assert.doesNotMatch(pathOnlyNoteMaterializationSource, /showWarningMessage/u);
+  assert.match(pathOnlyNoteMaterializationSource, /status: 'missing'/u);
+  const contentBackedNoteMaterializationSource = sliceBetween(
+    panelManagerSource,
+    'private async resolveContentBackedCanvasTemplateNoteMaterialization',
+    'private async createCanvasTemplateMarkdownFileAndMaterialization'
+  );
+  assert.doesNotMatch(contentBackedNoteMaterializationSource, /showWarningMessage/u);
+  assert.match(contentBackedNoteMaterializationSource, /status: 'dirty-conflict'/u);
+  assert.match(contentBackedNoteMaterializationSource, /createStoredNoteMarkdownConflictDraft/u);
+  assert.match(contentBackedNoteMaterializationSource, /content: templateContent/u);
   const applyTemplateHelperSource = sliceBetween(
     panelManagerSource,
     'function applyCanvasTemplateToState',
@@ -520,12 +607,22 @@ try {
 
   const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
   assert.match(protocolSource, /type: 'host\/focusNodes'/u);
+  assert.match(protocolSource, /webview\/createMissingAssociatedNoteMarkdownFile/u);
 
   const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
+  assert.match(webviewSource, /创建空文件并关联/u);
   assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
   assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
   assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);
+
+  const saveFormSource = await readFile('src/panel/CanvasTemplateSaveFormPanel.ts', 'utf8');
+  assert.match(saveFormSource, /associatedNoteNodes/u);
+  assert.match(saveFormSource, /associatedNoteModes/u);
+  assert.match(saveFormSource, /workspace-file-path-only/u);
+  assert.match(saveFormSource, /workspace-file-with-content/u);
+  assert.doesNotMatch(saveFormSource, /不保存此 Note/u);
+  assert.ok(!saveFormSource.includes("['skip'"));
 
   const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
   const rowClickHandler = sliceBetween(
@@ -584,6 +681,8 @@ try {
   }
   assert.match(templateProductSpecSource, /内置模板（2 个）/u);
   assert.match(templateProductSpecSource, /示例模板 - 1 Agent, 1 Terminal, 1 Note/u);
+  assert.doesNotMatch(templateProductSpecSource, /首次打开(?:画布)?时[^\n]*当前设置的默认模板/u);
+  assert.doesNotMatch(templateDesignDocSource, /首次打开画布时[^\n]*当前默认模板/u);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }
