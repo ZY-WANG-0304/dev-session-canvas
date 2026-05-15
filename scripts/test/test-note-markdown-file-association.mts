@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 
 import {
+  canCompareNoteMarkdownResourceWithWorkspaceRoot,
   createDefaultNoteMarkdownFileName,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
   resolveNoteMarkdownFileExtension,
-  sanitizeNoteMarkdownFileName
+  sanitizeNoteMarkdownFileName,
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay
 } from '../../src/common/noteMarkdownFileAssociation.ts';
 
 assert.equal(isSupportedNoteMarkdownFilePath('/workspace/docs/plan.md'), true);
@@ -32,6 +34,50 @@ assert.equal(
 assert.equal(
   formatNoteMarkdownRemoteAuthorityPrefix('vscode-remote', 'wsl+Ubuntu'),
   'wsl:Ubuntu'
+);
+assert.equal(
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    [{ scheme: 'file' }],
+    'ssh-remote'
+  ),
+  false,
+  'Current Remote SSH host should not show the ssh device prefix.'
+);
+assert.equal(
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    [{ scheme: 'file' }],
+    undefined
+  ),
+  true,
+  'A local extension host should keep the remote prefix for vscode-remote resources.'
+);
+assert.equal(
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    [{ scheme: 'file' }],
+    'wsl'
+  ),
+  true,
+  'A different remote kind should keep the remote prefix.'
+);
+assert.equal(
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    [{ scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' }]
+  ),
+  false,
+  'Matching workspace authority should not show a remote prefix.'
+);
+assert.equal(
+  canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    { scheme: 'file' },
+    'ssh-remote'
+  ),
+  true,
+  'Remote resources from the current host should compare with file-scheme workspace roots.'
 );
 
 console.log('note markdown file association tests passed');

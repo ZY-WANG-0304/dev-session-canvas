@@ -211,7 +211,7 @@ interface NoteNodeMetadata {
 - Title 下方显示 subtitle，内容为 `displayPath`。
 - subtitle 不显示 raw `vscode-remote://...`；raw `resourceUri` 只作为内部身份保存。
 - workspace 内文件优先显示 workspace-relative path：单根 workspace 显示 `docs/plan.md`，多根 workspace 显示 `workspace-name/docs/plan.md`，workspace root 下文件只显示文件名。
-- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 只在 workspace 外等必要场景加轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，不暴露 `ssh-remote+dev_labs`。
+- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 资源如果与当前 Extension Host / workspace root 可判定为同一台设备，即使位于 workspace 外也不显示 `ssh:设备id` 前缀；只有资源 URI 明确指向不同宿主或无法判定为当前宿主时，才显示轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，且不暴露 `ssh-remote+dev_labs`。
 - 长路径不在 Host 或持久化字段中按字符数预截断；subtitle 与 Agent / Terminal 一样交给标题栏布局做单行 ellipsis，实际溢出时 hover tooltip 显示同一条完整人类可读路径。
 - modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在提示中显示 raw URI。
 - subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。
@@ -371,3 +371,8 @@ Workspace Trust：
 - `npm run typecheck` 通过。
 - `npm run test:execution-terminal-clipboard` 通过，覆盖 `note-markdown-metadata` 作为通用剪贴板文本来源能通过协议 validator。
 - `npm run test:webview -- --grep "YAML metadata|original line numbers"` 通过，覆盖 YAML front matter 阅读态隐藏、标题栏 icon-only metadata 按钮、只读 popover、复制原始 front matter、popover 随画布缩放保持视觉倍率、metadata value 自动换行，以及隐藏 front matter 后 checklist 仍按原始 Markdown 行号写回。
+
+追加验证记录（2026-05-16）：
+
+- `npm run test:note-markdown-file-association` 通过，覆盖当前 Remote SSH Extension Host 下同设备 `vscode-remote` Markdown 路径不显示 `ssh:设备id` 前缀，而本地 Extension Host 或不同 remote kind 仍保留前缀。
+- `npm run typecheck` 通过。
