@@ -140,9 +140,11 @@ import {
   type NoteMarkdownWorkspaceRoot
 } from '../common/noteMarkdownLinks';
 import {
+  canCompareNoteMarkdownResourceWithWorkspaceRoot,
   createDefaultNoteMarkdownFileName,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay,
   type MarkdownFileNoteContentSource,
   type NoteContentSource,
   type NoteMarkdownConflictDraft,
@@ -5083,8 +5085,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const readablePath = this.formatNoteMarkdownReadableAbsolutePath(uri);
-    const remotePrefix =
-      uri.scheme === 'file' ? undefined : formatNoteMarkdownRemoteAuthorityPrefix(uri.scheme, uri.authority);
+    const shouldShowRemotePrefix = shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+      {
+        scheme: uri.scheme,
+        authority: uri.authority
+      },
+      (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
+        scheme: workspaceFolder.uri.scheme,
+        authority: workspaceFolder.uri.authority
+      })),
+      vscode.env.remoteName
+    );
+    const remotePrefix = shouldShowRemotePrefix
+      ? formatNoteMarkdownRemoteAuthorityPrefix(uri.scheme, uri.authority)
+      : undefined;
     return remotePrefix ? `${remotePrefix} · ${readablePath}` : readablePath;
   }
 
@@ -5094,7 +5108,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const relativePath = resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
         uri,
         workspaceFolder,
-        workspaceFolders.length > 1
+        workspaceFolders.length > 1,
+        vscode.env.remoteName
       );
       if (relativePath) {
         return relativePath;
@@ -14650,7 +14665,8 @@ function normalizeNoteMarkdownResourceKey(uri: vscode.Uri): string {
 function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
   uri: vscode.Uri,
   workspaceFolder: vscode.WorkspaceFolder,
-  includeWorkspaceFolderPrefix: boolean
+  includeWorkspaceFolderPrefix: boolean,
+  remoteName?: string
 ): string | undefined {
   if (uri.scheme === 'file' && workspaceFolder.uri.scheme === 'file') {
     return resolveContainedWorkspaceRelativePath({
@@ -14661,7 +14677,7 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
     });
   }
 
-  if (!canCompareNoteMarkdownUriWithWorkspaceFolder(uri, workspaceFolder.uri)) {
+  if (!canCompareNoteMarkdownUriWithWorkspaceFolder(uri, workspaceFolder.uri, remoteName)) {
     return undefined;
   }
 
@@ -14682,12 +14698,22 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
   return normalizedWorkspaceFolderName ? `${normalizedWorkspaceFolderName}/${relativePath}` : relativePath;
 }
 
-function canCompareNoteMarkdownUriWithWorkspaceFolder(uri: vscode.Uri, workspaceFolderUri: vscode.Uri): boolean {
-  if (uri.scheme === workspaceFolderUri.scheme && uri.authority === workspaceFolderUri.authority) {
-    return true;
-  }
-
-  return uri.scheme === 'vscode-remote' && workspaceFolderUri.scheme === 'file';
+function canCompareNoteMarkdownUriWithWorkspaceFolder(
+  uri: vscode.Uri,
+  workspaceFolderUri: vscode.Uri,
+  remoteName?: string
+): boolean {
+  return canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    {
+      scheme: uri.scheme,
+      authority: uri.authority
+    },
+    {
+      scheme: workspaceFolderUri.scheme,
+      authority: workspaceFolderUri.authority
+    },
+    remoteName
+  );
 }
 
 function resolveNoteMarkdownPathRelativeToHome(

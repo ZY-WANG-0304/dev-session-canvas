@@ -60,6 +60,11 @@ export interface NoteMarkdownConflictDraft {
   updatedAt: string;
 }
 
+export interface NoteMarkdownUriIdentity {
+  scheme: string;
+  authority?: string;
+}
+
 export function isSupportedNoteMarkdownFilePath(value: string): boolean {
   return NOTE_MARKDOWN_FILE_EXTENSIONS.has(resolveNoteMarkdownFileExtension(value));
 }
@@ -108,6 +113,72 @@ export function formatNoteMarkdownRemoteAuthorityPrefix(
   }
 
   return `${scheme}:${normalizedAuthority}`;
+}
+
+export function shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+  resource: NoteMarkdownUriIdentity,
+  workspaceRoots: readonly NoteMarkdownUriIdentity[],
+  remoteName?: string
+): boolean {
+  if (resource.scheme === 'file') {
+    return false;
+  }
+
+  return !workspaceRoots.some((workspaceRoot) =>
+    isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot, remoteName)
+  );
+}
+
+export function canCompareNoteMarkdownResourceWithWorkspaceRoot(
+  resource: NoteMarkdownUriIdentity,
+  workspaceRoot: NoteMarkdownUriIdentity,
+  remoteName?: string
+): boolean {
+  return isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot, remoteName);
+}
+
+function isNoteMarkdownResourceOnSameDisplayHost(
+  resource: NoteMarkdownUriIdentity,
+  workspaceRoot: NoteMarkdownUriIdentity,
+  remoteName?: string
+): boolean {
+  if (resource.scheme === workspaceRoot.scheme) {
+    return (
+      normalizeNoteMarkdownAuthority(resource.authority) ===
+      normalizeNoteMarkdownAuthority(workspaceRoot.authority)
+    );
+  }
+
+  if (!remoteName) {
+    return false;
+  }
+
+  if (resource.scheme === 'vscode-remote' && workspaceRoot.scheme === 'file') {
+    return doesVscodeRemoteAuthorityMatchRemoteName(resource.authority, remoteName);
+  }
+
+  if (resource.scheme === 'file' && workspaceRoot.scheme === 'vscode-remote') {
+    return doesVscodeRemoteAuthorityMatchRemoteName(workspaceRoot.authority, remoteName);
+  }
+
+  return false;
+}
+
+function doesVscodeRemoteAuthorityMatchRemoteName(
+  authority: string | undefined,
+  remoteName: string
+): boolean {
+  const normalizedAuthority = authority?.trim() ?? '';
+  const normalizedRemoteName = remoteName.trim();
+  if (!normalizedAuthority || !normalizedRemoteName) {
+    return false;
+  }
+
+  return normalizedAuthority.split('+', 1)[0] === normalizedRemoteName;
+}
+
+function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
+  return authority ?? '';
 }
 
 function stripKnownMarkdownExtension(value: string): string {
