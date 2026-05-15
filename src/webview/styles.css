@@ -2509,11 +2509,46 @@ body {
   color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
 }
 
+.note-markdown-preview-copy a.is-disabled,
+.note-markdown-preview-copy a.is-disabled:hover {
+  color: inherit;
+  cursor: text;
+  text-decoration: none;
+}
+
 .note-markdown-preview-copy table {
   width: 100%;
   border-collapse: collapse;
   margin: 0 0 10px;
   font-size: 12px;
+}
+
+.note-markdown-preview-copy img.note-markdown-image {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  box-sizing: border-box;
+  margin: 4px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
+  cursor: default;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.note-markdown-preview-copy .note-markdown-image-fallback {
+  display: inline-flex;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  border: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 80%, transparent);
+  border-radius: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .note-markdown-preview-copy th,

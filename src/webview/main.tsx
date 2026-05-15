@@ -209,6 +209,7 @@ interface CanvasNodeData {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  noteMarkdownImageWorkspaceRoots: NoteMarkdownImageWorkspaceRoot[];
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
   collapsedFileListTreeBranchKeys?: string[];
@@ -299,6 +300,19 @@ interface NoteMarkdownPreviewResult {
   html: string;
   frontMatter: NoteMarkdownFrontMatter;
 }
+type NoteMarkdownImageWorkspaceRoot = NonNullable<CanvasRuntimeContext['noteMarkdownImageWorkspaceRoots']>[number];
+interface NoteMarkdownPreviewRenderOptions {
+  imageBaseUri?: string;
+  imageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
+}
+interface NoteMarkdownNormalizedImagePath {
+  segments: string[];
+  relativePath: string;
+}
+interface NoteMarkdownResolvedImageResource {
+  baseUri: string;
+  relativePath: string;
+}
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
@@ -308,6 +322,8 @@ const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
+const NOTE_MARKDOWN_IMAGE_SELECTOR = 'img.note-markdown-image';
+const NOTE_MARKDOWN_DATA_IMAGE_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[A-Za-z0-9+/=\r\n]+$/iu;
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
@@ -746,7 +762,8 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
   filePathDisplayMode: 'basename',
-  fileIconFontFaces: []
+  fileIconFontFaces: [],
+  noteMarkdownImageWorkspaceRoots: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -763,6 +780,13 @@ function normalizeRuntimeContext(
   const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
     ? runtimeContext.fileIconFontFaces
     : [];
+  const noteMarkdownImageWorkspaceRoots =
+    runtimeContext && Array.isArray(runtimeContext.noteMarkdownImageWorkspaceRoots)
+      ? runtimeContext.noteMarkdownImageWorkspaceRoots.filter(
+          (root): root is NoteMarkdownImageWorkspaceRoot =>
+            typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : [];
   const legacyStrongTerminalAttentionReminderEnabled = runtimeContext
     ? (
         runtimeContext as Partial<CanvasRuntimeContext> & {
@@ -797,7 +821,8 @@ function normalizeRuntimeContext(
         ? runtimeContext.fileNodeDisplayMode
         : 'icon-path',
     filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
-    fileIconFontFaces
+    fileIconFontFaces,
+    noteMarkdownImageWorkspaceRoots
   };
 }
 
@@ -860,7 +885,8 @@ function App(): JSX.Element {
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
-    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces
+    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
+    noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -1676,6 +1702,7 @@ function App(): JSX.Element {
     fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
+    noteMarkdownImageWorkspaceRoots: runtimeContext.noteMarkdownImageWorkspaceRoots ?? [],
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
     collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
@@ -4632,7 +4659,15 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     selectionEnd: number;
     selectionDirection: HTMLTextAreaElement['selectionDirection'];
   } | null>(null);
-  const markdownPreview = useMemo(() => renderNoteMarkdownPreview(content), [content]);
+  const associatedMarkdownImageBaseUri = associatedMarkdownFile?.webviewResourceBaseUri;
+  const markdownPreview = useMemo(
+    () =>
+      renderNoteMarkdownPreview(content, {
+        imageBaseUri: associatedMarkdownImageBaseUri,
+        imageWorkspaceRoots: data.noteMarkdownImageWorkspaceRoots
+      }),
+    [associatedMarkdownImageBaseUri, content, data.noteMarkdownImageWorkspaceRoots]
+  );
   const previewHtml = markdownPreview.html;
   const markdownFrontMatter = markdownPreview.frontMatter;
   const bodyLines = useMemo(() => splitTextLines(content), [content]);
@@ -5347,7 +5382,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const handlePreviewDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
-    if (findNoteMarkdownChecklistInputTarget(event.target) || findNoteMarkdownLinkTarget(event.target)) {
+    if (
+      findNoteMarkdownChecklistInputTarget(event.target) ||
+      findNoteMarkdownLinkTarget(event.target) ||
+      findNoteMarkdownImageTarget(event.target)
+    ) {
       return;
     }
     if (overviewInteractionsDisabled) {
@@ -7898,6 +7937,7 @@ function toFlowNodes(params: {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  noteMarkdownImageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   collapsedFileListTreeBranches: Record<string, string[]> | undefined;
@@ -8006,6 +8046,7 @@ function toFlowNodes(params: {
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
+        noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
@@ -9985,9 +10026,13 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   const defaultLinkOpenRenderer =
     renderer.renderer.rules.link_open ??
     ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  const defaultImageRenderer =
+    renderer.renderer.rules.image ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   const defaultValidateLink = renderer.validateLink.bind(renderer);
   renderer.validateLink = (href) =>
-    defaultValidateLink(href) && isRenderableNoteMarkdownHref(href);
+    defaultValidateLink(href) &&
+    (isRenderableNoteMarkdownHref(href) || isRenderableNoteMarkdownImageReference(href));
   renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const href = token.attrGet('href');
@@ -10002,6 +10047,24 @@ function createNoteMarkdownRenderer(): MarkdownIt {
     token.attrJoin('class', 'note-markdown-link');
     token.attrSet('rel', 'noopener noreferrer');
     return defaultLinkOpenRenderer(tokens, idx, options, env, self);
+  };
+  renderer.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const src = token.attrGet('src');
+    const resolvedSrc = src ? resolveRenderableNoteMarkdownImageSrc(src, env) : null;
+    if (!resolvedSrc) {
+      const altText = token.content.trim() || src || '图片';
+      return `<span class="note-markdown-image-fallback" role="img" aria-label="${escapeHtml(altText)}">${escapeHtml(
+        altText
+      )}</span>`;
+    }
+
+    token.attrSet('src', resolvedSrc);
+    token.attrJoin('class', 'note-markdown-image');
+    token.attrSet('loading', 'lazy');
+    token.attrSet('decoding', 'async');
+    token.attrSet('draggable', 'false');
+    return defaultImageRenderer(tokens, idx, options, env, self);
   };
 
   return renderer;
@@ -10056,6 +10119,197 @@ function isRenderableNoteMarkdownWorkspaceHref(href: string): boolean {
 
   const pathSegments = normalizedPath.split('/').filter((segment) => segment.length > 0);
   return pathSegments.length > 0 && pathSegments.every((segment) => segment !== '..');
+}
+
+function isRenderableNoteMarkdownImageReference(src: string): boolean {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return false;
+  }
+
+  if (isRenderableNoteMarkdownDataImageSrc(trimmedSrc)) {
+    return true;
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(trimmedSrc);
+  if (schemeMatch) {
+    return schemeMatch[1].toLowerCase() === 'https';
+  }
+
+  return isRenderableNoteMarkdownWorkspaceHref(trimmedSrc);
+}
+
+function resolveRenderableNoteMarkdownImageSrc(src: string, env: unknown): string | null {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return null;
+  }
+
+  if (isRenderableNoteMarkdownDataImageSrc(trimmedSrc)) {
+    return trimmedSrc;
+  }
+
+  let parsedUrl: URL | null = null;
+  try {
+    parsedUrl = new URL(trimmedSrc);
+  } catch {
+    parsedUrl = null;
+  }
+  if (parsedUrl) {
+    return parsedUrl.protocol.toLowerCase() === 'https:' ? parsedUrl.toString() : null;
+  }
+
+  const normalizedPath = normalizeNoteMarkdownImageRelativePath(trimmedSrc);
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const options = readNoteMarkdownPreviewRenderOptions(env);
+  const associatedBaseUri = normalizeNoteMarkdownImageBaseUri(options.imageBaseUri);
+  if (associatedBaseUri) {
+    return resolveNoteMarkdownImageAgainstBaseUri(normalizedPath, associatedBaseUri);
+  }
+
+  const workspaceResource = resolveNoteMarkdownWorkspaceImageResource(normalizedPath, options.imageWorkspaceRoots);
+  return workspaceResource
+    ? resolveNoteMarkdownImageAgainstBaseUri(workspaceResource.relativePath, workspaceResource.baseUri)
+    : null;
+}
+
+function isRenderableNoteMarkdownDataImageSrc(src: string): boolean {
+  return NOTE_MARKDOWN_DATA_IMAGE_PATTERN.test(src);
+}
+
+function normalizeNoteMarkdownImageRelativePath(src: string): NoteMarkdownNormalizedImagePath | null {
+  const [rawPathPart] = splitNoteMarkdownImagePathAndFragment(src);
+  if (!rawPathPart || rawPathPart.includes('?')) {
+    return null;
+  }
+
+  let decodedPathPart: string;
+  try {
+    decodedPathPart = decodeURIComponent(rawPathPart);
+  } catch {
+    return null;
+  }
+
+  const normalizedPath = decodedPathPart.replace(/\\/g, '/');
+  if (
+    !normalizedPath ||
+    normalizedPath.startsWith('/') ||
+    normalizedPath.startsWith('//') ||
+    /^[A-Za-z]:[\\/]/u.test(decodedPathPart)
+  ) {
+    return null;
+  }
+
+  const segments: string[] = [];
+  for (const segment of normalizedPath.split('/')) {
+    if (!segment || segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      return null;
+    }
+    segments.push(segment);
+  }
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return {
+    segments,
+    relativePath: segments.map((segment) => encodeURIComponent(segment)).join('/')
+  };
+}
+
+function splitNoteMarkdownImagePathAndFragment(src: string): [string, string] {
+  const hashIndex = src.indexOf('#');
+  return hashIndex === -1 ? [src, ''] : [src.slice(0, hashIndex), src.slice(hashIndex + 1)];
+}
+
+function readNoteMarkdownPreviewRenderOptions(env: unknown): NoteMarkdownPreviewRenderOptions {
+  if (!env || typeof env !== 'object') {
+    return {
+      imageWorkspaceRoots: []
+    };
+  }
+
+  const candidate = env as Partial<NoteMarkdownPreviewRenderOptions>;
+  return {
+    imageBaseUri: typeof candidate.imageBaseUri === 'string' ? candidate.imageBaseUri : undefined,
+    imageWorkspaceRoots: Array.isArray(candidate.imageWorkspaceRoots)
+      ? candidate.imageWorkspaceRoots.filter(
+          (root): root is NoteMarkdownImageWorkspaceRoot =>
+            typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : []
+  };
+}
+
+function normalizeNoteMarkdownImageBaseUri(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.toString().endsWith('/') ? url.toString() : `${url.toString()}/`;
+  } catch {
+    return null;
+  }
+}
+
+function resolveNoteMarkdownWorkspaceImageResource(
+  normalizedPath: NoteMarkdownNormalizedImagePath,
+  workspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[]
+): NoteMarkdownResolvedImageResource | null {
+  if (workspaceRoots.length === 0) {
+    return null;
+  }
+
+  if (workspaceRoots.length === 1) {
+    const baseUri = normalizeNoteMarkdownImageBaseUri(workspaceRoots[0].webviewResourceBaseUri);
+    return baseUri ? { baseUri, relativePath: normalizedPath.relativePath } : null;
+  }
+
+  const [rootName] = normalizedPath.segments;
+  const normalizedRootName = normalizeNoteMarkdownWorkspaceRootName(rootName);
+  const matchingRoot = workspaceRoots.find(
+    (root) => normalizeNoteMarkdownWorkspaceRootName(root.name) === normalizedRootName
+  );
+  if (!matchingRoot || normalizedPath.segments.length < 2) {
+    return null;
+  }
+
+  const baseUri = normalizeNoteMarkdownImageBaseUri(matchingRoot.webviewResourceBaseUri);
+  if (!baseUri) {
+    return null;
+  }
+
+  return {
+    baseUri,
+    relativePath: normalizedPath.segments.slice(1).map((segment) => encodeURIComponent(segment)).join('/')
+  };
+}
+
+function normalizeNoteMarkdownWorkspaceRootName(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function resolveNoteMarkdownImageAgainstBaseUri(
+  normalizedPath: { relativePath: string } | string,
+  baseUri: string
+): string | null {
+  try {
+    return new URL(
+      typeof normalizedPath === 'string' ? normalizedPath : normalizedPath.relativePath,
+      baseUri
+    ).toString();
+  } catch {
+    return null;
+  }
 }
 
 function removeMarkdownTokenAttribute(token: Token, attributeName: string): void {
@@ -10215,6 +10469,14 @@ function findNoteMarkdownLinkTarget(target: EventTarget | null): HTMLAnchorEleme
   return target.closest<HTMLAnchorElement>(NOTE_MARKDOWN_LINK_SELECTOR);
 }
 
+function findNoteMarkdownImageTarget(target: EventTarget | null): HTMLImageElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLImageElement>(NOTE_MARKDOWN_IMAGE_SELECTOR);
+}
+
 function findNoteMarkdownChecklistInputTarget(target: EventTarget | null): HTMLInputElement | null {
   if (!(target instanceof HTMLElement)) {
     return null;
@@ -10234,13 +10496,18 @@ function readNoteMarkdownChecklistLineNumber(input: HTMLInputElement): number | 
   return Number.isSafeInteger(parsedLineNumber) && parsedLineNumber > 0 ? parsedLineNumber : null;
 }
 
-function renderNoteMarkdownPreview(content: string): NoteMarkdownPreviewResult {
+function renderNoteMarkdownPreview(
+  content: string,
+  options: NoteMarkdownPreviewRenderOptions
+): NoteMarkdownPreviewResult {
   const frontMatter = parseNoteMarkdownFrontMatter(content);
   const renderContent = frontMatter.kind === 'valid' ? frontMatter.body : content;
   return {
     html: renderContent.trim()
       ? noteMarkdownRenderer.render(renderContent, {
-          noteMarkdownLineOffset: frontMatter.lineOffset
+          noteMarkdownLineOffset: frontMatter.lineOffset,
+          imageBaseUri: options.imageBaseUri,
+          imageWorkspaceRoots: options.imageWorkspaceRoots
         })
       : '',
     frontMatter

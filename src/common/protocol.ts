@@ -310,6 +310,11 @@ export interface AgentLaunchDefaultsByProvider {
   claude: AgentProviderLaunchDefaults;
 }
 
+export interface NoteMarkdownImageWorkspaceRoot {
+  name: string;
+  webviewResourceBaseUri: string;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
@@ -326,6 +331,7 @@ export interface CanvasRuntimeContext {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileIconFontFaces: CanvasFileIconFontFace[];
+  noteMarkdownImageWorkspaceRoots?: NoteMarkdownImageWorkspaceRoot[];
 }
 
 export interface CanvasTemplateMenuEntry {
