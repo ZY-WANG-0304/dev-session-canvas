@@ -65,6 +65,10 @@ export interface NoteMarkdownUriIdentity {
   authority?: string;
 }
 
+export interface DroppedNoteMarkdownTitleOptions {
+  stripExtension?: boolean;
+}
+
 export function isSupportedNoteMarkdownFilePath(value: string): boolean {
   return NOTE_MARKDOWN_FILE_EXTENSIONS.has(resolveNoteMarkdownFileExtension(value));
 }
@@ -92,6 +96,16 @@ export function sanitizeNoteMarkdownFileName(title: string): string {
 
 export function createDefaultNoteMarkdownFileName(title: string): string {
   return sanitizeNoteMarkdownFileName(title);
+}
+
+export function createDroppedNoteMarkdownTitle(
+  value: string,
+  options: DroppedNoteMarkdownTitleOptions = {}
+): string {
+  const normalizedPath = stripUriQueryAndFragment(extractPathLikePart(value.trim())).replace(/\\/g, '/');
+  const baseName = path.posix.basename(normalizedPath);
+  const title = options.stripExtension ? stripKnownMarkdownExtension(baseName) : baseName;
+  return title.trim() || 'Markdown Note';
 }
 
 export function formatNoteMarkdownRemoteAuthorityPrefix(

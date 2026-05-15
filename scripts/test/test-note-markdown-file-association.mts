@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   canCompareNoteMarkdownResourceWithWorkspaceRoot,
   createDefaultNoteMarkdownFileName,
+  createDroppedNoteMarkdownTitle,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
   resolveNoteMarkdownFileExtension,
@@ -26,6 +28,17 @@ assert.equal(sanitizeNoteMarkdownFileName('bad/name:*?'), 'bad-name---.md');
 assert.equal(sanitizeNoteMarkdownFileName('   '), 'note.md');
 assert.equal(sanitizeNoteMarkdownFileName('CON'), 'CON-note.md');
 assert.equal(createDefaultNoteMarkdownFileName('产品方案'), '产品方案.md');
+
+assert.equal(createDroppedNoteMarkdownTitle('/workspace/docs/design.md'), 'design.md');
+assert.equal(
+  createDroppedNoteMarkdownTitle('/workspace/docs/design.md', { stripExtension: true }),
+  'design'
+);
+assert.equal(createDroppedNoteMarkdownTitle('file:///workspace/docs/plan.markdown#L12'), 'plan.markdown');
+assert.equal(
+  createDroppedNoteMarkdownTitle('file:///workspace/docs/plan.markdown#L12', { stripExtension: true }),
+  'plan'
+);
 
 assert.equal(
   formatNoteMarkdownRemoteAuthorityPrefix('vscode-remote', 'ssh-remote+dev_labs'),
@@ -78,6 +91,18 @@ assert.equal(
   ),
   true,
   'Remote resources from the current host should compare with file-scheme workspace roots.'
+);
+
+const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+const packageNlsJson = JSON.parse(readFileSync(new URL('../../package.nls.json', import.meta.url), 'utf8'));
+const dropTitleConfig =
+  packageJson.contributes.configuration.properties['devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle'];
+assert.equal(dropTitleConfig?.type, 'boolean');
+assert.equal(dropTitleConfig?.default, false);
+assert.equal(dropTitleConfig?.scope, 'window');
+assert.equal(
+  packageNlsJson['configuration.noteMarkdown.stripExtensionFromDroppedFileTitle.description']?.length > 0,
+  true
 );
 
 console.log('note markdown file association tests passed');

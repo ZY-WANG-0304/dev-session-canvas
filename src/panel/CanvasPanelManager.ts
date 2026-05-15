@@ -142,6 +142,7 @@ import {
 import {
   canCompareNoteMarkdownResourceWithWorkspaceRoot,
   createDefaultNoteMarkdownFileName,
+  createDroppedNoteMarkdownTitle,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay,
@@ -4166,7 +4167,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    const title = noteMarkdownTitleFromUri(uri);
+    const title = noteMarkdownTitleFromUri(uri, {
+      stripExtension: this.shouldStripExtensionFromDroppedNoteMarkdownTitle()
+    });
     const displayPathInfo = this.formatNoteMarkdownDisplayPathInfo(uri);
     const noteMetadata: NoteNodeMetadata = {
       content,
@@ -4194,6 +4197,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodes: [...nextState.nodes.slice(0, -1), associatedNode]
     };
     return associatedNode;
+  }
+
+  private shouldStripExtensionFromDroppedNoteMarkdownTitle(): boolean {
+    return vscode.workspace
+      .getConfiguration()
+      .get<boolean>(CONFIG_KEYS.noteMarkdownStripExtensionFromDroppedFileTitle, false) === true;
   }
 
   private async handleResolveExecutionFileLinks(
@@ -14752,11 +14761,11 @@ function formatNoteMarkdownRevisionTime(value: number): string {
   return Number.isFinite(value) ? String(Math.round(value * 1000)) : '0';
 }
 
-function noteMarkdownTitleFromUri(uri: vscode.Uri): string {
-  const rawPath = noteMarkdownUriPathLike(uri).replace(/\\/g, '/');
-  const baseName = path.posix.basename(rawPath);
-  const extension = path.posix.extname(baseName);
-  return (extension ? baseName.slice(0, -extension.length) : baseName).trim() || 'Markdown Note';
+function noteMarkdownTitleFromUri(
+  uri: vscode.Uri,
+  options: { stripExtension?: boolean } = {}
+): string {
+  return createDroppedNoteMarkdownTitle(noteMarkdownUriPathLike(uri), options);
 }
 
 function resolveExistingDirectoryForNoteMarkdownInput(inputPath: string): string | undefined {
