@@ -423,6 +423,8 @@ body {
 .canvas-shell.is-overview-mode .file-node-copy span,
 .canvas-shell.is-overview-mode .file-list-entry-copy span,
 .canvas-shell.is-overview-mode .node-hint,
+.canvas-shell.is-overview-mode .node-topline,
+.canvas-shell.is-overview-mode .node-status,
 .canvas-shell.is-overview-mode .compact-node-actions,
 .canvas-shell.is-overview-mode .compact-node p {
   visibility: hidden;
@@ -481,15 +483,18 @@ body {
   position: absolute;
   inset: 8px;
   z-index: 2;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--canvas-overview-title-scale, 1));
+  align-items: center;
+  justify-content: center;
   text-align: center;
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
 
-.node-overview-title span {
+.node-overview-title-label {
   max-width: 92%;
   overflow: hidden;
   padding: 0;
@@ -504,6 +509,42 @@ body {
   text-shadow:
     0 1px 2px var(--vscode-editor-background),
     0 0 8px color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
+}
+
+.node-overview-status {
+  display: inline-flex;
+  max-width: 90%;
+  min-height: calc(18px * var(--canvas-overview-title-scale, 1));
+  align-items: center;
+  gap: calc(4px * var(--canvas-overview-title-scale, 1));
+  overflow: hidden;
+  box-sizing: border-box;
+  border: calc(1px * var(--canvas-overview-title-scale, 1)) solid
+    var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: calc(5px * var(--canvas-overview-title-scale, 1));
+  padding: 0 calc(6px * var(--canvas-overview-title-scale, 1));
+  font-size: calc(10px * var(--canvas-overview-title-scale, 1));
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 0 calc(8px * var(--canvas-overview-title-scale, 1))
+    color-mix(in srgb, var(--vscode-editor-background) 74%, transparent);
+}
+
+.node-overview-status span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-overview-status-dot {
+  width: calc(6px * var(--canvas-overview-title-scale, 1));
+  height: calc(6px * var(--canvas-overview-title-scale, 1));
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 calc(1px * var(--canvas-overview-title-scale, 1))
+    color-mix(in srgb, currentColor 28%, var(--vscode-editor-background) 72%);
 }
 
 .canvas-shell.is-overview-mode[data-canvas-overview-config='title'] .node-overview-title {

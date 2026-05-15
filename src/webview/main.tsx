@@ -3208,7 +3208,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
-          <NodeOverviewTitle title={data.title} />
+          <NodeOverviewTitle title={data.title} status={displayStatus} />
           {!agentMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3636,7 +3636,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
-          <NodeOverviewTitle title={data.title} />
+          <NodeOverviewTitle title={data.title} status={displayStatus} />
           {!terminalMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3811,12 +3811,25 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
   );
 }
 
-function NodeOverviewTitle(props: { title: string }): JSX.Element {
+function NodeOverviewTitle(props: { title: string; status?: string }): JSX.Element {
   return (
     <div className="node-overview-title" aria-hidden="true">
-      <span>{props.title}</span>
+      <span className="node-overview-title-label">{props.title}</span>
+      {props.status ? (
+        <span
+          className={`node-overview-status ${statusToneClass(props.status)}`}
+          data-overview-status={props.status}
+        >
+          <span className="node-overview-status-dot" />
+          <span>{humanizeStatus(props.status)}</span>
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function overviewStatusForNode(data: CanvasNodeData): string | undefined {
+  return data.kind === 'agent' || data.kind === 'terminal' ? data.status : undefined;
 }
 
 function NodeHandles(props: { selected: boolean }): JSX.Element {
@@ -5637,7 +5650,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
-      <NodeOverviewTitle title={data.title} />
+      <NodeOverviewTitle title={data.title} status={overviewStatusForNode(data)} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
