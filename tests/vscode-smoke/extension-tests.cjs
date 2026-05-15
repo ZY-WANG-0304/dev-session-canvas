@@ -3992,7 +3992,7 @@ async function verifyNoteMarkdownFileAssociation() {
       node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
   );
   assert.ok(associatedNote, 'Expected dropping a Markdown file onto the canvas to create an associated Note.');
-  assert.strictEqual(associatedNote.title, 'associated-note');
+  assert.strictEqual(associatedNote.title, 'associated-note.md');
   assert.strictEqual(associatedNote.metadata.note.contentSource.displayPath, '.debug/vscode-smoke/associated-note.md');
   assert.strictEqual(
     associatedNote.metadata.note.contentSource.fullDisplayPath,

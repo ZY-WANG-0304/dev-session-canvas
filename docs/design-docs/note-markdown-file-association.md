@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-05-15
+updated_at: 2026-05-16
 ---
 
 # Note 与 Markdown 文件关联
@@ -277,7 +277,7 @@ Webview 需要在画布空白区域支持文件拖放创建关联 `Note`：
 - Host 必须按规范化资源 URI 对单次 drop payload 去重；同一个文件即使同时通过 `resourceUrls`、`codeFiles`、`uriList` 或 `files` 等多个拖拽通道上报，本次拖放也只能创建或处理一次。
 - 如果被拖拽的 Markdown 文件已经在画板上有关联 `Note`，Host 弹出 modal 让用户选择“添加新 Note”或“定位已有 Note”；选择添加时允许同一个 Markdown 文件在画板上拥有多个关联 `Note`。
 - 对每个合法 Markdown 文件，在释放点附近创建一个关联 Markdown `Note`；多个文件轻微错位排列。
-- 节点 title 默认取文件名去扩展名，例如 `design.md` -> `design`。
+- 节点 title 默认保留完整文件名，例如 `design.md` -> `design.md`；如果用户把 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 设为 `true`，则拖拽创建时去掉 `.md` / `.markdown` 后缀，例如 `design.md` -> `design`。该配置只影响拖拽创建的新关联 `Note` 默认标题，不重命名文件、不影响普通 `Note` 保存为 Markdown 并关联的标题保持规则，也不回改已有节点标题。
 - 节点 subtitle 显示路径。
 - 节点正文读取文件内容并进入 Markdown 预览态。
 - 非 Markdown 文件、目录或不可访问资源不创建节点；如果全部失败，应显示轻量提示说明原因。
@@ -333,7 +333,7 @@ Workspace Trust：
 13. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
 14. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
 15. 删除关联 Markdown `Note` 不删除关联文件。
-16. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
+16. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；默认 title 保留完整文件名，开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后才去掉 Markdown 扩展名；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
 17. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
 18. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
 19. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
@@ -376,3 +376,4 @@ Workspace Trust：
 
 - `npm run test:note-markdown-file-association` 通过，覆盖当前 Remote SSH Extension Host 下同设备 `vscode-remote` Markdown 路径不显示 `ssh:设备id` 前缀，而本地 Extension Host 或不同 remote kind 仍保留前缀。
 - `npm run typecheck` 通过。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；本轮覆盖拖拽创建关联 Markdown `Note` 时默认保留完整文件名作为 title、开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后去掉 Markdown 扩展名，以及配置项 manifest / 本地化文案存在且默认值为 `false`。
