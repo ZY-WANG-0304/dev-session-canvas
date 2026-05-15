@@ -180,7 +180,7 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       body {
         margin: 0;
-        padding: 10px 12px 12px;
+        padding: 8px 0 10px;
         background: var(--bg);
         color: var(--fg);
         font-family: var(--vscode-font-family);
@@ -194,20 +194,21 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       .shell {
         display: grid;
-        gap: 12px;
+        gap: 8px;
       }
 
       .actions {
         display: grid;
-        gap: 6px;
-        padding-bottom: 10px;
+        gap: 4px;
+        padding: 0 12px 8px;
         border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
       }
 
       .action-button {
+        appearance: none;
         width: 100%;
-        min-height: 28px;
-        padding: 0 10px;
+        min-height: 24px;
+        padding: 0 8px;
         border: 1px solid var(--button-border);
         border-radius: 2px;
         display: flex;
@@ -216,6 +217,9 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
         background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
         color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
         text-align: center;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.2;
         cursor: pointer;
       }
 
@@ -248,18 +252,20 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       .fields {
         display: grid;
-        gap: 10px;
+        gap: 8px;
+        padding: 0 12px;
       }
 
       .field-group {
         display: grid;
-        gap: 4px;
+        gap: 3px;
       }
 
       .field-label {
         color: var(--muted);
-        font-size: 12px;
-        line-height: 18px;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 16px;
       }
 
       .input-wrap {
@@ -312,13 +318,15 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
 
       .field-hint {
         color: var(--muted);
-        line-height: 1.4;
+        font-size: 11px;
+        line-height: 1.35;
       }
 
       .feature-disabled {
         color: var(--muted);
-        line-height: 1.5;
-        padding-top: 2px;
+        font-size: 11px;
+        line-height: 1.4;
+        padding: 0 12px;
       }
 
       .action-button:focus-visible,
@@ -367,10 +375,10 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
           </div>
         </div>
 
-        <div class="field-hint">只影响文件对象与自动边的显示投影，不会修改文件引用。</div>
+        <div class="field-hint">仅影响文件投影，不修改文件引用。</div>
       </div>
 
-      <div class="feature-disabled" hidden>文件功能当前已关闭。重新加载窗口并启用设置后，文件活动视图和文件过滤入口才会可用。</div>
+      <div class="feature-disabled" hidden>文件功能当前已关闭；重新启用后需重载窗口生效。</div>
     </div>
 
     <script nonce="${nonce}">
