@@ -12,6 +12,12 @@ colors:
   market-ink-on-dark: "#e6e6e6"
   market-muted: "#686868"
   market-muted-on-dark: "#aeaeae"
+  market-error: "#c62828"
+  market-error-on-dark: "#ffb4ab"
+  market-error-bg: "#fff1f0"
+  market-error-bg-on-dark: "#3a1d1b"
+  market-error-line: "#f1a7a0"
+  market-error-line-on-dark: "#8c3a34"
   market-mist: "#f8f8f8"
   market-mist-on-dark: "#1e1e1e"
   market-paper: "#ffffff"
@@ -32,6 +38,9 @@ colors:
   vscode-primary-fg: "var(--vscode-button-foreground)"
   vscode-secondary-bg: "var(--vscode-button-secondaryBackground, transparent)"
   vscode-secondary-fg: "var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground))"
+  vscode-error-fg: "var(--vscode-errorForeground, var(--vscode-inputValidation-errorForeground, var(--vscode-editor-foreground)))"
+  vscode-error-bg: "var(--vscode-inputValidation-errorBackground, color-mix(in srgb, var(--vscode-errorForeground, var(--vscode-editor-foreground)) 12%, var(--vscode-editor-background)))"
+  vscode-error-border: "var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground, var(--vscode-focusBorder)))"
 
 typography:
   browser-hero:
@@ -164,6 +173,12 @@ components:
     typography: "{typography.browser-caption}"
     rounded: "{rounded.none}"
     padding: "8px 12px"
+  browser-home-publish-cta:
+    backgroundColor: "{colors.market-accent}"
+    textColor: "{colors.market-accent-text}"
+    typography: "{typography.browser-caption}"
+    rounded: "{rounded.none}"
+    height: 40px
   browser-secondary-button:
     backgroundColor: transparent
     textColor: "{colors.market-ink} / {colors.market-ink-on-dark}"
@@ -176,6 +191,19 @@ components:
     borderColor: "{colors.market-line} / {colors.market-line-on-dark}"
     rounded: "{rounded.none}"
     shadow: "var(--market-shadow-card)"
+  browser-publish-form:
+    backgroundColor: "{colors.market-paper} / {colors.market-paper-on-dark}"
+    borderColor: "{colors.market-line} / {colors.market-line-on-dark}"
+    rounded: "{rounded.none}"
+    shadow: "var(--market-shadow-card)"
+    inputHeight: 44px
+  browser-error-message:
+    backgroundColor: "{colors.market-error-bg} / {colors.market-error-bg-on-dark}"
+    textColor: "{colors.market-error} / {colors.market-error-on-dark}"
+    borderColor: "{colors.market-error-line} / {colors.market-error-line-on-dark}"
+    typography: "{typography.browser-caption}"
+    rounded: "{rounded.none}"
+    padding: "12px 16px"
   vscode-panel-shell:
     backgroundColor: "{colors.vscode-bg}"
     textColor: "{colors.vscode-fg}"
@@ -213,6 +241,13 @@ components:
     borderColor: "{colors.vscode-border}"
     rounded: "{rounded.sm}"
     shadow: "0 16px 38px color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent)"
+  vscode-error-message:
+    backgroundColor: "{colors.vscode-error-bg}"
+    textColor: "{colors.vscode-error-fg}"
+    borderColor: "{colors.vscode-error-border}"
+    typography: "{typography.vscode-body}"
+    rounded: "{rounded.xs}"
+    padding: "8px 10px"
   vscode-detail-shell:
     backgroundColor: "{colors.vscode-surface}"
     borderColor: "{colors.vscode-border}"
@@ -267,6 +302,16 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 - **Market Muted On Dark** (`{colors.market-muted-on-dark}` -- #aeaeae): 浏览器 dark theme 下的 secondary copy。
 - **VSCode Foreground** (`{colors.vscode-fg}`): 插件市场面板内的 primary text。
 - **VSCode Muted** (`{colors.vscode-muted}`): 面板说明、描述、非交互 tag、统计、label、disabled version menu item 和 source metadata。
+
+### Error
+- **Market Error** (`{colors.market-error}` -- #c62828): 浏览器 light theme 下的错误文字和错误 icon。用于表单校验、上传失败、发布失败和 API 错误，不作为品牌强调色。
+- **Market Error On Dark** (`{colors.market-error-on-dark}` -- #ffb4ab): 浏览器 dark theme 下的错误文字，保证在 dark error background 和 dark paper surface 上可读。
+- **Market Error Background** (`{colors.market-error-bg}` -- #fff1f0): 浏览器 light theme 下的错误提示底色；错误提示应靠近触发控件，例如模板 JSON 上传错误显示在上传控件附近。
+- **Market Error Background On Dark** (`{colors.market-error-bg-on-dark}` -- #3a1d1b): 浏览器 dark theme 下的错误提示底色。
+- **Market Error Line** (`{colors.market-error-line}` -- #f1a7a0): 浏览器 light theme 下的错误提示边框，避免只靠文字颜色表达错误。
+- **Market Error Line On Dark** (`{colors.market-error-line-on-dark}` -- #8c3a34): 浏览器 dark theme 下的错误提示边框。
+- **VSCode Error Foreground** (`{colors.vscode-error-fg}`): 插件市场面板内错误文字，优先跟随 `--vscode-errorForeground` 和 input validation token。
+- **VSCode Error Background / Border** (`{colors.vscode-error-bg}` / `{colors.vscode-error-border}`): 插件市场面板内错误提示 surface 和边框，必须继续由 VSCode Color Theme token 派生。
 
 ### Hairlines & Borders
 - **Market Line** (`{colors.market-line}` -- #dedede): 浏览器 card border、search/input border、nav divider、detail header divider、side rail 和 dashed empty state。
@@ -376,19 +421,31 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 - **Cropping** 使用 `object-cover`；缩略图应兼容自动生成的 canvas screenshot 和用户上传的自定义截图，不要求人工定制裁切。
 - **No rounded hero imagery.** 当前 marketplace 没有 full-bleed hero image；缩略图保留在矩形 catalog geometry 中。
 
+### Generated Thumbnail Node Colors
+
+自动生成的 marketplace thumbnail 必须镜像插件画布节点类型主题色，而不是另起一套市场色板。`packages/marketplace-shared/src/thumbnail.ts` 中的 accent 色要和 `src/common/canvasNodeVisuals.ts`、`src/webview/styles.css` 中 `.canvas-node.kind-*` 的 `--canvas-node-color` 保持一致；body 只是在白底上的浅色 tint，border 和 text bars 使用同一 hue 的透明或深色变体。
+
+| Node kind | Canvas theme color | Thumbnail use |
+|---|---:|---|
+| Agent | #22c55e | accent bar、agent glyph、border hue |
+| Terminal | #38bdf8 | accent bar、terminal glyph、border hue |
+| Note | #a78bfa | accent bar、note glyph、border hue |
+
 ## Components
 
 ### Top Navigation
 
 **`browser-global-nav`** -- 浏览器市场顶部的 persistent black brand bar。背景 `{colors.market-nav}`，文字 `{colors.market-nav-text}`，高度 48px。左侧 cluster 是 DevSessionCanvas brand、separator、Templates label；右侧 cluster 是非小屏显示的 GitHub link。它只属于浏览器端，不出现在 VSCode 面板。
 
-**`browser-tab-nav`** -- 品牌栏下方的单行导航。背景 `{colors.market-paper}` / `{colors.market-paper-on-dark}`，底部边框 `{colors.market-line}` / `{colors.market-line-on-dark}`。当前只展示 `Templates`；active tab 是矩形 `{colors.market-accent}` block，水平 padding 40px、垂直 padding 16px。不要预留 Canvas、Agents、Resources 等尚不存在的 tab。
+**`browser-tab-nav`** -- 品牌栏下方的单行导航。背景 `{colors.market-paper}` / `{colors.market-paper-on-dark}`，底部边框 `{colors.market-line}` / `{colors.market-line-on-dark}`。`Templates` 是矩形 `{colors.market-accent}` active block，水平 padding 40px、垂直 padding 16px；Phase 2 发布入口和发布者模板列表可以作为同一行的 muted text link `Publish` / `My Templates`，不要为 Canvas、Agents、Resources 等尚不存在的 section 创建 tab。
 
-**`vscode-panel-header`** -- Webview 内的紧凑 workbench header。左侧是 `{typography.vscode-panel-title}` 的 `模板市场`；右侧是 `在浏览器打开` secondary button。下方说明安装需先进入详情页。不要使用浏览器 brand bar、tab 或 hero title。
+**`vscode-panel-header`** -- Webview 内的紧凑 workbench header。左侧是 `{typography.vscode-panel-title}` 的 `模板市场`；右侧是 secondary button cluster，包含带 `codicon-cloud-upload` 的 `发布自建模板` 和 `浏览器中打开`。下方说明安装需先进入详情页。不要使用浏览器 brand bar、tab 或 hero title。
 
 ### Buttons
 
 **`browser-primary-button`** -- 浏览器安装、搜索和主动作按钮。背景 `{colors.market-accent}`，文字 `{colors.market-accent-text}`，矩形 `{rounded.none}`，小号强标签。卡片动作 padding 为 8px x 12px；详情页主动作 padding 为 12px x 16px。Focus state 使用从 `{colors.market-accent}` 派生的可见 4px ring。
+
+**`browser-home-publish-cta`** -- 浏览器 Templates 列表中的上传入口。它出现在 Featured heading 同一工具行，文案使用 `Upload your template`，点击进入 `/templates/publish`。它使用 `{component.browser-primary-button}` 的矩形主按钮语言，但不新增 banner、浮动卡片或 drag-and-drop hero zone。
 
 **`browser-secondary-button`** -- 浏览器 JSON 下载或中性动作。背景透明或 `{colors.market-paper}`，1px `{colors.market-line}` border，文字 `{colors.market-ink}`，hover 使用 moss，矩形 `{rounded.none}`。它永远不变成 pill。
 
@@ -406,6 +463,10 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 **`browser-detail-shell`** -- 单一矩形详情容器。Header 包含 back link、thumbnail、title、description 和 tags。Body 是 README column + right sidebar。Downloads、likes、latest version、version history、integrity、install 和 download actions 都留在 sidebar。不要拆成多个 floating card。
 
+**`browser-publish-form`** -- 浏览器 Phase 2 发布页的单一矩形表单容器。Header 包含 `Publish` overline、标题、说明和轻量 GitHub login 状态；未登录状态只展示一个 GitHub sign-in 主按钮，登录完成后回到当前发布页；已登录状态可用小号矩形 secondary `Sign out` 清理市场 session。登录后主体按 `Template file`、`Marketplace details`、`Preview & publish` 组织：左侧完成 JSON 选择和公开元信息，右侧固定呈现生成/自定义 thumbnail 预览、发布状态摘要和主发布按钮。README、changelog 和 Template JSON preview 属于 optional advanced 区域，默认收敛到 details，不占据页面首屏主面积。成功和失败状态必须使用完整文本，不只靠颜色提示。
+
+**`browser-error-message`** -- 浏览器市场错误提示。使用 `{colors.market-error-bg}` / `{colors.market-error-bg-on-dark}`、`{colors.market-error}` / `{colors.market-error-on-dark}` 和 `{colors.market-error-line}` / `{colors.market-error-line-on-dark}`，保持矩形 `{rounded.none}`。错误信息必须放在触发错误的控件附近；表单级提交失败可以放在发布按钮附近，但字段校验和文件上传错误不能集中到右侧 publish summary。
+
 **`vscode-list-row`** -- 原生密度模板行。Grid area 保持左侧 thumbnail、中间文本、右侧 install target/actions。Row 使用 bottom border 和可选 row hover background，不使用 card box。Installed badge 文案为 `已安装到 ... · vN`。
 
 **`vscode-detail-shell`** -- 工作台详情容器。Header 包含 `返回列表`、thumbnail、title、description 和 tags。Body 使用 README + 18rem sidebar。Sidebar 集中放置 install target select、install split button、download split button、metrics、version history、integrity 和 source。
@@ -414,11 +475,15 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 **`vscode-offline-card`** -- 远端模板加载失败但本地已安装市场模板仍可见时的 fallback row/card。它使用 VSCode surface/border token，写明本地安装位置；如果有 source URL，可以提供浏览器详情动作。
 
+**`vscode-error-message`** -- 插件市场面板错误提示。使用 `{colors.vscode-error-fg}`、`{colors.vscode-error-bg}` 和 `{colors.vscode-error-border}`，继续完全适配当前 VSCode Color Theme。错误提示必须包含明确文本和可聚焦/可复制的上下文，不使用浏览器红色 token。
+
 ### Inputs & Forms
 
 **`browser-search-input`** -- 大号矩形搜索框。高度 56px，`{typography.browser-search}`，paper 背景，line border，水平 padding 20px，无圆角。它与 `{component.browser-search-button}` 成对出现，并受 `MARKETPLACE_QUERY_MAX_LENGTH` 限制。
 
 **`browser-sort-select`** -- 首页 toolbar 中的紧凑 select。高度 40px，paper 背景，line border，水平 padding 12px，label 为 `Sort`，focus ring 使用 accent tint。
+
+**`browser-publish-input`** -- 发布表单中的 text、file 和 textarea control。背景 `{colors.market-paper}` 或 `{colors.market-mist}`，1px line border，无圆角，focus 使用 accent 4px ring。File input 使用矩形自定义 trigger，避免不同浏览器/系统语言的原生按钮破坏页面文案一致性；上传模板 JSON 和缩略图是工作流输入，不做 drag-and-drop hero zone。
 
 **`vscode-search-input`** -- 紧凑 workbench search。最小高度 28px，1px `--vscode-input-border`，回退到 `{colors.vscode-border}`，水平 padding 8px，radius `{rounded.xs}`。它应直接位于 panel header 下方，不包进大 filter card。
 
@@ -426,7 +491,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 **`vscode-install-target-select`** -- 单模板安装目标选择器。它出现在 list row 和 detail sidebar 中，最小高度 28px；其值只决定进入详情/安装上下文后的默认安装目标，用户仍可在详情页修改。
 
-包含大量校验的发布表单不属于当前 Phase 1 浏览/安装 UI，本文不定义。
+浏览器发布表单由 `browser-publish-form` 和 `browser-publish-input` 定义。VSCode 插件侧发布表单当前由宿主 Quick Input 承载，不放进市场 Webview 面板；后续若改成 Webview 表单，应新增 `vscode-publish-form` component contract，并继续只使用 `--vscode-*` token。
 
 ### Footer
 
@@ -437,9 +502,11 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 ### Do
 - 使用 `{colors.market-accent}` 承载浏览器 primary action、active Templates tab、搜索按钮和 focus-ring tint。
 - 使用 `{colors.market-moss}` / `{colors.market-moss-on-dark}` 承载浏览器 tag、text link、hover emphasis 和弱发现信号。
+- 使用 `{colors.market-error}` 系列承载浏览器错误提示；VSCode 错误提示使用 `{colors.vscode-error-*}` 并继续由宿主 Color Theme 派生。
 - 浏览器 card、button、search box、tab 和 detail shell 保持 `{rounded.none}` 的矩形语言。
 - VSCode 面板所有颜色都从 `--vscode-*` token 派生，包括 hover、border、focus、menu、disabled 和 High Contrast 状态。
 - 详情页保持 README-first，并把安装、下载、版本、完整性和统计控制集中到一个右侧 sidebar。
+- 模板列表中的上传/发布入口保持为 header 或 toolbar 内的短 CTA，不额外增加营销横幅或拖拽上传区。
 - 列表 quick action 应作为进入详情上下文的快捷入口；不要让按钮文案暗示在列表上直接执行文件系统写入。
 - 对 icon-only action 提供 visible focus、aria label，并为 installed、offline、loading、error、version 和 integrity 状态提供非颜色文本。
 - 点击外部、按 Escape、搜索/排序变化、list/detail 切换时关闭 version menu。
@@ -451,6 +518,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 - 不要在当前 marketplace grammar 中引入 pill button、capsule filter 或大圆角 card。
 - 不要把 README、metrics、version history、sha256 和 install control 拆成嵌套 card-in-card 布局。
 - 不要把安装位置、已安装版本、离线状态、加载或失败隐藏在只靠颜色识别的 badge 后。
+- 不要把所有错误都集中显示在页面底部或 Publish 按钮旁；字段错误和文件上传错误必须靠近对应控件。
 - 不要为 Canvas、Agents、Resources 或其他不存在的 section 创建 placeholder tab。
 - 不要把 VSCode 面板做成多列 card wall；它是紧凑工作台列表。
 
@@ -504,8 +572,8 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 ## Known Gaps
 
-- 发布、OAuth 登录、用户 dashboard、举报和 admin governance UI 属于 Phase 2-4 surface，不在当前 Phase 1 浏览/安装 UI 文档中定义。
+- 用户 dashboard、举报和 admin governance UI 属于后续 Phase 3-4 surface，不在当前浏览/安装/发布表单 UI 文档中定义。
 - 浏览器 footer、legal links 和生产状态 surface 尚未进入实现。
 - VSCode 面板已定义 High Contrast contract，但浏览器端 high-contrast media handling 尚未单独定义。
-- Thumbnail fallback copy/graphics 只定义了结构，最终生成缩略图的 art direction 应进入模板发布/设计工作流。
+- 自动生成 thumbnail 的 art direction 由共享布局 PNG renderer 承担；后续若调整节点 glyph 或压缩策略，应同步更新本 UI 文档和发布回归。节点类型 accent 色必须继续对齐插件画布节点主题色。
 - 浏览器详情当前把 version history 和 integrity 作为紧凑辅助区域；更复杂的版本对比或 changelog 过滤尚未定义。

@@ -36,6 +36,13 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
           </div>
           <div>
             <h2 className="text-3xl font-light leading-tight text-canvas-ink sm:text-4xl">{template.name}</h2>
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-canvas-muted">
+              <PublisherAvatar src={template.publisher.avatarUrl} name={template.publisher.displayName || template.publisher.githubLogin} />
+              <span>
+                Published by <span className="font-semibold text-canvas-ink">{template.publisher.displayName || template.publisher.githubLogin}</span>
+                {template.publisher.githubLogin ? <span className="ml-1"> @{template.publisher.githubLogin}</span> : null}
+              </span>
+            </div>
             <p className="mt-3 max-w-3xl text-base leading-7 text-canvas-muted">{template.description}</p>
             <div className="mt-5 flex flex-wrap gap-x-3 gap-y-1">
               {template.tags.map((tag) => (
@@ -79,6 +86,7 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
             <MetaItem label="Downloads" value={template.downloadCount.toLocaleString()} />
             <MetaItem label="Likes" value={template.likeCount.toLocaleString()} />
             <MetaItem label="Latest" value={`v${template.latestVersion.versionNumber}`} />
+            <MetaItem label="Publisher" value={template.publisher.displayName || template.publisher.githubLogin} />
           </dl>
 
           <details className="mt-5 border-t border-canvas-line pt-4">
@@ -112,6 +120,13 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
       </div>
     </section>
   );
+}
+
+function PublisherAvatar({ src, name }: { src: string; name: string }): JSX.Element {
+  if (!src) {
+    return <span className="h-7 w-7 shrink-0 border border-canvas-line bg-canvas-mist" aria-hidden="true" title={name} />;
+  }
+  return <img className="h-7 w-7 shrink-0 border border-canvas-line object-cover" src={src} alt={`${name} avatar`} loading="lazy" />;
 }
 
 function MetaItem({ label, value }: { label: string; value: string }): JSX.Element {

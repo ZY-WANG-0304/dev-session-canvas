@@ -7,12 +7,15 @@ import {
   type TemplateMarketplaceInstalledTemplateSummary,
   type TemplateMarketplaceInlineInstallParams
 } from './TemplateMarketplaceClient';
+import { COMMAND_IDS } from '../common/extensionIdentity';
+import { isTestHarnessMode } from '../common/testHarness';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 
 const MARKETPLACE_OFFICIAL_ORIGIN = 'https://dscanvas.dev';
 const MARKETPLACE_DEBUG_ORIGIN = 'https://dscanvas-template-marketplace.wzy0304.workers.dev';
 const MARKETPLACE_OFFICIAL_SOURCE_URL = `${MARKETPLACE_OFFICIAL_ORIGIN}/templates`;
 const MARKETPLACE_DEBUG_SOURCE_URL = `${MARKETPLACE_DEBUG_ORIGIN}/templates`;
+const MARKETPLACE_SOURCE_URL_ENV_KEY = 'DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL';
 const MARKETPLACE_OFFICIAL_HOSTS = new Set(['dscanvas.dev', 'www.dscanvas.dev', 'templates.dscanvas.dev']);
 const MARKETPLACE_DEBUG_HOSTS = new Set(['dscanvas-template-marketplace.wzy0304.workers.dev']);
 const MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES = [
@@ -52,6 +55,9 @@ type MarketplacePanelInboundMessage =
       payload?: {
         sourceUrl?: string;
       };
+    }
+  | {
+      type: 'marketplace/publishTemplate';
     }
   | {
       type: 'marketplace/refreshInstalledTemplates';
@@ -104,18 +110,46 @@ type MarketplacePanelOutboundMessage =
       payload: MarketplaceTemplateDetailRequest;
     };
 
+type MarketplacePanelTestResultMessage =
+  | {
+      type: 'marketplace/testProbeResult';
+      payload: {
+        requestId?: string;
+        probe?: unknown;
+      };
+    }
+  | {
+      type: 'marketplace/testActionResult';
+      payload: {
+        requestId?: string;
+        ok?: boolean;
+        probe?: unknown;
+        message?: string;
+      };
+    };
+
+interface PendingMarketplaceTestRequest {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
 export class CanvasTemplateMarketplacePanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly pendingTestProbeRequests = new Map<string, PendingMarketplaceTestRequest>();
+  private readonly pendingTestActionRequests = new Map<string, PendingMarketplaceTestRequest>();
   private pendingDetailRequest: MarketplaceTemplateDetailRequest | undefined;
   private readonly defaultMarketplaceSourceUrl: URL;
   private marketplaceSourceUrl: URL;
+  private readonly testHarnessEnabled: boolean;
 
   public constructor(
     private readonly marketplaceClient: TemplateMarketplaceClient,
     private readonly extensionUri: vscode.Uri,
     extensionMode: vscode.ExtensionMode
   ) {
+    this.testHarnessEnabled = isTestHarnessMode(extensionMode);
     this.defaultMarketplaceSourceUrl = resolveDefaultMarketplaceSourceUrl(extensionMode);
     this.marketplaceSourceUrl = new URL(this.defaultMarketplaceSourceUrl);
   }
@@ -156,6 +190,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
   }
 
   public dispose(): void {
+    this.rejectPendingTestRequests(new Error('模板市场面板已关闭。'));
     this.panel?.dispose();
     this.panel = undefined;
     this.pendingDetailRequest = undefined;
@@ -163,6 +198,20 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
     while (this.disposables.length > 0) {
       this.disposables.pop()?.dispose();
     }
+  }
+
+  public async captureTestProbe(timeoutMs = 5000): Promise<unknown> {
+    if (!this.testHarnessEnabled) {
+      throw new Error('captureTestProbe 仅在测试模式下可用。');
+    }
+    return this.sendTestRequest('marketplace/testProbeRequest', this.pendingTestProbeRequests, undefined, timeoutMs);
+  }
+
+  public async performTestAction(action: unknown, timeoutMs = 5000): Promise<unknown> {
+    if (!this.testHarnessEnabled) {
+      throw new Error('performTestAction 仅在测试模式下可用。');
+    }
+    return this.sendTestRequest('marketplace/testAction', this.pendingTestActionRequests, action, timeoutMs);
   }
 
   private revealPanel(): void {
@@ -188,11 +237,56 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
     }, undefined, this.disposables);
     panel.onDidDispose(() => {
       this.panel = undefined;
+      this.rejectPendingTestRequests(new Error('模板市场面板已关闭。'));
     }, undefined, this.disposables);
     void this.postInstalledTemplates();
   }
 
+  private async sendTestRequest(
+    type: 'marketplace/testProbeRequest' | 'marketplace/testAction',
+    pendingRequests: Map<string, PendingMarketplaceTestRequest>,
+    action: unknown,
+    timeoutMs: number
+  ): Promise<unknown> {
+    this.revealPanel();
+    const panel = this.panel;
+    if (!panel) {
+      throw new Error('模板市场面板尚未打开。');
+    }
+    const requestId = `marketplace-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return new Promise<unknown>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingRequests.delete(requestId);
+        reject(new Error(`等待模板市场测试动作返回超时（${timeoutMs}ms）。`));
+      }, timeoutMs);
+      pendingRequests.set(requestId, { resolve, reject, timeout });
+      void panel.webview.postMessage({
+        type,
+        payload: {
+          requestId,
+          action
+        }
+      });
+    });
+  }
+
+  private rejectPendingTestRequests(error: Error): void {
+    for (const pendingRequests of [this.pendingTestProbeRequests, this.pendingTestActionRequests]) {
+      for (const [requestId, request] of pendingRequests) {
+        clearTimeout(request.timeout);
+        request.reject(error);
+        pendingRequests.delete(requestId);
+      }
+    }
+  }
+
   private async handleMessage(message: unknown): Promise<void> {
+    const testResult = parseMarketplacePanelTestResultMessage(message);
+    if (testResult) {
+      this.handleTestResultMessage(testResult);
+      return;
+    }
+
     const parsed = parseMarketplacePanelMessage(message);
     if (!parsed) {
       return;
@@ -214,9 +308,43 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
       case 'marketplace/installTemplate':
         await this.installTemplate(parsed.payload);
         return;
+      case 'marketplace/publishTemplate':
+        await this.publishTemplateToMarketplace();
+        return;
       case 'marketplace/refreshInstalledTemplates':
         await this.postInstalledTemplates();
         return;
+    }
+  }
+
+  private handleTestResultMessage(message: MarketplacePanelTestResultMessage): void {
+    const requestId = message.payload.requestId;
+    if (!requestId) {
+      return;
+    }
+    const pendingRequests =
+      message.type === 'marketplace/testProbeResult'
+        ? this.pendingTestProbeRequests
+        : this.pendingTestActionRequests;
+    const pendingRequest = pendingRequests.get(requestId);
+    if (!pendingRequest) {
+      return;
+    }
+    pendingRequests.delete(requestId);
+    clearTimeout(pendingRequest.timeout);
+    if (message.type === 'marketplace/testActionResult' && message.payload.ok === false) {
+      pendingRequest.reject(new Error(message.payload.message ?? '模板市场测试动作失败。'));
+      return;
+    }
+    pendingRequest.resolve(message.payload.probe);
+  }
+
+  private async publishTemplateToMarketplace(): Promise<void> {
+    try {
+      await vscode.commands.executeCommand(COMMAND_IDS.publishTemplateToMarketplace);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await vscode.window.showErrorMessage(`发布自建模板失败：${message}`);
     }
   }
 
@@ -310,11 +438,26 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
 }
 
 function resolveDefaultMarketplaceSourceUrl(extensionMode: vscode.ExtensionMode): URL {
+  const override = resolveNonProductionMarketplaceSourceUrlOverride(extensionMode);
+  if (override) {
+    return override;
+  }
   return new URL(
     extensionMode === vscode.ExtensionMode.Production
       ? MARKETPLACE_OFFICIAL_SOURCE_URL
       : MARKETPLACE_DEBUG_SOURCE_URL
   );
+}
+
+function resolveNonProductionMarketplaceSourceUrlOverride(extensionMode: vscode.ExtensionMode): URL | undefined {
+  if (extensionMode === vscode.ExtensionMode.Production) {
+    return undefined;
+  }
+  const value = process.env[MARKETPLACE_SOURCE_URL_ENV_KEY]?.trim();
+  if (!value) {
+    return undefined;
+  }
+  return parseTrustedMarketplaceSourceUrl(value);
 }
 
 function resolveCompatibleMarketplaceSourceUrl(sourceUrl: URL, defaultMarketplaceSourceUrl: URL): URL {
@@ -400,6 +543,12 @@ function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInbound
     };
   }
 
+  if (message.type === 'marketplace/publishTemplate') {
+    return {
+      type: 'marketplace/publishTemplate'
+    };
+  }
+
   if (message.type === 'marketplace/refreshInstalledTemplates') {
     return {
       type: 'marketplace/refreshInstalledTemplates'
@@ -443,6 +592,22 @@ function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInbound
   }
 
   return null;
+}
+
+function parseMarketplacePanelTestResultMessage(message: unknown): MarketplacePanelTestResultMessage | null {
+  if (!isRecord(message) || (message.type !== 'marketplace/testProbeResult' && message.type !== 'marketplace/testActionResult')) {
+    return null;
+  }
+  const payload = isRecord(message.payload) ? message.payload : {};
+  return {
+    type: message.type,
+    payload: {
+      requestId: readOptionalString(payload.requestId),
+      ok: typeof payload.ok === 'boolean' ? payload.ok : undefined,
+      probe: payload.probe,
+      message: readOptionalString(payload.message)
+    }
+  } as MarketplacePanelTestResultMessage;
 }
 
 function parseMarketplaceTemplateDetailRequest(uri: vscode.Uri): MarketplaceTemplateDetailRequest {
@@ -560,6 +725,14 @@ function buildTemplateMarketplaceHtml(
         gap: 12px;
       }
 
+      .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
       h1 {
         margin: 0;
         font-size: 18px;
@@ -576,6 +749,10 @@ function buildTemplateMarketplaceHtml(
       }
 
       .open-browser {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
         border: 1px solid var(--border);
         background: var(--secondary-bg);
         color: var(--secondary-fg);
@@ -1218,7 +1395,13 @@ function buildTemplateMarketplaceHtml(
       <section class="panel-header">
         <div class="panel-title-row">
           <h1>模板市场</h1>
-          <button class="open-browser" id="openBrowserButton" type="button">浏览器中打开</button>
+          <div class="header-actions">
+            <button class="open-browser publish-template" id="publishTemplateButton" type="button">
+              <span class="codicon codicon-cloud-upload" aria-hidden="true"></span>
+              <span>发布自建模板</span>
+            </button>
+            <button class="open-browser" id="openBrowserButton" type="button">浏览器中打开</button>
+          </div>
         </div>
         <p class="panel-note">在详情页中选择版本并安装到本地模板库。</p>
       </section>
@@ -1272,11 +1455,16 @@ function buildTemplateMarketplaceHtml(
       const templateGrid = document.getElementById('templateGrid');
       const detailViewElement = document.getElementById('detailView');
       const openBrowserButton = document.getElementById('openBrowserButton');
+      const publishTemplateButton = document.getElementById('publishTemplateButton');
       searchInput.value = persistedState.searchQuery;
       if ([...sortSelect.options].some((option) => option.value === persistedState.sort)) {
         sortSelect.value = persistedState.sort;
       }
 
+      publishTemplateButton.addEventListener('click', () => {
+        closeVersionMenus();
+        vscode.postMessage({ type: 'marketplace/publishTemplate' });
+      });
       openBrowserButton.addEventListener('click', () => {
         postOpenInBrowserMessage();
       });
@@ -1305,6 +1493,16 @@ function buildTemplateMarketplaceHtml(
       window.addEventListener('message', (event) => {
         const message = event.data;
         if (!message) {
+          return;
+        }
+
+        if (message.type === 'marketplace/testProbeRequest') {
+          postTestProbeResult(message.payload && message.payload.requestId);
+          return;
+        }
+
+        if (message.type === 'marketplace/testAction') {
+          void handleTestAction(message.payload && message.payload.requestId, message.payload && message.payload.action);
           return;
         }
 
@@ -1358,6 +1556,137 @@ function buildTemplateMarketplaceHtml(
         }
         renderTemplates();
       });
+
+      function postTestProbeResult(requestId) {
+        if (!requestId) {
+          return;
+        }
+        vscode.postMessage({
+          type: 'marketplace/testProbeResult',
+          payload: {
+            requestId: String(requestId),
+            probe: collectTestProbe()
+          }
+        });
+      }
+
+      async function handleTestAction(requestId, action) {
+        if (!requestId) {
+          return;
+        }
+        try {
+          await performTestAction(action);
+          vscode.postMessage({
+            type: 'marketplace/testActionResult',
+            payload: {
+              requestId: String(requestId),
+              ok: true,
+              probe: collectTestProbe()
+            }
+          });
+        } catch (error) {
+          vscode.postMessage({
+            type: 'marketplace/testActionResult',
+            payload: {
+              requestId: String(requestId),
+              ok: false,
+              message: formatErrorMessage(error),
+              probe: collectTestProbe()
+            }
+          });
+        }
+      }
+
+      async function performTestAction(action) {
+        const kind = action && typeof action.kind === 'string' ? action.kind : '';
+        if (kind === 'search') {
+          searchInput.value = typeof action.value === 'string' ? action.value : '';
+          closeVersionMenus();
+          persistState();
+          await loadTemplates();
+          return;
+        }
+        if (kind === 'sort') {
+          sortSelect.value = typeof action.value === 'string' ? action.value : sortSelect.value;
+          closeVersionMenus();
+          persistState();
+          await loadTemplates();
+          return;
+        }
+        if (kind === 'openDetail') {
+          const slug = readString(action && action.slug) || state.templates[0]?.slug;
+          if (!slug) {
+            throw new Error('缺少要打开的模板。');
+          }
+          openTemplateDetail(slug, readString(action.versionId));
+          if (!state.templateDetailsBySlug[slug]) {
+            await loadTemplateDetail(slug);
+          }
+          return;
+        }
+        if (kind === 'backToList') {
+          closeTemplateDetail();
+          return;
+        }
+        if (kind === 'toggleInstallVersionMenu' || kind === 'toggleDownloadVersionMenu') {
+          const template = resolveTestActionTemplate(action);
+          await toggleVersionMenu(template, kind === 'toggleDownloadVersionMenu' ? 'download' : 'install');
+          return;
+        }
+        if (kind === 'clickOutside') {
+          document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return;
+        }
+        if (kind === 'installActiveVersion') {
+          const template = resolveTestActionTemplate(action);
+          const version = resolvePreferredDetailVersion(template, state.activeTemplateVersionId);
+          await installTemplateVersion(template, version);
+          return;
+        }
+        if (kind === 'publish') {
+          publishTemplateButton.click();
+          return;
+        }
+        throw new Error('不支持的模板市场测试动作：' + kind);
+      }
+
+      function resolveTestActionTemplate(action) {
+        const slug = readString(action && action.slug) || state.activeTemplateSlug || state.templates[0]?.slug;
+        const template = state.templateDetailsBySlug[slug] || state.templates.find((candidate) => candidate.slug === slug || candidate.id === slug);
+        if (!template) {
+          throw new Error('找不到测试动作目标模板：' + (slug || '未指定'));
+        }
+        return template;
+      }
+
+      function collectTestProbe() {
+        const visibleTemplateNames = Array.from(templateGrid.querySelectorAll('.card-title, .offline-template-card h2'))
+          .map((element) => element.textContent || '')
+          .filter(Boolean);
+        const versionMenuItems = Array.from(document.querySelectorAll('.version-menu-item, .version-menu-note'))
+          .map((element) => element.textContent || '')
+          .filter(Boolean);
+        const buttonTexts = Array.from(document.querySelectorAll('button'))
+          .map((element) => element.textContent || element.getAttribute('aria-label') || '')
+          .filter(Boolean);
+        return {
+          view: state.activeTemplateSlug ? 'detail' : 'list',
+          apiOrigin,
+          marketplaceSourceUrl: state.marketplaceSourceUrl,
+          statusText: statusElement.textContent || '',
+          templateCount: state.templates.length,
+          visibleTemplateNames,
+          activeTemplateSlug: state.activeTemplateSlug,
+          detailTitle: detailViewElement.querySelector('.detail-title')?.textContent || undefined,
+          detailReadmeText: detailViewElement.querySelector('.detail-readme-body')?.textContent || undefined,
+          hasVersionMenu: Boolean(document.querySelector('.version-menu')),
+          versionMenuItems,
+          installTargetLabels: Array.from(document.querySelectorAll('.install-target option'))
+            .map((element) => element.textContent || '')
+            .filter(Boolean),
+          buttonTexts
+        };
+      }
 
       function postOpenInBrowserMessage() {
         vscode.postMessage({

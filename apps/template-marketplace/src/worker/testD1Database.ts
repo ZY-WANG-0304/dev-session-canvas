@@ -76,9 +76,20 @@ export function createFakeD1Database(runLog: FakeD1Run[] = []): D1Database {
           if (sql.includes("template_id = ?1 AND status = 'published'")) {
             return { results: versionRows.slice(), success: true, meta: {} };
           }
+          if (sql.includes('u.github_user_id = ?1')) {
+            return {
+              results: boundValues[0] === 'test-dscanvas-admin' ? templateRows.slice() : [],
+              success: true,
+              meta: {}
+            };
+          }
           return { results: templateRows.slice(), success: true, meta: {} };
         },
         async first() {
+          if (sql.includes('SELECT id FROM templates WHERE slug = ?1 LIMIT 1')) {
+            const row = templateRows.find((entry) => entry.slug === boundValues[0]);
+            return row ? { id: row.template_id } : null;
+          }
           if (sql.includes('WHERE (t.id = ?1 OR t.slug = ?1)')) {
             return templateRows.find((row) => row.template_id === boundValues[0] || row.slug === boundValues[0]) ?? null;
           }

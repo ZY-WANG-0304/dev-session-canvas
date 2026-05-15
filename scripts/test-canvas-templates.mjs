@@ -489,13 +489,19 @@ try {
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-web/u);
   assert.ok(packageManifest.activationEvents.includes('onUri'));
   assert.ok(packageManifest.activationEvents.includes('onCommand:devSessionCanvas.openTemplateMarketplace'));
+  assert.ok(packageManifest.activationEvents.includes('onCommand:devSessionCanvas.publishTemplateToMarketplace'));
   assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.openTemplateMarketplace'));
-  assert.match(extensionSource, /new TemplateMarketplaceClient\(panelManager\)/u);
+  assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.publishTemplateToMarketplace'));
+  assert.match(extensionSource, /new TemplateMarketplaceClient\(\s*panelManager,\s*context,\s*context\.extensionMode\s*\)/u);
   assert.match(
     extensionSource,
     /new CanvasTemplateMarketplacePanelController\(\s*templateMarketplaceClient,\s*context\.extensionUri,\s*context\.extensionMode\s*\)/u
   );
   assert.match(extensionSource, /registerCommand\(context, COMMAND_IDS\.openTemplateMarketplace/u);
+  assert.match(extensionSource, /registerCommand\(context, COMMAND_IDS\.publishTemplateToMarketplace/u);
+  assert.match(extensionSource, /isPublishableCanvasTemplate/u);
+  assert.match(extensionSource, /isPublishCurrentCanvasCommandArg/u);
+  assert.match(extensionSource, /saveCurrentCanvasAsTemplateFromCommand\(panelManager,\s*\{/u);
   assert.match(extensionSource, /vscode\.window\.registerUriHandler/u);
   const exportCommandSource = sliceBetween(
     extensionSource,
@@ -659,12 +665,30 @@ try {
 
   const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
   assert.match(protocolSource, /type: 'host\/focusNodes'/u);
+  assert.match(protocolSource, /type: 'webview\/publishCanvasTemplate'/u);
+  assert.match(panelManagerSource, /case 'webview\/publishCanvasTemplate':/u);
+  assert.match(panelManagerSource, /COMMAND_IDS\.publishTemplateToMarketplace,\s*\{\s*publishCurrentCanvas: true\s*\}/u);
 
   const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
+  const webviewStylesSource = await readFile('src/webview/styles.css', 'utf8');
+  const canvasNodeVisualsSource = await readFile('src/common/canvasNodeVisuals.ts', 'utf8');
+  const thumbnailSource = await readFile('packages/marketplace-shared/src/thumbnail.ts', 'utf8');
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
   assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
   assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
   assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);
+  assert.match(webviewSource, /type: 'webview\/publishCanvasTemplate'/u);
+  assert.match(webviewSource, /data-context-menu-action="publish-canvas-template"/u);
+  assert.match(webviewSource, /codicon-cloud-upload/u);
+  for (const [kind, color] of [
+    ['agent', '#22c55e'],
+    ['terminal', '#38bdf8'],
+    ['note', '#a78bfa']
+  ]) {
+    assert.match(canvasNodeVisualsSource, new RegExp(`case '${kind}':[\\s\\S]*return '${color}'`, 'u'));
+    assert.match(webviewStylesSource, new RegExp(`\\.canvas-node\\.kind-${kind} \\{[\\s\\S]*--canvas-node-color: ${color};`, 'u'));
+    assert.match(thumbnailSource, new RegExp(`${kind}: '${color}'`, 'u'));
+  }
 
   const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
   const rowClickHandler = sliceBetween(
@@ -697,6 +721,11 @@ try {
   assert.doesNotMatch(sidebarTemplateViewSource, /hintNote|hint-note|canSaveCurrentCanvas/u);
   assert.match(sidebarTemplateViewSource, /sourceKind: resolveCanvasSidebarTemplateSourceKind\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
+  assert.match(sidebarTemplateViewSource, /canPublish: storedTemplate\.template\.category === 'user' && !storedTemplate\.marketplace/u);
+  assert.match(sidebarTemplateViewSource, /sidebarTemplates\/publishTemplate/u);
+  assert.match(sidebarTemplateViewSource, /COMMAND_IDS\.publishTemplateToMarketplace/u);
+  assert.match(sidebarTemplateViewSource, /publishAction\.hidden = !item\.canPublish/u);
+  assert.match(sidebarTemplateViewSource, /codicon-cloud-upload/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplateSourceLabel/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplatePositionLabel/u);
   assert.match(sidebarTemplateViewSource, /return '内置';/u);
@@ -734,6 +763,7 @@ try {
 
   const marketplacePanelSource = await readFile('src/panel/CanvasTemplateMarketplacePanel.ts', 'utf8');
   const marketplaceClientSource = await readFile('src/panel/TemplateMarketplaceClient.ts', 'utf8');
+  const marketplacePublishViewSource = await readFile('apps/template-marketplace/src/web/components/TemplatePublishView.tsx', 'utf8');
   assert.match(panelManagerSource, /installMarketplaceTemplateDocument\([\s\S]*targetRootPath\?: string/u);
   assert.match(panelManagerSource, /overwriteFilePath\?: string/u);
   assert.match(panelManagerSource, /preserveTemplateId\?: string/u);
@@ -753,6 +783,16 @@ try {
   assert.match(marketplaceClientSource, /resolveMarketplaceInstallOperation/u);
   assert.match(marketplaceClientSource, /getCanvasTemplateCatalog/u);
   assert.match(marketplaceClientSource, /marketTemplateSlug/u);
+  assert.match(marketplaceClientSource, /publishStoredTemplate/u);
+  assert.match(marketplaceClientSource, /generateMarketplaceTemplateThumbnailPngBase64/u);
+  assert.match(marketplaceClientSource, /thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64\(templateDocument\)/u);
+  assert.match(marketplaceClientSource, /vscode\.authentication\.getSession\('github', \['read:user'\], \{ createIfNone: true \}\)/u);
+  assert.match(marketplaceClientSource, /context\.secrets\.store\(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse\.token\)/u);
+  assert.match(marketplaceClientSource, /findPublishableStoredTemplate/u);
+  assert.doesNotMatch(marketplaceClientSource, /workspaceState\.update|globalState\.update/u);
+  assert.match(marketplacePublishViewSource, /type PublishTextField = 'name' \| 'slug' \| 'description' \| 'tags' \| 'readme' \| 'changelog' \| 'templateJson';/u);
+  assert.match(marketplacePublishViewSource, /function updateFormField\(field: PublishTextField, value: string\): void/u);
+  assert.doesNotMatch(marketplacePublishViewSource, /setForm\(\(current\)\s*=>[\s\S]{0,200}event\.(?:currentTarget|target)\.value/u);
   assert.match(extensionSource, /context\.extensionMode/u);
   assert.match(extensionSource, /templateMarketplacePanel\.openTemplateDetailFromUri\(uri\)/u);
   assert.match(extensionSource, /打开市场模板详情失败/u);
@@ -761,7 +801,12 @@ try {
   assert.match(marketplacePanelSource, /marketplace\/installedTemplatesError/u);
   assert.match(marketplacePanelSource, /marketplace\/openTemplateDetail/u);
   assert.match(marketplacePanelSource, /marketplace\/openTemplateIndex/u);
+  assert.match(marketplacePanelSource, /marketplace\/publishTemplate/u);
   assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
+  assert.match(marketplacePanelSource, /COMMAND_IDS\.publishTemplateToMarketplace/u);
+  assert.match(marketplacePanelSource, /publishTemplateButton/u);
+  assert.match(marketplacePanelSource, /发布自建模板/u);
+  assert.match(marketplacePanelSource, /codicon-cloud-upload/u);
   assert.match(marketplacePanelSource, /查看详情/u);
   assert.match(marketplacePanelSource, /detail-view/u);
   assert.match(marketplacePanelSource, /getVersionedWebviewResourceUri/u);
