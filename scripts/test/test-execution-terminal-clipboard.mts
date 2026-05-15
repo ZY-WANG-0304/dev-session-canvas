@@ -4,8 +4,8 @@ import {
   inferExecutionTerminalClipboardPlatform,
   prepareExecutionTerminalPasteText,
   resolveExecutionTerminalClipboardShortcut
-} from '../src/common/executionTerminalClipboard.ts';
-import { parseWebviewMessage } from '../src/common/protocol.ts';
+} from '../../src/common/executionTerminalClipboard.ts';
+import { parseWebviewMessage } from '../../src/common/protocol.ts';
 
 function event(key: string, modifiers: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) {
   return {

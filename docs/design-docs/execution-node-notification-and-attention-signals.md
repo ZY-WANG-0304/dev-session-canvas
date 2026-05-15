@@ -516,7 +516,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
   - `npm run typecheck`
   - `npm run test:execution-attention-signals`
   - `npm run build`
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`
 - 2026-04-29 已补记未来 OS 系统通知的 UI-side / local-side notifier companion 方向；本次仅更新设计文档，不涉及代码与运行时行为变更。
 - 当前文档继续保持 `验证中`，因为本轮尚未在真实 Ghostty / kitty / iTerm2 / tmux 场景里做手工协议验证；但仓库内已完成 VS Code 宿主级自动化验证，覆盖配置开关、冷却抑制、节点内提醒、显式点击确认，以及工作台通知后居中节点但不确认提醒。
 

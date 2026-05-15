@@ -46,7 +46,7 @@
 当前对外统一使用以下安装与升级说明：
 
 1. 当前目标版本为 `0.10.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.9.1` 升级到 `0.10.0` 将通过 `Visual Studio Marketplace` 常规安装 / 升级完成；后续 `0.10.x` 更新也通过 Marketplace 常规升级获取。
+2. 首次安装与从 `0.9.1` 升级到 `0.10.0` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
 4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
 5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
@@ -110,6 +110,9 @@
    - `docs/support.md`
    - `docs/SECURITY.md`
 7. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
+8. 确认 `Open VSX` 的 `devsessioncanvas` namespace 已完成 owner/verified 认领，发布 token 已写入 `~/.ovsx` 的 `devsessioncanvas` entry，且本地可执行：
+
+       python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas
 
 ## 当前验证备注
 
@@ -131,14 +134,25 @@
 
 ## 发布命令
 
-在版本号、最终 git ref 与 VSIX 产物都已锁定后，使用本地 `@vscode/vsce` 执行；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
+在版本号、最终 git ref 与 VSIX 产物都已锁定后，从仓库根目录执行统一发布入口；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
 
-注意：`publish --packagePath` 只会上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须先重新执行 `npm run package:vsix`，并确保该 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
+    npm run publish:marketplaces -- --yes
 
-    node node_modules/@vscode/vsce/vsce publish \
-      --packagePath dev-session-canvas-0.10.0.vsix
+该入口会按顺序重新打包主扩展与 notifier，然后先发布 notifier、再发布主扩展；每个扩展都会发布到 `Visual Studio Marketplace` 与 `Open VSX`。默认的 `Open VSX` 路径使用 `scripts/release/openvsx-api.py` 读取 `OVSX_PAT` 或 `~/.ovsx`，避免 headless Linux 环境中 `npx ovsx` 访问系统钥匙串或出现 TLS reset 时阻断发布。
 
-若最终版本号不是 `0.10.0`，应先同步更新命令中的 VSIX 文件名。
+发布前可先预览命令：
+
+    npm run publish:marketplaces -- --dry-run
+
+若某个市场已经成功、需要补发另一个市场，可复用当前 VSIX 并限定目标：
+
+    npm run publish:marketplaces -- --yes --skip-package --target open-vsx
+
+    npm run publish:marketplaces -- --yes --skip-package --target visual-studio
+
+注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须确保统一入口重新执行过打包，或在使用 `--skip-package` 时已经手工确认当前 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
+
+若最终版本号不是 `0.10.0`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
 
 ## publish 后补 tag
 
@@ -161,7 +175,8 @@
 发布完成后至少执行以下复核：
 
 1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit。
-2. 打开 Marketplace 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
+2. 打开 `Visual Studio Marketplace` 与 `Open VSX` 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
 3. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
-4. 在干净 profile 中安装刚发布的版本，验证扩展可成功激活并能打开主画布。
-5. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace` 与本地 CLI 依赖等限制仍被正确表达，没有被商店页误读成稳定版承诺。
+4. 在干净 profile 中从官方 VS Code Marketplace 安装刚发布的版本，验证扩展可成功激活并能打开主画布。
+5. 在 Open VSX 兼容宿主或 Open VSX 页面中复核两个扩展版本一致，且主扩展 / notifier 的安装关系没有因缺失补充渠道产物而断裂。
+6. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖与 Open VSX 兼容宿主边界仍被正确表达，没有被商店页误读成稳定版承诺或全宿主支持承诺。

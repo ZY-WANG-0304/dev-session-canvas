@@ -55,15 +55,23 @@ export function main() {
 
   const result = spawnSync(command.file, command.args, {
     cwd: projectRoot,
+    env: buildCliToolEnv(),
     stdio: 'inherit',
     windowsVerbatimArguments: command.windowsVerbatimArguments
   });
 
-  if (result.error) {
+  if (result.status !== 0) {
+    if (result.error) {
+      throw result.error;
+    }
+    return result.status === null ? 1 : result.status;
+  }
+
+  if (result.error && result.status === null) {
     throw result.error;
   }
 
-  return result.status === null ? 1 : result.status;
+  return 0;
 }
 
 function resolveVsceDocRef(gitRoot) {
@@ -88,12 +96,24 @@ function tryResolveGitRevision(rootDir, revision) {
     encoding: 'utf8'
   });
 
-  if (result.error || result.status !== 0) {
+  if (result.status !== 0) {
     return undefined;
   }
 
   const value = result.stdout.trim();
   return value === '' ? undefined : value;
+}
+
+function buildCliToolEnv() {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.VSCODE_IPC_HOOK_CLI;
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('VSCODE_')) {
+      delete env[key];
+    }
+  }
+  return env;
 }
 
 function validateReadmeRewriteTargets({ projectRoot, gitValidationRoot, readmePath, docBranch, baseUrls }) {
@@ -224,11 +244,10 @@ function assertGitPathExistsAtRef(gitRoot, gitRef, readmePath, target) {
     cwd: gitRoot
   });
 
-  if (result.error) {
-    throw result.error;
-  }
-
   if (result.status !== 0) {
+    if (result.error) {
+      throw result.error;
+    }
     throw new Error(
       `${readmePath} 中的相对路径 ${target.target} 会被改写为 ${target.rewrittenUrl}，但该路径在 git ref ${gitRef} 上不存在。请改用最终发布 ref，或显式传入 DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> 后重试。`
     );
