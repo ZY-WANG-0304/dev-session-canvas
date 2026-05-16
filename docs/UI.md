@@ -261,6 +261,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 状态摘要和宿主级导航优先使用宿主原生列表语义。
 - 需要更丰富行内控件时，应保持最小自绘 surface，不把局部能力扩展成完整面板。
 - 所有 sidebar section 都应贴近 VSCode 原生 sidebar：扁平列表、弱 hover、紧凑行距、少量 view title action。
+- Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色：默认标题文本优先使用全局 `foreground` 并以 `sideBar.foreground` 兜底；hover 使用 `list.hoverBackground` / `list.hoverForeground`；当前焦点选中项使用 `list.activeSelectionBackground` / `list.activeSelectionForeground`；失焦但保留选中项使用 `list.inactiveSelectionBackground` / `list.inactiveSelectionForeground`。不要把 `sideBar.foreground` 当作所有 row title 的唯一前景色，也不要只换背景不换对应前景色。
 - 禁止在 sidebar 中复制选中对象正文、连续运行输出或完整 inspector，也不要把 sidebar 做成 mini dashboard。
 
 具体 section 职责、功能范围与验收标准分别记录在 `docs/product-specs/canvas-sidebar-controls.md`、`docs/product-specs/canvas-sidebar-node-and-session-lists.md` 和 `docs/product-specs/canvas-template-feature.md`。
