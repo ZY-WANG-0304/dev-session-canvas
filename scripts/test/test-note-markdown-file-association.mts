@@ -167,4 +167,57 @@ assert.equal(
   true
 );
 
+const panelManagerSource = readFileSync(
+  new URL('../../src/panel/CanvasPanelManager.ts', import.meta.url),
+  'utf8'
+);
+const getAssociatedResourceKeySource = sliceBetween(
+  panelManagerSource,
+  'private getAssociatedNoteMarkdownResourceKey',
+  'private createAssociatedNoteMarkdownNode'
+);
+assert.match(
+  getAssociatedResourceKeySource,
+  /this\.parseCurrentHostNoteMarkdownUri\(source\.resourceUri\)/u,
+  'Existing associated Markdown Note keys should canonicalize current-host vscode-remote URIs before dedupe checks.'
+);
+const documentRefreshSource = sliceBetween(
+  panelManagerSource,
+  'private async refreshAssociatedMarkdownNotesForDocument',
+  'private async refreshAllAssociatedMarkdownNotes'
+);
+assert.match(
+  documentRefreshSource,
+  /this\.getAssociatedNoteMarkdownResourceKey\(node\) === documentResourceKey/u,
+  'Document save refresh should compare the same canonical resource key used by dropped files.'
+);
+const watcherSyncSource = sliceBetween(
+  panelManagerSource,
+  'private syncNoteMarkdownFileWatchers',
+  'private createNoteMarkdownFileWatcher'
+);
+assert.match(
+  watcherSyncSource,
+  /this\.parseCurrentHostNoteMarkdownUri\(source\.resourceUri\)/u,
+  'Current-host vscode-remote associated notes should be eligible for file-scheme watchers.'
+);
+const refreshAssociatedSource = sliceBetween(
+  panelManagerSource,
+  'private async refreshAssociatedMarkdownNote',
+  'private syncNoteMarkdownFileWatchers'
+);
+assert.match(
+  refreshAssociatedSource,
+  /resourceUri: uri\.toString\(\)/u,
+  'Refreshing a current-host associated Markdown Note should persist the canonical resourceUri.'
+);
+
 console.log('note markdown file association tests passed');
+
+function sliceBetween(source: string, start: string, end: string): string {
+  const startIndex = source.indexOf(start);
+  assert.notEqual(startIndex, -1, `Missing source marker: ${start}`);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.notEqual(endIndex, -1, `Missing source marker: ${end}`);
+  return source.slice(startIndex, endIndex);
+}
