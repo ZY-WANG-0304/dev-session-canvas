@@ -36,6 +36,7 @@
 - 默认承载面改成 `panel`：
   - `devSessionCanvas.canvas.defaultSurface` 的默认值改为 `panel`。
   - `Dev Session Canvas: 打开画布` 在默认配置下走 `panel` route。
+  - 当 `devSessionCanvas.canvas.defaultSurface = panel` 时，VS Code 启动后应能在原生 Panel 区域发现 `Dev Session Canvas` view；这只是承载位置可发现性，不要求扩展每次启动都自动把画布拉到前台或立即渲染 Webview 内容。
   - 显式命令 `在编辑区打开画布` / `在面板打开画布` 继续保留。
 - `panel` route 的工作台位置边界：
   - 扩展继续使用可移动的 VSCode view container 路线，而不是重新改回固定 `WebviewPanel`。
