@@ -535,6 +535,12 @@
           "default": "basename",
           "scope": "window",
           "markdownDescription": "%configuration.files.pathDisplayMode.description%"
+        },
+        "devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDescription": "%configuration.noteMarkdown.stripExtensionFromDroppedFileTitle.description%"
         }
       }
     }

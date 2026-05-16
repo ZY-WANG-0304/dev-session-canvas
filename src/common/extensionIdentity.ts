@@ -112,7 +112,8 @@ export const CONFIG_KEYS = {
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
   fileNodeDisplayStyle: 'devSessionCanvas.fileNode.displayStyle',
   filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
-  filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode'
+  filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode',
+  noteMarkdownStripExtensionFromDroppedFileTitle: 'devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle'
 } as const;
 
 export const CONTEXT_KEYS = {
