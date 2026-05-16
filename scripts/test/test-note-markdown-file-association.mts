@@ -171,6 +171,31 @@ const panelManagerSource = readFileSync(
   new URL('../../src/panel/CanvasPanelManager.ts', import.meta.url),
   'utf8'
 );
+const currentRemoteAuthoritySource = sliceBetween(
+  panelManagerSource,
+  'private getCurrentWebviewRemoteAuthority',
+  'private canonicalizeCurrentHostNoteMarkdownUri'
+);
+assert.match(
+  currentRemoteAuthoritySource,
+  /this\.scheduleNoteMarkdownCurrentHostRecanonicalize\(\)/u,
+  'First successful current Remote authority inference should trigger host-side recanonicalization.'
+);
+const canonicalizeCurrentHostSource = sliceBetween(
+  panelManagerSource,
+  'function canonicalizeNoteMarkdownUriForCurrentHost',
+  'function createCurrentHostFileUriFromVscodeRemoteUri'
+);
+assert.match(
+  canonicalizeCurrentHostSource,
+  /if \(!currentRemoteAuthority\) \{\s*return uri;\s*\}/u,
+  'Current-host canonicalization should fail closed when the full Remote authority is unavailable.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /isVscodeRemoteUriOnCurrentHostByFileSystem|doesVscodeRemoteAuthorityMatchRemoteName|canUseNoteMarkdownWorkspacePathFallback/u,
+  'Current-host canonicalization must not fall back to remote kind, path containment, or filesystem existence.'
+);
 const getAssociatedResourceKeySource = sliceBetween(
   panelManagerSource,
   'private getAssociatedNoteMarkdownResourceKey',
