@@ -25,4 +25,19 @@ assert.ok(
   'Panel placement bootstrap should not activate the extension or reveal the canvas on every VS Code startup.'
 );
 
+const viewTitleMenus = manifest.contributes.menus['view/title'];
+assert.ok(Array.isArray(viewTitleMenus), 'Expected view/title menu contributions.');
+const createNodeTitleMenus = viewTitleMenus.filter((item) => item.command === 'devSessionCanvas.createNode');
+assert.deepEqual(
+  createNodeTitleMenus,
+  [
+    {
+      command: 'devSessionCanvas.createNode',
+      when: 'view == devSessionCanvas.sidebarNodes',
+      group: 'navigation@99'
+    }
+  ],
+  'Expected the create-node title action to live at the end of the Nodes sidebar section.'
+);
+
 console.log('extension manifest tests passed');
