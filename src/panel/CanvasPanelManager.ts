@@ -140,9 +140,12 @@ import {
   type NoteMarkdownWorkspaceRoot
 } from '../common/noteMarkdownLinks';
 import {
+  canCompareNoteMarkdownResourceWithWorkspaceRoot,
   createDefaultNoteMarkdownFileName,
+  createDroppedNoteMarkdownTitle,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay,
   type MarkdownFileNoteContentSource,
   type NoteContentSource,
   type NoteMarkdownConflictDraft,
@@ -4164,7 +4167,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    const title = noteMarkdownTitleFromUri(uri);
+    const title = noteMarkdownTitleFromUri(uri, {
+      stripExtension: this.shouldStripExtensionFromDroppedNoteMarkdownTitle()
+    });
     const displayPathInfo = this.formatNoteMarkdownDisplayPathInfo(uri);
     const noteMetadata: NoteNodeMetadata = {
       content,
@@ -4192,6 +4197,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodes: [...nextState.nodes.slice(0, -1), associatedNode]
     };
     return associatedNode;
+  }
+
+  private shouldStripExtensionFromDroppedNoteMarkdownTitle(): boolean {
+    return vscode.workspace
+      .getConfiguration()
+      .get<boolean>(CONFIG_KEYS.noteMarkdownStripExtensionFromDroppedFileTitle, false) === true;
   }
 
   private async handleResolveExecutionFileLinks(
@@ -5083,8 +5094,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const readablePath = this.formatNoteMarkdownReadableAbsolutePath(uri);
-    const remotePrefix =
-      uri.scheme === 'file' ? undefined : formatNoteMarkdownRemoteAuthorityPrefix(uri.scheme, uri.authority);
+    const shouldShowRemotePrefix = shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+      {
+        scheme: uri.scheme,
+        authority: uri.authority
+      },
+      (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
+        scheme: workspaceFolder.uri.scheme,
+        authority: workspaceFolder.uri.authority
+      }))
+    );
+    const remotePrefix = shouldShowRemotePrefix
+      ? formatNoteMarkdownRemoteAuthorityPrefix(uri.scheme, uri.authority)
+      : undefined;
     return remotePrefix ? `${remotePrefix} · ${readablePath}` : readablePath;
   }
 
@@ -14682,12 +14704,20 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
   return normalizedWorkspaceFolderName ? `${normalizedWorkspaceFolderName}/${relativePath}` : relativePath;
 }
 
-function canCompareNoteMarkdownUriWithWorkspaceFolder(uri: vscode.Uri, workspaceFolderUri: vscode.Uri): boolean {
-  if (uri.scheme === workspaceFolderUri.scheme && uri.authority === workspaceFolderUri.authority) {
-    return true;
-  }
-
-  return uri.scheme === 'vscode-remote' && workspaceFolderUri.scheme === 'file';
+function canCompareNoteMarkdownUriWithWorkspaceFolder(
+  uri: vscode.Uri,
+  workspaceFolderUri: vscode.Uri
+): boolean {
+  return canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    {
+      scheme: uri.scheme,
+      authority: uri.authority
+    },
+    {
+      scheme: workspaceFolderUri.scheme,
+      authority: workspaceFolderUri.authority
+    }
+  );
 }
 
 function resolveNoteMarkdownPathRelativeToHome(
@@ -14726,11 +14756,11 @@ function formatNoteMarkdownRevisionTime(value: number): string {
   return Number.isFinite(value) ? String(Math.round(value * 1000)) : '0';
 }
 
-function noteMarkdownTitleFromUri(uri: vscode.Uri): string {
-  const rawPath = noteMarkdownUriPathLike(uri).replace(/\\/g, '/');
-  const baseName = path.posix.basename(rawPath);
-  const extension = path.posix.extname(baseName);
-  return (extension ? baseName.slice(0, -extension.length) : baseName).trim() || 'Markdown Note';
+function noteMarkdownTitleFromUri(
+  uri: vscode.Uri,
+  options: { stripExtension?: boolean } = {}
+): string {
+  return createDroppedNoteMarkdownTitle(noteMarkdownUriPathLike(uri), options);
 }
 
 function resolveExistingDirectoryForNoteMarkdownInput(inputPath: string): string | undefined {

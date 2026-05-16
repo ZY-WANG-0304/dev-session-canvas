@@ -60,6 +60,15 @@ export interface NoteMarkdownConflictDraft {
   updatedAt: string;
 }
 
+export interface NoteMarkdownUriIdentity {
+  scheme: string;
+  authority?: string;
+}
+
+export interface DroppedNoteMarkdownTitleOptions {
+  stripExtension?: boolean;
+}
+
 export function isSupportedNoteMarkdownFilePath(value: string): boolean {
   return NOTE_MARKDOWN_FILE_EXTENSIONS.has(resolveNoteMarkdownFileExtension(value));
 }
@@ -89,6 +98,16 @@ export function createDefaultNoteMarkdownFileName(title: string): string {
   return sanitizeNoteMarkdownFileName(title);
 }
 
+export function createDroppedNoteMarkdownTitle(
+  value: string,
+  options: DroppedNoteMarkdownTitleOptions = {}
+): string {
+  const normalizedPath = stripUriQueryAndFragment(extractPathLikePart(value.trim())).replace(/\\/g, '/');
+  const baseName = path.posix.basename(normalizedPath);
+  const title = options.stripExtension ? stripKnownMarkdownExtension(baseName) : baseName;
+  return title.trim() || 'Markdown Note';
+}
+
 export function formatNoteMarkdownRemoteAuthorityPrefix(
   scheme: string,
   authority: string
@@ -108,6 +127,44 @@ export function formatNoteMarkdownRemoteAuthorityPrefix(
   }
 
   return `${scheme}:${normalizedAuthority}`;
+}
+
+export function shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+  resource: NoteMarkdownUriIdentity,
+  workspaceRoots: readonly NoteMarkdownUriIdentity[]
+): boolean {
+  if (resource.scheme === 'file') {
+    return false;
+  }
+
+  return !workspaceRoots.some((workspaceRoot) =>
+    isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot)
+  );
+}
+
+export function canCompareNoteMarkdownResourceWithWorkspaceRoot(
+  resource: NoteMarkdownUriIdentity,
+  workspaceRoot: NoteMarkdownUriIdentity
+): boolean {
+  return isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot);
+}
+
+function isNoteMarkdownResourceOnSameDisplayHost(
+  resource: NoteMarkdownUriIdentity,
+  workspaceRoot: NoteMarkdownUriIdentity
+): boolean {
+  if (resource.scheme === workspaceRoot.scheme) {
+    return (
+      normalizeNoteMarkdownAuthority(resource.authority) ===
+      normalizeNoteMarkdownAuthority(workspaceRoot.authority)
+    );
+  }
+
+  return false;
+}
+
+function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
+  return authority ?? '';
 }
 
 function stripKnownMarkdownExtension(value: string): string {

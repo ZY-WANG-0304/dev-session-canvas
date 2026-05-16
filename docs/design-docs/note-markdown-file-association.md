@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-05-15
+updated_at: 2026-05-16
 ---
 
 # Note 与 Markdown 文件关联
@@ -211,7 +211,7 @@ interface NoteNodeMetadata {
 - Title 下方显示 subtitle，内容为 `displayPath`。
 - subtitle 不显示 raw `vscode-remote://...`；raw `resourceUri` 只作为内部身份保存。
 - workspace 内文件优先显示 workspace-relative path：单根 workspace 显示 `docs/plan.md`，多根 workspace 显示 `workspace-name/docs/plan.md`，workspace root 下文件只显示文件名。
-- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 只在 workspace 外等必要场景加轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，不暴露 `ssh-remote+dev_labs`。
+- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 资源只有在资源 URI 与 workspace root URI 可比较完整 scheme + authority 且目标路径可相对解析时，才显示 workspace 相对路径。若只能拿到 `vscode.env.remoteName` 这类 remote kind，不能据此判定 `ssh-remote+dev_labs` 与 `ssh-remote+prod` 是否同一台设备，必须保留轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，且不暴露 `ssh-remote+dev_labs`。
 - 长路径不在 Host 或持久化字段中按字符数预截断；subtitle 与 Agent / Terminal 一样交给标题栏布局做单行 ellipsis，实际溢出时 hover tooltip 显示同一条完整人类可读路径。
 - modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在提示中显示 raw URI。
 - subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。
@@ -277,7 +277,7 @@ Webview 需要在画布空白区域支持文件拖放创建关联 `Note`：
 - Host 必须按规范化资源 URI 对单次 drop payload 去重；同一个文件即使同时通过 `resourceUrls`、`codeFiles`、`uriList` 或 `files` 等多个拖拽通道上报，本次拖放也只能创建或处理一次。
 - 如果被拖拽的 Markdown 文件已经在画板上有关联 `Note`，Host 弹出 modal 让用户选择“添加新 Note”或“定位已有 Note”；选择添加时允许同一个 Markdown 文件在画板上拥有多个关联 `Note`。
 - 对每个合法 Markdown 文件，在释放点附近创建一个关联 Markdown `Note`；多个文件轻微错位排列。
-- 节点 title 默认取文件名去扩展名，例如 `design.md` -> `design`。
+- 节点 title 默认保留完整文件名，例如 `design.md` -> `design.md`；如果用户把 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 设为 `true`，则拖拽创建时去掉 `.md` / `.markdown` 后缀，例如 `design.md` -> `design`。该配置只影响拖拽创建的新关联 `Note` 默认标题，不重命名文件、不影响普通 `Note` 保存为 Markdown 并关联的标题保持规则，也不回改已有节点标题。
 - 节点 subtitle 显示路径。
 - 节点正文读取文件内容并进入 Markdown 预览态。
 - 非 Markdown 文件、目录或不可访问资源不创建节点；如果全部失败，应显示轻量提示说明原因。
@@ -333,7 +333,7 @@ Workspace Trust：
 13. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
 14. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
 15. 删除关联 Markdown `Note` 不删除关联文件。
-16. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
+16. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；默认 title 保留完整文件名，开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后才去掉 Markdown 扩展名；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
 17. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
 18. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
 19. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
@@ -371,3 +371,9 @@ Workspace Trust：
 - `npm run typecheck` 通过。
 - `npm run test:execution-terminal-clipboard` 通过，覆盖 `note-markdown-metadata` 作为通用剪贴板文本来源能通过协议 validator。
 - `npm run test:webview -- --grep "YAML metadata|original line numbers"` 通过，覆盖 YAML front matter 阅读态隐藏、标题栏 icon-only metadata 按钮、只读 popover、复制原始 front matter、popover 随画布缩放保持视觉倍率、metadata value 自动换行，以及隐藏 front matter 后 checklist 仍按原始 Markdown 行号写回。
+
+追加验证记录（2026-05-16）：
+
+- `npm run test:note-markdown-file-association` 通过，覆盖 Remote 路径显示需要完整 scheme + authority 才能判定同一设备；只有 remote kind 或 file-scheme workspace root 时按无法判定处理，保留 `ssh:设备id` 前缀且不参与 workspace-relative path 计算。
+- `npm run typecheck` 通过。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；本轮覆盖拖拽创建关联 Markdown `Note` 时默认保留完整文件名作为 title、开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后去掉 Markdown 扩展名，以及配置项 manifest / 本地化文案存在且默认值为 `false`。
