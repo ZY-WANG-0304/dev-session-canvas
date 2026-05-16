@@ -117,6 +117,7 @@ export const CONFIG_KEYS = {
 } as const;
 
 export const CONTEXT_KEYS = {
+  panelVisibilityManaged: 'devSessionCanvas.canvas.panelVisibilityManaged',
   panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible'
 } as const;
 

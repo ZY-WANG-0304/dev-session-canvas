@@ -3748,6 +3748,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private applyWorkbenchContextKeys(): void {
     void vscode.commands.executeCommand(
       'setContext',
+      CONTEXT_KEYS.panelVisibilityManaged,
+      true
+    );
+    void vscode.commands.executeCommand(
+      'setContext',
       CONTEXT_KEYS.panelViewVisible,
       this.shouldShowPanelView()
     );
