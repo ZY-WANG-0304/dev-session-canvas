@@ -5102,8 +5102,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
         scheme: workspaceFolder.uri.scheme,
         authority: workspaceFolder.uri.authority
-      })),
-      vscode.env.remoteName
+      }))
     );
     const remotePrefix = shouldShowRemotePrefix
       ? formatNoteMarkdownRemoteAuthorityPrefix(uri.scheme, uri.authority)
@@ -5117,8 +5116,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const relativePath = resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
         uri,
         workspaceFolder,
-        workspaceFolders.length > 1,
-        vscode.env.remoteName
+        workspaceFolders.length > 1
       );
       if (relativePath) {
         return relativePath;
@@ -14674,8 +14672,7 @@ function normalizeNoteMarkdownResourceKey(uri: vscode.Uri): string {
 function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
   uri: vscode.Uri,
   workspaceFolder: vscode.WorkspaceFolder,
-  includeWorkspaceFolderPrefix: boolean,
-  remoteName?: string
+  includeWorkspaceFolderPrefix: boolean
 ): string | undefined {
   if (uri.scheme === 'file' && workspaceFolder.uri.scheme === 'file') {
     return resolveContainedWorkspaceRelativePath({
@@ -14686,7 +14683,7 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
     });
   }
 
-  if (!canCompareNoteMarkdownUriWithWorkspaceFolder(uri, workspaceFolder.uri, remoteName)) {
+  if (!canCompareNoteMarkdownUriWithWorkspaceFolder(uri, workspaceFolder.uri)) {
     return undefined;
   }
 
@@ -14709,8 +14706,7 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
 
 function canCompareNoteMarkdownUriWithWorkspaceFolder(
   uri: vscode.Uri,
-  workspaceFolderUri: vscode.Uri,
-  remoteName?: string
+  workspaceFolderUri: vscode.Uri
 ): boolean {
   return canCompareNoteMarkdownResourceWithWorkspaceRoot(
     {
@@ -14720,8 +14716,7 @@ function canCompareNoteMarkdownUriWithWorkspaceFolder(
     {
       scheme: workspaceFolderUri.scheme,
       authority: workspaceFolderUri.authority
-    },
-    remoteName
+    }
   );
 }
 

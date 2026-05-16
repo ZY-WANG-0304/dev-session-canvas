@@ -51,29 +51,10 @@ assert.equal(
 assert.equal(
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
     { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
-    [{ scheme: 'file' }],
-    'ssh-remote'
-  ),
-  false,
-  'Current Remote SSH host should not show the ssh device prefix.'
-);
-assert.equal(
-  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
-    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
-    [{ scheme: 'file' }],
-    undefined
+    [{ scheme: 'file' }]
   ),
   true,
-  'A local extension host should keep the remote prefix for vscode-remote resources.'
-);
-assert.equal(
-  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
-    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
-    [{ scheme: 'file' }],
-    'wsl'
-  ),
-  true,
-  'A different remote kind should keep the remote prefix.'
+  'A file-scheme workspace root cannot prove the vscode-remote resource is on the same device.'
 );
 assert.equal(
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
@@ -81,16 +62,39 @@ assert.equal(
     [{ scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' }]
   ),
   false,
-  'Matching workspace authority should not show a remote prefix.'
+  'Matching full remote authority should not show a remote prefix.'
+);
+assert.equal(
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    [{ scheme: 'vscode-remote', authority: 'ssh-remote+other_host' }]
+  ),
+  true,
+  'Different Remote SSH targets should keep the remote prefix.'
 );
 assert.equal(
   canCompareNoteMarkdownResourceWithWorkspaceRoot(
     { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
-    { scheme: 'file' },
-    'ssh-remote'
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' }
   ),
   true,
-  'Remote resources from the current host should compare with file-scheme workspace roots.'
+  'Matching full remote authority should compare with workspace roots.'
+);
+assert.equal(
+  canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    { scheme: 'vscode-remote', authority: 'ssh-remote+other_host' }
+  ),
+  false,
+  'Different Remote SSH targets should not compare with workspace roots.'
+);
+assert.equal(
+  canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    { scheme: 'vscode-remote', authority: 'ssh-remote+dev_labs' },
+    { scheme: 'file' }
+  ),
+  false,
+  'Remote resources should not compare with file-scheme workspace roots without full authority.'
 );
 
 const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));

@@ -131,30 +131,27 @@ export function formatNoteMarkdownRemoteAuthorityPrefix(
 
 export function shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
   resource: NoteMarkdownUriIdentity,
-  workspaceRoots: readonly NoteMarkdownUriIdentity[],
-  remoteName?: string
+  workspaceRoots: readonly NoteMarkdownUriIdentity[]
 ): boolean {
   if (resource.scheme === 'file') {
     return false;
   }
 
   return !workspaceRoots.some((workspaceRoot) =>
-    isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot, remoteName)
+    isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot)
   );
 }
 
 export function canCompareNoteMarkdownResourceWithWorkspaceRoot(
   resource: NoteMarkdownUriIdentity,
-  workspaceRoot: NoteMarkdownUriIdentity,
-  remoteName?: string
+  workspaceRoot: NoteMarkdownUriIdentity
 ): boolean {
-  return isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot, remoteName);
+  return isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot);
 }
 
 function isNoteMarkdownResourceOnSameDisplayHost(
   resource: NoteMarkdownUriIdentity,
-  workspaceRoot: NoteMarkdownUriIdentity,
-  remoteName?: string
+  workspaceRoot: NoteMarkdownUriIdentity
 ): boolean {
   if (resource.scheme === workspaceRoot.scheme) {
     return (
@@ -163,32 +160,7 @@ function isNoteMarkdownResourceOnSameDisplayHost(
     );
   }
 
-  if (!remoteName) {
-    return false;
-  }
-
-  if (resource.scheme === 'vscode-remote' && workspaceRoot.scheme === 'file') {
-    return doesVscodeRemoteAuthorityMatchRemoteName(resource.authority, remoteName);
-  }
-
-  if (resource.scheme === 'file' && workspaceRoot.scheme === 'vscode-remote') {
-    return doesVscodeRemoteAuthorityMatchRemoteName(workspaceRoot.authority, remoteName);
-  }
-
   return false;
-}
-
-function doesVscodeRemoteAuthorityMatchRemoteName(
-  authority: string | undefined,
-  remoteName: string
-): boolean {
-  const normalizedAuthority = authority?.trim() ?? '';
-  const normalizedRemoteName = remoteName.trim();
-  if (!normalizedAuthority || !normalizedRemoteName) {
-    return false;
-  }
-
-  return normalizedAuthority.split('+', 1)[0] === normalizedRemoteName;
 }
 
 function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
