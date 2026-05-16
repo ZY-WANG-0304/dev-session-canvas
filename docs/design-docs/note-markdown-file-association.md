@@ -211,7 +211,7 @@ interface NoteNodeMetadata {
 - Title 下方显示 subtitle，内容为 `displayPath`。
 - subtitle 不显示 raw `vscode-remote://...`；raw `resourceUri` 只作为内部身份保存。
 - workspace 内文件优先显示 workspace-relative path：单根 workspace 显示 `docs/plan.md`，多根 workspace 显示 `workspace-name/docs/plan.md`，workspace root 下文件只显示文件名。
-- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 资源只有在资源 URI 与 workspace root URI 可比较完整 scheme + authority 且目标路径可相对解析时，才显示 workspace 相对路径。若只能拿到 `vscode.env.remoteName` 这类 remote kind，不能据此判定 `ssh-remote+dev_labs` 与 `ssh-remote+prod` 是否同一台设备，必须保留轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，且不暴露 `ssh-remote+dev_labs`。
+- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 资源的“当前宿主”判断与 workspace containment 分离：Host 可通过当前 Webview 的 `asWebviewUri(file://...)` 结果推断完整 Remote authority，并只在资源 URI 的完整 authority 与该值一致时视为当前 Extension Host。当前宿主上的 workspace 外文件不显示 `ssh:设备id` 前缀；只有 workspace 内路径才进一步显示 workspace-relative path。若完整 authority 暂时无法从 Webview resource URI 推断，则对 path 已落在当前 file-scheme workspace root 内的 `vscode-remote` 拖拽资源使用 workspace-relative fallback；对 workspace 外资源，只有当资源 authority 的 remote kind 与 `vscode.env.remoteName` 一致且该 path 在当前 Extension Host 文件系统上真实存在时，才作为当前 Host 文件处理。不能只因为 remote kind 相同就判定同一设备；例如 `ssh-remote+dev_labs` 与 `ssh-remote+prod` 仍必须避免无条件互认。
 - 长路径不在 Host 或持久化字段中按字符数预截断；subtitle 与 Agent / Terminal 一样交给标题栏布局做单行 ellipsis，实际溢出时 hover tooltip 显示同一条完整人类可读路径。
 - modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在提示中显示 raw URI。
 - subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。
@@ -377,3 +377,4 @@ Workspace Trust：
 - `npm run test:note-markdown-file-association` 通过，覆盖 Remote 路径显示需要完整 scheme + authority 才能判定同一设备；只有 remote kind 或 file-scheme workspace root 时按无法判定处理，保留 `ssh:设备id` 前缀且不参与 workspace-relative path 计算。
 - `npm run typecheck` 通过。
 - `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；本轮覆盖拖拽创建关联 Markdown `Note` 时默认保留完整文件名作为 title、开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后去掉 Markdown 扩展名，以及配置项 manifest / 本地化文案存在且默认值为 `false`。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 与 `npm run build` 通过；本轮覆盖 Host 从 Webview resource URI 推断完整 Remote authority、当前 Remote authority 可独立于 workspace containment 隐藏 `ssh:设备id` 前缀、不同 Remote authority 继续保留前缀，且不回退到只比较 `ssh-remote` 这类 remote kind；同时在 Canvas Host 侧补充完整 authority 暂不可得时的 workspace-contained `vscode-remote` 拖拽 fallback，以及 same remote kind + 当前 Host 文件存在时的 workspace 外文件 fallback。
