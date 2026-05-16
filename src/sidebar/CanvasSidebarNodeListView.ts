@@ -567,12 +567,15 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       :root {
         color-scheme: light dark;
         --bg: var(--vscode-sideBar-background);
-        --fg: var(--vscode-sideBar-foreground);
+        --fg: var(--vscode-foreground, var(--vscode-sideBar-foreground));
         --muted: var(--vscode-descriptionForeground);
         --focus: var(--vscode-focusBorder);
         --list-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--fg) 6%, transparent));
+        --list-hover-fg: var(--vscode-list-hoverForeground, var(--fg));
         --list-active: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
         --list-active-fg: var(--vscode-list-activeSelectionForeground, var(--fg));
+        --list-inactive: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 10%, transparent));
+        --list-inactive-fg: var(--vscode-list-inactiveSelectionForeground, var(--fg));
         --attention: var(--vscode-notificationsInfoIcon-foreground, var(--focus));
         --border: color-mix(in srgb, var(--vscode-panel-border, var(--focus)) 72%, transparent);
       }
@@ -595,6 +598,8 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       .node-row {
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: start;
@@ -603,19 +608,28 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         border: 0;
         border-left: 2px solid transparent;
         background: transparent;
-        color: var(--fg);
+        color: var(--row-fg);
         text-align: left;
         cursor: default;
       }
 
       .node-row:hover {
         background: var(--list-hover);
+        --row-fg: var(--list-hover-fg);
+        --row-muted: var(--list-hover-fg);
       }
 
-      .node-row.is-selected,
+      .node-row.is-selected {
+        background: var(--list-inactive);
+        --row-fg: var(--list-inactive-fg);
+        --row-muted: var(--list-inactive-fg);
+      }
+
+      .node-row.is-selected:focus,
       .node-row:focus-visible {
         background: var(--list-active);
-        color: var(--list-active-fg);
+        --row-fg: var(--list-active-fg);
+        --row-muted: var(--list-active-fg);
         border-left-color: var(--focus);
         outline: none;
       }
@@ -657,7 +671,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       .node-status {
-        color: var(--muted);
+        color: var(--row-muted);
         font-size: 11px;
         padding-left: 22px;
       }

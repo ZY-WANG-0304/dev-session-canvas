@@ -637,15 +637,18 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       :root {
         color-scheme: light dark;
         --bg: var(--vscode-sideBar-background);
-        --fg: var(--vscode-sideBar-foreground);
+        --fg: var(--vscode-foreground, var(--vscode-sideBar-foreground));
         --muted: var(--vscode-descriptionForeground);
         --input-bg: var(--vscode-input-background);
         --input-fg: var(--vscode-input-foreground);
         --input-border: var(--vscode-input-border, transparent);
         --focus: var(--vscode-focusBorder);
         --list-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--fg) 6%, transparent));
+        --list-hover-fg: var(--vscode-list-hoverForeground, var(--fg));
         --list-active: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
         --list-active-fg: var(--vscode-list-activeSelectionForeground, var(--fg));
+        --list-inactive: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 10%, transparent));
+        --list-inactive-fg: var(--vscode-list-inactiveSelectionForeground, var(--fg));
         --badge-bg: color-mix(in srgb, var(--focus) 18%, transparent);
         --badge-fg: var(--vscode-list-highlightForeground, var(--fg));
         --border: color-mix(in srgb, var(--vscode-panel-border, var(--focus)) 72%, transparent);
@@ -752,19 +755,23 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       }
 
       .session-row {
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
         display: grid;
         gap: 6px;
         padding: 9px 12px;
         border: 0;
         border-left: 2px solid transparent;
         background: transparent;
-        color: var(--fg);
+        color: var(--row-fg);
         text-align: left;
         cursor: default;
       }
 
       .session-row:hover {
         background: var(--list-hover);
+        --row-fg: var(--list-hover-fg);
+        --row-muted: var(--list-hover-fg);
       }
 
       .session-row.is-disabled {
@@ -774,12 +781,21 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
 
       .session-row.is-disabled:hover {
         background: transparent;
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
       }
 
-      .session-row.is-selected,
+      .session-row.is-selected {
+        background: var(--list-inactive);
+        --row-fg: var(--list-inactive-fg);
+        --row-muted: var(--list-inactive-fg);
+      }
+
+      .session-row.is-selected:focus,
       .session-row:focus-visible {
         background: var(--list-active);
-        color: var(--list-active-fg);
+        --row-fg: var(--list-active-fg);
+        --row-muted: var(--list-active-fg);
         border-left-color: var(--focus);
         outline: none;
       }
@@ -788,6 +804,8 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       .session-row.is-disabled:focus-visible {
         background: transparent;
         border-left-color: transparent;
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
       }
 
       .session-title-line {
@@ -804,6 +822,7 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        color: var(--row-muted);
       }
 
       .provider-icon svg {
@@ -825,7 +844,7 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       }
 
       .session-time {
-        color: var(--muted);
+        color: var(--row-muted);
         font-size: 11px;
         padding-left: 22px;
       }
