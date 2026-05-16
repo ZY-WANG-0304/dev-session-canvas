@@ -282,8 +282,8 @@
         },
         {
           "command": "devSessionCanvas.createNode",
-          "when": "view == devSessionCanvas.sidebarFilters",
-          "group": "navigation@2"
+          "when": "view == devSessionCanvas.sidebarNodes",
+          "group": "navigation@99"
         },
         {
           "command": "devSessionCanvas.resetCanvasState",
