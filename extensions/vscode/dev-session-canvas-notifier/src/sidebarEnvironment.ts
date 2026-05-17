@@ -25,6 +25,13 @@ export interface NotifierPlatformGuide {
   statusLabel: string;
   detail: string;
   hints: string[];
+  sections?: NotifierPlatformGuideSection[];
+}
+
+export interface NotifierPlatformGuideSection {
+  title: string;
+  detail: string;
+  hints?: string[];
 }
 
 export interface NotifierEnvironmentSnapshot {
@@ -163,6 +170,11 @@ export function buildNotifierEnvironmentSnapshot(
             '推荐命令：`brew install terminal-notifier`。',
             '如果暂时不安装，companion 会回退到 macOS 自带的 osascript，只保证通知显示。'
           ]
+        },
+        {
+          name: 'osascript',
+          statusLabel: '当前回退',
+          detail: 'macOS 系统自带回退路径，无需额外安装；当前只保证通知显示，不支持点击回跳。'
         }
       ],
       platformGuides,
@@ -328,6 +340,17 @@ function buildPlatformGuides(currentPlatform: NodeJS.Platform): NotifierPlatform
       hints: [
         '推荐命令：`brew install terminal-notifier`',
         '仅需通知显示时无需额外 CLI，macOS 自带 osascript 回退。'
+      ],
+      sections: [
+        {
+          title: 'terminal-notifier',
+          detail: '推荐主路径；支持点击通知后通过 VS Code URI handler 回到画布。',
+          hints: ['安装命令：`brew install terminal-notifier`。']
+        },
+        {
+          title: 'osascript',
+          detail: 'macOS 系统自带回退路径；无需安装额外 CLI，但只保证通知显示，不支持点击回跳。'
+        }
       ]
     },
     {

@@ -7,12 +7,12 @@ import {
   type NotifierEnvironmentSnapshot,
   type NotifierExtensionModeLabel,
   type NotifierInstallRequirement,
-  type NotifierPlatformGuide
+  type NotifierPlatformGuide,
+  type NotifierPlatformGuideSection
 } from './sidebarEnvironment';
 import {
-  renderSidebarRichContent,
-  renderHighlightedSidebarCodeBlock,
-  renderSidebarInlineCode
+  detectSidebarCodeLanguage,
+  renderSidebarMarkdown
 } from './sidebarRichText';
 import { activationModeSupportsCallback, resolveSidebarActivationMode } from './sidebarStatus';
 
@@ -136,6 +136,28 @@ interface SectionRenderContext {
   latestManualAttempt: NotifierSidebarLatestAttempt | undefined;
 }
 
+interface SidebarSectionAction {
+  command: 'send-test-notification' | 'open-diagnostic-output';
+  label: string;
+  tone?: 'primary' | 'secondary';
+}
+
+interface SidebarSectionCallout {
+  iconSvg: string;
+  markdown: string;
+  markdownClassName?: string;
+  tone?: 'default' | 'warning';
+}
+
+interface SidebarSectionContent {
+  markdown: string;
+  markdownClassName?: string;
+  actionsMarkdown?: string;
+  actions?: SidebarSectionAction[];
+  calloutHeadingMarkdown?: string;
+  callout?: SidebarSectionCallout;
+}
+
 function renderSectionHtml(
   webview: vscode.Webview,
   section: NotifierSidebarSection,
@@ -143,31 +165,7 @@ function renderSectionHtml(
   ctx: SectionRenderContext
 ): string {
   const nonce = createNonce();
-  let bodyHtml = '';
-
-  switch (section) {
-    case 'status':
-      bodyHtml = renderStatusSection(snapshot, ctx);
-      break;
-    case 'notes':
-      bodyHtml = renderNotesSection(snapshot);
-      break;
-    case 'macOS':
-      bodyHtml = renderPlatformSection(snapshot, 'macOS');
-      break;
-    case 'linux':
-      bodyHtml = renderPlatformSection(snapshot, 'Linux');
-      break;
-    case 'windows':
-      bodyHtml = renderPlatformSection(snapshot, 'Windows');
-      break;
-    case 'codex':
-      bodyHtml = renderAgentSection(snapshot, 'Codex');
-      break;
-    case 'claudeCode':
-      bodyHtml = renderAgentSection(snapshot, 'Claude Code');
-      break;
-  }
+  const content = resolveSectionContent(section, snapshot, ctx);
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -179,7 +177,7 @@ function renderSectionHtml(
   <style>${sectionStyles()}</style>
 </head>
 <body>
-  ${bodyHtml}
+  ${renderSectionContentBody(content)}
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.querySelectorAll('[data-command]').forEach(btn => {
@@ -192,10 +190,70 @@ function renderSectionHtml(
 </html>`;
 }
 
-function renderStatusSection(
+function resolveSectionContent(
+  section: NotifierSidebarSection,
   snapshot: NotifierEnvironmentSnapshot,
   ctx: SectionRenderContext
-): string {
+): SidebarSectionContent {
+  switch (section) {
+    case 'status':
+      return buildStatusSectionContent(snapshot, ctx);
+    case 'notes':
+      return buildNotesSectionContent(snapshot);
+    case 'macOS':
+      return buildPlatformSectionContent(snapshot, 'macOS');
+    case 'linux':
+      return buildPlatformSectionContent(snapshot, 'Linux');
+    case 'windows':
+      return buildPlatformSectionContent(snapshot, 'Windows');
+    case 'codex':
+      return buildAgentSectionContent(snapshot, 'Codex');
+    case 'claudeCode':
+      return buildAgentSectionContent(snapshot, 'Claude Code');
+  }
+}
+
+function renderSectionContentBody(content: SidebarSectionContent): string {
+  const markdownHtml = renderMarkdownPreview(content.markdown, content.markdownClassName);
+  const actionsMarkdownHtml = content.actionsMarkdown ? renderMarkdownPreview(content.actionsMarkdown) : '';
+  const actionsHtml = content.actions?.map((action) => renderSectionActionButton(action)).join('') ?? '';
+  const calloutHeadingHtml = content.calloutHeadingMarkdown ? renderMarkdownPreview(content.calloutHeadingMarkdown) : '';
+  const calloutHtml = content.callout ? renderSectionCallout(content.callout) : '';
+  const dividerHtml = actionsHtml.length > 0 ? '<div class="divider"></div>' : '';
+
+  return `
+    <div class="content">
+      ${markdownHtml}
+      ${dividerHtml}
+      ${actionsMarkdownHtml}
+      ${actionsHtml}
+      ${calloutHeadingHtml}
+      ${calloutHtml}
+    </div>
+  `;
+}
+
+function renderSectionActionButton(action: SidebarSectionAction): string {
+  const secondaryClassName = action.tone === 'secondary' ? ' secondary' : '';
+  return `<button class="action-button${secondaryClassName}" data-command="${action.command}">${action.label}</button>`;
+}
+
+function renderSectionCallout(callout: SidebarSectionCallout): string {
+  const toneClassName = callout.tone === 'warning' ? ' warning' : '';
+  return `
+    <div class="status-card${toneClassName}">
+      <div class="status-card-body">
+        ${callout.iconSvg}
+        ${renderMarkdownPreview(callout.markdown, callout.markdownClassName)}
+      </div>
+    </div>
+  `;
+}
+
+function buildStatusSectionContent(
+  snapshot: NotifierEnvironmentSnapshot,
+  ctx: SectionRenderContext
+): SidebarSectionContent {
   const hasRecentTest = ctx.latestManualAttempt?.requestedAt !== undefined;
   const notificationPosted = ctx.latestRecord?.result.status === 'posted';
   const callbackActivated = ctx.latestManualAttempt?.activatedAt !== undefined;
@@ -204,15 +262,15 @@ function renderStatusSection(
   let statusIcon: string;
   let statusTitle: string;
   let statusDetail: string;
-  let cardClass = 'status-card';
+  let calloutTone: SidebarSectionCallout['tone'] = 'default';
 
   if (!hasRecentTest) {
-    cardClass += ' warning';
+    calloutTone = 'warning';
     statusIcon = svgWarning;
     statusTitle = '尚未测试';
     statusDetail = '点击下方按钮发送一次测试通知，验证当前环境是否正常工作。';
   } else if (!notificationPosted) {
-    cardClass += ' warning';
+    calloutTone = 'warning';
     statusIcon = svgWarning;
     statusTitle = '通知发送失败';
     statusDetail = ctx.latestRecord?.result.detail || '通知未能成功发送，请查看诊断日志了解详情。';
@@ -228,122 +286,161 @@ function renderStatusSection(
       : '通知已成功发送。当前环境不支持点击回跳。';
   }
 
-  const infoHtml = `
-    <div class="info-list">
-      <div class="info-item">
-        <span class="info-label">平台</span>
-        <span class="info-value">${escapeHtml(snapshot.platformLabel)}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">通知方式</span>
-        <span class="info-value">${escapeHtml(snapshot.currentRouteLabel)}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">点击回跳</span>
-        <span class="info-value">${escapeHtml(snapshot.activationLabel)}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">声音提醒</span>
-        <span class="info-value">${escapeHtml(snapshot.soundLabel)}</span>
-      </div>
-    </div>
-  `;
-
-  return `
-    <div class="content">
-      ${infoHtml}
-      <div class="divider"></div>
-      <button class="action-button" data-command="send-test-notification">发送测试通知</button>
-      <button class="action-button secondary" data-command="open-diagnostic-output">查看诊断日志</button>
-      <div class="${cardClass}">
-        <div class="status-card-header">
-          ${statusIcon}
-          <span class="status-title">${escapeHtml(statusTitle)}</span>
-        </div>
-        <div class="status-detail">${escapeHtml(statusDetail)}</div>
-      </div>
-    </div>
-  `;
+  return {
+    markdown: buildStatusSummaryMarkdown(snapshot),
+    markdownClassName: 'is-prominent',
+    actionsMarkdown: buildStatusActionsMarkdown(),
+    actions: [
+      {
+        command: 'send-test-notification',
+        label: '发送测试通知'
+      },
+      {
+        command: 'open-diagnostic-output',
+        label: '查看诊断日志',
+        tone: 'secondary'
+      }
+    ],
+    calloutHeadingMarkdown: buildStatusResultHeadingMarkdown(),
+    callout: {
+      iconSvg: statusIcon,
+      markdown: buildStatusCardMarkdown(statusTitle, statusDetail),
+      markdownClassName: 'is-card',
+      tone: calloutTone
+    }
+  };
 }
 
-function renderNotesSection(snapshot: NotifierEnvironmentSnapshot): string {
-  if (snapshot.notes.length === 0) {
-    return '<div class="content"><p class="help-text">暂无注意事项。</p></div>';
-  }
-
-  const itemsHtml = snapshot.notes
-    .map((note) => `<li>${renderSidebarRichContent(note, { textClassName: 'list-text' })}</li>`)
-    .join('');
-  return `
-    <div class="content">
-      <ul class="notes-list">${itemsHtml}</ul>
-    </div>
-  `;
+function buildNotesSectionContent(snapshot: NotifierEnvironmentSnapshot): SidebarSectionContent {
+  return {
+    markdown: snapshot.notes.length > 0 ? buildNotesMarkdown(snapshot.notes) : '暂无注意事项。',
+    markdownClassName: 'is-flush-list'
+  };
 }
 
-function renderPlatformSection(snapshot: NotifierEnvironmentSnapshot, platformLabel: string): string {
+function buildPlatformSectionContent(
+  snapshot: NotifierEnvironmentSnapshot,
+  platformLabel: string
+): SidebarSectionContent {
   const guide = snapshot.platformGuides.find((g) => g.platformLabel === platformLabel);
   if (!guide) {
-    return '<div class="content"><p class="help-text">无平台信息。</p></div>';
+    return {
+      markdown: '无平台信息。'
+    };
   }
 
-  const isCurrent = guide.statusLabel === '当前平台';
-
-  if (isCurrent) {
-    const requirementsHtml = snapshot.installRequirements.map((req) => renderRequirementItem(req)).join('');
-    return `
-      <div class="content">
-        <p class="badge-line"><span class="setup-badge current">当前平台</span></p>
-        ${requirementsHtml}
-      </div>
-    `;
-  }
-
-  return `
-    <div class="content">
-      ${renderSidebarRichContent(guide.detail, { textClassName: 'help-text' })}
-      ${renderHintList(guide.hints)}
-    </div>
-  `;
+  return {
+    markdown: buildPlatformGuideMarkdown(snapshot, guide, guide.statusLabel === '当前平台')
+  };
 }
 
-function renderRequirementItem(req: NotifierInstallRequirement): string {
-  return `
-    <div class="setup-item">
-      <div class="setup-header">
-        <span class="setup-name">${escapeHtml(req.name)}</span>
-        <span class="setup-badge">${escapeHtml(req.statusLabel)}</span>
-      </div>
-      ${renderSidebarRichContent(req.detail, { textClassName: 'setup-detail' })}
-      ${renderHintList(req.hints)}
-    </div>
-  `;
-}
-
-function renderAgentSection(snapshot: NotifierEnvironmentSnapshot, agentLabel: string): string {
+function buildAgentSectionContent(
+  snapshot: NotifierEnvironmentSnapshot,
+  agentLabel: string
+): SidebarSectionContent {
   const guide = snapshot.agentConfigurationGuides.find((g) => g.agentLabel === agentLabel);
   if (!guide) {
-    return '<div class="content"><p class="help-text">无配置信息。</p></div>';
+    return {
+      markdown: '无配置信息。'
+    };
   }
 
-  return `
-    <div class="content">
-      ${renderSidebarRichContent(guide.detail, { textClassName: 'help-text' })}
-      <p class="setup-detail">配置路径：${renderSidebarInlineCode(guide.configPath)}</p>
-      ${renderHighlightedSidebarCodeBlock(guide.recommendedSnippet)}
-      ${renderHintList(guide.hints)}
-    </div>
-  `;
+  return {
+    markdown: buildAgentGuideMarkdown(guide)
+  };
 }
 
-function renderHintList(hints: string[] | undefined): string {
-  if (!hints || hints.length === 0) {
-    return '';
+function renderMarkdownPreview(markdown: string, className?: string): string {
+  return renderSidebarMarkdown(markdown, {
+    rootClassName: ['sidebar-markdown', className].filter(Boolean).join(' ')
+  });
+}
+
+function buildBulletListMarkdown(items: string[]): string {
+  return items.map((item) => `- ${item}`).join('\n');
+}
+
+function buildNotesMarkdown(notes: string[]): string {
+  return buildBulletListMarkdown(notes);
+}
+
+function buildStatusSummaryMarkdown(snapshot: NotifierEnvironmentSnapshot): string {
+  return [
+    '### 当前环境',
+    '',
+    `- **平台：** ${snapshot.platformLabel}`,
+    `- **通知方式：** ${snapshot.currentRouteLabel}`,
+    `- **点击回跳：** ${snapshot.activationLabel}`,
+    `- **声音提醒：** ${snapshot.soundLabel}`
+  ].join('\n');
+}
+
+function buildStatusCardMarkdown(statusTitle: string, statusDetail: string): string {
+  return [`**${statusTitle}**`, '', statusDetail].join('\n');
+}
+
+function buildStatusActionsMarkdown(): string {
+  return '### 调试通知';
+}
+
+function buildStatusResultHeadingMarkdown(): string {
+  return '### 调试结果';
+}
+
+function buildPlatformGuideMarkdown(
+  snapshot: NotifierEnvironmentSnapshot,
+  guide: NotifierPlatformGuide,
+  isCurrent: boolean
+): string {
+  if (isCurrent) {
+    const sections = ['**当前平台**'];
+    for (const requirement of snapshot.installRequirements) {
+      sections.push(buildInstallRequirementMarkdown(requirement));
+    }
+    return sections.join('\n\n');
   }
-  const itemsHtml = hints
-    .map((hint) => `<li>${renderSidebarRichContent(hint, { textClassName: 'list-text' })}</li>`)
-    .join('');
-  return `<ul class="hint-list">${itemsHtml}</ul>`;
+
+  const sections = [guide.detail];
+  if (guide.sections) {
+    for (const section of guide.sections) {
+      sections.push(buildPlatformGuideSectionMarkdown(section));
+    }
+  }
+  if (guide.hints.length > 0) {
+    sections.push(buildBulletListMarkdown(guide.hints));
+  }
+  return sections.join('\n\n');
+}
+
+function buildInstallRequirementMarkdown(req: NotifierInstallRequirement): string {
+  const sections = [`### ${req.name}`, '', `**状态：** ${req.statusLabel}`, '', req.detail];
+  if (req.hints?.length) {
+    sections.push('', buildBulletListMarkdown(req.hints));
+  }
+  return sections.join('\n');
+}
+
+function buildPlatformGuideSectionMarkdown(section: NotifierPlatformGuideSection): string {
+  const parts = [`### ${section.title}`, '', section.detail];
+  if (section.hints?.length) {
+    parts.push('', buildBulletListMarkdown(section.hints));
+  }
+  return parts.join('\n');
+}
+
+function buildAgentGuideMarkdown(guide: NotifierAgentConfigurationGuide): string {
+  const language = detectSidebarCodeLanguage(guide.recommendedSnippet);
+  const parts = [guide.detail, '', `配置路径：\`${guide.configPath}\``, ''];
+  if (language) {
+    parts.push(`\`\`\`${language}`);
+  } else {
+    parts.push('```');
+  }
+  parts.push(guide.recommendedSnippet, '```');
+  if (guide.hints.length > 0) {
+    parts.push('', buildBulletListMarkdown(guide.hints));
+  }
+  return parts.join('\n');
 }
 
 const svgWarning = '<svg class="status-icon warning" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M7.56 1h.88l6.54 12.26-.44.74H1.44L1 13.26 7.56 1zM8 2.28L2.28 13H13.7L8 2.28zM8.625 12v-1h-1.25v1h1.25zm0-2V6h-1.25v4h1.25z"/></svg>';
@@ -352,11 +449,16 @@ const svgSuccess = '<svg class="status-icon success" width="16" height="16" view
 function sectionStyles(): string {
   return `
     body {
+      --notifier-sidebar-border: var(
+        --vscode-sideBarSectionHeader-border,
+        var(--vscode-widget-border, var(--vscode-panel-border, transparent))
+      );
       padding: 0;
       margin: 0;
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
-      color: var(--vscode-foreground);
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
       --sidebar-code-foreground: var(--vscode-editor-foreground, var(--vscode-foreground));
       --sidebar-code-muted: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
       --sidebar-code-keyword: #b57edc;
@@ -402,7 +504,7 @@ function sectionStyles(): string {
 
     .divider {
       height: 1px;
-      background: var(--vscode-sideBarSectionHeader-border);
+      background: var(--notifier-sidebar-border);
       margin: 12px 0;
     }
 
@@ -411,26 +513,21 @@ function sectionStyles(): string {
       line-height: 1.4;
     }
 
-    .badge-line {
-      margin: 0 0 10px 0;
-    }
-
     .status-card {
       padding: 10px 12px;
       background: var(--vscode-sideBarSectionHeader-background);
       border-left: 3px solid var(--vscode-testing-iconPassed);
-      margin-bottom: 12px;
+      margin-top: 12px;
     }
 
     .status-card.warning {
       border-left-color: var(--vscode-notificationsWarningIcon-foreground);
     }
 
-    .status-card-header {
+    .status-card-body {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
-      margin-bottom: 4px;
     }
 
     .status-icon {
@@ -442,45 +539,6 @@ function sectionStyles(): string {
 
     .status-icon.success { color: var(--vscode-testing-iconPassed); }
     .status-icon.warning { color: var(--vscode-notificationsWarningIcon-foreground); }
-
-    .status-title {
-      font-weight: 600;
-      font-size: 13px;
-    }
-
-    .status-detail {
-      color: var(--vscode-descriptionForeground);
-      font-size: 12px;
-      line-height: 1.4;
-      margin-left: 24px;
-    }
-
-    .info-list {
-      display: grid;
-      gap: 6px;
-    }
-
-    .info-item {
-      display: grid;
-      grid-template-columns: 80px 1fr;
-      gap: 8px;
-      font-size: 13px;
-    }
-
-    .info-label {
-      color: var(--vscode-descriptionForeground);
-    }
-
-    .info-value {
-      font-weight: 500;
-    }
-
-    .help-text {
-      color: var(--vscode-descriptionForeground);
-      font-size: 12px;
-      line-height: 1.4;
-      margin-bottom: 8px;
-    }
 
     .action-button {
       width: 100%;
@@ -496,160 +554,199 @@ function sectionStyles(): string {
     }
 
     .action-button:hover {
-      background: var(--vscode-button-hoverBackground);
+      background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
     }
 
     .action-button.secondary {
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
+      background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
     }
 
     .action-button.secondary:hover {
-      background: var(--vscode-button-secondaryHoverBackground);
+      background: var(
+        --vscode-button-secondaryHoverBackground,
+        var(--vscode-button-hoverBackground, var(--vscode-button-secondaryBackground, var(--vscode-button-background)))
+      );
     }
 
-    .setup-item {
-      padding: 10px 0;
+    .sidebar-markdown {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.5;
     }
 
-    .setup-item + .setup-item {
-      border-top: 1px solid var(--vscode-sideBarSectionHeader-border);
-    }
-
-    .setup-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-
-    .setup-name {
-      font-weight: 600;
+    .sidebar-markdown.is-prominent {
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
       font-size: 13px;
     }
 
-    .setup-badge {
-      padding: 2px 6px;
-      background: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
-      font-size: 11px;
-      border-radius: 2px;
+    .sidebar-markdown.is-card {
+      color: inherit;
     }
 
-    .setup-badge.current {
-      background: var(--vscode-testing-iconPassed);
-      color: var(--vscode-button-foreground);
+    .sidebar-markdown.is-flush-list > ul,
+    .sidebar-markdown.is-flush-list > ol {
+      padding-left: 0;
     }
 
-    .setup-detail {
-      color: var(--vscode-descriptionForeground);
-      font-size: 12px;
-      line-height: 1.4;
+    .status-card-body .sidebar-markdown {
+      flex: 1;
+      min-width: 0;
     }
 
-    .setup-detail + .setup-detail {
-      margin-top: 6px;
+    .sidebar-markdown > :first-child {
+      margin-top: 0;
     }
 
-    .hint-list,
-    .notes-list {
-      margin: 8px 0 0 0;
-      padding-left: 18px;
-      color: var(--vscode-descriptionForeground);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .hint-list li,
-    .notes-list li {
-      margin: 0 0 4px 0;
-    }
-
-    .hint-list li > :last-child,
-    .notes-list li > :last-child {
+    .sidebar-markdown > :last-child {
       margin-bottom: 0;
     }
 
-    .list-text {
+    .sidebar-markdown p,
+    .sidebar-markdown ul,
+    .sidebar-markdown ol,
+    .sidebar-markdown pre,
+    .sidebar-markdown blockquote,
+    .sidebar-markdown h1,
+    .sidebar-markdown h2,
+    .sidebar-markdown h3,
+    .sidebar-markdown h4,
+    .sidebar-markdown h5,
+    .sidebar-markdown h6 {
       margin: 0 0 8px 0;
-      color: inherit;
-      font-size: inherit;
-      line-height: inherit;
     }
 
-    .snippet-block {
+    .sidebar-markdown strong {
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
+    }
+
+    .sidebar-markdown h1,
+    .sidebar-markdown h2,
+    .sidebar-markdown h3,
+    .sidebar-markdown h4,
+    .sidebar-markdown h5,
+    .sidebar-markdown h6 {
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
+      font-family: var(--vscode-editor-font-family);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .sidebar-markdown > ul,
+    .sidebar-markdown > ol {
+      padding-left: 12px;
+    }
+
+    .sidebar-markdown ul ul,
+    .sidebar-markdown ul ol,
+    .sidebar-markdown ol ul,
+    .sidebar-markdown ol ol {
+      padding-left: 16px;
+      margin-top: 4px;
+    }
+
+    .sidebar-markdown li + li {
+      margin-top: 4px;
+    }
+
+    .sidebar-markdown li > p {
+      margin-bottom: 0;
+    }
+
+    .sidebar-markdown blockquote {
+      padding-left: 10px;
+      border-left: 2px solid var(--notifier-sidebar-border);
+    }
+
+    .sidebar-markdown a {
+      color: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+      text-decoration: none;
+    }
+
+    .sidebar-markdown a:hover {
+      text-decoration: underline;
+    }
+
+    .sidebar-markdown a[href=""] {
+      color: inherit;
+      text-decoration: none;
+      pointer-events: none;
+    }
+
+    .sidebar-markdown pre {
       margin: 8px 0 0 0;
       padding: 10px 12px;
-      background: var(--sidebar-code-background);
-      border: 1px solid var(--sidebar-code-border);
-      border-radius: 4px;
+      border-radius: 8px;
+      background: var(
+        --vscode-textCodeBlock-background,
+        color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-panel-border) 12%)
+      );
       font-family: var(--vscode-editor-font-family);
       font-size: 12px;
       line-height: 1.5;
-      white-space: pre;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow: auto;
     }
 
-    .snippet-block code {
+    .sidebar-markdown pre code {
       padding: 0;
       background: transparent;
       border: 0;
       font-size: inherit;
     }
 
-    .snippet-block .hljs {
+    .sidebar-markdown .hljs {
       display: block;
-      color: var(--sidebar-code-foreground);
+      color: var(--vscode-editor-foreground);
     }
 
-    .snippet-block .hljs-comment,
-    .snippet-block .hljs-quote {
+    .sidebar-markdown .hljs-comment,
+    .sidebar-markdown .hljs-quote {
       color: var(--sidebar-code-muted);
     }
 
-    .snippet-block .hljs-keyword,
-    .snippet-block .hljs-selector-tag,
-    .snippet-block .hljs-meta,
-    .snippet-block .hljs-built_in {
+    .sidebar-markdown .hljs-keyword,
+    .sidebar-markdown .hljs-selector-tag,
+    .sidebar-markdown .hljs-meta,
+    .sidebar-markdown .hljs-built_in {
       color: var(--sidebar-code-keyword);
     }
 
-    .snippet-block .hljs-string,
-    .snippet-block .hljs-regexp,
-    .snippet-block .hljs-addition {
+    .sidebar-markdown .hljs-string,
+    .sidebar-markdown .hljs-regexp,
+    .sidebar-markdown .hljs-addition {
       color: var(--sidebar-code-string);
     }
 
-    .snippet-block .hljs-number,
-    .snippet-block .hljs-literal,
-    .snippet-block .hljs-symbol,
-    .snippet-block .hljs-bullet {
+    .sidebar-markdown .hljs-number,
+    .sidebar-markdown .hljs-literal,
+    .sidebar-markdown .hljs-symbol,
+    .sidebar-markdown .hljs-bullet {
       color: var(--sidebar-code-number);
     }
 
-    .snippet-block .hljs-title,
-    .snippet-block .hljs-section,
-    .snippet-block .hljs-type,
-    .snippet-block .hljs-attr,
-    .snippet-block .hljs-attribute {
+    .sidebar-markdown .hljs-title,
+    .sidebar-markdown .hljs-section,
+    .sidebar-markdown .hljs-type,
+    .sidebar-markdown .hljs-attr,
+    .sidebar-markdown .hljs-attribute {
       color: var(--sidebar-code-attr);
     }
 
-    .snippet-block .hljs-variable,
-    .snippet-block .hljs-template-variable,
-    .snippet-block .hljs-property,
-    .snippet-block .hljs-link {
+    .sidebar-markdown .hljs-variable,
+    .sidebar-markdown .hljs-template-variable,
+    .sidebar-markdown .hljs-property,
+    .sidebar-markdown .hljs-link {
       color: var(--sidebar-code-variable);
     }
 
-    .snippet-block .hljs-punctuation,
-    .snippet-block .hljs-operator {
+    .sidebar-markdown .hljs-punctuation,
+    .sidebar-markdown .hljs-operator {
       color: var(--sidebar-code-punctuation);
     }
 
-    .snippet-block .hljs-subst {
-      color: var(--sidebar-code-foreground);
+    .sidebar-markdown .hljs-subst {
+      color: var(--vscode-editor-foreground);
     }
 
     .inline-code {
@@ -666,15 +763,6 @@ function sectionStyles(): string {
       vertical-align: baseline;
     }
   `;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function createNonce(): string {

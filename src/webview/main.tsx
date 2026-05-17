@@ -100,6 +100,11 @@ import {
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
+import {
+  canvasStatusToneClass as statusToneClass,
+  humanizeCanvasNodeStatus,
+  humanizeCanvasStatus as humanizeStatus
+} from '../common/canvasNodeStatusPresentation';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -5721,7 +5726,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
       </div>
-      <div className="node-status">状态：{humanizeStatus(data.status)}</div>
+      <div className="node-status">状态：{humanizeCanvasNodeStatus(data)}</div>
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
           {agentMetadata.liveSession
@@ -8547,82 +8552,6 @@ function canResumeAgentFromMetadataForWebview(
   }
 
   return Boolean(metadata.resumeSessionId?.trim());
-}
-
-function humanizeStatus(status: string): string {
-  switch (status) {
-    case 'linked':
-      return '已关联';
-    case 'idle':
-      return '空闲';
-    case 'launching':
-      return '启动中';
-    case 'starting':
-      return '启动中';
-    case 'waiting-input':
-      return '等待输入';
-    case 'resuming':
-      return '恢复中';
-    case 'resume-ready':
-      return '可恢复';
-    case 'reattaching':
-      return '重连中';
-    case 'resume-failed':
-      return '恢复失败';
-    case 'stopping':
-      return '停止中';
-    case 'stopped':
-      return '已停止';
-    case 'running':
-      return '运行中';
-    case 'draft':
-      return '草稿';
-    case 'ready':
-      return '就绪';
-    case 'live':
-      return '活动';
-    case 'closed':
-      return '已关闭';
-    case 'error':
-      return '失败';
-    case 'cancelled':
-      return '已停止';
-    case 'interrupted':
-      return '已中断';
-    case 'history-restored':
-      return '历史恢复';
-    default:
-      return status;
-  }
-}
-
-function statusToneClass(status: string): string {
-  switch (status) {
-    case 'linked':
-      return 'tone-success';
-    case 'launching':
-    case 'starting':
-    case 'resuming':
-    case 'running':
-    case 'live':
-    case 'reattaching':
-      return 'tone-running';
-    case 'waiting-input':
-      return 'tone-ready';
-    case 'resume-ready':
-    case 'stopping':
-    case 'stopped':
-    case 'closed':
-    case 'cancelled':
-    case 'interrupted':
-    case 'history-restored':
-      return 'tone-warning';
-    case 'resume-failed':
-    case 'error':
-      return 'tone-error';
-    default:
-      return 'tone-idle';
-  }
 }
 
 function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
