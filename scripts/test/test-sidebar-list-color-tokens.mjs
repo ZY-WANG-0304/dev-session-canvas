@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+async function readText(path) {
+  return normalizeNewlines(await readFile(path, 'utf8'));
+}
+
+function normalizeNewlines(source) {
+  return source.replace(/\r\n?/g, '\n');
+}
+
 function extractCssRuleBody(source, selector) {
   const startMarker = `${selector} {`;
   const startIndex = source.indexOf(startMarker);
@@ -13,8 +21,8 @@ function extractCssRuleBody(source, selector) {
   return source.slice(bodyStartIndex, endIndex);
 }
 
-const designSystemSource = await readFile('docs/UI.md', 'utf8');
-const statusPresentationSource = await readFile('src/common/canvasNodeStatusPresentation.ts', 'utf8');
+const designSystemSource = await readText('docs/UI.md');
+const statusPresentationSource = await readText('src/common/canvasNodeStatusPresentation.ts');
 assert.match(
   designSystemSource,
   /Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色/u,
@@ -37,7 +45,7 @@ const sidebarListViews = [
 ];
 
 for (const view of sidebarListViews) {
-  const source = await readFile(view.path, 'utf8');
+  const source = await readText(view.path);
   assert.ok(
     source.includes('--fg: var(--vscode-foreground, var(--vscode-sideBar-foreground));'),
     `${view.path} should not use sideBar.foreground as the only sidebar list foreground.`
@@ -66,7 +74,7 @@ for (const view of sidebarListViews) {
   );
 }
 
-const nodeListSource = await readFile('src/sidebar/CanvasSidebarNodeListView.ts', 'utf8');
+const nodeListSource = await readText('src/sidebar/CanvasSidebarNodeListView.ts');
 const nodeRowStyles = extractCssRuleBody(nodeListSource, '.node-row');
 const sidebarStatusPillStyles = extractCssRuleBody(nodeListSource, '.status-pill');
 const sidebarStatusToneFunction = statusPresentationSource.slice(
@@ -115,8 +123,9 @@ assert.match(
   /case 'idle':\s*return '未启动';/u,
   'Sidebar node list should use the same idle status label as the canvas.'
 );
-assert.ok(
-  statusPresentationSource.includes("return '已关联文件';"),
+assert.match(
+  statusPresentationSource,
+  /contentSource\.status === 'ok' \? '已关联文件' : humanizeCanvasStatus\(contentSource\.status\)/u,
   'Sidebar node list should label ok associated Markdown notes as linked-file notes.'
 );
 assert.ok(

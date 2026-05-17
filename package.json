@@ -573,7 +573,7 @@
     "test:package-vsix-command": "node scripts/test/test-package-vsix-command.mjs",
     "test:sidebar-codicon-bundle": "node scripts/test/test-sidebar-codicon-bundle.mjs",
     "test:sidebar-list-colors": "node scripts/test/test-sidebar-list-color-tokens.mjs",
-    "test:theme-color-tokens": "node scripts/test/test-theme-color-tokens.mjs",
+    "test:theme-color-tokens": "node scripts/test/test-theme-color-tokens.mjs && node --no-warnings --experimental-transform-types scripts/test/test-canvas-node-status-presentation.mts",
     "test:activitybar-badges": "node scripts/test/run-playwright-node.mjs scripts/test/test-activitybar-badge-geometry.mjs",
     "test:avatar": "node scripts/test/run-playwright-node.mjs scripts/test/test-avatar-safe-area.mjs",
     "test:execution-attention-signals": "node scripts/test/test-execution-attention-signals.mjs",

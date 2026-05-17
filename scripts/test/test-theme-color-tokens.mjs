@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const mainWebviewStyles = await readFile('src/webview/styles.css', 'utf8');
-const mainWebviewSource = await readFile('src/webview/main.tsx', 'utf8');
-const designSystemSource = await readFile('docs/UI.md', 'utf8');
-const statusPresentationSource = await readFile('src/common/canvasNodeStatusPresentation.ts', 'utf8');
-const notifierSidebarSource = await readFile(
-  'extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts',
-  'utf8'
-);
+const mainWebviewStyles = await readText('src/webview/styles.css');
+const mainWebviewSource = await readText('src/webview/main.tsx');
+const designSystemSource = await readText('docs/UI.md');
+const statusPresentationSource = await readText('src/common/canvasNodeStatusPresentation.ts');
+const notifierSidebarSource = await readText('extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts');
+
+async function readText(path) {
+  return normalizeNewlines(await readFile(path, 'utf8'));
+}
+
+function normalizeNewlines(source) {
+  return source.replace(/\r\n?/g, '\n');
+}
 
 function extractCssRange(source, startMarker, endMarker) {
   const startIndex = source.indexOf(startMarker);
@@ -205,8 +210,8 @@ assert.match(
 );
 assert.match(
   noteStatusFunction,
-  /contentSource\?\.kind === 'markdown-file' && contentSource\.status === 'ok'[\s\S]*?return '已关联文件';/u,
-  'Associated Markdown notes with ok source status should display as linked-file notes.'
+  /contentSource\?\.kind === 'markdown-file'[\s\S]*?contentSource\.status === 'ok' \? '已关联文件' : humanizeCanvasStatus\(contentSource\.status\)/u,
+  'Associated Markdown notes should use their content source status as the presentation source of truth.'
 );
 assert.match(
   noteStatusFunction,
