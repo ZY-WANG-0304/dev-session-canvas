@@ -247,28 +247,26 @@ assert.match(
   'Notifier sidebar separators should have a sidebar border fallback chain.'
 );
 
-const currentBadgeMatch = notifierSidebarSource.match(/\.setup-badge\.current\s*\{(?<body>[\s\S]*?)\n\s*\}/u);
-assert.ok(currentBadgeMatch?.groups?.body, 'Expected notifier current setup badge styles.');
-const currentBadgeBody = currentBadgeMatch.groups.body;
+const sidebarMarkdownMatch = notifierSidebarSource.match(/\.sidebar-markdown\s*\{(?<body>[\s\S]*?)\n\s*\}/u);
+assert.ok(sidebarMarkdownMatch?.groups?.body, 'Expected notifier sidebar markdown base styles.');
+const sidebarMarkdownBody = sidebarMarkdownMatch.groups.body;
 assert.match(
-  currentBadgeBody,
-  /background:\s*var\(--vscode-badge-background\);/u,
-  'Current setup badge should keep badge background semantics.'
+  sidebarMarkdownBody,
+  /color:\s*var\(--vscode-descriptionForeground\);/u,
+  'Notifier markdown preview base should use VS Code description foreground semantics.'
 );
 assert.match(
-  currentBadgeBody,
-  /color:\s*var\(--vscode-badge-foreground\);/u,
-  'Current setup badge should keep badge foreground semantics.'
+  sidebarMarkdownBody,
+  /font-size:\s*12px;/u,
+  'Notifier markdown preview base should keep compact sidebar body typography.'
 );
-assert.doesNotMatch(
-  currentBadgeBody,
-  /background:\s*var\(--vscode-testing-iconPassed\)/u,
-  'Current setup badge should not use testing icon foreground as its background.'
-);
-assert.doesNotMatch(
-  currentBadgeBody,
-  /color:\s*var\(--vscode-button-foreground\)/u,
-  'Current setup badge should not pair badge background with button foreground.'
+const prominentMarkdownMatch = notifierSidebarSource.match(/\.sidebar-markdown\.is-prominent\s*\{(?<body>[\s\S]*?)\n\s*\}/u);
+assert.ok(prominentMarkdownMatch?.groups?.body, 'Expected notifier prominent markdown styles.');
+const prominentMarkdownBody = prominentMarkdownMatch.groups.body;
+assert.match(
+  prominentMarkdownBody,
+  /color:\s*var\(--vscode-foreground,\s*var\(--vscode-sideBar-foreground,\s*var\(--vscode-editor-foreground\)\)\);/u,
+  'Prominent notifier markdown should promote summary text back to VS Code foreground semantics.'
 );
 
 console.log('theme color token tests passed');
