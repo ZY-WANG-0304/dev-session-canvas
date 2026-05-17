@@ -86,6 +86,7 @@
 - 关闭后：
   - notifier 会尽量走静音路径，但不影响通知弹出、点击回跳和 `attentionPending` 状态机
 - `Dev Session Canvas Notifier` sidebar 当前拆成多个独立 view section：`概览`、`注意事项`、`macOS`、`Linux`、`Windows`、`Codex`、`Claude Code`
+- 各 section 的正文默认使用受控 Markdown 预览渲染，支持段落、列表、标题与 fenced code block；测试通知、打开诊断日志等交互按钮继续保留原生按钮语义
 - 用户可从 `概览` view title 行尾部的齿轮按钮打开 companion 配置；该按钮只挂在承载通知状态、测试按钮和诊断入口的概览 section 上，不会出现在其他平台或 Agent section
 - 该入口只负责跳转设置，不改变通知投递或回跳语义
 
