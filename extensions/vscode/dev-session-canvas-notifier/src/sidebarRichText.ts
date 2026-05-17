@@ -1,11 +1,18 @@
 import hljs from 'highlight.js/lib/common';
+import MarkdownIt from 'markdown-it';
 
 const SIDEBAR_CODE_BLOCK_LANGUAGES = ['json', 'toml', 'bash', 'shell'] as const;
-const SIDEBAR_CODE_FENCE_PATTERN = /```([A-Za-z0-9_+-]+)?\n([\s\S]*?)```/g;
+const SAFE_SIDEBAR_MARKDOWN_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
 interface SidebarRichContentOptions {
   textClassName?: string;
 }
+
+interface SidebarMarkdownRenderOptions {
+  rootClassName?: string;
+}
+
+const sidebarMarkdownRenderer = createSidebarMarkdownRenderer();
 
 export function formatSidebarRichText(value: string): string {
   return value
@@ -14,17 +21,15 @@ export function formatSidebarRichText(value: string): string {
     .join('');
 }
 
-export function renderSidebarRichContent(value: string, options: SidebarRichContentOptions = {}): string {
-  const blocks = parseSidebarRichBlocks(value);
-  return blocks
-    .map((block) => {
-      if (block.kind === 'code') {
-        return renderHighlightedSidebarCodeBlock(block.content, block.language);
-      }
+export function renderSidebarMarkdown(value: string, options: SidebarMarkdownRenderOptions = {}): string {
+  const className = options.rootClassName?.trim();
+  const classAttribute = className ? ` class="${escapeHtmlAttribute(className)}"` : '';
+  return `<div${classAttribute}>${sidebarMarkdownRenderer.render(value)}</div>`;
+}
 
-      return renderSidebarTextParagraphs(block.content, options.textClassName);
-    })
-    .join('');
+export function renderSidebarRichContent(value: string, options: SidebarRichContentOptions = {}): string {
+  const rootClassName = ['sidebar-markdown', options.textClassName].filter(Boolean).join(' ');
+  return renderSidebarMarkdown(value, { rootClassName });
 }
 
 export function renderSidebarInlineCode(value: string): string {
@@ -35,7 +40,7 @@ export function renderHighlightedSidebarCodeBlock(source: string, explicitLangua
   const language = normalizeExplicitLanguage(explicitLanguage) ?? detectSidebarCodeLanguage(source);
   const highlighted = highlightSidebarCode(source, language);
   const languageClass = normalizeHighlightedLanguageClass(highlighted.language);
-  return `<pre class="snippet-block"><code class="hljs${languageClass ? ` ${languageClass}` : ''}">${highlighted.html}</code></pre>`;
+  return `<pre><code class="hljs${languageClass ? ` ${languageClass}` : ''}">${highlighted.html}</code></pre>`;
 }
 
 export function detectSidebarCodeLanguage(source: string): string | undefined {
@@ -56,6 +61,31 @@ export function detectSidebarCodeLanguage(source: string): string | undefined {
   }
 
   return undefined;
+}
+
+function createSidebarMarkdownRenderer(): MarkdownIt {
+  const renderer = new MarkdownIt({
+    html: false,
+    breaks: true,
+    linkify: false,
+    highlight(code, info) {
+      return renderHighlightedSidebarCodeBlock(code, info.trim().split(/\s+/, 1)[0]);
+    }
+  });
+
+  const defaultValidateLink = renderer.validateLink.bind(renderer);
+  renderer.validateLink = (href) => defaultValidateLink(href) && isSafeSidebarMarkdownHref(href);
+  renderer.renderer.rules.code_inline = (tokens, idx) => renderSidebarInlineCode(tokens[idx].content);
+  return renderer;
+}
+
+function isSafeSidebarMarkdownHref(href: string): boolean {
+  try {
+    const parsed = new URL(href);
+    return SAFE_SIDEBAR_MARKDOWN_PROTOCOLS.has(parsed.protocol);
+  } catch {
+    return false;
+  }
 }
 
 function highlightSidebarCode(source: string, language: string | undefined): { html: string; language: string | undefined } {
@@ -91,56 +121,6 @@ function normalizeHighlightedLanguageClass(language: string | undefined): string
   return /^[A-Za-z0-9_+-]+$/u.test(language) ? `language-${language}` : null;
 }
 
-function parseSidebarRichBlocks(value: string): Array<
-  | { kind: 'text'; content: string }
-  | { kind: 'code'; content: string; language?: string }
-> {
-  const blocks: Array<{ kind: 'text'; content: string } | { kind: 'code'; content: string; language?: string }> = [];
-  let lastIndex = 0;
-
-  for (const match of value.matchAll(SIDEBAR_CODE_FENCE_PATTERN)) {
-    const matchIndex = match.index ?? 0;
-    if (matchIndex > lastIndex) {
-      blocks.push({
-        kind: 'text',
-        content: value.slice(lastIndex, matchIndex)
-      });
-    }
-
-    blocks.push({
-      kind: 'code',
-      language: match[1],
-      content: trimSingleTrailingNewline(match[2] ?? '')
-    });
-    lastIndex = matchIndex + match[0].length;
-  }
-
-  if (lastIndex < value.length) {
-    blocks.push({
-      kind: 'text',
-      content: value.slice(lastIndex)
-    });
-  }
-
-  if (blocks.length === 0) {
-    return [{ kind: 'text', content: value }];
-  }
-
-  return blocks;
-}
-
-function renderSidebarTextParagraphs(value: string, textClassName: string | undefined): string {
-  return value
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter((paragraph) => paragraph.length > 0)
-    .map((paragraph) => {
-      const classAttribute = textClassName ? ` class="${textClassName}"` : '';
-      return `<p${classAttribute}>${formatSidebarRichText(paragraph).replace(/\n/g, '<br />')}</p>`;
-    })
-    .join('');
-}
-
 function normalizeExplicitLanguage(language: string | undefined): string | undefined {
   if (!language) {
     return undefined;
@@ -150,10 +130,6 @@ function normalizeExplicitLanguage(language: string | undefined): string | undef
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function trimSingleTrailingNewline(value: string): string {
-  return value.replace(/\r?\n$/, '');
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -161,4 +137,8 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return escapeHtml(value);
 }

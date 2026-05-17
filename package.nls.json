@@ -29,7 +29,7 @@
   "command.resetCanvasState.title": "Dev Session Canvas: 清空画板",
   "command.dumpHostDiagnostics.title": "Dev Session Canvas: 落盘当前宿主诊断",
   "configuration.title": "Dev Session Canvas",
-  "configuration.canvas.defaultSurface.description": "主画布默认出现的宿主承载面。默认值为 panel；该 view 的实际工作台位置由 VS Code 记住，用户可自行移动。更改后需要重新加载窗口才会生效（Changes require window reload to take effect）。",
+  "configuration.canvas.defaultSurface.description": "主画布默认出现的宿主承载面。默认值为 panel；该 view 的实际工作台位置由 VS Code 记住，用户可自行移动。设为 panel 时，扩展/画布尚未激活前，VS Code 可根据该设置在原生 Panel 区域显示入口，但不会强制把画布拉到前台。画布在当前窗口激活后，本窗口实际承载面按已应用配置运行；更改设置后需要重新加载窗口才会完整切换默认承载面（Changing after activation requires Window Reload to fully take effect）。",
   "configuration.canvas.overviewMode.description": "控制画布缩到概览触发倍率后是否切换为低信息密度显示；触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 控制。此设置不影响动态最小缩放或 fit view 能否缩到 `0.4` 以下。",
   "configuration.canvas.overviewMode.none.label": "无概览",
   "configuration.canvas.overviewMode.none.description": "无论画布缩到多小，都保持普通节点渲染，不进入概览模式。",

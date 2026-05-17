@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-这次变更要把两个用户可见的配置收口到一致、可解释的行为。`devSessionCanvas.canvas.defaultSurface` 不再让用户猜“什么时候才会生效”，而是在 Settings UI 里明确写明“需要 Window Reload”，并在修改后给出标准的 reload 提示。`devSessionCanvas.runtimePersistence.enabled` 也改成同样的 reload 生效模型，避免同一张画布里旧节点按旧持久化模式运行、新节点按新模式运行的混乱状态；当用户切换该配置时，还要明确告知“下次 reload 会清空当前画布宿主状态”。
+这次变更要把两个用户可见的配置收口到一致、可解释的行为。`devSessionCanvas.canvas.defaultSurface` 不再让用户猜“什么时候才会生效”，而是采用两段式契约：扩展/画布尚未激活前，VS Code 原生 `when` 条件可以按 Settings 当前值影响 Panel 入口是否可见；画布一旦在当前窗口激活，真正的主画布承载面按已应用启动配置运行，运行中改设置需要 `Window Reload` 才完整切到新的默认承载面。`devSessionCanvas.runtimePersistence.enabled` 仍是 reload 生效模型，避免同一张画布里旧节点按旧持久化模式运行、新节点按新模式运行的混乱状态；当用户切换该配置时，还要明确告知“下次 reload 会清空当前画布宿主状态”。
 
 用户还能直接观察到一个额外结果：当默认承载面设为 `editor` 时，Panel 区域不再常驻一个无用的 `Dev Session Canvas` tab；如果调研表明 VS Code 原生支持按 `when` 条件隐藏这类 view，就按原生方式实现，否则保持现状。本计划的最终验收不仅要看代码行为，还要保留调研证据、设计文档同步和自动化验证。
 
@@ -15,19 +15,20 @@
 - [x] (2026-04-18 17:09 +0800) 读取 `tmp_task.md`、`docs/WORKFLOW.md`、`docs/PLANS.md`、`docs/DESIGN.md` 和相关设计文档，确认这是需要独立 `ExecPlan` 的交付性改动。
 - [x] (2026-04-18 17:09 +0800) 检查当前分支与工作树状态，并在不覆盖现有未提交改动的前提下从 `main` 切出主题分支 `canvas-config-reload-semantics`。
 - [x] (2026-04-18 17:34 +0800) 调研 VS Code 对“设置需 reload 生效”“按配置隐藏 view”“配置变更提醒”的公开能力与标准做法，并把结论写入 `docs/design-docs/canvas-surface-placement.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md` 与 `docs/design-docs/index.md`。
-- [x] (2026-04-18 17:57 +0800) 修改配置声明、启动配置读取、context key 与配置变更提示逻辑，让 `defaultSurface` / `runtimePersistence.enabled` 统一为“reload 后生效”，并在 `defaultSurface=editor` 时按原生 `when` 隐藏 panel view tab。
+- [x] (2026-04-18 17:57 +0800) 修改配置声明、启动配置读取、context key 与配置变更提示逻辑，让 `defaultSurface` 的主画布承载面和 `runtimePersistence.enabled` 按 reload 边界生效，并在 `defaultSurface=editor` 时按原生 `when` 隐藏 panel view tab。
 - [x] (2026-04-18 18:02 +0800) 为 runtime persistence 切换补“下次 reload 清空宿主状态”的持久化边界：把已应用模式写入快照与 workspaceState，在下次加载发现模式不一致时直接清空画布宿主状态；`tmp_task.md` 因属于用户本地未提交文件，本轮按约束未改动。
-- [x] (2026-04-18 18:13 +0800) 补充并运行自动化验证，确认 surface / persistence 在 reload 前后行为正确，panel tab 按配置隐藏；补跑 `build`、trusted smoke、restricted smoke，并记录现存的非本任务 `typecheck` 失败。
+- [x] (2026-04-18 18:13 +0800) 补充并运行自动化验证，确认 surface / persistence 在 reload 前后行为正确，Panel 入口显隐按预激活配置与激活后 context key 两阶段控制；补跑 `build`、trusted smoke、restricted smoke，并记录现存的非本任务 `typecheck` 失败。
 - [x] (2026-04-18 18:43 +0800) 用户随后手动验证暴露 `defaultSurface` 的 restart 恢复回旧 panel / secondary side bar；本轮继续补持久化 `defaultSurface`、修正 startup restore 优先级、更新 smoke 覆盖与设计文档状态。
 - [x] (2026-04-18 18:59 +0800) 用户完成手动复验，确认 `panel -> editor` 与 `editor -> panel` 的 restart 都已按新的 `defaultSurface` 收口；据此把 `canvas-surface-placement` 文档状态恢复为 `已验证`。
 - [x] (2026-04-18 19:42 +0800) 根据 PR review 修复 runtime persistence 模式切换后未丢弃旧 surface 恢复元数据的问题，补充 trusted / restricted smoke 对“回落到当前 `defaultSurface`”的断言，并同步最新验证记录。
+- [x] (2026-05-18 00:41 +0800) 根据 PR80 review 收口文档漂移，把 `defaultSurface` 的正式契约、Settings 文案和本计划同步为“预激活 Panel 入口可按配置显示，激活后主画布承载面 reload 后完整切换”的两段式语义。
 
 ## 意外与发现
 
 - 观察：当前代码里没有对 `defaultSurface` 或 `runtimePersistence.enabled` 的 `onDidChangeConfiguration` 热切换监听，真正的问题是这两个设置在多个运行时路径里被即时读取，导致“下一次动作按新配置走”，而不是“整个窗口 reload 后统一切换”。
   证据：`src/panel/CanvasPanelManager.ts` 的配置监听只覆盖 `agent.defaultProvider`、`terminal.integrated.scrollback`、`editor.multiCursorModifier` 和 `terminal.integrated.wordSeparators`；但 `getConfiguredSurface()`、`isRuntimePersistenceEnabled()` 会在 reveal、启动执行会话、host-boundary reload 等路径中反复读取当前设置。
-- 观察：VS Code 原生允许对 `contributes.views` 使用 `when` 条件，但如果直接绑定实时配置值，会把“reload 后生效”的语义重新打穿；因此 panel tab 的显隐必须跟随“本次窗口已应用配置”，而不是 Settings 当前值。
-  证据：本轮实现通过 `package.json` 中的 `when: "devSessionCanvas.canvas.panelViewVisible"` 配合宿主侧 context key 达成；context key 只在启动配置快照刷新后更新。
+- 观察：VS Code 原生允许对 `contributes.views` 使用 `when` 条件；预激活阶段可以利用 `config.devSessionCanvas.canvas.defaultSurface == 'panel'` 让 Panel 入口可发现，但这只影响入口显隐，不代表主画布已被激活或热切换。
+  证据：本轮实现通过 `package.json` 中的 `when: "(config.devSessionCanvas.canvas.defaultSurface == 'panel' && !devSessionCanvas.canvas.panelVisibilityManaged) || devSessionCanvas.canvas.panelViewVisible"` 达成两段式控制：扩展未激活时走配置 fallback；扩展激活后设置 `panelVisibilityManaged=true`，再由宿主 context key `panelViewVisible` 表达当前窗口已应用的承载面。
 - 观察：受限工作区下，带 `live-runtime` 元数据的节点在 reload 后不会保持 `reattaching` 状态，而是被 reconcile 成 `history-restored`，同时保留 `attachmentState=reattaching` 作为“理论上可重连但被策略阻断”的标记。
   证据：`reconcileRuntimeNodesInArray(... allowLiveRuntimeReconnect: false, liveRuntimeReconnectBlockReason: 'workspace-untrusted')` 会返回 `status: 'history-restored'` 与阻断说明；restricted smoke 需要按此真实语义断言。
 - 观察：runtime supervisor registry 会保留已停止的历史 session，不能把 `registry.sessions.length` 当作“当前 live runtime 数量”。
@@ -42,20 +43,20 @@
 - 决策：本轮使用独立 `ExecPlan` 推进，而不是只在 `tmp_task.md` 里留待办。
   理由：任务同时涉及外部调研、正式设计文档更新、配置语义调整、持久化边界修改和自动化验证，已经超过“单点修补”的复杂度。
   日期/作者：2026-04-18 / Codex
-- 决策：为 `defaultSurface` 与 `runtimePersistence.enabled` 引入“本次窗口已应用启动配置快照”，并把 reload 提示作为唯一配置变更反馈，不再在运行时即时改写行为。
-  理由：只有让 reveal、session start、host-boundary reload 与 sidebar / panel 可见性都读取同一份启动快照，才能兑现“必须 Window Reload 才生效”的用户承诺。
+- 决策：为 `defaultSurface` 与 `runtimePersistence.enabled` 引入“本次窗口已应用启动配置快照”；`defaultSurface` 的主画布承载面在激活后只读取这份快照，预激活 Panel 入口可由原生配置表达式兜底。
+  理由：reveal、session start、host-boundary reload 必须读取同一份启动快照，才能避免运行中设置变化热重建当前画布；但扩展未激活前没有机会设置 context key，需要允许 `package.json` 的原生 `when` 表达式先解决 Panel 入口可发现性。
   日期/作者：2026-04-18 / Codex
 - 决策：把 `runtimePersistence.enabled` 的已应用值写入持久化快照与 workspaceState；下次加载发现模式不一致时，直接走整张画布宿主状态 reset，而不是尝试局部兼容。
   理由：切换 persistence mode 后继续沿用旧节点会让同一张画布混合旧 runtime supervisor 语义与新节点默认行为，产品上不可解释；整表清空虽然更保守，但语义清晰且与设置文案一致。
   日期/作者：2026-04-18 / Codex
-- 决策：Panel view tab 的显隐采用原生 `when` + 自定义 context key，而不是依赖实时配置表达式。
-  理由：VS Code 原生 view hiding 能满足“editor 默认承载面时隐藏 panel tab”的目标，但必须绑定“当前窗口已应用配置”，否则 Settings 一改就会热隐藏 view，违背 reload-only 语义。
+- 决策：Panel view tab 的显隐采用“启动前配置表达式 + 激活后自定义 context key”的组合，而不是单纯依赖实时配置表达式或单纯依赖激活后 context key。
+  理由：VS Code 原生 view hiding 能满足“editor 默认承载面时隐藏 panel tab”的目标；预激活阶段需要 `config.devSessionCanvas.canvas.defaultSurface == 'panel' && !devSessionCanvas.canvas.panelVisibilityManaged` 让默认 `panel` 的入口可见，激活后则由 `panelVisibilityManaged=true` 和 `panelViewVisible` 接管，确保 Settings 变化不会绕过主画布承载面的 reload 边界。
   日期/作者：2026-04-18 / Codex
 - 决策：smoke 测试改成用例自给自足，显式恢复 baseline 或 `testResetState`，并用 live session 口径断言 runtime supervisor。
   理由：restricted 侧新增 reload/reset 语义后，测试顺序耦合会放大误报；把测试隔离做实后，失败才能更直接地映射到产品行为而不是测试残留状态。
   日期/作者：2026-04-18 / Codex
 - 决策：surface startup restore 必须同时比较“上次已应用的 `defaultSurface`”与“当前 startup `defaultSurface`”；当两者不一致时，不恢复旧 opposite surface，并在 `deserializeWebviewPanel()` 直接丢弃不该恢复的 editor panel。
-  理由：reload-only 语义的真正边界不是“命令默认打开位置”，而是“窗口重启后的首个承载面”；只要旧 surface 还能在恢复链路里抢回主画布，用户就会认为设置没有生效。
+  理由：reload 后完整生效语义的真正边界不是“命令默认打开位置”，而是“窗口重启后的首个承载面”；只要旧 surface 还能在恢复链路里抢回主画布，用户就会认为设置没有生效。
   日期/作者：2026-04-18 / Codex
 - 决策：runtime persistence 模式切换触发的宿主 reset 必须与对象图一起丢弃旧 surface 恢复元数据，并让启动 surface 直接回落到当前 `defaultSurface`。
   理由：产品文案已经承诺“清空旧画布宿主状态后从空白状态启动”；若模式切换后仍恢复旧 `editor` / `panel`，用户会看到“空白但还在旧工作面”的混合状态，和正式设计不一致。
@@ -63,7 +64,9 @@
 
 ## 结果与复盘
 
-本轮先前已经把 `defaultSurface` 与 `runtimePersistence.enabled` 收口成“只在 Window Reload 后生效”，但用户随后手动验证暴露出一个 follow-up regression：`defaultSurface` 虽然不再热切换，却仍会在 restart 时被旧 `activeSurface` 恢复覆盖。针对这个缺口，宿主现在会把“上次已应用的 `defaultSurface`”一起写入快照与 workspaceState；下次启动如果发现配置已经切到相反 surface，就不再恢复旧 opposite surface，而是直接按当前 startup `defaultSurface` 收口。与之配套，旧 editor `WebviewPanel` 的反序列化恢复也会在 surface 不匹配时被主动丢弃，避免 serializer 抢回主画布。
+本轮先前已经把 `defaultSurface` 的主画布承载面与 `runtimePersistence.enabled` 收口成“只在 Window Reload 后完整生效”，但用户随后手动验证暴露出一个 follow-up regression：`defaultSurface` 虽然不再热切换，却仍会在 restart 时被旧 `activeSurface` 恢复覆盖。针对这个缺口，宿主现在会把“上次已应用的 `defaultSurface`”一起写入快照与 workspaceState；下次启动如果发现配置已经切到相反 surface，就不再恢复旧 opposite surface，而是直接按当前 startup `defaultSurface` 收口。与之配套，旧 editor `WebviewPanel` 的反序列化恢复也会在 surface 不匹配时被主动丢弃，避免 serializer 抢回主画布。
+
+PR80 review 进一步澄清了 `defaultSurface` 的两段式契约：扩展/画布尚未激活前，`package.json` 的原生 `when` 表达式可以让 Settings 当前值立即影响 Panel 入口是否可见；这不等于当前窗口主画布会热切换。画布一旦激活，实际承载面仍由已应用启动配置快照、surface restore 元数据和宿主 context key 共同表达，用户需要 `Window Reload` 才能完整切换默认承载面。因此 Settings 文案、`canvas-surface-placement` 设计文档和本计划都必须避免把这两层语义混写成单一的“全部 reload 后生效”或“实时配置热切换”。
 
 `runtimePersistence.enabled` 的状态边界也已经落地：宿主会把已应用模式写入持久化快照与 workspaceState；下次加载若发现模式与当前窗口启动配置不一致，直接清空画布宿主状态并记录 `state/runtimePersistenceReset`，避免旧节点和新节点混用不同 persistence mode。这个语义同时覆盖 trusted 与 restricted 两个 smoke 场景，restricted 侧额外确认了被策略阻断的 live-runtime reconnect 会以 `history-restored + attachmentState=reattaching` 呈现。
 
@@ -75,7 +78,7 @@
 - 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言处失败。
 - 用户随后完成手动复验，确认 `panel -> editor` / `editor -> panel` 的 restart 行为均符合预期；因此 surface 设计文档现已恢复为 `已验证`，trusted smoke 的遗留阻塞继续作为独立测试债处理。
 
-额外复盘：这次 follow-up 说明“reload-only 配置语义”不能只看命令入口，还必须覆盖 serializer / view restore 这类启动恢复链路。用户本地未提交文件 `.gitignore`、`tmp_task.md`、`core.14` 本轮均未触碰。
+额外复盘：这次 follow-up 说明“reload 后完整生效”的配置语义不能只看命令入口，还必须覆盖 serializer / view restore 这类启动恢复链路，同时也不能忽略扩展未激活前只能依赖 `package.json` 原生 `when` 表达式的入口发现阶段。用户本地未提交文件 `.gitignore`、`tmp_task.md`、`core.14` 本轮均未触碰。
 
 ## 上下文与定向
 
@@ -83,7 +86,7 @@
 
 第一处是扩展清单 `package.json` 与 `package.nls.json`。这里定义了配置项、Panel view 注册和 Settings UI 中看到的文案。`defaultSurface` 与 `runtimePersistence.enabled` 都在这里声明，Panel 承载面的 tab 是否出现也由这里的 `contributes.views` / `contributes.viewsContainers` 决定。
 
-第二处是 `src/panel/CanvasPanelManager.ts`。这是宿主侧权威状态管理器，负责画布 surface 的 reveal、持久化状态装载、执行节点启动和 runtime supervisor 协调。改动前 `defaultSurface` 与 `runtimePersistence.enabled` 都通过运行时 helper 即时读取，因此即使没有专门的配置变更监听，设置也会在后续动作中悄悄生效；本轮已经把这两个配置收口到启动快照与显式 reload 边界。
+第二处是 `src/panel/CanvasPanelManager.ts`。这是宿主侧权威状态管理器，负责画布 surface 的 reveal、持久化状态装载、执行节点启动和 runtime supervisor 协调。改动前 `defaultSurface` 与 `runtimePersistence.enabled` 都通过运行时 helper 即时读取，因此即使没有专门的配置变更监听，设置也会在后续动作中悄悄生效；本轮已经把这两个配置的运行时行为收口到启动快照与显式 reload 边界，同时允许 `package.json` 在扩展未激活前先用配置表达式显示或隐藏 Panel 入口。
 
 第三处是正式设计文档。`docs/design-docs/canvas-surface-placement.md` 记录 `editor` / `panel` 双承载面的正式边界；`docs/design-docs/runtime-persistence-and-session-supervisor.md` 记录两档运行时持久化模式的正式语义。只要本轮形成新的正式结论，例如“surface 的默认值只在窗口初始化读取”“切换 runtime persistence 会在下次 reload 清空宿主状态”，都必须同步落到这些文档和 `docs/design-docs/index.md`。
 
@@ -132,11 +135,11 @@
 
 ## 验证与验收
 
-首先验证 `defaultSurface`。把设置从 `panel` 改到 `editor` 后，在不 reload 的同一宿主实例里继续执行 `Dev Session Canvas: 打开画布`，预期默认打开位置仍按旧配置工作；执行测试态 `simulateRuntimeReload` 或真实 Window Reload 后，再次执行同一命令，预期才切到新 surface。若 `when` 方案成立，reload 后 `panel` 承载面 tab 也应随配置同步显示或隐藏。
+首先验证 `defaultSurface`。扩展/画布尚未激活前，把设置设为 `panel` 时，预期 VS Code 原生 Panel 区域可以先显示 `Dev Session Canvas` view 入口，但不会自动 reveal 画布内容。画布激活后，把设置从 `panel` 改到 `editor`，在不 reload 的同一宿主实例里继续执行 `Dev Session Canvas: 打开画布`，预期默认打开位置仍按已应用旧配置工作；执行测试态 `simulateRuntimeReload` 或真实 Window Reload 后，再次执行同一命令，预期才完整切到新 surface。
 
 然后验证 `runtimePersistence.enabled`。先在一种模式下创建节点与执行会话，再把设置切到另一种模式。reload 前继续创建或恢复节点，预期仍按旧模式运行；reload 后宿主应识别到模式切换并清空旧状态，新的节点与执行路径才按新模式工作。
 
-最后验证用户提示与文案。Settings UI 对两个配置都要写明“Changes require window reload to take effect”；runtime persistence 额外写明“Changing this setting clears existing canvas host state on next reload”。在非测试模式下修改设置时，应出现带 `Reload Window` action 的提示，其中 runtime persistence 使用 warning 级别。
+最后验证用户提示与文案。Settings UI 对 `defaultSurface` 要写明两段式语义：预激活 Panel 入口可按当前设置显示，画布激活后需要 `Window Reload` 才完整切换默认承载面；`runtimePersistence.enabled` 仍要写明“Changes require window reload to take effect”，并额外写明“Changing this setting clears existing canvas host state on next reload”。在非测试模式下修改设置时，应出现带 `Reload Window` action 的提示，其中 runtime persistence 使用 warning 级别。
 
 ## 幂等性与恢复
 

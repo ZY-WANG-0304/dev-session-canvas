@@ -7,9 +7,10 @@ const scale = 100;
 const canvasSize = 24 * scale;
 const badgeCenter = { x: 18.75, y: 5.25 };
 const scanRadius = 4.7;
-const targetContentRadius = 3.85;
+const defaultTargetContentRadius = 3.85;
 const radiusTolerance = 0.08;
 const whiteThreshold = 245;
+const defaultContentGuide = 'Badge content guide: center 18.75,5.25; outer radius 3.85.';
 
 const badgeIcons = [
   {
@@ -40,8 +41,12 @@ try {
 
   for (const icon of badgeIcons) {
     const svg = await readFile(icon.path, 'utf8');
-    assertBadgeContract(svg, icon.path);
+    assertBadgeContract(svg, icon.path, icon.contentGuide ?? defaultContentGuide);
+    if (icon.label === 'nodes') {
+      assertNodesBadgeUsesSingleWindow(svg, icon.path);
+    }
     const metrics = await measureBadgeCutout(page, svg);
+    const targetContentRadius = icon.targetContentRadius ?? defaultTargetContentRadius;
     const radiusDelta = metrics.maxRadius - targetContentRadius;
 
     assert.ok(
@@ -60,9 +65,9 @@ try {
   await browser.close();
 }
 
-function assertBadgeContract(svg, filePath) {
+function assertBadgeContract(svg, filePath, contentGuide) {
   const expectedSnippets = [
-    'Badge content guide: center 18.75,5.25; outer radius 3.85.',
+    contentGuide,
     'cx="18.75" cy="5.25" r="6.35"',
     'cx="18.75" cy="5.25" r="4.85"',
     'currentColor',
@@ -73,6 +78,54 @@ function assertBadgeContract(svg, filePath) {
   for (const snippet of expectedSnippets) {
     assert.ok(svg.includes(snippet), `${filePath} must include ${snippet}`);
   }
+}
+
+function assertNodesBadgeUsesSingleWindow(svg, filePath) {
+  const cutoutMask = extractBetween(svg, '<mask id="nodes-badge-cutout">', '</mask>');
+  const rects = [
+    ...cutoutMask.matchAll(
+      /<rect\s+x="([^"]+)"\s+y="([^"]+)"\s+width="([^"]+)"\s+height="([^"]+)"\s+rx="([^"]+)"\s+stroke="black"\s+stroke-width="([^"]+)"/g
+    )
+  ];
+  const paths = [
+    ...cutoutMask.matchAll(/<path\s+d="([^"]+)"\s+stroke="black"\s+stroke-width="([^"]+)"/g)
+  ];
+  assert.equal(rects.length, 1, `${filePath} badge cutout should contain exactly one window frame.`);
+  assert.equal(paths.length, 1, `${filePath} badge cutout should contain exactly one stroked window header line.`);
+  assert.ok(!cutoutMask.includes('<circle'), `${filePath} badge cutout should not contain dot circles.`);
+  assert.ok(!cutoutMask.includes('fill="black"'), `${filePath} badge cutout should not contain a filled title bar.`);
+
+  const expectedRects = [
+    { x: '16.25', y: '3.25', width: '5.1', height: '4.05', rx: '0.25', strokeWidth: '1.2' }
+  ];
+  const expectedPaths = [{ d: 'M16.65 4.65H20.85', strokeWidth: '0.75' }];
+
+  for (const [index, rect] of rects.entries()) {
+    const [, x, y, width, height, rx, strokeWidth] = rect;
+    assert.deepEqual(
+      { x, y, width, height, rx, strokeWidth },
+      expectedRects[index],
+      `${filePath} badge window frame ${index + 1} should match the single-window layout.`
+    );
+  }
+
+  for (const [index, path] of paths.entries()) {
+    const [, d, strokeWidth] = path;
+    assert.deepEqual(
+      { d, strokeWidth },
+      expectedPaths[index],
+      `${filePath} badge window header ${index + 1} should match the single-window layout.`
+    );
+  }
+}
+
+function extractBetween(value, start, end) {
+  const startIndex = value.indexOf(start);
+  assert.notEqual(startIndex, -1, `Expected to find ${start}`);
+  const contentStart = startIndex + start.length;
+  const endIndex = value.indexOf(end, contentStart);
+  assert.notEqual(endIndex, -1, `Expected to find ${end}`);
+  return value.slice(contentStart, endIndex);
 }
 
 async function measureBadgeCutout(page, svg) {
