@@ -243,6 +243,56 @@ assert.match(
   /noteMarkdown\/dropResourceResolved/u,
   'Dropped Markdown resources should record parsed and canonical URI diagnostics.'
 );
+const dropHandlerSource = sliceBetween(
+  panelManagerSource,
+  'private async handleDroppedNoteMarkdownFiles',
+  'private async confirmExistingDroppedNoteMarkdownFile'
+);
+assert.match(
+  dropHandlerSource,
+  /resolveDroppedNoteMarkdownAdmission/u,
+  'Dropped Markdown files should pass through an explicit current-host admission rule.'
+);
+assert.match(
+  dropHandlerSource,
+  /admissionRejectionReason/u,
+  'Rejected dropped Markdown files should include the admission rejection reason in diagnostics.'
+);
+assert.ok(
+  dropHandlerSource.indexOf('resolveDroppedNoteMarkdownAdmission') <
+    dropHandlerSource.indexOf('this.readNoteMarkdownFile(uri)'),
+  'Dropped Markdown admission should run before any read/stat call.'
+);
+const dropAdmissionSource = sliceBetween(
+  panelManagerSource,
+  'function resolveDroppedNoteMarkdownAdmission',
+  'function createCurrentHostFileUriFromVscodeRemoteUri'
+);
+assert.match(
+  dropAdmissionSource,
+  /kind: 'same-workspace'/u,
+  'Dropped Markdown admission should classify same-workspace resources.'
+);
+assert.match(
+  dropAdmissionSource,
+  /kind: 'same-host-outside-workspace'/u,
+  'Dropped Markdown admission should classify current-host resources outside the workspace.'
+);
+assert.match(
+  dropAdmissionSource,
+  /kind: 'foreign-host'/u,
+  'Dropped Markdown admission should reject foreign-host Remote resources.'
+);
+assert.match(
+  dropAdmissionSource,
+  /kind: 'unknown-current-host'/u,
+  'Dropped Markdown admission should fail closed until the full current Remote authority is known.'
+);
+assert.match(
+  dropAdmissionSource,
+  /vscode\.workspace\.getWorkspaceFolder/u,
+  'Same-workspace drop admission should use VSCode workspace containment.'
+);
 const getAssociatedResourceKeySource = sliceBetween(
   panelManagerSource,
   'private getAssociatedNoteMarkdownResourceKey',

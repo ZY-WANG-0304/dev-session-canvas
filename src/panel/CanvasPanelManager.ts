@@ -4217,9 +4217,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     for (const resource of resources) {
       const parsedUri = resolveDroppedNoteMarkdownResourceUri(resource);
-      const uri = parsedUri
-        ? canonicalizeNoteMarkdownUriForCurrentHost(parsedUri, currentRemoteAuthority)
+      const admission = parsedUri
+        ? resolveDroppedNoteMarkdownAdmission(
+            parsedUri,
+            vscode.workspace.workspaceFolders ?? [],
+            currentRemoteAuthority
+          )
         : undefined;
+      const uri = admission?.uri;
       this.recordDiagnosticEvent('noteMarkdown/dropResourceResolved', {
         source: resource.source,
         valueKind: resource.valueKind,
@@ -4230,10 +4235,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         normalizedCurrentRemoteAuthority: normalizeNoteMarkdownAuthority(currentRemoteAuthority),
         parsedUri: parsedUri ? describeNoteMarkdownUriForDiagnostics(parsedUri) : null,
         canonicalUri: uri ? describeNoteMarkdownUriForDiagnostics(uri) : null,
-        didCanonicalize: Boolean(parsedUri && uri && parsedUri.toString() !== uri.toString())
+        didCanonicalize: Boolean(parsedUri && uri && parsedUri.toString() !== uri.toString()),
+        admissionKind: admission?.kind ?? null,
+        admissionWorkspaceFolder: admission?.workspaceFolder
+          ? {
+              name: admission.workspaceFolder.name,
+              uri: admission.workspaceFolder.uri.toString()
+            }
+          : null,
+        admissionRejectionReason: admission?.rejectionReason ?? null
       });
       if (!uri) {
-        rejectedReasons.push('无法识别拖拽资源。');
+        rejectedReasons.push(admission?.rejectionReason ?? '无法识别拖拽资源。');
         continue;
       }
 
@@ -14894,6 +14907,100 @@ function canonicalizeNoteMarkdownUriForCurrentHost(
   return normalizedUriAuthority === normalizedCurrentRemoteAuthority
     ? createCurrentHostFileUriFromVscodeRemoteUri(uri)
     : uri;
+}
+
+type NoteMarkdownDropAdmissionKind =
+  | 'same-workspace'
+  | 'same-host-outside-workspace'
+  | 'foreign-host'
+  | 'unknown-current-host'
+  | 'unsupported-scheme';
+
+interface NoteMarkdownDropAdmission {
+  kind: NoteMarkdownDropAdmissionKind;
+  uri?: vscode.Uri;
+  workspaceFolder?: vscode.WorkspaceFolder;
+  rejectionReason?: string;
+}
+
+function resolveDroppedNoteMarkdownAdmission(
+  uri: vscode.Uri,
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+  currentRemoteAuthority?: string
+): NoteMarkdownDropAdmission {
+  const currentHostUri = resolveDroppedNoteMarkdownCurrentHostUri(uri, currentRemoteAuthority);
+  if (!currentHostUri.uri) {
+    return currentHostUri;
+  }
+
+  const workspaceFolder = findContainingNoteMarkdownWorkspaceFolder(currentHostUri.uri, workspaceFolders);
+  return workspaceFolder
+    ? {
+        kind: 'same-workspace',
+        uri: currentHostUri.uri,
+        workspaceFolder
+      }
+    : {
+        kind: 'same-host-outside-workspace',
+        uri: currentHostUri.uri
+      };
+}
+
+function resolveDroppedNoteMarkdownCurrentHostUri(
+  uri: vscode.Uri,
+  currentRemoteAuthority?: string
+): NoteMarkdownDropAdmission {
+  if (uri.scheme === 'file') {
+    return {
+      kind: 'same-host-outside-workspace',
+      uri
+    };
+  }
+
+  if (uri.scheme !== 'vscode-remote') {
+    return {
+      kind: 'unsupported-scheme',
+      rejectionReason: `不支持关联 ${uri.scheme}: Markdown 资源。`
+    };
+  }
+
+  const normalizedCurrentRemoteAuthority = normalizeNoteMarkdownAuthority(currentRemoteAuthority);
+  if (!normalizedCurrentRemoteAuthority) {
+    return {
+      kind: 'unknown-current-host',
+      rejectionReason: '无法确认拖拽的 Remote Markdown 文件是否属于当前设备，请等待画板就绪后重试。'
+    };
+  }
+
+  if (normalizeNoteMarkdownAuthority(uri.authority) !== normalizedCurrentRemoteAuthority) {
+    return {
+      kind: 'foreign-host',
+      rejectionReason: '拖拽的 Markdown 文件来自其他 Remote 设备，未创建关联 Note。'
+    };
+  }
+
+  return {
+    kind: 'same-host-outside-workspace',
+    uri: createCurrentHostFileUriFromVscodeRemoteUri(uri)
+  };
+}
+
+function findContainingNoteMarkdownWorkspaceFolder(
+  uri: vscode.Uri,
+  workspaceFolders: readonly vscode.WorkspaceFolder[]
+): vscode.WorkspaceFolder | undefined {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+  if (workspaceFolder) {
+    return workspaceFolder;
+  }
+
+  return workspaceFolders.find((workspaceFolder) =>
+    Boolean(resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
+      uri,
+      workspaceFolder,
+      false
+    ))
+  );
 }
 
 function createCurrentHostFileUriFromVscodeRemoteUri(uri: vscode.Uri): vscode.Uri {
