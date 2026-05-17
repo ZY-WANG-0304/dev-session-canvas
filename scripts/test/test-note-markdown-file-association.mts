@@ -59,6 +59,13 @@ assert.equal(
 );
 assert.equal(
   extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(
+    'https://vscode-remote%2Bssh-002dremote-002bdev-005flabs.vscode-resource.vscode-cdn.net/home/user/repo/docs/plan.md'
+  ),
+  'ssh-remote+dev_labs',
+  'Webview resource probe authorities may percent-encode the separator before the Remote authority.'
+);
+assert.equal(
+  extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(
     'https://vscode-remote+wsl-002bUbuntu.vscode-resource.vscode-cdn.net/home/user/repo/docs/plan.md'
   ),
   'wsl+Ubuntu'

@@ -173,7 +173,7 @@ export function extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(
     return undefined;
   }
 
-  const resourceIdentity = authority.slice(0, -WEBVIEW_RESOURCE_AUTHORITY_SUFFIX.length);
+  const resourceIdentity = safeDecodeURIComponent(authority.slice(0, -WEBVIEW_RESOURCE_AUTHORITY_SUFFIX.length));
   const separatorIndex = resourceIdentity.indexOf('+');
   if (separatorIndex <= 0 || separatorIndex >= resourceIdentity.length - 1) {
     return undefined;
