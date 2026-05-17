@@ -217,8 +217,8 @@ function isNoteMarkdownResourceOnSameDisplayHost(
   return false;
 }
 
-function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
-  return authority ?? '';
+export function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
+  return safeDecodeURIComponent(authority?.trim() ?? '');
 }
 
 function decodeNoteMarkdownWebviewResourceAuthority(value: string): string {

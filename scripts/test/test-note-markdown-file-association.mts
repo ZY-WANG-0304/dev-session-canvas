@@ -8,6 +8,7 @@ import {
   extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri,
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
+  normalizeNoteMarkdownAuthority,
   resolveNoteMarkdownFileExtension,
   sanitizeNoteMarkdownFileName,
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay
@@ -49,6 +50,7 @@ assert.equal(
   formatNoteMarkdownRemoteAuthorityPrefix('vscode-remote', 'wsl+Ubuntu'),
   'wsl:Ubuntu'
 );
+assert.equal(normalizeNoteMarkdownAuthority('ssh-remote%2Bdev_labs'), 'ssh-remote+dev_labs');
 assert.equal(
   extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(
     'https://vscode-remote+ssh-002dremote-002bdev-005flabs.vscode-resource.vscode-cdn.net/home/user/repo/docs/plan.md'
@@ -60,6 +62,15 @@ assert.equal(
     'https://vscode-remote+wsl-002bUbuntu.vscode-resource.vscode-cdn.net/home/user/repo/docs/plan.md'
   ),
   'wsl+Ubuntu'
+);
+assert.equal(
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+    { scheme: 'vscode-remote', authority: 'ssh-remote%2Bdev_labs' },
+    [],
+    'ssh-remote+dev_labs'
+  ),
+  false,
+  'Percent-encoded dropped Remote authority should match the decoded current Remote authority.'
 );
 assert.equal(
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
@@ -111,6 +122,15 @@ assert.equal(
   ),
   true,
   'Different Remote SSH targets should keep the remote prefix.'
+);
+assert.equal(
+  canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    { scheme: 'vscode-remote', authority: 'ssh-remote%2Bdev_labs' },
+    { scheme: 'file' },
+    'ssh-remote+dev_labs'
+  ),
+  true,
+  'Percent-encoded dropped Remote authority should compare with file-scheme workspace roots after normalization.'
 );
 assert.equal(
   canCompareNoteMarkdownResourceWithWorkspaceRoot(
@@ -181,6 +201,11 @@ assert.match(
   /this\.scheduleNoteMarkdownCurrentHostRecanonicalize\(\)/u,
   'First successful current Remote authority inference should trigger host-side recanonicalization.'
 );
+assert.match(
+  currentRemoteAuthoritySource,
+  /noteMarkdown\/currentRemoteAuthorityInferred/u,
+  'Remote authority inference should be captured in host diagnostics.'
+);
 const canonicalizeCurrentHostSource = sliceBetween(
   panelManagerSource,
   'function canonicalizeNoteMarkdownUriForCurrentHost',
@@ -188,13 +213,23 @@ const canonicalizeCurrentHostSource = sliceBetween(
 );
 assert.match(
   canonicalizeCurrentHostSource,
-  /if \(!currentRemoteAuthority\) \{\s*return uri;\s*\}/u,
-  'Current-host canonicalization should fail closed when the full Remote authority is unavailable.'
+  /normalizeNoteMarkdownAuthority\(uri\.authority\)/u,
+  'Current-host canonicalization should normalize percent-encoded dropped Remote authorities.'
 );
-assert.doesNotMatch(
+assert.match(
   panelManagerSource,
   /isVscodeRemoteUriOnCurrentHostByFileSystem|doesVscodeRemoteAuthorityMatchRemoteName|canUseNoteMarkdownWorkspacePathFallback/u,
-  'Current-host canonicalization must not fall back to remote kind, path containment, or filesystem existence.'
+  'Current-host canonicalization currently keeps non-fail-closed fallbacks when full Remote authority is unavailable.'
+);
+assert.match(
+  panelManagerSource,
+  /note-markdown-diagnostics\.json/u,
+  'Host diagnostics dump should include a dedicated Markdown diagnostics file.'
+);
+assert.match(
+  panelManagerSource,
+  /noteMarkdown\/dropResourceResolved/u,
+  'Dropped Markdown resources should record parsed and canonical URI diagnostics.'
 );
 const getAssociatedResourceKeySource = sliceBetween(
   panelManagerSource,
