@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 
 const mainWebviewStyles = await readFile('src/webview/styles.css', 'utf8');
 const mainWebviewSource = await readFile('src/webview/main.tsx', 'utf8');
+const designSystemSource = await readFile('docs/UI.md', 'utf8');
+const statusPresentationSource = await readFile('src/common/canvasNodeStatusPresentation.ts', 'utf8');
 const notifierSidebarSource = await readFile(
   'extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts',
   'utf8'
@@ -140,9 +142,42 @@ assert.match(
   /color:\s*var\(--status-pill-fg\);/u,
   'Overview status text and dot should reuse status pill foreground token.'
 );
+assert.match(
+  designSystemSource,
+  /backgroundColor:\s*"status accent mixed at 18% with transparent"[\s\S]*borderColor:\s*"status accent mixed at 42% with panel border"/u,
+  'docs/UI.md should keep the status pill recipe aligned with implementation.'
+);
+assert.match(
+  designSystemSource,
+  /`Agent` \/ `Terminal` 标题栏状态胶囊、概览态执行节点状态胶囊、sidebar 节点列表中的状态胶囊都应复用同一套状态 accent、背景和边框推导规则/u,
+  'docs/UI.md should require all status pill surfaces to share the same color system.'
+);
+assert.match(
+  designSystemSource,
+  /关联 Markdown 的 `contentSource\.status = ok` 展示为 `已关联文件`，普通内嵌 `ready` 展示为 `普通笔记`/u,
+  'docs/UI.md should document the shared Note status label mapping.'
+);
 
-const statusToneFunction = extractCssRange(mainWebviewSource, 'function statusToneClass', 'function humanizeFileAccessMode');
-const noteStatusFunction = extractCssRange(mainWebviewSource, 'function humanizeNoteStatus', 'function humanizeStatus');
+const statusToneFunction = extractCssRange(
+  statusPresentationSource,
+  'export function canvasStatusToneClass',
+  'export function humanizeCanvasNodeStatus'
+);
+const noteStatusFunction = extractCssRange(
+  statusPresentationSource,
+  'function humanizeNoteStatus',
+  'export function humanizeCanvasStatus'
+);
+assert.match(
+  mainWebviewSource,
+  /canvasStatusToneClass as statusToneClass[\s\S]*humanizeCanvasNodeStatus[\s\S]*humanizeCanvasStatus as humanizeStatus/u,
+  'Main webview should use the shared canvas node status presentation mapping.'
+);
+assert.doesNotMatch(
+  mainWebviewSource,
+  /function (?:humanizeCanvasNodeStatus|humanizeNoteStatus|humanizeStatus|statusToneClass)\(/u,
+  'Main webview should not keep local status text or tone mappings that can drift.'
+);
 assert.match(
   statusToneFunction,
   /case 'launching':\s*case 'starting':\s*return 'tone-starting';/u,
@@ -162,6 +197,11 @@ assert.match(
   statusToneFunction,
   /case 'history-restored':\s*return 'tone-history';/u,
   'History restored status should map to debug step-back tone.'
+);
+assert.match(
+  statusToneFunction,
+  /case 'resume-failed':\s*case 'error':\s*case 'missing':\s*case 'not-file':\s*case 'unsupported-extension':\s*case 'unreadable':\s*case 'dirty-conflict':\s*return 'tone-error';/u,
+  'Note file abnormal statuses should map to the error tone instead of falling back to idle.'
 );
 assert.match(
   noteStatusFunction,

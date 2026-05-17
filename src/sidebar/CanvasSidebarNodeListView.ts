@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 
 import { stripTerminalControlSequences } from '../common/agentActivityHeuristics';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
+import {
+  canvasNodeStatusToneClass,
+  humanizeCanvasNodeStatus
+} from '../common/canvasNodeStatusPresentation';
 import type { CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
@@ -333,7 +337,7 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
     .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
-      const statusLabel = humanizeNodeStatus(node);
+      const statusLabel = humanizeCanvasNodeStatus(node);
       const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
       const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
@@ -358,7 +362,7 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         tooltip: tooltipLines.join('\n'),
         status: secondLine,
         statusLabel,
-        statusTone: statusToneClassForNode(node),
+        statusTone: canvasNodeStatusToneClass(node),
         subtitlePrefix,
         summary,
         markerColor: colorForCanvasNodeKind(node.kind),
@@ -400,125 +404,6 @@ function fallbackNodeLabel(kind: CanvasNodeKind, nodeId: string): string {
 
 function humanizeAgentProvider(provider: 'codex' | 'claude' | undefined): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
-}
-
-function humanizeNodeStatus(node: CanvasNodeSummary): string {
-  if (node.kind === 'note') {
-    return humanizeNoteStatus(node);
-  }
-
-  return humanizeStatus(node.status);
-}
-
-function humanizeNoteStatus(node: CanvasNodeSummary): string {
-  const contentSource = node.metadata?.note?.contentSource;
-  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
-    return '已关联文件';
-  }
-
-  if (node.status === 'ready') {
-    return '普通笔记';
-  }
-
-  return humanizeStatus(node.status);
-}
-
-function humanizeStatus(status: string): string {
-  switch (status) {
-    case 'linked':
-      return '已关联';
-    case 'idle':
-      return '未启动';
-    case 'launching':
-    case 'starting':
-      return '启动中';
-    case 'waiting-input':
-      return '等待输入';
-    case 'resuming':
-      return '恢复中';
-    case 'resume-ready':
-      return '可恢复';
-    case 'reattaching':
-      return '重连中';
-    case 'resume-failed':
-      return '恢复失败';
-    case 'stopping':
-      return '停止中';
-    case 'stopped':
-      return '已停止';
-    case 'running':
-      return '运行中';
-    case 'draft':
-      return '草稿';
-    case 'ready':
-      return '就绪';
-    case 'live':
-      return '活动';
-    case 'closed':
-      return '已关闭';
-    case 'error':
-      return '失败';
-    case 'cancelled':
-      return '已停止';
-    case 'interrupted':
-      return '已中断';
-    case 'history-restored':
-      return '历史恢复';
-    case 'missing':
-      return '文件缺失';
-    case 'not-file':
-      return '不是文件';
-    case 'unsupported-extension':
-      return '格式不支持';
-    case 'unreadable':
-      return '无法读取';
-    case 'dirty-conflict':
-      return '编辑冲突';
-    default:
-      return status;
-  }
-}
-
-function statusToneClassForNode(node: CanvasNodeSummary): string {
-  const contentSource = node.kind === 'note' ? node.metadata?.note?.contentSource : undefined;
-  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
-    return 'tone-success';
-  }
-
-  return statusToneClass(node.status);
-}
-
-function statusToneClass(status: string): string {
-  switch (status) {
-    case 'linked':
-      return 'tone-success';
-    case 'launching':
-    case 'starting':
-      return 'tone-starting';
-    case 'resuming':
-    case 'reattaching':
-      return 'tone-resuming';
-    case 'running':
-      return 'tone-running';
-    case 'live':
-    case 'waiting-input':
-    case 'resume-ready':
-      return 'tone-waiting';
-    case 'stopping':
-    case 'stopped':
-    case 'cancelled':
-      return 'tone-stopped';
-    case 'interrupted':
-    case 'closed':
-      return 'tone-disconnected';
-    case 'history-restored':
-      return 'tone-history';
-    case 'resume-failed':
-    case 'error':
-      return 'tone-error';
-    default:
-      return 'tone-idle';
-  }
 }
 
 function sanitizeSidebarNodeSummary(value: string): string {
