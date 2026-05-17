@@ -19,6 +19,9 @@ export interface CanvasSidebarNodeItemSnapshot {
   description: string;
   tooltip: string;
   status: string;
+  statusLabel: string;
+  statusTone: string;
+  subtitlePrefix?: string;
   summary: string;
   markerColor: string;
   attentionPending: boolean;
@@ -330,8 +333,9 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
     .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
-      const statusLabel = humanizeStatus(node.status);
-      const secondLine = buildSidebarNodeSecondaryText(node, statusLabel);
+      const statusLabel = humanizeNodeStatus(node);
+      const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
+      const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
       const attentionPending = canvasNodeAttentionPending(node.metadata);
       const description = secondLine;
@@ -353,6 +357,9 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         description,
         tooltip: tooltipLines.join('\n'),
         status: secondLine,
+        statusLabel,
+        statusTone: statusToneClassForNode(node),
+        subtitlePrefix,
         summary,
         markerColor: colorForCanvasNodeKind(node.kind),
         attentionPending
@@ -360,12 +367,16 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
     });
 }
 
-function buildSidebarNodeSecondaryText(node: CanvasNodeSummary, statusLabel: string): string {
+function buildSidebarNodeSecondaryText(subtitlePrefix: string | undefined, statusLabel: string): string {
+  return subtitlePrefix ? `${subtitlePrefix} · ${statusLabel}` : statusLabel;
+}
+
+function buildSidebarNodeSubtitlePrefix(node: CanvasNodeSummary): string | undefined {
   if (node.kind !== 'agent') {
-    return statusLabel;
+    return undefined;
   }
 
-  return `${humanizeAgentProvider(node.metadata?.agent?.provider)} · ${statusLabel}`;
+  return humanizeAgentProvider(node.metadata?.agent?.provider);
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {
@@ -391,12 +402,33 @@ function humanizeAgentProvider(provider: 'codex' | 'claude' | undefined): string
   return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
+function humanizeNodeStatus(node: CanvasNodeSummary): string {
+  if (node.kind === 'note') {
+    return humanizeNoteStatus(node);
+  }
+
+  return humanizeStatus(node.status);
+}
+
+function humanizeNoteStatus(node: CanvasNodeSummary): string {
+  const contentSource = node.metadata?.note?.contentSource;
+  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
+    return '已关联文件';
+  }
+
+  if (node.status === 'ready') {
+    return '普通笔记';
+  }
+
+  return humanizeStatus(node.status);
+}
+
 function humanizeStatus(status: string): string {
   switch (status) {
     case 'linked':
       return '已关联';
     case 'idle':
-      return '空闲';
+      return '未启动';
     case 'launching':
     case 'starting':
       return '启动中';
@@ -432,8 +464,60 @@ function humanizeStatus(status: string): string {
       return '已中断';
     case 'history-restored':
       return '历史恢复';
+    case 'missing':
+      return '文件缺失';
+    case 'not-file':
+      return '不是文件';
+    case 'unsupported-extension':
+      return '格式不支持';
+    case 'unreadable':
+      return '无法读取';
+    case 'dirty-conflict':
+      return '编辑冲突';
     default:
       return status;
+  }
+}
+
+function statusToneClassForNode(node: CanvasNodeSummary): string {
+  const contentSource = node.kind === 'note' ? node.metadata?.note?.contentSource : undefined;
+  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
+    return 'tone-success';
+  }
+
+  return statusToneClass(node.status);
+}
+
+function statusToneClass(status: string): string {
+  switch (status) {
+    case 'linked':
+      return 'tone-success';
+    case 'launching':
+    case 'starting':
+      return 'tone-starting';
+    case 'resuming':
+    case 'reattaching':
+      return 'tone-resuming';
+    case 'running':
+      return 'tone-running';
+    case 'live':
+    case 'waiting-input':
+    case 'resume-ready':
+      return 'tone-waiting';
+    case 'stopping':
+    case 'stopped':
+    case 'cancelled':
+      return 'tone-stopped';
+    case 'interrupted':
+    case 'closed':
+      return 'tone-disconnected';
+    case 'history-restored':
+      return 'tone-history';
+    case 'resume-failed':
+    case 'error':
+      return 'tone-error';
+    default:
+      return 'tone-idle';
   }
 }
 
@@ -671,9 +755,83 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       .node-status {
-        color: var(--row-muted);
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 4px;
         font-size: 11px;
         padding-left: 22px;
+      }
+
+      .node-status-prefix {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--row-muted);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .status-pill {
+        --status-pill-accent: var(--vscode-debugView-stateLabelForeground, var(--focus));
+        --status-pill-bg: color-mix(in srgb, var(--status-pill-accent) 18%, transparent);
+        --status-pill-border: color-mix(in srgb, var(--status-pill-accent) 42%, var(--vscode-panel-border) 58%);
+        --status-pill-fg: var(--status-pill-accent);
+        display: inline-flex;
+        min-height: 16px;
+        flex: 0 0 auto;
+        align-items: center;
+        border: 1px solid var(--status-pill-border);
+        border-radius: 6px;
+        background: var(--status-pill-bg);
+        color: var(--status-pill-fg);
+        padding: 0 5px;
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .tone-starting {
+        --status-pill-accent: var(--vscode-debugIcon-startForeground, var(--focus));
+      }
+
+      .tone-running {
+        --status-pill-accent: var(--vscode-debugIcon-startForeground, var(--vscode-debugIcon-restartForeground, var(--focus)));
+      }
+
+      .tone-resuming {
+        --status-pill-accent: var(--vscode-debugIcon-restartForeground, var(--focus));
+      }
+
+      .tone-success {
+        --status-pill-accent: var(--vscode-debugIcon-continueForeground, var(--focus));
+      }
+
+      .tone-waiting {
+        --status-pill-accent: var(--vscode-debugIcon-pauseForeground, var(--focus));
+      }
+
+      .tone-stopped {
+        --status-pill-accent: var(--vscode-debugIcon-stopForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-disconnected {
+        --status-pill-accent: var(--vscode-debugIcon-disconnectForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-history {
+        --status-pill-accent: var(--vscode-debugIcon-stepBackForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-idle {
+        --status-pill-accent: var(--vscode-debugView-stateLabelForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-error {
+        --status-pill-accent: var(
+          --vscode-debugView-exceptionLabelForeground,
+          var(--vscode-debugConsole-errorForeground, var(--vscode-errorForeground, var(--focus)))
+        );
       }
 
       .node-attention {
@@ -847,7 +1005,16 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
 
           const status = document.createElement('div');
           status.className = 'node-status';
-          status.textContent = item.status;
+          if (item.subtitlePrefix) {
+            const subtitlePrefix = document.createElement('span');
+            subtitlePrefix.className = 'node-status-prefix';
+            subtitlePrefix.textContent = item.subtitlePrefix + ' ·';
+            status.append(subtitlePrefix);
+          }
+          const statusPill = document.createElement('span');
+          statusPill.className = 'status-pill ' + item.statusTone;
+          statusPill.textContent = item.statusLabel;
+          status.append(statusPill);
           main.append(status);
 
           row.append(main);

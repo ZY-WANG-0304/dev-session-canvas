@@ -142,6 +142,7 @@ assert.match(
 );
 
 const statusToneFunction = extractCssRange(mainWebviewSource, 'function statusToneClass', 'function humanizeFileAccessMode');
+const noteStatusFunction = extractCssRange(mainWebviewSource, 'function humanizeNoteStatus', 'function humanizeStatus');
 assert.match(
   statusToneFunction,
   /case 'launching':\s*case 'starting':\s*return 'tone-starting';/u,
@@ -161,6 +162,16 @@ assert.match(
   statusToneFunction,
   /case 'history-restored':\s*return 'tone-history';/u,
   'History restored status should map to debug step-back tone.'
+);
+assert.match(
+  noteStatusFunction,
+  /contentSource\?\.kind === 'markdown-file' && contentSource\.status === 'ok'[\s\S]*?return '已关联文件';/u,
+  'Associated Markdown notes with ok source status should display as linked-file notes.'
+);
+assert.match(
+  noteStatusFunction,
+  /node\.status === 'ready'[\s\S]*?return '普通笔记';/u,
+  'Embedded ready notes should display as ordinary notes.'
 );
 
 const fileAccessStyles = extractCssRange(mainWebviewStyles, '.file-access-badge', '.file-list-tree');

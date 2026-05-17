@@ -5721,7 +5721,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
       </div>
-      <div className="node-status">状态：{humanizeStatus(data.status)}</div>
+      <div className="node-status">状态：{humanizeCanvasNodeStatus(data)}</div>
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
           {agentMetadata.liveSession
@@ -8549,6 +8549,27 @@ function canResumeAgentFromMetadataForWebview(
   return Boolean(metadata.resumeSessionId?.trim());
 }
 
+function humanizeCanvasNodeStatus(node: Pick<CanvasNodeData, 'kind' | 'status' | 'metadata'>): string {
+  if (node.kind === 'note') {
+    return humanizeNoteStatus(node);
+  }
+
+  return humanizeStatus(node.status);
+}
+
+function humanizeNoteStatus(node: Pick<CanvasNodeData, 'status' | 'metadata'>): string {
+  const contentSource = node.metadata?.note?.contentSource;
+  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
+    return '已关联文件';
+  }
+
+  if (node.status === 'ready') {
+    return '普通笔记';
+  }
+
+  return humanizeStatus(node.status);
+}
+
 function humanizeStatus(status: string): string {
   switch (status) {
     case 'linked':
@@ -8591,6 +8612,16 @@ function humanizeStatus(status: string): string {
       return '已中断';
     case 'history-restored':
       return '历史恢复';
+    case 'missing':
+      return '文件缺失';
+    case 'not-file':
+      return '不是文件';
+    case 'unsupported-extension':
+      return '格式不支持';
+    case 'unreadable':
+      return '无法读取';
+    case 'dirty-conflict':
+      return '编辑冲突';
     default:
       return status;
   }
