@@ -8554,7 +8554,7 @@ function humanizeStatus(status: string): string {
     case 'linked':
       return '已关联';
     case 'idle':
-      return '空闲';
+      return '未启动';
     case 'launching':
       return '启动中';
     case 'starting':
@@ -8602,21 +8602,25 @@ function statusToneClass(status: string): string {
       return 'tone-success';
     case 'launching':
     case 'starting':
+      return 'tone-starting';
     case 'resuming':
-    case 'running':
-    case 'live':
     case 'reattaching':
+      return 'tone-resuming';
+    case 'running':
       return 'tone-running';
+    case 'live':
     case 'waiting-input':
-      return 'tone-ready';
     case 'resume-ready':
+      return 'tone-waiting';
     case 'stopping':
     case 'stopped':
-    case 'closed':
     case 'cancelled':
+      return 'tone-stopped';
     case 'interrupted':
+    case 'closed':
+      return 'tone-disconnected';
     case 'history-restored':
-      return 'tone-warning';
+      return 'tone-history';
     case 'resume-failed':
     case 'error':
       return 'tone-error';
