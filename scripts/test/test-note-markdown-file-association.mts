@@ -217,9 +217,14 @@ assert.match(
   'Current-host canonicalization should normalize percent-encoded dropped Remote authorities.'
 );
 assert.match(
+  canonicalizeCurrentHostSource,
+  /if \(!normalizedCurrentRemoteAuthority\) \{\s*return uri;\s*\}/u,
+  'Current-host canonicalization should fail closed when the full Remote authority is unavailable.'
+);
+assert.doesNotMatch(
   panelManagerSource,
   /isVscodeRemoteUriOnCurrentHostByFileSystem|doesVscodeRemoteAuthorityMatchRemoteName|canUseNoteMarkdownWorkspacePathFallback/u,
-  'Current-host canonicalization currently keeps non-fail-closed fallbacks when full Remote authority is unavailable.'
+  'Current-host canonicalization must not fall back to remote kind, path containment, or filesystem existence.'
 );
 assert.match(
   panelManagerSource,
