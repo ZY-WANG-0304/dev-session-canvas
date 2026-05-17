@@ -7,11 +7,13 @@ import {
   type NotifierEnvironmentSnapshot,
   type NotifierExtensionModeLabel,
   type NotifierInstallRequirement,
-  type NotifierPlatformGuide
+  type NotifierPlatformGuide,
+  type NotifierPlatformGuideSection
 } from './sidebarEnvironment';
 import {
-  renderSidebarRichContent,
+  formatSidebarRichText,
   renderHighlightedSidebarCodeBlock,
+  renderSidebarRichContent,
   renderSidebarInlineCode
 } from './sidebarRichText';
 import { activationModeSupportsCallback, resolveSidebarActivationMode } from './sidebarStatus';
@@ -276,7 +278,7 @@ function renderNotesSection(snapshot: NotifierEnvironmentSnapshot): string {
     .join('');
   return `
     <div class="content">
-      <ul class="notes-list">${itemsHtml}</ul>
+      <ul class="notes-list is-outdented">${itemsHtml}</ul>
     </div>
   `;
 }
@@ -302,6 +304,7 @@ function renderPlatformSection(snapshot: NotifierEnvironmentSnapshot, platformLa
   return `
     <div class="content">
       ${renderSidebarRichContent(guide.detail, { textClassName: 'help-text' })}
+      ${renderPlatformGuideSectionList(guide.sections)}
       ${renderHintList(guide.hints)}
     </div>
   `;
@@ -311,7 +314,7 @@ function renderRequirementItem(req: NotifierInstallRequirement): string {
   return `
     <div class="setup-item">
       <div class="setup-header">
-        <span class="setup-name">${escapeHtml(req.name)}</span>
+        <h3 class="setup-name">${escapeHtml(req.name)}</h3>
         <span class="setup-badge">${escapeHtml(req.statusLabel)}</span>
       </div>
       ${renderSidebarRichContent(req.detail, { textClassName: 'setup-detail' })}
@@ -331,19 +334,46 @@ function renderAgentSection(snapshot: NotifierEnvironmentSnapshot, agentLabel: s
       ${renderSidebarRichContent(guide.detail, { textClassName: 'help-text' })}
       <p class="setup-detail">配置路径：${renderSidebarInlineCode(guide.configPath)}</p>
       ${renderHighlightedSidebarCodeBlock(guide.recommendedSnippet)}
-      ${renderHintList(guide.hints)}
+      ${renderHintList(guide.hints, { listClassName: 'is-outdented' })}
     </div>
   `;
 }
 
-function renderHintList(hints: string[] | undefined): string {
+function renderPlatformGuideSectionList(sections: NotifierPlatformGuideSection[] | undefined): string {
+  if (!sections || sections.length === 0) {
+    return '';
+  }
+
+  return `
+    <div class="platform-option-list">
+      ${sections.map((section) => renderPlatformGuideSection(section)).join('')}
+    </div>
+  `;
+}
+
+function renderPlatformGuideSection(section: NotifierPlatformGuideSection): string {
+  return `
+    <section class="platform-option">
+      <h3 class="platform-option-title">${escapeHtml(section.title)}</h3>
+      <p class="setup-detail">${formatSidebarRichText(section.detail)}</p>
+      ${renderHintList(section.hints)}
+    </section>
+  `;
+}
+
+interface HintListRenderOptions {
+  listClassName?: string;
+}
+
+function renderHintList(hints: string[] | undefined, options: HintListRenderOptions = {}): string {
   if (!hints || hints.length === 0) {
     return '';
   }
+  const className = ['hint-list', options.listClassName].filter(Boolean).join(' ');
   const itemsHtml = hints
     .map((hint) => `<li>${renderSidebarRichContent(hint, { textClassName: 'list-text' })}</li>`)
     .join('');
-  return `<ul class="hint-list">${itemsHtml}</ul>`;
+  return `<ul class="${className}">${itemsHtml}</ul>`;
 }
 
 const svgWarning = '<svg class="status-icon warning" width="16" height="16" viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" fill="currentColor"><path d="M7.56 1h.88l6.54 12.26-.44.74H1.44L1 13.26 7.56 1zM8 2.28L2.28 13H13.7L8 2.28zM8.625 12v-1h-1.25v1h1.25zm0-2V6h-1.25v4h1.25z"/></svg>';
@@ -352,11 +382,16 @@ const svgSuccess = '<svg class="status-icon success" width="16" height="16" view
 function sectionStyles(): string {
   return `
     body {
+      --notifier-sidebar-border: var(
+        --vscode-sideBarSectionHeader-border,
+        var(--vscode-widget-border, var(--vscode-panel-border, transparent))
+      );
       padding: 0;
       margin: 0;
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
-      color: var(--vscode-foreground);
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
       --sidebar-code-foreground: var(--vscode-editor-foreground, var(--vscode-foreground));
       --sidebar-code-muted: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
       --sidebar-code-keyword: #b57edc;
@@ -402,7 +437,7 @@ function sectionStyles(): string {
 
     .divider {
       height: 1px;
-      background: var(--vscode-sideBarSectionHeader-border);
+      background: var(--notifier-sidebar-border);
       margin: 12px 0;
     }
 
@@ -496,16 +531,19 @@ function sectionStyles(): string {
     }
 
     .action-button:hover {
-      background: var(--vscode-button-hoverBackground);
+      background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
     }
 
     .action-button.secondary {
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
+      background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
     }
 
     .action-button.secondary:hover {
-      background: var(--vscode-button-secondaryHoverBackground);
+      background: var(
+        --vscode-button-secondaryHoverBackground,
+        var(--vscode-button-hoverBackground, var(--vscode-button-secondaryBackground, var(--vscode-button-background)))
+      );
     }
 
     .setup-item {
@@ -513,7 +551,7 @@ function sectionStyles(): string {
     }
 
     .setup-item + .setup-item {
-      border-top: 1px solid var(--vscode-sideBarSectionHeader-border);
+      border-top: 1px solid var(--notifier-sidebar-border);
     }
 
     .setup-header {
@@ -524,12 +562,16 @@ function sectionStyles(): string {
     }
 
     .setup-name {
+      margin: 0;
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
       font-weight: 600;
       font-size: 13px;
+      line-height: 1.35;
     }
 
     .setup-badge {
       padding: 2px 6px;
+      border: 1px solid transparent;
       background: var(--vscode-badge-background);
       color: var(--vscode-badge-foreground);
       font-size: 11px;
@@ -537,8 +579,9 @@ function sectionStyles(): string {
     }
 
     .setup-badge.current {
-      background: var(--vscode-testing-iconPassed);
-      color: var(--vscode-button-foreground);
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      border-color: var(--vscode-testing-iconPassed, var(--vscode-badge-foreground));
     }
 
     .setup-detail {
@@ -560,6 +603,11 @@ function sectionStyles(): string {
       line-height: 1.5;
     }
 
+    .hint-list.is-outdented,
+    .notes-list.is-outdented {
+      padding-left: 14px;
+    }
+
     .hint-list li,
     .notes-list li {
       margin: 0 0 4px 0;
@@ -575,6 +623,31 @@ function sectionStyles(): string {
       color: inherit;
       font-size: inherit;
       line-height: inherit;
+    }
+
+    .platform-option-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .platform-option {
+      padding-top: 10px;
+      border-top: 1px solid var(--notifier-sidebar-border);
+    }
+
+    .platform-option:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .platform-option-title {
+      margin: 0 0 5px 0;
+      color: var(--vscode-foreground, var(--vscode-sideBar-foreground, var(--vscode-editor-foreground)));
+      font-family: var(--vscode-editor-font-family);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
     }
 
     .snippet-block {

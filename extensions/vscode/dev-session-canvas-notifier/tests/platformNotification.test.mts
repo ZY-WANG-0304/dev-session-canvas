@@ -106,6 +106,8 @@ assert.equal(sidebarSnapshot.installRequirements[0]?.statusLabel, '已安装');
 assert.match(sidebarSnapshot.installRequirements[0]?.hints?.join('\n') ?? '', /brew install terminal-notifier/);
 assert.equal(sidebarSnapshot.platformGuides.length, 3);
 assert.equal(sidebarSnapshot.platformGuides[0]?.platformLabel, 'macOS');
+assert.equal(sidebarSnapshot.platformGuides[0]?.sections?.[0]?.title, 'terminal-notifier');
+assert.equal(sidebarSnapshot.platformGuides[0]?.sections?.[1]?.title, 'osascript');
 assert.equal(sidebarSnapshot.platformGuides[1]?.platformLabel, 'Linux');
 assert.equal(sidebarSnapshot.platformGuides[2]?.platformLabel, 'Windows');
 assert.equal(sidebarSnapshot.agentConfigurationGuides[0]?.agentLabel, 'Codex');
@@ -123,6 +125,16 @@ assert.equal(linuxSnapshot.activationKind, 'none');
 assert.equal(linuxSnapshot.installRequirements[0]?.statusLabel, '未安装');
 assert.match(linuxSnapshot.installRequirements[0]?.hints?.join('\n') ?? '', /libnotify-bin/);
 assert.equal(linuxSnapshot.platformGuides[1]?.statusLabel, '当前平台');
+
+const macOSFallbackSnapshot = buildNotifierEnvironmentSnapshot({
+  platform: 'darwin',
+  modeLabel: 'production',
+  playSoundEnabled: true,
+  terminalNotifierAvailable: false
+});
+assert.equal(macOSFallbackSnapshot.currentRouteLabel, 'osascript');
+assert.equal(macOSFallbackSnapshot.installRequirements[0]?.name, 'terminal-notifier');
+assert.equal(macOSFallbackSnapshot.installRequirements[1]?.name, 'osascript');
 
 const downgradedLinuxResult = await launchShellInvocation(
   {

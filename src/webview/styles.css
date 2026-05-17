@@ -1412,22 +1412,32 @@ body {
 }
 
 .restricted-banner {
+  --restricted-banner-accent: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-focusBorder));
+  --restricted-banner-fg: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
   display: grid;
   gap: 4px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(245, 158, 11, 0.32);
-  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid
+    var(
+      --vscode-inputValidation-warningBorder,
+      color-mix(in srgb, var(--restricted-banner-accent) 34%, var(--vscode-panel-border) 66%)
+    );
+  background: var(
+    --vscode-inputValidation-warningBackground,
+    color-mix(in srgb, var(--restricted-banner-accent) 10%, var(--vscode-editor-background) 90%)
+  );
+  color: var(--restricted-banner-fg);
 }
 
 .restricted-banner strong {
   font-size: 13px;
-  color: #fcd34d;
+  color: var(--restricted-banner-fg);
 }
 
 .restricted-banner span {
   font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--restricted-banner-fg);
   line-height: 1.5;
 }
 
@@ -1471,7 +1481,7 @@ body {
 }
 
 .agent-bubble.state-error {
-  border-color: rgba(248, 113, 113, 0.38);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 38%, var(--vscode-panel-border) 62%);
 }
 
 .agent-bubble-header {
