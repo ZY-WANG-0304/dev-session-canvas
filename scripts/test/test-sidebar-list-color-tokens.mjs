@@ -14,6 +14,7 @@ function extractCssRuleBody(source, selector) {
 }
 
 const designSystemSource = await readFile('docs/UI.md', 'utf8');
+const statusPresentationSource = await readFile('src/common/canvasNodeStatusPresentation.ts', 'utf8');
 assert.match(
   designSystemSource,
   /Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色/u,
@@ -68,6 +69,10 @@ for (const view of sidebarListViews) {
 const nodeListSource = await readFile('src/sidebar/CanvasSidebarNodeListView.ts', 'utf8');
 const nodeRowStyles = extractCssRuleBody(nodeListSource, '.node-row');
 const sidebarStatusPillStyles = extractCssRuleBody(nodeListSource, '.status-pill');
+const sidebarStatusToneFunction = statusPresentationSource.slice(
+  statusPresentationSource.indexOf('export function canvasStatusToneClass'),
+  statusPresentationSource.indexOf('export function humanizeCanvasNodeStatus')
+);
 assert.ok(
   sidebarStatusPillStyles.includes('--status-pill-bg: color-mix(in srgb, var(--status-pill-accent) 18%, transparent);'),
   'Sidebar node list status pills should share the main status pill background recipe.'
@@ -92,15 +97,30 @@ assert.ok(
 );
 assert.match(
   nodeListSource,
+  /humanizeCanvasNodeStatus\(node\)[\s\S]*canvasNodeStatusToneClass\(node\)/u,
+  'Sidebar node list should use the shared status text and tone mapping.'
+);
+assert.doesNotMatch(
+  nodeListSource,
+  /function (?:humanizeNodeStatus|humanizeNoteStatus|humanizeStatus|statusToneClassForNode|statusToneClass)\(/u,
+  'Sidebar node list should not keep local status text or tone mappings that can drift.'
+);
+assert.match(
+  sidebarStatusToneFunction,
+  /case 'resume-failed':\s*case 'error':\s*case 'missing':\s*case 'not-file':\s*case 'unsupported-extension':\s*case 'unreadable':\s*case 'dirty-conflict':\s*return 'tone-error';/u,
+  'Sidebar Note file abnormal statuses should map to the error tone instead of falling back to idle.'
+);
+assert.match(
+  statusPresentationSource,
   /case 'idle':\s*return '未启动';/u,
   'Sidebar node list should use the same idle status label as the canvas.'
 );
 assert.ok(
-  nodeListSource.includes("return '已关联文件';"),
+  statusPresentationSource.includes("return '已关联文件';"),
   'Sidebar node list should label ok associated Markdown notes as linked-file notes.'
 );
 assert.ok(
-  nodeListSource.includes("return '普通笔记';"),
+  statusPresentationSource.includes("return '普通笔记';"),
   'Sidebar node list should label embedded ready notes as ordinary notes.'
 );
 
