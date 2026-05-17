@@ -4,8 +4,8 @@ type CanvasStatusPresentationNode = Pick<CanvasNodeSummary, 'kind' | 'status' | 
 
 export function canvasNodeStatusToneClass(node: CanvasStatusPresentationNode): string {
   const contentSource = node.kind === 'note' ? node.metadata?.note?.contentSource : undefined;
-  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
-    return 'tone-success';
+  if (contentSource?.kind === 'markdown-file') {
+    return contentSource.status === 'ok' ? 'tone-success' : canvasStatusToneClass(contentSource.status);
   }
 
   return canvasStatusToneClass(node.status);
@@ -59,8 +59,8 @@ export function humanizeCanvasNodeStatus(node: CanvasStatusPresentationNode): st
 
 function humanizeNoteStatus(node: CanvasStatusPresentationNode): string {
   const contentSource = node.metadata?.note?.contentSource;
-  if (contentSource?.kind === 'markdown-file' && contentSource.status === 'ok') {
-    return '已关联文件';
+  if (contentSource?.kind === 'markdown-file') {
+    return contentSource.status === 'ok' ? '已关联文件' : humanizeCanvasStatus(contentSource.status);
   }
 
   if (node.status === 'ready') {
