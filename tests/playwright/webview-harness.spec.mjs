@@ -2001,41 +2001,11 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
-test('agent restart split button resumes by default and can start a new session', async ({ page }) => {
+test('agent restart actions can start a new session and resume the original session', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
   await clearPostedMessages(page);
 
-  await performTestDomAction(page, {
-    kind: 'clickNodeActionButton',
-    nodeId: 'agent-1',
-    label: '重启'
-  });
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/startExecutionSession');
-
-        return message
-          ? JSON.stringify({
-              provider: message.payload.provider,
-              resume: message.payload.resume === true
-            })
-          : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        provider: 'codex',
-        resume: true
-      })
-    );
-
-  await clearPostedMessages(page);
-  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
   await nodeById(page, 'agent-1').locator('[data-agent-restart-action="new-session"]').click();
 
   await expect
@@ -2059,44 +2029,47 @@ test('agent restart split button resumes by default and can start a new session'
         resume: false
       })
     );
+
+  await clearPostedMessages(page);
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-action="resume"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: true
+      })
+    );
 });
 
-test('agent restart split menu keeps option width close to the label copy', async ({ page }) => {
+test('agent restart actions render inline without a dropdown', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
 
-  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
+  await expect(agentNode.locator('.action-split-button-menu')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeVisible();
 
-  const metrics = await page.evaluate(() => {
-    const items = Array.from(
-      document.querySelectorAll('[data-node-id="agent-1"] .action-split-button-menu-item')
-    );
-    if (items.length === 0 || !items.every((item) => item instanceof HTMLElement)) {
-      return null;
-    }
-
-    return items.map((item) => {
-      const styles = getComputedStyle(item);
-      const range = document.createRange();
-      range.selectNodeContents(item);
-      const textWidth = range.getBoundingClientRect().width;
-      return {
-        label: item.textContent?.trim() ?? '',
-        slack:
-          item.clientWidth -
-          Number.parseFloat(styles.paddingLeft) -
-          Number.parseFloat(styles.paddingRight) -
-          textWidth,
-        whiteSpace: styles.whiteSpace
-      };
-    });
-  });
-
-  expect(metrics).not.toBeNull();
-  for (const metric of metrics) {
-    expect(metric.whiteSpace).toBe('nowrap');
-    expect(metric.slack).toBeLessThan(20);
-  }
+  const actionLabels = await agentNode.locator('.action-button-group .action-button').evaluateAll((buttons) =>
+    buttons.map((button) => button.textContent?.trim() ?? '')
+  );
+  expect(actionLabels).toEqual(['新建', '重启']);
 });
 
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
@@ -2107,7 +2080,8 @@ test('agent restart action falls back to start button when no resumable session 
   const agentNode = nodeById(page, 'agent-1');
   await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
   await expect(agentNode.locator('button:has-text("重启")')).toHaveCount(0);
-  await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toHaveCount(0);
 
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
