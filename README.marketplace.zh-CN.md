@@ -10,13 +10,6 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 产品定位
-
-- 它首先是 VS Code 内的 `AI workbench with canvas`，而不是一个只有 AI 点缀的可视化工具
-- `Visualization` 对应的是交互载体：用画布承载多个执行对象与它们的全局关系
-- `AI` 对应的是主要使用场景：面向多 Agent 协作开发，而不是单轮 chat-first 体验
-- `Machine Learning` 对应的是工作台属性：面向 AI/ML 工具链集成，强调它与 VS Code 原生编辑器、终端和插件生态协同工作
-
 ## 核心功能
 
 - 在面板或编辑区打开主画布
