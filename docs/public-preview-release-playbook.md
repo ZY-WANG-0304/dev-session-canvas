@@ -1,11 +1,11 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.0`。当前版本范围已经收口到“相对 `0.9.1`，把 Note 关联 Markdown 文件、拖拽创建关联 Note、磁盘文件权威同步、storage-backed 冲突草稿、Markdown 路径复制、编辑态行号修正、notifier 版本对齐和发布文案更新作为新一轮公开 `Preview` 里程碑更新”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.1`。当前版本范围已经收口到“相对 `0.10.0`，把关联 Markdown Note 模板保存策略、Remote 拖拽 host 边界、YAML metadata 浮层、安全图片预览、停止后 Agent `新建` / `重启` 动作、UI / notifier 视觉收口、发布脚本重组与 Marketplace README 英文默认文案作为同一 `0.10.x` Preview 里程碑的收口更新”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
 - Marketplace listing 正文：`README.marketplace.md`（引用 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
-- Marketplace listing 英文对应版：`README.marketplace.en.md`（仅作仓库内英文对应文案，不作为默认打包输入）
+- Marketplace listing 中文对应版：`README.marketplace.zh-CN.md`（仅作仓库内中文对应文案，不作为默认打包输入）
 - 仓库 README 默认英文：`README.md`（引用 `images/marketplace/canvas-overview.gif`）
 - 仓库 README 中文对应版：`README.zh-CN.md`（引用 `images/marketplace/canvas-overview.gif`）
 - release notes：`CHANGELOG.md`
@@ -17,7 +17,7 @@
 
 ## Marketplace listing 定稿口径
 
-当前 listing 统一使用中文默认版 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。新增的 `README.marketplace.en.md` 仅作为仓库内英文对应版本保留，不改变默认 Marketplace 打包入口。
+当前 listing 统一使用英文默认版 `README.marketplace.md`，不再直接复用仓库根目录 `README.md`。`README.marketplace.zh-CN.md` 仅作为仓库内中文对应版本保留，不改变默认 Marketplace 打包入口。
 
 当前 `npm run package:vsix` 会在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。
 打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
@@ -31,13 +31,13 @@
 
 ## release notes 定稿口径
 
-当前 `0.10.0` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
+当前 `0.10.1` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.0 - Preview Note Markdown Association Update`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.1 - Preview Note Markdown Polish Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：普通 Note 保存为关联 Markdown 文件、空白画布拖拽 `.md` / `.markdown` 文件创建关联 Note、磁盘文件权威同步、外部保存刷新、基于 revision 的冲突保护、storage-backed 冲突草稿、重新加载 / 覆盖文件 / 复制草稿恢复路径、路径复制、编辑态行号修正、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
+- release notes 应覆盖以下当前已确认范围：关联 Markdown Note 模板保存策略、模板应用缺失 / 冲突处理、YAML metadata 浮层、安全 Markdown 图片预览、Remote Markdown 拖拽 host 准入与 canonical 身份、关联路径展示、停止后 Agent `新建` / `重启` 动作、UI 状态颜色与 notifier sidebar 收口、脚本目录重组、发布失败阻断、Marketplace README 英文默认、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -45,33 +45,33 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.10.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.9.1` 升级到 `0.10.0` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
+1. 当前目标版本为 `0.10.1`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.10.0` 升级到 `0.10.1` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
-4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
+4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
 5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.10.0` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.10.1` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
-2. 关注后续 `0.10.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
+2. 关注后续更高的 `0.10.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
 3. 若确需回退，以重新安装目标版本并重新验证工作区状态为准；当前不承诺 `Preview` 版本之间的回退兼容。
 
 ### 维护者侧回滚
 
 若发布后发现 P0 / P1 blocker，默认按以下顺序处理：
 
-1. 优先评估能否在短时间内发布后续 `0.10.x` hotfix。
+1. 优先评估能否在短时间内发布后续更高的 `0.10.x` hotfix。
 2. 若短时间内无法修复，且当前版本会阻塞主路径使用或引发宿主崩溃，再考虑临时下架当前版本。
 3. 无论选择 hotfix 还是临时下架，都需要同步更新 GitHub issue、`docs/support.md` 与对外说明，避免用户只看到失真状态。
 
 ## 截图策略
 
-当前 `0.10.0` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.10.1` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -116,21 +116,26 @@
 
 ## 当前验证备注
 
-截至 `2026-05-14`，当前 `0.10.0` 发布准备工作树已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行工作树上可打包，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 复跑：
+截至 `2026-05-18`，当前 `0.10.1` 发布准备工作树已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行工作树上通过 targeted 回归，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
 
 - `npm run typecheck` 通过
 - `npm run build` 通过
 - `npm run build:notifier` 通过
+- `npm run test:note-markdown-front-matter` 通过
 - `npm run test:note-markdown-file-association` 通过
-- `npm run test:notifier-source` 通过（platform notification、sidebar rich text、sidebar status）
-- `npm run test:webview -- --grep "ordinary note empty|associated markdown|missing associated markdown|ordinary note save-as-markdown|dropping markdown"` 通过（16 个 Playwright webview 用例）
-- `npm audit` 通过（0 vulnerabilities）
-- `npm run validate:clean-checkout:vsix -- --ref HEAD` 通过；隔离 clean checkout 生成 `dev-session-canvas-0.10.0.vsix`（114 个文件，约 3.27 MB），并完成 packaged-payload smoke
-- `npm run package:vsix` 已在当前 `0.10.0` 发布准备工作树生成 `dev-session-canvas-0.10.0.vsix`；打包日志已打印 VSCE README doc ref，确认 `README.marketplace.md` 中 3 个相对链接会按当前 HEAD 重写，并确认最终 VSIX 包含 114 个文件、约 3.27 MB。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已在当前 `0.10.0` 发布准备工作树生成 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.10.0.vsix`；打包日志已打印 VSCE README doc ref，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 90.78 KB 的 VSIX。发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- `npm run test:canvas-templates` 通过
+- `npm run test:agent-launch-presets` 通过
+- `npm run test:notifier-source` 通过（platform notification、sidebar rich text、sidebar status、sidebar view source）
+- `npm run test:publish-marketplaces` 通过
+- `npm run test:extension-manifest` 通过
+- `npm run test:sidebar-list-colors` 通过
+- `npm run test:theme-color-tokens` 通过
+- `npm run test:package-vsix-command` 通过
+- `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.1` VSIX 文件名与双市场发布命令
+- `npm run test:webview -- --grep "safe images|YAML metadata|original line numbers|agent restart|associated Markdown Note templates|associated markdown"` 通过（19 个 Playwright webview 用例）
 - `git diff --check` 通过
 
-注：上述验证已在 Marketplace 搜索优化提交（`eecd2c9`）之后重新执行，覆盖了 `package.json` keywords/categories、`package.nls.json` displayName/description 和 README 文件结构变更后的完整打包链路。此前在 `74824fd` 上的验证记录仅作为搜索优化前的历史证据保留，不代表当前 head 的发布验证。
+注：本轮 `README.marketplace.md` 默认语言改为英文，并新增 `README.marketplace.zh-CN.md` 作为仓库内中文对应版。真正发布前仍需在已经合入 `main` 的最终 ref 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，确认 README 相对链接改写、VSIX 文件数 / 大小和 packaged-payload smoke 均与最终发布 ref 一致。
 
 ## 发布命令
 
@@ -152,7 +157,7 @@
 
 注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须确保统一入口重新执行过打包，或在使用 `--skip-package` 时已经手工确认当前 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
-若最终版本号不是 `0.10.0`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
+若最终版本号不是 `0.10.1`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
 
 ## publish 后补 tag
 
@@ -160,15 +165,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.10.0
-    git push origin v0.10.0
+    git tag v0.10.1
+    git push origin v0.10.1
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.10.0 <final-ref-or-sha>
-    git push origin v0.10.0
+    git tag v0.10.1 <final-ref-or-sha>
+    git push origin v0.10.1
 
-若最终版本号不是 `0.10.0`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.10.1`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 

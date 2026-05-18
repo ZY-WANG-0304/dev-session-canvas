@@ -90,7 +90,7 @@
 
 确认当前脚本清单；然后根据最终目录方案创建新目录并移动文件。完成后，再执行：
 
-    rg -n "scripts/[A-Za-z0-9_.-]+\\.(mjs|py|cjs|mts)" README.md README.zh-CN.md README.marketplace.md README.marketplace.en.md docs package.json extensions src tests -S
+    rg -n "scripts/[A-Za-z0-9_.-]+\\.(mjs|py|cjs|mts)" README.md README.zh-CN.md README.marketplace.md README.marketplace.zh-CN.md docs package.json extensions src tests -S
 
 检查还残留哪些旧路径；最后运行 npm 帮助命令和关键测试入口，确认路径更新后仍能执行。
 

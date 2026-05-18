@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.10.1 - Preview Note Markdown Polish Update
+
+相对 `0.10.0`，`0.10.1` 是同一公开 `Preview` 里程碑下的收口更新，重点补齐关联 Markdown Note 在模板、Remote SSH 拖拽、metadata 预览、图片预览和路径展示上的边界，并把停止后 Agent 的新建 / 重启动作、UI 状态颜色、双市场发布入口和 Marketplace 英文默认文案一起收口。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 关联 Markdown Note 保存为模板时新增逐节点策略：保存为普通 Note 内容快照、仅保留 workspace 相对路径、或保留 workspace 相对路径和文件内容
+- 应用含关联 Markdown Note 的模板时，缺失文件会在节点内显示缺失状态；路径加内容策略遇到已有不同内容时进入冲突恢复，不静默覆盖 workspace 文件
+- Markdown 阅读态支持 YAML front matter：合法 metadata 默认隐藏正文前置块并通过标题栏浮层展示摘要，解析失败时保留原文并给出 warning
+- Markdown 图片预览支持安全 `https:`、受限 `data:image/*;base64`、workspace 相对图片和关联 Markdown 文件相对图片；不支持的 scheme、绝对路径或越界路径 fail closed
+- Remote Markdown 拖拽先通过当前 host authority 准入，再进入读写和 watcher 流程；同 host 资源收敛为统一身份，不同设备或无法确认当前 host 时直接拒绝
+- 关联 Markdown 路径展示与拖拽标题继续收口：当前 host 下隐藏 raw Remote 前缀，复制路径使用用户可见的人类可读路径，拖拽标题可按配置保留扩展名
+- 停止后的 Agent 节点在存在可信恢复上下文时显示并列的 `新建` 与 `重启` 动作，分别对应 fresh start 与恢复当前节点原会话
+- UI 与发布链路补齐默认 panel 激活、执行节点状态胶囊、侧栏列表颜色、notifier sidebar 样式、脚本目录重组、打包失败阻断发布，以及 Marketplace README 默认语言改为英文
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 需要复用关联 Markdown Note 布局时，优先在保存模板时显式选择每个关联 Note 的保存策略；团队约定文件入口优先使用“仅保留 workspace 相对路径”，初始化文档脚手架才使用“路径 + 内容”
+- 使用 Markdown metadata 时，把 YAML front matter 放在文件开头；解析失败会保守保留原文，不会把未确认 metadata 写成已生效状态
+- 在 Remote SSH / WSL / Dev Container 中拖拽 Markdown 文件时，只拖入当前 host 可确认的文件；不同 Remote 或无法确认当前 host 的资源会被拒绝，以避免跨设备误关联
+- 停止 Agent 后，需要新一轮干净会话时点 `新建`；需要回到当前节点刚停止的会话时点 `重启`
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- Markdown metadata 只识别文件开头的 YAML front matter；解析失败时不隐藏原文，也不把 metadata 当作可靠状态
+- Markdown 图片预览只做安全只读展示，不引入图片上传、图片编辑、附件管理或任意本地绝对路径访问
+- Remote Markdown 拖拽在无法确认当前完整 host authority 时会 fail closed；这可能拒绝部分理论上可读但身份不清的资源
+- 模板仍只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.0` 升级到 `0.10.1` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.1`，包含 sidebar 样式 / 文案收口，但不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.10.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.0 - Preview Note Markdown Association Update
 
 相对 `0.9.1`，`0.10.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 `Note` 节点从画布内 Markdown 工作表面扩展到可关联 workspace Markdown 文件：普通 Note 可以保存为 `.md` 文件后继续作为 Note 编辑，`.md` / `.markdown` 文件可以拖入空白画布创建关联 Note，关联 Note 以磁盘文件为权威并支持打开文件、复制路径、外部保存刷新、缺失提示与并发冲突恢复。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
