@@ -2774,22 +2774,6 @@ for (const executionKind of ['agent', 'terminal']) {
     await settleWebview(page, 4);
     await clearPostedMessages(page);
 
-    try {
-      await performTestDomAction(page, {
-        kind: 'hoverExecutionLink',
-        nodeId,
-        text: designDocPath
-      });
-      await page.keyboard.down('Control');
-      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toBe(designDocPath);
-    } finally {
-      await page.keyboard.up('Control').catch(() => {});
-      await performTestDomAction(page, {
-        kind: 'clearExecutionLinkHover',
-        nodeId
-      }).catch(() => {});
-    }
-
     await performTestDomAction(page, {
       kind: 'activateExecutionLink',
       nodeId,

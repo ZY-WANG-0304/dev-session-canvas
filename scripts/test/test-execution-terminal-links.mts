@@ -54,6 +54,23 @@ assert.deepEqual(
 assert.equal(detectExecutionTerminalFallbackPathLink('文档/设计.md')?.path, '文档/设计.md');
 assert.equal(shouldSuppressExecutionTerminalWordLink('文档/设计.md'), false);
 assert.equal(shouldSuppressExecutionTerminalWordLink('设计.md'), false);
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('项目v2/docs/foo.md', 'posix').map((link) => link.text),
+  ['项目v2/docs/foo.md']
+);
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('第1章/src/index.ts', 'posix').map((link) => link.text),
+  ['第1章/src/index.ts']
+);
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('project文档/docs/foo.md', 'posix').map((link) => link.text),
+  ['project文档/docs/foo.md']
+);
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('设计文档：“docs/foo.md”。', 'posix').map((link) => link.text),
+  ['docs/foo.md']
+);
+assert.deepEqual(detectExecutionTerminalPathLinks('文档/需求：方案.md', 'posix'), []);
 assert.equal(shouldSuppressExecutionTerminalWordLink('相关改动：'), true);
 assert.equal(shouldSuppressExecutionTerminalWordLink('普通中文词'), true);
 

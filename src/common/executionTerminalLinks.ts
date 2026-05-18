@@ -187,10 +187,10 @@ export function removeExecutionTerminalLinkQueryString(value: string): string {
 }
 
 export const EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS =
-  '\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65';
+  '\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65';
 const cjkPunctuationRegex = new RegExp(`[${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]`);
 const cjkIdeographRegex = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/;
-const asciiAlphaNumericRegex = /[a-zA-Z\d]/;
+const cjkProsePrefixBeforeAsciiPathRegex = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF][a-zA-Z][a-zA-Z._-]*$/;
 const fileLikeWordRegex = /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}(?::\d+(?::\d+)?)?$/;
 const linkWithSuffixPathCharacters = new RegExp(
   `(?<path>(?:file:\\/\\/\\/)?[^\\s\\|<>\\[\\({${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}][^\\s\\|<>${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]*)$`
@@ -228,12 +228,12 @@ function isFileLikeExecutionTerminalWord(value: string): boolean {
 const enum RegexPathConstants {
   PathPrefix = '(?:\\.\\.?|\\~|file:\\/\\/)',
   PathSeparatorClause = '\\/',
-  ExcludedPathCharactersClause = '[^\\0<>\\?\\s!`&*()\'":;\\\\\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
-  ExcludedStartPathCharactersClause = '[^\\0<>\\?\\s!`&*()\\[\\]\'":;\\\\\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
+  ExcludedPathCharactersClause = '[^\\0<>\\?\\s!`&*()\'":;\\\\\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
+  ExcludedStartPathCharactersClause = '[^\\0<>\\?\\s!`&*()\\[\\]\'":;\\\\\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
   WinOtherPathPrefix = '\\.\\.?|\\~',
   WinPathSeparatorClause = '(?:\\\\|\\/)',
-  WinExcludedPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\'":;\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
-  WinExcludedStartPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\\[\\]\'":;\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]'
+  WinExcludedPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\'":;\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
+  WinExcludedStartPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\\[\\]\'":;\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]'
 }
 
 const unixLocalLinkClause =
@@ -320,6 +320,10 @@ function isValidParsedExecutionTerminalLink(
     return false;
   }
 
+  if (isTruncatedBeforeInternalCjkPunctuation(line, link.path.index + link.path.text.length)) {
+    return false;
+  }
+
   return !hasProsePrefixedRelativePath(link.path.text, style);
 }
 
@@ -349,7 +353,23 @@ function hasProsePrefixedRelativePath(
   }
 
   const firstSegment = pathText.slice(0, firstSeparatorIndex);
-  return cjkIdeographRegex.test(firstSegment) && asciiAlphaNumericRegex.test(firstSegment);
+  return cjkProsePrefixBeforeAsciiPathRegex.test(firstSegment);
+}
+
+function isTruncatedBeforeInternalCjkPunctuation(line: string, endIndexExclusive: number): boolean {
+  const next = line[endIndexExclusive];
+  if (!next || !cjkPunctuationRegex.test(next)) {
+    return false;
+  }
+
+  const rest = line.slice(endIndexExclusive + 1);
+  if (!rest) {
+    return false;
+  }
+
+  const nextBoundaryIndex = rest.search(/[\s"'`,;=\[\(\{<]/);
+  const nextSegment = nextBoundaryIndex < 0 ? rest : rest.slice(0, nextBoundaryIndex);
+  return /[\\/]/.test(nextSegment) || /\.[a-zA-Z\d]{1,16}(?=$|[^\w])/u.test(nextSegment);
 }
 
 function hasExplicitExecutionTerminalPathPrefix(
