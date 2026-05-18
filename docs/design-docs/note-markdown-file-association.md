@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-05-16
+updated_at: 2026-05-17
 ---
 
 # Note 与 Markdown 文件关联
@@ -211,7 +211,7 @@ interface NoteNodeMetadata {
 - Title 下方显示 subtitle，内容为 `displayPath`。
 - subtitle 不显示 raw `vscode-remote://...`；raw `resourceUri` 只作为内部身份保存。
 - workspace 内文件优先显示 workspace-relative path：单根 workspace 显示 `docs/plan.md`，多根 workspace 显示 `workspace-name/docs/plan.md`，workspace root 下文件只显示文件名。
-- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 资源只有在资源 URI 与 workspace root URI 可比较完整 scheme + authority 且目标路径可相对解析时，才显示 workspace 相对路径。若只能拿到 `vscode.env.remoteName` 这类 remote kind，不能据此判定 `ssh-remote+dev_labs` 与 `ssh-remote+prod` 是否同一台设备，必须保留轻量前缀，例如 `ssh:dev_labs · ~/projects/foo/plan.md`，且不暴露 `ssh-remote+dev_labs`。
+- workspace 外文件显示完整人类可读路径：当前用户 home 下显示 `~/projects/foo/plan.md`，其他绝对路径显示 `/mnt/data/foo/plan.md`；Remote 资源的“当前宿主”判断与 workspace containment 分离：Host 优先通过当前 Webview 的 `asWebviewUri(file://...)` 结果推断完整 Remote authority，并只在 normalize 后的资源 URI authority 与该值一致时视为当前 Extension Host；这一步必须兼容 `ssh-remote%2Bdev_labs` 和 `ssh-remote+dev_labs` 这类编码差异，也必须兼容 Webview resource host 中 `vscode-remote%2Bssh-002dremote-...` 这种 percent-encoded separator。拖拽准入先分成 `same-workspace`、`same-host-outside-workspace`、`foreign-host` 和 `unknown-current-host`：同 workspace 文件允许创建并显示 workspace-relative path；同设备但 workspace 外文件允许创建并显示完整人类可读路径；不同设备或无法确认当前完整 Remote authority 时 fail closed，直接拒绝 drop，不进入 read/stat/write/watcher 流程。确认属于当前 Host 后，`resourceUri` 可以继续收敛并持久化为 canonical `file:` 身份，不保留 raw `vscode-remote:` 供每次重新计算。若完整 authority 暂时无法从 Webview resource URI 推断，Host 必须 fail closed：保留原 `vscode-remote:` 身份和 remote 前缀，不基于 workspace path containment、`vscode.env.remoteName` 或当前文件系统存在性做同设备推断；等首次成功推断完整 authority 后，再触发 host-side refresh / watcher resync，把确认属于当前 Host 的旧 `vscode-remote:` 资源收敛为同一个 `file:` 身份。同时诊断必须记录 probe URI、current Remote authority、raw/normalized dropped authority、准入分类与 canonical URI，便于追踪启动期与 Webview 就绪后的判定差异。不能只因为 remote kind 相同就判定同一设备；例如 `ssh-remote+dev_labs` 与 `ssh-remote+prod` 仍应优先通过完整 authority 匹配。这个 current Host canonicalization 不只用于新 drop，也必须用于已有 `resourceUri` 的去重 key、保存刷新、watcher 和后续状态更新，避免同一 Markdown 文件出现双身份。
 - 长路径不在 Host 或持久化字段中按字符数预截断；subtitle 与 Agent / Terminal 一样交给标题栏布局做单行 ellipsis，实际溢出时 hover tooltip 显示同一条完整人类可读路径。
 - modal、warning message 或错误提示中引用关联文件路径时，使用与 subtitle 相同的 `displayPath` 规则，避免在提示中显示 raw URI。
 - subtitle 不使用链接视觉：不使用 link color、下划线或 pointer cursor；打开文件仍通过按钮或菜单完成。
@@ -337,7 +337,7 @@ Workspace Trust：
 17. 同一个 Markdown 文件在一次拖拽中以多个资源通道重复上报，或 Host 在异步处理期间收到重复 drop 消息时，本次用户动作只创建一个关联 `Note`。
 18. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
 19. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
-20. Remote 场景下，Host 无法访问的拖拽资源 fail closed；workspace 外但 Host 可访问的 Markdown 文件可以关联。
+20. Remote 场景下，拖拽资源必须先通过 current-host 准入：同 workspace 或同设备 workspace 外 Markdown 可以关联；不同设备或无法确认完整 current Remote authority 时直接拒绝创建，即使底层 `vscode.workspace.fs` 可能可读也不能用“可访问”替代“属于当前设备”的产品规则。
 21. `npm run typecheck` 通过。
 22. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告、拖拽创建和 YAML metadata popover 的 Playwright / smoke 或纯函数测试通过。
 
@@ -377,3 +377,8 @@ Workspace Trust：
 - `npm run test:note-markdown-file-association` 通过，覆盖 Remote 路径显示需要完整 scheme + authority 才能判定同一设备；只有 remote kind 或 file-scheme workspace root 时按无法判定处理，保留 `ssh:设备id` 前缀且不参与 workspace-relative path 计算。
 - `npm run typecheck` 通过。
 - `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check` 通过；本轮覆盖拖拽创建关联 Markdown `Note` 时默认保留完整文件名作为 title、开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后去掉 Markdown 扩展名，以及配置项 manifest / 本地化文案存在且默认值为 `false`。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 与 `npm run build` 通过；本轮覆盖 Host 从 Webview resource URI 推断完整 Remote authority、当前 Remote authority 可独立于 workspace containment 隐藏 `ssh:设备id` 前缀、不同 Remote authority 继续保留前缀，且不回退到只比较 `ssh-remote` 这类 remote kind。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 与 `npm run build` 通过；本轮复核已有 `vscode-remote:` 关联 Note 与新 drop 得到的 `file:` URI 会共用 current Host canonical resource key，保存刷新与 watcher 入口也使用同一 canonical URI，并在刷新/写回状态时把当前 Host `resourceUri` 收敛到 canonical 身份。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 与 `npm run build` 通过；本轮补充 Remote authority normalize，覆盖 `ssh-remote%2Bdev_labs` 与 `ssh-remote+dev_labs` 的同源匹配；完整 authority 不可得时继续 fail closed，禁止 workspace-contained / same remote kind + filesystem existence fallback，并补充首次成功推断 current Remote authority 后主动触发 host-side refresh / watcher resync 以及 Markdown 诊断导出的回归断言。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 与 `npm run build` 通过；本轮根据导出诊断补齐 Webview probe authority 的 percent decode，覆盖 `vscode-remote%2Bssh-002dremote-002bdev-005flabs.vscode-resource...` 能正确提取为 `ssh-remote+dev_labs`。
+- `npm run test:note-markdown-file-association`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 与 `npm run build` 通过；本轮补齐拖拽准入分类，覆盖 drop 入口在 read/stat/write 前先区分 same-workspace、same-host-outside-workspace、foreign-host 与 unknown-current-host，foreign-host / unknown-current-host 直接拒绝，不再让 raw `vscode-remote:` 进入文件流程。

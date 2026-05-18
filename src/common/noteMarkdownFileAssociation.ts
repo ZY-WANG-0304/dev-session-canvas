@@ -1,6 +1,8 @@
 import * as path from 'path';
 
 const NOTE_MARKDOWN_FILE_EXTENSIONS = new Set(['.md', '.markdown']);
+const VSCODE_REMOTE_SCHEME = 'vscode-remote';
+const WEBVIEW_RESOURCE_AUTHORITY_SUFFIX = '.vscode-resource.vscode-cdn.net';
 const WINDOWS_RESERVED_FILE_NAMES = new Set([
   'con',
   'prn',
@@ -131,27 +133,66 @@ export function formatNoteMarkdownRemoteAuthorityPrefix(
 
 export function shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
   resource: NoteMarkdownUriIdentity,
-  workspaceRoots: readonly NoteMarkdownUriIdentity[]
+  workspaceRoots: readonly NoteMarkdownUriIdentity[],
+  currentRemoteAuthority?: string
 ): boolean {
   if (resource.scheme === 'file') {
     return false;
   }
 
+  const normalizedCurrentRemoteAuthority = normalizeNoteMarkdownAuthority(currentRemoteAuthority);
+  if (resource.scheme === VSCODE_REMOTE_SCHEME && normalizedCurrentRemoteAuthority) {
+    if (normalizeNoteMarkdownAuthority(resource.authority) === normalizedCurrentRemoteAuthority) {
+      return false;
+    }
+  }
+
   return !workspaceRoots.some((workspaceRoot) =>
-    isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot)
+    isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot, currentRemoteAuthority)
   );
 }
 
 export function canCompareNoteMarkdownResourceWithWorkspaceRoot(
   resource: NoteMarkdownUriIdentity,
-  workspaceRoot: NoteMarkdownUriIdentity
+  workspaceRoot: NoteMarkdownUriIdentity,
+  currentRemoteAuthority?: string
 ): boolean {
-  return isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot);
+  return isNoteMarkdownResourceOnSameDisplayHost(resource, workspaceRoot, currentRemoteAuthority);
+}
+
+export function extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(
+  value: string
+): string | undefined {
+  const authorityMatch = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]+)/u.exec(value.trim());
+  const authority = authorityMatch?.[1];
+  if (!authority) {
+    return undefined;
+  }
+
+  if (!authority.endsWith(WEBVIEW_RESOURCE_AUTHORITY_SUFFIX)) {
+    return undefined;
+  }
+
+  const resourceIdentity = safeDecodeURIComponent(authority.slice(0, -WEBVIEW_RESOURCE_AUTHORITY_SUFFIX.length));
+  const separatorIndex = resourceIdentity.indexOf('+');
+  if (separatorIndex <= 0 || separatorIndex >= resourceIdentity.length - 1) {
+    return undefined;
+  }
+
+  if (resourceIdentity.slice(0, separatorIndex) !== VSCODE_REMOTE_SCHEME) {
+    return undefined;
+  }
+
+  const decodedAuthority = decodeNoteMarkdownWebviewResourceAuthority(
+    resourceIdentity.slice(separatorIndex + 1)
+  ).trim();
+  return decodedAuthority || undefined;
 }
 
 function isNoteMarkdownResourceOnSameDisplayHost(
   resource: NoteMarkdownUriIdentity,
-  workspaceRoot: NoteMarkdownUriIdentity
+  workspaceRoot: NoteMarkdownUriIdentity,
+  currentRemoteAuthority?: string
 ): boolean {
   if (resource.scheme === workspaceRoot.scheme) {
     return (
@@ -160,11 +201,30 @@ function isNoteMarkdownResourceOnSameDisplayHost(
     );
   }
 
+  const normalizedCurrentRemoteAuthority = normalizeNoteMarkdownAuthority(currentRemoteAuthority);
+  if (!normalizedCurrentRemoteAuthority) {
+    return false;
+  }
+
+  if (resource.scheme === VSCODE_REMOTE_SCHEME && workspaceRoot.scheme === 'file') {
+    return normalizeNoteMarkdownAuthority(resource.authority) === normalizedCurrentRemoteAuthority;
+  }
+
+  if (resource.scheme === 'file' && workspaceRoot.scheme === VSCODE_REMOTE_SCHEME) {
+    return normalizeNoteMarkdownAuthority(workspaceRoot.authority) === normalizedCurrentRemoteAuthority;
+  }
+
   return false;
 }
 
-function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
-  return authority ?? '';
+export function normalizeNoteMarkdownAuthority(authority: string | undefined): string {
+  return safeDecodeURIComponent(authority?.trim() ?? '');
+}
+
+function decodeNoteMarkdownWebviewResourceAuthority(value: string): string {
+  return value.replace(/-([0-9a-f]{4})/giu, (_, code: string) =>
+    String.fromCharCode(parseInt(code, 16))
+  );
 }
 
 function stripKnownMarkdownExtension(value: string): string {
