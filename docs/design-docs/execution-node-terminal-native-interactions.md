@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
   - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
-updated_at: 2026-05-01
+updated_at: 2026-05-18
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
@@ -200,6 +200,12 @@ updated_at: 2026-05-01
 - 如果某条规则是为了弥补当前仓库 Webview / Host 边界与原生内部服务差异而必须存在，则可保留，但应在实现文档和注释里说明“这是适配层”。
 - 如果某条规则只是为了继续偏离原生 detector 结果，则应删除或降级，不得继续作为默认行为。
 - 若原生 Terminal 的行为本身会让某些普通词条成为 search link，本轮不能以“当前仓库主观上不想给太多 link”为由再次私自收窄。
+
+### 7.8 中文语境下的 path 边界修订
+
+2026-05-18 的回归样例表明，执行节点不能把 `我已经把这个判断补进了设计文档：docs/foo.md。` 这类中文说明整句注册成高置信 file link，也不能把 `这里要么在demo/foo.py:159` 中的中文前缀吞进 path candidate。为保持可用性与误判控制，本轮把中文标点视为 path 边界。
+
+这条规则是当前 Webview link provider 对中文语境的边界适配：它不改变 Host opener 的安全模型，也不把无边界的中文前缀裁剪重新提升为 file link；只有已经被边界切分出来、且 Host 能验证存在的 `docs/foo.md` / `src/panel` 片段才会成为高置信 file link。低置信 word/search provider 会把中文标点也当成 word 边界，并跳过明显中文 prose，避免按住 Cmd/Ctrl 时整句中文说明被下划线；但不抑制整段中文 fallback，也不抑制 `docs/foo.md`、`文档/设计.md`、`设计.md` 这类 file-like 词条，它们仍应进入 file detector 或低置信 search fallback。
 
 ## 8. 验证方法
 

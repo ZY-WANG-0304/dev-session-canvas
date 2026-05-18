@@ -2774,6 +2774,22 @@ for (const executionKind of ['agent', 'terminal']) {
     await settleWebview(page, 4);
     await clearPostedMessages(page);
 
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: designDocPath
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toBe(designDocPath);
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+
     await performTestDomAction(page, {
       kind: 'activateExecutionLink',
       nodeId,
@@ -3172,6 +3188,15 @@ for (const executionKind of ['agent', 'terminal']) {
       },
       'was not detected'
     );
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: proseAttachedLine
+      },
+      'was not detected'
+    );
   });
 
   test(`${executionKind} does not promote trimmed wrapper or punctuation candidates into file links`, async ({
@@ -3251,7 +3276,7 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
-  test(`${executionKind} keeps native punctuation behavior for directory links in Chinese prose`, async ({
+  test(`${executionKind} treats CJK punctuation as a file-link boundary in Chinese prose`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -3278,15 +3303,11 @@ for (const executionKind of ['agent', 'terminal']) {
       nodeId,
       text: firstDirectoryLinkText
     });
-    await expectTestDomActionError(
-      page,
-      {
-        kind: 'activateExecutionLink',
-        nodeId,
-        text: secondDirectoryLinkText
-      },
-      'was not detected'
-    );
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: secondDirectoryLinkText
+    });
 
     await expect
       .poll(async () => {
@@ -3318,6 +3339,154 @@ for (const executionKind of ['agent', 'terminal']) {
               linkKind: 'file',
               text: firstDirectoryLinkText,
               path: firstDirectoryLinkText,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          },
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: secondDirectoryLinkText,
+              path: secondDirectoryLinkText,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} keeps file-like words clickable across CJK punctuation boundaries`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const designDocPath = 'docs/foo.md';
+    const proseLine = `设计文档：${designDocPath}。`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${proseLine}\r\n`,
+      cols: 44,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: designDocPath
+    });
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: proseLine
+      },
+      'was not detected'
+    );
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  searchText: entry.payload.link.searchText,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'search',
+              text: designDocPath,
+              searchText: designDocPath,
+              source: 'word'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} keeps Chinese file paths eligible for exact file links`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const chineseFilePath = '文档/设计.md';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${chineseFilePath}\r\n`,
+      cols: 44,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: chineseFilePath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: chineseFilePath,
+              path: chineseFilePath,
               targetKind: 'file',
               source: 'detected'
             }
