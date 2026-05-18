@@ -419,7 +419,17 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件' | '创建空文件并关联';
+      label:
+        | '删除'
+        | '启动'
+        | '停止'
+        | '新建'
+        | '重启'
+        | '恢复'
+        | '重新加载'
+        | '复制草稿'
+        | '覆盖文件'
+        | '创建空文件并关联';
       delayMs?: number;
     }
   | {
@@ -1846,6 +1856,7 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
         value.label === '删除' ||
         value.label === '启动' ||
         value.label === '停止' ||
+        value.label === '新建' ||
         value.label === '重启' ||
         value.label === '恢复' ||
         value.label === '重新加载' ||

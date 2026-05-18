@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-完成后，用户可以在右键菜单或命令面板创建 Agent 时明确选择 provider 与启动方式，必要时输入完整启动命令；停止后的 Agent 也能在“恢复原会话”和“新会话”之间清楚分流。用户能直接在 VSCode 里看到：右键菜单出现三层 Agent 创建、命令面板 Agent 入口变成两步 Quick Input、已停止 Agent 显示 split restart。
+完成后，用户可以在右键菜单或命令面板创建 Agent 时明确选择 provider 与启动方式，必要时输入完整启动命令；停止后的 Agent 也能在“恢复原会话”和“新会话”之间清楚分流。用户能直接在 VSCode 里看到：右键菜单出现三层 Agent 创建、命令面板 Agent 入口变成两步 Quick Input、已停止 Agent 显示 `新建 | 重启` 双按钮。
 
 ## 进度
 
@@ -36,6 +36,8 @@
 - [x] (2026-04-26) 根据最新 review finding 继续收口命令行解析与错误呈现：共享 parser 兼容 Windows 反斜杠路径，provider 默认启动参数 parse error 改为显式上抛到 Webview / Quick Input / host，右键菜单自定义启动打开后第一次 `Escape` 也会优先收起输入区。
 - [x] (2026-04-26) 针对“不断补丁修 parser”的风险，补做了命令层方案调研并按结果收口：执行路径继续坚持结构化 `file + args[]`；共享 parser 以文档化 Windows quoting 为基线，但 canonical formatter 改为优先输出单引号包裹的稳定文本，仅在必要时才退回双引号 escaping，同时兼容旧版全量双写反斜杠的历史文本与自然输入的 UNC / 尾部反斜杠路径。
 - [x] (2026-04-29 03:10Z) 收口“显式预设 vs 默认模式参数”冲突：共享命令层会先剥离 provider-owned mode flags，再回填 `Resume / YOLO / 沙盒`；同时 Quick Input 第二步在显式点击预设且最终命令仍等价时保留该 preset 的 metadata，而不是仅靠字符串反推回落成 `default`。
+
+- [x] (2026-05-18) 按最新交互反馈，把停止后的 Agent 标题栏动作从 `重启 | ▼` 下拉式 split restart 改为并列 `新建 | 重启`；`新建` 复用原“新会话”功能，`重启` 保持恢复当前节点原会话。
 
 ## 意外与发现
 
@@ -84,8 +86,8 @@
   理由：文件扫描可以尽早让节点进入可恢复状态，但它本质上仍是启发式匹配；退出提示则来自 Codex CLI 自身，适合在停止时作为更权威的补充/校验来源。
   日期/作者：2026-04-24 / Codex
 
-- 决策：Claude Code fresh-start 继续在启动时注入候选 `--session-id`，但 stopped 节点是否可恢复必须以后续输出里的 `claude --resume <session-id>` 提示为准；若停止后没有这条提示，则节点 UI 退化为单个 `启动` 按钮，不再显示 disabled 的 split restart。
-  理由：用户已经确认 Claude “启动时带 session-id”不等于“该 session-id 一定生效”；只有 CLI 自己在结束时回显 `claude --resume` 才能证明当前节点真的具备恢复入口。UI 也应只在确实可恢复时才暴露 `重启 | ▼`。
+- 决策：Claude Code fresh-start 继续在启动时注入候选 `--session-id`，但 stopped 节点是否可恢复必须以后续输出里的 `claude --resume <session-id>` 提示为准；若停止后没有这条提示，则节点 UI 退化为单个 `启动` 按钮，不再显示 disabled 的重启动作。
+  理由：用户已经确认 Claude “启动时带 session-id”不等于“该 session-id 一定生效”；只有 CLI 自己在结束时回显 `claude --resume` 才能证明当前节点真的具备恢复入口。UI 也应只在确实可恢复时才暴露恢复当前节点原会话的 `重启`。
   日期/作者：2026-04-24 / Codex
 
 - 决策：在保留 stop-time hint 校验的前提下，为 Claude 增加基于候选 `session-id` 的 provider 文件确认；同时，Codex 若在首次 discovery miss 后又进入 `waiting-input`，就再触发一轮文件扫描。
@@ -132,6 +134,10 @@
   理由：这样才能同时修掉右键三级菜单里“预设文案/实际启动命令和默认参数冲突”的问题，以及 Quick Input 在“默认命令已含模式 flag”时把显式 `YOLO / 沙盒 / Resume` 错降级成 `default` 的问题；同时又不会误把 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`--continue <session-id>` 这类“恢复哪条会话”的语义当成执行策略冲突去抹掉。这里也刻意只支持仓库已知的一小组冲突 flag，而不是尝试做一套通用 CLI 参数归一化；未知组合统一要求用户改走自定义启动。
   日期/作者：2026-04-29 / Codex
 
+- 决策：停止后可恢复的 Agent 不再使用 `重启 | ▼` 下拉式 split restart，而是直接展示 `新建 | 重启` 两个并列按钮；`新建` 对应原下拉菜单里的“新会话”，`重启` 对应恢复当前节点原会话。
+  理由：用户需要把两个高频分流直接暴露出来，减少隐藏在下拉里的新会话入口，同时保持不可恢复时仍回退为单个 `启动`。
+  日期/作者：2026-05-18 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
@@ -157,7 +163,7 @@
 
 ## 工作计划
 
-先在共享层引入 Agent 启动预设模型、命令字符串构造/解析/校验逻辑，并扩展 `protocol` 与 runtime context，让宿主、Webview、命令面板都能拿到统一的 provider 默认启动模板。然后在宿主层把节点创建、metadata 持久化和 Agent fresh-start 执行路径改成基于 `launchPreset/customLaunchCommand` 解析。Webview 侧接着扩展右键菜单三层 Agent 创建，并把停止后的单按钮改成 split restart。最后再回到 `src/extension.ts` 重写 Agent 的 Quick Input 创建链路，并为测试保留脚本化 override。
+先在共享层引入 Agent 启动预设模型、命令字符串构造/解析/校验逻辑，并扩展 `protocol` 与 runtime context，让宿主、Webview、命令面板都能拿到统一的 provider 默认启动模板。然后在宿主层把节点创建、metadata 持久化和 Agent fresh-start 执行路径改成基于 `launchPreset/customLaunchCommand` 解析。Webview 侧接着扩展右键菜单三层 Agent 创建，并把停止后的单按钮改成 `新建 | 重启` 双按钮。最后再回到 `src/extension.ts` 重写 Agent 的 Quick Input 创建链路，并为测试保留脚本化 override。
 
 ## 具体步骤
 
@@ -169,7 +175,7 @@
 3. 在 `src/webview/main.tsx` 与 `src/webview/styles.css` 中：
    - 把右键菜单扩成 root/provider/launch-mode 三层。
    - 实现自定义启动输入与校验。
-   - 实现停止后 split restart。
+   - 实现停止后 `新建 | 重启` 双按钮。
 4. 在 `src/extension.ts` 中重写 Agent 创建 Quick Input 第二步，并更新 test override。
 5. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中补回归，至少覆盖 `codex resume` / `claude --resume` 提示 parser，以及“无可信恢复上下文 => 标题栏只显示 `启动`”。
 6. 跑 `npm run typecheck`、`npm run test:webview`，再根据时间与稳定性决定是否补 `npm run test:smoke`。
@@ -177,7 +183,7 @@
 ## 验证与验收
 
 - 运行 `npm run typecheck`，预期通过。
-- 运行 `npm run test:webview`，预期新增的右键菜单、split restart，以及“不可恢复时退化为启动按钮”用例通过。
+- 运行 `npm run test:webview`，预期新增的右键菜单、`新建 | 重启` 双按钮，以及“不可恢复时退化为启动按钮”用例通过。
 - 如果 smoke 可跑，运行 `npm run test:smoke`，至少确认命令面板的 Agent 两步创建链路通过。
 - 若 smoke 因既有不稳定项受阻，需要在 `结果与复盘` 与最终交付说明中明确写清阻塞点和已验证范围。
 
@@ -242,6 +248,8 @@
   - Agent 创建 Quick Input 第二步
 - `src/webview/main.tsx`
   - 右键菜单 launch-mode drill-in
-  - Agent split restart
+  - Agent `新建 | 重启` 双按钮
 
 本次更新说明：2026-04-29 补记“显式预设覆盖默认模式参数 + Quick Input 保留显式 preset 意图”的实现收口、决策与验证证据，避免右键三级菜单与 QuickPick 在冲突默认参数下继续漂移。
+
+本次更新说明：2026-05-18 按最新反馈把停止后 Agent 标题栏从下拉式 split restart 改为 `新建 | 重启` 双按钮，并同步更新规格、设计与 Playwright harness 覆盖；已运行 `npm run test:webview -- --grep "agent restart"`（3 passed）与 `npm run typecheck`，均通过。

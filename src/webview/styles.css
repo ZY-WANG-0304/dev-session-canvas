@@ -261,8 +261,7 @@ body {
   outline-offset: 1px;
 }
 
-.action-split-button {
-  position: relative;
+.action-button-group {
   display: inline-flex;
   align-items: stretch;
   gap: 0;
@@ -271,17 +270,17 @@ body {
   overflow: visible;
 }
 
-.action-split-button .action-button {
+.action-button-group .action-button {
   position: relative;
   z-index: 0;
   border-radius: 0;
 }
 
-.action-split-button .action-button:focus-visible {
+.action-button-group .action-button:focus-visible {
   z-index: 1;
 }
 
-.action-split-button .action-split-button-main {
+.action-button-group .action-button:first-child {
   min-width: 0;
   border-top-left-radius: var(--canvas-widget-radius-sm);
   border-bottom-left-radius: var(--canvas-widget-radius-sm);
@@ -289,60 +288,13 @@ body {
   border-bottom-right-radius: 0;
 }
 
-.action-split-button .action-split-button-toggle {
-  min-width: 24px;
-  padding-inline: 6px;
+.action-button-group .action-button:last-child {
+  min-width: 0;
   border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 22%, transparent);
   border-top-right-radius: var(--canvas-widget-radius-sm);
   border-bottom-right-radius: var(--canvas-widget-radius-sm);
-}
-
-.action-split-button[data-agent-restart-menu-open='true'] .action-split-button-toggle {
-  background: var(
-    --vscode-button-hoverBackground,
-    color-mix(in srgb, var(--vscode-focusBorder) 18%, var(--vscode-button-background) 82%)
-  );
-}
-
-.action-split-button-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 18;
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border)));
-  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
-}
-
-.action-split-button-menu-item {
-  width: 100%;
-  border: 0;
-  border-radius: 6px;
-  padding: 7px 10px;
-  background: transparent;
-  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.action-split-button-menu-item:hover:not(:disabled),
-.action-split-button-menu-item:focus-visible {
-  background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent));
-  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
-  outline: none;
-}
-
-.action-split-button-menu-item:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .canvas-node {
@@ -418,7 +370,7 @@ body {
 .canvas-shell.is-overview-mode .window-title-subtitle-row,
 .canvas-shell.is-overview-mode .execution-help-trigger,
 .canvas-shell.is-overview-mode .action-button,
-.canvas-shell.is-overview-mode .action-split-button,
+.canvas-shell.is-overview-mode .action-button-group,
 .canvas-shell.is-overview-mode .file-list-view-toggle,
 .canvas-shell.is-overview-mode .file-node-copy span,
 .canvas-shell.is-overview-mode .file-list-entry-copy span,
