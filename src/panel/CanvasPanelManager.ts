@@ -2648,8 +2648,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.didScheduleNoteMarkdownCurrentHostRecanonicalize = true;
     setTimeout(() => {
-      this.syncNoteMarkdownFileWatchers();
-      void this.refreshAllAssociatedMarkdownNotes();
+      void this.refreshAllAssociatedMarkdownNotes().finally(() => {
+        this.syncNoteMarkdownFileWatchers();
+      });
     }, 0);
   }
 
