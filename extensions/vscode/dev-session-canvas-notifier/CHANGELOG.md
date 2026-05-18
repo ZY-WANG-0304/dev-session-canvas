@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1
+
+- 与主扩展 `0.10.1` 对齐：本轮主扩展聚焦关联 Markdown Note 的模板保存策略、Remote 拖拽边界、metadata / 图片预览、停止后 Agent 重启动作和 Marketplace 英文默认文案。
+- notifier companion 同步收口 sidebar 布局、颜色 token 与 Markdown 说明内容，不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.10.0
 
 - 与主扩展 `0.10.0` 对齐：本轮主扩展聚焦 Note 关联 Markdown 文件，notifier companion 不引入新的通知行为变更。
