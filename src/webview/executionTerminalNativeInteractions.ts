@@ -8,8 +8,10 @@ import {
   type ExecutionTerminalClipboardPlatform
 } from '../common/executionTerminalClipboard';
 import {
+  EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS,
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
+  shouldSuppressExecutionTerminalWordLink,
   type DetectedExecutionTerminalPathLink,
   type ExecutionTerminalFileLinkCandidate,
   type ExecutionTerminalDroppedResource,
@@ -700,7 +702,11 @@ function collectWordLinks(
 
   const links: ILink[] = [];
   for (const range of readExecutionTerminalWordRanges(context.text, options.getRuntimeContext())) {
-    if (range.text.length === 0 || range.text.length > EXECUTION_WORD_LINK_MAX_LENGTH) {
+    if (
+      range.text.length === 0 ||
+      range.text.length > EXECUTION_WORD_LINK_MAX_LENGTH ||
+      shouldSuppressExecutionTerminalWordLink(range.text)
+    ) {
       continue;
     }
 
@@ -769,7 +775,7 @@ function createExecutionTerminalWordSeparatorRegex(wordSeparators: string): RegE
     powerlineSymbols += String.fromCharCode(codePoint);
   }
   return new RegExp(
-    `[${escapeExecutionTerminalWordSeparatorCharacters(wordSeparators)}${powerlineSymbols}]`,
+    `[${escapeExecutionTerminalWordSeparatorCharacters(wordSeparators)}${powerlineSymbols}${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]`,
     'g'
   );
 }
@@ -1565,7 +1571,25 @@ function convertLinkRangeToBuffer(
   range: SimpleRange,
   startLine: number
 ): IBufferRange {
-  const bufferRange: IBufferRange = {
+  const stringCells = readBufferStringCells(lines, bufferWidth, startLine);
+  const startOffset = toBufferStringOffset(lines, bufferWidth, range.startLineNumber, range.startColumn);
+  const endOffsetExclusive = toBufferStringOffset(lines, bufferWidth, range.endLineNumber, range.endColumn);
+  const startCell = stringCells.find((cell) => cell.endOffsetExclusive > startOffset);
+  const endCell = findLastBufferStringCellBeforeOffset(stringCells, endOffsetExclusive);
+  if (startCell && endCell) {
+    return {
+      start: {
+        x: startCell.startColumn,
+        y: startCell.lineNumber
+      },
+      end: {
+        x: endCell.endColumn,
+        y: endCell.lineNumber
+      }
+    };
+  }
+
+  return {
     start: {
       x: range.startColumn,
       y: range.startLineNumber + startLine
@@ -1575,91 +1599,95 @@ function convertLinkRangeToBuffer(
       y: range.endLineNumber + startLine
     }
   };
+}
 
-  let startOffset = 0;
-  const startWrappedLineCount = Math.ceil(range.startColumn / bufferWidth);
-  for (let lineIndex = 0; lineIndex < Math.min(startWrappedLineCount, lines.length); lineIndex += 1) {
-    const lineLength = Math.min(bufferWidth, range.startColumn - 1 - lineIndex * bufferWidth);
-    let lineOffset = 0;
+function findLastBufferStringCellBeforeOffset(
+  cells: BufferStringCell[],
+  endOffsetExclusive: number
+): BufferStringCell | undefined {
+  for (let index = cells.length - 1; index >= 0; index -= 1) {
+    if (cells[index].startOffset < endOffsetExclusive) {
+      return cells[index];
+    }
+  }
+
+  return undefined;
+}
+
+interface BufferStringCell {
+  startOffset: number;
+  endOffsetExclusive: number;
+  startColumn: number;
+  endColumn: number;
+  lineNumber: number;
+}
+
+function readBufferStringCells(
+  lines: IBufferLine[],
+  bufferWidth: number,
+  startLine: number
+): BufferStringCell[] {
+  const cells: BufferStringCell[] = [];
+  let textOffset = 0;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     if (!line) {
-      break;
+      continue;
     }
 
-    for (let x = 0; x < Math.min(bufferWidth, lineLength + lineOffset); x += 1) {
-      const cell = line.getCell(x);
+    const lineTextLength = getTrimmedXtermLineTextLength(line, bufferWidth);
+    let lineTextOffset = 0;
+    for (let column = 0; column < bufferWidth && lineTextOffset < lineTextLength; column += 1) {
+      const cell = line.getCell(column);
       if (!cell) {
         break;
       }
 
-      const width = cell.getWidth();
-      if (width === 2) {
-        lineOffset += 1;
+      if (cell.getWidth() === 0) {
+        continue;
       }
 
-      const char = cell.getChars();
-      if (char.length > 1) {
-        lineOffset -= char.length - 1;
+      const chars = cell.getChars() || ' ';
+      const charsLength = Math.min(chars.length, lineTextLength - lineTextOffset);
+      if (charsLength <= 0) {
+        continue;
       }
+
+      cells.push({
+        startOffset: textOffset + lineTextOffset,
+        endOffsetExclusive: textOffset + lineTextOffset + charsLength,
+        startColumn: column + 1,
+        endColumn: column + Math.max(1, cell.getWidth()),
+        lineNumber: startLine + lineIndex + 1
+      });
+      lineTextOffset += charsLength;
     }
 
-    startOffset += lineOffset;
+    textOffset += lineTextLength;
   }
 
-  let endOffset = 0;
-  const endWrappedLineCount = Math.ceil(range.endColumn / bufferWidth);
-  for (
-    let lineIndex = Math.max(0, startWrappedLineCount - 1);
-    lineIndex < Math.min(endWrappedLineCount, lines.length);
-    lineIndex += 1
-  ) {
-    const start =
-      lineIndex === startWrappedLineCount - 1 ? ((range.startColumn - 1 + startOffset) % bufferWidth) : 0;
-    const lineLength = Math.min(bufferWidth, range.endColumn + startOffset - lineIndex * bufferWidth);
-    let lineOffset = 0;
+  return cells;
+}
+
+function toBufferStringOffset(
+  lines: IBufferLine[],
+  bufferWidth: number,
+  lineNumber: number,
+  column: number
+): number {
+  let offset = 0;
+  for (let lineIndex = 0; lineIndex < Math.min(lineNumber - 1, lines.length); lineIndex += 1) {
     const line = lines[lineIndex];
-    if (!line) {
-      break;
+    if (line) {
+      offset += getTrimmedXtermLineTextLength(line, bufferWidth);
     }
-
-    for (let x = start; x < Math.min(bufferWidth, lineLength + lineOffset); x += 1) {
-      const cell = line.getCell(x);
-      if (!cell) {
-        break;
-      }
-
-      const width = cell.getWidth();
-      const chars = cell.getChars();
-      if (width === 2) {
-        lineOffset += 1;
-      }
-
-      if (x === bufferWidth - 1 && chars === '') {
-        lineOffset += 1;
-      }
-
-      if (chars.length > 1) {
-        lineOffset -= chars.length - 1;
-      }
-    }
-
-    endOffset += lineOffset;
   }
 
-  bufferRange.start.x += startOffset;
-  bufferRange.end.x += startOffset + endOffset;
+  return offset + Math.max(0, column - 1);
+}
 
-  while (bufferRange.start.x > bufferWidth) {
-    bufferRange.start.x -= bufferWidth;
-    bufferRange.start.y += 1;
-  }
-
-  while (bufferRange.end.x > bufferWidth) {
-    bufferRange.end.x -= bufferWidth;
-    bufferRange.end.y += 1;
-  }
-
-  return bufferRange;
+function getTrimmedXtermLineTextLength(line: IBufferLine, bufferWidth: number): number {
+  return line.translateToString(true, 0, bufferWidth).length;
 }
 
 function dedupeDetectedPathLinks(
