@@ -2730,11 +2730,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     .join(' ');
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const restartMenuRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
   const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
-  const [restartMenuOpen, setRestartMenuOpen] = useState(false);
   const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
     cols: agentMetadata.lastCols ?? 96,
@@ -2999,7 +2997,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [agentMetadata.liveSession, id]);
 
   const startAgent = (resume = resumeRequested): void => {
-    setRestartMenuOpen(false);
     data.onSelectNode?.(id);
     data.onStartExecution?.(
       id,
@@ -3012,13 +3009,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const stopAgent = (): void => {
-    setRestartMenuOpen(false);
     data.onSelectNode?.(id);
     data.onStopExecution?.(id, 'agent');
   };
 
   const deleteAgent = (): void => {
-    setRestartMenuOpen(false);
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
   };
@@ -3040,42 +3035,8 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     };
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
-  useEffect(() => {
-    if (!restartMenuOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent): void => {
-      if (event.target instanceof globalThis.Node && restartMenuRef.current?.contains(event.target)) {
-        return;
-      }
-      setRestartMenuOpen(false);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
-        return;
-      }
-      event.preventDefault();
-      setRestartMenuOpen(false);
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [restartMenuOpen]);
-
-  const showRestartSplitButton = !agentMetadata.liveSession && canResumeOriginalSession;
+  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
   const actionDisabled = executionBlocked || reattaching;
-
-  useEffect(() => {
-    if ((overviewInteractionsDisabled || !showRestartSplitButton) && restartMenuOpen) {
-      setRestartMenuOpen(false);
-    }
-  }, [overviewInteractionsDisabled, restartMenuOpen, showRestartSplitButton]);
 
   return (
     <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
@@ -3122,18 +3083,29 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               interactive
               onFocus={() => data.onSelectNode?.(id)}
             />
-          ) : showRestartSplitButton ? (
-            <div
-              ref={restartMenuRef}
-              className="action-split-button nodrag nopan"
-              data-node-interactive="true"
-              data-agent-restart-menu-open={restartMenuOpen ? 'true' : 'false'}
-            >
+          ) : showRestartActions ? (
+            <div className="action-button-group nodrag nopan" data-node-interactive="true">
+              <ActionButton
+                label="新建"
+                tone="primary"
+                disabled={actionDisabled}
+                className="compact nodrag nopan"
+                interactive
+                onFocus={() => data.onSelectNode?.(id)}
+                onClick={() => {
+                  startAgent(false);
+                }}
+                buttonProps={{
+                  title: '启动新会话',
+                  'aria-label': '启动新会话',
+                  'data-agent-restart-action': 'new-session'
+                }}
+              />
               <ActionButton
                 label="重启"
                 tone="primary"
                 disabled={actionDisabled || !canResumeOriginalSession}
-                className="compact action-split-button-main nodrag nopan"
+                className="compact nodrag nopan"
                 interactive
                 onFocus={() => data.onSelectNode?.(id)}
                 onClick={() => {
@@ -3145,66 +3117,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   'data-agent-restart-action': 'resume'
                 }}
               />
-              <ActionButton
-                label={<span className="codicon codicon-chevron-down" aria-hidden="true" />}
-                tone="primary"
-                disabled={actionDisabled}
-                className="compact action-split-button-toggle nodrag nopan"
-                interactive
-                onFocus={() => data.onSelectNode?.(id)}
-                onClick={() => {
-                  data.onSelectNode?.(id);
-                  setRestartMenuOpen((current) => !current);
-                }}
-                buttonProps={{
-                  'data-agent-restart-toggle': 'true',
-                  'aria-haspopup': 'menu',
-                  'aria-expanded': restartMenuOpen,
-                  'aria-label': '打开重启选项',
-                  title: '打开重启选项'
-                }}
-              />
-              {restartMenuOpen ? (
-                <div className="action-split-button-menu" role="menu">
-                  <button
-                    type="button"
-                    className="action-split-button-menu-item interactive nodrag nopan"
-                    data-agent-restart-action="resume"
-                    role="menuitem"
-                    disabled={overviewInteractionsDisabled || !canResumeOriginalSession}
-                    tabIndex={overviewInteractionsDisabled ? -1 : undefined}
-                    onMouseDown={stopCanvasEvent}
-                    onClick={(event) => {
-                      stopCanvasEvent(event);
-                      if (overviewInteractionsDisabled) {
-                        return;
-                      }
-                      startAgent(true);
-                    }}
-                    title={!canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话'}
-                  >
-                    原会话
-                  </button>
-                  <button
-                    type="button"
-                    className="action-split-button-menu-item interactive nodrag nopan"
-                    data-agent-restart-action="new-session"
-                    role="menuitem"
-                    disabled={overviewInteractionsDisabled}
-                    tabIndex={overviewInteractionsDisabled ? -1 : undefined}
-                    onMouseDown={stopCanvasEvent}
-                    onClick={(event) => {
-                      stopCanvasEvent(event);
-                      if (overviewInteractionsDisabled) {
-                        return;
-                      }
-                      startAgent(false);
-                    }}
-                  >
-                    新会话
-                  </button>
-                </div>
-              ) : null}
             </div>
           ) : (
             <ActionButton
@@ -9696,7 +9608,17 @@ async function queryNodeTextField(
 
 function queryNodeActionButton(
   nodeId: string,
-  label: '删除' | '启动' | '停止' | '重启' | '恢复' | '重新加载' | '复制草稿' | '覆盖文件' | '创建空文件并关联'
+  label:
+    | '删除'
+    | '启动'
+    | '停止'
+    | '新建'
+    | '重启'
+    | '恢复'
+    | '重新加载'
+    | '复制草稿'
+    | '覆盖文件'
+    | '创建空文件并关联'
 ): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
   const button = Array.from(nodeRoot.querySelectorAll('button')).find(
