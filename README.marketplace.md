@@ -2,120 +2,122 @@
 
 <!-- dev-session-canvas-marketplace-readme -->
 
-简体中文（默认） | [English](README.marketplace.en.md)
+English (default) | [简体中文](README.marketplace.zh-CN.md)
 
-Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，画布是这个工作台的主要交互载体。你可以把 `Agent`、`Terminal` 与 `Note` 节点放在同一视图中，同时管理多个开发执行会话，而不必在聊天面板、终端标签和编辑器之间来回切换。当前为公开 `Preview` 版本。
+Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas is its primary interaction surface. It lets you place `Agent`, `Terminal`, and `Note` nodes in the same view so you can manage multiple development execution sessions without bouncing between chat panels, terminal tabs, and editors. The extension is currently in public `Preview`.
 
-![Dev Session Canvas 主画布概览](images/marketplace/canvas-overview.png)
+![Dev Session Canvas Overview](images/marketplace/canvas-overview.png)
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 产品定位
+## Product Positioning
 
-- 它首先是 VS Code 内的 `AI workbench with canvas`，而不是一个只有 AI 点缀的可视化工具
-- `Visualization` 对应的是交互载体：用画布承载多个执行对象与它们的全局关系
-- `AI` 对应的是主要使用场景：面向多 Agent 协作开发，而不是单轮 chat-first 体验
-- `Machine Learning` 对应的是工作台属性：面向 AI/ML 工具链集成，强调它与 VS Code 原生编辑器、终端和插件生态协同工作
+- It should be described first as an `AI workbench with canvas`, not as a visualization tool with a thin AI layer
+- `Visualization` is the interaction surface: the canvas carries execution objects and their global relationships
+- `AI` is the primary usage context: multi-agent development workflows rather than a chat-first single-thread experience
+- `Machine Learning` captures the workbench aspect: built for AI/ML toolchain integration, designed to work with VS Code's native editors, terminals, and extension ecosystem
 
-## 核心功能
+## Core Capabilities
 
-- 在面板或编辑区打开主画布
-- 创建 `Agent`、`Terminal` 与 `Note` 节点
-- 通过 `codex` 或 `claude` CLI 驱动 `Agent` 节点执行
-- 通过嵌入式终端运行 `Terminal` 节点
-- 让 `Agent` 与嵌入式 `Terminal` 继承受控 shell 环境，并在诊断信息中暴露当前解析路径
-- 在 `Note` 节点中使用 Markdown 语法记录上下文
-- 将 `Note` 节点关联到 workspace 中的 `.md` / `.markdown` 文件
-- 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面
-- `Restricted Mode` 下保留画布浏览，执行入口自动禁用
-- 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
-- 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复新 `Agent` 节点
+- Open the main canvas in either the panel or the editor area
+- Create `Agent`, `Terminal`, and `Note` nodes
+- Drive `Agent` nodes through the `codex` or `claude` CLI
+- Run `Terminal` nodes through the embedded terminal surface
+- Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
+- Write contextual notes with Markdown syntax inside `Note` nodes
+- Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
+- Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
+- Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
+- Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
+- View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
 
-## 适用场景
+## Best Fit
 
-- 受信任工作区，标准文件系统
-- 已安装 `codex` 或 `claude` CLI
-- 需要同时观察多个开发会话，而不想在终端标签间频繁切换
-- 需要一个 canvas 形态的 AI 工作台，而不是单一聊天面板
+- Trusted workspaces on a standard filesystem
+- Environments where `codex` or `claude` CLI is already installed
+- Developers who want to observe multiple development sessions without switching constantly between terminal tabs
+- Users who want a canvas-shaped AI workbench rather than a single chat panel
 
-## 支持范围与限制
+## Support Scope And Limits
 
-- `Remote SSH` 主路径已验证可用，且仍是当前验证最充分的推荐环境
-- Linux、macOS 本地工作区的 `Preview` 主路径已完成功能可用性验证
-- Windows 本地工作区的 `Preview` 主路径已完成功能可用性验证；当前已知限制是使用 `Codex` 时执行节点内历史暂时无法向上翻页
-- 侧栏 `会话历史` 只显示能明确确认属于当前 workspace 的记录；缺少工作目录信息的旧会话会被保守跳过
-- `Restricted Mode` 允许打开画布，但禁用 `Agent` / `Terminal` 等执行入口
-- `Virtual Workspace` 暂不支持
-- 当前为 `Preview`，不提供稳定正式版承诺
+- The `Remote SSH` main path is validated and usable, and it remains the best-validated recommended environment
+- Linux and macOS local workspaces now have functional validation for the `Preview` main path
+- Windows local workspaces now have functional validation for the `Preview` main path, with one explicit known limitation: when using `Codex`, embedded session history still cannot page upward
+- The sidebar `Session History` list only shows records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively
+- `Restricted Mode` allows the canvas to open, but disables execution entry points such as `Agent` and `Terminal`
+- `Virtual Workspace` is not supported yet
+- The extension is still in `Preview`, with no stable-release commitment
 
-## 环境要求
+## Environment Requirements
 
-- VS Code `1.80.0` 或更高版本
-- 标准文件系统工作区
-- `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
-- `Terminal` 节点需要工作区侧可用的 shell
+- VS Code `1.80.0` or later
+- A standard filesystem workspace
+- `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
+- `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.0 版本亮点
+## 0.10.1 Highlights
 
-当前公开的 `0.10.0` 版本聚焦 Note 与 workspace Markdown 文件的双向工作流：普通 Note 可以保存为关联 `.md` 文件，已有 `.md` / `.markdown` 文件可以拖入画布成为 Note，关联 Note 以磁盘文件为权威，并补齐路径操作、外部保存刷新和并发冲突恢复。
+The public `0.10.1` release keeps the `0.10.x` Note-to-Markdown milestone focused on polish, safer host boundaries, and release readiness. It tightens associated Markdown Notes across templates, Remote SSH drag-and-drop, metadata preview, image rendering, stopped-Agent restart actions, and Marketplace publishing copy.
 
-- 普通 Note 新增 `保存为 Markdown` 入口；已有目标文件时会显式询问覆盖、保留文件内容并关联或取消，避免静默破坏文件
-- 空白画布支持拖放 `.md` / `.markdown` 文件创建关联 Note；已关联文件再次拖入时可选择继续添加新 Note 或定位已有 Note
-- 关联 Markdown Note 会显示人类可读完整路径，并提供打开文件与复制 Markdown 路径动作
-- 关联 Note 以磁盘文件内容为权威，未保存的 editor buffer 不会改变画布内容，保存或文件系统变化后才刷新
-- 编辑期或写回时发现外部文件变化会进入冲突提示；本地草稿会保存到 workspace storage，可重新加载、覆盖文件或先复制草稿
-- 普通 Note 继续保持轻量 8,000 字符上限；关联 Markdown Note 不复用该上限，避免大 Markdown 文件被截断
-- Note 编辑态行号按视觉行对齐，并补齐关联 Markdown 路径复制、缺失状态、冲突恢复和真实 VS Code smoke 覆盖
+- Associated Markdown Notes in templates now use explicit save modes: content snapshot, workspace-relative path only, or workspace-relative path plus file content
+- Applying templates handles missing associated files and path-plus-content conflicts inside the Note node instead of silently overwriting workspace files
+- Markdown reading mode hides valid YAML front matter, exposes a compact metadata popover, and keeps invalid metadata visible with a warning
+- Markdown image preview now supports safe `https:`, `data:image/*;base64`, and workspace / associated-file relative images through Webview-safe URLs
+- Remote Markdown drag-and-drop now verifies the current host authority before file operations, canonicalizes same-host resources, and rejects foreign or unknown hosts fail-closed
+- Stopped Agent nodes now show separate `New` and `Restart` actions when the node has a trusted resume context, making fresh starts and same-session resumes explicit
+- UI and release hardening aligns panel activation, status colors, sidebar list colors, notifier sidebar styling, script layout, publish failure handling, and the Marketplace README now defaults to English
 
-## 安装与升级
+## Installation And Upgrades
 
-- 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.9.1` 升级到 `0.10.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
-- 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
-- Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+- The extension ID is `devsessioncanvas.dev-session-canvas`
+- First-time installs and upgrades from `0.10.0` to `0.10.1` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.1` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
+- During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
-## 桌面通知 companion（自动安装）
 
-- 安装 `Dev Session Canvas` 时，VS Code 会自动安装 `Dev Session Canvas Notifier`（`devsessioncanvas.dev-session-canvas-notifier`）
-- 如果你是从 notifier 页面单独安装，VS Code 也会自动补齐主扩展 `Dev Session Canvas`
-- 执行节点的 attention signal 默认会通过 `devSessionCanvas.notifications.attentionSignalBridge = system` 优先桥接到本机桌面；如需改回工作台消息或关闭桥接，可在主扩展设置中调整
-- `system` 模式下，主扩展会优先把通知交给本机 UI 侧 companion；若 companion 缺失、当前平台不支持或投递失败，则自动回退到 VS Code 工作台消息
-- 这个 companion 尤其适合 `Remote SSH`、WSL、Dev Container 等“主扩展跑在 workspace 侧、提醒需要回到本机桌面”的场景
+## Desktop Notification Companion (Auto-Installed)
 
-## 使用提示
+- Installing `Dev Session Canvas` automatically installs `Dev Session Canvas Notifier` (`devsessioncanvas.dev-session-canvas-notifier`)
+- If a user installs from the notifier page first, VS Code also auto-installs the main extension `Dev Session Canvas`
+- Execution-node attention signals now prefer the local desktop by default through `devSessionCanvas.notifications.attentionSignalBridge = system`; switch the setting if you want `workbench` or `none` instead
+- In `system` mode, the main extension prefers the local UI-side companion and falls back to VS Code workbench notifications when the companion is missing, unsupported, or delivery fails
+- The companion is especially useful in `Remote SSH`, WSL, and Dev Container scenarios where the main extension runs on the workspace side but the notification needs to return to the local desktop
 
-### Windows 环境下无法创建 Terminal 和 Agent 节点
 
-**症状**：workspace 已信任，但创建节点时仍异常地只能看到 `Note` 类型，`Terminal` 和 `Agent` 节点类型不可见。
+## Usage Tips
 
-**排查方向**：若 workspace 已信任但仍出现该异常，可先检查 Windows PowerShell 执行策略；某些环境下，执行策略可能影响 Node.js 相关命令的正常执行。
+### Unable to Create Terminal and Agent Nodes on Windows
 
-**可尝试的处理方法**：
+**Symptom**: The workspace is trusted, but creating a node still shows only `Note`; `Terminal` and `Agent` node types are unexpectedly missing.
 
-1. 以管理员身份打开 PowerShell
-2. 运行以下命令设置执行策略为 `RemoteSigned`：
+**Troubleshooting**: If this still happens in a trusted workspace, check the Windows PowerShell execution policy first. In some environments, the execution policy may interfere with Node.js-related commands.
+
+**Suggested Fix**:
+
+1. Open PowerShell as Administrator
+2. Run the following command to set execution policy to `RemoteSigned`:
    ```powershell
    Set-ExecutionPolicy RemoteSigned
    ```
-3. 输入 `Y` 确认更改
-4. 关闭并重新打开 VS Code
-5. 再次尝试创建 `Terminal` 或 `Agent` 节点，确认是否恢复正常
+3. Type `Y` to confirm the change
+4. Close and reopen VS Code
+5. Try creating a `Terminal` or `Agent` node again to confirm whether the issue is resolved
 
-## 回退建议
+## Rollback Guidance
 
-- 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续 `0.10.x` 修复版本，而非尝试手动降级
-- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
-- 问题反馈、安全问题和支持边界说明见下方链接
+- If the current version blocks your workflow, disable or uninstall the extension first
+- Prefer waiting for a later `0.10.x` fix release rather than trying to downgrade manually
+- If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
+- For support boundaries, issue reporting, and security guidance, use the links below
 
-## 支持与反馈
+## Support And Feedback
 
-- Preview 支持边界：<https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/support.md>
-- 问题与功能反馈：<https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
-- 安全问题：`wzy0304@outlook.com`
+- Preview support boundaries: <https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/support.md>
+- Bugs and feature feedback: <https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
+- Security issues: `wzy0304@outlook.com`
 
-## 开源信息
+## Open Source
 
 - License: `Apache-2.0`
 - Repository: <https://github.com/ZY-WANG-0304/dev-session-canvas>
