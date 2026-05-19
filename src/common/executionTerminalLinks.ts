@@ -4,7 +4,12 @@ export type ExecutionTerminalFileLinkTargetKind =
   | 'directory-in-workspace'
   | 'directory-outside-workspace';
 export type ExecutionTerminalUrlLinkSource = 'implicit' | 'explicit';
-export type ExecutionTerminalFileLinkSource = 'detected' | 'refined' | 'fallback' | 'explicit-uri';
+export type ExecutionTerminalFileLinkSource =
+  | 'detected'
+  | 'refined'
+  | 'fallback'
+  | 'hardwrap'
+  | 'explicit-uri';
 export type ExecutionTerminalSearchLinkSource = 'word';
 export const DEFAULT_EXECUTION_TERMINAL_WORD_SEPARATORS = ' ()[]{}\',"`';
 export type ExecutionTerminalOpenLink =

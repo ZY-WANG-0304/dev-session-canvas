@@ -25,6 +25,8 @@
 - [x] (2026-05-02 00:16 +0800) 继续根据 review 收口 search/local 边界：唯一 partial basename hit 现在只保留在 search opener 路径里，local fallback resolver 回到 exact-only，避免 `README`、`missing-target.ts` 这类 plain word 被错误升级成高置信 file link。
 - [x] (2026-05-19 08:05 +0800) 补齐 Codex / Claude TUI 硬换行链接第一阶段：新增 hard-wrap URL provider 与同 ANSI 样式文件路径重组，补充 agent / terminal Playwright 回归，并把正式方案、验证证据同步到 `docs/design-docs/execution-terminal-tui-hard-wrapped-links.md`。
 - [x] (2026-05-19 10:46 +0800) 为 TUI 硬换行链接补 grouped hover underline overlay：hover 任一片段时，同组真实片段全部显示下划线，但缩进空白仍不属于 clickable range。
+- [x] (2026-05-19 11:47 +0800) 根据真实手测修正 code path 场景：hard-wrap 文件 candidate 改为 `hardwrap` source，并允许 Host 在 cwd 解析失败后做 workspace exact fallback；同时补充带 `line:column` 后缀的 Playwright 回归。
+- [x] (2026-05-19 12:04 +0800) 修复真实 VSCode Host 拒绝 `hardwrap` source 的协议缺口：协议 validator 接受 hard-wrap file candidate / open link，并新增 `test:protocol-webview-messages` 回归覆盖。
 
 ## 意外与发现
 
@@ -64,6 +66,12 @@
 - 观察：`xterm.js` 原生 link hover underline 只会绘制当前 `ILink.range`；因为 hard-wrap link 被拆成多个不连续片段，hover 第二行时第一行不会自动出现下划线。
   证据：2026-05-19 用户手测截图显示同组 hard-wrap 文件路径可点击完整目标，但 hover underline 只覆盖当前片段。
 
+- 观察：真实 Terminal 手测里，code path 常以 `src/foo.` + 下一行 `ts:line:column` 这种方式拆开；Webview 可以识别出拼接候选，但如果 Host 只按当前 cwd 解析失败，用户最终会落到单片段 search link，例如只搜索 `ts:1600:12`。
+  证据：2026-05-19 用户手测截图显示第 9、10、11 组点击后分别进入单片段 Quick Open，而不是打开拼接后的完整文件。
+
+- 观察：把文件 hard-wrap candidate 改成独立 `hardwrap` source 后，真实 VSCode Host 会先经过 `parseWebviewMessage(...)` 的协议 validator；如果 validator 未同步接受新 source，Host 会把 `webview/resolveExecutionFileLinks` / `webview/openExecutionLink` 判为未知消息，导致 hover 不显示下划线且点击无效。
+  证据：2026-05-19 用户提供的落盘诊断 `/home/users/ziyang01.wang-al/projects/hf_workspace/.debug/current-host-diagnostics/2026-05-19T03-55-02-067Z/host-messages.json` 中出现多条 `host/error`：“收到无法识别的消息，已忽略。”；同一诊断里 hard-wrap file resolve 结果为 `resolvedLinkCount: 0`。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -88,6 +96,14 @@
 
 - 决策：hard-wrap link 的 hover 下划线由 Webview 自绘 overlay 统一绘制，而不是把 `ILink.range` 扩大成跨行连续范围。
   理由：扩大 range 会把行尾空白和下一行缩进也变成链接区域，破坏“缩进不是 link 内容”的边界；overlay 可以只覆盖真实片段，同时保留当前分段点击模型。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：为 hard-wrap 文件 candidate 增加独立 `hardwrap` source，并允许 Host 在当前 cwd 未命中时执行 workspace exact fallback，但不启用 partial basename fallback。
+  理由：hard-wrap 文件路径已经有同 ANSI 样式锚点和完整 path parser 识别，属于高置信候选；workspace exact fallback 能覆盖 TUI 输出工作区相对路径但执行节点 cwd 不一致的情况，同时避免像普通 search fallback 那样按 basename 猜测。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：所有新增 `ExecutionTerminalFileLinkSource` 都必须同步进入 Webview -> Host 协议 validator，并用协议消息级测试覆盖 candidate resolve 与 open link 两条路径。
+  理由：Playwright harness 会模拟 Host resolve，不能覆盖真实扩展宿主的 `parseWebviewMessage(...)` 拒绝路径；协议层回归能防止 Webview 侧新增 source 后在真实 VSCode 中变成“未知消息”。
   日期/作者：2026-05-19 / Codex
 
 ## 结果与复盘

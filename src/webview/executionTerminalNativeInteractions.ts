@@ -819,7 +819,7 @@ function collectHardWrappedStyledFileLinkCandidates(
         column: detectedLink.column,
         lineEnd: detectedLink.lineEnd,
         columnEnd: detectedLink.columnEnd,
-        source: 'detected'
+        source: 'hardwrap'
       },
       fragments
     });

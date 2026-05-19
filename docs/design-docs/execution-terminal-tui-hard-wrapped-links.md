@@ -125,7 +125,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 对普通长 URL，新增 hard-wrap URL detector。只有首片段包含明确 URL scheme，且续行去掉固定缩进后仍是无空格 URL 安全集合字符时，才把多个片段拼成一个完整 URL。每个可见片段各自注册为 `ILink`，但它们共享同一个完整 URL target。
 
-对文件路径，新增 style-assisted hard-wrap detector。它读取 `xterm.js` buffer cell 的前景色、背景色与文本属性，计算非默认 style signature；只有相邻硬换行上的片段拥有同一非默认 style signature，拼接后能被 path parser 识别，且 Host 验证目标存在时，才暴露高置信 file link。实现不能按“蓝色”判断，只能按 buffer 中稳定的 ANSI style signature 判断。
+对文件路径，新增 style-assisted hard-wrap detector。它读取 `xterm.js` buffer cell 的前景色、背景色与文本属性，计算非默认 style signature；只有相邻硬换行上的片段拥有同一非默认 style signature，拼接后能被 path parser 识别，且 Host 验证目标存在时，才暴露高置信 file link。实现不能按“蓝色”判断，只能按 buffer 中稳定的 ANSI style signature 判断。Host 验证优先按执行节点当前 cwd 解析；若 hard-wrap candidate 是工作区相对路径且当前 cwd 无法命中，允许做一次 workspace exact fallback，但不启用 partial basename 猜测。由于 hard-wrap 文件 candidate 会跨 Webview -> Host 协议传输，`hardwrap` source 必须同时纳入 candidate resolve 与 open link 的协议 validator，否则真实 VSCode Host 会拒绝消息并把交互降级成不可点击。
 
 交互呈现上，hard-wrap link 继续保持“每个可见片段一个 `ILink`”的点击模型，但 hover 下划线由 `src/webview/executionTerminalNativeInteractions.ts` 的 grouped hover overlay 统一绘制。这样 hover 任一片段时，所有同组片段都会显示下划线，同时不把 TUI 缩进空白纳入 clickable range。overlay 只服务 hard-wrap 高置信链接；普通 link 继续使用 `xterm.js` 原生 hover underline。
 
@@ -136,7 +136,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 3. 总长度不超过既有 URI 上限。
 4. 续行数量有小上限，例如 2 到 4 行。
 5. 每个续行去掉固定缩进后只能包含 URL 安全集合字符，不能包含空格或明显自然语言分隔；若续行自身以明确 URL scheme 开始，则视为相邻的另一条 URL，不参与拼接。
-6. 对文件路径，必须有明确的同一 ANSI 样式锚点，且 Host 验证目标存在后才暴露高置信 file link。
+6. 对文件路径，必须有明确的同一 ANSI 样式锚点，且 Host 通过 cwd 或 workspace exact fallback 验证目标存在后才暴露高置信 file link。
 7. 每个可见片段都映射到同一个完整目标，但不把缩进区域纳入 clickable range；hover 时通过 overlay 给同组真实片段一起画下划线。
 
 无样式文件路径硬换行仍暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
@@ -158,8 +158,10 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 2026-05-19 已完成自动化验证：
 
 - `npm run typecheck`
+- `npm run test:protocol-webview-messages`
 - `npm run test:execution-terminal-links`
-- `npm run test:webview -- -g "hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links"`
-- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"`
+- `npm run test:execution-terminal-native-helpers`
+- `npm run test:webview -- -g "hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped code paths|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links"`
+- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped code paths|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"`
 
 真实 Codex / Claude TUI 输出的手动验证尚未执行，因此验证状态保持为 `验证中`。

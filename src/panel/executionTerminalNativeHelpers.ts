@@ -131,7 +131,7 @@ export async function resolveExecutionFileLink(
     }
   }
 
-  if (link.source === 'fallback') {
+  if (link.source === 'fallback' || link.source === 'hardwrap') {
     const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(
       sanitizedPath,
       link,
