@@ -23,6 +23,13 @@
 - [x] (2026-05-01 01:08 +0800) 继续把 low-confidence `word/search link` 的装饰行为对齐原生：默认 hover 不下划线，只有按住激活修饰键时才临时强调；并在现有 link Playwright 集合上完成回归验证。
 - [x] (2026-05-01 03:18 +0800) 根据 review 收口剩余 parity 缺口：search opener 现在会保留 `contextLine` 里的 `line[:column]` 后缀，workspace fallback 支持原生同类的唯一 partial hit，multiline/link resolve cache 会在终端内容变化时失效，且已删除把 wrapper / trailing punctuation 再修剪成 file link 的仓库私有 refine。
 - [x] (2026-05-02 00:16 +0800) 继续根据 review 收口 search/local 边界：唯一 partial basename hit 现在只保留在 search opener 路径里，local fallback resolver 回到 exact-only，避免 `README`、`missing-target.ts` 这类 plain word 被错误升级成高置信 file link。
+- [x] (2026-05-19 08:05 +0800) 补齐 Codex / Claude TUI 硬换行链接第一阶段：新增 hard-wrap URL provider 与同 ANSI 样式文件路径重组，补充 agent / terminal Playwright 回归，并把正式方案、验证证据同步到 `docs/design-docs/execution-terminal-tui-hard-wrapped-links.md`。
+- [x] (2026-05-19 10:46 +0800) 为 TUI 硬换行链接补 grouped hover underline overlay：hover 任一片段时，同组真实片段全部显示下划线，但缩进空白仍不属于 clickable range。
+- [x] (2026-05-19 11:47 +0800) 根据真实手测修正 code path 场景：hard-wrap 文件 candidate 改为 `hardwrap` source，并允许 Host 在 cwd 解析失败后做 workspace exact fallback；同时补充带 `line:column` 后缀的 Playwright 回归。
+- [x] (2026-05-19 12:04 +0800) 修复真实 VSCode Host 拒绝 `hardwrap` source 的协议缺口：协议 validator 接受 hard-wrap file candidate / open link，并新增 `test:protocol-webview-messages` 回归覆盖。
+- [x] (2026-05-19 14:43 +0800) 根据 PR review 先更新正式设计约束：中文语境 start-boundary 不能回归 git diff header；styled hard-wrap file 必须满足首片段贴行尾、续片段从允许缩进后连续承接、行内不混入 prose 的 continuation 链。
+- [x] (2026-05-19 14:49 +0800) 收口 PR review 两个 blocker：diff header 剥离 `a/` / `b/` 后保留合法起点信息；styled hard-wrap file collector 改为只接受明确 continuation 链，并补充纯函数与 Playwright 负例回归。
+- [x] (2026-05-19 15:21 +0800) 调整 continuation 边界：续行 link 片段从允许缩进后行首开始时，允许后面跟默认样式说明文字；继续拒绝首片段后混入 prose 或续片段不在缩进后行首的误拼接。
 
 ## 意外与发现
 
@@ -53,6 +60,27 @@
 - 观察：上一轮把唯一 partial basename hit 做进共享 `resolveExecutionWorkspaceFallbackLink()` 后，local fallback candidate 也会复用这条路径，导致单独一行 `README` / `missing-target.ts` 在 workspace 存在唯一 `README.md` / `missing-target.tsx` 时被直接解析成 file link，而不是保留为 low-confidence search link。
   证据：2026-05-02 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts`、`src/webview/executionTerminalNativeInteractions.ts` 与 `src/common/executionTerminalLinks.ts` 的共享 fallback 路径。
 
+- 观察：Codex / Claude TUI 会把长 URL 或路径拆成多条非 `isWrapped` buffer 行，`xterm.js` 的 link range 不能把中间的缩进空白排除后表达成一个连续点击区域。
+  证据：2026-05-19 的实现改为在 `src/webview/executionTerminalNativeInteractions.ts` 中为每个可见片段各建一个 `ILink`，但这些片段共享同一个完整 URL 或 file target。
+
+- 观察：只凭“下一行有缩进且是 URL-safe 字符”会把完整 URL 与缩进说明误拼接。
+  证据：新增 Playwright 用例 `hard-wrapped URL detector does not append indented prose` 覆盖 `https://example.com/docs` 后接缩进 `details` 的负例。
+
+- 观察：`xterm.js` 原生 link hover underline 只会绘制当前 `ILink.range`；因为 hard-wrap link 被拆成多个不连续片段，hover 第二行时第一行不会自动出现下划线。
+  证据：2026-05-19 用户手测截图显示同组 hard-wrap 文件路径可点击完整目标，但 hover underline 只覆盖当前片段。
+
+- 观察：真实 Terminal 手测里，code path 常以 `src/foo.` + 下一行 `ts:line:column` 这种方式拆开；Webview 可以识别出拼接候选，但如果 Host 只按当前 cwd 解析失败，用户最终会落到单片段 search link，例如只搜索 `ts:1600:12`。
+  证据：2026-05-19 用户手测截图显示第 9、10、11 组点击后分别进入单片段 Quick Open，而不是打开拼接后的完整文件。
+
+- 观察：把文件 hard-wrap candidate 改成独立 `hardwrap` source 后，真实 VSCode Host 会先经过 `parseWebviewMessage(...)` 的协议 validator；如果 validator 未同步接受新 source，Host 会把 `webview/resolveExecutionFileLinks` / `webview/openExecutionLink` 判为未知消息，导致 hover 不显示下划线且点击无效。
+  证据：2026-05-19 用户提供的落盘诊断 `/home/users/ziyang01.wang-al/projects/hf_workspace/.debug/current-host-diagnostics/2026-05-19T03-55-02-067Z/host-messages.json` 中出现多条 `host/error`：“收到无法识别的消息，已忽略。”；同一诊断里 hard-wrap file resolve 结果为 `resolvedLinkCount: 0`。
+
+- 观察：中文语境新增的 path start-boundary 过滤会误伤 git diff header。`detectPathsWithoutSuffix()` 已把 `--- a/src/foo.ts`、`+++ b/src/foo.ts` 和 `diff --git a/src/foo.ts b/src/foo.ts` 中的 `a/` / `b/` 剥掉，但随后 boundary 检查看到剥离后 `src` 前一个字符是 `/`，把原本合法的 diff path 过滤掉。
+  证据：2026-05-19 PR review 提供的纯函数复现；本地在 PR head 上运行同样脚本，三类输入均返回 `[]`。
+
+- 观察：styled hard-wrap file collector 只按同一 ANSI style signature 查找后续 span，不检查首片段是否贴行尾、续片段是否从缩进后的行首开始、行内是否混入 prose；同色日志片段只要拼接后能被 path parser 和 Host workspace exact fallback 命中，就可能被错误升级成高置信 file link。
+  证据：2026-05-19 PR review 指出 `Error at <blue>src/webview/executionTerminalNativeInteractions.</blue> crashed` 与 `note: <blue>ts:1600:12</blue> elsewhere` 会被拼成真实可打开的 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -71,9 +99,35 @@
   理由：这类自定义 heuristics 正是当前“过多链接”与“看似原生、实际不原生”的主要来源之一。
   日期/作者：2026-04-30 / Codex
 
+- 决策：TUI 硬换行作为原生 parity 之外的受控适配层实现，并放在现有 multiline / local / URI / word provider 之前；第一阶段只支持明确 scheme、首片段以常见 URL 断点结尾、续行不以另一条明确 scheme 开始的 URL，以及同一非默认 ANSI style signature 且 Host 验证存在的文件路径。
+  理由：用户给出的场景来自 TUI 自身硬换行，不是 `xterm.js` 软换行；直接把所有相邻缩进行拼成 link 会放大误判和 Host 解析成本，因此必须保留强锚点与 Host 验证。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：hard-wrap link 的 hover 下划线由 Webview 自绘 overlay 统一绘制，而不是把 `ILink.range` 扩大成跨行连续范围。
+  理由：扩大 range 会把行尾空白和下一行缩进也变成链接区域，破坏“缩进不是 link 内容”的边界；overlay 可以只覆盖真实片段，同时保留当前分段点击模型。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：为 hard-wrap 文件 candidate 增加独立 `hardwrap` source，并允许 Host 在当前 cwd 未命中时执行 workspace exact fallback，但不启用 partial basename fallback。
+  理由：hard-wrap 文件路径已经有同 ANSI 样式锚点和完整 path parser 识别，属于高置信候选；workspace exact fallback 能覆盖 TUI 输出工作区相对路径但执行节点 cwd 不一致的情况，同时避免像普通 search fallback 那样按 basename 猜测。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：所有新增 `ExecutionTerminalFileLinkSource` 都必须同步进入 Webview -> Host 协议 validator，并用协议消息级测试覆盖 candidate resolve 与 open link 两条路径。
+  理由：Playwright harness 会模拟 Host resolve，不能覆盖真实扩展宿主的 `parseWebviewMessage(...)` 拒绝路径；协议层回归能防止 Webview 侧新增 source 后在真实 VSCode 中变成“未知消息”。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：diff header 中被剥离的 `a/` / `b/` 前缀应作为合法起点证据保留下来，不能再用剥离后路径前一个字符是否为通用 boundary 来否定这类 candidate。
+  理由：`a/` / `b/` 是 git diff metadata，原生同类场景应继续生成 `src/foo.ts` 链接；把 `/` 加进通用 boundary 会过度放宽普通 prose，因此只对 diff-prefix special case 放行。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：styled hard-wrap file candidate 必须先通过结构化 continuation 链检查，再进入 path parser 与 Host resolve；同一 ANSI style signature 只是必要条件，不是充分条件。
+  理由：同色 prose 很常见，Host workspace exact fallback 会让误判变成真实打开动作；首片段贴行尾、续片段从允许缩进后开始能保留 TUI 硬换行主路径，同时降低同色日志误拼接。续行 link 片段后的默认样式说明文字不在两段链接之间，不破坏 continuation 链，因此不作为拒绝条件。
+  日期/作者：2026-05-19 / Codex
+
 ## 结果与复盘
 
-当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。当前仍未完成的只剩宿主级 `trusted` smoke：它依旧被 `verifyRealWebviewProbe()` 的既有失败拦住，所以“真实宿主里整条 link parity 流水线已打通”还不能写成已验证结论。
+当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
+
+2026-05-19 新增的 TUI 硬换行第一阶段已经能让带明确 scheme 的硬换行 URL、同一非默认 ANSI 样式拆开的文件路径在 agent / terminal 节点里点击为同一个完整目标；无样式文件路径、自然语言缩进续行和普通同色日志仍不会被重组。随后补上的 grouped hover overlay 让用户 hover 任一片段时能看到同组所有真实片段的下划线，但不会把缩进空白纳入可点击区域。当前自动化验证通过，但真实 Codex / Claude TUI 输出中的手动验证尚未执行，所以这部分仍保持“验证中”。
 
 ## 上下文与定向
 
@@ -208,3 +262,7 @@
 若实现过程中需要从 VSCode upstream 移植或改写逻辑，必须在注释或计划中明确它对应的是哪一类原生 detector / opener，而不是留下无法追溯来源的“魔法正则”或“经验规则”。
 
 本次更新说明：2026-04-30 新建本计划，并把任务目标从“基础 terminal link 可用”升级为“除实现分层外，解析与交互全面向 VSCode 原生 Terminal 对齐”，以响应当前关于“过多链接”和“缺少跨行链接”的最新用户反馈。
+
+本次更新说明：2026-05-19 追加 Codex / Claude TUI 硬换行链接第一阶段实现与验证记录；该能力属于原生 parity 之外的受控适配层，因此同步记录强锚点规则、误判边界和真实 TUI 手动验证缺口。
+
+本次更新说明：2026-05-19 追加 grouped hover underline overlay 决策；该方案避免把 hard-wrap link range 扩成连续跨行范围，同时解决用户手测发现的“可点击但视觉下划线不像同一个链接”的问题。

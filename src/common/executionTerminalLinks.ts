@@ -4,7 +4,12 @@ export type ExecutionTerminalFileLinkTargetKind =
   | 'directory-in-workspace'
   | 'directory-outside-workspace';
 export type ExecutionTerminalUrlLinkSource = 'implicit' | 'explicit';
-export type ExecutionTerminalFileLinkSource = 'detected' | 'refined' | 'fallback' | 'explicit-uri';
+export type ExecutionTerminalFileLinkSource =
+  | 'detected'
+  | 'refined'
+  | 'fallback'
+  | 'hardwrap'
+  | 'explicit-uri';
 export type ExecutionTerminalSearchLinkSource = 'word';
 export const DEFAULT_EXECUTION_TERMINAL_WORD_SEPARATORS = ' ()[]{}\',"`';
 export type ExecutionTerminalOpenLink =
@@ -90,6 +95,7 @@ interface ParsedExecutionTerminalLink {
   path: ExecutionTerminalLinkPartialRange;
   prefix?: ExecutionTerminalLinkPartialRange;
   suffix?: ExecutionTerminalLinkSuffix;
+  hasStartBoundary?: boolean;
 }
 
 const linkSuffixRegexEol = generateLinkSuffixRegex(true);
@@ -186,17 +192,54 @@ export function removeExecutionTerminalLinkQueryString(value: string): string {
   return value.slice(0, index);
 }
 
-const linkWithSuffixPathCharacters = /(?<path>(?:file:\/\/\/)?[^\s\|<>\[\({][^\s\|<>]*)$/;
+export const EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS =
+  '\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65';
+const cjkPunctuationRegex = new RegExp(`[${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]`);
+const cjkIdeographRegex = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/;
+const cjkProsePrefixBeforeAsciiPathRegex = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF][a-zA-Z][a-zA-Z._-]*$/;
+const fileLikeWordRegex = /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}(?::\d+(?::\d+)?)?$/;
+const linkWithSuffixPathCharacters = new RegExp(
+  `(?<path>(?:file:\\/\\/\\/)?[^\\s\\|<>\\[\\({${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}][^\\s\\|<>${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]*)$`
+);
+
+export function shouldSuppressExecutionTerminalWordLink(value: string): boolean {
+  if (cjkPunctuationRegex.test(value)) {
+    return true;
+  }
+
+  if (!cjkIdeographRegex.test(value)) {
+    return false;
+  }
+
+  if (hasProsePrefixedRelativePath(value, inferExecutionTerminalPathStyle(undefined, value))) {
+    return true;
+  }
+
+  return !isFileLikeExecutionTerminalWord(value);
+}
+
+function isFileLikeExecutionTerminalWord(value: string): boolean {
+  return (
+    fileLikeWordRegex.test(value) ||
+    value.startsWith('/') ||
+    value.startsWith('./') ||
+    value.startsWith('../') ||
+    value.startsWith('~/') ||
+    value.startsWith('file://') ||
+    /^[a-zA-Z]:[\\/]/.test(value) ||
+    value.startsWith('\\\\')
+  );
+}
 
 const enum RegexPathConstants {
   PathPrefix = '(?:\\.\\.?|\\~|file:\\/\\/)',
   PathSeparatorClause = '\\/',
-  ExcludedPathCharactersClause = '[^\\0<>\\?\\s!`&*()\'":;\\\\]',
-  ExcludedStartPathCharactersClause = '[^\\0<>\\?\\s!`&*()\\[\\]\'":;\\\\]',
+  ExcludedPathCharactersClause = '[^\\0<>\\?\\s!`&*()\'":;\\\\\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
+  ExcludedStartPathCharactersClause = '[^\\0<>\\?\\s!`&*()\\[\\]\'":;\\\\\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
   WinOtherPathPrefix = '\\.\\.?|\\~',
   WinPathSeparatorClause = '(?:\\\\|\\/)',
-  WinExcludedPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\'":;]',
-  WinExcludedStartPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\\[\\]\'":;]'
+  WinExcludedPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\'":;\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]',
+  WinExcludedStartPathCharactersClause = '[^\\0<>\\?\\|\\/\\s!`&*()\\[\\]\'":;\\u2018-\\u201F\\u3000-\\u303F\\uFF01-\\uFF0F\\uFF1A-\\uFF20\\uFF3B-\\uFF40\\uFF5B-\\uFF65]'
 }
 
 const unixLocalLinkClause =
@@ -270,7 +313,102 @@ function detectParsedExecutionTerminalLinks(
   const results = detectLinksViaSuffix(line);
   const noSuffixPaths = detectPathsWithoutSuffix(line, style);
   insertParsedLinks(results, noSuffixPaths);
-  return results;
+  return results.filter((link) => isValidParsedExecutionTerminalLink(line, link, style));
+}
+
+function isValidParsedExecutionTerminalLink(
+  line: string,
+  link: ParsedExecutionTerminalLink,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  const startIndex = link.prefix?.index ?? link.path.index;
+  if (!link.hasStartBoundary && !hasExecutionTerminalPathStartBoundary(line, startIndex)) {
+    return false;
+  }
+
+  if (isTruncatedBeforeInternalCjkPunctuation(line, link.path.index + link.path.text.length)) {
+    return false;
+  }
+
+  return !hasProsePrefixedRelativePath(link.path.text, style);
+}
+
+function hasExecutionTerminalPathStartBoundary(line: string, startIndex: number): boolean {
+  if (startIndex <= 0) {
+    return true;
+  }
+
+  const previous = line[startIndex - 1];
+  return /[\s"'`,:;=\[\(\{<]/.test(previous) || cjkPunctuationRegex.test(previous);
+}
+
+function hasProsePrefixedRelativePath(
+  pathText: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  if (hasExplicitExecutionTerminalPathPrefix(pathText, style)) {
+    return false;
+  }
+
+  const firstSeparatorIndex =
+    style === 'windows'
+      ? findFirstExecutionTerminalPathSeparator(pathText, ['\\', '/'])
+      : pathText.indexOf('/');
+  if (firstSeparatorIndex <= 0) {
+    return false;
+  }
+
+  const firstSegment = pathText.slice(0, firstSeparatorIndex);
+  return cjkProsePrefixBeforeAsciiPathRegex.test(firstSegment);
+}
+
+function isTruncatedBeforeInternalCjkPunctuation(line: string, endIndexExclusive: number): boolean {
+  const next = line[endIndexExclusive];
+  if (!next || !cjkPunctuationRegex.test(next)) {
+    return false;
+  }
+
+  const rest = line.slice(endIndexExclusive + 1);
+  if (!rest) {
+    return false;
+  }
+
+  const nextBoundaryIndex = rest.search(/[\s"'`,;=\[\(\{<]/);
+  const nextSegment = nextBoundaryIndex < 0 ? rest : rest.slice(0, nextBoundaryIndex);
+  return /[\\/]/.test(nextSegment) || /\.[a-zA-Z\d]{1,16}(?=$|[^\w])/u.test(nextSegment);
+}
+
+function hasExplicitExecutionTerminalPathPrefix(
+  pathText: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  if (
+    pathText.startsWith('/') ||
+    pathText.startsWith('./') ||
+    pathText.startsWith('../') ||
+    pathText.startsWith('~/') ||
+    pathText.startsWith('file://')
+  ) {
+    return true;
+  }
+
+  if (style === 'windows') {
+    return /^[a-zA-Z]:[\\/]/.test(pathText) || pathText.startsWith('\\\\');
+  }
+
+  return false;
+}
+
+function findFirstExecutionTerminalPathSeparator(value: string, separators: string[]): number {
+  let index = -1;
+  for (const separator of separators) {
+    const nextIndex = value.indexOf(separator);
+    if (nextIndex >= 0 && (index < 0 || nextIndex < index)) {
+      index = nextIndex;
+    }
+  }
+
+  return index;
 }
 
 function detectLinksViaSuffix(line: string): ParsedExecutionTerminalLink[] {
@@ -358,6 +496,7 @@ function detectPathsWithoutSuffix(
   while ((match = regex.exec(line)) !== null) {
     let text = match[0];
     let index = match.index;
+    let hasStartBoundary = false;
     if (!text) {
       break;
     }
@@ -368,13 +507,15 @@ function detectPathsWithoutSuffix(
     ) {
       text = text.slice(2);
       index += 2;
+      hasStartBoundary = true;
     }
 
     results.push({
       path: {
         index,
         text
-      }
+      },
+      hasStartBoundary
     });
   }
 
