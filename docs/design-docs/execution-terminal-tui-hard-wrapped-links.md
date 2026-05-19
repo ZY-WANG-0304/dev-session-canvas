@@ -127,6 +127,8 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 对文件路径，新增 style-assisted hard-wrap detector。它读取 `xterm.js` buffer cell 的前景色、背景色与文本属性，计算非默认 style signature；只有相邻硬换行上的片段拥有同一非默认 style signature，拼接后能被 path parser 识别，且 Host 验证目标存在时，才暴露高置信 file link。实现不能按“蓝色”判断，只能按 buffer 中稳定的 ANSI style signature 判断。
 
+交互呈现上，hard-wrap link 继续保持“每个可见片段一个 `ILink`”的点击模型，但 hover 下划线由 `src/webview/executionTerminalNativeInteractions.ts` 的 grouped hover overlay 统一绘制。这样 hover 任一片段时，所有同组片段都会显示下划线，同时不把 TUI 缩进空白纳入 clickable range。overlay 只服务 hard-wrap 高置信链接；普通 link 继续使用 `xterm.js` 原生 hover underline。
+
 核心规则如下：
 
 1. 首片段从明确 URL scheme 开始。
@@ -135,9 +137,9 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 4. 续行数量有小上限，例如 2 到 4 行。
 5. 每个续行去掉固定缩进后只能包含 URL 安全集合字符，不能包含空格或明显自然语言分隔；若续行自身以明确 URL scheme 开始，则视为相邻的另一条 URL，不参与拼接。
 6. 对文件路径，必须有明确的同一 ANSI 样式锚点，且 Host 验证目标存在后才暴露高置信 file link。
-7. 每个可见片段都映射到同一个完整目标，但不把缩进区域纳入 clickable range。
+7. 每个可见片段都映射到同一个完整目标，但不把缩进区域纳入 clickable range；hover 时通过 overlay 给同组真实片段一起画下划线。
 
-无样式文件路径硬换行和 overlay 渲染仍暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
+无样式文件路径硬换行仍暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
 
 ## 验证方法
 
@@ -145,10 +147,11 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 1. Playwright 覆盖 agent / terminal 两类节点：`https://...` 被 TUI 硬换行缩进后，点击任一片段都发出完整 URL。
 2. 若实现 style-assisted file path，Playwright 应覆盖 agent / terminal 两类节点：同一非默认 ANSI 样式的相邻片段被重组为完整 file path，点击任一片段都打开同一文件。
-3. 回归样例：普通 Markdown 列表、缩进代码、中文说明、两个相邻 URL、带句号结尾的 URL、普通同色日志文本不被错误重组。
-4. 缓存样例：同一 buffer 行位置被 snapshot redraw 成另一个 URL 或另一个 styled path 后，不复用旧完整目标。
-5. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
-6. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
+3. hover 样例：hover 任一 hard-wrap 片段时，同组所有真实片段都显示下划线，缩进空白不显示下划线。
+4. 回归样例：普通 Markdown 列表、缩进代码、中文说明、两个相邻 URL、带句号结尾的 URL、普通同色日志文本不被错误重组。
+5. 缓存样例：同一 buffer 行位置被 snapshot redraw 成另一个 URL 或另一个 styled path 后，不复用旧完整目标。
+6. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
+7. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
 
 ### 当前验证记录
 
@@ -156,7 +159,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 - `npm run typecheck`
 - `npm run test:execution-terminal-links`
-- `npm run test:webview -- -g "hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|unstyled hard-wrapped file fragments|styled hard-wrapped non-links"`
-- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"`
+- `npm run test:webview -- -g "hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links"`
+- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"`
 
 真实 Codex / Claude TUI 输出的手动验证尚未执行，因此验证状态保持为 `验证中`。
