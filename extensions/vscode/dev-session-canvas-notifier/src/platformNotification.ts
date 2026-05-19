@@ -201,6 +201,7 @@ export function launchShellInvocation(
       stderr: string;
       stdout: string;
     }) => Promise<AttentionNotificationDeliveryResult | undefined>;
+    spawnCommand?: typeof spawn;
   }
 ): Promise<AttentionNotificationDeliveryResult> {
   return new Promise((resolve) => {
@@ -209,7 +210,8 @@ export function launchShellInvocation(
     let stderr = '';
     let spawnSuccessTimer: NodeJS.Timeout | undefined;
 
-    const child = spawn(invocation.command, invocation.args, {
+    const spawnCommand = options.spawnCommand ?? spawn;
+    const child = spawnCommand(invocation.command, invocation.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false
