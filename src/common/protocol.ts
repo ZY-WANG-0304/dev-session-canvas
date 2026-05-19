@@ -2,6 +2,7 @@ import type { SerializedTerminalState } from './serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
+  ExecutionTerminalFileLinkSource,
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
@@ -1936,10 +1937,7 @@ function isExecutionTerminalFileLinkCandidate(value: unknown): value is Executio
     typeof value.bufferStartLine === 'number' &&
     Number.isInteger(value.bufferStartLine) &&
     value.bufferStartLine >= 0 &&
-    (value.source === 'detected' ||
-      value.source === 'refined' ||
-      value.source === 'fallback' ||
-      value.source === 'explicit-uri') &&
+    isExecutionTerminalFileLinkSource(value.source) &&
     (value.line === undefined || isPositiveInteger(value.line)) &&
     (value.column === undefined || isPositiveInteger(value.column)) &&
     (value.lineEnd === undefined || isPositiveInteger(value.lineEnd)) &&
@@ -1984,10 +1982,7 @@ function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminal
           value.bufferStartLine >= 0)) &&
       (value.resolvedId === undefined || typeof value.resolvedId === 'string') &&
       (value.source === undefined ||
-        value.source === 'detected' ||
-        value.source === 'refined' ||
-        value.source === 'fallback' ||
-        value.source === 'explicit-uri') &&
+        isExecutionTerminalFileLinkSource(value.source)) &&
       (value.targetKind === undefined ||
         value.targetKind === 'file' ||
         value.targetKind === 'directory-in-workspace' ||
@@ -1996,6 +1991,16 @@ function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminal
   }
 
   return false;
+}
+
+function isExecutionTerminalFileLinkSource(value: unknown): value is ExecutionTerminalFileLinkSource {
+  return (
+    value === 'detected' ||
+    value === 'refined' ||
+    value === 'fallback' ||
+    value === 'hardwrap' ||
+    value === 'explicit-uri'
+  );
 }
 
 function isPositiveInteger(value: unknown): value is number {

@@ -3043,7 +3043,81 @@ for (const executionKind of ['agent', 'terminal']) {
               text: hardWrappedPath,
               path: hardWrappedPath,
               targetKind: 'file',
-              source: 'detected'
+              source: 'hardwrap'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} styled hard-wrapped code paths keep line and column suffixes`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'src/webview/executionTerminalNativeInteractions.';
+    const secondPathFragment = 'ts:1600:12';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+    const resolvedPath = 'src/webview/executionTerminalNativeInteractions.ts';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `TypeError: Cannot read properties of undefined\r\n    at renderTerminalLink (\u001b[94m${firstPathFragment}\u001b[39m\r\n      \u001b[94m${secondPathFragment}\u001b[39m)\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedPath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  line: entry.payload.link.line,
+                  column: entry.payload.link.column,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: hardWrappedPath,
+              path: resolvedPath,
+              line: 1600,
+              column: 12,
+              targetKind: 'file',
+              source: 'hardwrap'
             }
           }
         ])
