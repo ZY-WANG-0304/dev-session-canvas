@@ -757,6 +757,10 @@ function collectHardWrappedStyledFileLinkCandidates(
   const candidates: HardWrappedFileLinkCandidate[] = [];
   const firstLineSpans = readStyledTextSpans(terminal, context.startLine);
   for (const firstSpan of firstLineSpans) {
+    if (!isHardWrappedStartStyledSpan(context, firstSpan)) {
+      continue;
+    }
+
     const fragments: HardWrappedLinkFragment[] = [
       {
         text: firstSpan.text,
@@ -766,8 +770,10 @@ function collectHardWrappedStyledFileLinkCandidates(
     let fullText = firstSpan.text;
 
     for (let lineOffset = 1; lineOffset < context.lines.length; lineOffset += 1) {
-      const nextSpan = readStyledTextSpans(terminal, context.startLine + lineOffset).find(
-        (span) => span.signature === firstSpan.signature
+      const nextSpan = readHardWrappedContinuationStyledSpan(
+        terminal,
+        context.startLine + lineOffset,
+        firstSpan.signature
       );
       if (!nextSpan) {
         break;
@@ -830,6 +836,35 @@ function collectHardWrappedStyledFileLinkCandidates(
   }
 
   return candidates;
+}
+
+function isHardWrappedStartStyledSpan(context: WrappedLineContext, span: StyledTextSpan): boolean {
+  const lineText = getWrappedContextLineText(context, 0);
+  return lineText.slice(span.bufferRange.end.x).trim().length === 0;
+}
+
+function readHardWrappedContinuationStyledSpan(
+  terminal: Terminal,
+  lineIndex: number,
+  signature: string
+): StyledTextSpan | undefined {
+  const lineText = terminal.buffer.active.getLine(lineIndex)?.translateToString(true) ?? '';
+  const leadingWhitespace = lineText.match(/^\s*/)?.[0].length ?? 0;
+  if (
+    leadingWhitespace <= 0 ||
+    leadingWhitespace > EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX
+  ) {
+    return undefined;
+  }
+
+  const span = readStyledTextSpans(terminal, lineIndex).find(
+    (entry) => entry.signature === signature && entry.bufferRange.start.x === leadingWhitespace + 1
+  );
+  if (!span) {
+    return undefined;
+  }
+
+  return span;
 }
 
 async function collectFileLinks(
