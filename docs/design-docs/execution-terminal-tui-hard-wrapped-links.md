@@ -1,7 +1,7 @@
 ---
 title: 执行节点 TUI 硬换行链接支持分析
-decision_status: 比较中
-validation_status: 未验证
+decision_status: 已选定
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -15,7 +15,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
-updated_at: 2026-05-18
+updated_at: 2026-05-19
 ---
 
 # 执行节点 TUI 硬换行链接支持分析
@@ -26,7 +26,7 @@ updated_at: 2026-05-18
 
 新的问题来自 Codex / Claude 这类 TUI 输出：当 TUI 自己为了固定缩进、列表 gutter 或消息气泡宽度把长链接拆成多条终端行时，后续行会带有人为缩进或前缀。这个场景不同于 `xterm.js` 自己把同一条超长输出软换行到下一行；前者在终端 buffer 中通常是多条非 `isWrapped` 行，链接文本被插入的缩进打断。
 
-本文只记录当前分析口径，不把方案写成已选定结论。
+本文记录当前已选定的第一阶段方案；更宽泛的无样式 path 拼接和 overlay 渲染仍不是当前正式范围。
 
 ## 问题定义
 
@@ -81,7 +81,7 @@ updated_at: 2026-05-18
 
 交互仍受 `xterm.js` 连续 range 限制，因此实现上应为每个可见片段创建一个 `ILink`，但这些 `ILink` 共用同一个完整 URL 或完整 file path 目标。对于文件路径，Webview 侧只负责把片段拼成 candidate，Host 侧仍用 `resolveExecutionTerminalFileLinkCandidates(...)` 验证文件是否真实存在。
 
-这个方案可以覆盖“蓝色 `docs/design-docs/execution-terminal-tui-` + 下一行蓝色 `hard-wrapped-links.md`”这类样例，前提是蓝色来自 PTY 输出中的 ANSI 样式，并且 `xterm.js` buffer cell 能读到对应颜色属性。
+这个方案可以覆盖“同一非默认 ANSI 样式的 `docs/design-docs/execution-terminal-tui-` + 下一行同样式的 `hard-wrapped-links.md`”这类样例，前提是样式来自 PTY 输出，并且 `xterm.js` buffer cell 能读到对应属性。方案不依赖当前主题把该 ANSI 样式渲染成哪一种视觉颜色。
 
 ### 方案四：URL + 文件路径统一重组
 
@@ -119,30 +119,44 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - 文件路径支持会放大 Host 请求：若把 path 也纳入硬换行重组，Webview 会产生更多待解析 file candidates，Host 侧 `stat` 和 workspace fallback 请求会增加。
 - 复制与选择语义不会自动改善：点击可以打开重组目标，但用户拖选终端文本时仍会复制带缩进或换行的原始文本；这会造成“能点开但复制出来仍坏”的体验差异。
 
-## 当前判断
+## 正式方案
 
-当前建议把方案二和方案三作为两个可独立推进的小步，而不是直接支持所有跨行 URL / path。
+当前第一阶段正式选择方案二和方案三的受控组合，而不是直接支持所有跨行 URL / path。主要实现落点是 `src/webview/executionTerminalNativeInteractions.ts`，继续复用现有 `xterm.registerLinkProvider`、`ExecutionTerminalOpenLink` 与 Host 侧 `resolveExecutionTerminalFileLinkCandidates(...)` / `openExecutionTerminalLink(...)` 边界。
 
-如果目标是普通长 URL，先做方案二。原因是明确 scheme URL 有强锚点，可在可控范围内恢复点击能力。
+对普通长 URL，新增 hard-wrap URL detector。只有首片段包含明确 URL scheme，且续行去掉固定缩进后仍是无空格 URL 安全集合字符时，才把多个片段拼成一个完整 URL。每个可见片段各自注册为 `ILink`，但它们共享同一个完整 URL target。
 
-如果目标是截图中这种“同一蓝色样式的文件路径被硬换行拆断”，可以先做方案三。它比无样式文件路径重组安全，因为颜色 / 样式给了额外锚点；但仍应被写成 TUI hard-wrap 适配层，不能泛化成“所有相邻缩进行都拼成 path”。无样式文件路径硬换行和 overlay 渲染应暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
+对文件路径，新增 style-assisted hard-wrap detector。它读取 `xterm.js` buffer cell 的前景色、背景色与文本属性，计算非默认 style signature；只有相邻硬换行上的片段拥有同一非默认 style signature，拼接后能被 path parser 识别，且 Host 验证目标存在时，才暴露高置信 file link。实现不能按“蓝色”判断，只能按 buffer 中稳定的 ANSI style signature 判断。
 
-方案二和方案三都应默认关闭在“只要缩进就拼接”的泛化模式上。第一版规则建议只接受：
+核心规则如下：
 
 1. 首片段从明确 URL scheme 开始。
-2. 总长度不超过既有 URI 上限。
-3. 续行数量有小上限，例如 2 到 4 行。
-4. 每个续行去掉固定缩进后只能包含 URL 安全集合字符，不能包含空格或明显自然语言分隔。
-5. 对文件路径，必须有明确的同一 ANSI 样式锚点，且 Host 验证目标存在后才暴露高置信 file link。
-6. 每个可见片段都映射到同一个完整目标，但不把缩进区域纳入 clickable range。
+2. URL 首片段必须以常见 URL 断点字符结尾，例如 `/`、`?`、`#`、`&`、`=`、`.`、`_`、`~`、`%`、`+`、`-`，避免把一个完整 URL 和下一行缩进说明误拼接。
+3. 总长度不超过既有 URI 上限。
+4. 续行数量有小上限，例如 2 到 4 行。
+5. 每个续行去掉固定缩进后只能包含 URL 安全集合字符，不能包含空格或明显自然语言分隔；若续行自身以明确 URL scheme 开始，则视为相邻的另一条 URL，不参与拼接。
+6. 对文件路径，必须有明确的同一 ANSI 样式锚点，且 Host 验证目标存在后才暴露高置信 file link。
+7. 每个可见片段都映射到同一个完整目标，但不把缩进区域纳入 clickable range。
+
+无样式文件路径硬换行和 overlay 渲染仍暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
 
 ## 验证方法
 
 若进入实现，至少需要完成：
 
 1. Playwright 覆盖 agent / terminal 两类节点：`https://...` 被 TUI 硬换行缩进后，点击任一片段都发出完整 URL。
-2. 若实现 style-assisted file path，Playwright 应覆盖 agent / terminal 两类节点：同一 ANSI 蓝色或同一非默认样式的相邻片段被重组为完整 file path，点击任一片段都打开同一文件。
-3. 回归样例：普通 Markdown 列表、缩进代码、中文说明、两个相邻 URL、带句号结尾的 URL、普通蓝色日志文本不被错误重组。
+2. 若实现 style-assisted file path，Playwright 应覆盖 agent / terminal 两类节点：同一非默认 ANSI 样式的相邻片段被重组为完整 file path，点击任一片段都打开同一文件。
+3. 回归样例：普通 Markdown 列表、缩进代码、中文说明、两个相邻 URL、带句号结尾的 URL、普通同色日志文本不被错误重组。
 4. 缓存样例：同一 buffer 行位置被 snapshot redraw 成另一个 URL 或另一个 styled path 后，不复用旧完整目标。
 5. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
 6. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
+
+### 当前验证记录
+
+2026-05-19 已完成自动化验证：
+
+- `npm run typecheck`
+- `npm run test:execution-terminal-links`
+- `npm run test:webview -- -g "hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|unstyled hard-wrapped file fragments|styled hard-wrapped non-links"`
+- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"`
+
+真实 Codex / Claude TUI 输出的手动验证尚未执行，因此验证状态保持为 `验证中`。

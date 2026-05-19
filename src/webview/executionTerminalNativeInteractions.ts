@@ -1,4 +1,12 @@
-import type { IBufferLine, IBufferRange, ILink, ILinkDecorations, ILinkProvider, Terminal } from '@xterm/xterm';
+import type {
+  IBufferCell,
+  IBufferLine,
+  IBufferRange,
+  ILink,
+  ILinkDecorations,
+  ILinkProvider,
+  Terminal
+} from '@xterm/xterm';
 import LinkifyIt from 'linkify-it';
 
 import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
@@ -74,6 +82,22 @@ interface StyledFileLinkCandidate {
   bufferRange: IBufferRange;
 }
 
+interface HardWrappedFileLinkCandidate {
+  candidate: ExecutionTerminalFileLinkCandidate;
+  fragments: HardWrappedLinkFragment[];
+}
+
+interface HardWrappedLinkFragment {
+  text: string;
+  bufferRange: IBufferRange;
+}
+
+interface StyledTextSpan {
+  text: string;
+  signature: string;
+  bufferRange: IBufferRange;
+}
+
 interface SimpleRange {
   startColumn: number;
   startLineNumber: number;
@@ -101,6 +125,8 @@ const EXECUTION_MULTILINE_LINK_MAX_LENGTH = 500;
 const EXECUTION_LOCAL_LINK_MAX_LENGTH = 500;
 const EXECUTION_URI_LINK_MAX_LENGTH = 2048;
 const EXECUTION_WORD_LINK_MAX_LENGTH = 100;
+const EXECUTION_HARD_WRAPPED_LINK_MAX_LINES = 4;
+const EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX = 16;
 const FILE_LINK_LABEL = 'Open file in editor';
 const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
 const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
@@ -190,10 +216,16 @@ export function setupExecutionTerminalNativeInteractions(
 
   const previousLinkHandler = terminal.options.linkHandler;
   terminal.options.linkHandler = createExplicitLinkHandler(options, tooltipController);
+  const hardWrappedLinkProvider = createHardWrappedLinkProvider(
+    options,
+    fileLinkResolutionCache,
+    tooltipController
+  );
   const multilineLinkProvider = createMultilineLinkProvider(options, fileLinkResolutionCache, tooltipController);
   const fileLinkProvider = createFileLinkProvider(options, fileLinkResolutionCache, tooltipController);
   const urlLinkProvider = createUrlLinkProvider(options, tooltipController);
   const wordLinkProvider = createWordLinkProvider(options, tooltipController);
+  const hardWrappedLinkDisposable = terminal.registerLinkProvider(hardWrappedLinkProvider);
   const multilineLinkDisposable = terminal.registerLinkProvider(multilineLinkProvider);
   const fileLinkDisposable = terminal.registerLinkProvider(fileLinkProvider);
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
@@ -335,6 +367,7 @@ export function setupExecutionTerminalNativeInteractions(
       clearHoveredLink();
       clearDropTarget();
       terminal.options.linkHandler = previousLinkHandler;
+      hardWrappedLinkDisposable.dispose();
       multilineLinkDisposable.dispose();
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
@@ -355,6 +388,32 @@ function detectExecutionTerminalClipboardPlatform(): ExecutionTerminalClipboardP
     platform: window.navigator.platform,
     userAgent: window.navigator.userAgent
   });
+}
+
+function createHardWrappedLinkProvider(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >,
+  tooltipController: TooltipController
+): ILinkProvider {
+  return {
+    provideLinks(bufferLineNumber, callback): void {
+      void collectHardWrappedLinksForBufferLine(
+        options,
+        bufferLineNumber,
+        tooltipController,
+        fileLinkResolutionCache
+      )
+        .then((links) => {
+          callback(links.length > 0 ? links : undefined);
+        })
+        .catch(() => {
+          callback(undefined);
+        });
+    }
+  };
 }
 
 function createFileLinkProvider(
@@ -485,6 +544,253 @@ function createExplicitLinkHandler(
       tooltipController.hide();
     }
   };
+}
+
+async function collectHardWrappedLinksForBufferLine(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  bufferLineNumber: number,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >
+): Promise<ILink[]> {
+  const requestedLineIndex = bufferLineNumber - 1;
+  const links: ILink[] = [];
+  const seen = new Set<string>();
+
+  const pushLinks = (nextLinks: ILink[]): void => {
+    for (const link of nextLinks) {
+      const key = `${link.text}:${link.range.start.x}:${link.range.start.y}:${link.range.end.x}:${link.range.end.y}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      links.push(link);
+    }
+  };
+
+  for (let offset = 0; offset < EXECUTION_HARD_WRAPPED_LINK_MAX_LINES; offset += 1) {
+    const startLineIndex = requestedLineIndex - offset;
+    if (startLineIndex < 0) {
+      break;
+    }
+
+    const context = readHardWrappedLineContext(options.terminal, startLineIndex);
+    if (!context) {
+      continue;
+    }
+
+    pushLinks(collectHardWrappedUrlLinks(options, context, requestedLineIndex, tooltipController));
+    pushLinks(
+      await collectHardWrappedStyledFileLinks(
+        options,
+        context,
+        requestedLineIndex,
+        tooltipController,
+        fileLinkResolutionCache
+      )
+    );
+    if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return links.slice(0, EXECUTION_MAX_RESOLVED_LINKS_PER_LINE);
+}
+
+function collectHardWrappedUrlLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  requestedLineIndex: number,
+  tooltipController: TooltipController
+): ILink[] {
+  const firstLineText = getWrappedContextLineText(context, 0);
+  if (!EXECUTION_URL_LINKIFY.pretest(firstLineText)) {
+    return [];
+  }
+
+  const links: ILink[] = [];
+  const matches = EXECUTION_URL_LINKIFY.match(firstLineText) ?? [];
+  for (const match of matches) {
+    if (match.lastIndex < firstLineText.length || !isPotentialHardWrappedUrlBreak(match.text)) {
+      continue;
+    }
+
+    const fragments: HardWrappedLinkFragment[] = [
+      {
+        text: match.text,
+        bufferRange: toSingleLineBufferRange(context.startLine, 0, match.index, match.lastIndex)
+      }
+    ];
+    let fullText = match.text;
+
+    for (let lineOffset = 1; lineOffset < context.lines.length; lineOffset += 1) {
+      const continuation = readHardWrappedContinuationFragment(
+        getWrappedContextLineText(context, lineOffset),
+        context.startLine + lineOffset
+      );
+      if (!continuation) {
+        break;
+      }
+
+      fullText += continuation.text;
+      if (fullText.length > EXECUTION_URI_LINK_MAX_LENGTH) {
+        break;
+      }
+      fragments.push(continuation);
+    }
+
+    if (fragments.length < 2 || fullText.length > EXECUTION_URI_LINK_MAX_LENGTH) {
+      continue;
+    }
+
+    const parsed = parseHardWrappedUrl(fullText);
+    if (!parsed) {
+      continue;
+    }
+
+    for (const fragment of fragments) {
+      if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
+        continue;
+      }
+
+      links.push(
+        createBufferRangeInteractionLink(
+          options,
+          fullText,
+          URL_LINK_LABEL,
+          {
+            linkKind: 'url',
+            text: fullText,
+            url: parsed.url,
+            source: 'implicit'
+          },
+          tooltipController,
+          fragment.bufferRange
+        )
+      );
+    }
+  }
+
+  return links;
+}
+
+async function collectHardWrappedStyledFileLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  requestedLineIndex: number,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >
+): Promise<ILink[]> {
+  const candidates = collectHardWrappedStyledFileLinkCandidates(
+    options.terminal,
+    context,
+    options.getPathStyle()
+  );
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const resolvedLinks = await resolveExecutionFileLinksForContext(
+    options,
+    context,
+    candidates.map((entry) => entry.candidate),
+    fileLinkResolutionCache
+  );
+  return mapResolvedHardWrappedFileLinksToInteractions(
+    options,
+    candidates,
+    resolvedLinks,
+    requestedLineIndex,
+    tooltipController
+  );
+}
+
+function collectHardWrappedStyledFileLinkCandidates(
+  terminal: Terminal,
+  context: WrappedLineContext,
+  pathStyle: ExecutionTerminalPathStyle
+): HardWrappedFileLinkCandidate[] {
+  const candidates: HardWrappedFileLinkCandidate[] = [];
+  const firstLineSpans = readStyledTextSpans(terminal, context.startLine);
+  for (const firstSpan of firstLineSpans) {
+    const fragments: HardWrappedLinkFragment[] = [
+      {
+        text: firstSpan.text,
+        bufferRange: firstSpan.bufferRange
+      }
+    ];
+    let fullText = firstSpan.text;
+
+    for (let lineOffset = 1; lineOffset < context.lines.length; lineOffset += 1) {
+      const nextSpan = readStyledTextSpans(terminal, context.startLine + lineOffset).find(
+        (span) => span.signature === firstSpan.signature
+      );
+      if (!nextSpan) {
+        break;
+      }
+
+      fullText += nextSpan.text;
+      if (fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
+        break;
+      }
+      fragments.push({
+        text: nextSpan.text,
+        bufferRange: nextSpan.bufferRange
+      });
+    }
+
+    if (fragments.length < 2 || fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
+      continue;
+    }
+
+    if (parseHardWrappedUrl(fullText)) {
+      continue;
+    }
+
+    const detectedLink = detectExecutionTerminalPathLinks(fullText, pathStyle).find(
+      (link) => link.text === fullText && !isNonFileUriLikePath(link.path)
+    );
+    if (!detectedLink) {
+      continue;
+    }
+
+    candidates.push({
+      candidate: {
+        candidateId: `hardwrap-styled:${context.startLine}:${fragments
+          .map((fragment) =>
+            [
+              fragment.bufferRange.start.y,
+              fragment.bufferRange.start.x,
+              fragment.bufferRange.end.y,
+              fragment.bufferRange.end.x
+            ].join(':')
+          )
+          .join('|')}:${fullText}`,
+        text: fullText,
+        path: detectedLink.path,
+        startIndex: 0,
+        endIndexExclusive: fullText.length,
+        bufferStartLine: context.startLine,
+        line: detectedLink.line,
+        column: detectedLink.column,
+        lineEnd: detectedLink.lineEnd,
+        columnEnd: detectedLink.columnEnd,
+        source: 'detected'
+      },
+      fragments
+    });
+
+    if (candidates.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return candidates;
 }
 
 async function collectFileLinks(
@@ -1061,6 +1367,42 @@ function mapResolvedStyledFileLinksToInteractions(
   return links;
 }
 
+function mapResolvedHardWrappedFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: HardWrappedFileLinkCandidate[],
+  resolvedLinks: ExecutionTerminalResolvedFileLink[],
+  requestedLineIndex: number,
+  tooltipController: TooltipController
+): ILink[] {
+  const candidatesById = new Map(candidates.map((candidate) => [candidate.candidate.candidateId, candidate]));
+  const links: ILink[] = [];
+  for (const resolvedLink of resolvedLinks) {
+    const candidate = candidatesById.get(resolvedLink.candidateId);
+    if (!candidate) {
+      continue;
+    }
+
+    for (const fragment of candidate.fragments) {
+      if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
+        continue;
+      }
+
+      links.push(
+        createBufferRangeInteractionLink(
+          options,
+          resolvedLink.link.text,
+          labelForResolvedFileLink(resolvedLink.link.targetKind),
+          resolvedLink.link,
+          tooltipController,
+          fragment.bufferRange
+        )
+      );
+    }
+  }
+
+  return links;
+}
+
 function labelForResolvedFileLink(
   targetKind: ExecutionTerminalResolvedFileLink['link']['targetKind']
 ): string {
@@ -1458,6 +1800,43 @@ function isMacintosh(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 }
 
+function readHardWrappedLineContext(
+  terminal: Terminal,
+  startLine: number
+): WrappedLineContext | undefined {
+  const initialLine = terminal.buffer.active.getLine(startLine);
+  if (!initialLine || initialLine.isWrapped) {
+    return undefined;
+  }
+
+  const lines: IBufferLine[] = [];
+  let endLine = startLine;
+  for (let lineIndex = startLine; lineIndex < terminal.buffer.active.length; lineIndex += 1) {
+    if (lineIndex - startLine >= EXECUTION_HARD_WRAPPED_LINK_MAX_LINES) {
+      break;
+    }
+
+    const line = terminal.buffer.active.getLine(lineIndex);
+    if (!line || line.isWrapped) {
+      break;
+    }
+
+    lines.push(line);
+    endLine = lineIndex;
+  }
+
+  if (lines.length < 2) {
+    return undefined;
+  }
+
+  return {
+    startLine,
+    endLine,
+    lines,
+    text: lines.map((line) => line.translateToString(true, 0, terminal.cols)).join('\n')
+  };
+}
+
 function readWrappedLineContext(
   terminal: Terminal,
   bufferLineNumber: number,
@@ -1517,6 +1896,178 @@ function getXtermLineContent(terminal: Terminal, lineStart: number, lineEnd: num
   }
 
   return content;
+}
+
+function getWrappedContextLineText(context: WrappedLineContext, lineOffset: number): string {
+  return context.lines[lineOffset]?.translateToString(true) ?? '';
+}
+
+function parseHardWrappedUrl(text: string): { url: string } | undefined {
+  const matches = EXECUTION_URL_LINKIFY.match(text);
+  const match = matches?.find((entry) => entry.index === 0 && entry.lastIndex === text.length);
+  return match ? { url: match.url } : undefined;
+}
+
+function isPotentialHardWrappedUrlBreak(text: string): boolean {
+  return /[/?#&=._~%+-]$/.test(text);
+}
+
+function readHardWrappedContinuationFragment(
+  lineText: string,
+  lineIndex: number
+): HardWrappedLinkFragment | undefined {
+  const leadingWhitespace = lineText.match(/^\s*/)?.[0].length ?? 0;
+  if (
+    leadingWhitespace <= 0 ||
+    leadingWhitespace > EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX
+  ) {
+    return undefined;
+  }
+
+  const rest = lineText.slice(leadingWhitespace);
+  const match = rest.match(/^[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/);
+  if (!match || match[0].length < 2 || match[0].length !== rest.trimEnd().length) {
+    return undefined;
+  }
+  if (isExplicitUrlSchemeStart(match[0])) {
+    return undefined;
+  }
+
+  return {
+    text: match[0],
+    bufferRange: toSingleLineBufferRange(
+      lineIndex,
+      0,
+      leadingWhitespace,
+      leadingWhitespace + match[0].length
+    )
+  };
+}
+
+function isExplicitUrlSchemeStart(text: string): boolean {
+  return /^[A-Za-z][A-Za-z\d+\-.]*:/.test(text);
+}
+
+function toSingleLineBufferRange(
+  startLine: number,
+  lineOffset: number,
+  startIndex: number,
+  endIndexExclusive: number
+): IBufferRange {
+  return {
+    start: {
+      x: startIndex + 1,
+      y: startLine + lineOffset + 1
+    },
+    end: {
+      x: endIndexExclusive,
+      y: startLine + lineOffset + 1
+    }
+  };
+}
+
+function readStyledTextSpans(terminal: Terminal, lineIndex: number): StyledTextSpan[] {
+  const line = terminal.buffer.active.getLine(lineIndex);
+  if (!line) {
+    return [];
+  }
+
+  const spans: StyledTextSpan[] = [];
+  let currentSignature: string | undefined;
+  let currentCells: Array<{ text: string; startColumn: number; endColumn: number }> = [];
+  const flush = (): void => {
+    if (!currentSignature || currentCells.length === 0) {
+      currentCells = [];
+      return;
+    }
+
+    while (currentCells.length > 0 && currentCells[0].text.trim().length === 0) {
+      currentCells.shift();
+    }
+    while (currentCells.length > 0 && currentCells[currentCells.length - 1].text.trim().length === 0) {
+      currentCells.pop();
+    }
+    if (currentCells.length === 0) {
+      return;
+    }
+
+    const text = currentCells.map((cell) => cell.text).join('');
+    spans.push({
+      text,
+      signature: currentSignature,
+      bufferRange: {
+        start: {
+          x: currentCells[0].startColumn,
+          y: lineIndex + 1
+        },
+        end: {
+          x: currentCells[currentCells.length - 1].endColumn,
+          y: lineIndex + 1
+        }
+      }
+    });
+    currentCells = [];
+  };
+
+  const lineTextLength = getTrimmedXtermLineTextLength(line, terminal.cols);
+  let lineTextOffset = 0;
+  for (let column = 0; column < terminal.cols && lineTextOffset < lineTextLength; column += 1) {
+    const cell = line.getCell(column);
+    if (!cell) {
+      break;
+    }
+    if (cell.getWidth() === 0) {
+      continue;
+    }
+
+    const chars = cell.getChars() || ' ';
+    const charsLength = Math.min(chars.length, lineTextLength - lineTextOffset);
+    if (charsLength <= 0) {
+      continue;
+    }
+
+    const signature = getStyledCellSignature(cell);
+    if (!signature) {
+      flush();
+      currentSignature = undefined;
+      lineTextOffset += charsLength;
+      continue;
+    }
+
+    if (currentSignature !== signature) {
+      flush();
+      currentSignature = signature;
+    }
+    currentCells.push({
+      text: chars.slice(0, charsLength),
+      startColumn: column + 1,
+      endColumn: column + Math.max(1, cell.getWidth())
+    });
+    lineTextOffset += charsLength;
+  }
+
+  flush();
+  return spans;
+}
+
+function getStyledCellSignature(cell: IBufferCell): string | undefined {
+  if (cell.isAttributeDefault()) {
+    return undefined;
+  }
+
+  return [
+    cell.getFgColorMode(),
+    cell.getFgColor(),
+    cell.getBgColorMode(),
+    cell.getBgColor(),
+    cell.isBold(),
+    cell.isItalic(),
+    cell.isDim(),
+    cell.isUnderline(),
+    cell.isInverse(),
+    cell.isStrikethrough(),
+    cell.isOverline()
+  ].join(':');
 }
 
 function readXtermRangesByAttr(terminal: Terminal, lineStart: number, lineEnd: number): IBufferRange[] {

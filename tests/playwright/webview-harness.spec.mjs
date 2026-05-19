@@ -2867,6 +2867,256 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
+  test(`${executionKind} hard-wrapped URL fragments open as one link`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstUrlFragment = 'https://example.com/docs/very/';
+    const secondUrlFragment = 'long/path?q=1';
+    const hardWrappedUrl = `${firstUrlFragment}${secondUrlFragment}`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${firstUrlFragment}\r\n  ${secondUrlFragment}\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedUrl
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => entry.payload)
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'url',
+              text: hardWrappedUrl,
+              url: hardWrappedUrl,
+              source: 'implicit'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} hard-wrapped URL detector does not append indented prose`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const url = 'https://example.com/docs';
+    const wronglyJoinedUrl = `${url}details`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${url}\r\n  details\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: wronglyJoinedUrl
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} hard-wrapped URL detector does not merge adjacent URL lines`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstUrl = 'https://example.com/';
+    const secondUrl = 'https://other.example/path';
+    const wronglyJoinedUrl = `${firstUrl}${secondUrl}`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${firstUrl}\r\n  ${secondUrl}\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: wronglyJoinedUrl
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} styled hard-wrapped file fragments resolve as one link`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedPath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: hardWrappedPath,
+              path: hardWrappedPath,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} unstyled hard-wrapped file fragments are not guessed as one link`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${firstPathFragment}\r\n  ${secondPathFragment}\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: hardWrappedPath
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} styled hard-wrapped non-links are not guessed as one link`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstLogFragment = 'status-';
+    const secondLogFragment = 'ok';
+    const hardWrappedLogText = `${firstLogFragment}${secondLogFragment}`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstLogFragment}\u001b[39m\r\n  \u001b[94m${secondLogFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: hardWrappedLogText
+      },
+      'was not detected'
+    );
+  });
+
   test(`${executionKind} multiline line-number links resolve against the previous path line`, async ({
     page
   }) => {
