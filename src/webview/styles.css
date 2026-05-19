@@ -2036,6 +2036,24 @@ body {
   transform: translateY(0);
 }
 
+.execution-hard-wrapped-link-hover {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.execution-hard-wrapped-link-hover-segment {
+  position: absolute;
+  height: 1px;
+  border-radius: 999px;
+  background: var(
+    --vscode-textLink-activeForeground,
+    var(--vscode-textLink-foreground, var(--vscode-terminal-foreground, currentColor))
+  );
+  opacity: 0.95;
+}
+
 .terminal-overlay {
   position: absolute;
   left: 16px;
