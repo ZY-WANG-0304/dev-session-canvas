@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.10.1` Preview update and tightening follow-up `0.10.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.10.2` Preview update and tightening follow-up `0.10.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](images/marketplace/canvas-overview.gif)
 
@@ -26,6 +26,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, reset entry points, and explicit save modes for associated Markdown Notes
 - Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
+- Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, and high-confidence TUI hard-wrapped URL / styled-file fragments
 - Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Restart` actions
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
 - Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance
@@ -53,7 +54,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current `0.10.1` release-prep focus is to polish the Note-to-Markdown workflow, Remote SSH drag-and-drop boundaries, Markdown metadata / image preview, associated-Note template save modes, stopped-Agent restart actions, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current `0.10.2` release-prep focus is to close execution-terminal link compatibility gaps inside the existing `0.10.x` Preview line: high-confidence hard-wrapped URLs, styled hard-wrapped file paths, grouped hover feedback, link-boundary regressions, and release materials while continuing to iterate under Marketplace `Preview` positioning rather than promising a stable release. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -61,7 +62,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel remains `Visual Studio Marketplace`; the `Open VSX` namespace is now claimed and later releases should mirror the same version there as a supplemental channel.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.10.1` repo-local validation focuses on associated Markdown Note templates, Remote host identity for Markdown drops, YAML metadata, safe image preview, stopped-Agent restart actions, UI color alignment, Marketplace English-default copy, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.10.2` repo-local validation focuses on execution-terminal hard-wrapped links, protocol source validation, native-link boundary regressions, and packaging materials, while Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
