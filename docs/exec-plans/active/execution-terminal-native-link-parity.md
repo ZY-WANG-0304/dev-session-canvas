@@ -24,6 +24,7 @@
 - [x] (2026-05-01 03:18 +0800) 根据 review 收口剩余 parity 缺口：search opener 现在会保留 `contextLine` 里的 `line[:column]` 后缀，workspace fallback 支持原生同类的唯一 partial hit，multiline/link resolve cache 会在终端内容变化时失效，且已删除把 wrapper / trailing punctuation 再修剪成 file link 的仓库私有 refine。
 - [x] (2026-05-02 00:16 +0800) 继续根据 review 收口 search/local 边界：唯一 partial basename hit 现在只保留在 search opener 路径里，local fallback resolver 回到 exact-only，避免 `README`、`missing-target.ts` 这类 plain word 被错误升级成高置信 file link。
 - [x] (2026-05-19 08:05 +0800) 补齐 Codex / Claude TUI 硬换行链接第一阶段：新增 hard-wrap URL provider 与同 ANSI 样式文件路径重组，补充 agent / terminal Playwright 回归，并把正式方案、验证证据同步到 `docs/design-docs/execution-terminal-tui-hard-wrapped-links.md`。
+- [x] (2026-05-19 10:46 +0800) 为 TUI 硬换行链接补 grouped hover underline overlay：hover 任一片段时，同组真实片段全部显示下划线，但缩进空白仍不属于 clickable range。
 
 ## 意外与发现
 
@@ -60,6 +61,9 @@
 - 观察：只凭“下一行有缩进且是 URL-safe 字符”会把完整 URL 与缩进说明误拼接。
   证据：新增 Playwright 用例 `hard-wrapped URL detector does not append indented prose` 覆盖 `https://example.com/docs` 后接缩进 `details` 的负例。
 
+- 观察：`xterm.js` 原生 link hover underline 只会绘制当前 `ILink.range`；因为 hard-wrap link 被拆成多个不连续片段，hover 第二行时第一行不会自动出现下划线。
+  证据：2026-05-19 用户手测截图显示同组 hard-wrap 文件路径可点击完整目标，但 hover underline 只覆盖当前片段。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -82,11 +86,15 @@
   理由：用户给出的场景来自 TUI 自身硬换行，不是 `xterm.js` 软换行；直接把所有相邻缩进行拼成 link 会放大误判和 Host 解析成本，因此必须保留强锚点与 Host 验证。
   日期/作者：2026-05-19 / Codex
 
+- 决策：hard-wrap link 的 hover 下划线由 Webview 自绘 overlay 统一绘制，而不是把 `ILink.range` 扩大成跨行连续范围。
+  理由：扩大 range 会把行尾空白和下一行缩进也变成链接区域，破坏“缩进不是 link 内容”的边界；overlay 可以只覆盖真实片段，同时保留当前分段点击模型。
+  日期/作者：2026-05-19 / Codex
+
 ## 结果与复盘
 
 当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
 
-2026-05-19 新增的 TUI 硬换行第一阶段已经能让带明确 scheme 的硬换行 URL、同一非默认 ANSI 样式拆开的文件路径在 agent / terminal 节点里点击为同一个完整目标；无样式文件路径、自然语言缩进续行和普通同色日志仍不会被重组。当前自动化验证通过，但真实 Codex / Claude TUI 输出中的手动验证尚未执行，所以这部分仍保持“验证中”。
+2026-05-19 新增的 TUI 硬换行第一阶段已经能让带明确 scheme 的硬换行 URL、同一非默认 ANSI 样式拆开的文件路径在 agent / terminal 节点里点击为同一个完整目标；无样式文件路径、自然语言缩进续行和普通同色日志仍不会被重组。随后补上的 grouped hover overlay 让用户 hover 任一片段时能看到同组所有真实片段的下划线，但不会把缩进空白纳入可点击区域。当前自动化验证通过，但真实 Codex / Claude TUI 输出中的手动验证尚未执行，所以这部分仍保持“验证中”。
 
 ## 上下文与定向
 
@@ -223,3 +231,5 @@
 本次更新说明：2026-04-30 新建本计划，并把任务目标从“基础 terminal link 可用”升级为“除实现分层外，解析与交互全面向 VSCode 原生 Terminal 对齐”，以响应当前关于“过多链接”和“缺少跨行链接”的最新用户反馈。
 
 本次更新说明：2026-05-19 追加 Codex / Claude TUI 硬换行链接第一阶段实现与验证记录；该能力属于原生 parity 之外的受控适配层，因此同步记录强锚点规则、误判边界和真实 TUI 手动验证缺口。
+
+本次更新说明：2026-05-19 追加 grouped hover underline overlay 决策；该方案避免把 hard-wrap link range 扩成连续跨行范围，同时解决用户手测发现的“可点击但视觉下划线不像同一个链接”的问题。

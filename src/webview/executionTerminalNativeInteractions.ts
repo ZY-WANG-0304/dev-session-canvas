@@ -115,8 +115,22 @@ interface TooltipController {
   hide: () => void;
 }
 
+interface HardWrappedHoverOverlayController {
+  show: (ranges: IBufferRange[]) => void;
+  clear: () => void;
+  dispose: () => void;
+}
+
+interface InteractionLinkOptions {
+  lowConfidence?: boolean;
+  hoverOverlayRanges?: IBufferRange[];
+  hoverOverlayController?: HardWrappedHoverOverlayController;
+}
+
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
 const EXECUTION_LINK_TOOLTIP_VISIBLE_CLASS = 'is-visible';
+const EXECUTION_HARD_WRAPPED_LINK_HOVER_CLASS = 'execution-hard-wrapped-link-hover';
+const EXECUTION_HARD_WRAPPED_LINK_HOVER_SEGMENT_CLASS = 'execution-hard-wrapped-link-hover-segment';
 const DEFAULT_WORKBENCH_HOVER_DELAY = 500;
 const EXECUTION_MAX_LINE_LENGTH = 2000;
 const EXECUTION_MAX_RESOLVED_LINK_LENGTH = 1024;
@@ -207,9 +221,11 @@ export function setupExecutionTerminalNativeInteractions(
       hideTooltip();
     }
   };
+  const hardWrappedHoverOverlayController = createHardWrappedHoverOverlayController(terminal);
 
   const clearHoveredLink = (): void => {
     hoveredLink = undefined;
+    hardWrappedHoverOverlayController.clear();
     dispatchSyntheticLinkMouseLeaveEvent(terminal);
     hideTooltip();
   };
@@ -219,7 +235,8 @@ export function setupExecutionTerminalNativeInteractions(
   const hardWrappedLinkProvider = createHardWrappedLinkProvider(
     options,
     fileLinkResolutionCache,
-    tooltipController
+    tooltipController,
+    hardWrappedHoverOverlayController
   );
   const multilineLinkProvider = createMultilineLinkProvider(options, fileLinkResolutionCache, tooltipController);
   const fileLinkProvider = createFileLinkProvider(options, fileLinkResolutionCache, tooltipController);
@@ -361,6 +378,7 @@ export function setupExecutionTerminalNativeInteractions(
     },
     invalidateLinkResolutionCache(): void {
       fileLinkResolutionCache.clear();
+      hardWrappedHoverOverlayController.clear();
       clearHoveredLink();
     },
     dispose(): void {
@@ -372,6 +390,7 @@ export function setupExecutionTerminalNativeInteractions(
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
       wordLinkDisposable.dispose();
+      hardWrappedHoverOverlayController.dispose();
       terminal.attachCustomKeyEventHandler(() => true);
       dropTarget.removeEventListener('dragenter', handleDragEnter);
       dropTarget.removeEventListener('dragover', handleDragOver);
@@ -396,7 +415,8 @@ function createHardWrappedLinkProvider(
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >,
-  tooltipController: TooltipController
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController
 ): ILinkProvider {
   return {
     provideLinks(bufferLineNumber, callback): void {
@@ -404,7 +424,8 @@ function createHardWrappedLinkProvider(
         options,
         bufferLineNumber,
         tooltipController,
-        fileLinkResolutionCache
+        fileLinkResolutionCache,
+        hoverOverlayController
       )
         .then((links) => {
           callback(links.length > 0 ? links : undefined);
@@ -553,7 +574,8 @@ async function collectHardWrappedLinksForBufferLine(
   fileLinkResolutionCache: Map<
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
+  >,
+  hoverOverlayController: HardWrappedHoverOverlayController
 ): Promise<ILink[]> {
   const requestedLineIndex = bufferLineNumber - 1;
   const links: ILink[] = [];
@@ -581,14 +603,23 @@ async function collectHardWrappedLinksForBufferLine(
       continue;
     }
 
-    pushLinks(collectHardWrappedUrlLinks(options, context, requestedLineIndex, tooltipController));
+    pushLinks(
+      collectHardWrappedUrlLinks(
+        options,
+        context,
+        requestedLineIndex,
+        tooltipController,
+        hoverOverlayController
+      )
+    );
     pushLinks(
       await collectHardWrappedStyledFileLinks(
         options,
         context,
         requestedLineIndex,
         tooltipController,
-        fileLinkResolutionCache
+        fileLinkResolutionCache,
+        hoverOverlayController
       )
     );
     if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
@@ -603,7 +634,8 @@ function collectHardWrappedUrlLinks(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
   requestedLineIndex: number,
-  tooltipController: TooltipController
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController
 ): ILink[] {
   const firstLineText = getWrappedContextLineText(context, 0);
   if (!EXECUTION_URL_LINKIFY.pretest(firstLineText)) {
@@ -650,6 +682,7 @@ function collectHardWrappedUrlLinks(
       continue;
     }
 
+    const hoverOverlayRanges = fragments.map((entry) => entry.bufferRange);
     for (const fragment of fragments) {
       if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
         continue;
@@ -667,7 +700,11 @@ function collectHardWrappedUrlLinks(
             source: 'implicit'
           },
           tooltipController,
-          fragment.bufferRange
+          fragment.bufferRange,
+          {
+            hoverOverlayController,
+            hoverOverlayRanges
+          }
         )
       );
     }
@@ -684,7 +721,8 @@ async function collectHardWrappedStyledFileLinks(
   fileLinkResolutionCache: Map<
     string,
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
+  >,
+  hoverOverlayController: HardWrappedHoverOverlayController
 ): Promise<ILink[]> {
   const candidates = collectHardWrappedStyledFileLinkCandidates(
     options.terminal,
@@ -706,7 +744,8 @@ async function collectHardWrappedStyledFileLinks(
     candidates,
     resolvedLinks,
     requestedLineIndex,
-    tooltipController
+    tooltipController,
+    hoverOverlayController
   );
 }
 
@@ -1372,7 +1411,8 @@ function mapResolvedHardWrappedFileLinksToInteractions(
   candidates: HardWrappedFileLinkCandidate[],
   resolvedLinks: ExecutionTerminalResolvedFileLink[],
   requestedLineIndex: number,
-  tooltipController: TooltipController
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController
 ): ILink[] {
   const candidatesById = new Map(candidates.map((candidate) => [candidate.candidate.candidateId, candidate]));
   const links: ILink[] = [];
@@ -1387,6 +1427,7 @@ function mapResolvedHardWrappedFileLinksToInteractions(
         continue;
       }
 
+      const hoverOverlayRanges = candidate.fragments.map((entry) => entry.bufferRange);
       links.push(
         createBufferRangeInteractionLink(
           options,
@@ -1394,7 +1435,11 @@ function mapResolvedHardWrappedFileLinksToInteractions(
           labelForResolvedFileLink(resolvedLink.link.targetKind),
           resolvedLink.link,
           tooltipController,
-          fragment.bufferRange
+          fragment.bufferRange,
+          {
+            hoverOverlayController,
+            hoverOverlayRanges
+          }
         )
       );
     }
@@ -1530,9 +1575,7 @@ function createInteractionLink(
   link: ExecutionTerminalOpenLink,
   tooltipController: TooltipController,
   range: SimpleRange,
-  linkOptions?: {
-    lowConfidence?: boolean;
-  }
+  linkOptions?: InteractionLinkOptions
 ): ILink {
   const xtermRange = convertLinkRangeToBuffer(context.lines, options.terminal.cols, range, context.startLine);
   return createBufferRangeInteractionLink(
@@ -1553,11 +1596,13 @@ function createBufferRangeInteractionLink(
   link: ExecutionTerminalOpenLink,
   tooltipController: TooltipController,
   xtermRange: IBufferRange,
-  linkOptions?: {
-    lowConfidence?: boolean;
-  }
+  linkOptions?: InteractionLinkOptions
 ): ILink {
   const lowConfidence = linkOptions?.lowConfidence === true;
+  const usesGroupedHoverOverlay =
+    !lowConfidence &&
+    linkOptions?.hoverOverlayController !== undefined &&
+    (linkOptions.hoverOverlayRanges?.length ?? 0) > 1;
   let interactionLink: ILink | undefined;
   const lowConfidenceDecorations = lowConfidence
     ? createLowConfidenceExecutionLinkDecorations(options.getRuntimeContext, () => interactionLink?.decorations)
@@ -1565,7 +1610,12 @@ function createBufferRangeInteractionLink(
   interactionLink = {
     text,
     range: xtermRange,
-    decorations: lowConfidenceDecorations?.decorations,
+    decorations: lowConfidenceDecorations?.decorations ?? (usesGroupedHoverOverlay
+      ? {
+          pointerCursor: true,
+          underline: false
+        }
+      : undefined),
     activate: (event): void => {
       if (!shouldActivateExecutionLink(options.getRuntimeContext(), event)) {
         return;
@@ -1575,6 +1625,9 @@ function createBufferRangeInteractionLink(
     },
     hover: (event): void => {
       lowConfidenceDecorations?.hover(event);
+      if (usesGroupedHoverOverlay && linkOptions.hoverOverlayRanges) {
+        linkOptions.hoverOverlayController?.show(linkOptions.hoverOverlayRanges);
+      }
       if (!lowConfidence && hoverLabel) {
         tooltipController.show(event, hoverLabel);
         return;
@@ -1584,6 +1637,9 @@ function createBufferRangeInteractionLink(
     },
     leave: (): void => {
       lowConfidenceDecorations?.leave();
+      if (usesGroupedHoverOverlay) {
+        linkOptions?.hoverOverlayController?.clear();
+      }
       tooltipController.hide();
     }
   };
@@ -1729,6 +1785,98 @@ function createSyntheticLinkActivationEvent(runtimeContext: CanvasRuntimeContext
     metaKey: isMacintosh(),
     bubbles: true
   });
+}
+
+function createHardWrappedHoverOverlayController(terminal: Terminal): HardWrappedHoverOverlayController {
+  let overlayElement: HTMLElement | undefined;
+  const scrollDisposable = terminal.onScroll(() => clear());
+  const resizeDisposable = terminal.onResize(() => clear());
+
+  function clear(): void {
+    overlayElement?.remove();
+    overlayElement = undefined;
+  }
+
+  function show(ranges: IBufferRange[]): void {
+    clear();
+
+    const screenElement = queryExecutionTerminalScreenElement(terminal);
+    if (!screenElement) {
+      return;
+    }
+
+    const screenWidth = screenElement.clientWidth;
+    const screenHeight = screenElement.clientHeight;
+    if (screenWidth <= 0 || screenHeight <= 0 || terminal.cols <= 0 || terminal.rows <= 0) {
+      return;
+    }
+
+    const cellWidth = screenWidth / terminal.cols;
+    const cellHeight = screenHeight / terminal.rows;
+    const nextOverlayElement = document.createElement('div');
+    nextOverlayElement.className = EXECUTION_HARD_WRAPPED_LINK_HOVER_CLASS;
+    nextOverlayElement.setAttribute('aria-hidden', 'true');
+
+    for (const range of ranges) {
+      appendHardWrappedHoverOverlaySegments(
+        nextOverlayElement,
+        terminal,
+        range,
+        cellWidth,
+        cellHeight
+      );
+    }
+
+    if (nextOverlayElement.childElementCount === 0) {
+      return;
+    }
+
+    screenElement.appendChild(nextOverlayElement);
+    overlayElement = nextOverlayElement;
+  }
+
+  function dispose(): void {
+    clear();
+    scrollDisposable.dispose();
+    resizeDisposable.dispose();
+  }
+
+  return {
+    show,
+    clear,
+    dispose
+  };
+}
+
+function appendHardWrappedHoverOverlaySegments(
+  overlayElement: HTMLElement,
+  terminal: Terminal,
+  range: IBufferRange,
+  cellWidth: number,
+  cellHeight: number
+): void {
+  const viewportStartY = terminal.buffer.active.viewportY + 1;
+  const rangeStartY = Math.max(range.start.y, viewportStartY);
+  const rangeEndY = Math.min(range.end.y, viewportStartY + terminal.rows - 1);
+  if (rangeEndY < rangeStartY) {
+    return;
+  }
+
+  for (let lineNumber = rangeStartY; lineNumber <= rangeEndY; lineNumber += 1) {
+    const startColumn = lineNumber === range.start.y ? range.start.x : 1;
+    const endColumn = lineNumber === range.end.y ? range.end.x : terminal.cols;
+    if (endColumn < startColumn) {
+      continue;
+    }
+
+    const viewportLineIndex = lineNumber - viewportStartY;
+    const segmentElement = document.createElement('div');
+    segmentElement.className = EXECUTION_HARD_WRAPPED_LINK_HOVER_SEGMENT_CLASS;
+    segmentElement.style.left = `${(startColumn - 1) * cellWidth}px`;
+    segmentElement.style.top = `${(viewportLineIndex + 1) * cellHeight - 2}px`;
+    segmentElement.style.width = `${(endColumn - startColumn + 1) * cellWidth}px`;
+    overlayElement.appendChild(segmentElement);
+  }
 }
 
 function dispatchSyntheticLinkHoverEvent(terminal: Terminal, link: ILink): void {

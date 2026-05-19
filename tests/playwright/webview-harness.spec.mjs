@@ -3050,6 +3050,48 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
+  test(`${executionKind} styled hard-wrapped file hover underlines all fragments`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: hardWrappedPath
+      });
+
+      await expect.poll(async () => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(2);
+    } finally {
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+
+    await expect.poll(async () => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(0);
+  });
+
   test(`${executionKind} unstyled hard-wrapped file fragments are not guessed as one link`, async ({
     page
   }) => {
@@ -7639,6 +7681,14 @@ async function readTerminalUnderlinedText(page, nodeId) {
       .filter((span) => span instanceof HTMLElement && span.style.textDecoration.includes('underline'))
       .map((span) => span.textContent ?? '')
       .join('');
+  }, nodeId);
+}
+
+async function readHardWrappedLinkHoverSegmentCount(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    return document.querySelectorAll(
+      `[data-node-id="${nextNodeId}"] .execution-hard-wrapped-link-hover-segment`
+    ).length;
   }, nodeId);
 }
 
