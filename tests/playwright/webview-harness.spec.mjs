@@ -3615,6 +3615,73 @@ for (const executionKind of ['agent', 'terminal']) {
     }
   });
 
+  test(`${executionKind} keeps hovered links active while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const url = 'https://example.com/live-link';
+    const underlinedUrlText = '//example.com/live-link';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${url}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: url
+      });
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(underlinedUrlText);
+
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'still working\r\n'
+      });
+      await settleWebview(page, 4);
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(underlinedUrlText);
+
+      const clickPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!clickPoint) {
+        throw new Error(`Expected ${url} to remain underlined after live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.keyboard.down('Control');
+      await page.mouse.click(clickPoint.x, clickPoint.y);
+      await page.keyboard.up('Control');
+
+      await expect
+        .poll(async () => {
+          return page.evaluate((nextNodeId) => {
+            const openedLink = window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .find(
+                (entry) =>
+                  entry.type === 'webview/openExecutionLink' &&
+                  entry.payload.nodeId === nextNodeId
+              );
+            return openedLink?.payload?.link?.text ?? null;
+          }, nodeId);
+        })
+        .toContain('live-link');
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
   test(`${executionKind} does not synthesize trimmed links from attached CJK prose`, async ({
     page
   }) => {
@@ -7864,6 +7931,28 @@ async function readTerminalUnderlinedText(page, nodeId) {
       .filter((span) => span instanceof HTMLElement && span.style.textDecoration.includes('underline'))
       .map((span) => span.textContent ?? '')
       .join('');
+  }, nodeId);
+}
+
+async function readFirstTerminalUnderlinedPoint(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const rows = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-rows`);
+    if (!(rows instanceof HTMLElement)) {
+      return null;
+    }
+
+    const span = Array.from(rows.querySelectorAll('span')).find(
+      (entry) => entry instanceof HTMLElement && entry.style.textDecoration.includes('underline')
+    );
+    if (!(span instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = span.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
   }, nodeId);
 }
 

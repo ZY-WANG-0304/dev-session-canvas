@@ -378,8 +378,9 @@ export function setupExecutionTerminalNativeInteractions(
     },
     invalidateLinkResolutionCache(): void {
       fileLinkResolutionCache.clear();
-      hardWrappedHoverOverlayController.clear();
-      clearHoveredLink();
+      // Keep the current hover alive while an execution session is still streaming output.
+      // xterm's linkifier will revalidate hovered ranges on render; forcing a
+      // synthetic mouseleave here makes links disappear during spinner redraws.
     },
     dispose(): void {
       clearHoveredLink();
