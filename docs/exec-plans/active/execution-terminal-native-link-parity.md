@@ -23,6 +23,7 @@
 - [x] (2026-05-01 01:08 +0800) 继续把 low-confidence `word/search link` 的装饰行为对齐原生：默认 hover 不下划线，只有按住激活修饰键时才临时强调；并在现有 link Playwright 集合上完成回归验证。
 - [x] (2026-05-01 03:18 +0800) 根据 review 收口剩余 parity 缺口：search opener 现在会保留 `contextLine` 里的 `line[:column]` 后缀，workspace fallback 支持原生同类的唯一 partial hit，multiline/link resolve cache 会在终端内容变化时失效，且已删除把 wrapper / trailing punctuation 再修剪成 file link 的仓库私有 refine。
 - [x] (2026-05-02 00:16 +0800) 继续根据 review 收口 search/local 边界：唯一 partial basename hit 现在只保留在 search opener 路径里，local fallback resolver 回到 exact-only，避免 `README`、`missing-target.ts` 这类 plain word 被错误升级成高置信 file link。
+- [x] (2026-05-19 08:05 +0800) 补齐 Codex / Claude TUI 硬换行链接第一阶段：新增 hard-wrap URL provider 与同 ANSI 样式文件路径重组，补充 agent / terminal Playwright 回归，并把正式方案、验证证据同步到 `docs/design-docs/execution-terminal-tui-hard-wrapped-links.md`。
 
 ## 意外与发现
 
@@ -53,6 +54,12 @@
 - 观察：上一轮把唯一 partial basename hit 做进共享 `resolveExecutionWorkspaceFallbackLink()` 后，local fallback candidate 也会复用这条路径，导致单独一行 `README` / `missing-target.ts` 在 workspace 存在唯一 `README.md` / `missing-target.tsx` 时被直接解析成 file link，而不是保留为 low-confidence search link。
   证据：2026-05-02 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts`、`src/webview/executionTerminalNativeInteractions.ts` 与 `src/common/executionTerminalLinks.ts` 的共享 fallback 路径。
 
+- 观察：Codex / Claude TUI 会把长 URL 或路径拆成多条非 `isWrapped` buffer 行，`xterm.js` 的 link range 不能把中间的缩进空白排除后表达成一个连续点击区域。
+  证据：2026-05-19 的实现改为在 `src/webview/executionTerminalNativeInteractions.ts` 中为每个可见片段各建一个 `ILink`，但这些片段共享同一个完整 URL 或 file target。
+
+- 观察：只凭“下一行有缩进且是 URL-safe 字符”会把完整 URL 与缩进说明误拼接。
+  证据：新增 Playwright 用例 `hard-wrapped URL detector does not append indented prose` 覆盖 `https://example.com/docs` 后接缩进 `details` 的负例。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -71,9 +78,15 @@
   理由：这类自定义 heuristics 正是当前“过多链接”与“看似原生、实际不原生”的主要来源之一。
   日期/作者：2026-04-30 / Codex
 
+- 决策：TUI 硬换行作为原生 parity 之外的受控适配层实现，并放在现有 multiline / local / URI / word provider 之前；第一阶段只支持明确 scheme、首片段以常见 URL 断点结尾、续行不以另一条明确 scheme 开始的 URL，以及同一非默认 ANSI style signature 且 Host 验证存在的文件路径。
+  理由：用户给出的场景来自 TUI 自身硬换行，不是 `xterm.js` 软换行；直接把所有相邻缩进行拼成 link 会放大误判和 Host 解析成本，因此必须保留强锚点与 Host 验证。
+  日期/作者：2026-05-19 / Codex
+
 ## 结果与复盘
 
-当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。当前仍未完成的只剩宿主级 `trusted` smoke：它依旧被 `verifyRealWebviewProbe()` 的既有失败拦住，所以“真实宿主里整条 link parity 流水线已打通”还不能写成已验证结论。
+当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
+
+2026-05-19 新增的 TUI 硬换行第一阶段已经能让带明确 scheme 的硬换行 URL、同一非默认 ANSI 样式拆开的文件路径在 agent / terminal 节点里点击为同一个完整目标；无样式文件路径、自然语言缩进续行和普通同色日志仍不会被重组。当前自动化验证通过，但真实 Codex / Claude TUI 输出中的手动验证尚未执行，所以这部分仍保持“验证中”。
 
 ## 上下文与定向
 
@@ -208,3 +221,5 @@
 若实现过程中需要从 VSCode upstream 移植或改写逻辑，必须在注释或计划中明确它对应的是哪一类原生 detector / opener，而不是留下无法追溯来源的“魔法正则”或“经验规则”。
 
 本次更新说明：2026-04-30 新建本计划，并把任务目标从“基础 terminal link 可用”升级为“除实现分层外，解析与交互全面向 VSCode 原生 Terminal 对齐”，以响应当前关于“过多链接”和“缺少跨行链接”的最新用户反馈。
+
+本次更新说明：2026-05-19 追加 Codex / Claude TUI 硬换行链接第一阶段实现与验证记录；该能力属于原生 parity 之外的受控适配层，因此同步记录强锚点规则、误判边界和真实 TUI 手动验证缺口。
