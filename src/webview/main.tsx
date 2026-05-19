@@ -441,6 +441,8 @@ interface ExecutionTerminalController {
   dispose(): void;
 }
 
+type ExecutionTerminalContentChangeReason = 'snapshot' | 'output' | 'exit';
+
 type MouseCoords = [number, number] | undefined;
 interface MouseReportCoords {
   col: number;
@@ -2803,8 +2805,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
-      onContentWillChange: () => {
-        nativeInteractions?.invalidateLinkResolutionCache();
+      onContentWillChange: (reason) => {
+        if (reason === 'snapshot') {
+          nativeInteractions?.invalidateLinkResolutionCache();
+        }
       },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
@@ -3288,8 +3292,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
-      onContentWillChange: () => {
-        nativeInteractions?.invalidateLinkResolutionCache();
+      onContentWillChange: (reason) => {
+        if (reason === 'snapshot') {
+          nativeInteractions?.invalidateLinkResolutionCache();
+        }
       },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
@@ -8950,7 +8956,7 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
 function createExecutionTerminalController(
   terminal: Terminal,
   options?: {
-    onContentWillChange?: () => void;
+    onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
   }
 ): ExecutionTerminalController {
@@ -8985,7 +8991,7 @@ function createExecutionTerminalController(
       pendingOutput = '';
       pendingExecutionTerminalDrains.delete(controller);
       writeGeneration += 1;
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
       queueTerminalWrite((done) => {
         restoreExecutionTerminalSnapshot(terminal, detail, done);
@@ -9005,7 +9011,7 @@ function createExecutionTerminalController(
       }
 
       controller.flushPendingOutput();
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('exit');
       queueTerminalWrite((done) => {
         terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
       });
@@ -9029,7 +9035,7 @@ function createExecutionTerminalController(
       pendingOutput = '';
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('output');
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
       });

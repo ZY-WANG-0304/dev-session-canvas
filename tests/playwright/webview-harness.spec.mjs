@@ -3682,6 +3682,64 @@ for (const executionKind of ['agent', 'terminal']) {
     }
   });
 
+  test(`${executionKind} reuses file link resolution while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'src/live-link-target.ts';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(filePath);
+
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'still working\r\n'
+      });
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      });
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      expect(
+        resolveRequests.some((entry) =>
+          entry.payload.candidates.some((candidate) => candidate.text === filePath)
+        )
+      ).toBe(false);
+    } finally {
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
   test(`${executionKind} does not synthesize trimmed links from attached CJK prose`, async ({
     page
   }) => {
@@ -7859,6 +7917,14 @@ async function waitForPostedMessageByType(page, type) {
     .toBe('matched');
 
   return matchedMessage;
+}
+
+async function readPostedMessagesByType(page, type) {
+  return page.evaluate((nextType) => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === nextType);
+  }, type);
 }
 
 async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
