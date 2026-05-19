@@ -2808,6 +2808,10 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       onContentWillChange: (reason) => {
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
+        } else if (reason === 'output') {
+          nativeInteractions?.invalidateLinkResolutionCache('negative-delayed');
+        } else {
+          nativeInteractions?.invalidateLinkResolutionCache('negative');
         }
       },
       onSnapshotApplied: (detail) => {
@@ -3295,6 +3299,10 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       onContentWillChange: (reason) => {
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
+        } else if (reason === 'output') {
+          nativeInteractions?.invalidateLinkResolutionCache('negative-delayed');
+        } else {
+          nativeInteractions?.invalidateLinkResolutionCache('negative');
         }
       },
       onSnapshotApplied: (detail) => {
@@ -9003,6 +9011,7 @@ function createExecutionTerminalController(
       }
 
       pendingOutput += chunk;
+      options?.onContentWillChange?.('output');
       scheduleExecutionTerminalDrain(controller);
     },
     showExit(message) {
@@ -9035,7 +9044,6 @@ function createExecutionTerminalController(
       pendingOutput = '';
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
-      options?.onContentWillChange?.('output');
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
       });

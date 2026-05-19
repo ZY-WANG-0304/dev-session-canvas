@@ -3740,6 +3740,204 @@ for (const executionKind of ['agent', 'terminal']) {
     }
   });
 
+  test(`${executionKind} refreshes negative file link cache while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'missing-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created missing-target.ts\r\n'
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} keeps unresolved file link fallback stable while live output continues`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'still-missing-target.ts:7:1';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: '...\r\n'
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(
+      resolveRequests.some((entry) =>
+        entry.payload.candidates.some((candidate) => candidate.text === filePath)
+      )
+    ).toBe(false);
+  });
+
+  test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'eventual-target.ts:4:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(700);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    const staleActivation = performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created eventual-target.ts\r\n'
+    });
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(0);
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+    await staleActivation;
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await clearPostedMessages(page);
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
   test(`${executionKind} does not synthesize trimmed links from attached CJK prose`, async ({
     page
   }) => {
@@ -7925,6 +8123,15 @@ async function readPostedMessagesByType(page, type) {
       .getPostedMessages()
       .filter((entry) => entry.type === nextType);
   }, type);
+}
+
+async function readLastOpenedExecutionLink(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const messages = window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/openExecutionLink' && entry.payload.nodeId === nextNodeId);
+    return messages.at(-1)?.payload.link ?? null;
+  }, nodeId);
 }
 
 async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
