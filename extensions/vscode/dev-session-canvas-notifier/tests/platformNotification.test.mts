@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 
 import { ATTENTION_NOTIFICATION_PROTOCOL_VERSION } from '../../../../packages/attention-protocol/src/index.ts';
 import {
@@ -136,16 +137,45 @@ assert.equal(macOSFallbackSnapshot.currentRouteLabel, 'osascript');
 assert.equal(macOSFallbackSnapshot.installRequirements[0]?.name, 'terminal-notifier');
 assert.equal(macOSFallbackSnapshot.installRequirements[1]?.name, 'osascript');
 
+type LaunchOptions = Parameters<typeof launchShellInvocation>[1];
+
+function createUnsupportedNotifySendSpawn(): NonNullable<LaunchOptions['spawnCommand']> {
+  // Keep the unsupported-option fixture deterministic instead of racing a real child process.
+  return (() => {
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter & { setEncoding: (encoding: BufferEncoding) => void };
+      stderr: EventEmitter & { setEncoding: (encoding: BufferEncoding) => void };
+      stdin: { end: (input?: string, encoding?: BufferEncoding) => void };
+    };
+    child.stdout = new EventEmitter() as EventEmitter & { setEncoding: (encoding: BufferEncoding) => void };
+    child.stderr = new EventEmitter() as EventEmitter & { setEncoding: (encoding: BufferEncoding) => void };
+    child.stdin = { end: () => undefined };
+    child.stdout.setEncoding = () => undefined;
+    child.stderr.setEncoding = () => undefined;
+
+    queueMicrotask(() => {
+      child.emit('spawn');
+      queueMicrotask(() => {
+        child.stderr.emit('data', 'unknown option\n');
+        child.emit('close', 1);
+      });
+    });
+
+    return child;
+  }) as NonNullable<LaunchOptions['spawnCommand']>;
+}
+
 const downgradedLinuxResult = await launchShellInvocation(
   {
     backend: 'linux-notify-send',
     activationMode: 'direct-action',
-    command: process.execPath,
-    args: ['-e', 'console.error("unknown option"); process.exit(1)']
+    command: 'notify-send',
+    args: ['--action=view=查看节点', '--wait']
   },
   {
     settlePostedOnSpawn: true,
     spawnSuccessDelayMs: 50,
+    spawnCommand: createUnsupportedNotifySendSpawn(),
     fallback: async (failure) => {
       assert.match(failure.detail, /unknown option/);
       return {
