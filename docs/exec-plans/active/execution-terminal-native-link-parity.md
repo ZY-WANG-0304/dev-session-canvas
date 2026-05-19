@@ -27,6 +27,9 @@
 - [x] (2026-05-19 10:46 +0800) 为 TUI 硬换行链接补 grouped hover underline overlay：hover 任一片段时，同组真实片段全部显示下划线，但缩进空白仍不属于 clickable range。
 - [x] (2026-05-19 11:47 +0800) 根据真实手测修正 code path 场景：hard-wrap 文件 candidate 改为 `hardwrap` source，并允许 Host 在 cwd 解析失败后做 workspace exact fallback；同时补充带 `line:column` 后缀的 Playwright 回归。
 - [x] (2026-05-19 12:04 +0800) 修复真实 VSCode Host 拒绝 `hardwrap` source 的协议缺口：协议 validator 接受 hard-wrap file candidate / open link，并新增 `test:protocol-webview-messages` 回归覆盖。
+- [x] (2026-05-19 14:43 +0800) 根据 PR review 先更新正式设计约束：中文语境 start-boundary 不能回归 git diff header；styled hard-wrap file 必须满足首片段贴行尾、续片段从允许缩进后连续承接、行内不混入 prose 的 continuation 链。
+- [x] (2026-05-19 14:49 +0800) 收口 PR review 两个 blocker：diff header 剥离 `a/` / `b/` 后保留合法起点信息；styled hard-wrap file collector 改为只接受明确 continuation 链，并补充纯函数与 Playwright 负例回归。
+- [x] (2026-05-19 15:21 +0800) 调整 continuation 边界：续行 link 片段从允许缩进后行首开始时，允许后面跟默认样式说明文字；继续拒绝首片段后混入 prose 或续片段不在缩进后行首的误拼接。
 
 ## 意外与发现
 
@@ -72,6 +75,12 @@
 - 观察：把文件 hard-wrap candidate 改成独立 `hardwrap` source 后，真实 VSCode Host 会先经过 `parseWebviewMessage(...)` 的协议 validator；如果 validator 未同步接受新 source，Host 会把 `webview/resolveExecutionFileLinks` / `webview/openExecutionLink` 判为未知消息，导致 hover 不显示下划线且点击无效。
   证据：2026-05-19 用户提供的落盘诊断 `/home/users/ziyang01.wang-al/projects/hf_workspace/.debug/current-host-diagnostics/2026-05-19T03-55-02-067Z/host-messages.json` 中出现多条 `host/error`：“收到无法识别的消息，已忽略。”；同一诊断里 hard-wrap file resolve 结果为 `resolvedLinkCount: 0`。
 
+- 观察：中文语境新增的 path start-boundary 过滤会误伤 git diff header。`detectPathsWithoutSuffix()` 已把 `--- a/src/foo.ts`、`+++ b/src/foo.ts` 和 `diff --git a/src/foo.ts b/src/foo.ts` 中的 `a/` / `b/` 剥掉，但随后 boundary 检查看到剥离后 `src` 前一个字符是 `/`，把原本合法的 diff path 过滤掉。
+  证据：2026-05-19 PR review 提供的纯函数复现；本地在 PR head 上运行同样脚本，三类输入均返回 `[]`。
+
+- 观察：styled hard-wrap file collector 只按同一 ANSI style signature 查找后续 span，不检查首片段是否贴行尾、续片段是否从缩进后的行首开始、行内是否混入 prose；同色日志片段只要拼接后能被 path parser 和 Host workspace exact fallback 命中，就可能被错误升级成高置信 file link。
+  证据：2026-05-19 PR review 指出 `Error at <blue>src/webview/executionTerminalNativeInteractions.</blue> crashed` 与 `note: <blue>ts:1600:12</blue> elsewhere` 会被拼成真实可打开的 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -104,6 +113,14 @@
 
 - 决策：所有新增 `ExecutionTerminalFileLinkSource` 都必须同步进入 Webview -> Host 协议 validator，并用协议消息级测试覆盖 candidate resolve 与 open link 两条路径。
   理由：Playwright harness 会模拟 Host resolve，不能覆盖真实扩展宿主的 `parseWebviewMessage(...)` 拒绝路径；协议层回归能防止 Webview 侧新增 source 后在真实 VSCode 中变成“未知消息”。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：diff header 中被剥离的 `a/` / `b/` 前缀应作为合法起点证据保留下来，不能再用剥离后路径前一个字符是否为通用 boundary 来否定这类 candidate。
+  理由：`a/` / `b/` 是 git diff metadata，原生同类场景应继续生成 `src/foo.ts` 链接；把 `/` 加进通用 boundary 会过度放宽普通 prose，因此只对 diff-prefix special case 放行。
+  日期/作者：2026-05-19 / Codex
+
+- 决策：styled hard-wrap file candidate 必须先通过结构化 continuation 链检查，再进入 path parser 与 Host resolve；同一 ANSI style signature 只是必要条件，不是充分条件。
+  理由：同色 prose 很常见，Host workspace exact fallback 会让误判变成真实打开动作；首片段贴行尾、续片段从允许缩进后开始能保留 TUI 硬换行主路径，同时降低同色日志误拼接。续行 link 片段后的默认样式说明文字不在两段链接之间，不破坏 continuation 链，因此不作为拒绝条件。
   日期/作者：2026-05-19 / Codex
 
 ## 结果与复盘

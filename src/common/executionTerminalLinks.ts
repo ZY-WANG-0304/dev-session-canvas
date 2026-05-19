@@ -95,6 +95,7 @@ interface ParsedExecutionTerminalLink {
   path: ExecutionTerminalLinkPartialRange;
   prefix?: ExecutionTerminalLinkPartialRange;
   suffix?: ExecutionTerminalLinkSuffix;
+  hasStartBoundary?: boolean;
 }
 
 const linkSuffixRegexEol = generateLinkSuffixRegex(true);
@@ -321,7 +322,7 @@ function isValidParsedExecutionTerminalLink(
   style: ExecutionTerminalPathStyle
 ): boolean {
   const startIndex = link.prefix?.index ?? link.path.index;
-  if (!hasExecutionTerminalPathStartBoundary(line, startIndex)) {
+  if (!link.hasStartBoundary && !hasExecutionTerminalPathStartBoundary(line, startIndex)) {
     return false;
   }
 
@@ -495,6 +496,7 @@ function detectPathsWithoutSuffix(
   while ((match = regex.exec(line)) !== null) {
     let text = match[0];
     let index = match.index;
+    let hasStartBoundary = false;
     if (!text) {
       break;
     }
@@ -505,13 +507,15 @@ function detectPathsWithoutSuffix(
     ) {
       text = text.slice(2);
       index += 2;
+      hasStartBoundary = true;
     }
 
     results.push({
       path: {
         index,
         text
-      }
+      },
+      hasStartBoundary
     });
   }
 

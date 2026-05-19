@@ -74,4 +74,29 @@ assert.deepEqual(detectExecutionTerminalPathLinks('文档/需求：方案.md', '
 assert.equal(shouldSuppressExecutionTerminalWordLink('相关改动：'), true);
 assert.equal(shouldSuppressExecutionTerminalWordLink('普通中文词'), true);
 
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('--- a/src/foo.ts', 'posix').map((link) => ({
+    text: link.text,
+    path: link.path
+  })),
+  [{ text: 'src/foo.ts', path: 'src/foo.ts' }]
+);
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('+++ b/src/foo.ts', 'posix').map((link) => ({
+    text: link.text,
+    path: link.path
+  })),
+  [{ text: 'src/foo.ts', path: 'src/foo.ts' }]
+);
+assert.deepEqual(
+  detectExecutionTerminalPathLinks('diff --git a/src/foo.ts b/src/foo.ts', 'posix').map((link) => ({
+    text: link.text,
+    path: link.path
+  })),
+  [
+    { text: 'src/foo.ts', path: 'src/foo.ts' },
+    { text: 'src/foo.ts', path: 'src/foo.ts' }
+  ]
+);
+
 console.log('executionTerminalLinks tests passed');

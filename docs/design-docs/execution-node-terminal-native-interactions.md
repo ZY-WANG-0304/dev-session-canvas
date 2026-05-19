@@ -207,6 +207,8 @@ updated_at: 2026-05-19
 
 这条规则是当前 Webview link provider 对中文语境的边界适配：它不改变 Host opener 的安全模型，也不把无边界的中文前缀裁剪重新提升为 file link；只有已经被边界切分出来、且 Host 能验证存在的 `docs/foo.md` / `src/panel` 片段才会成为高置信 file link。低置信 word/search provider 会把中文标点也当成 word 边界，并跳过明显中文 prose，避免按住 Cmd/Ctrl 时整句中文说明被下划线；但不抑制整段中文 fallback，也不抑制 `docs/foo.md`、`文档/设计.md`、`设计.md` 这类 file-like 词条，它们仍应进入 file detector 或低置信 search fallback。为了避免误伤真实中文目录，`项目v2/docs/foo.md`、`第1章/src/index.ts`、`project文档/docs/foo.md` 这类中英文混合路径仍保持可检测；如果 CJK 标点出现在路径中间且后续文本继续呈现 path-like 形态，当前先丢弃被截断的 partial candidate，避免把 `文档/需求：方案.md` 错开成 `文档/需求`。
 
+中文语境新增的 start-boundary 过滤不能回归 VSCode 原生同类 git diff 文件链接。`--- a/src/foo.ts`、`+++ b/src/foo.ts` 与 `diff --git a/src/foo.ts b/src/foo.ts` 里的 `a/`、`b/` 是 diff metadata，不是路径正文；剥离这些前缀后的 `src/foo.ts` 应继续被视为合法 candidate。实现上这类 diff-prefix special case 需要在 boundary 检查前保留“起点已由 diff header 证明合法”的信息，而不是把剥离后的 `src` 前一个字符 `/` 当作普通无边界路径处理。
+
 ## 8. 验证方法
 
 本轮至少需要完成以下验证，才能把文档重新标回 `已验证`：
