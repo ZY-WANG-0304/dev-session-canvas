@@ -121,6 +121,30 @@ interface HardWrappedHoverOverlayController {
   dispose: () => void;
 }
 
+type ExecutionFileLinkResolutionCache = Map<
+  string,
+  ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+>;
+
+interface ExecutionFileLinkResolutionCacheMetadata {
+  negativeInvalidationGeneration: number;
+  entries: Map<string, ExecutionFileLinkResolutionCacheEntryMetadata>;
+  revalidateVisibleFileLinks?: (cacheKey: string) => void;
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh;
+}
+
+interface ExecutionFileLinkResolutionCacheEntryMetadata {
+  backgroundRefresh?: Promise<void>;
+  backgroundRefreshGeneration?: number;
+  candidates: ExecutionTerminalFileLinkCandidate[];
+  bufferStartLine: number;
+  bufferEndLine: number;
+  needsRefreshAfterCurrent?: boolean;
+  negativeInvalidationGeneration: number;
+}
+
+type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
+
 interface InteractionLinkOptions {
   lowConfidence?: boolean;
   hoverOverlayRanges?: IBufferRange[];
@@ -141,10 +165,15 @@ const EXECUTION_URI_LINK_MAX_LENGTH = 2048;
 const EXECUTION_WORD_LINK_MAX_LENGTH = 100;
 const EXECUTION_HARD_WRAPPED_LINK_MAX_LINES = 4;
 const EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX = 16;
+const EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS = 200;
 const FILE_LINK_LABEL = 'Open file in editor';
 const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
 const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
 const URL_LINK_LABEL = 'Follow link';
+const executionFileLinkResolutionCacheMetadata = new WeakMap<
+  ExecutionFileLinkResolutionCache,
+  ExecutionFileLinkResolutionCacheMetadata
+>();
 const EXECUTION_URL_LINKIFY = new LinkifyIt()
   .set({
     fuzzyLink: false,
@@ -172,7 +201,7 @@ export interface ExecutionTerminalNativeInteractionsHandle {
   activateLinkForTest(linkText: string): Promise<void>;
   hoverLinkForTest(linkText: string): Promise<void>;
   clearHoverForTest(): void;
-  invalidateLinkResolutionCache(): void;
+  invalidateLinkResolutionCache(mode?: 'all' | 'negative' | 'negative-delayed'): void;
   dispose(): void;
 }
 
@@ -180,13 +209,11 @@ export function setupExecutionTerminalNativeInteractions(
   options: ExecutionTerminalNativeInteractionsOptions
 ): ExecutionTerminalNativeInteractionsHandle {
   const { terminal, dropTarget } = options;
-  const fileLinkResolutionCache = new Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >();
+  const fileLinkResolutionCache: ExecutionFileLinkResolutionCache = new Map();
   let tooltip: ActiveTooltipState | undefined;
   let hoveredLink: ILink | undefined;
   let tooltipTimer: number | undefined;
+  let delayedNegativeCacheRefreshTimer: number | undefined;
 
   const clearDropTarget = (): void => {
     dropTarget.classList.remove('is-drop-target');
@@ -202,6 +229,49 @@ export function setupExecutionTerminalNativeInteractions(
       tooltipTimer = undefined;
     }
   };
+
+  const cancelDelayedNegativeCacheRefresh = (): void => {
+    if (delayedNegativeCacheRefreshTimer !== undefined) {
+      window.clearTimeout(delayedNegativeCacheRefreshTimer);
+      delayedNegativeCacheRefreshTimer = undefined;
+    }
+  };
+
+  const refreshNegativeFileLinkResolutionCacheNow = (): void => {
+    cancelDelayedNegativeCacheRefresh();
+    markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
+    refreshNegativeExecutionFileLinkResolutionCache(
+      options,
+      fileLinkResolutionCache,
+      ensureNegativeFileLinkResolutionCacheRefresh
+    );
+  };
+
+  const ensureNegativeFileLinkResolutionCacheRefresh = (): void => {
+    if (delayedNegativeCacheRefreshTimer !== undefined) {
+      return;
+    }
+
+    delayedNegativeCacheRefreshTimer = window.setTimeout(() => {
+      delayedNegativeCacheRefreshTimer = undefined;
+      refreshNegativeExecutionFileLinkResolutionCache(
+        options,
+        fileLinkResolutionCache,
+        ensureNegativeFileLinkResolutionCacheRefresh
+      );
+    }, EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS);
+  };
+
+  const scheduleNegativeFileLinkResolutionCacheRefresh = (): void => {
+    markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
+    ensureNegativeFileLinkResolutionCacheRefresh();
+  };
+  const fileLinkCacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  fileLinkCacheMetadata.revalidateVisibleFileLinks = (cacheKey): void => {
+    revalidateVisibleExecutionFileLinks(terminal, fileLinkResolutionCache, cacheKey);
+  };
+  fileLinkCacheMetadata.scheduleRefreshAfterCurrent =
+    ensureNegativeFileLinkResolutionCacheRefresh;
 
   const hideTooltip = (): void => {
     clearTooltipTimer();
@@ -376,14 +446,29 @@ export function setupExecutionTerminalNativeInteractions(
     clearHoverForTest(): void {
       clearHoveredLink();
     },
-    invalidateLinkResolutionCache(): void {
+    invalidateLinkResolutionCache(mode = 'all'): void {
+      if (mode === 'negative') {
+        refreshNegativeFileLinkResolutionCacheNow();
+        return;
+      }
+
+      if (mode === 'negative-delayed') {
+        scheduleNegativeFileLinkResolutionCacheRefresh();
+        return;
+      }
+
+      cancelDelayedNegativeCacheRefresh();
+      markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
       fileLinkResolutionCache.clear();
-      hardWrappedHoverOverlayController.clear();
-      clearHoveredLink();
+      getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.clear();
+      // Keep the current hover alive while an execution session is still streaming output.
+      // xterm's linkifier will revalidate hovered ranges on render; forcing a
+      // synthetic mouseleave here makes links disappear during spinner redraws.
     },
     dispose(): void {
       clearHoveredLink();
       clearDropTarget();
+      cancelDelayedNegativeCacheRefresh();
       terminal.options.linkHandler = previousLinkHandler;
       hardWrappedLinkDisposable.dispose();
       multilineLinkDisposable.dispose();
@@ -398,6 +483,7 @@ export function setupExecutionTerminalNativeInteractions(
       dropTarget.removeEventListener('dragend', handleDragLeave);
       dropTarget.removeEventListener('drop', handleDrop);
       fileLinkResolutionCache.clear();
+      getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.clear();
     }
   };
 }
@@ -1306,10 +1392,7 @@ async function resolveExecutionFileLinksForContext(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
   candidates: ExecutionTerminalFileLinkCandidate[],
-  fileLinkResolutionCache: Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
   const cacheKey = createExecutionFileLinkResolutionCacheKey(context, candidates);
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
@@ -1321,15 +1404,47 @@ async function resolveExecutionFileLinksForContext(
     return cachedEntry;
   }
 
-  const request = options
+  const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  const negativeInvalidationGeneration = cacheMetadata.negativeInvalidationGeneration;
+  let request: Promise<ExecutionTerminalResolvedFileLink[]>;
+  cacheMetadata.entries.set(cacheKey, {
+    bufferEndLine: context.endLine,
+    bufferStartLine: context.startLine,
+    candidates,
+    negativeInvalidationGeneration
+  });
+  request = options
     .resolveFileLinks(options.nodeId, options.kind, candidates)
     .then((resolvedLinks) => {
+      if (fileLinkResolutionCache.get(cacheKey) !== request) {
+        return resolvedLinks;
+      }
+
+      const staleNegativeResult =
+        resolvedLinks.length === 0 &&
+        negativeInvalidationGeneration !==
+          getExecutionFileLinkNegativeInvalidationGeneration(fileLinkResolutionCache);
+      if (staleNegativeResult) {
+        fileLinkResolutionCache.set(cacheKey, resolvedLinks);
+        trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
+        void refreshNegativeExecutionFileLinkResolutionCacheEntry(
+          options,
+          fileLinkResolutionCache,
+          cacheKey,
+          cacheMetadata.scheduleRefreshAfterCurrent
+        );
+        return resolvedLinks;
+      }
+
       fileLinkResolutionCache.set(cacheKey, resolvedLinks);
       trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
       return resolvedLinks;
     })
     .catch((error) => {
-      fileLinkResolutionCache.delete(cacheKey);
+      if (fileLinkResolutionCache.get(cacheKey) === request) {
+        fileLinkResolutionCache.delete(cacheKey);
+        getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.delete(cacheKey);
+      }
       throw error;
     });
   fileLinkResolutionCache.set(cacheKey, request);
@@ -1360,10 +1475,7 @@ function createExecutionFileLinkResolutionCacheKey(
 }
 
 function trimExecutionFileLinkResolutionCache(
-  fileLinkResolutionCache: Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
 ): void {
   const maxEntries = 240;
   while (fileLinkResolutionCache.size > maxEntries) {
@@ -1373,7 +1485,147 @@ function trimExecutionFileLinkResolutionCache(
     }
 
     fileLinkResolutionCache.delete(oldestKey);
+    getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.delete(oldestKey);
   }
+}
+
+function refreshNegativeExecutionFileLinkResolutionCache(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh
+): void {
+  for (const [key, entry] of fileLinkResolutionCache.entries()) {
+    if (Array.isArray(entry) && entry.length === 0) {
+      void refreshNegativeExecutionFileLinkResolutionCacheEntry(
+        options,
+        fileLinkResolutionCache,
+        key,
+        scheduleRefreshAfterCurrent
+      );
+    }
+  }
+}
+
+function refreshNegativeExecutionFileLinkResolutionCacheEntry(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  cacheKey: string,
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh
+): Promise<void> | undefined {
+  const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  const entryMetadata = cacheMetadata.entries.get(cacheKey);
+  if (!entryMetadata) {
+    return undefined;
+  }
+
+  if (entryMetadata.backgroundRefresh) {
+    // Preserve the stable negative cache, but do not drop delayed invalidations
+    // that arrive while an older background refresh is still resolving.
+    if (
+      entryMetadata.backgroundRefreshGeneration !== cacheMetadata.negativeInvalidationGeneration
+    ) {
+      entryMetadata.needsRefreshAfterCurrent = true;
+    }
+
+    return entryMetadata.backgroundRefresh;
+  }
+
+  const cachedEntry = fileLinkResolutionCache.get(cacheKey);
+  if (!Array.isArray(cachedEntry) || cachedEntry.length !== 0) {
+    return undefined;
+  }
+
+  const refreshGeneration = cacheMetadata.negativeInvalidationGeneration;
+  entryMetadata.backgroundRefreshGeneration = refreshGeneration;
+  entryMetadata.needsRefreshAfterCurrent = false;
+  let refreshRequest: Promise<void>;
+  refreshRequest = options
+    .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates)
+    .then((resolvedLinks) => {
+      const latestEntry = fileLinkResolutionCache.get(cacheKey);
+      if (!Array.isArray(latestEntry) || latestEntry.length !== 0) {
+        return;
+      }
+
+      entryMetadata.negativeInvalidationGeneration = refreshGeneration;
+      if (resolvedLinks.length > 0) {
+        fileLinkResolutionCache.set(cacheKey, resolvedLinks);
+        trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
+        cacheMetadata.revalidateVisibleFileLinks?.(cacheKey);
+      }
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      if (entryMetadata.backgroundRefresh === refreshRequest) {
+        entryMetadata.backgroundRefresh = undefined;
+        entryMetadata.backgroundRefreshGeneration = undefined;
+        const latestEntry = fileLinkResolutionCache.get(cacheKey);
+        const staleRefreshGeneration =
+          refreshGeneration !== cacheMetadata.negativeInvalidationGeneration;
+        const shouldRefreshAfterCurrent =
+          (entryMetadata.needsRefreshAfterCurrent || staleRefreshGeneration) &&
+          Array.isArray(latestEntry) &&
+          latestEntry.length === 0;
+        entryMetadata.needsRefreshAfterCurrent = false;
+        if (shouldRefreshAfterCurrent) {
+          // Re-enter the shared refresh window instead of retrying immediately;
+          // later output can still be coalesced into the same negative refresh.
+          const refreshScheduler =
+            scheduleRefreshAfterCurrent ?? cacheMetadata.scheduleRefreshAfterCurrent;
+          refreshScheduler?.();
+        }
+      }
+    });
+  entryMetadata.backgroundRefresh = refreshRequest;
+  return refreshRequest;
+}
+
+function getExecutionFileLinkResolutionCacheMetadata(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ExecutionFileLinkResolutionCacheMetadata {
+  let metadata = executionFileLinkResolutionCacheMetadata.get(fileLinkResolutionCache);
+  if (!metadata) {
+    metadata = { entries: new Map(), negativeInvalidationGeneration: 0 };
+    executionFileLinkResolutionCacheMetadata.set(fileLinkResolutionCache, metadata);
+  }
+
+  return metadata;
+}
+
+function getExecutionFileLinkNegativeInvalidationGeneration(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): number {
+  return getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+    .negativeInvalidationGeneration;
+}
+
+function markExecutionFileLinkNegativeCacheInvalidated(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): void {
+  getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+    .negativeInvalidationGeneration += 1;
+}
+
+function revalidateVisibleExecutionFileLinks(
+  terminal: Terminal,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  cacheKey: string
+): void {
+  const entryMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+    .entries.get(cacheKey);
+  if (!entryMetadata) {
+    return;
+  }
+
+  const viewportStartLine = terminal.buffer.active.viewportY;
+  const viewportEndLine = viewportStartLine + terminal.rows - 1;
+  const startLine = Math.max(entryMetadata.bufferStartLine, viewportStartLine);
+  const endLine = Math.min(entryMetadata.bufferEndLine, viewportEndLine);
+  if (endLine < startLine) {
+    return;
+  }
+
+  terminal.refresh(startLine - viewportStartLine, endLine - viewportStartLine);
 }
 
 function mapResolvedFileLinksToInteractions(

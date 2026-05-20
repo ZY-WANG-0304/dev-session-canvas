@@ -13,6 +13,9 @@
         const postedMessages = [];
         let persistedState = window.__devSessionCanvasHarnessInitialPersistedState ?? {};
         let resolvedExecutionFileLinkTexts = null;
+        let executionFileLinkResolutionDelayMs = 0;
+        let holdExecutionFileLinkResponses = false;
+        const heldExecutionFileLinkResponses = [];
 
         window.acquireVsCodeApi = function acquireVsCodeApi() {
           return {
@@ -35,34 +38,43 @@
                         return resolvedExecutionFileLinkTexts.includes(candidate.text);
                       })
                       .map((candidate) => ({
-                      candidateId: candidate.candidateId,
-                      link: {
-                        linkKind: 'file',
-                        text: candidate.text,
-                        path: candidate.path,
-                        line: candidate.line,
-                        column: candidate.column,
-                        lineEnd: candidate.lineEnd,
-                        columnEnd: candidate.columnEnd,
-                        bufferStartLine: candidate.bufferStartLine,
-                        source: candidate.source,
-                        resolvedId: `harness-${candidate.candidateId}`,
-                        targetKind: 'file'
-                      }
-                    }))
+                        candidateId: candidate.candidateId,
+                        link: {
+                          linkKind: 'file',
+                          text: candidate.text,
+                          path: candidate.path,
+                          line: candidate.line,
+                          column: candidate.column,
+                          lineEnd: candidate.lineEnd,
+                          columnEnd: candidate.columnEnd,
+                          bufferStartLine: candidate.bufferStartLine,
+                          source: candidate.source,
+                          resolvedId: `harness-${candidate.candidateId}`,
+                          targetKind: 'file'
+                        }
+                      }))
                   : [];
-                window.postMessage(
-                  {
-                    type: 'host/executionFileLinksResolved',
-                    payload: {
-                      requestId: message.payload?.requestId,
-                      nodeId: message.payload?.nodeId,
-                      kind: message.payload?.kind,
-                      resolvedLinks
-                    }
-                  },
-                  '*'
-                );
+                const respond = () => {
+                  window.postMessage(
+                    {
+                      type: 'host/executionFileLinksResolved',
+                      payload: {
+                        requestId: message.payload?.requestId,
+                        nodeId: message.payload?.nodeId,
+                        kind: message.payload?.kind,
+                        resolvedLinks
+                      }
+                    },
+                    '*'
+                  );
+                };
+                if (holdExecutionFileLinkResponses) {
+                  heldExecutionFileLinkResponses.push(respond);
+                } else if (executionFileLinkResolutionDelayMs > 0) {
+                  window.setTimeout(respond, executionFileLinkResolutionDelayMs);
+                } else {
+                  respond();
+                }
               }
               window.dispatchEvent(
                 new CustomEvent('dev-session-canvas:harness-post-message', {
@@ -138,6 +150,18 @@
           },
           setResolvedExecutionFileLinkTexts(texts) {
             resolvedExecutionFileLinkTexts = Array.isArray(texts) ? texts.slice() : null;
+          },
+          setExecutionFileLinkResolutionDelayMs(delayMs) {
+            executionFileLinkResolutionDelayMs =
+              Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
+          },
+          setHoldExecutionFileLinkResponses(holdResponses) {
+            holdExecutionFileLinkResponses = Boolean(holdResponses);
+          },
+          flushExecutionFileLinkResponses(count = heldExecutionFileLinkResponses.length) {
+            const responses = heldExecutionFileLinkResponses.splice(0, Math.max(0, count));
+            responses.forEach((respond) => respond());
+            return responses.length;
           },
           clearPostedMessages() {
             postedMessages.length = 0;

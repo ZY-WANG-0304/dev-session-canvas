@@ -3615,6 +3615,678 @@ for (const executionKind of ['agent', 'terminal']) {
     }
   });
 
+  test(`${executionKind} keeps hovered links active while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const url = 'https://example.com/live-link';
+    const underlinedUrlText = '//example.com/live-link';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${url}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: url
+      });
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(underlinedUrlText);
+
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'still working\r\n'
+      });
+      await settleWebview(page, 4);
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(underlinedUrlText);
+
+      const clickPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!clickPoint) {
+        throw new Error(`Expected ${url} to remain underlined after live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.keyboard.down('Control');
+      await page.mouse.click(clickPoint.x, clickPoint.y);
+      await page.keyboard.up('Control');
+
+      await expect
+        .poll(async () => {
+          return page.evaluate((nextNodeId) => {
+            const openedLink = window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .find(
+                (entry) =>
+                  entry.type === 'webview/openExecutionLink' &&
+                  entry.payload.nodeId === nextNodeId
+              );
+            return openedLink?.payload?.link?.text ?? null;
+          }, nodeId);
+        })
+        .toContain('live-link');
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} reuses file link resolution while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'src/live-link-target.ts';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(filePath);
+
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'still working\r\n'
+      });
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      });
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      expect(
+        resolveRequests.some((entry) =>
+          entry.payload.candidates.some((candidate) => candidate.text === filePath)
+        )
+      ).toBe(false);
+    } finally {
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} refreshes negative file link cache while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'missing-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created missing-target.ts\r\n'
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} revalidates a hovered negative file link after live output resolves it`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'hover-created-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(filePath);
+
+      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!hoveredPoint) {
+        throw new Error(`Expected ${filePath} to be underlined before live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'search',
+          text: filePath,
+          source: 'word'
+        });
+
+      await page.evaluate((nextResolvedTexts) => {
+        window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      }, [filePath]);
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'created hover-created-target.ts\r\n'
+      });
+      await page.waitForTimeout(260);
+      await settleWebview(page, 4);
+
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'file',
+          text: filePath,
+          source: 'detected'
+        });
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} revalidates a hovered hard-wrapped negative file link continuation`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionText',
+        nodeId,
+        text: secondPathFragment
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(secondPathFragment);
+
+      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!hoveredPoint) {
+        throw new Error(`Expected ${secondPathFragment} to be underlined before live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'search',
+          text: secondPathFragment,
+          source: 'word'
+        });
+
+      await page.evaluate((nextResolvedTexts) => {
+        window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      }, [hardWrappedPath]);
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'created hard-wrapped-links.md\r\n'
+      });
+      await page.waitForTimeout(260);
+      await settleWebview(page, 4);
+
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'file',
+          text: hardWrappedPath,
+          source: 'hardwrap'
+        });
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} delays coalesced negative file link refreshes after live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'coalesced-target.ts:5:1';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setHoldExecutionFileLinkResponses(true);
+    });
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'checking coalesced-target.ts\r\n'
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'still checking coalesced-target.ts\r\n'
+    });
+    await page.waitForTimeout(260);
+    const flushedResponses = await page.evaluate(() => {
+      return window.__devSessionCanvasHarness.flushExecutionFileLinkResponses(1);
+    });
+    expect(flushedResponses).toBe(1);
+    await settleWebview(page, 1);
+
+    let resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(
+      resolveRequests.filter((entry) =>
+        entry.payload.candidates.some((candidate) => candidate.text === filePath)
+      ).length
+    ).toBe(1);
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      window.__devSessionCanvasHarness.setHoldExecutionFileLinkResponses(false);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created coalesced-target.ts\r\n'
+    });
+
+    await expect
+      .poll(async () => {
+        resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+        return resolveRequests.filter((entry) =>
+          entry.payload.candidates.some((candidate) => candidate.text === filePath)
+        ).length;
+      })
+      .toBeGreaterThanOrEqual(2);
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} keeps unresolved file link fallback stable while live output continues`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'still-missing-target.ts:7:1';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: '...\r\n'
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(
+      resolveRequests.some((entry) =>
+        entry.payload.candidates.some((candidate) => candidate.text === filePath)
+      )
+    ).toBe(false);
+  });
+
+  test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'eventual-target.ts:4:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(700);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    const staleActivation = performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created eventual-target.ts\r\n'
+    });
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(0);
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+    await staleActivation;
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await clearPostedMessages(page);
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} schedules delayed refresh after stale negative refresh is invalidated`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'stale-refresh-target.ts:6:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(500);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    const pendingActivation = performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+    const countDetectedFileResolveRequests = async () => {
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      return resolveRequests.filter((entry) =>
+        entry.payload.candidates.some(
+          (candidate) => candidate.text === filePath && candidate.source === 'detected'
+        )
+      ).length;
+    };
+    const initialDetectedRequestCount = await countDetectedFileResolveRequests();
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'first invalidation for stale-refresh-target.ts\r\n'
+    });
+
+    await expect
+      .poll(async () => {
+        return countDetectedFileResolveRequests();
+      })
+      .toBeGreaterThan(initialDetectedRequestCount);
+    const staleRefreshRequestCount = await countDetectedFileResolveRequests();
+    expect(staleRefreshRequestCount).toBeGreaterThan(initialDetectedRequestCount);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'second invalidation for stale-refresh-target.ts\r\n'
+    });
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(0);
+    }, [filePath]);
+    await page.waitForTimeout(260);
+
+    await expect
+      .poll(async () => {
+        return countDetectedFileResolveRequests();
+      })
+      .toBeGreaterThan(staleRefreshRequestCount);
+    await pendingActivation;
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
   test(`${executionKind} does not synthesize trimmed links from attached CJK prose`, async ({
     page
   }) => {
@@ -7794,6 +8466,23 @@ async function waitForPostedMessageByType(page, type) {
   return matchedMessage;
 }
 
+async function readPostedMessagesByType(page, type) {
+  return page.evaluate((nextType) => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === nextType);
+  }, type);
+}
+
+async function readLastOpenedExecutionLink(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const messages = window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/openExecutionLink' && entry.payload.nodeId === nextNodeId);
+    return messages.at(-1)?.payload.link ?? null;
+  }, nodeId);
+}
+
 async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
   let matchedNode = null;
 
@@ -7864,6 +8553,28 @@ async function readTerminalUnderlinedText(page, nodeId) {
       .filter((span) => span instanceof HTMLElement && span.style.textDecoration.includes('underline'))
       .map((span) => span.textContent ?? '')
       .join('');
+  }, nodeId);
+}
+
+async function readFirstTerminalUnderlinedPoint(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const rows = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-rows`);
+    if (!(rows instanceof HTMLElement)) {
+      return null;
+    }
+
+    const span = Array.from(rows.querySelectorAll('span')).find(
+      (entry) => entry instanceof HTMLElement && entry.style.textDecoration.includes('underline')
+    );
+    if (!(span instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = span.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
   }, nodeId);
 }
 

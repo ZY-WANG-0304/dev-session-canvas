@@ -441,6 +441,8 @@ interface ExecutionTerminalController {
   dispose(): void;
 }
 
+type ExecutionTerminalContentChangeReason = 'snapshot' | 'output' | 'exit';
+
 type MouseCoords = [number, number] | undefined;
 interface MouseReportCoords {
   col: number;
@@ -2803,8 +2805,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
-      onContentWillChange: () => {
-        nativeInteractions?.invalidateLinkResolutionCache();
+      onContentWillChange: (reason) => {
+        if (reason === 'snapshot') {
+          nativeInteractions?.invalidateLinkResolutionCache();
+        } else if (reason === 'output') {
+          nativeInteractions?.invalidateLinkResolutionCache('negative-delayed');
+        } else {
+          nativeInteractions?.invalidateLinkResolutionCache('negative');
+        }
       },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
@@ -3288,8 +3296,14 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
-      onContentWillChange: () => {
-        nativeInteractions?.invalidateLinkResolutionCache();
+      onContentWillChange: (reason) => {
+        if (reason === 'snapshot') {
+          nativeInteractions?.invalidateLinkResolutionCache();
+        } else if (reason === 'output') {
+          nativeInteractions?.invalidateLinkResolutionCache('negative-delayed');
+        } else {
+          nativeInteractions?.invalidateLinkResolutionCache('negative');
+        }
       },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
@@ -8950,7 +8964,7 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
 function createExecutionTerminalController(
   terminal: Terminal,
   options?: {
-    onContentWillChange?: () => void;
+    onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
   }
 ): ExecutionTerminalController {
@@ -8985,7 +8999,7 @@ function createExecutionTerminalController(
       pendingOutput = '';
       pendingExecutionTerminalDrains.delete(controller);
       writeGeneration += 1;
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
       queueTerminalWrite((done) => {
         restoreExecutionTerminalSnapshot(terminal, detail, done);
@@ -8997,6 +9011,7 @@ function createExecutionTerminalController(
       }
 
       pendingOutput += chunk;
+      options?.onContentWillChange?.('output');
       scheduleExecutionTerminalDrain(controller);
     },
     showExit(message) {
@@ -9005,7 +9020,7 @@ function createExecutionTerminalController(
       }
 
       controller.flushPendingOutput();
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('exit');
       queueTerminalWrite((done) => {
         terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
       });
@@ -9029,7 +9044,6 @@ function createExecutionTerminalController(
       pendingOutput = '';
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
-      options?.onContentWillChange?.();
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
       });
@@ -9520,6 +9534,31 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'hoverExecutionText': {
+        const terminal = queryExecutionTerminalElement(action.nodeId);
+        const rows = terminal.querySelector('.xterm-rows');
+        if (!(rows instanceof HTMLElement)) {
+          throw new Error(`Execution terminal ${action.nodeId} has no rendered rows.`);
+        }
+
+        const point = findExecutionTerminalTextPoint(rows, action.text);
+        if (!point) {
+          throw new Error(`Execution terminal text "${action.text}" was not found.`);
+        }
+
+        const target = document.elementFromPoint(point.x, point.y) ?? rows;
+        target.dispatchEvent(
+          new MouseEvent('mousemove', {
+            bubbles: true,
+            composed: true,
+            view: window,
+            clientX: point.x,
+            clientY: point.y
+          })
+        );
+        await waitForDomActionFlush();
+        break;
+      }
       case 'clearExecutionLinkHover': {
         const entry = executionTerminalRegistry.get(action.nodeId);
         if (!entry) {
@@ -9688,6 +9727,37 @@ function queryNodeRoot(nodeId: string): HTMLElement {
   }
 
   return nodeRoot;
+}
+
+function queryExecutionTerminalElement(nodeId: string): HTMLElement {
+  const terminal = queryNodeRoot(nodeId).querySelector<HTMLElement>('.xterm');
+  if (!terminal) {
+    throw new Error(`未找到节点 ${nodeId} 的执行终端。`);
+  }
+
+  return terminal;
+}
+
+function findExecutionTerminalTextPoint(rows: HTMLElement, text: string): { x: number; y: number } | undefined {
+  for (const row of Array.from(rows.children)) {
+    if (!(row instanceof HTMLElement) || !(row.textContent ?? '').includes(text)) {
+      continue;
+    }
+
+    for (const span of Array.from(row.querySelectorAll('span'))) {
+      if (!(span instanceof HTMLElement) || !(span.textContent ?? '').includes(text)) {
+        continue;
+      }
+
+      const rect = span.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }
+  }
+
+  return undefined;
 }
 
 function queryMinimapNode(nodeId: string): SVGElement | null {
