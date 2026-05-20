@@ -3802,6 +3802,160 @@ for (const executionKind of ['agent', 'terminal']) {
       });
   });
 
+  test(`${executionKind} revalidates a hovered negative file link after live output resolves it`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'hover-created-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(filePath);
+
+      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!hoveredPoint) {
+        throw new Error(`Expected ${filePath} to be underlined before live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'search',
+          text: filePath,
+          source: 'word'
+        });
+
+      await page.evaluate((nextResolvedTexts) => {
+        window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      }, [filePath]);
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'created hover-created-target.ts\r\n'
+      });
+      await page.waitForTimeout(260);
+      await settleWebview(page, 4);
+
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'file',
+          text: filePath,
+          source: 'detected'
+        });
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} revalidates a hovered hard-wrapped negative file link continuation`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionText',
+        nodeId,
+        text: secondPathFragment
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(secondPathFragment);
+
+      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!hoveredPoint) {
+        throw new Error(`Expected ${secondPathFragment} to be underlined before live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'search',
+          text: secondPathFragment,
+          source: 'word'
+        });
+
+      await page.evaluate((nextResolvedTexts) => {
+        window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      }, [hardWrappedPath]);
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'created hard-wrapped-links.md\r\n'
+      });
+      await page.waitForTimeout(260);
+      await settleWebview(page, 4);
+
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'file',
+          text: hardWrappedPath,
+          source: 'hardwrap'
+        });
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
   test(`${executionKind} delays coalesced negative file link refreshes after live output`, async ({
     page
   }) => {
