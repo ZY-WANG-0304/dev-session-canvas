@@ -50,14 +50,15 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 ## 0.10.2 版本亮点
 
-当前公开的 `0.10.2` 版本仍属于 `0.10.x` Preview 线，重点收口真实 TUI 输出中的执行终端链接兼容性。它让高置信硬换行 URL 与带样式文件片段可以作为同一个完整目标打开，但不扩大扩展支持矩阵，也不改变稳定版承诺。
+当前公开的 `0.10.2` 版本仍属于 `0.10.x` Preview 线，重点收口真实 TUI 输出中的执行终端链接兼容性。它让高置信硬换行 URL 与带样式文件片段可以作为同一个完整目标打开，并稳定运行中终端输出继续刷新时的文件链接缓存，但不扩大扩展支持矩阵，也不改变稳定版承诺。
 
 - `Agent` 与 `Terminal` 节点里的硬换行 URL 片段现在可在首片段具备明确 scheme、续行满足保守 TUI continuation 规则时打开为同一个完整 URL
 - 带样式硬换行文件路径现在保留 `:line:column` 后缀，并且仍需经过 Host 侧文件验证后才会成为高置信文件链接
 - 悬停任一 hard-wrap 链接片段时，同组真实片段会一起显示下划线，但缩进、边框和 gutter 空白不会进入可点击区域
 - 链接识别会拒绝相邻完整 URL、缩进说明文字、Markdown 列表、代码块、中文说明、无样式硬换行文件路径，以及不构成明确 continuation 链的带样式片段
 - Webview / Host 协议现在在候选解析与打开链接两条路径都接受 `hardwrap` 文件链接来源，避免真实 VS Code Host 中静默降级
-- 新增协议、终端链接与 Playwright webview 回归，覆盖 `Agent` 与 `Terminal` 两类节点的 hard-wrap link 主路径
+- 运行中终端输出会刷新 negative 文件链接缓存并在打开前重新验证目标，降低命令先打印路径、随后创建文件时的 stale link 行为
+- 新增协议、终端链接与 Playwright webview 回归，覆盖 `Agent` 与 `Terminal` 两类节点的 hard-wrap 与 live-cache link 主路径
 
 ## 安装与升级
 
