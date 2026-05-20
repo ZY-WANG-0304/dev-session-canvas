@@ -48,23 +48,23 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.10.1 版本亮点
+## 0.10.2 版本亮点
 
-当前公开的 `0.10.1` 版本继续围绕 `0.10.x` 的 Note 与 Markdown 文件工作流做收口，重点补齐模板保存策略、Remote SSH 拖拽边界、metadata 预览、图片预览、停止后 Agent 重启动作和发布文案一致性。
+当前公开的 `0.10.2` 版本仍属于 `0.10.x` Preview 线，重点收口真实 TUI 输出中的执行终端链接兼容性。它让高置信硬换行 URL 与带样式文件片段可以作为同一个完整目标打开，并稳定运行中终端输出继续刷新时的文件链接缓存，但不扩大扩展支持矩阵，也不改变稳定版承诺。
 
-- 关联 Markdown Note 保存为模板时新增显式策略：普通内容快照、仅 workspace 相对路径、workspace 相对路径加文件内容
-- 应用模板时，缺失关联文件和“路径+内容”冲突都在 Note 节点内处理，不静默覆盖 workspace 文件
-- Markdown 阅读态会隐藏合法 YAML front matter，并通过轻量 metadata 浮层展示摘要；解析失败时保留原文并给出 warning
-- Markdown 图片预览支持安全的 `https:`、`data:image/*;base64`，以及 workspace / 关联文件相对图片，并通过 Webview 安全 URL 加载
-- Remote Markdown 拖拽会先校验当前 host authority，再进入文件读写和 watcher 流程；不同设备或无法确认当前 host 时 fail closed
-- 停止后的 Agent 节点在存在可信恢复上下文时显示独立的 `新建` 与 `重启` 动作，明确区分新会话和恢复原会话
-- UI 与发布链路同步收口：默认 panel 激活、状态颜色、侧栏列表色、notifier 侧栏样式、脚本目录、发布失败处理都已对齐，Marketplace README 默认语言改为英文
+- `Agent` 与 `Terminal` 节点里的硬换行 URL 片段现在可在首片段具备明确 scheme、续行满足保守 TUI continuation 规则时打开为同一个完整 URL
+- 带样式硬换行文件路径现在保留 `:line:column` 后缀，并且仍需经过 Host 侧文件验证后才会成为高置信文件链接
+- 悬停任一 hard-wrap 链接片段时，同组真实片段会一起显示下划线，但缩进、边框和 gutter 空白不会进入可点击区域
+- 链接识别会拒绝相邻完整 URL、缩进说明文字、Markdown 列表、代码块、中文说明、无样式硬换行文件路径，以及不构成明确 continuation 链的带样式片段
+- Webview / Host 协议现在在候选解析与打开链接两条路径都接受 `hardwrap` 文件链接来源，避免真实 VS Code Host 中静默降级
+- 运行中终端输出会刷新 negative 文件链接缓存并在打开前重新验证目标，降低命令先打印路径、随后创建文件时的 stale link 行为
+- 新增协议、终端链接与 Playwright webview 回归，覆盖 `Agent` 与 `Terminal` 两类节点的 hard-wrap 与 live-cache link 主路径
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.10.0` 升级到 `0.10.1` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.10.1` 升级到 `0.10.2` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.2` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
