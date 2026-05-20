@@ -14,6 +14,8 @@
         let persistedState = window.__devSessionCanvasHarnessInitialPersistedState ?? {};
         let resolvedExecutionFileLinkTexts = null;
         let executionFileLinkResolutionDelayMs = 0;
+        let holdExecutionFileLinkResponses = false;
+        const heldExecutionFileLinkResponses = [];
 
         window.acquireVsCodeApi = function acquireVsCodeApi() {
           return {
@@ -66,7 +68,9 @@
                     '*'
                   );
                 };
-                if (executionFileLinkResolutionDelayMs > 0) {
+                if (holdExecutionFileLinkResponses) {
+                  heldExecutionFileLinkResponses.push(respond);
+                } else if (executionFileLinkResolutionDelayMs > 0) {
                   window.setTimeout(respond, executionFileLinkResolutionDelayMs);
                 } else {
                   respond();
@@ -150,6 +154,14 @@
           setExecutionFileLinkResolutionDelayMs(delayMs) {
             executionFileLinkResolutionDelayMs =
               Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
+          },
+          setHoldExecutionFileLinkResponses(holdResponses) {
+            holdExecutionFileLinkResponses = Boolean(holdResponses);
+          },
+          flushExecutionFileLinkResponses(count = heldExecutionFileLinkResponses.length) {
+            const responses = heldExecutionFileLinkResponses.splice(0, Math.max(0, count));
+            responses.forEach((respond) => respond());
+            return responses.length;
           },
           clearPostedMessages() {
             postedMessages.length = 0;
