@@ -410,6 +410,57 @@ try {
   assert.equal(lineScopedResolved?.selection?.start.line, 1);
   assert.equal(lineScopedResolved?.selection?.start.character, 7);
 
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/current-target.ts', type: 'file' }]);
+  const staleResolvedIdIgnoredOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'file',
+      text: 'current-target.ts',
+      path: 'current-target.ts',
+      bufferStartLine: 10,
+      resolvedId: 'stale-resolved-id',
+      targetKind: 'file',
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.deepEqual(staleResolvedIdIgnoredOpenResult, {
+    opened: true,
+    openerKind: 'showTextDocument',
+    targetUri: '/workspace/current-target.ts'
+  });
+  const staleResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(staleResolvedIdIgnoredOpenCalls.length, 1);
+  assert.equal(staleResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([
+    { path: '/workspace/current-target.ts', type: 'file' },
+    { path: '/workspace/cached-target.ts', type: 'file' }
+  ]);
+  const validResolvedIdIgnoredOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'file',
+      text: 'current-target.ts',
+      path: 'current-target.ts',
+      bufferStartLine: 10,
+      resolvedId: 'valid-resolved-id',
+      targetKind: 'file',
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.deepEqual(validResolvedIdIgnoredOpenResult, {
+    opened: true,
+    openerKind: 'showTextDocument',
+    targetUri: '/workspace/current-target.ts'
+  });
+  const validResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(validResolvedIdIgnoredOpenCalls.length, 1);
+  assert.equal(validResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+
   console.log('executionTerminalNativeHelpers tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });

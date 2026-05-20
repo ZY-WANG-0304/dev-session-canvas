@@ -220,8 +220,7 @@ import {
   openExecutionTerminalLink,
   prepareExecutionTerminalDroppedPath,
   resolveExecutionTerminalFileLinkCandidates,
-  type OpenExecutionTerminalLinkResult,
-  type ResolvedExecutionFileLink
+  type OpenExecutionTerminalLinkResult
 } from './executionTerminalNativeHelpers';
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
 import {
@@ -660,10 +659,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
   private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
-  private readonly resolvedExecutionFileLinks = new Map<
-    string,
-    { nodeId: string; kind: ExecutionNodeKind; resolved: ResolvedExecutionFileLink }
-  >();
+  private readonly resolvedExecutionFileLinks = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
   private readonly executionSessionOperationTokens = new Map<string, number>();
   private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
@@ -4422,8 +4418,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     for (const resolvedCandidate of resolvedCandidates) {
       this.resolvedExecutionFileLinks.set(resolvedCandidate.openLink.resolvedId, {
         nodeId,
-        kind,
-        resolved: resolvedCandidate.resolved
+        kind
       });
     }
 
@@ -4447,18 +4442,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     link: ExecutionTerminalOpenLink
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
-    const openResult = await openExecutionTerminalLink(
-      link,
-      context,
-      (resolvedId) => {
-        const cached = this.resolvedExecutionFileLinks.get(resolvedId);
-        if (!cached || cached.nodeId !== nodeId || cached.kind !== kind) {
-          return undefined;
-        }
-
-        return cached.resolved;
-      }
-    ).catch((): OpenExecutionTerminalLinkResult => ({ opened: false }));
+    const cached =
+      link.linkKind === 'file' && typeof link.resolvedId === 'string'
+        ? this.resolvedExecutionFileLinks.get(link.resolvedId)
+        : undefined;
+    const openResult =
+      cached && (cached.nodeId !== nodeId || cached.kind !== kind)
+        ? { opened: false }
+        : await openExecutionTerminalLink(link, context).catch(
+            (): OpenExecutionTerminalLinkResult => ({ opened: false })
+          );
 
     this.recordDiagnosticEvent(openResult.opened ? 'execution/linkOpened' : 'execution/linkOpenRejected', {
       kind,
