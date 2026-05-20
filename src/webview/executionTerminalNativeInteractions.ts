@@ -129,13 +129,18 @@ type ExecutionFileLinkResolutionCache = Map<
 interface ExecutionFileLinkResolutionCacheMetadata {
   negativeInvalidationGeneration: number;
   entries: Map<string, ExecutionFileLinkResolutionCacheEntryMetadata>;
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh;
 }
 
 interface ExecutionFileLinkResolutionCacheEntryMetadata {
   backgroundRefresh?: Promise<void>;
+  backgroundRefreshGeneration?: number;
   candidates: ExecutionTerminalFileLinkCandidate[];
+  needsRefreshAfterCurrent?: boolean;
   negativeInvalidationGeneration: number;
 }
+
+type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
 
 interface InteractionLinkOptions {
   lowConfidence?: boolean;
@@ -232,20 +237,34 @@ export function setupExecutionTerminalNativeInteractions(
   const refreshNegativeFileLinkResolutionCacheNow = (): void => {
     cancelDelayedNegativeCacheRefresh();
     markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
-    refreshNegativeExecutionFileLinkResolutionCache(options, fileLinkResolutionCache);
+    refreshNegativeExecutionFileLinkResolutionCache(
+      options,
+      fileLinkResolutionCache,
+      ensureNegativeFileLinkResolutionCacheRefresh
+    );
   };
 
-  const scheduleNegativeFileLinkResolutionCacheRefresh = (): void => {
-    markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
+  const ensureNegativeFileLinkResolutionCacheRefresh = (): void => {
     if (delayedNegativeCacheRefreshTimer !== undefined) {
       return;
     }
 
     delayedNegativeCacheRefreshTimer = window.setTimeout(() => {
       delayedNegativeCacheRefreshTimer = undefined;
-      refreshNegativeExecutionFileLinkResolutionCache(options, fileLinkResolutionCache);
+      refreshNegativeExecutionFileLinkResolutionCache(
+        options,
+        fileLinkResolutionCache,
+        ensureNegativeFileLinkResolutionCacheRefresh
+      );
     }, EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS);
   };
+
+  const scheduleNegativeFileLinkResolutionCacheRefresh = (): void => {
+    markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
+    ensureNegativeFileLinkResolutionCacheRefresh();
+  };
+  getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).scheduleRefreshAfterCurrent =
+    ensureNegativeFileLinkResolutionCacheRefresh;
 
   const hideTooltip = (): void => {
     clearTooltipTimer();
@@ -1402,7 +1421,8 @@ async function resolveExecutionFileLinksForContext(
         void refreshNegativeExecutionFileLinkResolutionCacheEntry(
           options,
           fileLinkResolutionCache,
-          cacheKey
+          cacheKey,
+          cacheMetadata.scheduleRefreshAfterCurrent
         );
         return resolvedLinks;
       }
@@ -1462,14 +1482,16 @@ function trimExecutionFileLinkResolutionCache(
 
 function refreshNegativeExecutionFileLinkResolutionCache(
   options: ExecutionTerminalNativeInteractionsOptions,
-  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh
 ): void {
   for (const [key, entry] of fileLinkResolutionCache.entries()) {
     if (Array.isArray(entry) && entry.length === 0) {
       void refreshNegativeExecutionFileLinkResolutionCacheEntry(
         options,
         fileLinkResolutionCache,
-        key
+        key,
+        scheduleRefreshAfterCurrent
       );
     }
   }
@@ -1478,12 +1500,25 @@ function refreshNegativeExecutionFileLinkResolutionCache(
 function refreshNegativeExecutionFileLinkResolutionCacheEntry(
   options: ExecutionTerminalNativeInteractionsOptions,
   fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
-  cacheKey: string
+  cacheKey: string,
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh
 ): Promise<void> | undefined {
   const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
   const entryMetadata = cacheMetadata.entries.get(cacheKey);
-  if (!entryMetadata || entryMetadata.backgroundRefresh) {
-    return entryMetadata?.backgroundRefresh;
+  if (!entryMetadata) {
+    return undefined;
+  }
+
+  if (entryMetadata.backgroundRefresh) {
+    // Preserve the stable negative cache, but do not drop delayed invalidations
+    // that arrive while an older background refresh is still resolving.
+    if (
+      entryMetadata.backgroundRefreshGeneration !== cacheMetadata.negativeInvalidationGeneration
+    ) {
+      entryMetadata.needsRefreshAfterCurrent = true;
+    }
+
+    return entryMetadata.backgroundRefresh;
   }
 
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
@@ -1492,6 +1527,8 @@ function refreshNegativeExecutionFileLinkResolutionCacheEntry(
   }
 
   const refreshGeneration = cacheMetadata.negativeInvalidationGeneration;
+  entryMetadata.backgroundRefreshGeneration = refreshGeneration;
+  entryMetadata.needsRefreshAfterCurrent = false;
   let refreshRequest: Promise<void>;
   refreshRequest = options
     .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates)
@@ -1511,6 +1548,22 @@ function refreshNegativeExecutionFileLinkResolutionCacheEntry(
     .finally(() => {
       if (entryMetadata.backgroundRefresh === refreshRequest) {
         entryMetadata.backgroundRefresh = undefined;
+        entryMetadata.backgroundRefreshGeneration = undefined;
+        const latestEntry = fileLinkResolutionCache.get(cacheKey);
+        const staleRefreshGeneration =
+          refreshGeneration !== cacheMetadata.negativeInvalidationGeneration;
+        const shouldRefreshAfterCurrent =
+          (entryMetadata.needsRefreshAfterCurrent || staleRefreshGeneration) &&
+          Array.isArray(latestEntry) &&
+          latestEntry.length === 0;
+        entryMetadata.needsRefreshAfterCurrent = false;
+        if (shouldRefreshAfterCurrent) {
+          // Re-enter the shared refresh window instead of retrying immediately;
+          // later output can still be coalesced into the same negative refresh.
+          const refreshScheduler =
+            scheduleRefreshAfterCurrent ?? cacheMetadata.scheduleRefreshAfterCurrent;
+          refreshScheduler?.();
+        }
       }
     });
   entryMetadata.backgroundRefresh = refreshRequest;
