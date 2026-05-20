@@ -465,6 +465,12 @@ export type WebviewDomAction =
       delayMs?: number;
     }
   | {
+      kind: 'hoverExecutionText';
+      nodeId: string;
+      text: string;
+      delayMs?: number;
+    }
+  | {
       kind: 'clearExecutionLinkHover';
       nodeId: string;
       delayMs?: number;
@@ -1888,6 +1894,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'hoverExecutionLink') {
+    return typeof value.text === 'string';
+  }
+
+  if (value.kind === 'hoverExecutionText') {
     return typeof value.text === 'string';
   }
 

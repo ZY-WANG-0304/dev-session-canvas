@@ -9534,6 +9534,31 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'hoverExecutionText': {
+        const terminal = queryExecutionTerminalElement(action.nodeId);
+        const rows = terminal.querySelector('.xterm-rows');
+        if (!(rows instanceof HTMLElement)) {
+          throw new Error(`Execution terminal ${action.nodeId} has no rendered rows.`);
+        }
+
+        const point = findExecutionTerminalTextPoint(rows, action.text);
+        if (!point) {
+          throw new Error(`Execution terminal text "${action.text}" was not found.`);
+        }
+
+        const target = document.elementFromPoint(point.x, point.y) ?? rows;
+        target.dispatchEvent(
+          new MouseEvent('mousemove', {
+            bubbles: true,
+            composed: true,
+            view: window,
+            clientX: point.x,
+            clientY: point.y
+          })
+        );
+        await waitForDomActionFlush();
+        break;
+      }
       case 'clearExecutionLinkHover': {
         const entry = executionTerminalRegistry.get(action.nodeId);
         if (!entry) {
@@ -9702,6 +9727,37 @@ function queryNodeRoot(nodeId: string): HTMLElement {
   }
 
   return nodeRoot;
+}
+
+function queryExecutionTerminalElement(nodeId: string): HTMLElement {
+  const terminal = queryNodeRoot(nodeId).querySelector<HTMLElement>('.xterm');
+  if (!terminal) {
+    throw new Error(`未找到节点 ${nodeId} 的执行终端。`);
+  }
+
+  return terminal;
+}
+
+function findExecutionTerminalTextPoint(rows: HTMLElement, text: string): { x: number; y: number } | undefined {
+  for (const row of Array.from(rows.children)) {
+    if (!(row instanceof HTMLElement) || !(row.textContent ?? '').includes(text)) {
+      continue;
+    }
+
+    for (const span of Array.from(row.querySelectorAll('span'))) {
+      if (!(span instanceof HTMLElement) || !(span.textContent ?? '').includes(text)) {
+        continue;
+      }
+
+      const rect = span.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }
+  }
+
+  return undefined;
 }
 
 function queryMinimapNode(nodeId: string): SVGElement | null {

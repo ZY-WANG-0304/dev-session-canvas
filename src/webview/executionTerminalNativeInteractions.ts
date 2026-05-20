@@ -129,6 +129,7 @@ type ExecutionFileLinkResolutionCache = Map<
 interface ExecutionFileLinkResolutionCacheMetadata {
   negativeInvalidationGeneration: number;
   entries: Map<string, ExecutionFileLinkResolutionCacheEntryMetadata>;
+  revalidateVisibleFileLinks?: (cacheKey: string) => void;
   scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh;
 }
 
@@ -136,6 +137,8 @@ interface ExecutionFileLinkResolutionCacheEntryMetadata {
   backgroundRefresh?: Promise<void>;
   backgroundRefreshGeneration?: number;
   candidates: ExecutionTerminalFileLinkCandidate[];
+  bufferStartLine: number;
+  bufferEndLine: number;
   needsRefreshAfterCurrent?: boolean;
   negativeInvalidationGeneration: number;
 }
@@ -263,7 +266,11 @@ export function setupExecutionTerminalNativeInteractions(
     markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache);
     ensureNegativeFileLinkResolutionCacheRefresh();
   };
-  getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).scheduleRefreshAfterCurrent =
+  const fileLinkCacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  fileLinkCacheMetadata.revalidateVisibleFileLinks = (cacheKey): void => {
+    revalidateVisibleExecutionFileLinks(terminal, fileLinkResolutionCache, cacheKey);
+  };
+  fileLinkCacheMetadata.scheduleRefreshAfterCurrent =
     ensureNegativeFileLinkResolutionCacheRefresh;
 
   const hideTooltip = (): void => {
@@ -1401,6 +1408,8 @@ async function resolveExecutionFileLinksForContext(
   const negativeInvalidationGeneration = cacheMetadata.negativeInvalidationGeneration;
   let request: Promise<ExecutionTerminalResolvedFileLink[]>;
   cacheMetadata.entries.set(cacheKey, {
+    bufferEndLine: context.endLine,
+    bufferStartLine: context.startLine,
     candidates,
     negativeInvalidationGeneration
   });
@@ -1542,6 +1551,7 @@ function refreshNegativeExecutionFileLinkResolutionCacheEntry(
       if (resolvedLinks.length > 0) {
         fileLinkResolutionCache.set(cacheKey, resolvedLinks);
         trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
+        cacheMetadata.revalidateVisibleFileLinks?.(cacheKey);
       }
     })
     .catch(() => undefined)
@@ -1594,6 +1604,28 @@ function markExecutionFileLinkNegativeCacheInvalidated(
 ): void {
   getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
     .negativeInvalidationGeneration += 1;
+}
+
+function revalidateVisibleExecutionFileLinks(
+  terminal: Terminal,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  cacheKey: string
+): void {
+  const entryMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+    .entries.get(cacheKey);
+  if (!entryMetadata) {
+    return;
+  }
+
+  const viewportStartLine = terminal.buffer.active.viewportY;
+  const viewportEndLine = viewportStartLine + terminal.rows - 1;
+  const startLine = Math.max(entryMetadata.bufferStartLine, viewportStartLine);
+  const endLine = Math.min(entryMetadata.bufferEndLine, viewportEndLine);
+  if (endLine < startLine) {
+    return;
+  }
+
+  terminal.refresh(startLine - viewportStartLine, endLine - viewportStartLine);
 }
 
 function mapResolvedFileLinksToInteractions(
