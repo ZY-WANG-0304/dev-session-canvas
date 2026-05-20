@@ -413,7 +413,7 @@ try {
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
   vscodeStub.__setFiles([{ path: '/workspace/current-target.ts', type: 'file' }]);
-  const staleResolvedIdOpenResult = await openExecutionTerminalLink(
+  const staleResolvedIdIgnoredOpenResult = await openExecutionTerminalLink(
     {
       linkKind: 'file',
       text: 'current-target.ts',
@@ -423,20 +423,16 @@ try {
       targetKind: 'file',
       source: 'detected'
     },
-    createContext('/bin/bash', '/workspace', 'posix'),
-    () => ({
-      uri: vscodeStub.Uri.file('/workspace/deleted-target.ts'),
-      targetKind: 'file'
-    })
+    createContext('/bin/bash', '/workspace', 'posix')
   );
-  assert.deepEqual(staleResolvedIdOpenResult, {
+  assert.deepEqual(staleResolvedIdIgnoredOpenResult, {
     opened: true,
     openerKind: 'showTextDocument',
     targetUri: '/workspace/current-target.ts'
   });
-  const staleResolvedIdOpenCalls = vscodeStub.__getShowTextDocumentCalls();
-  assert.equal(staleResolvedIdOpenCalls.length, 1);
-  assert.equal(staleResolvedIdOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+  const staleResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(staleResolvedIdIgnoredOpenCalls.length, 1);
+  assert.equal(staleResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -444,7 +440,7 @@ try {
     { path: '/workspace/current-target.ts', type: 'file' },
     { path: '/workspace/cached-target.ts', type: 'file' }
   ]);
-  const validResolvedIdOpenResult = await openExecutionTerminalLink(
+  const validResolvedIdIgnoredOpenResult = await openExecutionTerminalLink(
     {
       linkKind: 'file',
       text: 'current-target.ts',
@@ -454,20 +450,16 @@ try {
       targetKind: 'file',
       source: 'detected'
     },
-    createContext('/bin/bash', '/workspace', 'posix'),
-    () => ({
-      uri: vscodeStub.Uri.file('/workspace/cached-target.ts'),
-      targetKind: 'file'
-    })
+    createContext('/bin/bash', '/workspace', 'posix')
   );
-  assert.deepEqual(validResolvedIdOpenResult, {
+  assert.deepEqual(validResolvedIdIgnoredOpenResult, {
     opened: true,
     openerKind: 'showTextDocument',
-    targetUri: '/workspace/cached-target.ts'
+    targetUri: '/workspace/current-target.ts'
   });
-  const validResolvedIdOpenCalls = vscodeStub.__getShowTextDocumentCalls();
-  assert.equal(validResolvedIdOpenCalls.length, 1);
-  assert.equal(validResolvedIdOpenCalls[0].document.uri.fsPath, '/workspace/cached-target.ts');
+  const validResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(validResolvedIdIgnoredOpenCalls.length, 1);
+  assert.equal(validResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
 
   console.log('executionTerminalNativeHelpers tests passed');
 } finally {
