@@ -50,14 +50,15 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ## 0.10.2 Highlights
 
-The public `0.10.2` release stays within the `0.10.x` Preview line and focuses on execution-terminal link compatibility for real TUI output. It lets high-confidence hard-wrapped URL and styled-file fragments open as one complete target without broadening the extension support matrix or stable-release commitment.
+The public `0.10.2` release stays within the `0.10.x` Preview line and focuses on execution-terminal link compatibility for real TUI output. It lets high-confidence hard-wrapped URL and styled-file fragments open as one complete target, and it stabilizes file-link cache refresh while terminal output is still streaming, without broadening the extension support matrix or stable-release commitment.
 
 - Hard-wrapped URL fragments in `Agent` and `Terminal` nodes now open as one complete URL when the first fragment has an explicit scheme and the continuation lines satisfy conservative TUI-wrap rules
 - Styled hard-wrapped file paths now preserve `:line:column` suffixes and still require Host-side file validation before becoming high-confidence file links
 - Hovering any hard-wrap link fragment now underlines the real fragments in the same group while leaving indentation, borders, and gutter space outside the clickable range
 - Link detection rejects adjacent full URLs, indented prose, Markdown lists, code blocks, CJK prose, unstyled hard-wrapped file paths, and styled fragments that do not form a clear continuation chain
 - Webview / Host protocol validation now accepts the `hardwrap` file-link source for both candidate resolution and open-link requests, avoiding silent degradation in real VS Code hosts
-- New protocol, terminal-link, and Playwright webview regressions cover the hard-wrap link path across both `Agent` and `Terminal` nodes
+- Live terminal output now refreshes negative file-link cache entries and revalidates file targets before opening, reducing stale link behavior when commands create files after printing paths
+- New protocol, terminal-link, and Playwright webview regressions cover hard-wrap and live-cache link paths across both `Agent` and `Terminal` nodes
 
 ## Installation And Upgrades
 

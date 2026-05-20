@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.2`。当前版本范围收口为“在同一 `0.10.x` Preview 里程碑内，补齐执行节点中 TUI 硬换行 URL 与带样式文件路径的高置信链接重组、分组 hover 下划线、协议 source 校验和相关回归验证”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.2`。当前版本范围收口为“在同一 `0.10.x` Preview 里程碑内，补齐执行节点中 TUI 硬换行 URL 与带样式文件路径的高置信链接重组、分组 hover 下划线、运行中终端文件链接缓存刷新、协议 source 校验和相关回归验证”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -37,7 +37,7 @@
 
 - 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.2 - Preview Terminal Hard-Wrapped Links Patch`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：TUI 硬换行 URL 重组、同一非默认 ANSI 样式文件路径重组、hard-wrap 分组 hover、协议 `hardwrap` source 校验、保守 continuation 边界、相关协议 / terminal link / Playwright 回归、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页和真实 Codex / Claude TUI 手动验证尚未完成的已知问题
+- release notes 应覆盖以下当前已确认范围：TUI 硬换行 URL 重组、同一非默认 ANSI 样式文件路径重组、hard-wrap 分组 hover、运行中终端文件链接负缓存刷新、打开前重新解析目标、协议 `hardwrap` source 校验、保守 continuation 边界、相关协议 / terminal link / Playwright 回归、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页和真实 Codex / Claude TUI 手动验证尚未完成的已知问题
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -116,7 +116,7 @@
 
 ## 当前验证备注
 
-截至 `2026-05-19`，当前 `0.10.2` 发布准备工作树已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行工作树上通过 targeted 回归，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
+截至 `2026-05-20`，当前 `0.10.2` 发布准备工作树已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行工作树上通过 targeted 回归，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
 
 - `npm run typecheck` 通过
 - `npm run test:protocol-webview-messages` 通过
@@ -124,7 +124,7 @@
 - `npm run test:execution-terminal-native-helpers` 通过
 - `npm run test:package-vsix-command` 通过
 - `npm run test:publish-marketplaces` 通过
-- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped code paths|styled hard-wrapped file continuations|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 通过（32 个 Playwright webview 用例）
+- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped code paths|styled hard-wrapped file continuations|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|multiline links do not reuse stale previous-path cache after snapshot redraw|reuses file link resolution while live output continues|refreshes negative file link cache while live output continues|revalidates a hovered negative file link after live output resolves it|revalidates a hovered hard-wrapped negative file link continuation|delays coalesced negative file link refreshes after live output|keeps unresolved file link fallback stable while live output continues|ignores stale pending negative file link resolution after live output|schedules delayed refresh after stale negative refresh is invalidated|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 通过（50 个 Playwright webview 用例）
 - `npm run build:notifier` 通过
 - `npm run test:notifier-source` 通过（platform notification、sidebar rich text、sidebar status、sidebar view source）
 - `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.2` VSIX 文件名与双市场发布命令

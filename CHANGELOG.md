@@ -2,7 +2,7 @@
 
 ## 0.10.2 - Preview Terminal Hard-Wrapped Links Patch
 
-相对 `0.10.1`，`0.10.2` 是同一 `0.10.x` 公开 `Preview` 里程碑下的执行终端链接体验修复，重点补齐 Codex / Claude 等 TUI 把长 URL 或带样式文件路径按固定缩进硬换行后不可点击的问题。它不改变当前产品主叙事、安装路径或支持矩阵；当前仍保持 `Preview` 口径。真实 Codex / Claude TUI 输出的手动验证尚未完成，Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+相对 `0.10.1`，`0.10.2` 是同一 `0.10.x` 公开 `Preview` 里程碑下的执行终端链接体验修复，重点补齐 Codex / Claude 等 TUI 把长 URL 或带样式文件路径按固定缩进硬换行后不可点击的问题，并修复运行中终端输出持续刷新时文件链接解析缓存可能滞后或误用旧结果的问题。它不改变当前产品主叙事、安装路径或支持矩阵；当前仍保持 `Preview` 口径。真实 Codex / Claude TUI 输出的手动验证尚未完成，Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
 
 ### 本版本聚焦
 
@@ -11,8 +11,9 @@
 - hover 反馈新增 hard-wrap 分组下划线：悬停任一片段时同组真实链接片段一起高亮，但不会把 TUI 缩进、边框或 gutter 纳入可点击区域
 - 收紧硬换行拼接边界：不合并相邻完整 URL、缩进说明文字、普通 Markdown 列表、代码块、中文说明、首片段后仍带 prose 的样式片段或无样式文件路径
 - Webview 与 Host 协议补齐 `hardwrap` 链接来源校验，避免真实 VS Code Host 因未知 source 拒绝候选解析或打开请求
-- 终端链接缓存覆盖参与重组的 buffer 行，减少 snapshot redraw 或 TUI 重绘后复用旧目标的风险
-- 新增 `test:protocol-webview-messages`、`test:execution-terminal-links` 与 Agent / Terminal 两类 Playwright hard-wrap link 回归用例
+- 运行中的终端文件链接解析会在输出继续到达后复用有效结果、刷新负缓存并在打开前重新解析，降低 live output 下 stale cache 或 delayed refresh 造成的误点风险
+- 终端链接缓存覆盖参与重组的 buffer 行，减少 snapshot redraw、TUI 重绘或运行中输出续写后复用旧目标的风险
+- 新增 `test:protocol-webview-messages`、`test:execution-terminal-links` 与 Agent / Terminal 两类 Playwright hard-wrap / live cache link 回归用例
 
 ### 推荐体验路径
 
@@ -21,6 +22,7 @@
 - 在 Codex / Claude 等 TUI 中遇到被固定缩进拆开的长 URL 时，可直接点击任一可见 URL 片段打开完整目标
 - 需要让跨行文件路径可点击时，优先让 TUI / CLI 输出同一非默认 ANSI 样式的连续路径片段；无样式跨行 path 仍不会被猜测为同一个文件链接
 - 若某个链接只在复制后可见但无法点击，优先检查它是否缺少明确 URL scheme、是否在续行混入自然语言说明，或文件路径是否缺少稳定样式锚点
+- 若文件链接指向的是刚刚由运行中命令创建的文件，等待输出落盘和链接刷新后再点击；Host 打开前仍会重新解析目标，避免沿用过期候选
 
 ### 已知限制
 
@@ -29,6 +31,7 @@
 - Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
 - 真实 Codex / Claude TUI 输出的手动验证尚未完成；当前验证证据以自动化 fixture 与 Playwright harness 为主
 - TUI 硬换行重组只覆盖明确 scheme URL 和同一非默认 ANSI 样式锚定的文件路径；无样式文件路径、任意自然语言段落跨行 URL 和任意 Markdown 硬换行仍不会被猜测拼接
+- 运行中终端的文件链接仍以 Host 侧文件系统验证为准；文件创建、删除或重命名与输出刷新之间仍可能存在短暂的不可点击或降级为搜索链接窗口
 - 点击可打开重组后的完整目标，但终端文本复制 / 选择仍保留 TUI 输出中的原始换行、缩进或边框字符
 - 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
 - 模板仍只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
