@@ -51,6 +51,10 @@ export interface OpenExecutionTerminalLinkResult {
   targetUri?: string;
 }
 
+export interface ExecutionTerminalResolvedFileLinkCacheEntry {
+  resolved: ResolvedExecutionFileLink;
+}
+
 interface ResolveExecutionFileLinkOptions {
   allowPartialBasenameWorkspaceMatch?: boolean;
 }
@@ -215,7 +219,9 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
 export async function openExecutionTerminalLink(
   link: ExecutionTerminalOpenLink,
   context: ExecutionTerminalPathContext,
-  readResolvedFileLink?: (resolvedId: string) => ResolvedExecutionFileLink | undefined
+  readResolvedFileLink?: (
+    resolvedId: string
+  ) => ExecutionTerminalResolvedFileLinkCacheEntry | ResolvedExecutionFileLink | undefined
 ): Promise<OpenExecutionTerminalLinkResult> {
   if (link.linkKind === 'url') {
     if (!(await ensureExecutionTerminalUrlSchemeAllowed(link.url))) {
@@ -234,14 +240,31 @@ export async function openExecutionTerminalLink(
     return openExecutionTerminalSearchLink(link, context);
   }
 
-  const cachedResolved =
+  const cachedEntry =
     typeof link.resolvedId === 'string' ? readResolvedFileLink?.(link.resolvedId) : undefined;
+  const cachedResolved = await validateResolvedExecutionFileLinkCacheEntry(cachedEntry);
   const resolved = cachedResolved ?? (await resolveExecutionFileLink(link, context));
   if (!resolved) {
     return { opened: false };
   }
 
   return openResolvedExecutionTerminalLink(resolved);
+}
+
+async function validateResolvedExecutionFileLinkCacheEntry(
+  cachedEntry: ExecutionTerminalResolvedFileLinkCacheEntry | ResolvedExecutionFileLink | undefined
+): Promise<ResolvedExecutionFileLink | undefined> {
+  if (!cachedEntry) {
+    return undefined;
+  }
+
+  const resolved = 'resolved' in cachedEntry ? cachedEntry.resolved : cachedEntry;
+  try {
+    await vscode.workspace.fs.stat(resolved.uri);
+    return resolved;
+  } catch {
+    return undefined;
+  }
 }
 
 async function ensureExecutionTerminalUrlSchemeAllowed(url: string): Promise<boolean> {

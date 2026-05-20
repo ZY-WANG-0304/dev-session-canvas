@@ -410,6 +410,65 @@ try {
   assert.equal(lineScopedResolved?.selection?.start.line, 1);
   assert.equal(lineScopedResolved?.selection?.start.character, 7);
 
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/current-target.ts', type: 'file' }]);
+  const staleResolvedIdOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'file',
+      text: 'current-target.ts',
+      path: 'current-target.ts',
+      bufferStartLine: 10,
+      resolvedId: 'stale-resolved-id',
+      targetKind: 'file',
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => ({
+      uri: vscodeStub.Uri.file('/workspace/deleted-target.ts'),
+      targetKind: 'file'
+    })
+  );
+  assert.deepEqual(staleResolvedIdOpenResult, {
+    opened: true,
+    openerKind: 'showTextDocument',
+    targetUri: '/workspace/current-target.ts'
+  });
+  const staleResolvedIdOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(staleResolvedIdOpenCalls.length, 1);
+  assert.equal(staleResolvedIdOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([
+    { path: '/workspace/current-target.ts', type: 'file' },
+    { path: '/workspace/cached-target.ts', type: 'file' }
+  ]);
+  const validResolvedIdOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'file',
+      text: 'current-target.ts',
+      path: 'current-target.ts',
+      bufferStartLine: 10,
+      resolvedId: 'valid-resolved-id',
+      targetKind: 'file',
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => ({
+      uri: vscodeStub.Uri.file('/workspace/cached-target.ts'),
+      targetKind: 'file'
+    })
+  );
+  assert.deepEqual(validResolvedIdOpenResult, {
+    opened: true,
+    openerKind: 'showTextDocument',
+    targetUri: '/workspace/cached-target.ts'
+  });
+  const validResolvedIdOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(validResolvedIdOpenCalls.length, 1);
+  assert.equal(validResolvedIdOpenCalls[0].document.uri.fsPath, '/workspace/cached-target.ts');
+
   console.log('executionTerminalNativeHelpers tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
