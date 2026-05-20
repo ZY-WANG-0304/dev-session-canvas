@@ -48,23 +48,23 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.1 Highlights
+## 0.10.2 Highlights
 
-The public `0.10.1` release keeps the `0.10.x` Note-to-Markdown milestone focused on polish, safer host boundaries, and release readiness. It tightens associated Markdown Notes across templates, Remote SSH drag-and-drop, metadata preview, image rendering, stopped-Agent restart actions, and Marketplace publishing copy.
+The public `0.10.2` release stays within the `0.10.x` Preview line and focuses on execution-terminal link compatibility for real TUI output. It lets high-confidence hard-wrapped URL and styled-file fragments open as one complete target, and it stabilizes file-link cache refresh while terminal output is still streaming, without broadening the extension support matrix or stable-release commitment.
 
-- Associated Markdown Notes in templates now use explicit save modes: content snapshot, workspace-relative path only, or workspace-relative path plus file content
-- Applying templates handles missing associated files and path-plus-content conflicts inside the Note node instead of silently overwriting workspace files
-- Markdown reading mode hides valid YAML front matter, exposes a compact metadata popover, and keeps invalid metadata visible with a warning
-- Markdown image preview now supports safe `https:`, `data:image/*;base64`, and workspace / associated-file relative images through Webview-safe URLs
-- Remote Markdown drag-and-drop now verifies the current host authority before file operations, canonicalizes same-host resources, and rejects foreign or unknown hosts fail-closed
-- Stopped Agent nodes now show separate `New` and `Restart` actions when the node has a trusted resume context, making fresh starts and same-session resumes explicit
-- UI and release hardening aligns panel activation, status colors, sidebar list colors, notifier sidebar styling, script layout, publish failure handling, and the Marketplace README now defaults to English
+- Hard-wrapped URL fragments in `Agent` and `Terminal` nodes now open as one complete URL when the first fragment has an explicit scheme and the continuation lines satisfy conservative TUI-wrap rules
+- Styled hard-wrapped file paths now preserve `:line:column` suffixes and still require Host-side file validation before becoming high-confidence file links
+- Hovering any hard-wrap link fragment now underlines the real fragments in the same group while leaving indentation, borders, and gutter space outside the clickable range
+- Link detection rejects adjacent full URLs, indented prose, Markdown lists, code blocks, CJK prose, unstyled hard-wrapped file paths, and styled fragments that do not form a clear continuation chain
+- Webview / Host protocol validation now accepts the `hardwrap` file-link source for both candidate resolution and open-link requests, avoiding silent degradation in real VS Code hosts
+- Live terminal output now refreshes negative file-link cache entries and revalidates file targets before opening, reducing stale link behavior when commands create files after printing paths
+- New protocol, terminal-link, and Playwright webview regressions cover hard-wrap and live-cache link paths across both `Agent` and `Terminal` nodes
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.0` to `0.10.1` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.1` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.10.1` to `0.10.2` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.2` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
