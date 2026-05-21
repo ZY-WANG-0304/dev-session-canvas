@@ -5383,6 +5383,46 @@ test('double-clicking note preview display math falls back to the math markdown 
     });
 });
 
+test('double-clicking multiline fenced code maps to the clicked source line', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 代码定位',
+    '',
+    '```ts',
+    'const a = 1;',
+    'const b = 2;',
+    '```',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'b =';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 1
+  });
+
+  const expectedCaret = markdownBody.indexOf(targetText) + 1;
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
+});
+
 test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();

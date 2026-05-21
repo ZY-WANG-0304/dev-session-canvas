@@ -10521,14 +10521,18 @@ function createNoteMarkdownRenderer(): MarkdownIt {
     return defaultImageRenderer(tokens, idx, options, env, self);
   };
   renderer.renderer.rules.fence = (tokens, idx, options, env, self) => {
-    const sourceLine = readNoteMarkdownTokenSourceLine(tokens[idx], env);
-    const sourceLineAttributes = readNoteMarkdownTokenSourceLineAttributes(tokens[idx], env);
+    const token = tokens[idx];
+    const sourceLine = readNoteMarkdownTokenSourceLine(token, env);
+    const codeSourceLineAttributes = readNoteMarkdownFenceCodeSourceLineAttributes(token, env);
     const renderedHtml = defaultFenceRenderer(tokens, idx, options, env, self);
     return sourceLine === null
       ? renderedHtml
       : injectAttributeIntoFirstHtmlTag(
           renderedHtml,
-          sourceLineAttributes
+          readNoteMarkdownTokenSourceLineAttributes(token, env)
+        ).replace(
+          /<code\b/u,
+          `<code${codeSourceLineAttributes}`
         );
   };
   renderer.renderer.rules.code_block = (tokens, idx, options, env, self) => {
@@ -10621,6 +10625,16 @@ function readNoteMarkdownTokenSourceLineAttributes(token: Token, env: unknown): 
   return ` data-note-markdown-source-line="${escapeHtml(String(sourceLine))}"${sourceLineEndAttribute}`;
 }
 
+function readNoteMarkdownFenceCodeSourceLineAttributes(token: Token, env: unknown): string {
+  const sourceLine = readNoteMarkdownTokenSourceLine(token, env);
+  const sourceLineEnd = readNoteMarkdownTokenSourceLineEnd(token, env);
+  if (sourceLine === null || sourceLineEnd === null || sourceLineEnd <= sourceLine + 1) {
+    return '';
+  }
+
+  return ` data-note-markdown-source-line="${escapeHtml(String(sourceLine + 1))}" data-note-markdown-source-line-end="${escapeHtml(String(sourceLineEnd - 1))}"`;
+}
+
 function normalizeHighlightedNoteCodeSourceLineAttributes(value: string | undefined): string {
   if (!value || !/data-note-markdown-source-line/u.test(value)) {
     return '';
@@ -10636,7 +10650,15 @@ function normalizeHighlightedNoteCodeSourceLineAttributes(value: string | undefi
     return '';
   }
 
-  return ` data-note-markdown-source-line="${sourceLine}"`;
+  const sourceLineEndMatch = /data-note-markdown-source-line-end="([0-9]+)"/u.exec(value);
+  const sourceLineEnd = sourceLineEndMatch ? Number.parseInt(sourceLineEndMatch[1], 10) : sourceLine;
+  const normalizedSourceLineEnd =
+    Number.isSafeInteger(sourceLineEnd) && sourceLineEnd >= sourceLine ? sourceLineEnd : sourceLine;
+  const sourceLineEndAttribute =
+    normalizedSourceLineEnd > sourceLine
+      ? ` data-note-markdown-source-line-end="${normalizedSourceLineEnd}"`
+      : '';
+  return ` data-note-markdown-source-line="${sourceLine}"${sourceLineEndAttribute}`;
 }
 
 function createNoteMarkdownRenderEnv(params: {
