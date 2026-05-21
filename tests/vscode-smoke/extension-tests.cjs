@@ -745,6 +745,7 @@ async function runTrustedSmoke() {
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyLegacyAttentionNotificationBridgeMigration();
   await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);
+  await verifyAgentAbnormalInterruptionNotifications();
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
@@ -5080,6 +5081,354 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   }
 }
 
+async function verifyAgentAbnormalInterruptionNotifications() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
+  );
+  const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
+
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  try {
+    await setRuntimePersistenceEnabled(false);
+    await ensureAttentionNotificationBridgeMode('workbench');
+
+    await withInterceptedInformationMessages(async (calls) => {
+      let snapshot = await getDebugSnapshot();
+      const baselineAgentIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
+
+      await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
+        agentProvider: 'codex',
+        titleOverride: 'Codex Crash Smoke'
+      });
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) => currentSnapshot.state.nodes.some((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id)),
+        20000
+      );
+      const codexAgent = snapshot.state.nodes.find((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id));
+      assert.ok(codexAgent, 'Expected a dedicated Codex abnormal-exit smoke agent.');
+
+      await waitForAgentLive(codexAgent.id);
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: codexAgent.id,
+          kind: 'agent',
+          data: 'exit 27\r'
+        }
+      });
+
+      const codexDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.nodeId === codexAgent.id &&
+              event.detail?.provider === 'codex' &&
+              event.detail?.lifecycleStatus === 'error'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return Boolean(
+          currentAgent?.status === 'error' &&
+            currentAgent?.metadata?.agent?.attentionPending === true &&
+            currentAgent?.metadata?.agent?.lastExitCode === 27
+        );
+      }, 20000);
+      const codexErrorNode = findNodeById(snapshot, codexAgent.id);
+      assert.strictEqual(codexErrorNode.metadata.agent.attentionPending, true);
+      assert.ok(
+        codexDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-interruption' &&
+            event.detail?.exitCode === 27
+        ),
+        'Expected a Codex abnormal exit to post an attention notification diagnostic.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Codex Agent「Codex Crash Smoke」异常中断/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected a Codex abnormal exit to surface a workbench attention notification.'
+      );
+
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: codexAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
+      const streamDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+              event.detail?.nodeId === codexAgent.id &&
+              event.detail?.provider === 'codex' &&
+              event.detail?.reason === 'output-pattern'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === true;
+      }, 20000);
+      assert.strictEqual(findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending, true);
+      assert.ok(
+        streamDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected a Codex stream-disconnected line to post a supplemental attention notification diagnostic.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
+          /stream disconnected before completion/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected a Codex stream-disconnected line to surface a supplemental workbench attention notification.'
+      );
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: codexAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+      await setPersistedState({
+        ...snapshot.state,
+        nodes: snapshot.state.nodes.filter((node) => node.id !== codexAgent.id)
+      });
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      snapshot = await getDebugSnapshot();
+      const baselineBeforeClaudeIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
+
+      await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'claude', {
+        agentLaunchPreset: 'custom',
+        agentCustomLaunchCommand: 'claude',
+        titleOverride: 'Claude Crash Smoke'
+      });
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.some((node) => node.kind === 'agent' && !baselineBeforeClaudeIds.has(node.id)),
+        20000
+      );
+      const claudeAgent = snapshot.state.nodes.find(
+        (node) => node.kind === 'agent' && !baselineBeforeClaudeIds.has(node.id)
+      );
+      assert.ok(claudeAgent, 'Expected a dedicated Claude abnormal-exit smoke agent.');
+
+      await waitForAgentLive(claudeAgent.id);
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: claudeAgent.id,
+          kind: 'agent',
+          data: 'exit 33\r'
+        }
+      });
+
+      const claudeCrashDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.nodeId === claudeAgent.id &&
+              event.detail?.provider === 'claude' &&
+              event.detail?.lifecycleStatus === 'error'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return Boolean(
+          currentAgent?.status === 'error' &&
+            currentAgent?.metadata?.agent?.attentionPending === true &&
+            currentAgent?.metadata?.agent?.lastExitCode === 33
+        );
+      }, 20000);
+      const claudeErrorNode = findNodeById(snapshot, claudeAgent.id);
+      assert.strictEqual(claudeErrorNode.metadata.agent.attentionPending, true);
+      assert.ok(
+        claudeCrashDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-interruption' &&
+            event.detail?.exitCode === 33
+        ),
+        'Expected a Claude abnormal exit to post an attention notification diagnostic.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Claude Code Agent「Claude Crash Smoke」异常中断/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected a Claude abnormal exit to surface a workbench attention notification.'
+      );
+
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: claudeAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      const failingClaudeCommandDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-claude-resume-fail-'));
+      const failingClaudeCommandPath = path.join(
+        failingClaudeCommandDir,
+        process.platform === 'win32' ? 'claude.cmd' : 'claude'
+      );
+      const previousClaudeCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+
+      try {
+        if (process.platform === 'win32') {
+          await fs.writeFile(
+            failingClaudeCommandPath,
+            '@echo off\r\necho [fake-claude] resume crash\r\nexit /b 33\r\n',
+            'utf8'
+          );
+        } else {
+          await fs.writeFile(
+            failingClaudeCommandPath,
+            '#!/usr/bin/env bash\necho "[fake-claude] resume crash"\nexit 33\n',
+            'utf8'
+          );
+          await fs.chmod(failingClaudeCommandPath, 0o755);
+        }
+        process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = failingClaudeCommandPath;
+
+        const resumeSessionId = `claude-resume-failure-smoke-${Date.now()}`;
+        snapshot = await getDebugSnapshot();
+        await setPersistedState({
+          ...snapshot.state,
+          nodes: snapshot.state.nodes.map((node) =>
+            node.id === claudeAgent.id
+              ? {
+                  ...node,
+                  title: 'Claude Resume Failure Smoke',
+                  status: 'resume-ready',
+                  summary: '准备恢复 Claude Code 会话。',
+                  metadata: {
+                    ...node.metadata,
+                    agent: {
+                      ...node.metadata.agent,
+                      provider: 'claude',
+                      lifecycle: 'resume-ready',
+                      launchPreset: 'default',
+                      customLaunchCommand: undefined,
+                      resumeSupported: true,
+                      resumeStrategy: 'claude-session-id',
+                      resumeSessionId,
+                      resumeStoragePath: undefined,
+                      liveSession: false,
+                      pendingLaunch: undefined,
+                      attentionPending: false,
+                      lastExitCode: undefined,
+                      lastExitSignal: undefined,
+                      lastExitMessage: undefined,
+                      lastResumeError: undefined,
+                      recentOutput: undefined
+                    }
+                  }
+                }
+              : node
+          )
+        });
+
+        await startExecutionSessionForTest({
+          kind: 'agent',
+          nodeId: claudeAgent.id,
+          cols: 90,
+          rows: 28,
+          provider: 'claude',
+          resumeRequested: true
+        });
+
+        snapshot = await waitForSnapshot((currentSnapshot) => {
+          const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+          return Boolean(
+            currentAgent?.status === 'resume-failed' &&
+              currentAgent?.metadata?.agent?.attentionPending !== true &&
+              currentAgent?.metadata?.agent?.lastExitCode === 33
+          );
+        }, 20000);
+        await sleep(300);
+        const claudeResumeFailedNode = findNodeById(await getDebugSnapshot(), claudeAgent.id);
+        assert.strictEqual(claudeResumeFailedNode.metadata.agent.attentionPending, false);
+        const claudeResumeDiagnostics = await getDiagnosticEvents();
+        assert.ok(
+          !claudeResumeDiagnostics.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.nodeId === claudeAgent.id
+          ),
+          'Expected a Claude resume startup failure not to post a supplemental attention notification diagnostic.'
+        );
+        assert.ok(
+          !calls.some((call) => /Claude Code Agent「Claude Resume Failure Smoke」/.test(call.message)),
+          'Expected a Claude resume startup failure not to surface a supplemental workbench notification.'
+        );
+
+        await dispatchWebviewMessage({
+          type: 'webview/deleteNode',
+          payload: {
+            nodeId: claudeAgent.id
+          }
+        });
+        await waitForSnapshot(
+          (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgent.id),
+          20000
+        );
+      } finally {
+        if (previousClaudeCommandEnv === undefined) {
+          delete process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+        } else {
+          process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = previousClaudeCommandEnv;
+        }
+        await fs.rm(failingClaudeCommandDir, { recursive: true, force: true });
+      }
+    });
+  } finally {
+    await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
+    await ensureAttentionNotificationBridgeMode(originalBridgeMode);
+    await clearHostMessages();
+    await clearDiagnosticEvents();
+  }
+}
+
 async function verifyLegacyAttentionNotificationBridgeMigration() {
   const configuration = vscode.workspace.getConfiguration();
   const bridgeSetting = configuration.inspect('devSessionCanvas.notifications.attentionSignalBridge');
@@ -6631,6 +6980,9 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
 
+  let snapshot = await getDebugSnapshot();
+  const baselineAgentIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
+
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -6639,20 +6991,21 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     }
   });
 
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find(
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    return currentSnapshot.state.nodes.some(
       (node) =>
-        node.id !== agentNodeId &&
+        !baselineAgentIds.has(node.id) &&
         node.kind === 'agent' &&
-        node.metadata?.agent?.provider === 'claude'
+        node.metadata?.agent?.provider === 'claude' &&
+        node.status === 'error'
     );
-    return Boolean(currentNode?.status === 'error');
   });
   const claudeAgentNode = snapshot.state.nodes.find(
     (node) =>
-      node.id !== agentNodeId &&
+      !baselineAgentIds.has(node.id) &&
       node.kind === 'agent' &&
-      node.metadata?.agent?.provider === 'claude'
+      node.metadata?.agent?.provider === 'claude' &&
+      node.status === 'error'
   );
   assert.ok(claudeAgentNode, 'Expected failure-path setup to create a Claude agent node.');
   let agentNode = findNodeById(snapshot, claudeAgentNode.id);
@@ -9149,7 +9502,15 @@ async function dispatchWebviewMessage(message, surface) {
   return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, message, surface);
 }
 
-async function startExecutionSessionForTest({ kind, nodeId, cols, rows, provider, resumeRequested = false }) {
+async function startExecutionSessionForTest({
+  kind,
+  nodeId,
+  cols,
+  rows,
+  provider,
+  resumeRequested = false,
+  injectAgentOutputChunk
+}) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testStartExecutionSession,
     kind,
@@ -9157,7 +9518,8 @@ async function startExecutionSessionForTest({ kind, nodeId, cols, rows, provider
     cols,
     rows,
     provider,
-    resumeRequested
+    resumeRequested,
+    injectAgentOutputChunk ? { injectAgentOutputChunk } : undefined
   );
 }
 
@@ -9714,15 +10076,33 @@ async function waitForHostMessages(predicate, timeoutMs = 8000) {
   assert.fail(`Timed out while waiting for host messages. Last messages: ${JSON.stringify(messages)}`);
 }
 
+async function waitForInterceptedInformationMessage(calls, predicate, assertionMessage, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const match = calls.find(predicate);
+    if (match) {
+      return match;
+    }
+
+    await sleep(100);
+  }
+
+  const messages = calls.map((call) => call.message);
+  assert.fail(`${assertionMessage} Intercepted messages: ${JSON.stringify(messages)}`);
+}
+
 async function withInterceptedInformationMessages(runIntercepted, resolveSelection) {
   const originalShowInformationMessage = vscode.window.showInformationMessage;
   const calls = [];
-
   vscode.window.showInformationMessage = async (message, ...items) => {
-    calls.push({ message, items });
-    return typeof resolveSelection === 'function'
+    const call = { message, items, result: undefined };
+    calls.push(call);
+    const result = typeof resolveSelection === 'function'
       ? await resolveSelection({ message, items, calls })
       : undefined;
+    call.result = result;
+    return result;
   };
 
   assert.notStrictEqual(
