@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.2`。当前版本范围收口为“在同一 `0.10.x` Preview 里程碑内，补齐执行节点中 TUI 硬换行 URL 与带样式文件路径的高置信链接重组、分组 hover 下划线、运行中终端文件链接缓存刷新、协议 source 校验和相关回归验证”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.3`。当前版本范围收口为“在同一 `0.10.x` Preview 线内重发补丁版本，保持 `0.10.2` 的执行终端行为不变，并修复 Open VSX / Cursor 侧主插件图标 asset metadata 缺失的问题”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -31,13 +31,13 @@
 
 ## release notes 定稿口径
 
-当前 `0.10.2` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
+当前 `0.10.3` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.2 - Preview Terminal Hard-Wrapped Links Patch`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.3 - Preview Open VSX Icon Metadata Reissue`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：TUI 硬换行 URL 重组、同一非默认 ANSI 样式文件路径重组、hard-wrap 分组 hover、运行中终端文件链接负缓存刷新、打开前重新解析目标、协议 `hardwrap` source 校验、保守 continuation 边界、相关协议 / terminal link / Playwright 回归、`Dev Session Canvas Notifier` companion 版本对齐，以及 Windows 下使用 `Codex` 时无法向上翻页和真实 Codex / Claude TUI 手动验证尚未完成的已知问题
+- release notes 应覆盖以下当前已确认范围：`0.10.3` 不改变 `0.10.2` 运行时行为、主扩展 Open VSX / Cursor 图标缺失的原因是 registry asset metadata 缺失、使用新 patch 版本重发以避免删除同版本、发布后需要复核 Open VSX `files.icon` / `files.license` / `files.vsixmanifest` / `files.sha256`，以及 `Dev Session Canvas Notifier` companion 版本对齐
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -45,17 +45,17 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.10.2`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.10.1` 升级到 `0.10.2` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
+1. 当前目标版本为 `0.10.3`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.10.2` 升级到 `0.10.3` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
-4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.2` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
+4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.3` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
 5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.10.2` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.10.3` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
 2. 关注后续更高的 `0.10.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
@@ -71,7 +71,7 @@
 
 ## 截图策略
 
-当前 `0.10.2` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.10.3` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -116,20 +116,20 @@
 
 ## 当前验证备注
 
-截至 `2026-05-20`，当前 `0.10.2` 发布准备工作树已完成以下 repo-local 验证；这些结果用于证明发布准备分支在对应命令执行工作树上通过 targeted 回归，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
+截至 `2026-05-21`，当前 `0.10.3` 发布准备工作树复用 `0.10.2` 的执行终端 targeted 回归证据，并新增发布元数据修复复核；这些结果用于证明发布准备分支在对应命令执行工作树上通过必要验证，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
 
 - `npm run typecheck` 通过
-- `npm run test:protocol-webview-messages` 通过
-- `npm run test:execution-terminal-links` 通过
-- `npm run test:execution-terminal-native-helpers` 通过
 - `npm run test:package-vsix-command` 通过
 - `npm run test:publish-marketplaces` 通过
-- `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped code paths|styled hard-wrapped file continuations|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|multiline links do not reuse stale previous-path cache after snapshot redraw|reuses file link resolution while live output continues|refreshes negative file link cache while live output continues|revalidates a hovered negative file link after live output resolves it|revalidates a hovered hard-wrapped negative file link continuation|delays coalesced negative file link refreshes after live output|keeps unresolved file link fallback stable while live output continues|ignores stale pending negative file link resolution after live output|schedules delayed refresh after stale negative refresh is invalidated|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 通过（50 个 Playwright webview 用例）
 - `npm run build:notifier` 通过
 - `npm run test:notifier-source` 通过（platform notification、sidebar rich text、sidebar status、sidebar view source）
-- `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.2` VSIX 文件名与双市场发布命令
-- `npm run package:vsix` 通过，生成 `dev-session-canvas-0.10.2.vsix`（114 个文件，约 3.3 MB）
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过，生成 `dev-session-canvas-notifier-0.10.2.vsix`（10 个文件，约 143 KB）
+- `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.3` VSIX 文件名与双市场发布命令
+- `npm run package:vsix` 通过，生成 `dev-session-canvas-0.10.3.vsix`（114 个文件，约 3.3 MB），并确认包含 `extension/images/icon.png` 与 `Microsoft.VisualStudio.Services.Icons.Default`
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过，生成 `dev-session-canvas-notifier-0.10.3.vsix`（10 个文件，约 143 KB），并确认包含 notifier 图标资产
+- `python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas` 通过
+- `npm run publish:marketplaces -- --yes` 通过，Visual Studio Marketplace 与 Open VSX 均已接收主扩展 / notifier `0.10.3`
+- Open VSX API 复核通过：主扩展与 notifier `0.10.3` metadata 均存在 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256`，且主扩展 `files.icon` 返回 `200 image/png`
+- `0.10.2` 已通过 `npm run test:protocol-webview-messages`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers` 与 hard-wrap / live-cache Playwright targeted 回归；`0.10.3` 不修改运行时代码，发布前如触及运行时代码需重新跑对应 targeted 回归
 
 注：本轮沿用 `README.marketplace.md` 作为默认英文 Marketplace listing，并保留 `README.marketplace.zh-CN.md` 作为仓库内中文对应版。真正发布前仍需在已经合入 `main` 的最终 ref 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，确认 README 相对链接改写、VSIX 文件数 / 大小和 packaged-payload smoke 均与最终发布 ref 一致。
 
@@ -153,7 +153,7 @@
 
 注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须确保统一入口重新执行过打包，或在使用 `--skip-package` 时已经手工确认当前 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
-若最终版本号不是 `0.10.2`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
+若最终版本号不是 `0.10.3`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
 
 ## publish 后补 tag
 
@@ -161,15 +161,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.10.2
-    git push origin v0.10.2
+    git tag v0.10.3
+    git push origin v0.10.3
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.10.2 <final-ref-or-sha>
-    git push origin v0.10.2
+    git tag v0.10.3 <final-ref-or-sha>
+    git push origin v0.10.3
 
-若最终版本号不是 `0.10.2`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.10.3`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 
@@ -177,7 +177,8 @@
 
 1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit。
 2. 打开 `Visual Studio Marketplace` 与 `Open VSX` 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
-3. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
-4. 在干净 profile 中从官方 VS Code Marketplace 安装刚发布的版本，验证扩展可成功激活并能打开主画布。
-5. 在 Open VSX 兼容宿主或 Open VSX 页面中复核两个扩展版本一致，且主扩展 / notifier 的安装关系没有因缺失补充渠道产物而断裂。
-6. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖与 Open VSX 兼容宿主边界仍被正确表达，没有被商店页误读成稳定版承诺或全宿主支持承诺。
+3. 直接调用 Open VSX API 复核主扩展 `0.10.3` 的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 都存在，避免只验证 VSIX 本体而漏掉 registry asset metadata。
+4. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
+5. 在干净 profile 中从官方 VS Code Marketplace 安装刚发布的版本，验证扩展可成功激活并能打开主画布。
+6. 在 Open VSX 兼容宿主或 Open VSX 页面中复核两个扩展版本一致，且主扩展 / notifier 的安装关系没有因缺失补充渠道产物而断裂。
+7. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖与 Open VSX 兼容宿主边界仍被正确表达，没有被商店页误读成稳定版承诺或全宿主支持承诺。

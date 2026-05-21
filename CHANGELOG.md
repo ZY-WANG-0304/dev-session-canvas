@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.10.3 - Preview Open VSX Icon Metadata Reissue
+
+相对 `0.10.2`，`0.10.3` 是同一 `0.10.x` 公开 `Preview` 线内的发布元数据修复版本。主扩展运行时代码、执行终端链接行为、安装拓扑和支持矩阵不引入新的产品行为变更；本轮重点是重新发布主扩展与 notifier 的同版本 VSIX，并验证 Open VSX 侧为主扩展正确生成 `icon`、`license`、`vsixmanifest` 与 `sha256` asset metadata，修复 `0.10.2` 在 Open VSX / Cursor 中主插件图标缺失的问题。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.2` bump 到 `0.10.3`，避免删除 Open VSX 既有版本后同版本重发造成 latest 短暂回退
+- 保留 `0.10.2` 的执行终端 hard-wrap URL、带样式文件路径重组、分组 hover、live-output 文件链接缓存刷新与协议 source 校验能力
+- 重新生成主扩展与 notifier VSIX，并在发布后直接复核 Open VSX API 的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 元数据
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.2` 升级到 `0.10.3` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.3`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.3` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.3` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.2 - Preview Terminal Hard-Wrapped Links Patch
 
 相对 `0.10.1`，`0.10.2` 是同一 `0.10.x` 公开 `Preview` 里程碑下的执行终端链接体验修复，重点补齐 Codex / Claude 等 TUI 把长 URL 或带样式文件路径按固定缩进硬换行后不可点击的问题，并修复运行中终端输出持续刷新时文件链接解析缓存可能滞后或误用旧结果的问题。它不改变当前产品主叙事、安装路径或支持矩阵；当前仍保持 `Preview` 口径。真实 Codex / Claude TUI 输出的手动验证尚未完成，Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
