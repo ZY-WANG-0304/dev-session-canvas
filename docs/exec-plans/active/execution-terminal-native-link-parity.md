@@ -128,7 +128,7 @@
   日期/作者：2026-05-19 / Codex
 
 - 决策：live output 后台刷新只处理高置信负缓存，纯 `fallback` 负缓存不参与刷新；输出触发的负缓存 invalidation 增加最小间隔。
-  理由：fallback 兜底规则会覆盖普通非空行，若这些负缓存随持续输出反复刷新，会把普通 TUI 文本持续送到 Host 文件解析和 workspace fallback。高置信 `detected` / `hardwrap` 仍保留 live output 后刷新，避免刚生成文件的路径长期不可点击。
+  理由：fallback 兜底规则会覆盖普通非空行，若这些负缓存随持续输出反复刷新，会把普通 TUI 文本持续送到 Host 文件解析和 workspace fallback。高置信 `detected` / `hardwrap` 仍保留 live output 后刷新，避免刚生成文件的路径长期不可点击；若 output throttle window 内又收到高置信失效，必须安排 trailing refresh，不能丢弃最后一次文件生成信号。
   日期/作者：2026-05-22 / Codex
 
 - 决策：若当前 cache 中没有任何可刷新的高置信负缓存，live output 不再推进 negative invalidation generation，也不安排空刷新 timer；Host 侧记录每次 file link resolve 的候选数、按 source 分类、resolved 数和耗时，并写入 host diagnostics dump。
@@ -142,6 +142,8 @@
 2026-05-19 新增的 TUI 硬换行第一阶段已经能让带明确 scheme 的硬换行 URL、同一非默认 ANSI 样式拆开的文件路径在 agent / terminal 节点里点击为同一个完整目标；无样式文件路径、自然语言缩进续行和普通同色日志仍不会被重组。随后补上的 grouped hover overlay 让用户 hover 任一片段时能看到同组所有真实片段的下划线，但不会把缩进空白纳入可点击区域。当前自动化验证通过，但真实 Codex / Claude TUI 输出中的手动验证尚未执行，所以这部分仍保持“验证中”。
 
 2026-05-22 hotfix 先用失败测试记录了修复前性能状况：fallback-only 普通文本负缓存会被每次 live output 批量刷新，12 条普通文本缓存和 3 次输出即可产生 36 次文件解析请求。实现收口后，同一回归里的 fallback-only live-output 后台解析请求降为 0 次；这里的 0 只表示普通 fallback-only 低置信负缓存退出 live output 后台刷新，不表示全局 negative cache refresh 失效。高置信 detected / hardwrap 负缓存仍可在文件创建后刷新。随后补充空刷新保护，避免纯 fallback cache 在 live output 后继续推进无效 generation / timer；Host 侧新增 file link resolve 诊断，后续真实 dump 会包含按 source 分类的请求量与慢请求摘要。定向验证已覆盖新增性能回归、既有 negative refresh、coalesced refresh 与 stale refresh 场景。
+
+PR review 后补齐 output throttle trailing refresh：当第二次 live output 在 1s 最小间隔内才让高置信 `detected` 负缓存变为可解析时，不再直接丢弃 invalidation，而是在 remaining interval 后触发 trailing refresh。新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal。
 
 ## 上下文与定向
 
