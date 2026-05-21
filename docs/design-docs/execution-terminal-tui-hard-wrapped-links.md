@@ -144,7 +144,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 无样式文件路径硬换行仍暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
 
-2026-05-22 追加性能收口：live output 只允许刷新高置信负缓存候选，例如 `detected`、`hardwrap` 等；纯 `fallback` 负缓存不参与后台刷新。原因是 fallback 的最后兜底规则会覆盖普通非空行，这类负缓存如果跟随持续输出反复刷新，会把普通 TUI 文本转化成 Host 侧解析压力。输出触发的负缓存 invalidation 也增加最小间隔，避免 spinner / heartbeat 类高频输出把后台刷新压缩成连续循环。显式 snapshot / exit / 用户重新 hover 或点击仍可重新解析当前文本；本策略只限制 live output 后台刷新。
+2026-05-22 追加性能收口：live output 只允许刷新高置信负缓存候选，例如 `detected`、`hardwrap` 等；纯 `fallback` 负缓存不参与后台刷新。原因是 fallback 的最后兜底规则会覆盖普通非空行，这类负缓存如果跟随持续输出反复刷新，会把普通 TUI 文本转化成 Host 侧解析压力。输出触发的负缓存 invalidation 也增加最小间隔，避免 spinner / heartbeat 类高频输出把后台刷新压缩成连续循环。若高置信负缓存的 live output 在最小间隔内到达，不丢弃本次失效，而是安排 remaining interval 后的 trailing refresh，确保“文件随后生成”的高置信路径不会长期停留在 stale negative。显式 snapshot / exit / 用户重新 hover 或点击仍可重新解析当前文本；本策略只限制 live output 后台刷新。
 
 同日继续补充两层低风险保护：若当前 cache 里没有任何可刷新的高置信负缓存，live output 不再推进 negative invalidation generation，也不再安排空刷新 timer；Host 侧为每次 `webview/resolveExecutionFileLinks` 记录候选总数、resolved 数、按 source 分类的候选数和耗时，并在 host diagnostics dump 中输出 `execution-file-link-resolve-diagnostics.json` 与 summary，便于真实环境对比 hotfix 前后的请求量和慢请求。
 
@@ -181,4 +181,4 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - 修复后同一回归的 fallback-only live-output 后台 resolve request 从 36 次降为 0 次；这里的 0 只表示普通 fallback-only 低置信负缓存不再参与 live output 后台刷新，不表示全局 negative cache refresh 失效。高置信 detected / hardwrap 负缓存仍由 `refreshes negative file link cache while live output continues`、`schedules delayed refresh after stale negative refresh is invalidated` 等用例覆盖。
 - 定向验证通过：`npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output|refreshes negative file link cache while live output continues|delays coalesced negative file link refreshes after live output|schedules delayed refresh after stale negative refresh is invalidated|hard-wrapped URL fragments open as one link|styled hard-wrapped file fragments resolve as one link"`，共 12 条 Playwright 用例通过。
 - 静态与协议回归通过：`npm run typecheck && npm run test:execution-terminal-links && npm run test:protocol-webview-messages && git diff --check`。
-- 继续补充空刷新保护和 Host resolve 诊断后，再次执行上述 12 条 Playwright 定向验证通过；`npm run typecheck && npm run test:execution-terminal-links && npm run test:protocol-webview-messages && git diff --check` 通过。
+- PR review 发现 1s output throttle 内第二次 live output 若才对应文件创建，会丢失高置信负缓存刷新；新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal，并改为在 throttle window 内安排 trailing refresh。

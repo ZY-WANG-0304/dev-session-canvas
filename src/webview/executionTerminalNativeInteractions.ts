@@ -146,6 +146,11 @@ interface ExecutionFileLinkResolutionCacheEntryMetadata {
 
 type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
 
+interface ExecutionFileLinkNegativeCacheInvalidationResult {
+  invalidated: boolean;
+  retryDelayMs?: number;
+}
+
 interface InteractionLinkOptions {
   lowConfidence?: boolean;
   hoverOverlayRanges?: IBufferRange[];
@@ -216,6 +221,7 @@ export function setupExecutionTerminalNativeInteractions(
   let hoveredLink: ILink | undefined;
   let tooltipTimer: number | undefined;
   let delayedNegativeCacheRefreshTimer: number | undefined;
+  let trailingNegativeCacheRefreshTimer: number | undefined;
 
   const clearDropTarget = (): void => {
     dropTarget.classList.remove('is-drop-target');
@@ -237,6 +243,11 @@ export function setupExecutionTerminalNativeInteractions(
       window.clearTimeout(delayedNegativeCacheRefreshTimer);
       delayedNegativeCacheRefreshTimer = undefined;
     }
+
+    if (trailingNegativeCacheRefreshTimer !== undefined) {
+      window.clearTimeout(trailingNegativeCacheRefreshTimer);
+      trailingNegativeCacheRefreshTimer = undefined;
+    }
   };
 
   const refreshNegativeFileLinkResolutionCacheNow = (): void => {
@@ -249,7 +260,9 @@ export function setupExecutionTerminalNativeInteractions(
     );
   };
 
-  const ensureNegativeFileLinkResolutionCacheRefresh = (): void => {
+  const ensureNegativeFileLinkResolutionCacheRefresh = (
+    delayMs = EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS
+  ): void => {
     if (delayedNegativeCacheRefreshTimer !== undefined) {
       return;
     }
@@ -261,19 +274,44 @@ export function setupExecutionTerminalNativeInteractions(
         fileLinkResolutionCache,
         ensureNegativeFileLinkResolutionCacheRefresh
       );
-    }, EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS);
+    }, delayMs);
   };
 
-  const scheduleNegativeFileLinkResolutionCacheRefresh = (): void => {
+  const scheduleTrailingNegativeFileLinkResolutionCacheRefresh = (delayMs: number): void => {
+    if (trailingNegativeCacheRefreshTimer !== undefined) {
+      return;
+    }
+
+    trailingNegativeCacheRefreshTimer = window.setTimeout(() => {
+      trailingNegativeCacheRefreshTimer = undefined;
+      scheduleNegativeFileLinkResolutionCacheRefresh({ trailing: true });
+    }, Math.max(0, delayMs));
+  };
+
+  const scheduleNegativeFileLinkResolutionCacheRefresh = (
+    refreshOptions: { trailing?: boolean } = {}
+  ): void => {
     if (!hasRefreshableNegativeExecutionFileLinkResolutionCacheEntry(fileLinkResolutionCache)) {
       return;
     }
 
-    if (!markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache, 'output')) {
+    const invalidation = markExecutionFileLinkNegativeCacheInvalidated(
+      fileLinkResolutionCache,
+      'output'
+    );
+    if (!invalidation.invalidated) {
+      scheduleTrailingNegativeFileLinkResolutionCacheRefresh(
+        invalidation.retryDelayMs ??
+          EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS
+      );
       return;
     }
 
-    ensureNegativeFileLinkResolutionCacheRefresh();
+    if (!refreshOptions.trailing && trailingNegativeCacheRefreshTimer !== undefined) {
+      window.clearTimeout(trailingNegativeCacheRefreshTimer);
+      trailingNegativeCacheRefreshTimer = undefined;
+    }
+    ensureNegativeFileLinkResolutionCacheRefresh(refreshOptions.trailing ? 0 : undefined);
   };
   const fileLinkCacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
   fileLinkCacheMetadata.revalidateVisibleFileLinks = (cacheKey): void => {
@@ -1647,7 +1685,7 @@ function getExecutionFileLinkNegativeInvalidationGeneration(
 function markExecutionFileLinkNegativeCacheInvalidated(
   fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
   reason: 'immediate' | 'output'
-): boolean {
+): ExecutionFileLinkNegativeCacheInvalidationResult {
   const metadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
   if (reason === 'output') {
     const now = Date.now();
@@ -1660,7 +1698,12 @@ function markExecutionFileLinkNegativeCacheInvalidated(
         EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS &&
       !hasActiveBackgroundRefresh
     ) {
-      return false;
+      return {
+        invalidated: false,
+        retryDelayMs:
+          EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS -
+          (now - metadata.lastOutputInvalidationTime)
+      };
     }
 
     metadata.lastOutputInvalidationTime = now;
@@ -1669,7 +1712,7 @@ function markExecutionFileLinkNegativeCacheInvalidated(
   }
 
   metadata.negativeInvalidationGeneration += 1;
-  return true;
+  return { invalidated: true };
 }
 
 function revalidateVisibleExecutionFileLinks(
