@@ -126,7 +126,9 @@
 - `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.3` VSIX 文件名与双市场发布命令
 - `npm run package:vsix` 通过，生成 `dev-session-canvas-0.10.3.vsix`（114 个文件，约 3.3 MB），并确认包含 `extension/images/icon.png` 与 `Microsoft.VisualStudio.Services.Icons.Default`
 - `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过，生成 `dev-session-canvas-notifier-0.10.3.vsix`（10 个文件，约 143 KB），并确认包含 notifier 图标资产
-- `python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas` 通过；发布后仍需复核 Open VSX 主扩展 `0.10.3` metadata 中存在 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256`
+- `python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas` 通过
+- `npm run publish:marketplaces -- --yes` 通过，Visual Studio Marketplace 与 Open VSX 均已接收主扩展 / notifier `0.10.3`
+- Open VSX API 复核通过：主扩展与 notifier `0.10.3` metadata 均存在 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256`，且主扩展 `files.icon` 返回 `200 image/png`
 - `0.10.2` 已通过 `npm run test:protocol-webview-messages`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers` 与 hard-wrap / live-cache Playwright targeted 回归；`0.10.3` 不修改运行时代码，发布前如触及运行时代码需重新跑对应 targeted 回归
 
 注：本轮沿用 `README.marketplace.md` 作为默认英文 Marketplace listing，并保留 `README.marketplace.zh-CN.md` 作为仓库内中文对应版。真正发布前仍需在已经合入 `main` 的最终 ref 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，确认 README 相对链接改写、VSIX 文件数 / 大小和 packaged-payload smoke 均与最终发布 ref 一致。
