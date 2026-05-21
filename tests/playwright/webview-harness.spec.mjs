@@ -5552,6 +5552,74 @@ test('double-clicking note task text ignores the rendered checkbox spacing', asy
   await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
 });
 
+test('double-clicking list continuation text maps after continuation indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# list',
+    '',
+    '- first line',
+    '  second line'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
+});
+
+test('double-clicking ordered list continuation text maps after continuation indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '1. first line',
+    '   second line'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
+});
+
+test('double-clicking blockquote list continuation text maps after quote indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '> - first line',
+    '>   second line'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
+});
+
 test('double-clicking malformed display math falls back to the math markdown source end', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();

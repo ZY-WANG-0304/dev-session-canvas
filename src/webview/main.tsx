@@ -8883,7 +8883,8 @@ function findNotePreviewTextNodeSourceOffset(params: {
     sourceLineElement,
     rawLineText,
     renderedLineOffset,
-    prefixText
+    prefixText,
+    lineBreakCount
   );
   const sourceLineOffset = isNoteMarkdownCodeSourceLineElement(sourceLineElement)
     ? mapRenderedCodeLineOffsetToSourceLineOffset(rawLineText, normalizedRenderedLineOffset, sourceLineElement)
@@ -8898,10 +8899,15 @@ function normalizeNoteMarkdownRenderedLineOffset(
   sourceLineElement: HTMLElement,
   lineText: string,
   renderedLineOffset: number,
-  prefixText: string
+  prefixText: string,
+  lineBreakCount: number
 ): number {
-  if (!sourceLineElement.classList.contains('task-list-item')) {
+  if (!isNoteMarkdownListItemSourceLineElement(sourceLineElement)) {
     return renderedLineOffset;
+  }
+
+  if (lineBreakCount > 0 && renderedLineOffset <= readMarkdownListContinuationPrefixLength(lineText)) {
+    return renderedLineOffset + readMarkdownListContinuationPrefixLength(lineText);
   }
 
   const visiblePrefixLength = readMarkdownLineVisiblePrefixLength(lineText);
@@ -8952,6 +8958,10 @@ function findSourceLineElementForNode(node: globalThis.Node): HTMLElement | null
 
 function isNoteMarkdownCodeSourceLineElement(element: HTMLElement): boolean {
   return element.tagName === 'CODE' && Boolean(element.closest('pre'));
+}
+
+function isNoteMarkdownListItemSourceLineElement(element: HTMLElement): boolean {
+  return Boolean(element.closest('li'));
 }
 
 function collectTextNodes(root: HTMLElement): Text[] {
@@ -9103,6 +9113,26 @@ function readMarkdownLineVisiblePrefixLength(lineText: string): number {
   }
 
   return cursor;
+}
+
+function readMarkdownListContinuationPrefixLength(lineText: string): number {
+  let cursor = 0;
+  let didConsumeBlockquote = true;
+  while (didConsumeBlockquote) {
+    didConsumeBlockquote = false;
+    const blockquoteMatch = /^(?: {0,3}> ?)/u.exec(lineText.slice(cursor));
+    if (blockquoteMatch) {
+      cursor += blockquoteMatch[0].length;
+      didConsumeBlockquote = true;
+    }
+  }
+
+  const whitespaceMatch = /^[ \t]*/u.exec(lineText.slice(cursor));
+  if (cursor > 0 && whitespaceMatch && whitespaceMatch[0].length > 0) {
+    return cursor + Math.max(0, whitespaceMatch[0].length - 2);
+  }
+
+  return cursor + (whitespaceMatch?.[0].length ?? 0);
 }
 
 function collectVisibleMarkdownCodeSpanOffsets(
