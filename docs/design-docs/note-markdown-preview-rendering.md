@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/note-markdown-workspace-file-links.md
   - docs/exec-plans/completed/note-markdown-interactive-checklists.md
   - docs/exec-plans/completed/note-preview-double-click-source-map-v2.md
-updated_at: 2026-05-21
+updated_at: 2026-05-22
 ---
 
 # Note Markdown 预览展示模式
@@ -133,6 +133,7 @@ updated_at: 2026-05-21
 - `src/webview/main.tsx` 的 `NoteEditableNode` 继续持有本地 `content` 草稿与提交逻辑。
 - 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；用户单击时应能直接选中和复制预览内容，其中 `Ctrl/Cmd+A` 只应全选当前 Note 正文预览而不是整张画布，`Ctrl/Cmd+C` 则继续走宿主原生复制链路；只有双击普通正文区域时才切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
 - 当用户失焦、按 `Ctrl/Cmd+Enter` 提交或结束当前编辑时，正文区回到预览态，并把最新内容写回宿主。
+- 阅读态与编辑态切换必须保持源文附近的视口连续性：从预览双击进入编辑时，`textarea` 不只设置 selection，还要滚动到该 selection 对应的源文行附近；从编辑态回到预览态时，应把当前编辑器顶部可见源文行映射回预览中最近的 `data-note-markdown-source-*` 元素，而不是重新从文档开头展示。由于 Markdown 预览与纯文本编辑器行高、折行和块间距不同，目标是保持源文局部连续，而不是逐像素同步。
 - 编辑态的 `textarea` 应保留纯文本权威输入模型，但需要提供最小代码编辑器 affordance：左侧显示逻辑行号；`Tab` 在光标处插入两个空格或对多行选择整体缩进；`Shift+Tab` 对当前行或多行选择移除一个 tab 或最多两个前导空格，并且不把焦点移出正文编辑区。
 - 编辑态行号应采用接近 VSCode/Monaco 的 view line 思路：每个源文逻辑行只在第一条视觉行显示行号，软换行产生的续行在 gutter 中保留等高空 row，从而让后续行号继续落在对应源文行的真实起点。由于当前 Note 仍使用原生 `textarea`，Webview 侧通过隐藏 mirror 层复刻输入框的字体、行高、padding、tab size、内容宽度与 `pre-wrap` 换行规则，计算每个逻辑行折成多少条视觉行；mirror 宽度必须使用 `textarea.clientWidth`，避免垂直滚动条出现后与真实文本换行宽度分叉。
 - `Escape` 仍沿用当前退出编辑语义，避免节点内键盘行为分叉。
@@ -199,14 +200,15 @@ updated_at: 2026-05-21
 1. `Note` 正文默认显示 Markdown 预览，而不是始终显示原始文本框。
 2. 单击正文区时，用户仍停留在预览态并可直接选择内容；双击正文区后，用户能进入纯文本编辑态，并看到原始 Markdown 源文。
 3. 双击预览普通文本、列表续行、blockquote 列表续行、强调文本、代码块可见字符和 entity 后续文本时，textarea selection 应等于对应 Markdown 源码 offset；双击图片、空白、display math 或 malformed math 时，selection 应等于对应 Markdown 块源码末尾。
-4. 点击阅读态 checklist checkbox 时，正文会在不进入编辑态的前提下切换 `[ ]` / `[x]`，并立即写回宿主持久化。
-5. 编辑结束后，正文会回到预览态，且任务列表、链接、图片、代码高亮与数学公式等结构可见。
-6. 点击安全白名单内链接时，Webview 会请求宿主打开，且不会误切回编辑态；其中外部链接只允许显式白名单 scheme，workspace 文件链接只允许当前 workspace 内文件并支持可选行列定位。
-7. Markdown 图片语法在阅读态能展示安全图片预览；不支持的 scheme、绝对路径和越界路径不会生成可加载图片。
-8. 宿主持久化的 `metadata.note.content` 仍是原始文本。
-9. 编辑态显示与正文逻辑行数一致的行号；长逻辑行软换行时，续行在 gutter 中占空 row 但不额外显示行号，后续行号仍对齐到对应源文行起点；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
-10. `npm run typecheck` 通过。
-11. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
+4. 当预览已滚动到文档中部或末尾时，双击进入编辑后应显示 selection 附近的源码内容；当编辑器已滚动到文档中部或末尾时，失焦回到预览后也应显示对应源文附近的预览内容。
+5. 点击阅读态 checklist checkbox 时，正文会在不进入编辑态的前提下切换 `[ ]` / `[x]`，并立即写回宿主持久化。
+6. 编辑结束后，正文会回到预览态，且任务列表、链接、图片、代码高亮与数学公式等结构可见。
+7. 点击安全白名单内链接时，Webview 会请求宿主打开，且不会误切回编辑态；其中外部链接只允许显式白名单 scheme，workspace 文件链接只允许当前 workspace 内文件并支持可选行列定位。
+8. Markdown 图片语法在阅读态能展示安全图片预览；不支持的 scheme、绝对路径和越界路径不会生成可加载图片。
+9. 宿主持久化的 `metadata.note.content` 仍是原始文本。
+10. 编辑态显示与正文逻辑行数一致的行号；长逻辑行软换行时，续行在 gutter 中占空 row 但不额外显示行号，后续行号仍对齐到对应源文行起点；按 `Tab` / `Shift+Tab` 时焦点仍停留在正文输入框，当前行或多行选择按两个空格粒度缩进/反缩进。
+11. `npm run typecheck` 通过。
+12. `npm run test:note-markdown-links`、`npm run test:note-markdown-checklists`、`npm run test:webview` 与 `npm run test:smoke` 通过。
 
 ## 9. 已完成实现与验证
 
@@ -227,6 +229,13 @@ updated_at: 2026-05-21
 - `src/webview/main.tsx` 已在 Markdown 预览 HTML 渲染后注入 text span offset map 和 block fallback range；`handlePreviewDoubleClick()` 会把 selection request 传给正文 textarea，普通文本落到点击字符，复杂块落到最近 Markdown 块源码末尾。
 - `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/playwright/webview-harness.spec.mjs` 已补齐 `doubleClickNotePreviewText` / `doubleClickNotePreviewSelector` 测试 DOM action，用真实坐标覆盖浏览器 caret 与 fallback 行为。
 - `scripts/test/test-note-markdown-source-map.mts` 已新增纯函数回归，覆盖 list continuation、ordered list continuation、nested blockquote list continuation、triple emphasis、entity/backslash、fenced code、indented code、图片与 math block end。
+
+2026-05-22 预览 / 编辑切换滚动连续性追加实现：
+
+- `src/webview/main.tsx` 已在预览态和编辑态共享正文滚动状态，并移除双击进入编辑时把正文滚动重置到 0 的行为。
+- 预览进入编辑时，编辑器会优先按 selection 所在源文行计算 `textarea.scrollTop`，让中后段内容进入编辑后仍显示在视口内。
+- 编辑回到预览时，Webview 会把当前编辑器顶部可见源文行映射到预览中最近的 source map 元素并恢复滚动位置；找不到局部 source 元素时才回落到保存的滚动值。
+- `tests/playwright/webview-harness.spec.mjs` 已新增滚动回归，覆盖“滚动后的预览双击进入编辑不回到源码开头”和“滚动后的编辑失焦回到预览不从头展示”。
 
 本轮验证结果：
 
@@ -274,3 +283,11 @@ updated_at: 2026-05-21
 7. `npm run test:note-markdown-source-map` 通过。
 8. `npx playwright test tests/playwright/webview-harness.spec.mjs --grep "note body requires double click|double-clicking note preview starts editing|double-clicking note preview image falls back|double-clicking note preview blank space falls back|double-clicking note preview display math falls back|double-clicking multiline fenced code maps|double-clicking markdown-like fenced code maps|double-clicking indented code maps|double-clicking markdown punctuation|double-clicking note task text|double-clicking list continuation|double-clicking ordered list continuation|double-clicking blockquote list continuation|double-clicking triple emphasis|double-clicking malformed display math"` 通过，15 条测试全部通过。
 9. `npx playwright test tests/playwright/webview-harness.spec.mjs --grep "note markdown preview renders task lists|safe images|YAML metadata|original line numbers|malformed html|markdown link|checklist updates keep original line numbers|clicking a note checklist|clicking a note markdown link|unsafe command links"` 通过，8 条测试全部通过。
+
+2026-05-22 预览 / 编辑滚动连续性追加验证：
+
+1. `npm run typecheck` 通过。
+2. `npm run build` 通过。
+3. `npm run test:protocol-webview-messages` 通过。
+4. `npm run test:note-markdown-source-map` 通过。
+5. `npx playwright test tests/playwright/webview-harness.spec.mjs --grep "double-clicking note preview|double-clicking a scrolled note preview|returning from note body edit mode|note body requires double click"` 通过，7 条测试全部通过。
