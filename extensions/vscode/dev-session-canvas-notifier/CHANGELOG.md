@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.3
+
+- 与主扩展 `0.10.3` 对齐：本轮主扩展是 `0.10.x` Preview 线内的发布元数据修复版本，聚焦重新发布并验证 Open VSX 主插件 icon asset metadata；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.10.2
 
 - 与主扩展 `0.10.2` 对齐：本轮主扩展作为同一 `0.10.x` Preview 里程碑下的补丁，聚焦执行节点 TUI 硬换行 URL、样式文件路径链接重组与运行中终端文件链接缓存稳定性，notifier companion 只同步测试稳定性修复，不引入新的通知投递行为变更。

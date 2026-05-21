@@ -48,23 +48,20 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.10.2 版本亮点
+## 0.10.3 版本亮点
 
-当前公开的 `0.10.2` 版本仍属于 `0.10.x` Preview 线，重点收口真实 TUI 输出中的执行终端链接兼容性。它让高置信硬换行 URL 与带样式文件片段可以作为同一个完整目标打开，并稳定运行中终端输出继续刷新时的文件链接缓存，但不扩大扩展支持矩阵，也不改变稳定版承诺。
+当前公开的 `0.10.3` 版本是 `0.10.x` Preview 线内一次聚焦 Open VSX 元数据的重发补丁。它不改变 `0.10.2` 的执行终端行为，而是用新的 patch 版本重新发布主扩展与 notifier，让 Cursor 等 Open VSX 兼容宿主能重新拿到主扩展图标 asset。
 
-- `Agent` 与 `Terminal` 节点里的硬换行 URL 片段现在可在首片段具备明确 scheme、续行满足保守 TUI continuation 规则时打开为同一个完整 URL
-- 带样式硬换行文件路径现在保留 `:line:column` 后缀，并且仍需经过 Host 侧文件验证后才会成为高置信文件链接
-- 悬停任一 hard-wrap 链接片段时，同组真实片段会一起显示下划线，但缩进、边框和 gutter 空白不会进入可点击区域
-- 链接识别会拒绝相邻完整 URL、缩进说明文字、Markdown 列表、代码块、中文说明、无样式硬换行文件路径，以及不构成明确 continuation 链的带样式片段
-- Webview / Host 协议现在在候选解析与打开链接两条路径都接受 `hardwrap` 文件链接来源，避免真实 VS Code Host 中静默降级
-- 运行中终端输出会刷新 negative 文件链接缓存并在打开前重新验证目标，降低命令先打印路径、随后创建文件时的 stale link 行为
-- 新增协议、终端链接与 Playwright webview 回归，覆盖 `Agent` 与 `Terminal` 两类节点的 hard-wrap 与 live-cache link 主路径
+- 相比 `0.10.2` 没有运行时行为变更；硬换行 URL、带样式文件链接、分组 hover 和运行中输出文件链接缓存修复都会继续保留
+- 本轮专门处理 Open VSX `0.10.2` listing 中“主扩展 VSIX 已包含 `images/icon.png`，但 registry 没有暴露兼容宿主读取的 `icon` asset metadata”的问题
+- 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系和支持矩阵都保持不变
+- 发布后验证会显式检查 Open VSX 上主扩展的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 元数据
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.10.1` 升级到 `0.10.2` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.2` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.10.2` 升级到 `0.10.3` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.3` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
