@@ -5345,6 +5345,44 @@ test('double-clicking note preview blank space falls back to the paragraph markd
     });
 });
 
+test('double-clicking note preview display math falls back to the math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 公式定位',
+    '',
+    '$$',
+    'x^2 + y^2 = z^2',
+    '$$',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewSelector',
+    nodeId: 'note-1',
+    selector: '.katex-display .katex'
+  });
+
+  const mathMarkdown = ['$$', 'x^2 + y^2 = z^2', '$$'].join('\n');
+  const expectedCaret = markdownBody.indexOf(mathMarkdown) + mathMarkdown.length;
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
+});
+
 test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();

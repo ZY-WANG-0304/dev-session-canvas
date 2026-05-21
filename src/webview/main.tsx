@@ -10522,18 +10522,23 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   };
   renderer.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const sourceLine = readNoteMarkdownTokenSourceLine(tokens[idx], env);
+    const sourceLineAttributes = readNoteMarkdownTokenSourceLineAttributes(tokens[idx], env);
     const renderedHtml = defaultFenceRenderer(tokens, idx, options, env, self);
     return sourceLine === null
       ? renderedHtml
       : injectAttributeIntoFirstHtmlTag(
           renderedHtml,
-          ` data-note-markdown-source-line="${escapeHtml(String(sourceLine + 1))}"`
+          sourceLineAttributes
         );
   };
   renderer.renderer.rules.code_block = (tokens, idx, options, env, self) => {
     const sourceLine = readNoteMarkdownTokenSourceLine(tokens[idx], env);
     if (sourceLine !== null) {
-      tokens[idx].attrSet('data-note-markdown-source-line', String(sourceLine + 1));
+      tokens[idx].attrSet('data-note-markdown-source-line', String(sourceLine));
+      const sourceLineEnd = readNoteMarkdownTokenSourceLineEnd(tokens[idx], env);
+      if (sourceLineEnd !== null && sourceLineEnd > sourceLine) {
+        tokens[idx].attrSet('data-note-markdown-source-line-end', String(sourceLineEnd));
+      }
     }
     return defaultCodeBlockRenderer(tokens, idx, options, env, self);
   };
@@ -10602,6 +10607,20 @@ function readNoteMarkdownTokenSourceLineEnd(token: Token, env: unknown): number 
   return sourceLineEnd;
 }
 
+function readNoteMarkdownTokenSourceLineAttributes(token: Token, env: unknown): string {
+  const sourceLine = readNoteMarkdownTokenSourceLine(token, env);
+  if (sourceLine === null) {
+    return '';
+  }
+
+  const sourceLineEnd = readNoteMarkdownTokenSourceLineEnd(token, env);
+  const sourceLineEndAttribute =
+    sourceLineEnd !== null && sourceLineEnd > sourceLine
+      ? ` data-note-markdown-source-line-end="${escapeHtml(String(sourceLineEnd))}"`
+      : '';
+  return ` data-note-markdown-source-line="${escapeHtml(String(sourceLine))}"${sourceLineEndAttribute}`;
+}
+
 function normalizeHighlightedNoteCodeSourceLineAttributes(value: string | undefined): string {
   if (!value || !/data-note-markdown-source-line/u.test(value)) {
     return '';
@@ -10664,10 +10683,7 @@ function registerSafeNoteMathRenderer(renderer: MarkdownIt): void {
   });
   renderer.renderer.rules.note_math_inline = (tokens, idx) => renderSafeNoteMath(tokens[idx].content, false);
   renderer.renderer.rules.note_math_block = (tokens, idx, _options, env) => {
-    const sourceLine = readNoteMarkdownTokenSourceLine(tokens[idx], env);
-    const sourceLineAttribute =
-      sourceLine === null ? '' : ` data-note-markdown-source-line="${escapeHtml(String(sourceLine + 1))}"`;
-    return `${renderSafeNoteMath(tokens[idx].content, true, sourceLineAttribute)}\n`;
+    return `${renderSafeNoteMath(tokens[idx].content, true, readNoteMarkdownTokenSourceLineAttributes(tokens[idx], env))}\n`;
   };
 }
 
