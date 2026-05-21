@@ -4597,6 +4597,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyMeasureRef = useRef<HTMLDivElement | null>(null);
+  const bodyPreviewRef = useRef<HTMLDivElement | null>(null);
+  const pendingBodyScrollTopRef = useRef<number | null>(null);
+  const pendingBodyPreviewScrollTargetRef = useRef<number | null>(null);
   const pendingBodyFocusRef = useRef<NoteBodyFocusRequest | null>(null);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
   const pendingBodyFocusSelectionRef = useRef<{
@@ -4945,8 +4948,26 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     const selectionStart = clampNoteMarkdownSourceOffset(focusRequest.selectionStart, textarea.value);
     const selectionEnd = clampNoteMarkdownSourceOffset(focusRequest.selectionEnd, textarea.value);
+    const restoredScrollTop =
+      resolveNoteBodyTextareaScrollTopForSourceOffset(
+        textarea,
+        textarea.value,
+        selectionStart,
+        bodyVisualLineCounts
+      ) ?? pendingBodyScrollTopRef.current ?? bodyScrollTop;
+    pendingBodyScrollTopRef.current = null;
+
     textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(selectionStart, selectionEnd, focusRequest.selectionDirection ?? 'none');
+
+    const applyRestoredScrollTop = (): void => {
+      textarea.scrollTop = clampElementScrollTop(textarea, restoredScrollTop);
+      setBodyScrollTop(textarea.scrollTop);
+    };
+
+    applyRestoredScrollTop();
+    const frame = window.requestAnimationFrame(applyRestoredScrollTop);
+    return () => window.cancelAnimationFrame(frame);
   }, [isEditingBody]);
 
   useLayoutEffect(() => {
@@ -4956,6 +4977,26 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     measureBodyVisualLineCounts();
   }, [bodyLines, isEditingBody, measureBodyVisualLineCounts]);
+
+  useLayoutEffect(() => {
+    if (isEditingBody) {
+      return;
+    }
+
+    const preview = bodyPreviewRef.current;
+    if (!preview) {
+      return;
+    }
+
+    const sourceOffset = pendingBodyPreviewScrollTargetRef.current;
+    pendingBodyPreviewScrollTargetRef.current = null;
+    if (sourceOffset !== null && scrollNoteMarkdownPreviewToSourceOffset(preview, sourceOffset)) {
+      setBodyScrollTop(preview.scrollTop);
+      return;
+    }
+
+    preview.scrollTop = clampElementScrollTop(preview, bodyScrollTop);
+  }, [bodyScrollTop, isEditingBody, previewHtml]);
 
   useEffect(() => {
     if (!isEditingBody) {
@@ -5257,7 +5298,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     editBaselineRevisionRef.current = associatedMarkdownContentRevision;
     setAssociatedMarkdownConflictResolution(null);
     setAssociatedMarkdownEditConflict(null);
-    setBodyScrollTop(0);
+    pendingBodyScrollTopRef.current = bodyPreviewRef.current?.scrollTop ?? bodyScrollTop;
     beginAssociatedMarkdownEdit(noteMetadata.content);
     setIsEditingBody(true);
   };
@@ -5564,6 +5605,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     persistAssociatedMarkdownDraft(nextContent, { immediate: true });
                     return;
                   }
+                  pendingBodyPreviewScrollTargetRef.current = resolveNoteBodySourceOffsetForTextareaScrollTop(
+                    event.currentTarget,
+                    nextContent,
+                    bodyVisualLineCounts
+                  );
                   setIsEditingBody(false);
                   submitNote(nextContent);
                   endAssociatedMarkdownEdit();
@@ -5619,6 +5665,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             </div>
           ) : (
             <div
+              ref={bodyPreviewRef}
               className={`note-markdown-preview nowheel nodrag nopan ${content.trim() ? '' : 'is-empty'}`.trim()}
               data-node-interactive="true"
               data-probe-field="body"
@@ -5636,6 +5683,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               onMouseDown={stopCanvasEvent}
               onClick={handlePreviewClick}
               onDoubleClick={handlePreviewDoubleClick}
+              onScroll={(event) => setBodyScrollTop(event.currentTarget.scrollTop)}
               onKeyDown={handlePreviewKeyDown}
             >
               {previewHtml ? (
@@ -8655,6 +8703,146 @@ function createNoteBodyLineNumberRows(
   });
 
   return rows;
+}
+
+
+function clampElementScrollTop(
+  element: Pick<HTMLElement, 'clientHeight' | 'scrollHeight'>,
+  scrollTop: number
+): number {
+  if (!Number.isFinite(scrollTop)) {
+    return 0;
+  }
+
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  return Math.max(0, Math.min(scrollTop, maxScrollTop));
+}
+
+function resolveNoteBodyTextareaScrollTopForSourceOffset(
+  textarea: HTMLTextAreaElement,
+  content: string,
+  sourceOffset: number,
+  visualLineCounts: readonly number[]
+): number | null {
+  if (!content || !Number.isFinite(sourceOffset)) {
+    return null;
+  }
+
+  const lineIndex = findTextLineIndexForOffset(content, sourceOffset);
+  const lineHeight = readElementLineHeightPx(textarea);
+  const visualRowsBeforeLine = countVisualRowsBeforeLine(visualLineCounts, lineIndex);
+  const targetScrollTop = Math.max(0, visualRowsBeforeLine * lineHeight - textarea.clientHeight * 0.35);
+  return clampElementScrollTop(textarea, targetScrollTop);
+}
+
+function resolveNoteBodySourceOffsetForTextareaScrollTop(
+  textarea: HTMLTextAreaElement,
+  content: string,
+  visualLineCounts: readonly number[]
+): number | null {
+  if (!content) {
+    return 0;
+  }
+
+  const lineHeight = readElementLineHeightPx(textarea);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+    return null;
+  }
+
+  const firstVisibleVisualRow = Math.max(0, Math.floor(textarea.scrollTop / lineHeight));
+  const lineIndex = findLogicalLineIndexForVisualRow(visualLineCounts, firstVisibleVisualRow);
+  return findTextLineStartOffset(content, lineIndex);
+}
+
+function scrollNoteMarkdownPreviewToSourceOffset(preview: HTMLElement, sourceOffset: number): boolean {
+  const target = findNoteMarkdownPreviewSourceElement(preview, sourceOffset);
+  if (!target) {
+    return false;
+  }
+
+  const previewRect = preview.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetScrollTop = preview.scrollTop + targetRect.top - previewRect.top - preview.clientHeight * 0.2;
+  preview.scrollTop = clampElementScrollTop(preview, targetScrollTop);
+  return true;
+}
+
+function findNoteMarkdownPreviewSourceElement(preview: HTMLElement, sourceOffset: number): HTMLElement | null {
+  let bestElement: HTMLElement | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const candidates = preview.querySelectorAll<HTMLElement>(
+    `${NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR}, ${NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR}`
+  );
+
+  for (const element of Array.from(candidates)) {
+    const sourceStart = readNoteMarkdownSourceStart(element);
+    const sourceEnd = readNoteMarkdownSourceEnd(element);
+    if (sourceStart === null || sourceEnd === null) {
+      continue;
+    }
+
+    const distance =
+      sourceOffset < sourceStart ? sourceStart - sourceOffset : sourceOffset > sourceEnd ? sourceOffset - sourceEnd : 0;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestElement = element;
+    }
+  }
+
+  return bestElement;
+}
+
+function findTextLineIndexForOffset(content: string, offset: number): number {
+  const clampedOffset = clampNoteMarkdownSourceOffset(offset, content);
+  let lineIndex = 0;
+  for (let index = 0; index < clampedOffset; index += 1) {
+    if (content.charCodeAt(index) === 10) {
+      lineIndex += 1;
+    }
+  }
+  return lineIndex;
+}
+
+function findTextLineStartOffset(content: string, lineIndex: number): number {
+  if (lineIndex <= 0) {
+    return 0;
+  }
+
+  let currentLineIndex = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) !== 10) {
+      continue;
+    }
+
+    currentLineIndex += 1;
+    if (currentLineIndex === lineIndex) {
+      return index + 1;
+    }
+  }
+
+  return content.length;
+}
+
+function countVisualRowsBeforeLine(visualLineCounts: readonly number[], lineIndex: number): number {
+  let count = 0;
+  for (let index = 0; index < Math.max(0, lineIndex); index += 1) {
+    count += Math.max(1, visualLineCounts[index] ?? 1);
+  }
+  return count;
+}
+
+function findLogicalLineIndexForVisualRow(visualLineCounts: readonly number[], visualRow: number): number {
+  let remainingRows = Math.max(0, visualRow);
+  const lineCount = Math.max(1, visualLineCounts.length);
+  for (let index = 0; index < lineCount; index += 1) {
+    const visualLineCount = Math.max(1, visualLineCounts[index] ?? 1);
+    if (remainingRows < visualLineCount) {
+      return index;
+    }
+    remainingRows -= visualLineCount;
+  }
+
+  return lineCount - 1;
 }
 
 function readElementLineHeightPx(element: HTMLElement): number {

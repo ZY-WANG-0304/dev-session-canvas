@@ -5732,6 +5732,96 @@ test('note body editing target fills the note frame without an inset editor box'
   expect(await bodyInput.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
 });
 
+test('double-clicking a scrolled note preview preserves the edit viewport around the target text', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 80 }, (_value, index) => `段落 ${index + 1} 用于撑开预览滚动。`);
+  const targetLineIndex = 65;
+  lines[targetLineIndex] = 'scroll-target-alpha keeps editor viewport away from top.';
+  const markdownBody = lines.join('\n\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  await preview.evaluate((element, targetText) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let targetElement = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node instanceof Text && node.data.includes(targetText)) {
+        targetElement = node.parentElement;
+        break;
+      }
+    }
+    if (!targetElement) {
+      throw new Error(`未找到预览文本 ${targetText}。`);
+    }
+    const previewRect = element.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    element.scrollTop += targetRect.top - previewRect.top - 48;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, 'scroll-target-alpha');
+
+  const previewScrollTop = await preview.evaluate((element) => element.scrollTop);
+  expect(previewScrollTop).toBeGreaterThan(0);
+  await settleWebview(page, 2);
+
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: 'away from top',
+    offset: 0
+  });
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const targetLineStart = markdownBody.indexOf('scroll-target-alpha');
+  const targetLineEnd = targetLineStart + lines[targetLineIndex].length;
+  await expect(bodyInput).toHaveCount(1);
+  const selection = await bodyInput.evaluate((element) => ({
+    selectionStart: element.selectionStart,
+    selectionEnd: element.selectionEnd
+  }));
+  expect(selection.selectionStart).toBeGreaterThanOrEqual(targetLineStart);
+  expect(selection.selectionEnd).toBeLessThanOrEqual(targetLineEnd);
+  await expect
+    .poll(async () => bodyInput.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+});
+
+test('returning from note body edit mode restores the preview scroll position', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 85 }, (_value, index) => `正文 ${index + 1} 用于验证编辑返回预览滚动。`);
+  lines[70] = 'return-target-alpha should stay inside the restored preview viewport.';
+  const markdownBody = lines.join('\n\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await bodyInput.evaluate((element, targetText) => {
+    const targetOffset = element.value.indexOf(targetText);
+    if (targetOffset < 0) {
+      throw new Error(`未找到编辑文本 ${targetText}。`);
+    }
+    const targetLineIndex = element.value.slice(0, targetOffset).split('\n').length - 1;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+    element.scrollTop = targetLineIndex * lineHeight;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, 'return-target-alpha');
+  const editScrollTop = await bodyInput.evaluate((element) => element.scrollTop);
+  expect(editScrollTop).toBeGreaterThan(0);
+  await settleWebview(page, 2);
+
+  await bodyInput.blur();
+  const preview = noteNode.locator('.note-markdown-preview');
+  await expect(preview).toHaveCount(1);
+  await expect
+    .poll(async () => preview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+});
+
 test('note body editor supports tab indentation and line numbers', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
