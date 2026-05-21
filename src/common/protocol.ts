@@ -492,6 +492,19 @@ export type WebviewDomAction =
       nodeId: string;
       lineNumber: number;
       delayMs?: number;
+    }
+  | {
+      kind: 'doubleClickNotePreviewText';
+      nodeId: string;
+      text: string;
+      offset?: number;
+      delayMs?: number;
+    }
+  | {
+      kind: 'doubleClickNotePreviewSelector';
+      nodeId: string;
+      selector: string;
+      delayMs?: number;
     };
 
 export type WebviewToHostMessage =
@@ -1915,6 +1928,17 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'toggleNoteChecklistItem') {
     return typeof value.lineNumber === 'number' && Number.isSafeInteger(value.lineNumber);
+  }
+
+  if (value.kind === 'doubleClickNotePreviewText') {
+    return (
+      typeof value.text === 'string' &&
+      (value.offset === undefined || (typeof value.offset === 'number' && Number.isSafeInteger(value.offset)))
+    );
+  }
+
+  if (value.kind === 'doubleClickNotePreviewSelector') {
+    return typeof value.selector === 'string';
   }
 
   return false;
