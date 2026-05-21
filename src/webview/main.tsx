@@ -337,7 +337,8 @@ const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
-const NOTE_MARKDOWN_BLOCK_END_FALLBACK_SELECTOR = 'img.note-markdown-image, .note-markdown-image-fallback, .katex, table';
+const NOTE_MARKDOWN_BLOCK_END_FALLBACK_SELECTOR =
+  'img.note-markdown-image, .note-markdown-image-fallback, .katex, .katex-error, .note-markdown-math-fallback, table';
 const NOTE_MARKDOWN_SOURCE_LINE_SELECTOR = '[data-note-markdown-source-line]';
 const NOTE_MARKDOWN_DATA_IMAGE_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[A-Za-z0-9+/=\r\n]+$/iu;
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
@@ -8839,6 +8840,10 @@ function findNotePreviewTextNodeSourceOffset(params: {
   }
 
   const sourceLineElement = findSourceLineElementForNode(caret.node);
+  if (!sourceLineElement) {
+    return null;
+  }
+
   const sourceLineRange = readNoteMarkdownSourceLineRange(sourceLineElement);
   if (!sourceLineRange || sourceLineRange.start !== params.sourceLineRange.start) {
     return null;
@@ -8848,7 +8853,7 @@ function findNotePreviewTextNodeSourceOffset(params: {
     return null;
   }
 
-  const textNodes = collectTextNodes(sourceLineElement ?? params.preview);
+  const textNodes = collectTextNodes(sourceLineElement);
   const textNodeIndex = textNodes.indexOf(caret.node);
   if (textNodeIndex < 0) {
     return null;
@@ -8868,14 +8873,48 @@ function findNotePreviewTextNodeSourceOffset(params: {
   );
   const lastLineBreakIndex = prefixText.lastIndexOf('\n');
   const renderedLineOffset =
-    lastLineBreakIndex === -1 ? prefixInRenderedLine + caret.offset : prefixText.length - lastLineBreakIndex - 1;
+    lastLineBreakIndex === -1
+      ? prefixInRenderedLine + caret.offset
+      : prefixText.length - lastLineBreakIndex - 1;
   const lineStart = params.sourceLineStartOffsets[lineIndex] ?? 0;
   const nextLineStart = params.sourceLineStartOffsets[lineIndex + 1] ?? params.content.length + 1;
   const rawLineText = params.content.slice(lineStart, Math.max(lineStart, nextLineStart - 1));
+  const normalizedRenderedLineOffset = normalizeNoteMarkdownRenderedLineOffset(
+    sourceLineElement,
+    rawLineText,
+    renderedLineOffset,
+    prefixText
+  );
+  const sourceLineOffset = isNoteMarkdownCodeSourceLineElement(sourceLineElement)
+    ? mapRenderedCodeLineOffsetToSourceLineOffset(rawLineText, normalizedRenderedLineOffset, sourceLineElement)
+    : mapRenderedLineOffsetToSourceLineOffset(rawLineText, normalizedRenderedLineOffset);
   return clampTextOffset(
-    lineStart + mapRenderedLineOffsetToSourceLineOffset(rawLineText, renderedLineOffset),
+    lineStart + sourceLineOffset,
     params.content
   );
+}
+
+function normalizeNoteMarkdownRenderedLineOffset(
+  sourceLineElement: HTMLElement,
+  lineText: string,
+  renderedLineOffset: number,
+  prefixText: string
+): number {
+  if (!sourceLineElement.classList.contains('task-list-item')) {
+    return renderedLineOffset;
+  }
+
+  const visiblePrefixLength = readMarkdownLineVisiblePrefixLength(lineText);
+  const firstLineBreakIndex = prefixText.indexOf('\n');
+  const firstRenderedLine = prefixText.slice(
+    0,
+    firstLineBreakIndex === -1 ? prefixText.length : firstLineBreakIndex
+  );
+  if (visiblePrefixLength > 0 && firstRenderedLine.startsWith(' ')) {
+    return Math.max(0, renderedLineOffset - 1);
+  }
+
+  return renderedLineOffset;
 }
 
 function readCaretFromPoint(x: number, y: number): { node: globalThis.Node; offset: number } | null {
@@ -8909,6 +8948,10 @@ function hasCaretPositionFromPoint(documentObject: Document): documentObject is 
 function findSourceLineElementForNode(node: globalThis.Node): HTMLElement | null {
   const element = node instanceof HTMLElement ? node : node.parentElement;
   return element?.closest<HTMLElement>(NOTE_MARKDOWN_SOURCE_LINE_SELECTOR) ?? null;
+}
+
+function isNoteMarkdownCodeSourceLineElement(element: HTMLElement): boolean {
+  return element.tagName === 'CODE' && Boolean(element.closest('pre'));
 }
 
 function collectTextNodes(root: HTMLElement): Text[] {
@@ -8957,6 +9000,31 @@ function mapRenderedLineOffsetToSourceLineOffset(lineText: string, renderedLineO
   return visibleSourceOffsets[clampedRenderedOffset] ?? lineText.length;
 }
 
+function mapRenderedCodeLineOffsetToSourceLineOffset(
+  lineText: string,
+  renderedLineOffset: number,
+  sourceLineElement: HTMLElement
+): number {
+  const sourcePrefixLength =
+    sourceLineElement.dataset.noteMarkdownCodeBlock === 'indented'
+      ? readIndentedCodeSourcePrefixLength(lineText)
+      : 0;
+  return Math.min(lineText.length, sourcePrefixLength + Math.max(0, Math.round(renderedLineOffset)));
+}
+
+function readIndentedCodeSourcePrefixLength(lineText: string): number {
+  if (lineText.startsWith('\t')) {
+    return 1;
+  }
+
+  let spaceCount = 0;
+  while (spaceCount < 4 && lineText.charAt(spaceCount) === ' ') {
+    spaceCount += 1;
+  }
+
+  return spaceCount;
+}
+
 function createVisibleMarkdownSourceOffsets(lineText: string): number[] {
   const visibleOffsets: number[] = [];
   for (let index = readMarkdownLineVisiblePrefixLength(lineText); index < lineText.length; index += 1) {
@@ -8970,7 +9038,24 @@ function createVisibleMarkdownSourceOffsets(lineText: string): number[] {
       }
     }
 
-    if (character === '*' || character === '_' || character === '`') {
+    const codeSpanResult = collectVisibleMarkdownCodeSpanOffsets(lineText, index);
+    if (codeSpanResult) {
+      visibleOffsets.push(...codeSpanResult.visibleOffsets);
+      index = codeSpanResult.endOffset - 1;
+      continue;
+    }
+
+    const emphasisResult = collectVisibleMarkdownEmphasisOffsets(lineText, index);
+    if (emphasisResult) {
+      visibleOffsets.push(...emphasisResult.visibleOffsets);
+      index = emphasisResult.endOffset - 1;
+      continue;
+    }
+
+    const entityResult = collectVisibleMarkdownEntityOffset(lineText, index);
+    if (entityResult) {
+      visibleOffsets.push(entityResult.visibleOffset);
+      index = entityResult.endOffset - 1;
       continue;
     }
 
@@ -9020,6 +9105,145 @@ function readMarkdownLineVisiblePrefixLength(lineText: string): number {
   return cursor;
 }
 
+function collectVisibleMarkdownCodeSpanOffsets(
+  lineText: string,
+  startOffset: number
+): { visibleOffsets: number[]; endOffset: number } | null {
+  if (lineText.charAt(startOffset) !== '`') {
+    return null;
+  }
+
+  let tickCount = 1;
+  while (lineText.charAt(startOffset + tickCount) === '`') {
+    tickCount += 1;
+  }
+
+  const marker = '`'.repeat(tickCount);
+  const closingOffset = lineText.indexOf(marker, startOffset + tickCount);
+  if (closingOffset === -1) {
+    return null;
+  }
+
+  return {
+    visibleOffsets: createVisibleInlineMarkdownSourceOffsets(
+      lineText,
+      startOffset + tickCount,
+      closingOffset
+    ),
+    endOffset: closingOffset + tickCount
+  };
+}
+
+function collectVisibleMarkdownEmphasisOffsets(
+  lineText: string,
+  startOffset: number
+): { visibleOffsets: number[]; endOffset: number } | null {
+  const marker = readMarkdownEmphasisOpeningMarker(lineText, startOffset);
+  if (!marker) {
+    return null;
+  }
+
+  const closingOffset = findMarkdownEmphasisClosingOffset(lineText, startOffset + marker.length, marker);
+  if (closingOffset === -1) {
+    return null;
+  }
+
+  return {
+    visibleOffsets: createVisibleInlineMarkdownSourceOffsets(
+      lineText,
+      startOffset + marker.length,
+      closingOffset
+    ),
+    endOffset: closingOffset + marker.length
+  };
+}
+
+function readMarkdownEmphasisOpeningMarker(lineText: string, offset: number): string | null {
+  const character = lineText.charAt(offset);
+  if (character !== '*' && character !== '_') {
+    return null;
+  }
+
+  const markerLength = lineText.charAt(offset + 1) === character ? 2 : 1;
+  const marker = character.repeat(markerLength);
+  const before = offset > 0 ? lineText.charAt(offset - 1) : '';
+  const after = lineText.charAt(offset + markerLength);
+  if (!after || /\s/u.test(after)) {
+    return null;
+  }
+
+  if (character === '_' && isMarkdownAsciiAlphanumeric(before)) {
+    return null;
+  }
+
+  return marker;
+}
+
+function findMarkdownEmphasisClosingOffset(lineText: string, startOffset: number, marker: string): number {
+  for (let offset = lineText.indexOf(marker, startOffset); offset !== -1; offset = lineText.indexOf(marker, offset + 1)) {
+    const before = offset > 0 ? lineText.charAt(offset - 1) : '';
+    const after = lineText.charAt(offset + marker.length);
+    if (!before || /\s/u.test(before)) {
+      continue;
+    }
+
+    if (marker.startsWith('_') && isMarkdownAsciiAlphanumeric(after)) {
+      continue;
+    }
+
+    return offset;
+  }
+
+  return -1;
+}
+
+function collectVisibleMarkdownEntityOffset(
+  lineText: string,
+  startOffset: number
+): { visibleOffset: number; endOffset: number } | null {
+  if (lineText.charAt(startOffset) !== '&') {
+    return null;
+  }
+
+  const match = /^&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);/u.exec(lineText.slice(startOffset));
+  return match
+    ? {
+        visibleOffset: startOffset,
+        endOffset: startOffset + match[0].length
+      }
+    : null;
+}
+
+function createVisibleInlineMarkdownSourceOffsets(
+  lineText: string,
+  startOffset: number,
+  endOffset: number
+): number[] {
+  const visibleOffsets: number[] = [];
+  for (let index = startOffset; index < endOffset; index += 1) {
+    const entityResult = collectVisibleMarkdownEntityOffset(lineText, index);
+    if (entityResult && entityResult.endOffset <= endOffset) {
+      visibleOffsets.push(entityResult.visibleOffset);
+      index = entityResult.endOffset - 1;
+      continue;
+    }
+
+    if (lineText.charAt(index) === '\\' && index + 1 < endOffset) {
+      index += 1;
+      visibleOffsets.push(index);
+      continue;
+    }
+
+    visibleOffsets.push(index);
+  }
+
+  return visibleOffsets;
+}
+
+function isMarkdownAsciiAlphanumeric(value: string): boolean {
+  return /^[A-Za-z0-9]$/u.test(value);
+}
+
 function collectVisibleMarkdownLinkOffsets(
   lineText: string,
   startOffset: number
@@ -9036,10 +9260,7 @@ function collectVisibleMarkdownLinkOffsets(
   }
 
   return {
-    visibleOffsets: Array.from(
-      { length: Math.max(0, labelEndOffset - labelStartOffset) },
-      (_value, index) => labelStartOffset + index
-    ),
+    visibleOffsets: createVisibleInlineMarkdownSourceOffsets(lineText, labelStartOffset, labelEndOffset),
     endOffset: destinationEndOffset + 1
   };
 }
@@ -10536,15 +10757,16 @@ function createNoteMarkdownRenderer(): MarkdownIt {
         );
   };
   renderer.renderer.rules.code_block = (tokens, idx, options, env, self) => {
-    const sourceLine = readNoteMarkdownTokenSourceLine(tokens[idx], env);
-    if (sourceLine !== null) {
-      tokens[idx].attrSet('data-note-markdown-source-line', String(sourceLine));
-      const sourceLineEnd = readNoteMarkdownTokenSourceLineEnd(tokens[idx], env);
-      if (sourceLineEnd !== null && sourceLineEnd > sourceLine) {
-        tokens[idx].attrSet('data-note-markdown-source-line-end', String(sourceLineEnd));
-      }
+    const renderedHtml = defaultCodeBlockRenderer(tokens, idx, options, env, self);
+    const sourceLineAttributes = readNoteMarkdownTokenSourceLineAttributes(tokens[idx], env);
+    if (!sourceLineAttributes) {
+      return renderedHtml;
     }
-    return defaultCodeBlockRenderer(tokens, idx, options, env, self);
+
+    return renderedHtml.replace(
+      /<code\b/u,
+      `<code${sourceLineAttributes} data-note-markdown-code-block="indented"`
+    );
   };
 
   return renderer;

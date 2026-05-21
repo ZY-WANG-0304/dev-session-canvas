@@ -5423,6 +5423,163 @@ test('double-clicking multiline fenced code maps to the clicked source line', as
     });
 });
 
+test('double-clicking markdown-like fenced code maps raw code characters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 代码定位',
+    '',
+    '```txt',
+    '- item',
+    'foo_bar',
+    '```'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const itemText = '- item';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: itemText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(itemText));
+
+  await bodyInput.blur();
+  await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  const barText = 'bar';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: barText,
+    offset: 0
+  });
+
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(barText));
+});
+
+test('double-clicking indented code maps raw code after source indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 缩进代码定位',
+    '',
+    '    - item',
+    '    foo_bar'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const itemText = '- item';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: itemText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(itemText));
+
+  await bodyInput.blur();
+  await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+
+  const barText = 'bar';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: barText,
+    offset: 0
+  });
+
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(barText));
+});
+
+test('double-clicking markdown punctuation and entities maps visible text characters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 段落定位',
+    '',
+    'foo_bar baz',
+    '2 * 3 result',
+    'A &amp; B after'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: 'bar', offset: 0 },
+    { text: '3 result', offset: 0 },
+    { text: 'B after', offset: 0 }
+  ];
+
+  for (const entry of cases) {
+    await performTestDomAction(page, {
+      kind: 'doubleClickNotePreviewText',
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.text));
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking note task text ignores the rendered checkbox spacing', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = '- [x] second task';
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
+});
+
+test('double-clicking malformed display math falls back to the math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# math',
+    '',
+    '$$',
+    '\\bad{',
+    '$$',
+    '',
+    'tail'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewSelector',
+    nodeId: 'note-1',
+    selector: '.katex-error'
+  });
+
+  const mathMarkdown = ['$$', '\\bad{', '$$'].join('\n');
+  const expectedCaret = markdownBody.indexOf(mathMarkdown) + mathMarkdown.length;
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, expectedCaret);
+});
+
 test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -9062,6 +9219,11 @@ async function performTestDomAction(page, action) {
     }
   );
 
+  if (action.kind === 'doubleClickNotePreviewText' || action.kind === 'doubleClickNotePreviewSelector') {
+    await settleWebview(page, 3);
+    return;
+  }
+
   await expect
     .poll(async () => {
       return page.evaluate((nextRequestId) => {
@@ -9081,6 +9243,20 @@ async function performTestDomAction(page, action) {
       }, requestId);
     })
     .toBe('ok');
+}
+
+async function expectCaretPosition(locator, expectedCaret) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
 }
 
 async function simulateImeCompositionOnTextField(page, locator, value) {
