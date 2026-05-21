@@ -25,6 +25,7 @@
 - [x] (2026-04-22 05:58 +0800) 重新定义 minimap attention 的产品边界：明暗闪烁属于默认 attention，尺寸 pulse 归属 strong reminder，并补 probe / smoke 断言两者分离。
 - [x] (2026-04-22 06:18 +0800) 将 `strongTerminalAttentionReminder` 从布尔开关改成枚举模式配置，支持 `none` / `titleBar` / `minimap` / `both`，并同步更新 smoke 断言与配置说明文案。
 - [x] (2026-04-22 08:44 +0800) 处理 follow-up review blocker：`概览` 中 `画布状态` 在画布已打开时改为展示当前实例承载面，而不是默认承载面；补测试命令和定向 VS Code 场景，断言“默认 `Panel` + 当前实例 `Editor`”时摘要与 tooltip 一致。
+- [x] (2026-05-21 14:27 +0800) 补充 Codex / Claude Agent 异常兜底提醒：仅在已运行 Agent 非用户主动以非 `0` 退出并进入 `error` 时补充通知，已知 stream disconnected 输出立即提醒；启动失败与 `resume-failed` 明确不触发额外通知。
 
 ## 意外与发现
 
@@ -42,6 +43,9 @@
 
 - 观察：侧栏 `概览` 的 “画布状态” 摘要在已打开场景错误读取了 `configuredSurface`，导致“定位画布”实际跳到 `Editor` 时，TreeView 仍稳定显示成 `已打开 · Panel`。
   证据：最新 review 明确指出 `src/sidebar/CanvasSidebarView.ts:111` 把 `state.configuredSurface` 直接拼进摘要；本地定向场景在“默认 `Panel` + 当前实例 `Editor`”路径下稳定复现。
+
+- 观察：Codex / Claude 可能在进程仍未退出时先输出 `stream disconnected before completion: stream closed before response.completed`，这种情况不会被只看终态 `error` 的逻辑捕获。
+  证据：本轮新增 `src/common/agentActivityHeuristics.ts` 的 abnormal stream pattern，并在 `scripts/test/test-execution-attention-signals.mjs` 中用该输出行断言可被提取。
 
 ## 决策记录
 
@@ -81,6 +85,10 @@
   理由：用户 glance 到的摘要必须和“定位画布”实际聚焦目标一致；但默认打开位置仍然是有价值的配置语义，适合继续保留在 tooltip 中。
   日期/作者：2026-04-22 / Codex
 
+- 决策：Agent 异常兜底通知只补充 provider 原生通知，不替代或吞掉 Codex / Claude 自己输出的 `BEL`、`OSC 9`、`OSC 777`；终态通知仅限已进入 `running` / `waiting-input` 后非用户主动、非 `0` 退出并落到 `error`，启动失败和 `resume-failed` 不发额外通知。
+  理由：用户明确指出启动前、启动时和 resume 启动失败时大概率仍在画板页面，额外外部通知是噪音；真正痛点是后台跑起来后异常中断或流断开时，provider 可能来不及给出原生提醒。
+  日期/作者：2026-05-21 / Codex
+
 ## 结果与复盘
 
 本轮已完成以下交付：
@@ -89,6 +97,7 @@
 - 将 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 改成枚举模式配置，默认值为 `both`；`devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 现在只控制 VS Code 工作台通知桥接。
 - 在执行节点标题栏状态控件左侧新增 bell icon，并让 minimap 中对应节点与 icon 共用默认 attention 状态；strong reminder 会按模式额外增强标题栏闪烁和 / 或 minimap 尺寸 pulse。
 - Webview probe、Playwright harness 与 VS Code smoke 已覆盖 icon、minimap 闪烁、点击确认，以及 bridge 开关与 strong reminder 四档模式的分层关系。
+- 新增 Codex / Claude Agent 异常兜底通知：`src/panel/CanvasPanelManager.ts` 在本地 PTY 和 live-runtime supervisor 两条路径上只对已运行后的非 `0` `error` 终态发 `agent-abnormal-interruption`，并对已知 stream disconnected 输出发 `agent-abnormal-stream-interruption`；`resume-failed` 仍只保留节点状态与错误说明。
 
 本轮最终验证结果：
 
