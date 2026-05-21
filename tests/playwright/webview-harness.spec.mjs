@@ -5230,6 +5230,121 @@ test('note body requires double click to switch from markdown preview to plain t
   await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
 });
 
+test('double-clicking note preview starts editing at the clicked text position', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 迭代复盘',
+    '',
+    '第一段保持阅读态。',
+    '目标段落用于验证双击光标定位。',
+    '',
+    '- 补齐 Markdown 预览',
+    '- 保持纯文本编辑'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = '验证双击光标定位';
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 2
+  });
+
+  const expectedCaret = markdownBody.indexOf(targetText) + 2;
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
+});
+
+test('double-clicking note preview image falls back to the image markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 图片定位',
+    '',
+    '![架构图](https://cdn.example.com/arch.png)',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewSelector',
+    nodeId: 'note-1',
+    selector: 'img.note-markdown-image'
+  });
+
+  const imageMarkdown = '![架构图](https://cdn.example.com/arch.png)';
+  const expectedCaret = markdownBody.indexOf(imageMarkdown) + imageMarkdown.length;
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
+});
+
+test('double-clicking note preview blank space falls back to the paragraph markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 空白定位',
+    '',
+    '短句。',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const paragraph = nodeById(page, 'note-1').locator('.note-markdown-preview p').first();
+  await expect(paragraph).toHaveText('短句。');
+  const paragraphBox = await paragraph.boundingBox();
+  expect(paragraphBox).not.toBeNull();
+  if (!paragraphBox) {
+    return;
+  }
+
+  await page.mouse.dblclick(paragraphBox.x + paragraphBox.width - 4, paragraphBox.y + paragraphBox.height / 2);
+
+  const sourceLine = '短句。';
+  const expectedCaret = markdownBody.indexOf(sourceLine) + sourceLine.length;
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
+});
+
 test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -5558,11 +5673,6 @@ test('note markdown preview renders safe images and rewrites local image paths',
   );
   await expect(preview.locator('.note-markdown-image-fallback')).toContainText('Unsupported');
   await expect(preview.locator('img[src^="mailto:"]')).toHaveCount(0);
-  await images.nth(2).evaluate((element) => {
-    element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-  });
-  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
-
   const embeddedState = createNoteNodeState();
   embeddedState.nodes[0].metadata.note.content = '![Workspace diagram](workspace-a/assets/root.png)';
   await bootstrap(

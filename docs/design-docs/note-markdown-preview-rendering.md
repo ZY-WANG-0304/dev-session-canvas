@@ -128,6 +128,7 @@ updated_at: 2026-05-16
 
 - `src/webview/main.tsx` 的 `NoteEditableNode` 继续持有本地 `content` 草稿与提交逻辑。
 - 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；用户单击时应能直接选中和复制预览内容，其中 `Ctrl/Cmd+A` 只应全选当前 Note 正文预览而不是整张画布，`Ctrl/Cmd+C` 则继续走宿主原生复制链路；只有双击普通正文区域时才切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
+- 双击普通正文进入编辑态时，`textarea` 的初始光标应尽量落在用户双击的预览文本对应源文位置；如果命中的是无法稳定映射的图片、空白或复杂块，则回退到该预览块对应 Markdown 源码内容的末尾，只有完全找不到源码块时才回退到整篇文档末尾，不误改正文。
 - 当用户失焦、按 `Ctrl/Cmd+Enter` 提交或结束当前编辑时，正文区回到预览态，并把最新内容写回宿主。
 - 编辑态的 `textarea` 应保留纯文本权威输入模型，但需要提供最小代码编辑器 affordance：左侧显示逻辑行号；`Tab` 在光标处插入两个空格或对多行选择整体缩进；`Shift+Tab` 对当前行或多行选择移除一个 tab 或最多两个前导空格，并且不把焦点移出正文编辑区。
 - 编辑态行号应采用接近 VSCode/Monaco 的 view line 思路：每个源文逻辑行只在第一条视觉行显示行号，软换行产生的续行在 gutter 中保留等高空 row，从而让后续行号继续落在对应源文行的真实起点。由于当前 Note 仍使用原生 `textarea`，Webview 侧通过隐藏 mirror 层复刻输入框的字体、行高、padding、tab size、内容宽度与 `pre-wrap` 换行规则，计算每个逻辑行折成多少条视觉行；mirror 宽度必须使用 `textarea.clientWidth`，避免垂直滚动条出现后与真实文本换行宽度分叉。
@@ -202,6 +203,7 @@ updated_at: 2026-05-16
 - `scripts/build/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、图片预览、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
 - `src/webview/main.tsx` 与 `src/webview/styles.css` 已把编辑态行号从固定逻辑行列表改成“隐藏 mirror 计算视觉行数 + gutter 续行空 row”：普通行继续显示一个 row，软换行后的长逻辑行会在 gutter 中保留空白续行 row，让后续行号按视觉行节奏对齐。
 - `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test/test-note-markdown-links.mts` 与 `scripts/test/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
+- 2026-05-21 起，`Note` Markdown 预览的双击编辑会读取预览 DOM 的源文行号与浏览器 caret point，把初始 `textarea` selection 映射到被双击文本附近；无法精确映射的图片、空白或复杂块会回退到对应 Markdown 源码块末尾，只有完全找不到源码块时才回退到整篇文末。Playwright harness 增加 `doubleClickNotePreviewText` / `doubleClickNotePreviewSelector` DOM action 覆盖文本精确定位与图片块回退路径。
 
 本轮验证结果：
 
