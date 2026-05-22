@@ -877,7 +877,7 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
   const nodes = panelManager.getCanvasNodes();
   const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
-  const items = getCanvasSidebarNodeListItems(nodes);
+  const items = getCanvasSidebarNodeListItems(panelManager.getCanvasSidebarNodeListSnapshot());
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
     return;
@@ -1824,7 +1824,7 @@ function registerTestCommands(
       getCanvasSidebarSummaryItems(panelManager.getSidebarState())
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarNodeListItems, () =>
-      getCanvasSidebarNodeListItems(panelManager.getCanvasNodes())
+      getCanvasSidebarNodeListItems(panelManager.getCanvasSidebarNodeListSnapshot())
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getSidebarSessionHistoryItems,

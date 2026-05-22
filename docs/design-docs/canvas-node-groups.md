@@ -1,7 +1,7 @@
 ---
 title: 画布节点分组设计
-decision_status: 比较中
-validation_status: 未验证
+decision_status: 已选定
+validation_status: 验证中
 domains:
   - 画布交互域
   - 协作对象域
@@ -209,7 +209,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ## 8. 当前结论
 
-当前推荐采用方案 B：`CanvasGroupSummary + CanvasNodeSummary.groupId`，并把分组表现为可见、可命名、可移动的 group frame。该结论仍标记为“比较中”，原因是还没有完成 Webview 命中层级和 group drag spike，不能把实现细节写成已验证结论。
+当前采用方案 B：`CanvasGroupSummary + CanvasNodeSummary.groupId`，并把分组表现为可见、可命名、可移动的 group frame。2026-05-22 的实现阶段已经通过 Webview harness 验证了 group frame 标题栏、工具栏与 React Flow pane 的基本命中层级，且用宿主状态测试覆盖了核心拖动 / resize 收口；因此方案本身从“比较中”收口为“已选定”。本轮验证已经通过 `npm run typecheck`、协议消息测试、模板测试、`npm run test:canvas-node-groups`、`npm run build` 和 3 条 Webview 分组 Playwright 用例。验证状态仍是“验证中”，因为侧栏分组树、从选择创建分组、删除对话框和更完整的几何合法状态仍只覆盖了首版基础路径，尚未完成真实 VSCode reload smoke 与完整场景矩阵。
 
 根据 2026-05-20 至 2026-05-21 的产品调整，首版从分组状态和交互中移除颜色配置；取消分组固定保留成员节点和内部子分组；删除分组改为宿主确认对话框中的二选一动作，且“一并删除内部所有节点与子分组”是危险选项也是默认按钮；拖拽节点或分组进入分组区域成为首版入组主路径之一；分组支持嵌套但禁止交叉；`file` / `file-list` 暂不支持稳定分组成员关系；侧栏节点列表通过更多按钮提供按分组树折叠展示选项；不支持且不计划支持折叠分组。拖入、拖出、分组移动和 resize 不再按场景逐项罗列，而是按第 8.2.1 节基础法则推导：合法状态是硬约束，拖拽以鼠标释放位置表达归属，resize 以释放边界表达归属，用户直接结果优先，系统只做最小合法修复，最终由宿主在释放鼠标后以一次事务提交。
 
@@ -243,6 +243,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
       nodes: CanvasNodeSummary[];
       edges: CanvasEdgeSummary[];
       groups: CanvasGroupSummary[];
+      nextGroupSequence: number;
       fileReferences: CanvasFileReferenceSummary[];
       suppressedFileActivityEdgeIds: string[];
       suppressedAutomaticFileArtifactNodeIds: string[];
@@ -255,7 +256,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - 同一个 group 最多直接属于一个父 group；`parentGroupId` 不能形成环。
 - 任意两个 group 不能交叉：它们只能互不相交，或一方完全包含另一方；拖拽和 resize 过程中的临时交叉不能进入宿主持久化状态。
 - 同一父 group 内，直接成员节点与直接子 group、直接子 group 与直接子 group 在交互结束后的持久化状态中不交叉；直接成员节点之间允许重叠。
-- 分组默认标题编号使用独立的分组序号队列；实现应沿用现有手工节点序号逻辑，但读取分组自己的序号来源，不读取节点序号队列，也不读取可编辑标题文本。
+- 分组默认标题编号使用独立的分组序号队列；实现应沿用现有手工节点序号逻辑，但读取分组自己的序号来源，不读取节点序号队列，也不读取可编辑标题文本。`nextGroupSequence` 保存下一次创建分组应使用的编号；旧状态缺失时根据现有 `group-*` ID 前缀安全推导，后续删除或重命名都不降低该序号。
 - 节点坐标保持画布绝对坐标，不改成相对 group 坐标。
 - normalize 时清理不存在 group、非稳定节点、父子环、交叉 group 或重复非法状态；正常交互路径应在提交前调用基础法则收口流程恢复合法状态，包括同级 group 不交叉、直接成员节点与直接子 group 不交叉、成员 / 子 group 被所属 group 完整容纳，以及必要时在同父兄弟集合内做最小合法修复和逐层级联。
 - `groups` 缺失的旧状态归一为空数组，不提升 `CanvasPrototypeState.version`。
@@ -323,7 +324,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ## 9. 需要验证的事项
 
-在把本文档状态改为 `已选定` 前，至少完成以下验证：
+方案已经收口为 `已选定`，但在把本文档验证状态改为 `已验证` 前，至少完成以下验证：
 
 1. 在 Webview harness 中做一个 group frame spike，确认分组标题栏 / 边框命中不会遮挡节点选择、连线选择、canvas pan 和 xterm 文本选择，并确认单击分组标题区域进入重命名编辑、标题编辑控件复用现有节点标题栏编辑方式、创建分组不强制弹窗命名、默认标题按独立分组创建序号递增、不按标题文本取最小可用编号、删除后不主动复用旧编号、用户重命名不影响后续默认编号、手动重命名允许重名、标题编辑清洗逻辑与现有节点一致且不设置分组专用最大长度限制，并确认标题不允许为空字符串。
 2. 在 `src/panel/CanvasPanelManager.ts` 层写纯状态测试，覆盖创建空分组、默认标题按独立分组创建序号递增且创建时不强制命名、删除后不主动复用旧编号、用户重命名不影响后续默认编号、单击标题区域重命名、标题编辑方式复用现有节点、手动重命名允许重名、标题编辑清洗逻辑与现有节点一致、不设置分组专用最大长度限制、空标题恢复原标题、从同一父级至少两个选中对象创建分组、单个选中对象禁止创建分组、跨父级选中对象禁止创建分组、同时选中分组及其后代对象时禁止创建分组、选中已有子树分组但未选中其后代对象时允许创建分组、嵌套分组、拖动 / resize 基础法则、同级交叉消解、resize 边界编辑、释放点归属命中、系统修正不推断新意图、合法状态、取消分组、删除分组两种模式、删除节点清理成员关系、空分组保留和旧状态 normalize。

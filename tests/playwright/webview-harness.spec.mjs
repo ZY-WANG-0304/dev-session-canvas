@@ -7966,6 +7966,105 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
 });
 
+
+test('canvas groups render, rename, and post group actions', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-22T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'note-1',
+        kind: 'note',
+        title: 'Grouped Note',
+        status: 'ready',
+        summary: 'inside group',
+        position: { x: 160, y: 160 },
+        size: sizeFor('note'),
+        groupId: 'group-1',
+        metadata: { note: { content: 'inside' } }
+      }
+    ],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 120, y: 120 },
+        size: { width: 520, height: 420 }
+      }
+    ],
+    edges: []
+  });
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame).toBeVisible();
+  await expect(groupFrame.locator('[data-probe-field="title"]')).toHaveValue('Group 1');
+
+  await groupFrame.locator('[data-probe-field="title"]').fill('Planning Group');
+  await groupFrame.locator('[data-probe-field="title"]').press('Enter');
+  const titleMessage = await waitForPostedMessageByType(page, 'webview/updateGroupTitle');
+  expect(titleMessage.payload).toEqual({ groupId: 'group-1', title: 'Planning Group' });
+
+  await groupFrame.locator('.canvas-group-toolbar button', { hasText: '取消分组' }).click();
+  const ungroupMessage = await waitForPostedMessageByType(page, 'webview/ungroup');
+  expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
+});
+
+test('canvas context menu can create an empty group', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createEmptyCanvasState());
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 260, y: 220 } });
+  await page.locator('[data-context-menu-action="create-empty-group"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
+  expect(message.payload.size).toEqual({ width: 360, height: 240 });
+  expect(typeof message.payload.position.x).toBe('number');
+  expect(typeof message.payload.position.y).toBe('number');
+});
+
+test('canvas context menu can create a group from selected nodes', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    },
+    {
+      id: 'note-2',
+      kind: 'note',
+      title: 'Note 2',
+      status: 'ready',
+      summary: 'second',
+      position: { x: 360, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'second' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  const selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 40, y: 620 } });
+  await page.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: []
+  });
+});
+
 test('host-triggered manual node creation snapshots existing nodes before resolving autofocus', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -9149,6 +9248,11 @@ function normalizeCanvasState(state) {
   return {
     ...state,
     edges: Array.isArray(state?.edges) ? state.edges : [],
+    groups: Array.isArray(state?.groups) ? state.groups : [],
+    nextGroupSequence:
+      typeof state?.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
+        ? state.nextGroupSequence
+        : 1,
     fileReferences: Array.isArray(state?.fileReferences) ? state.fileReferences : []
   };
 }

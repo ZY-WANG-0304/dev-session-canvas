@@ -60,6 +60,7 @@ import type {
   AgentProviderKind,
   AgentProviderLaunchDefaults,
   CanvasCreatableNodeKind,
+  CanvasGroupSummary,
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
   CanvasEdgeOwner,
@@ -154,6 +155,9 @@ declare function acquireVsCodeApi<T>(): {
 
 interface LocalUiState {
   selectedNodeId?: string;
+  selectedNodeIds?: string[];
+  selectedGroupId?: string;
+  selectedGroupIds?: string[];
   viewport?: Viewport;
   fileListViewModes?: Record<string, FileListViewMode>;
   selectedFileListEntries?: Record<string, string>;
@@ -183,6 +187,7 @@ interface CanvasMiniMapViewportOutlineState {
 }
 
 const CanvasOverviewInteractionContext = React.createContext(false);
+const CanvasNodeModifierSelectionContext = React.createContext<(nodeId: string) => void>(() => undefined);
 const overviewInertAttributes = { inert: '' } as unknown as React.HTMLAttributes<HTMLElement>;
 
 function useCanvasOverviewInteractionsDisabled(): boolean {
@@ -194,14 +199,47 @@ function canvasOverviewInertProps(disabled: boolean): React.HTMLAttributes<HTMLE
 }
 
 function CanvasNodeInteractionBoundary(props: {
+  nodeId: string;
   disabled: boolean;
   children: JSX.Element;
 }): JSX.Element {
+  const selectNodeWithModifier = React.useContext(CanvasNodeModifierSelectionContext);
+
+  const handlePointerDownCapture = (event: React.PointerEvent): void => {
+    if (event.button !== 0 || isModifierSelectionInteractiveTarget(event.target)) {
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    selectNodeWithModifier(props.nodeId);
+  };
+
   return (
     <CanvasOverviewInteractionContext.Provider value={props.disabled}>
-      {props.children}
+      {React.cloneElement(props.children, {
+        onPointerDownCapture: composeReactEventHandlers(
+          props.children.props.onPointerDownCapture,
+          handlePointerDownCapture
+        )
+      })}
     </CanvasOverviewInteractionContext.Provider>
   );
+}
+
+function composeReactEventHandlers<E extends React.SyntheticEvent>(
+  first: ((event: E) => void) | undefined,
+  second: (event: E) => void
+): (event: E) => void {
+  return (event) => {
+    first?.(event);
+    if (!event.isPropagationStopped()) {
+      second(event);
+    }
+  };
 }
 
 interface EdgeLabelEditorState {
@@ -379,6 +417,14 @@ interface CanvasContextMenuState {
   flowAnchor: CanvasNodePosition;
   view: CanvasContextMenuView;
   selectedAgentProvider?: AgentProviderKind;
+  selectedNodeIds?: string[];
+  selectedGroupIds?: string[];
+  canCreateGroupFromSelection?: boolean;
+}
+
+interface CanvasGroupDraft {
+  position?: CanvasNodePosition;
+  size?: CanvasNodeFootprint;
 }
 type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
 interface PendingNodeViewportRequest {
@@ -638,6 +684,8 @@ const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
 const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
 const NODE_GROUP_FOCUS_RETRY_INTERVAL_MS = 48;
 const NODE_GROUP_FOCUS_MAX_RETRY_COUNT = 8;
+const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
+const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
 const EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR = '--canvas-embedded-terminal-foreground';
 const TERMINAL_BACKGROUND_FALLBACKS: Record<'editor' | 'panel', string[]> = {
@@ -884,6 +932,11 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
     nodes,
     edges,
     fileReferences,
+    groups: Array.isArray(state?.groups) ? state?.groups ?? [] : [],
+    nextGroupSequence:
+      typeof state?.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
+        ? state.nextGroupSequence
+        : 1,
     suppressedFileActivityEdgeIds,
     suppressedAutomaticFileArtifactNodeIds
   };
@@ -912,6 +965,13 @@ function App(): JSX.Element {
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
+    selectedNodeIds: Array.isArray(initialPersistedState.selectedNodeIds)
+      ? initialPersistedState.selectedNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+      : undefined,
+    selectedGroupId: initialPersistedState.selectedGroupId,
+    selectedGroupIds: Array.isArray(initialPersistedState.selectedGroupIds)
+      ? initialPersistedState.selectedGroupIds.filter((groupId): groupId is string => typeof groupId === 'string')
+      : undefined,
     viewport: initialPersistedState.viewport,
     fileListViewModes:
       initialPersistedState.fileListViewModes && typeof initialPersistedState.fileListViewModes === 'object'
@@ -937,12 +997,18 @@ function App(): JSX.Element {
           )
         : undefined
   }));
+  const pendingModifierNodeSelectionRef = useRef<{
+    nodeId: string;
+    baseSelectedNodeIds: string[];
+  } | null>(null);
+  const localUiStateRef = useRef<LocalUiState>(localUiState);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
   const [documentHasFocus, setDocumentHasFocus] = useState<boolean>(() => document.hasFocus());
   const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
   const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
   const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
+  const [groupDrafts, setGroupDrafts] = useState<Record<string, CanvasGroupDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
@@ -1171,6 +1237,7 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    localUiStateRef.current = localUiState;
     vscode.setState(localUiState);
   }, [localUiState]);
 
@@ -1200,6 +1267,7 @@ function App(): JSX.Element {
         ])
     );
     const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
+    const validGroupIds = new Set((hostState.groups ?? []).map((group) => group.id));
     setLocalUiState((current) => {
       let changed = false;
       let nextState = current;
@@ -1210,6 +1278,36 @@ function App(): JSX.Element {
           selectedNodeId: undefined
         };
         changed = true;
+      }
+
+      if (current.selectedNodeIds) {
+        const selectedNodeIds = current.selectedNodeIds.filter((nodeId) => validNodeIds.has(nodeId));
+        if (selectedNodeIds.length !== current.selectedNodeIds.length) {
+          nextState = {
+            ...nextState,
+            selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : undefined
+          };
+          changed = true;
+        }
+      }
+
+      if (current.selectedGroupId && !validGroupIds.has(current.selectedGroupId)) {
+        nextState = {
+          ...nextState,
+          selectedGroupId: undefined
+        };
+        changed = true;
+      }
+
+      if (current.selectedGroupIds) {
+        const selectedGroupIds = current.selectedGroupIds.filter((groupId) => validGroupIds.has(groupId));
+        if (selectedGroupIds.length !== current.selectedGroupIds.length) {
+          nextState = {
+            ...nextState,
+            selectedGroupIds: selectedGroupIds.length > 0 ? selectedGroupIds : undefined
+          };
+          changed = true;
+        }
       }
 
       const currentViewModes = current.fileListViewModes;
@@ -1275,6 +1373,32 @@ function App(): JSX.Element {
     setEdgeArrowMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
     setEdgeColorMenuEdgeId((current) => (current && !validEdgeIds.has(current) ? undefined : current));
   }, [hostState]);
+
+  useEffect(() => {
+    if (!contextMenu || contextMenu.view !== 'root') {
+      return;
+    }
+
+    const selectedNodeIds = contextMenu.selectedNodeIds ?? [];
+    const selectedGroupIds = contextMenu.selectedGroupIds ?? [];
+    const nextCanCreateGroupFromSelection = canCreateCanvasGroupFromSelection(
+      hostState,
+      selectedNodeIds,
+      selectedGroupIds
+    );
+    if (contextMenu.canCreateGroupFromSelection === nextCanCreateGroupFromSelection) {
+      return;
+    }
+
+    setContextMenu((current) =>
+      current
+        ? {
+            ...current,
+            canCreateGroupFromSelection: nextCanCreateGroupFromSelection
+          }
+        : current
+    );
+  }, [contextMenu, hostState]);
 
   useEffect(() => {
     setEdgeLabelEditor((current) => (current && current.edgeId !== selectedEdgeId ? null : current));
@@ -1374,14 +1498,13 @@ function App(): JSX.Element {
   };
 
   const deleteNode = (nodeId: string): void => {
-    setLocalUiState((current) =>
-      current.selectedNodeId === nodeId
-        ? {
-            ...current,
-            selectedNodeId: undefined
-          }
-        : current
-    );
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: current.selectedNodeId === nodeId ? undefined : current.selectedNodeId,
+      selectedNodeIds: current.selectedNodeIds?.filter((selectedNodeId) => selectedNodeId !== nodeId),
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
+    }));
     closeFloatingMenus();
     postMessage({
       type: 'webview/deleteNode',
@@ -1392,6 +1515,12 @@ function App(): JSX.Element {
   };
 
   const deleteEdge = (edgeId: string): void => {
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeIds: current.selectedNodeId ? [current.selectedNodeId] : undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
+    }));
     setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
     setEdgeColorMenuEdgeId((current) => (current === edgeId ? undefined : current));
@@ -1641,14 +1770,46 @@ function App(): JSX.Element {
   const selectNode = (nodeId: string): void => {
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
-    setLocalUiState((current) =>
-      current.selectedNodeId === nodeId
-        ? current
-        : {
-            ...current,
-            selectedNodeId: nodeId
-          }
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: nodeId,
+      selectedNodeIds: current.selectedNodeIds?.includes(nodeId) ? current.selectedNodeIds : [nodeId],
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined,
+      selectedFileListEntries:
+        current.selectedFileListEntries && nodeId in current.selectedFileListEntries
+          ? { [nodeId]: current.selectedFileListEntries[nodeId] }
+          : undefined
+    }));
+  };
+
+  const toggleNodeSelection = (nodeId: string): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    const currentUiState = localUiStateRef.current;
+    const selectedNodeIds = new Set(
+      currentUiState.selectedNodeIds ?? (currentUiState.selectedNodeId ? [currentUiState.selectedNodeId] : [])
     );
+    const baseSelectedNodeIds = Array.from(selectedNodeIds);
+    if (selectedNodeIds.has(nodeId)) {
+      selectedNodeIds.delete(nodeId);
+    } else {
+      selectedNodeIds.add(nodeId);
+    }
+    const nextSelectedNodeIds = Array.from(selectedNodeIds);
+    pendingModifierNodeSelectionRef.current = { nodeId, baseSelectedNodeIds };
+    setLocalUiState((current) => {
+      const nextState = {
+        ...current,
+        selectedNodeId: nextSelectedNodeIds.at(-1),
+        selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined,
+        selectedFileListEntries: undefined
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
   };
 
   const setFileListViewMode = (nodeId: string, viewMode: FileListViewMode): void => {
@@ -1689,6 +1850,9 @@ function App(): JSX.Element {
       return {
         ...current,
         selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined,
         collapsedFileListTreeBranches:
           Object.keys(nextCollapsedBranches).length > 0 ? nextCollapsedBranches : undefined
       };
@@ -1706,6 +1870,9 @@ function App(): JSX.Element {
       return {
         ...current,
         selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined,
         selectedFileListEntries: {
           ...(current.selectedFileListEntries ?? {}),
           [nodeId]: filePath
@@ -1717,6 +1884,7 @@ function App(): JSX.Element {
   const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
+    selectedNodeIds: localUiState.selectedNodeIds,
     documentHasFocus,
     workspaceTrusted,
     overviewInteractionsDisabled: canvasOverviewMode,
@@ -1895,7 +2063,14 @@ function App(): JSX.Element {
     onFocusNodeInViewport: focusNodeInViewport,
     onDeleteNode: deleteNode
   });
-  const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+  const groupDraftLayout = applyCanvasGroupDrafts({
+    groups: hostState?.groups ?? [],
+    hostNodes: hostState?.nodes ?? [],
+    flowNodes: baseNodes,
+    drafts: groupDrafts
+  });
+  const nodes = applyCanvasNodeLayoutDrafts(groupDraftLayout.nodes, nodeLayoutDrafts);
+  const groups = groupDraftLayout.groups;
   const dynamicCanvasMinZoom = useMemo(
     () => resolveDynamicCanvasMinZoom(nodes, canvasViewportSize),
     [canvasViewportSize, nodes]
@@ -1920,7 +2095,10 @@ function App(): JSX.Element {
       setSelectedEdgeId(edgeId);
       setLocalUiState((current) => ({
         ...current,
-        selectedNodeId: undefined
+        selectedNodeId: undefined,
+        selectedNodeIds: undefined,
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined
       }));
     },
     onStartLabelEdit: startEdgeLabelEdit,
@@ -1953,28 +2131,160 @@ function App(): JSX.Element {
     }
 
     closeFloatingMenus();
+    if (_event.ctrlKey || _event.metaKey || _event.shiftKey) {
+      toggleNodeSelection(node.id);
+      return;
+    }
+
     selectNode(node.id);
   };
 
   const handlePaneClick = (): void => {
     closeFloatingMenus();
-    if (!localUiState.selectedNodeId && !selectedEdgeId) {
+    if (!localUiState.selectedNodeId && !localUiState.selectedGroupId && !selectedEdgeId) {
       return;
     }
 
     setSelectedEdgeId(undefined);
     updateLocalUiState({
       ...localUiState,
-      selectedNodeId: undefined
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
     });
   };
 
-  const handleNodeDragStop: NodeMouseHandler = (_event, node) => {
+  const selectGroup = (groupId: string): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) =>
+      current.selectedGroupId === groupId && !current.selectedNodeId
+        ? current
+        : {
+            ...current,
+            selectedNodeId: undefined,
+            selectedNodeIds: undefined,
+            selectedGroupIds: [groupId],
+            selectedGroupId: groupId
+          }
+    );
+  };
+
+  const updateGroupDraft = (groupId: string, draft: CanvasGroupDraft | null): void => {
+    setGroupDrafts((current) => {
+      const next = { ...current };
+      if (draft) {
+        next[groupId] = draft;
+      } else {
+        delete next[groupId];
+      }
+      return next;
+    });
+  };
+
+  const handleCreateEmptyGroup = (position: CanvasNodePosition): void => {
+    postMessage({
+      type: 'webview/createEmptyGroup',
+      payload: {
+        position,
+        size: DEFAULT_CANVAS_GROUP_SIZE
+      }
+    });
+  };
+
+  const handleCreateGroupFromSelection = (nodeIds: readonly string[], groupIds: readonly string[]): void => {
+    postMessage({
+      type: 'webview/createGroupFromSelection',
+      payload: {
+        nodeIds: [...nodeIds],
+        groupIds: [...groupIds]
+      }
+    });
+  };
+
+  const handleMoveGroup = (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition): void => {
+    updateGroupDraft(groupId, null);
+    postMessage({
+      type: 'webview/moveGroup',
+      payload: {
+        groupId,
+        position,
+        pointerPosition
+      }
+    });
+  };
+
+  const handleResizeGroup = (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
+    updateGroupDraft(groupId, null);
+    postMessage({
+      type: 'webview/resizeGroup',
+      payload: {
+        groupId,
+        position,
+        size
+      }
+    });
+  };
+
+  const handleUpdateGroupTitle = (groupId: string, title: string): void => {
+    postMessage({
+      type: 'webview/updateGroupTitle',
+      payload: {
+        groupId,
+        title
+      }
+    });
+  };
+
+  const handleUngroup = (groupId: string): void => {
+    setLocalUiState((current) =>
+      current.selectedGroupId === groupId
+        ? {
+            ...current,
+            selectedGroupId: undefined,
+            selectedGroupIds: undefined
+          }
+        : current
+    );
+    postMessage({
+      type: 'webview/ungroup',
+      payload: { groupId }
+    });
+  };
+
+  const handleDeleteGroup = (groupId: string): void => {
+    setLocalUiState((current) =>
+      current.selectedGroupId === groupId
+        ? {
+            ...current,
+            selectedGroupId: undefined,
+            selectedGroupIds: undefined
+          }
+        : current
+    );
+    postMessage({
+      type: 'webview/deleteGroup',
+      payload: { groupId }
+    });
+  };
+
+  const handleNodeDragStop: NodeMouseHandler = (event, node) => {
+    const pointerPosition = reactFlowRef.current?.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
     postMessage({
       type: 'webview/moveNode',
       payload: {
         id: node.id,
-        position: node.position
+        position: node.position,
+        pointerPosition: pointerPosition
+          ? {
+              x: Math.round(pointerPosition.x),
+              y: Math.round(pointerPosition.y)
+            }
+          : undefined
       }
     });
   };
@@ -1985,6 +2295,57 @@ function App(): JSX.Element {
       const nextNodes = applyNodeChanges(changes, currentNodes);
       return collectCanvasNodeLayoutDrafts(baseNodes, nextNodes);
     });
+
+    const selectionChanges = changes.filter(
+      (change) => change?.type === 'select' && typeof change.id === 'string' && typeof change.selected === 'boolean'
+    );
+    if (selectionChanges.length > 0) {
+      setSelectedEdgeId(undefined);
+      setLocalUiState((current) => {
+        const pendingModifierNodeSelection = pendingModifierNodeSelectionRef.current;
+        const selectedNodeIds = new Set(
+          pendingModifierNodeSelection?.baseSelectedNodeIds ??
+            current.selectedNodeIds ??
+            (current.selectedNodeId ? [current.selectedNodeId] : [])
+        );
+        let lastSelectedNodeId = current.selectedNodeId;
+        if (pendingModifierNodeSelection) {
+          if (selectedNodeIds.has(pendingModifierNodeSelection.nodeId)) {
+            selectedNodeIds.delete(pendingModifierNodeSelection.nodeId);
+          } else {
+            selectedNodeIds.add(pendingModifierNodeSelection.nodeId);
+          }
+          pendingModifierNodeSelectionRef.current = null;
+          const nextSelectedNodeIds = Array.from(selectedNodeIds);
+          const nextState = {
+            ...current,
+            selectedNodeId: nextSelectedNodeIds.at(-1),
+            selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
+            selectedGroupId: undefined,
+            selectedGroupIds: undefined
+          };
+          localUiStateRef.current = nextState;
+          return nextState;
+        }
+        if (!selectionChanges.some((change) => change.selected)) {
+          return current;
+        }
+        for (const change of selectionChanges) {
+          if (change.selected) {
+            selectedNodeIds.add(change.id);
+            lastSelectedNodeId = change.id;
+          }
+        }
+        const nextSelectedNodeIds = Array.from(selectedNodeIds);
+        return {
+          ...current,
+          selectedNodeId: lastSelectedNodeId ?? nextSelectedNodeIds.at(-1),
+          selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
+          selectedGroupId: undefined,
+          selectedGroupIds: undefined
+        };
+      });
+    }
   };
 
   const handleMoveEnd = (_event: MouseEvent | TouchEvent | null, viewport: Viewport): void => {
@@ -2051,8 +2412,14 @@ function App(): JSX.Element {
     closeEdgeMenus();
     setLocalUiState((current) => ({
       ...current,
-      selectedNodeId: undefined
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
     }));
+    const selectedNodeIds = localUiState.selectedNodeIds ?? (localUiState.selectedNodeId ? [localUiState.selectedNodeId] : []);
+    const selectedGroupIds = localUiState.selectedGroupIds ?? (localUiState.selectedGroupId ? [localUiState.selectedGroupId] : []);
+    const canCreateGroupFromSelection = canCreateCanvasGroupFromSelection(hostState, selectedNodeIds, selectedGroupIds);
     setContextMenu({
       screenX: event.clientX,
       screenY: event.clientY,
@@ -2060,7 +2427,10 @@ function App(): JSX.Element {
         x: Math.round(flowAnchor.x),
         y: Math.round(flowAnchor.y)
       },
-      view: 'root'
+      view: 'root',
+      selectedNodeIds,
+      selectedGroupIds,
+      canCreateGroupFromSelection
     });
   };
 
@@ -2279,7 +2649,10 @@ function App(): JSX.Element {
     setSelectedEdgeId(edge.id);
     setLocalUiState((current) => ({
       ...current,
-      selectedNodeId: undefined
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
     }));
   };
 
@@ -2320,6 +2693,7 @@ function App(): JSX.Element {
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
     >
+      <CanvasNodeModifierSelectionContext.Provider value={toggleNodeSelection}>
       <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
         <ReactFlow
@@ -2361,6 +2735,18 @@ function App(): JSX.Element {
             onViewportStateChange={handleCanvasOverviewViewportStateChange}
           />
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+          <CanvasGroupsViewportLayer
+            groups={groups}
+            portalElement={canvasShellRef.current}
+            selectedGroupId={localUiState.selectedGroupId}
+            onSelectGroup={selectGroup}
+            onDraftGroup={updateGroupDraft}
+            onMoveGroup={handleMoveGroup}
+            onResizeGroup={handleResizeGroup}
+            onUpdateGroupTitle={handleUpdateGroupTitle}
+            onUngroup={handleUngroup}
+            onDeleteGroup={handleDeleteGroup}
+          />
           <MiniMap
             className="canvas-corner-panel canvas-minimap"
             position="bottom-right"
@@ -2385,6 +2771,7 @@ function App(): JSX.Element {
           />
         </ReactFlow>
       </CanvasOverviewInteractionContext.Provider>
+      </CanvasNodeModifierSelectionContext.Provider>
 
       {contextMenu ? (
         <CanvasContextMenu
@@ -2398,6 +2785,15 @@ function App(): JSX.Element {
           defaultAgentProvider={runtimeContext.defaultAgentProvider}
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
+          canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
+          onCreateEmptyGroup={() => {
+            handleCreateEmptyGroup(contextMenu.flowAnchor);
+            closePaneContextMenu();
+          }}
+          onCreateGroupFromSelection={() => {
+            handleCreateGroupFromSelection(contextMenu.selectedNodeIds ?? [], contextMenu.selectedGroupIds ?? []);
+            closePaneContextMenu();
+          }}
           onCreate={(kind, agentProvider, agentLaunchPreset, agentCustomLaunchCommand) => {
             createNode(
               kind,
@@ -3062,7 +3458,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const actionDisabled = executionBlocked || reattaching;
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
       <div
       className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -3543,7 +3939,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }, [executionBlocked, id, terminalMetadata.liveSession, terminalMetadata.pendingLaunch]);
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
       <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -3920,7 +4316,7 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const showText = data.fileNodeDisplayMode !== 'icon-only';
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
       <div
       className={`canvas-node file-node kind-file display-style-${data.fileNodeDisplayStyle} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -4038,7 +4434,7 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     data.selected && data.documentHasFocus ? 'active' : 'inactive';
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
       <div
       className={`canvas-node file-list-node kind-file-list display-style-${data.fileNodeDisplayStyle} ${
         data.selected ? 'is-selected' : ''
@@ -5476,7 +5872,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
       <div
       className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -5768,7 +6164,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
   const terminalMetadata = data.metadata?.terminal;
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
       <div
       className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -6035,6 +6431,7 @@ const CanvasContextMenu = React.forwardRef<
     defaultAgentProvider: AgentProviderKind;
     agentLaunchDefaults: AgentLaunchDefaultsByProvider;
     canSaveCurrentCanvas: boolean;
+    canCreateGroupFromSelection: boolean;
     onCreate: (
       kind: CanvasCreatableNodeKind,
       agentProvider?: AgentProviderKind,
@@ -6047,6 +6444,8 @@ const CanvasContextMenu = React.forwardRef<
     onResetToDefaultTemplate: () => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
+    onCreateEmptyGroup: () => void;
+    onCreateGroupFromSelection: () => void;
     onBack: () => void;
     onClose: () => void;
   }
@@ -6243,6 +6642,33 @@ const CanvasContextMenu = React.forwardRef<
                   </div>
                 ))
               : null}
+            <div className="canvas-context-menu-separator" aria-hidden="true" />
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="create-empty-group"
+              onClick={props.onCreateEmptyGroup}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-symbol-structure" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>创建分组</strong>
+                <span>在当前位置创建空分组框</span>
+              </span>
+            </button>
+            {props.canCreateGroupFromSelection ? (
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="create-group-from-selection"
+                onClick={props.onCreateGroupFromSelection}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-group-by-ref-type" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>从选择创建分组</strong>
+                  <span>把当前多选对象收束到新分组</span>
+                </span>
+              </button>
+            ) : null}
             <div className="canvas-context-menu-separator" aria-hidden="true" />
             <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
               <button
@@ -6553,6 +6979,48 @@ function isCanvasEdgePresetColor(value: string | undefined): value is (typeof ca
 
 function isTemplateCompatibleNodeKind(value: CanvasNodeKind): value is 'agent' | 'terminal' | 'note' {
   return value === 'agent' || value === 'terminal' || value === 'note';
+}
+
+function canCreateCanvasGroupFromSelection(
+  state: CanvasPrototypeState | null,
+  nodeIds: readonly string[],
+  groupIds: readonly string[]
+): boolean {
+  if (!state) {
+    return false;
+  }
+
+  const selectedNodeIds = new Set(nodeIds);
+  const selectedGroupIds = new Set(groupIds);
+  const selectedNodes = state.nodes.filter(
+    (node) => selectedNodeIds.has(node.id) && isTemplateCompatibleNodeKind(node.kind)
+  );
+  const selectedGroups = (state.groups ?? []).filter((group) => selectedGroupIds.has(group.id));
+  if (selectedNodes.length + selectedGroups.length < 2) {
+    return false;
+  }
+
+  const selectedParents = new Set<string | undefined>([
+    ...selectedNodes.map((node) => node.groupId),
+    ...selectedGroups.map((group) => group.parentGroupId)
+  ]);
+  if (selectedParents.size !== 1) {
+    return false;
+  }
+
+  for (const group of selectedGroups) {
+    const subtreeGroupIds = collectGroupSubtreeIdsForWebview(state.groups ?? [], group.id);
+    for (const descendantGroupId of subtreeGroupIds) {
+      if (descendantGroupId !== group.id && selectedGroupIds.has(descendantGroupId)) {
+        return false;
+      }
+    }
+    if (selectedNodes.some((node) => node.groupId && subtreeGroupIds.has(node.groupId))) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {
@@ -7822,6 +8290,268 @@ function NoteMarkdownMetadataTrigger(props: {
   );
 }
 
+function CanvasGroupsViewportLayer(props: {
+  groups: CanvasGroupSummary[];
+  portalElement: HTMLElement | null;
+  selectedGroupId?: string;
+  onSelectGroup: (groupId: string) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+}): JSX.Element {
+  const viewport = useViewport();
+  if (!props.portalElement) {
+    return <></>;
+  }
+
+  return createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, props.portalElement);
+}
+
+function CanvasGroupLayer(props: {
+  groups: CanvasGroupSummary[];
+  selectedGroupId?: string;
+  viewport: Viewport;
+  onSelectGroup: (groupId: string) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+}): JSX.Element {
+  const orderedGroups = [...props.groups].sort((left, right) => groupDepthForWebview(props.groups, left.id) - groupDepthForWebview(props.groups, right.id));
+  return (
+    <div
+      className="canvas-group-layer"
+      style={{
+        transform: `translate(${props.viewport.x}px, ${props.viewport.y}px) scale(${props.viewport.zoom})`
+      }}
+    >
+      {orderedGroups.map((group) => (
+        <CanvasGroupFrame
+          key={group.id}
+          group={group}
+          selected={group.id === props.selectedGroupId}
+          zoom={props.viewport.zoom}
+          onSelectGroup={props.onSelectGroup}
+          onDraftGroup={props.onDraftGroup}
+          onMoveGroup={props.onMoveGroup}
+          onResizeGroup={props.onResizeGroup}
+          onUpdateGroupTitle={props.onUpdateGroupTitle}
+          onUngroup={props.onUngroup}
+          onDeleteGroup={props.onDeleteGroup}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CanvasGroupFrame(props: {
+  group: CanvasGroupSummary;
+  selected: boolean;
+  zoom: number;
+  onSelectGroup: (groupId: string) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+}): JSX.Element {
+  const dragStartRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    pointerOffset: CanvasNodePosition;
+  } | null>(null);
+  const resizeStartRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+  } | null>(null);
+
+  const selectGroup = (): void => props.onSelectGroup(props.group.id);
+
+  const resolvePointerOffsetInGroup = (event: React.PointerEvent): CanvasNodePosition => {
+    const frameElement = event.currentTarget instanceof HTMLElement
+      ? event.currentTarget.closest<HTMLElement>('.canvas-group-frame')
+      : null;
+    const frameRect = frameElement?.getBoundingClientRect();
+    if (!frameRect) {
+      return {
+        x: Math.round(props.group.size.width / 2),
+        y: Math.round(props.group.size.height / 2)
+      };
+    }
+
+    return {
+      x: Math.round((event.clientX - frameRect.left) / props.zoom),
+      y: Math.round((event.clientY - frameRect.top) / props.zoom)
+    };
+  };
+
+  const beginDrag = (event: React.PointerEvent): void => {
+    if (event.button !== 0 || isInteractiveTarget(event.target)) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopCanvasEvent(event);
+    props.onSelectGroup(props.group.id);
+    dragStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position: props.group.position,
+      pointerOffset: resolvePointerOffsetInGroup(event)
+    };
+  };
+
+  const handleDragMove = (event: React.PointerEvent): void => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    props.onDraftGroup(props.group.id, {
+      position: {
+        x: Math.round(dragStart.position.x + (event.clientX - dragStart.clientX) / props.zoom),
+        y: Math.round(dragStart.position.y + (event.clientY - dragStart.clientY) / props.zoom)
+      }
+    });
+  };
+
+  const endDrag = (event: React.PointerEvent): void => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    dragStartRef.current = null;
+    const position = {
+      x: Math.round(dragStart.position.x + (event.clientX - dragStart.clientX) / props.zoom),
+      y: Math.round(dragStart.position.y + (event.clientY - dragStart.clientY) / props.zoom)
+    };
+    props.onMoveGroup(props.group.id, position, {
+      x: Math.round(position.x + dragStart.pointerOffset.x),
+      y: Math.round(position.y + dragStart.pointerOffset.y)
+    });
+  };
+
+  const beginResize = (event: React.PointerEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopCanvasEvent(event);
+    props.onSelectGroup(props.group.id);
+    resizeStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position: props.group.position,
+      size: props.group.size
+    };
+  };
+
+  const handleResizeMove = (event: React.PointerEvent): void => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    props.onDraftGroup(props.group.id, {
+      position: resizeStart.position,
+      size: {
+        width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(resizeStart.size.width + (event.clientX - resizeStart.clientX) / props.zoom)),
+        height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(resizeStart.size.height + (event.clientY - resizeStart.clientY) / props.zoom))
+      }
+    });
+  };
+
+  const endResize = (event: React.PointerEvent): void => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    resizeStartRef.current = null;
+    props.onResizeGroup(props.group.id, resizeStart.position, {
+      width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(resizeStart.size.width + (event.clientX - resizeStart.clientX) / props.zoom)),
+      height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(resizeStart.size.height + (event.clientY - resizeStart.clientY) / props.zoom))
+    });
+  };
+
+  return (
+    <div
+      className={`canvas-group-frame${props.selected ? ' is-selected' : ''}`}
+      data-group-id={props.group.id}
+      style={{
+        left: props.group.position.x,
+        top: props.group.position.y,
+        width: props.group.size.width,
+        height: props.group.size.height
+      }}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        selectGroup();
+      }}
+      onPointerMove={(event) => {
+        handleDragMove(event);
+        handleResizeMove(event);
+      }}
+      onPointerUp={(event) => {
+        endDrag(event);
+        endResize(event);
+      }}
+      onPointerCancel={(event) => {
+        dragStartRef.current = null;
+        resizeStartRef.current = null;
+        props.onDraftGroup(props.group.id, null);
+        stopCanvasEvent(event);
+      }}
+    >
+      <div className="canvas-group-body" aria-hidden="true" />
+      <div className="canvas-group-titlebar" onPointerDown={beginDrag}>
+        <ChromeTitleEditor
+          value={props.group.title}
+          placeholder="Group 标题"
+          className="canvas-group-title"
+          onSubmit={(title) => props.onUpdateGroupTitle(props.group.id, title)}
+          onSelectNode={selectGroup}
+        />
+      </div>
+      <div className="canvas-group-border canvas-group-border-top" onPointerDown={beginDrag} />
+      <div className="canvas-group-border canvas-group-border-right" onPointerDown={beginDrag} />
+      <div className="canvas-group-border canvas-group-border-bottom" onPointerDown={beginDrag} />
+      <div className="canvas-group-border canvas-group-border-left" onPointerDown={beginDrag} />
+      <button
+        type="button"
+        className="canvas-group-resize-handle nodrag nopan"
+        aria-label={`调整分组 ${props.group.title} 尺寸`}
+        onPointerDown={beginResize}
+      />
+      {props.selected ? (
+        <div className="canvas-group-toolbar" data-group-toolbar="true">
+          <button type="button" onClick={() => props.onUngroup(props.group.id)}>取消分组</button>
+          <button type="button" onClick={() => props.onDeleteGroup(props.group.id)}>删除分组</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
@@ -7991,6 +8721,7 @@ function OverflowAwareText(props: { className: string; text: string; tooltipText
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
+  selectedNodeIds: readonly string[] | undefined;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
   overviewInteractionsDisabled: boolean;
@@ -8071,6 +8802,7 @@ function toFlowNodes(params: {
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
+  const selectedNodeIds = new Set(params.selectedNodeIds ?? (params.selectedNodeId ? [params.selectedNodeId] : []));
   return params.nodes.map((node) => {
     const size = normalizeCanvasNodeFootprintForDisplayStyle(
       node.kind,
@@ -8086,7 +8818,7 @@ function toFlowNodes(params: {
       type: node.kind === 'agent' || node.kind === 'terminal' || node.kind === 'note' || node.kind === 'file' || node.kind === 'file-list' ? node.kind : 'card',
       position: node.position,
       draggable: true,
-      selected: node.id === params.selectedNodeId,
+      selected: selectedNodeIds.has(node.id),
       width: size.width,
       height: size.height,
       style: {
@@ -8098,7 +8830,7 @@ function toFlowNodes(params: {
         title: node.title,
         status: node.status,
         summary: node.summary,
-        selected: node.id === params.selectedNodeId,
+        selected: selectedNodeIds.has(node.id),
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
         overviewInteractionsDisabled: params.overviewInteractionsDisabled,
@@ -8256,6 +8988,125 @@ function applyCanvasNodeLayoutDrafts(
       }
     };
   });
+}
+
+function applyCanvasGroupDrafts(params: {
+  groups: CanvasGroupSummary[];
+  hostNodes: CanvasNodeSummary[];
+  flowNodes: CanvasFlowNode[];
+  drafts: Record<string, CanvasGroupDraft>;
+}): { groups: CanvasGroupSummary[]; nodes: CanvasFlowNode[] } {
+  const groupsById = new Map(params.groups.map((group) => [group.id, group] as const));
+  const movingDrafts = Object.entries(params.drafts).flatMap(([groupId, draft]) => {
+    const group = groupsById.get(groupId);
+    if (!group?.id || !draft.position) {
+      return [];
+    }
+
+    return [
+      {
+        groupId,
+        subtreeGroupIds: collectGroupSubtreeIdsForWebview(params.groups, groupId),
+        delta: {
+          x: draft.position.x - group.position.x,
+          y: draft.position.y - group.position.y
+        }
+      }
+    ];
+  });
+
+  const groups = params.groups.map((group) => {
+    const translatedPosition = movingDrafts.reduce(
+      (position, movingDraft) =>
+        movingDraft.subtreeGroupIds.has(group.id)
+          ? {
+              x: position.x + movingDraft.delta.x,
+              y: position.y + movingDraft.delta.y
+            }
+          : position,
+      group.position
+    );
+    const draft = params.drafts[group.id];
+    return {
+      ...group,
+      position: {
+        x: Math.round(translatedPosition.x),
+        y: Math.round(translatedPosition.y)
+      },
+      size: draft?.size ?? group.size
+    };
+  });
+
+  const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
+  const nodes = params.flowNodes.map((node) => {
+    const hostNode = hostNodesById.get(node.id);
+    if (!hostNode?.groupId) {
+      return node;
+    }
+
+    const delta = movingDrafts.reduce(
+      (currentDelta, movingDraft) =>
+        movingDraft.subtreeGroupIds.has(hostNode.groupId ?? '')
+          ? {
+              x: currentDelta.x + movingDraft.delta.x,
+              y: currentDelta.y + movingDraft.delta.y
+            }
+          : currentDelta,
+      { x: 0, y: 0 }
+    );
+    if (delta.x === 0 && delta.y === 0) {
+      return node;
+    }
+
+    return {
+      ...node,
+      position: {
+        x: Math.round(node.position.x + delta.x),
+        y: Math.round(node.position.y + delta.y)
+      }
+    };
+  });
+
+  return { groups, nodes };
+}
+
+function collectGroupSubtreeIdsForWebview(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const group of groups) {
+    if (!group.parentGroupId) {
+      continue;
+    }
+
+    childrenByParent.set(group.parentGroupId, [...(childrenByParent.get(group.parentGroupId) ?? []), group.id]);
+  }
+
+  const subtreeGroupIds = new Set<string>();
+  const stack = [groupId];
+  while (stack.length > 0) {
+    const nextGroupId = stack.pop();
+    if (!nextGroupId || subtreeGroupIds.has(nextGroupId)) {
+      continue;
+    }
+
+    subtreeGroupIds.add(nextGroupId);
+    for (const childGroupId of childrenByParent.get(nextGroupId) ?? []) {
+      stack.push(childGroupId);
+    }
+  }
+
+  return subtreeGroupIds;
+}
+
+function groupDepthForWebview(groups: readonly CanvasGroupSummary[], groupId: string): number {
+  let depth = 0;
+  let current = groups.find((group) => group.id === groupId);
+  const visited = new Set<string>();
+  while (current?.parentGroupId && !visited.has(current.parentGroupId)) {
+    visited.add(current.parentGroupId);
+    depth += 1;
+    current = groups.find((group) => group.id === current?.parentGroupId);
+  }
+  return depth;
 }
 
 function pruneCanvasNodeLayoutDrafts(
@@ -9292,6 +10143,20 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     Boolean(target.closest('[data-node-interactive="true"], .react-flow__resize-control'))
+  );
+}
+
+function isModifierSelectionInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest(
+      'input, textarea, select, button, a, [contenteditable="true"], .react-flow__resize-control'
+    )
+  ) || Boolean(
+    target.closest('[data-node-interactive="true"]') && !target.closest('.note-markdown-preview')
   );
 }
 

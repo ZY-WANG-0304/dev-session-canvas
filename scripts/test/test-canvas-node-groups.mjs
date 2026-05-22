@@ -1,0 +1,314 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+
+import esbuild from 'esbuild';
+
+const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-canvas-node-groups-'));
+
+try {
+  const outfile = path.join(tempDir, 'canvas-node-groups.cjs');
+  const exportedHelpers = [
+    'createEmptyCanvasGroup',
+    'createGroupFromSelection',
+    'moveNode',
+    'moveGroup',
+    'resizeGroup',
+    'ungroupCanvasGroup',
+    'deleteCanvasNode',
+    'finalizeCanvasGroupState',
+    'normalizeState'
+  ];
+
+  await esbuild.build({
+    stdin: {
+      contents: `export { ${exportedHelpers.join(', ')} } from './src/panel/CanvasPanelManager';`,
+      resolveDir: process.cwd(),
+      sourcefile: 'canvas-node-groups-entry.ts'
+    },
+    bundle: true,
+    format: 'cjs',
+    outfile,
+    platform: 'node',
+    target: 'node18',
+    external: ['node-pty'],
+    plugins: [
+      {
+        name: 'mock-vscode',
+        setup(build) {
+          build.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'mock-vscode' }));
+          build.onLoad({ filter: /.*/, namespace: 'mock-vscode' }, () => ({
+            loader: 'js',
+            contents: `
+              class Disposable { dispose() {} }
+              class EventEmitter { constructor() { this.event = () => new Disposable(); } fire() {} dispose() {} }
+              class ThemeIcon { constructor(id) { this.id = id; } }
+              class TreeItem { constructor(label, collapsibleState) { this.label = label; this.collapsibleState = collapsibleState; } }
+              const Uri = {
+                file: (fsPath) => ({ fsPath, path: fsPath, scheme: 'file', with(change) { return { ...this, ...change }; } }),
+                joinPath: (base, ...segments) => ({ fsPath: [base?.fsPath, ...segments].filter(Boolean).join('/'), path: [base?.path, ...segments].filter(Boolean).join('/'), scheme: base?.scheme ?? 'file' }),
+                parse: (value) => ({ fsPath: value, path: value, scheme: String(value).split(':', 1)[0], with(change) { return { ...this, ...change }; } })
+              };
+              module.exports = {
+                Disposable,
+                EventEmitter,
+                ThemeIcon,
+                TreeItem,
+                TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+                Uri,
+                ViewColumn: { One: 1, Beside: -2 },
+                commands: { executeCommand: async () => undefined, registerCommand: () => new Disposable() },
+                env: { appName: 'VS Code Test', remoteName: undefined, shell: '/bin/bash' },
+                window: {
+                  showInformationMessage: async () => undefined,
+                  showWarningMessage: async () => undefined,
+                  showErrorMessage: async () => undefined,
+                  registerTreeDataProvider: () => new Disposable(),
+                  registerWebviewViewProvider: () => new Disposable(),
+                  createOutputChannel: () => ({ appendLine() {}, dispose() {} })
+                },
+                workspace: {
+                  isTrusted: true,
+                  workspaceFolders: [],
+                  getConfiguration: () => ({ get: () => undefined, update: async () => undefined }),
+                  onDidChangeConfiguration: () => new Disposable(),
+                  fs: { writeFile: async () => undefined, readFile: async () => new Uint8Array(), createDirectory: async () => undefined }
+                }
+              };
+            `
+          }));
+        }
+      },
+      {
+        name: 'export-group-helpers',
+        setup(build) {
+          build.onLoad({ filter: /src\/panel\/CanvasPanelManager\.ts$/ }, async (args) => {
+            const fs = await import('node:fs/promises');
+            let contents = await fs.readFile(args.path, 'utf8');
+            for (const helper of exportedHelpers) {
+              contents = contents.replace(`function ${helper}(`, `export function ${helper}(`);
+            }
+            return { contents, loader: 'ts' };
+          });
+        }
+      }
+    ]
+  });
+
+  const require = createRequire(import.meta.url);
+  const {
+    createEmptyCanvasGroup,
+    createGroupFromSelection,
+    moveNode,
+    moveGroup,
+    resizeGroup,
+    ungroupCanvasGroup,
+    deleteCanvasNode,
+    finalizeCanvasGroupState,
+    normalizeState
+  } = require(outfile);
+
+  const note = (id, position, extra = {}) => ({
+    id,
+    kind: 'note',
+    title: id,
+    status: 'ready',
+    summary: '',
+    position,
+    size: { width: 120, height: 80 },
+    metadata: { note: { content: '' } },
+    ...extra
+  });
+  const agent = (id, position, extra = {}) => ({
+    id,
+    kind: 'agent',
+    title: id,
+    status: 'idle',
+    summary: '',
+    position,
+    size: { width: 160, height: 120 },
+    metadata: { agent: { provider: 'codex' } },
+    ...extra
+  });
+  const fileNode = (id, position, extra = {}) => ({
+    id,
+    kind: 'file',
+    title: id,
+    status: 'linked',
+    summary: '',
+    position,
+    size: { width: 120, height: 80 },
+    metadata: { file: { fileId: id, filePath: `src/${id}.ts`, ownerNodeIds: [], accessMode: 'read' } },
+    ...extra
+  });
+  const group = (id, position, size, extra = {}) => ({
+    id,
+    title: id,
+    position,
+    size,
+    ...extra
+  });
+  const state = (overrides = {}) => ({
+    version: 1,
+    updatedAt: '2026-05-22T00:00:00.000Z',
+    nodes: [],
+    edges: [],
+    groups: [],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 1,
+    ...overrides
+  });
+
+  let nextState = createEmptyCanvasGroup(state(), { x: 41.4, y: 59.6 }, { width: 10, height: 20 });
+  assert.match(nextState.groups[0].id, /^group-1-/u);
+  assert.strictEqual(nextState.groups[0].title, 'Group 1');
+  assert.deepStrictEqual(nextState.groups[0].position, { x: 41, y: 60 });
+  assert.deepStrictEqual(nextState.groups[0].size, { width: 180, height: 96 });
+
+  nextState = createEmptyCanvasGroup({ ...nextState, groups: [{ ...nextState.groups[0], title: 'Renamed' }] }, { x: 400, y: 40 });
+  assert.strictEqual(nextState.groups[1].title, 'Group 2');
+
+  nextState = {
+    ...nextState,
+    groups: nextState.groups.filter((candidate) => candidate.title !== 'Group 2')
+  };
+  nextState = createEmptyCanvasGroup(nextState, { x: 760, y: 40 });
+  assert.strictEqual(nextState.groups.at(-1).title, 'Group 3');
+
+  const pinnedCreateState = createEmptyCanvasGroup(
+    state({ groups: [group('group-existing', { x: 100, y: 100 }, { width: 220, height: 180 })] }),
+    { x: 150, y: 120 },
+    { width: 220, height: 180 }
+  );
+  const pinnedGroup = pinnedCreateState.groups.find((candidate) => candidate.title === 'Group 1');
+  const displacedExistingGroup = pinnedCreateState.groups.find((candidate) => candidate.id === 'group-existing');
+  assert.deepStrictEqual(pinnedGroup.position, { x: 150, y: 120 });
+  assert.ok(displacedExistingGroup.position.x >= pinnedGroup.position.x + pinnedGroup.size.width);
+
+  const groupedSelection = createGroupFromSelection(
+    state({
+      nodes: [
+        note('note-a', { x: 20, y: 20 }),
+        agent('agent-a', { x: 220, y: 20 })
+      ]
+    }),
+    ['note-a', 'agent-a'],
+    []
+  );
+  assert.strictEqual(groupedSelection.groups.length, 1);
+  assert.strictEqual(groupedSelection.groups[0].title, 'Group 1');
+  assert.strictEqual(groupedSelection.nodes.find((candidate) => candidate.id === 'note-a').groupId, groupedSelection.groups[0].id);
+  assert.strictEqual(groupedSelection.nodes.find((candidate) => candidate.id === 'agent-a').groupId, groupedSelection.groups[0].id);
+
+  const crossParentSelection = createGroupFromSelection(
+    state({
+      nodes: [
+        note('note-a', { x: 20, y: 20 }, { groupId: 'group-parent' }),
+        note('note-b', { x: 220, y: 20 })
+      ],
+      groups: [group('group-parent', { x: 0, y: 0 }, { width: 360, height: 240 })]
+    }),
+    ['note-a', 'note-b'],
+    []
+  );
+  assert.strictEqual(crossParentSelection.groups.length, 1);
+  assert.strictEqual(crossParentSelection.nodes.find((candidate) => candidate.id === 'note-b').groupId, undefined);
+
+  const groupedByPointer = moveNode(
+    state({
+      nodes: [note('note-1', { x: 320, y: 20 })],
+      groups: [group('group-target', { x: 0, y: 0 }, { width: 200, height: 160 })]
+    }),
+    'note-1',
+    { x: 240, y: 20 },
+    { x: 100, y: 80 }
+  );
+  assert.strictEqual(groupedByPointer.nodes[0].groupId, 'group-target');
+  assert.ok(groupedByPointer.groups[0].size.width >= 240 + 120 + 28);
+
+  const ungroupedByPointer = moveNode(groupedByPointer, 'note-1', { x: 500, y: 20 }, { x: 500, y: 20 });
+  assert.strictEqual(ungroupedByPointer.nodes[0].groupId, undefined);
+
+  const movedTree = moveGroup(
+    state({
+      nodes: [note('note-child', { x: 90, y: 90 }, { groupId: 'group-child' })],
+      groups: [
+        group('group-parent', { x: 0, y: 0 }, { width: 260, height: 220 }),
+        group('group-child', { x: 50, y: 50 }, { width: 180, height: 140 }, { parentGroupId: 'group-parent' })
+      ]
+    }),
+    'group-parent',
+    { x: 100, y: 90 },
+    { x: 900, y: 900 }
+  );
+  assert.deepStrictEqual(movedTree.groups.find((candidate) => candidate.id === 'group-parent').position, { x: 100, y: 90 });
+  assert.deepStrictEqual(movedTree.groups.find((candidate) => candidate.id === 'group-child').position, { x: 150, y: 140 });
+  assert.deepStrictEqual(movedTree.nodes.find((candidate) => candidate.id === 'note-child').position, { x: 190, y: 180 });
+
+  const resizedToAdopt = resizeGroup(
+    state({
+      groups: [
+        group('group-parent', { x: 0, y: 0 }, { width: 220, height: 180 }),
+        group('group-child', { x: 280, y: 40 }, { width: 120, height: 90 })
+      ]
+    }),
+    'group-parent',
+    { x: 0, y: 0 },
+    { width: 430, height: 180 }
+  );
+  assert.strictEqual(resizedToAdopt.groups.find((candidate) => candidate.id === 'group-child').parentGroupId, 'group-parent');
+
+  const resizedToRelease = resizeGroup(resizedToAdopt, 'group-parent', { x: 0, y: 0 }, { width: 220, height: 160 });
+  assert.strictEqual(resizedToRelease.groups.find((candidate) => candidate.id === 'group-child').parentGroupId, undefined);
+
+  const ungrouped = ungroupCanvasGroup(
+    state({
+      nodes: [note('note-1', { x: 20, y: 20 }, { groupId: 'group-parent' })],
+      groups: [
+        group('group-parent', { x: 0, y: 0 }, { width: 260, height: 220 }),
+        group('group-child', { x: 40, y: 40 }, { width: 120, height: 100 }, { parentGroupId: 'group-parent' })
+      ]
+    }),
+    'group-parent'
+  );
+  assert.deepStrictEqual(ungrouped.groups.map((candidate) => candidate.id), ['group-child']);
+  assert.strictEqual(ungrouped.groups[0].parentGroupId, undefined);
+  assert.strictEqual(ungrouped.nodes[0].groupId, undefined);
+
+  const normalized = normalizeState(
+    state({
+      nodes: [agent('agent-1', { x: 0, y: 0 }, { groupId: 'group-valid' }), fileNode('file-1', { x: 200, y: 0 }, { groupId: 'group-valid' })],
+      groups: [group('group-valid', { x: 0, y: 0 }, { width: 360, height: 240 })]
+    }),
+    'codex',
+    { enabled: false, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' }
+  );
+  assert.strictEqual(normalized.nodes.find((candidate) => candidate.id === 'agent-1').groupId, 'group-valid');
+  assert.strictEqual(normalized.nodes.find((candidate) => candidate.id === 'file-1').groupId, undefined);
+
+  const deleted = deleteCanvasNode(
+    state({
+      nodes: [note('note-1', { x: 0, y: 0 }, { groupId: 'group-1' })],
+      groups: [group('group-1', { x: 0, y: 0 }, { width: 360, height: 240 })],
+      edges: [{ id: 'edge-1', sourceNodeId: 'note-1', targetNodeId: 'note-1', sourceAnchor: 'right', targetAnchor: 'left', arrowMode: 'none', owner: 'user' }]
+    }),
+    'note-1'
+  );
+  assert.deepStrictEqual(deleted.nodes, []);
+  assert.deepStrictEqual(deleted.edges, []);
+  assert.deepStrictEqual(deleted.groups.map((candidate) => candidate.id), ['group-1']);
+
+  const finalized = finalizeCanvasGroupState(
+    state({
+      nodes: [note('note-1', { x: 100, y: 100 }, { groupId: 'missing-group' })],
+      groups: []
+    })
+  );
+  assert.strictEqual(finalized.nodes[0].groupId, undefined);
+} finally {
+  await rm(tempDir, { recursive: true, force: true });
+}
