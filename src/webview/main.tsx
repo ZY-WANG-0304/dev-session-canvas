@@ -45,6 +45,14 @@ import '@xterm/xterm/css/xterm.css';
 import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
 
+import {
+  createNoteMarkdownSourceMap,
+  type NoteMarkdownSourceBlockKind,
+  type NoteMarkdownSourceBlockRange,
+  type NoteMarkdownSourceMap,
+  type NoteMarkdownSourceTextSegment
+} from '../common/noteMarkdownSourceMap';
+
 import type {
   AgentNodeMetadata,
   AgentLaunchDefaultsByProvider,
@@ -305,6 +313,11 @@ interface NoteMarkdownPreviewResult {
   html: string;
   frontMatter: NoteMarkdownFrontMatter;
 }
+interface NoteBodyFocusRequest {
+  selectionStart: number;
+  selectionEnd: number;
+  selectionDirection?: HTMLTextAreaElement['selectionDirection'];
+}
 type NoteMarkdownImageWorkspaceRoot = NonNullable<CanvasRuntimeContext['noteMarkdownImageWorkspaceRoots']>[number];
 interface NoteMarkdownPreviewRenderOptions {
   imageBaseUri?: string;
@@ -327,7 +340,8 @@ const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
-const NOTE_MARKDOWN_IMAGE_SELECTOR = 'img.note-markdown-image';
+const NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR = '[data-note-markdown-source-offsets]';
+const NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR = '[data-note-markdown-source-block="true"]';
 const NOTE_MARKDOWN_DATA_IMAGE_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[A-Za-z0-9+/=\r\n]+$/iu;
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
@@ -4583,7 +4597,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyMeasureRef = useRef<HTMLDivElement | null>(null);
-  const pendingBodyFocusRef = useRef(false);
+  const bodyPreviewRef = useRef<HTMLDivElement | null>(null);
+  const pendingBodyScrollTopRef = useRef<number | null>(null);
+  const pendingBodyPreviewScrollTargetRef = useRef<number | null>(null);
+  const pendingBodyFocusRef = useRef<NoteBodyFocusRequest | null>(null);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
   const pendingBodyFocusSelectionRef = useRef<{
     selectionStart: number;
@@ -4922,15 +4939,35 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       return;
     }
 
-    pendingBodyFocusRef.current = false;
+    const focusRequest = pendingBodyFocusRef.current;
+    pendingBodyFocusRef.current = null;
     const textarea = bodyInputRef.current;
     if (!textarea) {
       return;
     }
 
-    textarea.focus();
-    const selectionEnd = textarea.value.length;
-    textarea.setSelectionRange(selectionEnd, selectionEnd);
+    const selectionStart = clampNoteMarkdownSourceOffset(focusRequest.selectionStart, textarea.value);
+    const selectionEnd = clampNoteMarkdownSourceOffset(focusRequest.selectionEnd, textarea.value);
+    const restoredScrollTop =
+      resolveNoteBodyTextareaScrollTopForSourceOffset(
+        textarea,
+        textarea.value,
+        selectionStart,
+        bodyVisualLineCounts
+      ) ?? pendingBodyScrollTopRef.current ?? bodyScrollTop;
+    pendingBodyScrollTopRef.current = null;
+
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(selectionStart, selectionEnd, focusRequest.selectionDirection ?? 'none');
+
+    const applyRestoredScrollTop = (): void => {
+      textarea.scrollTop = clampElementScrollTop(textarea, restoredScrollTop);
+      setBodyScrollTop(textarea.scrollTop);
+    };
+
+    applyRestoredScrollTop();
+    const frame = window.requestAnimationFrame(applyRestoredScrollTop);
+    return () => window.cancelAnimationFrame(frame);
   }, [isEditingBody]);
 
   useLayoutEffect(() => {
@@ -4940,6 +4977,26 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     measureBodyVisualLineCounts();
   }, [bodyLines, isEditingBody, measureBodyVisualLineCounts]);
+
+  useLayoutEffect(() => {
+    if (isEditingBody) {
+      return;
+    }
+
+    const preview = bodyPreviewRef.current;
+    if (!preview) {
+      return;
+    }
+
+    const sourceOffset = pendingBodyPreviewScrollTargetRef.current;
+    pendingBodyPreviewScrollTargetRef.current = null;
+    if (sourceOffset !== null && scrollNoteMarkdownPreviewToSourceOffset(preview, sourceOffset)) {
+      setBodyScrollTop(preview.scrollTop);
+      return;
+    }
+
+    preview.scrollTop = clampElementScrollTop(preview, bodyScrollTop);
+  }, [bodyScrollTop, isEditingBody, previewHtml]);
 
   useEffect(() => {
     if (!isEditingBody) {
@@ -4981,12 +5038,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     }
 
     const textarea = bodyInputRef.current;
+    const pendingSelection = pendingBodySelectionRef.current;
+    pendingBodySelectionRef.current = null;
     if (!textarea) {
       return;
     }
 
-    const pendingSelection = pendingBodySelectionRef.current;
-    pendingBodySelectionRef.current = null;
     textarea.setSelectionRange(pendingSelection.selectionStart, pendingSelection.selectionEnd);
   }, [content, isEditingBody]);
 
@@ -5013,7 +5070,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       return;
     }
 
-    pendingBodyFocusRef.current = false;
+    pendingBodyFocusRef.current = null;
     pendingBodySelectionRef.current = null;
     if (document.activeElement === bodyInputRef.current) {
       bodyInputRef.current?.blur();
@@ -5227,17 +5284,21 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     createMissingAssociatedMarkdownFile();
   };
 
-  const startEditingBody = (): void => {
+  const startEditingBody = (focusRequest?: NoteBodyFocusRequest): void => {
     if (overviewInteractionsDisabled || !associatedMarkdownFileEditable) {
       return;
     }
-    pendingBodyFocusRef.current = true;
+    const contentLength = noteMetadata.content.length;
+    pendingBodyFocusRef.current = focusRequest ?? {
+      selectionStart: contentLength,
+      selectionEnd: contentLength
+    };
     data.onSelectNode?.(id);
     editBaselineContentRef.current = noteMetadata.content;
     editBaselineRevisionRef.current = associatedMarkdownContentRevision;
     setAssociatedMarkdownConflictResolution(null);
     setAssociatedMarkdownEditConflict(null);
-    setBodyScrollTop(0);
+    pendingBodyScrollTopRef.current = bodyPreviewRef.current?.scrollTop ?? bodyScrollTop;
     beginAssociatedMarkdownEdit(noteMetadata.content);
     setIsEditingBody(true);
   };
@@ -5313,11 +5374,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const handlePreviewDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
-    if (
-      findNoteMarkdownChecklistInputTarget(event.target) ||
-      findNoteMarkdownLinkTarget(event.target) ||
-      findNoteMarkdownImageTarget(event.target)
-    ) {
+    if (findNoteMarkdownChecklistInputTarget(event.target) || findNoteMarkdownLinkTarget(event.target)) {
       return;
     }
     if (overviewInteractionsDisabled) {
@@ -5326,7 +5383,13 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     event.preventDefault();
     stopCanvasEvent(event);
-    startEditingBody();
+    startEditingBody(
+      createNoteBodyFocusRequestFromPreviewDoubleClick({
+        content,
+        event,
+        preview: event.currentTarget
+      })
+    );
   };
 
   const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -5542,6 +5605,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                     persistAssociatedMarkdownDraft(nextContent, { immediate: true });
                     return;
                   }
+                  pendingBodyPreviewScrollTargetRef.current = resolveNoteBodySourceOffsetForTextareaScrollTop(
+                    event.currentTarget,
+                    nextContent,
+                    bodyVisualLineCounts
+                  );
                   setIsEditingBody(false);
                   submitNote(nextContent);
                   endAssociatedMarkdownEdit();
@@ -5597,6 +5665,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             </div>
           ) : (
             <div
+              ref={bodyPreviewRef}
               className={`note-markdown-preview nowheel nodrag nopan ${content.trim() ? '' : 'is-empty'}`.trim()}
               data-node-interactive="true"
               data-probe-field="body"
@@ -5614,6 +5683,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               onMouseDown={stopCanvasEvent}
               onClick={handlePreviewClick}
               onDoubleClick={handlePreviewDoubleClick}
+              onScroll={(event) => setBodyScrollTop(event.currentTarget.scrollTop)}
               onKeyDown={handlePreviewKeyDown}
             >
               {previewHtml ? (
@@ -8635,6 +8705,146 @@ function createNoteBodyLineNumberRows(
   return rows;
 }
 
+
+function clampElementScrollTop(
+  element: Pick<HTMLElement, 'clientHeight' | 'scrollHeight'>,
+  scrollTop: number
+): number {
+  if (!Number.isFinite(scrollTop)) {
+    return 0;
+  }
+
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  return Math.max(0, Math.min(scrollTop, maxScrollTop));
+}
+
+function resolveNoteBodyTextareaScrollTopForSourceOffset(
+  textarea: HTMLTextAreaElement,
+  content: string,
+  sourceOffset: number,
+  visualLineCounts: readonly number[]
+): number | null {
+  if (!content || !Number.isFinite(sourceOffset)) {
+    return null;
+  }
+
+  const lineIndex = findTextLineIndexForOffset(content, sourceOffset);
+  const lineHeight = readElementLineHeightPx(textarea);
+  const visualRowsBeforeLine = countVisualRowsBeforeLine(visualLineCounts, lineIndex);
+  const targetScrollTop = Math.max(0, visualRowsBeforeLine * lineHeight - textarea.clientHeight * 0.35);
+  return clampElementScrollTop(textarea, targetScrollTop);
+}
+
+function resolveNoteBodySourceOffsetForTextareaScrollTop(
+  textarea: HTMLTextAreaElement,
+  content: string,
+  visualLineCounts: readonly number[]
+): number | null {
+  if (!content) {
+    return 0;
+  }
+
+  const lineHeight = readElementLineHeightPx(textarea);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+    return null;
+  }
+
+  const firstVisibleVisualRow = Math.max(0, Math.floor(textarea.scrollTop / lineHeight));
+  const lineIndex = findLogicalLineIndexForVisualRow(visualLineCounts, firstVisibleVisualRow);
+  return findTextLineStartOffset(content, lineIndex);
+}
+
+function scrollNoteMarkdownPreviewToSourceOffset(preview: HTMLElement, sourceOffset: number): boolean {
+  const target = findNoteMarkdownPreviewSourceElement(preview, sourceOffset);
+  if (!target) {
+    return false;
+  }
+
+  const previewRect = preview.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetScrollTop = preview.scrollTop + targetRect.top - previewRect.top - preview.clientHeight * 0.2;
+  preview.scrollTop = clampElementScrollTop(preview, targetScrollTop);
+  return true;
+}
+
+function findNoteMarkdownPreviewSourceElement(preview: HTMLElement, sourceOffset: number): HTMLElement | null {
+  let bestElement: HTMLElement | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const candidates = preview.querySelectorAll<HTMLElement>(
+    `${NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR}, ${NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR}`
+  );
+
+  for (const element of Array.from(candidates)) {
+    const sourceStart = readNoteMarkdownSourceStart(element);
+    const sourceEnd = readNoteMarkdownSourceEnd(element);
+    if (sourceStart === null || sourceEnd === null) {
+      continue;
+    }
+
+    const distance =
+      sourceOffset < sourceStart ? sourceStart - sourceOffset : sourceOffset > sourceEnd ? sourceOffset - sourceEnd : 0;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestElement = element;
+    }
+  }
+
+  return bestElement;
+}
+
+function findTextLineIndexForOffset(content: string, offset: number): number {
+  const clampedOffset = clampNoteMarkdownSourceOffset(offset, content);
+  let lineIndex = 0;
+  for (let index = 0; index < clampedOffset; index += 1) {
+    if (content.charCodeAt(index) === 10) {
+      lineIndex += 1;
+    }
+  }
+  return lineIndex;
+}
+
+function findTextLineStartOffset(content: string, lineIndex: number): number {
+  if (lineIndex <= 0) {
+    return 0;
+  }
+
+  let currentLineIndex = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) !== 10) {
+      continue;
+    }
+
+    currentLineIndex += 1;
+    if (currentLineIndex === lineIndex) {
+      return index + 1;
+    }
+  }
+
+  return content.length;
+}
+
+function countVisualRowsBeforeLine(visualLineCounts: readonly number[], lineIndex: number): number {
+  let count = 0;
+  for (let index = 0; index < Math.max(0, lineIndex); index += 1) {
+    count += Math.max(1, visualLineCounts[index] ?? 1);
+  }
+  return count;
+}
+
+function findLogicalLineIndexForVisualRow(visualLineCounts: readonly number[], visualRow: number): number {
+  let remainingRows = Math.max(0, visualRow);
+  const lineCount = Math.max(1, visualLineCounts.length);
+  for (let index = 0; index < lineCount; index += 1) {
+    const visualLineCount = Math.max(1, visualLineCounts[index] ?? 1);
+    if (remainingRows < visualLineCount) {
+      return index;
+    }
+    remainingRows -= visualLineCount;
+  }
+
+  return lineCount - 1;
+}
+
 function readElementLineHeightPx(element: HTMLElement): number {
   const computedStyle = window.getComputedStyle(element);
   const lineHeight = Number.parseFloat(computedStyle.lineHeight);
@@ -8708,6 +8918,186 @@ function applyNoteBodyIndentChange(
     textarea.setSelectionRange(selectionStart, selectionEnd);
   });
 }
+
+function createNoteBodyFocusRequestFromPreviewDoubleClick(params: {
+  content: string;
+  event: React.MouseEvent<HTMLElement>;
+  preview: HTMLElement;
+}): NoteBodyFocusRequest {
+  const sourceOffset = findNotePreviewSourceOffset(params.event.nativeEvent, params.preview) ?? params.content.length;
+  const clampedOffset = clampNoteMarkdownSourceOffset(sourceOffset, params.content);
+  return {
+    selectionStart: clampedOffset,
+    selectionEnd: clampedOffset
+  };
+}
+
+function findNotePreviewSourceOffset(event: MouseEvent, preview: HTMLElement): number | null {
+  const caret = findNotePreviewCaretPosition(event.clientX, event.clientY);
+  if (caret) {
+    const textSourceElement = findNotePreviewTextSourceElement(caret.node);
+    const textOffset =
+      textSourceElement && isNotePreviewTextSourceElementHit(textSourceElement, event, preview)
+        ? readNotePreviewTextSourceOffset(caret.node, caret.offset)
+        : null;
+    if (textOffset !== null) {
+      return textOffset;
+    }
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  const targetFallback = findNotePreviewFallbackSourceEnd(target, preview);
+  if (targetFallback !== null) {
+    return targetFallback;
+  }
+
+  if (caret?.node) {
+    const caretFallback = findNotePreviewFallbackSourceEnd(caret.node, preview);
+    if (caretFallback !== null) {
+      return caretFallback;
+    }
+  }
+
+  return null;
+}
+
+function findNotePreviewCaretPosition(x: number, y: number): { node: globalThis.Node; offset: number } | null {
+  const documentWithCaretPosition = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: globalThis.Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+
+  const position = documentWithCaretPosition.caretPositionFromPoint?.(x, y);
+  if (position?.offsetNode) {
+    return {
+      node: position.offsetNode,
+      offset: position.offset
+    };
+  }
+
+  const range = documentWithCaretPosition.caretRangeFromPoint?.(x, y);
+  if (range) {
+    return {
+      node: range.startContainer,
+      offset: range.startOffset
+    };
+  }
+
+  return null;
+}
+
+function readNotePreviewTextSourceOffset(node: globalThis.Node, offset: number): number | null {
+  const textNode = node instanceof Text ? node : null;
+  const element = textNode ? findNotePreviewTextSourceElement(textNode) : null;
+  if (!textNode || !element) {
+    return null;
+  }
+
+  const rawOffsets = element.dataset.noteMarkdownSourceOffsets;
+  if (!rawOffsets) {
+    return null;
+  }
+
+  let sourceOffsets: unknown;
+  try {
+    sourceOffsets = JSON.parse(rawOffsets);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(sourceOffsets)) {
+    return null;
+  }
+
+  const localOffset = Math.min(Math.max(offset, 0), textNode.data.length);
+  const sourceOffset = sourceOffsets[localOffset];
+  return Number.isSafeInteger(sourceOffset) ? sourceOffset : null;
+}
+
+function findNotePreviewTextSourceElement(node: globalThis.Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest<HTMLElement>(NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR) ?? null;
+}
+
+function isNotePreviewTextSourceElementHit(
+  element: HTMLElement,
+  event: MouseEvent,
+  preview: HTMLElement
+): boolean {
+  if (!preview.contains(element)) {
+    return false;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest(NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR) === element) {
+    return true;
+  }
+
+  const hitSlop = 2;
+  for (const rect of Array.from(element.getClientRects())) {
+    if (
+      event.clientX >= rect.left - hitSlop &&
+      event.clientX <= rect.right + hitSlop &&
+      event.clientY >= rect.top - hitSlop &&
+      event.clientY <= rect.bottom + hitSlop
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function findNotePreviewFallbackSourceEnd(target: globalThis.Node | null, preview: HTMLElement): number | null {
+  const startElement = target instanceof Element ? target : target?.parentElement;
+  if (!startElement) {
+    return readNoteMarkdownSourceEnd(preview);
+  }
+
+  const blocks: HTMLElement[] = [];
+  let current: HTMLElement | null = startElement instanceof HTMLElement ? startElement : startElement.parentElement;
+  while (current && current !== preview.parentElement) {
+    if (current.matches(NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR)) {
+      blocks.push(current);
+    }
+    current = current.parentElement;
+  }
+
+  for (const block of blocks) {
+    if (!block || !preview.contains(block)) {
+      continue;
+    }
+    const sourceEnd = readNoteMarkdownSourceEnd(block);
+    if (sourceEnd !== null) {
+      return sourceEnd;
+    }
+  }
+
+  return readNoteMarkdownSourceEnd(preview);
+}
+
+function readNoteMarkdownSourceStart(element: HTMLElement): number | null {
+  return readNoteMarkdownSourceBoundary(element.dataset.noteMarkdownSourceStart);
+}
+
+function readNoteMarkdownSourceEnd(element: HTMLElement): number | null {
+  return readNoteMarkdownSourceBoundary(element.dataset.noteMarkdownSourceEnd);
+}
+
+function readNoteMarkdownSourceBoundary(rawValue: string | undefined): number | null {
+  if (!rawValue) {
+    return null;
+  }
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function clampNoteMarkdownSourceOffset(offset: number, content: string): number {
+  if (!Number.isFinite(offset)) {
+    return content.length;
+  }
+  return Math.max(0, Math.min(Math.round(offset), content.length));
+}
+
 
 function handleEditableFieldKeyDown(
   event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -9591,6 +9981,31 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         checkbox.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         break;
       }
+      case 'doubleClickNotePreviewText': {
+        const point = queryNotePreviewTextPoint(action.nodeId, action.text, action.offset);
+        const target = document.elementFromPoint(point.x, point.y) ?? point.element;
+        postMessage({
+          type: 'webview/testDomActionResult',
+          payload: {
+            requestId,
+            ok: true
+          }
+        });
+        dispatchSyntheticMouseDoubleClick(target, point);
+        return;
+      }
+      case 'doubleClickNotePreviewSelector': {
+        const target = queryNotePreviewSelectorTarget(action.nodeId, action.selector);
+        postMessage({
+          type: 'webview/testDomActionResult',
+          payload: {
+            requestId,
+            ok: true
+          }
+        });
+        dispatchSyntheticMouseDoubleClick(target, readElementCenterPoint(target));
+        return;
+      }
     }
 
     await waitForDomActionFlush();
@@ -9720,6 +10135,72 @@ function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputE
   return target;
 }
 
+function queryNotePreviewTextPoint(
+  nodeId: string,
+  text: string,
+  offset = Math.floor(text.length / 2)
+): { element: Element; x: number; y: number } {
+  const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
+  if (!preview) {
+    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+  }
+
+  const textNode = findTextNodeContaining(preview, text);
+  if (!textNode) {
+    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到文本 ${text}。`);
+  }
+
+  const clampedOffset = Math.min(Math.max(0, offset), text.length);
+  const range = document.createRange();
+  const startOffset = textNode.data.indexOf(text);
+  const textOffset = startOffset + clampedOffset;
+  range.setStart(textNode, textOffset);
+  range.setEnd(textNode, Math.min(textNode.data.length, textOffset + 1));
+  const rect = range.getBoundingClientRect();
+  const fallbackRect = textNode.parentElement?.getBoundingClientRect() ?? preview.getBoundingClientRect();
+  range.detach();
+
+  return {
+    element: textNode.parentElement ?? preview,
+    x: rect.width > 0 ? rect.left + Math.min(2, rect.width / 4) : fallbackRect.left + fallbackRect.width / 2,
+    y: rect.height > 0 ? rect.top + rect.height / 2 : fallbackRect.top + fallbackRect.height / 2
+  };
+}
+
+function findTextNodeContaining(root: HTMLElement, text: string): Text | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node instanceof Text && node.data.includes(text)) {
+      return node;
+    }
+  }
+
+  return null;
+}
+
+function queryNotePreviewSelectorTarget(nodeId: string, selector: string): HTMLElement {
+  const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
+  if (!preview) {
+    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+  }
+
+  const target = preview.querySelector<HTMLElement>(selector);
+  if (!target) {
+    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到 selector ${selector}。`);
+  }
+
+  return target;
+}
+
+function readElementCenterPoint(element: Element): { x: number; y: number } {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+}
+
+
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
@@ -9783,12 +10264,14 @@ function setControlledFieldValue(
   descriptor?.set?.call(element, value);
 }
 
-function dispatchSyntheticMouseClick(target: Element): void {
+function dispatchSyntheticMouseClick(target: Element, point?: { x: number; y: number }): void {
   const eventInit = {
     bubbles: true,
     cancelable: true,
     composed: true,
-    button: 0
+    button: 0,
+    clientX: point?.x ?? 0,
+    clientY: point?.y ?? 0
   };
 
   target.dispatchEvent(new MouseEvent('mousedown', eventInit));
@@ -9796,15 +10279,17 @@ function dispatchSyntheticMouseClick(target: Element): void {
   target.dispatchEvent(new MouseEvent('click', eventInit));
 }
 
-function dispatchSyntheticMouseDoubleClick(target: Element): void {
-  dispatchSyntheticMouseClick(target);
-  dispatchSyntheticMouseClick(target);
+function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number; y: number }): void {
+  dispatchSyntheticMouseClick(target, point);
+  dispatchSyntheticMouseClick(target, point);
   target.dispatchEvent(
     new MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
       composed: true,
-      button: 0
+      button: 0,
+      clientX: point?.x ?? 0,
+      clientY: point?.y ?? 0
     })
   );
 }
@@ -9885,6 +10370,239 @@ function extractDroppedNoteMarkdownResources(dataTransfer: DataTransfer | null):
 
   return resources;
 }
+
+
+function annotateNoteMarkdownPreviewHtml(html: string, sourceMap: NoteMarkdownSourceMap): string {
+  if (!html || (sourceMap.textSegments.length === 0 && sourceMap.blockRanges.length === 0)) {
+    return html;
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  applyNoteMarkdownSourceBlockRanges(template.content, sourceMap.blockRanges);
+  applyNoteMarkdownSourceTextSegments(template.content, sourceMap.textSegments);
+  return template.innerHTML;
+}
+
+function applyNoteMarkdownSourceBlockRanges(root: ParentNode, ranges: readonly NoteMarkdownSourceBlockRange[]): void {
+  const candidateCache = new Map<NoteMarkdownSourceBlockKind, HTMLElement[]>();
+  const candidateIndexes = new Map<NoteMarkdownSourceBlockKind, number>();
+
+  for (const range of ranges) {
+    const candidates = readNoteMarkdownSourceBlockCandidates(root, range.kind, candidateCache);
+    const candidateIndex = candidateIndexes.get(range.kind) ?? 0;
+    candidateIndexes.set(range.kind, candidateIndex + 1);
+    const element = candidates[candidateIndex];
+    if (!element) {
+      continue;
+    }
+
+    const existingStart = readNoteMarkdownSourceStart(element);
+    const existingEnd = readNoteMarkdownSourceEnd(element);
+    const sourceStart = existingStart === null ? range.sourceStart : Math.min(existingStart, range.sourceStart);
+    const sourceEnd = existingEnd === null ? range.sourceEnd : Math.max(existingEnd, range.sourceEnd);
+    element.dataset.noteMarkdownSourceBlock = 'true';
+    element.dataset.noteMarkdownSourceStart = String(sourceStart);
+    element.dataset.noteMarkdownSourceEnd = String(sourceEnd);
+  }
+}
+
+function readNoteMarkdownSourceBlockCandidates(
+  root: ParentNode,
+  kind: NoteMarkdownSourceBlockKind,
+  cache: Map<NoteMarkdownSourceBlockKind, HTMLElement[]>
+): HTMLElement[] {
+  const cached = cache.get(kind);
+  if (cached) {
+    return cached;
+  }
+
+  const selector = noteMarkdownSourceBlockSelectorForKind(kind);
+  const candidates = selector ? Array.from(root.querySelectorAll<HTMLElement>(selector)) : [];
+  cache.set(kind, candidates);
+  return candidates;
+}
+
+function noteMarkdownSourceBlockSelectorForKind(kind: NoteMarkdownSourceBlockKind): string | null {
+  switch (kind) {
+    case 'blockquote':
+      return 'blockquote';
+    case 'code':
+      return 'pre';
+    case 'heading':
+      return 'h1, h2, h3, h4, h5, h6';
+    case 'image':
+      return 'img.note-markdown-image, .note-markdown-image-fallback';
+    case 'list':
+      return 'ul, ol';
+    case 'listItem':
+      return 'li';
+    case 'math':
+      return '.note-markdown-math-display';
+    case 'paragraph':
+      return 'p';
+    case 'table':
+      return 'table';
+    case 'thematicBreak':
+      return 'hr';
+    default:
+      return null;
+  }
+}
+
+function applyNoteMarkdownSourceTextSegments(root: ParentNode, segments: readonly NoteMarkdownSourceTextSegment[]): void {
+  if (segments.length === 0) {
+    return;
+  }
+
+  const textIndex = createNoteMarkdownPreviewTextIndex(root);
+  if (textIndex.text.length === 0) {
+    return;
+  }
+
+  let searchStart = 0;
+  const operations = new Map<Text, Array<{ start: number; end: number; sourceOffsets: number[] }>>();
+  for (const segment of segments) {
+    if (!segment.text) {
+      continue;
+    }
+
+    const matchIndex = textIndex.text.indexOf(segment.text, searchStart);
+    if (matchIndex === -1) {
+      continue;
+    }
+
+    collectNoteMarkdownTextSegmentWrapOperations({
+      textIndex,
+      segment,
+      matchIndex,
+      operations
+    });
+    searchStart = matchIndex + segment.text.length;
+  }
+
+  for (const [textNode, nodeOperations] of operations) {
+    wrapNoteMarkdownTextNodeRanges(textNode, nodeOperations);
+  }
+}
+
+function createNoteMarkdownPreviewTextIndex(root: ParentNode): {
+  text: string;
+  chars: Array<{ node: Text; offset: number }>;
+} {
+  const chars: Array<{ node: Text; offset: number }> = [];
+  let text = '';
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!(node instanceof Text) || !node.data) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      const parent = node.parentElement;
+      if (
+        parent?.closest(
+          '.katex, .katex-display, .katex-error, .note-markdown-math-display, .note-markdown-math-fallback, .note-markdown-image-fallback'
+        )
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+    if (!(current instanceof Text)) {
+      continue;
+    }
+    for (let offset = 0; offset < current.data.length; offset += 1) {
+      text += current.data.charAt(offset);
+      chars.push({ node: current, offset });
+    }
+  }
+
+  return { text, chars };
+}
+
+function collectNoteMarkdownTextSegmentWrapOperations(params: {
+  textIndex: { chars: Array<{ node: Text; offset: number }> };
+  segment: NoteMarkdownSourceTextSegment;
+  matchIndex: number;
+  operations: Map<Text, Array<{ start: number; end: number; sourceOffsets: number[] }>>;
+}): void {
+  const { textIndex, segment, matchIndex, operations } = params;
+  let rangeStart = 0;
+  while (rangeStart < segment.text.length) {
+    const firstChar = textIndex.chars[matchIndex + rangeStart];
+    if (!firstChar) {
+      return;
+    }
+
+    let rangeEnd = rangeStart + 1;
+    while (rangeEnd < segment.text.length) {
+      const previousChar = textIndex.chars[matchIndex + rangeEnd - 1];
+      const currentChar = textIndex.chars[matchIndex + rangeEnd];
+      if (!currentChar || currentChar.node !== firstChar.node || currentChar.offset !== previousChar.offset + 1) {
+        break;
+      }
+      rangeEnd += 1;
+    }
+
+    const sourceOffsets = segment.sourceOffsets.slice(rangeStart, rangeEnd + 1);
+    if (sourceOffsets.length === rangeEnd - rangeStart + 1) {
+      const nodeOperations = operations.get(firstChar.node) ?? [];
+      nodeOperations.push({
+        start: firstChar.offset,
+        end: firstChar.offset + (rangeEnd - rangeStart),
+        sourceOffsets
+      });
+      operations.set(firstChar.node, nodeOperations);
+    }
+
+    rangeStart = rangeEnd;
+  }
+}
+
+function wrapNoteMarkdownTextNodeRanges(
+  textNode: Text,
+  operations: Array<{ start: number; end: number; sourceOffsets: number[] }>
+): void {
+  const parent = textNode.parentNode;
+  if (!parent) {
+    return;
+  }
+
+  const sortedOperations = operations
+    .filter((operation) => operation.start < operation.end)
+    .sort((a, b) => a.start - b.start);
+  if (sortedOperations.length === 0) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const operation of sortedOperations) {
+    if (operation.start < cursor) {
+      continue;
+    }
+    if (operation.start > cursor) {
+      fragment.append(document.createTextNode(textNode.data.slice(cursor, operation.start)));
+    }
+
+    const span = document.createElement('span');
+    span.dataset.noteMarkdownSourceOffsets = JSON.stringify(operation.sourceOffsets);
+    span.dataset.noteMarkdownSourceStart = String(operation.sourceOffsets[0]);
+    span.dataset.noteMarkdownSourceEnd = String(operation.sourceOffsets[operation.sourceOffsets.length - 1]);
+    span.textContent = textNode.data.slice(operation.start, operation.end);
+    fragment.append(span);
+    cursor = operation.end;
+  }
+
+  if (cursor < textNode.data.length) {
+    fragment.append(document.createTextNode(textNode.data.slice(cursor)));
+  }
+
+  parent.replaceChild(fragment, textNode);
+}
+
 
 function createNoteMarkdownRenderer(): MarkdownIt {
   const renderer = new MarkdownIt({
@@ -9997,7 +10715,8 @@ function registerSafeNoteMathRenderer(renderer: MarkdownIt): void {
     alt: ['paragraph', 'reference', 'blockquote', 'list']
   });
   renderer.renderer.rules.note_math_inline = (tokens, idx) => renderSafeNoteMath(tokens[idx].content, false);
-  renderer.renderer.rules.note_math_block = (tokens, idx) => `${renderSafeNoteMath(tokens[idx].content, true)}\n`;
+  renderer.renderer.rules.note_math_block = (tokens, idx) =>
+    `<div class="note-markdown-math-display">${renderSafeNoteMath(tokens[idx].content, true)}</div>\n`;
 }
 
 function isRenderableNoteMarkdownHref(href: string): boolean {
@@ -10390,14 +11109,6 @@ function findNoteMarkdownLinkTarget(target: EventTarget | null): HTMLAnchorEleme
   return target.closest<HTMLAnchorElement>(NOTE_MARKDOWN_LINK_SELECTOR);
 }
 
-function findNoteMarkdownImageTarget(target: EventTarget | null): HTMLImageElement | null {
-  if (!(target instanceof HTMLElement)) {
-    return null;
-  }
-
-  return target.closest<HTMLImageElement>(NOTE_MARKDOWN_IMAGE_SELECTOR);
-}
-
 function findNoteMarkdownChecklistInputTarget(target: EventTarget | null): HTMLInputElement | null {
   if (!(target instanceof HTMLElement)) {
     return null;
@@ -10423,14 +11134,22 @@ function renderNoteMarkdownPreview(
 ): NoteMarkdownPreviewResult {
   const frontMatter = parseNoteMarkdownFrontMatter(content);
   const renderContent = frontMatter.kind === 'valid' ? frontMatter.body : content;
+  if (!renderContent.trim()) {
+    return {
+      html: '',
+      frontMatter
+    };
+  }
+
+  const sourceMap = createNoteMarkdownSourceMap(content, frontMatter);
+  const rawHtml = noteMarkdownRenderer.render(renderContent, {
+    noteMarkdownLineOffset: frontMatter.lineOffset,
+    imageBaseUri: options.imageBaseUri,
+    imageWorkspaceRoots: options.imageWorkspaceRoots
+  });
+
   return {
-    html: renderContent.trim()
-      ? noteMarkdownRenderer.render(renderContent, {
-          noteMarkdownLineOffset: frontMatter.lineOffset,
-          imageBaseUri: options.imageBaseUri,
-          imageWorkspaceRoots: options.imageWorkspaceRoots
-        })
-      : '',
+    html: annotateNoteMarkdownPreviewHtml(rawHtml, sourceMap),
     frontMatter
   };
 }

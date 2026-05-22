@@ -5366,6 +5366,355 @@ test('note body requires double click to switch from markdown preview to plain t
   await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
 });
 
+
+test('double-clicking note preview starts editing at the clicked text position', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 迭代复盘',
+    '',
+    '第一段保持阅读态。',
+    '目标段落用于验证双击光标定位。',
+    '',
+    '- 补齐 Markdown 预览',
+    '- 保持纯文本编辑'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = '验证双击光标定位';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 2
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 2);
+});
+
+test('double-clicking note preview image falls back to the image markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 图片定位',
+    '',
+    '![架构图](https://cdn.example.com/arch.png)',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: 'img.note-markdown-image'
+  });
+
+  const imageMarkdown = '![架构图](https://cdn.example.com/arch.png)';
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(imageMarkdown) + imageMarkdown.length);
+});
+
+test('double-clicking note preview blank space falls back to the paragraph markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 空白定位', '', '短句。', '', '后续正文不应该成为光标落点。'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const paragraph = nodeById(page, 'note-1').locator('.note-markdown-preview p').first();
+  await expect(paragraph).toHaveText('短句。');
+  const paragraphBox = await paragraph.boundingBox();
+  expect(paragraphBox).not.toBeNull();
+  if (!paragraphBox) {
+    return;
+  }
+
+  await page.mouse.dblclick(paragraphBox.x + paragraphBox.width - 4, paragraphBox.y + paragraphBox.height / 2);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf('短句。') + '短句。'.length);
+});
+
+test('double-clicking note preview display math falls back to the math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 公式定位',
+    '',
+    '$$',
+    'x^2 + y^2 = z^2',
+    '$$',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display .katex'
+  });
+
+  const mathMarkdown = ['$$', 'x^2 + y^2 = z^2', '$$'].join('\n');
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(mathMarkdown) + mathMarkdown.length);
+});
+
+test('double-clicking multiple display math blocks falls back to each math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const firstMathMarkdown = ['$$', 'a=1', '$$'].join('\n');
+  const secondMathMarkdown = ['$$', 'b=2', '$$'].join('\n');
+  const markdownBody = ['# math', '', firstMathMarkdown, '', 'middle', '', secondMathMarkdown, '', 'tail'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display:nth-of-type(1) .katex'
+  });
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(firstMathMarkdown) + firstMathMarkdown.length);
+
+  await bodyInput.blur();
+  await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display:nth-of-type(2) .katex'
+  });
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(secondMathMarkdown) + secondMathMarkdown.length);
+});
+
+test('double-clicking multiline fenced code maps to the clicked source line', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 代码定位',
+    '',
+    '```ts',
+    'const a = 1;',
+    'const b = 2;',
+    '```',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'b =';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 1
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 1);
+});
+
+test('double-clicking markdown-like fenced code maps raw code characters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 代码定位', '', '```txt', '- item', 'foo_bar', '```'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: '- item', offset: 0 },
+    { text: 'bar', offset: 0 }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.text) + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking indented code maps raw code after source indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 缩进代码定位', '', '    - item', '    foo_bar'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: '- item', offset: 0 },
+    { text: 'bar', offset: 0 }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.text) + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking markdown punctuation and entities maps visible text characters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 段落定位', '', 'foo_bar baz', '2 * 3 result', 'A &amp; B after'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: 'bar', offset: 0, sourceText: 'bar' },
+    { text: '3 result', offset: 0, sourceText: '3 result' },
+    { text: 'B after', offset: 0, sourceText: 'B after' }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.sourceText) + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking note task text ignores the rendered checkbox spacing', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = '- [x] second task';
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
+});
+
+test('double-clicking list continuation text maps after continuation indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# list', '', '- first line', '  second line'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second line';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 5
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 5);
+});
+
+test('double-clicking ordered list continuation text maps after continuation indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# list', '', '1. first line', '   second line'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second line';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 5
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 5);
+});
+
+test('double-clicking blockquote list continuation text maps after nested quote indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# list', '', '> > - first line', '> >   second line'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second line';
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  for (const offset of [0, 5]) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: targetText,
+      offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking triple emphasis maps after all delimiters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# em', '', '***bold*** after', '___firm___ later'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: 'bold', offset: 0, sourceStart: markdownBody.indexOf('bold') },
+    { text: 'bold', offset: 2, sourceStart: markdownBody.indexOf('bold') },
+    { text: 'firm', offset: 0, sourceStart: markdownBody.indexOf('firm') }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, entry.sourceStart + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking malformed display math falls back to the math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# math', '', '$$', '\\bad{', '$$', '', 'tail'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display .katex-error'
+  });
+
+  const mathMarkdown = ['$$', '\\bad{', '$$'].join('\n');
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(mathMarkdown) + mathMarkdown.length);
+});
+
 test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -5408,6 +5757,96 @@ test('note body editing target fills the note frame without an inset editor box'
 
   expectBoxEdgesClose(editorBox, surfaceBox, 1);
   expect(await bodyInput.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+});
+
+test('double-clicking a scrolled note preview preserves the edit viewport around the target text', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 80 }, (_value, index) => `段落 ${index + 1} 用于撑开预览滚动。`);
+  const targetLineIndex = 65;
+  lines[targetLineIndex] = 'scroll-target-alpha keeps editor viewport away from top.';
+  const markdownBody = lines.join('\n\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  await preview.evaluate((element, targetText) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let targetElement = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node instanceof Text && node.data.includes(targetText)) {
+        targetElement = node.parentElement;
+        break;
+      }
+    }
+    if (!targetElement) {
+      throw new Error(`未找到预览文本 ${targetText}。`);
+    }
+    const previewRect = element.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    element.scrollTop += targetRect.top - previewRect.top - 48;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, 'scroll-target-alpha');
+
+  const previewScrollTop = await preview.evaluate((element) => element.scrollTop);
+  expect(previewScrollTop).toBeGreaterThan(0);
+  await settleWebview(page, 2);
+
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: 'away from top',
+    offset: 0
+  });
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const targetLineStart = markdownBody.indexOf('scroll-target-alpha');
+  const targetLineEnd = targetLineStart + lines[targetLineIndex].length;
+  await expect(bodyInput).toHaveCount(1);
+  const selection = await bodyInput.evaluate((element) => ({
+    selectionStart: element.selectionStart,
+    selectionEnd: element.selectionEnd
+  }));
+  expect(selection.selectionStart).toBeGreaterThanOrEqual(targetLineStart);
+  expect(selection.selectionEnd).toBeLessThanOrEqual(targetLineEnd);
+  await expect
+    .poll(async () => bodyInput.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+});
+
+test('returning from note body edit mode restores the preview scroll position', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 85 }, (_value, index) => `正文 ${index + 1} 用于验证编辑返回预览滚动。`);
+  lines[70] = 'return-target-alpha should stay inside the restored preview viewport.';
+  const markdownBody = lines.join('\n\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await bodyInput.evaluate((element, targetText) => {
+    const targetOffset = element.value.indexOf(targetText);
+    if (targetOffset < 0) {
+      throw new Error(`未找到编辑文本 ${targetText}。`);
+    }
+    const targetLineIndex = element.value.slice(0, targetOffset).split('\n').length - 1;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+    element.scrollTop = targetLineIndex * lineHeight;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, 'return-target-alpha');
+  const editScrollTop = await bodyInput.evaluate((element) => element.scrollTop);
+  expect(editScrollTop).toBeGreaterThan(0);
+  await settleWebview(page, 2);
+
+  await bodyInput.blur();
+  const preview = noteNode.locator('.note-markdown-preview');
+  await expect(preview).toHaveCount(1);
+  await expect
+    .poll(async () => preview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
 });
 
 test('note body editor supports tab indentation and line numbers', async ({ page }) => {
@@ -5694,11 +6133,6 @@ test('note markdown preview renders safe images and rewrites local image paths',
   );
   await expect(preview.locator('.note-markdown-image-fallback')).toContainText('Unsupported');
   await expect(preview.locator('img[src^="mailto:"]')).toHaveCount(0);
-  await images.nth(2).evaluate((element) => {
-    element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-  });
-  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
-
   const embeddedState = createNoteNodeState();
   embeddedState.nodes[0].metadata.note.content = '![Workspace diagram](workspace-a/assets/root.png)';
   await bootstrap(
@@ -8989,6 +9423,40 @@ function createTerminalShortcutEvent(
     metaKey: modifiers.metaKey === true,
     shiftKey: modifiers.shiftKey === true
   };
+}
+
+
+async function doubleClickNotePreviewText(page, { nodeId, text, offset = Math.floor(text.length / 2) }) {
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId,
+    text,
+    offset
+  });
+  await settleWebview(page, 3);
+}
+
+async function doubleClickNotePreviewSelector(page, { nodeId, selector }) {
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewSelector',
+    nodeId,
+    selector
+  });
+  await settleWebview(page, 3);
+}
+
+async function expectCaretPosition(locator, expectedCaret) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
 }
 
 async function performTestDomAction(page, action) {
