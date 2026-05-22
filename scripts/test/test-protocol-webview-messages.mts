@@ -49,6 +49,51 @@ const hardwrapOpenMessage = {
 
 assert.deepEqual(parseWebviewMessage(hardwrapOpenMessage), hardwrapOpenMessage);
 
+
+const createEmptyGroupMessage = {
+  type: 'webview/createEmptyGroup',
+  payload: {
+    position: { x: 120, y: 160 },
+    size: { width: 360, height: 240 }
+  }
+};
+assert.deepEqual(parseWebviewMessage(createEmptyGroupMessage), createEmptyGroupMessage);
+
+const createGroupFromSelectionMessage = {
+  type: 'webview/createGroupFromSelection',
+  payload: {
+    nodeIds: ['note-1', 'agent-1'],
+    groupIds: ['group-2']
+  }
+};
+assert.deepEqual(parseWebviewMessage(createGroupFromSelectionMessage), createGroupFromSelectionMessage);
+
+const moveGroupMessage = {
+  type: 'webview/moveGroup',
+  payload: {
+    groupId: 'group-1',
+    position: { x: 220, y: 260 },
+    pointerPosition: { x: 240, y: 280 }
+  }
+};
+assert.deepEqual(parseWebviewMessage(moveGroupMessage), moveGroupMessage);
+
+const resizeGroupMessage = {
+  type: 'webview/resizeGroup',
+  payload: {
+    groupId: 'group-1',
+    position: { x: 220, y: 260 },
+    size: { width: 480, height: 320 }
+  }
+};
+assert.deepEqual(parseWebviewMessage(resizeGroupMessage), resizeGroupMessage);
+
+assert.deepEqual(parseWebviewMessage({ type: 'webview/deleteGroup', payload: { groupId: 'group-1' } }), {
+  type: 'webview/deleteGroup',
+  payload: { groupId: 'group-1' }
+});
+assert.equal(parseWebviewMessage({ type: 'webview/resizeGroup', payload: { groupId: 'group-1', position: { x: 1, y: 2 }, size: { width: -1, height: 20 } } }), null);
+
 const unsupportedSourceMessage = JSON.parse(JSON.stringify(hardwrapResolveMessage));
 unsupportedSourceMessage.payload.candidates[0].source = 'future-source';
 assert.equal(parseWebviewMessage(unsupportedSourceMessage), null);

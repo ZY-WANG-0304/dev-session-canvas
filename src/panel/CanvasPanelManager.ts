@@ -49,6 +49,8 @@ import {
   type AgentProviderLaunchDefaults,
   type AgentResumeStrategy,
   type CanvasCreatableNodeKind,
+  type CanvasGroupDeleteMode,
+  type CanvasGroupSummary,
   type CanvasEdgeAnchor,
   type CanvasEdgeArrowMode,
   type CanvasEdgeColor,
@@ -247,6 +249,10 @@ const NODE_PLACEMENT_PADDING = 40;
 const NODE_PLACEMENT_STEP_X = 120;
 const NODE_PLACEMENT_STEP_Y = 96;
 const NODE_PLACEMENT_SEARCH_RADIUS = 8;
+const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
+const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
+const CANVAS_GROUP_PADDING = 28;
+const CANVAS_GROUP_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
 const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1000;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
@@ -469,6 +475,11 @@ export interface CanvasSidebarState {
   workspaceTrusted: boolean;
   creatableKinds: CanvasCreatableNodeKind[];
   fileFilters: CanvasFileFilterState;
+}
+
+export interface CanvasSidebarNodeListSnapshot {
+  nodes: CanvasNodeSummary[];
+  groups: CanvasGroupSummary[];
 }
 
 export interface CanvasDebugSnapshot {
@@ -1002,6 +1013,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public getCanvasNodes(): CanvasNodeSummary[] {
     return cloneJsonValue(this.state.nodes);
+  }
+
+  public getCanvasSidebarNodeListSnapshot(): CanvasSidebarNodeListSnapshot {
+    return cloneJsonValue({
+      nodes: this.state.nodes,
+      groups: this.state.groups ?? []
+    });
   }
 
   public getCanvasTemplateAssociatedNoteSaveItems(): CanvasTemplateAssociatedNoteSaveFormItem[] {
@@ -7563,9 +7581,71 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand
         });
         return;
+      case 'webview/createEmptyGroup':
+        this.state = createEmptyCanvasGroup(
+          this.state,
+          parsedMessage.payload.position,
+          parsedMessage.payload.size
+        );
+        this.canvasTemplateInitialized = true;
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/createGroupFromSelection':
+        this.state = createGroupFromSelection(
+          this.state,
+          parsedMessage.payload.nodeIds,
+          parsedMessage.payload.groupIds
+        );
+        this.canvasTemplateInitialized = true;
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/updateGroupTitle':
+        this.state = updateGroupTitle(
+          this.state,
+          parsedMessage.payload.groupId,
+          parsedMessage.payload.title
+        );
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/moveGroup':
+        this.state = moveGroup(
+          this.state,
+          parsedMessage.payload.groupId,
+          parsedMessage.payload.position,
+          parsedMessage.payload.pointerPosition
+        );
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/resizeGroup':
+        this.state = resizeGroup(
+          this.state,
+          parsedMessage.payload.groupId,
+          parsedMessage.payload.position,
+          parsedMessage.payload.size
+        );
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/ungroup':
+        this.state = ungroupCanvasGroup(this.state, parsedMessage.payload.groupId);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      case 'webview/deleteGroup':
+        void this.deleteGroup(parsedMessage.payload.groupId);
+        return;
       case 'webview/moveNode':
         this.state = this.reconcileCanvasFileArtifacts(
-          moveNode(this.state, parsedMessage.payload.id, parsedMessage.payload.position)
+          moveNode(
+            this.state,
+            parsedMessage.payload.id,
+            parsedMessage.payload.position,
+            parsedMessage.payload.pointerPosition
+          )
         );
         this.persistState();
         this.postState('host/stateUpdated');
@@ -11040,6 +11120,103 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private async deleteGroup(groupId: string): Promise<void> {
+    const group = (this.state.groups ?? []).find((currentGroup) => currentGroup.id === groupId);
+    if (!group) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '未找到可删除的分组。'
+        }
+      });
+      return;
+    }
+
+    const deleteMembersAction = { title: '删除内部所有节点与子分组' };
+    const keepMembersAction = { title: '仅删除分组' };
+    const selection = await vscode.window.showWarningMessage(
+      `删除分组「${group.title}」？`,
+      {
+        modal: true,
+        detail: '可以一并删除内部所有节点与子分组，或保留内部对象并仅删除分组。'
+      },
+      deleteMembersAction,
+      keepMembersAction
+    );
+
+    if (!selection) {
+      return;
+    }
+
+    const mode: CanvasGroupDeleteMode = selection.title === keepMembersAction.title ? 'keep-members' : 'delete-members';
+    if (mode === 'keep-members') {
+      this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const groupIdsToDelete = collectGroupSubtreeIds(this.state.groups ?? [], groupId);
+    const nodeIdsToDelete = this.state.nodes
+      .filter((node) => node.groupId && groupIdsToDelete.has(node.groupId))
+      .map((node) => node.id);
+
+    for (const nodeId of nodeIdsToDelete) {
+      const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
+      if (!node) {
+        continue;
+      }
+
+      this.dropPendingTerminalInitialInput(nodeId, '节点已删除，安装命令未写入。');
+      this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+      if (isExecutionNodeKind(node.kind)) {
+        this.invalidateExecutionSessionOperation(node.kind, nodeId);
+        try {
+          await this.terminateExecutionNodeForDeletion(node);
+        } catch (error) {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: error instanceof Error ? error.message : '删除执行节点时清理 live runtime 失败。'
+            }
+          });
+          return;
+        }
+      }
+    }
+
+    const nextNodes = this.state.nodes.filter((node) => !nodeIdsToDelete.includes(node.id));
+    const deletedNodeIds = new Set(nodeIdsToDelete);
+    let nextState: CanvasPrototypeState = {
+      ...this.state,
+      updatedAt: new Date().toISOString(),
+      nodes: nextNodes,
+      edges: this.state.edges.filter(
+        (edge) => !deletedNodeIds.has(edge.sourceNodeId) && !deletedNodeIds.has(edge.targetNodeId)
+      ),
+      groups: (this.state.groups ?? []).filter((currentGroup) => !groupIdsToDelete.has(currentGroup.id))
+    };
+
+    for (const nodeId of nodeIdsToDelete) {
+      const deletedNode = this.state.nodes.find((node) => node.id === nodeId);
+      if (deletedNode?.kind === 'agent') {
+        nextState = removeAgentFileReferences(nextState, nodeId);
+      } else if (deletedNode?.kind === 'file' || deletedNode?.kind === 'file-list') {
+        nextState = {
+          ...nextState,
+          suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
+            nextState.suppressedAutomaticFileArtifactNodeIds,
+            nodeId
+          )
+        };
+      }
+    }
+
+    this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState));
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
   private async deleteNode(nodeId: string): Promise<void> {
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
     if (!node) {
@@ -11700,6 +11877,8 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     nodes: [],
     edges: [],
     fileReferences: [],
+    groups: [],
+    nextGroupSequence: 1,
     suppressedFileActivityEdgeIds: [],
     suppressedAutomaticFileArtifactNodeIds: []
   };
@@ -11719,6 +11898,8 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
     ...state,
     nodes: retainedNodes,
     edges: retainedEdges,
+    groups: state.groups ?? [],
+    nextGroupSequence: state.nextGroupSequence ?? readNextGroupSequence(state),
     fileReferences: [],
     suppressedFileActivityEdgeIds: [],
     suppressedAutomaticFileArtifactNodeIds: []
@@ -12141,6 +12322,14 @@ function applyCanvasTemplateToState(
       : resolveTemplatePlacementTopLeft(previousState.nodes, template.nodes, centeredTopLeft);
 
   let nextSequence = readNextNodeSequence(previousState.nodes);
+  let nextGroupSequence = readNextGroupSequence(previousState);
+  const groupIdByTemplateIndex = new Map<number, string>();
+  const materializedGroups = (template.groups ?? []).map((templateGroup, index) => {
+    const groupId = createCanvasGroupObjectId(nextGroupSequence);
+    nextGroupSequence += 1;
+    groupIdByTemplateIndex.set(index, groupId);
+    return materializeTemplateGroup(groupId, templateGroup, bounds.origin, resolvedTopLeft, groupIdByTemplateIndex);
+  });
   const nodeIdByTemplateIndex = new Map<number, string>();
   const materializedNodes = template.nodes.map((templateNode, index) => {
     const resolvedAgentProvider =
@@ -12163,6 +12352,16 @@ function applyCanvasTemplateToState(
       resolvedAgentProvider,
       templateNode.kind === 'note' ? options.noteMaterializations?.get(index) : undefined
     );
+  });
+  const materializedNodesWithGroups = materializedNodes.map((node, index) => {
+    const groupIndex = template.nodes[index]?.groupIndex;
+    const groupId = groupIndex === undefined ? undefined : groupIdByTemplateIndex.get(groupIndex);
+    return groupId
+      ? {
+          ...node,
+          groupId
+        }
+      : node;
   });
 
   const materializedEdges = template.edges.flatMap((edge) => {
@@ -12191,10 +12390,34 @@ function applyCanvasTemplateToState(
     state: {
       ...previousState,
       updatedAt: new Date().toISOString(),
-      nodes: [...previousState.nodes, ...materializedNodes],
-      edges: [...previousState.edges, ...materializedEdges]
+      nodes: [...previousState.nodes, ...materializedNodesWithGroups],
+      edges: [...previousState.edges, ...materializedEdges],
+      groups: [...(previousState.groups ?? []), ...materializedGroups],
+      nextGroupSequence
     },
     nodeIds: materializedNodes.map((node) => node.id)
+  };
+}
+
+function materializeTemplateGroup(
+  groupId: string,
+  templateGroup: NonNullable<CanvasTemplate['groups']>[number],
+  templateOrigin: CanvasNodePosition,
+  placedTopLeft: CanvasNodePosition,
+  groupIdByTemplateIndex: ReadonlyMap<number, string>
+): CanvasGroupSummary {
+  return {
+    id: groupId,
+    title: templateGroup.title,
+    position: snapCanvasPosition({
+      x: placedTopLeft.x + (templateGroup.position.x - templateOrigin.x),
+      y: placedTopLeft.y + (templateGroup.position.y - templateOrigin.y)
+    }),
+    size: normalizeCanvasGroupFootprint(templateGroup.size),
+    parentGroupId:
+      templateGroup.parentGroupIndex === undefined
+        ? undefined
+        : groupIdByTemplateIndex.get(templateGroup.parentGroupIndex)
   };
 }
 
@@ -12411,22 +12634,39 @@ function placementRectsOverlap(
 function moveNode(
   previousState: CanvasPrototypeState,
   nodeId: string,
-  position: CanvasNodePosition
+  position: CanvasNodePosition,
+  pointerPosition?: CanvasNodePosition
 ): CanvasPrototypeState {
+  const targetNode = previousState.nodes.find((node) => node.id === nodeId);
+  if (!targetNode) {
+    return previousState;
+  }
+
+  const normalizedPosition = {
+    x: Math.round(position.x),
+    y: Math.round(position.y)
+  };
+  const resolvedPointerPosition = pointerPosition ?? {
+    x: normalizedPosition.x + Math.round(targetNode.size.width / 2),
+    y: normalizedPosition.y + Math.round(targetNode.size.height / 2)
+  };
   const nodes = previousState.nodes.map((node) =>
     node.id === nodeId
       ? {
           ...node,
-          position
+          position: normalizedPosition,
+          groupId: isStableCanvasGroupMemberKind(node.kind)
+            ? resolveDroppedObjectGroupId(previousState, nodeId, 'node', resolvedPointerPosition)
+            : undefined
         }
       : node
   );
 
-  return {
+  return finalizeCanvasGroupState({
     ...previousState,
     updatedAt: new Date().toISOString(),
     nodes
-  };
+  });
 }
 
 function resizeNode(
@@ -12456,7 +12696,7 @@ function resizeNode(
     return previousState;
   }
 
-  return {
+  return finalizeCanvasGroupState({
     ...previousState,
     updatedAt: new Date().toISOString(),
     nodes: previousState.nodes.map((node) =>
@@ -12468,7 +12708,7 @@ function resizeNode(
           }
         : node
     )
-  };
+  });
 }
 
 function deleteCanvasNode(previousState: CanvasPrototypeState, nodeId: string): CanvasPrototypeState {
@@ -12485,8 +12725,823 @@ function deleteCanvasNode(previousState: CanvasPrototypeState, nodeId: string): 
     ...previousState,
     updatedAt: new Date().toISOString(),
     nodes: nextNodes,
-    edges: nextEdges
+    edges: nextEdges,
+    groups: removeMissingGroupNodeMemberships(previousState.groups ?? [], nextNodes)
   };
+}
+
+interface CanvasRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function createCanvasGroupObjectId(sequence: number): string {
+  return `group-${sequence}-${randomUUID()}`;
+}
+
+function createCanvasGroupWithSequence(
+  sequence: number,
+  position: CanvasNodePosition,
+  size: CanvasNodeFootprint,
+  parentGroupId?: string
+): CanvasGroupSummary {
+  return {
+    id: createCanvasGroupObjectId(sequence),
+    title: `Group ${sequence}`,
+    position: {
+      x: Math.round(position.x),
+      y: Math.round(position.y)
+    },
+    size: normalizeCanvasGroupFootprint(size),
+    parentGroupId
+  };
+}
+
+function createEmptyCanvasGroup(
+  previousState: CanvasPrototypeState,
+  position: CanvasNodePosition,
+  size?: CanvasNodeFootprint
+): CanvasPrototypeState {
+  const sequence = readNextGroupSequence(previousState);
+  const group = createCanvasGroupWithSequence(sequence, position, size ?? DEFAULT_CANVAS_GROUP_SIZE);
+
+  return finalizeCanvasGroupState({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    groups: [...(previousState.groups ?? []), group],
+    nextGroupSequence: sequence + 1
+  }, { pinnedGroupId: group.id });
+}
+
+function createGroupFromSelection(
+  previousState: CanvasPrototypeState,
+  nodeIds: readonly string[],
+  groupIds: readonly string[]
+): CanvasPrototypeState {
+  const selectedNodeIds = new Set(nodeIds);
+  const selectedGroupIds = new Set(groupIds);
+  const selectedNodes = previousState.nodes.filter(
+    (node) => selectedNodeIds.has(node.id) && isStableCanvasGroupMemberKind(node.kind)
+  );
+  const selectedGroups = (previousState.groups ?? []).filter((group) => selectedGroupIds.has(group.id));
+  const selectedObjectCount = selectedNodes.length + selectedGroups.length;
+  if (selectedObjectCount < 2) {
+    return previousState;
+  }
+
+  const selectedGroupSubtrees = selectedGroups.map((group) => ({
+    rootId: group.id,
+    subtreeIds: collectGroupSubtreeIds(previousState.groups ?? [], group.id)
+  }));
+  const containsSelectedGroupDescendant = selectedGroupSubtrees.some(({ rootId, subtreeIds }) =>
+    [...subtreeIds].some((groupId) => groupId !== rootId && selectedGroupIds.has(groupId))
+  );
+  if (containsSelectedGroupDescendant) {
+    return previousState;
+  }
+
+  const containsNodeInsideSelectedGroup = selectedNodeIds.size > 0 && selectedGroups.some((group) => {
+    const subtreeIds = collectGroupSubtreeIds(previousState.groups ?? [], group.id);
+    return selectedNodes.some((node) => node.groupId && subtreeIds.has(node.groupId));
+  });
+  if (containsNodeInsideSelectedGroup) {
+    return previousState;
+  }
+
+  const parentIds = new Set<string | undefined>([
+    ...selectedNodes.map((node) => node.groupId),
+    ...selectedGroups.map((group) => group.parentGroupId)
+  ]);
+  if (parentIds.size !== 1) {
+    return previousState;
+  }
+
+  const parentGroupId = parentIds.values().next().value as string | undefined;
+  const selectedRects = [
+    ...selectedNodes.map((node) => rectForNode(node)),
+    ...selectedGroups.map((group) => rectForGroup(group))
+  ];
+  const selectionRect = boundingRectForRects(selectedRects);
+  if (!selectionRect) {
+    return previousState;
+  }
+
+  const sequence = readNextGroupSequence(previousState);
+  const groupRect = expandRectByPadding(selectionRect, CANVAS_GROUP_PADDING);
+  const group = createCanvasGroupWithSequence(
+    sequence,
+    { x: groupRect.left, y: groupRect.top },
+    { width: groupRect.right - groupRect.left, height: groupRect.bottom - groupRect.top },
+    parentGroupId
+  );
+
+  return finalizeCanvasGroupState({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nextGroupSequence: sequence + 1,
+    nodes: previousState.nodes.map((node) =>
+      selectedNodeIds.has(node.id) && isStableCanvasGroupMemberKind(node.kind)
+        ? {
+            ...node,
+            groupId: group.id
+          }
+        : node
+    ),
+    groups: [
+      ...(previousState.groups ?? []).map((currentGroup) =>
+        selectedGroupIds.has(currentGroup.id)
+          ? {
+              ...currentGroup,
+              parentGroupId: group.id
+            }
+          : currentGroup
+      ),
+      group
+    ]
+  }, { pinnedGroupId: group.id });
+}
+
+function updateGroupTitle(state: CanvasPrototypeState, groupId: string, title: string): CanvasPrototypeState {
+  const currentGroup = (state.groups ?? []).find((group) => group.id === groupId);
+  if (!currentGroup) {
+    return state;
+  }
+
+  const nextTitle = trimStoredNodeText(title).trim() || currentGroup.title;
+  if (nextTitle === currentGroup.title) {
+    return state;
+  }
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    groups: (state.groups ?? []).map((group) =>
+      group.id === groupId
+        ? {
+            ...group,
+            title: nextTitle
+          }
+        : group
+    )
+  };
+}
+
+function moveGroup(
+  previousState: CanvasPrototypeState,
+  groupId: string,
+  position: CanvasNodePosition,
+  pointerPosition?: CanvasNodePosition
+): CanvasPrototypeState {
+  const targetGroup = (previousState.groups ?? []).find((group) => group.id === groupId);
+  if (!targetGroup) {
+    return previousState;
+  }
+
+  const normalizedPosition = {
+    x: Math.round(position.x),
+    y: Math.round(position.y)
+  };
+  const delta = {
+    x: normalizedPosition.x - targetGroup.position.x,
+    y: normalizedPosition.y - targetGroup.position.y
+  };
+  const subtreeGroupIds = collectGroupSubtreeIds(previousState.groups ?? [], groupId);
+  const nextParentGroupId = resolveDroppedObjectGroupId(
+    previousState,
+    groupId,
+    'group',
+    pointerPosition ?? {
+      x: normalizedPosition.x + Math.round(targetGroup.size.width / 2),
+      y: normalizedPosition.y + Math.round(targetGroup.size.height / 2)
+    }
+  );
+
+  return finalizeCanvasGroupState({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: previousState.nodes.map((node) =>
+      node.groupId && subtreeGroupIds.has(node.groupId)
+        ? {
+            ...node,
+            position: {
+              x: Math.round(node.position.x + delta.x),
+              y: Math.round(node.position.y + delta.y)
+            }
+          }
+        : node
+    ),
+    groups: (previousState.groups ?? []).map((group) =>
+      subtreeGroupIds.has(group.id)
+        ? {
+            ...group,
+            position: {
+              x: Math.round(group.position.x + delta.x),
+              y: Math.round(group.position.y + delta.y)
+            },
+            parentGroupId: group.id === groupId ? nextParentGroupId : group.parentGroupId
+          }
+        : group
+    )
+  }, { pinnedGroupId: groupId });
+}
+
+function resizeGroup(
+  previousState: CanvasPrototypeState,
+  groupId: string,
+  position: CanvasNodePosition,
+  size: CanvasNodeFootprint
+): CanvasPrototypeState {
+  const targetGroup = (previousState.groups ?? []).find((group) => group.id === groupId);
+  if (!targetGroup) {
+    return previousState;
+  }
+
+  const resizedGroup: CanvasGroupSummary = {
+    ...targetGroup,
+    position: {
+      x: Math.round(position.x),
+      y: Math.round(position.y)
+    },
+    size: normalizeCanvasGroupFootprint(size)
+  };
+  const resizedRect = rectForGroup(resizedGroup);
+  const targetParentId = targetGroup.parentGroupId;
+  const groupsAfterBoundaryIntent = (previousState.groups ?? []).map((group) => {
+    if (group.id === groupId) {
+      return resizedGroup;
+    }
+
+    if (group.parentGroupId === groupId && !rectContainsRect(resizedRect, rectForGroup(group))) {
+      return {
+        ...group,
+        parentGroupId: targetParentId
+      };
+    }
+
+    if (
+      group.parentGroupId === targetParentId &&
+      group.id !== groupId &&
+      rectContainsRect(resizedRect, rectForGroup(group))
+    ) {
+      return {
+        ...group,
+        parentGroupId: groupId
+      };
+    }
+
+    return group;
+  });
+  const nodesAfterBoundaryIntent = previousState.nodes.map((node) =>
+    node.groupId === groupId && !rectContainsRect(resizedRect, rectForNode(node))
+      ? {
+          ...node,
+          groupId: targetParentId
+        }
+      : node
+  );
+
+  return finalizeCanvasGroupState({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: nodesAfterBoundaryIntent,
+    groups: groupsAfterBoundaryIntent
+  }, { pinnedGroupId: groupId });
+}
+
+function ungroupCanvasGroup(previousState: CanvasPrototypeState, groupId: string): CanvasPrototypeState {
+  const targetGroup = (previousState.groups ?? []).find((group) => group.id === groupId);
+  if (!targetGroup) {
+    return previousState;
+  }
+
+  return finalizeCanvasGroupState({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: previousState.nodes.map((node) =>
+      node.groupId === groupId
+        ? {
+            ...node,
+            groupId: targetGroup.parentGroupId
+          }
+        : node
+    ),
+    groups: (previousState.groups ?? [])
+      .filter((group) => group.id !== groupId)
+      .map((group) =>
+        group.parentGroupId === groupId
+          ? {
+              ...group,
+              parentGroupId: targetGroup.parentGroupId
+            }
+          : group
+      )
+  });
+}
+
+function deleteCanvasGroupKeepMembers(previousState: CanvasPrototypeState, groupId: string): CanvasPrototypeState {
+  return ungroupCanvasGroup(previousState, groupId);
+}
+
+function collectGroupSubtreeIds(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const group of groups) {
+    if (!group.parentGroupId) {
+      continue;
+    }
+
+    childrenByParent.set(group.parentGroupId, [...(childrenByParent.get(group.parentGroupId) ?? []), group.id]);
+  }
+
+  const visited = new Set<string>();
+  const stack = [groupId];
+  while (stack.length > 0) {
+    const nextId = stack.pop();
+    if (!nextId || visited.has(nextId)) {
+      continue;
+    }
+
+    visited.add(nextId);
+    for (const childId of childrenByParent.get(nextId) ?? []) {
+      stack.push(childId);
+    }
+  }
+
+  return visited;
+}
+
+function collectGroupDescendantIds(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {
+  const descendantIds = collectGroupSubtreeIds(groups, groupId);
+  descendantIds.delete(groupId);
+  return descendantIds;
+}
+
+function resolveDroppedObjectGroupId(
+  state: CanvasPrototypeState,
+  objectId: string,
+  objectKind: 'node' | 'group',
+  pointerPosition: CanvasNodePosition
+): string | undefined {
+  const excludedGroupIds =
+    objectKind === 'group' ? collectGroupSubtreeIds(state.groups ?? [], objectId) : new Set<string>();
+  const candidates = (state.groups ?? [])
+    .filter((group) => !excludedGroupIds.has(group.id) && pointInRect(pointerPosition, rectForGroup(group)))
+    .sort((left, right) => groupDepth(state.groups ?? [], right.id) - groupDepth(state.groups ?? [], left.id));
+
+  return candidates[0]?.id;
+}
+
+function finalizeCanvasGroupState(
+  state: CanvasPrototypeState,
+  options: { pinnedGroupId?: string } = {}
+): CanvasPrototypeState {
+  const groups = removeMissingGroupNodeMemberships(state.groups ?? [], state.nodes);
+  const nodes = normalizeCanvasNodeGroupMemberships(state.nodes, groups);
+  const expandedGroups = expandGroupsToContainDirectMembers(groups, nodes);
+  const displacedState = displaceIllegalSiblingObjects(expandedGroups, nodes, options);
+  const finalGroups = expandGroupsToContainDirectMembers(displacedState.groups, displacedState.nodes);
+
+  return {
+    ...state,
+    nodes: displacedState.nodes,
+    groups: finalGroups
+  };
+}
+
+function expandGroupsToContainDirectMembers(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[]
+): CanvasGroupSummary[] {
+  let nextGroups = groups.map((group) => ({ ...group }));
+
+  for (let pass = 0; pass < Math.max(1, nextGroups.length + 1); pass += 1) {
+    let didChange = false;
+    nextGroups = nextGroups.map((group) => {
+      const memberRects = [
+        ...nodes
+          .filter((node) => node.groupId === group.id)
+          .map((node) => rectForNode(node)),
+        ...nextGroups
+          .filter((candidate) => candidate.parentGroupId === group.id)
+          .map((candidate) => rectForGroup(candidate))
+      ];
+
+      if (memberRects.length === 0) {
+        return group;
+      }
+
+      const containedRect = expandRectToContainRects(rectForGroup(group), memberRects, CANVAS_GROUP_PADDING);
+      const nextGroup = groupFromRect(group, containedRect);
+      if (!groupsEqualGeometry(group, nextGroup)) {
+        didChange = true;
+      }
+      return nextGroup;
+    });
+
+    if (!didChange) {
+      break;
+    }
+  }
+
+  return nextGroups;
+}
+
+function displaceOverlappingSiblingGroups(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
+  const nextGroups = groups.map((group) => ({ ...group }));
+
+  for (let pass = 0; pass < Math.max(1, nextGroups.length * nextGroups.length); pass += 1) {
+    let didMove = false;
+    for (let leftIndex = 0; leftIndex < nextGroups.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < nextGroups.length; rightIndex += 1) {
+        const left = nextGroups[leftIndex];
+        const right = nextGroups[rightIndex];
+        if (left.parentGroupId !== right.parentGroupId) {
+          continue;
+        }
+
+        const leftRect = rectForGroup(left);
+        const rightRect = rectForGroup(right);
+        if (
+          !rectsIntersect(leftRect, rightRect) ||
+          rectContainsRect(leftRect, rightRect) ||
+          rectContainsRect(rightRect, leftRect)
+        ) {
+          continue;
+        }
+
+        const deltaX = leftRect.right - rightRect.left + CANVAS_GROUP_COLLISION_PADDING;
+        nextGroups[rightIndex] = translateGroup(right, { x: deltaX, y: 0 });
+        didMove = true;
+      }
+    }
+
+    if (!didMove) {
+      break;
+    }
+  }
+
+  return nextGroups;
+}
+
+function displaceIllegalSiblingObjects(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[],
+  options: { pinnedGroupId?: string } = {}
+): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
+  let nextGroups = groups.map((group) => ({ ...group }));
+  let nextNodes = nodes.map((node) => ({ ...node }));
+
+  for (let pass = 0; pass < Math.max(1, nextGroups.length * nextGroups.length + nextGroups.length); pass += 1) {
+    let didMove = false;
+
+    for (let leftIndex = 0; leftIndex < nextGroups.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < nextGroups.length; rightIndex += 1) {
+        const left = nextGroups[leftIndex];
+        const right = nextGroups[rightIndex];
+        if (left.parentGroupId !== right.parentGroupId) {
+          continue;
+        }
+
+        const leftRect = rectForGroup(left);
+        const rightRect = rectForGroup(right);
+        if (
+          !rectsIntersect(leftRect, rightRect) ||
+          rectContainsRect(leftRect, rightRect) ||
+          rectContainsRect(rightRect, leftRect)
+        ) {
+          continue;
+        }
+
+        const pinnedGroup =
+          left.id === options.pinnedGroupId ? left : right.id === options.pinnedGroupId ? right : undefined;
+        const movingGroup = pinnedGroup?.id === right.id ? left : right;
+        const anchorRect = pinnedGroup ? rectForGroup(pinnedGroup) : leftRect;
+        const movingRect = pinnedGroup ? rectForGroup(movingGroup) : rightRect;
+        const delta = { x: anchorRect.right - movingRect.left + CANVAS_GROUP_COLLISION_PADDING, y: 0 };
+        const translated = translateGroupSubtree(nextGroups, nextNodes, movingGroup.id, delta);
+        nextGroups = translated.groups;
+        nextNodes = translated.nodes;
+        didMove = true;
+      }
+    }
+
+    for (const group of [...nextGroups]) {
+      const groupParentId = group.parentGroupId;
+      const groupRect = rectForGroup(group);
+      const blockingNode = nextNodes.find(
+        (node) => node.groupId === groupParentId && rectsIntersect(rectForNode(node), groupRect)
+      );
+      if (!blockingNode) {
+        continue;
+      }
+
+      if (group.id === options.pinnedGroupId) {
+        nextNodes = nextNodes.map((node) =>
+          node.id === blockingNode.id
+            ? {
+                ...node,
+                position: {
+                  x: Math.round(groupRect.right + CANVAS_GROUP_COLLISION_PADDING),
+                  y: node.position.y
+                }
+              }
+            : node
+        );
+      } else {
+        const blockingRect = rectForNode(blockingNode);
+        const delta = { x: blockingRect.right - groupRect.left + CANVAS_GROUP_COLLISION_PADDING, y: 0 };
+        const translated = translateGroupSubtree(nextGroups, nextNodes, group.id, delta);
+        nextGroups = translated.groups;
+        nextNodes = translated.nodes;
+      }
+      didMove = true;
+    }
+
+    if (!didMove) {
+      break;
+    }
+  }
+
+  return { groups: nextGroups, nodes: nextNodes };
+}
+
+function translateGroupSubtree(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[],
+  groupId: string,
+  delta: CanvasNodePosition
+): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
+  const subtreeGroupIds = collectGroupSubtreeIds(groups, groupId);
+  return {
+    groups: groups.map((group) => (subtreeGroupIds.has(group.id) ? translateGroup(group, delta) : group)),
+    nodes: nodes.map((node) =>
+      node.groupId && subtreeGroupIds.has(node.groupId)
+        ? {
+            ...node,
+            position: {
+              x: Math.round(node.position.x + delta.x),
+              y: Math.round(node.position.y + delta.y)
+            }
+          }
+        : node
+    )
+  };
+}
+
+function normalizeCanvasGroups(value: unknown): CanvasGroupSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const groups = value
+    .map((group, index) => normalizeCanvasGroup(group, index))
+    .filter((group): group is CanvasGroupSummary => group !== null);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const normalizedGroups = groups.map((group) =>
+    group.parentGroupId && groupIds.has(group.parentGroupId) && !wouldCreateGroupCycle(groups, group.id, group.parentGroupId)
+      ? group
+      : {
+          ...group,
+          parentGroupId: undefined
+        }
+  );
+
+  return displaceOverlappingSiblingGroups(normalizedGroups);
+}
+
+function normalizeCanvasGroup(value: unknown, index: number): CanvasGroupSummary | null {
+  if (!isRecord(value) || typeof value.id !== 'string') {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    title: typeof value.title === 'string' && value.title.trim() ? trimStoredNodeText(value.title).trim() : `Group ${index + 1}`,
+    position: normalizeRawPosition(value.position),
+    size: normalizeCanvasGroupFootprint(value.size),
+    parentGroupId: typeof value.parentGroupId === 'string' ? value.parentGroupId : undefined
+  };
+}
+
+function normalizeRawPosition(value: unknown): CanvasNodePosition {
+  return isRecord(value) && typeof value.x === 'number' && Number.isFinite(value.x) && typeof value.y === 'number' && Number.isFinite(value.y)
+    ? {
+        x: Math.round(value.x),
+        y: Math.round(value.y)
+      }
+    : { x: 0, y: 0 };
+}
+
+function normalizeCanvasGroupFootprint(value: unknown): CanvasNodeFootprint {
+  if (
+    !isRecord(value) ||
+    typeof value.width !== 'number' ||
+    !Number.isFinite(value.width) ||
+    typeof value.height !== 'number' ||
+    !Number.isFinite(value.height)
+  ) {
+    return DEFAULT_CANVAS_GROUP_SIZE;
+  }
+
+  return {
+    width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(value.width)),
+    height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(value.height))
+  };
+}
+
+function normalizeCanvasNodeGroupMemberships(
+  nodes: readonly CanvasNodeSummary[],
+  groups: readonly CanvasGroupSummary[]
+): CanvasNodeSummary[] {
+  const groupIds = new Set(groups.map((group) => group.id));
+  return nodes.map((node) =>
+    node.groupId && (!groupIds.has(node.groupId) || !isStableCanvasGroupMemberKind(node.kind))
+      ? {
+          ...node,
+          groupId: undefined
+        }
+      : node
+  );
+}
+
+function removeMissingGroupNodeMemberships(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[]
+): CanvasGroupSummary[] {
+  const groupIds = new Set(groups.map((group) => group.id));
+  return groups.map((group) =>
+    group.parentGroupId && !groupIds.has(group.parentGroupId)
+      ? {
+          ...group,
+          parentGroupId: undefined
+        }
+      : group
+  );
+}
+
+function isStableCanvasGroupMemberKind(kind: CanvasNodeKind): boolean {
+  return kind === 'agent' || kind === 'terminal' || kind === 'note';
+}
+
+function wouldCreateGroupCycle(groups: readonly CanvasGroupSummary[], groupId: string, parentGroupId: string): boolean {
+  let nextParentId: string | undefined = parentGroupId;
+  const visited = new Set<string>();
+  while (nextParentId) {
+    if (nextParentId === groupId) {
+      return true;
+    }
+
+    if (visited.has(nextParentId)) {
+      return true;
+    }
+
+    visited.add(nextParentId);
+    nextParentId = groups.find((group) => group.id === nextParentId)?.parentGroupId;
+  }
+
+  return false;
+}
+
+function readNextGroupSequence(state: Pick<CanvasPrototypeState, 'groups' | 'nextGroupSequence'>): number {
+  const persistedSequence =
+    typeof state.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
+      ? state.nextGroupSequence
+      : 1;
+  const maxSequence = (state.groups ?? []).reduce((currentMax, group) => {
+    const parsedValue = readCanvasGroupDisplaySequence(group);
+    return parsedValue === undefined ? currentMax : Math.max(currentMax, parsedValue);
+  }, 0);
+
+  return Math.max(persistedSequence, maxSequence + 1);
+}
+
+function readCanvasGroupDisplaySequence(group: Pick<CanvasGroupSummary, 'id'>): number | undefined {
+  const matchedPrefix = group.id.match(/^group-([1-9]\d*)(?:-.+)?$/u);
+  if (!matchedPrefix) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(matchedPrefix[1], 10);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
+}
+
+function rectForNode(node: Pick<CanvasNodeSummary, 'position' | 'size'>): CanvasRect {
+  return {
+    left: node.position.x,
+    top: node.position.y,
+    right: node.position.x + node.size.width,
+    bottom: node.position.y + node.size.height
+  };
+}
+
+function rectForGroup(group: Pick<CanvasGroupSummary, 'position' | 'size'>): CanvasRect {
+  return {
+    left: group.position.x,
+    top: group.position.y,
+    right: group.position.x + group.size.width,
+    bottom: group.position.y + group.size.height
+  };
+}
+
+function groupFromRect(group: CanvasGroupSummary, rect: CanvasRect): CanvasGroupSummary {
+  return {
+    ...group,
+    position: {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top)
+    },
+    size: {
+      width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(rect.right - rect.left)),
+      height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(rect.bottom - rect.top))
+    }
+  };
+}
+
+function translateGroup(group: CanvasGroupSummary, delta: CanvasNodePosition): CanvasGroupSummary {
+  return {
+    ...group,
+    position: {
+      x: Math.round(group.position.x + delta.x),
+      y: Math.round(group.position.y + delta.y)
+    }
+  };
+}
+
+function expandRectToContainRects(rect: CanvasRect, innerRects: readonly CanvasRect[], padding: number): CanvasRect {
+  return innerRects.reduce(
+    (current, innerRect) => ({
+      left: Math.min(current.left, innerRect.left - padding),
+      top: Math.min(current.top, innerRect.top - padding),
+      right: Math.max(current.right, innerRect.right + padding),
+      bottom: Math.max(current.bottom, innerRect.bottom + padding)
+    }),
+    rect
+  );
+}
+
+function boundingRectForRects(rects: readonly CanvasRect[]): CanvasRect | undefined {
+  if (rects.length === 0) {
+    return undefined;
+  }
+
+  return rects.reduce(
+    (current, rect) => ({
+      left: Math.min(current.left, rect.left),
+      top: Math.min(current.top, rect.top),
+      right: Math.max(current.right, rect.right),
+      bottom: Math.max(current.bottom, rect.bottom)
+    }),
+    {
+      left: rects[0].left,
+      top: rects[0].top,
+      right: rects[0].right,
+      bottom: rects[0].bottom
+    }
+  );
+}
+
+function expandRectByPadding(rect: CanvasRect, padding: number): CanvasRect {
+  return {
+    left: rect.left - padding,
+    top: rect.top - padding,
+    right: rect.right + padding,
+    bottom: rect.bottom + padding
+  };
+}
+
+function rectContainsRect(outer: CanvasRect, inner: CanvasRect): boolean {
+  return outer.left <= inner.left && outer.top <= inner.top && outer.right >= inner.right && outer.bottom >= inner.bottom;
+}
+
+function rectsIntersect(left: CanvasRect, right: CanvasRect): boolean {
+  return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+}
+
+function pointInRect(point: CanvasNodePosition, rect: CanvasRect): boolean {
+  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+}
+
+function groupDepth(groups: readonly CanvasGroupSummary[], groupId: string): number {
+  let depth = 0;
+  let currentGroup = groups.find((group) => group.id === groupId);
+  const visited = new Set<string>();
+  while (currentGroup?.parentGroupId && !visited.has(currentGroup.parentGroupId)) {
+    visited.add(currentGroup.parentGroupId);
+    depth += 1;
+    currentGroup = groups.find((group) => group.id === currentGroup?.parentGroupId);
+  }
+
+  return depth;
+}
+
+function groupsEqualGeometry(left: CanvasGroupSummary, right: CanvasGroupSummary): boolean {
+  return (
+    left.position.x === right.position.x &&
+    left.position.y === right.position.y &&
+    left.size.width === right.size.width &&
+    left.size.height === right.size.height
+  );
 }
 
 function normalizeCanvasNodeFootprintForPersistence(
@@ -13569,15 +14624,33 @@ function normalizeState(
     ? value.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
     : [];
 
+  const normalizedGroups = normalizeCanvasGroups(value.groups);
+  const normalizedNodesWithGroups = normalizeCanvasNodeGroupMemberships(
+    reconcileRuntimeNodesInArray(normalizedNodes),
+    normalizedGroups
+  );
+  const nextGroupSequence = normalizeNextGroupSequence(value.nextGroupSequence, normalizedGroups);
+
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: reconcileRuntimeNodesInArray(normalizedNodes),
+    nodes: normalizedNodesWithGroups,
     edges,
+    groups: removeMissingGroupNodeMemberships(normalizedGroups, normalizedNodesWithGroups),
+    nextGroupSequence,
     fileReferences,
     suppressedFileActivityEdgeIds,
     suppressedAutomaticFileArtifactNodeIds
   };
+}
+
+function normalizeNextGroupSequence(value: unknown, groups: readonly CanvasGroupSummary[]): number {
+  const maxSequence = groups.reduce((currentMax, group) => {
+    const parsedValue = readCanvasGroupDisplaySequence(group);
+    return parsedValue === undefined ? currentMax : Math.max(currentMax, parsedValue);
+  }, 0);
+  const fallback = maxSequence + 1;
+  return typeof value === 'number' && Number.isInteger(value) && value > fallback ? value : fallback;
 }
 
 function readRuntimeSupervisorRegistrySessionsForTest(value: unknown): unknown[] {
@@ -13690,6 +14763,10 @@ function normalizeNode(
       value.size,
       fileView
     ),
+    groupId:
+      typeof value.groupId === 'string' && isStableCanvasGroupMemberKind(value.kind)
+        ? value.groupId
+        : undefined,
     metadata: normalizedMetadata
   };
 }

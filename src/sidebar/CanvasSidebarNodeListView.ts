@@ -6,9 +6,9 @@ import {
   canvasNodeStatusToneClass,
   humanizeCanvasNodeStatus
 } from '../common/canvasNodeStatusPresentation';
-import type { CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
+import type { CanvasGroupSummary, CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
-import { CanvasPanelManager } from '../panel/CanvasPanelManager';
+import { CanvasPanelManager, type CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
 
 const SIDEBAR_NODE_DANGLING_CSI_FRAGMENT_PATTERN = /(?:^|\s)\[\?[0-9;:<>=$]*[ -/]*[@-~](?=\s|$)/g;
 const SIDEBAR_NODE_ATTENTION_TOOLTIP = '该节点当前有待处理的通知提醒。';
@@ -19,6 +19,7 @@ export interface CanvasSidebarNodeItemSnapshot {
   id: string;
   nodeId: string;
   nodeKind: CanvasNodeKind;
+  groupPath: string[];
   label: string;
   description: string;
   tooltip: string;
@@ -223,7 +224,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   }
 
   public async refresh(): Promise<CanvasSidebarNodeItemSnapshot[]> {
-    this.items = getCanvasSidebarNodeListItems(this.panelManager.getCanvasNodes());
+    this.items = getCanvasSidebarNodeListItems(this.panelManager.getCanvasSidebarNodeListSnapshot());
     await this.postState();
     return this.items;
   }
@@ -332,12 +333,18 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   }
 }
 
-export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): CanvasSidebarNodeItemSnapshot[] {
+export function getCanvasSidebarNodeListItems(
+  source: CanvasNodeSummary[] | CanvasSidebarNodeListSnapshot
+): CanvasSidebarNodeItemSnapshot[] {
+  const nodes = Array.isArray(source) ? source : source.nodes;
+  const groups = Array.isArray(source) ? [] : source.groups;
+  const groupsById = new Map(groups.map((group) => [group.id, group] as const));
   return nodes
     .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
       const statusLabel = humanizeCanvasNodeStatus(node);
+      const groupPath = resolveSidebarNodeGroupPath(node.groupId, groupsById);
       const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
       const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
@@ -357,6 +364,7 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         id: `node/${node.id}`,
         nodeId: node.id,
         nodeKind: node.kind,
+        groupPath,
         label,
         description,
         tooltip: tooltipLines.join('\n'),
@@ -369,6 +377,21 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         attentionPending
       } satisfies CanvasSidebarNodeItemSnapshot;
     });
+}
+
+function resolveSidebarNodeGroupPath(
+  groupId: string | undefined,
+  groupsById: ReadonlyMap<string, CanvasGroupSummary>
+): string[] {
+  const path: string[] = [];
+  const visited = new Set<string>();
+  let currentGroup = groupId ? groupsById.get(groupId) : undefined;
+  while (currentGroup && !visited.has(currentGroup.id)) {
+    visited.add(currentGroup.id);
+    path.unshift(currentGroup.title.trim() || '未命名分组');
+    currentGroup = currentGroup.parentGroupId ? groupsById.get(currentGroup.parentGroupId) : undefined;
+  }
+  return path;
 }
 
 function buildSidebarNodeSecondaryText(subtitlePrefix: string | undefined, statusLabel: string): string {
@@ -562,6 +585,59 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         font-size: 12px;
       }
 
+      .toolbar {
+        display: flex;
+        justify-content: flex-end;
+        padding: 0 8px 4px;
+      }
+
+      .more-button {
+        width: 24px;
+        height: 24px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .more-button:hover,
+      .more-button:focus-visible {
+        background: var(--list-hover);
+        color: var(--list-hover-fg);
+        outline: none;
+      }
+
+      .view-menu {
+        display: none;
+        margin: 0 8px 6px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--vscode-menu-background, var(--bg));
+        overflow: hidden;
+      }
+
+      .view-menu.is-visible {
+        display: grid;
+      }
+
+      .view-menu button {
+        border: 0;
+        background: transparent;
+        color: var(--fg);
+        text-align: left;
+        padding: 7px 9px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .view-menu button:hover,
+      .view-menu button:focus-visible,
+      .view-menu button.is-active {
+        background: var(--list-hover);
+        outline: none;
+      }
+
       .list {
         display: grid;
       }
@@ -656,6 +732,16 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         text-overflow: ellipsis;
       }
 
+      .node-group-path {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--row-muted);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        padding-left: 22px;
+        font-size: 11px;
+      }
+
       .status-pill {
         --status-pill-accent: var(--vscode-debugView-stateLabelForeground, var(--focus));
         --status-pill-bg: color-mix(in srgb, var(--status-pill-accent) 18%, transparent);
@@ -745,17 +831,30 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
     </style>
   </head>
   <body>
+    <div class="toolbar">
+      <button id="moreButton" class="more-button codicon codicon-ellipsis" type="button" aria-label="节点列表显示选项" title="节点列表显示选项"></button>
+    </div>
+    <div id="viewMenu" class="view-menu" role="menu" aria-label="节点列表显示选项">
+      <button id="flatViewButton" type="button" role="menuitemradio" aria-checked="true">平铺展示</button>
+      <button id="groupedViewButton" type="button" role="menuitemradio" aria-checked="false">按分组树折叠展示</button>
+    </div>
     <div id="list" class="list" role="listbox" aria-label="当前画布节点列表"></div>
     <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const state = {
         items: [],
-        selectedId: undefined
+        selectedId: undefined,
+        viewMode: 'flat',
+        menuOpen: false
       };
 
       const list = document.getElementById('list');
       const emptyState = document.getElementById('emptyState');
+      const moreButton = document.getElementById('moreButton');
+      const viewMenu = document.getElementById('viewMenu');
+      const flatViewButton = document.getElementById('flatViewButton');
+      const groupedViewButton = document.getElementById('groupedViewButton');
 
       function syncRenderedSelection() {
         const rows = list.querySelectorAll('[data-sidebar-node-item-id]');
@@ -789,6 +888,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
           rowCount: list.querySelectorAll('[data-sidebar-node-item-id]').length,
           visibleItemIds: state.items.map((item) => item.id),
           selectedId: state.selectedId,
+          viewMode: state.viewMode,
           attentionItemIds: state.items.filter((item) => item.attentionPending).map((item) => item.id)
         };
       }
@@ -807,6 +907,22 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
 
       function queryRowByItemId(itemId) {
         return list.querySelector('[data-sidebar-node-item-id="' + CSS.escape(itemId) + '"]');
+      }
+
+      function syncViewControls() {
+        viewMenu.classList.toggle('is-visible', state.menuOpen);
+        moreButton.setAttribute('aria-expanded', state.menuOpen ? 'true' : 'false');
+        flatViewButton.classList.toggle('is-active', state.viewMode === 'flat');
+        groupedViewButton.classList.toggle('is-active', state.viewMode === 'grouped');
+        flatViewButton.setAttribute('aria-checked', state.viewMode === 'flat' ? 'true' : 'false');
+        groupedViewButton.setAttribute('aria-checked', state.viewMode === 'grouped' ? 'true' : 'false');
+      }
+
+      function setViewMode(nextViewMode) {
+        state.viewMode = nextViewMode === 'grouped' ? 'grouped' : 'flat';
+        state.menuOpen = false;
+        syncViewControls();
+        render();
       }
 
       async function performTestAction(action) {
@@ -831,13 +947,36 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         return captureTestSnapshot();
       }
 
+      function getRenderedItems() {
+        if (state.viewMode !== 'grouped') {
+          return state.items;
+        }
+
+        return [...state.items].sort((left, right) => {
+          const leftGroupPath = Array.isArray(left.groupPath) ? left.groupPath.join(' / ') : '';
+          const rightGroupPath = Array.isArray(right.groupPath) ? right.groupPath.join(' / ') : '';
+          return leftGroupPath.localeCompare(rightGroupPath, 'zh-CN') || left.label.localeCompare(right.label, 'zh-CN');
+        });
+      }
+
       function render() {
         if (!state.selectedId || !state.items.some((item) => item.id === state.selectedId)) {
           state.selectedId = state.items[0] ? state.items[0].id : undefined;
         }
 
         list.replaceChildren();
-        for (const item of state.items) {
+        let lastGroupPath = undefined;
+        for (const item of getRenderedItems()) {
+          const currentGroupPath = state.viewMode === 'grouped' && Array.isArray(item.groupPath) && item.groupPath.length > 0
+            ? item.groupPath.join(' / ')
+            : '';
+          if (state.viewMode === 'grouped' && currentGroupPath !== lastGroupPath) {
+            const groupHeader = document.createElement('div');
+            groupHeader.className = 'node-group-path';
+            groupHeader.textContent = currentGroupPath || '未分组';
+            list.append(groupHeader);
+            lastGroupPath = currentGroupPath;
+          }
           const row = document.createElement('div');
           row.className = 'node-row';
           row.tabIndex = 0;
@@ -902,6 +1041,13 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
           status.append(statusPill);
           main.append(status);
 
+          if (state.viewMode !== 'grouped' && Array.isArray(item.groupPath) && item.groupPath.length > 0) {
+            const groupPath = document.createElement('div');
+            groupPath.className = 'node-group-path';
+            groupPath.textContent = item.groupPath.join(' / ');
+            main.append(groupPath);
+          }
+
           row.append(main);
 
           if (item.attentionPending) {
@@ -923,7 +1069,15 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
 
         emptyState.textContent = '';
         emptyState.classList.remove('is-visible');
+        syncViewControls();
       }
+
+      moreButton.addEventListener('click', () => {
+        state.menuOpen = !state.menuOpen;
+        syncViewControls();
+      });
+      flatViewButton.addEventListener('click', () => setViewMode('flat'));
+      groupedViewButton.addEventListener('click', () => setViewMode('grouped'));
 
       window.addEventListener('message', (event) => {
         const message = event.data;

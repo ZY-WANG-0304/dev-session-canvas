@@ -53,7 +53,7 @@ body {
   position: absolute;
   top: 14px;
   right: 14px;
-  z-index: 20;
+  z-index: 30;
   overflow: hidden;
   border-radius: var(--canvas-widget-radius);
   border-color: var(--vscode-widget-border, var(--vscode-panel-border));
@@ -61,6 +61,7 @@ body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
   backdrop-filter: none;
 }
+
 
 .canvas-shell .react-flow__controls-button {
   width: 28px;
@@ -2917,4 +2918,149 @@ body {
   font-size: 11px;
   line-height: 1.35;
   color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+}
+
+.canvas-group-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 5;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.canvas-group-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 38%, var(--vscode-panel-border) 62%);
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 46%, transparent);
+  pointer-events: none;
+}
+
+.canvas-group-frame.is-selected {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 76%, var(--vscode-panel-border) 24%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 36%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 40%, transparent);
+}
+
+.canvas-group-body {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas-group-titlebar {
+  position: absolute;
+  left: 12px;
+  top: -14px;
+  max-width: calc(100% - 24px);
+  min-width: 96px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 42%, var(--vscode-panel-border) 58%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 94%, var(--vscode-focusBorder) 6%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.canvas-group-titlebar:active {
+  cursor: grabbing;
+}
+
+.canvas-group-title .window-title-copy {
+  width: min(220px, 100%);
+}
+
+.canvas-group-title .window-title-input {
+  font-size: 12px;
+}
+
+.canvas-group-border {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.canvas-group-border-top,
+.canvas-group-border-bottom {
+  left: 0;
+  width: 100%;
+  height: 8px;
+  cursor: grab;
+}
+
+.canvas-group-border-top {
+  top: -4px;
+}
+
+.canvas-group-border-bottom {
+  bottom: -4px;
+}
+
+.canvas-group-border-left,
+.canvas-group-border-right {
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: grab;
+}
+
+.canvas-group-border-left {
+  left: -4px;
+}
+
+.canvas-group-border-right {
+  right: -4px;
+}
+
+.canvas-group-resize-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 72%, var(--vscode-panel-border) 28%);
+  border-radius: 999px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+
+.canvas-group-toolbar {
+  position: absolute;
+  right: 12px;
+  top: -38px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 999px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+}
+
+.canvas-group-toolbar button {
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.canvas-group-toolbar button:hover,
+.canvas-group-toolbar button:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent));
+  outline: none;
 }
