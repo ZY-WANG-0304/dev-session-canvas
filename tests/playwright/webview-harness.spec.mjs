@@ -5466,6 +5466,33 @@ test('double-clicking note preview display math falls back to the math markdown 
   await expectCaretPosition(bodyInput, markdownBody.indexOf(mathMarkdown) + mathMarkdown.length);
 });
 
+test('double-clicking multiple display math blocks falls back to each math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const firstMathMarkdown = ['$$', 'a=1', '$$'].join('\n');
+  const secondMathMarkdown = ['$$', 'b=2', '$$'].join('\n');
+  const markdownBody = ['# math', '', firstMathMarkdown, '', 'middle', '', secondMathMarkdown, '', 'tail'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display:nth-of-type(1) .katex'
+  });
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(firstMathMarkdown) + firstMathMarkdown.length);
+
+  await bodyInput.blur();
+  await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display:nth-of-type(2) .katex'
+  });
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(secondMathMarkdown) + secondMathMarkdown.length);
+});
+
 test('double-clicking multiline fenced code maps to the clicked source line', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
