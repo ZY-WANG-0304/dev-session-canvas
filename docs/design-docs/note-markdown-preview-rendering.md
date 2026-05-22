@@ -237,6 +237,11 @@ updated_at: 2026-05-22
 - 编辑回到预览时，Webview 会把当前编辑器顶部可见源文行映射到预览中最近的 source map 元素并恢复滚动位置；找不到局部 source 元素时才回落到保存的滚动值。
 - `tests/playwright/webview-harness.spec.mjs` 已新增滚动回归，覆盖“滚动后的预览双击进入编辑不回到源码开头”和“滚动后的编辑失焦回到预览不从头展示”。
 
+2026-05-22 display math 多块 fallback 追加实现：
+
+- `src/webview/main.tsx` 已将 math block range 只绑定到 `.note-markdown-math-display` 外层 wrapper，避免同一公式内层 `.katex-display` 参与同一 kind 候选序列并消费后续公式 range。
+- `tests/playwright/webview-harness.spec.mjs` 已新增两段 display math 的回归，分别双击两段公式内部 KaTeX 内容并验证 fallback 落到各自 `$$...$$` Markdown 源码末尾。
+
 本轮验证结果：
 
 1. `npm run typecheck` 通过。
@@ -291,3 +296,10 @@ updated_at: 2026-05-22
 3. `npm run test:protocol-webview-messages` 通过。
 4. `npm run test:note-markdown-source-map` 通过。
 5. `npx playwright test tests/playwright/webview-harness.spec.mjs --grep "double-clicking note preview|double-clicking a scrolled note preview|returning from note body edit mode|note body requires double click"` 通过，7 条测试全部通过。
+
+2026-05-22 display math 多块 fallback 追加验证：
+
+1. `npm run typecheck` 通过。
+2. `npm run build` 通过。
+3. `npm run test:note-markdown-source-map` 通过。
+4. `npx playwright test tests/playwright/webview-harness.spec.mjs --grep "display math falls back|multiple display math|malformed display math"` 通过，3 条测试全部通过。

@@ -10438,7 +10438,7 @@ function noteMarkdownSourceBlockSelectorForKind(kind: NoteMarkdownSourceBlockKin
     case 'listItem':
       return 'li';
     case 'math':
-      return '.note-markdown-math-display, .katex-display, .katex-error, .note-markdown-math-fallback';
+      return '.note-markdown-math-display';
     case 'paragraph':
       return 'p';
     case 'table':
