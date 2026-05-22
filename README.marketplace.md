@@ -48,20 +48,20 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.3 Highlights
+## 0.10.4 Highlights
 
-The public `0.10.3` release is a focused `0.10.x` Preview reissue for Open VSX metadata. It keeps the `0.10.2` execution-terminal behavior unchanged, but republishes the main extension and notifier with a new patch version so Open VSX-compatible hosts such as Cursor can receive the main extension icon asset correctly.
+The public `0.10.4` release is a focused `0.10.x` Preview patch for execution-terminal link refresh performance. It keeps the `0.10.3` Marketplace and Open VSX metadata fixes, while reducing repeated Host-side file-link resolve work during live terminal output.
 
-- No runtime behavior changes from `0.10.2`; hard-wrapped URL, styled-file link, grouped hover, and live-output file-link cache fixes remain in place
-- The patch specifically addresses the Open VSX `0.10.2` listing where the main extension VSIX contained `images/icon.png`, but the registry did not expose the `icon` asset metadata consumed by Open VSX-compatible hosts
-- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, and support matrix
-- Post-release verification now explicitly checks Open VSX `files.icon`, `files.license`, `files.vsixmanifest`, and `files.sha256` metadata for the published main extension
+- Live output now refreshes only high-confidence negative file-link candidates such as `detected` and `hardwrap`; ordinary fallback text no longer re-enters background file resolution on every output heartbeat
+- High-confidence links still recover after files are created during output bursts because throttled invalidations now schedule a trailing refresh
+- Host diagnostics now include execution file-link resolve counts, source distribution, resolved counts, and duration so real workspaces can compare request volume and slow resolves
+- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.2` to `0.10.3` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.3` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.10.3` to `0.10.4` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.4` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 

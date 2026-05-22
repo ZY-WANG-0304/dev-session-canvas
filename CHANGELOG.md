@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.10.4 - Preview Terminal Link Refresh Performance Patch
+
+相对 `0.10.3`，`0.10.4` 是同一 `0.10.x` 公开 `Preview` 线内的执行终端链接性能修复版本。它保留 `0.10.3` 已验证的双市场发布元数据与 Open VSX 图标 asset metadata 修复，重点收口运行中终端输出持续刷新时，普通文本 fallback 负缓存被反复送到 Host 侧解析的问题；同时保留高置信文件链接在文件创建后自动恢复为可点击 file link 的能力。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.3` bump 到 `0.10.4`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 运行中输出的后台负缓存刷新只处理高置信候选，例如 `detected` 与 `hardwrap`；纯 `fallback` 普通文本负缓存不再随 live output 反复发起文件解析请求
+- 对 output throttle 窗口内的高置信负缓存失效补充 trailing refresh，避免第二次输出才创建文件时丢失恢复信号
+- Host 侧新增 execution file-link resolve 诊断，记录候选数、resolved 数、source 分布与耗时，并写入诊断 dump，便于真实环境对比请求量与慢请求
+- 新增 fallback-only live-output 性能回归与 throttle trailing refresh Playwright 用例，覆盖 `Agent` 与 `Terminal` 两类执行节点
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.3` 升级到 `0.10.4` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.4`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.4` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.4` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.3 - Preview Open VSX Icon Metadata Reissue
 
 相对 `0.10.2`，`0.10.3` 是同一 `0.10.x` 公开 `Preview` 线内的发布元数据修复版本。主扩展运行时代码、执行终端链接行为、安装拓扑和支持矩阵不引入新的产品行为变更；本轮重点是重新发布主扩展与 notifier 的同版本 VSIX，并验证 Open VSX 侧为主扩展正确生成 `icon`、`license`、`vsixmanifest` 与 `sha256` asset metadata，修复 `0.10.2` 在 Open VSX / Cursor 中主插件图标缺失的问题。
