@@ -30,6 +30,7 @@
 - [x] (2026-05-19 14:43 +0800) 根据 PR review 先更新正式设计约束：中文语境 start-boundary 不能回归 git diff header；styled hard-wrap file 必须满足首片段贴行尾、续片段从允许缩进后连续承接、行内不混入 prose 的 continuation 链。
 - [x] (2026-05-19 14:49 +0800) 收口 PR review 两个 blocker：diff header 剥离 `a/` / `b/` 后保留合法起点信息；styled hard-wrap file collector 改为只接受明确 continuation 链，并补充纯函数与 Playwright 负例回归。
 - [x] (2026-05-19 15:21 +0800) 调整 continuation 边界：续行 link 片段从允许缩进后行首开始时，允许后面跟默认样式说明文字；继续拒绝首片段后混入 prose 或续片段不在缩进后行首的误拼接。
+- [x] (2026-05-22 17:30 +0800) 按 hotfix 要求先补性能回归并记录修复前基线：fallback-only 负缓存测试在修复前 agent / terminal 都产生 36 次 live-output 后台 resolve request；随后限制 live output 只刷新高置信负缓存，并增加输出 invalidation 最小间隔。
 
 ## 意外与发现
 
@@ -81,6 +82,9 @@
 - 观察：styled hard-wrap file collector 只按同一 ANSI style signature 查找后续 span，不检查首片段是否贴行尾、续片段是否从缩进后的行首开始、行内是否混入 prose；同色日志片段只要拼接后能被 path parser 和 Host workspace exact fallback 命中，就可能被错误升级成高置信 file link。
   证据：2026-05-19 PR review 指出 `Error at <blue>src/webview/executionTerminalNativeInteractions.</blue> crashed` 与 `note: <blue>ts:1600:12</blue> elsewhere` 会被拼成真实可打开的 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。
 
+- 观察：0.10.2 的 live output 负缓存刷新会反复刷新 fallback-only 普通文本。新增性能回归在修复前失败，agent 与 terminal 都收到 36 次 `webview/resolveExecutionFileLinks` fallback 请求，来源是 12 条普通文本负缓存乘以 3 次 live output。
+  证据：2026-05-22 运行 `npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output"`，新增用例在 agent / terminal 均失败，收到值为 `36`，期望为 `0`。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -123,11 +127,23 @@
   理由：同色 prose 很常见，Host workspace exact fallback 会让误判变成真实打开动作；首片段贴行尾、续片段从允许缩进后开始能保留 TUI 硬换行主路径，同时降低同色日志误拼接。续行 link 片段后的默认样式说明文字不在两段链接之间，不破坏 continuation 链，因此不作为拒绝条件。
   日期/作者：2026-05-19 / Codex
 
+- 决策：live output 后台刷新只处理高置信负缓存，纯 `fallback` 负缓存不参与刷新；输出触发的负缓存 invalidation 增加最小间隔。
+  理由：fallback 兜底规则会覆盖普通非空行，若这些负缓存随持续输出反复刷新，会把普通 TUI 文本持续送到 Host 文件解析和 workspace fallback。高置信 `detected` / `hardwrap` 仍保留 live output 后刷新，避免刚生成文件的路径长期不可点击；若 output throttle window 内又收到高置信失效，必须安排 trailing refresh，不能丢弃最后一次文件生成信号。
+  日期/作者：2026-05-22 / Codex
+
+- 决策：若当前 cache 中没有任何可刷新的高置信负缓存，live output 不再推进 negative invalidation generation，也不安排空刷新 timer；Host 侧记录每次 file link resolve 的候选数、按 source 分类、resolved 数和耗时，并写入 host diagnostics dump。
+  理由：fallback-only 已退出后台刷新后，继续为纯 fallback 缓存推进 generation 和 timer 只会制造无效主线程调度；Host 侧诊断能让真实环境继续验证请求量是否从 0.10.2 的放大行为回落，而不是只能依赖 Playwright mock 计数。
+  日期/作者：2026-05-22 / Codex
+
 ## 结果与复盘
 
 当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
 
 2026-05-19 新增的 TUI 硬换行第一阶段已经能让带明确 scheme 的硬换行 URL、同一非默认 ANSI 样式拆开的文件路径在 agent / terminal 节点里点击为同一个完整目标；无样式文件路径、自然语言缩进续行和普通同色日志仍不会被重组。随后补上的 grouped hover overlay 让用户 hover 任一片段时能看到同组所有真实片段的下划线，但不会把缩进空白纳入可点击区域。当前自动化验证通过，但真实 Codex / Claude TUI 输出中的手动验证尚未执行，所以这部分仍保持“验证中”。
+
+2026-05-22 hotfix 先用失败测试记录了修复前性能状况：fallback-only 普通文本负缓存会被每次 live output 批量刷新，12 条普通文本缓存和 3 次输出即可产生 36 次文件解析请求。实现收口后，同一回归里的 fallback-only live-output 后台解析请求降为 0 次；这里的 0 只表示普通 fallback-only 低置信负缓存退出 live output 后台刷新，不表示全局 negative cache refresh 失效。高置信 detected / hardwrap 负缓存仍可在文件创建后刷新。随后补充空刷新保护，避免纯 fallback cache 在 live output 后继续推进无效 generation / timer；Host 侧新增 file link resolve 诊断，后续真实 dump 会包含按 source 分类的请求量与慢请求摘要。定向验证已覆盖新增性能回归、既有 negative refresh、coalesced refresh 与 stale refresh 场景。
+
+PR review 后补齐 output throttle trailing refresh：当第二次 live output 在 1s 最小间隔内才让高置信 `detected` 负缓存变为可解析时，不再直接丢弃 invalidation，而是在 remaining interval 后触发 trailing refresh。新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal。
 
 ## 上下文与定向
 

@@ -211,7 +211,8 @@ import {
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
-  ExecutionTerminalOpenLink
+  ExecutionTerminalOpenLink,
+  ExecutionTerminalFileLinkSource
 } from '../common/executionTerminalLinks';
 import { inferExecutionTerminalPathStyle } from '../common/executionTerminalLinks';
 import {
@@ -412,6 +413,31 @@ type NodePlacementPreference = 'left-up' | 'right-down';
 interface CanvasFileFilterState {
   includeGlobs: string[];
   excludeGlobs: string[];
+}
+
+interface ExecutionFileLinkResolveDiagnostics {
+  candidateCount: number;
+  resolvedCount: number;
+  durationMs: number;
+  sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+}
+
+interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkResolveDiagnostics {
+  timestamp: string;
+  kind: ExecutionNodeKind;
+  nodeId: string;
+  requestId: string;
+}
+
+interface ExecutionFileLinkResolveDiagnosticsSummary {
+  requestCount: number;
+  candidateCount: number;
+  resolvedCount: number;
+  totalDurationMs: number;
+  maxDurationMs: number;
+  slowRequestCount: number;
+  sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  latestRequests: ExecutionFileLinkResolveDiagnosticSample[];
 }
 
 export interface CanvasSidebarState {
@@ -655,6 +681,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly templateCatalogEmitter = new vscode.EventEmitter<void>();
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
+  private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
@@ -1388,6 +1415,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testDiagnosticEvents.length = 0;
   }
 
+  public collectExecutionFileLinkResolveDiagnostics(): {
+    samples: ExecutionFileLinkResolveDiagnosticSample[];
+    summary: ExecutionFileLinkResolveDiagnosticsSummary;
+  } {
+    const samples = cloneJsonValue(this.executionFileLinkResolveDiagnostics);
+    return {
+      samples,
+      summary: summarizeExecutionFileLinkResolveDiagnostics(samples)
+    };
+  }
+
   public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -1406,6 +1444,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     const debugSnapshot = this.getDebugSnapshot();
     const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
+    const executionFileLinkResolveDiagnostics = this.collectExecutionFileLinkResolveDiagnostics();
     const agentCliConfig = this.getAgentCliConfig();
     const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(this.buildBaseExecutionEnvironment());
     const persistedSnapshotPath = this.getPersistedCanvasSnapshotPath();
@@ -1466,6 +1505,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       diagnostics: {
         hostMessageCount: diagnosticHostMessages.length,
         hostMessageSummary: summarizeDiagnosticHostMessages(diagnosticHostMessages),
+        executionFileLinkResolveSummary: executionFileLinkResolveDiagnostics.summary,
         diagnosticEventCount: diagnosticEvents.length,
         latestDiagnosticKinds: diagnosticEvents.slice(-20).map((event) => event.kind)
       },
@@ -1493,6 +1533,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       writeJsonFile(summaryPath, summary),
       writeJsonFile(path.join(outputDir, 'debug-snapshot.json'), debugSnapshot),
       writeJsonFile(path.join(outputDir, 'host-messages.json'), diagnosticHostMessages),
+      writeJsonFile(
+        path.join(outputDir, 'execution-file-link-resolve-diagnostics.json'),
+        executionFileLinkResolveDiagnostics
+      ),
       writeJsonFile(path.join(outputDir, 'diagnostic-events.json'), diagnosticEvents),
       writeJsonFile(path.join(outputDir, 'note-markdown-diagnostics.json'), noteMarkdownDiagnostics),
       writeJsonFile(
@@ -4409,11 +4453,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     candidates: ExecutionTerminalFileLinkCandidate[]
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
+    const startedAt = Date.now();
     const resolvedCandidates = await resolveExecutionTerminalFileLinkCandidates(
       candidates,
       context,
       () => randomUUID()
     ).catch(() => []);
+    const diagnostics = buildExecutionFileLinkResolveDiagnostics(
+      candidates,
+      resolvedCandidates.length,
+      Date.now() - startedAt
+    );
+    this.recordExecutionFileLinkResolveDiagnostics({
+      timestamp: new Date().toISOString(),
+      kind,
+      nodeId,
+      requestId,
+      ...diagnostics
+    });
 
     for (const resolvedCandidate of resolvedCandidates) {
       this.resolvedExecutionFileLinks.set(resolvedCandidate.openLink.resolvedId, {
@@ -11133,6 +11190,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private recordExecutionFileLinkResolveDiagnostics(
+    sample: ExecutionFileLinkResolveDiagnosticSample
+  ): void {
+    this.executionFileLinkResolveDiagnostics.push(cloneJsonValue(sample));
+    if (this.executionFileLinkResolveDiagnostics.length > 400) {
+      this.executionFileLinkResolveDiagnostics.splice(
+        0,
+        this.executionFileLinkResolveDiagnostics.length - 400
+      );
+    }
+  }
+
   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
     this.testDiagnosticEvents.push({
       timestamp: new Date().toISOString(),
@@ -11253,6 +11322,57 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function buildExecutionFileLinkResolveDiagnostics(
+  candidates: readonly ExecutionTerminalFileLinkCandidate[],
+  resolvedCount: number,
+  durationMs: number
+): ExecutionFileLinkResolveDiagnostics {
+  const sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>> = {};
+  for (const candidate of candidates) {
+    sourceCounts[candidate.source] = (sourceCounts[candidate.source] ?? 0) + 1;
+  }
+
+  return {
+    candidateCount: candidates.length,
+    resolvedCount,
+    durationMs,
+    sourceCounts
+  };
+}
+
+function summarizeExecutionFileLinkResolveDiagnostics(
+  samples: readonly ExecutionFileLinkResolveDiagnosticSample[]
+): ExecutionFileLinkResolveDiagnosticsSummary {
+  const summary: ExecutionFileLinkResolveDiagnosticsSummary = {
+    requestCount: samples.length,
+    candidateCount: 0,
+    resolvedCount: 0,
+    totalDurationMs: 0,
+    maxDurationMs: 0,
+    slowRequestCount: 0,
+    sourceCounts: {},
+    latestRequests: samples.slice(-20).map((sample) => cloneJsonValue(sample))
+  };
+
+  for (const sample of samples) {
+    summary.candidateCount += sample.candidateCount;
+    summary.resolvedCount += sample.resolvedCount;
+    summary.totalDurationMs += sample.durationMs;
+    summary.maxDurationMs = Math.max(summary.maxDurationMs, sample.durationMs);
+    if (sample.durationMs >= 100) {
+      summary.slowRequestCount += 1;
+    }
+
+    for (const [source, count] of Object.entries(sample.sourceCounts) as Array<
+      [ExecutionTerminalFileLinkSource, number]
+    >) {
+      summary.sourceCounts[source] = (summary.sourceCounts[source] ?? 0) + count;
+    }
+  }
+
+  return summary;
 }
 
 function getUriDirectory(uri: vscode.Uri): vscode.Uri {
