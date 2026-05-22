@@ -3802,6 +3802,77 @@ for (const executionKind of ['agent', 'terminal']) {
       });
   });
 
+  test(`${executionKind} refreshes detected negative file link after second live output inside throttle window`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'throttled-created-target.ts:11:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'checking throttled-created-target.ts\r\n'
+    });
+    await page.waitForTimeout(260);
+    await clearPostedMessages(page);
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created throttled-created-target.ts\r\n'
+    });
+    await page.waitForTimeout(1050);
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
   test(`${executionKind} revalidates a hovered negative file link after live output resolves it`, async ({
     page
   }) => {
@@ -4120,6 +4191,71 @@ for (const executionKind of ['agent', 'terminal']) {
         entry.payload.candidates.some((candidate) => candidate.text === filePath)
       )
     ).toBe(false);
+  });
+
+  test(`${executionKind} does not refresh fallback-only negative file links during live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const ordinaryLines = Array.from(
+      { length: 12 },
+      (_, index) => `plainstatus${String(index + 1).padStart(2, '0')} waiting for stream update`
+    );
+
+    const countFallbackResolveRequests = async () => {
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      return resolveRequests.filter((entry) =>
+        entry.payload.candidates.some(
+          (candidate) =>
+            candidate.source === 'fallback' && ordinaryLines.includes(candidate.text)
+        )
+      ).length;
+    };
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${ordinaryLines.join('\r\n')}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    for (const line of ordinaryLines) {
+      const hoverText = line.split(' ')[0];
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionText',
+        nodeId,
+        text: hoverText
+      });
+    }
+
+    await expect.poll(async () => countFallbackResolveRequests()).toBe(ordinaryLines.length);
+    await performTestDomAction(page, {
+      kind: 'clearExecutionLinkHover',
+      nodeId
+    });
+
+    await clearPostedMessages(page);
+    for (let index = 0; index < 3; index += 1) {
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: `live output heartbeat ${index + 1}\r\n`
+      });
+      await page.waitForTimeout(260);
+    }
+    await settleWebview(page, 4);
+
+    expect(await countFallbackResolveRequests()).toBe(0);
   });
 
   test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({

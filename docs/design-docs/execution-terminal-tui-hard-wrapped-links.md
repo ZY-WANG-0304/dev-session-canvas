@@ -15,7 +15,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
-updated_at: 2026-05-19
+updated_at: 2026-05-22
 ---
 
 # 执行节点 TUI 硬换行链接支持分析
@@ -117,6 +117,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - 安全与隐私面扩大：重组后的完整 URL 可能包含 query token。当前 Host 会记录 link open diagnostic 的 `text` / `targetUri`，支持更完整的长 URL 后，诊断事件中出现敏感 URL 的概率更高。
 - 缓存失效更复杂：TUI 常用 redraw、alternate screen 或 snapshot restore。重组结果如果只按当前行缓存，可能在重绘后复用旧续行；cache key 必须覆盖参与重组的所有 buffer 行文本。
 - 文件路径支持会放大 Host 请求：若把 path 也纳入硬换行重组，Webview 会产生更多待解析 file candidates，Host 侧 `stat` 和 workspace fallback 请求会增加。
+- 运行中输出会放大负缓存刷新成本：若普通 fallback 行在 hover 后进入负缓存，后续 live output 不应反复刷新这些低置信负结果，否则会把普通文本重新送到 Host 侧文件解析与 workspace fallback。
 - 复制与选择语义不会自动改善：点击可以打开重组目标，但用户拖选终端文本时仍会复制带缩进或换行的原始文本；这会造成“能点开但复制出来仍坏”的体验差异。
 
 ## 正式方案
@@ -143,6 +144,10 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 无样式文件路径硬换行仍暂缓，除非后续真实样例证明它们同样高频且无法通过 provider 输出 `OSC 8` 或扩大节点宽度缓解。
 
+2026-05-22 追加性能收口：live output 只允许刷新高置信负缓存候选，例如 `detected`、`hardwrap` 等；纯 `fallback` 负缓存不参与后台刷新。原因是 fallback 的最后兜底规则会覆盖普通非空行，这类负缓存如果跟随持续输出反复刷新，会把普通 TUI 文本转化成 Host 侧解析压力。输出触发的负缓存 invalidation 也增加最小间隔，避免 spinner / heartbeat 类高频输出把后台刷新压缩成连续循环。若高置信负缓存的 live output 在最小间隔内到达，不丢弃本次失效，而是安排 remaining interval 后的 trailing refresh，确保“文件随后生成”的高置信路径不会长期停留在 stale negative。显式 snapshot / exit / 用户重新 hover 或点击仍可重新解析当前文本；本策略只限制 live output 后台刷新。
+
+同日继续补充两层低风险保护：若当前 cache 里没有任何可刷新的高置信负缓存，live output 不再推进 negative invalidation generation，也不再安排空刷新 timer；Host 侧为每次 `webview/resolveExecutionFileLinks` 记录候选总数、resolved 数、按 source 分类的候选数和耗时，并在 host diagnostics dump 中输出 `execution-file-link-resolve-diagnostics.json` 与 summary，便于真实环境对比 hotfix 前后的请求量和慢请求。
+
 ## 验证方法
 
 若进入实现，至少需要完成：
@@ -152,8 +157,9 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 3. hover 样例：hover 任一 hard-wrap 片段时，同组所有真实片段都显示下划线，缩进空白不显示下划线。
 4. 回归样例：普通 Markdown 列表、缩进代码、中文说明、两个相邻 URL、带句号结尾的 URL、普通同色日志文本，以及首片段后混入 prose 或续片段不从缩进后行首开始的文件片段不被错误重组。
 5. 缓存样例：同一 buffer 行位置被 snapshot redraw 成另一个 URL 或另一个 styled path 后，不复用旧完整目标。
-6. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
-7. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
+6. 性能样例：普通 fallback-only 负缓存不应在 live output 后台刷新中再次发起文件解析请求；高置信 negative file link 仍应在 live output 后刷新。
+7. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
+8. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
 
 ### 当前验证记录
 
@@ -167,3 +173,12 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - `npm run test:webview -- -g "link activation posts parsed file and URL targets|hard-wrapped URL fragments|hard-wrapped URL detector|styled hard-wrapped file fragments|styled hard-wrapped code paths|styled hard-wrapped file continuations|styled hard-wrapped file hover|unstyled hard-wrapped file fragments|styled hard-wrapped non-links|low-confidence word links underline only while the modifier is held|does not synthesize trimmed links from attached CJK prose|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"`
 
 真实 Codex / Claude TUI 输出的手动验证尚未执行，因此验证状态保持为 `验证中`。
+
+2026-05-22 先补性能回归并记录修复前基线：
+
+- 新增 `does not refresh fallback-only negative file links during live output`，覆盖 agent / terminal 两类节点。测试先通过 hover 普通文本行制造 12 条 fallback-only 负缓存，再连续发送 3 次 live output，并期望不再产生 fallback 文件解析请求。
+- 修复前该测试失败：agent 与 terminal 都收到 36 次 fallback resolve request，也就是 12 条负缓存乘以 3 次 live output。该结果确认了 0.10.2 行为会把普通文本负缓存随持续输出反复刷新。
+- 修复后同一回归的 fallback-only live-output 后台 resolve request 从 36 次降为 0 次；这里的 0 只表示普通 fallback-only 低置信负缓存不再参与 live output 后台刷新，不表示全局 negative cache refresh 失效。高置信 detected / hardwrap 负缓存仍由 `refreshes negative file link cache while live output continues`、`schedules delayed refresh after stale negative refresh is invalidated` 等用例覆盖。
+- 定向验证通过：`npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output|refreshes negative file link cache while live output continues|delays coalesced negative file link refreshes after live output|schedules delayed refresh after stale negative refresh is invalidated|hard-wrapped URL fragments open as one link|styled hard-wrapped file fragments resolve as one link"`，共 12 条 Playwright 用例通过。
+- 静态与协议回归通过：`npm run typecheck && npm run test:execution-terminal-links && npm run test:protocol-webview-messages && git diff --check`。
+- PR review 发现 1s output throttle 内第二次 live output 若才对应文件创建，会丢失高置信负缓存刷新；新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal，并改为在 throttle window 内安排 trailing refresh。
