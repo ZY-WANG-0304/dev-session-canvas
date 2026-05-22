@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.4
+
+- 与主扩展 `0.10.4` 对齐：本轮主扩展是 `0.10.x` Preview 线内的执行终端链接性能修复版本，聚焦运行中输出的 file-link 负缓存刷新节流与 Host 诊断；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.10.3
 
 - 与主扩展 `0.10.3` 对齐：本轮主扩展是 `0.10.x` Preview 线内的发布元数据修复版本，聚焦重新发布并验证 Open VSX 主插件 icon asset metadata；notifier companion 不引入新的通知投递行为变更。
