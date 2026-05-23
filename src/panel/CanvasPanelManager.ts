@@ -12640,9 +12640,23 @@ function moveNode(
   pointerPosition?: CanvasNodePosition,
   selectedMoves: readonly CanvasNodeMoveIntent[] = []
 ): CanvasPrototypeState {
+  const targetNode = previousState.nodes.find((node) => node.id === nodeId);
+  const normalizedPrimaryPosition = normalizeCanvasMovePosition(position);
+  const sharedPointerPosition = pointerPosition
+    ? normalizeCanvasMovePosition(pointerPosition)
+    : targetNode
+      ? {
+          x: normalizedPrimaryPosition.x + Math.round(targetNode.size.width / 2),
+          y: normalizedPrimaryPosition.y + Math.round(targetNode.size.height / 2)
+        }
+      : undefined;
+  // Multi-node drag is treated as a temporary cluster, so grouping uses one release point.
   const moveIntents = normalizeCanvasNodeMoveIntents([
-    { id: nodeId, position, pointerPosition },
-    ...selectedMoves
+    { id: nodeId, position: normalizedPrimaryPosition, pointerPosition: sharedPointerPosition },
+    ...selectedMoves.map((intent) => ({
+      ...intent,
+      pointerPosition: sharedPointerPosition ?? intent.pointerPosition
+    }))
   ]);
   if (moveIntents.length === 0) {
     return previousState;

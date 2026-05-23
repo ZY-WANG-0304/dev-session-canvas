@@ -233,6 +233,23 @@ try {
   const ungroupedByPointer = moveNode(groupedByPointer, 'note-1', { x: 500, y: 20 }, { x: 500, y: 20 });
   assert.strictEqual(ungroupedByPointer.nodes[0].groupId, undefined);
 
+  const multiMovedByPrimaryPointer = moveNode(
+    state({
+      nodes: [
+        note('moved-1', { x: 420, y: 80 }),
+        note('moved-2', { x: 700, y: 80 })
+      ],
+      groups: [group('group-target', { x: 0, y: 0 }, { width: 260, height: 200 })]
+    }),
+    'moved-1',
+    { x: 90, y: 80 },
+    { x: 120, y: 110 },
+    [{ id: 'moved-2', position: { x: 370, y: 80 }, pointerPosition: { x: 900, y: 900 } }]
+  );
+  assert.strictEqual(multiMovedByPrimaryPointer.nodes.find((candidate) => candidate.id === 'moved-1').groupId, 'group-target');
+  assert.strictEqual(multiMovedByPrimaryPointer.nodes.find((candidate) => candidate.id === 'moved-2').groupId, 'group-target');
+  assert.ok(multiMovedByPrimaryPointer.groups[0].size.width >= 370 + 120 + 28);
+
   const movedIntoOccupiedGroup = moveNode(
     state({
       nodes: [

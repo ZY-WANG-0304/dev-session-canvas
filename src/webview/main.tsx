@@ -2346,11 +2346,6 @@ function App(): JSX.Element {
           y: Math.round(resolvedPosition.y)
         },
         pointerPosition: primaryPointerPosition
-          ? {
-              x: Math.round(primaryPointerPosition.x + resolvedPosition.x - node.position.x),
-              y: Math.round(primaryPointerPosition.y + resolvedPosition.y - node.position.y)
-            }
-          : undefined
       };
     });
     postMessage({

@@ -8023,7 +8023,7 @@ test('canvas context menu can create an empty group', async ({ page }) => {
   expect(typeof message.payload.position.y).toBe('number');
 });
 
-test('selected nodes move together and report all release intents', async ({ page }) => {
+test('selected nodes move together and share the primary release intent', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
       selectedNodeId: 'note-2',
@@ -8057,8 +8057,7 @@ test('selected nodes move together and report all release intents', async ({ pag
   expect(moveMessage.payload.selectedMoves[0].id).toBe('note-2');
   expect(moveMessage.payload.selectedMoves[0].position.x - moveMessage.payload.position.x).toBe(280);
   expect(moveMessage.payload.selectedMoves[0].position.y - moveMessage.payload.position.y).toBe(0);
-  expect(moveMessage.payload.selectedMoves[0].pointerPosition.x - moveMessage.payload.pointerPosition.x).toBe(280);
-  expect(moveMessage.payload.selectedMoves[0].pointerPosition.y - moveMessage.payload.pointerPosition.y).toBe(0);
+  expect(moveMessage.payload.selectedMoves[0].pointerPosition).toEqual(moveMessage.payload.pointerPosition);
 });
 
 test('canvas context menu can create a group from selected nodes', async ({ page }) => {
