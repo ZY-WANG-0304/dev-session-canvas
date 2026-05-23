@@ -8092,7 +8092,11 @@ test('canvas groups resize from all eight directions', async ({ page }) => {
 });
 
 test('canvas group resize draft keeps member nodes stationary until release', async ({ page }) => {
-  await openHarness(page);
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
   const state = createEmptyCanvasState();
   state.nodes = [
     {
@@ -8171,6 +8175,74 @@ test('selected nodes move together and share the primary release intent', async 
   expect(moveMessage.payload.selectedMoves[0].position.x - moveMessage.payload.position.x).toBe(280);
   expect(moveMessage.payload.selectedMoves[0].position.y - moveMessage.payload.position.y).toBe(0);
   expect(moveMessage.payload.selectedMoves[0].pointerPosition).toEqual(moveMessage.payload.pointerPosition);
+});
+
+test('node group drop applies the host avoidance position after state update', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('existing-1', { x: 180, y: 160 }),
+      title: 'Existing',
+      groupId: 'group-1'
+    },
+    {
+      ...createManualNoteNode('moved-1', { x: 700, y: 160 }),
+      title: 'Moved'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 480 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const existingBox = await nodeById(page, 'existing-1').boundingBox();
+  const movedStartBox = await nodeById(page, 'moved-1').boundingBox();
+  expect(existingBox).not.toBeNull();
+  expect(movedStartBox).not.toBeNull();
+
+  await clearPostedMessages(page);
+  const dragOffset = { x: 6, y: 6 };
+  await page.mouse.move(movedStartBox.x + dragOffset.x, movedStartBox.y + dragOffset.y);
+  await page.mouse.down();
+  await page.mouse.move(existingBox.x + dragOffset.x, existingBox.y + dragOffset.y, { steps: 8 });
+  await page.mouse.up();
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('moved-1');
+  expect(moveMessage.payload.pointerPosition).toEqual({ x: 186, y: 166 });
+
+  await updateHostState(page, {
+    ...state,
+    updatedAt: '2026-05-23T12:00:00.000Z',
+    nodes: [
+      state.nodes[0],
+      {
+        ...state.nodes[1],
+        position: { x: 584, y: 160 },
+        groupId: 'group-1'
+      }
+    ],
+    groups: [
+      {
+        ...state.groups[0],
+        size: { width: 872, height: 480 }
+      }
+    ]
+  }, createRuntimeContext());
+
+  await expect
+    .poll(async () => (await nodeById(page, 'moved-1').boundingBox())?.x)
+    .toBeGreaterThan(existingBox.x + existingBox.width + 16);
 });
 
 test('canvas context menu can create a group from selected nodes', async ({ page }) => {

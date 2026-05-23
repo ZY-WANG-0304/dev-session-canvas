@@ -279,6 +279,36 @@ try {
       movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-1').position.x,
     140
   );
+  assert.ok(!rectsOverlapForTest(
+    rectForTestNode(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'existing-1')),
+    rectForTestNode(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-1'))
+  ));
+  assert.ok(!rectsOverlapForTest(
+    rectForTestNode(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'existing-1')),
+    rectForTestNode(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-2'))
+  ));
+
+  const movedIntoOccupiedGroupAfterExpansion = moveNode(
+    state({
+      nodes: [
+        note('existing-1', { x: 90, y: 80 }, { groupId: 'group-target' }),
+        note('moved-1', { x: 420, y: 80 })
+      ],
+      groups: [group('group-target', { x: 0, y: 0 }, { width: 180, height: 140 })]
+    }),
+    'moved-1',
+    { x: 90, y: 80 },
+    { x: 120, y: 110 }
+  );
+  assert.strictEqual(movedIntoOccupiedGroupAfterExpansion.nodes.find((candidate) => candidate.id === 'moved-1').groupId, 'group-target');
+  assert.ok(!rectsOverlapForTest(
+    rectForTestNode(movedIntoOccupiedGroupAfterExpansion.nodes.find((candidate) => candidate.id === 'existing-1')),
+    rectForTestNode(movedIntoOccupiedGroupAfterExpansion.nodes.find((candidate) => candidate.id === 'moved-1'))
+  ));
+  assert.notDeepStrictEqual(
+    movedIntoOccupiedGroupAfterExpansion.nodes.find((candidate) => candidate.id === 'moved-1').position,
+    { x: 90, y: 80 }
+  );
 
   const overlappingMovedNodesPreserveOverlap = moveNode(
     state({
