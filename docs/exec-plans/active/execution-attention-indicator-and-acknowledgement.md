@@ -26,6 +26,8 @@
 - [x] (2026-04-22 06:18 +0800) 将 `strongTerminalAttentionReminder` 从布尔开关改成枚举模式配置，支持 `none` / `titleBar` / `minimap` / `both`，并同步更新 smoke 断言与配置说明文案。
 - [x] (2026-04-22 08:44 +0800) 处理 follow-up review blocker：`概览` 中 `画布状态` 在画布已打开时改为展示当前实例承载面，而不是默认承载面；补测试命令和定向 VS Code 场景，断言“默认 `Panel` + 当前实例 `Editor`”时摘要与 tooltip 一致。
 - [x] (2026-05-21 14:27 +0800) 补充 Codex / Claude Agent 异常兜底提醒：仅在已运行 Agent 非用户主动以非 `0` 退出并进入 `error` 时补充通知，已知 stream disconnected 输出立即提醒；启动失败与 `resume-failed` 明确不触发额外通知。
+- [x] (2026-05-22 00:00 +0800) 根据后续调研补齐 provider 边界：`response.completed` 是 Codex / OpenAI Responses 的完成事件，不是 Claude Code 标准事件；Claude 侧在缺少真实输出样本或 `StopFailure` 结构化证据前不扩大专用流断开规则。
+- [x] (2026-05-22 00:00 +0800) 补充启发式检测代码注释与定向回归，证明 Codex exact pattern 仍触发、普通 Claude `message_stop` 文案不会误触发。
 
 ## 意外与发现
 
@@ -46,6 +48,9 @@
 
 - 观察：Codex / Claude 可能在进程仍未退出时先输出 `stream disconnected before completion: stream closed before response.completed`，这种情况不会被只看终态 `error` 的逻辑捕获。
   证据：本轮新增 `src/common/agentActivityHeuristics.ts` 的 abnormal stream pattern，并在 `scripts/test/test-execution-attention-signals.mjs` 中用该输出行断言可被提取。
+
+- 观察：`stream closed before response.completed` 来自 Codex / OpenAI Responses 的 stream 完成语义；Anthropic Messages streaming 的成功终止事件是 `message_stop`，Claude Code 公开 hook 里 API error 走 `StopFailure`。如果继续把 `response.completed` 写成 Codex / Claude 共享语义，会误导后续实现者把 Codex 的内部协议泛化到 Claude。
+  证据：本轮调研 Codex 源码中 `CodexErr::Stream`、`process_sse()` 与 retry loop；Anthropic streaming 文档列出最终 `message_stop` 与 error recovery，Claude Code hooks 文档列出 `Stop` / `StopFailure`。
 
 ## 决策记录
 
@@ -89,6 +94,10 @@
   理由：用户明确指出启动前、启动时和 resume 启动失败时大概率仍在画板页面，额外外部通知是噪音；真正痛点是后台跑起来后异常中断或流断开时，provider 可能来不及给出原生提醒。
   日期/作者：2026-05-21 / Codex
 
+- 决策：把 `stream disconnected before completion: stream closed before response.completed` 记录为 Codex 高置信模式，而不是 Claude 标准模式；Claude 在没有真实输出样本或结构化 `StopFailure` 证据前，只保留已运行后非用户主动非 `0` 退出的终态兜底。Dev Session Canvas 不自动重放 prompt、自动 resume 或替 provider 做 stream recovery。
+  理由：Codex 拥有 Responses turn state，并且会自行 retry / reconnect；Claude 的标准完成事件是 `message_stop`。外层画布如果重放 prompt，可能重复 tool call、重复写文件或破坏 provider 会话状态；如果把 `response.completed` 泛化到 Claude，会制造错误产品语义。
+  日期/作者：2026-05-22 / Codex
+
 ## 结果与复盘
 
 本轮已完成以下交付：
@@ -98,6 +107,7 @@
 - 在执行节点标题栏状态控件左侧新增 bell icon，并让 minimap 中对应节点与 icon 共用默认 attention 状态；strong reminder 会按模式额外增强标题栏闪烁和 / 或 minimap 尺寸 pulse。
 - Webview probe、Playwright harness 与 VS Code smoke 已覆盖 icon、minimap 闪烁、点击确认，以及 bridge 开关与 strong reminder 四档模式的分层关系。
 - 新增 Codex / Claude Agent 异常兜底通知：`src/panel/CanvasPanelManager.ts` 在本地 PTY 和 live-runtime supervisor 两条路径上只对已运行后的非 `0` `error` 终态发 `agent-abnormal-interruption`，并对已知 stream disconnected 输出发 `agent-abnormal-stream-interruption`；`resume-failed` 仍只保留节点状态与错误说明。
+- 本轮 follow-up 已把 stream disconnected 文案的 provider 边界写清：`response.completed` 只作为 Codex high-confidence pattern；Claude 不共享这条标准事件，后续若能接入 Claude `StopFailure` 或真实输出样本，再以结构化信号优先扩展。
 
 本轮最终验证结果：
 
@@ -112,6 +122,13 @@ review follow-up 增量验证：
 - `npm run build` 通过
 - 基于 `scripts/smoke/vscode-smoke-runner.mjs` 的定向 VS Code 场景通过：确认“默认 `Panel` + 当前实例 `Editor`”时，侧栏 `画布状态` 显示 `已打开 · Editor`，且 tooltip 同时区分当前实例承载面与默认承载面
 - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 仍在 `verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported()` 命中既有超时；当前不把整套 trusted smoke 记为已通过
+
+2026-05-22 provider 边界补充后的增量验证：
+
+- `npm run test:execution-attention-signals` 通过
+- `npm run typecheck` 通过
+- `npm run build` 通过
+- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/product-specs/canvas-node-notifications.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md src/common/agentActivityHeuristics.ts scripts/test/test-execution-attention-signals.mjs` 通过
 
 剩余风险：
 
@@ -225,3 +242,5 @@ review follow-up 增量验证：
 ---
 
 本次创建说明：2026-04-22 新增本计划，用于覆盖 execution attention 的节点内 icon、强力提醒闪烁、点击确认语义，以及 `bridgeTerminalAttentionSignals` 与新提醒开关的边界拆分。之所以独立起计划，是因为本轮同时涉及正式设计更新、共享协议扩展、宿主状态调整、Webview UI 改造和 smoke 回归。
+
+本次更新说明：2026-05-22 根据 `stream closed before response.completed` 后续调研，补充 Codex / Claude provider 边界和“不替 provider 自动恢复”的决策，避免把 Codex Responses 的完成事件误写成 Claude Code 标准语义。
