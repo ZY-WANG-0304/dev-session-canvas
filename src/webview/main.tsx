@@ -6829,7 +6829,7 @@ const CanvasContextMenu = React.forwardRef<
               data-context-menu-action="create-empty-group"
               onClick={props.onCreateEmptyGroup}
             >
-              <span className="canvas-context-menu-icon codicon codicon-symbol-structure" aria-hidden="true" />
+              <span className="canvas-context-menu-icon codicon codicon-symbol-array" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
                 <strong>创建分组</strong>
                 <span>在当前位置创建空分组框</span>
@@ -6842,7 +6842,7 @@ const CanvasContextMenu = React.forwardRef<
                 data-context-menu-action="create-group-from-selection"
                 onClick={props.onCreateGroupFromSelection}
               >
-                <span className="canvas-context-menu-icon codicon codicon-symbol-array" aria-hidden="true" />
+                <span className="canvas-context-menu-icon codicon codicon-group-by-ref-type" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
                   <strong>从选择创建分组</strong>
                   <span>把当前多选对象收束到新分组</span>

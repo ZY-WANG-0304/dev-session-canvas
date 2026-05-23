@@ -22,8 +22,10 @@
 - [x] (2026-05-22 17:08Z) 修正分组拖动释放意图：Webview 提交 `webview/moveGroup` 时使用实际鼠标释放位置，而不是分组中心点，保持“拖拽意图载体是鼠标释放位置”。
 - [x] (2026-05-22 17:17Z) 完成本轮验证：`npm run typecheck`、协议消息测试、模板测试、`npm run test:canvas-node-groups`、`npm run build` 和 3 条 Webview 分组 Playwright 用例均通过。
 - [x] (2026-05-22 17:17Z) 更新实现阶段 ExecPlan 的验证证据、意外发现和结果复盘。
-- [x] (2026-05-23 02:54Z) 完成首轮交互调整：普通点击节点恢复单选，Ctrl / Cmd 点击才增删多选；从选择创建分组 icon 改为 `symbol-array`；多选节点拖动通过 `selectedMoves` 把所有被选目标的释放意图发给宿主；分组拖动靠近画布边缘时自动平移 viewport；节点拖入分组时按整体簇避让已有同组节点。
+- [x] (2026-05-23 02:54Z) 完成首轮交互调整：普通点击节点恢复单选，Ctrl / Cmd 点击才增删多选；多选节点拖动通过 `selectedMoves` 把所有被选目标的释放意图发给宿主；分组拖动靠近画布边缘时自动平移 viewport；节点拖入分组时按整体簇避让已有同组节点。
+- [x] (2026-05-23 03:43Z) 修正分组入口 icon 口径：创建空分组入口使用 `symbol-array`；从选择创建分组入口恢复为 `group-by-ref-type`。
 - [x] (2026-05-23 03:25Z) 完成本轮最终验证：`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:canvas-node-groups`、`npm run build`、4 条 Webview 分组 Playwright 用例和 `git diff --check` 均通过。
+- [x] (2026-05-23 03:43Z) 完成本次 icon 修正验证：`npm run build`、2 条 Webview 分组入口 Playwright 用例和 `git diff --check` 均通过。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -233,4 +235,6 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 
 本次修订说明：2026-05-22 17:17Z 补充分组实现的本轮验证证据，并记录 Note preview 多选修复、分组拖动释放点修复与仍未覆盖的真实 VSCode smoke 缺口。
 
-本次修订说明：2026-05-23 02:54Z 记录用户提出的交互调整，包括 Ctrl / Cmd 多选、`symbol-array` 图标、多选拖动释放意图、分组拖动画布跟随和节点入组避让，并补充当前已完成的局部验证证据。
+本次修订说明：2026-05-23 02:54Z 记录用户提出的交互调整，包括 Ctrl / Cmd 多选、多选拖动释放意图、分组拖动画布跟随和节点入组避让，并补充当前已完成的局部验证证据。
+
+本次修订说明：2026-05-23 03:43Z 修正分组入口 icon 口径：`symbol-array` 适用于创建空分组入口，从选择创建分组入口恢复为 `group-by-ref-type`。
