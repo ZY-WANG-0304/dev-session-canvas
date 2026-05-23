@@ -576,7 +576,7 @@ try {
   );
   assert.doesNotMatch(contentBackedNoteMaterializationSource, /showWarningMessage/u);
   assert.match(contentBackedNoteMaterializationSource, /status: 'dirty-conflict'/u);
-  assert.match(contentBackedNoteMaterializationSource, /createStoredNoteMarkdownConflictDraft/u);
+  assert.match(contentBackedNoteMaterializationSource, /createStoredNoteMarkdownRecoverableDraft/u);
   assert.match(contentBackedNoteMaterializationSource, /content: templateContent/u);
   const applyTemplateHelperSource = sliceBetween(
     panelManagerSource,
