@@ -40,6 +40,8 @@
 - [x] (2026-05-23 10:20Z) 完成分组八向 resize：Webview 分组框提供上、下、左、右和四个角 resize 手柄，左 / 上方向 resize 会同步提交新的 `position` 与 `size`。
 - [x] (2026-05-23 10:20Z) 完成本次八向 resize 定向验证：`npm run typecheck`、`npm run build`、`node scripts/test/run-playwright-webview.mjs -g "canvas groups resize from all eight directions"` 均通过。
 - [x] (2026-05-23 14:24Z) 修正分组 resize 草稿语义：resize 过程中只调整被 resize 分组边界，不再把直接成员节点或子分组当作移动子树跟随；拖动分组仍保持整棵子树跟随移动。
+- [x] (2026-05-23 15:13Z) 修正节点入组避让可见性：节点拖拽或 resize 提交给宿主后，Webview 在下一次宿主状态更新时清理已提交的本地节点布局 draft，避免旧 draft 覆盖宿主返回的避让后坐标。
+- [x] (2026-05-23 15:13Z) 完成本次节点入组避让可见性验证：`npm run test:canvas-node-groups`、`npm run typecheck`、`npm run build`、`npx playwright test --config=playwright.config.mjs tests/playwright/webview-harness.spec.mjs --grep "node group drop applies"` 均通过。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -83,6 +85,9 @@
 
 - 观察：Webview 分组草稿里的 `position` 既可能来自移动，也可能来自左 / 上方向 resize；不能仅凭 `draft.position` 推断“整棵子树正在移动”。
   证据：`applyCanvasGroupDrafts` 现在只把不含 `size` 且 position 真的变化的草稿视为移动草稿；含 `size` 的 resize 草稿只改变分组框边界，成员节点和子分组在释放前保持原位。
+
+- 观察：节点入组避让在宿主中已经计算，但 Webview 可能继续用 React Flow 拖拽产生的本地 `nodeLayoutDrafts` 覆盖宿主返回的避让后位置。
+  证据：新增 Playwright 回归用例先把节点拖到已有组内节点上，再模拟宿主返回避让后的 `host/stateUpdated`；修复后 Webview 会清理已提交节点的 draft，显示宿主坐标，而不是继续显示鼠标释放处的重叠位置。
 
 ## 决策记录
 
@@ -223,6 +228,21 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
       ✓ canvas group resize draft keeps member nodes stationary until release
     2 passed
 
+2026-05-23 节点入组避让可见性修复验证记录：
+
+    > dev-session-canvas@0.10.4 test:canvas-node-groups
+    > node scripts/test/test-canvas-node-groups.mjs
+
+    > dev-session-canvas@0.10.4 typecheck
+    > tsc --noEmit
+
+    > dev-session-canvas@0.10.4 build
+    > node scripts/build/build.mjs
+
+    Running 1 test using 1 worker
+      ✓ node group drop applies the host avoidance position after state update
+    1 passed
+
 2026-05-23 调整轮最终验证记录：
 
     > dev-session-canvas@0.10.4 typecheck
@@ -306,3 +326,5 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-23 07:45Z 补充 resize 释放边界回归测试，确认四向挤开只修复合法状态，不把修复后的几何关系反向解释成新的 resize 归属意图。
 
 本次修订说明：2026-05-23 08:00Z 修正 resize 释放边界对节点的归属意图，完整包含的同父稳定节点会纳入当前分组，直接成员节点不再完整包含时提升到父级。
+
+本次修订说明：2026-05-23 15:13Z 修正节点入组避让结果在 Webview 中不可见的问题：拖拽 / resize 已提交节点的本地布局 draft 会在宿主权威状态更新时清理，避免覆盖宿主返回的避让后坐标。

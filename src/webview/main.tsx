@@ -1028,6 +1028,7 @@ function App(): JSX.Element {
   const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
   const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
+  const pendingCommittedNodeLayoutDraftIdsRef = useRef<Set<string>>(new Set());
   const [groupDrafts, setGroupDrafts] = useState<Record<string, CanvasGroupDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1070,6 +1071,20 @@ function App(): JSX.Element {
             latestRuntimeContext = normalizedRuntime;
             setHostState(normalizedState);
             setRuntimeContext(normalizedRuntime);
+            setNodeLayoutDrafts((current) => {
+              // Host layout wins after a move/resize has been submitted.
+              const pendingNodeIds = pendingCommittedNodeLayoutDraftIdsRef.current;
+              if (pendingNodeIds.size === 0) {
+                return current;
+              }
+
+              const next = { ...current };
+              for (const nodeId of pendingNodeIds) {
+                delete next[nodeId];
+              }
+              pendingNodeIds.clear();
+              return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
+            });
             applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
           }
           scheduleEmbeddedTerminalAppearanceRefresh();
@@ -1904,6 +1919,24 @@ function App(): JSX.Element {
     });
   };
 
+  const markCommittedNodeLayoutDrafts = (nodeIds: readonly string[]): void => {
+    for (const nodeId of nodeIds) {
+      pendingCommittedNodeLayoutDraftIdsRef.current.add(nodeId);
+    }
+  };
+
+  const handleResizeNode = (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
+    markCommittedNodeLayoutDrafts([nodeId]);
+    postMessage({
+      type: 'webview/resizeNode',
+      payload: {
+        nodeId,
+        position,
+        size
+      }
+    });
+  };
+
   const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
@@ -2074,15 +2107,7 @@ function App(): JSX.Element {
           content
         }
       }),
-    onResizeNode: (nodeId, position, size) =>
-      postMessage({
-        type: 'webview/resizeNode',
-        payload: {
-          nodeId,
-          position,
-          size
-        }
-      }),
+    onResizeNode: handleResizeNode,
     onFocusNodeInViewport: focusNodeInViewport,
     onDeleteNode: deleteNode
   });
@@ -2357,6 +2382,7 @@ function App(): JSX.Element {
         pointerPosition: primaryPointerPosition
       };
     });
+    markCommittedNodeLayoutDrafts([node.id, ...selectedMoves.map((move) => move.id)]);
     postMessage({
       type: 'webview/moveNode',
       payload: {
