@@ -167,7 +167,7 @@ interface NoteNodeMetadata {
 - `markdown-file` Note 的 `content` 只表示当前 Host 已读取并发送给 Webview 的展示/编辑缓冲；文件才是权威来源。
 - `markdown-file` Note 的展示/编辑缓冲不复用普通 Note 的 8,000 字符持久化截断上限；节点内编辑、checklist 切换或 Host 刷新都不能把超过 8,000 字符的 Markdown 文件截断后写回真实文件。
 - `contentRevision` 表示 Host 侧最近一次确认的磁盘状态版本，默认由 `FileStat` 可观测信息生成；本地 `file:` 资源优先使用 `dev + ino + size + mtime + ctime`，其他 VSCode 文件系统资源使用 provider 暴露的 `type + size + mtime + ctime`。Webview 在开始编辑时记录该 revision 并向 Host 登记一次运行时 edit session，提交时带回；Host 在编辑期间的文件刷新或写回前若发现当前磁盘状态版本已变化，必须进入 `dirty-conflict` 而不是写回旧草稿。
-- `conflictDraft` 表示关联 Markdown Note 的未提交草稿引用。Webview 在用户编辑关联 Markdown Note 时把草稿和开始编辑时的 `baseContentRevision` 上报给 Host；Host 把草稿正文写入 extension `storageUri` 下的 `note-markdown-drafts/<draftId>.md`，画布状态只持久化 `draftId`、开始编辑时的 `baseContentRevision`、远端 revision 和更新时间。开始编辑但尚未产生冲突或正文差异时，Host 只保留内存态 edit session，不把同内容草稿写入持久化状态。
+- `conflictDraft` 表示关联 Markdown Note 的未提交草稿引用。Webview 在用户编辑关联 Markdown Note 时把草稿和开始编辑时的 `baseContentRevision` 上报给 Host；Host 把草稿正文写入 extension `storageUri` 下的 `note-markdown-drafts/<draftId>.md`，画布状态只持久化 `draftId`、开始编辑时的 `baseContentRevision`、远端 revision 和更新时间。开始编辑但尚未产生冲突或正文差异时，Host 只保留内存态 edit session，不把同内容草稿写入持久化状态；一旦草稿正文已经不同于编辑基线，即使远端 revision 暂未变化，也可以以 `status: ok` + `conflictDraft` 形式保留可恢复草稿，直到用户提交、显式清除、重新加载或覆盖文件。
 - `conflictDraft.content` 只允许作为 Host 发给 Webview 的运行时 hydration 字段，用于恢复 textarea 和显示“覆盖文件”入口；写入 `canvas-state.json`、`workspaceState`、debug snapshot 或正式持久化状态前必须移除。该字段只服务未解决冲突恢复，不能被当作文件内容权威。
 - 实现时不应依赖 `markdown-file` Note 的 `content` 作为文件缺失后的长期 fallback。即使持久化层因兼容需要保留最近一次 buffer，UI 也必须在文件不可用时优先显示警告状态，不能把缓存伪装成最新文件内容。
 - `resourceUri` 使用 VSCode 资源 URI 字符串作为持久化身份，避免只保存本地 `fsPath` 后无法解释 Remote 或非当前工作区资源。

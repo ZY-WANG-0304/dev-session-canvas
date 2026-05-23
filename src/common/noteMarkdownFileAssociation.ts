@@ -62,6 +62,38 @@ export interface NoteMarkdownConflictDraft {
   updatedAt: string;
 }
 
+export interface NoteMarkdownRefreshDraftRetention {
+  keepConflictDraft: boolean;
+  markDirtyConflict: boolean;
+}
+
+export function resolveNoteMarkdownRefreshDraftRetention(options: {
+  clearConflictDraft?: boolean;
+  currentStatus: NoteMarkdownFileStatus;
+  hasConflictDraft: boolean;
+  didRevisionChange: boolean;
+  didActiveEditConflict: boolean;
+}): NoteMarkdownRefreshDraftRetention {
+  if (options.clearConflictDraft) {
+    return {
+      keepConflictDraft: false,
+      markDirtyConflict: false
+    };
+  }
+
+  const hasUnresolvedConflict = options.currentStatus === 'dirty-conflict';
+  return {
+    keepConflictDraft:
+      hasUnresolvedConflict ||
+      options.hasConflictDraft ||
+      options.didActiveEditConflict,
+    markDirtyConflict:
+      hasUnresolvedConflict ||
+      options.didActiveEditConflict ||
+      (options.hasConflictDraft && options.didRevisionChange)
+  };
+}
+
 export interface NoteMarkdownUriIdentity {
   scheme: string;
   authority?: string;

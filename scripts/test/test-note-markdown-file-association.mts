@@ -10,6 +10,7 @@ import {
   isSupportedNoteMarkdownFilePath,
   normalizeNoteMarkdownAuthority,
   resolveNoteMarkdownFileExtension,
+  resolveNoteMarkdownRefreshDraftRetention,
   sanitizeNoteMarkdownFileName,
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay
 } from '../../src/common/noteMarkdownFileAssociation.ts';
@@ -180,6 +181,47 @@ assert.equal(
   ),
   false,
   'Remote kind alone should not compare with file-scheme workspace roots.'
+);
+
+assert.deepEqual(
+  resolveNoteMarkdownRefreshDraftRetention({
+    currentStatus: 'ok',
+    hasConflictDraft: true,
+    didRevisionChange: false,
+    didActiveEditConflict: false
+  }),
+  {
+    keepConflictDraft: true,
+    markDirtyConflict: false
+  },
+  'A refresh with an unchanged remote revision must keep a recoverable active draft without marking a conflict.'
+);
+assert.deepEqual(
+  resolveNoteMarkdownRefreshDraftRetention({
+    currentStatus: 'ok',
+    hasConflictDraft: true,
+    didRevisionChange: true,
+    didActiveEditConflict: false
+  }),
+  {
+    keepConflictDraft: true,
+    markDirtyConflict: true
+  },
+  'A remote revision change while a recoverable draft exists should promote the draft to dirty-conflict.'
+);
+assert.deepEqual(
+  resolveNoteMarkdownRefreshDraftRetention({
+    clearConflictDraft: true,
+    currentStatus: 'dirty-conflict',
+    hasConflictDraft: true,
+    didRevisionChange: true,
+    didActiveEditConflict: true
+  }),
+  {
+    keepConflictDraft: false,
+    markDirtyConflict: false
+  },
+  'Explicit reload should be the escape hatch that clears the stored draft and conflict status.'
 );
 
 const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));

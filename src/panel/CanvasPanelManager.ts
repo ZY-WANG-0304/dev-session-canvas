@@ -147,6 +147,7 @@ import {
   formatNoteMarkdownRemoteAuthorityPrefix,
   isSupportedNoteMarkdownFilePath,
   normalizeNoteMarkdownAuthority,
+  resolveNoteMarkdownRefreshDraftRetention,
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay,
   type MarkdownFileNoteContentSource,
   type NoteContentSource,
@@ -5515,12 +5516,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         updatedAt: Date.now()
       });
     }
-    const shouldKeepConflict =
-      !options.clearConflictDraft &&
-      (source.status === 'dirty-conflict' ||
-        (Boolean(source.conflictDraft) && didRevisionChange) ||
-        didActiveEditConflict);
-    const nextConflictDraft = shouldKeepConflict
+    const draftRetention = resolveNoteMarkdownRefreshDraftRetention({
+      clearConflictDraft: options.clearConflictDraft,
+      currentStatus: source.status,
+      hasConflictDraft: Boolean(source.conflictDraft),
+      didRevisionChange,
+      didActiveEditConflict
+    });
+    const nextConflictDraft = draftRetention.keepConflictDraft
       ? didActiveEditConflict && activeEdit
         ? this.createStoredNoteMarkdownConflictDraft(
             activeEdit.content,
@@ -5531,14 +5534,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : source.conflictDraft
           ? {
               ...source.conflictDraft,
-              remoteContentRevision: readResult.status === 'ok'
+              remoteContentRevision: draftRetention.markDirtyConflict && readResult.status === 'ok'
                 ? readResult.contentRevision
                 : source.conflictDraft.remoteContentRevision
             }
           : undefined
       : undefined;
-    const nextStatus = shouldKeepConflict ? 'dirty-conflict' : readResult.status;
-    const nextLastError = shouldKeepConflict
+    const nextStatus = draftRetention.markDirtyConflict ? 'dirty-conflict' : readResult.status;
+    const nextLastError = draftRetention.markDirtyConflict
       ? (source.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
       : readResult.lastError;
     const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
