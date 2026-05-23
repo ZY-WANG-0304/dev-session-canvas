@@ -13186,14 +13186,27 @@ function resizeGroup(
 
     return group;
   });
-  const nodesAfterBoundaryIntent = previousState.nodes.map((node) =>
-    node.groupId === groupId && !rectContainsRect(resizedRect, rectForNode(node))
-      ? {
-          ...node,
-          groupId: targetParentId
-        }
-      : node
-  );
+  const nodesAfterBoundaryIntent = previousState.nodes.map((node) => {
+    if (node.groupId === groupId && !rectContainsRect(resizedRect, rectForNode(node))) {
+      return {
+        ...node,
+        groupId: targetParentId
+      };
+    }
+
+    if (
+      node.groupId === targetParentId &&
+      isStableCanvasGroupMemberKind(node.kind) &&
+      rectContainsRect(resizedRect, rectForNode(node))
+    ) {
+      return {
+        ...node,
+        groupId
+      };
+    }
+
+    return node;
+  });
 
   return finalizeCanvasGroupState({
     ...previousState,
