@@ -8015,6 +8015,7 @@ test('canvas context menu can create an empty group', async ({ page }) => {
   await bootstrap(page, createEmptyCanvasState());
 
   await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 260, y: 220 } });
+  await expect(page.locator('[data-context-menu-action="create-empty-group"] .codicon-symbol-array')).toBeVisible();
   await page.locator('[data-context-menu-action="create-empty-group"]').click();
   const message = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
   expect(message.payload.size).toEqual({ width: 360, height: 240 });
@@ -8108,6 +8109,7 @@ test('canvas context menu can create a group from selected nodes', async ({ page
   expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
 
   await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 40, y: 620 } });
+  await expect(page.locator('[data-context-menu-action="create-group-from-selection"] .codicon-group-by-ref-type')).toBeVisible();
   await page.locator('[data-context-menu-action="create-group-from-selection"]').click();
   const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
   expect(message.payload).toEqual({
