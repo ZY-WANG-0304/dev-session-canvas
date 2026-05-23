@@ -8023,6 +8023,74 @@ test('canvas context menu can create an empty group', async ({ page }) => {
   expect(typeof message.payload.position.y).toBe('number');
 });
 
+test('canvas groups resize from all eight directions', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-23T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 240, y: 220 },
+        size: { width: 320, height: 220 }
+      }
+    ],
+    edges: []
+  });
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame.locator('.canvas-group-resize-handle')).toHaveCount(8);
+
+  const dragResizeHandle = async (direction, deltaX, deltaY) => {
+    await clearPostedMessages(page);
+    const handle = groupFrame.locator(`[data-resize-direction="${direction}"]`);
+    const handleBox = await handle.boundingBox();
+    expect(handleBox).not.toBeNull();
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handleBox.x + handleBox.width / 2 + deltaX, handleBox.y + handleBox.height / 2 + deltaY, { steps: 4 });
+    await page.mouse.up();
+    const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+    expect(message.payload.groupId).toBe('group-1');
+    return message.payload;
+  };
+
+  expect(await dragResizeHandle('right', 40, 0)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 360, height: 220 }
+  });
+  expect(await dragResizeHandle('bottom', 0, 40)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 320, height: 260 }
+  });
+  expect(await dragResizeHandle('left', -40, 0)).toMatchObject({
+    position: { x: 200, y: 220 },
+    size: { width: 360, height: 220 }
+  });
+  expect(await dragResizeHandle('top', 0, -40)).toMatchObject({
+    position: { x: 240, y: 180 },
+    size: { width: 320, height: 260 }
+  });
+  expect(await dragResizeHandle('top-left', -40, -30)).toMatchObject({
+    position: { x: 200, y: 190 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('top-right', 40, -30)).toMatchObject({
+    position: { x: 240, y: 190 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('bottom-left', -40, 30)).toMatchObject({
+    position: { x: 200, y: 220 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('bottom-right', 40, 30)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 360, height: 250 }
+  });
+});
+
 test('selected nodes move together and share the primary release intent', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
