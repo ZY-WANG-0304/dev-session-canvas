@@ -13298,13 +13298,12 @@ function finalizeCanvasGroupState(
 ): CanvasPrototypeState {
   const groups = removeMissingGroupNodeMemberships(state.groups ?? [], state.nodes);
   const nodes = normalizeCanvasNodeGroupMemberships(state.nodes, groups);
-  const expandedGroups = expandGroupsToContainDirectMembers(groups, nodes);
-  const displacedState = displaceIllegalSiblingObjects(expandedGroups, nodes, options);
-  const finalGroups = expandGroupsToContainDirectMembers(displacedState.groups, displacedState.nodes);
+  const repairedState = repairCanvasGroupGeometry(groups, nodes, options);
+  const finalGroups = expandGroupsToContainDirectMembers(repairedState.groups, repairedState.nodes);
 
   return {
     ...state,
-    nodes: displacedState.nodes,
+    nodes: repairedState.nodes,
     groups: finalGroups
   };
 }
@@ -13348,113 +13347,259 @@ function expandGroupsToContainDirectMembers(
 }
 
 function displaceOverlappingSiblingGroups(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
-  const nextGroups = groups.map((group) => ({ ...group }));
-
-  for (let pass = 0; pass < Math.max(1, nextGroups.length * nextGroups.length); pass += 1) {
-    let didMove = false;
-    for (let leftIndex = 0; leftIndex < nextGroups.length; leftIndex += 1) {
-      for (let rightIndex = leftIndex + 1; rightIndex < nextGroups.length; rightIndex += 1) {
-        const left = nextGroups[leftIndex];
-        const right = nextGroups[rightIndex];
-        if (left.parentGroupId !== right.parentGroupId) {
-          continue;
-        }
-
-        const leftRect = rectForGroup(left);
-        const rightRect = rectForGroup(right);
-        if (
-          !rectsIntersect(leftRect, rightRect) ||
-          rectContainsRect(leftRect, rightRect) ||
-          rectContainsRect(rightRect, leftRect)
-        ) {
-          continue;
-        }
-
-        const deltaX = leftRect.right - rightRect.left + CANVAS_GROUP_COLLISION_PADDING;
-        nextGroups[rightIndex] = translateGroup(right, { x: deltaX, y: 0 });
-        didMove = true;
-      }
-    }
-
-    if (!didMove) {
-      break;
-    }
-  }
-
-  return nextGroups;
+  return repairCanvasGroupGeometry(groups, [], {}).groups;
 }
 
-function displaceIllegalSiblingObjects(
+function repairCanvasGroupGeometry(
   groups: readonly CanvasGroupSummary[],
   nodes: readonly CanvasNodeSummary[],
   options: { pinnedGroupId?: string } = {}
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
-  let nextGroups = groups.map((group) => ({ ...group }));
+  let nextGroups = expandGroupsToContainDirectMembers(groups, nodes);
   let nextNodes = nodes.map((node) => ({ ...node }));
 
-  for (let pass = 0; pass < Math.max(1, nextGroups.length * nextGroups.length + nextGroups.length); pass += 1) {
-    let didMove = false;
+  for (let pass = 0; pass < Math.max(1, nextGroups.length * nextGroups.length + nextGroups.length + 1); pass += 1) {
+    const expandedGroups = expandGroupsToContainDirectMembers(nextGroups, nextNodes);
+    const repairedState = repairOneIllegalSiblingGeometry(expandedGroups, nextNodes, options);
+    nextGroups = repairedState.groups;
+    nextNodes = repairedState.nodes;
 
-    for (let leftIndex = 0; leftIndex < nextGroups.length; leftIndex += 1) {
-      for (let rightIndex = leftIndex + 1; rightIndex < nextGroups.length; rightIndex += 1) {
-        const left = nextGroups[leftIndex];
-        const right = nextGroups[rightIndex];
-        if (left.parentGroupId !== right.parentGroupId) {
-          continue;
-        }
+    if (!repairedState.didRepair && groupsEqualCollectionGeometry(expandedGroups, nextGroups)) {
+      break;
+    }
+  }
 
-        const leftRect = rectForGroup(left);
-        const rightRect = rectForGroup(right);
-        if (
-          !rectsIntersect(leftRect, rightRect) ||
-          rectContainsRect(leftRect, rightRect) ||
-          rectContainsRect(rightRect, leftRect)
-        ) {
-          continue;
-        }
+  return { groups: nextGroups, nodes: nextNodes };
+}
 
-        const pinnedGroup =
-          left.id === options.pinnedGroupId ? left : right.id === options.pinnedGroupId ? right : undefined;
-        const movingGroup = pinnedGroup?.id === right.id ? left : right;
-        const anchorRect = pinnedGroup ? rectForGroup(pinnedGroup) : leftRect;
-        const movingRect = pinnedGroup ? rectForGroup(movingGroup) : rightRect;
-        const delta = { x: anchorRect.right - movingRect.left + CANVAS_GROUP_COLLISION_PADDING, y: 0 };
-        const translated = translateGroupSubtree(nextGroups, nextNodes, movingGroup.id, delta);
-        nextGroups = translated.groups;
-        nextNodes = translated.nodes;
-        didMove = true;
-      }
+function repairOneIllegalSiblingGeometry(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[],
+  options: { pinnedGroupId?: string } = {}
+): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[]; didRepair: boolean } {
+  const siblingCollections = collectSiblingGeometryCollections(groups, nodes);
+  for (const collection of siblingCollections) {
+    const overlappingGroups = findFirstOverlappingSiblingGroups(collection.items);
+    if (overlappingGroups) {
+      const repairGroups = collection.items
+        .filter((item) => item.kind === 'group')
+        .map((item) => item.id);
+      return {
+        ...applySpreadRepair(groups, nodes, collection.items, repairGroups, overlappingGroups, options),
+        didRepair: true
+      };
     }
 
-    for (const group of [...nextGroups]) {
-      const groupParentId = group.parentGroupId;
-      const groupRect = rectForGroup(group);
-      const blockingNode = nextNodes.find(
-        (node) => node.groupId === groupParentId && rectsIntersect(rectForNode(node), groupRect)
+    const nodeGroupOverlap = findFirstNodeGroupOverlap(collection.items);
+    if (nodeGroupOverlap) {
+      const preferredRepairIds =
+        nodeGroupOverlap.secondId === options.pinnedGroupId ? [nodeGroupOverlap.firstId] : [nodeGroupOverlap.secondId];
+      return {
+        ...applySpreadRepair(groups, nodes, collection.items, preferredRepairIds, nodeGroupOverlap, options),
+        didRepair: true
+      };
+    }
+  }
+
+  return { groups: groups.map((group) => ({ ...group })), nodes: nodes.map((node) => ({ ...node })), didRepair: false };
+}
+
+interface SiblingGeometryItem {
+  kind: 'group' | 'node';
+  id: string;
+  rect: CanvasRect;
+}
+
+interface IllegalGeometryOverlap {
+  firstId: string;
+  secondId: string;
+}
+
+function collectSiblingGeometryCollections(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[]
+): Array<{ parentGroupId?: string; items: SiblingGeometryItem[] }> {
+  const parentGroupIds = new Set<string | undefined>();
+  for (const group of groups) {
+    parentGroupIds.add(group.parentGroupId);
+  }
+  for (const node of nodes) {
+    parentGroupIds.add(node.groupId);
+  }
+
+  return [...parentGroupIds].map((parentGroupId) => ({
+    parentGroupId,
+    items: [
+      ...groups
+        .filter((group) => group.parentGroupId === parentGroupId)
+        .map((group) => ({ kind: 'group' as const, id: group.id, rect: rectForGroup(group) })),
+      ...nodes
+        .filter((node) => node.groupId === parentGroupId)
+        .map((node) => ({ kind: 'node' as const, id: node.id, rect: rectForNode(node) }))
+    ]
+  }));
+}
+
+function findFirstOverlappingSiblingGroups(items: readonly SiblingGeometryItem[]): IllegalGeometryOverlap | undefined {
+  const groupItems = items.filter((item) => item.kind === 'group');
+  for (let leftIndex = 0; leftIndex < groupItems.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < groupItems.length; rightIndex += 1) {
+      const left = groupItems[leftIndex];
+      const right = groupItems[rightIndex];
+      if (
+        rectsIntersect(left.rect, right.rect) &&
+        !rectContainsRect(left.rect, right.rect) &&
+        !rectContainsRect(right.rect, left.rect)
+      ) {
+        return { firstId: left.id, secondId: right.id };
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function findFirstNodeGroupOverlap(items: readonly SiblingGeometryItem[]): IllegalGeometryOverlap | undefined {
+  const nodeItems = items.filter((item) => item.kind === 'node');
+  const groupItems = items.filter((item) => item.kind === 'group');
+  for (const group of groupItems) {
+    const node = nodeItems.find((candidate) => rectsIntersect(candidate.rect, group.rect));
+    if (node) {
+      return { firstId: node.id, secondId: group.id };
+    }
+  }
+
+  return undefined;
+}
+
+function applySpreadRepair(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[],
+  siblingItems: readonly SiblingGeometryItem[],
+  preferredRepairIds: readonly string[],
+  overlap: IllegalGeometryOverlap,
+  options: { pinnedGroupId?: string } = {}
+): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
+  const candidates = buildSpreadRepairCandidates(siblingItems, preferredRepairIds, overlap, options);
+  const bestCandidate = candidates
+    .map((repairTargetIds) => ({
+      repairTargetIds,
+      plan: resolveSpreadRepairPlan(siblingItems, repairTargetIds, options)
+    }))
+    .filter((candidate): candidate is { repairTargetIds: string[]; plan: SpreadRepairPlan } => candidate.plan !== undefined)
+    .sort((left, right) => compareSpreadRepairPlans(left.plan, right.plan))[0];
+
+  if (!bestCandidate) {
+    return { groups: groups.map((group) => ({ ...group })), nodes: nodes.map((node) => ({ ...node })) };
+  }
+
+  return applySpreadRepairPlan(groups, nodes, bestCandidate.plan);
+}
+
+interface SpreadRepairTarget {
+  item: SiblingGeometryItem;
+  index: number;
+  rect: CanvasRect;
+}
+
+interface SpreadRepairPlan {
+  targets: SpreadRepairTarget[];
+  deltas: CanvasNodePosition[];
+  totalMovement: number;
+  maxMovement: number;
+  movedCount: number;
+}
+
+function buildSpreadRepairCandidates(
+  items: readonly SiblingGeometryItem[],
+  preferredRepairIds: readonly string[],
+  overlap: IllegalGeometryOverlap,
+  options: { pinnedGroupId?: string }
+): string[][] {
+  const movableIds = items.map((item) => item.id);
+  const preferredIds = preferredRepairIds.filter((id) => movableIds.includes(id));
+  const overlapMovableIds = [overlap.firstId, overlap.secondId].filter((id) => movableIds.includes(id));
+  const candidateKeys = new Set<string>();
+  const candidates: string[][] = [];
+
+  const addCandidate = (ids: readonly string[]) => {
+    const uniqueIds = [...new Set(ids)].filter((id) => !options.pinnedGroupId || id !== options.pinnedGroupId);
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    const key = uniqueIds.slice().sort().join('\u0000');
+    if (candidateKeys.has(key)) {
+      return;
+    }
+
+    candidateKeys.add(key);
+    candidates.push(uniqueIds);
+  };
+
+  addCandidate(preferredIds);
+  addCandidate(overlapMovableIds);
+  for (const id of overlapMovableIds) {
+    addCandidate([id]);
+  }
+  for (const id of preferredIds) {
+    addCandidate([id]);
+  }
+  addCandidate(items.filter((item) => item.kind === 'group').map((item) => item.id));
+  addCandidate(movableIds);
+
+  return candidates;
+}
+
+function resolveSpreadRepairPlan(
+  items: readonly SiblingGeometryItem[],
+  repairTargetIds: readonly string[],
+  options: { pinnedGroupId?: string }
+): SpreadRepairPlan | undefined {
+  const repairTargetIdSet = new Set(repairTargetIds);
+  const targets = items
+    .map((item, index) => ({ item, index, rect: item.rect }))
+    .filter((target) => repairTargetIdSet.has(target.item.id));
+  if (targets.length === 0) {
+    return undefined;
+  }
+
+  const fixedItems = items.filter((item) => !repairTargetIdSet.has(item.id) || item.id === options.pinnedGroupId);
+  const repairedTargets = targets.map((target) => ({ ...target }));
+  const deltasById = new Map<string, CanvasNodePosition>();
+  for (const target of repairedTargets) {
+    deltasById.set(target.item.id, { x: 0, y: 0 });
+  }
+
+  const pinnedItem = options.pinnedGroupId ? items.find((item) => item.id === options.pinnedGroupId) : undefined;
+  const originPoint = pinnedItem ? rectCenterPoint(pinnedItem.rect) : averageRectCenter(items.map((item) => item.rect));
+  for (let pass = 0; pass < Math.max(1, repairedTargets.length + fixedItems.length + 2); pass += 1) {
+    let didMove = false;
+    const allItems = [
+      ...fixedItems.map((item) => ({ item, rect: item.rect, canMove: false })),
+      ...repairedTargets.map((target) => ({ item: target.item, rect: target.rect, canMove: true }))
+    ];
+
+    for (const target of repairedTargets) {
+      const overlaps = allItems.filter(
+        (candidate) => candidate.item.id !== target.item.id && rectsIntersect(target.rect, candidate.rect)
       );
-      if (!blockingNode) {
+      if (overlaps.length === 0) {
         continue;
       }
 
-      if (group.id === options.pinnedGroupId) {
-        nextNodes = nextNodes.map((node) =>
-          node.id === blockingNode.id
-            ? {
-                ...node,
-                position: {
-                  x: Math.round(groupRect.right + CANVAS_GROUP_COLLISION_PADDING),
-                  y: node.position.y
-                }
-              }
-            : node
-        );
-      } else {
-        const blockingRect = rectForNode(blockingNode);
-        const delta = { x: blockingRect.right - groupRect.left + CANVAS_GROUP_COLLISION_PADDING, y: 0 };
-        const translated = translateGroupSubtree(nextGroups, nextNodes, group.id, delta);
-        nextGroups = translated.groups;
-        nextNodes = translated.nodes;
+      const blockingCenter =
+        overlaps.some((candidate) => candidate.item.id === options.pinnedGroupId) && pinnedItem
+          ? originPoint
+          : averageRectCenter(overlaps.map((candidate) => candidate.rect));
+      const delta = chooseSpreadDelta(target.rect, blockingCenter, overlaps.map((candidate) => candidate.rect));
+      if (delta.x === 0 && delta.y === 0) {
+        continue;
       }
+
+      target.rect = translateRect(target.rect, delta);
+      const previousDelta = deltasById.get(target.item.id) ?? { x: 0, y: 0 };
+      deltasById.set(target.item.id, { x: previousDelta.x + delta.x, y: previousDelta.y + delta.y });
       didMove = true;
     }
 
@@ -13463,7 +13608,189 @@ function displaceIllegalSiblingObjects(
     }
   }
 
+  const finalItems = [
+    ...fixedItems.map((item) => ({ item, id: item.id, rect: item.rect })),
+    ...repairedTargets.map((target) => ({
+      item: { ...target.item, rect: target.rect },
+      id: target.item.id,
+      rect: target.rect
+    }))
+  ];
+  for (let leftIndex = 0; leftIndex < finalItems.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < finalItems.length; rightIndex += 1) {
+      const left = finalItems[leftIndex];
+      const right = finalItems[rightIndex];
+      if (shouldTreatSiblingGeometryAsConflict(left.item, right.item, false)) {
+        return undefined;
+      }
+    }
+  }
+
+  const deltas = targets.map((target) => deltasById.get(target.item.id) ?? { x: 0, y: 0 });
+  return {
+    targets,
+    deltas,
+    totalMovement: deltas.reduce((sum, delta) => sum + Math.abs(delta.x) + Math.abs(delta.y), 0),
+    maxMovement: deltas.reduce((max, delta) => Math.max(max, Math.abs(delta.x) + Math.abs(delta.y)), 0),
+    movedCount: deltas.filter((delta) => delta.x !== 0 || delta.y !== 0).length
+  };
+}
+
+function chooseSpreadDelta(rect: CanvasRect, blockingCenter: CanvasNodePosition, blockingRects: readonly CanvasRect[]): CanvasNodePosition {
+  const rectCenter = rectCenterPoint(rect);
+  const preferredDirections = rankSpreadDirections(rectCenter, blockingCenter);
+  const directionRanks = new Map(preferredDirections.map((direction, index) => [direction, index] as const));
+  const candidateDeltas = buildCardinalSpreadDeltas(rect, blockingRects);
+
+  return candidateDeltas.sort((left, right) => {
+    const leftDirection = directionForDelta(left);
+    const rightDirection = directionForDelta(right);
+    return (
+      (directionRanks.get(leftDirection) ?? Number.MAX_SAFE_INTEGER) -
+        (directionRanks.get(rightDirection) ?? Number.MAX_SAFE_INTEGER) ||
+      Math.abs(left.x) + Math.abs(left.y) - (Math.abs(right.x) + Math.abs(right.y))
+    );
+  })[0] ?? { x: 0, y: 0 };
+}
+
+function rankSpreadDirections(
+  rectCenter: CanvasNodePosition,
+  blockingCenter: CanvasNodePosition
+): Array<'left' | 'right' | 'up' | 'down'> {
+  const horizontalDirection = rectCenter.x < blockingCenter.x ? 'left' : 'right';
+  const verticalDirection = rectCenter.y < blockingCenter.y ? 'up' : 'down';
+  const oppositeHorizontalDirection = horizontalDirection === 'left' ? 'right' : 'left';
+  const oppositeVerticalDirection = verticalDirection === 'up' ? 'down' : 'up';
+
+  return Math.abs(rectCenter.x - blockingCenter.x) >= Math.abs(rectCenter.y - blockingCenter.y)
+    ? [horizontalDirection, verticalDirection, oppositeVerticalDirection, oppositeHorizontalDirection]
+    : [verticalDirection, horizontalDirection, oppositeHorizontalDirection, oppositeVerticalDirection];
+}
+
+function buildCardinalSpreadDeltas(rect: CanvasRect, blockingRects: readonly CanvasRect[]): CanvasNodePosition[] {
+  const intersectingRects = blockingRects.filter((blockingRect) => rectsIntersect(rect, blockingRect));
+  if (intersectingRects.length === 0) {
+    return [{ x: 0, y: 0 }];
+  }
+
+  const leftDelta = Math.min(
+    ...intersectingRects.map((blockingRect) => blockingRect.left - CANVAS_GROUP_COLLISION_PADDING - rect.right)
+  );
+  const rightDelta = Math.max(
+    ...intersectingRects.map((blockingRect) => blockingRect.right + CANVAS_GROUP_COLLISION_PADDING - rect.left)
+  );
+  const upDelta = Math.min(
+    ...intersectingRects.map((blockingRect) => blockingRect.top - CANVAS_GROUP_COLLISION_PADDING - rect.bottom)
+  );
+  const downDelta = Math.max(
+    ...intersectingRects.map((blockingRect) => blockingRect.bottom + CANVAS_GROUP_COLLISION_PADDING - rect.top)
+  );
+
+  return dedupeCanvasPositionDeltas([
+    { x: Math.round(leftDelta), y: 0 },
+    { x: Math.round(rightDelta), y: 0 },
+    { x: 0, y: Math.round(upDelta) },
+    { x: 0, y: Math.round(downDelta) }
+  ]);
+}
+
+function directionForDelta(delta: CanvasNodePosition): 'left' | 'right' | 'up' | 'down' {
+  if (Math.abs(delta.x) >= Math.abs(delta.y)) {
+    return delta.x < 0 ? 'left' : 'right';
+  }
+
+  return delta.y < 0 ? 'up' : 'down';
+}
+
+function compareSpreadRepairPlans(left: SpreadRepairPlan, right: SpreadRepairPlan): number {
+  return (
+    left.totalMovement - right.totalMovement ||
+    left.maxMovement - right.maxMovement ||
+    left.movedCount - right.movedCount ||
+    left.targets.length - right.targets.length
+  );
+}
+
+function applySpreadRepairPlan(
+  groups: readonly CanvasGroupSummary[],
+  nodes: readonly CanvasNodeSummary[],
+  plan: SpreadRepairPlan
+): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
+  const deltasById = new Map(plan.targets.map((target, index) => [target.item.id, plan.deltas[index]] as const));
+  let nextGroups = groups.map((group) => ({ ...group }));
+  let nextNodes = nodes.map((node) => ({ ...node }));
+
+  for (const target of plan.targets) {
+    const delta = deltasById.get(target.item.id);
+    if (!delta || (delta.x === 0 && delta.y === 0)) {
+      continue;
+    }
+
+    if (target.item.kind === 'group') {
+      const translated = translateGroupSubtree(nextGroups, nextNodes, target.item.id, delta);
+      nextGroups = translated.groups;
+      nextNodes = translated.nodes;
+    } else {
+      nextNodes = nextNodes.map((node) => (node.id === target.item.id ? translateNode(node, delta) : node));
+    }
+  }
+
   return { groups: nextGroups, nodes: nextNodes };
+}
+
+function shouldTreatSiblingGeometryAsConflict(
+  left: Pick<SiblingGeometryItem, 'kind' | 'rect'>,
+  right: Pick<SiblingGeometryItem, 'kind' | 'rect'>,
+  includeNodeNode: boolean
+): boolean {
+  if (!rectsIntersect(left.rect, right.rect)) {
+    return false;
+  }
+
+  if (left.kind === 'node' && right.kind === 'node') {
+    return includeNodeNode;
+  }
+
+  if (left.kind === 'group' && right.kind === 'group') {
+    return !rectContainsRect(left.rect, right.rect) && !rectContainsRect(right.rect, left.rect);
+  }
+
+  return true;
+}
+
+function rectCenterPoint(rect: CanvasRect): CanvasNodePosition {
+  return {
+    x: Math.round((rect.left + rect.right) / 2),
+    y: Math.round((rect.top + rect.bottom) / 2)
+  };
+}
+
+function averageRectCenter(rects: readonly CanvasRect[]): CanvasNodePosition {
+  if (rects.length === 0) {
+    return { x: 0, y: 0 };
+  }
+
+  const centerSum = rects.reduce(
+    (sum, rect) => {
+      const center = rectCenterPoint(rect);
+      return { x: sum.x + center.x, y: sum.y + center.y };
+    },
+    { x: 0, y: 0 }
+  );
+
+  return {
+    x: Math.round(centerSum.x / rects.length),
+    y: Math.round(centerSum.y / rects.length)
+  };
+}
+
+function translateRect(rect: CanvasRect, delta: CanvasNodePosition): CanvasRect {
+  return {
+    left: Math.round(rect.left + delta.x),
+    top: Math.round(rect.top + delta.y),
+    right: Math.round(rect.right + delta.x),
+    bottom: Math.round(rect.bottom + delta.y)
+  };
 }
 
 function translateGroupSubtree(
@@ -13752,6 +14079,21 @@ function groupsEqualGeometry(left: CanvasGroupSummary, right: CanvasGroupSummary
     left.size.width === right.size.width &&
     left.size.height === right.size.height
   );
+}
+
+function groupsEqualCollectionGeometry(
+  leftGroups: readonly CanvasGroupSummary[],
+  rightGroups: readonly CanvasGroupSummary[]
+): boolean {
+  if (leftGroups.length !== rightGroups.length) {
+    return false;
+  }
+
+  const rightGroupsById = new Map(rightGroups.map((group) => [group.id, group] as const));
+  return leftGroups.every((group) => {
+    const rightGroup = rightGroupsById.get(group.id);
+    return rightGroup !== undefined && groupsEqualGeometry(group, rightGroup);
+  });
 }
 
 function normalizeCanvasNodeFootprintForPersistence(
