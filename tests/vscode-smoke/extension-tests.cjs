@@ -68,6 +68,7 @@ const COMMAND_IDS = {
   testExportCanvasTemplateToPath: 'devSessionCanvas.__test.exportCanvasTemplateToPath',
   testImportCanvasTemplateFromPath: 'devSessionCanvas.__test.importCanvasTemplateFromPath',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
+  testFlushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
@@ -4098,7 +4099,7 @@ async function verifyNoteMarkdownFileAssociation() {
   });
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
-    return Boolean(currentNote?.metadata?.note?.contentSource?.conflictDraft?.draftId);
+    return Boolean(currentNote?.metadata?.note?.contentSource?.recoverableDraft?.draftId);
   });
   const activeEditRemoteContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit while note is open`;
   await fs.writeFile(associatedFilePath, activeEditRemoteContent, 'utf8');
@@ -4112,14 +4113,14 @@ async function verifyNoteMarkdownFileAssociation() {
     activeEditRemoteContent,
     'Expected editing an associated Markdown Note to surface external disk changes before submit.'
   );
-  const activeEditConflictDraft = activeEditConflictNote.metadata.note.contentSource.conflictDraft;
+  const activeEditRecoverableDraft = activeEditConflictNote.metadata.note.contentSource.recoverableDraft;
   assert.match(
-    String(activeEditConflictDraft?.draftId),
+    String(activeEditRecoverableDraft?.draftId),
     /^[0-9a-f-]{36}$/i,
     'Expected active edit conflict to persist the in-progress note draft.'
   );
   assert.strictEqual(
-    await readInternalNoteMarkdownDraftContent(activeEditConflictDraft.draftId),
+    await readInternalNoteMarkdownDraftContent(activeEditRecoverableDraft.draftId),
     activeEditDraftContent,
     'Expected active edit conflict to keep the edit-session content as the recoverable draft.'
   );
@@ -4180,7 +4181,7 @@ async function verifyNoteMarkdownFileAssociation() {
     const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
     return Boolean(
       currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
-        currentNote.metadata.note.contentSource.conflictDraft?.draftId
+        currentNote.metadata.note.contentSource.recoverableDraft?.draftId
     );
   });
   assert.strictEqual(
@@ -4198,7 +4199,7 @@ async function verifyNoteMarkdownFileAssociation() {
     const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
     return Boolean(
       currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
-        !currentNote.metadata.note.contentSource.conflictDraft
+        !currentNote.metadata.note.contentSource.recoverableDraft
     );
   });
   const externalContentAfterRevertedDraft =
@@ -4213,7 +4214,7 @@ async function verifyNoteMarkdownFileAssociation() {
   });
   const revertedDraftRefreshNote = findNodeById(snapshot, associatedNote.id);
   assert.strictEqual(
-    revertedDraftRefreshNote.metadata.note.contentSource.conflictDraft,
+    revertedDraftRefreshNote.metadata.note.contentSource.recoverableDraft,
     undefined,
     'Expected clearing a reverted edit draft to prevent stale active edit conflicts.'
   );
@@ -4361,24 +4362,24 @@ async function verifyNoteMarkdownFileAssociation() {
     REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
     'Expected stale associated Markdown draft submission not to overwrite the file.'
   );
-  const conflictDraft = conflictNote.metadata.note.contentSource.conflictDraft;
+  const recoverableDraft = conflictNote.metadata.note.contentSource.recoverableDraft;
   assert.match(
-    String(conflictDraft?.draftId),
+    String(recoverableDraft?.draftId),
     /^[0-9a-f-]{36}$/i,
     'Expected dirty-conflict associated Markdown Note to persist a storage-backed draft id.'
   );
   assert.strictEqual(
-    conflictDraft?.content,
+    recoverableDraft?.content,
     undefined,
     'Expected debug state not to inline the rejected local draft content.'
   );
   assert.strictEqual(
-    await readInternalNoteMarkdownDraftContent(conflictDraft.draftId),
+    await readInternalNoteMarkdownDraftContent(recoverableDraft.draftId),
     '# Associated Note\n\n- stale local draft',
     'Expected dirty-conflict associated Markdown Note to persist the rejected local draft in storage.'
   );
   assert.strictEqual(
-    conflictDraft?.baseContentRevision,
+    recoverableDraft?.baseContentRevision,
     'stale-revision',
     'Expected persisted conflict draft to keep the stale base revision for explicit overwrite.'
   );
@@ -4391,22 +4392,108 @@ async function verifyNoteMarkdownFileAssociation() {
     'Expected reloading persisted state not to auto-resolve an associated Markdown conflict.'
   );
   assert.strictEqual(
-    reloadedConflictNote.metadata.note.contentSource.conflictDraft?.draftId,
-    conflictDraft.draftId,
+    reloadedConflictNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    recoverableDraft.draftId,
     'Expected reloading persisted state to keep the unresolved conflict draft reference.'
   );
   assert.strictEqual(
-    reloadedConflictNote.metadata.note.contentSource.conflictDraft?.content,
+    reloadedConflictNote.metadata.note.contentSource.recoverableDraft?.content,
     undefined,
     'Expected reloading persisted state not to inline the unresolved conflict draft.'
   );
   assert.strictEqual(
-    await readInternalNoteMarkdownDraftContent(conflictDraft.draftId),
+    await readInternalNoteMarkdownDraftContent(recoverableDraft.draftId),
     '# Associated Note\n\n- stale local draft',
     'Expected reloading persisted state to keep the unresolved conflict draft file.'
   );
 
-  const currentContentRevision = reloadedConflictNote.metadata.note.contentSource.contentRevision;
+  const legacyDraftId = '55555555-5555-4555-8555-555555555555';
+  const legacyRecoverableDraftContent = '# Associated Note\n\n- stale local draft from legacy field';
+  const legacyConflictDraftState = {
+    ...snapshot.state,
+    nodes: snapshot.state.nodes.map((node) => {
+      if (node.id !== associatedNote.id) {
+        return node;
+      }
+
+      const { recoverableDraft: _recoverableDraft, ...legacyContentSource } =
+        node.metadata.note.contentSource;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...node.metadata.note,
+            contentSource: {
+              ...legacyContentSource,
+              conflictDraft: {
+                draftId: legacyDraftId,
+                content: legacyRecoverableDraftContent,
+                baseContentRevision: 'legacy-base-revision',
+                remoteContentRevision: node.metadata.note.contentSource.contentRevision,
+                updatedAt: '2026-05-24T00:00:00.000Z'
+              }
+            }
+          }
+        }
+      };
+    })
+  };
+  snapshot = await setPersistedState(legacyConflictDraftState);
+  const migratedLegacyDraftNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    migratedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    legacyDraftId,
+    'Expected legacy conflictDraft state to migrate into recoverableDraft.'
+  );
+  assert.strictEqual(
+    migratedLegacyDraftNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected debug state not to re-emit legacy conflictDraft after migration.'
+  );
+  assert.strictEqual(
+    migratedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.content,
+    undefined,
+    'Expected migrated recoverableDraft not to inline draft content in debug state.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(legacyDraftId),
+    legacyRecoverableDraftContent,
+    'Expected migrating legacy conflictDraft content to keep the recoverable draft file.'
+  );
+  const persistedLegacyDraftSnapshot = await flushPersistedStateSnapshot();
+  const persistedLegacyDraftNote = persistedLegacyDraftSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+  assert.ok(persistedLegacyDraftNote, 'Expected persisted legacy migration snapshot to keep the associated Note.');
+  assert.strictEqual(
+    persistedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    legacyDraftId,
+    'Expected persisted state to write the migrated recoverableDraft field.'
+  );
+  assert.strictEqual(
+    persistedLegacyDraftNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected persisted state not to write the legacy conflictDraft field.'
+  );
+  assert.strictEqual(
+    persistedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.content,
+    undefined,
+    'Expected persisted migrated recoverableDraft not to inline draft content.'
+  );
+
+  snapshot = await reloadPersistedState();
+  const reloadedMigratedLegacyDraftNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    reloadedMigratedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    legacyDraftId,
+    'Expected reloading a stripped legacy conflictDraft snapshot to recover recoverableDraft.'
+  );
+  assert.strictEqual(
+    reloadedMigratedLegacyDraftNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected reloading a stripped legacy conflictDraft snapshot not to expose the old field.'
+  );
+
+  const currentContentRevision = reloadedMigratedLegacyDraftNote.metadata.note.contentSource.contentRevision;
   assert.ok(currentContentRevision, 'Expected dirty-conflict associated Markdown Note to keep a content revision.');
   await dispatchWebviewMessage({
     type: 'webview/updateNoteNode',
@@ -8933,15 +9020,26 @@ async function getDiagnosticEvents() {
 }
 
 async function readInternalNoteMarkdownDraftContent(draftId) {
+  return fs.readFile(
+    path.join(await readInternalExtensionStorageWritePath(), 'note-markdown-drafts', `${draftId}.md`),
+    'utf8'
+  );
+}
+
+async function flushPersistedStateSnapshot() {
+  const flushResult = await vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+  assert.ok(flushResult?.exists, 'Expected flushPersistedState to write a persisted canvas snapshot.');
+  assert.ok(flushResult.snapshot?.state, 'Expected flushPersistedState to return a canvas snapshot.');
+  return flushResult.snapshot;
+}
+
+async function readInternalExtensionStorageWritePath() {
   const diagnosticEvents = await getDiagnosticEvents();
   const latestStorageEvent = [...diagnosticEvents]
     .reverse()
     .find((event) => typeof event.detail?.writePath === 'string');
   assert.ok(latestStorageEvent, 'Expected diagnostics to expose the extension storage write path.');
-  return fs.readFile(
-    path.join(latestStorageEvent.detail.writePath, 'note-markdown-drafts', `${draftId}.md`),
-    'utf8'
-  );
+  return latestStorageEvent.detail.writePath;
 }
 
 async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutMs }) {

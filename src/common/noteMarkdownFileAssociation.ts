@@ -48,13 +48,13 @@ export interface MarkdownFileNoteContentSource {
   contentRevision?: string;
   status: NoteMarkdownFileStatus;
   lastError?: string;
-  conflictDraft?: NoteMarkdownConflictDraft;
+  recoverableDraft?: NoteMarkdownRecoverableDraft;
   webviewResourceBaseUri?: string;
 }
 
 export type NoteContentSource = EmbeddedNoteContentSource | MarkdownFileNoteContentSource;
 
-export interface NoteMarkdownConflictDraft {
+export interface NoteMarkdownRecoverableDraft {
   draftId?: string;
   content?: string;
   baseContentRevision?: string;
@@ -63,34 +63,34 @@ export interface NoteMarkdownConflictDraft {
 }
 
 export interface NoteMarkdownRefreshDraftRetention {
-  keepConflictDraft: boolean;
+  keepRecoverableDraft: boolean;
   markDirtyConflict: boolean;
 }
 
 export function resolveNoteMarkdownRefreshDraftRetention(options: {
-  clearConflictDraft?: boolean;
+  clearRecoverableDraft?: boolean;
   currentStatus: NoteMarkdownFileStatus;
-  hasConflictDraft: boolean;
+  hasRecoverableDraft: boolean;
   didRevisionChange: boolean;
   didActiveEditConflict: boolean;
 }): NoteMarkdownRefreshDraftRetention {
-  if (options.clearConflictDraft) {
+  if (options.clearRecoverableDraft) {
     return {
-      keepConflictDraft: false,
+      keepRecoverableDraft: false,
       markDirtyConflict: false
     };
   }
 
   const hasUnresolvedConflict = options.currentStatus === 'dirty-conflict';
   return {
-    keepConflictDraft:
+    keepRecoverableDraft:
       hasUnresolvedConflict ||
-      options.hasConflictDraft ||
+      options.hasRecoverableDraft ||
       options.didActiveEditConflict,
     markDirtyConflict:
       hasUnresolvedConflict ||
       options.didActiveEditConflict ||
-      (options.hasConflictDraft && options.didRevisionChange)
+      (options.hasRecoverableDraft && options.didRevisionChange)
   };
 }
 

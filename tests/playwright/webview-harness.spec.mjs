@@ -6631,7 +6631,7 @@ test('associated markdown conflict actions respond while the editor keeps focus'
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
     lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
-    conflictDraft: {
+    recoverableDraft: {
       draftId: '33333333-3333-4333-8333-333333333333',
       content: localDraft,
       baseContentRevision: 'revision-a',
@@ -6715,7 +6715,7 @@ test('associated markdown reload resolves the edit conflict on first click', asy
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
     lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
-    conflictDraft: {
+    recoverableDraft: {
       draftId: '44444444-4444-4444-8444-444444444444',
       content: localDraft,
       baseContentRevision: 'revision-a',
@@ -6932,7 +6932,7 @@ test('associated markdown note keeps a rejected stale draft after host dirty-con
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
     lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
-    conflictDraft: {
+    recoverableDraft: {
       draftId: '11111111-1111-4111-8111-111111111111',
       baseContentRevision: 'revision-a',
       remoteContentRevision: 'revision-b',
@@ -6984,7 +6984,7 @@ test('associated markdown note restores a persisted dirty-conflict draft after b
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
     lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
-    conflictDraft: {
+    recoverableDraft: {
       draftId: '22222222-2222-4222-8222-222222222222',
       content: '# 文件笔记\n\n本地草稿',
       baseContentRevision: 'revision-a',
@@ -7042,7 +7042,7 @@ test('associated markdown note bootstrapped with dirty-conflict shows reload rec
     contentRevision: 'revision-b',
     status: 'dirty-conflict',
     lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
-    conflictDraft: {
+    recoverableDraft: {
       draftId: '11111111-1111-4111-8111-111111111111',
       baseContentRevision: 'revision-a',
       remoteContentRevision: 'revision-b',

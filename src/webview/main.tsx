@@ -4543,10 +4543,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
   const associatedMarkdownStatus = associatedMarkdownFile?.status;
   const hasAssociatedMarkdownMissingFile = associatedMarkdownStatus === 'missing';
-  const associatedMarkdownConflictDraft = associatedMarkdownFile?.conflictDraft;
-  const associatedMarkdownConflictDraftContent =
-    typeof associatedMarkdownConflictDraft?.content === 'string'
-      ? associatedMarkdownConflictDraft.content
+  const associatedMarkdownRecoverableDraft = associatedMarkdownFile?.recoverableDraft;
+  const associatedMarkdownRecoverableDraftContent =
+    typeof associatedMarkdownRecoverableDraft?.content === 'string'
+      ? associatedMarkdownRecoverableDraft.content
       : undefined;
   const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
   const associatedMarkdownFileAvailable =
@@ -4755,7 +4755,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     if (
       associatedMarkdownFile &&
       hasAssociatedMarkdownHostConflict &&
-      associatedMarkdownConflictDraftContent !== undefined &&
+      associatedMarkdownRecoverableDraftContent !== undefined &&
       !associatedMarkdownEditConflict &&
       !associatedMarkdownConflictResolution
     ) {
@@ -4765,13 +4765,13 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       committedContentRef.current = noteMetadata.content;
       editBaselineContentRef.current = noteMetadata.content;
       editBaselineRevisionRef.current =
-        associatedMarkdownConflictDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
-      setContent(associatedMarkdownConflictDraftContent);
+        associatedMarkdownRecoverableDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
+      setContent(associatedMarkdownRecoverableDraftContent);
       setIsEditingBody(true);
       setAssociatedMarkdownEditConflict({
         remoteContent: noteMetadata.content,
         remoteContentRevision:
-          associatedMarkdownConflictDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
+          associatedMarkdownRecoverableDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
       });
       return;
     }
@@ -4907,8 +4907,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     }
   }, [
     associatedMarkdownContentRevision,
-    associatedMarkdownConflictDraft,
-    associatedMarkdownConflictDraftContent,
+    associatedMarkdownRecoverableDraft,
+    associatedMarkdownRecoverableDraftContent,
     associatedMarkdownConflictResolution,
     associatedMarkdownEditConflict,
     associatedMarkdownFile,
