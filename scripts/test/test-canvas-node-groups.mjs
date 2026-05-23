@@ -193,7 +193,7 @@ try {
   const pinnedGroup = pinnedCreateState.groups.find((candidate) => candidate.title === 'Group 1');
   const displacedExistingGroup = pinnedCreateState.groups.find((candidate) => candidate.id === 'group-existing');
   assert.deepStrictEqual(pinnedGroup.position, { x: 150, y: 120 });
-  assert.ok(displacedExistingGroup.position.x >= pinnedGroup.position.x + pinnedGroup.size.width);
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(pinnedGroup), rectForTestGroup(displacedExistingGroup)));
 
   const groupedSelection = createGroupFromSelection(
     state({
@@ -349,6 +349,46 @@ try {
   const resizedToRelease = resizeGroup(resizedToAdopt, 'group-parent', { x: 0, y: 0 }, { width: 220, height: 160 });
   assert.strictEqual(resizedToRelease.groups.find((candidate) => candidate.id === 'group-child').parentGroupId, undefined);
 
+  const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
+    state({
+      groups: [
+        group('group-left', { x: 0, y: 0 }, { width: 180, height: 120 }),
+        group('group-right', { x: 260, y: 0 }, { width: 180, height: 120 })
+      ]
+    }),
+    { x: 130, y: 0 },
+    { width: 180, height: 120 }
+  );
+  const insertedMiddleGroup = spreadInsertedGroupBetweenSiblings.groups.find((candidate) => candidate.title === 'Group 1');
+  const spreadLeftGroup = spreadInsertedGroupBetweenSiblings.groups.find((candidate) => candidate.id === 'group-left');
+  const spreadRightGroup = spreadInsertedGroupBetweenSiblings.groups.find((candidate) => candidate.id === 'group-right');
+  assert.deepStrictEqual(insertedMiddleGroup.position, { x: 130, y: 0 });
+  assert.ok(spreadLeftGroup.position.x < 0);
+  assert.ok(spreadRightGroup.position.x > 260);
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(insertedMiddleGroup), rectForTestGroup(spreadLeftGroup)));
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(insertedMiddleGroup), rectForTestGroup(spreadRightGroup)));
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(spreadLeftGroup), rectForTestGroup(spreadRightGroup)));
+
+  const spreadInsertedGroupVerticallyBetweenSiblings = createEmptyCanvasGroup(
+    state({
+      groups: [
+        group('group-top', { x: 0, y: 0 }, { width: 180, height: 120 }),
+        group('group-bottom', { x: 0, y: 200 }, { width: 180, height: 120 })
+      ]
+    }),
+    { x: 0, y: 100 },
+    { width: 180, height: 120 }
+  );
+  const insertedVerticalMiddleGroup = spreadInsertedGroupVerticallyBetweenSiblings.groups.find((candidate) => candidate.title === 'Group 1');
+  const spreadTopGroup = spreadInsertedGroupVerticallyBetweenSiblings.groups.find((candidate) => candidate.id === 'group-top');
+  const spreadBottomGroup = spreadInsertedGroupVerticallyBetweenSiblings.groups.find((candidate) => candidate.id === 'group-bottom');
+  assert.deepStrictEqual(insertedVerticalMiddleGroup.position, { x: 0, y: 100 });
+  assert.ok(spreadTopGroup.position.y < 0);
+  assert.ok(spreadBottomGroup.position.y > 200);
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(insertedVerticalMiddleGroup), rectForTestGroup(spreadTopGroup)));
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(insertedVerticalMiddleGroup), rectForTestGroup(spreadBottomGroup)));
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(spreadTopGroup), rectForTestGroup(spreadBottomGroup)));
+
   const ungrouped = ungroupCanvasGroup(
     state({
       nodes: [note('note-1', { x: 20, y: 20 }, { groupId: 'group-parent' })],
@@ -426,6 +466,15 @@ function rectForTestNode(node) {
     top: node.position.y,
     right: node.position.x + node.size.width,
     bottom: node.position.y + node.size.height
+  };
+}
+
+function rectForTestGroup(group) {
+  return {
+    left: group.position.x,
+    top: group.position.y,
+    right: group.position.x + group.size.width,
+    bottom: group.position.y + group.size.height
   };
 }
 
