@@ -109,6 +109,12 @@ try {
     '■ stream disconnected before completion: stream closed before response.completed'
   );
   assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'Claude stream finished normally.\nevent: message_stop\ndata: {"type":"message_stop"}\n'
+    ),
+    undefined
+  );
+  assert.equal(
     extractAgentAbnormalStreamInterruptionMessage('normal provider output\n> '),
     undefined
   );

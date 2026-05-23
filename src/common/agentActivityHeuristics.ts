@@ -46,6 +46,8 @@ const ABNORMAL_STREAM_TAIL_LIMIT = 1200;
 const AGENT_SPINNER_REDRAW_PATTERN = /(?:\r(?!\n)|\u0008|\u001b\[[0-9;?]*[ABCDGHJKfhlmnrsu])/u;
 const AGENT_SPINNER_GLYPH_PATTERN = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/u;
 const AGENT_PROMPT_PATTERN = /(?:^|\n)\s{0,4}(?:>|›|❯|≫|»)\s*$/u;
+// `response.completed` is a Codex/OpenAI Responses turn-completion event, not a
+// Claude Code contract. Keep provider-specific stream failures explicit here.
 const AGENT_ABNORMAL_STREAM_PATTERNS = [
   /stream\s+disconnected\s+before\s+completion/iu,
   /stream\s+closed\s+before\s+response\.completed/iu,

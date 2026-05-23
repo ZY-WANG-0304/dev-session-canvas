@@ -23,7 +23,7 @@
 
 1. 用户在画布上启动一个或多个 `Agent` / `Terminal` 节点
 2. 用户切换到其他工作（编辑代码、查看文档等），画布可能不在当前可见区域
-3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）；在此基础上，`Codex` / `Claude Code` Agent 已运行会话也可能非用户主动异常退出，或输出已知流断开错误
+3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）；在此基础上，`Codex` / `Claude Code` Agent 已运行会话也可能非用户主动异常退出，或 `Codex` 输出已知流断开错误
 4. 系统捕获并解析 provider 自身输出的注意力信号；若没有可靠输出但宿主观察到 Agent 已运行后异常终态或已知流断开错误，也补充识别出需要用户注意的事件
 5. 系统在画布节点上显示视觉提示（节点内提醒 icon、Minimap 同色明暗闪烁）
 6. 如果桥接模式不是 `none`，系统还会按配置额外弹出 VS Code 工作台消息或桌面系统通知
@@ -63,7 +63,11 @@
 - 触发范围：
   - 本地 PTY Agent 已进入 `running` 或 `waiting-input` 后，进程退出码非 `0` 且不是用户主动停止，状态进入 `error`
   - live-runtime supervisor 上报同等的“已跑起来后非用户主动非 `0` 退出” `error` 非 live 终态
-  - 本地 PTY 或 live-runtime 已跑起来的输出中出现已知流断开模式，例如 `stream disconnected before completion: stream closed before response.completed`
+  - 本地 PTY 或 live-runtime 已跑起来的输出中出现已知流断开失败文案；当前高置信样本是 Codex / OpenAI Responses 体系的 `stream disconnected before completion: stream closed before response.completed`
+- Provider 边界：
+  - `response.completed` 是 Codex 一次 turn 成功完成的权威事件；缺少它意味着 Codex 认为本次 stream 未完整完成。该文案不是 Claude Code 的标准事件或标准报错。
+  - Claude / Anthropic 的流式完成事件是 `message_stop`，Claude Code 的公开 hook 语义里 API error 对应 `StopFailure` 而不是 `Stop`。在没有 Claude Code 真实输出样本或结构化 `StopFailure` 证据前，不把 Codex 的 `response.completed` 文案泛化为 Claude-specific 规则。
+  - Dev Session Canvas 只补充提醒，不自动重放 prompt、不自动 resume、不替 provider 做 stream recovery；retry / reconnect / continuation 由 Codex / Claude 自己负责，避免重复执行工具或破坏会话状态。
 - 不触发范围：
   - 启动前校验失败、启动命令解析失败、命令不存在或 spawn 失败
   - resume 启动失败或状态进入 `resume-failed`
@@ -272,7 +276,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 
 ### 8.2 已知限制
 
-- **Codex / Claude Code 集成**：Codex Agent 需要在 `[tui]` 中设置 `notifications = true`、`notification_method = "osc9"` 和 `notification_condition = "always"` 才能稳定触发 provider 自身的终端注意力信号；Claude Code Agent 需要设置 `preferredNotifChannel: "iterm2"` 才能进入同一桥接链路。Agent 异常中断与流断开输出通知只是补充兜底，不降低这部分原生通知配置的重要性。
+- **Codex / Claude Code 集成**：Codex Agent 需要在 `[tui]` 中设置 `notifications = true`、`notification_method = "osc9"` 和 `notification_condition = "always"` 才能稳定触发 provider 自身的终端注意力信号；Claude Code Agent 需要设置 `preferredNotifChannel: "iterm2"` 才能进入同一桥接链路。Agent 异常中断与流断开输出通知只是补充兜底，不降低这部分原生通知配置的重要性；其中 `stream closed before response.completed` 是 Codex 高置信模式，不是 Claude Code 标准模式。
 - **平台差异**：桌面通知是否支持“点击后回到 VS Code”并不统一；当前由 companion 返回 `activationMode` 显式区分完整路径和退化路径，而不是伪装成统一能力。
 - **跨 chunk 解析**：OSC 序列可能被分割在多个输出 chunk 中，当前实现通过 `oscCarryover` 缓存处理，但缓存大小限制为 256 字节，超长序列可能被截断。
 - **启发式检测**：Agent 等待输入检测基于启发式规则，可能存在误判情况（如误将长时间运行的任务判断为等待输入）。
