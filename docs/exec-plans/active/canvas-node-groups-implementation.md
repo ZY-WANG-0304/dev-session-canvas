@@ -30,6 +30,8 @@
 - [x] (2026-05-23 04:07Z) 完成本次多选释放点修正验证：`npm run typecheck`、`npm run test:canvas-node-groups`、`npm run build`、Webview 多选拖动 Playwright 用例和 `git diff --check` 均通过。
 - [x] (2026-05-23 04:30Z) 调整删除空分组行为：空分组没有直接成员节点且没有直接子分组，删除时跳过确认并直接删除；非空分组仍保留二选一确认。
 - [x] (2026-05-23 04:30Z) 完成本次删除空分组修正验证：`npm run typecheck`、`npm run test:canvas-node-groups`、`npm run build` 和 `git diff --check` 均通过。
+- [x] (2026-05-23 06:48Z) 修正基础法则与当前交互设计边界：节点入组避让从合法状态法则中移出；修复目标集合内部既有几何关系保护归入最小合法修复法则，并泛化命名到所有修复目标。
+- [x] (2026-05-23 06:48Z) 完成本次法则边界修正验证：`npm run typecheck`、`npm run test:canvas-node-groups` 和 `git diff --check` 均通过。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -59,8 +61,8 @@
 - 观察：多选节点同时移动时，这批节点应被理解为本次移动的临时整体，不能为每个节点按相对位置推导不同归属释放点。
   证据：`webview/moveNode` 保留 `selectedMoves` 传递每个被选节点的最终位置，但所有被选节点的 `pointerPosition` 均使用主鼠标释放位置；Webview 测试覆盖该消息。
 
-- 观察：节点入组避让不能逐个移动被拖入节点，否则会破坏被选节点之间原有的相对位置和重叠关系。
-  证据：`adjustMovedNodesAfterGroupDrop` 只在入组目标变化时把本次移动节点作为整体簇平移避让已有同组节点；宿主测试覆盖非重叠节点保持相对间距、原本重叠的节点保持重叠偏移。
+- 观察：节点入组避让是当前交互设计，不属于合法状态法则；但修复目标集合内部既有几何关系保护属于最小合法修复的一部分，且不应只针对移入节点。
+  证据：`adjustMovedNodesAfterGroupDrop` 当前仍按交互设计在入组目标变化时把本次移动节点作为整体簇平移避让已有同组节点；底层 helper 已改名为 `preserveRepairTargetClusterWhileAvoidingSiblings`，宿主测试覆盖任意修复目标集合保持相对间距、原有重叠关系和原有非重叠关系。
 
 ## 决策记录
 
@@ -88,8 +90,8 @@
   理由：用户明确要求“按住 cmd/ctrl 点击节点才是选择多个节点，普通点击节点回退到之前功能”；Shift 在当前画布还承载其他语义，不作为分组首版多选确认路径。
   日期/作者：2026-05-23 / Codex
 
-- 决策：节点拖入分组后的重叠避让只移动本次被拖入的节点簇，并保持簇内相对位置。
-  理由：用户结果优先要求保留拖动对象整体意图；避免只调整单个鼠标目标导致多选目标互相重排，也避免改写已有同组节点的位置。
+- 决策：当前交互设计中，节点拖入分组后的重叠避让只移动本次被拖入的节点簇；基础法则层面，最小合法修复涉及多个修复目标时，应把修复目标集合内部的相对位置和原有重叠 / 非重叠关系作为通用约束。
+  理由：用户结果优先要求保留拖动对象整体意图；同时基础法则不能把“移入节点”写死为唯一修复目标，后续其他修复也应避免把原本重叠的修复目标拆开或把原本不重叠的修复目标压成重叠。
   日期/作者：2026-05-23 / Codex
 
 ## 结果与复盘
@@ -114,7 +116,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 第二阶段已经完成：`src/common/protocol.ts` 新增 `CanvasGroupSummary`，`CanvasNodeSummary.groupId?`，`CanvasPrototypeState.groups` 和 `nextGroupSequence`，以及 `webview/createEmptyGroup`、`webview/createGroupFromSelection`、`webview/updateGroupTitle`、`webview/moveGroup`、`webview/resizeGroup`、`webview/deleteGroup`、`webview/ungroup` 等消息。`webview/moveNode` 新增 `pointerPosition` 和 `selectedMoves`；单节点拖动用鼠标释放点表达归属意图，多选节点拖动用 `selectedMoves` 携带其他被选节点的最终位置，且所有被选节点共用主鼠标释放点作为临时整体移动的归属意图。
 
-第三阶段已经完成基础实现：`CanvasPanelManager.ts` 新增 group helper，包括创建空分组、从选择创建分组、更新标题、移动 group 子树、resize group、取消分组、删除分组保留成员、递归删除成员、normalize、几何收口和节点入组避让。`finalizeCanvasGroupState` 负责把宿主持久化状态收敛为基础合法状态；`adjustMovedNodesAfterGroupDrop` 在本次移动节点进入新分组时把移动节点簇整体平移避让已有同组节点。删除非空 group 通过 VS Code modal warning 让用户选择“删除内部所有节点与子分组”或“仅删除分组”；删除空 group 直接删除。
+第三阶段已经完成基础实现：`CanvasPanelManager.ts` 新增 group helper，包括创建空分组、从选择创建分组、更新标题、移动 group 子树、resize group、取消分组、删除分组保留成员、递归删除成员、normalize、几何收口和节点入组避让。`finalizeCanvasGroupState` 负责把宿主持久化状态收敛为基础合法状态；`adjustMovedNodesAfterGroupDrop` 在本次移动节点进入新分组时按当前交互设计把移动节点簇整体平移避让已有同组节点，簇内部既有几何关系保护由 `preserveRepairTargetClusterWhileAvoidingSiblings` 承担。删除非空 group 通过 VS Code modal warning 让用户选择“删除内部所有节点与子分组”或“仅删除分组”；删除空 group 直接删除。
 
 第四阶段已经完成基础 UI：`main.tsx` 渲染 group frame，标题栏和边框可命中，body 不阻挡成员节点；选中 group 后显示工具栏；空白区右键可创建空分组；Ctrl / Cmd 多选后右键可从选择创建分组；拖动 group 时 Webview draft 同步移动整棵子树，靠近画布边缘会自动平移 viewport，释放后宿主返回最终状态。
 
@@ -145,7 +147,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 类型层验收：`npm run typecheck` 成功，且共享协议测试覆盖新增 group 消息，不出现未处理消息分支。
 
-宿主状态验收：`npm run test:canvas-node-groups` 证明旧状态 normalize 后 `groups` 为空数组；创建空 group 得到默认标题和尺寸；删除后创建不复用分组编号；从两个同父级稳定对象创建 group 会设置成员关系；跨父级选择被拒绝；移动 group 会移动内部子树；拖动 / resize 释放后输出基础合法状态；节点拖入分组时移动节点簇避让已有同组节点且保持簇内相对位置；取消 group 保留内部对象位置；删除节点不删除空 group。
+宿主状态验收：`npm run test:canvas-node-groups` 证明旧状态 normalize 后 `groups` 为空数组；创建空 group 得到默认标题和尺寸；删除后创建不复用分组编号；从两个同父级稳定对象创建 group 会设置成员关系；跨父级选择被拒绝；移动 group 会移动内部子树；拖动 / resize 释放后输出基础合法状态；节点拖入分组时移动节点簇避让已有同组节点；修复目标集合保持相对位置和原有重叠 / 非重叠关系；取消 group 保留内部对象位置；删除节点不删除空 group。
 
 Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后工具栏可取消分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的最终位置，并让所有被选目标共用主鼠标释放点；拖动 group draft 移动子树并在边缘自动平移 viewport；resize 不缩放成员节点；释放后由宿主状态同步。
 
@@ -246,3 +248,5 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-23 04:07Z 修正多选节点移动释放点语义：多选节点作为临时整体移动，所有被选节点共用主鼠标释放位置作为归属意图。
 
 本次修订说明：2026-05-23 04:30Z 记录删除空分组无需确认的产品口径，并同步宿主行为与测试计划。
+
+本次修订说明：2026-05-23 06:48Z 将节点入组避让从合法状态法则移到当前交互设计，并把重叠 / 非重叠关系保护泛化为最小合法修复中对修复目标集合内部既有几何关系的要求。

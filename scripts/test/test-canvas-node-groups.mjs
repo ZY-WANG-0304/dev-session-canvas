@@ -20,6 +20,7 @@ try {
     'deleteCanvasNode',
     'deleteCanvasGroupKeepMembers',
     'isEmptyCanvasGroup',
+    'preserveRepairTargetClusterWhileAvoidingSiblings',
     'finalizeCanvasGroupState',
     'normalizeState'
   ];
@@ -110,6 +111,7 @@ try {
     deleteCanvasNode,
     deleteCanvasGroupKeepMembers,
     isEmptyCanvasGroup,
+    preserveRepairTargetClusterWhileAvoidingSiblings,
     finalizeCanvasGroupState,
     normalizeState
   } = require(outfile);
@@ -295,6 +297,26 @@ try {
   assert.deepStrictEqual(overlappingMovedNodesPreserveOverlap.nodes.find((candidate) => candidate.id === 'moved-1').position, { x: 90, y: 184 });
   assert.deepStrictEqual(overlappingMovedNodesPreserveOverlap.nodes.find((candidate) => candidate.id === 'moved-2').position, { x: 130, y: 204 });
 
+  const repairedTargetsPreservePairwiseRelations = preserveRepairTargetClusterWhileAvoidingSiblings(
+    [
+      note('repair-a', { x: 90, y: 80 }),
+      note('repair-b', { x: 230, y: 80 }),
+      note('repair-c', { x: 130, y: 100 })
+    ],
+    [note('existing-1', { x: 90, y: 80 })],
+    { left: 0, top: 0, right: 620, bottom: 320 }
+  );
+  const repairedA = repairedTargetsPreservePairwiseRelations.find((candidate) => candidate.id === 'repair-a');
+  const repairedB = repairedTargetsPreservePairwiseRelations.find((candidate) => candidate.id === 'repair-b');
+  const repairedC = repairedTargetsPreservePairwiseRelations.find((candidate) => candidate.id === 'repair-c');
+  assert.strictEqual(repairedB.position.x - repairedA.position.x, 140);
+  assert.strictEqual(repairedB.position.y - repairedA.position.y, 0);
+  assert.strictEqual(repairedC.position.x - repairedA.position.x, 40);
+  assert.strictEqual(repairedC.position.y - repairedA.position.y, 20);
+  assert.ok(rectsOverlapForTest(rectForTestNode(repairedA), rectForTestNode(repairedC)));
+  assert.ok(!rectsOverlapForTest(rectForTestNode(repairedA), rectForTestNode(repairedB)));
+  assert.ok(rectsOverlapForTest(rectForTestNode(repairedB), rectForTestNode(repairedC)));
+
   const movedTree = moveGroup(
     state({
       nodes: [note('note-child', { x: 90, y: 90 }, { groupId: 'group-child' })],
@@ -396,4 +418,17 @@ try {
   assert.strictEqual(finalized.nodes[0].groupId, undefined);
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+function rectForTestNode(node) {
+  return {
+    left: node.position.x,
+    top: node.position.y,
+    right: node.position.x + node.size.width,
+    bottom: node.position.y + node.size.height
+  };
+}
+
+function rectsOverlapForTest(left, right) {
+  return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
 }

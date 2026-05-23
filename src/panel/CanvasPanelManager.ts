@@ -12763,7 +12763,7 @@ function adjustMovedNodesAfterGroupDrop(
     }
 
     const currentNodes = nextState.nodes.map((node) => placedNodesById.get(node.id) ?? node);
-    const adjustedGroupNodes = preserveMovedNodeClusterWhileAvoidingSiblings(
+    const adjustedGroupNodes = preserveRepairTargetClusterWhileAvoidingSiblings(
       currentNodes.filter((node) => movedNodeIdSet.has(node.id) && node.groupId === targetGroupId),
       currentNodes.filter((node) => node.groupId === targetGroupId && !movedNodeIdSet.has(node.id)),
       rectForGroup(targetGroup)
@@ -12779,24 +12779,24 @@ function adjustMovedNodesAfterGroupDrop(
   };
 }
 
-function preserveMovedNodeClusterWhileAvoidingSiblings(
-  movedNodes: readonly CanvasNodeSummary[],
+function preserveRepairTargetClusterWhileAvoidingSiblings(
+  repairTargetNodes: readonly CanvasNodeSummary[],
   siblingNodes: readonly CanvasNodeSummary[],
   containerRect: CanvasRect
 ): CanvasNodeSummary[] {
-  if (movedNodes.length === 0 || siblingNodes.length === 0) {
-    return [...movedNodes];
+  if (repairTargetNodes.length === 0 || siblingNodes.length === 0) {
+    return [...repairTargetNodes];
   }
 
-  const clusterRect = boundingRectForRects(movedNodes.map((node) => rectForNode(node)));
+  const clusterRect = boundingRectForRects(repairTargetNodes.map((node) => rectForNode(node)));
   if (!clusterRect) {
-    return [...movedNodes];
+    return [...repairTargetNodes];
   }
 
   const blockingRects = siblingNodes.map((node) => expandRectByPadding(rectForNode(node), CANVAS_NODE_COLLISION_PADDING));
   const candidateDeltas = buildClusterAvoidanceDeltas(clusterRect, blockingRects, containerRect);
   for (const delta of candidateDeltas) {
-    const candidateNodes = movedNodes.map((node) => translateNode(node, delta));
+    const candidateNodes = repairTargetNodes.map((node) => translateNode(node, delta));
     const candidateRects = candidateNodes.map((node) => rectForNode(node));
     if (candidateRects.some((rect) => blockingRects.some((blockingRect) => rectsIntersect(rect, blockingRect)))) {
       continue;
@@ -12805,7 +12805,7 @@ function preserveMovedNodeClusterWhileAvoidingSiblings(
     return candidateNodes;
   }
 
-  return [...movedNodes];
+  return [...repairTargetNodes];
 }
 
 function buildClusterAvoidanceDeltas(
