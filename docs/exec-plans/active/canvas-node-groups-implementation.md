@@ -42,6 +42,7 @@
 - [x] (2026-05-23 14:24Z) 修正分组 resize 草稿语义：resize 过程中只调整被 resize 分组边界，不再把直接成员节点或子分组当作移动子树跟随；拖动分组仍保持整棵子树跟随移动。
 - [x] (2026-05-23 15:13Z) 修正节点入组避让可见性：节点拖拽或 resize 提交给宿主后，Webview 在下一次宿主状态更新时清理已提交的本地节点布局 draft，避免旧 draft 覆盖宿主返回的避让后坐标。
 - [x] (2026-05-23 15:13Z) 完成本次节点入组避让可见性验证：`npm run test:canvas-node-groups`、`npm run typecheck`、`npm run build`、`npx playwright test --config=playwright.config.mjs tests/playwright/webview-harness.spec.mjs --grep "node group drop applies"` 均通过。
+- [x] (2026-05-23 18:43Z) 按 resize 边缘调研结论补齐节点 resize 与分组 resize 的画布边缘自动平移：节点 resize 改为 Webview 自定义 8 向控制点，节点 / 分组 resize 过程都会把视口平移折算进本次 resize 草稿，释放后仍只提交一次宿主权威消息。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -67,6 +68,9 @@
 
 - 观察：React Flow 默认会在普通节点点击和拖拽开始时维护自己的多选状态；如果只在 `onNodeClick` 里追加多选，普通点击会把多选误保留。
   证据：本轮将 React Flow 的 `multiSelectionKeyCode` 置空并用 Webview 本地 `Ctrl / Cmd` 点击切换选择，普通点击统一写回单选；Playwright 用例补充再次 Ctrl / Cmd 点击取消选择和普通点击回退单选。
+
+- 观察：React Flow 内置 `NodeResizer` 不能直接满足 resize 边缘自动平移。
+  证据：auto-pan 改变 viewport 后，内置 resizer 的内部几何计算无法稳定把视口平移折算为同一次 resize 位移；本轮改为 `NodeResizeAffordance` 自己计算 8 向 resize 草稿，并通过 window-level pointer / mouse 事件兜底，保证鼠标停在边缘时尺寸继续增长。
 
 - 观察：多选节点同时移动时，这批节点应被理解为本次移动的临时整体，不能为每个节点按相对位置推导不同归属释放点。
   证据：`webview/moveNode` 保留 `selectedMoves` 传递每个被选节点的最终位置，但所有被选节点的 `pointerPosition` 均使用主鼠标释放位置；Webview 测试覆盖该消息。
@@ -211,6 +215,9 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
     > dev-session-canvas@0.10.4 typecheck
     > tsc --noEmit
 
+    > dev-session-canvas@0.10.4 test:canvas-node-groups
+    > node scripts/test/test-canvas-node-groups.mjs
+
     > dev-session-canvas@0.10.4 build
     > node scripts/build/build.mjs
 
@@ -242,6 +249,30 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
     Running 1 test using 1 worker
       ✓ node group drop applies the host avoidance position after state update
     1 passed
+
+2026-05-24 resize 边缘自动平移验证记录：
+
+    > dev-session-canvas@0.10.4 typecheck
+    > tsc --noEmit
+
+    > dev-session-canvas@0.10.4 build
+    > node scripts/build/build.mjs
+
+    Running 4 tests using 1 worker
+      ✓ dragging a resize handle posts resizeNode and updates the note frame size
+      ✓ dragging the top-left resize handle moves the note origin and grows the frame
+      ✓ node resize auto-pans at the canvas edge and keeps resizing
+      ✓ canvas group resize auto-pans at the canvas edge and keeps member drafts stationary
+    4 passed
+
+    Running 4 tests using 1 worker
+      ✓ minimap viewport contrast stays readable in dark workbench theme
+      ✓ minimap viewport contrast stays readable in light workbench theme
+      ✓ minimap viewport outline remains visible after fitting distant nodes
+      ✓ minimap remains pannable with the viewport outline overlay
+    4 passed
+
+    git diff --check
 
 2026-05-23 调整轮最终验证记录：
 
@@ -328,3 +359,5 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-23 08:00Z 修正 resize 释放边界对节点的归属意图，完整包含的同父稳定节点会纳入当前分组，直接成员节点不再完整包含时提升到父级。
 
 本次修订说明：2026-05-23 15:13Z 修正节点入组避让结果在 Webview 中不可见的问题：拖拽 / resize 已提交节点的本地布局 draft 会在宿主权威状态更新时清理，避免覆盖宿主返回的避让后坐标。
+
+本次修订说明：2026-05-24 根据 resize 边缘交互调研结论，补充节点 resize 与分组 resize 的画布边缘自动平移实现。Webview 层复用既有画布自动平移控制器，resize 过程中持续更新草稿；自动平移仅改变视口，不改变拖拽 / resize 的归属意图或宿主最终合法状态收口语义。已补充节点 resize 到右下边缘、分组 resize 到右下边缘，以及分组 resize 自动平移过程中成员节点保持静止的 Playwright 覆盖。

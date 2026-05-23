@@ -19,7 +19,6 @@ import ReactFlow, {
   Handle,
   MarkerType,
   MiniMap,
-  NodeResizer,
   Position,
   useStore,
   useViewport,
@@ -331,6 +330,12 @@ interface CanvasNodeData {
   }) => void;
   onClearAssociatedNoteMarkdownDraft?: (nodeId: string) => void;
   onCopyAssociatedNoteMarkdownDraft?: (nodeId: string, content: string) => void;
+  onDraftNodeLayout?: (nodeId: string, draft: CanvasNodeLayoutDraft | null) => void;
+  onResizeNodePointerMove?: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeNodeEnd?: () => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
@@ -411,6 +416,21 @@ interface CanvasNodeLayoutDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
 }
+
+interface CanvasNodeResizeDraft {
+  position: CanvasNodePosition;
+  size: CanvasNodeFootprint;
+}
+
+type CanvasNodeResizeDirection =
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
 type CanvasContextMenuView = 'root' | 'agent-launch-mode' | 'apply-template' | 'reset-template';
 interface CanvasContextMenuState {
   screenX: number;
@@ -702,8 +722,8 @@ const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
 const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
 const NODE_GROUP_FOCUS_RETRY_INTERVAL_MS = 48;
 const NODE_GROUP_FOCUS_MAX_RETRY_COUNT = 8;
-const CANVAS_GROUP_AUTO_PAN_EDGE_THRESHOLD_PX = 48;
-const CANVAS_GROUP_AUTO_PAN_MAX_SPEED_PX = 24;
+const CANVAS_AUTO_PAN_EDGE_THRESHOLD_PX = 48;
+const CANVAS_AUTO_PAN_MAX_SPEED_PX = 24;
 const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
@@ -1028,6 +1048,7 @@ function App(): JSX.Element {
   const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
   const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
+  const [nodeResizeDrafts, setNodeResizeDrafts] = useState<Record<string, CanvasNodeResizeDraft>>({});
   const pendingCommittedNodeLayoutDraftIdsRef = useRef<Set<string>>(new Set());
   const [groupDrafts, setGroupDrafts] = useState<Record<string, CanvasGroupDraft>>({});
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
@@ -1043,6 +1064,9 @@ function App(): JSX.Element {
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
   const groupDragAutoPanRef = useRef<AutoPanController | null>(null);
+  const groupResizeAutoPanRef = useRef<AutoPanController | null>(null);
+  const nodeResizeAutoPanRef = useRef<AutoPanController | null>(null);
+  const activeNodeResizeDraftsRef = useRef<Record<string, CanvasNodeLayoutDraft>>({});
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
   const [canvasViewportSize, setCanvasViewportSize] = useState<CanvasViewportSize>(() => ({
     width: Math.max(1, window.innerWidth),
@@ -1085,6 +1109,8 @@ function App(): JSX.Element {
               pendingNodeIds.clear();
               return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
             });
+            setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
+            activeNodeResizeDraftsRef.current = {};
             applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
           }
           scheduleEmbeddedTerminalAppearanceRefresh();
@@ -1450,6 +1476,10 @@ function App(): JSX.Element {
       clearPendingNodeGroupViewportRetryTimeout();
       groupDragAutoPanRef.current?.stop();
       groupDragAutoPanRef.current = null;
+      groupResizeAutoPanRef.current?.stop();
+      groupResizeAutoPanRef.current = null;
+      nodeResizeAutoPanRef.current?.stop();
+      nodeResizeAutoPanRef.current = null;
     };
   }, []);
 
@@ -1927,6 +1957,17 @@ function App(): JSX.Element {
 
   const handleResizeNode = (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
     markCommittedNodeLayoutDrafts([nodeId]);
+    nodeResizeAutoPanRef.current?.stop();
+    nodeResizeAutoPanRef.current = null;
+    setNodeResizeDrafts((current) => {
+      if (!current[nodeId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[nodeId];
+      return next;
+    });
     postMessage({
       type: 'webview/resizeNode',
       payload: {
@@ -1935,6 +1976,72 @@ function App(): JSX.Element {
         size
       }
     });
+  };
+
+  const updateNodeLayoutDraft = (nodeId: string, draft: CanvasNodeLayoutDraft | null): void => {
+    if (draft?.position && draft.size) {
+      activeNodeResizeDraftsRef.current = {
+        ...activeNodeResizeDraftsRef.current,
+        [nodeId]: draft
+      };
+      setNodeResizeDrafts((current) => ({
+        ...current,
+        [nodeId]: {
+          position: draft.position as CanvasNodePosition,
+          size: draft.size as CanvasNodeFootprint
+        }
+      }));
+    } else {
+      const nextActiveDrafts = { ...activeNodeResizeDraftsRef.current };
+      delete nextActiveDrafts[nodeId];
+      activeNodeResizeDraftsRef.current = nextActiveDrafts;
+      setNodeResizeDrafts((current) => {
+        if (!current[nodeId]) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[nodeId];
+        return next;
+      });
+    }
+
+    setNodeLayoutDrafts((current) => {
+      const next = { ...current };
+      if (draft) {
+        next[nodeId] = draft;
+      } else {
+        delete next[nodeId];
+      }
+      return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
+    });
+  };
+
+  const handleResizeNodePointerMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void => {
+    if (!nodeResizeAutoPanRef.current) {
+      nodeResizeAutoPanRef.current = createCanvasAutoPanController(
+        reactFlowRef.current,
+        canvasShellRef.current,
+        (viewport) => {
+          setLocalUiState((current) => ({
+            ...current,
+            viewport
+          }));
+        }
+      );
+    }
+
+    nodeResizeAutoPanRef.current.handlePointerMove(event, onPan);
+  };
+
+  const handleResizeNodeEnd = (): void => {
+    nodeResizeAutoPanRef.current?.stop();
+    nodeResizeAutoPanRef.current = null;
+    activeNodeResizeDraftsRef.current = {};
+    setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
   };
 
   const baseNodes = toFlowNodes({
@@ -1952,6 +2059,7 @@ function App(): JSX.Element {
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
     collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
+    nodeResizeDrafts,
     onSelectNode: selectNode,
     onAcknowledgeNodeAttention: acknowledgeNodeAttention,
     onOpenCanvasFile: (nodeId, filePath) =>
@@ -2107,6 +2215,9 @@ function App(): JSX.Element {
           content
         }
       }),
+    onDraftNodeLayout: updateNodeLayoutDraft,
+    onResizeNodePointerMove: handleResizeNodePointerMove,
+    onResizeNodeEnd: handleResizeNodeEnd,
     onResizeNode: handleResizeNode,
     onFocusNodeInViewport: focusNodeInViewport,
     onDeleteNode: deleteNode
@@ -2289,8 +2400,34 @@ function App(): JSX.Element {
     groupDragAutoPanRef.current = null;
   };
 
+  const handleGroupResizePointerMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void => {
+    if (!groupResizeAutoPanRef.current) {
+      groupResizeAutoPanRef.current = createCanvasAutoPanController(
+        reactFlowRef.current,
+        canvasShellRef.current,
+        (viewport) => {
+          setLocalUiState((current) => ({
+            ...current,
+            viewport
+          }));
+        }
+      );
+    }
+
+    groupResizeAutoPanRef.current.handlePointerMove(event, onPan);
+  };
+
+  const handleGroupResizeEnd = (): void => {
+    groupResizeAutoPanRef.current?.stop();
+    groupResizeAutoPanRef.current = null;
+  };
+
   const handleResizeGroup = (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
     updateGroupDraft(groupId, null);
+    handleGroupResizeEnd();
     postMessage({
       type: 'webview/resizeGroup',
       payload: {
@@ -2401,7 +2538,10 @@ function App(): JSX.Element {
     setNodeLayoutDrafts((current) => {
       const currentNodes = applyCanvasNodeLayoutDrafts(baseNodes, current);
       const nextNodes = applyNodeChanges(changes, currentNodes);
-      const nextDrafts = collectCanvasNodeLayoutDrafts(baseNodes, nextNodes);
+      const nextDrafts = {
+        ...collectCanvasNodeLayoutDrafts(baseNodes, nextNodes),
+        ...activeNodeResizeDraftsRef.current
+      };
       if (selectionChanges.length > 0 || !changes.some((change) => change?.type === 'position')) {
         return nextDrafts;
       }
@@ -2455,13 +2595,15 @@ function App(): JSX.Element {
                 (id): id is string => typeof id === 'string'
               )
             : Array.from(selectedNodeIds);
-        return {
+        const nextState = {
           ...current,
           selectedNodeId: nextSelectedNodeIds.at(-1),
           selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
           selectedGroupId: undefined,
           selectedGroupIds: undefined
         };
+        localUiStateRef.current = nextState;
+        return nextState;
       });
     }
   };
@@ -2868,6 +3010,8 @@ function App(): JSX.Element {
             onDeleteGroup={handleDeleteGroup}
             onDragPointerMove={handleGroupDragPointerMove}
             onDragEnd={handleGroupDragEnd}
+            onResizePointerMove={handleGroupResizePointerMove}
+            onResizeEnd={handleGroupResizeEnd}
           />
           <MiniMap
             className="canvas-corner-panel canvas-minimap"
@@ -3243,8 +3387,8 @@ function resolveCanvasAutoPanDelta(
   pointer: { clientX: number; clientY: number },
   bounds: DOMRect
 ): CanvasNodePosition {
-  const edgeThreshold = CANVAS_GROUP_AUTO_PAN_EDGE_THRESHOLD_PX;
-  const maxSpeed = CANVAS_GROUP_AUTO_PAN_MAX_SPEED_PX;
+  const edgeThreshold = CANVAS_AUTO_PAN_EDGE_THRESHOLD_PX;
+  const maxSpeed = CANVAS_AUTO_PAN_MAX_SPEED_PX;
 
   return {
     x: resolveCanvasAutoPanAxisDelta(pointer.clientX, bounds.left, bounds.right, edgeThreshold, maxSpeed),
@@ -3323,14 +3467,14 @@ function CanvasOverviewModeBridge(props: {
   return null;
 }
 
-function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const agentMetadata = data.metadata?.agent;
   if (!agentMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
-  const { zoom } = useViewport();
   const provider = agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
@@ -3680,7 +3824,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         }
       }}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div
         className={chromeClassName}
@@ -3829,14 +3973,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   );
 }
 
-function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const terminalMetadata = data.metadata?.terminal;
   if (!terminalMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
-  const { zoom } = useViewport();
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
@@ -4161,7 +4305,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         }
       }}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div
         className={chromeClassName}
@@ -4448,55 +4592,288 @@ function NodeHandles(props: { selected: boolean }): JSX.Element {
   );
 }
 
+function resolveNodeResizeGeometry(
+  resizeStart: {
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasNodeResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number,
+  minimum: CanvasNodeFootprint
+): CanvasNodeResizeDraft {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const deltaX = (event.clientX - resizeStart.clientX) / safeZoom + resizeStart.autoPanOffset.x;
+  const deltaY = (event.clientY - resizeStart.clientY) / safeZoom + resizeStart.autoPanOffset.y;
+  const resizeLeft = resizeStart.direction.includes('left');
+  const resizeRight = resizeStart.direction.includes('right');
+  const resizeTop = resizeStart.direction.includes('top');
+  const resizeBottom = resizeStart.direction.includes('bottom');
+  const width = Math.max(
+    minimum.width,
+    Math.round(resizeStart.size.width + (resizeRight ? deltaX : 0) - (resizeLeft ? deltaX : 0))
+  );
+  const height = Math.max(
+    minimum.height,
+    Math.round(resizeStart.size.height + (resizeBottom ? deltaY : 0) - (resizeTop ? deltaY : 0))
+  );
+
+  return {
+    position: {
+      x: resizeLeft ? Math.round(resizeStart.position.x + resizeStart.size.width - width) : resizeStart.position.x,
+      y: resizeTop ? Math.round(resizeStart.position.y + resizeStart.size.height - height) : resizeStart.position.y
+    },
+    size: {
+      width,
+      height
+    }
+  };
+}
+
+function canvasNodeResizeCursorForDirection(direction: CanvasNodeResizeDirection): string {
+  switch (direction) {
+    case 'top':
+    case 'bottom':
+      return 'ns-resize';
+    case 'left':
+    case 'right':
+      return 'ew-resize';
+    case 'top-left':
+    case 'bottom-right':
+      return 'nwse-resize';
+    case 'top-right':
+    case 'bottom-left':
+      return 'nesw-resize';
+    default:
+      return 'default';
+  }
+}
+
+const CANVAS_NODE_RESIZE_DIRECTIONS: CanvasNodeResizeDirection[] = [
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right'
+];
+
 function NodeResizeAffordance({
   id,
   data,
+  position,
+  zoom,
   minimumOverride
-}: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & { minimumOverride?: CanvasNodeFootprint }): JSX.Element {
+}: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & {
+  position: CanvasNodePosition;
+  zoom: number;
+  minimumOverride?: CanvasNodeFootprint;
+}): JSX.Element {
   const minimum = minimumOverride ?? minimumCanvasNodeFootprintForDisplayStyle(data);
+  const resizeStartRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasNodeResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  } | null>(null);
+  const lastResizeEventRef = useRef<Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'> | null>(null);
+  const activeResizeDraftRef = useRef<CanvasNodeResizeDraft | null>(null);
+
+  useEffect(() => {
+    const applyResizeMove = (event: Pick<PointerEvent | MouseEvent, 'clientX' | 'clientY'>): void => {
+      const resizeStart = resizeStartRef.current;
+      if (!resizeStart) {
+        return;
+      }
+
+      lastResizeEventRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY
+      };
+      const publishDraft = (): void => {
+        const draft = resolveNodeResizeGeometry(resizeStart, lastResizeEventRef.current ?? event, zoom, minimum);
+        activeResizeDraftRef.current = draft;
+        data.onDraftNodeLayout?.(id, draft);
+      };
+      data.onResizeNodePointerMove?.(event, (previousViewport, nextViewport) => {
+        const safeZoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : zoom;
+        resizeStart.autoPanOffset = {
+          x: resizeStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / safeZoom,
+          y: resizeStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / safeZoom
+        };
+        publishDraft();
+      });
+      publishDraft();
+    };
+
+    const applyResizeEnd = (event: Pick<PointerEvent | MouseEvent, 'clientX' | 'clientY'>): void => {
+      const resizeStart = resizeStartRef.current;
+      if (!resizeStart) {
+        return;
+      }
+
+      resizeStartRef.current = null;
+      const eventForGeometry = lastResizeEventRef.current ?? event;
+      lastResizeEventRef.current = null;
+      const nextDraft = resolveNodeResizeGeometry(resizeStart, eventForGeometry, zoom, minimum);
+      activeResizeDraftRef.current = null;
+      if (
+        nextDraft.position.x === resizeStart.position.x &&
+        nextDraft.position.y === resizeStart.position.y &&
+        nextDraft.size.width === resizeStart.size.width &&
+        nextDraft.size.height === resizeStart.size.height
+      ) {
+        data.onDraftNodeLayout?.(id, null);
+        data.onResizeNodeEnd?.();
+        return;
+      }
+
+      data.onResizeNode?.(id, nextDraft.position, nextDraft.size);
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (resizeStartRef.current?.pointerId !== event.pointerId) {
+        return;
+      }
+
+      applyResizeMove(event);
+    };
+
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (resizeStartRef.current?.pointerId !== event.pointerId) {
+        return;
+      }
+
+      applyResizeEnd(event);
+    };
+
+    const handleMouseMove = (event: MouseEvent): void => {
+      if (!resizeStartRef.current) {
+        return;
+      }
+
+      applyResizeMove(event);
+    };
+
+    const handleMouseUp = (event: MouseEvent): void => {
+      if (!resizeStartRef.current) {
+        return;
+      }
+
+      applyResizeEnd(event);
+    };
+
+    const handlePointerCancel = (event: PointerEvent): void => {
+      const resizeStart = resizeStartRef.current;
+      if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+        return;
+      }
+
+      resizeStartRef.current = null;
+      lastResizeEventRef.current = null;
+      activeResizeDraftRef.current = null;
+      data.onDraftNodeLayout?.(id, null);
+      data.onResizeNodeEnd?.();
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [data, id, minimum, zoom]);
+
+  const beginResize = (event: React.PointerEvent, direction: CanvasNodeResizeDirection): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    data.onSelectNode?.(id);
+    lastResizeEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    activeResizeDraftRef.current = null;
+    resizeStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position,
+      size: data.size,
+      direction,
+      autoPanOffset: { x: 0, y: 0 }
+    };
+  };
+
+  const handleResizeMove = (event: React.PointerEvent): void => {
+    if (resizeStartRef.current?.pointerId === event.pointerId) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const endResize = (event: React.PointerEvent): void => {
+    if (resizeStartRef.current?.pointerId === event.pointerId) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const cancelResize = (event: React.PointerEvent): void => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    resizeStartRef.current = null;
+    data.onDraftNodeLayout?.(id, null);
+    data.onResizeNodeEnd?.();
+    stopCanvasEvent(event);
+  };
+
+  if (!data.selected) {
+    return <></>;
+  }
 
   return (
-    <NodeResizer
-      nodeId={id}
-      isVisible={data.selected}
-      minWidth={minimum.width}
-      minHeight={minimum.height}
-      handleClassName="canvas-node-resize-handle"
-      lineClassName="canvas-node-resize-line"
-      color={colorForKind(data.kind)}
-      onResizeStart={() => {
-        data.onSelectNode?.(id);
-      }}
-      onResizeEnd={(_event, params) => {
-        const nextSize = {
-          width: Math.max(minimum.width, Math.round(params.width)),
-          height: Math.max(minimum.height, Math.round(params.height))
-        };
-
-        if (
-          nextSize.width === data.size.width &&
-          nextSize.height === data.size.height
-        ) {
-          return;
-        }
-
-        data.onResizeNode?.(
-          id,
-          {
-            x: Math.round(params.x),
-            y: Math.round(params.y)
-          },
-          nextSize
-        );
-      }}
-    />
+    <>
+      {CANVAS_NODE_RESIZE_DIRECTIONS.map((direction) => (
+        <button
+          key={direction}
+          type="button"
+          className={`canvas-node-resize-control canvas-node-resize-${direction} nodrag nopan`}
+          data-node-resize-direction={direction}
+          aria-label={`向 ${direction} 调整节点 ${data.title} 尺寸`}
+          style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}
+          onPointerDown={(event) => beginResize(event, direction)}
+          onPointerMove={handleResizeMove}
+          onPointerUp={endResize}
+          onPointerCancel={cancelResize}
+        />
+      ))}
+    </>
   );
 }
 
-function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function FileNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const fileMetadata = data.metadata?.file;
   if (!fileMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const fileActionPointerStateRef = useRef<{
@@ -4533,7 +4910,7 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} minimumOverride={minimumFootprint} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} minimumOverride={minimumFootprint} />
       <NodeHandles selected={data.selected} />
       <button
         type="button"
@@ -4626,10 +5003,11 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   );
 }
 
-function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const fileListMetadata = data.metadata?.fileList;
   if (!fileListMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
@@ -4653,7 +5031,7 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div
         className={isMinimalStyle ? 'file-list-minimal-header' : 'window-chrome'}
@@ -5135,10 +5513,11 @@ function renderFileListTreeBranches(
   return rows;
 }
 
-function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const noteMetadata = data.metadata?.note;
   if (!noteMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
@@ -6089,7 +6468,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
@@ -6369,7 +6748,12 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   );
 }
 
-function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
+function CompactCanvasCardNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
+  return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
+}
+
+function CompactCanvasCardNodeContent({ id, data, position, zoom }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & { position: CanvasNodePosition; zoom: number }): JSX.Element {
   const agentMetadata = data.metadata?.agent;
   const terminalMetadata = data.metadata?.terminal;
 
@@ -6381,7 +6765,7 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={position} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <NodeOverviewTitle title={data.title} status={overviewStatusForNode(data)} />
       <div className="node-topline">
@@ -6425,7 +6809,7 @@ const nodeTypes = {
   note: NoteEditableNode,
   file: FileNode,
   'file-list': FileListNode,
-  card: CanvasCardNode
+  card: CompactCanvasCardNode
 };
 
 const edgeTypes = {
@@ -8516,6 +8900,11 @@ function CanvasGroupsViewportLayer(props: {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ) => void;
   onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
 }): JSX.Element {
   const viewport = useViewport();
   if (!props.portalElement) {
@@ -8541,6 +8930,11 @@ function CanvasGroupLayer(props: {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ) => void;
   onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
 }): JSX.Element {
   const orderedGroups = [...props.groups].sort((left, right) => groupDepthForWebview(props.groups, left.id) - groupDepthForWebview(props.groups, right.id));
   return (
@@ -8565,6 +8959,8 @@ function CanvasGroupLayer(props: {
           onDeleteGroup={props.onDeleteGroup}
           onDragPointerMove={props.onDragPointerMove}
           onDragEnd={props.onDragEnd}
+          onResizePointerMove={props.onResizePointerMove}
+          onResizeEnd={props.onResizeEnd}
         />
       ))}
     </div>
@@ -8584,13 +8980,20 @@ function resolveGroupDragPosition(
 }
 
 function resolveGroupResizeGeometry(
-  resizeStart: { clientX: number; clientY: number; position: CanvasNodePosition; size: CanvasNodeFootprint; direction: CanvasGroupResizeDirection },
+  resizeStart: {
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasGroupResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  },
   event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
   zoom: number
 ): { position: CanvasNodePosition; size: CanvasNodeFootprint } {
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const deltaX = (event.clientX - resizeStart.clientX) / safeZoom;
-  const deltaY = (event.clientY - resizeStart.clientY) / safeZoom;
+  const deltaX = (event.clientX - resizeStart.clientX) / safeZoom + resizeStart.autoPanOffset.x;
+  const deltaY = (event.clientY - resizeStart.clientY) / safeZoom + resizeStart.autoPanOffset.y;
   const resizeLeft = resizeStart.direction.includes('left');
   const resizeRight = resizeStart.direction.includes('right');
   const resizeTop = resizeStart.direction.includes('top');
@@ -8647,6 +9050,11 @@ function CanvasGroupFrame(props: {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ) => void;
   onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
 }): JSX.Element {
   const dragStartRef = useRef<{
     pointerId: number;
@@ -8663,6 +9071,7 @@ function CanvasGroupFrame(props: {
     position: CanvasNodePosition;
     size: CanvasNodeFootprint;
     direction: CanvasGroupResizeDirection;
+    autoPanOffset: CanvasNodePosition;
   } | null>(null);
 
   const selectGroup = (): void => props.onSelectGroup(props.group.id);
@@ -8756,7 +9165,8 @@ function CanvasGroupFrame(props: {
       clientY: event.clientY,
       position: props.group.position,
       size: props.group.size,
-      direction
+      direction,
+      autoPanOffset: { x: 0, y: 0 }
     };
   };
 
@@ -8767,7 +9177,18 @@ function CanvasGroupFrame(props: {
     }
 
     stopCanvasEvent(event);
-    props.onDraftGroup(props.group.id, resolveGroupResizeGeometry(resizeStart, event, props.zoom));
+    const publishDraft = (): void => {
+      props.onDraftGroup(props.group.id, resolveGroupResizeGeometry(resizeStart, event, props.zoom));
+    };
+    props.onResizePointerMove(event, (previousViewport, nextViewport) => {
+      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : props.zoom;
+      resizeStart.autoPanOffset = {
+        x: resizeStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
+        y: resizeStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
+      };
+      publishDraft();
+    });
+    publishDraft();
   };
 
   const endResize = (event: React.PointerEvent): void => {
@@ -8779,6 +9200,7 @@ function CanvasGroupFrame(props: {
     stopCanvasEvent(event);
     resizeStartRef.current = null;
     const resizedGeometry = resolveGroupResizeGeometry(resizeStart, event, props.zoom);
+    props.onResizeEnd();
     props.onResizeGroup(props.group.id, resizedGeometry.position, resizedGeometry.size);
   };
 
@@ -8809,6 +9231,7 @@ function CanvasGroupFrame(props: {
         resizeStartRef.current = null;
         props.onDraftGroup(props.group.id, null);
         props.onDragEnd();
+        props.onResizeEnd();
         stopCanvasEvent(event);
       }}
     >
@@ -9027,6 +9450,7 @@ function toFlowNodes(params: {
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   collapsedFileListTreeBranches: Record<string, string[]> | undefined;
+  nodeResizeDrafts: Record<string, CanvasNodeResizeDraft>;
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
@@ -9092,6 +9516,12 @@ function toFlowNodes(params: {
   }) => void;
   onClearAssociatedNoteMarkdownDraft: (nodeId: string) => void;
   onCopyAssociatedNoteMarkdownDraft: (nodeId: string, content: string) => void;
+  onDraftNodeLayout: (nodeId: string, draft: CanvasNodeLayoutDraft | null) => void;
+  onResizeNodePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeNodeEnd: () => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -9106,6 +9536,8 @@ function toFlowNodes(params: {
       params.fileNodeDisplayMode,
       params.filePathDisplayMode
     );
+    const resizeDraft = params.nodeResizeDrafts[node.id];
+    const renderedSize = resizeDraft?.size ?? size;
 
     return {
       id: node.id,
@@ -9113,11 +9545,11 @@ function toFlowNodes(params: {
       position: node.position,
       draggable: true,
       selected: selectedNodeIds.has(node.id),
-      width: size.width,
-      height: size.height,
+      width: renderedSize.width,
+      height: renderedSize.height,
       style: {
-        width: size.width,
-        height: size.height
+        width: renderedSize.width,
+        height: renderedSize.height
       },
       data: {
         kind: node.kind,
@@ -9129,7 +9561,7 @@ function toFlowNodes(params: {
         workspaceTrusted: params.workspaceTrusted,
         overviewInteractionsDisabled: params.overviewInteractionsDisabled,
         strongTerminalAttentionReminderMode: params.strongTerminalAttentionReminderMode,
-        size,
+        size: renderedSize,
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
@@ -9166,6 +9598,9 @@ function toFlowNodes(params: {
         onUpdateAssociatedNoteMarkdownDraft: params.onUpdateAssociatedNoteMarkdownDraft,
         onClearAssociatedNoteMarkdownDraft: params.onClearAssociatedNoteMarkdownDraft,
         onCopyAssociatedNoteMarkdownDraft: params.onCopyAssociatedNoteMarkdownDraft,
+        onDraftNodeLayout: params.onDraftNodeLayout,
+        onResizeNodePointerMove: params.onResizeNodePointerMove,
+        onResizeNodeEnd: params.onResizeNodeEnd,
         onResizeNode: params.onResizeNode,
         onFocusNodeInViewport: params.onFocusNodeInViewport,
         onDeleteNode: params.onDeleteNode
@@ -10485,7 +10920,7 @@ function selectReadonlyTextContents(container: HTMLElement): void {
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
-    Boolean(target.closest('[data-node-interactive="true"], .react-flow__resize-control'))
+    Boolean(target.closest('[data-node-interactive="true"], .react-flow__resize-control, [data-node-resize-direction]'))
   );
 }
 
@@ -10496,7 +10931,7 @@ function isModifierSelectionInteractiveTarget(target: EventTarget | null): boole
 
   return Boolean(
     target.closest(
-      'input, textarea, select, button, a, [contenteditable="true"], .react-flow__resize-control'
+      'input, textarea, select, button, a, [contenteditable="true"], .react-flow__resize-control, [data-node-resize-direction]'
     )
   ) || Boolean(
     target.closest('[data-node-interactive="true"]') && !target.closest('.note-markdown-preview')
