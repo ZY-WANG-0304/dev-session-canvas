@@ -237,6 +237,40 @@ async function getCanvasTemplateCatalog() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetCanvasTemplateItems);
 }
 
+async function verifyEmptyGroupDeletionSkipsConfirmation() {
+  await setPersistedState({
+    version: 1,
+    updatedAt: '2026-05-23T04:30:00.000Z',
+    nodes: [],
+    edges: [],
+    groups: [
+      {
+        id: 'group-empty-smoke',
+        title: 'Empty Group Smoke',
+        position: { x: 120, y: 120 },
+        size: { width: 360, height: 240 }
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 2
+  });
+
+  await withInterceptedWarningMessages(async (warningCalls) => {
+    await dispatchWebviewMessage({
+      type: 'webview/deleteGroup',
+      payload: { groupId: 'group-empty-smoke' }
+    });
+    const snapshot = await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.groups.some((group) => group.id === 'group-empty-smoke'),
+      10000
+    );
+    assert.strictEqual(snapshot.state.groups.length, 0);
+    assert.strictEqual(warningCalls.length, 0, 'Expected deleting an empty group to skip confirmation.');
+  });
+}
+
 async function applyCanvasTemplateForTest(templateId, reset = false) {
   return vscode.commands.executeCommand(COMMAND_IDS.testApplyCanvasTemplate, templateId, reset);
 }
@@ -683,6 +717,7 @@ async function runTrustedSmoke() {
   snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
+  await verifyEmptyGroupDeletionSkipsConfirmation();
   await clearHostMessages();
   await createBaseNodes();
   snapshot = await getDebugSnapshot();

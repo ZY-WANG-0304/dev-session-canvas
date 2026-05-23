@@ -28,6 +28,8 @@
 - [x] (2026-05-23 03:43Z) 完成本次 icon 修正验证：`npm run build`、2 条 Webview 分组入口 Playwright 用例和 `git diff --check` 均通过。
 - [x] (2026-05-23 04:07Z) 修正多选节点移动释放点语义：多选节点作为临时整体移动，所有被选节点共用主鼠标释放位置作为归属意图。
 - [x] (2026-05-23 04:07Z) 完成本次多选释放点修正验证：`npm run typecheck`、`npm run test:canvas-node-groups`、`npm run build`、Webview 多选拖动 Playwright 用例和 `git diff --check` 均通过。
+- [x] (2026-05-23 04:30Z) 调整删除空分组行为：空分组没有直接成员节点且没有直接子分组，删除时跳过确认并直接删除；非空分组仍保留二选一确认。
+- [x] (2026-05-23 04:30Z) 完成本次删除空分组修正验证：`npm run typecheck`、`npm run test:canvas-node-groups`、`npm run build` 和 `git diff --check` 均通过。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -112,7 +114,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 第二阶段已经完成：`src/common/protocol.ts` 新增 `CanvasGroupSummary`，`CanvasNodeSummary.groupId?`，`CanvasPrototypeState.groups` 和 `nextGroupSequence`，以及 `webview/createEmptyGroup`、`webview/createGroupFromSelection`、`webview/updateGroupTitle`、`webview/moveGroup`、`webview/resizeGroup`、`webview/deleteGroup`、`webview/ungroup` 等消息。`webview/moveNode` 新增 `pointerPosition` 和 `selectedMoves`；单节点拖动用鼠标释放点表达归属意图，多选节点拖动用 `selectedMoves` 携带其他被选节点的最终位置，且所有被选节点共用主鼠标释放点作为临时整体移动的归属意图。
 
-第三阶段已经完成基础实现：`CanvasPanelManager.ts` 新增 group helper，包括创建空分组、从选择创建分组、更新标题、移动 group 子树、resize group、取消分组、删除分组保留成员、递归删除成员、normalize、几何收口和节点入组避让。`finalizeCanvasGroupState` 负责把宿主持久化状态收敛为基础合法状态；`adjustMovedNodesAfterGroupDrop` 在本次移动节点进入新分组时把移动节点簇整体平移避让已有同组节点。删除 group 通过 VS Code modal warning 让用户选择“删除内部所有节点与子分组”或“仅删除分组”。
+第三阶段已经完成基础实现：`CanvasPanelManager.ts` 新增 group helper，包括创建空分组、从选择创建分组、更新标题、移动 group 子树、resize group、取消分组、删除分组保留成员、递归删除成员、normalize、几何收口和节点入组避让。`finalizeCanvasGroupState` 负责把宿主持久化状态收敛为基础合法状态；`adjustMovedNodesAfterGroupDrop` 在本次移动节点进入新分组时把移动节点簇整体平移避让已有同组节点。删除非空 group 通过 VS Code modal warning 让用户选择“删除内部所有节点与子分组”或“仅删除分组”；删除空 group 直接删除。
 
 第四阶段已经完成基础 UI：`main.tsx` 渲染 group frame，标题栏和边框可命中，body 不阻挡成员节点；选中 group 后显示工具栏；空白区右键可创建空分组；Ctrl / Cmd 多选后右键可从选择创建分组；拖动 group 时 Webview draft 同步移动整棵子树，靠近画布边缘会自动平移 viewport，释放后宿主返回最终状态。
 
@@ -242,3 +244,5 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-23 03:43Z 修正分组入口 icon 口径：`symbol-array` 适用于创建空分组入口，从选择创建分组入口恢复为 `group-by-ref-type`。
 
 本次修订说明：2026-05-23 04:07Z 修正多选节点移动释放点语义：多选节点作为临时整体移动，所有被选节点共用主鼠标释放位置作为归属意图。
+
+本次修订说明：2026-05-23 04:30Z 记录删除空分组无需确认的产品口径，并同步宿主行为与测试计划。
