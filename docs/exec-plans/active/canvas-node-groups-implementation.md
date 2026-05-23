@@ -39,6 +39,7 @@
 - [x] (2026-05-23 08:00Z) 完成本次 resize 节点归属验证：`npm run test:canvas-node-groups` 通过。
 - [x] (2026-05-23 10:20Z) 完成分组八向 resize：Webview 分组框提供上、下、左、右和四个角 resize 手柄，左 / 上方向 resize 会同步提交新的 `position` 与 `size`。
 - [x] (2026-05-23 10:20Z) 完成本次八向 resize 定向验证：`npm run typecheck`、`npm run build`、`node scripts/test/run-playwright-webview.mjs -g "canvas groups resize from all eight directions"` 均通过。
+- [x] (2026-05-23 14:24Z) 修正分组 resize 草稿语义：resize 过程中只调整被 resize 分组边界，不再把直接成员节点或子分组当作移动子树跟随；拖动分组仍保持整棵子树跟随移动。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -79,6 +80,9 @@
 
 - 观察：分组自定义 overlay 的可命中 body 仍应保持不阻挡节点，因此八向 resize 只能把边 / 角手柄设为 pointer target，不能让整个分组框接管 pointer events。
   证据：`CanvasGroupFrame` 继续保持 `.canvas-group-frame` 和 `.canvas-group-body` 不接管 pointer events；新增的 8 个 `.canvas-group-resize-handle-*` 手柄分别承担 resize 命中。
+
+- 观察：Webview 分组草稿里的 `position` 既可能来自移动，也可能来自左 / 上方向 resize；不能仅凭 `draft.position` 推断“整棵子树正在移动”。
+  证据：`applyCanvasGroupDrafts` 现在只把不含 `size` 且 position 真的变化的草稿视为移动草稿；含 `size` 的 resize 草稿只改变分组框边界，成员节点和子分组在释放前保持原位。
 
 ## 决策记录
 
@@ -173,7 +177,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 宿主状态验收：`npm run test:canvas-node-groups` 证明旧状态 normalize 后 `groups` 为空数组；创建空 group 得到默认标题和尺寸；删除后创建不复用分组编号；从两个同父级稳定对象创建 group 会设置成员关系；跨父级选择被拒绝；移动 group 会移动内部子树；拖动 / resize 释放后输出基础合法状态；节点拖入分组时移动节点簇避让已有同组节点；修复目标集合保持相对位置和原有重叠 / 非重叠关系；同父级分组冲突支持左右与上下四向挤开；取消 group 保留内部对象位置；删除节点不删除空 group。
 
-Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后工具栏可取消分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的最终位置，并让所有被选目标共用主鼠标释放点；拖动 group draft 移动子树并在边缘自动平移 viewport；group 支持上、下、左、右和四个角共 8 个方向 resize，resize 不缩放成员节点；释放后由宿主状态同步。
+Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后工具栏可取消分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的最终位置，并让所有被选目标共用主鼠标释放点；拖动 group draft 移动子树并在边缘自动平移 viewport；group 支持上、下、左、右和四个角共 8 个方向 resize，resize 过程中只改变被 resize group 的边界，不移动成员节点或子分组；释放后由宿主状态同步。
 
 持久化验收：reload 或窗口重开后，group、标题、位置、尺寸、父子关系和成员 `groupId` 恢复。模板保存 / 应用包含 group 的模板后，新节点和 group 重新生成 id，但保留相对层级关系。当前里程碑只覆盖模板 capture 和基础 apply 物化代码，仍需补真实 reload smoke。
 
@@ -208,6 +212,16 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
     Running 1 test using 1 worker
       ✓ canvas groups resize from all eight directions
     1 passed
+
+2026-05-23 resize 草稿修复验证记录：
+
+    > dev-session-canvas@0.10.4 build
+    > node scripts/build/build.mjs
+
+    Running 2 tests using 1 worker
+      ✓ canvas groups resize from all eight directions
+      ✓ canvas group resize draft keeps member nodes stationary until release
+    2 passed
 
 2026-05-23 调整轮最终验证记录：
 

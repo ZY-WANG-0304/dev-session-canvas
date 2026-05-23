@@ -9267,7 +9267,12 @@ function applyCanvasGroupDrafts(params: {
   const groupsById = new Map(params.groups.map((group) => [group.id, group] as const));
   const movingDrafts = Object.entries(params.drafts).flatMap(([groupId, draft]) => {
     const group = groupsById.get(groupId);
-    if (!group?.id || !draft.position) {
+    if (
+      !group?.id ||
+      !draft.position ||
+      draft.size ||
+      (draft.position.x === group.position.x && draft.position.y === group.position.y)
+    ) {
       return [];
     }
 
@@ -9295,11 +9300,12 @@ function applyCanvasGroupDrafts(params: {
       group.position
     );
     const draft = params.drafts[group.id];
+    const nextPosition = draft?.position ?? translatedPosition;
     return {
       ...group,
       position: {
-        x: Math.round(translatedPosition.x),
-        y: Math.round(translatedPosition.y)
+        x: Math.round(nextPosition.x),
+        y: Math.round(nextPosition.y)
       },
       size: draft?.size ?? group.size
     };

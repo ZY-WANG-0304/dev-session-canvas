@@ -8091,6 +8091,51 @@ test('canvas groups resize from all eight directions', async ({ page }) => {
   });
 });
 
+test('canvas group resize draft keeps member nodes stationary until release', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 260, y: 260 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 220 },
+      size: { width: 520, height: 480 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const initialNoteBox = await noteNode.boundingBox();
+  expect(initialNoteBox).not.toBeNull();
+
+  await clearPostedMessages(page);
+  const handle = groupFrame.locator('[data-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 60, handleBox.y + handleBox.height / 2 - 40, { steps: 4 });
+  await settleWebview(page, 2);
+  const draftNoteBox = await noteNode.boundingBox();
+  expect(draftNoteBox).not.toBeNull();
+  expectBoxEdgesClose(draftNoteBox, initialNoteBox);
+
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position.x).toBeLessThan(240);
+  expect(message.payload.position.y).toBeLessThan(220);
+  expect(message.payload.size.width).toBeGreaterThan(520);
+  expect(message.payload.size.height).toBeGreaterThan(480);
+});
+
 test('selected nodes move together and share the primary release intent', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
