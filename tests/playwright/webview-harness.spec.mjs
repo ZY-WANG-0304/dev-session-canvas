@@ -8022,6 +8022,44 @@ test('canvas context menu can create an empty group', async ({ page }) => {
   expect(typeof message.payload.position.y).toBe('number');
 });
 
+test('selected nodes move together and report all release intents', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'note-2',
+      selectedNodeIds: ['note-1', 'note-2'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    createManualNoteNode('note-1', { x: 80, y: 120 }),
+    createManualNoteNode('note-2', { x: 360, y: 120 })
+  ];
+  state.nodes[0].title = 'Note 1';
+  state.nodes[1].title = 'Note 2';
+  await bootstrap(page, state, createRuntimeContext());
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeIds)
+    .toEqual(['note-1', 'note-2']);
+
+  await clearPostedMessages(page);
+  const firstBox = await nodeById(page, 'note-1').boundingBox();
+  expect(firstBox).not.toBeNull();
+  await page.mouse.move(firstBox.x + 6, firstBox.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(firstBox.x + 106, firstBox.y + 56, { steps: 8 });
+  await page.mouse.up();
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('note-1');
+  expect(moveMessage.payload.selectedMoves).toHaveLength(1);
+  expect(moveMessage.payload.selectedMoves[0].id).toBe('note-2');
+  expect(moveMessage.payload.selectedMoves[0].position.x - moveMessage.payload.position.x).toBe(280);
+  expect(moveMessage.payload.selectedMoves[0].position.y - moveMessage.payload.position.y).toBe(0);
+  expect(moveMessage.payload.selectedMoves[0].pointerPosition.x - moveMessage.payload.pointerPosition.x).toBe(280);
+  expect(moveMessage.payload.selectedMoves[0].pointerPosition.y - moveMessage.payload.pointerPosition.y).toBe(0);
+});
+
 test('canvas context menu can create a group from selected nodes', async ({ page }) => {
   await openHarness(page);
   const state = createEmptyCanvasState();
@@ -8052,8 +8090,21 @@ test('canvas context menu can create a group from selected nodes', async ({ page
   await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
   await nodeById(page, 'note-1').click();
   await nodeById(page, 'note-2').click();
+  await nodeById(page, 'note-2').click();
+  let selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1']);
+  await nodeById(page, 'note-2').click();
   await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
-  const selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
+
+  await nodeById(page, 'note-1').click();
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1']);
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
   expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
 
   await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 40, y: 620 } });

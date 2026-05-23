@@ -94,6 +94,31 @@ assert.deepEqual(parseWebviewMessage({ type: 'webview/deleteGroup', payload: { g
 });
 assert.equal(parseWebviewMessage({ type: 'webview/resizeGroup', payload: { groupId: 'group-1', position: { x: 1, y: 2 }, size: { width: -1, height: 20 } } }), null);
 
+const moveNodeMessage = {
+  type: 'webview/moveNode',
+  payload: {
+    id: 'note-1',
+    position: { x: 50, y: 60 },
+    pointerPosition: { x: 70, y: 80 },
+    selectedMoves: [
+      { id: 'note-2', position: { x: 180, y: 60 }, pointerPosition: { x: 200, y: 80 } },
+      { id: 'bad-move', position: { x: 0, y: 0 }, pointerPosition: { x: Number.NaN, y: 0 } }
+    ]
+  }
+};
+assert.deepEqual(parseWebviewMessage(moveNodeMessage), {
+  type: 'webview/moveNode',
+  payload: {
+    id: 'note-1',
+    position: { x: 50, y: 60 },
+    pointerPosition: { x: 70, y: 80 },
+    selectedMoves: [
+      { id: 'note-2', position: { x: 180, y: 60 }, pointerPosition: { x: 200, y: 80 } },
+      { id: 'bad-move', position: { x: 0, y: 0 }, pointerPosition: undefined }
+    ]
+  }
+});
+
 const unsupportedSourceMessage = JSON.parse(JSON.stringify(hardwrapResolveMessage));
 unsupportedSourceMessage.payload.candidates[0].source = 'future-source';
 assert.equal(parseWebviewMessage(unsupportedSourceMessage), null);

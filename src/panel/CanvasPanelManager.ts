@@ -253,6 +253,7 @@ const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const CANVAS_GROUP_PADDING = 28;
 const CANVAS_GROUP_COLLISION_PADDING = 24;
+const CANVAS_NODE_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
 const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1000;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
@@ -7644,7 +7645,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             this.state,
             parsedMessage.payload.id,
             parsedMessage.payload.position,
-            parsedMessage.payload.pointerPosition
+            parsedMessage.payload.pointerPosition,
+            parsedMessage.payload.selectedMoves
           )
         );
         this.persistState();
@@ -12635,38 +12637,202 @@ function moveNode(
   previousState: CanvasPrototypeState,
   nodeId: string,
   position: CanvasNodePosition,
-  pointerPosition?: CanvasNodePosition
+  pointerPosition?: CanvasNodePosition,
+  selectedMoves: readonly CanvasNodeMoveIntent[] = []
 ): CanvasPrototypeState {
-  const targetNode = previousState.nodes.find((node) => node.id === nodeId);
-  if (!targetNode) {
+  const moveIntents = normalizeCanvasNodeMoveIntents([
+    { id: nodeId, position, pointerPosition },
+    ...selectedMoves
+  ]);
+  if (moveIntents.length === 0) {
     return previousState;
   }
 
-  const normalizedPosition = {
+  const intentsById = new Map(moveIntents.map((intent) => [intent.id, intent] as const));
+  const movedNodeIds = new Set(intentsById.keys());
+  if (!previousState.nodes.some((node) => movedNodeIds.has(node.id))) {
+    return previousState;
+  }
+
+  const nodes = previousState.nodes.map((node) => {
+    const intent = intentsById.get(node.id);
+    if (!intent) {
+      return node;
+    }
+
+    const normalizedPosition = normalizeCanvasMovePosition(intent.position);
+    const resolvedPointerPosition = intent.pointerPosition ?? {
+      x: normalizedPosition.x + Math.round(node.size.width / 2),
+      y: normalizedPosition.y + Math.round(node.size.height / 2)
+    };
+
+    return {
+      ...node,
+      position: normalizedPosition,
+      groupId: isStableCanvasGroupMemberKind(node.kind)
+        ? resolveDroppedObjectGroupId(previousState, node.id, 'node', resolvedPointerPosition)
+        : undefined
+    };
+  });
+
+  const movedState = adjustMovedNodesAfterGroupDrop(
+    previousState,
+    {
+      ...previousState,
+      updatedAt: new Date().toISOString(),
+      nodes
+    },
+    movedNodeIds
+  );
+
+  return finalizeCanvasGroupState(movedState);
+}
+
+function normalizeCanvasNodeMoveIntents(intents: readonly CanvasNodeMoveIntent[]): CanvasNodeMoveIntent[] {
+  const intentsById = new Map<string, CanvasNodeMoveIntent>();
+  for (const intent of intents) {
+    if (!intent.id) {
+      continue;
+    }
+
+    intentsById.set(intent.id, {
+      id: intent.id,
+      position: normalizeCanvasMovePosition(intent.position),
+      pointerPosition: intent.pointerPosition ? normalizeCanvasMovePosition(intent.pointerPosition) : undefined
+    });
+  }
+
+  return [...intentsById.values()];
+}
+
+function normalizeCanvasMovePosition(position: CanvasNodePosition): CanvasNodePosition {
+  return {
     x: Math.round(position.x),
     y: Math.round(position.y)
   };
-  const resolvedPointerPosition = pointerPosition ?? {
-    x: normalizedPosition.x + Math.round(targetNode.size.width / 2),
-    y: normalizedPosition.y + Math.round(targetNode.size.height / 2)
+}
+
+function adjustMovedNodesAfterGroupDrop(
+  previousState: CanvasPrototypeState,
+  nextState: CanvasPrototypeState,
+  movedNodeIds: ReadonlySet<string>
+): CanvasPrototypeState {
+  const previousNodesById = new Map(previousState.nodes.map((node) => [node.id, node] as const));
+  const movedNodes = nextState.nodes.filter((node) => movedNodeIds.has(node.id));
+  const targetGroupIds = new Set<string>();
+  for (const node of movedNodes) {
+    const previousNode = previousNodesById.get(node.id);
+    if (node.groupId && node.groupId !== previousNode?.groupId) {
+      targetGroupIds.add(node.groupId);
+    }
+  }
+
+  if (targetGroupIds.size === 0) {
+    return nextState;
+  }
+
+  const groupsById = new Map((nextState.groups ?? []).map((group) => [group.id, group] as const));
+  const movedNodeIdSet = new Set(movedNodeIds);
+  const placedNodesById = new Map(nextState.nodes.map((node) => [node.id, { ...node }] as const));
+
+  for (const targetGroupId of targetGroupIds) {
+    const targetGroup = groupsById.get(targetGroupId);
+    if (!targetGroup) {
+      continue;
+    }
+
+    const currentNodes = nextState.nodes.map((node) => placedNodesById.get(node.id) ?? node);
+    const adjustedGroupNodes = preserveMovedNodeClusterWhileAvoidingSiblings(
+      currentNodes.filter((node) => movedNodeIdSet.has(node.id) && node.groupId === targetGroupId),
+      currentNodes.filter((node) => node.groupId === targetGroupId && !movedNodeIdSet.has(node.id)),
+      rectForGroup(targetGroup)
+    );
+    for (const node of adjustedGroupNodes) {
+      placedNodesById.set(node.id, node);
+    }
+  }
+
+  return {
+    ...nextState,
+    nodes: nextState.nodes.map((node) => placedNodesById.get(node.id) ?? node)
   };
-  const nodes = previousState.nodes.map((node) =>
-    node.id === nodeId
-      ? {
-          ...node,
-          position: normalizedPosition,
-          groupId: isStableCanvasGroupMemberKind(node.kind)
-            ? resolveDroppedObjectGroupId(previousState, nodeId, 'node', resolvedPointerPosition)
-            : undefined
-        }
-      : node
+}
+
+function preserveMovedNodeClusterWhileAvoidingSiblings(
+  movedNodes: readonly CanvasNodeSummary[],
+  siblingNodes: readonly CanvasNodeSummary[],
+  containerRect: CanvasRect
+): CanvasNodeSummary[] {
+  if (movedNodes.length === 0 || siblingNodes.length === 0) {
+    return [...movedNodes];
+  }
+
+  const clusterRect = boundingRectForRects(movedNodes.map((node) => rectForNode(node)));
+  if (!clusterRect) {
+    return [...movedNodes];
+  }
+
+  const blockingRects = siblingNodes.map((node) => expandRectByPadding(rectForNode(node), CANVAS_NODE_COLLISION_PADDING));
+  const candidateDeltas = buildClusterAvoidanceDeltas(clusterRect, blockingRects, containerRect);
+  for (const delta of candidateDeltas) {
+    const candidateNodes = movedNodes.map((node) => translateNode(node, delta));
+    const candidateRects = candidateNodes.map((node) => rectForNode(node));
+    if (candidateRects.some((rect) => blockingRects.some((blockingRect) => rectsIntersect(rect, blockingRect)))) {
+      continue;
+    }
+
+    return candidateNodes;
+  }
+
+  return [...movedNodes];
+}
+
+function buildClusterAvoidanceDeltas(
+  clusterRect: CanvasRect,
+  blockingRects: readonly CanvasRect[],
+  containerRect: CanvasRect
+): CanvasNodePosition[] {
+  const deltas: CanvasNodePosition[] = [{ x: 0, y: 0 }];
+  for (const blockingRect of blockingRects) {
+    if (!rectsIntersect(clusterRect, blockingRect)) {
+      continue;
+    }
+
+    deltas.push(
+      { x: Math.round(blockingRect.right - clusterRect.left), y: 0 },
+      { x: Math.round(blockingRect.left - clusterRect.right), y: 0 },
+      { x: 0, y: Math.round(blockingRect.bottom - clusterRect.top) },
+      { x: 0, y: Math.round(blockingRect.top - clusterRect.bottom) }
+    );
+  }
+
+  deltas.push(
+    { x: Math.round(containerRect.left + CANVAS_GROUP_PADDING - clusterRect.left), y: 0 },
+    { x: Math.round(containerRect.right - CANVAS_GROUP_PADDING - clusterRect.right), y: 0 },
+    { x: 0, y: Math.round(containerRect.top + CANVAS_GROUP_PADDING - clusterRect.top) },
+    { x: 0, y: Math.round(containerRect.bottom - CANVAS_GROUP_PADDING - clusterRect.bottom) }
   );
 
-  return finalizeCanvasGroupState({
-    ...previousState,
-    updatedAt: new Date().toISOString(),
-    nodes
-  });
+  return dedupeCanvasPositionDeltas(deltas).sort(
+    (left, right) => Math.abs(left.x) + Math.abs(left.y) - (Math.abs(right.x) + Math.abs(right.y))
+  );
+}
+
+function dedupeCanvasPositionDeltas(deltas: readonly CanvasNodePosition[]): CanvasNodePosition[] {
+  const seen = new Set<string>();
+  const uniqueDeltas: CanvasNodePosition[] = [];
+  for (const delta of deltas) {
+    const normalizedDelta = { x: Math.round(delta.x), y: Math.round(delta.y) };
+    const key = `${normalizedDelta.x}:${normalizedDelta.y}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    uniqueDeltas.push(normalizedDelta);
+  }
+
+  return uniqueDeltas;
 }
 
 function resizeNode(
@@ -12735,6 +12901,12 @@ interface CanvasRect {
   top: number;
   right: number;
   bottom: number;
+}
+
+interface CanvasNodeMoveIntent {
+  id: string;
+  position: CanvasNodePosition;
+  pointerPosition?: CanvasNodePosition;
 }
 
 function createCanvasGroupObjectId(sequence: number): string {
@@ -13464,6 +13636,16 @@ function translateGroup(group: CanvasGroupSummary, delta: CanvasNodePosition): C
     position: {
       x: Math.round(group.position.x + delta.x),
       y: Math.round(group.position.y + delta.y)
+    }
+  };
+}
+
+function translateNode(node: CanvasNodeSummary, delta: CanvasNodePosition): CanvasNodeSummary {
+  return {
+    ...node,
+    position: {
+      x: Math.round(node.position.x + delta.x),
+      y: Math.round(node.position.y + delta.y)
     }
   };
 }

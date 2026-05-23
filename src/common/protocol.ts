@@ -608,6 +608,11 @@ export type WebviewToHostMessage =
         id: string;
         position: CanvasNodePosition;
         pointerPosition?: CanvasNodePosition;
+        selectedMoves?: Array<{
+          id: string;
+          position: CanvasNodePosition;
+          pointerPosition?: CanvasNodePosition;
+        }>;
       };
     }
   | {
@@ -1909,12 +1914,33 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return null;
     }
 
+    const selectedMoves = Array.isArray(payload.selectedMoves)
+      ? payload.selectedMoves.flatMap((entry) => {
+          if (
+            !isRecord(entry) ||
+            typeof entry.id !== 'string' ||
+            !isCanvasNodePosition(entry.position)
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              id: entry.id,
+              position: entry.position,
+              pointerPosition: isCanvasNodePosition(entry.pointerPosition) ? entry.pointerPosition : undefined
+            }
+          ];
+        })
+      : undefined;
+
     return {
       type: 'webview/moveNode',
       payload: {
         id: payload.id,
         position: payload.position,
-        pointerPosition: isCanvasNodePosition(payload.pointerPosition) ? payload.pointerPosition : undefined
+        pointerPosition: isCanvasNodePosition(payload.pointerPosition) ? payload.pointerPosition : undefined,
+        selectedMoves: selectedMoves && selectedMoves.length > 0 ? selectedMoves : undefined
       }
     };
   }
@@ -1982,7 +2008,13 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
-  return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number';
+  return (
+    isRecord(value) &&
+    typeof value.x === 'number' &&
+    Number.isFinite(value.x) &&
+    typeof value.y === 'number' &&
+    Number.isFinite(value.y)
+  );
 }
 
 function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {

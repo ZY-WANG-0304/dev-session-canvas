@@ -31,6 +31,7 @@ import ReactFlow, {
   type ReactFlowInstance,
   type ReactFlowState,
   type Node,
+  type NodeDragHandler,
   type NodeMouseHandler,
   type NodeProps,
   type Viewport
@@ -209,7 +210,7 @@ function CanvasNodeInteractionBoundary(props: {
     if (event.button !== 0 || isModifierSelectionInteractiveTarget(event.target)) {
       return;
     }
-    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    if (!event.ctrlKey && !event.metaKey) {
       return;
     }
 
@@ -425,6 +426,14 @@ interface CanvasContextMenuState {
 interface CanvasGroupDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
+}
+
+interface AutoPanController {
+  handlePointerMove(
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void;
+  stop(): void;
 }
 type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
 interface PendingNodeViewportRequest {
@@ -684,6 +693,8 @@ const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
 const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
 const NODE_GROUP_FOCUS_RETRY_INTERVAL_MS = 48;
 const NODE_GROUP_FOCUS_MAX_RETRY_COUNT = 8;
+const CANVAS_GROUP_AUTO_PAN_EDGE_THRESHOLD_PX = 48;
+const CANVAS_GROUP_AUTO_PAN_MAX_SPEED_PX = 24;
 const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
@@ -1021,6 +1032,7 @@ function App(): JSX.Element {
   const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
+  const groupDragAutoPanRef = useRef<AutoPanController | null>(null);
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
   const [canvasViewportSize, setCanvasViewportSize] = useState<CanvasViewportSize>(() => ({
     width: Math.max(1, window.innerWidth),
@@ -1412,6 +1424,8 @@ function App(): JSX.Element {
         window.clearTimeout(pendingViewportSyncTimeoutRef.current);
       }
       clearPendingNodeGroupViewportRetryTimeout();
+      groupDragAutoPanRef.current?.stop();
+      groupDragAutoPanRef.current = null;
     };
   }, []);
 
@@ -1773,7 +1787,7 @@ function App(): JSX.Element {
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: nodeId,
-      selectedNodeIds: current.selectedNodeIds?.includes(nodeId) ? current.selectedNodeIds : [nodeId],
+      selectedNodeIds: [nodeId],
       selectedGroupId: undefined,
       selectedGroupIds: undefined,
       selectedFileListEntries:
@@ -2131,8 +2145,7 @@ function App(): JSX.Element {
     }
 
     closeFloatingMenus();
-    if (_event.ctrlKey || _event.metaKey || _event.shiftKey) {
-      toggleNodeSelection(node.id);
+    if (_event.ctrlKey || _event.metaKey) {
       return;
     }
 
@@ -2205,6 +2218,8 @@ function App(): JSX.Element {
 
   const handleMoveGroup = (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition): void => {
     updateGroupDraft(groupId, null);
+    groupDragAutoPanRef.current?.stop();
+    groupDragAutoPanRef.current = null;
     postMessage({
       type: 'webview/moveGroup',
       payload: {
@@ -2213,6 +2228,31 @@ function App(): JSX.Element {
         pointerPosition
       }
     });
+  };
+
+  const handleGroupDragPointerMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void => {
+    if (!groupDragAutoPanRef.current) {
+      groupDragAutoPanRef.current = createCanvasAutoPanController(
+        reactFlowRef.current,
+        canvasShellRef.current,
+        (viewport) => {
+          setLocalUiState((current) => ({
+            ...current,
+            viewport
+          }));
+        }
+      );
+    }
+
+    groupDragAutoPanRef.current.handlePointerMove(event, onPan);
+  };
+
+  const handleGroupDragEnd = (): void => {
+    groupDragAutoPanRef.current?.stop();
+    groupDragAutoPanRef.current = null;
   };
 
   const handleResizeGroup = (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
@@ -2269,36 +2309,76 @@ function App(): JSX.Element {
     });
   };
 
-  const handleNodeDragStop: NodeMouseHandler = (event, node) => {
+  const handleNodeDragStop: NodeDragHandler = (event, node, draggedNodes) => {
     const pointerPosition = reactFlowRef.current?.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY
+    });
+    const primaryPointerPosition = pointerPosition
+      ? {
+          x: Math.round(pointerPosition.x),
+          y: Math.round(pointerPosition.y)
+        }
+      : undefined;
+    const draggedNodeIds = new Set(draggedNodes.map((draggedNode) => draggedNode.id));
+    const selectedFlowNodesById = new Map(
+      nodes
+        .filter(
+          (candidate) =>
+            candidate.id !== node.id &&
+            candidate.selected &&
+            !draggedNodeIds.has(candidate.id) &&
+            candidate.draggable !== false &&
+            nodeLayoutDrafts[candidate.id]?.position
+        )
+        .map((candidate) => [candidate.id, candidate] as const)
+    );
+    const selectedMoves = [
+      ...draggedNodes.filter((draggedNode) => draggedNode.id !== node.id),
+      ...selectedFlowNodesById.values()
+    ].map((draggedNode) => {
+      const draftPosition = nodeLayoutDrafts[draggedNode.id]?.position;
+      const resolvedPosition = draftPosition ?? draggedNode.position;
+      return {
+        id: draggedNode.id,
+        position: {
+          x: Math.round(resolvedPosition.x),
+          y: Math.round(resolvedPosition.y)
+        },
+        pointerPosition: primaryPointerPosition
+          ? {
+              x: Math.round(primaryPointerPosition.x + resolvedPosition.x - node.position.x),
+              y: Math.round(primaryPointerPosition.y + resolvedPosition.y - node.position.y)
+            }
+          : undefined
+      };
     });
     postMessage({
       type: 'webview/moveNode',
       payload: {
         id: node.id,
         position: node.position,
-        pointerPosition: pointerPosition
-          ? {
-              x: Math.round(pointerPosition.x),
-              y: Math.round(pointerPosition.y)
-            }
-          : undefined
+        pointerPosition: primaryPointerPosition,
+        selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
       }
     });
   };
 
   const handleNodesChange = (changes: any[]): void => {
-    setNodeLayoutDrafts((current) => {
-      const currentNodes = applyCanvasNodeLayoutDrafts(baseNodes, current);
-      const nextNodes = applyNodeChanges(changes, currentNodes);
-      return collectCanvasNodeLayoutDrafts(baseNodes, nextNodes);
-    });
-
     const selectionChanges = changes.filter(
       (change) => change?.type === 'select' && typeof change.id === 'string' && typeof change.selected === 'boolean'
     );
+    setNodeLayoutDrafts((current) => {
+      const currentNodes = applyCanvasNodeLayoutDrafts(baseNodes, current);
+      const nextNodes = applyNodeChanges(changes, currentNodes);
+      const nextDrafts = collectCanvasNodeLayoutDrafts(baseNodes, nextNodes);
+      if (selectionChanges.length > 0 || !changes.some((change) => change?.type === 'position')) {
+        return nextDrafts;
+      }
+
+      return extendCanvasNodeLayoutDraftsForSelectedDrag(baseNodes, nextNodes, nextDrafts);
+    });
+
     if (selectionChanges.length > 0) {
       setSelectedEdgeId(undefined);
       setLocalUiState((current) => {
@@ -2334,12 +2414,20 @@ function App(): JSX.Element {
           if (change.selected) {
             selectedNodeIds.add(change.id);
             lastSelectedNodeId = change.id;
+          } else {
+            selectedNodeIds.delete(change.id);
           }
         }
-        const nextSelectedNodeIds = Array.from(selectedNodeIds);
+        const selectedChangeCount = selectionChanges.filter((change) => change.selected).length;
+        const nextSelectedNodeIds =
+          selectedChangeCount === 1
+            ? [lastSelectedNodeId ?? selectionChanges.find((change) => change.selected)?.id].filter(
+                (id): id is string => typeof id === 'string'
+              )
+            : Array.from(selectedNodeIds);
         return {
           ...current,
-          selectedNodeId: lastSelectedNodeId ?? nextSelectedNodeIds.at(-1),
+          selectedNodeId: nextSelectedNodeIds.at(-1),
           selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
           selectedGroupId: undefined,
           selectedGroupIds: undefined
@@ -2723,6 +2811,8 @@ function App(): JSX.Element {
           }}
           onNodeClick={handleNodeClick}
           onNodeDragStop={handleNodeDragStop}
+          multiSelectionKeyCode={null}
+          selectNodesOnDrag={false}
           onMoveStart={handleMoveStart}
           onPaneClick={handlePaneClick}
           onPaneContextMenu={handlePaneContextMenu}
@@ -2746,6 +2836,8 @@ function App(): JSX.Element {
             onUpdateGroupTitle={handleUpdateGroupTitle}
             onUngroup={handleUngroup}
             onDeleteGroup={handleDeleteGroup}
+            onDragPointerMove={handleGroupDragPointerMove}
+            onDragEnd={handleGroupDragEnd}
           />
           <MiniMap
             className="canvas-corner-panel canvas-minimap"
@@ -3058,6 +3150,94 @@ function resolveVisibleCanvasCenter(
 
 function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
   return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+
+function createCanvasAutoPanController(
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null,
+  canvasShellElement: HTMLDivElement | null,
+  onViewportChange: (viewport: Viewport) => void
+): AutoPanController {
+  let frameId: number | undefined;
+  let pointer: { clientX: number; clientY: number } | null = null;
+  let onPanFrame: ((previousViewport: Viewport, nextViewport: Viewport) => void) | undefined;
+  let running = false;
+
+  const tick = (): void => {
+    if (!running || !reactFlowInstance?.viewportInitialized || !canvasShellElement || !pointer) {
+      frameId = undefined;
+      running = false;
+      return;
+    }
+
+    const bounds = canvasShellElement.getBoundingClientRect();
+    const delta = resolveCanvasAutoPanDelta(pointer, bounds);
+    if (delta.x !== 0 || delta.y !== 0) {
+      const currentViewport = reactFlowInstance.getViewport();
+      const nextViewport = {
+        ...currentViewport,
+        x: currentViewport.x + delta.x,
+        y: currentViewport.y + delta.y
+      };
+      reactFlowInstance.setViewport(nextViewport);
+      onViewportChange(nextViewport);
+      onPanFrame?.(currentViewport, nextViewport);
+    }
+
+    frameId = window.requestAnimationFrame(tick);
+  };
+
+  return {
+    handlePointerMove(event, onPan) {
+      pointer = { clientX: event.clientX, clientY: event.clientY };
+      onPanFrame = onPan;
+      if (running) {
+        return;
+      }
+
+      running = true;
+      frameId = window.requestAnimationFrame(tick);
+    },
+    stop() {
+      running = false;
+      pointer = null;
+      onPanFrame = undefined;
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+        frameId = undefined;
+      }
+    }
+  };
+}
+
+function resolveCanvasAutoPanDelta(
+  pointer: { clientX: number; clientY: number },
+  bounds: DOMRect
+): CanvasNodePosition {
+  const edgeThreshold = CANVAS_GROUP_AUTO_PAN_EDGE_THRESHOLD_PX;
+  const maxSpeed = CANVAS_GROUP_AUTO_PAN_MAX_SPEED_PX;
+
+  return {
+    x: resolveCanvasAutoPanAxisDelta(pointer.clientX, bounds.left, bounds.right, edgeThreshold, maxSpeed),
+    y: resolveCanvasAutoPanAxisDelta(pointer.clientY, bounds.top, bounds.bottom, edgeThreshold, maxSpeed)
+  };
+}
+
+function resolveCanvasAutoPanAxisDelta(
+  pointerValue: number,
+  start: number,
+  end: number,
+  edgeThreshold: number,
+  maxSpeed: number
+): number {
+  if (pointerValue < start + edgeThreshold) {
+    return Math.round(((start + edgeThreshold - pointerValue) / edgeThreshold) * maxSpeed);
+  }
+
+  if (pointerValue > end - edgeThreshold) {
+    return -Math.round(((pointerValue - (end - edgeThreshold)) / edgeThreshold) * maxSpeed);
+  }
+
+  return 0;
 }
 
 function createManualNodeCreateRequestId(): string {
@@ -6662,7 +6842,7 @@ const CanvasContextMenu = React.forwardRef<
                 data-context-menu-action="create-group-from-selection"
                 onClick={props.onCreateGroupFromSelection}
               >
-                <span className="canvas-context-menu-icon codicon codicon-group-by-ref-type" aria-hidden="true" />
+                <span className="canvas-context-menu-icon codicon codicon-symbol-array" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
                   <strong>从选择创建分组</strong>
                   <span>把当前多选对象收束到新分组</span>
@@ -8301,6 +8481,11 @@ function CanvasGroupsViewportLayer(props: {
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
 }): JSX.Element {
   const viewport = useViewport();
   if (!props.portalElement) {
@@ -8321,6 +8506,11 @@ function CanvasGroupLayer(props: {
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
 }): JSX.Element {
   const orderedGroups = [...props.groups].sort((left, right) => groupDepthForWebview(props.groups, left.id) - groupDepthForWebview(props.groups, right.id));
   return (
@@ -8343,10 +8533,24 @@ function CanvasGroupLayer(props: {
           onUpdateGroupTitle={props.onUpdateGroupTitle}
           onUngroup={props.onUngroup}
           onDeleteGroup={props.onDeleteGroup}
+          onDragPointerMove={props.onDragPointerMove}
+          onDragEnd={props.onDragEnd}
         />
       ))}
     </div>
   );
+}
+
+function resolveGroupDragPosition(
+  dragStart: { clientX: number; clientY: number; position: CanvasNodePosition; autoPanOffset: CanvasNodePosition },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number
+): CanvasNodePosition {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return {
+    x: Math.round(dragStart.position.x + (event.clientX - dragStart.clientX) / safeZoom + dragStart.autoPanOffset.x),
+    y: Math.round(dragStart.position.y + (event.clientY - dragStart.clientY) / safeZoom + dragStart.autoPanOffset.y)
+  };
 }
 
 function CanvasGroupFrame(props: {
@@ -8360,6 +8564,11 @@ function CanvasGroupFrame(props: {
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
 }): JSX.Element {
   const dragStartRef = useRef<{
     pointerId: number;
@@ -8367,6 +8576,7 @@ function CanvasGroupFrame(props: {
     clientY: number;
     position: CanvasNodePosition;
     pointerOffset: CanvasNodePosition;
+    autoPanOffset: CanvasNodePosition;
   } | null>(null);
   const resizeStartRef = useRef<{
     pointerId: number;
@@ -8409,7 +8619,8 @@ function CanvasGroupFrame(props: {
       clientX: event.clientX,
       clientY: event.clientY,
       position: props.group.position,
-      pointerOffset: resolvePointerOffsetInGroup(event)
+      pointerOffset: resolvePointerOffsetInGroup(event),
+      autoPanOffset: { x: 0, y: 0 }
     };
   };
 
@@ -8420,12 +8631,20 @@ function CanvasGroupFrame(props: {
     }
 
     stopCanvasEvent(event);
-    props.onDraftGroup(props.group.id, {
-      position: {
-        x: Math.round(dragStart.position.x + (event.clientX - dragStart.clientX) / props.zoom),
-        y: Math.round(dragStart.position.y + (event.clientY - dragStart.clientY) / props.zoom)
-      }
+    const publishDraft = (): void => {
+      props.onDraftGroup(props.group.id, {
+        position: resolveGroupDragPosition(dragStart, event, props.zoom)
+      });
+    };
+    props.onDragPointerMove(event, (previousViewport, nextViewport) => {
+      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : props.zoom;
+      dragStart.autoPanOffset = {
+        x: dragStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
+        y: dragStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
+      };
+      publishDraft();
     });
+    publishDraft();
   };
 
   const endDrag = (event: React.PointerEvent): void => {
@@ -8436,10 +8655,8 @@ function CanvasGroupFrame(props: {
 
     stopCanvasEvent(event);
     dragStartRef.current = null;
-    const position = {
-      x: Math.round(dragStart.position.x + (event.clientX - dragStart.clientX) / props.zoom),
-      y: Math.round(dragStart.position.y + (event.clientY - dragStart.clientY) / props.zoom)
-    };
+    const position = resolveGroupDragPosition(dragStart, event, props.zoom);
+    props.onDragEnd();
     props.onMoveGroup(props.group.id, position, {
       x: Math.round(position.x + dragStart.pointerOffset.x),
       y: Math.round(position.y + dragStart.pointerOffset.y)
@@ -8519,6 +8736,7 @@ function CanvasGroupFrame(props: {
         dragStartRef.current = null;
         resizeStartRef.current = null;
         props.onDraftGroup(props.group.id, null);
+        props.onDragEnd();
         stopCanvasEvent(event);
       }}
     >
@@ -9115,6 +9333,49 @@ function pruneCanvasNodeLayoutDrafts(
 ): Record<string, CanvasNodeLayoutDraft> {
   const nextDrafts = collectCanvasNodeLayoutDrafts(nodes, applyCanvasNodeLayoutDrafts(nodes, drafts));
   return shallowEqualCanvasNodeLayoutDrafts(drafts, nextDrafts) ? drafts : nextDrafts;
+}
+
+function extendCanvasNodeLayoutDraftsForSelectedDrag(
+  baseNodes: CanvasFlowNode[],
+  nextNodes: CanvasFlowNode[],
+  drafts: Record<string, CanvasNodeLayoutDraft>
+): Record<string, CanvasNodeLayoutDraft> {
+  const draggedDraftEntries = Object.entries(drafts).filter(([, draft]) => draft.position);
+  if (draggedDraftEntries.length !== 1) {
+    return drafts;
+  }
+
+  const [draggedNodeId, draggedDraft] = draggedDraftEntries[0];
+  const draggedBaseNode = baseNodes.find((node) => node.id === draggedNodeId);
+  if (!draggedBaseNode || !draggedDraft.position) {
+    return drafts;
+  }
+
+  const delta = {
+    x: draggedDraft.position.x - draggedBaseNode.position.x,
+    y: draggedDraft.position.y - draggedBaseNode.position.y
+  };
+  if (delta.x === 0 && delta.y === 0) {
+    return drafts;
+  }
+
+  const nextNodeIds = new Set(nextNodes.map((node) => node.id));
+  const nextDrafts = { ...drafts };
+  for (const node of baseNodes) {
+    if (node.id === draggedNodeId || !node.selected || !nextNodeIds.has(node.id)) {
+      continue;
+    }
+
+    nextDrafts[node.id] = {
+      ...nextDrafts[node.id],
+      position: {
+        x: Math.round(node.position.x + delta.x),
+        y: Math.round(node.position.y + delta.y)
+      }
+    };
+  }
+
+  return nextDrafts;
 }
 
 function collectCanvasNodeLayoutDrafts(
