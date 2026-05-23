@@ -18,6 +18,8 @@ try {
     'resizeGroup',
     'ungroupCanvasGroup',
     'deleteCanvasNode',
+    'deleteCanvasGroupKeepMembers',
+    'isEmptyCanvasGroup',
     'finalizeCanvasGroupState',
     'normalizeState'
   ];
@@ -106,6 +108,8 @@ try {
     resizeGroup,
     ungroupCanvasGroup,
     deleteCanvasNode,
+    deleteCanvasGroupKeepMembers,
+    isEmptyCanvasGroup,
     finalizeCanvasGroupState,
     normalizeState
   } = require(outfile);
@@ -336,6 +340,29 @@ try {
   assert.deepStrictEqual(ungrouped.groups.map((candidate) => candidate.id), ['group-child']);
   assert.strictEqual(ungrouped.groups[0].parentGroupId, undefined);
   assert.strictEqual(ungrouped.nodes[0].groupId, undefined);
+
+  const emptyGroupState = state({
+    nodes: [note('note-outside', { x: 360, y: 20 })],
+    groups: [group('group-empty', { x: 0, y: 0 }, { width: 260, height: 220 })]
+  });
+  assert.strictEqual(isEmptyCanvasGroup(emptyGroupState, 'group-empty'), true);
+  const deletedEmptyGroup = deleteCanvasGroupKeepMembers(emptyGroupState, 'group-empty');
+  assert.deepStrictEqual(deletedEmptyGroup.groups, []);
+  assert.deepStrictEqual(deletedEmptyGroup.nodes.map((candidate) => candidate.id), ['note-outside']);
+
+  const groupWithDirectNodeState = state({
+    nodes: [note('note-child', { x: 40, y: 40 }, { groupId: 'group-parent' })],
+    groups: [group('group-parent', { x: 0, y: 0 }, { width: 260, height: 220 })]
+  });
+  assert.strictEqual(isEmptyCanvasGroup(groupWithDirectNodeState, 'group-parent'), false);
+
+  const groupWithChildGroupState = state({
+    groups: [
+      group('group-parent', { x: 0, y: 0 }, { width: 260, height: 220 }),
+      group('group-child', { x: 40, y: 40 }, { width: 120, height: 100 }, { parentGroupId: 'group-parent' })
+    ]
+  });
+  assert.strictEqual(isEmptyCanvasGroup(groupWithChildGroupState, 'group-parent'), false);
 
   const normalized = normalizeState(
     state({

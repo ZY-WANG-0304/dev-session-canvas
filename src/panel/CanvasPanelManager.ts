@@ -11134,6 +11134,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (isEmptyCanvasGroup(this.state, groupId)) {
+      this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
     const deleteMembersAction = { title: '删除内部所有节点与子分组' };
     const keepMembersAction = { title: '仅删除分组' };
     const selection = await vscode.window.showWarningMessage(
@@ -13228,6 +13235,13 @@ function ungroupCanvasGroup(previousState: CanvasPrototypeState, groupId: string
 
 function deleteCanvasGroupKeepMembers(previousState: CanvasPrototypeState, groupId: string): CanvasPrototypeState {
   return ungroupCanvasGroup(previousState, groupId);
+}
+
+function isEmptyCanvasGroup(state: CanvasPrototypeState, groupId: string): boolean {
+  return (
+    !state.nodes.some((node) => node.groupId === groupId) &&
+    !(state.groups ?? []).some((group) => group.parentGroupId === groupId)
+  );
 }
 
 function collectGroupSubtreeIds(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {
