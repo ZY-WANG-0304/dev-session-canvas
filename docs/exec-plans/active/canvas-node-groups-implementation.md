@@ -22,10 +22,12 @@
 - [x] (2026-05-22 17:08Z) 修正分组拖动释放意图：Webview 提交 `webview/moveGroup` 时使用实际鼠标释放位置，而不是分组中心点，保持“拖拽意图载体是鼠标释放位置”。
 - [x] (2026-05-22 17:17Z) 完成本轮验证：`npm run typecheck`、协议消息测试、模板测试、`npm run test:canvas-node-groups`、`npm run build` 和 3 条 Webview 分组 Playwright 用例均通过。
 - [x] (2026-05-22 17:17Z) 更新实现阶段 ExecPlan 的验证证据、意外发现和结果复盘。
-- [x] (2026-05-23 02:54Z) 完成首轮交互调整：普通点击节点恢复单选，Ctrl / Cmd 点击才增删多选；多选节点拖动通过 `selectedMoves` 把所有被选目标的释放意图发给宿主；分组拖动靠近画布边缘时自动平移 viewport；节点拖入分组时按整体簇避让已有同组节点。
+- [x] (2026-05-23 02:54Z) 完成首轮交互调整：普通点击节点恢复单选，Ctrl / Cmd 点击才增删多选；多选节点拖动通过 `selectedMoves` 把所有被选目标的最终位置发给宿主；分组拖动靠近画布边缘时自动平移 viewport；节点拖入分组时按整体簇避让已有同组节点。
 - [x] (2026-05-23 03:43Z) 修正分组入口 icon 口径：创建空分组入口使用 `symbol-array`；从选择创建分组入口恢复为 `group-by-ref-type`。
 - [x] (2026-05-23 03:25Z) 完成本轮最终验证：`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:canvas-node-groups`、`npm run build`、4 条 Webview 分组 Playwright 用例和 `git diff --check` 均通过。
 - [x] (2026-05-23 03:43Z) 完成本次 icon 修正验证：`npm run build`、2 条 Webview 分组入口 Playwright 用例和 `git diff --check` 均通过。
+- [x] (2026-05-23 04:07Z) 修正多选节点移动释放点语义：多选节点作为临时整体移动，所有被选节点共用主鼠标释放位置作为归属意图。
+- [x] (2026-05-23 04:07Z) 完成本次多选释放点修正验证：`npm run typecheck`、`npm run test:canvas-node-groups`、`npm run build`、Webview 多选拖动 Playwright 用例和 `git diff --check` 均通过。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -52,8 +54,8 @@
 - 观察：React Flow 默认会在普通节点点击和拖拽开始时维护自己的多选状态；如果只在 `onNodeClick` 里追加多选，普通点击会把多选误保留。
   证据：本轮将 React Flow 的 `multiSelectionKeyCode` 置空并用 Webview 本地 `Ctrl / Cmd` 点击切换选择，普通点击统一写回单选；Playwright 用例补充再次 Ctrl / Cmd 点击取消选择和普通点击回退单选。
 
-- 观察：多选拖动时必须把整组选中目标的释放点一起发给宿主，否则只有鼠标所在节点遵循“释放点法则”。
-  证据：`webview/moveNode` 新增 `selectedMoves`，Webview 在拖动时给未被 React Flow 内部一起移动的选中节点补 draft，释放后为每个被选节点计算对应 pointer；协议和 Webview 测试覆盖该消息。
+- 观察：多选节点同时移动时，这批节点应被理解为本次移动的临时整体，不能为每个节点按相对位置推导不同归属释放点。
+  证据：`webview/moveNode` 保留 `selectedMoves` 传递每个被选节点的最终位置，但所有被选节点的 `pointerPosition` 均使用主鼠标释放位置；Webview 测试覆盖该消息。
 
 - 观察：节点入组避让不能逐个移动被拖入节点，否则会破坏被选节点之间原有的相对位置和重叠关系。
   证据：`adjustMovedNodesAfterGroupDrop` 只在入组目标变化时把本次移动节点作为整体簇平移避让已有同组节点；宿主测试覆盖非重叠节点保持相对间距、原本重叠的节点保持重叠偏移。
@@ -108,7 +110,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 第一阶段已经完成：阅读现有 `CanvasNodeSummary`、`CanvasPanelManager` 的 `moveNode` / `resizeNode` / `deleteNode`、Webview 消息分发、React Flow 节点拖动和标题编辑组件。确认现有节点坐标是绝对坐标，标题编辑可复用 `ChromeTitleEditor`，Playwright harness 加载的是 `dist/webview.js`，因此跑 Webview 测试前必须先 `npm run build`。
 
-第二阶段已经完成：`src/common/protocol.ts` 新增 `CanvasGroupSummary`，`CanvasNodeSummary.groupId?`，`CanvasPrototypeState.groups` 和 `nextGroupSequence`，以及 `webview/createEmptyGroup`、`webview/createGroupFromSelection`、`webview/updateGroupTitle`、`webview/moveGroup`、`webview/resizeGroup`、`webview/deleteGroup`、`webview/ungroup` 等消息。`webview/moveNode` 新增 `pointerPosition` 和 `selectedMoves`，用于按鼠标释放点表达单个或多个被选节点的拖拽归属意图。
+第二阶段已经完成：`src/common/protocol.ts` 新增 `CanvasGroupSummary`，`CanvasNodeSummary.groupId?`，`CanvasPrototypeState.groups` 和 `nextGroupSequence`，以及 `webview/createEmptyGroup`、`webview/createGroupFromSelection`、`webview/updateGroupTitle`、`webview/moveGroup`、`webview/resizeGroup`、`webview/deleteGroup`、`webview/ungroup` 等消息。`webview/moveNode` 新增 `pointerPosition` 和 `selectedMoves`；单节点拖动用鼠标释放点表达归属意图，多选节点拖动用 `selectedMoves` 携带其他被选节点的最终位置，且所有被选节点共用主鼠标释放点作为临时整体移动的归属意图。
 
 第三阶段已经完成基础实现：`CanvasPanelManager.ts` 新增 group helper，包括创建空分组、从选择创建分组、更新标题、移动 group 子树、resize group、取消分组、删除分组保留成员、递归删除成员、normalize、几何收口和节点入组避让。`finalizeCanvasGroupState` 负责把宿主持久化状态收敛为基础合法状态；`adjustMovedNodesAfterGroupDrop` 在本次移动节点进入新分组时把移动节点簇整体平移避让已有同组节点。删除 group 通过 VS Code modal warning 让用户选择“删除内部所有节点与子分组”或“仅删除分组”。
 
@@ -143,7 +145,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 宿主状态验收：`npm run test:canvas-node-groups` 证明旧状态 normalize 后 `groups` 为空数组；创建空 group 得到默认标题和尺寸；删除后创建不复用分组编号；从两个同父级稳定对象创建 group 会设置成员关系；跨父级选择被拒绝；移动 group 会移动内部子树；拖动 / resize 释放后输出基础合法状态；节点拖入分组时移动节点簇避让已有同组节点且保持簇内相对位置；取消 group 保留内部对象位置；删除节点不删除空 group。
 
-Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后工具栏可取消分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的释放位置和 pointer；拖动 group draft 移动子树并在边缘自动平移 viewport；resize 不缩放成员节点；释放后由宿主状态同步。
+Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后工具栏可取消分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的最终位置，并让所有被选目标共用主鼠标释放点；拖动 group draft 移动子树并在边缘自动平移 viewport；resize 不缩放成员节点；释放后由宿主状态同步。
 
 持久化验收：reload 或窗口重开后，group、标题、位置、尺寸、父子关系和成员 `groupId` 恢复。模板保存 / 应用包含 group 的模板后，新节点和 group 重新生成 id，但保留相对层级关系。当前里程碑只覆盖模板 capture 和基础 apply 物化代码，仍需补真实 reload smoke。
 
@@ -235,6 +237,8 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 
 本次修订说明：2026-05-22 17:17Z 补充分组实现的本轮验证证据，并记录 Note preview 多选修复、分组拖动释放点修复与仍未覆盖的真实 VSCode smoke 缺口。
 
-本次修订说明：2026-05-23 02:54Z 记录用户提出的交互调整，包括 Ctrl / Cmd 多选、多选拖动释放意图、分组拖动画布跟随和节点入组避让，并补充当前已完成的局部验证证据。
+本次修订说明：2026-05-23 02:54Z 记录用户提出的交互调整，包括 Ctrl / Cmd 多选、多选拖动最终位置上报、分组拖动画布跟随和节点入组避让，并补充当前已完成的局部验证证据。
 
 本次修订说明：2026-05-23 03:43Z 修正分组入口 icon 口径：`symbol-array` 适用于创建空分组入口，从选择创建分组入口恢复为 `group-by-ref-type`。
+
+本次修订说明：2026-05-23 04:07Z 修正多选节点移动释放点语义：多选节点作为临时整体移动，所有被选节点共用主鼠标释放位置作为归属意图。
