@@ -427,6 +427,15 @@ interface CanvasGroupDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
 }
+type CanvasGroupResizeDirection =
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
 
 interface AutoPanController {
   handlePointerMove(
@@ -8548,6 +8557,54 @@ function resolveGroupDragPosition(
   };
 }
 
+function resolveGroupResizeGeometry(
+  resizeStart: { clientX: number; clientY: number; position: CanvasNodePosition; size: CanvasNodeFootprint; direction: CanvasGroupResizeDirection },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number
+): { position: CanvasNodePosition; size: CanvasNodeFootprint } {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const deltaX = (event.clientX - resizeStart.clientX) / safeZoom;
+  const deltaY = (event.clientY - resizeStart.clientY) / safeZoom;
+  const resizeLeft = resizeStart.direction.includes('left');
+  const resizeRight = resizeStart.direction.includes('right');
+  const resizeTop = resizeStart.direction.includes('top');
+  const resizeBottom = resizeStart.direction.includes('bottom');
+  const nextWidth = Math.max(
+    MINIMUM_CANVAS_GROUP_SIZE.width,
+    Math.round(resizeStart.size.width + (resizeRight ? deltaX : 0) - (resizeLeft ? deltaX : 0))
+  );
+  const nextHeight = Math.max(
+    MINIMUM_CANVAS_GROUP_SIZE.height,
+    Math.round(resizeStart.size.height + (resizeBottom ? deltaY : 0) - (resizeTop ? deltaY : 0))
+  );
+
+  return {
+    position: {
+      x: resizeLeft
+        ? Math.round(resizeStart.position.x + resizeStart.size.width - nextWidth)
+        : resizeStart.position.x,
+      y: resizeTop
+        ? Math.round(resizeStart.position.y + resizeStart.size.height - nextHeight)
+        : resizeStart.position.y
+    },
+    size: {
+      width: nextWidth,
+      height: nextHeight
+    }
+  };
+}
+
+const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right'
+];
+
 function CanvasGroupFrame(props: {
   group: CanvasGroupSummary;
   selected: boolean;
@@ -8579,6 +8636,7 @@ function CanvasGroupFrame(props: {
     clientY: number;
     position: CanvasNodePosition;
     size: CanvasNodeFootprint;
+    direction: CanvasGroupResizeDirection;
   } | null>(null);
 
   const selectGroup = (): void => props.onSelectGroup(props.group.id);
@@ -8658,7 +8716,7 @@ function CanvasGroupFrame(props: {
     });
   };
 
-  const beginResize = (event: React.PointerEvent): void => {
+  const beginResize = (event: React.PointerEvent, direction: CanvasGroupResizeDirection): void => {
     if (event.button !== 0) {
       return;
     }
@@ -8671,7 +8729,8 @@ function CanvasGroupFrame(props: {
       clientX: event.clientX,
       clientY: event.clientY,
       position: props.group.position,
-      size: props.group.size
+      size: props.group.size,
+      direction
     };
   };
 
@@ -8682,13 +8741,7 @@ function CanvasGroupFrame(props: {
     }
 
     stopCanvasEvent(event);
-    props.onDraftGroup(props.group.id, {
-      position: resizeStart.position,
-      size: {
-        width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(resizeStart.size.width + (event.clientX - resizeStart.clientX) / props.zoom)),
-        height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(resizeStart.size.height + (event.clientY - resizeStart.clientY) / props.zoom))
-      }
-    });
+    props.onDraftGroup(props.group.id, resolveGroupResizeGeometry(resizeStart, event, props.zoom));
   };
 
   const endResize = (event: React.PointerEvent): void => {
@@ -8699,10 +8752,8 @@ function CanvasGroupFrame(props: {
 
     stopCanvasEvent(event);
     resizeStartRef.current = null;
-    props.onResizeGroup(props.group.id, resizeStart.position, {
-      width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(resizeStart.size.width + (event.clientX - resizeStart.clientX) / props.zoom)),
-      height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(resizeStart.size.height + (event.clientY - resizeStart.clientY) / props.zoom))
-    });
+    const resizedGeometry = resolveGroupResizeGeometry(resizeStart, event, props.zoom);
+    props.onResizeGroup(props.group.id, resizedGeometry.position, resizedGeometry.size);
   };
 
   return (
@@ -8749,12 +8800,16 @@ function CanvasGroupFrame(props: {
       <div className="canvas-group-border canvas-group-border-right" onPointerDown={beginDrag} />
       <div className="canvas-group-border canvas-group-border-bottom" onPointerDown={beginDrag} />
       <div className="canvas-group-border canvas-group-border-left" onPointerDown={beginDrag} />
-      <button
-        type="button"
-        className="canvas-group-resize-handle nodrag nopan"
-        aria-label={`调整分组 ${props.group.title} 尺寸`}
-        onPointerDown={beginResize}
-      />
+      {CANVAS_GROUP_RESIZE_DIRECTIONS.map((direction) => (
+        <button
+          key={direction}
+          type="button"
+          className={`canvas-group-resize-handle canvas-group-resize-handle-${direction} nodrag nopan`}
+          data-resize-direction={direction}
+          aria-label={`向 ${direction} 调整分组 ${props.group.title} 尺寸`}
+          onPointerDown={(event) => beginResize(event, direction)}
+        />
+      ))}
       {props.selected ? (
         <div className="canvas-group-toolbar" data-group-toolbar="true">
           <button type="button" onClick={() => props.onUngroup(props.group.id)}>取消分组</button>

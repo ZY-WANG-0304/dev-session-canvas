@@ -3023,15 +3023,102 @@ body {
 
 .canvas-group-resize-handle {
   position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 14px;
-  height: 14px;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 72%, var(--vscode-panel-border) 28%);
   border-radius: 999px;
+  padding: 0;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  cursor: nwse-resize;
+  color: inherit;
+  font: inherit;
   pointer-events: auto;
+}
+
+.canvas-group-resize-handle-top,
+.canvas-group-resize-handle-right,
+.canvas-group-resize-handle-bottom,
+.canvas-group-resize-handle-left {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 52%, var(--vscode-panel-border) 48%);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 86%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-group-frame.is-selected .canvas-group-resize-handle-top,
+.canvas-group-frame.is-selected .canvas-group-resize-handle-right,
+.canvas-group-frame.is-selected .canvas-group-resize-handle-bottom,
+.canvas-group-frame.is-selected .canvas-group-resize-handle-left,
+.canvas-group-frame:hover .canvas-group-resize-handle-top,
+.canvas-group-frame:hover .canvas-group-resize-handle-right,
+.canvas-group-frame:hover .canvas-group-resize-handle-bottom,
+.canvas-group-frame:hover .canvas-group-resize-handle-left {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-group-resize-handle-top,
+.canvas-group-resize-handle-bottom {
+  left: 50%;
+  width: 26px;
+  height: 8px;
+  margin-left: -13px;
+  cursor: ns-resize;
+}
+
+.canvas-group-resize-handle-top {
+  top: -5px;
+}
+
+.canvas-group-resize-handle-bottom {
+  bottom: -5px;
+}
+
+.canvas-group-resize-handle-left,
+.canvas-group-resize-handle-right {
+  top: 50%;
+  width: 8px;
+  height: 26px;
+  margin-top: -13px;
+  cursor: ew-resize;
+}
+
+.canvas-group-resize-handle-left {
+  left: -5px;
+}
+
+.canvas-group-resize-handle-right {
+  right: -5px;
+}
+
+.canvas-group-resize-handle-top-left,
+.canvas-group-resize-handle-top-right,
+.canvas-group-resize-handle-bottom-left,
+.canvas-group-resize-handle-bottom-right {
+  width: 14px;
+  height: 14px;
+}
+
+.canvas-group-resize-handle-top-left {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+
+.canvas-group-resize-handle-top-right {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+
+.canvas-group-resize-handle-bottom-left {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+
+.canvas-group-resize-handle-bottom-right {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
 }
 
 .canvas-group-toolbar {
