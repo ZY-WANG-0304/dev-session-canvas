@@ -233,6 +233,47 @@ try {
   const ungroupedByPointer = moveNode(groupedByPointer, 'note-1', { x: 500, y: 20 }, { x: 500, y: 20 });
   assert.strictEqual(ungroupedByPointer.nodes[0].groupId, undefined);
 
+  const movedIntoOccupiedGroup = moveNode(
+    state({
+      nodes: [
+        note('existing-1', { x: 90, y: 80 }, { groupId: 'group-target' }),
+        note('moved-1', { x: 420, y: 80 }),
+        note('moved-2', { x: 560, y: 80 })
+      ],
+      groups: [group('group-target', { x: 0, y: 0 }, { width: 620, height: 280 })]
+    }),
+    'moved-1',
+    { x: 90, y: 80 },
+    { x: 120, y: 110 },
+    [{ id: 'moved-2', position: { x: 230, y: 80 }, pointerPosition: { x: 260, y: 110 } }]
+  );
+  assert.strictEqual(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-1').groupId, 'group-target');
+  assert.strictEqual(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-2').groupId, 'group-target');
+  assert.strictEqual(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-1').position.y, 184);
+  assert.strictEqual(movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-2').position.y, 184);
+  assert.strictEqual(
+    movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-2').position.x -
+      movedIntoOccupiedGroup.nodes.find((candidate) => candidate.id === 'moved-1').position.x,
+    140
+  );
+
+  const overlappingMovedNodesPreserveOverlap = moveNode(
+    state({
+      nodes: [
+        note('existing-1', { x: 90, y: 80 }, { groupId: 'group-target' }),
+        note('moved-1', { x: 420, y: 80 }),
+        note('moved-2', { x: 460, y: 100 })
+      ],
+      groups: [group('group-target', { x: 0, y: 0 }, { width: 620, height: 300 })]
+    }),
+    'moved-1',
+    { x: 90, y: 80 },
+    { x: 120, y: 110 },
+    [{ id: 'moved-2', position: { x: 130, y: 100 }, pointerPosition: { x: 160, y: 130 } }]
+  );
+  assert.deepStrictEqual(overlappingMovedNodesPreserveOverlap.nodes.find((candidate) => candidate.id === 'moved-1').position, { x: 90, y: 184 });
+  assert.deepStrictEqual(overlappingMovedNodesPreserveOverlap.nodes.find((candidate) => candidate.id === 'moved-2').position, { x: 130, y: 204 });
+
   const movedTree = moveGroup(
     state({
       nodes: [note('note-child', { x: 90, y: 90 }, { groupId: 'group-child' })],
