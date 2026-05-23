@@ -2589,17 +2589,92 @@ body {
   padding: 2px 0;
 }
 
-.canvas-node-resize-handle {
+.canvas-node-resize-control {
+  position: absolute;
+  z-index: 30;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.canvas-node-resize-control::after {
+  content: '';
+  position: absolute;
+  inset: 50%;
   width: 12px;
   height: 12px;
   border-radius: 999px;
   border: 2px solid var(--vscode-editor-background);
   background: var(--vscode-focusBorder);
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+  transform: translate(-50%, -50%);
 }
 
-.canvas-node-resize-line {
-  border-width: 2px;
+.canvas-node-resize-top,
+.canvas-node-resize-bottom {
+  left: 12px;
+  right: 12px;
+  height: 12px;
+}
+
+.canvas-node-resize-top {
+  top: -6px;
+}
+
+.canvas-node-resize-bottom {
+  bottom: -6px;
+}
+
+.canvas-node-resize-left,
+.canvas-node-resize-right {
+  top: 12px;
+  bottom: 12px;
+  width: 12px;
+}
+
+.canvas-node-resize-left {
+  left: -6px;
+}
+
+.canvas-node-resize-right {
+  right: -6px;
+}
+
+.canvas-node-resize-top-left,
+.canvas-node-resize-top-right,
+.canvas-node-resize-bottom-left,
+.canvas-node-resize-bottom-right {
+  width: 16px;
+  height: 16px;
+}
+
+.canvas-node-resize-top-left {
+  top: -8px;
+  left: -8px;
+}
+
+.canvas-node-resize-top-right {
+  top: -8px;
+  right: -8px;
+}
+
+.canvas-node-resize-bottom-left {
+  bottom: -8px;
+  left: -8px;
+}
+
+.canvas-node-resize-bottom-right {
+  right: -8px;
+  bottom: -8px;
+}
+
+.canvas-node-resize-top::after,
+.canvas-node-resize-right::after,
+.canvas-node-resize-bottom::after,
+.canvas-node-resize-left::after {
+  display: none;
 }
 
 .node-text-input:focus,
