@@ -349,6 +349,45 @@ try {
   const resizedToRelease = resizeGroup(resizedToAdopt, 'group-parent', { x: 0, y: 0 }, { width: 220, height: 160 });
   assert.strictEqual(resizedToRelease.groups.find((candidate) => candidate.id === 'group-child').parentGroupId, undefined);
 
+  const resizedWithContainmentAndCollision = resizeGroup(
+    state({
+      groups: [
+        group('group-parent', { x: 0, y: 0 }, { width: 220, height: 180 }),
+        group('group-contained', { x: 250, y: 50 }, { width: 100, height: 80 }),
+        group('group-crossing', { x: 380, y: 50 }, { width: 100, height: 80 })
+      ]
+    }),
+    'group-parent',
+    { x: 0, y: 0 },
+    { width: 430, height: 180 }
+  );
+  const resizedPinnedGroup = resizedWithContainmentAndCollision.groups.find((candidate) => candidate.id === 'group-parent');
+  const containedAfterResize = resizedWithContainmentAndCollision.groups.find((candidate) => candidate.id === 'group-contained');
+  const crossingAfterResize = resizedWithContainmentAndCollision.groups.find((candidate) => candidate.id === 'group-crossing');
+  assert.deepStrictEqual(resizedPinnedGroup.position, { x: 0, y: 0 });
+  assert.deepStrictEqual(resizedPinnedGroup.size, { width: 430, height: 180 });
+  assert.strictEqual(containedAfterResize.parentGroupId, 'group-parent');
+  assert.strictEqual(crossingAfterResize.parentGroupId, undefined);
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(resizedPinnedGroup), rectForTestGroup(crossingAfterResize)));
+
+  const resizedBoundaryInsideChild = resizeGroup(
+    state({
+      groups: [
+        group('group-parent', { x: 0, y: 0 }, { width: 300, height: 220 }),
+        group('group-child', { x: 40, y: 40 }, { width: 200, height: 140 }, { parentGroupId: 'group-parent' })
+      ]
+    }),
+    'group-parent',
+    { x: 80, y: 70 },
+    { width: 120, height: 96 }
+  );
+  const resizedInsideParent = resizedBoundaryInsideChild.groups.find((candidate) => candidate.id === 'group-parent');
+  const releasedChildAfterResize = resizedBoundaryInsideChild.groups.find((candidate) => candidate.id === 'group-child');
+  assert.deepStrictEqual(resizedInsideParent.position, { x: 80, y: 70 });
+  assert.deepStrictEqual(resizedInsideParent.size, { width: 180, height: 96 });
+  assert.strictEqual(releasedChildAfterResize.parentGroupId, undefined);
+  assert.ok(!rectsOverlapForTest(rectForTestGroup(resizedInsideParent), rectForTestGroup(releasedChildAfterResize)));
+
   const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
     state({
       groups: [
