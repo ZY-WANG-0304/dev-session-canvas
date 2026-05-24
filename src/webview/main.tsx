@@ -300,7 +300,8 @@ interface CanvasNodeData {
 type CanvasFlowNode = Node<CanvasNodeData>;
 type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
-interface AssociatedMarkdownEditConflict {
+interface AssociatedMarkdownDraftRecovery {
+  kind: 'dirty-conflict' | 'recoverable-draft' | 'unavailable-draft';
   remoteContent: string;
   remoteContentRevision?: string;
 }
@@ -4543,12 +4544,17 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
   const associatedMarkdownStatus = associatedMarkdownFile?.status;
   const hasAssociatedMarkdownMissingFile = associatedMarkdownStatus === 'missing';
-  const associatedMarkdownConflictDraft = associatedMarkdownFile?.conflictDraft;
-  const associatedMarkdownConflictDraftContent =
-    typeof associatedMarkdownConflictDraft?.content === 'string'
-      ? associatedMarkdownConflictDraft.content
+  const associatedMarkdownRecoverableDraft = associatedMarkdownFile?.recoverableDraft;
+  const hasAssociatedMarkdownRecoverableDraft = Boolean(associatedMarkdownRecoverableDraft);
+  const associatedMarkdownRecoverableDraftContent =
+    typeof associatedMarkdownRecoverableDraft?.content === 'string'
+      ? associatedMarkdownRecoverableDraft.content
       : undefined;
   const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
+  const canSurfaceAssociatedMarkdownRecoverableDraft =
+    Boolean(associatedMarkdownFile) &&
+    Boolean(associatedMarkdownStatus) &&
+    hasAssociatedMarkdownRecoverableDraft;
   const associatedMarkdownFileAvailable =
     !associatedMarkdownFile || associatedMarkdownStatus === 'ok' || hasAssociatedMarkdownHostConflict;
   const associatedMarkdownFileEditable =
@@ -4567,19 +4573,41 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [isEmbeddedLimitNoticeVisible, setIsEmbeddedLimitNoticeVisible] = useState(false);
-  const [associatedMarkdownEditConflict, setAssociatedMarkdownEditConflict] =
-    useState<AssociatedMarkdownEditConflict | null>(null);
+  const [associatedMarkdownDraftRecovery, setAssociatedMarkdownDraftRecovery] =
+    useState<AssociatedMarkdownDraftRecovery | null>(null);
   const [associatedMarkdownDraftCopied, setAssociatedMarkdownDraftCopied] = useState(false);
   const [associatedMarkdownConflictResolution, setAssociatedMarkdownConflictResolution] =
     useState<AssociatedMarkdownConflictResolution | null>(null);
   const showAssociatedMarkdownHostConflictPanel =
     hasAssociatedMarkdownHostConflict &&
-    !associatedMarkdownEditConflict &&
+    !associatedMarkdownDraftRecovery &&
     !isEditingBody &&
     !associatedMarkdownConflictResolution;
-  const associatedMarkdownEditConflictHint = associatedMarkdownFile?.lastError?.startsWith('模板')
-    ? '模板内容与现有文件不同；你可以继续编辑模板草稿，或选择重新加载 / 覆盖文件。'
-    : '关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。';
+  const showAssociatedMarkdownRecoverableDraftPanel =
+    !hasAssociatedMarkdownHostConflict &&
+    canSurfaceAssociatedMarkdownRecoverableDraft &&
+    associatedMarkdownRecoverableDraftContent === undefined &&
+    !associatedMarkdownDraftRecovery &&
+    !isEditingBody &&
+    !associatedMarkdownConflictResolution;
+  const showAssociatedMarkdownUnavailablePanel =
+    !associatedMarkdownFileAvailable && !associatedMarkdownDraftRecovery;
+  const associatedMarkdownFilePanelTitle = showAssociatedMarkdownRecoverableDraftPanel
+    ? '发现未提交的本地草稿'
+    : associatedMarkdownWarningTitle;
+  const associatedMarkdownFilePanelDetail = showAssociatedMarkdownRecoverableDraftPanel
+    ? associatedMarkdownStatus === 'ok'
+      ? '草稿正文暂不可读取。请重新加载以丢弃草稿并恢复磁盘内容。'
+      : `${associatedMarkdownFile?.lastError ?? '关联文件当前不可用。'} 草稿正文暂不可读取。请重新加载以丢弃草稿并重新检查关联文件。`
+    : associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。';
+  const associatedMarkdownDraftRecoveryHint =
+    associatedMarkdownDraftRecovery?.kind === 'recoverable-draft'
+      ? '发现未提交的本地草稿；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。'
+      : associatedMarkdownDraftRecovery?.kind === 'unavailable-draft'
+        ? `${associatedMarkdownWarningTitle}；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。`
+      : associatedMarkdownFile?.lastError?.startsWith('模板')
+        ? '模板内容与现有文件不同；你可以继续编辑模板草稿，或选择重新加载 / 覆盖文件。'
+        : '关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。';
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const [bodyVisualLineCounts, setBodyVisualLineCounts] = useState<number[]>(() =>
     createFallbackVisualLineCounts(splitTextLines(noteMetadata.content).length)
@@ -4595,6 +4623,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   const associatedMarkdownDraftSyncTimerRef = useRef<number | undefined>();
   const associatedMarkdownDraftCopiedTimerRef = useRef<number | undefined>();
   const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
+  const restoredAssociatedMarkdownDraftKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyMeasureRef = useRef<HTMLDivElement | null>(null);
   const bodyPreviewRef = useRef<HTMLDivElement | null>(null);
@@ -4752,12 +4781,24 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const didPropContentRevisionChange = associatedMarkdownContentRevision !== previousPropContentRevision;
     const didMatchPendingContent = pendingContentRef.current === noteMetadata.content;
 
+    const canRestoreAssociatedMarkdownRecoverableDraft =
+      canSurfaceAssociatedMarkdownRecoverableDraft &&
+      associatedMarkdownRecoverableDraftContent !== undefined;
+    const recoverableDraftRestoreKey = canRestoreAssociatedMarkdownRecoverableDraft
+      ? [
+          id,
+          associatedMarkdownRecoverableDraft?.draftId ?? '',
+          associatedMarkdownRecoverableDraft?.baseContentRevision ?? '',
+          associatedMarkdownRecoverableDraft?.remoteContentRevision ?? '',
+          associatedMarkdownRecoverableDraft?.updatedAt ?? '',
+          associatedMarkdownStatus
+        ].join('\n')
+      : undefined;
     if (
-      associatedMarkdownFile &&
-      hasAssociatedMarkdownHostConflict &&
-      associatedMarkdownConflictDraftContent !== undefined &&
-      !associatedMarkdownEditConflict &&
-      !associatedMarkdownConflictResolution
+      canRestoreAssociatedMarkdownRecoverableDraft &&
+      !associatedMarkdownDraftRecovery &&
+      !associatedMarkdownConflictResolution &&
+      restoredAssociatedMarkdownDraftKeyRef.current !== recoverableDraftRestoreKey
     ) {
       preserveFocusedBodySelection();
       pendingAssociatedMarkdownSubmissionRef.current = null;
@@ -4765,13 +4806,19 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       committedContentRef.current = noteMetadata.content;
       editBaselineContentRef.current = noteMetadata.content;
       editBaselineRevisionRef.current =
-        associatedMarkdownConflictDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
-      setContent(associatedMarkdownConflictDraftContent);
+        associatedMarkdownRecoverableDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
+      setContent(associatedMarkdownRecoverableDraftContent);
       setIsEditingBody(true);
-      setAssociatedMarkdownEditConflict({
+      restoredAssociatedMarkdownDraftKeyRef.current = recoverableDraftRestoreKey;
+      setAssociatedMarkdownDraftRecovery({
+        kind: hasAssociatedMarkdownHostConflict
+          ? 'dirty-conflict'
+          : associatedMarkdownStatus === 'ok'
+            ? 'recoverable-draft'
+            : 'unavailable-draft',
         remoteContent: noteMetadata.content,
         remoteContentRevision:
-          associatedMarkdownConflictDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
+          associatedMarkdownRecoverableDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
       });
       return;
     }
@@ -4795,7 +4842,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         editBaselineContentRef.current = null;
         editBaselineRevisionRef.current = associatedMarkdownContentRevision;
         setAssociatedMarkdownConflictResolution(null);
-        setAssociatedMarkdownEditConflict(null);
+        setAssociatedMarkdownDraftRecovery(null);
         if (!isEditingBody && !isComposing) {
           setContent(noteMetadata.content);
         }
@@ -4814,7 +4861,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         setAssociatedMarkdownConflictResolution(null);
         setContent(pendingAssociatedSubmission.content);
         setIsEditingBody(true);
-        setAssociatedMarkdownEditConflict({
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
           remoteContent: noteMetadata.content,
           remoteContentRevision: associatedMarkdownContentRevision
         });
@@ -4833,7 +4881,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         setAssociatedMarkdownConflictResolution(null);
         setContent(pendingAssociatedSubmission.content);
         setIsEditingBody(true);
-        setAssociatedMarkdownEditConflict({
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
           remoteContent: noteMetadata.content,
           remoteContentRevision: associatedMarkdownContentRevision
         });
@@ -4856,7 +4905,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         preserveFocusedBodySelection();
         persistAssociatedMarkdownDraft(content, { immediate: true });
         setAssociatedMarkdownConflictResolution(null);
-        setAssociatedMarkdownEditConflict({
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
           remoteContent: noteMetadata.content,
           remoteContentRevision: associatedMarkdownContentRevision
         });
@@ -4866,7 +4916,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       editBaselineContentRef.current = noteMetadata.content;
       editBaselineRevisionRef.current = associatedMarkdownContentRevision;
       setAssociatedMarkdownConflictResolution(null);
-      setAssociatedMarkdownEditConflict(null);
+      setAssociatedMarkdownDraftRecovery(null);
       setContent(noteMetadata.content);
       return;
     }
@@ -4876,7 +4926,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       isEditingBody &&
       didPropContentRevisionChange &&
       !didPropContentChange &&
-      !associatedMarkdownEditConflict &&
+      !associatedMarkdownDraftRecovery &&
       associatedMarkdownStatus === 'ok'
     ) {
       const editBaselineContent = editBaselineContentRef.current ?? noteMetadata.content;
@@ -4884,7 +4934,8 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         preserveFocusedBodySelection();
         persistAssociatedMarkdownDraft(content, { immediate: true });
         setAssociatedMarkdownConflictResolution(null);
-        setAssociatedMarkdownEditConflict({
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
           remoteContent: noteMetadata.content,
           remoteContentRevision: associatedMarkdownContentRevision
         });
@@ -4899,20 +4950,21 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     if (!isEditingBody && !isComposing) {
       editBaselineContentRef.current = null;
       editBaselineRevisionRef.current = associatedMarkdownContentRevision;
-      if (associatedMarkdownStatus === 'ok') {
+      if (associatedMarkdownStatus === 'ok' && !hasAssociatedMarkdownRecoverableDraft) {
         setAssociatedMarkdownConflictResolution(null);
       }
-      setAssociatedMarkdownEditConflict(null);
+      setAssociatedMarkdownDraftRecovery(null);
       setContent(pendingContentRef.current ?? noteMetadata.content);
     }
   }, [
     associatedMarkdownContentRevision,
-    associatedMarkdownConflictDraft,
-    associatedMarkdownConflictDraftContent,
+    associatedMarkdownRecoverableDraft,
+    associatedMarkdownRecoverableDraftContent,
     associatedMarkdownConflictResolution,
-    associatedMarkdownEditConflict,
+    associatedMarkdownDraftRecovery,
     associatedMarkdownFile,
     associatedMarkdownStatus,
+    canSurfaceAssociatedMarkdownRecoverableDraft,
     content,
     hasAssociatedMarkdownHostConflict,
     id,
@@ -5063,7 +5115,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const selectionEnd = Math.min(pendingSelection.selectionEnd, textarea.value.length);
     textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(selectionStart, selectionEnd, pendingSelection.selectionDirection);
-  }, [associatedMarkdownEditConflict, content, isEditingBody]);
+  }, [associatedMarkdownDraftRecovery, content, isEditingBody]);
 
   useEffect(() => {
     if (!overviewInteractionsDisabled) {
@@ -5107,7 +5159,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const submitNote = (nextContent: string, options: { force?: boolean } = {}): void => {
-    if (associatedMarkdownFile && associatedMarkdownEditConflict && !options.force) {
+    if (associatedMarkdownFile && associatedMarkdownDraftRecovery && !options.force) {
       return;
     }
     if (associatedMarkdownFile && hasAssociatedMarkdownHostConflict && !options.force) {
@@ -5120,7 +5172,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     }
 
     const baselineContent = committedContentRef.current;
-    if (normalizedContent === baselineContent) {
+    if (normalizedContent === baselineContent && options.force !== true) {
       if (associatedMarkdownFile) {
         clearAssociatedMarkdownDraft();
       }
@@ -5196,41 +5248,45 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const reloadAssociatedMarkdownDraft = (): void => {
-    if (!associatedMarkdownEditConflict && !hasAssociatedMarkdownHostConflict) {
+    if (
+      !associatedMarkdownDraftRecovery &&
+      !hasAssociatedMarkdownHostConflict &&
+      !showAssociatedMarkdownRecoverableDraftPanel
+    ) {
       return;
     }
 
-    const nextContent = associatedMarkdownEditConflict?.remoteContent ?? noteMetadata.content;
+    const nextContent = associatedMarkdownDraftRecovery?.remoteContent ?? noteMetadata.content;
     pendingAssociatedMarkdownSubmissionRef.current = null;
     setContent(nextContent);
     committedContentRef.current = nextContent;
     pendingContentRef.current = null;
     editBaselineContentRef.current = nextContent;
     editBaselineRevisionRef.current =
-      associatedMarkdownEditConflict?.remoteContentRevision ?? associatedMarkdownContentRevision;
+      associatedMarkdownDraftRecovery?.remoteContentRevision ?? associatedMarkdownContentRevision;
     setAssociatedMarkdownConflictResolution('reload');
-    setAssociatedMarkdownEditConflict(null);
+    setAssociatedMarkdownDraftRecovery(null);
     setIsEditingBody(false);
     data.onReloadAssociatedNoteMarkdownFile?.(id);
     endAssociatedMarkdownEdit();
   };
 
   const overwriteAssociatedMarkdownFile = (): void => {
-    if (!associatedMarkdownEditConflict) {
+    if (!associatedMarkdownDraftRecovery) {
       return;
     }
 
     const nextContent = readCurrentBodyContent();
     setContent(nextContent);
     setAssociatedMarkdownConflictResolution('overwrite');
-    setAssociatedMarkdownEditConflict(null);
+    setAssociatedMarkdownDraftRecovery(null);
     submitNote(nextContent, { force: true });
     setIsEditingBody(false);
     endAssociatedMarkdownEdit();
   };
 
   const copyAssociatedMarkdownDraft = (): void => {
-    if (!associatedMarkdownEditConflict) {
+    if (!associatedMarkdownDraftRecovery) {
       return;
     }
 
@@ -5297,14 +5353,14 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     editBaselineContentRef.current = noteMetadata.content;
     editBaselineRevisionRef.current = associatedMarkdownContentRevision;
     setAssociatedMarkdownConflictResolution(null);
-    setAssociatedMarkdownEditConflict(null);
+    setAssociatedMarkdownDraftRecovery(null);
     pendingBodyScrollTopRef.current = bodyPreviewRef.current?.scrollTop ?? bodyScrollTop;
     beginAssociatedMarkdownEdit(noteMetadata.content);
     setIsEditingBody(true);
   };
 
   const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) {
+    if (associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict) {
       if (handleNoteBodyIndentKeyDown(event, updateBodyContent, pendingBodySelectionRef)) {
         return;
       }
@@ -5450,7 +5506,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   <NoteMarkdownMetadataTrigger
                     frontMatter={markdownFrontMatter}
                     sourceLabel={
-                      associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict ? '来自当前草稿' : undefined
+                      associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict ? '来自当前草稿' : undefined
                     }
                     onCopyMetadata={copyNoteMarkdownMetadata}
                     onFocus={() => data.onSelectNode?.(id)}
@@ -5496,25 +5552,29 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       <div className="object-body object-surface note-surface">
         <NodeOverviewTitle title={data.title} />
         <div className="note-editor-surface" {...canvasOverviewInertProps(overviewInteractionsDisabled)}>
-          {!associatedMarkdownFileAvailable || showAssociatedMarkdownHostConflictPanel ? (
+          {showAssociatedMarkdownUnavailablePanel ||
+          showAssociatedMarkdownHostConflictPanel ||
+          showAssociatedMarkdownRecoverableDraftPanel ? (
             <div
               className="note-file-warning nowheel nodrag nopan"
               data-node-interactive="true"
               data-probe-field="body"
               data-probe-value={content}
-              role={showAssociatedMarkdownHostConflictPanel ? 'alert' : 'status'}
+              role={
+                showAssociatedMarkdownHostConflictPanel || showAssociatedMarkdownRecoverableDraftPanel
+                  ? 'alert'
+                  : 'status'
+              }
             >
               <div className="note-file-conflict-card">
                 <div className="note-file-conflict-copy">
-                  <strong>{associatedMarkdownWarningTitle}</strong>
+                  <strong>{associatedMarkdownFilePanelTitle}</strong>
                   <span className="note-file-conflict-path">
                     {associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}
                   </span>
-                  <span className="note-file-conflict-detail">
-                    {associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。'}
-                  </span>
+                  <span className="note-file-conflict-detail">{associatedMarkdownFilePanelDetail}</span>
                 </div>
-                {showAssociatedMarkdownHostConflictPanel ? (
+                {showAssociatedMarkdownHostConflictPanel || showAssociatedMarkdownRecoverableDraftPanel ? (
                   <button
                     type="button"
                     className="note-edit-conflict-action nodrag nopan"
@@ -5593,7 +5653,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                 onChange={(event) => updateBodyContent(event.target.value)}
                 onBlur={(event) => {
                   if (
-                    (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) &&
+                    (associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict) &&
                     isAssociatedMarkdownConflictActionTarget(event.relatedTarget)
                   ) {
                     return;
@@ -5601,7 +5661,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
                   const nextContent = event.currentTarget.value;
                   updateBodyContent(nextContent);
-                  if (associatedMarkdownEditConflict || hasAssociatedMarkdownHostConflict) {
+                  if (associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict) {
                     persistAssociatedMarkdownDraft(nextContent, { immediate: true });
                     return;
                   }
@@ -5624,9 +5684,9 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   已达 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限，更长内容请保存为 Markdown 文件。
                 </div>
               ) : null}
-              {associatedMarkdownEditConflict ? (
+              {associatedMarkdownDraftRecovery ? (
                 <div className="note-edit-conflict-hint" role="alert">
-                  <span>{associatedMarkdownEditConflictHint}</span>
+                  <span>{associatedMarkdownDraftRecoveryHint}</span>
                   <button
                     type="button"
                     className="note-edit-conflict-action nodrag nopan"

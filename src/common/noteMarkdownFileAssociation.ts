@@ -48,18 +48,50 @@ export interface MarkdownFileNoteContentSource {
   contentRevision?: string;
   status: NoteMarkdownFileStatus;
   lastError?: string;
-  conflictDraft?: NoteMarkdownConflictDraft;
+  recoverableDraft?: NoteMarkdownRecoverableDraft;
   webviewResourceBaseUri?: string;
 }
 
 export type NoteContentSource = EmbeddedNoteContentSource | MarkdownFileNoteContentSource;
 
-export interface NoteMarkdownConflictDraft {
+export interface NoteMarkdownRecoverableDraft {
   draftId?: string;
   content?: string;
   baseContentRevision?: string;
   remoteContentRevision?: string;
   updatedAt: string;
+}
+
+export interface NoteMarkdownRefreshDraftRetention {
+  keepRecoverableDraft: boolean;
+  markDirtyConflict: boolean;
+}
+
+export function resolveNoteMarkdownRefreshDraftRetention(options: {
+  clearRecoverableDraft?: boolean;
+  currentStatus: NoteMarkdownFileStatus;
+  hasRecoverableDraft: boolean;
+  didRevisionChange: boolean;
+  didActiveEditConflict: boolean;
+}): NoteMarkdownRefreshDraftRetention {
+  if (options.clearRecoverableDraft) {
+    return {
+      keepRecoverableDraft: false,
+      markDirtyConflict: false
+    };
+  }
+
+  const hasUnresolvedConflict = options.currentStatus === 'dirty-conflict';
+  return {
+    keepRecoverableDraft:
+      hasUnresolvedConflict ||
+      options.hasRecoverableDraft ||
+      options.didActiveEditConflict,
+    markDirtyConflict:
+      hasUnresolvedConflict ||
+      options.didActiveEditConflict ||
+      (options.hasRecoverableDraft && options.didRevisionChange)
+  };
 }
 
 export interface NoteMarkdownUriIdentity {

@@ -10,6 +10,7 @@ import {
   isSupportedNoteMarkdownFilePath,
   normalizeNoteMarkdownAuthority,
   resolveNoteMarkdownFileExtension,
+  resolveNoteMarkdownRefreshDraftRetention,
   sanitizeNoteMarkdownFileName,
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay
 } from '../../src/common/noteMarkdownFileAssociation.ts';
@@ -182,6 +183,47 @@ assert.equal(
   'Remote kind alone should not compare with file-scheme workspace roots.'
 );
 
+assert.deepEqual(
+  resolveNoteMarkdownRefreshDraftRetention({
+    currentStatus: 'ok',
+    hasRecoverableDraft: true,
+    didRevisionChange: false,
+    didActiveEditConflict: false
+  }),
+  {
+    keepRecoverableDraft: true,
+    markDirtyConflict: false
+  },
+  'A refresh with an unchanged remote revision must keep a recoverable active draft without marking a conflict.'
+);
+assert.deepEqual(
+  resolveNoteMarkdownRefreshDraftRetention({
+    currentStatus: 'ok',
+    hasRecoverableDraft: true,
+    didRevisionChange: true,
+    didActiveEditConflict: false
+  }),
+  {
+    keepRecoverableDraft: true,
+    markDirtyConflict: true
+  },
+  'A remote revision change while a recoverable draft exists should promote the draft to dirty-conflict.'
+);
+assert.deepEqual(
+  resolveNoteMarkdownRefreshDraftRetention({
+    clearRecoverableDraft: true,
+    currentStatus: 'dirty-conflict',
+    hasRecoverableDraft: true,
+    didRevisionChange: true,
+    didActiveEditConflict: true
+  }),
+  {
+    keepRecoverableDraft: false,
+    markDirtyConflict: false
+  },
+  'Explicit reload should be the escape hatch that clears the stored draft and conflict status.'
+);
+
 const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 const packageNlsJson = JSON.parse(readFileSync(new URL('../../package.nls.json', import.meta.url), 'utf8'));
 const dropTitleConfig =
@@ -332,6 +374,59 @@ assert.match(
   refreshAssociatedSource,
   /resourceUri: uri\.toString\(\)/u,
   'Refreshing a current-host associated Markdown Note should persist the canonical resourceUri.'
+);
+const normalizeContentSource = sliceBetween(
+  panelManagerSource,
+  'function normalizeStoredNoteContentSource',
+  'function normalizeStoredNoteMarkdownRecoverableDraft'
+);
+assert.match(
+  normalizeContentSource,
+  /value\.recoverableDraft \?\? readLegacyNoteMarkdownConflictDraft\(value\)/u,
+  'Stored associated Markdown Notes should migrate the legacy conflictDraft field into recoverableDraft.'
+);
+const legacyConflictDraftReaderSource = sliceBetween(
+  panelManagerSource,
+  'function readLegacyNoteMarkdownConflictDraft',
+  'function normalizeStoredNoteMarkdownRecoverableDraft'
+);
+assert.match(
+  legacyConflictDraftReaderSource,
+  /return value\.conflictDraft;/u,
+  'The legacy conflictDraft field should stay isolated to the migration reader.'
+);
+const strippedRecoverableDraftSource = sliceBetween(
+  panelManagerSource,
+  'function stripNoteMarkdownRecoverableDraftContentFromCanvasState',
+  'function shouldPreserveStoredExecutionViewportDuringReattach'
+);
+assert.match(
+  strippedRecoverableDraftSource,
+  /const recoverableDraft = contentSource\.recoverableDraft/u,
+  'Persisted state should strip runtime-only recoverableDraft content.'
+);
+assert.match(
+  strippedRecoverableDraftSource,
+  /const legacyConflictDraft = contentSource\.conflictDraft/u,
+  'Persisted state stripping should still recognize legacy conflictDraft content.'
+);
+assert.match(
+  strippedRecoverableDraftSource,
+  /\.\.\.contentSourceWithoutLegacy/u,
+  'Persisted state stripping should drop the legacy conflictDraft field before writing snapshots.'
+);
+assert.doesNotMatch(
+  strippedRecoverableDraftSource,
+  /nextContentSource\.conflictDraft/u,
+  'Persisted state stripping must not re-emit the legacy conflictDraft field.'
+);
+const panelManagerSourceWithoutLegacyMigration = panelManagerSource
+  .replace(normalizeContentSource, '')
+  .replace(strippedRecoverableDraftSource, '');
+assert.doesNotMatch(
+  panelManagerSourceWithoutLegacyMigration,
+  /conflictDraft|ConflictDraft|CONFLICT_DRAFT/u,
+  'The renamed model should keep legacy conflictDraft references isolated to migration and stripping code.'
 );
 
 console.log('note markdown file association tests passed');
