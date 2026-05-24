@@ -30,6 +30,7 @@
 - [x] (2026-05-22 00:00 +0800) 补充启发式检测代码注释与定向回归，证明 Codex exact pattern 仍触发、普通 Claude `message_stop` 文案不会误触发。
 - [x] (2026-05-24 00:00 +0800) 处理 review blocker：将异常输出文本匹配改成 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；当前只允许 `codex` 开启，且不对 Claude 执行文本匹配。
 - [x] (2026-05-24 00:00 +0800) 修复 stale stream notification 风险：用户下一轮输入、配置切换和测试注入旧 buffer 时都会把当前 buffer 长度标记为已扫描，只扫描新增输出；补单测和 smoke 覆盖默认关闭、Codex opt-in、Claude 不触发、旧 buffer 不重复触发。
+- [x] (2026-05-24 13:05 +0800) 处理 live-runtime attach review blocker：`createSupervisorExecutionSession()` 从 `snapshot.output` 恢复已有输出时同步初始化异常流文本扫描游标，避免 attach 后第一段新输出重新扫描历史 stream error；补单测覆盖 supervisor existing output + new chunk。
 
 ## 意外与发现
 
@@ -56,6 +57,9 @@
 
 - 观察：用户提交下一轮输入时如果只清空 heuristic signature，但不推进扫描游标，旧 stream error 行仍留在 session buffer 尾部，冷却后可能被当作新异常再次通知。
   证据：`resetAgentActivityHeuristics(state, currentBuffer)` 和 `resetAgentAbnormalStreamInterruptionHeuristics(state, currentBuffer)` 会记录清洗后的当前 buffer 长度；`scripts/test/test-execution-attention-signals.mjs` 与 smoke 的 `injectAgentExistingOutput` 场景都断言旧错误行不会在下一轮 prompt 输出后重复触发。
+
+- 观察：live-runtime supervisor attach 也会把已有 `snapshot.output` 注入 `session.buffer`，如果只创建空的 `agentActivity`，第一次后续输出会从 0 扫描整段历史 output，和本地用户输入 reset 具有同类 stale 风险。
+  证据：`src/panel/CanvasPanelManager.ts` 的 `createSupervisorExecutionSession()` 现在会对新建 `agentActivity` 调用 `resetAgentAbnormalStreamInterruptionHeuristics(agentActivity, snapshot.output)`；`scripts/test/test-execution-attention-signals.mjs` 断言旧 stream error 属于 attach 前输出时，后续新 chunk 不触发 `sawAbnormalStreamInterruption`。
 
 ## 决策记录
 
@@ -111,6 +115,10 @@
   理由：session buffer 会保留历史终端输出；如果 reset 只清 signature 而不推进扫描游标，冷却结束后同一条旧错误会重新通知，违背“补充提醒只针对新观察到异常”的语义。
   日期/作者：2026-05-24 / Codex
 
+- 决策：live-runtime supervisor-backed session 创建时，也把 `snapshot.output` 标记为异常流文本已扫描，而不是等第一段新 chunk 到达后再从 0 扫描。
+  理由：attach/recover 时的 `snapshot.output` 是用户已经在终端历史中拥有的内容，不应被后续新输出重新解释成“刚观察到”的 stream interruption；这样本地 PTY reset、配置切换、测试注入和 live-runtime attach 都使用同一条“只扫描新增输出”的不变量。
+  日期/作者：2026-05-24 / Codex
+
 ## 结果与复盘
 
 本轮已完成以下交付：
@@ -121,7 +129,7 @@
 - Webview probe、Playwright harness 与 VS Code smoke 已覆盖 icon、minimap 闪烁、点击确认，以及 bridge 开关与 strong reminder 四档模式的分层关系。
 - 新增 Codex / Claude Agent 异常兜底通知：`src/panel/CanvasPanelManager.ts` 在本地 PTY 和 live-runtime supervisor 两条路径上只对已运行后的非 `0` `error` 终态发 `agent-abnormal-interruption`；`resume-failed` 仍只保留节点状态与错误说明。
 - 本轮 follow-up 已把 stream disconnected 文案的 provider 边界写清：`response.completed` 只作为 Codex high-confidence pattern；Claude 不共享这条标准事件，后续若能接入 Claude `StopFailure` 或真实输出样本，再以结构化信号优先扩展。
-- review follow-up 将异常输出文本匹配收口为显式配置：默认 `off`，`codex` 模式才会发 `agent-abnormal-stream-interruption`；Claude 不走文本规则，旧 buffer 中的 stream error 不会在下一轮输入或配置切换后重复通知。
+- review follow-up 将异常输出文本匹配收口为显式配置：默认 `off`，`codex` 模式才会发 `agent-abnormal-stream-interruption`；Claude 不走文本规则，旧 buffer 中的 stream error 不会在下一轮输入、配置切换或 live-runtime attach 后重复通知。
 
 本轮最终验证结果：
 
@@ -151,6 +159,13 @@ review follow-up 增量验证：
 - `npm run test:extension-manifest` 通过
 - `node --check tests/vscode-smoke/extension-tests.cjs` 通过
 - `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/design-docs/index.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md docs/product-specs/index.md package.json package.nls.json scripts/test/test-execution-attention-signals.mjs src/common/agentActivityHeuristics.ts src/panel/CanvasPanelManager.ts tests/vscode-smoke/extension-tests.cjs` 通过
+
+2026-05-24 live-runtime attach review follow-up 增量验证：
+
+- `npm run test:execution-attention-signals` 通过
+- `npm run typecheck` 通过
+- `npm run build` 通过
+- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md scripts/test/test-execution-attention-signals.mjs src/panel/CanvasPanelManager.ts` 通过
 
 剩余风险：
 

@@ -38,6 +38,7 @@ try {
     createAgentActivityHeuristicState,
     extractAgentAbnormalStreamInterruptionMessage,
     recordAgentOutputHeuristics,
+    resetAgentAbnormalStreamInterruptionHeuristics,
     resetAgentActivityHeuristics,
     normalizeAgentAbnormalStreamInterruptionSignature
   } = require(heuristicsOutfile);
@@ -171,6 +172,17 @@ try {
     200
   );
   assert.equal(nextTurnSnapshot.sawAbnormalStreamInterruption, false);
+
+  const attachedSupervisorState = createAgentActivityHeuristicState();
+  resetAgentAbnormalStreamInterruptionHeuristics(attachedSupervisorState, staleStreamLine);
+  const supervisorAttachSnapshot = recordAgentOutputHeuristics(
+    attachedSupervisorState,
+    '> resumed output\n',
+    `${staleStreamLine}> resumed output\n`,
+    'codex',
+    300
+  );
+  assert.equal(supervisorAttachSnapshot.sawAbnormalStreamInterruption, false);
 
   console.log('executionAttentionSignals tests passed');
 } finally {

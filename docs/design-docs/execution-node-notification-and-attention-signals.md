@@ -508,7 +508,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 - 异常终态或异常输出流会把同一节点的 `attentionPending` 置为 `true`，因此节点标题栏 icon、minimap 闪烁和点击节点后确认清除的语义与终端 attention signal 完全一致。
 - 通知标题仍使用 `DSCanvas · <workspace> · Agent`，通知正文使用 provider 与节点标题组合，例如 `Codex Agent「Agent 1」异常中断：...`、`Claude Code Agent「Agent 2」异常中断：...` 或在用户启用 Codex 文本匹配时使用 `Codex Agent「Agent 3」输出流异常：stream disconnected before completion...`；正文会裁剪长错误摘要，避免把完整终端输出推到系统通知。
 
-这条规则的关键取舍是：Codex / Claude 的原生通知输出仍是正常提醒主路径，宿主异常检测只做兜底补充。它不要求 provider 在已运行会话崩溃前一定能输出 `BEL` / `OSC 9`，因此可覆盖“会话跑起来后崩溃、进程异常退出但没有来得及发终端通知”的场景；而 Codex 输出流断开文本属于用户显式 opt-in 的 fallback，只在开启 `agentAbnormalOutputTextNotifications=codex` 后扫描新增输出并要求完整高置信文案，避免旧 buffer 在下一轮输入或配置切换后重复触发 stale 通知。同时不把正常完成、启动失败或 resume 启动失败当成额外提醒，因为这些阶段用户大概率仍在画板页面，额外外部通知只会增加噪音。如果后续接入 Codex app-server / protocol，应优先消费结构化 `StreamError` / `Error`，并区分“正在 retry / reconnect”的暂态和“最终失败”的终态，外部通知默认只在最终失败时触发。Claude 侧如果后续接入 `StopFailure`、hook 或其他结构化输出，也应按同样原则优先使用结构化信号，而不是继续扩大通用正则。
+这条规则的关键取舍是：Codex / Claude 的原生通知输出仍是正常提醒主路径，宿主异常检测只做兜底补充。它不要求 provider 在已运行会话崩溃前一定能输出 `BEL` / `OSC 9`，因此可覆盖“会话跑起来后崩溃、进程异常退出但没有来得及发终端通知”的场景；而 Codex 输出流断开文本属于用户显式 opt-in 的 fallback，只在开启 `agentAbnormalOutputTextNotifications=codex` 后扫描新增输出并要求完整高置信文案，避免旧 buffer 在下一轮输入、配置切换或 live-runtime attach 后重复触发 stale 通知。live-runtime supervisor attach 时，`snapshot.output` 中已有的历史输出会被标记为已扫描，后续第一段新 chunk 只匹配新增部分。同时不把正常完成、启动失败或 resume 启动失败当成额外提醒，因为这些阶段用户大概率仍在画板页面，额外外部通知只会增加噪音。如果后续接入 Codex app-server / protocol，应优先消费结构化 `StreamError` / `Error`，并区分“正在 retry / reconnect”的暂态和“最终失败”的终态，外部通知默认只在最终失败时触发。Claude 侧如果后续接入 `StopFailure`、hook 或其他结构化输出，也应按同样原则优先使用结构化信号，而不是继续扩大通用正则。
 
 ## 8. 验证方法
 
@@ -537,7 +537,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 - 2026-04-29 已补记未来 OS 系统通知的 UI-side / local-side notifier companion 方向；本次仅更新设计文档，不涉及代码与运行时行为变更。
 - 2026-05-21 已补充 Agent 异常中断通知设计：非用户主动的 `Codex` / `Claude Code` Agent 已运行后非 `0` 退出 `error` 终态，会在 provider 原生终端通知之外，补充复用同一条 attention bridge 与节点确认语义；启动失败和 `resume-failed` 不触发额外通知。
 - 2026-05-22 已补充 provider 边界：`stream closed before response.completed` 是 Codex / OpenAI Responses 的高置信流断开模式；Claude Code 不共享 `response.completed` 这个标准完成事件，后续 Claude 流失败扩展应优先基于 `StopFailure` 或真实输出样本。
-- 2026-05-24 根据 review 收口异常输出文本匹配：新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，默认 `off`，仅 `codex` 开启 Codex 高置信完整文案匹配；Claude 不启用文本匹配，用户输入 reset 与配置切换会把当前 buffer 标为已扫描，避免 stale stream notification 重复触发。
+- 2026-05-24 根据 review 收口异常输出文本匹配：新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，默认 `off`，仅 `codex` 开启 Codex 高置信完整文案匹配；Claude 不启用文本匹配，用户输入 reset、配置切换与 live-runtime attach 会把当前 buffer 标为已扫描，避免 stale stream notification 重复触发。
 - 当前文档继续保持 `验证中`，因为本轮尚未在真实 Ghostty / kitty / iTerm2 / tmux 场景里做手工协议验证；但仓库内已完成 VS Code 宿主级自动化验证，覆盖配置开关、冷却抑制、节点内提醒、显式点击确认，以及工作台通知后居中节点但不确认提醒。
 
 ## 10. 外部依据

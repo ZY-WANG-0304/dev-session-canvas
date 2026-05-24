@@ -6734,6 +6734,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     runtimeStoragePath: string | undefined
   ): SupervisorExecutionSession {
+    const agentActivity =
+      snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined;
+    if (agentActivity) {
+      resetAgentAbnormalStreamInterruptionHeuristics(agentActivity, snapshot.output);
+    }
+
     return {
       sessionId: snapshot.sessionId,
       owner: 'supervisor',
@@ -6786,7 +6792,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               storagePath: snapshot.resumeStoragePath
             }
           : undefined,
-      agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      agentActivity,
       attentionSignalState: this.createExecutionAttentionNotificationState(),
       outputSubscription: undefined,
       exitSubscription: undefined

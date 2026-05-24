@@ -78,7 +78,7 @@
   - `Terminal` 节点退出
 - 异常中断提醒复用 `attentionPending`：节点内提醒 icon、Minimap 闪烁、强提醒模式和“点击节点清除”语义与终端注意力信号一致；流断开输出提醒不会等待进程退出。
 - 异常中断外部通知复用 `devSessionCanvas.notifications.attentionSignalBridge`：`none` 不弹外部通知，`workbench` 弹 VS Code 工作台消息，`system` 优先交给 notifier companion 并在失败时回退工作台消息。
-- 文本匹配开启后只扫描本轮新增输出，不会因为旧 buffer 尾部仍保留上一轮的流断开错误而在用户下一轮输入后重复触发 stale 通知。
+- 文本匹配开启后只扫描本轮新增输出，不会因为旧 buffer 尾部仍保留上一轮的流断开错误而在用户下一轮输入、配置切换或 live-runtime attach 后重复触发 stale 通知。
 
 ### 4.2 通知桥接模式
 
@@ -220,7 +220,7 @@ interface AgentActivityHeuristicState {
 - 记录各类事件的最后发生时间
 - 用于判断 Agent 是否在等待用户输入
 - `oscCarryover`：跨 chunk 的 OSC 序列缓存
-- `lastAbnormalStreamScanLength` 与 `abnormalStreamCarryover`：仅在文本匹配开启时辅助扫描新增输出与跨 chunk 残片，避免重新扫描旧 buffer
+- `lastAbnormalStreamScanLength` 与 `abnormalStreamCarryover`：仅在文本匹配开启时辅助扫描新增输出与跨 chunk 残片，避免重新扫描旧 buffer；live-runtime attach 时已有的 `snapshot.output` 也视为已扫描历史
 
 ### 6.3 强提醒模式 (CanvasStrongTerminalAttentionReminderMode)
 
