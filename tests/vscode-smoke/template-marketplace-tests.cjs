@@ -53,6 +53,16 @@ async function verifyMarketplacePanelOperations(fixture) {
     probe.visibleTemplateNames.includes('Panel Release Checklist')
   );
   assert.ok(listProbe.installTargetLabels.length > 0, 'Expected plugin marketplace to expose install targets.');
+  assert.ok(listProbe.publisherTexts.some((text) => /Codex Tester/u.test(text)), 'Expected list rows to expose publisher information.');
+  assert.ok(
+    listProbe.buttonTexts.some((text) => /^(?:安装(?: v\d+)?|更新到 v\d+|已安装 v\d+)$/u.test(text)),
+    `Expected list row to expose install split button primary action. Buttons: ${JSON.stringify(listProbe.buttonTexts)}`
+  );
+  assert.ok(
+    listProbe.buttonTexts.some((text) => text === '切换安装版本'),
+    `Expected list row to expose install split button version toggle. Buttons: ${JSON.stringify(listProbe.buttonTexts)}`
+  );
+  assert.ok(!listProbe.buttonTexts.some((text) => /下载 JSON/u.test(text)), 'Expected VS Code marketplace to omit JSON download actions.');
   assert.match(listProbe.statusText, /共 2 个模板/);
 
   const searchProbe = await performMarketplaceAction({ kind: 'search', value: 'review' }, 10000);
@@ -67,12 +77,20 @@ async function verifyMarketplacePanelOperations(fixture) {
     /README-focused marketplace detail/u.test(probe.detailReadmeText || '')
   );
   assert.strictEqual(detailProbe.detailTitle, 'Panel Review Loop');
+  assert.ok(detailProbe.publisherTexts.some((text) => /Codex Tester/u.test(text)), 'Expected detail view to expose publisher information.');
+  assert.ok(!detailProbe.buttonTexts.some((text) => /下载 JSON/u.test(text)), 'Expected detail view to omit JSON download actions.');
+  const changelogProbe = await performMarketplaceAction({ kind: 'selectDetailTab', tab: 'changelog' }, 10000);
+  assert.strictEqual(changelogProbe.activeDetailTab, 'changelog');
+  assert.match(changelogProbe.detailChangelogText || '', /Tighten panel detail controls/u);
+  const readmeProbe = await performMarketplaceAction({ kind: 'selectDetailTab', tab: 'readme' }, 10000);
+  assert.strictEqual(readmeProbe.activeDetailTab, 'readme');
+  assert.match(readmeProbe.detailReadmeText || '', /README-focused marketplace detail/u);
 
-  let menuProbe = await performMarketplaceAction({ kind: 'toggleDownloadVersionMenu', slug: 'panel-review-loop' }, 10000);
+  let menuProbe = await performMarketplaceAction({ kind: 'toggleInstallVersionMenu', slug: 'panel-review-loop' }, 10000);
   if (!menuProbe.hasVersionMenu) {
     menuProbe = await waitForMarketplaceProbe((probe) => probe.hasVersionMenu);
   }
-  assert.ok(menuProbe.versionMenuItems.some((item) => /下载 v2/.test(item)));
+  assert.ok(menuProbe.versionMenuItems.some((item) => /安装 v2/u.test(item)));
 
   const closedProbe = await performMarketplaceAction({ kind: 'clickOutside' }, 10000);
   assert.strictEqual(closedProbe.hasVersionMenu, false);
@@ -101,6 +119,9 @@ async function verifyMarketplacePanelPublish(fixture) {
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'note');
   const savedTemplate = await saveCanvasTemplateForTest('VS Code Publish Source');
 
+  await vscode.commands.executeCommand(COMMAND_IDS.openTemplateMarketplace);
+  await performMarketplaceAction({ kind: 'search', value: '' }, 10000);
+
   fixture.publishedRequests.length = 0;
   await withInterceptedAuthenticationSession(async (authCalls) => {
     await withInterceptedQuickPicks(
@@ -110,46 +131,79 @@ async function verifyMarketplacePanelPublish(fixture) {
             await withInterceptedInformationMessages(
               async (informationCalls) => {
                 await performMarketplaceAction({ kind: 'publish' }, 10000);
+                const formProbe = await waitForMarketplaceProbe((probe) =>
+                  probe.view === 'publish' &&
+                  probe.publishSelectedTemplateId === savedTemplate.template.id &&
+                  probe.publishTemplateNames.includes('VS Code Publish Source')
+                );
+                assert.strictEqual(formProbe.publishForm.name, 'VS Code Publish Source');
+                assert.match(formProbe.publishForm.templateJson, /VS Code Publish Source/u);
+                await performMarketplaceAction(
+                  {
+                    kind: 'fillPublishForm',
+                    fields: {
+                      name: 'VS Code Publish Smoke',
+                      slug: 'vs-code-publish-smoke',
+                      description: 'Published from the VS Code marketplace panel.',
+                      tags: 'smoke, vscode',
+                      readme: '# VS Code Publish Smoke\n\nPublished from the VS Code marketplace panel.',
+                      changelog: 'Initial VS Code publish.'
+                    }
+                  },
+                  15000
+                );
+                await performMarketplaceAction({ kind: 'submitPublishForm' }, 10000);
                 await waitForCondition(() => fixture.publishedRequests.length === 1, 20000, 'publish request');
-                assert.strictEqual(inputBoxCalls.length, 4);
+                assert.strictEqual(quickPickCalls.length, 0);
+                assert.strictEqual(inputBoxCalls.length, 0);
                 assert.strictEqual(authCalls.length, 1);
                 assert.ok(
                   informationCalls.some((call) => String(call.message).includes('模板“VS Code Publish Smoke”已发布到模板市场 v1。')),
                   'Expected publish success information message.'
                 );
               },
-              ({ items }) => items.find((item) => item === '查看市场详情')
+              () => undefined
             );
           },
-          [
-            'VS Code Publish Smoke',
-            'Published from the VS Code marketplace panel.',
-            'smoke, vscode',
-            'Initial VS Code publish.'
-          ]
+          []
         );
       },
-      ({ items }) => {
-        const selected = items.find((item) => item.templateId === savedTemplate.template.id);
-        assert.ok(selected, 'Expected saved user template to be selectable for marketplace publish.');
-        return selected;
-      }
+      () => undefined
     );
   });
 
   const publishRequest = fixture.publishedRequests[0];
   assert.strictEqual(publishRequest.authorization, 'Bearer marketplace-e2e-token');
+  assert.strictEqual(publishRequest.body.slug, 'vs-code-publish-smoke');
   assert.strictEqual(publishRequest.body.name, 'VS Code Publish Smoke');
   assert.deepStrictEqual(publishRequest.body.tags, ['smoke', 'vscode']);
   assert.ok(publishRequest.body.templateDocument?.template?.nodes?.length > 0);
   assert.ok(typeof publishRequest.body.thumbnailPngBase64 === 'string' && publishRequest.body.thumbnailPngBase64.length > 0);
 
+  const successProbe = await waitForMarketplaceProbe((probe) =>
+    probe.view === 'publish' &&
+    probe.publishedTemplate?.slug === 'vs-code-publish-smoke' &&
+    /已发布到模板市场/u.test(probe.publishStatusText || probe.statusText || '')
+  );
+  assert.strictEqual(successProbe.publishedTemplate.name, 'VS Code Publish Smoke');
+
+  await performMarketplaceAction({ kind: 'openDetail', slug: 'vs-code-publish-smoke' }, 10000);
   const detailProbe = await waitForMarketplaceProbe((probe) =>
     probe.view === 'detail' &&
     probe.activeTemplateSlug === 'vs-code-publish-smoke' &&
     probe.detailTitle === 'VS Code Publish Smoke'
   );
   assert.match(detailProbe.detailReadmeText || '', /Published from the VS Code marketplace panel/u);
+
+  await performMarketplaceAction({ kind: 'backToList' }, 10000);
+  const backProbe = await waitForMarketplaceProbe((probe) =>
+    probe.view === 'list' &&
+    probe.visibleTemplateNames.includes('VS Code Publish Smoke')
+  );
+  assert.ok(
+    backProbe.visibleTemplateNames.includes('VS Code Publish Smoke'),
+    'Expected published template to appear after returning to marketplace list.'
+  );
 }
 
 async function saveCanvasTemplateForTest(name) {
@@ -443,11 +497,21 @@ async function handleMarketplaceRequest(request, response, fixture) {
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/v1/templates/slug-availability') {
+      const slug = slugify(url.searchParams.get('slug') || '');
+      writeJson(response, 200, {
+        slug,
+        available: !findTemplate(fixture, slug),
+        storageMode: 'e2e'
+      });
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/v1/templates') {
       const body = await readJsonBody(request);
       const authorization = request.headers.authorization || '';
       const document = body.templateDocument;
-      const slug = slugify(body.name || 'published-template');
+      const slug = slugify(body.slug || body.name || 'published-template');
       const detail = createTemplateDetail({
         id: `tmpl-${slug}`,
         slug,

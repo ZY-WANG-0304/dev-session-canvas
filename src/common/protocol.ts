@@ -548,9 +548,6 @@ export type WebviewToHostMessage =
       type: 'webview/saveCanvasAsTemplate';
     }
   | {
-      type: 'webview/publishCanvasTemplate';
-    }
-  | {
       type: 'webview/startExecutionSession';
       payload: {
         nodeId: string;
@@ -888,8 +885,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
   if (
     value.type === 'webview/ready' ||
     value.type === 'webview/resetDemoState' ||
-    value.type === 'webview/saveCanvasAsTemplate' ||
-    value.type === 'webview/publishCanvasTemplate'
+    value.type === 'webview/saveCanvasAsTemplate'
   ) {
     return { type: value.type };
   }

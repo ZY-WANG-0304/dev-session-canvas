@@ -5,6 +5,7 @@ import * as https from 'node:https';
 import * as vscode from 'vscode';
 
 import {
+  buildMarketplaceSlugFromName,
   generateMarketplaceTemplateThumbnailPngBase64,
   type MarketplaceTemplateDocument
 } from '@dev-session-canvas/marketplace-shared';
@@ -78,6 +79,32 @@ export interface TemplateMarketplacePublishResult {
   versionId: string;
   versionNumber: number;
   sourceUrl: string;
+}
+
+export interface TemplateMarketplacePublishDraft {
+  templateId: string;
+  templateName: string;
+  storageLocationLabel?: string;
+  nodeCount: number;
+  defaultName: string;
+  defaultSlug: string;
+  defaultDescription: string;
+  defaultTags: string[];
+  defaultReadme: string;
+  defaultChangelog: string;
+  templateJson: string;
+  thumbnailPngBase64: string;
+}
+
+export interface TemplateMarketplacePublishDraftRequest {
+  templateId: string;
+  slug?: string;
+  name: string;
+  description: string;
+  tags: string[];
+  readme?: string;
+  changelog?: string;
+  templateJson: string;
 }
 
 interface TemplateMarketplaceInstallRequest {
@@ -260,56 +287,42 @@ export class TemplateMarketplaceClient {
     };
   }
 
-  public async publishStoredTemplate(templateId: string): Promise<TemplateMarketplacePublishResult | undefined> {
-    const storedTemplate = await this.findPublishableStoredTemplate(templateId);
-    const name = await vscode.window.showInputBox({
-      title: '发布模板到市场',
-      prompt: '填写市场展示名称。',
-      value: storedTemplate.template.name,
-      ignoreFocusOut: true
-    });
-    if (name === undefined) {
-      return undefined;
+  public async listPublishableTemplateDrafts(preferredTemplateId?: string): Promise<TemplateMarketplacePublishDraft[]> {
+    const catalog = await this.panelManager.getCanvasTemplateCatalog();
+    const publishableTemplates = catalog.templates.filter(isPublishableStoredTemplate);
+    if (preferredTemplateId) {
+      const preferredTemplate = publishableTemplates.find((candidate) => candidate.template.id === preferredTemplateId);
+      if (!preferredTemplate) {
+        await this.findPublishableStoredTemplate(preferredTemplateId);
+      }
+      return publishableTemplates
+        .slice()
+        .sort((left, right) => Number(right.template.id === preferredTemplateId) - Number(left.template.id === preferredTemplateId))
+        .map((storedTemplate) => buildPublishDraft(storedTemplate));
     }
-    if (name.trim().length === 0) {
+    return publishableTemplates.map((storedTemplate) => buildPublishDraft(storedTemplate));
+  }
+
+  public async publishTemplateDraft(request: TemplateMarketplacePublishDraftRequest): Promise<TemplateMarketplacePublishResult> {
+    await this.findPublishableStoredTemplate(request.templateId);
+    const name = request.name.trim();
+    const description = request.description.trim();
+    if (!name) {
       throw new Error('模板名称不能为空。');
     }
-    const description = await vscode.window.showInputBox({
-      title: '发布模板到市场',
-      prompt: '填写模板描述。',
-      value: `${name.trim()} template for Dev Session Canvas.`,
-      ignoreFocusOut: true
-    });
-    if (description === undefined) {
-      return undefined;
-    }
-    const tagsInput = await vscode.window.showInputBox({
-      title: '发布模板到市场',
-      prompt: '填写标签，用英文逗号分隔。',
-      value: 'workflow',
-      ignoreFocusOut: true
-    });
-    if (tagsInput === undefined) {
-      return undefined;
-    }
-    const changelog = await vscode.window.showInputBox({
-      title: '发布模板到市场',
-      prompt: '填写本次发布说明。',
-      value: 'Initial marketplace version.',
-      ignoreFocusOut: true
-    });
-    if (changelog === undefined) {
-      return undefined;
+    if (!description) {
+      throw new Error('模板描述不能为空。');
     }
 
     const token = await this.exchangeVSCodeMarketplaceToken();
-    const templateDocument = JSON.parse(encodeCanvasTemplateDocument(storedTemplate.template)) as MarketplaceTemplateDocument;
+    const templateDocument = JSON.parse(request.templateJson) as MarketplaceTemplateDocument;
     const requestBody = {
-      name: name.trim(),
-      description: description.trim() || `${name.trim()} template for Dev Session Canvas.`,
-      tags: parsePublishTags(tagsInput),
-      readme: buildTemplatePublishReadme(name.trim(), description),
-      changelog: changelog.trim() || 'Initial marketplace version.',
+      slug: request.slug?.trim() || undefined,
+      name,
+      description,
+      tags: request.tags,
+      readme: request.readme?.trim() || buildTemplatePublishReadme(name, description),
+      changelog: request.changelog?.trim() || 'Initial marketplace version.',
       templateDocument,
       thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
     };
@@ -508,11 +521,28 @@ function resolveNonProductionMarketplaceSourceUrlOverride(extensionMode: vscode.
   return parseTrustedMarketplaceSourceUrl(value);
 }
 
-function parsePublishTags(value: string): string[] {
-  return value
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean);
+function isPublishableStoredTemplate(storedTemplate: CanvasStoredTemplate): boolean {
+  return storedTemplate.template.category === 'user' && !storedTemplate.marketplace;
+}
+
+function buildPublishDraft(storedTemplate: CanvasStoredTemplate): TemplateMarketplacePublishDraft {
+  const templateDocument = JSON.parse(encodeCanvasTemplateDocument(storedTemplate.template)) as MarketplaceTemplateDocument;
+  const defaultName = storedTemplate.template.name;
+  const defaultDescription = `${defaultName} template for Dev Session Canvas.`;
+  return {
+    templateId: storedTemplate.template.id,
+    templateName: storedTemplate.template.name,
+    storageLocationLabel: storedTemplate.storageLocation?.label,
+    nodeCount: storedTemplate.template.nodes.length,
+    defaultName,
+    defaultSlug: buildMarketplaceSlugFromName(defaultName),
+    defaultDescription,
+    defaultTags: ['workflow'],
+    defaultReadme: buildTemplatePublishReadme(defaultName, defaultDescription),
+    defaultChangelog: 'Initial marketplace version.',
+    templateJson: JSON.stringify(templateDocument, null, 2),
+    thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
+  };
 }
 
 function buildTemplatePublishReadme(name: string, description: string): string {

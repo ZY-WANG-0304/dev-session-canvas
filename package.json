@@ -640,7 +640,9 @@
     "test:marketplace-api": "npm run -w @dev-session-canvas/template-marketplace test:api",
     "test:marketplace-e2e": "npm run test:marketplace-browser-e2e && npm run test:marketplace-vscode-e2e",
     "test:marketplace-browser-e2e": "node scripts/test-template-marketplace-publish-page.mjs",
-    "test:marketplace-vscode-e2e": "npm run build && node scripts/run-template-marketplace-vscode-e2e.mjs",
+    "test:marketplace-vscode-e2e": "npm run test:marketplace-vscode-fixture-e2e",
+    "test:marketplace-vscode-fixture-e2e": "npm run build && node scripts/run-template-marketplace-vscode-e2e.mjs",
+    "test:marketplace-vscode-preview-e2e": "npm run build && node scripts/run-template-marketplace-vscode-preview-e2e.mjs",
     "test:marketplace-shared": "npm run -w @dev-session-canvas/marketplace-shared test",
     "typecheck:marketplace": "npm run -w @dev-session-canvas/marketplace-shared typecheck && npm run -w @dev-session-canvas/template-marketplace typecheck",
     "test:marketplace-web": "npm run -w @dev-session-canvas/template-marketplace test:web"

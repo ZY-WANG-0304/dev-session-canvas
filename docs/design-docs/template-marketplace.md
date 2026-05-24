@@ -18,7 +18,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/template-marketplace-tech-selection.md
   - docs/exec-plans/active/template-marketplace-foundation.md
-updated_at: 2026-05-13
+updated_at: 2026-05-24
 ---
 
 # 模板市场技术选型
@@ -139,7 +139,7 @@ updated_at: 2026-05-13
 浏览器市场页和 VSCode Webview 市场页共享 `MarketplaceApp`、数据 query hooks、卡片、详情页、发布表单、Dashboard 和管理后台组件，但由 Vite 产出两个 entry，并分别注入 host adapter：
 
 - `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接。当前浏览器安装链接格式固定为 `vscode://devsessioncanvas.dev-session-canvas/install-template?template=<slug>&version=<versionId>&source=<detailUrl>`；`source` 指向 `/templates/:slug` 详情页。外部 `vscode://` 安装链接不携带内联 payload；扩展端收到链接后先按当前安装模式校验 `source`：正式安装只接受正式市场来源，调试安装只接受 preview / 本地调试来源，来源不匹配时停止并给出错误提示。通过校验后，扩展端打开插件内模板详情页并预选对应版本，插件内详情页继续使用 `source` 所在 origin 读取详情、下载、缩略图、打开浏览器和写入 sidecar `sourceUrl`，安装动作在详情页继续确认。实际安装从受控 Webview message bridge 进入，由详情页从市场 API 下载模板 JSON 后把 inline payload 交给 Extension Host 校验并写入模板库，不能把 payload 放进外部 URI。
-- `VSCodeMarketplaceHost` 使用 Webview message passing、hash 或内存路由、扩展打包资源 URI、宿主触发的 GitHub 登录和宿主安装命令；市场列表中的模板行可以预选安装位置、提供“查看详情”文本动作，以及安装、更新、已安装和下载 JSON 等快捷动作；这些快捷动作统一打开模板详情页并执行对应动作。市场面板 header 可以提供上传/发布自建模板入口，但只通过 message bridge 调用 Extension Host 的发布命令，不在 Webview 内直接读取本地模板文件。列表安装位置作为详情页默认安装目标，详情页承载最终安装确认、安装 / 下载版本选择和 README 阅读。
+- `VSCodeMarketplaceHost` 使用 Webview message passing、hash 或内存路由、扩展打包资源 URI、宿主触发的 GitHub 登录和宿主安装命令；市场列表中的模板行可以预选安装位置、在标题附近提供“查看详情”文本动作，并在右侧提供安装 / 更新 / 已安装 split button 与安装版本菜单。VSCode 内不提供下载 JSON 控件，浏览器市场才保留 JSON 下载入口。市场面板 header 可以提供上传/发布自建模板入口，但发布不再通过 QuickInput 直接提交；Webview 只展示由 Extension Host 准备好的本地自建模板草稿、公开字段编辑表单、Slug 即时检查、自动缩略图预览和最终确认按钮，提交时再通过 message bridge 调用 Extension Host 换取 GitHub 身份并发布。列表安装位置决定列表和详情安装动作的默认目标，详情页以 README / CHANGELOG tab 阅读、安装目标调整和版本选择为主。
 
 浏览器端正式入口计划为 `https://dscanvas.dev/templates`，预览入口继续使用 `*.workers.dev`。因此浏览器构建必须支持 `/templates/` base path，前端详情路径使用 `/templates/:slug`，模板详情分享链接和 Web 端安装入口也以该路径生成。这个决定只确认浏览器页面入口，不改变当前 `/api/v1` API 前缀；若后续希望把市场 API 也收敛到 `/templates/api/v1`，需要在实现前新增设计补充并同步产品规格。
 
@@ -153,7 +153,7 @@ Webview 不加载远程 JavaScript，也不把远程站点 iframe 进插件。�
 
 模板市场的详细 UI 定义拆分到 `docs/marketplace/UI.md`，该文档分别维护浏览器市场网站的 `Light 2026` / `Dark 2026` 主题、Visual Studio Marketplace 式信息布局，以及 VSCode 插件内市场面板的 `--vscode-*` token adapter、列表密度、详情页结构和可访问性要求。`docs/UI.md` 只保留 DevSessionCanvas 通用 VSCode design-system 基线，不再承载模板市场的 palette、页面结构或业务动作语义。
 
-设计文档只记录运行模型和行为边界：浏览器端 `Install in VSCode` 生成外部 URI，扩展端收到 URI 后打开 VSCode 内模板详情页并预选模板 / 版本；VSCode 插件内列表中的安装、更新、已安装和下载 JSON 等快捷动作，也以“打开模板详情页并执行对应动作”来描述。安装类动作进入详情页安装确认上下文，下载类动作进入详情页下载上下文；实际 payload 下载、宿主 message bridge 校验、模板写入和 sidecar 记录仍由详情页动作链路进入 Extension Host。
+设计文档只记录运行模型和行为边界：浏览器端 `Install in VSCode` 生成外部 URI，扩展端收到 URI 后打开 VSCode 内模板详情页并预选模板 / 版本；VSCode 插件内列表和详情页都只提供安装 / 更新 / 已安装动作，不提供下载 JSON 动作。实际 payload 下载、宿主 message bridge 校验、模板写入和 sidecar 记录仍由受控 Webview message bridge 进入 Extension Host。
 
 shadcn/ui 仍只作为后续共享 React 组件的源码级起点，不直接照搬默认 SaaS dashboard 风格；后续把插件内面板收敛到共享 React Webview bundle 时，必须保留 `docs/marketplace/UI.md` 中定义的 VSCode token adapter，不得把浏览器网站 CSS 变量直接复用为插件内主题。
 
@@ -213,7 +213,7 @@ R2 对象按不可变版本组织，示例 key：
 
 浏览器端登录使用 GitHub OAuth web application flow，并启用 `state` 与 PKCE。OAuth App 初期可以归属个人 GitHub 账号，不要求先创建 GitHub Organization；后续如需要团队交接，再把 OAuth App 转移到组织或重新创建生产 OAuth App。Worker 完成 code exchange 后调用 GitHub API 校验用户身份，然后创建或更新 `users` 记录，并写入 HttpOnly、Secure、SameSite 的市场 session cookie。浏览器发布页和个人模板页发起登录时把当前 `/templates/...` 路径写入签名 state，callback 完成后回到发起页面；退出登录只清理市场 session cookie，不撤销 GitHub OAuth grant；外部 URL、协议相对 URL、反斜杠和控制字符都会回退到 `/templates`。
 
-VSCode 端发布、点赞和管理动作不自己实现 OAuth 回调主流程，而是优先调用 VSCode 内置 GitHub authentication provider。宿主拿到 GitHub access token 后调用 `POST /api/v1/auth/vscode/exchange`；Worker 只临时用该 token 调 GitHub API 获取用户身份，然后返回短期 marketplace token。宿主把 marketplace token 放入 `context.secrets`，并在失效后重新通过 VSCode authentication session 换取。插件端“发布模板到市场”入口只对自建本地模板开放：命令面板会过滤可发布模板，模板侧栏只在 `自建` 行显示发布 icon action；市场面板 header 的 `发布自建模板` 入口向 Extension Host 触发同一发布命令；画布右键入口先把当前布局保存成自建模板，再复用同一个发布命令。内置模板和从市场安装的模板不直接再次发布，后续若支持 fork，应作为单独产品能力进入设计文档。
+VSCode 端发布、点赞和管理动作不自己实现 OAuth 回调主流程，而是优先调用 VSCode 内置 GitHub authentication provider。宿主拿到 GitHub access token 后调用 `POST /api/v1/auth/vscode/exchange`；Worker 只临时用该 token 调 GitHub API 获取用户身份，然后返回短期 marketplace token。宿主把 marketplace token 放入 `context.secrets`，并在失效后重新通过 VSCode authentication session 换取。插件端“发布模板到市场”入口只对自建本地模板开放：命令面板和市场面板 header 打开插件内发布表单，模板侧栏只在 `自建` 行显示发布 icon action 并直接打开该模板的发布表单；画板右键菜单只保留“保存为模板”，不再直接提供发布入口。发布表单必须允许用户在提交前确认或编辑名称、Slug、描述、标签、README、CHANGELOG 和 Template JSON 预览；最终点击确认发布时才换取 marketplace token 并调用 `POST /api/v1/templates`。发布成功后，表单显示成功页和模板详情入口，同时刷新列表缓存并切到最近更新排序，避免用户以为发布静默失败。内置模板和从市场安装的模板不直接再次发布，后续若支持 fork，应作为单独产品能力进入设计文档。
 
 GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers.dev`，生产浏览器入口计划为 `https://dscanvas.dev/templates`，预览和生产建议分别创建 OAuth App，并在 Worker 环境变量中分别配置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`MARKETPLACE_SESSION_SECRET`、`MARKETPLACE_TOKEN_SECRET` 和管理员 allowlist。真实本地开发值写入被 Git 忽略的 `apps/template-marketplace/.dev.vars`；仓库只跟踪不含 secret 的 `apps/template-marketplace/.dev.vars.example`。
 
@@ -258,12 +258,12 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场直接下载、指定版本安装/下载、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；但真实 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、点赞/举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；但真实 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、点赞/举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
 3. 在浏览器运行 Vite dev server，验证搜索、标签、排序、详情、发布表单和登录态切换；使用 Playwright 编写 E2E 测试覆盖核心路径。
-4. 扩展 VSCode smoke：已确认独立 Webview Editor 市场页可加载并安装市场模板；后续还需覆盖多种真实 VSCode Color Theme、高对比主题、离线时仍可应用模板、更新提醒与回滚。
+4. 扩展 VSCode smoke：默认 `npm run test:marketplace-vscode-e2e` 使用本地 fixture 做稳定回归；`npm run test:marketplace-vscode-preview-e2e` 先做非阻塞 preflight 诊断，再通过 VSCode Webview 直接访问 workers.dev 调试验证环境，覆盖真实 preview API 下的列表、详情、版本菜单和安装 sidecar。后续还需覆盖多种真实 VSCode Color Theme、高对比主题、离线时仍可应用模板、更新提醒与回滚。
 5. 验证 VSCode 端发布流程使用 `vscode.authentication.getSession('github', ...)`，且 GitHub access token 不写入 `workspaceState`、`globalState`、模板 JSON 或 Webview local state。
 6. 对上传大小、缩略图格式、重复点赞、被封禁用户发布、非作者发布新版本、非管理员访问后台等失败路径执行自动化测试。
 7. 执行 `git diff --check`、`npm run typecheck`，并为新增 app / package 补齐对应 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web` 和 `npm run typecheck:marketplace`；这些市场回归通过 `npm run test:marketplace` 纳入根 `npm test` 默认入口。

@@ -120,10 +120,6 @@ interface CanvasTemplatePickOptions {
   emptyMessage?: string;
 }
 
-interface PublishCanvasTemplateCommandOptions {
-  publishCurrentCanvas?: boolean;
-}
-
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
     ? vscode.ConfigurationTarget.Workspace
@@ -221,38 +217,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.publishTemplateToMarketplace, async (templateId?: unknown) => {
     try {
-      const selectedTemplate = isPublishCurrentCanvasCommandArg(templateId)
-        ? await saveCurrentCanvasAsTemplateFromCommand(panelManager, {
-            title: '发布当前画布到模板市场',
-            submitLabel: '保存并继续发布',
-            successMessage: (savedTemplate) => `已保存模板「${savedTemplate.template.name}」，继续发布到模板市场。`
-          })
-        : await resolveCanvasTemplateFromCommand(
-            panelManager,
-            templateId,
-            '选择要发布到模板市场的自建模板',
-            {
-              filter: isPublishableCanvasTemplate,
-              emptyMessage: '当前没有可发布到市场的自建模板。'
-            }
-          );
-      if (!selectedTemplate) {
-        return;
-      }
-      const result = await templateMarketplaceClient.publishStoredTemplate(selectedTemplate.template.id);
-      if (!result) {
-        return;
-      }
-      const revealAction = '查看市场详情';
-      const selection = await vscode.window.showInformationMessage(
-        `模板“${result.name}”已发布到模板市场 v${result.versionNumber}。`,
-        revealAction
-      );
-      if (selection === revealAction) {
-        templateMarketplacePanel.openTemplateDetail(result.slug, result.versionId, new URL(result.sourceUrl));
-      }
+      const explicitTemplateId = normalizeCanvasTemplateIdValue(templateId);
+      templateMarketplacePanel.openTemplatePublishForm(explicitTemplateId);
+      return explicitTemplateId ? { templateId: explicitTemplateId } : undefined;
     } catch (error) {
-      await showCanvasTemplateError('发布模板到市场失败', error);
+      await showCanvasTemplateError('打开模板发布表单失败', error);
     }
   });
 
@@ -487,7 +456,7 @@ export async function deactivate(): Promise<void> {
 function registerCommand(
   context: vscode.ExtensionContext,
   commandId: string,
-  handler: (...args: unknown[]) => Promise<void>
+  handler: (...args: unknown[]) => Promise<unknown>
 ): void {
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 }
@@ -1874,14 +1843,6 @@ async function pickCanvasTemplate(
   }
 
   return catalog.templates.find((candidate) => candidate.template.id === picked.templateId);
-}
-
-function isPublishableCanvasTemplate(storedTemplate: CanvasStoredTemplate): boolean {
-  return storedTemplate.template.category === 'user' && !storedTemplate.marketplace;
-}
-
-function isPublishCurrentCanvasCommandArg(value: unknown): value is PublishCanvasTemplateCommandOptions {
-  return isRecord(value) && value.publishCurrentCanvas === true;
 }
 
 function formatCanvasTemplateSourceForQuickPick(storedTemplate: CanvasStoredTemplate): string {

@@ -20,7 +20,7 @@
 - [x] (2026-05-15 00:30 +0800) VSCode 插件内增加“从自建本地模板发布”入口：命令面板过滤自建模板，模板侧栏自建行显示发布 icon action，发布调用 VSCode GitHub authentication 与市场 token exchange。
 - [x] (2026-05-15 00:45 +0800) 增加 `GET /api/v1/me/templates` 和浏览器 `/templates/me` 页面，登录发布者可以查看当前 GitHub 账号发布的模板列表并跳转详情。
 - [x] (2026-05-15 01:05 +0800) 增加共享布局 PNG 缩略图生成器，浏览器发布页选择模板 JSON 后自动生成缩略图，VSCode 发布请求也自动携带 `thumbnailPngBase64`。
-- [x] (2026-05-15 01:15 +0800) 补齐画布右键发布入口：从当前画布保存为自建模板后继续走同一发布命令；侧边栏和命令面板仍只发布自建本地模板。
+- [x] (2026-05-15 01:15 +0800) 曾补齐画布右键发布入口：从当前画布保存为自建模板后继续走同一发布命令；该入口已在 2026-05-24 根据手动验收反馈移除，侧边栏、市场 header 和命令面板保留为插件内发布入口。
 - [x] (2026-05-15 01:25 +0800) 补齐发布路径自动化测试、构建验证，并同步产品 / 设计 / UI 文档中的新增口径。
 - [x] (2026-05-15 02:16 +0800) 在浏览器 Templates 列表和 VSCode 市场面板 header 增加上传/发布自建模板入口，并同步 UI / 产品 / 设计文档与源码断言。
 - [x] (2026-05-15 02:29 +0800) 完善浏览器 OAuth 发布体验：发布页和个人模板页登录后回到发起页面；Worker 只接受 `/templates...` 同源 return path，避免开放重定向。
@@ -31,6 +31,12 @@
 - [x] (2026-05-15 19:50 +0800) 扩展完整 UI 操作 E2E：浏览器覆盖 Templates 列表 / 详情 / My Templates / Publish 页面；VSCode 覆盖市场面板列表筛选、详情切换、版本菜单关闭、详情返回、安装写入本地模板库，以及从插件市场面板发布自建模板后打开详情页。
 - [x] (2026-05-15 22:46 +0800) 收口发布页手动验收反馈：自动缩略图去掉左上装饰标题条；非法 JSON 上传立即显示错误；单行字段回车不再触发发布；Changelog 改为多行；发布成功跳转成功页；Templates 列表与详情页补充发布者信息。
 - [x] (2026-05-15 23:51 +0800) 继续收口发布页验收反馈：模板 JSON 错误提示移动到上传控件附近；新增 slug availability API，编辑 slug 时即时检查唯一性并在字段下方显示冲突 / 可用状态。
+- [x] (2026-05-16 06:20 +0800) 拆分 VSCode 模板市场 E2E：保留本地 fixture 回归脚本，并新增直接访问 workers.dev 调试验证环境的 VSCode preview E2E，用真实市场 API 覆盖列表、详情、版本菜单和安装 sidecar。
+- [x] (2026-05-16 15:55 +0800) 收口 VSCode 市场列表与详情 UI：插件内移除下载 JSON 控件，列表右侧恢复安装 / 已安装 split button，列表和详情补充发布者信息，详情侧栏只保留安装、统计和版本历史，缩略图改为完整展示。
+- [x] (2026-05-16 16:30 +0800) 复核后继续微调 VSCode 列表页：顶部说明不再暗示必须进入详情页安装，已安装 split button 改为弱化 secondary 视觉，只保留版本下拉作为可操作入口。
+- [x] (2026-05-18 23:58 +0800) 将 VSCode 发布入口从 QuickInput 直接提交改为插件内发布确认表单：命令面板 / 市场 header / 侧栏 / 画布保存后都只打开表单，用户确认名称、Slug、描述、标签、README、CHANGELOG 和 Template JSON Preview 后才发布。
+- [x] (2026-05-24 02:10 +0800) 重新部署 workers.dev 调试环境，当前版本 ID 更新为 `907ea967-9862-43fb-803d-4095727e8fed`；本次仅更新 Worker / Static Assets，不执行 D1 migration 或 R2 seed。
+- [x] (2026-05-24 11:43 +0800) 按手动截图反馈修复 VSCode 发布表单 Name / Slug 行错位：字段 grid 预留校验提示行高，input 基线保持对齐；同时移除画板右键“发布到模板市场”入口，发布只从保存后的模板侧栏、市场 header 或命令面板进入。
 
 ## 意外与发现
 
@@ -61,6 +67,12 @@
 - 观察：slug 冲突如果只等到提交后由 `POST /api/v1/templates` 返回 409，用户会在填写表单末尾才知道需要改 slug。
   证据：Worker 新增 `GET /api/v1/templates/slug-availability?slug=...`；浏览器 E2E 在发布页把 slug 改成 `review-loop` 时看到“Slug is already used by another template.”，再改成 `codex-smoke-template` 时看到“Slug is available.”。
 
+- 观察：本地 fixture VSCode E2E 只能证明宿主、Webview 和模板库写入的可控回归路径，不能证明调试环境 Worker / D1 / R2 / CORS / CSP 的真实组合。
+  证据：新增 `scripts/run-template-marketplace-vscode-preview-e2e.mjs` 和 `tests/vscode-smoke/template-marketplace-preview-tests.cjs`，通过 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL` 指向 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates`，不启动本地 fixture server，先执行非阻塞 preview API preflight 诊断，再用真实 VSCode Webview 访问 preview API 执行匿名浏览、详情读取、版本菜单和安装。
+
+- 观察：当前执行环境不能稳定访问 workers.dev 调试市场，因此不能把本机这次 preview E2E 失败解读为插件逻辑失败。
+  证据：`npm run test:marketplace-vscode-preview-e2e` 在 VSCode Webview 中停留在“正在加载...”；同一主机上代理访问 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest` 返回 Squid `ERR_CONNECT_FAIL 110`，绕过代理直连则 443 连接超时。runner 已增加 10 秒非阻塞 preflight 诊断；即使 Node 侧 preflight 网络不可达，也继续启动 VSCode Webview E2E，因为 Electron 可能使用不同的网络路径。
+
 ## 决策记录
 
 - 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；仓库跟踪 `.dev.vars.example` 作为空值模板。
@@ -85,13 +97,19 @@
 
 ## 结果与复盘
 
-当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏 / 画布右键发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
+当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
 
-2026-05-15 继续完成 VSCode 侧发布入口：`devSessionCanvas.publishTemplateToMarketplace` 命令、侧栏自建模板行 `cloud-upload` action、画布右键“发布到模板市场”、宿主 Quick Input 发布字段、VSCode GitHub session 换取 marketplace token、`context.secrets` token 存储和 `POST /api/v1/templates` 调用已接入。真实 preview OAuth smoke 与端到端 UI smoke 仍是发布前验证项；Phase 3-4 社区互动、统计、完整版本管理和治理能力不属于本 Phase 2 收口。
+2026-05-15 继续完成 VSCode 侧发布入口：`devSessionCanvas.publishTemplateToMarketplace` 命令、侧栏自建模板行 `cloud-upload` action、VSCode GitHub session 换取 marketplace token、`context.secrets` token 存储和 `POST /api/v1/templates` 调用已接入。2026-05-18 根据手动验证反馈，发布入口不再用 QuickInput 直接收集公开字段并提交；命令现在只负责选择自建模板并打开插件内发布确认表单，表单确认后才发布。2026-05-24 继续移除画板右键直接发布入口，画板右键只负责“保存为模板”，发布从保存后的模板侧栏、市场 header 或命令面板进入。真实 preview OAuth smoke 与端到端 UI smoke 仍是发布前验证项；Phase 3-4 社区互动、统计、完整版本管理和治理能力不属于本 Phase 2 收口。
 
 同日继续补齐发布者个人页基础能力：Worker 新增 `GET /api/v1/me/templates`，D1 repository 可按当前 GitHub user id 过滤已发布模板，浏览器端新增 `/templates/me` 页面和 `My Templates` 入口。该页面当前只展示当前账号已发布模板列表和详情跳转，不包含 Phase 3 的趋势图或完整 Dashboard。
 
 2026-05-15 晚补齐完整 UI 操作 E2E：`scripts/test-template-marketplace-publish-page.mjs` 从单页 publish smoke 扩展为浏览器市场多页面 E2E，使用 Playwright route fixture 覆盖列表搜索 / tag / sort、详情 README 主体与下载链接、登录前后 My Templates、发布表单文件读取和发布成功跳转；新增 `scripts/run-template-marketplace-vscode-e2e.mjs` 与 `tests/vscode-smoke/template-marketplace-tests.cjs`，用本地 HTTP fixture 驱动 VSCode 市场 Webview 的真实操作，并通过测试命令 probe 验证详情不是嵌在列表下方、版本菜单可关闭、安装会写入本地模板目录、插件内发布会完成 GitHub token exchange 和 `POST /api/v1/templates`。
+
+2026-05-16 补齐 VSCode 调试环境 E2E 入口：`npm run test:marketplace-vscode-e2e` 继续作为默认无网络 fixture 回归；新增 `npm run test:marketplace-vscode-preview-e2e` 直接打 workers.dev 调试验证环境，不拦截 marketplace API。该 preview E2E 当前只覆盖匿名读取、详情、版本菜单和安装写入隔离 VSCode runtime，不执行真实 GitHub 发布，避免污染共享调试环境。runner 还会在启动 VSCode 前请求 preview 列表 API 做非阻塞诊断；真正的验收仍以 VSCode Webview probe 是否读到真实模板为准。
+
+同日下午按 VSCode 面板截图反馈继续收口：浏览器端继续保留 JSON 下载入口，但插件内市场不再显示下载 JSON；列表右侧主操作改回安装 split button，`查看详情` 只保留在标题附近；列表和详情都显示发布者；详情页侧栏去掉默认展示的校验和来源技术信息，让 README 继续作为主内容；VSCode 列表和详情缩略图改为 `object-contain`，避免自动生成预览被裁切。
+
+16:30 继续按列表页复核反馈调整：面板顶部说明改为“选择安装位置后可安装模板；进入详情页可查看 README、CHANGELOG 和版本历史。”，避免与列表安装 split button 冲突；已安装版本的 split button 从强 primary 蓝色降为 secondary surface，保留 `已安装 vN` 文案和右侧版本菜单入口。随后将列表右侧安装位置选择器与安装 split button 收进同一个 action rail，并保持安装位置在上、安装按钮在下、整体顶部对齐，与详情页控件顺序一致。详情页主内容同步改为 README / CHANGELOG tab，Web 与 VSCode 都在主区域展示版本 changelog。
 
 同日晚继续按手动验收反馈收口浏览器市场细节：列表卡片和详情页标题区现在显示发布者；发布页上传非法 JSON 会在文件选择后立即报错；单行字段阻止 Enter 隐式提交；Changelog 改为 textarea；成功发布后进入 `/templates/publish/success` 成功页，再由用户点击跳转到模板详情。自动缩略图保留节点布局和类型色，不再绘制左上角标题 / 子标题装饰条。
 
@@ -117,7 +135,7 @@
 
 第五步补 Web 端发布表单和 VSCode 发布入口。Web 表单读取本地 JSON 文件，允许填写名称、描述、README、tags、changelog 和可选 PNG 缩略图；VSCode 入口从已有自建本地模板列表中选择模板，宿主通过 VSCode GitHub authentication 换市场 token 后调用同一 API。这一步已经完成。
 
-第六步补自动缩略图和入口一致性。共享 `packages/marketplace-shared/src/thumbnail.ts` 根据节点布局生成 PNG，浏览器发布页在选择模板 JSON 后生成默认缩略图并允许自定义 PNG 覆盖，VSCode 发布请求自动带上生成结果。画布右键入口先把当前布局保存为用户模板，再复用同一发布命令。
+第六步补自动缩略图和入口一致性。共享 `packages/marketplace-shared/src/thumbnail.ts` 根据节点布局生成 PNG，浏览器发布页在选择模板 JSON 后生成默认缩略图并允许自定义 PNG 覆盖，VSCode 发布请求自动带上生成结果。VSCode 端先把画布保存为用户模板，再从模板侧栏、市场 header 或命令面板打开发布表单；画板右键菜单不直接发布。
 
 ## 具体步骤
 
@@ -148,9 +166,11 @@
 
 UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器和 VSCode 两段。浏览器段必须覆盖 Templates 列表、模板详情、My Templates、Publish；VSCode 段必须覆盖插件市场面板的筛选、详情、返回、版本菜单、安装和发布入口。
 
+调试验证环境 E2E 的验收是：`npm run test:marketplace-vscode-preview-e2e` 不启动本地 fixture，直接使用 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL` 指定的 `/templates` 来源；它必须能打开 VSCode 内市场列表、读取真实模板详情、打开并关闭版本菜单、安装真实模板，并在 sidecar 中保留 preview `sourceUrl`。
+
 ## 幂等性与恢复
 
-`.dev.vars.example` 可以安全重复复制为 `.dev.vars`，真实 `.dev.vars` 已被 Git 忽略。发布 API 测试使用 fake D1 / fake R2，不写远端 Cloudflare 资源。真实 preview OAuth 和 R2/D1 写入只应在用户明确要求部署或 smoke 时执行，并通过 Wrangler secret 配置敏感值。
+`.dev.vars.example` 可以安全重复复制为 `.dev.vars`，真实 `.dev.vars` 已被 Git 忽略。发布 API 测试使用 fake D1 / fake R2，不写远端 Cloudflare 资源。VSCode preview E2E 只读取真实 preview API 并把公开模板安装到隔离 VSCode runtime，不发布新模板；真实 preview OAuth 和 R2/D1 写入只应在用户明确要求部署或 smoke 时执行，并通过 Wrangler secret 配置敏感值。
 
 如果发布 API 写入 R2 成功但 D1 写入失败，当前最小实现可能留下不可见的 R2 orphan object；后续需要在 Worker 支持 delete 或改为更严格的预检查 / 批处理后收口。此风险如果在本轮未解决，必须登记到 `docs/exec-plans/tech-debt-tracker.md`。
 
@@ -209,6 +229,26 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 
     git diff --check
     <no output>
+
+本轮补充 VSCode preview E2E 入口后的本地验证输出：
+
+    git diff --check
+    <no output>
+
+    node --check scripts/run-template-marketplace-vscode-preview-e2e.mjs
+    <passed>
+
+    node --check tests/vscode-smoke/template-marketplace-preview-tests.cjs
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run test:marketplace-vscode-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    npm run test:marketplace-vscode-preview-e2e
+    <not passed on this host: preflight is now diagnostic-only, but the spawned VSCode Webview probe stayed at 正在加载... with templateCount=0; Node fetch reported ETIMEDOUT / ENETUNREACH, proxy curl reported Squid ERR_CONNECT_FAIL 110>
 
 本轮 JSON 错误位置与 slug 即时唯一性检查验证输出：
 
@@ -384,6 +424,143 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 
     git diff --check
     <no output>
+
+本轮全量回归验证输出：
+
+    npm test
+    <passed>
+    typecheck / typecheck:marketplace / marketplace shared-api-web-browser-vscode fixture E2E / canvas-templates / VSCode smoke / Playwright webview 133 tests 均通过；preview workers.dev VSCode E2E 仍保持为独立调试环境验证入口，不串入 npm test。
+
+本轮 VSCode 市场面板 UI 收口验证输出：
+
+    node --check scripts/test-canvas-templates.mjs
+    <passed>
+
+    node --check tests/vscode-smoke/template-marketplace-tests.cjs
+    <passed>
+
+    node --check tests/vscode-smoke/template-marketplace-preview-tests.cjs
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run test:marketplace-vscode-e2e
+    Template marketplace VS Code UI E2E passed.
+
+本轮列表页复核微调验证输出：
+
+    node --check scripts/test-canvas-templates.mjs
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run test:marketplace-vscode-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    npm run typecheck
+    <passed>
+
+    git diff --check
+    <no output>
+
+本轮详情页 README / CHANGELOG tab 验证输出：
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    npm run test:marketplace-vscode-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    git diff --check
+    <no output>
+
+本轮 VSCode QuickInput 发布入口回归修复验证输出：
+
+    node --check tests/vscode-smoke/template-marketplace-tests.cjs
+    <passed>
+
+    node --check scripts/test-canvas-templates.mjs
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run typecheck
+    <passed>
+
+    npm run test:marketplace-vscode-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    git diff --check
+    <no output>
+
+本轮 VSCode 发布入口表单化验证输出：
+
+    node --check tests/vscode-smoke/template-marketplace-tests.cjs
+    <passed>
+
+    node --check scripts/test-canvas-templates.mjs
+    <passed>
+
+    TMPDIR=.debug/tmp npm run test:canvas-templates
+    <passed>
+
+    TMPDIR=.debug/tmp npm run typecheck
+    <passed>
+
+    git diff --check
+    <no output>
+
+    npm run test:marketplace-vscode-e2e
+    <blocked: 当前机器 /tmp 已满，xvfb-run 无法创建可用 X11 display，VSCode/Electron 以 Missing X server or $DISPLAY / SIGSEGV 退出；本轮改动已补充 VSCode E2E 用例，但需在释放 /tmp 后重跑。>
+
+本轮 VSCode 发布入口表单化复核验证输出（2026-05-24 01:36 +0800）：
+
+    node --check scripts/run-template-marketplace-vscode-preview-e2e.mjs
+    node --check tests/vscode-smoke/template-marketplace-tests.cjs
+    node --check scripts/test-canvas-templates.mjs
+    <passed>
+
+    TMPDIR=.debug/tmp npm run test:canvas-templates
+    <passed>
+
+    TMPDIR=.debug/tmp npm run typecheck
+    <passed>
+
+    TMPDIR=.debug/tmp npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    TMPDIR=.debug/tmp npm run test:marketplace-vscode-fixture-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    git diff --check
+    <no output>
+
+本轮调试环境部署输出：
+
+    TMPDIR=.debug/tmp npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    <passed>
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: 907ea967-9862-43fb-803d-4095727e8fed
+
+    TMPDIR=.debug/tmp npm run -w @dev-session-canvas/template-marketplace db:verify:preview
+    <passed>
+    远端 D1 `template_marketplace_preview` 可读，返回 getting-started-canvas、release-readiness、review-loop 等当前模板版本元数据。
+
+    TMPDIR=.debug/tmp npm exec -w @dev-session-canvas/template-marketplace -- wrangler deployments list
+    <passed>
+    最新 deployment 为 2026-05-23T17:55:25.752Z，100% 指向版本 `907ea967-9862-43fb-803d-4095727e8fed`。
+
+    curl -I -L https://dscanvas-template-marketplace.wzy0304.workers.dev/templates
+    <not passed on this host: 本机代理返回 Squid `ERR_CONNECT_FAIL 110`；Wrangler Cloudflare API 与远端 D1 验证已通过。>
 
 ## 接口与依赖
 

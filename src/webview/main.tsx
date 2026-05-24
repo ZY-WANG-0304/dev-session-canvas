@@ -2248,12 +2248,6 @@ function App(): JSX.Element {
             });
             closePaneContextMenu();
           }}
-          onPublishCanvasTemplate={() => {
-            postMessage({
-              type: 'webview/publishCanvasTemplate'
-            });
-            closePaneContextMenu();
-          }}
           onBack={() =>
             setContextMenu((current) => {
               if (!current) {
@@ -4994,7 +4988,6 @@ const CanvasContextMenu = React.forwardRef<
     onResetToDefaultTemplate: () => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
-    onPublishCanvasTemplate: () => void;
     onBack: () => void;
     onClose: () => void;
   }
@@ -5266,20 +5259,7 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-icon codicon codicon-save-as" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
                 <strong>保存为模板</strong>
-                <span>把当前布局保存到用户模板目录</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="canvas-context-menu-item"
-              data-context-menu-action="publish-canvas-template"
-              disabled={!props.canSaveCurrentCanvas}
-              onClick={props.onPublishCanvasTemplate}
-            >
-              <span className="canvas-context-menu-icon codicon codicon-cloud-upload" aria-hidden="true" />
-              <span className="canvas-context-menu-copy">
-                <strong>发布到模板市场</strong>
-                <span>保存当前布局后继续发布到 Templates</span>
+                <span>保存后可从模板侧栏或市场面板发布</span>
               </span>
             </button>
           </>
