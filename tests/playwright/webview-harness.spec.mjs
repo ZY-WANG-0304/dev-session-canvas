@@ -7200,6 +7200,106 @@ test('associated markdown note bootstrapped with ok recoverable draft shows relo
   });
 });
 
+test('associated markdown note restores a persisted missing recoverable draft after bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const cachedContent = '# 文件笔记\n\n旧磁盘内容';
+  const draftContent = '# 文件笔记\n\n文件缺失时仍可恢复的草稿';
+  const missingDisplayPath = '/workspace/docs/missing-draft.md';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = cachedContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/missing-draft.md',
+    displayPath: missingDisplayPath,
+    fullDisplayPath: missingDisplayPath,
+    contentRevision: 'revision-a',
+    status: 'missing',
+    lastError: '关联文件不可用：docs/missing-draft.md',
+    recoverableDraft: {
+      draftId: '99999999-9999-4999-8999-999999999999',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(draftContent);
+  await expect(bodyInput).not.toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText('关联文件缺失');
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '创建空文件并关联' })).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '复制草稿' }).click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyAssociatedNoteMarkdownDraft');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: draftContent
+    }
+  });
+  await clearPostedMessages(page);
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown note bootstrapped with unreadable recoverable draft shows reload recovery only', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n- [ ] 旧缓存任务';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/unreadable-draft.md',
+    displayPath: 'docs/unreadable-draft.md',
+    fullDisplayPath: '/workspace/docs/unreadable-draft.md',
+    contentRevision: 'revision-a',
+    status: 'unreadable',
+    lastError: '关联文件当前不可读：docs/unreadable-draft.md',
+    recoverableDraft: {
+      draftId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      baseContentRevision: 'revision-a',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('发现未提交的本地草稿');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件当前不可读');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('草稿正文暂不可读取');
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveCount(0);
+  await expect(noteNode.locator('input.task-list-item-checkbox')).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '重新加载' }).click();
+  const reloadMessage = await waitForPostedMessageByType(page, 'webview/reloadAssociatedNoteMarkdownFile');
+  expect(reloadMessage).toEqual({
+    type: 'webview/reloadAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
 test('associated markdown note bootstrapped with dirty-conflict shows reload recovery only', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();

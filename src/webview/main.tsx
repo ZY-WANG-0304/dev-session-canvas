@@ -301,7 +301,7 @@ type CanvasFlowNode = Node<CanvasNodeData>;
 type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
 interface AssociatedMarkdownDraftRecovery {
-  kind: 'dirty-conflict' | 'recoverable-draft';
+  kind: 'dirty-conflict' | 'recoverable-draft' | 'unavailable-draft';
   remoteContent: string;
   remoteContentRevision?: string;
 }
@@ -4551,6 +4551,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       ? associatedMarkdownRecoverableDraft.content
       : undefined;
   const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
+  const canSurfaceAssociatedMarkdownRecoverableDraft =
+    Boolean(associatedMarkdownFile) &&
+    Boolean(associatedMarkdownStatus) &&
+    hasAssociatedMarkdownRecoverableDraft;
   const associatedMarkdownFileAvailable =
     !associatedMarkdownFile || associatedMarkdownStatus === 'ok' || hasAssociatedMarkdownHostConflict;
   const associatedMarkdownFileEditable =
@@ -4580,21 +4584,27 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     !isEditingBody &&
     !associatedMarkdownConflictResolution;
   const showAssociatedMarkdownRecoverableDraftPanel =
-    associatedMarkdownStatus === 'ok' &&
-    hasAssociatedMarkdownRecoverableDraft &&
+    !hasAssociatedMarkdownHostConflict &&
+    canSurfaceAssociatedMarkdownRecoverableDraft &&
     associatedMarkdownRecoverableDraftContent === undefined &&
     !associatedMarkdownDraftRecovery &&
     !isEditingBody &&
     !associatedMarkdownConflictResolution;
+  const showAssociatedMarkdownUnavailablePanel =
+    !associatedMarkdownFileAvailable && !associatedMarkdownDraftRecovery;
   const associatedMarkdownFilePanelTitle = showAssociatedMarkdownRecoverableDraftPanel
     ? '发现未提交的本地草稿'
     : associatedMarkdownWarningTitle;
   const associatedMarkdownFilePanelDetail = showAssociatedMarkdownRecoverableDraftPanel
-    ? '草稿正文暂不可读取。请重新加载以丢弃草稿并恢复磁盘内容。'
+    ? associatedMarkdownStatus === 'ok'
+      ? '草稿正文暂不可读取。请重新加载以丢弃草稿并恢复磁盘内容。'
+      : `${associatedMarkdownFile?.lastError ?? '关联文件当前不可用。'} 草稿正文暂不可读取。请重新加载以丢弃草稿并重新检查关联文件。`
     : associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。';
   const associatedMarkdownDraftRecoveryHint =
     associatedMarkdownDraftRecovery?.kind === 'recoverable-draft'
       ? '发现未提交的本地草稿；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。'
+      : associatedMarkdownDraftRecovery?.kind === 'unavailable-draft'
+        ? `${associatedMarkdownWarningTitle}；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。`
       : associatedMarkdownFile?.lastError?.startsWith('模板')
         ? '模板内容与现有文件不同；你可以继续编辑模板草稿，或选择重新加载 / 覆盖文件。'
         : '关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。';
@@ -4772,8 +4782,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const didMatchPendingContent = pendingContentRef.current === noteMetadata.content;
 
     const canRestoreAssociatedMarkdownRecoverableDraft =
-      associatedMarkdownFile &&
-      (hasAssociatedMarkdownHostConflict || associatedMarkdownStatus === 'ok') &&
+      canSurfaceAssociatedMarkdownRecoverableDraft &&
       associatedMarkdownRecoverableDraftContent !== undefined;
     const recoverableDraftRestoreKey = canRestoreAssociatedMarkdownRecoverableDraft
       ? [
@@ -4802,7 +4811,11 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       setIsEditingBody(true);
       restoredAssociatedMarkdownDraftKeyRef.current = recoverableDraftRestoreKey;
       setAssociatedMarkdownDraftRecovery({
-        kind: hasAssociatedMarkdownHostConflict ? 'dirty-conflict' : 'recoverable-draft',
+        kind: hasAssociatedMarkdownHostConflict
+          ? 'dirty-conflict'
+          : associatedMarkdownStatus === 'ok'
+            ? 'recoverable-draft'
+            : 'unavailable-draft',
         remoteContent: noteMetadata.content,
         remoteContentRevision:
           associatedMarkdownRecoverableDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
@@ -4951,6 +4964,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     associatedMarkdownDraftRecovery,
     associatedMarkdownFile,
     associatedMarkdownStatus,
+    canSurfaceAssociatedMarkdownRecoverableDraft,
     content,
     hasAssociatedMarkdownHostConflict,
     id,
@@ -5538,7 +5552,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       <div className="object-body object-surface note-surface">
         <NodeOverviewTitle title={data.title} />
         <div className="note-editor-surface" {...canvasOverviewInertProps(overviewInteractionsDisabled)}>
-          {!associatedMarkdownFileAvailable ||
+          {showAssociatedMarkdownUnavailablePanel ||
           showAssociatedMarkdownHostConflictPanel ||
           showAssociatedMarkdownRecoverableDraftPanel ? (
             <div
