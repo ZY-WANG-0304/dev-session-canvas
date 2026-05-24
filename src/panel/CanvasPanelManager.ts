@@ -4691,6 +4691,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const previousActiveEdit = this.activeAssociatedNoteMarkdownEdits.get(payload.nodeId);
+    if (!previousActiveEdit && !initialSource.recoverableDraft && initialSource.status !== 'dirty-conflict') {
+      return;
+    }
+
     const baseContentRevision =
       previousActiveEdit?.baseContent === initialNoteMetadata.content
         ? previousActiveEdit.baseContentRevision ?? payload.baseContentRevision ?? initialSource.contentRevision
@@ -4711,6 +4715,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const refreshedActiveEdit = this.activeAssociatedNoteMarkdownEdits.get(payload.nodeId);
+    if (!refreshedActiveEdit && !source.recoverableDraft && source.status !== 'dirty-conflict') {
+      return;
+    }
+
     const effectiveBaseContentRevision = refreshedActiveEdit?.baseContentRevision ?? baseContentRevision;
     const isDraftConflict =
       source.status === 'dirty-conflict' ||
@@ -5473,20 +5481,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const currentMetadata = ensureNoteMetadata(node);
     const readResult = await this.readNoteMarkdownFile(uri, {
       skipContentIfRevision:
         source.status === 'ok' && !source.recoverableDraft ? source.contentRevision : undefined
     });
+    const latestNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const latestSource = latestNode ? ensureNoteMetadata(latestNode).contentSource : undefined;
+    if (!latestNode || latestSource?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const latestResourceKey = this.getAssociatedNoteMarkdownResourceKey(latestNode);
+    const refreshedResourceKey = normalizeNoteMarkdownResourceKey(
+      this.canonicalizeCurrentHostNoteMarkdownUri(uri)
+    );
+    if (latestResourceKey !== refreshedResourceKey) {
+      return;
+    }
+
+    const latestMetadata = ensureNoteMetadata(latestNode);
     const nextContent =
-      readResult.status === 'ok' && !readResult.contentSkipped ? readResult.content : currentMetadata.content;
+      readResult.status === 'ok' && !readResult.contentSkipped ? readResult.content : latestMetadata.content;
     const didRevisionChange =
       readResult.status === 'ok' &&
-      Boolean(source.contentRevision) &&
+      Boolean(latestSource.contentRevision) &&
       Boolean(readResult.contentRevision) &&
-      source.contentRevision !== readResult.contentRevision;
+      latestSource.contentRevision !== readResult.contentRevision;
     const activeEdit = this.activeAssociatedNoteMarkdownEdits.get(nodeId);
-    const activeEditBaseRevision = activeEdit?.baseContentRevision ?? source.contentRevision;
+    const activeEditBaseRevision = activeEdit?.baseContentRevision ?? latestSource.contentRevision;
     const didActiveEditDraftChange = Boolean(activeEdit) && activeEdit?.content !== activeEdit?.baseContent;
     const didActiveEditRemoteRevisionChange =
       readResult.status === 'ok' &&
@@ -5519,8 +5541,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const draftRetention = resolveNoteMarkdownRefreshDraftRetention({
       clearRecoverableDraft: options.clearRecoverableDraft,
-      currentStatus: source.status,
-      hasRecoverableDraft: Boolean(source.recoverableDraft),
+      currentStatus: latestSource.status,
+      hasRecoverableDraft: Boolean(latestSource.recoverableDraft),
       didRevisionChange,
       didActiveEditConflict
     });
@@ -5530,26 +5552,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             activeEdit.content,
             activeEditBaseRevision,
             readResult.contentRevision,
-            source.recoverableDraft
+            latestSource.recoverableDraft
           )
-        : source.recoverableDraft
+        : latestSource.recoverableDraft
           ? {
-              ...source.recoverableDraft,
+              ...latestSource.recoverableDraft,
               remoteContentRevision: draftRetention.markDirtyConflict && readResult.status === 'ok'
                 ? readResult.contentRevision
-                : source.recoverableDraft.remoteContentRevision
+                : latestSource.recoverableDraft.remoteContentRevision
             }
           : undefined
       : undefined;
     const nextStatus = draftRetention.markDirtyConflict ? 'dirty-conflict' : readResult.status;
     const nextLastError = draftRetention.markDirtyConflict
-      ? (source.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
+      ? (latestSource.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
       : readResult.lastError;
     const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
-      ...source,
+      ...latestSource,
       resourceUri: uri.toString(),
       ...this.formatNoteMarkdownDisplayPathInfo(uri),
-      contentRevision: readResult.status === 'ok' ? readResult.contentRevision : source.contentRevision,
+      contentRevision: readResult.status === 'ok' ? readResult.contentRevision : latestSource.contentRevision,
       status: nextStatus,
       lastError: nextLastError,
       recoverableDraft: nextRecoverableDraft
