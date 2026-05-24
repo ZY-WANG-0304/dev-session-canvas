@@ -25,9 +25,11 @@
 - [x] (2026-04-22 05:58 +0800) 重新定义 minimap attention 的产品边界：明暗闪烁属于默认 attention，尺寸 pulse 归属 strong reminder，并补 probe / smoke 断言两者分离。
 - [x] (2026-04-22 06:18 +0800) 将 `strongTerminalAttentionReminder` 从布尔开关改成枚举模式配置，支持 `none` / `titleBar` / `minimap` / `both`，并同步更新 smoke 断言与配置说明文案。
 - [x] (2026-04-22 08:44 +0800) 处理 follow-up review blocker：`概览` 中 `画布状态` 在画布已打开时改为展示当前实例承载面，而不是默认承载面；补测试命令和定向 VS Code 场景，断言“默认 `Panel` + 当前实例 `Editor`”时摘要与 tooltip 一致。
-- [x] (2026-05-21 14:27 +0800) 补充 Codex / Claude Agent 异常兜底提醒：仅在已运行 Agent 非用户主动以非 `0` 退出并进入 `error` 时补充通知，已知 stream disconnected 输出立即提醒；启动失败与 `resume-failed` 明确不触发额外通知。
+- [x] (2026-05-21 14:27 +0800) 补充 Codex / Claude Agent 异常兜底提醒：仅在已运行 Agent 非用户主动以非 `0` 退出并进入 `error` 时补充通知；启动失败与 `resume-failed` 明确不触发额外通知。
 - [x] (2026-05-22 00:00 +0800) 根据后续调研补齐 provider 边界：`response.completed` 是 Codex / OpenAI Responses 的完成事件，不是 Claude Code 标准事件；Claude 侧在缺少真实输出样本或 `StopFailure` 结构化证据前不扩大专用流断开规则。
 - [x] (2026-05-22 00:00 +0800) 补充启发式检测代码注释与定向回归，证明 Codex exact pattern 仍触发、普通 Claude `message_stop` 文案不会误触发。
+- [x] (2026-05-24 00:00 +0800) 处理 review blocker：将异常输出文本匹配改成 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；当前只允许 `codex` 开启，且不对 Claude 执行文本匹配。
+- [x] (2026-05-24 00:00 +0800) 修复 stale stream notification 风险：用户下一轮输入、配置切换和测试注入旧 buffer 时都会把当前 buffer 长度标记为已扫描，只扫描新增输出；补单测和 smoke 覆盖默认关闭、Codex opt-in、Claude 不触发、旧 buffer 不重复触发。
 
 ## 意外与发现
 
@@ -46,11 +48,14 @@
 - 观察：侧栏 `概览` 的 “画布状态” 摘要在已打开场景错误读取了 `configuredSurface`，导致“定位画布”实际跳到 `Editor` 时，TreeView 仍稳定显示成 `已打开 · Panel`。
   证据：最新 review 明确指出 `src/sidebar/CanvasSidebarView.ts:111` 把 `state.configuredSurface` 直接拼进摘要；本地定向场景在“默认 `Panel` + 当前实例 `Editor`”路径下稳定复现。
 
-- 观察：Codex / Claude 可能在进程仍未退出时先输出 `stream disconnected before completion: stream closed before response.completed`，这种情况不会被只看终态 `error` 的逻辑捕获。
-  证据：本轮新增 `src/common/agentActivityHeuristics.ts` 的 abnormal stream pattern，并在 `scripts/test/test-execution-attention-signals.mjs` 中用该输出行断言可被提取。
+- 观察：Codex 可能在进程仍未退出时先输出 `stream disconnected before completion: stream closed before response.completed`，这种情况不会被只看终态 `error` 的逻辑捕获；但它属于启发式文本匹配，误触发成本高，应默认关闭。
+  证据：`src/common/agentActivityHeuristics.ts` 现在只保留 Codex 完整高置信 pattern；`tests/vscode-smoke/extension-tests.cjs` 断言默认 `off` 不通知，只有设置为 `codex` 才通知。
 
 - 观察：`stream closed before response.completed` 来自 Codex / OpenAI Responses 的 stream 完成语义；Anthropic Messages streaming 的成功终止事件是 `message_stop`，Claude Code 公开 hook 里 API error 走 `StopFailure`。如果继续把 `response.completed` 写成 Codex / Claude 共享语义，会误导后续实现者把 Codex 的内部协议泛化到 Claude。
-  证据：本轮调研 Codex 源码中 `CodexErr::Stream`、`process_sse()` 与 retry loop；Anthropic streaming 文档列出最终 `message_stop` 与 error recovery，Claude Code hooks 文档列出 `Stop` / `StopFailure`。
+  证据：本轮调研 Codex 源码中 `CodexErr::Stream`、`process_sse()` 与 retry loop；Anthropic streaming 文档列出最终 `message_stop` 与 error recovery，Claude Code hooks 文档列出 `Stop` / `StopFailure`；review 后代码删除了通用 `connection closed/lost/reset before completion` pattern，并在 smoke 中断言 Claude 即使输出同形文本也不触发。
+
+- 观察：用户提交下一轮输入时如果只清空 heuristic signature，但不推进扫描游标，旧 stream error 行仍留在 session buffer 尾部，冷却后可能被当作新异常再次通知。
+  证据：`resetAgentActivityHeuristics(state, currentBuffer)` 和 `resetAgentAbnormalStreamInterruptionHeuristics(state, currentBuffer)` 会记录清洗后的当前 buffer 长度；`scripts/test/test-execution-attention-signals.mjs` 与 smoke 的 `injectAgentExistingOutput` 场景都断言旧错误行不会在下一轮 prompt 输出后重复触发。
 
 ## 决策记录
 
@@ -98,6 +103,14 @@
   理由：Codex 拥有 Responses turn state，并且会自行 retry / reconnect；Claude 的标准完成事件是 `message_stop`。外层画布如果重放 prompt，可能重复 tool call、重复写文件或破坏 provider 会话状态；如果把 `response.completed` 泛化到 Claude，会制造错误产品语义。
   日期/作者：2026-05-22 / Codex
 
+- 决策：异常输出文本匹配必须由 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 显式开启，默认 `off`；当前唯一开启值 `codex` 只匹配 Codex 完整高置信 stream disconnected 文案，不保留通用 `connection closed/lost/reset before completion` 或 Claude 规则。
+  理由：文本匹配是 fallback，不具备 provider 结构化错误的权威性；默认关闭能避免把正常输出或其他 provider 文案误判为异常，且与“Claude 侧无真实样本前不扩展文本规则”的设计结论一致。
+  日期/作者：2026-05-24 / Codex
+
+- 决策：用户下一轮输入、异常文本配置切换和测试注入旧输出时，都把当前 buffer 标记为已扫描，只对之后新增输出做文本匹配。
+  理由：session buffer 会保留历史终端输出；如果 reset 只清 signature 而不推进扫描游标，冷却结束后同一条旧错误会重新通知，违背“补充提醒只针对新观察到异常”的语义。
+  日期/作者：2026-05-24 / Codex
+
 ## 结果与复盘
 
 本轮已完成以下交付：
@@ -106,8 +119,9 @@
 - 将 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 改成枚举模式配置，默认值为 `both`；`devSessionCanvas.notifications.bridgeTerminalAttentionSignals` 现在只控制 VS Code 工作台通知桥接。
 - 在执行节点标题栏状态控件左侧新增 bell icon，并让 minimap 中对应节点与 icon 共用默认 attention 状态；strong reminder 会按模式额外增强标题栏闪烁和 / 或 minimap 尺寸 pulse。
 - Webview probe、Playwright harness 与 VS Code smoke 已覆盖 icon、minimap 闪烁、点击确认，以及 bridge 开关与 strong reminder 四档模式的分层关系。
-- 新增 Codex / Claude Agent 异常兜底通知：`src/panel/CanvasPanelManager.ts` 在本地 PTY 和 live-runtime supervisor 两条路径上只对已运行后的非 `0` `error` 终态发 `agent-abnormal-interruption`，并对已知 stream disconnected 输出发 `agent-abnormal-stream-interruption`；`resume-failed` 仍只保留节点状态与错误说明。
+- 新增 Codex / Claude Agent 异常兜底通知：`src/panel/CanvasPanelManager.ts` 在本地 PTY 和 live-runtime supervisor 两条路径上只对已运行后的非 `0` `error` 终态发 `agent-abnormal-interruption`；`resume-failed` 仍只保留节点状态与错误说明。
 - 本轮 follow-up 已把 stream disconnected 文案的 provider 边界写清：`response.completed` 只作为 Codex high-confidence pattern；Claude 不共享这条标准事件，后续若能接入 Claude `StopFailure` 或真实输出样本，再以结构化信号优先扩展。
+- review follow-up 将异常输出文本匹配收口为显式配置：默认 `off`，`codex` 模式才会发 `agent-abnormal-stream-interruption`；Claude 不走文本规则，旧 buffer 中的 stream error 不会在下一轮输入或配置切换后重复通知。
 
 本轮最终验证结果：
 
@@ -128,7 +142,15 @@ review follow-up 增量验证：
 - `npm run test:execution-attention-signals` 通过
 - `npm run typecheck` 通过
 - `npm run build` 通过
-- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/product-specs/canvas-node-notifications.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md src/common/agentActivityHeuristics.ts scripts/test/test-execution-attention-signals.mjs` 通过
+
+2026-05-24 review follow-up 增量验证：
+
+- `npm run test:execution-attention-signals` 通过
+- `npm run typecheck` 通过
+- `npm run build` 通过
+- `npm run test:extension-manifest` 通过
+- `node --check tests/vscode-smoke/extension-tests.cjs` 通过
+- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/design-docs/index.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md docs/product-specs/index.md package.json package.nls.json scripts/test/test-execution-attention-signals.mjs src/common/agentActivityHeuristics.ts src/panel/CanvasPanelManager.ts tests/vscode-smoke/extension-tests.cjs` 通过
 
 剩余风险：
 
@@ -244,3 +266,5 @@ review follow-up 增量验证：
 本次创建说明：2026-04-22 新增本计划，用于覆盖 execution attention 的节点内 icon、强力提醒闪烁、点击确认语义，以及 `bridgeTerminalAttentionSignals` 与新提醒开关的边界拆分。之所以独立起计划，是因为本轮同时涉及正式设计更新、共享协议扩展、宿主状态调整、Webview UI 改造和 smoke 回归。
 
 本次更新说明：2026-05-22 根据 `stream closed before response.completed` 后续调研，补充 Codex / Claude provider 边界和“不替 provider 自动恢复”的决策，避免把 Codex Responses 的完成事件误写成 Claude Code 标准语义。
+
+本次更新说明：2026-05-24 根据 review 收口异常输出文本匹配：默认关闭，显式 `codex` 才启用 Codex 完整高置信文案匹配；同时记录 stale buffer 扫描游标修复与验证。

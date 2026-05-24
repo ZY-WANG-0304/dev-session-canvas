@@ -442,6 +442,24 @@
             "%configuration.notifications.strongTerminalAttentionReminder.both.description%"
           ]
         },
+        "devSessionCanvas.notifications.agentAbnormalOutputTextNotifications": {
+          "type": "string",
+          "enum": [
+            "off",
+            "codex"
+          ],
+          "enumItemLabels": [
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.off.label%",
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.codex.label%"
+          ],
+          "default": "off",
+          "scope": "window",
+          "markdownDescription": "%configuration.notifications.agentAbnormalOutputTextNotifications.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.off.description%",
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.codex.description%"
+          ]
+        },
         "devSessionCanvas.terminal.shell": {
           "type": "string",
           "enum": [

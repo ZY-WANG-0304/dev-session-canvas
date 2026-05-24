@@ -634,7 +634,7 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强');
+  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强 · 文本异常关闭');
 
   await verifyCanvasTemplatesTrusted();
   await ensureEditorCanvasReady();
@@ -5086,6 +5086,9 @@ async function verifyAgentAbnormalInterruptionNotifications() {
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
     configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
+  const originalTextNotificationMode = normalizeAgentAbnormalOutputTextNotificationMode(
+    configuration.get('devSessionCanvas.notifications.agentAbnormalOutputTextNotifications', 'off')
+  );
   const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
 
   await clearHostMessages();
@@ -5094,6 +5097,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
   try {
     await setRuntimePersistenceEnabled(false);
     await ensureAttentionNotificationBridgeMode('workbench');
+    await ensureAgentAbnormalOutputTextNotificationMode('off');
 
     await withInterceptedInformationMessages(async (calls) => {
       let snapshot = await getDebugSnapshot();
@@ -5179,6 +5183,35 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         injectAgentOutputChunk:
           '\n■ stream disconnected before completion: stream closed before response.completed\n'
       });
+      await sleep(300);
+      let textDiagnostics = await getDiagnosticEvents();
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+            event.detail?.nodeId === codexAgent.id
+        ),
+        'Expected Codex stream text not to notify while abnormal text matching is off by default.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected default-off Codex stream text not to surface a workbench notification.'
+      );
+
+      await ensureAgentAbnormalOutputTextNotificationMode('codex');
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
       const streamDiagnostics = await waitForDiagnosticEvents(
         (events) =>
           events.some(
@@ -5202,7 +5235,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
             event.kind === 'execution/attentionNotificationPosted' &&
             event.detail?.trigger === 'agent-abnormal-stream-interruption'
         ),
-        'Expected a Codex stream-disconnected line to post a supplemental attention notification diagnostic.'
+        'Expected a Codex stream-disconnected line to post a supplemental attention notification diagnostic when enabled.'
       );
       await waitForInterceptedInformationMessage(
         calls,
@@ -5210,7 +5243,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
           /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
           /stream disconnected before completion/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
-        'Expected a Codex stream-disconnected line to surface a supplemental workbench attention notification.'
+        'Expected an enabled Codex stream-disconnected line to surface a supplemental workbench attention notification.'
       );
       await performWebviewDomAction({
         kind: 'selectNode',
@@ -5220,6 +5253,66 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
         return currentAgent?.metadata?.agent?.attentionPending === false;
       }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      const beforeClaudeTextSnapshot = await getDebugSnapshot();
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'claude',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
+      await waitForSnapshot((currentSnapshot) => currentSnapshot !== beforeClaudeTextSnapshot, 20000);
+      await sleep(300);
+      textDiagnostics = await getDiagnosticEvents();
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected Claude stream-disconnected-like text not to notify even when Codex text matching is enabled.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected Claude stream-disconnected-like text not to surface a workbench notification.'
+      );
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      const beforeStaleTextSnapshot = await getDebugSnapshot();
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentExistingOutput:
+          'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n',
+        injectAgentOutputChunk: '> next prompt\n'
+      });
+      await waitForSnapshot((currentSnapshot) => currentSnapshot !== beforeStaleTextSnapshot, 20000);
+      await sleep(300);
+      textDiagnostics = await getDiagnosticEvents();
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected a stale stream-disconnected line already present in the buffer not to notify on the next turn.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected stale buffered stream text not to surface a workbench notification.'
+      );
+
+      await ensureAgentAbnormalOutputTextNotificationMode('off');
+      snapshot = await getDebugSnapshot();
       await setPersistedState({
         ...snapshot.state,
         nodes: snapshot.state.nodes.filter((node) => node.id !== codexAgent.id)
@@ -5423,6 +5516,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
     });
   } finally {
     await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
+    await ensureAgentAbnormalOutputTextNotificationMode(originalTextNotificationMode);
     await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
@@ -9509,7 +9603,8 @@ async function startExecutionSessionForTest({
   rows,
   provider,
   resumeRequested = false,
-  injectAgentOutputChunk
+  injectAgentOutputChunk,
+  injectAgentExistingOutput
 }) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testStartExecutionSession,
@@ -9519,7 +9614,9 @@ async function startExecutionSessionForTest({
     rows,
     provider,
     resumeRequested,
-    injectAgentOutputChunk ? { injectAgentOutputChunk } : undefined
+    injectAgentOutputChunk || injectAgentExistingOutput
+      ? { injectAgentOutputChunk, injectAgentExistingOutput }
+      : undefined
   );
 }
 
@@ -9800,6 +9897,39 @@ function normalizeAttentionNotificationBridgeMode(value) {
   }
 
   return 'system';
+}
+
+function normalizeAgentAbnormalOutputTextNotificationMode(value) {
+  return value === 'codex' ? 'codex' : 'off';
+}
+
+async function ensureAgentAbnormalOutputTextNotificationMode(mode) {
+  const configuration = vscode.workspace.getConfiguration();
+  const normalizedMode = normalizeAgentAbnormalOutputTextNotificationMode(mode);
+  const currentMode = normalizeAgentAbnormalOutputTextNotificationMode(
+    configuration.get('devSessionCanvas.notifications.agentAbnormalOutputTextNotifications', 'off')
+  );
+
+  if (currentMode === normalizedMode) {
+    return;
+  }
+
+  await clearDiagnosticEvents();
+  await configuration.update(
+    'devSessionCanvas.notifications.agentAbnormalOutputTextNotifications',
+    normalizedMode,
+    vscode.ConfigurationTarget.Global
+  );
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/agentAbnormalOutputTextNotificationsConfigChanged' &&
+          event.detail?.mode === normalizedMode &&
+          event.detail?.enabled === (normalizedMode !== 'off')
+      ),
+    20000
+  );
 }
 
 function normalizeStrongTerminalAttentionReminderMode(value) {
