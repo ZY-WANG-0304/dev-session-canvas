@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.5 - Preview Note Markdown Recovery Patch
+
+相对 `0.10.4`，`0.10.5` 是同一 `0.10.x` 公开 `Preview` 线内的 Note Markdown 体验与草稿恢复修复版本。它保留 `0.10.4` 已验证的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点收口 Markdown 预览双击进入编辑时的源码定位，以及关联 Markdown Note 的可恢复草稿模型。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.4` bump 到 `0.10.5`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Note Markdown 预览双击源码定位改为 parser-position source map：普通文本、列表续行、blockquote 列表、强调文本、代码块、entity 和 task item 文本会定位到对应 Markdown 源码 offset
+- 图片、空白区域、display math、malformed math 等无法稳定映射到单个字符的预览块，双击后回退到对应 Markdown 块源码末尾，而不是整篇 Note 文末
+- 预览态与编辑态切换继续保持源码附近上下文，降低从 Markdown 预览定位回 textarea 时的跳转成本
+- 关联 Markdown Note 的草稿模型从 `conflictDraft` 收敛为 `recoverableDraft`；旧状态仍会迁移，新状态只把草稿引用持久化到画布状态，草稿正文继续放在 `note-markdown-drafts/` storage 文件中
+- 可恢复草稿不再被误判为一定处于冲突状态；非冲突活跃草稿、文件不可用场景下的草稿，以及同内容强制覆盖后的清理路径都保留明确恢复语义
+- 新增 `test:note-markdown-source-map`，并补齐关联 Markdown 草稿模型、模板、Playwright Webview、真实 VS Code smoke 与 packaged-payload smoke 回归
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.4` 升级到 `0.10.5` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.5`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.5` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.5` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.4 - Preview Terminal Link Refresh Performance Patch
 
 相对 `0.10.3`，`0.10.4` 是同一 `0.10.x` 公开 `Preview` 线内的执行终端链接性能修复版本。它保留 `0.10.3` 已验证的双市场发布元数据与 Open VSX 图标 asset metadata 修复，重点收口运行中终端输出持续刷新时，普通文本 fallback 负缓存被反复送到 Host 侧解析的问题；同时保留高置信文件链接在文件创建后自动恢复为可点击 file link 的能力。
