@@ -37,6 +37,7 @@
 - [x] (2026-05-18 23:58 +0800) 将 VSCode 发布入口从 QuickInput 直接提交改为插件内发布确认表单：命令面板 / 市场 header / 侧栏 / 画布保存后都只打开表单，用户确认名称、Slug、描述、标签、README、CHANGELOG 和 Template JSON Preview 后才发布。
 - [x] (2026-05-24 02:10 +0800) 重新部署 workers.dev 调试环境，当前版本 ID 更新为 `907ea967-9862-43fb-803d-4095727e8fed`；本次仅更新 Worker / Static Assets，不执行 D1 migration 或 R2 seed。
 - [x] (2026-05-24 11:43 +0800) 按手动截图反馈修复 VSCode 发布表单 Name / Slug 行错位：字段 grid 预留校验提示行高，input 基线保持对齐；同时移除画板右键“发布到模板市场”入口，发布只从保存后的模板侧栏、市场 header 或命令面板进入。
+- [x] (2026-05-24 22:20 +0800) 处理 PR94 review：发布新模板和新版本的 R2 object key 改为包含唯一 `versionId`，避免并发版本发布覆盖同一 `versionNumber` key；Worker CORS 改为仅对公开 GET/OPTIONS 读取路由返回匿名 `*`，写接口不继承公开读取 CORS，并补 API 回归测试。
 
 ## 意外与发现
 
@@ -121,7 +122,7 @@
 
 “模板 JSON”指 `src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。市场发布不能定义另一套不兼容格式；发布 API 必须校验这个结构，并把真正下载的 `template.json` 继续保存为同一格式。
 
-“R2”是 Cloudflare 对象存储，当前下载路径已经从 `TEMPLATE_BUCKET` 读取 `templates/{templateId}/versions/{versionNumber}/template.json` 和 `thumbnail.png`。“D1”是 Cloudflare SQLite 数据库，当前 public repository 只读取 `published` 模板和 `published` 版本，发布写入也必须维护这个可见性边界。
+“R2”是 Cloudflare 对象存储，当前下载路径已经从 `TEMPLATE_BUCKET` 读取 `templates/{templateId}/versions/{versionId}/template.json` 和 `thumbnail.png`。“D1”是 Cloudflare SQLite 数据库，当前 public repository 只读取 `published` 模板和 `published` 版本，发布写入也必须维护这个可见性边界。
 
 ## 工作计划
 

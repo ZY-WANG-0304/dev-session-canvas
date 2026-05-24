@@ -1,5 +1,4 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
+import { Hono, type MiddlewareHandler } from 'hono';
 
 import {
   makeMarketplaceApiError,
@@ -29,6 +28,15 @@ import {
   writeMarketplaceTemplateObjects
 } from './publish';
 
+const PUBLIC_READ_CORS_ROUTES = [
+  '/api/v1/health',
+  '/api/v1/templates',
+  '/api/v1/templates/slug-availability',
+  '/api/v1/templates/:id',
+  '/api/v1/templates/:id/download',
+  '/api/v1/templates/:id/thumbnail'
+] as const;
+
 export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   ASSETS?: Fetcher;
   MARKETPLACE_DB?: D1Database;
@@ -37,26 +45,53 @@ export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   MARKETPLACE_ADMIN_GITHUB_LOGINS?: string;
 }
 
+const PUBLIC_READ_CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': 'accept, content-type',
+  'access-control-expose-headers': [
+    'content-disposition',
+    'x-marketplace-storage-mode',
+    'x-marketplace-catalog-storage-mode',
+    'x-marketplace-template-id',
+    'x-marketplace-version-id',
+    'x-marketplace-sha256'
+  ].join(', '),
+  'access-control-max-age': '600'
+} as const;
+
+function createPublicReadCorsMiddleware(): MiddlewareHandler<{ Bindings: MarketplaceWorkerEnv }> {
+  return async (context, next) => {
+    const method = context.req.method.toUpperCase();
+    if (method === 'OPTIONS') {
+      const requestedMethod = context.req.header('access-control-request-method')?.toUpperCase();
+      if (requestedMethod && requestedMethod !== 'GET') {
+        await next();
+        return;
+      }
+      return new Response(null, {
+        status: 204,
+        headers: PUBLIC_READ_CORS_HEADERS
+      });
+    }
+
+    await next();
+    if (method === 'GET' || method === 'HEAD') {
+      for (const [name, value] of Object.entries(PUBLIC_READ_CORS_HEADERS)) {
+        context.res.headers.set(name, value);
+      }
+    }
+  };
+}
+
 export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorkerEnv }> {
   const app = new Hono<{ Bindings: MarketplaceWorkerEnv }>();
 
-  app.use(
-    '/api/v1/*',
-    cors({
-      origin: '*',
-      allowMethods: ['GET', 'OPTIONS'],
-      allowHeaders: ['accept', 'content-type'],
-      exposeHeaders: [
-        'content-disposition',
-        'x-marketplace-storage-mode',
-        'x-marketplace-catalog-storage-mode',
-        'x-marketplace-template-id',
-        'x-marketplace-version-id',
-        'x-marketplace-sha256'
-      ],
-      maxAge: 600
-    })
-  );
+  const publicReadCors = createPublicReadCorsMiddleware();
+
+  for (const route of PUBLIC_READ_CORS_ROUTES) {
+    app.use(route, publicReadCors);
+  }
 
   app.get('/api/v1/health', (context) =>
     context.json({
