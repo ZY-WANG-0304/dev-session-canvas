@@ -35,7 +35,10 @@ try {
     parseExecutionAttentionSignals
   } = require(signalsOutfile);
   const {
+    createAgentActivityHeuristicState,
     extractAgentAbnormalStreamInterruptionMessage,
+    recordAgentOutputHeuristics,
+    resetAgentActivityHeuristics,
     normalizeAgentAbnormalStreamInterruptionSignature
   } = require(heuristicsOutfile);
 
@@ -110,6 +113,34 @@ try {
   );
   assert.equal(
     extractAgentAbnormalStreamInterruptionMessage(
+      'Claude stream disconnected before completion.\n',
+      'claude'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'stream disconnected before completion\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'stream closed before response.completed\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'connection closed before completion\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
       'Claude stream finished normally.\nevent: message_stop\ndata: {"type":"message_stop"}\n'
     ),
     undefined
@@ -118,6 +149,28 @@ try {
     extractAgentAbnormalStreamInterruptionMessage('normal provider output\n> '),
     undefined
   );
+
+  const heuristicState = createAgentActivityHeuristicState();
+  const staleStreamLine =
+    'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n';
+  const firstStreamSnapshot = recordAgentOutputHeuristics(
+    heuristicState,
+    staleStreamLine,
+    staleStreamLine,
+    'codex',
+    100
+  );
+  assert.equal(firstStreamSnapshot.sawAbnormalStreamInterruption, true);
+  resetAgentActivityHeuristics(heuristicState, staleStreamLine);
+  const staleBufferWithNextTurn = `${staleStreamLine}> next prompt\n`;
+  const nextTurnSnapshot = recordAgentOutputHeuristics(
+    heuristicState,
+    '> next prompt\n',
+    staleBufferWithNextTurn,
+    'codex',
+    200
+  );
+  assert.equal(nextTurnSnapshot.sawAbnormalStreamInterruption, false);
 
   console.log('executionAttentionSignals tests passed');
 } finally {

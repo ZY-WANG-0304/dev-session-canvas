@@ -32,6 +32,7 @@ export type CanvasAttentionNotificationBridgeMode =
 export const canvasStrongTerminalAttentionReminderModes = ['none', 'titleBar', 'minimap', 'both'] as const;
 export type CanvasStrongTerminalAttentionReminderMode =
   (typeof canvasStrongTerminalAttentionReminderModes)[number];
+export type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 
 export function isCanvasAttentionNotificationBridgeMode(
   value: unknown
@@ -95,6 +96,12 @@ export function normalizeCanvasStrongTerminalAttentionReminderMode(
   }
 
   return 'both';
+}
+
+export function normalizeCanvasAgentAbnormalOutputTextNotificationMode(
+  value: unknown
+): CanvasAgentAbnormalOutputTextNotificationMode {
+  return value === 'codex' ? 'codex' : 'off';
 }
 
 export function strongTerminalAttentionReminderShowsTitleBar(

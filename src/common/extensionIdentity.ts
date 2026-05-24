@@ -102,6 +102,7 @@ export const CONFIG_KEYS = {
   legacyNotificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   legacyNotificationPreferNotifierCompanion: 'devSessionCanvas.notifications.preferNotifierCompanion',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
+  agentAbnormalOutputTextNotifications: 'devSessionCanvas.notifications.agentAbnormalOutputTextNotifications',
   canvasOverviewMode: 'devSessionCanvas.canvas.overviewMode',
   canvasOverviewZoomThreshold: 'devSessionCanvas.canvas.overviewZoomThreshold',
   terminalShell: 'devSessionCanvas.terminal.shell',

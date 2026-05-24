@@ -220,7 +220,7 @@ function buildSurfaceLocationLine(
 
 function formatNotificationModeSummary(state: CanvasSidebarState): string {
   const bridgeStatus = formatNotificationBridgeStatus(state);
-  return `${bridgeStatus} · ${formatStrongReminderModeLabel(state)}`;
+  return `${bridgeStatus} · ${formatStrongReminderModeLabel(state)} · ${formatAgentAbnormalOutputTextModeLabel(state)}`;
 }
 
 function buildNotificationModeTooltip(state: CanvasSidebarState): string {
@@ -228,6 +228,7 @@ function buildNotificationModeTooltip(state: CanvasSidebarState): string {
     '执行节点收到 BEL、OSC 9 或 OSC 777 时，节点提醒 icon 与 minimap 闪烁会始终保留。',
     formatNotificationBridgeTooltip(state),
     `增强提醒模式：${formatStrongReminderModeLabel(state)}。`,
+    `异常文本提醒：${formatAgentAbnormalOutputTextModeLabel(state)}。`,
     '',
     '💡 通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。',
     '• Claude Code：需设置 preferredNotifChannel: "iterm2"',
@@ -279,6 +280,10 @@ function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string |
 function formatStrongReminderModeLabel(state: CanvasSidebarState): string {
   const strongReminderSurface = formatStrongReminderSurfaceSummary(state);
   return strongReminderSurface ?? '普通提醒';
+}
+
+function formatAgentAbnormalOutputTextModeLabel(state: CanvasSidebarState): string {
+  return state.agentAbnormalOutputTextNotificationMode === 'codex' ? 'Codex 文本异常' : '文本异常关闭';
 }
 
 function formatFileViewSummary(state: CanvasSidebarState): string {

@@ -2112,7 +2112,9 @@ function registerTestCommands(
           provider: provider === 'codex' || provider === 'claude' ? provider : undefined,
           resumeRequested: resumeRequested === true,
           injectAgentOutputChunk:
-            typeof options.injectAgentOutputChunk === 'string' ? options.injectAgentOutputChunk : undefined
+            typeof options.injectAgentOutputChunk === 'string' ? options.injectAgentOutputChunk : undefined,
+          injectAgentExistingOutput:
+            typeof options.injectAgentExistingOutput === 'string' ? options.injectAgentExistingOutput : undefined
         });
       }
     ),

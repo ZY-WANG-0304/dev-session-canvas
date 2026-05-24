@@ -15,6 +15,7 @@ import {
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
   recordAgentOutputHeuristics,
+  resetAgentAbnormalStreamInterruptionHeuristics,
   resetAgentActivityHeuristics,
   stripTerminalControlSequences,
   normalizeAgentAbnormalStreamInterruptionSignature,
@@ -54,6 +55,7 @@ import {
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
   type CanvasAttentionNotificationBridgeMode,
+  type CanvasAgentAbnormalOutputTextNotificationMode,
   type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
@@ -98,6 +100,7 @@ import {
   isCanvasNodeKind,
   isExecutionNodeKind,
   normalizeCanvasAttentionNotificationBridgeMode,
+  normalizeCanvasAgentAbnormalOutputTextNotificationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -450,6 +453,7 @@ export interface CanvasSidebarState {
   runtimePersistenceEnabled: boolean;
   notificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
+  agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
   filesFeatureEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
@@ -535,6 +539,7 @@ interface StartExecutionSessionForTestParams {
   provider?: AgentProviderKind;
   resumeRequested?: boolean;
   injectAgentOutputChunk?: string;
+  injectAgentExistingOutput?: string;
 }
 
 interface RuntimeSupervisorRegistryForTest {
@@ -655,6 +660,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private appliedStartupConfiguration: CanvasStartupConfiguration;
   private attentionNotificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
+  private agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
   private fileFilterState: CanvasFileFilterState;
   private canvasTemplateInitialized: boolean;
   private state: CanvasPrototypeState;
@@ -726,6 +732,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
+    this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
@@ -818,6 +825,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const strongTerminalAttentionReminderChanged = event.affectsConfiguration(
           CONFIG_KEYS.notificationStrongTerminalAttentionReminder
         );
+        const agentAbnormalOutputTextNotificationsChanged = event.affectsConfiguration(
+          CONFIG_KEYS.agentAbnormalOutputTextNotifications
+        );
         const terminalShellChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShell);
         const terminalShellPathChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShellPath);
         const terminalInheritEnvChanged = event.affectsConfiguration(CONFIG_KEYS.terminalInheritEnv);
@@ -841,7 +851,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           terminalShellChanged ||
           terminalShellPathChanged ||
           attentionNotificationBridgeChanged ||
-          strongTerminalAttentionReminderChanged;
+          strongTerminalAttentionReminderChanged ||
+          agentAbnormalOutputTextNotificationsChanged;
 
         if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
@@ -865,6 +876,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !filesPathDisplayModeChanged &&
           !attentionNotificationBridgeChanged &&
           !strongTerminalAttentionReminderChanged &&
+          !agentAbnormalOutputTextNotificationsChanged &&
           !terminalShellChanged &&
           !terminalShellPathChanged &&
           !terminalInheritEnvChanged &&
@@ -895,6 +907,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             filesPathDisplayModeChanged,
             attentionNotificationBridgeChanged,
             strongTerminalAttentionReminderChanged,
+            agentAbnormalOutputTextNotificationsChanged,
             terminalShellChanged,
             terminalShellPathChanged,
             terminalInheritEnvChanged,
@@ -963,6 +976,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       notificationBridgeMode: this.attentionNotificationBridgeMode,
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
+      agentAbnormalOutputTextNotificationMode: this.agentAbnormalOutputTextNotificationMode,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
@@ -1988,6 +2002,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (params.kind === 'agent' && params.injectAgentOutputChunk) {
       const syntheticSession = this.createAgentNotificationSessionForTest(params);
       try {
+        if (params.injectAgentExistingOutput) {
+          syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentExistingOutput);
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(syntheticSession),
+            syntheticSession.buffer
+          );
+        }
         syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentOutputChunk);
         this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
           params.nodeId,
@@ -4027,6 +4048,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private readAgentAbnormalOutputTextNotificationMode(): CanvasAgentAbnormalOutputTextNotificationMode {
+    return normalizeCanvasAgentAbnormalOutputTextNotificationMode(
+      getConfigurationValue<CanvasAgentAbnormalOutputTextNotificationMode>(
+        'agentAbnormalOutputTextNotifications',
+        'off'
+      )
+    );
+  }
+
   private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
     this.appliedStartupConfiguration = configuration;
     this.applyWorkbenchContextKeys();
@@ -4148,6 +4178,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     filesPathDisplayModeChanged: boolean;
     attentionNotificationBridgeChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
+    agentAbnormalOutputTextNotificationsChanged: boolean;
     terminalShellChanged: boolean;
     terminalShellPathChanged: boolean;
     terminalInheritEnvChanged: boolean;
@@ -4174,6 +4205,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         mode: this.strongTerminalAttentionReminderMode,
         titleBarEnabled: strongTerminalAttentionReminderShowsTitleBar(this.strongTerminalAttentionReminderMode),
         minimapEnabled: strongTerminalAttentionReminderPulsesMinimap(this.strongTerminalAttentionReminderMode)
+      });
+    }
+
+    if (options.agentAbnormalOutputTextNotificationsChanged) {
+      this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
+      for (const session of this.getExecutionSessions('agent').values()) {
+        resetAgentAbnormalStreamInterruptionHeuristics(this.ensureAgentActivityState(session), session.buffer);
+      }
+      this.recordDiagnosticEvent('execution/agentAbnormalOutputTextNotificationsConfigChanged', {
+        enabled: this.agentAbnormalOutputTextNotificationMode !== 'off',
+        mode: this.agentAbnormalOutputTextNotificationMode
       });
     }
 
@@ -4239,6 +4281,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.terminalInheritEnvChanged ||
       options.terminalShellArgsChanged ||
       options.strongTerminalAttentionReminderChanged ||
+      options.agentAbnormalOutputTextNotificationsChanged ||
       terminalShellMetadataChanged ||
       options.terminalScrollbackChanged ||
       options.multiCursorModifierChanged ||
@@ -8377,7 +8420,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): boolean {
     return (
       !session.stopRequested &&
-      (session.agentProvider === 'codex' || session.agentProvider === 'claude') &&
+      this.agentAbnormalOutputTextNotificationMode === 'codex' &&
+      session.agentProvider === 'codex' &&
       (session.lifecycleStatus === 'running' || session.lifecycleStatus === 'waiting-input')
     );
   }
@@ -8659,8 +8703,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session: ManagedExecutionSession,
     chunk: string
   ): void {
+    const providerForTextNotifications =
+      this.agentAbnormalOutputTextNotificationMode === 'codex' && session.agentProvider === 'codex'
+        ? session.agentProvider
+        : undefined;
     const state = this.ensureAgentActivityState(session);
-    const snapshot = recordAgentOutputHeuristics(state, chunk, session.buffer);
+    const snapshot = recordAgentOutputHeuristics(state, chunk, session.buffer, providerForTextNotifications);
     if (snapshot.sawAbnormalStreamInterruption && snapshot.abnormalStreamInterruptionMessage) {
       void this.markAndNotifyAgentAbnormalStreamInterruption(
         nodeId,
@@ -10576,7 +10624,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.lifecycleTimer = undefined;
       }
       if (submittedInstruction) {
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
         this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
