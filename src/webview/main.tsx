@@ -5158,7 +5158,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     }
 
     const baselineContent = committedContentRef.current;
-    if (normalizedContent === baselineContent) {
+    if (normalizedContent === baselineContent && options.force !== true) {
       if (associatedMarkdownFile) {
         clearAssociatedMarkdownDraft();
       }
