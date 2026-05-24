@@ -19,7 +19,7 @@ import {
   type MarketplaceAuthEnv
 } from './auth';
 import { buildR2TemplateDownloadResponse, buildR2TemplateThumbnailResponse } from './download';
-import { MarketplaceRepositoryWriteError, createTemplateRepository } from './repository';
+import { MarketplaceRepositoryWriteError, buildMarketplaceUserId, createTemplateRepository } from './repository';
 import {
   MarketplacePublishValidationError,
   prepareMarketplacePublishTemplate,
@@ -274,7 +274,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!detail) {
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
     }
-    if (detail.template.publisher.githubLogin.toLowerCase() !== user.githubLogin.toLowerCase()) {
+    if (detail.template.publisher.id !== buildMarketplaceUserId(user.githubUserId)) {
       return context.json(makeMarketplaceApiError('template_author_required', 'Only the template publisher can publish new versions.'), 403);
     }
 

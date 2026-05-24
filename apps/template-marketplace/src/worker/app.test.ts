@@ -508,6 +508,30 @@ describe('template marketplace worker api', () => {
     expect(body.error.message).toContain('64 byte limit');
   });
 
+  it('rejects version publishing when login matches but the stable GitHub user id differs', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/versions',
+      {
+        method: 'POST',
+        body: JSON.stringify(buildPublishVersionRequest()),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'dscanvas-admin',
+          'x-marketplace-test-github-user-id': 'test-reclaimed-login'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe('template_author_required');
+  });
+
   it('publishes a new template version for the original publisher', async () => {
     const runLog: FakeD1Run[] = [];
     const bucket = createFakeR2Bucket({});

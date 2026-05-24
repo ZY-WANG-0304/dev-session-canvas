@@ -568,7 +568,7 @@ function formatUtcDay(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function buildMarketplaceUserId(githubUserId: string): string {
+export function buildMarketplaceUserId(githubUserId: string): string {
   return `github-${githubUserId.toLowerCase().replace(/[^a-z0-9._-]/g, '-')}`;
 }
 

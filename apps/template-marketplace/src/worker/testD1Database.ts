@@ -11,7 +11,7 @@ const templateRows = [
     provider_warnings_json: '["Requires GitHub provider"]',
     template_created_at: '2026-05-10T01:00:00.000Z',
     template_updated_at: '2026-05-10T02:00:00.000Z',
-    publisher_id: 'user-admin',
+    publisher_id: 'github-test-dscanvas-admin',
     publisher_github_login: 'dscanvas-admin',
     publisher_display_name: 'DS Canvas Admin',
     publisher_avatar_url: 'https://example.test/avatar.png',
