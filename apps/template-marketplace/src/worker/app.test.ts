@@ -40,6 +40,34 @@ describe('template marketplace worker api', () => {
     expect(response.headers.get('access-control-allow-methods')).toContain('GET');
   });
 
+  it('does not apply public CORS to authenticated write API preflights', async () => {
+    const response = await app.request('http://localhost/api/v1/templates', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://dscanvas.dev',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'authorization,content-type'
+      }
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    expect(response.headers.get('access-control-allow-methods')).toBeNull();
+  });
+
+  it('does not add public CORS headers to authenticated write API responses', async () => {
+    const response = await app.request('http://localhost/api/v1/templates', {
+      method: 'POST',
+      body: JSON.stringify(buildPublishRequest()),
+      headers: {
+        origin: 'https://dscanvas.dev',
+        'content-type': 'application/json'
+      }
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
   it('uses D1 repository when the binding is present', async () => {
     const response = await app.request('http://localhost/api/v1/templates?q=d1', {}, { MARKETPLACE_DB: createFakeD1Database() });
     const body = await response.json<{ items: Array<{ slug: string }>; storageMode: string }>();
@@ -482,6 +510,7 @@ describe('template marketplace worker api', () => {
 
   it('publishes a new template version for the original publisher', async () => {
     const runLog: FakeD1Run[] = [];
+    const bucket = createFakeR2Bucket({});
     const response = await app.request(
       'http://localhost/api/v1/templates/d1-review-loop/versions',
       {
@@ -495,13 +524,27 @@ describe('template marketplace worker api', () => {
       {
         MARKETPLACE_ALLOW_TEST_AUTH: 'true',
         MARKETPLACE_DB: createFakeD1Database(runLog),
-        TEMPLATE_BUCKET: createFakeR2Bucket({})
+        TEMPLATE_BUCKET: bucket
       }
     );
-    const body = await response.json<{ template: { latestVersion: { versionNumber: number }; versions: Array<{ versionNumber: number }> } }>();
+    const body = await response.json<{
+      template: {
+        latestVersion: { id: string; versionNumber: number; objectKey: string; thumbnailKey: string };
+        versions: Array<{ versionNumber: number }>
+      }
+    }>();
 
     expect(response.status).toBe(201);
     expect(body.template.latestVersion.versionNumber).toBe(3);
+    expect(body.template.latestVersion.objectKey).toBe(
+      `templates/tmpl-d1-review/versions/${body.template.latestVersion.id}/template.json`
+    );
+    expect(body.template.latestVersion.thumbnailKey).toBe(
+      `templates/tmpl-d1-review/versions/${body.template.latestVersion.id}/thumbnail.png`
+    );
+    expect(body.template.latestVersion.objectKey).not.toBe('templates/tmpl-d1-review/versions/3/template.json');
+    await expect(bucket.get(body.template.latestVersion.objectKey)).resolves.not.toBeNull();
+    await expect(bucket.get(body.template.latestVersion.thumbnailKey)).resolves.not.toBeNull();
     expect(body.template.versions.map((version) => version.versionNumber)).toEqual([3, 2, 1]);
     expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_versions'))).toBe(true);
     expect(runLog.some((entry) => entry.sql.includes('UPDATE templates SET latest_version_id'))).toBe(true);

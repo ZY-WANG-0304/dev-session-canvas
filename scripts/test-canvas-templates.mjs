@@ -774,10 +774,14 @@ try {
 
   const marketplacePanelSource = await readFile('src/panel/CanvasTemplateMarketplacePanel.ts', 'utf8');
   const marketplaceClientSource = await readFile('src/panel/TemplateMarketplaceClient.ts', 'utf8');
+  const marketplaceWorkerAppSource = await readFile('apps/template-marketplace/src/worker/app.ts', 'utf8');
+  const marketplaceWorkerPublishSource = await readFile('apps/template-marketplace/src/worker/publish.ts', 'utf8');
+  const marketplaceWorkerAppTestSource = await readFile('apps/template-marketplace/src/worker/app.test.ts', 'utf8');
   const marketplaceDetailViewSource = await readFile('apps/template-marketplace/src/web/components/TemplateDetailView.tsx', 'utf8');
   const marketplacePublishViewSource = await readFile('apps/template-marketplace/src/web/components/TemplatePublishView.tsx', 'utf8');
   const marketplaceVscodePreviewE2eRunnerSource = await readFile('scripts/run-template-marketplace-vscode-preview-e2e.mjs', 'utf8');
   const marketplaceVscodePreviewE2eTestSource = await readFile('tests/vscode-smoke/template-marketplace-preview-tests.cjs', 'utf8');
+  const marketplaceDesignDocSource = await readFile('docs/design-docs/template-marketplace.md', 'utf8');
   assert.match(panelManagerSource, /installMarketplaceTemplateDocument\([\s\S]*targetRootPath\?: string/u);
   assert.match(panelManagerSource, /overwriteFilePath\?: string/u);
   assert.match(panelManagerSource, /preserveTemplateId\?: string/u);
@@ -805,6 +809,19 @@ try {
   assert.match(marketplaceClientSource, /context\.secrets\.store\(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse\.token\)/u);
   assert.match(marketplaceClientSource, /findPublishableStoredTemplate/u);
   assert.doesNotMatch(marketplaceClientSource, /workspaceState\.update|globalState\.update/u);
+  assert.match(marketplaceWorkerAppSource, /PUBLIC_READ_CORS_ROUTES/u);
+  assert.match(marketplaceWorkerAppSource, /createPublicReadCorsMiddleware/u);
+  assert.match(marketplaceWorkerAppSource, /requestedMethod && requestedMethod !== 'GET'/u);
+  assert.doesNotMatch(marketplaceWorkerAppSource, /app\.use\(\s*'\/api\/v1\/\*'[\s\S]*origin: '\*'/u);
+  assert.match(marketplaceWorkerPublishSource, /versions\/\$\{versionId\}\/template\.json/u);
+  assert.match(marketplaceWorkerPublishSource, /versions\/\$\{versionId\}\/thumbnail\.png/u);
+  assert.doesNotMatch(marketplaceWorkerPublishSource, /versions\/\$\{nextVersionNumber\}\/template\.json/u);
+  assert.match(marketplaceWorkerAppTestSource, /does not apply public CORS to authenticated write API preflights/u);
+  assert.match(marketplaceWorkerAppTestSource, /does not add public CORS headers to authenticated write API responses/u);
+  assert.match(marketplaceWorkerAppTestSource, /body\.template\.latestVersion\.objectKey\)\.toBe\([\s\S]*versions\/\$\{body\.template\.latestVersion\.id\}\/template\.json/u);
+  assert.match(marketplaceDesignDocSource, /templates\/\{templateId\}\/versions\/\{versionId\}\/template\.json/u);
+  assert.match(marketplaceDesignDocSource, /对象 key 使用不可复用的 `versionId`/u);
+  assert.doesNotMatch(marketplaceDesignDocSource, /templates\/\{templateId\}\/versions\/\{versionNumber\}\/template\.json/u);
   assert.match(marketplacePublishViewSource, /type PublishTextField = 'name' \| 'slug' \| 'description' \| 'tags' \| 'readme' \| 'changelog' \| 'templateJson';/u);
   assert.match(marketplacePublishViewSource, /function updateFormField\(field: PublishTextField, value: string\): void/u);
   assert.doesNotMatch(marketplacePublishViewSource, /setForm\(\(current\)\s*=>[\s\S]{0,200}event\.(?:currentTarget|target)\.value/u);

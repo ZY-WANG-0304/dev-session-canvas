@@ -96,8 +96,8 @@ export async function prepareMarketplacePublishTemplate(
     throw new MarketplacePublishValidationError('thumbnail_invalid', 'Thumbnail must be a PNG image.');
   }
 
-  const objectKey = `templates/${templateId}/versions/1/template.json`;
-  const thumbnailKey = `templates/${templateId}/versions/1/thumbnail.png`;
+  const objectKey = `templates/${templateId}/versions/${versionId}/template.json`;
+  const thumbnailKey = `templates/${templateId}/versions/${versionId}/thumbnail.png`;
   const sha256 = await sha256Hex(templateJsonBytes);
 
   return {
@@ -164,8 +164,8 @@ export async function prepareMarketplacePublishTemplateVersion(
   }
 
   const versionId = `ver-${template.slug}-${nextVersionNumber}-${createShortId()}`;
-  const objectKey = `templates/${template.id}/versions/${nextVersionNumber}/template.json`;
-  const thumbnailKey = `templates/${template.id}/versions/${nextVersionNumber}/thumbnail.png`;
+  const objectKey = `templates/${template.id}/versions/${versionId}/template.json`;
+  const thumbnailKey = `templates/${template.id}/versions/${versionId}/thumbnail.png`;
   const sha256 = await sha256Hex(templateJsonBytes);
 
   return {

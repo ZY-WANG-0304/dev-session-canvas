@@ -190,11 +190,11 @@ D1 在 Phase 1-4 范围内的核心表（通过 Drizzle ORM 定义在 `packages/
 
 R2 对象按不可变版本组织，示例 key：
 
-- `templates/{templateId}/versions/{versionNumber}/template.json`
-- `templates/{templateId}/versions/{versionNumber}/thumbnail.png`
-- `templates/{templateId}/versions/{versionNumber}/package.zip`
+- `templates/{templateId}/versions/{versionId}/template.json`
+- `templates/{templateId}/versions/{versionId}/thumbnail.png`
+- `templates/{templateId}/versions/{versionId}/package.zip`
 
-模板 JSON 上传后先通过 Zod schema 和业务规则校验，再写入 R2；D1 中保存对象 key、大小、hash 和版本状态。发布 API 的默认模板 JSON 大小上限为 5MB，并可通过 Worker 环境变量 `MARKETPLACE_MAX_TEMPLATE_BYTES` 调整；产品最终阈值调整时必须同步产品规格和测试。版本一旦上架，不原地覆盖对象；发布新版本只创建新的 `template_versions` 记录并更新 `templates.latest_version_id`。
+模板 JSON 上传后先通过 Zod schema 和业务规则校验，再写入 R2；D1 中保存对象 key、大小、hash 和版本状态。发布接口生成的对象 key 使用不可复用的 `versionId`，而不是只用递增 `versionNumber`，避免并发发布新版本时两个请求先写入同一个 R2 key 再由 D1 唯一约束拒绝其中一个，导致成功版本的对象内容被失败请求覆盖。发布 API 的默认模板 JSON 大小上限为 5MB，并可通过 Worker 环境变量 `MARKETPLACE_MAX_TEMPLATE_BYTES` 调整；产品最终阈值调整时必须同步产品规格和测试。版本一旦上架，不原地覆盖对象；发布新版本只创建新的 `template_versions` 记录并更新 `templates.latest_version_id`。
 
 ### 7.5 市场模板包与本地安装元数据
 
