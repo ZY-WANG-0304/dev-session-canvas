@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.5
+
+- 与主扩展 `0.10.5` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Note Markdown 修复版本，聚焦预览双击源码定位与关联 Markdown 可恢复草稿模型；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.10.4
 
 - 与主扩展 `0.10.4` 对齐：本轮主扩展是 `0.10.x` Preview 线内的执行终端链接性能修复版本，聚焦运行中输出的 file-link 负缓存刷新节流与 Host 诊断；notifier companion 不引入新的通知投递行为变更。
