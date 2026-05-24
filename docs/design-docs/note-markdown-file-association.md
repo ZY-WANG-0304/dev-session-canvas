@@ -228,7 +228,7 @@ interface NoteNodeMetadata {
 - 如果用户在画布内编辑关联 Markdown Note 时，Host 收到同一文件的外部刷新，Webview 必须保留当前 textarea 内容并进入非阻塞冲突提示；用户仍可继续编辑草稿，但失焦或快捷提交不得静默写回真实文件，必须通过 `重新加载` 或 `覆盖文件` 显式解决。
 - 如果 Host 在写回时因 `contentRevision` 不匹配拒绝旧草稿并进入 `dirty-conflict`，Webview 也必须保留本地已提交但未被 Host 接受的草稿，继续显示同一套冲突提示；不能把 Host 返回的文件当前内容当作已提交 baseline 覆盖本地草稿。
 - 如果 Webview 首次接收或重新 bootstrap 时已经是 Host 持久化的 `dirty-conflict`，且 Host 能通过 `recoverableDraft.draftId` 读回草稿并把 `content` hydrate 到 Webview，则必须恢复草稿、显示冲突提示，并继续提供显式处理动作；如果没有可用草稿内容，只显示与关联文件缺失 / 不可用一致的节点内冲突卡片和 `重新加载` 恢复入口，不得渲染普通预览或允许 checklist 直接写回。若状态是 `ok` 但仍带 `recoverableDraft`，同样必须在首次接收或重新 bootstrap 时恢复草稿或提供“发现未提交的本地草稿”处理入口；该入口不使用“关联文件已在外部更新”的冲突文案。
-- 冲突提示在仍持有本地草稿或 Host 已 hydrate 的 `recoverableDraft.content` 时提供三个显式动作，并保持 textarea 可编辑：`重新加载` 会丢弃草稿并请求 Host 重新读取关联文件以恢复 `ok` 状态；`复制草稿` 会把当前草稿写入系统剪贴板，方便用户先保留内容再决定恢复；`覆盖文件` 会用当前草稿发起 `force` 写回。没有草稿内容时只提供 `重新加载`，不提供 `复制草稿` 或 `覆盖文件`。
+- 冲突提示在仍持有本地草稿或 Host 已 hydrate 的 `recoverableDraft.content` 时提供三个显式动作，并保持 textarea 可编辑：`重新加载` 会丢弃草稿并请求 Host 重新读取关联文件以恢复 `ok` 状态；`复制草稿` 会把当前草稿写入系统剪贴板，方便用户先保留内容再决定恢复；`覆盖文件` 会用当前草稿发起 `force` 写回。`覆盖文件` 是显式冲突解决动作，即使当前草稿正文已经与当前磁盘内容一致，也必须通知 Host 清理 `dirty-conflict` 与 `recoverableDraft`。没有草稿内容时只提供 `重新加载`，不提供 `复制草稿` 或 `覆盖文件`。
 
 文件写回规则：
 
