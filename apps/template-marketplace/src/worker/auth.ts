@@ -309,8 +309,9 @@ function getTestAuthenticatedUser(request: Request, env: MarketplaceAuthEnv): Ma
   if (!githubLogin || !/^[A-Za-z0-9-]{1,39}$/.test(githubLogin)) {
     return undefined;
   }
+  const githubUserId = request.headers.get('x-marketplace-test-github-user-id')?.trim() || `test-${githubLogin.toLowerCase()}`;
   return {
-    githubUserId: `test-${githubLogin.toLowerCase()}`,
+    githubUserId,
     githubLogin,
     displayName: githubLogin,
     avatarUrl: `https://github.com/${encodeURIComponent(githubLogin)}.png`
