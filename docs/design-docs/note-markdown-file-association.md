@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-05-17
+updated_at: 2026-05-24
 ---
 
 # Note 与 Markdown 文件关联
@@ -167,8 +167,8 @@ interface NoteNodeMetadata {
 - `markdown-file` Note 的 `content` 只表示当前 Host 已读取并发送给 Webview 的展示/编辑缓冲；文件才是权威来源。
 - `markdown-file` Note 的展示/编辑缓冲不复用普通 Note 的 8,000 字符持久化截断上限；节点内编辑、checklist 切换或 Host 刷新都不能把超过 8,000 字符的 Markdown 文件截断后写回真实文件。
 - `contentRevision` 表示 Host 侧最近一次确认的磁盘状态版本，默认由 `FileStat` 可观测信息生成；本地 `file:` 资源优先使用 `dev + ino + size + mtime + ctime`，其他 VSCode 文件系统资源使用 provider 暴露的 `type + size + mtime + ctime`。Webview 在开始编辑时记录该 revision 并向 Host 登记一次运行时 edit session，提交时带回；Host 在编辑期间的文件刷新或写回前若发现当前磁盘状态版本已变化，必须进入 `dirty-conflict` 而不是写回旧草稿。
-- `recoverableDraft` 表示关联 Markdown Note 的未提交草稿引用。Webview 在用户编辑关联 Markdown Note 时把草稿和开始编辑时的 `baseContentRevision` 上报给 Host；Host 把草稿正文写入 extension `storageUri` 下的 `note-markdown-drafts/<draftId>.md`，画布状态只持久化 `draftId`、开始编辑时的 `baseContentRevision`、远端 revision 和更新时间。开始编辑但尚未产生冲突或正文差异时，Host 只保留内存态 edit session，不把同内容草稿写入持久化状态；一旦草稿正文已经不同于编辑基线，即使远端 revision 暂未变化，也可以以 `status: ok` + `recoverableDraft` 形式保留可恢复草稿，直到用户提交、显式清除、重新加载或覆盖文件。
-- `recoverableDraft.content` 只允许作为 Host 发给 Webview 的运行时 hydration 字段，用于恢复 textarea 和显示“覆盖文件”入口；写入 `canvas-state.json`、`workspaceState`、debug snapshot 或正式持久化状态前必须移除。该字段只服务未解决冲突恢复，不能被当作文件内容权威。
+- `recoverableDraft` 表示关联 Markdown Note 的未提交草稿引用。Webview 在用户编辑关联 Markdown Note 时把草稿和开始编辑时的 `baseContentRevision` 上报给 Host；Host 把草稿正文写入 extension `storageUri` 下的 `note-markdown-drafts/<draftId>.md`，画布状态只持久化 `draftId`、开始编辑时的 `baseContentRevision`、远端 revision 和更新时间。开始编辑但尚未产生冲突或正文差异时，Host 只保留内存态 edit session，不把同内容草稿写入持久化状态；一旦草稿正文已经不同于编辑基线，即使远端 revision 暂未变化，也可以以 `status: ok` + `recoverableDraft` 形式保留可恢复草稿，直到用户提交、显式清除、重新加载或覆盖文件；重新打开或刷新 Webview 时，Host 仍需 hydrate 可读草稿正文，Webview 必须恢复草稿编辑态或至少显示可处理入口，不能只渲染磁盘内容。
+- `recoverableDraft.content` 只允许作为 Host 发给 Webview 的运行时 hydration 字段，用于恢复 textarea 和显示“覆盖文件”入口；写入 `canvas-state.json`、`workspaceState`、debug snapshot 或正式持久化状态前必须移除。该字段服务未解决冲突和非冲突可恢复草稿的 Webview 恢复，不能被当作文件内容权威。
 - 历史状态中的 `conflictDraft` 读取时迁移为 `recoverableDraft`；如果旧状态曾内联 `conflictDraft.content`，Host 在落盘前也会把正文写回 storage draft 文件，并在 debug snapshot 与 Webview 广播中只暴露 `recoverableDraft`。新代码路径只写 `recoverableDraft`。storage draft 文件目录继续沿用 `note-markdown-drafts/`，避免升级时丢失已有草稿正文。
 - 实现时不应依赖 `markdown-file` Note 的 `content` 作为文件缺失后的长期 fallback。即使持久化层因兼容需要保留最近一次 buffer，UI 也必须在文件不可用时优先显示警告状态，不能把缓存伪装成最新文件内容。
 - `resourceUri` 使用 VSCode 资源 URI 字符串作为持久化身份，避免只保存本地 `fsPath` 后无法解释 Remote 或非当前工作区资源。
@@ -227,7 +227,7 @@ interface NoteNodeMetadata {
 - 长篇编辑可通过现有或新增“打开文件”动作交给 VSCode 原生编辑器；该动作可以放在上下文菜单或低频操作菜单中。
 - 如果用户在画布内编辑关联 Markdown Note 时，Host 收到同一文件的外部刷新，Webview 必须保留当前 textarea 内容并进入非阻塞冲突提示；用户仍可继续编辑草稿，但失焦或快捷提交不得静默写回真实文件，必须通过 `重新加载` 或 `覆盖文件` 显式解决。
 - 如果 Host 在写回时因 `contentRevision` 不匹配拒绝旧草稿并进入 `dirty-conflict`，Webview 也必须保留本地已提交但未被 Host 接受的草稿，继续显示同一套冲突提示；不能把 Host 返回的文件当前内容当作已提交 baseline 覆盖本地草稿。
-- 如果 Webview 首次接收或重新 bootstrap 时已经是 Host 持久化的 `dirty-conflict`，且 Host 能通过 `recoverableDraft.draftId` 读回草稿并把 `content` hydrate 到 Webview，则必须恢复草稿、显示冲突提示，并继续提供显式处理动作；如果没有可用草稿内容，只显示与关联文件缺失 / 不可用一致的节点内冲突卡片和 `重新加载` 恢复入口，不得渲染普通预览或允许 checklist 直接写回。
+- 如果 Webview 首次接收或重新 bootstrap 时已经是 Host 持久化的 `dirty-conflict`，且 Host 能通过 `recoverableDraft.draftId` 读回草稿并把 `content` hydrate 到 Webview，则必须恢复草稿、显示冲突提示，并继续提供显式处理动作；如果没有可用草稿内容，只显示与关联文件缺失 / 不可用一致的节点内冲突卡片和 `重新加载` 恢复入口，不得渲染普通预览或允许 checklist 直接写回。若状态是 `ok` 但仍带 `recoverableDraft`，同样必须在首次接收或重新 bootstrap 时恢复草稿或提供“发现未提交的本地草稿”处理入口；该入口不使用“关联文件已在外部更新”的冲突文案。
 - 冲突提示在仍持有本地草稿或 Host 已 hydrate 的 `recoverableDraft.content` 时提供三个显式动作，并保持 textarea 可编辑：`重新加载` 会丢弃草稿并请求 Host 重新读取关联文件以恢复 `ok` 状态；`复制草稿` 会把当前草稿写入系统剪贴板，方便用户先保留内容再决定恢复；`覆盖文件` 会用当前草稿发起 `force` 写回。没有草稿内容时只提供 `重新加载`，不提供 `复制草稿` 或 `覆盖文件`。
 
 文件写回规则：
@@ -331,7 +331,7 @@ Workspace Trust：
 10. 隐藏 YAML front matter 后，点击 checklist 仍按原始 Markdown 行号写回，不能改到 front matter 或正文错行。
 11. 关联后文件内容是正文权威来源；外部修改文件后，节点刷新预览或在无法实时监听时于重新激活/重试后刷新。
 12. 超过 8,000 字符的关联 Markdown 文件拖入、显示、编辑或 checklist 更新后，真实文件不会被普通 Note 上限截断。
-13. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。
+13. 关联 Markdown Note 在画布内编辑期间或写回被 Host 判定为 stale revision 时，旧草稿不会静默覆盖或丢失；Host 把草稿正文放在 `storageUri/note-markdown-drafts/` 下，持久化状态只保存 draft 引用；UI 显示编辑冲突并仍允许继续编辑当前草稿，同时允许用户重新加载、复制草稿或显式覆盖；重新打开已持久化 `dirty-conflict` 但没有可读草稿内容的节点时，仍显示 `重新加载` 恢复入口，且不允许 checklist 绕过恢复直接写回。重新打开 `status: ok` + `recoverableDraft` 时，可读草稿必须恢复到 textarea 并提供重新加载、复制草稿、覆盖文件；若草稿正文不可读，UI 至少显示“发现未提交的本地草稿”的 reload-only 恢复卡片。
 14. 关联文件缺失、被替换为目录或不可读时，节点显示文件不可用警告，不把最后一次读取内容伪装成正常正文。
 15. 删除关联 Markdown `Note` 不删除关联文件。
 16. 拖拽一个 `.md` / `.markdown` 文件到画布空白区，会在释放点创建关联 `Note`；默认 title 保留完整文件名，开启 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 后才去掉 Markdown 扩展名；即使 `dragover` 阶段只能看到 `DataTransfer.types` 而拿不到真实路径 payload，也会允许后续 drop；拖到执行节点时不破坏既有节点拖放行为。
@@ -386,4 +386,5 @@ Workspace Trust：
 
 追加验证记录（2026-05-24）：
 
+- `npm run typecheck`、`npm run test:webview -- --grep "associated markdown note (restores a persisted ok recoverable draft|bootstrapped with ok recoverable draft|restores a persisted dirty-conflict draft|bootstrapped with dirty-conflict shows reload recovery only)"`、`git diff --check`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `npm run test:note-markdown-file-association` 通过；本轮补齐 `status: ok` + `recoverableDraft` 重新 bootstrap 的 Webview 恢复矩阵，覆盖可读草稿恢复 textarea、非冲突文案、复制/覆盖入口，以及草稿正文不可读时的 reload-only 恢复卡片和 checklist 写回阻断。
 - `npm run typecheck`、`npm run test:note-markdown-file-association`、`npm run test:canvas-templates`、`node --check tests/vscode-smoke/extension-tests.cjs`、`npm run test:webview -- --grep "associated markdown note (persists an edit draft|clears a reverted edit draft|warns when an edited draft sees a file revision change|keeps a rejected stale draft|restores a persisted dirty-conflict draft|bootstrapped with dirty-conflict shows reload recovery only)"`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`、`npm run test:vsix-smoke` 和 `git diff --check` 通过；本轮把关联 Markdown 草稿字段从旧 `conflictDraft` 收敛为 `recoverableDraft`，覆盖旧字段读取迁移、旧内联正文写入 storage draft 文件、debug/Webview 不再输出旧字段、模板冲突路径继续带 runtime-only `recoverableDraft.content`，以及真实 VSCode / packaged VSIX smoke 下的草稿迁移与恢复路径。
