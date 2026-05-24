@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.4`。当前版本范围收口为“在同一 `0.10.x` Preview 线内修复执行终端 live-output 文件链接刷新性能问题，保留 `0.10.3` 已验证的双市场发布元数据与 Open VSX 图标 asset metadata 修复”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.10.5`。当前版本范围收口为“在同一 `0.10.x` Preview 线内修复 Note Markdown 预览源码定位与关联 Markdown 可恢复草稿模型，保留 `0.10.4` 已验证的执行终端链接性能修复、双市场发布元数据与 Open VSX 图标 asset metadata 修复”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -31,13 +31,13 @@
 
 ## release notes 定稿口径
 
-当前 `0.10.4` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
+当前 `0.10.5` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明。
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.4 - Preview Terminal Link Refresh Performance Patch`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.10.5 - Preview Note Markdown Recovery Patch`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：`0.10.4` 只收口执行终端 live-output 文件链接刷新性能、纯 `fallback` 负缓存不再参与后台刷新、高置信 `detected` / `hardwrap` 负缓存仍保留 trailing refresh、Host 侧新增 execution file-link resolve 诊断、保留 `0.10.3` 的 Open VSX asset metadata 修复与双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
+- release notes 应覆盖以下当前已确认范围：`0.10.5` 收口 Note Markdown 预览双击源码定位、复杂预览块 fallback、关联 Markdown `recoverableDraft` 草稿模型、旧 `conflictDraft` 兼容迁移、保留 `0.10.4` 的执行终端链接刷新性能修复与双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -45,17 +45,17 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.10.4`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.10.3` 升级到 `0.10.4` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
+1. 当前目标版本为 `0.10.5`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.10.4` 升级到 `0.10.5` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.10.x` 更新应保持两个公开市场同版本发布。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
-4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.4` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
+4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.5` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
 5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.10.4` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.10.5` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
 2. 关注后续更高的 `0.10.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
@@ -71,7 +71,7 @@
 
 ## 截图策略
 
-当前 `0.10.4` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.10.5` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -116,15 +116,16 @@
 
 ## 当前验证备注
 
-截至 `2026-05-22`，当前 `0.10.4` 发布准备工作树以 `0.10.3` 的双市场元数据修复为基线，新增执行终端 live-output file-link 刷新性能修复与 targeted 回归；这些结果用于证明发布准备分支在对应命令执行工作树上通过必要验证，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
+截至 `2026-05-24`，当前 `0.10.5` 发布准备工作树以 `0.10.4` 的执行终端链接性能修复与双市场元数据修复为基线，新增 Note Markdown 预览源码定位修复、关联 Markdown 可恢复草稿模型与 targeted 回归；这些结果用于证明发布准备分支在对应命令执行工作树上通过必要验证，不替代发布准备 MR 合并后在最终 `main` ref 上的 release-day 打包复跑：
 
-- 当前发布准备分支已重新通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:protocol-webview-messages`、`npm run test:package-vsix-command`、`npm run test:publish-marketplaces`、`npm run build:notifier` 与 `npm run test:notifier-source`
-- 当前发布准备分支已重新通过 targeted Playwright：`npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output|refreshes detected negative file link after second live output inside throttle window|refreshes negative file link cache while live output continues|delays coalesced negative file link refreshes after live output|schedules delayed refresh after stale negative refresh is invalidated|hard-wrapped URL fragments open as one link|styled hard-wrapped file fragments resolve as one link"`，共 14 条用例通过
-- 执行终端 hotfix 已在 feature 合入前记录修复前基线：`does not refresh fallback-only negative file links during live output` 确认普通 fallback-only live-output 后台 resolve request 从修复前 36 次降为 0 次；`refreshes detected negative file link after second live output inside throttle window` 确认高置信负缓存在 throttle window 内仍能 trailing refresh
-- `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.4` VSIX 文件名与双市场发布命令
-- `npm run package:vsix` 通过，生成 `dev-session-canvas-0.10.4.vsix`（114 个文件，约 3.3 MB），并确认包含 `extension/images/icon.png` 与 `Microsoft.VisualStudio.Services.Icons.Default`
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过，生成 `dev-session-canvas-notifier-0.10.4.vsix`（10 个文件，约 143.2 KB），并确认包含 notifier 图标资产
-- `0.10.3` 已完成 Visual Studio Marketplace 与 Open VSX 同版本发布，且 Open VSX API 复核通过：主扩展与 notifier `0.10.3` metadata 均存在 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256`，且主扩展 `files.icon` 返回 `200 image/png`；`0.10.4` 发布后仍需按同一口径复核新版本 metadata
+- `0.10.5` 输入功能分支已重新通过 `npm run typecheck`、`npm run build`、`npm run test:protocol-webview-messages`、`npm run test:note-markdown-checklists`、`npm run test:note-markdown-front-matter`、`npm run test:note-markdown-links`、`npm run test:note-markdown-source-map`，以及 15 条 Note 预览双击源码定位 Playwright 回归和 8 条既有 Markdown 预览渲染 / 交互 Playwright 回归
+- `0.10.5` 输入功能分支已重新通过 `npm run test:note-markdown-file-association`、`npm run test:canvas-templates`、`node --check tests/vscode-smoke/extension-tests.cjs`、关联 Markdown 可恢复草稿 targeted Playwright、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 与 `npm run test:vsix-smoke`
+- 当前发布准备分支已在版本 bump 与发布文档更新后重新通过 `git diff --check`、`npm run typecheck`、`npm run test:extension-manifest`、`npm run test:protocol-webview-messages`、`npm run test:note-markdown-source-map`、`npm run test:note-markdown-file-association`、`npm run test:canvas-templates`、`npm run test:package-vsix-command`、`npm run test:publish-marketplaces`、`npm run build:notifier` 与 `npm run test:notifier-source`
+- `npm run publish:marketplaces -- --dry-run` 通过，并确认主扩展 / notifier 都解析到 `0.10.5` VSIX 文件名与双市场发布命令
+- `npm run package:vsix` 通过，生成 `dev-session-canvas-0.10.5.vsix`（114 个文件，约 3.33 MB），并确认包含 `extension/images/icon.png` 与 `Microsoft.VisualStudio.Services.Icons.Default`
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过，生成 `dev-session-canvas-notifier-0.10.5.vsix`（10 个文件，约 143.25 KB），并确认包含 notifier 图标资产
+- `npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke` 通过，隔离 working-tree 快照执行 `npm ci` 与主扩展 clean checkout 打包，生成 `dev-session-canvas-0.10.5.vsix`（114 个文件，约 3.33 MB）；完整 clean checkout VSIX smoke 仍需在发布准备 MR 合并后的最终 `main` ref 上复跑
+- `0.10.4` 已完成 Visual Studio Marketplace 与 Open VSX 同版本发布，且 Open VSX API 复核通过：主扩展与 notifier `0.10.4` metadata 均存在 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256`；`0.10.5` 发布后仍需按同一口径复核新版本 metadata
 
 注：本轮沿用 `README.marketplace.md` 作为默认英文 Marketplace listing，并保留 `README.marketplace.zh-CN.md` 作为仓库内中文对应版。真正发布前仍需在已经合入 `main` 的最终 ref 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，确认 README 相对链接改写、VSIX 文件数 / 大小和 packaged-payload smoke 均与最终发布 ref 一致。
 
@@ -148,7 +149,7 @@
 
 注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须确保统一入口重新执行过打包，或在使用 `--skip-package` 时已经手工确认当前 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
 
-若最终版本号不是 `0.10.4`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
+若最终版本号不是 `0.10.5`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
 
 ## publish 后补 tag
 
@@ -156,15 +157,15 @@
 
 若当前 shell 所在的就是本次发布对应 commit，可直接执行：
 
-    git tag v0.10.4
-    git push origin v0.10.4
+    git tag v0.10.5
+    git push origin v0.10.5
 
 若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
 
-    git tag v0.10.4 <final-ref-or-sha>
-    git push origin v0.10.4
+    git tag v0.10.5 <final-ref-or-sha>
+    git push origin v0.10.5
 
-若最终版本号不是 `0.10.4`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+若最终版本号不是 `0.10.5`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
 
 ## 发布后验证
 
@@ -172,7 +173,7 @@
 
 1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit。
 2. 打开 `Visual Studio Marketplace` 与 `Open VSX` 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
-3. 直接调用 Open VSX API 复核主扩展 `0.10.4` 的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 都存在，避免只验证 VSIX 本体而漏掉 registry asset metadata。
+3. 直接调用 Open VSX API 复核主扩展 `0.10.5` 的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 都存在，避免只验证 VSIX 本体而漏掉 registry asset metadata。
 4. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
 5. 在干净 profile 中从官方 VS Code Marketplace 安装刚发布的版本，验证扩展可成功激活并能打开主画布。
 6. 在 Open VSX 兼容宿主或 Open VSX 页面中复核两个扩展版本一致，且主扩展 / notifier 的安装关系没有因缺失补充渠道产物而断裂。
