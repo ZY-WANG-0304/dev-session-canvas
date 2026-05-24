@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
 
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
@@ -11,11 +12,24 @@ interface TemplateDetailViewProps {
   source: 'api' | 'seed-fallback';
 }
 
+type DetailTab = 'readme' | 'changelog';
+
+const activeTabClassName =
+  'border-b-2 border-canvas-accent px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-canvas-ink outline-none transition focus:ring-4 focus:ring-canvas-accent/25';
+const inactiveTabClassName =
+  'border-b-2 border-transparent px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-canvas-muted outline-none transition hover:text-canvas-ink focus:ring-4 focus:ring-canvas-accent/25';
+
 export function TemplateDetailView({ template, storageMode, source }: TemplateDetailViewProps): JSX.Element {
+  const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('readme');
   const downloadHref = buildTemplateDownloadHref(template);
   const thumbnailHref = buildTemplateThumbnailHref(template);
   const readme = template.readme.trim() || 'This template does not have a README yet.';
+  const versions = [...template.versions].sort((left, right) => right.versionNumber - left.versionNumber);
   const sourceLabel = source === 'api' ? 'Worker API' : 'Seed fallback';
+
+  useEffect(() => {
+    setActiveDetailTab('readme');
+  }, [template.slug]);
 
   return (
     <section className="border border-canvas-line bg-canvas-paper shadow-card">
@@ -57,12 +71,69 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_17rem]">
         <article className="min-h-[28rem] px-5 py-7 sm:px-8 sm:py-9 lg:pr-10">
-          <div className="border-b border-canvas-line pb-3">
-            <h3 className="text-2xl font-semibold text-canvas-ink">README</h3>
+          <div className="border-b border-canvas-line">
+            <div className="flex flex-wrap gap-1" role="tablist" aria-label="Template detail content">
+              <button
+                id="template-detail-readme-tab"
+                className={activeDetailTab === 'readme' ? activeTabClassName : inactiveTabClassName}
+                type="button"
+                role="tab"
+                aria-selected={activeDetailTab === 'readme'}
+                aria-controls="template-detail-readme-panel"
+                onClick={() => setActiveDetailTab('readme')}
+              >
+                README
+              </button>
+              <button
+                id="template-detail-changelog-tab"
+                className={activeDetailTab === 'changelog' ? activeTabClassName : inactiveTabClassName}
+                type="button"
+                role="tab"
+                aria-selected={activeDetailTab === 'changelog'}
+                aria-controls="template-detail-changelog-panel"
+                onClick={() => setActiveDetailTab('changelog')}
+              >
+                CHANGELOG
+              </button>
+            </div>
           </div>
-          <div className="mt-6 max-w-5xl whitespace-pre-wrap text-base leading-8 text-canvas-ink">
-            {readme}
-          </div>
+          {activeDetailTab === 'readme' ? (
+            <section
+              id="template-detail-readme-panel"
+              className="mt-6"
+              role="tabpanel"
+              aria-labelledby="template-detail-readme-tab"
+            >
+              <h3 className="text-2xl font-semibold text-canvas-ink">README</h3>
+              <div className="mt-6 max-w-5xl whitespace-pre-wrap text-base leading-8 text-canvas-ink">{readme}</div>
+            </section>
+          ) : (
+            <section
+              id="template-detail-changelog-panel"
+              className="mt-6"
+              role="tabpanel"
+              aria-labelledby="template-detail-changelog-tab"
+            >
+              <h3 className="text-2xl font-semibold text-canvas-ink">CHANGELOG</h3>
+              {versions.length > 0 ? (
+                <ol className="mt-6 max-w-5xl space-y-5">
+                  {versions.map((version) => (
+                    <li key={version.id} className="border-b border-canvas-line pb-5 last:border-b-0 last:pb-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-3">
+                        <span className="text-lg font-semibold text-canvas-ink">v{version.versionNumber}</span>
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-canvas-moss">{version.status}</span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-base leading-8 text-canvas-muted">
+                        {version.changelog.trim() || 'No changelog provided for this version.'}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-6 text-base leading-8 text-canvas-muted">This template does not have a changelog yet.</p>
+              )}
+            </section>
+          )}
         </article>
 
         <aside className="border-t border-canvas-line px-5 py-6 lg:border-l lg:border-t-0">

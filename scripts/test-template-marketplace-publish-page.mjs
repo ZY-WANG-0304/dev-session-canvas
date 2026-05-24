@@ -119,6 +119,12 @@ async function verifyDetailPage(page, localUrl) {
   assert.match(detailText, /Use this template to drive implementation/u);
   assert.doesNotMatch(detailText, /Featured/u);
   assert.doesNotMatch(detailText, /Search templates by name/u);
+  await page.getByRole('tab', { name: 'CHANGELOG' }).click();
+  await page.getByRole('heading', { name: 'CHANGELOG' }).waitFor();
+  await assertVisibleText(page, 'Improve review readiness.');
+  await assertVisibleText(page, 'Initial version.');
+  await page.getByRole('tab', { name: 'README' }).click();
+  await assertVisibleText(page, 'Use this template to drive implementation');
 
   const installLink = page.getByRole('link', { name: /Install Review Loop v2 in VS Code/u });
   const installHref = await installLink.getAttribute('href');
