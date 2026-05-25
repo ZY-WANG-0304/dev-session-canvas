@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.6 - Preview Agent Abnormal Interruption Notification Patch
+
+相对 `0.10.5`，`0.10.6` 是同一 `0.10.x` 公开 `Preview` 线内的 Agent 异常提醒补丁。它保留 `0.10.5` 已验证的 Note Markdown 预览源码定位与可恢复草稿模型、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点补齐 Codex / Claude Code Agent 已运行会话异常中断时的节点内提醒与可选外部通知。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.5` bump 到 `0.10.6`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Codex / Claude Code Agent 已进入运行态后，如果在非用户主动停止的情况下以非 `0` 退出并进入 `error`，现在会补充触发节点 `attentionPending`、节点内提醒 icon、Minimap 闪烁和按配置的外部通知
+- 启动前校验失败、命令解析或 spawn 失败、`resume-failed`、用户主动停止、删除节点清理、正常 `0` 退出和 `Terminal` 节点退出都不会触发这条额外提醒，避免把用户仍在画布前处理的路径变成噪音
+- 新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；显式设为 `codex` 时，Codex 输出中的高置信 `stream disconnected before completion: stream closed before response.completed` 文案会在进程退出前补充触发输出流异常提醒
+- Codex 异常输出文本匹配只扫描新增输出；用户下一轮输入、配置切换和 live-runtime attach 已有历史输出都会被标记为已扫描，避免旧 buffer 中的同一条 stream error 被重复通知
+- Claude Code 当前不启用输出文本匹配；在缺少真实 Claude 输出样本或结构化 `StopFailure` 证据前，Claude 只使用“已运行后非用户主动非 `0` 退出”的终态兜底提醒
+- 异常提醒复用既有 `attentionSignalBridge`：`none` 只保留节点内提醒，`workbench` 弹 VS Code 工作台消息，`system` 优先交给本机 UI 侧 notifier companion 并在失败时回退工作台消息
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.5` 升级到 `0.10.6` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.6`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge` 或 `devSessionCanvas.notifications.strongTerminalAttentionReminder`，升级到 `0.10.6` 后会继续沿用该明确选择；新增异常输出文本匹配配置默认关闭
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.6` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.5 - Preview Note Markdown Recovery Patch
 
 相对 `0.10.4`，`0.10.5` 是同一 `0.10.x` 公开 `Preview` 线内的 Note Markdown 体验与草稿恢复修复版本。它保留 `0.10.4` 已验证的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点收口 Markdown 预览双击进入编辑时的源码定位，以及关联 Markdown Note 的可恢复草稿模型。
