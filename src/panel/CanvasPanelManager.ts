@@ -15,8 +15,10 @@ import {
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
   recordAgentOutputHeuristics,
+  resetAgentAbnormalStreamInterruptionHeuristics,
   resetAgentActivityHeuristics,
   stripTerminalControlSequences,
+  normalizeAgentAbnormalStreamInterruptionSignature,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
@@ -53,6 +55,7 @@ import {
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
   type CanvasAttentionNotificationBridgeMode,
+  type CanvasAgentAbnormalOutputTextNotificationMode,
   type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
@@ -97,6 +100,7 @@ import {
   isCanvasNodeKind,
   isExecutionNodeKind,
   normalizeCanvasAttentionNotificationBridgeMode,
+  normalizeCanvasAgentAbnormalOutputTextNotificationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -345,6 +349,8 @@ interface ManagedExecutionSessionBase {
 interface ExecutionAttentionNotificationState extends ExecutionAttentionSignalState {
   lastNotificationKey?: string;
   lastNotificationAtMs?: number;
+  lastAbnormalStreamNotificationKey?: string;
+  lastAbnormalStreamNotificationAtMs?: number;
 }
 
 interface LocalExecutionSession extends ManagedExecutionSessionBase {
@@ -448,6 +454,7 @@ export interface CanvasSidebarState {
   runtimePersistenceEnabled: boolean;
   notificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
+  agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
   filesFeatureEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
@@ -532,6 +539,8 @@ interface StartExecutionSessionForTestParams {
   rows?: number;
   provider?: AgentProviderKind;
   resumeRequested?: boolean;
+  injectAgentOutputChunk?: string;
+  injectAgentExistingOutput?: string;
 }
 
 interface RuntimeSupervisorRegistryForTest {
@@ -653,6 +662,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private appliedStartupConfiguration: CanvasStartupConfiguration;
   private attentionNotificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
+  private agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
   private fileFilterState: CanvasFileFilterState;
   private canvasTemplateInitialized: boolean;
   private state: CanvasPrototypeState;
@@ -724,6 +734,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
+    this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
@@ -816,6 +827,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const strongTerminalAttentionReminderChanged = event.affectsConfiguration(
           CONFIG_KEYS.notificationStrongTerminalAttentionReminder
         );
+        const agentAbnormalOutputTextNotificationsChanged = event.affectsConfiguration(
+          CONFIG_KEYS.agentAbnormalOutputTextNotifications
+        );
         const terminalShellChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShell);
         const terminalShellPathChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShellPath);
         const terminalInheritEnvChanged = event.affectsConfiguration(CONFIG_KEYS.terminalInheritEnv);
@@ -839,7 +853,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           terminalShellChanged ||
           terminalShellPathChanged ||
           attentionNotificationBridgeChanged ||
-          strongTerminalAttentionReminderChanged;
+          strongTerminalAttentionReminderChanged ||
+          agentAbnormalOutputTextNotificationsChanged;
 
         if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
@@ -863,6 +878,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !filesPathDisplayModeChanged &&
           !attentionNotificationBridgeChanged &&
           !strongTerminalAttentionReminderChanged &&
+          !agentAbnormalOutputTextNotificationsChanged &&
           !terminalShellChanged &&
           !terminalShellPathChanged &&
           !terminalInheritEnvChanged &&
@@ -893,6 +909,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             filesPathDisplayModeChanged,
             attentionNotificationBridgeChanged,
             strongTerminalAttentionReminderChanged,
+            agentAbnormalOutputTextNotificationsChanged,
             terminalShellChanged,
             terminalShellPathChanged,
             terminalInheritEnvChanged,
@@ -961,6 +978,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       notificationBridgeMode: this.attentionNotificationBridgeMode,
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
+      agentAbnormalOutputTextNotificationMode: this.agentAbnormalOutputTextNotificationMode,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
@@ -1747,6 +1765,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+
+  private createAgentNotificationSessionForTest(params: StartExecutionSessionForTestParams): ManagedExecutionSession {
+    const node = this.state.nodes.find((candidate) => candidate.id === params.nodeId && candidate.kind === 'agent');
+    if (!node) {
+      throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的 Agent 节点。');
+    }
+
+    const metadata = ensureAgentMetadata(node);
+    const provider = params.provider ?? metadata.provider;
+    const cols = normalizeTerminalCols(params.cols ?? DEFAULT_TERMINAL_COLS);
+    const rows = normalizeTerminalRows(params.rows ?? DEFAULT_TERMINAL_ROWS);
+    const noopSubscription: DisposableLike = { dispose: () => {} };
+    return {
+      sessionId: createExecutionSessionId(params.nodeId, 'agent'),
+      owner: 'local',
+      startedAtMs: Date.now(),
+      process: {
+        backend: 'node-pty',
+        pid: 0,
+        processName: 'test-agent-output-injection',
+        write: () => {},
+        resize: () => {},
+        kill: () => {},
+        onData: () => noopSubscription,
+        onExit: () => noopSubscription
+      },
+      shellPath: provider,
+      cwd: this.getTerminalWorkingDirectory(),
+      cols,
+      rows,
+      buffer: '',
+      terminalStateTracker: new SerializedTerminalStateTracker(cols, rows, {
+        scrollback: this.getTerminalScrollback()
+      }),
+      lineContextTracker: this.createExecutionTerminalLineContextTracker(
+        cols,
+        rows,
+        provider,
+        this.getTerminalWorkingDirectory(),
+        this.getTerminalScrollback()
+      ),
+      stopRequested: false,
+      syncTimer: undefined,
+      syncDueAtMs: undefined,
+      lifecycleTimer: undefined,
+      pendingOutput: '',
+      outputFlushTimer: undefined,
+      displayLabel: agentProviderDisplayLabel(provider),
+      lifecycleStatus: 'running',
+      launchMode: params.resumeRequested === true ? 'resume' : 'start',
+      resumePhaseActive: false,
+      agentProvider: provider,
+      agentResume: {
+        supported: false,
+        strategy: 'none'
+      },
+      agentActivity: createAgentActivityHeuristicState(),
+      attentionSignalState: this.createExecutionAttentionNotificationState(),
+      outputSubscription: undefined,
+      exitSubscription: undefined
+    };
+  }
+
   public async saveNoteAsMarkdownFile(nodeId?: string): Promise<void> {
     const node = nodeId
       ? this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note')
@@ -1918,6 +1999,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
     if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
+    }
+
+    if (params.kind === 'agent' && params.injectAgentOutputChunk) {
+      const syntheticSession = this.createAgentNotificationSessionForTest(params);
+      try {
+        if (params.injectAgentExistingOutput) {
+          syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentExistingOutput);
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(syntheticSession),
+            syntheticSession.buffer
+          );
+        }
+        syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentOutputChunk);
+        this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
+          params.nodeId,
+          syntheticSession,
+          params.injectAgentOutputChunk
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        this.disposeManagedExecutionSession(syntheticSession);
+      }
+
+      return this.getDebugSnapshot();
     }
 
     if (params.kind === 'agent') {
@@ -3945,6 +4050,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private readAgentAbnormalOutputTextNotificationMode(): CanvasAgentAbnormalOutputTextNotificationMode {
+    return normalizeCanvasAgentAbnormalOutputTextNotificationMode(
+      getConfigurationValue<CanvasAgentAbnormalOutputTextNotificationMode>(
+        'agentAbnormalOutputTextNotifications',
+        'off'
+      )
+    );
+  }
+
   private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
     this.appliedStartupConfiguration = configuration;
     this.applyWorkbenchContextKeys();
@@ -4066,6 +4180,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     filesPathDisplayModeChanged: boolean;
     attentionNotificationBridgeChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
+    agentAbnormalOutputTextNotificationsChanged: boolean;
     terminalShellChanged: boolean;
     terminalShellPathChanged: boolean;
     terminalInheritEnvChanged: boolean;
@@ -4092,6 +4207,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         mode: this.strongTerminalAttentionReminderMode,
         titleBarEnabled: strongTerminalAttentionReminderShowsTitleBar(this.strongTerminalAttentionReminderMode),
         minimapEnabled: strongTerminalAttentionReminderPulsesMinimap(this.strongTerminalAttentionReminderMode)
+      });
+    }
+
+    if (options.agentAbnormalOutputTextNotificationsChanged) {
+      this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
+      for (const session of this.getExecutionSessions('agent').values()) {
+        resetAgentAbnormalStreamInterruptionHeuristics(this.ensureAgentActivityState(session), session.buffer);
+      }
+      this.recordDiagnosticEvent('execution/agentAbnormalOutputTextNotificationsConfigChanged', {
+        enabled: this.agentAbnormalOutputTextNotificationMode !== 'off',
+        mode: this.agentAbnormalOutputTextNotificationMode
       });
     }
 
@@ -4157,6 +4283,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.terminalInheritEnvChanged ||
       options.terminalShellArgsChanged ||
       options.strongTerminalAttentionReminderChanged ||
+      options.agentAbnormalOutputTextNotificationsChanged ||
       terminalShellMetadataChanged ||
       options.terminalScrollbackChanged ||
       options.multiCursorModifierChanged ||
@@ -6070,7 +6197,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         onSessionOutput: (event) =>
           this.handleRuntimeSupervisorOutput(runtimeStoragePath, event.sessionId, event.chunk),
         onSessionState: (snapshot) => {
-          void this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot);
+          void this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot).catch((error) => {
+            this.recordDiagnosticEvent('runtime/sessionStateHandlerFailed', {
+              sessionId: snapshot.sessionId,
+              lifecycle: snapshot.lifecycle,
+              live: snapshot.live,
+              message: formatUnknownError(error)
+            });
+          });
         },
         onDisconnected: (error) =>
           this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
@@ -6626,6 +6760,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     runtimeStoragePath: string | undefined
   ): SupervisorExecutionSession {
+    const agentActivity =
+      snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined;
+    if (agentActivity) {
+      resetAgentAbnormalStreamInterruptionHeuristics(agentActivity, snapshot.output);
+    }
+
     return {
       sessionId: snapshot.sessionId,
       owner: 'supervisor',
@@ -6678,6 +6818,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               storagePath: snapshot.resumeStoragePath
             }
           : undefined,
+      agentActivity,
+      attentionSignalState: this.createExecutionAttentionNotificationState(),
       outputSubscription: undefined,
       exitSubscription: undefined
     };
@@ -6735,6 +6877,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         allowOverwriteExisting: session.stopRequested,
         flushImmediately: session.stopRequested
       });
+      this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(binding.nodeId, session, chunk);
     }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
     this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
@@ -6751,7 +6894,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const wasLive = this.getExecutionSessions(binding.kind).has(binding.nodeId);
+    const previousSession = this.getExecutionSessions(binding.kind).get(binding.nodeId);
+    const wasLive = Boolean(previousSession);
     this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
       postSnapshot: false,
       historyOnUnavailable: false
@@ -6763,6 +6907,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         binding.nodeId,
         snapshot.lastExitMessage ?? '会话已结束。'
       );
+      if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
+        await this.markAndNotifyAgentAbnormalInterruption(
+          binding.nodeId,
+          previousSession,
+          snapshot.lifecycle,
+          snapshot.lastExitMessage ?? 'Agent 会话异常退出。',
+          {
+            exitCode: snapshot.lastExitCode ?? null,
+            signal: snapshot.lastExitSignal ?? null,
+            launchMode: snapshot.launchMode,
+            runtimeBackend: snapshot.runtimeBackend,
+            reason: 'process-exit'
+          }
+        );
+      }
       if (
         snapshot.lifecycle === 'error' ||
         snapshot.lifecycle === 'resume-failed'
@@ -8047,13 +8206,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return session.agentActivity;
   }
 
+  private createExecutionAttentionNotificationState(): ExecutionAttentionNotificationState {
+    return {
+      ...createExecutionAttentionSignalState()
+    };
+  }
+
   private ensureExecutionAttentionNotificationState(
     session: ManagedExecutionSession
   ): ExecutionAttentionNotificationState {
     if (!session.attentionSignalState) {
-      session.attentionSignalState = {
-        ...createExecutionAttentionSignalState()
-      };
+      session.attentionSignalState = this.createExecutionAttentionNotificationState();
     }
 
     return session.attentionSignalState;
@@ -8156,34 +8319,180 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     state.lastNotificationKey = notificationKey;
     state.lastNotificationAtMs = now;
 
+    await this.publishExecutionAttentionNotification(kind, nodeId, message, notificationKey, {
+      trigger: 'terminal-signal',
+      signal: signal.kind
+    });
+  }
+
+  private async markAndNotifyAgentAbnormalInterruption(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    status: AgentNodeStatus,
+    message: string,
+    detail: Record<string, unknown> = {}
+  ): Promise<void> {
+    if (!this.shouldNotifyAgentAbnormalInterruption(session, status, detail)) {
+      return;
+    }
+
+    const state = session.attentionSignalState;
+    const now = Date.now();
+    if (
+      typeof state?.lastAbnormalStreamNotificationAtMs === 'number' &&
+      now - state.lastAbnormalStreamNotificationAtMs < EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS
+    ) {
+      this.setExecutionAttentionPending('agent', nodeId, true);
+      this.recordDiagnosticEvent('execution/attentionNotificationSuppressed', {
+        kind: 'agent',
+        nodeId,
+        reason: 'covered-by-abnormal-stream',
+        trigger: 'agent-abnormal-interruption',
+        provider: session.agentProvider,
+        lifecycleStatus: status,
+        ...detail
+      });
+      return;
+    }
+
+    this.setExecutionAttentionPending('agent', nodeId, true);
+    const notificationMessage = this.buildAgentAbnormalInterruptionNotificationMessage(
+      nodeId,
+      session,
+      status,
+      message
+    );
+    await this.publishExecutionAttentionNotification(
+      'agent',
+      nodeId,
+      notificationMessage,
+      `agent-abnormal-interruption:${session.sessionId}:${status}`,
+      {
+        trigger: 'agent-abnormal-interruption',
+        provider: session.agentProvider,
+        lifecycleStatus: status,
+        ...detail
+      }
+    );
+  }
+
+  private shouldNotifyAgentAbnormalInterruption(
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'stopRequested' | 'lifecycleStatus'>,
+    status: AgentNodeStatus | TerminalNodeStatus,
+    detail: Record<string, unknown>
+  ): status is 'error' {
+    return (
+      !session.stopRequested &&
+      status === 'error' &&
+      (session.agentProvider === 'codex' || session.agentProvider === 'claude') &&
+      (session.lifecycleStatus === 'running' || session.lifecycleStatus === 'waiting-input') &&
+      detail.reason === 'process-exit' &&
+      typeof detail.exitCode === 'number' &&
+      detail.exitCode !== 0
+    );
+  }
+
+  private async markAndNotifyAgentAbnormalStreamInterruption(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    message: string
+  ): Promise<void> {
+    if (!this.shouldNotifyAgentAbnormalStreamInterruption(session)) {
+      return;
+    }
+
+    const normalizedMessage = trimStoredTerminalText(message)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalizedMessage) {
+      return;
+    }
+
+    const signature = normalizeAgentAbnormalStreamInterruptionSignature(normalizedMessage);
+    const state = this.ensureExecutionAttentionNotificationState(session);
+    const notificationKey = `agent-abnormal-stream:${session.sessionId}:${signature}`;
+    const now = Date.now();
+    if (
+      state.lastAbnormalStreamNotificationKey === notificationKey &&
+      typeof state.lastAbnormalStreamNotificationAtMs === 'number' &&
+      now - state.lastAbnormalStreamNotificationAtMs < EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS
+    ) {
+      this.recordDiagnosticEvent('execution/attentionNotificationSuppressed', {
+        kind: 'agent',
+        nodeId,
+        reason: 'cooldown',
+        trigger: 'agent-abnormal-stream-interruption',
+        provider: session.agentProvider,
+        message: normalizedMessage
+      });
+      return;
+    }
+
+    state.lastAbnormalStreamNotificationKey = notificationKey;
+    state.lastAbnormalStreamNotificationAtMs = now;
+    this.setExecutionAttentionPending('agent', nodeId, true);
+    await this.publishExecutionAttentionNotification(
+      'agent',
+      nodeId,
+      this.buildAgentAbnormalStreamInterruptionNotificationMessage(nodeId, session, normalizedMessage),
+      notificationKey,
+      {
+        trigger: 'agent-abnormal-stream-interruption',
+        provider: session.agentProvider,
+        lifecycleStatus: session.lifecycleStatus,
+        launchMode: session.launchMode,
+        reason: 'output-pattern'
+      }
+    );
+  }
+
+  private shouldNotifyAgentAbnormalStreamInterruption(
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'stopRequested' | 'lifecycleStatus'>
+  ): boolean {
+    return (
+      !session.stopRequested &&
+      this.agentAbnormalOutputTextNotificationMode === 'codex' &&
+      session.agentProvider === 'codex' &&
+      (session.lifecycleStatus === 'running' || session.lifecycleStatus === 'waiting-input')
+    );
+  }
+
+  private async publishExecutionAttentionNotification(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    message: string,
+    notificationKey: string,
+    detail: Record<string, unknown> = {}
+  ): Promise<void> {
     if (this.attentionNotificationBridgeMode === 'system') {
       const companionResult = await this.postExecutionAttentionNotificationToCompanion(
         this.buildExecutionAttentionNotificationRequest(kind, nodeId, message, notificationKey)
       );
       if (companionResult.status === 'posted') {
         this.recordDiagnosticEvent('execution/attentionNotificationCompanionPosted', {
+          ...detail,
           kind,
           nodeId,
-          signal: signal.kind,
           message,
           bridgeMode: this.attentionNotificationBridgeMode,
           backend: companionResult.backend,
           activationMode: companionResult.activationMode,
-          detail: companionResult.detail
+          companionDetail: companionResult.detail
         });
         return;
       }
 
       this.recordDiagnosticEvent('execution/attentionNotificationCompanionFallback', {
+        ...detail,
         kind,
         nodeId,
-        signal: signal.kind,
         message,
         bridgeMode: this.attentionNotificationBridgeMode,
         status: companionResult.status,
         backend: companionResult.backend,
         activationMode: companionResult.activationMode,
-        detail: companionResult.detail
+        companionDetail: companionResult.detail
       });
     }
 
@@ -8192,9 +8501,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.recordDiagnosticEvent('execution/attentionNotificationPosted', {
+      ...detail,
       kind,
       nodeId,
-      signal: signal.kind,
       message,
       bridgeMode: this.attentionNotificationBridgeMode
     });
@@ -8377,14 +8686,79 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : `${executionLabel}「${displayLabel}」发出终端通知。`;
   }
 
+  private buildAgentAbnormalInterruptionNotificationMessage(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    _status: 'error',
+    message: string
+  ): string {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
+    const providerLabel = agentProviderDisplayLabel(session.agentProvider ?? 'codex');
+    const nodeLabel = trimStoredTerminalText(node?.title || session.displayLabel || '').trim() || 'Agent';
+    const normalizedMessage = trimStoredTerminalText(message)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!normalizedMessage) {
+      return `${providerLabel} Agent「${nodeLabel}」异常中断。`;
+    }
+
+    const clippedMessage =
+      normalizedMessage.length > EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT
+        ? `${normalizedMessage.slice(0, EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT)}...`
+        : normalizedMessage;
+    return `${providerLabel} Agent「${nodeLabel}」异常中断：${clippedMessage}`;
+  }
+
+  private buildAgentAbnormalStreamInterruptionNotificationMessage(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    message: string
+  ): string {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
+    const providerLabel = agentProviderDisplayLabel(session.agentProvider ?? 'codex');
+    const nodeLabel = trimStoredTerminalText(node?.title || session.displayLabel || '').trim() || 'Agent';
+    const normalizedMessage = trimStoredTerminalText(message)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const clippedMessage =
+      normalizedMessage.length > EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT
+        ? `${normalizedMessage.slice(0, EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT)}...`
+        : normalizedMessage;
+    return `${providerLabel} Agent「${nodeLabel}」输出流异常：${clippedMessage}`;
+  }
+
+  private recordAgentOutputHeuristicsAndNotifyAbnormalStream(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    chunk: string
+  ): void {
+    const providerForTextNotifications =
+      this.agentAbnormalOutputTextNotificationMode === 'codex' && session.agentProvider === 'codex'
+        ? session.agentProvider
+        : undefined;
+    const state = this.ensureAgentActivityState(session);
+    const snapshot = recordAgentOutputHeuristics(state, chunk, session.buffer, providerForTextNotifications);
+    if (snapshot.sawAbnormalStreamInterruption && snapshot.abnormalStreamInterruptionMessage) {
+      void this.markAndNotifyAgentAbnormalStreamInterruption(
+        nodeId,
+        session,
+        snapshot.abnormalStreamInterruptionMessage
+      );
+    }
+  }
+
   private recordAgentOutputActivity(
     nodeId: string,
     session: ManagedExecutionSession,
     chunk: string
   ): void {
-    const state = this.ensureAgentActivityState(session);
-    recordAgentOutputHeuristics(state, chunk, session.buffer);
-    this.scheduleAgentInteractiveStateEvaluation(nodeId);
+    this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(nodeId, session, chunk);
+    if (isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus)) {
+      this.scheduleAgentInteractiveStateEvaluation(nodeId);
+    }
   }
 
   private scheduleAgentInteractiveStateEvaluation(nodeId: string): void {
@@ -8930,6 +9304,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         agentProvider: provider,
         agentResume: resumeContext,
         agentActivity: createAgentActivityHeuristicState(),
+        attentionSignalState: this.createExecutionAttentionNotificationState(),
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -8955,11 +9330,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           allowOverwriteExisting: activeSession.stopRequested,
           flushImmediately: activeSession.stopRequested
         });
-        if (
-          activeSession.lifecycleStatus === 'starting' ||
-          activeSession.lifecycleStatus === 'resuming' ||
-          activeSession.lifecycleStatus === 'running'
-        ) {
+        if (shouldRecordAgentOutputHeuristics(activeSession.lifecycleStatus)) {
           this.recordAgentOutputActivity(nodeId, activeSession, text);
         }
         this.queueExecutionStateSync('agent', nodeId);
@@ -9045,6 +9416,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.persistState();
         this.postState('host/stateUpdated');
         await this.postExecutionExitWithFinalSnapshot('agent', nodeId, message);
+        if (status === 'error') {
+          await this.markAndNotifyAgentAbnormalInterruption(nodeId, activeSession, status, message, {
+            exitCode: exitCode ?? null,
+            signal: signal ?? null,
+            launchMode: activeSession.launchMode,
+            reason: 'process-exit'
+          });
+        }
         if (status === 'error' || status === 'resume-failed') {
           this.postMessage({
             type: 'host/error',
@@ -10277,7 +10656,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.lifecycleTimer = undefined;
       }
       if (submittedInstruction) {
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
         this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
@@ -15776,6 +16155,10 @@ function isAgentLifecycleAwaitingInteractiveState(
   status: AgentNodeStatus | TerminalNodeStatus
 ): boolean {
   return status === 'starting' || status === 'resuming' || status === 'running';
+}
+
+function shouldRecordAgentOutputHeuristics(status: AgentNodeStatus | TerminalNodeStatus): boolean {
+  return isAgentLifecycleAwaitingInteractiveState(status) || status === 'waiting-input';
 }
 
 function isAgentInstructionSubmission(data: string): boolean {

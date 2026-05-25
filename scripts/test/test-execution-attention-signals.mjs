@@ -9,13 +9,22 @@ import esbuild from 'esbuild';
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-execution-attention-signals-'));
 
 try {
-  const outfile = path.join(tempDir, 'executionAttentionSignals.cjs');
+  const signalsOutfile = path.join(tempDir, 'executionAttentionSignals.cjs');
+  const heuristicsOutfile = path.join(tempDir, 'agentActivityHeuristics.cjs');
 
   await esbuild.build({
     entryPoints: [path.resolve('src/common/executionAttentionSignals.ts')],
     bundle: true,
     format: 'cjs',
-    outfile,
+    outfile: signalsOutfile,
+    platform: 'node',
+    target: 'node18'
+  });
+  await esbuild.build({
+    entryPoints: [path.resolve('src/common/agentActivityHeuristics.ts')],
+    bundle: true,
+    format: 'cjs',
+    outfile: heuristicsOutfile,
     platform: 'node',
     target: 'node18'
   });
@@ -24,7 +33,15 @@ try {
   const {
     createExecutionAttentionSignalState,
     parseExecutionAttentionSignals
-  } = require(outfile);
+  } = require(signalsOutfile);
+  const {
+    createAgentActivityHeuristicState,
+    extractAgentAbnormalStreamInterruptionMessage,
+    recordAgentOutputHeuristics,
+    resetAgentAbnormalStreamInterruptionHeuristics,
+    resetAgentActivityHeuristics,
+    normalizeAgentAbnormalStreamInterruptionSignature
+  } = require(heuristicsOutfile);
 
   const osc9 = parseExecutionAttentionSignals('\u001b]9;Build finished\u0007');
   assert.equal(osc9.notificationCount, 1);
@@ -83,6 +100,89 @@ try {
     }
   ]);
   assert.equal(carryState.carryover, '');
+
+  const codexStreamInterruption = extractAgentAbnormalStreamInterruptionMessage(
+    'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n'
+  );
+  assert.equal(
+    codexStreamInterruption,
+    '■ stream disconnected before completion: stream closed before response.completed'
+  );
+  assert.equal(
+    normalizeAgentAbnormalStreamInterruptionSignature(codexStreamInterruption),
+    '■ stream disconnected before completion: stream closed before response.completed'
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'Claude stream disconnected before completion.\n',
+      'claude'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'stream disconnected before completion\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'stream closed before response.completed\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'connection closed before completion\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'Claude stream finished normally.\nevent: message_stop\ndata: {"type":"message_stop"}\n'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage('normal provider output\n> '),
+    undefined
+  );
+
+  const heuristicState = createAgentActivityHeuristicState();
+  const staleStreamLine =
+    'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n';
+  const firstStreamSnapshot = recordAgentOutputHeuristics(
+    heuristicState,
+    staleStreamLine,
+    staleStreamLine,
+    'codex',
+    100
+  );
+  assert.equal(firstStreamSnapshot.sawAbnormalStreamInterruption, true);
+  resetAgentActivityHeuristics(heuristicState, staleStreamLine);
+  const staleBufferWithNextTurn = `${staleStreamLine}> next prompt\n`;
+  const nextTurnSnapshot = recordAgentOutputHeuristics(
+    heuristicState,
+    '> next prompt\n',
+    staleBufferWithNextTurn,
+    'codex',
+    200
+  );
+  assert.equal(nextTurnSnapshot.sawAbnormalStreamInterruption, false);
+
+  const attachedSupervisorState = createAgentActivityHeuristicState();
+  resetAgentAbnormalStreamInterruptionHeuristics(attachedSupervisorState, staleStreamLine);
+  const supervisorAttachSnapshot = recordAgentOutputHeuristics(
+    attachedSupervisorState,
+    '> resumed output\n',
+    `${staleStreamLine}> resumed output\n`,
+    'codex',
+    300
+  );
+  assert.equal(supervisorAttachSnapshot.sawAbnormalStreamInterruption, false);
 
   console.log('executionAttentionSignals tests passed');
 } finally {
