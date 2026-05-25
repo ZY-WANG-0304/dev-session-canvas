@@ -6,13 +6,33 @@ type FakeR2ObjectInput =
     };
 
 export function createFakeR2Bucket(objects: Record<string, FakeR2ObjectInput>): R2Bucket {
+  const entries = { ...objects };
   return {
     async get(key: string) {
-      const input = objects[key];
+      const input = entries[key];
       if (input === undefined) {
         return null;
       }
       return createFakeR2Object(key, input);
+    },
+    async put(key: string, value: string | ArrayBuffer | ArrayBufferView | ReadableStream, options?: R2PutOptions) {
+      const bytes = await readR2PutValue(value);
+      entries[key] = {
+        content: bytes,
+        contentType: options?.httpMetadata && 'contentType' in options.httpMetadata ? options.httpMetadata.contentType : undefined
+      };
+      return {
+        key,
+        version: 'fake-version',
+        size: bytes.byteLength,
+        etag: 'fake-etag',
+        httpEtag: '"fake-etag"',
+        checksums: {},
+        uploaded: new Date('2026-05-10T00:00:00.000Z'),
+        httpMetadata: options?.httpMetadata ?? {},
+        customMetadata: options?.customMetadata ?? {},
+        storageClass: 'Standard'
+      } as unknown as R2Object;
     }
   } as unknown as R2Bucket;
 }
@@ -48,4 +68,18 @@ function createFakeR2Object(key: string, input: FakeR2ObjectInput): R2ObjectBody
       headers.set('content-type', contentType);
     }
   } as unknown as R2ObjectBody;
+}
+
+async function readR2PutValue(value: string | ArrayBuffer | ArrayBufferView | ReadableStream): Promise<Uint8Array> {
+  if (typeof value === 'string') {
+    return new TextEncoder().encode(value);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  const response = new Response(value);
+  return new Uint8Array(await response.arrayBuffer());
 }

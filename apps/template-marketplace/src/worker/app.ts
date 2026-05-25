@@ -1,43 +1,97 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
+import { Hono, type MiddlewareHandler } from 'hono';
 
 import {
   makeMarketplaceApiError,
+  MARKETPLACE_SLUG_PATTERN,
   MARKETPLACE_SORT_VALUES,
+  normalizeMarketplaceSlug,
   type MarketplaceListTemplatesRequest,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateVersion
 } from '@dev-session-canvas/marketplace-shared';
 
+import {
+  buildGithubOAuthStartResponse,
+  buildMarketplaceLogoutResponse,
+  exchangeVSCodeGithubToken,
+  exchangeGithubOAuthCallback,
+  getMarketplaceAuthenticatedUser,
+  type MarketplaceAuthEnv
+} from './auth';
 import { buildR2TemplateDownloadResponse, buildR2TemplateThumbnailResponse } from './download';
-import { createTemplateRepository } from './repository';
+import { MarketplaceRepositoryWriteError, buildMarketplaceUserId, createTemplateRepository } from './repository';
+import {
+  MarketplacePublishValidationError,
+  prepareMarketplacePublishTemplate,
+  prepareMarketplacePublishTemplateVersion,
+  resolveMarketplaceMaxTemplateBytes,
+  writeMarketplaceTemplateObjects
+} from './publish';
 
-export interface MarketplaceWorkerEnv {
+const PUBLIC_READ_CORS_ROUTES = [
+  '/api/v1/health',
+  '/api/v1/templates',
+  '/api/v1/templates/slug-availability',
+  '/api/v1/templates/:id',
+  '/api/v1/templates/:id/download',
+  '/api/v1/templates/:id/thumbnail'
+] as const;
+
+export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   ASSETS?: Fetcher;
   MARKETPLACE_DB?: D1Database;
   TEMPLATE_BUCKET?: R2Bucket;
+  MARKETPLACE_MAX_TEMPLATE_BYTES?: string;
+  MARKETPLACE_ADMIN_GITHUB_LOGINS?: string;
+}
+
+const PUBLIC_READ_CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': 'accept, content-type',
+  'access-control-expose-headers': [
+    'content-disposition',
+    'x-marketplace-storage-mode',
+    'x-marketplace-catalog-storage-mode',
+    'x-marketplace-template-id',
+    'x-marketplace-version-id',
+    'x-marketplace-sha256'
+  ].join(', '),
+  'access-control-max-age': '600'
+} as const;
+
+function createPublicReadCorsMiddleware(): MiddlewareHandler<{ Bindings: MarketplaceWorkerEnv }> {
+  return async (context, next) => {
+    const method = context.req.method.toUpperCase();
+    if (method === 'OPTIONS') {
+      const requestedMethod = context.req.header('access-control-request-method')?.toUpperCase();
+      if (requestedMethod && requestedMethod !== 'GET') {
+        await next();
+        return;
+      }
+      return new Response(null, {
+        status: 204,
+        headers: PUBLIC_READ_CORS_HEADERS
+      });
+    }
+
+    await next();
+    if (method === 'GET' || method === 'HEAD') {
+      for (const [name, value] of Object.entries(PUBLIC_READ_CORS_HEADERS)) {
+        context.res.headers.set(name, value);
+      }
+    }
+  };
 }
 
 export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorkerEnv }> {
   const app = new Hono<{ Bindings: MarketplaceWorkerEnv }>();
 
-  app.use(
-    '/api/v1/*',
-    cors({
-      origin: '*',
-      allowMethods: ['GET', 'OPTIONS'],
-      allowHeaders: ['accept', 'content-type'],
-      exposeHeaders: [
-        'content-disposition',
-        'x-marketplace-storage-mode',
-        'x-marketplace-catalog-storage-mode',
-        'x-marketplace-template-id',
-        'x-marketplace-version-id',
-        'x-marketplace-sha256'
-      ],
-      maxAge: 600
-    })
-  );
+  const publicReadCors = createPublicReadCorsMiddleware();
+
+  for (const route of PUBLIC_READ_CORS_ROUTES) {
+    app.use(route, publicReadCors);
+  }
 
   app.get('/api/v1/health', (context) =>
     context.json({
@@ -47,10 +101,79 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     })
   );
 
+  app.get('/api/v1/auth/github/start', (context) => buildGithubOAuthStartResponse(context.req.raw, context.env));
+
+  app.post('/api/v1/auth/logout', (context) => buildMarketplaceLogoutResponse(context.req.raw));
+
+  app.get('/api/v1/auth/github/callback', async (context) => {
+    const result = await exchangeGithubOAuthCallback(context.req.raw, context.env);
+    if (result instanceof Response) {
+      return result;
+    }
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    try {
+      await repository.upsertUser(result.user, new Date().toISOString(), parseAdminGithubLogins(context.env?.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+    } catch {
+      // Session creation already verified GitHub identity; persistence failures surface in write APIs.
+    }
+    return new Response(null, {
+      status: 302,
+      headers: [
+        ['location', result.redirectTo],
+        ['set-cookie', result.sessionCookie],
+        ['set-cookie', result.clearStateCookie]
+      ]
+    });
+  });
+
+  app.get('/api/v1/auth/me', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
+    }
+    return context.json({ user });
+  });
+
+  app.get('/api/v1/me/templates', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
+    }
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    return context.json(await repository.listTemplatesByPublisher(user));
+  });
+
+  app.post('/api/v1/auth/vscode/exchange', async (context) => {
+    const result = await exchangeVSCodeGithubToken(context.req.raw, context.env);
+    if (result instanceof Response) {
+      return result;
+    }
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    try {
+      await repository.upsertUser(result.user, new Date().toISOString(), parseAdminGithubLogins(context.env?.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+    } catch {
+      // The token remains valid for write attempts; persistence failures surface in write APIs.
+    }
+    return context.json(result);
+  });
+
   app.get('/api/v1/templates', async (context) => {
     const query = parseListTemplatesQuery(new URL(context.req.url));
     const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
     return context.json(await repository.listTemplates(query));
+  });
+
+  app.get('/api/v1/templates/slug-availability', async (context) => {
+    const slug = normalizeMarketplaceSlug(context.req.query('slug') ?? '');
+    if (!slug || !MARKETPLACE_SLUG_PATTERN.test(slug)) {
+      return context.json(makeMarketplaceApiError('template_slug_invalid', 'Slug must use lowercase words separated by hyphens.'), 400);
+    }
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    return context.json({
+      slug,
+      available: await repository.isTemplateSlugAvailable(slug),
+      storageMode: repository.storageMode
+    });
   });
 
   app.get('/api/v1/templates/:id', async (context) => {
@@ -100,6 +223,82 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
 
     return buildSeedTemplateThumbnailResponse(detail.template, version);
+  });
+
+  app.post('/api/v1/templates', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to publish templates.'), 401);
+    }
+    if (!context.env?.MARKETPLACE_DB || !context.env?.TEMPLATE_BUCKET) {
+      return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
+    }
+
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json(makeMarketplaceApiError('publish_request_invalid', 'Publish request must be valid JSON.'), 400);
+    }
+
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    try {
+      const prepared = await prepareMarketplacePublishTemplate(body, user, {
+        maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES)
+      });
+      if (!(await repository.isTemplateSlugAvailable(prepared.record.slug))) {
+        return context.json(makeMarketplaceApiError('template_slug_conflict', 'A template with this slug already exists.'), 409);
+      }
+      await writeMarketplaceTemplateObjects(context.env.TEMPLATE_BUCKET, prepared);
+      const result = await repository.publishTemplate(prepared.record, parseAdminGithubLogins(context.env.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+      return context.json(result, 201);
+    } catch (error) {
+      if (error instanceof MarketplacePublishValidationError || error instanceof MarketplaceRepositoryWriteError) {
+        return context.json(makeMarketplaceApiError(error.code, error.message), error.status as 400 | 401 | 409 | 413 | 503);
+      }
+      throw error;
+    }
+  });
+
+  app.post('/api/v1/templates/:id/versions', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to publish template versions.'), 401);
+    }
+    if (!context.env?.MARKETPLACE_DB || !context.env?.TEMPLATE_BUCKET) {
+      return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
+    }
+
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    const detail = await repository.getTemplateDetail(context.req.param('id'));
+    if (!detail) {
+      return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
+    }
+    if (detail.template.publisher.id !== buildMarketplaceUserId(user.githubUserId)) {
+      return context.json(makeMarketplaceApiError('template_author_required', 'Only the template publisher can publish new versions.'), 403);
+    }
+
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json(makeMarketplaceApiError('publish_request_invalid', 'Publish request must be valid JSON.'), 400);
+    }
+
+    try {
+      const nextVersionNumber = Math.max(...detail.template.versions.map((version) => version.versionNumber), 0) + 1;
+      const prepared = await prepareMarketplacePublishTemplateVersion(body, detail.template, nextVersionNumber, {
+        maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES)
+      });
+      await writeMarketplaceTemplateObjects(context.env.TEMPLATE_BUCKET, prepared);
+      const result = await repository.publishTemplateVersion(detail.template, prepared.record);
+      return context.json(result, 201);
+    } catch (error) {
+      if (error instanceof MarketplacePublishValidationError || error instanceof MarketplaceRepositoryWriteError) {
+        return context.json(makeMarketplaceApiError(error.code, error.message), error.status as 400 | 401 | 409 | 413 | 503);
+      }
+      throw error;
+    }
   });
 
   app.notFound((context) => context.json(makeMarketplaceApiError('not_found', 'Route was not found.'), 404));
@@ -174,4 +373,11 @@ function parseListTemplatesQuery(url: URL): MarketplaceListTemplatesRequest {
     page: Number.isFinite(page) ? page : undefined,
     pageSize: Number.isFinite(pageSize) ? pageSize : undefined
   };
+}
+
+function parseAdminGithubLogins(value: string | undefined): string[] {
+  return value
+    ?.split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean) ?? [];
 }

@@ -25,6 +25,33 @@ describe('D1TemplateRepository', () => {
     expect(response?.template.providerWarnings).toEqual(['Requires GitHub provider']);
   });
 
+  it('lists templates published by the current GitHub user', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database());
+
+    const response = await repository.listTemplatesByPublisher({
+      githubUserId: 'test-dscanvas-admin',
+      githubLogin: 'dscanvas-admin',
+      displayName: 'DS Canvas Admin',
+      avatarUrl: ''
+    });
+
+    expect(response.storageMode).toBe('d1');
+    expect(response.items.map((template) => template.slug)).toEqual(['d1-review-loop']);
+  });
+
+  it('returns an empty publisher list for other GitHub users', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database());
+
+    const response = await repository.listTemplatesByPublisher({
+      githubUserId: 'test-someone-else',
+      githubLogin: 'someone-else',
+      displayName: 'Someone Else',
+      avatarUrl: ''
+    });
+
+    expect(response.items).toHaveLength(0);
+  });
+
   it('falls back to the latest published version when the latest pointer is rejected', async () => {
     const repository = new D1TemplateRepository(createFallbackAwareD1Database());
 
@@ -111,7 +138,7 @@ function createFallbackAwareD1Database(): D1Database {
     provider_warnings_json: '["Requires GitHub provider"]',
     template_created_at: '2026-05-10T01:00:00.000Z',
     template_updated_at: '2026-05-10T02:00:00.000Z',
-    publisher_id: 'user-admin',
+    publisher_id: 'github-test-dscanvas-admin',
     publisher_github_login: 'dscanvas-admin',
     publisher_display_name: 'DS Canvas Admin',
     publisher_avatar_url: 'https://example.test/avatar.png',
@@ -204,7 +231,7 @@ function createCrossTemplateLatestPointerD1Database(): D1Database {
     provider_warnings_json: '["Requires GitHub provider"]',
     template_created_at: '2026-05-10T01:00:00.000Z',
     template_updated_at: '2026-05-10T02:00:00.000Z',
-    publisher_id: 'user-admin',
+    publisher_id: 'github-test-dscanvas-admin',
     publisher_github_login: 'dscanvas-admin',
     publisher_display_name: 'DS Canvas Admin',
     publisher_avatar_url: 'https://example.test/avatar.png',

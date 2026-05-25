@@ -76,6 +76,7 @@
   "command.resetToDefaultTemplate.title": "Dev Session Canvas: 重置画布为默认模板",
   "command.saveCanvasAsTemplate.title": "Dev Session Canvas: 将当前画布保存为模板",
   "command.openTemplateMarketplace.title": "Dev Session Canvas: 打开模板市场",
+  "command.publishTemplateToMarketplace.title": "Dev Session Canvas: 发布模板到市场",
   "command.importTemplate.title": "Dev Session Canvas: 从文件导入模板",
   "command.exportTemplate.title": "Dev Session Canvas: 导出模板到文件",
   "command.deleteTemplate.title": "Dev Session Canvas: 删除模板",

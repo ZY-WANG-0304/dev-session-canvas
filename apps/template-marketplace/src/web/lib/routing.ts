@@ -1,7 +1,16 @@
 const TEMPLATE_BASE_PATH = '/templates';
+const TEMPLATE_PUBLISH_PATH = `${TEMPLATE_BASE_PATH}/publish`;
+const TEMPLATE_PUBLISH_SUCCESS_PATH = `${TEMPLATE_PUBLISH_PATH}/success`;
+const TEMPLATE_ME_PATH = `${TEMPLATE_BASE_PATH}/me`;
 
 export function readTemplateSlugFromPath(pathname: string): string | undefined {
   if (pathname === TEMPLATE_BASE_PATH || pathname === `${TEMPLATE_BASE_PATH}/`) {
+    return undefined;
+  }
+  if (isMarketplacePublishPath(pathname)) {
+    return undefined;
+  }
+  if (isMarketplaceMePath(pathname)) {
     return undefined;
   }
   if (!pathname.startsWith(`${TEMPLATE_BASE_PATH}/`)) {
@@ -16,5 +25,43 @@ export function buildTemplateDetailHref(slug: string): string {
 }
 
 export function getMarketplaceHomeHref(): string {
-  return TEMPLATE_BASE_PATH;
+  return `${TEMPLATE_BASE_PATH}/`;
+}
+
+export function getMarketplacePublishHref(): string {
+  return TEMPLATE_PUBLISH_PATH;
+}
+
+export function buildMarketplacePublishSuccessHref(slug: string): string {
+  const params = new URLSearchParams();
+  params.set('template', slug);
+  return `${TEMPLATE_PUBLISH_SUCCESS_PATH}?${params.toString()}`;
+}
+
+export function getMarketplaceMeHref(): string {
+  return TEMPLATE_ME_PATH;
+}
+
+export function buildGithubSignInHref(returnTo: string): string {
+  const params = new URLSearchParams();
+  params.set('return_to', returnTo);
+  return `/api/v1/auth/github/start?${params.toString()}`;
+}
+
+export function buildSignOutHref(returnTo: string): string {
+  const params = new URLSearchParams();
+  params.set('return_to', returnTo);
+  return `/api/v1/auth/logout?${params.toString()}`;
+}
+
+export function isMarketplacePublishPath(pathname: string): boolean {
+  return pathname === TEMPLATE_PUBLISH_PATH || pathname === `${TEMPLATE_PUBLISH_PATH}/` || pathname.startsWith(`${TEMPLATE_PUBLISH_PATH}/`);
+}
+
+export function isMarketplacePublishSuccessPath(pathname: string): boolean {
+  return pathname === TEMPLATE_PUBLISH_SUCCESS_PATH || pathname === `${TEMPLATE_PUBLISH_SUCCESS_PATH}/`;
+}
+
+export function isMarketplaceMePath(pathname: string): boolean {
+  return pathname === TEMPLATE_ME_PATH || pathname === `${TEMPLATE_ME_PATH}/`;
 }

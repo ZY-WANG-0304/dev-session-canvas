@@ -10,8 +10,17 @@ import {
 
 import { TemplateDetailView } from './components/TemplateDetailView';
 import { TemplateCard } from './components/TemplateCard';
+import { TemplateMyTemplatesView } from './components/TemplateMyTemplatesView';
+import { TemplatePublishView } from './components/TemplatePublishView';
 import { loadMarketplaceTemplateDetail, loadMarketplaceTemplates } from './lib/api';
-import { getMarketplaceHomeHref, readTemplateSlugFromPath } from './lib/routing';
+import {
+  getMarketplaceHomeHref,
+  getMarketplaceMeHref,
+  getMarketplacePublishHref,
+  isMarketplaceMePath,
+  isMarketplacePublishPath,
+  readTemplateSlugFromPath
+} from './lib/routing';
 
 interface LoadState {
   templates: MarketplaceTemplateSummary[];
@@ -32,6 +41,8 @@ export function App(): JSX.Element {
   const [sort, setSort] = useState<MarketplaceSort>('hot');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [detailSlug, setDetailSlug] = useState(() => readTemplateSlugFromPath(window.location.pathname));
+  const [isPublishPage, setIsPublishPage] = useState(() => isMarketplacePublishPath(window.location.pathname));
+  const [isMyTemplatesPage, setIsMyTemplatesPage] = useState(() => isMarketplaceMePath(window.location.pathname));
   const [state, setState] = useState<LoadState>({
     templates: [],
     source: 'seed-fallback',
@@ -45,13 +56,17 @@ export function App(): JSX.Element {
   });
 
   useEffect(() => {
-    const handlePopState = () => setDetailSlug(readTemplateSlugFromPath(window.location.pathname));
+    const handlePopState = () => {
+      setDetailSlug(readTemplateSlugFromPath(window.location.pathname));
+      setIsPublishPage(isMarketplacePublishPath(window.location.pathname));
+      setIsMyTemplatesPage(isMarketplaceMePath(window.location.pathname));
+    };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {
-    if (detailSlug) {
+    if (detailSlug || isPublishPage || isMyTemplatesPage) {
       setState((current) => (current.loading ? { ...current, loading: false } : current));
       return;
     }
@@ -72,12 +87,12 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [query, sort, selectedTags, detailSlug]);
+  }, [query, sort, selectedTags, detailSlug, isPublishPage, isMyTemplatesPage]);
 
   const availableTags = useMemo(() => collectVisibleTags(state.templates, selectedTags), [state.templates, selectedTags]);
 
   useEffect(() => {
-    if (!detailSlug) {
+    if (!detailSlug || isPublishPage || isMyTemplatesPage) {
       setDetailState((current) => ({ ...current, loading: false }));
       return;
     }
@@ -97,40 +112,54 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [detailSlug]);
+  }, [detailSlug, isPublishPage, isMyTemplatesPage]);
 
   const isDetailPage = Boolean(detailSlug);
+  const isSecondaryPage = isDetailPage || isPublishPage || isMyTemplatesPage;
+  const activeNavItem = isPublishPage ? 'publish' : isMyTemplatesPage ? 'mine' : 'templates';
   const statusLabel = `${state.source === 'api' ? 'Worker API' : 'Seed fallback'} · Storage: ${state.storageMode}`;
 
   return (
     <main className="min-h-screen bg-canvas-mist text-canvas-ink">
       <header className="bg-canvas-nav text-canvas-navText">
-        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-6 text-sm sm:px-8">
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold">DevSessionCanvas</span>
+        <div className="mx-auto flex h-12 w-full max-w-7xl items-center justify-between gap-6 px-6 text-sm sm:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="truncate text-lg font-semibold">DevSessionCanvas</span>
             <span className="text-canvas-navText/45">|</span>
-            <span className="text-base">Templates</span>
+            <span className="shrink-0 text-base">Templates</span>
           </div>
-          <a className="hidden font-semibold underline underline-offset-4 sm:inline" href="https://github.com/ZY-WANG-0304/dev-session-canvas">
+          <a className="hidden shrink-0 font-semibold underline underline-offset-4 sm:inline" href="https://github.com/ZY-WANG-0304/dev-session-canvas">
             GitHub
           </a>
         </div>
       </header>
       <nav className="border-b border-canvas-line bg-canvas-paper">
-        <div className="mx-auto max-w-7xl px-6 text-sm font-semibold sm:px-8">
-          <span className="inline-flex bg-canvas-accent px-10 py-4 text-canvas-accentText">Templates</span>
+        <div className="mx-auto flex w-full max-w-7xl overflow-x-auto px-6 text-sm font-semibold sm:px-8">
+          <a className={navItemClassName(activeNavItem === 'templates')} href={getMarketplaceHomeHref()} aria-current={activeNavItem === 'templates' ? 'page' : undefined}>
+            Templates
+          </a>
+          <a className={navItemClassName(activeNavItem === 'publish')} href={getMarketplacePublishHref()} aria-current={activeNavItem === 'publish' ? 'page' : undefined}>
+            Publish
+          </a>
+          <a className={navItemClassName(activeNavItem === 'mine')} href={getMarketplaceMeHref()} aria-current={activeNavItem === 'mine' ? 'page' : undefined}>
+            My Templates
+          </a>
         </div>
       </nav>
 
-      <section className={`px-6 sm:px-8 ${isDetailPage ? 'py-8 lg:py-10' : 'py-16 lg:py-20'}`}>
-        <div className={`mx-auto ${isDetailPage ? 'max-w-6xl' : 'max-w-7xl'}`}>
-          {isDetailPage ? (
+      <section className={`px-6 sm:px-8 ${isSecondaryPage ? 'py-8 lg:py-10' : 'py-16 lg:py-20'}`}>
+        <div className={`mx-auto ${isSecondaryPage ? 'max-w-6xl' : 'max-w-7xl'}`}>
+          {isPublishPage ? (
+            <TemplatePublishView />
+          ) : isMyTemplatesPage ? (
+            <TemplateMyTemplatesView />
+          ) : isDetailPage ? (
             detailState.loading ? (
               <div className="border border-canvas-line bg-canvas-paper p-10 text-canvas-muted shadow-card">Loading template details...</div>
             ) : detailState.template ? (
               <TemplateDetailView template={detailState.template} source={detailState.source} storageMode={detailState.storageMode} />
             ) : (
-              <div className="border border-dashed border-canvas-line bg-canvas-paper p-10 text-center text-canvas-muted">
+              <div className="border border-canvas-errorLine bg-canvas-errorBg p-10 text-center text-canvas-error" role="alert">
                 <a className="font-semibold text-canvas-moss hover:underline" href={getMarketplaceHomeHref()}>
                   Back to all templates
                 </a>
@@ -216,9 +245,17 @@ export function App(): JSX.Element {
                 ) : null}
               </div>
 
-              <div className="mt-12 flex items-center justify-between">
-                <h2 className="text-2xl font-semibold text-canvas-ink">Featured</h2>
-                <span className="text-sm text-canvas-muted">{state.templates.length} templates</span>
+              <div className="mt-12 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold text-canvas-ink">Featured</h2>
+                  <span className="mt-1 block text-sm text-canvas-muted">{state.templates.length} templates</span>
+                </div>
+                <a
+                  className="inline-flex h-10 items-center bg-canvas-accent px-4 text-sm font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+                  href={getMarketplacePublishHref()}
+                >
+                  Upload your template
+                </a>
               </div>
 
               <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -252,4 +289,10 @@ function collectVisibleTags(templates: MarketplaceTemplateSummary[], selectedTag
 
 function toggleTag(current: string[], tag: string): string[] {
   return current.includes(tag) ? current.filter((entry) => entry !== tag) : [...current, tag];
+}
+
+function navItemClassName(active: boolean): string {
+  return active
+    ? 'inline-flex shrink-0 bg-canvas-accent px-10 py-4 text-canvas-accentText'
+    : 'inline-flex shrink-0 px-8 py-4 text-canvas-muted hover:text-canvas-ink hover:underline';
 }

@@ -8,11 +8,22 @@ export const MARKETPLACE_SORT_VALUES = ['hot', 'downloads', 'likes', 'newest', '
 export const MARKETPLACE_TEMPLATE_STATUS_VALUES = ['published', 'delisted'] as const;
 export const MARKETPLACE_VERSION_STATUS_VALUES = ['published', 'rejected'] as const;
 export const MARKETPLACE_STORAGE_MODES = ['seed', 'd1', 'r2'] as const;
+export const MARKETPLACE_DEFAULT_MAX_TEMPLATE_BYTES = 5 * 1024 * 1024;
+export const MARKETPLACE_MAX_THUMBNAIL_BYTES = 1024 * 1024;
+export const MARKETPLACE_MAX_TEMPLATE_NAME_LENGTH = 80;
+export const MARKETPLACE_MAX_TEMPLATE_DESCRIPTION_LENGTH = 240;
+export const MARKETPLACE_MAX_TEMPLATE_README_LENGTH = 50_000;
+export const MARKETPLACE_MAX_TEMPLATE_CHANGELOG_LENGTH = 2_000;
+export const MARKETPLACE_MAX_TAGS_PER_TEMPLATE = 10;
+export const MARKETPLACE_MAX_TAG_LENGTH = 32;
+export const MARKETPLACE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export type MarketplaceSort = (typeof MARKETPLACE_SORT_VALUES)[number];
 export type MarketplaceTemplateStatus = (typeof MARKETPLACE_TEMPLATE_STATUS_VALUES)[number];
 export type MarketplaceVersionStatus = (typeof MARKETPLACE_VERSION_STATUS_VALUES)[number];
 export type MarketplaceStorageMode = (typeof MARKETPLACE_STORAGE_MODES)[number];
+export type MarketplaceTemplateNodeKind = 'agent' | 'terminal' | 'note';
+export type MarketplaceTemplateAgentProviderKind = 'default' | 'codex' | 'claude';
 
 export interface MarketplacePublisherSummary {
   id: string;
@@ -94,6 +105,79 @@ export interface MarketplaceDownloadResponse {
   downloadUrl: string;
 }
 
+export interface MarketplaceTemplateDocument {
+  version: 1;
+  template: {
+    id: string;
+    name: string;
+    category: 'builtin' | 'user';
+    nodes: MarketplaceTemplateNodeSnapshot[];
+    edges: MarketplaceTemplateEdgeSnapshot[];
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+export interface MarketplaceTemplateNodeSnapshot {
+  kind: MarketplaceTemplateNodeKind;
+  title: string;
+  position: {
+    x: number;
+    y: number;
+  };
+  size: {
+    width: number;
+    height: number;
+  };
+  metadata?: {
+    note?: {
+      content: string;
+    };
+    agent?: {
+      provider: MarketplaceTemplateAgentProviderKind;
+      argv?: string[];
+    };
+  };
+}
+
+export interface MarketplaceTemplateEdgeSnapshot {
+  sourceNodeIndex: number;
+  targetNodeIndex: number;
+  sourceAnchor: 'top' | 'right' | 'bottom' | 'left';
+  targetAnchor: 'top' | 'right' | 'bottom' | 'left';
+  arrowMode: 'none' | 'forward' | 'both';
+  color?: string;
+  label?: string;
+}
+
+export interface MarketplacePublishTemplateRequest {
+  slug?: string;
+  name: string;
+  description: string;
+  tags: string[];
+  readme?: string;
+  changelog?: string;
+  templateDocument: MarketplaceTemplateDocument;
+  thumbnailPngBase64?: string;
+}
+
+export interface MarketplacePublishTemplateVersionRequest {
+  changelog?: string;
+  templateDocument: MarketplaceTemplateDocument;
+  thumbnailPngBase64?: string;
+}
+
+export interface MarketplacePublishTemplateResponse {
+  template: MarketplaceTemplateDetail;
+  storageMode: MarketplaceStorageMode;
+}
+
+export interface MarketplaceSlugAvailabilityResponse {
+  slug: string;
+  available: boolean;
+  storageMode: MarketplaceStorageMode;
+}
+
 export interface MarketplaceApiError {
   error: {
     code: string;
@@ -109,8 +193,111 @@ export const marketplaceListTemplatesRequestSchema = z.object({
   pageSize: z.number().int().positive().max(MARKETPLACE_MAX_PAGE_SIZE).optional()
 });
 
+const marketplaceTemplatePositionSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite()
+});
+
+const marketplaceTemplateSizeSchema = z.object({
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive()
+});
+
+const marketplaceTemplateNodeSchema = z.object({
+  kind: z.enum(['agent', 'terminal', 'note']),
+  title: z.string().trim().min(1).max(120),
+  position: marketplaceTemplatePositionSchema,
+  size: marketplaceTemplateSizeSchema,
+  metadata: z
+    .object({
+      note: z
+        .object({
+          content: z.string().max(100_000)
+        })
+        .optional(),
+      agent: z
+        .object({
+          provider: z.enum(['default', 'codex', 'claude']),
+          argv: z.array(z.string().max(500)).max(64).optional()
+        })
+        .optional()
+    })
+    .optional()
+});
+
+const marketplaceTemplateEdgeSchema = z.object({
+  sourceNodeIndex: z.number().int().nonnegative(),
+  targetNodeIndex: z.number().int().nonnegative(),
+  sourceAnchor: z.enum(['top', 'right', 'bottom', 'left']),
+  targetAnchor: z.enum(['top', 'right', 'bottom', 'left']),
+  arrowMode: z.enum(['none', 'forward', 'both']),
+  color: z.string().max(32).optional(),
+  label: z.string().max(120).optional()
+});
+
+export const marketplaceTemplateDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    template: z.object({
+      id: z.string().trim().min(1).max(160),
+      name: z.string().trim().min(1).max(MARKETPLACE_MAX_TEMPLATE_NAME_LENGTH),
+      category: z.enum(['builtin', 'user']),
+      nodes: z.array(marketplaceTemplateNodeSchema).min(1),
+      edges: z.array(marketplaceTemplateEdgeSchema),
+      createdAt: z.string().trim().min(1).max(80),
+      updatedAt: z.string().trim().min(1).max(80)
+    })
+  })
+  .superRefine((document, context) => {
+    const nodeCount = document.template.nodes.length;
+    document.template.edges.forEach((edge, index) => {
+      if (edge.sourceNodeIndex >= nodeCount) {
+        context.addIssue({
+          code: 'custom',
+          path: ['template', 'edges', index, 'sourceNodeIndex'],
+          message: 'sourceNodeIndex must point to an existing node.'
+        });
+      }
+      if (edge.targetNodeIndex >= nodeCount) {
+        context.addIssue({
+          code: 'custom',
+          path: ['template', 'edges', index, 'targetNodeIndex'],
+          message: 'targetNodeIndex must point to an existing node.'
+        });
+      }
+    });
+  });
+
+const marketplaceTagsSchema = z
+  .array(z.string().trim().min(1).max(MARKETPLACE_MAX_TAG_LENGTH))
+  .max(MARKETPLACE_MAX_TAGS_PER_TEMPLATE)
+  .transform((tags) => dedupeNormalizedTags(tags));
+
+export const marketplacePublishTemplateRequestSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .max(80)
+    .transform((value) => normalizeMarketplaceSlug(value))
+    .refine((value) => value.length === 0 || MARKETPLACE_SLUG_PATTERN.test(value), 'Slug must use lowercase words separated by hyphens.')
+    .optional(),
+  name: z.string().trim().min(1).max(MARKETPLACE_MAX_TEMPLATE_NAME_LENGTH),
+  description: z.string().trim().min(1).max(MARKETPLACE_MAX_TEMPLATE_DESCRIPTION_LENGTH),
+  tags: marketplaceTagsSchema,
+  readme: z.string().max(MARKETPLACE_MAX_TEMPLATE_README_LENGTH).optional(),
+  changelog: z.string().max(MARKETPLACE_MAX_TEMPLATE_CHANGELOG_LENGTH).optional(),
+  templateDocument: marketplaceTemplateDocumentSchema,
+  thumbnailPngBase64: z.string().trim().min(1).optional()
+});
+
+export const marketplacePublishTemplateVersionRequestSchema = z.object({
+  changelog: z.string().max(MARKETPLACE_MAX_TEMPLATE_CHANGELOG_LENGTH).optional(),
+  templateDocument: marketplaceTemplateDocumentSchema,
+  thumbnailPngBase64: z.string().trim().min(1).optional()
+});
+
 const seedPublisher: MarketplacePublisherSummary = {
-  id: 'github-zy-wang-0304',
+  id: 'github-8197085',
   githubLogin: 'ZY-WANG-0304',
   displayName: 'Dev Session Canvas',
   avatarUrl: 'https://github.com/ZY-WANG-0304.png'
@@ -316,6 +503,28 @@ export function makeMarketplaceApiError(code: string, message: string): Marketpl
   };
 }
 
+export function normalizeMarketplaceSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
+
+export function buildMarketplaceSlugFromName(name: string): string {
+  return normalizeMarketplaceSlug(name) || 'template';
+}
+
+export function normalizeMarketplaceTag(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export {
+  generateMarketplaceTemplateThumbnailPngBase64,
+  generateMarketplaceTemplateThumbnailPngBytes
+} from './thumbnail';
+
 function normalizeListQuery(query: MarketplaceListTemplatesRequest): MarketplaceListTemplatesRequest {
   const normalizedQuery = query.q?.trim();
 
@@ -365,4 +574,19 @@ function normalizeSearchText(value: string): string {
 
 function normalizeTag(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function dedupeNormalizedTags(tags: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    const displayTag = tag.trim();
+    const normalizedTag = normalizeMarketplaceTag(displayTag);
+    if (!normalizedTag || seen.has(normalizedTag)) {
+      continue;
+    }
+    seen.add(normalizedTag);
+    result.push(displayTag);
+  }
+  return result;
 }

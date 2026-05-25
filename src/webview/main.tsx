@@ -5259,7 +5259,7 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-icon codicon codicon-save-as" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
                 <strong>保存为模板</strong>
-                <span>把当前布局保存到用户模板目录</span>
+                <span>保存后可从模板侧栏或市场面板发布</span>
               </span>
             </button>
           </>
