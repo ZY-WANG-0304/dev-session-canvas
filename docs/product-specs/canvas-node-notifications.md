@@ -255,37 +255,37 @@ type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 
 ### 7.1 功能验收
 
-- [ ] 系统能正确解析 BEL、OSC 9、OSC 777 三种终端注意力信号
-- [ ] OSC 9 中以 `4;` 开头的消息被正确标记为 `ignore`
-- [ ] 当检测到注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁始终显示
-- [ ] 当 `Codex` / `Claude Code` Agent 已运行后非用户主动非 `0` 异常退出时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知
-- [ ] 当 `agentAbnormalOutputTextNotifications=codex` 且 Codex 运行输出出现已知流断开错误时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知；默认 `off` 时不触发文本匹配通知
-- [ ] 配置 `attentionSignalBridge` 为 `none` 时，不额外弹出 VS Code 工作台消息或系统通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
-- [ ] 配置 `attentionSignalBridge` 为 `workbench` 时，会弹出 VS Code 工作台消息
+- [x] 系统能正确解析 BEL、OSC 9、OSC 777 三种终端注意力信号
+- [x] OSC 9 中以 `4;` 开头的消息被正确标记为 `ignore`
+- [x] 当检测到注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁始终显示
+- [x] 当 `Codex` / `Claude Code` Agent 已运行后非用户主动非 `0` 异常退出时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知
+- [x] 当 `agentAbnormalOutputTextNotifications=codex` 且 Codex 运行输出出现已知流断开错误时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知；默认 `off` 时不触发文本匹配通知
+- [x] 配置 `attentionSignalBridge` 为 `none` 时，不额外弹出 VS Code 工作台消息或系统通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
+- [x] 配置 `attentionSignalBridge` 为 `workbench` 时，会弹出 VS Code 工作台消息
 - [x] 配置 `attentionSignalBridge` 为 `system` 且 companion 可用时，主扩展会优先把 attention event 发送给 companion，并避免重复弹出 VS Code 工作台消息
 - [x] companion 成功接单时，diagnostic event 会记录实际 `backend` 与 `activationMode`，便于区分“完整可点击通知”和“只展示通知”的平台差异
-- [ ] 配置 `attentionSignalBridge` 为 `system` 但 companion 不可用时，会自动回退到 VS Code 工作台消息
-- [ ] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
-- [ ] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
-- [ ] 左键点击节点本体后，通知状态自动清除
+- [x] 配置 `attentionSignalBridge` 为 `system` 但 companion 不可用时，会自动回退到 VS Code 工作台消息
+- [x] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
+- [x] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
+- [x] 左键点击节点本体后，通知状态自动清除
 - [x] 点击 VS Code 工作台通知中的"查看节点"按钮后，画布只居中对应节点，不选中节点且不清除通知状态
 - [x] 点击支持回调的系统桌面通知后，画布只居中对应节点，不选中节点且不清除通知状态
-- [ ] 配置变更后立即生效，无需重启 VSCode
-- [ ] 通知状态会持久化到存储，重新加载画布后能正确恢复
+- [x] 配置变更后立即生效，无需重启 VSCode
+- [x] 通知状态会持久化到存储，重新加载画布后能正确恢复
 
 ### 7.2 性能验收
 
-- [ ] 信号解析不影响终端输出的实时性
+- [x] 信号解析不影响终端输出的实时性
 - [ ] 大量并发通知不导致 UI 卡顿
-- [ ] OSC 序列跨 chunk 解析的缓存大小受限（256 字节）
-- [ ] 通知状态更新不触发不必要的画布重绘
+- [x] OSC 序列跨 chunk 解析的缓存大小受限（256 字节）
+- [x] 通知状态更新不触发不必要的画布重绘
 
 ### 7.3 体验验收
 
 - [ ] 通知视觉提示足够明显，用户能快速注意到
 - [ ] 通知视觉提示不过于干扰，不影响正常工作
 - [ ] 强提醒模式的视觉效果在浅色和深色主题下都清晰可见
-- [ ] Minimap 上的通知提示与节点本体的提示保持一致
+- [x] Minimap 上的通知提示与节点本体的提示保持一致
 - [ ] 用户能通过设置面板轻松调整通知行为
 
 ### 7.4 真实桌面通知人工验收
@@ -335,4 +335,4 @@ type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 
 ## 11. 最后更新
 
-2026-05-21
+2026-05-26
