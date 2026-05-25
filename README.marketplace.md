@@ -48,21 +48,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.5 Highlights
+## 0.10.6 Highlights
 
-The public `0.10.5` release is a focused `0.10.x` Preview patch for Note Markdown preview editing and associated Markdown draft recovery. It keeps the `0.10.4` execution-terminal link refresh performance fix, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
+The public `0.10.6` release is a focused `0.10.x` Preview patch for Agent abnormal interruption notifications. It keeps the `0.10.5` Note Markdown source-position and recoverable-draft fixes, the `0.10.4` execution-terminal link refresh performance fix, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
 
-- Double-clicking ordinary Note Markdown preview text now uses parser-position source maps, so the textarea caret lands near the corresponding Markdown source for paragraphs, list continuations, blockquotes, emphasis, code, entities, and task text
-- Double-clicking images, blank preview space, display math, or malformed math now falls back to the corresponding Markdown block end instead of jumping to the whole Note end
-- Associated Markdown Note drafts now use a `recoverableDraft` model, preserving active non-conflict drafts and unavailable-file recovery without treating every draft as a conflict
-- Older `conflictDraft` state is still migrated, while new persisted canvas state only keeps the draft reference and leaves draft content in the existing `note-markdown-drafts/` storage files
+- Codex / Claude Code `Agent` nodes now raise the existing node attention state when a running session exits abnormally with a non-zero code outside a user stop
+- Startup failures, `resume-failed`, user stops, cleanup stops, normal zero exits, and `Terminal` node exits remain excluded from this additional reminder path
+- A new `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` setting defaults to `off`; setting it to `codex` enables high-confidence Codex stream-disconnect text reminders before the process exits
+- Codex stream-disconnect matching only scans new output, so the same historical buffer line is not re-notified after the next prompt, a setting change, or live-runtime attach
+- Claude Code does not use text matching yet; without a real Claude output sample or structured `StopFailure` evidence, it keeps the safer abnormal-exit fallback only
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.4` to `0.10.5` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.5` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.10.5` to `0.10.6` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge` or `devSessionCanvas.notifications.strongTerminalAttentionReminder`, upgrading to `0.10.6` preserves that explicit choice. The new abnormal-output text matching setting stays `off` unless you explicitly enable the `codex` mode
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
