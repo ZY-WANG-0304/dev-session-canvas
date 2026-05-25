@@ -2599,6 +2599,49 @@ body {
   pointer-events: auto;
 }
 
+.canvas-node-resize-line {
+  position: absolute;
+  z-index: 29;
+  border: 0 solid var(--canvas-node-color);
+  pointer-events: none;
+}
+
+.canvas-node-resize-line-top,
+.canvas-node-resize-line-bottom {
+  left: 0;
+  width: 100%;
+  height: 1px;
+  transform: translate(0, -50%);
+}
+
+.canvas-node-resize-line-top {
+  top: 0;
+  border-top-width: 2px;
+}
+
+.canvas-node-resize-line-bottom {
+  top: 100%;
+  border-bottom-width: 2px;
+}
+
+.canvas-node-resize-line-left,
+.canvas-node-resize-line-right {
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translate(-50%, 0);
+}
+
+.canvas-node-resize-line-left {
+  left: 0;
+  border-left-width: 2px;
+}
+
+.canvas-node-resize-line-right {
+  left: 100%;
+  border-right-width: 2px;
+}
+
 .canvas-node-resize-control::after {
   content: '';
   position: absolute;
@@ -2607,7 +2650,7 @@ body {
   height: 12px;
   border-radius: 999px;
   border: 2px solid var(--vscode-editor-background);
-  background: var(--vscode-focusBorder);
+  background: var(--canvas-node-color);
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
   transform: translate(-50%, -50%);
 }

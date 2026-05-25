@@ -7581,6 +7581,52 @@ test('note markdown unsafe command links do not render clickable hrefs', async (
   await expect(noteNode.locator('.note-markdown-preview a[data-note-markdown-link="true"]')).toHaveCount(0);
 });
 
+test('selected node resize affordance keeps type-colored edge highlight', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.canvas-node-resize-line')).toHaveCount(0);
+
+  await noteNode.locator('.window-chrome').click();
+
+  await expect(noteNode.locator('.canvas-node-resize-line')).toHaveCount(4);
+  await expect(noteNode.locator('[data-node-resize-direction]')).toHaveCount(8);
+
+  const resizeChrome = await noteNode.evaluate((node) => {
+    const topLine = node.querySelector('.canvas-node-resize-line-top');
+    const rightLine = node.querySelector('.canvas-node-resize-line-right');
+    const cornerHandle = node.querySelector('[data-node-resize-direction="bottom-right"]');
+    if (
+      !(topLine instanceof HTMLElement) ||
+      !(rightLine instanceof HTMLElement) ||
+      !(cornerHandle instanceof HTMLElement)
+    ) {
+      return null;
+    }
+
+    const topLineStyle = window.getComputedStyle(topLine);
+    const rightLineStyle = window.getComputedStyle(rightLine);
+    const cornerHandleStyle = window.getComputedStyle(cornerHandle, '::after');
+
+    return {
+      topBorderColor: topLineStyle.borderTopColor,
+      topBorderWidth: topLineStyle.borderTopWidth,
+      rightBorderColor: rightLineStyle.borderRightColor,
+      rightBorderWidth: rightLineStyle.borderRightWidth,
+      handleBackground: cornerHandleStyle.backgroundColor
+    };
+  });
+
+  expect(resizeChrome).toEqual({
+    topBorderColor: 'rgb(167, 139, 250)',
+    topBorderWidth: '2px',
+    rightBorderColor: 'rgb(167, 139, 250)',
+    rightBorderWidth: '2px',
+    handleBackground: 'rgb(167, 139, 250)'
+  });
+});
+
 test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -7591,10 +7637,7 @@ test('dragging a resize handle posts resizeNode and updates the note frame size'
   await clearPostedMessages(page);
 
   const noteNode = nodeById(page, 'note-1');
-  await performTestDomAction(page, {
-    kind: 'selectNode',
-    nodeId: 'note-1'
-  });
+  await noteNode.locator('.window-chrome').click();
   await clearPostedMessages(page);
 
   const beforeBox = await noteNode.boundingBox();
