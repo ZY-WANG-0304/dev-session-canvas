@@ -4663,6 +4663,8 @@ const CANVAS_NODE_RESIZE_DIRECTIONS: CanvasNodeResizeDirection[] = [
   'bottom-right'
 ];
 
+const CANVAS_NODE_RESIZE_LINE_DIRECTIONS: CanvasNodeResizeDirection[] = ['top', 'right', 'bottom', 'left'];
+
 function NodeResizeAffordance({
   id,
   data,
@@ -4851,6 +4853,13 @@ function NodeResizeAffordance({
 
   return (
     <>
+      {CANVAS_NODE_RESIZE_LINE_DIRECTIONS.map((direction) => (
+        <span
+          key={`line-${direction}`}
+          className={`canvas-node-resize-line canvas-node-resize-line-${direction}`}
+          aria-hidden="true"
+        />
+      ))}
       {CANVAS_NODE_RESIZE_DIRECTIONS.map((direction) => (
         <button
           key={direction}
