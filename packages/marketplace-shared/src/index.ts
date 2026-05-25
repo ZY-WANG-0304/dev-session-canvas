@@ -297,7 +297,7 @@ export const marketplacePublishTemplateVersionRequestSchema = z.object({
 });
 
 const seedPublisher: MarketplacePublisherSummary = {
-  id: 'github-zy-wang-0304',
+  id: 'github-8197085',
   githubLogin: 'ZY-WANG-0304',
   displayName: 'Dev Session Canvas',
   avatarUrl: 'https://github.com/ZY-WANG-0304.png'
