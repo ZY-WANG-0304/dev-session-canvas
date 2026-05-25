@@ -8016,6 +8016,7 @@ test('manually created nodes can zoom to fit before recentering when the node ov
 
 test('canvas groups render, rename, and post group actions', async ({ page }) => {
   await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
   await bootstrap(page, {
     version: 1,
     updatedAt: '2026-05-22T00:00:00.000Z',
@@ -8046,6 +8047,36 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   const groupFrame = page.locator('[data-group-id="group-1"]');
   await expect(groupFrame).toBeVisible();
   await expect(groupFrame.locator('[data-probe-field="title"]')).toHaveValue('Group 1');
+
+  const groupPanelStyles = await groupFrame.evaluate((frame) => {
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    if (!(titlebar instanceof HTMLElement)) {
+      throw new Error('Group titlebar not found.');
+    }
+    const frameStyles = getComputedStyle(frame);
+    const titlebarStyles = getComputedStyle(titlebar);
+    const frameRect = frame.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    return {
+      frameBackgroundColor: frameStyles.backgroundColor,
+      frameBorderTopLeftRadius: frameStyles.borderTopLeftRadius,
+      titlebarTop: Math.round(titlebarRect.top - frameRect.top),
+      titlebarBottom: Math.round(titlebarRect.bottom - frameRect.top),
+      titlebarBorderBottomWidth: titlebarStyles.borderBottomWidth,
+      titlebarBorderTopLeftRadius: titlebarStyles.borderTopLeftRadius,
+      titlebarBorderBottomRightRadius: titlebarStyles.borderBottomRightRadius,
+      titlebarBoxShadow: titlebarStyles.boxShadow
+    };
+  });
+  expect(Number.parseFloat(groupPanelStyles.frameBorderTopLeftRadius)).toBeLessThanOrEqual(8);
+  expect(groupPanelStyles.frameBackgroundColor).not.toMatch(/rgba?\(0,\s*0,\s*0(?:,\s*0)?\)/u);
+  expect(groupPanelStyles.titlebarTop).toBeGreaterThanOrEqual(0);
+  expect(groupPanelStyles.titlebarTop).toBeLessThanOrEqual(2);
+  expect(groupPanelStyles.titlebarBottom).toBeGreaterThan(24);
+  expect(groupPanelStyles.titlebarBorderBottomWidth).toBe('1px');
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopLeftRadius)).toBeLessThanOrEqual(8);
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderBottomRightRadius)).toBe(0);
+  expect(groupPanelStyles.titlebarBoxShadow).toBe('none');
 
   await groupFrame.locator('[data-probe-field="title"]').fill('Planning Group');
   await groupFrame.locator('[data-probe-field="title"]').press('Enter');

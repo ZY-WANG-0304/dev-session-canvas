@@ -1,5 +1,5 @@
 ---
-version: 2026-05-17
+version: 2026-05-26
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -121,6 +121,10 @@ components:
   canvas-edge:
     stroke: "var(--canvas-edge-stroke-default)"
     selectedOutline: "color-mix(in srgb, var(--vscode-focusBorder) 46%, transparent)"
+  canvas-group:
+    backgroundColor: "weak panel surface mixed with transparent"
+    borderColor: "var(--vscode-panel-border) / var(--vscode-widget-border)"
+    title: "panel header active tab shape, not a pill"
   sidebar-section:
     hostSurface: "host-native sidebar surface by default"
     density: "compact workbench section"
@@ -284,6 +288,15 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。
+
+### Canvas Group Surfaces
+
+分组是画布空间组织对象，视觉上应更接近 VSCode Panel，而不是节点卡片或白板贴纸：
+
+- 外框使用 VSCode panel/widget token、弱 panel surface、1px 边界和低圆角；普通态也要让用户能识别区域边界。
+- 标题贴在顶部 header 内，采用类似 Panel 顶部 active tab 的标题区域；不使用外浮胶囊、强阴影或高饱和标签。
+- 选中态通过 `focusBorder` 外描边、active tab 下划线和轻量矩形 toolbar 表达，不通过自定义分组颜色表达。
+- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；主要命中热区是标题、header、边框和 resize handle。
 
 ### Node Title And Subtitle
 
