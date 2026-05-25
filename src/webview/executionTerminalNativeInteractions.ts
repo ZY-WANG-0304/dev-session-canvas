@@ -1,4 +1,12 @@
-import type { IBufferLine, IBufferRange, ILink, ILinkDecorations, ILinkProvider, Terminal } from '@xterm/xterm';
+import type {
+  IBufferCell,
+  IBufferLine,
+  IBufferRange,
+  ILink,
+  ILinkDecorations,
+  ILinkProvider,
+  Terminal
+} from '@xterm/xterm';
 import LinkifyIt from 'linkify-it';
 
 import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
@@ -8,8 +16,10 @@ import {
   type ExecutionTerminalClipboardPlatform
 } from '../common/executionTerminalClipboard';
 import {
+  EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS,
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
+  shouldSuppressExecutionTerminalWordLink,
   type DetectedExecutionTerminalPathLink,
   type ExecutionTerminalFileLinkCandidate,
   type ExecutionTerminalDroppedResource,
@@ -17,6 +27,13 @@ import {
   type ExecutionTerminalPathStyle,
   type ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
+import {
+  CODE_FILES_DATA_TRANSFER,
+  RESOURCE_URLS_DATA_TRANSFER,
+  URI_LIST_DATA_TRANSFER,
+  hasPotentialDroppedResource,
+  parseDroppedStringArray
+} from './droppedResources';
 
 interface ExecutionTerminalNativeInteractionsOptions {
   nodeId: string;
@@ -65,6 +82,22 @@ interface StyledFileLinkCandidate {
   bufferRange: IBufferRange;
 }
 
+interface HardWrappedFileLinkCandidate {
+  candidate: ExecutionTerminalFileLinkCandidate;
+  fragments: HardWrappedLinkFragment[];
+}
+
+interface HardWrappedLinkFragment {
+  text: string;
+  bufferRange: IBufferRange;
+}
+
+interface StyledTextSpan {
+  text: string;
+  signature: string;
+  bufferRange: IBufferRange;
+}
+
 interface SimpleRange {
   startColumn: number;
   startLineNumber: number;
@@ -82,11 +115,52 @@ interface TooltipController {
   hide: () => void;
 }
 
-const RESOURCE_URLS_DATA_TRANSFER = 'ResourceURLs';
-const CODE_FILES_DATA_TRANSFER = 'CodeFiles';
-const URI_LIST_DATA_TRANSFER = 'text/uri-list';
+interface HardWrappedHoverOverlayController {
+  show: (ranges: IBufferRange[]) => void;
+  clear: () => void;
+  dispose: () => void;
+}
+
+type ExecutionFileLinkResolutionCache = Map<
+  string,
+  ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+>;
+
+interface ExecutionFileLinkResolutionCacheMetadata {
+  negativeInvalidationGeneration: number;
+  entries: Map<string, ExecutionFileLinkResolutionCacheEntryMetadata>;
+  revalidateVisibleFileLinks?: (cacheKey: string) => void;
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh;
+  lastOutputInvalidationTime?: number;
+}
+
+interface ExecutionFileLinkResolutionCacheEntryMetadata {
+  backgroundRefresh?: Promise<void>;
+  backgroundRefreshGeneration?: number;
+  candidates: ExecutionTerminalFileLinkCandidate[];
+  bufferStartLine: number;
+  bufferEndLine: number;
+  needsRefreshAfterCurrent?: boolean;
+  negativeInvalidationGeneration: number;
+}
+
+type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
+
+interface ExecutionFileLinkNegativeCacheInvalidationResult {
+  invalidated: boolean;
+  retryDelayMs?: number;
+}
+
+interface InteractionLinkOptions {
+  lowConfidence?: boolean;
+  hoverOverlayRanges?: IBufferRange[];
+  hoverOverlayController?: HardWrappedHoverOverlayController;
+}
+
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
 const EXECUTION_LINK_TOOLTIP_VISIBLE_CLASS = 'is-visible';
+const EXECUTION_HARD_WRAPPED_LINK_HOVER_CLASS = 'execution-hard-wrapped-link-hover';
+const EXECUTION_HARD_WRAPPED_LINK_HOVER_SEGMENT_CLASS = 'execution-hard-wrapped-link-hover-segment';
 const DEFAULT_WORKBENCH_HOVER_DELAY = 500;
 const EXECUTION_MAX_LINE_LENGTH = 2000;
 const EXECUTION_MAX_RESOLVED_LINK_LENGTH = 1024;
@@ -95,10 +169,18 @@ const EXECUTION_MULTILINE_LINK_MAX_LENGTH = 500;
 const EXECUTION_LOCAL_LINK_MAX_LENGTH = 500;
 const EXECUTION_URI_LINK_MAX_LENGTH = 2048;
 const EXECUTION_WORD_LINK_MAX_LENGTH = 100;
+const EXECUTION_HARD_WRAPPED_LINK_MAX_LINES = 4;
+const EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX = 16;
+const EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS = 200;
+const EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS = 1000;
 const FILE_LINK_LABEL = 'Open file in editor';
 const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
 const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
 const URL_LINK_LABEL = 'Follow link';
+const executionFileLinkResolutionCacheMetadata = new WeakMap<
+  ExecutionFileLinkResolutionCache,
+  ExecutionFileLinkResolutionCacheMetadata
+>();
 const EXECUTION_URL_LINKIFY = new LinkifyIt()
   .set({
     fuzzyLink: false,
@@ -126,7 +208,7 @@ export interface ExecutionTerminalNativeInteractionsHandle {
   activateLinkForTest(linkText: string): Promise<void>;
   hoverLinkForTest(linkText: string): Promise<void>;
   clearHoverForTest(): void;
-  invalidateLinkResolutionCache(): void;
+  invalidateLinkResolutionCache(mode?: 'all' | 'negative' | 'negative-delayed'): void;
   dispose(): void;
 }
 
@@ -134,13 +216,12 @@ export function setupExecutionTerminalNativeInteractions(
   options: ExecutionTerminalNativeInteractionsOptions
 ): ExecutionTerminalNativeInteractionsHandle {
   const { terminal, dropTarget } = options;
-  const fileLinkResolutionCache = new Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >();
+  const fileLinkResolutionCache: ExecutionFileLinkResolutionCache = new Map();
   let tooltip: ActiveTooltipState | undefined;
   let hoveredLink: ILink | undefined;
   let tooltipTimer: number | undefined;
+  let delayedNegativeCacheRefreshTimer: number | undefined;
+  let trailingNegativeCacheRefreshTimer: number | undefined;
 
   const clearDropTarget = (): void => {
     dropTarget.classList.remove('is-drop-target');
@@ -156,6 +237,88 @@ export function setupExecutionTerminalNativeInteractions(
       tooltipTimer = undefined;
     }
   };
+
+  const cancelDelayedNegativeCacheRefresh = (): void => {
+    if (delayedNegativeCacheRefreshTimer !== undefined) {
+      window.clearTimeout(delayedNegativeCacheRefreshTimer);
+      delayedNegativeCacheRefreshTimer = undefined;
+    }
+
+    if (trailingNegativeCacheRefreshTimer !== undefined) {
+      window.clearTimeout(trailingNegativeCacheRefreshTimer);
+      trailingNegativeCacheRefreshTimer = undefined;
+    }
+  };
+
+  const refreshNegativeFileLinkResolutionCacheNow = (): void => {
+    cancelDelayedNegativeCacheRefresh();
+    markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache, 'immediate');
+    refreshNegativeExecutionFileLinkResolutionCache(
+      options,
+      fileLinkResolutionCache,
+      ensureNegativeFileLinkResolutionCacheRefresh
+    );
+  };
+
+  const ensureNegativeFileLinkResolutionCacheRefresh = (
+    delayMs = EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS
+  ): void => {
+    if (delayedNegativeCacheRefreshTimer !== undefined) {
+      return;
+    }
+
+    delayedNegativeCacheRefreshTimer = window.setTimeout(() => {
+      delayedNegativeCacheRefreshTimer = undefined;
+      refreshNegativeExecutionFileLinkResolutionCache(
+        options,
+        fileLinkResolutionCache,
+        ensureNegativeFileLinkResolutionCacheRefresh
+      );
+    }, delayMs);
+  };
+
+  const scheduleTrailingNegativeFileLinkResolutionCacheRefresh = (delayMs: number): void => {
+    if (trailingNegativeCacheRefreshTimer !== undefined) {
+      return;
+    }
+
+    trailingNegativeCacheRefreshTimer = window.setTimeout(() => {
+      trailingNegativeCacheRefreshTimer = undefined;
+      scheduleNegativeFileLinkResolutionCacheRefresh({ trailing: true });
+    }, Math.max(0, delayMs));
+  };
+
+  const scheduleNegativeFileLinkResolutionCacheRefresh = (
+    refreshOptions: { trailing?: boolean } = {}
+  ): void => {
+    if (!hasRefreshableNegativeExecutionFileLinkResolutionCacheEntry(fileLinkResolutionCache)) {
+      return;
+    }
+
+    const invalidation = markExecutionFileLinkNegativeCacheInvalidated(
+      fileLinkResolutionCache,
+      'output'
+    );
+    if (!invalidation.invalidated) {
+      scheduleTrailingNegativeFileLinkResolutionCacheRefresh(
+        invalidation.retryDelayMs ??
+          EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS
+      );
+      return;
+    }
+
+    if (!refreshOptions.trailing && trailingNegativeCacheRefreshTimer !== undefined) {
+      window.clearTimeout(trailingNegativeCacheRefreshTimer);
+      trailingNegativeCacheRefreshTimer = undefined;
+    }
+    ensureNegativeFileLinkResolutionCacheRefresh(refreshOptions.trailing ? 0 : undefined);
+  };
+  const fileLinkCacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  fileLinkCacheMetadata.revalidateVisibleFileLinks = (cacheKey): void => {
+    revalidateVisibleExecutionFileLinks(terminal, fileLinkResolutionCache, cacheKey);
+  };
+  fileLinkCacheMetadata.scheduleRefreshAfterCurrent =
+    ensureNegativeFileLinkResolutionCacheRefresh;
 
   const hideTooltip = (): void => {
     clearTooltipTimer();
@@ -175,19 +338,28 @@ export function setupExecutionTerminalNativeInteractions(
       hideTooltip();
     }
   };
+  const hardWrappedHoverOverlayController = createHardWrappedHoverOverlayController(terminal);
 
   const clearHoveredLink = (): void => {
     hoveredLink = undefined;
+    hardWrappedHoverOverlayController.clear();
     dispatchSyntheticLinkMouseLeaveEvent(terminal);
     hideTooltip();
   };
 
   const previousLinkHandler = terminal.options.linkHandler;
   terminal.options.linkHandler = createExplicitLinkHandler(options, tooltipController);
+  const hardWrappedLinkProvider = createHardWrappedLinkProvider(
+    options,
+    fileLinkResolutionCache,
+    tooltipController,
+    hardWrappedHoverOverlayController
+  );
   const multilineLinkProvider = createMultilineLinkProvider(options, fileLinkResolutionCache, tooltipController);
   const fileLinkProvider = createFileLinkProvider(options, fileLinkResolutionCache, tooltipController);
   const urlLinkProvider = createUrlLinkProvider(options, tooltipController);
   const wordLinkProvider = createWordLinkProvider(options, tooltipController);
+  const hardWrappedLinkDisposable = terminal.registerLinkProvider(hardWrappedLinkProvider);
   const multilineLinkDisposable = terminal.registerLinkProvider(multilineLinkProvider);
   const fileLinkDisposable = terminal.registerLinkProvider(fileLinkProvider);
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
@@ -232,7 +404,7 @@ export function setupExecutionTerminalNativeInteractions(
   });
 
   const handleDragEnter = (event: DragEvent): void => {
-    if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
+    if (!hasPotentialDroppedResource(event.dataTransfer)) {
       return;
     }
 
@@ -242,7 +414,7 @@ export function setupExecutionTerminalNativeInteractions(
   };
 
   const handleDragOver = (event: DragEvent): void => {
-    if (!hasPotentialDroppedExecutionResource(event.dataTransfer)) {
+    if (!hasPotentialDroppedResource(event.dataTransfer)) {
       return;
     }
 
@@ -257,7 +429,7 @@ export function setupExecutionTerminalNativeInteractions(
 
   const handleDrop = (event: DragEvent): void => {
     clearDropTarget();
-    if (hasPotentialDroppedExecutionResource(event.dataTransfer)) {
+    if (hasPotentialDroppedResource(event.dataTransfer)) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -321,18 +493,36 @@ export function setupExecutionTerminalNativeInteractions(
     clearHoverForTest(): void {
       clearHoveredLink();
     },
-    invalidateLinkResolutionCache(): void {
+    invalidateLinkResolutionCache(mode = 'all'): void {
+      if (mode === 'negative') {
+        refreshNegativeFileLinkResolutionCacheNow();
+        return;
+      }
+
+      if (mode === 'negative-delayed') {
+        scheduleNegativeFileLinkResolutionCacheRefresh();
+        return;
+      }
+
+      cancelDelayedNegativeCacheRefresh();
+      markExecutionFileLinkNegativeCacheInvalidated(fileLinkResolutionCache, 'immediate');
       fileLinkResolutionCache.clear();
-      clearHoveredLink();
+      getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.clear();
+      // Keep the current hover alive while an execution session is still streaming output.
+      // xterm's linkifier will revalidate hovered ranges on render; forcing a
+      // synthetic mouseleave here makes links disappear during spinner redraws.
     },
     dispose(): void {
       clearHoveredLink();
       clearDropTarget();
+      cancelDelayedNegativeCacheRefresh();
       terminal.options.linkHandler = previousLinkHandler;
+      hardWrappedLinkDisposable.dispose();
       multilineLinkDisposable.dispose();
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
       wordLinkDisposable.dispose();
+      hardWrappedHoverOverlayController.dispose();
       terminal.attachCustomKeyEventHandler(() => true);
       dropTarget.removeEventListener('dragenter', handleDragEnter);
       dropTarget.removeEventListener('dragover', handleDragOver);
@@ -340,6 +530,7 @@ export function setupExecutionTerminalNativeInteractions(
       dropTarget.removeEventListener('dragend', handleDragLeave);
       dropTarget.removeEventListener('drop', handleDrop);
       fileLinkResolutionCache.clear();
+      getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.clear();
     }
   };
 }
@@ -349,6 +540,34 @@ function detectExecutionTerminalClipboardPlatform(): ExecutionTerminalClipboardP
     platform: window.navigator.platform,
     userAgent: window.navigator.userAgent
   });
+}
+
+function createHardWrappedLinkProvider(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >,
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController
+): ILinkProvider {
+  return {
+    provideLinks(bufferLineNumber, callback): void {
+      void collectHardWrappedLinksForBufferLine(
+        options,
+        bufferLineNumber,
+        tooltipController,
+        fileLinkResolutionCache,
+        hoverOverlayController
+      )
+        .then((links) => {
+          callback(links.length > 0 ? links : undefined);
+        })
+        .catch(() => {
+          callback(undefined);
+        });
+    }
+  };
 }
 
 function createFileLinkProvider(
@@ -479,6 +698,306 @@ function createExplicitLinkHandler(
       tooltipController.hide();
     }
   };
+}
+
+async function collectHardWrappedLinksForBufferLine(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  bufferLineNumber: number,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >,
+  hoverOverlayController: HardWrappedHoverOverlayController
+): Promise<ILink[]> {
+  const requestedLineIndex = bufferLineNumber - 1;
+  const links: ILink[] = [];
+  const seen = new Set<string>();
+
+  const pushLinks = (nextLinks: ILink[]): void => {
+    for (const link of nextLinks) {
+      const key = `${link.text}:${link.range.start.x}:${link.range.start.y}:${link.range.end.x}:${link.range.end.y}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      links.push(link);
+    }
+  };
+
+  for (let offset = 0; offset < EXECUTION_HARD_WRAPPED_LINK_MAX_LINES; offset += 1) {
+    const startLineIndex = requestedLineIndex - offset;
+    if (startLineIndex < 0) {
+      break;
+    }
+
+    const context = readHardWrappedLineContext(options.terminal, startLineIndex);
+    if (!context) {
+      continue;
+    }
+
+    pushLinks(
+      collectHardWrappedUrlLinks(
+        options,
+        context,
+        requestedLineIndex,
+        tooltipController,
+        hoverOverlayController
+      )
+    );
+    pushLinks(
+      await collectHardWrappedStyledFileLinks(
+        options,
+        context,
+        requestedLineIndex,
+        tooltipController,
+        fileLinkResolutionCache,
+        hoverOverlayController
+      )
+    );
+    if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return links.slice(0, EXECUTION_MAX_RESOLVED_LINKS_PER_LINE);
+}
+
+function collectHardWrappedUrlLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  requestedLineIndex: number,
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController
+): ILink[] {
+  const firstLineText = getWrappedContextLineText(context, 0);
+  if (!EXECUTION_URL_LINKIFY.pretest(firstLineText)) {
+    return [];
+  }
+
+  const links: ILink[] = [];
+  const matches = EXECUTION_URL_LINKIFY.match(firstLineText) ?? [];
+  for (const match of matches) {
+    if (match.lastIndex < firstLineText.length || !isPotentialHardWrappedUrlBreak(match.text)) {
+      continue;
+    }
+
+    const fragments: HardWrappedLinkFragment[] = [
+      {
+        text: match.text,
+        bufferRange: toSingleLineBufferRange(context.startLine, 0, match.index, match.lastIndex)
+      }
+    ];
+    let fullText = match.text;
+
+    for (let lineOffset = 1; lineOffset < context.lines.length; lineOffset += 1) {
+      const continuation = readHardWrappedContinuationFragment(
+        getWrappedContextLineText(context, lineOffset),
+        context.startLine + lineOffset
+      );
+      if (!continuation) {
+        break;
+      }
+
+      fullText += continuation.text;
+      if (fullText.length > EXECUTION_URI_LINK_MAX_LENGTH) {
+        break;
+      }
+      fragments.push(continuation);
+    }
+
+    if (fragments.length < 2 || fullText.length > EXECUTION_URI_LINK_MAX_LENGTH) {
+      continue;
+    }
+
+    const parsed = parseHardWrappedUrl(fullText);
+    if (!parsed) {
+      continue;
+    }
+
+    const hoverOverlayRanges = fragments.map((entry) => entry.bufferRange);
+    for (const fragment of fragments) {
+      if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
+        continue;
+      }
+
+      links.push(
+        createBufferRangeInteractionLink(
+          options,
+          fullText,
+          URL_LINK_LABEL,
+          {
+            linkKind: 'url',
+            text: fullText,
+            url: parsed.url,
+            source: 'implicit'
+          },
+          tooltipController,
+          fragment.bufferRange,
+          {
+            hoverOverlayController,
+            hoverOverlayRanges
+          }
+        )
+      );
+    }
+  }
+
+  return links;
+}
+
+async function collectHardWrappedStyledFileLinks(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  requestedLineIndex: number,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: Map<
+    string,
+    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
+  >,
+  hoverOverlayController: HardWrappedHoverOverlayController
+): Promise<ILink[]> {
+  const candidates = collectHardWrappedStyledFileLinkCandidates(
+    options.terminal,
+    context,
+    options.getPathStyle()
+  );
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const resolvedLinks = await resolveExecutionFileLinksForContext(
+    options,
+    context,
+    candidates.map((entry) => entry.candidate),
+    fileLinkResolutionCache
+  );
+  return mapResolvedHardWrappedFileLinksToInteractions(
+    options,
+    candidates,
+    resolvedLinks,
+    requestedLineIndex,
+    tooltipController,
+    hoverOverlayController
+  );
+}
+
+function collectHardWrappedStyledFileLinkCandidates(
+  terminal: Terminal,
+  context: WrappedLineContext,
+  pathStyle: ExecutionTerminalPathStyle
+): HardWrappedFileLinkCandidate[] {
+  const candidates: HardWrappedFileLinkCandidate[] = [];
+  const firstLineSpans = readStyledTextSpans(terminal, context.startLine);
+  for (const firstSpan of firstLineSpans) {
+    if (!isHardWrappedStartStyledSpan(context, firstSpan)) {
+      continue;
+    }
+
+    const fragments: HardWrappedLinkFragment[] = [
+      {
+        text: firstSpan.text,
+        bufferRange: firstSpan.bufferRange
+      }
+    ];
+    let fullText = firstSpan.text;
+
+    for (let lineOffset = 1; lineOffset < context.lines.length; lineOffset += 1) {
+      const nextSpan = readHardWrappedContinuationStyledSpan(
+        terminal,
+        context.startLine + lineOffset,
+        firstSpan.signature
+      );
+      if (!nextSpan) {
+        break;
+      }
+
+      fullText += nextSpan.text;
+      if (fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
+        break;
+      }
+      fragments.push({
+        text: nextSpan.text,
+        bufferRange: nextSpan.bufferRange
+      });
+    }
+
+    if (fragments.length < 2 || fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
+      continue;
+    }
+
+    if (parseHardWrappedUrl(fullText)) {
+      continue;
+    }
+
+    const detectedLink = detectExecutionTerminalPathLinks(fullText, pathStyle).find(
+      (link) => link.text === fullText && !isNonFileUriLikePath(link.path)
+    );
+    if (!detectedLink) {
+      continue;
+    }
+
+    candidates.push({
+      candidate: {
+        candidateId: `hardwrap-styled:${context.startLine}:${fragments
+          .map((fragment) =>
+            [
+              fragment.bufferRange.start.y,
+              fragment.bufferRange.start.x,
+              fragment.bufferRange.end.y,
+              fragment.bufferRange.end.x
+            ].join(':')
+          )
+          .join('|')}:${fullText}`,
+        text: fullText,
+        path: detectedLink.path,
+        startIndex: 0,
+        endIndexExclusive: fullText.length,
+        bufferStartLine: context.startLine,
+        line: detectedLink.line,
+        column: detectedLink.column,
+        lineEnd: detectedLink.lineEnd,
+        columnEnd: detectedLink.columnEnd,
+        source: 'hardwrap'
+      },
+      fragments
+    });
+
+    if (candidates.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return candidates;
+}
+
+function isHardWrappedStartStyledSpan(context: WrappedLineContext, span: StyledTextSpan): boolean {
+  const lineText = getWrappedContextLineText(context, 0);
+  return lineText.slice(span.bufferRange.end.x).trim().length === 0;
+}
+
+function readHardWrappedContinuationStyledSpan(
+  terminal: Terminal,
+  lineIndex: number,
+  signature: string
+): StyledTextSpan | undefined {
+  const lineText = terminal.buffer.active.getLine(lineIndex)?.translateToString(true) ?? '';
+  const leadingWhitespace = lineText.match(/^\s*/)?.[0].length ?? 0;
+  if (
+    leadingWhitespace <= 0 ||
+    leadingWhitespace > EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX
+  ) {
+    return undefined;
+  }
+
+  const span = readStyledTextSpans(terminal, lineIndex).find(
+    (entry) => entry.signature === signature && entry.bufferRange.start.x === leadingWhitespace + 1
+  );
+  if (!span) {
+    return undefined;
+  }
+
+  return span;
 }
 
 async function collectFileLinks(
@@ -696,7 +1215,11 @@ function collectWordLinks(
 
   const links: ILink[] = [];
   for (const range of readExecutionTerminalWordRanges(context.text, options.getRuntimeContext())) {
-    if (range.text.length === 0 || range.text.length > EXECUTION_WORD_LINK_MAX_LENGTH) {
+    if (
+      range.text.length === 0 ||
+      range.text.length > EXECUTION_WORD_LINK_MAX_LENGTH ||
+      shouldSuppressExecutionTerminalWordLink(range.text)
+    ) {
       continue;
     }
 
@@ -765,7 +1288,7 @@ function createExecutionTerminalWordSeparatorRegex(wordSeparators: string): RegE
     powerlineSymbols += String.fromCharCode(codePoint);
   }
   return new RegExp(
-    `[${escapeExecutionTerminalWordSeparatorCharacters(wordSeparators)}${powerlineSymbols}]`,
+    `[${escapeExecutionTerminalWordSeparatorCharacters(wordSeparators)}${powerlineSymbols}${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]`,
     'g'
   );
 }
@@ -916,10 +1439,7 @@ async function resolveExecutionFileLinksForContext(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
   candidates: ExecutionTerminalFileLinkCandidate[],
-  fileLinkResolutionCache: Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
   const cacheKey = createExecutionFileLinkResolutionCacheKey(context, candidates);
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
@@ -931,15 +1451,47 @@ async function resolveExecutionFileLinksForContext(
     return cachedEntry;
   }
 
-  const request = options
+  const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  const negativeInvalidationGeneration = cacheMetadata.negativeInvalidationGeneration;
+  let request: Promise<ExecutionTerminalResolvedFileLink[]>;
+  cacheMetadata.entries.set(cacheKey, {
+    bufferEndLine: context.endLine,
+    bufferStartLine: context.startLine,
+    candidates,
+    negativeInvalidationGeneration
+  });
+  request = options
     .resolveFileLinks(options.nodeId, options.kind, candidates)
     .then((resolvedLinks) => {
+      if (fileLinkResolutionCache.get(cacheKey) !== request) {
+        return resolvedLinks;
+      }
+
+      const staleNegativeResult =
+        resolvedLinks.length === 0 &&
+        negativeInvalidationGeneration !==
+          getExecutionFileLinkNegativeInvalidationGeneration(fileLinkResolutionCache);
+      if (staleNegativeResult) {
+        fileLinkResolutionCache.set(cacheKey, resolvedLinks);
+        trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
+        void refreshNegativeExecutionFileLinkResolutionCacheEntry(
+          options,
+          fileLinkResolutionCache,
+          cacheKey,
+          cacheMetadata.scheduleRefreshAfterCurrent
+        );
+        return resolvedLinks;
+      }
+
       fileLinkResolutionCache.set(cacheKey, resolvedLinks);
       trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
       return resolvedLinks;
     })
     .catch((error) => {
-      fileLinkResolutionCache.delete(cacheKey);
+      if (fileLinkResolutionCache.get(cacheKey) === request) {
+        fileLinkResolutionCache.delete(cacheKey);
+        getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.delete(cacheKey);
+      }
       throw error;
     });
   fileLinkResolutionCache.set(cacheKey, request);
@@ -970,10 +1522,7 @@ function createExecutionFileLinkResolutionCacheKey(
 }
 
 function trimExecutionFileLinkResolutionCache(
-  fileLinkResolutionCache: Map<
-    string,
-    ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
-  >
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
 ): void {
   const maxEntries = 240;
   while (fileLinkResolutionCache.size > maxEntries) {
@@ -983,7 +1532,209 @@ function trimExecutionFileLinkResolutionCache(
     }
 
     fileLinkResolutionCache.delete(oldestKey);
+    getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.delete(oldestKey);
   }
+}
+
+function refreshNegativeExecutionFileLinkResolutionCache(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh
+): void {
+  for (const [key, entry] of fileLinkResolutionCache.entries()) {
+    if (Array.isArray(entry) && entry.length === 0) {
+      void refreshNegativeExecutionFileLinkResolutionCacheEntry(
+        options,
+        fileLinkResolutionCache,
+        key,
+        scheduleRefreshAfterCurrent
+      );
+    }
+  }
+}
+
+function hasRefreshableNegativeExecutionFileLinkResolutionCacheEntry(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): boolean {
+  const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  for (const [cacheKey, entryMetadata] of cacheMetadata.entries) {
+    if (!shouldRefreshNegativeExecutionFileLinkResolutionCacheEntry(entryMetadata)) {
+      continue;
+    }
+
+    if (entryMetadata.backgroundRefresh) {
+      return true;
+    }
+
+    const cachedEntry = fileLinkResolutionCache.get(cacheKey);
+    if (cachedEntry && !Array.isArray(cachedEntry)) {
+      return true;
+    }
+
+    if (Array.isArray(cachedEntry) && cachedEntry.length === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function refreshNegativeExecutionFileLinkResolutionCacheEntry(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  cacheKey: string,
+  scheduleRefreshAfterCurrent?: ScheduleExecutionNegativeFileLinkCacheRefresh
+): Promise<void> | undefined {
+  const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  const entryMetadata = cacheMetadata.entries.get(cacheKey);
+  if (!entryMetadata) {
+    return undefined;
+  }
+
+  if (!shouldRefreshNegativeExecutionFileLinkResolutionCacheEntry(entryMetadata)) {
+    return undefined;
+  }
+
+  if (entryMetadata.backgroundRefresh) {
+    // Preserve the stable negative cache, but do not drop delayed invalidations
+    // that arrive while an older background refresh is still resolving.
+    if (
+      entryMetadata.backgroundRefreshGeneration !== cacheMetadata.negativeInvalidationGeneration
+    ) {
+      entryMetadata.needsRefreshAfterCurrent = true;
+    }
+
+    return entryMetadata.backgroundRefresh;
+  }
+
+  const cachedEntry = fileLinkResolutionCache.get(cacheKey);
+  if (!Array.isArray(cachedEntry) || cachedEntry.length !== 0) {
+    return undefined;
+  }
+
+  const refreshGeneration = cacheMetadata.negativeInvalidationGeneration;
+  entryMetadata.backgroundRefreshGeneration = refreshGeneration;
+  entryMetadata.needsRefreshAfterCurrent = false;
+  let refreshRequest: Promise<void>;
+  refreshRequest = options
+    .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates)
+    .then((resolvedLinks) => {
+      const latestEntry = fileLinkResolutionCache.get(cacheKey);
+      if (!Array.isArray(latestEntry) || latestEntry.length !== 0) {
+        return;
+      }
+
+      entryMetadata.negativeInvalidationGeneration = refreshGeneration;
+      if (resolvedLinks.length > 0) {
+        fileLinkResolutionCache.set(cacheKey, resolvedLinks);
+        trimExecutionFileLinkResolutionCache(fileLinkResolutionCache);
+        cacheMetadata.revalidateVisibleFileLinks?.(cacheKey);
+      }
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      if (entryMetadata.backgroundRefresh === refreshRequest) {
+        entryMetadata.backgroundRefresh = undefined;
+        entryMetadata.backgroundRefreshGeneration = undefined;
+        const latestEntry = fileLinkResolutionCache.get(cacheKey);
+        const staleRefreshGeneration =
+          refreshGeneration !== cacheMetadata.negativeInvalidationGeneration;
+        const shouldRefreshAfterCurrent =
+          (entryMetadata.needsRefreshAfterCurrent || staleRefreshGeneration) &&
+          Array.isArray(latestEntry) &&
+          latestEntry.length === 0;
+        entryMetadata.needsRefreshAfterCurrent = false;
+        if (shouldRefreshAfterCurrent) {
+          // Re-enter the shared refresh window instead of retrying immediately;
+          // later output can still be coalesced into the same negative refresh.
+          const refreshScheduler =
+            scheduleRefreshAfterCurrent ?? cacheMetadata.scheduleRefreshAfterCurrent;
+          refreshScheduler?.();
+        }
+      }
+    });
+  entryMetadata.backgroundRefresh = refreshRequest;
+  return refreshRequest;
+}
+
+function shouldRefreshNegativeExecutionFileLinkResolutionCacheEntry(
+  entryMetadata: ExecutionFileLinkResolutionCacheEntryMetadata
+): boolean {
+  return entryMetadata.candidates.some((candidate) => candidate.source !== 'fallback');
+}
+
+function getExecutionFileLinkResolutionCacheMetadata(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ExecutionFileLinkResolutionCacheMetadata {
+  let metadata = executionFileLinkResolutionCacheMetadata.get(fileLinkResolutionCache);
+  if (!metadata) {
+    metadata = { entries: new Map(), negativeInvalidationGeneration: 0 };
+    executionFileLinkResolutionCacheMetadata.set(fileLinkResolutionCache, metadata);
+  }
+
+  return metadata;
+}
+
+function getExecutionFileLinkNegativeInvalidationGeneration(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): number {
+  return getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+    .negativeInvalidationGeneration;
+}
+
+function markExecutionFileLinkNegativeCacheInvalidated(
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  reason: 'immediate' | 'output'
+): ExecutionFileLinkNegativeCacheInvalidationResult {
+  const metadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
+  if (reason === 'output') {
+    const now = Date.now();
+    const hasActiveBackgroundRefresh = Array.from(metadata.entries.values()).some(
+      (entry) => entry.backgroundRefresh
+    );
+    if (
+      metadata.lastOutputInvalidationTime !== undefined &&
+      now - metadata.lastOutputInvalidationTime <
+        EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS &&
+      !hasActiveBackgroundRefresh
+    ) {
+      return {
+        invalidated: false,
+        retryDelayMs:
+          EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS -
+          (now - metadata.lastOutputInvalidationTime)
+      };
+    }
+
+    metadata.lastOutputInvalidationTime = now;
+  } else {
+    metadata.lastOutputInvalidationTime = undefined;
+  }
+
+  metadata.negativeInvalidationGeneration += 1;
+  return { invalidated: true };
+}
+
+function revalidateVisibleExecutionFileLinks(
+  terminal: Terminal,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  cacheKey: string
+): void {
+  const entryMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+    .entries.get(cacheKey);
+  if (!entryMetadata) {
+    return;
+  }
+
+  const viewportStartLine = terminal.buffer.active.viewportY;
+  const viewportEndLine = viewportStartLine + terminal.rows - 1;
+  const startLine = Math.max(entryMetadata.bufferStartLine, viewportStartLine);
+  const endLine = Math.min(entryMetadata.bufferEndLine, viewportEndLine);
+  if (endLine < startLine) {
+    return;
+  }
+
+  terminal.refresh(startLine - viewportStartLine, endLine - viewportStartLine);
 }
 
 function mapResolvedFileLinksToInteractions(
@@ -1046,6 +1797,48 @@ function mapResolvedStyledFileLinksToInteractions(
         candidate.bufferRange
       )
     );
+  }
+
+  return links;
+}
+
+function mapResolvedHardWrappedFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: HardWrappedFileLinkCandidate[],
+  resolvedLinks: ExecutionTerminalResolvedFileLink[],
+  requestedLineIndex: number,
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController
+): ILink[] {
+  const candidatesById = new Map(candidates.map((candidate) => [candidate.candidate.candidateId, candidate]));
+  const links: ILink[] = [];
+  for (const resolvedLink of resolvedLinks) {
+    const candidate = candidatesById.get(resolvedLink.candidateId);
+    if (!candidate) {
+      continue;
+    }
+
+    for (const fragment of candidate.fragments) {
+      if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
+        continue;
+      }
+
+      const hoverOverlayRanges = candidate.fragments.map((entry) => entry.bufferRange);
+      links.push(
+        createBufferRangeInteractionLink(
+          options,
+          resolvedLink.link.text,
+          labelForResolvedFileLink(resolvedLink.link.targetKind),
+          resolvedLink.link,
+          tooltipController,
+          fragment.bufferRange,
+          {
+            hoverOverlayController,
+            hoverOverlayRanges
+          }
+        )
+      );
+    }
   }
 
   return links;
@@ -1178,9 +1971,7 @@ function createInteractionLink(
   link: ExecutionTerminalOpenLink,
   tooltipController: TooltipController,
   range: SimpleRange,
-  linkOptions?: {
-    lowConfidence?: boolean;
-  }
+  linkOptions?: InteractionLinkOptions
 ): ILink {
   const xtermRange = convertLinkRangeToBuffer(context.lines, options.terminal.cols, range, context.startLine);
   return createBufferRangeInteractionLink(
@@ -1201,11 +1992,13 @@ function createBufferRangeInteractionLink(
   link: ExecutionTerminalOpenLink,
   tooltipController: TooltipController,
   xtermRange: IBufferRange,
-  linkOptions?: {
-    lowConfidence?: boolean;
-  }
+  linkOptions?: InteractionLinkOptions
 ): ILink {
   const lowConfidence = linkOptions?.lowConfidence === true;
+  const usesGroupedHoverOverlay =
+    !lowConfidence &&
+    linkOptions?.hoverOverlayController !== undefined &&
+    (linkOptions.hoverOverlayRanges?.length ?? 0) > 1;
   let interactionLink: ILink | undefined;
   const lowConfidenceDecorations = lowConfidence
     ? createLowConfidenceExecutionLinkDecorations(options.getRuntimeContext, () => interactionLink?.decorations)
@@ -1213,7 +2006,12 @@ function createBufferRangeInteractionLink(
   interactionLink = {
     text,
     range: xtermRange,
-    decorations: lowConfidenceDecorations?.decorations,
+    decorations: lowConfidenceDecorations?.decorations ?? (usesGroupedHoverOverlay
+      ? {
+          pointerCursor: true,
+          underline: false
+        }
+      : undefined),
     activate: (event): void => {
       if (!shouldActivateExecutionLink(options.getRuntimeContext(), event)) {
         return;
@@ -1223,6 +2021,9 @@ function createBufferRangeInteractionLink(
     },
     hover: (event): void => {
       lowConfidenceDecorations?.hover(event);
+      if (usesGroupedHoverOverlay && linkOptions.hoverOverlayRanges) {
+        linkOptions.hoverOverlayController?.show(linkOptions.hoverOverlayRanges);
+      }
       if (!lowConfidence && hoverLabel) {
         tooltipController.show(event, hoverLabel);
         return;
@@ -1232,6 +2033,9 @@ function createBufferRangeInteractionLink(
     },
     leave: (): void => {
       lowConfidenceDecorations?.leave();
+      if (usesGroupedHoverOverlay) {
+        linkOptions?.hoverOverlayController?.clear();
+      }
       tooltipController.hide();
     }
   };
@@ -1379,6 +2183,98 @@ function createSyntheticLinkActivationEvent(runtimeContext: CanvasRuntimeContext
   });
 }
 
+function createHardWrappedHoverOverlayController(terminal: Terminal): HardWrappedHoverOverlayController {
+  let overlayElement: HTMLElement | undefined;
+  const scrollDisposable = terminal.onScroll(() => clear());
+  const resizeDisposable = terminal.onResize(() => clear());
+
+  function clear(): void {
+    overlayElement?.remove();
+    overlayElement = undefined;
+  }
+
+  function show(ranges: IBufferRange[]): void {
+    clear();
+
+    const screenElement = queryExecutionTerminalScreenElement(terminal);
+    if (!screenElement) {
+      return;
+    }
+
+    const screenWidth = screenElement.clientWidth;
+    const screenHeight = screenElement.clientHeight;
+    if (screenWidth <= 0 || screenHeight <= 0 || terminal.cols <= 0 || terminal.rows <= 0) {
+      return;
+    }
+
+    const cellWidth = screenWidth / terminal.cols;
+    const cellHeight = screenHeight / terminal.rows;
+    const nextOverlayElement = document.createElement('div');
+    nextOverlayElement.className = EXECUTION_HARD_WRAPPED_LINK_HOVER_CLASS;
+    nextOverlayElement.setAttribute('aria-hidden', 'true');
+
+    for (const range of ranges) {
+      appendHardWrappedHoverOverlaySegments(
+        nextOverlayElement,
+        terminal,
+        range,
+        cellWidth,
+        cellHeight
+      );
+    }
+
+    if (nextOverlayElement.childElementCount === 0) {
+      return;
+    }
+
+    screenElement.appendChild(nextOverlayElement);
+    overlayElement = nextOverlayElement;
+  }
+
+  function dispose(): void {
+    clear();
+    scrollDisposable.dispose();
+    resizeDisposable.dispose();
+  }
+
+  return {
+    show,
+    clear,
+    dispose
+  };
+}
+
+function appendHardWrappedHoverOverlaySegments(
+  overlayElement: HTMLElement,
+  terminal: Terminal,
+  range: IBufferRange,
+  cellWidth: number,
+  cellHeight: number
+): void {
+  const viewportStartY = terminal.buffer.active.viewportY + 1;
+  const rangeStartY = Math.max(range.start.y, viewportStartY);
+  const rangeEndY = Math.min(range.end.y, viewportStartY + terminal.rows - 1);
+  if (rangeEndY < rangeStartY) {
+    return;
+  }
+
+  for (let lineNumber = rangeStartY; lineNumber <= rangeEndY; lineNumber += 1) {
+    const startColumn = lineNumber === range.start.y ? range.start.x : 1;
+    const endColumn = lineNumber === range.end.y ? range.end.x : terminal.cols;
+    if (endColumn < startColumn) {
+      continue;
+    }
+
+    const viewportLineIndex = lineNumber - viewportStartY;
+    const segmentElement = document.createElement('div');
+    segmentElement.className = EXECUTION_HARD_WRAPPED_LINK_HOVER_SEGMENT_CLASS;
+    segmentElement.style.left = `${(startColumn - 1) * cellWidth}px`;
+    segmentElement.style.top = `${(viewportLineIndex + 1) * cellHeight - 2}px`;
+    segmentElement.style.width = `${(endColumn - startColumn + 1) * cellWidth}px`;
+    overlayElement.appendChild(segmentElement);
+  }
+}
+
 function dispatchSyntheticLinkHoverEvent(terminal: Terminal, link: ILink): void {
   const screenElement = queryExecutionTerminalScreenElement(terminal);
   if (!screenElement) {
@@ -1448,6 +2344,43 @@ function isMacintosh(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 }
 
+function readHardWrappedLineContext(
+  terminal: Terminal,
+  startLine: number
+): WrappedLineContext | undefined {
+  const initialLine = terminal.buffer.active.getLine(startLine);
+  if (!initialLine || initialLine.isWrapped) {
+    return undefined;
+  }
+
+  const lines: IBufferLine[] = [];
+  let endLine = startLine;
+  for (let lineIndex = startLine; lineIndex < terminal.buffer.active.length; lineIndex += 1) {
+    if (lineIndex - startLine >= EXECUTION_HARD_WRAPPED_LINK_MAX_LINES) {
+      break;
+    }
+
+    const line = terminal.buffer.active.getLine(lineIndex);
+    if (!line || line.isWrapped) {
+      break;
+    }
+
+    lines.push(line);
+    endLine = lineIndex;
+  }
+
+  if (lines.length < 2) {
+    return undefined;
+  }
+
+  return {
+    startLine,
+    endLine,
+    lines,
+    text: lines.map((line) => line.translateToString(true, 0, terminal.cols)).join('\n')
+  };
+}
+
 function readWrappedLineContext(
   terminal: Terminal,
   bufferLineNumber: number,
@@ -1509,6 +2442,178 @@ function getXtermLineContent(terminal: Terminal, lineStart: number, lineEnd: num
   return content;
 }
 
+function getWrappedContextLineText(context: WrappedLineContext, lineOffset: number): string {
+  return context.lines[lineOffset]?.translateToString(true) ?? '';
+}
+
+function parseHardWrappedUrl(text: string): { url: string } | undefined {
+  const matches = EXECUTION_URL_LINKIFY.match(text);
+  const match = matches?.find((entry) => entry.index === 0 && entry.lastIndex === text.length);
+  return match ? { url: match.url } : undefined;
+}
+
+function isPotentialHardWrappedUrlBreak(text: string): boolean {
+  return /[/?#&=._~%+-]$/.test(text);
+}
+
+function readHardWrappedContinuationFragment(
+  lineText: string,
+  lineIndex: number
+): HardWrappedLinkFragment | undefined {
+  const leadingWhitespace = lineText.match(/^\s*/)?.[0].length ?? 0;
+  if (
+    leadingWhitespace <= 0 ||
+    leadingWhitespace > EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX
+  ) {
+    return undefined;
+  }
+
+  const rest = lineText.slice(leadingWhitespace);
+  const match = rest.match(/^[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/);
+  if (!match || match[0].length < 2 || match[0].length !== rest.trimEnd().length) {
+    return undefined;
+  }
+  if (isExplicitUrlSchemeStart(match[0])) {
+    return undefined;
+  }
+
+  return {
+    text: match[0],
+    bufferRange: toSingleLineBufferRange(
+      lineIndex,
+      0,
+      leadingWhitespace,
+      leadingWhitespace + match[0].length
+    )
+  };
+}
+
+function isExplicitUrlSchemeStart(text: string): boolean {
+  return /^[A-Za-z][A-Za-z\d+\-.]*:/.test(text);
+}
+
+function toSingleLineBufferRange(
+  startLine: number,
+  lineOffset: number,
+  startIndex: number,
+  endIndexExclusive: number
+): IBufferRange {
+  return {
+    start: {
+      x: startIndex + 1,
+      y: startLine + lineOffset + 1
+    },
+    end: {
+      x: endIndexExclusive,
+      y: startLine + lineOffset + 1
+    }
+  };
+}
+
+function readStyledTextSpans(terminal: Terminal, lineIndex: number): StyledTextSpan[] {
+  const line = terminal.buffer.active.getLine(lineIndex);
+  if (!line) {
+    return [];
+  }
+
+  const spans: StyledTextSpan[] = [];
+  let currentSignature: string | undefined;
+  let currentCells: Array<{ text: string; startColumn: number; endColumn: number }> = [];
+  const flush = (): void => {
+    if (!currentSignature || currentCells.length === 0) {
+      currentCells = [];
+      return;
+    }
+
+    while (currentCells.length > 0 && currentCells[0].text.trim().length === 0) {
+      currentCells.shift();
+    }
+    while (currentCells.length > 0 && currentCells[currentCells.length - 1].text.trim().length === 0) {
+      currentCells.pop();
+    }
+    if (currentCells.length === 0) {
+      return;
+    }
+
+    const text = currentCells.map((cell) => cell.text).join('');
+    spans.push({
+      text,
+      signature: currentSignature,
+      bufferRange: {
+        start: {
+          x: currentCells[0].startColumn,
+          y: lineIndex + 1
+        },
+        end: {
+          x: currentCells[currentCells.length - 1].endColumn,
+          y: lineIndex + 1
+        }
+      }
+    });
+    currentCells = [];
+  };
+
+  const lineTextLength = getTrimmedXtermLineTextLength(line, terminal.cols);
+  let lineTextOffset = 0;
+  for (let column = 0; column < terminal.cols && lineTextOffset < lineTextLength; column += 1) {
+    const cell = line.getCell(column);
+    if (!cell) {
+      break;
+    }
+    if (cell.getWidth() === 0) {
+      continue;
+    }
+
+    const chars = cell.getChars() || ' ';
+    const charsLength = Math.min(chars.length, lineTextLength - lineTextOffset);
+    if (charsLength <= 0) {
+      continue;
+    }
+
+    const signature = getStyledCellSignature(cell);
+    if (!signature) {
+      flush();
+      currentSignature = undefined;
+      lineTextOffset += charsLength;
+      continue;
+    }
+
+    if (currentSignature !== signature) {
+      flush();
+      currentSignature = signature;
+    }
+    currentCells.push({
+      text: chars.slice(0, charsLength),
+      startColumn: column + 1,
+      endColumn: column + Math.max(1, cell.getWidth())
+    });
+    lineTextOffset += charsLength;
+  }
+
+  flush();
+  return spans;
+}
+
+function getStyledCellSignature(cell: IBufferCell): string | undefined {
+  if (cell.isAttributeDefault()) {
+    return undefined;
+  }
+
+  return [
+    cell.getFgColorMode(),
+    cell.getFgColor(),
+    cell.getBgColorMode(),
+    cell.getBgColor(),
+    cell.isBold(),
+    cell.isItalic(),
+    cell.isDim(),
+    cell.isUnderline(),
+    cell.isInverse(),
+    cell.isStrikethrough(),
+    cell.isOverline()
+  ].join(':');
+}
+
 function readXtermRangesByAttr(terminal: Terminal, lineStart: number, lineEnd: number): IBufferRange[] {
   let bufferRangeStart: { x: number; y: number } | undefined;
   let lastFgAttr = -1;
@@ -1561,7 +2666,25 @@ function convertLinkRangeToBuffer(
   range: SimpleRange,
   startLine: number
 ): IBufferRange {
-  const bufferRange: IBufferRange = {
+  const stringCells = readBufferStringCells(lines, bufferWidth, startLine);
+  const startOffset = toBufferStringOffset(lines, bufferWidth, range.startLineNumber, range.startColumn);
+  const endOffsetExclusive = toBufferStringOffset(lines, bufferWidth, range.endLineNumber, range.endColumn);
+  const startCell = stringCells.find((cell) => cell.endOffsetExclusive > startOffset);
+  const endCell = findLastBufferStringCellBeforeOffset(stringCells, endOffsetExclusive);
+  if (startCell && endCell) {
+    return {
+      start: {
+        x: startCell.startColumn,
+        y: startCell.lineNumber
+      },
+      end: {
+        x: endCell.endColumn,
+        y: endCell.lineNumber
+      }
+    };
+  }
+
+  return {
     start: {
       x: range.startColumn,
       y: range.startLineNumber + startLine
@@ -1571,91 +2694,95 @@ function convertLinkRangeToBuffer(
       y: range.endLineNumber + startLine
     }
   };
+}
 
-  let startOffset = 0;
-  const startWrappedLineCount = Math.ceil(range.startColumn / bufferWidth);
-  for (let lineIndex = 0; lineIndex < Math.min(startWrappedLineCount, lines.length); lineIndex += 1) {
-    const lineLength = Math.min(bufferWidth, range.startColumn - 1 - lineIndex * bufferWidth);
-    let lineOffset = 0;
+function findLastBufferStringCellBeforeOffset(
+  cells: BufferStringCell[],
+  endOffsetExclusive: number
+): BufferStringCell | undefined {
+  for (let index = cells.length - 1; index >= 0; index -= 1) {
+    if (cells[index].startOffset < endOffsetExclusive) {
+      return cells[index];
+    }
+  }
+
+  return undefined;
+}
+
+interface BufferStringCell {
+  startOffset: number;
+  endOffsetExclusive: number;
+  startColumn: number;
+  endColumn: number;
+  lineNumber: number;
+}
+
+function readBufferStringCells(
+  lines: IBufferLine[],
+  bufferWidth: number,
+  startLine: number
+): BufferStringCell[] {
+  const cells: BufferStringCell[] = [];
+  let textOffset = 0;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     if (!line) {
-      break;
+      continue;
     }
 
-    for (let x = 0; x < Math.min(bufferWidth, lineLength + lineOffset); x += 1) {
-      const cell = line.getCell(x);
+    const lineTextLength = getTrimmedXtermLineTextLength(line, bufferWidth);
+    let lineTextOffset = 0;
+    for (let column = 0; column < bufferWidth && lineTextOffset < lineTextLength; column += 1) {
+      const cell = line.getCell(column);
       if (!cell) {
         break;
       }
 
-      const width = cell.getWidth();
-      if (width === 2) {
-        lineOffset += 1;
+      if (cell.getWidth() === 0) {
+        continue;
       }
 
-      const char = cell.getChars();
-      if (char.length > 1) {
-        lineOffset -= char.length - 1;
+      const chars = cell.getChars() || ' ';
+      const charsLength = Math.min(chars.length, lineTextLength - lineTextOffset);
+      if (charsLength <= 0) {
+        continue;
       }
+
+      cells.push({
+        startOffset: textOffset + lineTextOffset,
+        endOffsetExclusive: textOffset + lineTextOffset + charsLength,
+        startColumn: column + 1,
+        endColumn: column + Math.max(1, cell.getWidth()),
+        lineNumber: startLine + lineIndex + 1
+      });
+      lineTextOffset += charsLength;
     }
 
-    startOffset += lineOffset;
+    textOffset += lineTextLength;
   }
 
-  let endOffset = 0;
-  const endWrappedLineCount = Math.ceil(range.endColumn / bufferWidth);
-  for (
-    let lineIndex = Math.max(0, startWrappedLineCount - 1);
-    lineIndex < Math.min(endWrappedLineCount, lines.length);
-    lineIndex += 1
-  ) {
-    const start =
-      lineIndex === startWrappedLineCount - 1 ? ((range.startColumn - 1 + startOffset) % bufferWidth) : 0;
-    const lineLength = Math.min(bufferWidth, range.endColumn + startOffset - lineIndex * bufferWidth);
-    let lineOffset = 0;
+  return cells;
+}
+
+function toBufferStringOffset(
+  lines: IBufferLine[],
+  bufferWidth: number,
+  lineNumber: number,
+  column: number
+): number {
+  let offset = 0;
+  for (let lineIndex = 0; lineIndex < Math.min(lineNumber - 1, lines.length); lineIndex += 1) {
     const line = lines[lineIndex];
-    if (!line) {
-      break;
+    if (line) {
+      offset += getTrimmedXtermLineTextLength(line, bufferWidth);
     }
-
-    for (let x = start; x < Math.min(bufferWidth, lineLength + lineOffset); x += 1) {
-      const cell = line.getCell(x);
-      if (!cell) {
-        break;
-      }
-
-      const width = cell.getWidth();
-      const chars = cell.getChars();
-      if (width === 2) {
-        lineOffset += 1;
-      }
-
-      if (x === bufferWidth - 1 && chars === '') {
-        lineOffset += 1;
-      }
-
-      if (chars.length > 1) {
-        lineOffset -= chars.length - 1;
-      }
-    }
-
-    endOffset += lineOffset;
   }
 
-  bufferRange.start.x += startOffset;
-  bufferRange.end.x += startOffset + endOffset;
+  return offset + Math.max(0, column - 1);
+}
 
-  while (bufferRange.start.x > bufferWidth) {
-    bufferRange.start.x -= bufferWidth;
-    bufferRange.start.y += 1;
-  }
-
-  while (bufferRange.end.x > bufferWidth) {
-    bufferRange.end.x -= bufferWidth;
-    bufferRange.end.y += 1;
-  }
-
-  return bufferRange;
+function getTrimmedXtermLineTextLength(line: IBufferLine, bufferWidth: number): number {
+  return line.translateToString(true, 0, bufferWidth).length;
 }
 
 function dedupeDetectedPathLinks(
@@ -1734,43 +2861,6 @@ function extractDroppedExecutionResource(
   }
 
   return undefined;
-}
-
-function hasPotentialDroppedExecutionResource(dataTransfer: DataTransfer | null): boolean {
-  if (!dataTransfer) {
-    return false;
-  }
-
-  if (dataTransfer.files.length > 0) {
-    return true;
-  }
-
-  return [RESOURCE_URLS_DATA_TRANSFER, CODE_FILES_DATA_TRANSFER, URI_LIST_DATA_TRANSFER].some((type) =>
-    hasDataTransferType(dataTransfer, type)
-  );
-}
-
-function hasDataTransferType(dataTransfer: DataTransfer, type: string): boolean {
-  const dataTransferTypes = dataTransfer.types;
-  if (!dataTransferTypes) {
-    return false;
-  }
-
-  const contains = (dataTransferTypes as { contains?: (value: string) => boolean }).contains;
-  if (typeof contains === 'function') {
-    return contains.call(dataTransferTypes, type);
-  }
-
-  return Array.from(dataTransferTypes).some((entry) => entry === type);
-}
-
-function parseDroppedStringArray(rawValue: string): string[] {
-  try {
-    const parsed = JSON.parse(rawValue);
-    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : [];
-  } catch {
-    return [];
-  }
 }
 
 async function findInteractionLinkByText(

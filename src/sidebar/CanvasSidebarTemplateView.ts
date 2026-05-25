@@ -325,12 +325,15 @@ function buildSidebarTemplateHtml(
       :root {
         color-scheme: light dark;
         --bg: var(--vscode-sideBar-background);
-        --fg: var(--vscode-sideBar-foreground);
+        --fg: var(--vscode-foreground, var(--vscode-sideBar-foreground));
         --muted: var(--vscode-descriptionForeground);
         --focus: var(--vscode-focusBorder);
         --list-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--fg) 6%, transparent));
+        --list-hover-fg: var(--vscode-list-hoverForeground, var(--fg));
         --list-active: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
         --list-active-fg: var(--vscode-list-activeSelectionForeground, var(--fg));
+        --list-inactive: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 10%, transparent));
+        --list-inactive-fg: var(--vscode-list-inactiveSelectionForeground, var(--fg));
         --badge-bg: color-mix(in srgb, var(--focus) 18%, transparent);
         --badge-fg: var(--vscode-list-highlightForeground, var(--fg));
         --warning-bg: color-mix(in srgb, var(--vscode-errorForeground, #c74e39) 12%, transparent);
@@ -394,6 +397,8 @@ function buildSidebarTemplateHtml(
       }
 
       .template-row {
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         gap: 4px;
@@ -401,19 +406,28 @@ function buildSidebarTemplateHtml(
         border: 0;
         border-left: 2px solid transparent;
         background: transparent;
-        color: var(--fg);
+        color: var(--row-fg);
         text-align: left;
         cursor: default;
       }
 
       .template-row:hover {
         background: var(--list-hover);
+        --row-fg: var(--list-hover-fg);
+        --row-muted: var(--list-hover-fg);
       }
 
-      .template-row.is-selected,
+      .template-row.is-selected {
+        background: var(--list-inactive);
+        --row-fg: var(--list-inactive-fg);
+        --row-muted: var(--list-inactive-fg);
+      }
+
+      .template-row.is-selected:focus,
       .template-row:focus-visible {
         background: var(--list-active);
-        color: var(--list-active-fg);
+        --row-fg: var(--list-active-fg);
+        --row-muted: var(--list-active-fg);
         border-left-color: var(--focus);
         outline: none;
       }
@@ -438,7 +452,7 @@ function buildSidebarTemplateHtml(
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: var(--muted);
+        color: var(--row-muted);
         font-size: 14px;
         line-height: 1;
       }
@@ -466,7 +480,7 @@ function buildSidebarTemplateHtml(
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        color: var(--muted);
+        color: var(--row-muted);
         font-size: 11px;
       }
 
@@ -505,7 +519,7 @@ function buildSidebarTemplateHtml(
         border: 0;
         border-radius: 4px;
         background: transparent;
-        color: var(--muted);
+        color: var(--row-muted);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -519,7 +533,7 @@ function buildSidebarTemplateHtml(
           var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)) 50%,
           transparent
         );
-        color: var(--fg);
+        color: var(--row-fg);
         outline: none;
       }
 

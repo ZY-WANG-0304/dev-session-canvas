@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import {
   buildMarketplaceSlugFromName,
   generateMarketplaceTemplateThumbnailPngBase64,
+  marketplaceTemplateDocumentSchema,
   type MarketplaceTemplateDocument
 } from '@dev-session-canvas/marketplace-shared';
 
@@ -315,7 +316,7 @@ export class TemplateMarketplaceClient {
     }
 
     const token = await this.exchangeVSCodeMarketplaceToken();
-    const templateDocument = JSON.parse(request.templateJson) as MarketplaceTemplateDocument;
+    const templateDocument = parseMarketplaceTemplateDocumentJson(request.templateJson);
     const requestBody = {
       slug: request.slug?.trim() || undefined,
       name,
@@ -526,7 +527,7 @@ function isPublishableStoredTemplate(storedTemplate: CanvasStoredTemplate): bool
 }
 
 function buildPublishDraft(storedTemplate: CanvasStoredTemplate): TemplateMarketplacePublishDraft {
-  const templateDocument = JSON.parse(encodeCanvasTemplateDocument(storedTemplate.template)) as MarketplaceTemplateDocument;
+  const templateDocument = parseMarketplaceTemplateDocumentJson(encodeCanvasTemplateDocument(storedTemplate.template));
   const defaultName = storedTemplate.template.name;
   const defaultDescription = `${defaultName} template for Dev Session Canvas.`;
   return {
@@ -543,6 +544,11 @@ function buildPublishDraft(storedTemplate: CanvasStoredTemplate): TemplateMarket
     templateJson: JSON.stringify(templateDocument, null, 2),
     thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
   };
+}
+
+function parseMarketplaceTemplateDocumentJson(value: string): MarketplaceTemplateDocument {
+  const parsed = JSON.parse(value) as unknown;
+  return marketplaceTemplateDocumentSchema.parse(parsed);
 }
 
 function buildTemplatePublishReadme(name: string, description: string): string {

@@ -356,7 +356,7 @@ class RuntimeSupervisorServer {
         session.lifecycleTimer = undefined;
       }
       if (submittedInstruction) {
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
         this.emitSessionState(session);
@@ -444,7 +444,7 @@ class RuntimeSupervisorServer {
           session.lifecycle === 'resuming' ||
           session.lifecycle === 'running'
         ) {
-          recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output);
+          recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output, session.provider);
           this.queueAgentWaitingInput(session.sessionId);
         }
       } else if (session.lifecycle === 'launching') {

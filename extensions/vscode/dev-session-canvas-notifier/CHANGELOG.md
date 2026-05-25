@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.10.5
+
+- 与主扩展 `0.10.5` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Note Markdown 修复版本，聚焦预览双击源码定位与关联 Markdown 可恢复草稿模型；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.4
+
+- 与主扩展 `0.10.4` 对齐：本轮主扩展是 `0.10.x` Preview 线内的执行终端链接性能修复版本，聚焦运行中输出的 file-link 负缓存刷新节流与 Host 诊断；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.3
+
+- 与主扩展 `0.10.3` 对齐：本轮主扩展是 `0.10.x` Preview 线内的发布元数据修复版本，聚焦重新发布并验证 Open VSX 主插件 icon asset metadata；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.2
+
+- 与主扩展 `0.10.2` 对齐：本轮主扩展作为同一 `0.10.x` Preview 里程碑下的补丁，聚焦执行节点 TUI 硬换行 URL、样式文件路径链接重组与运行中终端文件链接缓存稳定性，notifier companion 只同步测试稳定性修复，不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.1
+
+- 与主扩展 `0.10.1` 对齐：本轮主扩展聚焦关联 Markdown Note 的模板保存策略、Remote 拖拽边界、metadata / 图片预览、停止后 Agent 重启动作和 Marketplace 英文默认文案。
+- notifier companion 同步收口 sidebar 布局、颜色 token 与 Markdown 说明内容，不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.0
+
+- 与主扩展 `0.10.0` 对齐：本轮主扩展聚焦 Note 关联 Markdown 文件，notifier companion 不引入新的通知行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.9.1
+
+- 与主扩展 `0.9.1` 对齐：notifier sidebar 拆成 `概览`、`注意事项`、平台说明与 Agent 配置多个 section，帮助用户从本机 UI 环境和远端 Agent 运行宿主两个维度完成通知接入。
+- 新增 sidebar 富文本渲染与 `JSON` / `TOML` 配置片段语法高亮，提升 `Codex` / `Claude Code` 通知配置说明的可读性。
+- 优先使用最近一次投递结果的 `activationMode` 展示点击回跳能力，并在 sidebar 未打开时跳过无意义的环境探测。
+- 修正 macOS `osascript` 回退路径，不再额外触发 `beep`，并同步更新 Marketplace 环境配置说明和图标资产。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.9.0
 
 - 与主扩展 `0.9.0` 对齐：本轮 notifier companion 不引入新的通知行为变更，继续作为主扩展 `system` attention bridge 的本机 UI 侧投递组件。

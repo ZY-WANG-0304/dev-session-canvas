@@ -14,8 +14,13 @@
 .playwright-browsers/**
 .git
 docs/**
-scripts/**
-!scripts/claude-file-event-hook.cjs
+scripts/README.md
+scripts/build/**
+scripts/media/**
+scripts/release/**
+scripts/shared/**
+scripts/smoke/**
+scripts/test/**
 extensions/**
 apps/**
 packages/**

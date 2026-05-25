@@ -31,20 +31,19 @@
 
 当前 notifier 还会在 Activity Bar 提供一个独立 sidebar：`Dev Session Canvas Notifier`。这个 sidebar 会直接显示：
 
-- 当前本机 UI 环境会走哪条通知路径（例如 `terminal-notifier`、`osascript`、`notify-send`、Windows Toast）
-- 该路径是否支持点击系统通知后回到 VS Code
-- 当前是否请求系统播放提示音
-- 当前机器还需要用户预安装什么（例如 macOS 上是否已安装 `terminal-notifier`、Linux 上是否已检测到 `notify-send`）
-- 最近一次 notifier 投递结果，便于对照诊断输出
+- `概览`：当前本机 UI 环境的通知方式、点击回跳能力、声音请求状态、测试按钮、诊断入口与最近一次投递结果
+- `注意事项`：本机 UI 侧安装位置、远端 Agent 宿主配置边界等总说明
+- `macOS`、`Linux`、`Windows`：三套平台接入说明
+- `Codex`、`Claude Code`：两套 Agent 宿主配置片段
 
-`通知环境` 标题行最右侧的齿轮按钮可直接打开本扩展配置。
+只有 `概览` 标题行最右侧会显示齿轮按钮；它可直接打开本扩展配置。
 
 声音开关配置：
 
 - 设置项：`devSessionCanvasNotifier.notifications.playSound`
 - 默认值：`true`
 - 作用：控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音
-- 说明：这是 best-effort 开关；Linux / Windows 是否真正响铃仍取决于通知服务，macOS `osascript` 回退路径则会在开启时额外播放一次系统 alert sound
+- 说明：这是 best-effort 开关；Linux / Windows 是否真正响铃仍取决于通知服务，macOS `osascript` 回退路径会在开启时直接使用 `display notification` 的内建声音名（当前为 `Submarine`），避免额外 `beep`
 
 本地人工验收时，优先使用以下命令：
 

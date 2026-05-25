@@ -286,6 +286,15 @@ function collectTemplateDocumentTextFields(
     if (node.metadata?.note?.content) {
       fields.push({ path: `template.nodes[${index}].metadata.note.content`, value: node.metadata.note.content });
     }
+    if (node.metadata?.note?.templateContentMode) {
+      fields.push({
+        path: `template.nodes[${index}].metadata.note.templateContentMode`,
+        value: node.metadata.note.templateContentMode
+      });
+    }
+    if (node.metadata?.note?.relativePath) {
+      fields.push({ path: `template.nodes[${index}].metadata.note.relativePath`, value: node.metadata.note.relativePath });
+    }
     node.metadata?.agent?.argv?.forEach((arg, argIndex) => {
       fields.push({ path: `template.nodes[${index}].metadata.agent.argv[${argIndex}]`, value: arg });
     });

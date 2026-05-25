@@ -45,6 +45,14 @@ import '@xterm/xterm/css/xterm.css';
 import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
 
+import {
+  createNoteMarkdownSourceMap,
+  type NoteMarkdownSourceBlockKind,
+  type NoteMarkdownSourceBlockRange,
+  type NoteMarkdownSourceMap,
+  type NoteMarkdownSourceTextSegment
+} from '../common/noteMarkdownSourceMap';
+
 import type {
   AgentNodeMetadata,
   AgentLaunchDefaultsByProvider,
@@ -74,6 +82,7 @@ import type {
   FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
+  WebviewClipboardTextSource,
   WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -82,6 +91,7 @@ import type {
 import {
   canvasEdgePresetColors,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -98,6 +108,11 @@ import {
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
+import {
+  canvasStatusToneClass as statusToneClass,
+  humanizeCanvasNodeStatus,
+  humanizeCanvasStatus as humanizeStatus
+} from '../common/canvasNodeStatusPresentation';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -121,7 +136,15 @@ import {
   setupExecutionTerminalNativeInteractions,
   type ExecutionTerminalNativeInteractionsHandle
 } from './executionTerminalNativeInteractions';
+import {
+  CODE_FILES_DATA_TRANSFER,
+  RESOURCE_URLS_DATA_TRANSFER,
+  URI_LIST_DATA_TRANSFER,
+  hasPotentialDroppedResource,
+  parseDroppedStringArray
+} from './droppedResources';
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
+import { parseNoteMarkdownFrontMatter, type NoteMarkdownFrontMatter } from './noteMarkdownFrontMatter';
 
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
@@ -199,6 +222,7 @@ interface CanvasNodeData {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  noteMarkdownImageWorkspaceRoots: NoteMarkdownImageWorkspaceRoot[];
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
   collapsedFileListTreeBranchKeys?: string[];
@@ -207,6 +231,11 @@ interface CanvasNodeData {
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
   onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onOpenNoteLink?: (nodeId: string, href: string) => void;
+  onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
+  onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onReloadAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onCreateMissingAssociatedNoteMarkdownFile?: (nodeId: string) => void;
+  onCopyTextToClipboard?: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
@@ -247,7 +276,22 @@ interface CanvasNodeData {
   onUpdateNote?: (payload: {
     nodeId: string;
     content: string;
+    baseContentRevision?: string;
+    force?: boolean;
   }) => void;
+  onBeginAssociatedNoteMarkdownEdit?: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onEndAssociatedNoteMarkdownEdit?: (nodeId: string) => void;
+  onUpdateAssociatedNoteMarkdownDraft?: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onClearAssociatedNoteMarkdownDraft?: (nodeId: string) => void;
+  onCopyAssociatedNoteMarkdownDraft?: (nodeId: string, content: string) => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
@@ -256,12 +300,50 @@ interface CanvasNodeData {
 type CanvasFlowNode = Node<CanvasNodeData>;
 type FileListViewMode = 'list' | 'tree';
 type FileListEntrySelectionTone = 'active' | 'inactive';
+interface AssociatedMarkdownDraftRecovery {
+  kind: 'dirty-conflict' | 'recoverable-draft' | 'unavailable-draft';
+  remoteContent: string;
+  remoteContentRevision?: string;
+}
+type AssociatedMarkdownConflictResolution = 'reload' | 'overwrite';
+interface PendingAssociatedMarkdownSubmission {
+  content: string;
+  force: boolean;
+}
+interface NoteMarkdownPreviewResult {
+  html: string;
+  frontMatter: NoteMarkdownFrontMatter;
+}
+interface NoteBodyFocusRequest {
+  selectionStart: number;
+  selectionEnd: number;
+  selectionDirection?: HTMLTextAreaElement['selectionDirection'];
+}
+type NoteMarkdownImageWorkspaceRoot = NonNullable<CanvasRuntimeContext['noteMarkdownImageWorkspaceRoots']>[number];
+interface NoteMarkdownPreviewRenderOptions {
+  imageBaseUri?: string;
+  imageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
+}
+interface NoteMarkdownNormalizedImagePath {
+  segments: string[];
+  relativePath: string;
+}
+interface NoteMarkdownResolvedImageResource {
+  baseUri: string;
+  relativePath: string;
+}
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
 const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
+const EMBEDDED_NOTE_BODY_PLACEHOLDER =
+  `${NOTE_BODY_PLACEHOLDER} 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符。更长内容可保存为 Markdown 文件。`;
+const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
 const NOTE_MARKDOWN_CHECKLIST_SELECTOR = 'input.task-list-item-checkbox[data-note-markdown-task-line]';
+const NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR = '[data-note-markdown-source-offsets]';
+const NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR = '[data-note-markdown-source-block="true"]';
+const NOTE_MARKDOWN_DATA_IMAGE_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[A-Za-z0-9+/=\r\n]+$/iu;
 const noteMarkdownRenderer = createNoteMarkdownRenderer();
 interface CanvasEdgeData {
   owner: CanvasEdgeOwner;
@@ -340,6 +422,7 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
 let nextExecutionNodeHelpTooltipId = 0;
+let nextNoteMarkdownMetadataPopoverId = 0;
 type ExecutionHostEvent =
   | {
       type: 'snapshot';
@@ -372,6 +455,8 @@ interface ExecutionTerminalController {
   flushPendingOutput(): void;
   dispose(): void;
 }
+
+type ExecutionTerminalContentChangeReason = 'snapshot' | 'output' | 'exit';
 
 type MouseCoords = [number, number] | undefined;
 interface MouseReportCoords {
@@ -699,7 +784,8 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
   filePathDisplayMode: 'basename',
-  fileIconFontFaces: []
+  fileIconFontFaces: [],
+  noteMarkdownImageWorkspaceRoots: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
 let embeddedTerminalAppearanceRefreshScheduled = false;
@@ -716,6 +802,13 @@ function normalizeRuntimeContext(
   const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
     ? runtimeContext.fileIconFontFaces
     : [];
+  const noteMarkdownImageWorkspaceRoots =
+    runtimeContext && Array.isArray(runtimeContext.noteMarkdownImageWorkspaceRoots)
+      ? runtimeContext.noteMarkdownImageWorkspaceRoots.filter(
+          (root): root is NoteMarkdownImageWorkspaceRoot =>
+            typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : [];
   const legacyStrongTerminalAttentionReminderEnabled = runtimeContext
     ? (
         runtimeContext as Partial<CanvasRuntimeContext> & {
@@ -750,7 +843,8 @@ function normalizeRuntimeContext(
         ? runtimeContext.fileNodeDisplayMode
         : 'icon-path',
     filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
-    fileIconFontFaces
+    fileIconFontFaces,
+    noteMarkdownImageWorkspaceRoots
   };
 }
 
@@ -813,7 +907,8 @@ function App(): JSX.Element {
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
-    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces
+    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
+    noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -1629,6 +1724,7 @@ function App(): JSX.Element {
     fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
+    noteMarkdownImageWorkspaceRoots: runtimeContext.noteMarkdownImageWorkspaceRoots ?? [],
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
     collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
@@ -1648,6 +1744,43 @@ function App(): JSX.Element {
         payload: {
           nodeId,
           href
+        }
+      }),
+    onSaveNoteAsMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/saveNoteAsMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onOpenAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/openAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onReloadAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/reloadAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onCreateMissingAssociatedNoteMarkdownFile: (nodeId) =>
+      postMessage({
+        type: 'webview/createMissingAssociatedNoteMarkdownFile',
+        payload: {
+          nodeId
+        }
+      }),
+    onCopyTextToClipboard: (text, source, nodeId) =>
+      postMessage({
+        type: 'webview/copyTextToClipboard',
+        payload: {
+          text,
+          source,
+          nodeId
         }
       }),
     onSelectFileListEntry: selectFileListEntry,
@@ -1717,6 +1850,38 @@ function App(): JSX.Element {
       postMessage({
         type: 'webview/updateNoteNode',
         payload
+      }),
+    onBeginAssociatedNoteMarkdownEdit: (payload) =>
+      postMessage({
+        type: 'webview/beginAssociatedNoteMarkdownEdit',
+        payload
+      }),
+    onEndAssociatedNoteMarkdownEdit: (nodeId) =>
+      postMessage({
+        type: 'webview/endAssociatedNoteMarkdownEdit',
+        payload: {
+          nodeId
+        }
+      }),
+    onUpdateAssociatedNoteMarkdownDraft: (payload) =>
+      postMessage({
+        type: 'webview/updateAssociatedNoteMarkdownDraft',
+        payload
+      }),
+    onClearAssociatedNoteMarkdownDraft: (nodeId) =>
+      postMessage({
+        type: 'webview/clearAssociatedNoteMarkdownDraft',
+        payload: {
+          nodeId
+        }
+      }),
+    onCopyAssociatedNoteMarkdownDraft: (nodeId, content) =>
+      postMessage({
+        type: 'webview/copyAssociatedNoteMarkdownDraft',
+        payload: {
+          nodeId,
+          content
+        }
       }),
     onResizeNode: (nodeId, position, size) =>
       postMessage({
@@ -1896,6 +2061,55 @@ function App(): JSX.Element {
         y: Math.round(flowAnchor.y)
       },
       view: 'root'
+    });
+  };
+
+  const handleCanvasDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isCanvasBlankDropTarget(event.target)) {
+      return;
+    }
+    if (!hasPotentialDroppedResource(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isCanvasBlankDropTarget(event.target)) {
+      return;
+    }
+
+    const hasPotentialDroppedMarkdownResource = hasPotentialDroppedResource(event.dataTransfer);
+    const resources = extractDroppedNoteMarkdownResources(event.dataTransfer);
+    if (resources.length === 0) {
+      if (hasPotentialDroppedMarkdownResource) {
+        event.preventDefault();
+        stopCanvasEvent(event);
+      }
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    const reactFlowInstance = reactFlowRef.current;
+    if (!reactFlowInstance?.viewportInitialized) {
+      return;
+    }
+
+    const flowPosition = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    postMessage({
+      type: 'webview/dropNoteMarkdownFiles',
+      payload: {
+        resources,
+        position: {
+          x: Math.round(flowPosition.x),
+          y: Math.round(flowPosition.y)
+        }
+      }
     });
   };
 
@@ -2103,6 +2317,8 @@ function App(): JSX.Element {
       data-canvas-overview-config={runtimeContext.overviewMode}
       style={canvasShellStyle}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
     >
       <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
@@ -2531,11 +2747,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     .join(' ');
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const restartMenuRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
   const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
   const autoLaunchRef = useRef<string | null>(null);
-  const [restartMenuOpen, setRestartMenuOpen] = useState(false);
   const zoomRef = useRef(zoom);
   const terminalSizeRef = useRef({
     cols: agentMetadata.lastCols ?? 96,
@@ -2606,8 +2820,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
-      onContentWillChange: () => {
-        nativeInteractions?.invalidateLinkResolutionCache();
+      onContentWillChange: (reason) => {
+        if (reason === 'snapshot') {
+          nativeInteractions?.invalidateLinkResolutionCache();
+        } else if (reason === 'output') {
+          nativeInteractions?.invalidateLinkResolutionCache('negative-delayed');
+        } else {
+          nativeInteractions?.invalidateLinkResolutionCache('negative');
+        }
       },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
@@ -2800,7 +3020,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [agentMetadata.liveSession, id]);
 
   const startAgent = (resume = resumeRequested): void => {
-    setRestartMenuOpen(false);
     data.onSelectNode?.(id);
     data.onStartExecution?.(
       id,
@@ -2813,13 +3032,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const stopAgent = (): void => {
-    setRestartMenuOpen(false);
     data.onSelectNode?.(id);
     data.onStopExecution?.(id, 'agent');
   };
 
   const deleteAgent = (): void => {
-    setRestartMenuOpen(false);
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
   };
@@ -2841,42 +3058,8 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     };
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
-  useEffect(() => {
-    if (!restartMenuOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent): void => {
-      if (event.target instanceof globalThis.Node && restartMenuRef.current?.contains(event.target)) {
-        return;
-      }
-      setRestartMenuOpen(false);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
-        return;
-      }
-      event.preventDefault();
-      setRestartMenuOpen(false);
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [restartMenuOpen]);
-
-  const showRestartSplitButton = !agentMetadata.liveSession && canResumeOriginalSession;
+  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
   const actionDisabled = executionBlocked || reattaching;
-
-  useEffect(() => {
-    if ((overviewInteractionsDisabled || !showRestartSplitButton) && restartMenuOpen) {
-      setRestartMenuOpen(false);
-    }
-  }, [overviewInteractionsDisabled, restartMenuOpen, showRestartSplitButton]);
 
   return (
     <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
@@ -2923,18 +3106,29 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               interactive
               onFocus={() => data.onSelectNode?.(id)}
             />
-          ) : showRestartSplitButton ? (
-            <div
-              ref={restartMenuRef}
-              className="action-split-button nodrag nopan"
-              data-node-interactive="true"
-              data-agent-restart-menu-open={restartMenuOpen ? 'true' : 'false'}
-            >
+          ) : showRestartActions ? (
+            <div className="action-button-group nodrag nopan" data-node-interactive="true">
+              <ActionButton
+                label="新建"
+                tone="primary"
+                disabled={actionDisabled}
+                className="compact nodrag nopan"
+                interactive
+                onFocus={() => data.onSelectNode?.(id)}
+                onClick={() => {
+                  startAgent(false);
+                }}
+                buttonProps={{
+                  title: '启动新会话',
+                  'aria-label': '启动新会话',
+                  'data-agent-restart-action': 'new-session'
+                }}
+              />
               <ActionButton
                 label="重启"
                 tone="primary"
                 disabled={actionDisabled || !canResumeOriginalSession}
-                className="compact action-split-button-main nodrag nopan"
+                className="compact nodrag nopan"
                 interactive
                 onFocus={() => data.onSelectNode?.(id)}
                 onClick={() => {
@@ -2946,66 +3140,6 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   'data-agent-restart-action': 'resume'
                 }}
               />
-              <ActionButton
-                label={<span className="codicon codicon-chevron-down" aria-hidden="true" />}
-                tone="primary"
-                disabled={actionDisabled}
-                className="compact action-split-button-toggle nodrag nopan"
-                interactive
-                onFocus={() => data.onSelectNode?.(id)}
-                onClick={() => {
-                  data.onSelectNode?.(id);
-                  setRestartMenuOpen((current) => !current);
-                }}
-                buttonProps={{
-                  'data-agent-restart-toggle': 'true',
-                  'aria-haspopup': 'menu',
-                  'aria-expanded': restartMenuOpen,
-                  'aria-label': '打开重启选项',
-                  title: '打开重启选项'
-                }}
-              />
-              {restartMenuOpen ? (
-                <div className="action-split-button-menu" role="menu">
-                  <button
-                    type="button"
-                    className="action-split-button-menu-item interactive nodrag nopan"
-                    data-agent-restart-action="resume"
-                    role="menuitem"
-                    disabled={overviewInteractionsDisabled || !canResumeOriginalSession}
-                    tabIndex={overviewInteractionsDisabled ? -1 : undefined}
-                    onMouseDown={stopCanvasEvent}
-                    onClick={(event) => {
-                      stopCanvasEvent(event);
-                      if (overviewInteractionsDisabled) {
-                        return;
-                      }
-                      startAgent(true);
-                    }}
-                    title={!canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话'}
-                  >
-                    原会话
-                  </button>
-                  <button
-                    type="button"
-                    className="action-split-button-menu-item interactive nodrag nopan"
-                    data-agent-restart-action="new-session"
-                    role="menuitem"
-                    disabled={overviewInteractionsDisabled}
-                    tabIndex={overviewInteractionsDisabled ? -1 : undefined}
-                    onMouseDown={stopCanvasEvent}
-                    onClick={(event) => {
-                      stopCanvasEvent(event);
-                      if (overviewInteractionsDisabled) {
-                        return;
-                      }
-                      startAgent(false);
-                    }}
-                  >
-                    新会话
-                  </button>
-                </div>
-              ) : null}
             </div>
           ) : (
             <ActionButton
@@ -3047,7 +3181,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
-          <NodeOverviewTitle title={data.title} />
+          <NodeOverviewTitle title={data.title} status={displayStatus} />
           {!agentMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3177,8 +3311,14 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(terminal, {
-      onContentWillChange: () => {
-        nativeInteractions?.invalidateLinkResolutionCache();
+      onContentWillChange: (reason) => {
+        if (reason === 'snapshot') {
+          nativeInteractions?.invalidateLinkResolutionCache();
+        } else if (reason === 'output') {
+          nativeInteractions?.invalidateLinkResolutionCache('negative-delayed');
+        } else {
+          nativeInteractions?.invalidateLinkResolutionCache('negative');
+        }
       },
       onSnapshotApplied: (detail) => {
         snapshotRestoreRef.current.hasAppliedSnapshot = true;
@@ -3475,7 +3615,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
           onWheel={stopCanvasEvent}
         >
           <div ref={viewportRef} className="terminal-viewport" />
-          <NodeOverviewTitle title={data.title} />
+          <NodeOverviewTitle title={data.title} status={displayStatus} />
           {!terminalMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
@@ -3650,12 +3790,25 @@ function RestrictedBanner(props: { title: string; description: string }): JSX.El
   );
 }
 
-function NodeOverviewTitle(props: { title: string }): JSX.Element {
+function NodeOverviewTitle(props: { title: string; status?: string }): JSX.Element {
   return (
     <div className="node-overview-title" aria-hidden="true">
-      <span>{props.title}</span>
+      <span className="node-overview-title-label">{props.title}</span>
+      {props.status ? (
+        <span
+          className={`node-overview-status ${statusToneClass(props.status)}`}
+          data-overview-status={props.status}
+        >
+          <span className="node-overview-status-dot" />
+          <span>{humanizeStatus(props.status)}</span>
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function overviewStatusForNode(data: CanvasNodeData): string | undefined {
+  return data.kind === 'agent' || data.kind === 'terminal' ? data.status : undefined;
 }
 
 function NodeHandles(props: { selected: boolean }): JSX.Element {
@@ -4383,53 +4536,553 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
+  const noteContentSource = noteMetadata.contentSource;
+  const associatedMarkdownFile =
+    noteContentSource?.kind === 'markdown-file' ? noteContentSource : undefined;
+  const associatedMarkdownSubtitle =
+    associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath;
+  const associatedMarkdownContentRevision = associatedMarkdownFile?.contentRevision;
+  const associatedMarkdownStatus = associatedMarkdownFile?.status;
+  const hasAssociatedMarkdownMissingFile = associatedMarkdownStatus === 'missing';
+  const associatedMarkdownRecoverableDraft = associatedMarkdownFile?.recoverableDraft;
+  const hasAssociatedMarkdownRecoverableDraft = Boolean(associatedMarkdownRecoverableDraft);
+  const associatedMarkdownRecoverableDraftContent =
+    typeof associatedMarkdownRecoverableDraft?.content === 'string'
+      ? associatedMarkdownRecoverableDraft.content
+      : undefined;
+  const hasAssociatedMarkdownHostConflict = associatedMarkdownStatus === 'dirty-conflict';
+  const canSurfaceAssociatedMarkdownRecoverableDraft =
+    Boolean(associatedMarkdownFile) &&
+    Boolean(associatedMarkdownStatus) &&
+    hasAssociatedMarkdownRecoverableDraft;
+  const associatedMarkdownFileAvailable =
+    !associatedMarkdownFile || associatedMarkdownStatus === 'ok' || hasAssociatedMarkdownHostConflict;
+  const associatedMarkdownFileEditable =
+    !associatedMarkdownFile || associatedMarkdownStatus === 'ok';
+  const canOpenAssociatedMarkdownFile =
+    Boolean(associatedMarkdownFile) && !hasAssociatedMarkdownMissingFile;
+  const associatedMarkdownWarningTitle =
+    hasAssociatedMarkdownHostConflict
+      ? '关联文件存在编辑冲突'
+      : hasAssociatedMarkdownMissingFile
+        ? '关联文件缺失'
+        : '关联文件不可用';
+  const isEmbeddedNote = !associatedMarkdownFile;
+  const bodyPlaceholder = isEmbeddedNote ? EMBEDDED_NOTE_BODY_PLACEHOLDER : NOTE_BODY_PLACEHOLDER;
   const [content, setContent] = useState(noteMetadata.content);
   const [isEditingBody, setIsEditingBody] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [isEmbeddedLimitNoticeVisible, setIsEmbeddedLimitNoticeVisible] = useState(false);
+  const [associatedMarkdownDraftRecovery, setAssociatedMarkdownDraftRecovery] =
+    useState<AssociatedMarkdownDraftRecovery | null>(null);
+  const [associatedMarkdownDraftCopied, setAssociatedMarkdownDraftCopied] = useState(false);
+  const [associatedMarkdownConflictResolution, setAssociatedMarkdownConflictResolution] =
+    useState<AssociatedMarkdownConflictResolution | null>(null);
+  const showAssociatedMarkdownHostConflictPanel =
+    hasAssociatedMarkdownHostConflict &&
+    !associatedMarkdownDraftRecovery &&
+    !isEditingBody &&
+    !associatedMarkdownConflictResolution;
+  const showAssociatedMarkdownRecoverableDraftPanel =
+    !hasAssociatedMarkdownHostConflict &&
+    canSurfaceAssociatedMarkdownRecoverableDraft &&
+    associatedMarkdownRecoverableDraftContent === undefined &&
+    !associatedMarkdownDraftRecovery &&
+    !isEditingBody &&
+    !associatedMarkdownConflictResolution;
+  const showAssociatedMarkdownUnavailablePanel =
+    !associatedMarkdownFileAvailable && !associatedMarkdownDraftRecovery;
+  const associatedMarkdownFilePanelTitle = showAssociatedMarkdownRecoverableDraftPanel
+    ? '发现未提交的本地草稿'
+    : associatedMarkdownWarningTitle;
+  const associatedMarkdownFilePanelDetail = showAssociatedMarkdownRecoverableDraftPanel
+    ? associatedMarkdownStatus === 'ok'
+      ? '草稿正文暂不可读取。请重新加载以丢弃草稿并恢复磁盘内容。'
+      : `${associatedMarkdownFile?.lastError ?? '关联文件当前不可用。'} 草稿正文暂不可读取。请重新加载以丢弃草稿并重新检查关联文件。`
+    : associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。';
+  const associatedMarkdownDraftRecoveryHint =
+    associatedMarkdownDraftRecovery?.kind === 'recoverable-draft'
+      ? '发现未提交的本地草稿；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。'
+      : associatedMarkdownDraftRecovery?.kind === 'unavailable-draft'
+        ? `${associatedMarkdownWarningTitle}；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。`
+      : associatedMarkdownFile?.lastError?.startsWith('模板')
+        ? '模板内容与现有文件不同；你可以继续编辑模板草稿，或选择重新加载 / 覆盖文件。'
+        : '关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。';
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
+  const [bodyVisualLineCounts, setBodyVisualLineCounts] = useState<number[]>(() =>
+    createFallbackVisualLineCounts(splitTextLines(noteMetadata.content).length)
+  );
   const committedContentRef = useRef(noteMetadata.content);
   const pendingContentRef = useRef<string | null>(null);
   const lastPropContentRef = useRef(noteMetadata.content);
+  const lastPropStatusRef = useRef(associatedMarkdownStatus);
+  const lastPropContentRevisionRef = useRef(associatedMarkdownContentRevision);
+  const pendingAssociatedMarkdownSubmissionRef = useRef<PendingAssociatedMarkdownSubmission | null>(null);
+  const editBaselineContentRef = useRef<string | null>(null);
+  const editBaselineRevisionRef = useRef<string | undefined>(associatedMarkdownContentRevision);
+  const associatedMarkdownDraftSyncTimerRef = useRef<number | undefined>();
+  const associatedMarkdownDraftCopiedTimerRef = useRef<number | undefined>();
+  const lastAssociatedMarkdownDraftSyncKeyRef = useRef<string | undefined>();
+  const restoredAssociatedMarkdownDraftKeyRef = useRef<string | undefined>();
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const pendingBodyFocusRef = useRef(false);
+  const bodyMeasureRef = useRef<HTMLDivElement | null>(null);
+  const bodyPreviewRef = useRef<HTMLDivElement | null>(null);
+  const pendingBodyScrollTopRef = useRef<number | null>(null);
+  const pendingBodyPreviewScrollTargetRef = useRef<number | null>(null);
+  const pendingBodyFocusRef = useRef<NoteBodyFocusRequest | null>(null);
   const pendingBodySelectionRef = useRef<{ selectionStart: number; selectionEnd: number } | null>(null);
-  const previewHtml = useMemo(() => renderNoteMarkdownPreview(content), [content]);
-  const bodyLineNumbers = useMemo(
-    () => Array.from({ length: countTextLines(content) }, (_, index) => index + 1),
-    [content]
+  const pendingBodyFocusSelectionRef = useRef<{
+    selectionStart: number;
+    selectionEnd: number;
+    selectionDirection: HTMLTextAreaElement['selectionDirection'];
+  } | null>(null);
+  const associatedMarkdownImageBaseUri = associatedMarkdownFile?.webviewResourceBaseUri;
+  const markdownPreview = useMemo(
+    () =>
+      renderNoteMarkdownPreview(content, {
+        imageBaseUri: associatedMarkdownImageBaseUri,
+        imageWorkspaceRoots: data.noteMarkdownImageWorkspaceRoots
+      }),
+    [associatedMarkdownImageBaseUri, content, data.noteMarkdownImageWorkspaceRoots]
   );
+  const previewHtml = markdownPreview.html;
+  const markdownFrontMatter = markdownPreview.frontMatter;
+  const bodyLines = useMemo(() => splitTextLines(content), [content]);
+  const bodyLineNumberRows = useMemo(
+    () => createNoteBodyLineNumberRows(bodyLines, bodyVisualLineCounts),
+    [bodyLines, bodyVisualLineCounts]
+  );
+
+  const clearAssociatedMarkdownDraftSyncTimer = (): void => {
+    if (associatedMarkdownDraftSyncTimerRef.current !== undefined) {
+      window.clearTimeout(associatedMarkdownDraftSyncTimerRef.current);
+      associatedMarkdownDraftSyncTimerRef.current = undefined;
+    }
+  };
+
+  const clearAssociatedMarkdownDraftCopiedTimer = (): void => {
+    if (associatedMarkdownDraftCopiedTimerRef.current !== undefined) {
+      window.clearTimeout(associatedMarkdownDraftCopiedTimerRef.current);
+      associatedMarkdownDraftCopiedTimerRef.current = undefined;
+    }
+  };
+
+  const clearAssociatedMarkdownDraft = (): void => {
+    clearAssociatedMarkdownDraftSyncTimer();
+    lastAssociatedMarkdownDraftSyncKeyRef.current = undefined;
+    data.onClearAssociatedNoteMarkdownDraft?.(id);
+  };
+
+  const readCurrentBodyContent = (): string => bodyInputRef.current?.value ?? content;
+
+  const isAssociatedMarkdownConflictActionTarget = (target: EventTarget | null): boolean =>
+    target instanceof HTMLElement && Boolean(target.closest('[data-note-conflict-action="true"]'));
+
+  const preserveFocusedBodySelection = (): void => {
+    const textarea = bodyInputRef.current;
+    if (!textarea || document.activeElement !== textarea) {
+      return;
+    }
+
+    pendingBodyFocusSelectionRef.current = {
+      selectionStart: textarea.selectionStart,
+      selectionEnd: textarea.selectionEnd,
+      selectionDirection: textarea.selectionDirection
+    };
+  };
+
+  const beginAssociatedMarkdownEdit = (draftContent: string): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    const baseContentRevision = editBaselineRevisionRef.current ?? associatedMarkdownContentRevision;
+    data.onBeginAssociatedNoteMarkdownEdit?.({
+      nodeId: id,
+      content: draftContent,
+      baseContentRevision
+    });
+  };
+
+  const endAssociatedMarkdownEdit = (): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    clearAssociatedMarkdownDraftSyncTimer();
+    data.onEndAssociatedNoteMarkdownEdit?.(id);
+  };
+
+  const persistAssociatedMarkdownDraft = (draftContent: string, options: { immediate?: boolean } = {}): void => {
+    if (!associatedMarkdownFile) {
+      return;
+    }
+
+    const baseContentRevision = editBaselineRevisionRef.current ?? associatedMarkdownContentRevision;
+    const baselineContent = editBaselineContentRef.current ?? committedContentRef.current;
+    if (draftContent === baselineContent && !hasAssociatedMarkdownHostConflict) {
+      clearAssociatedMarkdownDraft();
+      return;
+    }
+
+    const syncKey = `${baseContentRevision ?? ''}\n${draftContent}`;
+    if (lastAssociatedMarkdownDraftSyncKeyRef.current === syncKey) {
+      return;
+    }
+
+    const sendDraft = (): void => {
+      associatedMarkdownDraftSyncTimerRef.current = undefined;
+      lastAssociatedMarkdownDraftSyncKeyRef.current = syncKey;
+      data.onUpdateAssociatedNoteMarkdownDraft?.({
+        nodeId: id,
+        content: draftContent,
+        baseContentRevision
+      });
+    };
+
+    clearAssociatedMarkdownDraftSyncTimer();
+    if (options.immediate === true) {
+      sendDraft();
+      return;
+    }
+
+    associatedMarkdownDraftSyncTimerRef.current = window.setTimeout(sendDraft, 450);
+  };
+
+  const measureBodyVisualLineCounts = useCallback((): void => {
+    const measureElement = bodyMeasureRef.current;
+    const textarea = bodyInputRef.current;
+    if (!measureElement || !textarea) {
+      return;
+    }
+
+    measureElement.style.width = `${textarea.clientWidth}px`;
+    const lineHeight = readElementLineHeightPx(measureElement);
+    const nextCounts = Array.from(
+      measureElement.querySelectorAll<HTMLElement>('.note-document-line-measure-line'),
+      (lineElement) => Math.max(1, Math.round(lineElement.offsetHeight / lineHeight))
+    );
+    if (nextCounts.length === 0) {
+      nextCounts.push(1);
+    }
+
+    setBodyVisualLineCounts((current) => (areNumberListsEqual(current, nextCounts) ? current : nextCounts));
+  }, []);
 
   useLayoutEffect(() => {
     const previousPropContent = lastPropContentRef.current;
+    const previousPropStatus = lastPropStatusRef.current;
+    const previousPropContentRevision = lastPropContentRevisionRef.current;
     lastPropContentRef.current = noteMetadata.content;
+    lastPropStatusRef.current = associatedMarkdownStatus;
+    lastPropContentRevisionRef.current = associatedMarkdownContentRevision;
+    const didPropContentChange = noteMetadata.content !== previousPropContent;
+    const didPropStatusChange = associatedMarkdownStatus !== previousPropStatus;
+    const didPropContentRevisionChange = associatedMarkdownContentRevision !== previousPropContentRevision;
+    const didMatchPendingContent = pendingContentRef.current === noteMetadata.content;
 
-    if (pendingContentRef.current === noteMetadata.content) {
+    const canRestoreAssociatedMarkdownRecoverableDraft =
+      canSurfaceAssociatedMarkdownRecoverableDraft &&
+      associatedMarkdownRecoverableDraftContent !== undefined;
+    const recoverableDraftRestoreKey = canRestoreAssociatedMarkdownRecoverableDraft
+      ? [
+          id,
+          associatedMarkdownRecoverableDraft?.draftId ?? '',
+          associatedMarkdownRecoverableDraft?.baseContentRevision ?? '',
+          associatedMarkdownRecoverableDraft?.remoteContentRevision ?? '',
+          associatedMarkdownRecoverableDraft?.updatedAt ?? '',
+          associatedMarkdownStatus
+        ].join('\n')
+      : undefined;
+    if (
+      canRestoreAssociatedMarkdownRecoverableDraft &&
+      !associatedMarkdownDraftRecovery &&
+      !associatedMarkdownConflictResolution &&
+      restoredAssociatedMarkdownDraftKeyRef.current !== recoverableDraftRestoreKey
+    ) {
+      preserveFocusedBodySelection();
+      pendingAssociatedMarkdownSubmissionRef.current = null;
+      setAssociatedMarkdownConflictResolution(null);
+      committedContentRef.current = noteMetadata.content;
+      editBaselineContentRef.current = noteMetadata.content;
+      editBaselineRevisionRef.current =
+        associatedMarkdownRecoverableDraft?.baseContentRevision ?? associatedMarkdownContentRevision;
+      setContent(associatedMarkdownRecoverableDraftContent);
+      setIsEditingBody(true);
+      restoredAssociatedMarkdownDraftKeyRef.current = recoverableDraftRestoreKey;
+      setAssociatedMarkdownDraftRecovery({
+        kind: hasAssociatedMarkdownHostConflict
+          ? 'dirty-conflict'
+          : associatedMarkdownStatus === 'ok'
+            ? 'recoverable-draft'
+            : 'unavailable-draft',
+        remoteContent: noteMetadata.content,
+        remoteContentRevision:
+          associatedMarkdownRecoverableDraft?.remoteContentRevision ?? associatedMarkdownContentRevision
+      });
+      return;
+    }
+
+    if (didMatchPendingContent) {
       pendingContentRef.current = null;
     } else if (pendingContentRef.current && noteMetadata.content !== previousPropContent) {
       pendingContentRef.current = null;
     }
 
+    const pendingAssociatedSubmission = associatedMarkdownFile
+      ? pendingAssociatedMarkdownSubmissionRef.current
+      : null;
+    if (pendingAssociatedSubmission) {
+      if (
+        associatedMarkdownStatus === 'ok' &&
+        noteMetadata.content === pendingAssociatedSubmission.content
+      ) {
+        pendingAssociatedMarkdownSubmissionRef.current = null;
+        committedContentRef.current = noteMetadata.content;
+        editBaselineContentRef.current = null;
+        editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+        setAssociatedMarkdownConflictResolution(null);
+        setAssociatedMarkdownDraftRecovery(null);
+        if (!isEditingBody && !isComposing) {
+          setContent(noteMetadata.content);
+        }
+        return;
+      }
+
+      if (
+        !pendingAssociatedSubmission.force &&
+        hasAssociatedMarkdownHostConflict &&
+        (didPropContentChange || didPropStatusChange)
+      ) {
+        preserveFocusedBodySelection();
+        committedContentRef.current = noteMetadata.content;
+        editBaselineContentRef.current = noteMetadata.content;
+        editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+        setAssociatedMarkdownConflictResolution(null);
+        setContent(pendingAssociatedSubmission.content);
+        setIsEditingBody(true);
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      if (
+        associatedMarkdownStatus === 'ok' &&
+        noteMetadata.content !== pendingAssociatedSubmission.content &&
+        (didPropContentChange || didPropStatusChange)
+      ) {
+        preserveFocusedBodySelection();
+        committedContentRef.current = noteMetadata.content;
+        editBaselineContentRef.current = noteMetadata.content;
+        editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+        setAssociatedMarkdownConflictResolution(null);
+        setContent(pendingAssociatedSubmission.content);
+        setIsEditingBody(true);
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      if (!didPropContentChange && !didPropStatusChange) {
+        return;
+      }
+    }
+
+    if (
+      associatedMarkdownFile &&
+      isEditingBody &&
+      (didPropContentChange || (hasAssociatedMarkdownHostConflict && didPropStatusChange)) &&
+      !didMatchPendingContent
+    ) {
+      const editBaselineContent = editBaselineContentRef.current ?? previousPropContent;
+      if (content !== editBaselineContent || hasAssociatedMarkdownHostConflict) {
+        preserveFocusedBodySelection();
+        persistAssociatedMarkdownDraft(content, { immediate: true });
+        setAssociatedMarkdownConflictResolution(null);
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      editBaselineContentRef.current = noteMetadata.content;
+      editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+      setAssociatedMarkdownConflictResolution(null);
+      setAssociatedMarkdownDraftRecovery(null);
+      setContent(noteMetadata.content);
+      return;
+    }
+
+    if (
+      associatedMarkdownFile &&
+      isEditingBody &&
+      didPropContentRevisionChange &&
+      !didPropContentChange &&
+      !associatedMarkdownDraftRecovery &&
+      associatedMarkdownStatus === 'ok'
+    ) {
+      const editBaselineContent = editBaselineContentRef.current ?? noteMetadata.content;
+      if (content !== editBaselineContent) {
+        preserveFocusedBodySelection();
+        persistAssociatedMarkdownDraft(content, { immediate: true });
+        setAssociatedMarkdownConflictResolution(null);
+        setAssociatedMarkdownDraftRecovery({
+          kind: 'dirty-conflict',
+          remoteContent: noteMetadata.content,
+          remoteContentRevision: associatedMarkdownContentRevision
+        });
+        return;
+      }
+
+      editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+      beginAssociatedMarkdownEdit(content);
+    }
+
     committedContentRef.current = pendingContentRef.current ?? noteMetadata.content;
     if (!isEditingBody && !isComposing) {
+      editBaselineContentRef.current = null;
+      editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+      if (associatedMarkdownStatus === 'ok' && !hasAssociatedMarkdownRecoverableDraft) {
+        setAssociatedMarkdownConflictResolution(null);
+      }
+      setAssociatedMarkdownDraftRecovery(null);
       setContent(pendingContentRef.current ?? noteMetadata.content);
     }
-  }, [id, isComposing, isEditingBody, noteMetadata.content]);
+  }, [
+    associatedMarkdownContentRevision,
+    associatedMarkdownRecoverableDraft,
+    associatedMarkdownRecoverableDraftContent,
+    associatedMarkdownConflictResolution,
+    associatedMarkdownDraftRecovery,
+    associatedMarkdownFile,
+    associatedMarkdownStatus,
+    canSurfaceAssociatedMarkdownRecoverableDraft,
+    content,
+    hasAssociatedMarkdownHostConflict,
+    id,
+    isComposing,
+    isEditingBody,
+    noteMetadata.content
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearAssociatedMarkdownDraftSyncTimer();
+      clearAssociatedMarkdownDraftCopiedTimer();
+      data.onEndAssociatedNoteMarkdownEdit?.(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    clearAssociatedMarkdownDraftCopiedTimer();
+    setAssociatedMarkdownDraftCopied(false);
+  }, [content]);
 
   useLayoutEffect(() => {
     if (!isEditingBody || !pendingBodyFocusRef.current) {
       return;
     }
 
-    pendingBodyFocusRef.current = false;
+    const focusRequest = pendingBodyFocusRef.current;
+    pendingBodyFocusRef.current = null;
     const textarea = bodyInputRef.current;
     if (!textarea) {
       return;
     }
 
-    textarea.focus();
-    const selectionEnd = textarea.value.length;
-    textarea.setSelectionRange(selectionEnd, selectionEnd);
+    const selectionStart = clampNoteMarkdownSourceOffset(focusRequest.selectionStart, textarea.value);
+    const selectionEnd = clampNoteMarkdownSourceOffset(focusRequest.selectionEnd, textarea.value);
+    const restoredScrollTop =
+      resolveNoteBodyTextareaScrollTopForSourceOffset(
+        textarea,
+        textarea.value,
+        selectionStart,
+        bodyVisualLineCounts
+      ) ?? pendingBodyScrollTopRef.current ?? bodyScrollTop;
+    pendingBodyScrollTopRef.current = null;
+
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(selectionStart, selectionEnd, focusRequest.selectionDirection ?? 'none');
+
+    const applyRestoredScrollTop = (): void => {
+      textarea.scrollTop = clampElementScrollTop(textarea, restoredScrollTop);
+      setBodyScrollTop(textarea.scrollTop);
+    };
+
+    applyRestoredScrollTop();
+    const frame = window.requestAnimationFrame(applyRestoredScrollTop);
+    return () => window.cancelAnimationFrame(frame);
   }, [isEditingBody]);
+
+  useLayoutEffect(() => {
+    if (!isEditingBody) {
+      return;
+    }
+
+    measureBodyVisualLineCounts();
+  }, [bodyLines, isEditingBody, measureBodyVisualLineCounts]);
+
+  useLayoutEffect(() => {
+    if (isEditingBody) {
+      return;
+    }
+
+    const preview = bodyPreviewRef.current;
+    if (!preview) {
+      return;
+    }
+
+    const sourceOffset = pendingBodyPreviewScrollTargetRef.current;
+    pendingBodyPreviewScrollTargetRef.current = null;
+    if (sourceOffset !== null && scrollNoteMarkdownPreviewToSourceOffset(preview, sourceOffset)) {
+      setBodyScrollTop(preview.scrollTop);
+      return;
+    }
+
+    preview.scrollTop = clampElementScrollTop(preview, bodyScrollTop);
+  }, [bodyScrollTop, isEditingBody, previewHtml]);
+
+  useEffect(() => {
+    if (!isEditingBody) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    let pendingFrame: number | undefined;
+    const scheduleMeasurement = (): void => {
+      if (pendingFrame !== undefined) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+
+      pendingFrame = window.requestAnimationFrame(() => {
+        pendingFrame = undefined;
+        measureBodyVisualLineCounts();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleMeasurement);
+    resizeObserver.observe(textarea);
+    scheduleMeasurement();
+
+    return () => {
+      resizeObserver.disconnect();
+      if (pendingFrame !== undefined) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+    };
+  }, [isEditingBody, measureBodyVisualLineCounts]);
 
   useLayoutEffect(() => {
     if (!isEditingBody || !pendingBodySelectionRef.current) {
@@ -4437,40 +5090,127 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     }
 
     const textarea = bodyInputRef.current;
+    const pendingSelection = pendingBodySelectionRef.current;
+    pendingBodySelectionRef.current = null;
     if (!textarea) {
       return;
     }
 
-    const pendingSelection = pendingBodySelectionRef.current;
-    pendingBodySelectionRef.current = null;
     textarea.setSelectionRange(pendingSelection.selectionStart, pendingSelection.selectionEnd);
   }, [content, isEditingBody]);
+
+  useLayoutEffect(() => {
+    if (!isEditingBody || !pendingBodyFocusSelectionRef.current) {
+      return;
+    }
+
+    const textarea = bodyInputRef.current;
+    const pendingSelection = pendingBodyFocusSelectionRef.current;
+    pendingBodyFocusSelectionRef.current = null;
+    if (!textarea) {
+      return;
+    }
+
+    const selectionStart = Math.min(pendingSelection.selectionStart, textarea.value.length);
+    const selectionEnd = Math.min(pendingSelection.selectionEnd, textarea.value.length);
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(selectionStart, selectionEnd, pendingSelection.selectionDirection);
+  }, [associatedMarkdownDraftRecovery, content, isEditingBody]);
 
   useEffect(() => {
     if (!overviewInteractionsDisabled) {
       return;
     }
 
-    pendingBodyFocusRef.current = false;
+    pendingBodyFocusRef.current = null;
     pendingBodySelectionRef.current = null;
     if (document.activeElement === bodyInputRef.current) {
       bodyInputRef.current?.blur();
     }
+    endAssociatedMarkdownEdit();
     setIsEditingBody(false);
   }, [overviewInteractionsDisabled]);
 
-  const submitNote = (nextContent: string): void => {
-    const baselineContent = committedContentRef.current;
-    if (nextContent === baselineContent) {
+  useEffect(() => {
+    setIsEmbeddedLimitNoticeVisible(
+      isEmbeddedNote && isEditingBody && content.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH
+    );
+  }, [content.length, isEditingBody, isEmbeddedNote]);
+
+  const normalizeEditableNoteContent = (nextContent: string): string => {
+    if (!isEmbeddedNote || nextContent.length <= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+      return nextContent;
+    }
+
+    setIsEmbeddedLimitNoticeVisible(true);
+    return nextContent.slice(0, NOTE_EMBEDDED_CONTENT_MAX_LENGTH);
+  };
+
+  const updateBodyContent = (nextContent: string): string => {
+    const normalizedContent = normalizeEditableNoteContent(nextContent);
+    setContent(normalizedContent);
+    if (associatedMarkdownFile && isEditingBody) {
+      persistAssociatedMarkdownDraft(normalizedContent);
+    }
+    if (isEmbeddedNote && normalizedContent.length >= NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+      setIsEmbeddedLimitNoticeVisible(true);
+    }
+    return normalizedContent;
+  };
+
+  const submitNote = (nextContent: string, options: { force?: boolean } = {}): void => {
+    if (associatedMarkdownFile && associatedMarkdownDraftRecovery && !options.force) {
+      return;
+    }
+    if (associatedMarkdownFile && hasAssociatedMarkdownHostConflict && !options.force) {
       return;
     }
 
-    committedContentRef.current = nextContent;
-    pendingContentRef.current = nextContent;
-    data.onUpdateNote?.({
+    const normalizedContent = normalizeEditableNoteContent(nextContent);
+    if (normalizedContent !== nextContent) {
+      setContent(normalizedContent);
+    }
+
+    const baselineContent = committedContentRef.current;
+    if (normalizedContent === baselineContent && options.force !== true) {
+      if (associatedMarkdownFile) {
+        clearAssociatedMarkdownDraft();
+      }
+      return;
+    }
+
+    const baseContentRevision = associatedMarkdownFile
+      ? isEditingBody
+        ? editBaselineRevisionRef.current
+        : associatedMarkdownContentRevision
+      : undefined;
+    const updatePayload: {
+      nodeId: string;
+      content: string;
+      baseContentRevision?: string;
+      force?: boolean;
+    } = {
       nodeId: id,
-      content: nextContent
-    });
+      content: normalizedContent
+    };
+    if (baseContentRevision) {
+      updatePayload.baseContentRevision = baseContentRevision;
+    }
+    if (options.force === true) {
+      updatePayload.force = true;
+    }
+    if (associatedMarkdownFile) {
+      pendingAssociatedMarkdownSubmissionRef.current = {
+        content: normalizedContent,
+        force: options.force === true
+      };
+      data.onUpdateNote?.(updatePayload);
+      return;
+    }
+
+    committedContentRef.current = normalizedContent;
+    pendingContentRef.current = normalizedContent;
+    data.onUpdateNote?.(updatePayload);
   };
 
   const deleteNote = (): void => {
@@ -4478,18 +5218,161 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onDeleteNode?.(id);
   };
 
-  const startEditingBody = (): void => {
-    if (overviewInteractionsDisabled) {
+  const saveAsMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onSaveNoteAsMarkdownFile?.(id);
+  };
+
+  const openAssociatedMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onOpenAssociatedNoteMarkdownFile?.(id);
+  };
+
+  const createMissingAssociatedMarkdownFile = (): void => {
+    data.onSelectNode?.(id);
+    data.onCreateMissingAssociatedNoteMarkdownFile?.(id);
+  };
+
+  const copyAssociatedMarkdownSubtitlePath = (): void => {
+    if (!associatedMarkdownSubtitle) {
       return;
     }
-    pendingBodyFocusRef.current = true;
+
     data.onSelectNode?.(id);
-    setBodyScrollTop(0);
+    data.onCopyTextToClipboard?.(associatedMarkdownSubtitle, 'note-markdown-subtitle', id);
+  };
+
+  const copyNoteMarkdownMetadata = (rawBlock: string): void => {
+    data.onSelectNode?.(id);
+    data.onCopyTextToClipboard?.(rawBlock, 'note-markdown-metadata', id);
+  };
+
+  const reloadAssociatedMarkdownDraft = (): void => {
+    if (
+      !associatedMarkdownDraftRecovery &&
+      !hasAssociatedMarkdownHostConflict &&
+      !showAssociatedMarkdownRecoverableDraftPanel
+    ) {
+      return;
+    }
+
+    const nextContent = associatedMarkdownDraftRecovery?.remoteContent ?? noteMetadata.content;
+    pendingAssociatedMarkdownSubmissionRef.current = null;
+    setContent(nextContent);
+    committedContentRef.current = nextContent;
+    pendingContentRef.current = null;
+    editBaselineContentRef.current = nextContent;
+    editBaselineRevisionRef.current =
+      associatedMarkdownDraftRecovery?.remoteContentRevision ?? associatedMarkdownContentRevision;
+    setAssociatedMarkdownConflictResolution('reload');
+    setAssociatedMarkdownDraftRecovery(null);
+    setIsEditingBody(false);
+    data.onReloadAssociatedNoteMarkdownFile?.(id);
+    endAssociatedMarkdownEdit();
+  };
+
+  const overwriteAssociatedMarkdownFile = (): void => {
+    if (!associatedMarkdownDraftRecovery) {
+      return;
+    }
+
+    const nextContent = readCurrentBodyContent();
+    setContent(nextContent);
+    setAssociatedMarkdownConflictResolution('overwrite');
+    setAssociatedMarkdownDraftRecovery(null);
+    submitNote(nextContent, { force: true });
+    setIsEditingBody(false);
+    endAssociatedMarkdownEdit();
+  };
+
+  const copyAssociatedMarkdownDraft = (): void => {
+    if (!associatedMarkdownDraftRecovery) {
+      return;
+    }
+
+    data.onCopyAssociatedNoteMarkdownDraft?.(id, readCurrentBodyContent());
+    clearAssociatedMarkdownDraftCopiedTimer();
+    setAssociatedMarkdownDraftCopied(true);
+    associatedMarkdownDraftCopiedTimerRef.current = window.setTimeout(() => {
+      associatedMarkdownDraftCopiedTimerRef.current = undefined;
+      setAssociatedMarkdownDraftCopied(false);
+    }, 1600);
+    bodyInputRef.current?.focus({ preventScroll: true });
+  };
+
+  const handleAssociatedMarkdownConflictActionPointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+  };
+
+  const handleAssociatedMarkdownConflictActionMouseDown = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+  };
+
+  const handleReloadAssociatedMarkdownDraftClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    reloadAssociatedMarkdownDraft();
+  };
+
+  const handleCopyAssociatedMarkdownDraftClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    copyAssociatedMarkdownDraft();
+  };
+
+  const handleOverwriteAssociatedMarkdownFileClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    overwriteAssociatedMarkdownFile();
+  };
+
+  const handleCreateMissingAssociatedMarkdownFileClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): void => {
+    stopCanvasEvent(event);
+    createMissingAssociatedMarkdownFile();
+  };
+
+  const startEditingBody = (focusRequest?: NoteBodyFocusRequest): void => {
+    if (overviewInteractionsDisabled || !associatedMarkdownFileEditable) {
+      return;
+    }
+    const contentLength = noteMetadata.content.length;
+    pendingBodyFocusRef.current = focusRequest ?? {
+      selectionStart: contentLength,
+      selectionEnd: contentLength
+    };
+    data.onSelectNode?.(id);
+    editBaselineContentRef.current = noteMetadata.content;
+    editBaselineRevisionRef.current = associatedMarkdownContentRevision;
+    setAssociatedMarkdownConflictResolution(null);
+    setAssociatedMarkdownDraftRecovery(null);
+    pendingBodyScrollTopRef.current = bodyPreviewRef.current?.scrollTop ?? bodyScrollTop;
+    beginAssociatedMarkdownEdit(noteMetadata.content);
     setIsEditingBody(true);
   };
 
   const handleBodyKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (handleNoteBodyIndentKeyDown(event, setContent, pendingBodySelectionRef)) {
+    if (associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict) {
+      if (handleNoteBodyIndentKeyDown(event, updateBodyContent, pendingBodySelectionRef)) {
+        return;
+      }
+      handleEditableFieldKeyDown(event, () => persistAssociatedMarkdownDraft(event.currentTarget.value, {
+        immediate: true
+      }), {
+        isComposing
+      });
+      return;
+    }
+
+    if (handleNoteBodyIndentKeyDown(event, updateBodyContent, pendingBodySelectionRef)) {
       return;
     }
 
@@ -4499,6 +5382,10 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   const toggleChecklistFromPreview = (input: HTMLInputElement): void => {
+    if (hasAssociatedMarkdownHostConflict) {
+      return;
+    }
+
     const lineNumber = readNoteMarkdownChecklistLineNumber(input);
     if (!lineNumber) {
       return;
@@ -4552,7 +5439,13 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
     event.preventDefault();
     stopCanvasEvent(event);
-    startEditingBody();
+    startEditingBody(
+      createNoteBodyFocusRequestFromPreviewDoubleClick({
+        content,
+        event,
+        preview: event.currentTarget
+      })
+    );
   };
 
   const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -4597,10 +5490,54 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
           value={data.title}
           placeholder="Note 标题"
           className="note-window-title"
+          subtitle={associatedMarkdownSubtitle}
+          subtitleAccessory={
+            associatedMarkdownSubtitle || markdownFrontMatter.kind !== 'none' ? (
+              <>
+                {associatedMarkdownSubtitle ? (
+                  <SubtitleCopyButton
+                    label="复制 Markdown 路径"
+                    copiedLabel="已复制 Markdown 路径"
+                    onCopy={copyAssociatedMarkdownSubtitlePath}
+                    onFocus={() => data.onSelectNode?.(id)}
+                  />
+                ) : null}
+                {markdownFrontMatter.kind !== 'none' ? (
+                  <NoteMarkdownMetadataTrigger
+                    frontMatter={markdownFrontMatter}
+                    sourceLabel={
+                      associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict ? '来自当前草稿' : undefined
+                    }
+                    onCopyMetadata={copyNoteMarkdownMetadata}
+                    onFocus={() => data.onSelectNode?.(id)}
+                  />
+                ) : null}
+              </>
+            ) : undefined
+          }
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
         <div className="window-chrome-actions">
+          {canOpenAssociatedMarkdownFile ? (
+            <ActionButton
+              label="打开文件"
+              tone="secondary"
+              onClick={openAssociatedMarkdownFile}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          ) : associatedMarkdownFile ? null : (
+            <ActionButton
+              label="保存为 Markdown"
+              tone="secondary"
+              onClick={saveAsMarkdownFile}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
+          )}
           <ActionButton
             label="删除"
             tone="danger"
@@ -4615,19 +5552,78 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       <div className="object-body object-surface note-surface">
         <NodeOverviewTitle title={data.title} />
         <div className="note-editor-surface" {...canvasOverviewInertProps(overviewInteractionsDisabled)}>
-          {isEditingBody ? (
+          {showAssociatedMarkdownUnavailablePanel ||
+          showAssociatedMarkdownHostConflictPanel ||
+          showAssociatedMarkdownRecoverableDraftPanel ? (
+            <div
+              className="note-file-warning nowheel nodrag nopan"
+              data-node-interactive="true"
+              data-probe-field="body"
+              data-probe-value={content}
+              role={
+                showAssociatedMarkdownHostConflictPanel || showAssociatedMarkdownRecoverableDraftPanel
+                  ? 'alert'
+                  : 'status'
+              }
+            >
+              <div className="note-file-conflict-card">
+                <div className="note-file-conflict-copy">
+                  <strong>{associatedMarkdownFilePanelTitle}</strong>
+                  <span className="note-file-conflict-path">
+                    {associatedMarkdownFile?.fullDisplayPath ?? associatedMarkdownFile?.displayPath}
+                  </span>
+                  <span className="note-file-conflict-detail">{associatedMarkdownFilePanelDetail}</span>
+                </div>
+                {showAssociatedMarkdownHostConflictPanel || showAssociatedMarkdownRecoverableDraftPanel ? (
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleReloadAssociatedMarkdownDraftClick}
+                  >
+                    重新加载
+                  </button>
+                ) : hasAssociatedMarkdownMissingFile ? (
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleCreateMissingAssociatedMarkdownFileClick}
+                  >
+                    创建空文件并关联
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : isEditingBody ? (
             <div className="note-document-editor">
               <div className="note-document-line-number-gutter" aria-hidden="true">
                 <div
                   className="note-document-line-number-list"
                   style={{ transform: `translateY(-${bodyScrollTop}px)` }}
                 >
-                  {bodyLineNumbers.map((lineNumber) => (
-                    <span className="note-document-line-number" key={lineNumber}>
-                      {lineNumber}
+                  {bodyLineNumberRows.map((row) => (
+                    <span
+                      className={`note-document-line-number${row.lineNumber === null ? ' is-continuation' : ''}`}
+                      key={row.key}
+                    >
+                      {row.lineNumber ?? ''}
                     </span>
                   ))}
                 </div>
+              </div>
+              <div ref={bodyMeasureRef} className="note-document-line-measure" aria-hidden="true">
+                {bodyLines.map((line, index) => (
+                  <span className="note-document-line-measure-line" key={index}>
+                    {line}
+                  </span>
+                ))}
               </div>
               <textarea
                 ref={bodyInputRef}
@@ -4652,22 +5648,84 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={(event) => {
                   setIsComposing(false);
-                  setContent(event.currentTarget.value);
+                  updateBodyContent(event.currentTarget.value);
                 }}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(event) => updateBodyContent(event.target.value)}
                 onBlur={(event) => {
+                  if (
+                    (associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict) &&
+                    isAssociatedMarkdownConflictActionTarget(event.relatedTarget)
+                  ) {
+                    return;
+                  }
+
                   const nextContent = event.currentTarget.value;
-                  setContent(nextContent);
+                  updateBodyContent(nextContent);
+                  if (associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict) {
+                    persistAssociatedMarkdownDraft(nextContent, { immediate: true });
+                    return;
+                  }
+                  pendingBodyPreviewScrollTargetRef.current = resolveNoteBodySourceOffsetForTextareaScrollTop(
+                    event.currentTarget,
+                    nextContent,
+                    bodyVisualLineCounts
+                  );
                   setIsEditingBody(false);
                   submitNote(nextContent);
+                  endAssociatedMarkdownEdit();
                 }}
                 onKeyDown={handleBodyKeyDown}
-                placeholder={NOTE_BODY_PLACEHOLDER}
+                maxLength={isEmbeddedNote ? NOTE_EMBEDDED_CONTENT_MAX_LENGTH : undefined}
+                placeholder={bodyPlaceholder}
                 spellCheck={false}
               />
+              {isEmbeddedLimitNoticeVisible ? (
+                <div className="note-limit-hint" role="status">
+                  已达 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限，更长内容请保存为 Markdown 文件。
+                </div>
+              ) : null}
+              {associatedMarkdownDraftRecovery ? (
+                <div className="note-edit-conflict-hint" role="alert">
+                  <span>{associatedMarkdownDraftRecoveryHint}</span>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleReloadAssociatedMarkdownDraftClick}
+                  >
+                    重新加载
+                  </button>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleCopyAssociatedMarkdownDraftClick}
+                  >
+                    {associatedMarkdownDraftCopied ? '已复制' : '复制草稿'}
+                  </button>
+                  <button
+                    type="button"
+                    className="note-edit-conflict-action is-danger nodrag nopan"
+                    data-node-interactive="true"
+                    data-note-conflict-action="true"
+                    onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
+                    onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
+                    onClick={handleOverwriteAssociatedMarkdownFileClick}
+                  >
+                    覆盖文件
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div
+              ref={bodyPreviewRef}
               className={`note-markdown-preview nowheel nodrag nopan ${content.trim() ? '' : 'is-empty'}`.trim()}
               data-node-interactive="true"
               data-probe-field="body"
@@ -4685,6 +5743,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               onMouseDown={stopCanvasEvent}
               onClick={handlePreviewClick}
               onDoubleClick={handlePreviewDoubleClick}
+              onScroll={(event) => setBodyScrollTop(event.currentTarget.scrollTop)}
               onKeyDown={handlePreviewKeyDown}
             >
               {previewHtml ? (
@@ -4693,7 +5752,7 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
                   dangerouslySetInnerHTML={{ __html: previewHtml }}
                 />
               ) : (
-                <p className="note-markdown-preview-placeholder">{NOTE_BODY_PLACEHOLDER}</p>
+                <p className="note-markdown-preview-placeholder">{bodyPlaceholder}</p>
               )}
             </div>
           )}
@@ -4718,12 +5777,12 @@ function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'da
     >
       <NodeResizeAffordance id={id} data={data} />
       <NodeHandles selected={data.selected} />
-      <NodeOverviewTitle title={data.title} />
+      <NodeOverviewTitle title={data.title} status={overviewStatusForNode(data)} />
       <div className="node-topline">
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
       </div>
-      <div className="node-status">状态：{humanizeStatus(data.status)}</div>
+      <div className="node-status">状态：{humanizeCanvasNodeStatus(data)}</div>
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
           {agentMetadata.liveSession
@@ -6445,10 +7504,329 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
   );
 }
 
+function SubtitleCopyButton(props: {
+  label: string;
+  copiedLabel: string;
+  onCopy: () => void;
+  onFocus?: () => void;
+}): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
+  const [copied, setCopied] = useState(false);
+  const copiedResetTimeoutRef = useRef<number | undefined>(undefined);
+  const currentLabel = copied ? props.copiedLabel : props.label;
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimeoutRef.current !== undefined) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = (): void => {
+    if (overviewInteractionsDisabled) {
+      return;
+    }
+
+    props.onCopy();
+    setCopied(true);
+    if (copiedResetTimeoutRef.current !== undefined) {
+      window.clearTimeout(copiedResetTimeoutRef.current);
+    }
+    copiedResetTimeoutRef.current = window.setTimeout(() => {
+      copiedResetTimeoutRef.current = undefined;
+      setCopied(false);
+    }, 1200);
+  };
+
+  return (
+    <button
+      type="button"
+      className="window-title-subtitle-copy nodrag nopan"
+      data-node-interactive="true"
+      title={currentLabel}
+      aria-label={currentLabel}
+      aria-hidden={overviewInteractionsDisabled ? true : undefined}
+      disabled={overviewInteractionsDisabled}
+      tabIndex={overviewInteractionsDisabled ? -1 : undefined}
+      onFocus={props.onFocus}
+      onMouseDown={stopCanvasEvent}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        handleCopy();
+      }}
+      onKeyDown={stopCanvasEvent}
+      onKeyUp={stopCanvasEvent}
+    >
+      <span
+        className={`window-title-subtitle-copy-icon codicon codicon-${copied ? 'check' : 'copy'}`}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
+function NoteMarkdownMetadataTrigger(props: {
+  frontMatter: Exclude<NoteMarkdownFrontMatter, { kind: 'none' }>;
+  sourceLabel?: string;
+  onCopyMetadata: (rawBlock: string) => void;
+  onFocus?: () => void;
+}): JSX.Element {
+  const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
+  const viewport = useViewport();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const popoverIdRef = useRef<string>('');
+  const copiedResetTimeoutRef = useRef<number | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
+  const [copied, setCopied] = useState(false);
+  const isInvalid = props.frontMatter.kind === 'invalid';
+  const title = isInvalid ? 'Metadata parse failed' : 'Metadata';
+  const buttonLabel = isInvalid ? '查看 Markdown metadata 解析问题' : '查看 Markdown metadata';
+  const copyLabel = copied ? '已复制 Metadata' : '复制 Metadata';
+
+  if (!popoverIdRef.current) {
+    popoverIdRef.current = `note-markdown-metadata-popover-${nextNoteMarkdownMetadataPopoverId++}`;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimeoutRef.current !== undefined) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!overviewInteractionsDisabled) {
+      return;
+    }
+
+    setOpen(false);
+  }, [overviewInteractionsDisabled]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof globalThis.Node)) {
+        setOpen(false);
+        return;
+      }
+
+      if (buttonRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+
+      setOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = (): void => {
+      const button = buttonRef.current;
+      const popover = popoverRef.current;
+      if (!button || !popover) {
+        return;
+      }
+
+      const margin = 12;
+      const gap = 6;
+      const buttonRect = button.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      const maxLeft = Math.max(margin, window.innerWidth - margin - popoverRect.width);
+      const maxTop = Math.max(margin, window.innerHeight - margin - popoverRect.height);
+      let left = buttonRect.left;
+      let top = buttonRect.bottom + gap;
+
+      if (left + popoverRect.width > window.innerWidth - margin) {
+        left = buttonRect.right - popoverRect.width;
+      }
+      if (top + popoverRect.height > window.innerHeight - margin) {
+        top = buttonRect.top - popoverRect.height - gap;
+      }
+
+      setPosition({
+        left: Math.min(Math.max(margin, left), maxLeft),
+        top: Math.min(Math.max(margin, top), maxTop)
+      });
+    };
+
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, viewport.x, viewport.y, viewport.zoom]);
+
+  const copyMetadata = (): void => {
+    props.onCopyMetadata(props.frontMatter.rawBlock);
+    setCopied(true);
+    if (copiedResetTimeoutRef.current !== undefined) {
+      window.clearTimeout(copiedResetTimeoutRef.current);
+    }
+    copiedResetTimeoutRef.current = window.setTimeout(() => {
+      copiedResetTimeoutRef.current = undefined;
+      setCopied(false);
+    }, 1200);
+  };
+
+  const closeOnEscape = (event: React.KeyboardEvent): void => {
+    stopCanvasEvent(event);
+    if (event.key !== 'Escape') {
+      return;
+    }
+
+    event.preventDefault();
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`note-metadata-trigger ${open ? 'is-open' : ''} ${isInvalid ? 'is-warning' : ''}`.trim()}
+        data-node-interactive="true"
+        title={buttonLabel}
+        aria-label={buttonLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? popoverIdRef.current : undefined}
+        aria-hidden={overviewInteractionsDisabled ? true : undefined}
+        disabled={overviewInteractionsDisabled}
+        tabIndex={overviewInteractionsDisabled ? -1 : undefined}
+        onFocus={props.onFocus}
+        onPointerDown={stopCanvasEvent}
+        onMouseDown={stopCanvasEvent}
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          if (overviewInteractionsDisabled) {
+            return;
+          }
+          props.onFocus?.();
+          setOpen((current) => !current);
+        }}
+        onKeyDown={closeOnEscape}
+      >
+        <span
+          className={`note-metadata-trigger-icon codicon codicon-${isInvalid ? 'warning' : 'json'}`}
+          aria-hidden="true"
+        />
+      </button>
+      {open
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              id={popoverIdRef.current}
+              role="dialog"
+              aria-label={title}
+              className={`note-metadata-popover nodrag nopan nowheel${position ? ' is-visible' : ''} ${
+                isInvalid ? 'is-warning' : ''
+              }`.trim()}
+              data-node-interactive="true"
+              style={
+                {
+                  '--note-metadata-popover-scale': String(viewport.zoom),
+                  ...(position
+                    ? {
+                        left: position.left,
+                        top: position.top
+                      }
+                    : {})
+                } as CSSProperties
+              }
+              onPointerDown={stopCanvasEvent}
+              onMouseDown={stopCanvasEvent}
+              onClick={stopCanvasEvent}
+              onKeyDown={closeOnEscape}
+              onWheel={stopCanvasEvent}
+            >
+              <div className="note-metadata-popover-header">
+                <strong>{title}</strong>
+                {props.sourceLabel ? <span>{props.sourceLabel}</span> : null}
+                <button
+                  type="button"
+                  className="note-metadata-popover-copy"
+                  data-node-interactive="true"
+                  title={copyLabel}
+                  aria-label={copyLabel}
+                  onPointerDown={stopCanvasEvent}
+                  onMouseDown={stopCanvasEvent}
+                  onClick={(event) => {
+                    stopCanvasEvent(event);
+                    copyMetadata();
+                  }}
+                >
+                  <span
+                    className={`note-metadata-popover-copy-icon codicon codicon-${copied ? 'check' : 'copy'}`}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+              <div className="note-metadata-popover-body">
+                {props.frontMatter.kind === 'valid' ? (
+                  props.frontMatter.entries.length > 0 ? (
+                    props.frontMatter.entries.map((entry) => (
+                      <div key={entry.key} className="note-metadata-popover-row">
+                        <span className="note-metadata-popover-key" title={entry.key}>
+                          {entry.key}
+                        </span>
+                        <span className="note-metadata-popover-value" title={entry.title ?? entry.value}>
+                          {entry.value}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="note-metadata-popover-empty">没有可显示的 metadata 字段。</p>
+                  )
+                ) : (
+                  <p className="note-metadata-popover-error">{props.frontMatter.error}</p>
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
   subtitle?: string;
+  subtitleTooltip?: string;
   subtitleAccessory?: React.ReactNode;
   className?: string;
   onSelectNode?: () => void;
@@ -6540,9 +7918,15 @@ function ChromeTitleEditor(props: {
           }
           placeholder={props.placeholder}
         />
-        {props.subtitle ? (
+        {props.subtitle || props.subtitleAccessory ? (
           <div className="window-title-subtitle-row">
-            <OverflowAwareText className="window-title-subtitle" text={props.subtitle} />
+            {props.subtitle ? (
+              <OverflowAwareText
+                className="window-title-subtitle"
+                text={props.subtitle}
+                tooltipText={props.subtitleTooltip}
+              />
+            ) : null}
             {props.subtitleAccessory}
           </div>
         ) : null}
@@ -6614,6 +7998,7 @@ function toFlowNodes(params: {
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
+  noteMarkdownImageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   collapsedFileListTreeBranches: Record<string, string[]> | undefined;
@@ -6621,6 +8006,11 @@ function toFlowNodes(params: {
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onOpenNoteLink: (nodeId: string, href: string) => void;
+  onSaveNoteAsMarkdownFile: (nodeId: string) => void;
+  onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onReloadAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onCreateMissingAssociatedNoteMarkdownFile: (nodeId: string) => void;
+  onCopyTextToClipboard: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
   onSelectFileListEntry: (nodeId: string, filePath: string) => void;
   onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
   onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
@@ -6661,7 +8051,22 @@ function toFlowNodes(params: {
   onUpdateNote: (payload: {
     nodeId: string;
     content: string;
+    baseContentRevision?: string;
+    force?: boolean;
   }) => void;
+  onBeginAssociatedNoteMarkdownEdit: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onEndAssociatedNoteMarkdownEdit: (nodeId: string) => void;
+  onUpdateAssociatedNoteMarkdownDraft: (payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }) => void;
+  onClearAssociatedNoteMarkdownDraft: (nodeId: string) => void;
+  onCopyAssociatedNoteMarkdownDraft: (nodeId: string, content: string) => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -6702,6 +8107,7 @@ function toFlowNodes(params: {
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
+        noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
@@ -6710,6 +8116,11 @@ function toFlowNodes(params: {
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
         onOpenCanvasFile: params.onOpenCanvasFile,
         onOpenNoteLink: params.onOpenNoteLink,
+        onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
+        onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
+        onReloadAssociatedNoteMarkdownFile: params.onReloadAssociatedNoteMarkdownFile,
+        onCreateMissingAssociatedNoteMarkdownFile: params.onCreateMissingAssociatedNoteMarkdownFile,
+        onCopyTextToClipboard: params.onCopyTextToClipboard,
         onSelectFileListEntry: params.onSelectFileListEntry,
         onSetFileListViewMode: params.onSetFileListViewMode,
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
@@ -6724,6 +8135,11 @@ function toFlowNodes(params: {
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
+        onBeginAssociatedNoteMarkdownEdit: params.onBeginAssociatedNoteMarkdownEdit,
+        onEndAssociatedNoteMarkdownEdit: params.onEndAssociatedNoteMarkdownEdit,
+        onUpdateAssociatedNoteMarkdownDraft: params.onUpdateAssociatedNoteMarkdownDraft,
+        onClearAssociatedNoteMarkdownDraft: params.onClearAssociatedNoteMarkdownDraft,
+        onCopyAssociatedNoteMarkdownDraft: params.onCopyAssociatedNoteMarkdownDraft,
         onResizeNode: params.onResizeNode,
         onFocusNodeInViewport: params.onFocusNodeInViewport,
         onDeleteNode: params.onDeleteNode
@@ -7194,82 +8610,6 @@ function canResumeAgentFromMetadataForWebview(
   return Boolean(metadata.resumeSessionId?.trim());
 }
 
-function humanizeStatus(status: string): string {
-  switch (status) {
-    case 'linked':
-      return '已关联';
-    case 'idle':
-      return '空闲';
-    case 'launching':
-      return '启动中';
-    case 'starting':
-      return '启动中';
-    case 'waiting-input':
-      return '等待输入';
-    case 'resuming':
-      return '恢复中';
-    case 'resume-ready':
-      return '可恢复';
-    case 'reattaching':
-      return '重连中';
-    case 'resume-failed':
-      return '恢复失败';
-    case 'stopping':
-      return '停止中';
-    case 'stopped':
-      return '已停止';
-    case 'running':
-      return '运行中';
-    case 'draft':
-      return '草稿';
-    case 'ready':
-      return '就绪';
-    case 'live':
-      return '活动';
-    case 'closed':
-      return '已关闭';
-    case 'error':
-      return '失败';
-    case 'cancelled':
-      return '已停止';
-    case 'interrupted':
-      return '已中断';
-    case 'history-restored':
-      return '历史恢复';
-    default:
-      return status;
-  }
-}
-
-function statusToneClass(status: string): string {
-  switch (status) {
-    case 'linked':
-      return 'tone-success';
-    case 'launching':
-    case 'starting':
-    case 'resuming':
-    case 'running':
-    case 'live':
-    case 'reattaching':
-      return 'tone-running';
-    case 'waiting-input':
-      return 'tone-ready';
-    case 'resume-ready':
-    case 'stopping':
-    case 'stopped':
-    case 'closed':
-    case 'cancelled':
-    case 'interrupted':
-    case 'history-restored':
-      return 'tone-warning';
-    case 'resume-failed':
-    case 'error':
-      return 'tone-error';
-    default:
-      return 'tone-idle';
-  }
-}
-
 function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
   switch (accessMode) {
     case 'read':
@@ -7393,13 +8733,204 @@ function normalizeCanvasNodeFootprintForDisplayStyle(
   return normalizeCanvasNodeFootprint(kind, size);
 }
 
-function countTextLines(value: string): number {
-  return value.split('\n').length;
+interface NoteBodyLineNumberRow {
+  key: string;
+  lineNumber: number | null;
+}
+
+function splitTextLines(value: string): string[] {
+  return value.split('\n');
+}
+
+function createFallbackVisualLineCounts(lineCount: number): number[] {
+  return Array.from({ length: Math.max(1, lineCount) }, () => 1);
+}
+
+function createNoteBodyLineNumberRows(
+  lines: readonly string[],
+  visualLineCounts: readonly number[]
+): NoteBodyLineNumberRow[] {
+  const rows: NoteBodyLineNumberRow[] = [];
+  lines.forEach((_line, index) => {
+    const lineNumber = index + 1;
+    const visualLineCount = Math.max(1, visualLineCounts[index] ?? 1);
+    for (let visualLineIndex = 0; visualLineIndex < visualLineCount; visualLineIndex += 1) {
+      rows.push({
+        key: `${lineNumber}:${visualLineIndex}`,
+        lineNumber: visualLineIndex === 0 ? lineNumber : null
+      });
+    }
+  });
+
+  return rows;
+}
+
+
+function clampElementScrollTop(
+  element: Pick<HTMLElement, 'clientHeight' | 'scrollHeight'>,
+  scrollTop: number
+): number {
+  if (!Number.isFinite(scrollTop)) {
+    return 0;
+  }
+
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  return Math.max(0, Math.min(scrollTop, maxScrollTop));
+}
+
+function resolveNoteBodyTextareaScrollTopForSourceOffset(
+  textarea: HTMLTextAreaElement,
+  content: string,
+  sourceOffset: number,
+  visualLineCounts: readonly number[]
+): number | null {
+  if (!content || !Number.isFinite(sourceOffset)) {
+    return null;
+  }
+
+  const lineIndex = findTextLineIndexForOffset(content, sourceOffset);
+  const lineHeight = readElementLineHeightPx(textarea);
+  const visualRowsBeforeLine = countVisualRowsBeforeLine(visualLineCounts, lineIndex);
+  const targetScrollTop = Math.max(0, visualRowsBeforeLine * lineHeight - textarea.clientHeight * 0.35);
+  return clampElementScrollTop(textarea, targetScrollTop);
+}
+
+function resolveNoteBodySourceOffsetForTextareaScrollTop(
+  textarea: HTMLTextAreaElement,
+  content: string,
+  visualLineCounts: readonly number[]
+): number | null {
+  if (!content) {
+    return 0;
+  }
+
+  const lineHeight = readElementLineHeightPx(textarea);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+    return null;
+  }
+
+  const firstVisibleVisualRow = Math.max(0, Math.floor(textarea.scrollTop / lineHeight));
+  const lineIndex = findLogicalLineIndexForVisualRow(visualLineCounts, firstVisibleVisualRow);
+  return findTextLineStartOffset(content, lineIndex);
+}
+
+function scrollNoteMarkdownPreviewToSourceOffset(preview: HTMLElement, sourceOffset: number): boolean {
+  const target = findNoteMarkdownPreviewSourceElement(preview, sourceOffset);
+  if (!target) {
+    return false;
+  }
+
+  const previewRect = preview.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetScrollTop = preview.scrollTop + targetRect.top - previewRect.top - preview.clientHeight * 0.2;
+  preview.scrollTop = clampElementScrollTop(preview, targetScrollTop);
+  return true;
+}
+
+function findNoteMarkdownPreviewSourceElement(preview: HTMLElement, sourceOffset: number): HTMLElement | null {
+  let bestElement: HTMLElement | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const candidates = preview.querySelectorAll<HTMLElement>(
+    `${NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR}, ${NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR}`
+  );
+
+  for (const element of Array.from(candidates)) {
+    const sourceStart = readNoteMarkdownSourceStart(element);
+    const sourceEnd = readNoteMarkdownSourceEnd(element);
+    if (sourceStart === null || sourceEnd === null) {
+      continue;
+    }
+
+    const distance =
+      sourceOffset < sourceStart ? sourceStart - sourceOffset : sourceOffset > sourceEnd ? sourceOffset - sourceEnd : 0;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestElement = element;
+    }
+  }
+
+  return bestElement;
+}
+
+function findTextLineIndexForOffset(content: string, offset: number): number {
+  const clampedOffset = clampNoteMarkdownSourceOffset(offset, content);
+  let lineIndex = 0;
+  for (let index = 0; index < clampedOffset; index += 1) {
+    if (content.charCodeAt(index) === 10) {
+      lineIndex += 1;
+    }
+  }
+  return lineIndex;
+}
+
+function findTextLineStartOffset(content: string, lineIndex: number): number {
+  if (lineIndex <= 0) {
+    return 0;
+  }
+
+  let currentLineIndex = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) !== 10) {
+      continue;
+    }
+
+    currentLineIndex += 1;
+    if (currentLineIndex === lineIndex) {
+      return index + 1;
+    }
+  }
+
+  return content.length;
+}
+
+function countVisualRowsBeforeLine(visualLineCounts: readonly number[], lineIndex: number): number {
+  let count = 0;
+  for (let index = 0; index < Math.max(0, lineIndex); index += 1) {
+    count += Math.max(1, visualLineCounts[index] ?? 1);
+  }
+  return count;
+}
+
+function findLogicalLineIndexForVisualRow(visualLineCounts: readonly number[], visualRow: number): number {
+  let remainingRows = Math.max(0, visualRow);
+  const lineCount = Math.max(1, visualLineCounts.length);
+  for (let index = 0; index < lineCount; index += 1) {
+    const visualLineCount = Math.max(1, visualLineCounts[index] ?? 1);
+    if (remainingRows < visualLineCount) {
+      return index;
+    }
+    remainingRows -= visualLineCount;
+  }
+
+  return lineCount - 1;
+}
+
+function readElementLineHeightPx(element: HTMLElement): number {
+  const computedStyle = window.getComputedStyle(element);
+  const lineHeight = Number.parseFloat(computedStyle.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) {
+    return lineHeight;
+  }
+
+  const fontSize = Number.parseFloat(computedStyle.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) {
+    return fontSize * 1.6;
+  }
+
+  return NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX;
+}
+
+function areNumberListsEqual(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
 }
 
 function handleNoteBodyIndentKeyDown(
   event: React.KeyboardEvent<HTMLTextAreaElement>,
-  setContent: React.Dispatch<React.SetStateAction<string>>,
+  applyContentChange: (value: string) => string,
   pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>
 ): boolean {
   if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
@@ -7410,7 +8941,7 @@ function handleNoteBodyIndentKeyDown(
   stopCanvasEvent(event);
   applyNoteBodyIndentChange(
     event.currentTarget,
-    setContent,
+    applyContentChange,
     pendingSelectionRef,
     event.shiftKey ? 'outdent' : 'indent'
   );
@@ -7419,7 +8950,7 @@ function handleNoteBodyIndentKeyDown(
 
 function applyNoteBodyIndentChange(
   textarea: HTMLTextAreaElement,
-  setContent: React.Dispatch<React.SetStateAction<string>>,
+  applyContentChange: (value: string) => string,
   pendingSelectionRef: React.MutableRefObject<{ selectionStart: number; selectionEnd: number } | null>,
   direction: 'indent' | 'outdent'
 ): void {
@@ -7432,19 +8963,201 @@ function applyNoteBodyIndentChange(
     return;
   }
 
+  const appliedValue = applyContentChange(edit.value);
+  const selectionStart = Math.min(edit.selectionStart, appliedValue.length);
+  const selectionEnd = Math.min(edit.selectionEnd, appliedValue.length);
   pendingSelectionRef.current = {
-    selectionStart: edit.selectionStart,
-    selectionEnd: edit.selectionEnd
+    selectionStart,
+    selectionEnd
   };
-  setContent(edit.value);
   window.requestAnimationFrame(() => {
     if (document.activeElement !== textarea) {
       return;
     }
 
-    textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+    textarea.setSelectionRange(selectionStart, selectionEnd);
   });
 }
+
+function createNoteBodyFocusRequestFromPreviewDoubleClick(params: {
+  content: string;
+  event: React.MouseEvent<HTMLElement>;
+  preview: HTMLElement;
+}): NoteBodyFocusRequest {
+  const sourceOffset = findNotePreviewSourceOffset(params.event.nativeEvent, params.preview) ?? params.content.length;
+  const clampedOffset = clampNoteMarkdownSourceOffset(sourceOffset, params.content);
+  return {
+    selectionStart: clampedOffset,
+    selectionEnd: clampedOffset
+  };
+}
+
+function findNotePreviewSourceOffset(event: MouseEvent, preview: HTMLElement): number | null {
+  const caret = findNotePreviewCaretPosition(event.clientX, event.clientY);
+  if (caret) {
+    const textSourceElement = findNotePreviewTextSourceElement(caret.node);
+    const textOffset =
+      textSourceElement && isNotePreviewTextSourceElementHit(textSourceElement, event, preview)
+        ? readNotePreviewTextSourceOffset(caret.node, caret.offset)
+        : null;
+    if (textOffset !== null) {
+      return textOffset;
+    }
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  const targetFallback = findNotePreviewFallbackSourceEnd(target, preview);
+  if (targetFallback !== null) {
+    return targetFallback;
+  }
+
+  if (caret?.node) {
+    const caretFallback = findNotePreviewFallbackSourceEnd(caret.node, preview);
+    if (caretFallback !== null) {
+      return caretFallback;
+    }
+  }
+
+  return null;
+}
+
+function findNotePreviewCaretPosition(x: number, y: number): { node: globalThis.Node; offset: number } | null {
+  const documentWithCaretPosition = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: globalThis.Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+
+  const position = documentWithCaretPosition.caretPositionFromPoint?.(x, y);
+  if (position?.offsetNode) {
+    return {
+      node: position.offsetNode,
+      offset: position.offset
+    };
+  }
+
+  const range = documentWithCaretPosition.caretRangeFromPoint?.(x, y);
+  if (range) {
+    return {
+      node: range.startContainer,
+      offset: range.startOffset
+    };
+  }
+
+  return null;
+}
+
+function readNotePreviewTextSourceOffset(node: globalThis.Node, offset: number): number | null {
+  const textNode = node instanceof Text ? node : null;
+  const element = textNode ? findNotePreviewTextSourceElement(textNode) : null;
+  if (!textNode || !element) {
+    return null;
+  }
+
+  const rawOffsets = element.dataset.noteMarkdownSourceOffsets;
+  if (!rawOffsets) {
+    return null;
+  }
+
+  let sourceOffsets: unknown;
+  try {
+    sourceOffsets = JSON.parse(rawOffsets);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(sourceOffsets)) {
+    return null;
+  }
+
+  const localOffset = Math.min(Math.max(offset, 0), textNode.data.length);
+  const sourceOffset = sourceOffsets[localOffset];
+  return Number.isSafeInteger(sourceOffset) ? sourceOffset : null;
+}
+
+function findNotePreviewTextSourceElement(node: globalThis.Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest<HTMLElement>(NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR) ?? null;
+}
+
+function isNotePreviewTextSourceElementHit(
+  element: HTMLElement,
+  event: MouseEvent,
+  preview: HTMLElement
+): boolean {
+  if (!preview.contains(element)) {
+    return false;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest(NOTE_MARKDOWN_SOURCE_TEXT_SELECTOR) === element) {
+    return true;
+  }
+
+  const hitSlop = 2;
+  for (const rect of Array.from(element.getClientRects())) {
+    if (
+      event.clientX >= rect.left - hitSlop &&
+      event.clientX <= rect.right + hitSlop &&
+      event.clientY >= rect.top - hitSlop &&
+      event.clientY <= rect.bottom + hitSlop
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function findNotePreviewFallbackSourceEnd(target: globalThis.Node | null, preview: HTMLElement): number | null {
+  const startElement = target instanceof Element ? target : target?.parentElement;
+  if (!startElement) {
+    return readNoteMarkdownSourceEnd(preview);
+  }
+
+  const blocks: HTMLElement[] = [];
+  let current: HTMLElement | null = startElement instanceof HTMLElement ? startElement : startElement.parentElement;
+  while (current && current !== preview.parentElement) {
+    if (current.matches(NOTE_MARKDOWN_SOURCE_BLOCK_SELECTOR)) {
+      blocks.push(current);
+    }
+    current = current.parentElement;
+  }
+
+  for (const block of blocks) {
+    if (!block || !preview.contains(block)) {
+      continue;
+    }
+    const sourceEnd = readNoteMarkdownSourceEnd(block);
+    if (sourceEnd !== null) {
+      return sourceEnd;
+    }
+  }
+
+  return readNoteMarkdownSourceEnd(preview);
+}
+
+function readNoteMarkdownSourceStart(element: HTMLElement): number | null {
+  return readNoteMarkdownSourceBoundary(element.dataset.noteMarkdownSourceStart);
+}
+
+function readNoteMarkdownSourceEnd(element: HTMLElement): number | null {
+  return readNoteMarkdownSourceBoundary(element.dataset.noteMarkdownSourceEnd);
+}
+
+function readNoteMarkdownSourceBoundary(rawValue: string | undefined): number | null {
+  if (!rawValue) {
+    return null;
+  }
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function clampNoteMarkdownSourceOffset(offset: number, content: string): number {
+  if (!Number.isFinite(offset)) {
+    return content.length;
+  }
+  return Math.max(0, Math.min(Math.round(offset), content.length));
+}
+
 
 function handleEditableFieldKeyDown(
   event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -7701,7 +9414,7 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
 function createExecutionTerminalController(
   terminal: Terminal,
   options?: {
-    onContentWillChange?: () => void;
+    onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
   }
 ): ExecutionTerminalController {
@@ -7736,7 +9449,7 @@ function createExecutionTerminalController(
       pendingOutput = '';
       pendingExecutionTerminalDrains.delete(controller);
       writeGeneration += 1;
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
       queueTerminalWrite((done) => {
         restoreExecutionTerminalSnapshot(terminal, detail, done);
@@ -7748,6 +9461,7 @@ function createExecutionTerminalController(
       }
 
       pendingOutput += chunk;
+      options?.onContentWillChange?.('output');
       scheduleExecutionTerminalDrain(controller);
     },
     showExit(message) {
@@ -7756,7 +9470,7 @@ function createExecutionTerminalController(
       }
 
       controller.flushPendingOutput();
-      options?.onContentWillChange?.();
+      options?.onContentWillChange?.('exit');
       queueTerminalWrite((done) => {
         terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
       });
@@ -7780,7 +9494,6 @@ function createExecutionTerminalController(
       pendingOutput = '';
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
-      options?.onContentWillChange?.();
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
       });
@@ -8271,6 +9984,31 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'hoverExecutionText': {
+        const terminal = queryExecutionTerminalElement(action.nodeId);
+        const rows = terminal.querySelector('.xterm-rows');
+        if (!(rows instanceof HTMLElement)) {
+          throw new Error(`Execution terminal ${action.nodeId} has no rendered rows.`);
+        }
+
+        const point = findExecutionTerminalTextPoint(rows, action.text);
+        if (!point) {
+          throw new Error(`Execution terminal text "${action.text}" was not found.`);
+        }
+
+        const target = document.elementFromPoint(point.x, point.y) ?? rows;
+        target.dispatchEvent(
+          new MouseEvent('mousemove', {
+            bubbles: true,
+            composed: true,
+            view: window,
+            clientX: point.x,
+            clientY: point.y
+          })
+        );
+        await waitForDomActionFlush();
+        break;
+      }
       case 'clearExecutionLinkHover': {
         const entry = executionTerminalRegistry.get(action.nodeId);
         if (!entry) {
@@ -8302,6 +10040,31 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         checkbox.blur();
         checkbox.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         break;
+      }
+      case 'doubleClickNotePreviewText': {
+        const point = queryNotePreviewTextPoint(action.nodeId, action.text, action.offset);
+        const target = document.elementFromPoint(point.x, point.y) ?? point.element;
+        postMessage({
+          type: 'webview/testDomActionResult',
+          payload: {
+            requestId,
+            ok: true
+          }
+        });
+        dispatchSyntheticMouseDoubleClick(target, point);
+        return;
+      }
+      case 'doubleClickNotePreviewSelector': {
+        const target = queryNotePreviewSelectorTarget(action.nodeId, action.selector);
+        postMessage({
+          type: 'webview/testDomActionResult',
+          payload: {
+            requestId,
+            ok: true
+          }
+        });
+        dispatchSyntheticMouseDoubleClick(target, readElementCenterPoint(target));
+        return;
       }
     }
 
@@ -8359,7 +10122,17 @@ async function queryNodeTextField(
 
 function queryNodeActionButton(
   nodeId: string,
-  label: '删除' | '启动' | '停止' | '重启' | '恢复'
+  label:
+    | '删除'
+    | '启动'
+    | '停止'
+    | '新建'
+    | '重启'
+    | '恢复'
+    | '重新加载'
+    | '复制草稿'
+    | '覆盖文件'
+    | '创建空文件并关联'
 ): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
   const button = Array.from(nodeRoot.querySelectorAll('button')).find(
@@ -8422,6 +10195,72 @@ function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputE
   return target;
 }
 
+function queryNotePreviewTextPoint(
+  nodeId: string,
+  text: string,
+  offset = Math.floor(text.length / 2)
+): { element: Element; x: number; y: number } {
+  const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
+  if (!preview) {
+    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+  }
+
+  const textNode = findTextNodeContaining(preview, text);
+  if (!textNode) {
+    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到文本 ${text}。`);
+  }
+
+  const clampedOffset = Math.min(Math.max(0, offset), text.length);
+  const range = document.createRange();
+  const startOffset = textNode.data.indexOf(text);
+  const textOffset = startOffset + clampedOffset;
+  range.setStart(textNode, textOffset);
+  range.setEnd(textNode, Math.min(textNode.data.length, textOffset + 1));
+  const rect = range.getBoundingClientRect();
+  const fallbackRect = textNode.parentElement?.getBoundingClientRect() ?? preview.getBoundingClientRect();
+  range.detach();
+
+  return {
+    element: textNode.parentElement ?? preview,
+    x: rect.width > 0 ? rect.left + Math.min(2, rect.width / 4) : fallbackRect.left + fallbackRect.width / 2,
+    y: rect.height > 0 ? rect.top + rect.height / 2 : fallbackRect.top + fallbackRect.height / 2
+  };
+}
+
+function findTextNodeContaining(root: HTMLElement, text: string): Text | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node instanceof Text && node.data.includes(text)) {
+      return node;
+    }
+  }
+
+  return null;
+}
+
+function queryNotePreviewSelectorTarget(nodeId: string, selector: string): HTMLElement {
+  const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
+  if (!preview) {
+    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+  }
+
+  const target = preview.querySelector<HTMLElement>(selector);
+  if (!target) {
+    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到 selector ${selector}。`);
+  }
+
+  return target;
+}
+
+function readElementCenterPoint(element: Element): { x: number; y: number } {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+}
+
+
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
@@ -8429,6 +10268,37 @@ function queryNodeRoot(nodeId: string): HTMLElement {
   }
 
   return nodeRoot;
+}
+
+function queryExecutionTerminalElement(nodeId: string): HTMLElement {
+  const terminal = queryNodeRoot(nodeId).querySelector<HTMLElement>('.xterm');
+  if (!terminal) {
+    throw new Error(`未找到节点 ${nodeId} 的执行终端。`);
+  }
+
+  return terminal;
+}
+
+function findExecutionTerminalTextPoint(rows: HTMLElement, text: string): { x: number; y: number } | undefined {
+  for (const row of Array.from(rows.children)) {
+    if (!(row instanceof HTMLElement) || !(row.textContent ?? '').includes(text)) {
+      continue;
+    }
+
+    for (const span of Array.from(row.querySelectorAll('span'))) {
+      if (!(span instanceof HTMLElement) || !(span.textContent ?? '').includes(text)) {
+        continue;
+      }
+
+      const rect = span.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }
+  }
+
+  return undefined;
 }
 
 function queryMinimapNode(nodeId: string): SVGElement | null {
@@ -8454,12 +10324,14 @@ function setControlledFieldValue(
   descriptor?.set?.call(element, value);
 }
 
-function dispatchSyntheticMouseClick(target: Element): void {
+function dispatchSyntheticMouseClick(target: Element, point?: { x: number; y: number }): void {
   const eventInit = {
     bubbles: true,
     cancelable: true,
     composed: true,
-    button: 0
+    button: 0,
+    clientX: point?.x ?? 0,
+    clientY: point?.y ?? 0
   };
 
   target.dispatchEvent(new MouseEvent('mousedown', eventInit));
@@ -8467,15 +10339,17 @@ function dispatchSyntheticMouseClick(target: Element): void {
   target.dispatchEvent(new MouseEvent('click', eventInit));
 }
 
-function dispatchSyntheticMouseDoubleClick(target: Element): void {
-  dispatchSyntheticMouseClick(target);
-  dispatchSyntheticMouseClick(target);
+function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number; y: number }): void {
+  dispatchSyntheticMouseClick(target, point);
+  dispatchSyntheticMouseClick(target, point);
   target.dispatchEvent(
     new MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
       composed: true,
-      button: 0
+      button: 0,
+      clientX: point?.x ?? 0,
+      clientY: point?.y ?? 0
     })
   );
 }
@@ -8497,6 +10371,298 @@ function delayTestAction(delayMs?: number): Promise<void> {
     window.setTimeout(resolve, delayMs);
   });
 }
+
+function isCanvasBlankDropTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return !target.closest('.react-flow__node, .canvas-node, [data-node-interactive="true"], [data-context-menu="true"]');
+}
+
+function extractDroppedNoteMarkdownResources(dataTransfer: DataTransfer | null): ExecutionTerminalDroppedResource[] {
+  if (!dataTransfer) {
+    return [];
+  }
+
+  const resources: ExecutionTerminalDroppedResource[] = [];
+  const rawResources = dataTransfer.getData(RESOURCE_URLS_DATA_TRANSFER);
+  for (const value of parseDroppedStringArray(rawResources)) {
+    resources.push({
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value
+    });
+  }
+
+  const rawCodeFiles = dataTransfer.getData(CODE_FILES_DATA_TRANSFER);
+  for (const value of parseDroppedStringArray(rawCodeFiles)) {
+    resources.push({
+      source: 'codeFiles',
+      valueKind: 'path',
+      value
+    });
+  }
+
+  const rawUriList = dataTransfer.getData(URI_LIST_DATA_TRANSFER);
+  if (rawUriList) {
+    for (const value of rawUriList
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0 && !entry.startsWith('#'))) {
+      resources.push({
+        source: 'uriList',
+        valueKind: 'uri',
+        value
+      });
+    }
+  }
+
+  for (const file of Array.from(dataTransfer.files) as Array<File & { path?: string }>) {
+    if (typeof file.path === 'string' && file.path.trim().length > 0) {
+      resources.push({
+        source: 'files',
+        valueKind: 'path',
+        value: file.path
+      });
+    }
+  }
+
+  return resources;
+}
+
+
+function annotateNoteMarkdownPreviewHtml(html: string, sourceMap: NoteMarkdownSourceMap): string {
+  if (!html || (sourceMap.textSegments.length === 0 && sourceMap.blockRanges.length === 0)) {
+    return html;
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  applyNoteMarkdownSourceBlockRanges(template.content, sourceMap.blockRanges);
+  applyNoteMarkdownSourceTextSegments(template.content, sourceMap.textSegments);
+  return template.innerHTML;
+}
+
+function applyNoteMarkdownSourceBlockRanges(root: ParentNode, ranges: readonly NoteMarkdownSourceBlockRange[]): void {
+  const candidateCache = new Map<NoteMarkdownSourceBlockKind, HTMLElement[]>();
+  const candidateIndexes = new Map<NoteMarkdownSourceBlockKind, number>();
+
+  for (const range of ranges) {
+    const candidates = readNoteMarkdownSourceBlockCandidates(root, range.kind, candidateCache);
+    const candidateIndex = candidateIndexes.get(range.kind) ?? 0;
+    candidateIndexes.set(range.kind, candidateIndex + 1);
+    const element = candidates[candidateIndex];
+    if (!element) {
+      continue;
+    }
+
+    const existingStart = readNoteMarkdownSourceStart(element);
+    const existingEnd = readNoteMarkdownSourceEnd(element);
+    const sourceStart = existingStart === null ? range.sourceStart : Math.min(existingStart, range.sourceStart);
+    const sourceEnd = existingEnd === null ? range.sourceEnd : Math.max(existingEnd, range.sourceEnd);
+    element.dataset.noteMarkdownSourceBlock = 'true';
+    element.dataset.noteMarkdownSourceStart = String(sourceStart);
+    element.dataset.noteMarkdownSourceEnd = String(sourceEnd);
+  }
+}
+
+function readNoteMarkdownSourceBlockCandidates(
+  root: ParentNode,
+  kind: NoteMarkdownSourceBlockKind,
+  cache: Map<NoteMarkdownSourceBlockKind, HTMLElement[]>
+): HTMLElement[] {
+  const cached = cache.get(kind);
+  if (cached) {
+    return cached;
+  }
+
+  const selector = noteMarkdownSourceBlockSelectorForKind(kind);
+  const candidates = selector ? Array.from(root.querySelectorAll<HTMLElement>(selector)) : [];
+  cache.set(kind, candidates);
+  return candidates;
+}
+
+function noteMarkdownSourceBlockSelectorForKind(kind: NoteMarkdownSourceBlockKind): string | null {
+  switch (kind) {
+    case 'blockquote':
+      return 'blockquote';
+    case 'code':
+      return 'pre';
+    case 'heading':
+      return 'h1, h2, h3, h4, h5, h6';
+    case 'image':
+      return 'img.note-markdown-image, .note-markdown-image-fallback';
+    case 'list':
+      return 'ul, ol';
+    case 'listItem':
+      return 'li';
+    case 'math':
+      return '.note-markdown-math-display';
+    case 'paragraph':
+      return 'p';
+    case 'table':
+      return 'table';
+    case 'thematicBreak':
+      return 'hr';
+    default:
+      return null;
+  }
+}
+
+function applyNoteMarkdownSourceTextSegments(root: ParentNode, segments: readonly NoteMarkdownSourceTextSegment[]): void {
+  if (segments.length === 0) {
+    return;
+  }
+
+  const textIndex = createNoteMarkdownPreviewTextIndex(root);
+  if (textIndex.text.length === 0) {
+    return;
+  }
+
+  let searchStart = 0;
+  const operations = new Map<Text, Array<{ start: number; end: number; sourceOffsets: number[] }>>();
+  for (const segment of segments) {
+    if (!segment.text) {
+      continue;
+    }
+
+    const matchIndex = textIndex.text.indexOf(segment.text, searchStart);
+    if (matchIndex === -1) {
+      continue;
+    }
+
+    collectNoteMarkdownTextSegmentWrapOperations({
+      textIndex,
+      segment,
+      matchIndex,
+      operations
+    });
+    searchStart = matchIndex + segment.text.length;
+  }
+
+  for (const [textNode, nodeOperations] of operations) {
+    wrapNoteMarkdownTextNodeRanges(textNode, nodeOperations);
+  }
+}
+
+function createNoteMarkdownPreviewTextIndex(root: ParentNode): {
+  text: string;
+  chars: Array<{ node: Text; offset: number }>;
+} {
+  const chars: Array<{ node: Text; offset: number }> = [];
+  let text = '';
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!(node instanceof Text) || !node.data) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      const parent = node.parentElement;
+      if (
+        parent?.closest(
+          '.katex, .katex-display, .katex-error, .note-markdown-math-display, .note-markdown-math-fallback, .note-markdown-image-fallback'
+        )
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+    if (!(current instanceof Text)) {
+      continue;
+    }
+    for (let offset = 0; offset < current.data.length; offset += 1) {
+      text += current.data.charAt(offset);
+      chars.push({ node: current, offset });
+    }
+  }
+
+  return { text, chars };
+}
+
+function collectNoteMarkdownTextSegmentWrapOperations(params: {
+  textIndex: { chars: Array<{ node: Text; offset: number }> };
+  segment: NoteMarkdownSourceTextSegment;
+  matchIndex: number;
+  operations: Map<Text, Array<{ start: number; end: number; sourceOffsets: number[] }>>;
+}): void {
+  const { textIndex, segment, matchIndex, operations } = params;
+  let rangeStart = 0;
+  while (rangeStart < segment.text.length) {
+    const firstChar = textIndex.chars[matchIndex + rangeStart];
+    if (!firstChar) {
+      return;
+    }
+
+    let rangeEnd = rangeStart + 1;
+    while (rangeEnd < segment.text.length) {
+      const previousChar = textIndex.chars[matchIndex + rangeEnd - 1];
+      const currentChar = textIndex.chars[matchIndex + rangeEnd];
+      if (!currentChar || currentChar.node !== firstChar.node || currentChar.offset !== previousChar.offset + 1) {
+        break;
+      }
+      rangeEnd += 1;
+    }
+
+    const sourceOffsets = segment.sourceOffsets.slice(rangeStart, rangeEnd + 1);
+    if (sourceOffsets.length === rangeEnd - rangeStart + 1) {
+      const nodeOperations = operations.get(firstChar.node) ?? [];
+      nodeOperations.push({
+        start: firstChar.offset,
+        end: firstChar.offset + (rangeEnd - rangeStart),
+        sourceOffsets
+      });
+      operations.set(firstChar.node, nodeOperations);
+    }
+
+    rangeStart = rangeEnd;
+  }
+}
+
+function wrapNoteMarkdownTextNodeRanges(
+  textNode: Text,
+  operations: Array<{ start: number; end: number; sourceOffsets: number[] }>
+): void {
+  const parent = textNode.parentNode;
+  if (!parent) {
+    return;
+  }
+
+  const sortedOperations = operations
+    .filter((operation) => operation.start < operation.end)
+    .sort((a, b) => a.start - b.start);
+  if (sortedOperations.length === 0) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const operation of sortedOperations) {
+    if (operation.start < cursor) {
+      continue;
+    }
+    if (operation.start > cursor) {
+      fragment.append(document.createTextNode(textNode.data.slice(cursor, operation.start)));
+    }
+
+    const span = document.createElement('span');
+    span.dataset.noteMarkdownSourceOffsets = JSON.stringify(operation.sourceOffsets);
+    span.dataset.noteMarkdownSourceStart = String(operation.sourceOffsets[0]);
+    span.dataset.noteMarkdownSourceEnd = String(operation.sourceOffsets[operation.sourceOffsets.length - 1]);
+    span.textContent = textNode.data.slice(operation.start, operation.end);
+    fragment.append(span);
+    cursor = operation.end;
+  }
+
+  if (cursor < textNode.data.length) {
+    fragment.append(document.createTextNode(textNode.data.slice(cursor)));
+  }
+
+  parent.replaceChild(fragment, textNode);
+}
+
 
 function createNoteMarkdownRenderer(): MarkdownIt {
   const renderer = new MarkdownIt({
@@ -8531,6 +10697,8 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   });
   registerSafeNoteMathRenderer(renderer);
   renderer.core.ruler.after('github-task-lists', 'note-task-list-metadata', (state) => {
+    const noteMarkdownLineOffset =
+      typeof state.env?.noteMarkdownLineOffset === 'number' ? state.env.noteMarkdownLineOffset : 0;
     for (const token of state.tokens) {
       if (token.type !== 'inline' || !token.map || !Array.isArray(token.children)) {
         continue;
@@ -8546,7 +10714,7 @@ function createNoteMarkdownRenderer(): MarkdownIt {
         continue;
       }
 
-      const lineNumber = token.map[0] + 1;
+      const lineNumber = token.map[0] + 1 + noteMarkdownLineOffset;
       checkboxChild.content = injectNoteMarkdownCheckboxAttributes(checkboxChild.content, {
         'data-note-markdown-task-line': String(lineNumber),
         'aria-label': checkboxChild.content.includes('checked=""') ? '取消待办完成状态' : '标记待办为已完成'
@@ -8557,9 +10725,13 @@ function createNoteMarkdownRenderer(): MarkdownIt {
   const defaultLinkOpenRenderer =
     renderer.renderer.rules.link_open ??
     ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  const defaultImageRenderer =
+    renderer.renderer.rules.image ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   const defaultValidateLink = renderer.validateLink.bind(renderer);
   renderer.validateLink = (href) =>
-    defaultValidateLink(href) && isRenderableNoteMarkdownHref(href);
+    defaultValidateLink(href) &&
+    (isRenderableNoteMarkdownHref(href) || isRenderableNoteMarkdownImageReference(href));
   renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const href = token.attrGet('href');
@@ -8575,6 +10747,24 @@ function createNoteMarkdownRenderer(): MarkdownIt {
     token.attrSet('rel', 'noopener noreferrer');
     return defaultLinkOpenRenderer(tokens, idx, options, env, self);
   };
+  renderer.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const src = token.attrGet('src');
+    const resolvedSrc = src ? resolveRenderableNoteMarkdownImageSrc(src, env) : null;
+    if (!resolvedSrc) {
+      const altText = token.content.trim() || src || '图片';
+      return `<span class="note-markdown-image-fallback" role="img" aria-label="${escapeHtml(altText)}">${escapeHtml(
+        altText
+      )}</span>`;
+    }
+
+    token.attrSet('src', resolvedSrc);
+    token.attrJoin('class', 'note-markdown-image');
+    token.attrSet('loading', 'lazy');
+    token.attrSet('decoding', 'async');
+    token.attrSet('draggable', 'false');
+    return defaultImageRenderer(tokens, idx, options, env, self);
+  };
 
   return renderer;
 }
@@ -8585,7 +10775,8 @@ function registerSafeNoteMathRenderer(renderer: MarkdownIt): void {
     alt: ['paragraph', 'reference', 'blockquote', 'list']
   });
   renderer.renderer.rules.note_math_inline = (tokens, idx) => renderSafeNoteMath(tokens[idx].content, false);
-  renderer.renderer.rules.note_math_block = (tokens, idx) => `${renderSafeNoteMath(tokens[idx].content, true)}\n`;
+  renderer.renderer.rules.note_math_block = (tokens, idx) =>
+    `<div class="note-markdown-math-display">${renderSafeNoteMath(tokens[idx].content, true)}</div>\n`;
 }
 
 function isRenderableNoteMarkdownHref(href: string): boolean {
@@ -8628,6 +10819,197 @@ function isRenderableNoteMarkdownWorkspaceHref(href: string): boolean {
 
   const pathSegments = normalizedPath.split('/').filter((segment) => segment.length > 0);
   return pathSegments.length > 0 && pathSegments.every((segment) => segment !== '..');
+}
+
+function isRenderableNoteMarkdownImageReference(src: string): boolean {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return false;
+  }
+
+  if (isRenderableNoteMarkdownDataImageSrc(trimmedSrc)) {
+    return true;
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(trimmedSrc);
+  if (schemeMatch) {
+    return schemeMatch[1].toLowerCase() === 'https';
+  }
+
+  return isRenderableNoteMarkdownWorkspaceHref(trimmedSrc);
+}
+
+function resolveRenderableNoteMarkdownImageSrc(src: string, env: unknown): string | null {
+  const trimmedSrc = src.trim();
+  if (!trimmedSrc) {
+    return null;
+  }
+
+  if (isRenderableNoteMarkdownDataImageSrc(trimmedSrc)) {
+    return trimmedSrc;
+  }
+
+  let parsedUrl: URL | null = null;
+  try {
+    parsedUrl = new URL(trimmedSrc);
+  } catch {
+    parsedUrl = null;
+  }
+  if (parsedUrl) {
+    return parsedUrl.protocol.toLowerCase() === 'https:' ? parsedUrl.toString() : null;
+  }
+
+  const normalizedPath = normalizeNoteMarkdownImageRelativePath(trimmedSrc);
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const options = readNoteMarkdownPreviewRenderOptions(env);
+  const associatedBaseUri = normalizeNoteMarkdownImageBaseUri(options.imageBaseUri);
+  if (associatedBaseUri) {
+    return resolveNoteMarkdownImageAgainstBaseUri(normalizedPath, associatedBaseUri);
+  }
+
+  const workspaceResource = resolveNoteMarkdownWorkspaceImageResource(normalizedPath, options.imageWorkspaceRoots);
+  return workspaceResource
+    ? resolveNoteMarkdownImageAgainstBaseUri(workspaceResource.relativePath, workspaceResource.baseUri)
+    : null;
+}
+
+function isRenderableNoteMarkdownDataImageSrc(src: string): boolean {
+  return NOTE_MARKDOWN_DATA_IMAGE_PATTERN.test(src);
+}
+
+function normalizeNoteMarkdownImageRelativePath(src: string): NoteMarkdownNormalizedImagePath | null {
+  const [rawPathPart] = splitNoteMarkdownImagePathAndFragment(src);
+  if (!rawPathPart || rawPathPart.includes('?')) {
+    return null;
+  }
+
+  let decodedPathPart: string;
+  try {
+    decodedPathPart = decodeURIComponent(rawPathPart);
+  } catch {
+    return null;
+  }
+
+  const normalizedPath = decodedPathPart.replace(/\\/g, '/');
+  if (
+    !normalizedPath ||
+    normalizedPath.startsWith('/') ||
+    normalizedPath.startsWith('//') ||
+    /^[A-Za-z]:[\\/]/u.test(decodedPathPart)
+  ) {
+    return null;
+  }
+
+  const segments: string[] = [];
+  for (const segment of normalizedPath.split('/')) {
+    if (!segment || segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      return null;
+    }
+    segments.push(segment);
+  }
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return {
+    segments,
+    relativePath: segments.map((segment) => encodeURIComponent(segment)).join('/')
+  };
+}
+
+function splitNoteMarkdownImagePathAndFragment(src: string): [string, string] {
+  const hashIndex = src.indexOf('#');
+  return hashIndex === -1 ? [src, ''] : [src.slice(0, hashIndex), src.slice(hashIndex + 1)];
+}
+
+function readNoteMarkdownPreviewRenderOptions(env: unknown): NoteMarkdownPreviewRenderOptions {
+  if (!env || typeof env !== 'object') {
+    return {
+      imageWorkspaceRoots: []
+    };
+  }
+
+  const candidate = env as Partial<NoteMarkdownPreviewRenderOptions>;
+  return {
+    imageBaseUri: typeof candidate.imageBaseUri === 'string' ? candidate.imageBaseUri : undefined,
+    imageWorkspaceRoots: Array.isArray(candidate.imageWorkspaceRoots)
+      ? candidate.imageWorkspaceRoots.filter(
+          (root): root is NoteMarkdownImageWorkspaceRoot =>
+            typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : []
+  };
+}
+
+function normalizeNoteMarkdownImageBaseUri(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.toString().endsWith('/') ? url.toString() : `${url.toString()}/`;
+  } catch {
+    return null;
+  }
+}
+
+function resolveNoteMarkdownWorkspaceImageResource(
+  normalizedPath: NoteMarkdownNormalizedImagePath,
+  workspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[]
+): NoteMarkdownResolvedImageResource | null {
+  if (workspaceRoots.length === 0) {
+    return null;
+  }
+
+  if (workspaceRoots.length === 1) {
+    const baseUri = normalizeNoteMarkdownImageBaseUri(workspaceRoots[0].webviewResourceBaseUri);
+    return baseUri ? { baseUri, relativePath: normalizedPath.relativePath } : null;
+  }
+
+  const [rootName] = normalizedPath.segments;
+  const normalizedRootName = normalizeNoteMarkdownWorkspaceRootName(rootName);
+  const matchingRoot = workspaceRoots.find(
+    (root) => normalizeNoteMarkdownWorkspaceRootName(root.name) === normalizedRootName
+  );
+  if (!matchingRoot || normalizedPath.segments.length < 2) {
+    return null;
+  }
+
+  const baseUri = normalizeNoteMarkdownImageBaseUri(matchingRoot.webviewResourceBaseUri);
+  if (!baseUri) {
+    return null;
+  }
+
+  return {
+    baseUri,
+    relativePath: normalizedPath.segments.slice(1).map((segment) => encodeURIComponent(segment)).join('/')
+  };
+}
+
+function normalizeNoteMarkdownWorkspaceRootName(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function resolveNoteMarkdownImageAgainstBaseUri(
+  normalizedPath: { relativePath: string } | string,
+  baseUri: string
+): string | null {
+  try {
+    return new URL(
+      typeof normalizedPath === 'string' ? normalizedPath : normalizedPath.relativePath,
+      baseUri
+    ).toString();
+  } catch {
+    return null;
+  }
 }
 
 function removeMarkdownTokenAttribute(token: Token, attributeName: string): void {
@@ -8806,8 +11188,30 @@ function readNoteMarkdownChecklistLineNumber(input: HTMLInputElement): number | 
   return Number.isSafeInteger(parsedLineNumber) && parsedLineNumber > 0 ? parsedLineNumber : null;
 }
 
-function renderNoteMarkdownPreview(content: string): string {
-  return content.trim() ? noteMarkdownRenderer.render(content) : '';
+function renderNoteMarkdownPreview(
+  content: string,
+  options: NoteMarkdownPreviewRenderOptions
+): NoteMarkdownPreviewResult {
+  const frontMatter = parseNoteMarkdownFrontMatter(content);
+  const renderContent = frontMatter.kind === 'valid' ? frontMatter.body : content;
+  if (!renderContent.trim()) {
+    return {
+      html: '',
+      frontMatter
+    };
+  }
+
+  const sourceMap = createNoteMarkdownSourceMap(content, frontMatter);
+  const rawHtml = noteMarkdownRenderer.render(renderContent, {
+    noteMarkdownLineOffset: frontMatter.lineOffset,
+    imageBaseUri: options.imageBaseUri,
+    imageWorkspaceRoots: options.imageWorkspaceRoots
+  });
+
+  return {
+    html: annotateNoteMarkdownPreviewHtml(rawHtml, sourceMap),
+    frontMatter
+  };
 }
 
 function injectNoteMarkdownCheckboxAttributes(

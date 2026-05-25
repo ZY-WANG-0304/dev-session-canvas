@@ -35,6 +35,7 @@ const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
+  focusNode: 'devSessionCanvas.__internal.focusNode',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
@@ -67,6 +68,7 @@ const COMMAND_IDS = {
   testExportCanvasTemplateToPath: 'devSessionCanvas.__test.exportCanvasTemplateToPath',
   testImportCanvasTemplateFromPath: 'devSessionCanvas.__test.importCanvasTemplateFromPath',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
+  testFlushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
   testReloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
@@ -86,6 +88,11 @@ const REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED = ['- [x] 补齐 smoke', '- [x] 保�
 const REAL_DOM_NOTE_FILE_LINK_RELATIVE_PATH = 'note-link-open-target.txt';
 const REAL_DOM_NOTE_FILE_LINK_BODY =
   '[打开 Note 链接目标](.debug/vscode-smoke/note-link-open-target.txt#L2C3)';
+const REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL = '0123456789abcdef'.repeat(520);
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY =
+  `# Associated Note\n\n- from workspace file\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}`;
+const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY =
+  `# Associated Note\n\n- updated from canvas\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}\nupdated tail`;
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
@@ -628,7 +635,7 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强');
+  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强 · 文本异常关闭');
 
   await verifyCanvasTemplatesTrusted();
   await ensureEditorCanvasReady();
@@ -729,6 +736,7 @@ async function runTrustedSmoke() {
   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
   await verifyInteractiveNoteChecklist(noteNode.id);
   await verifyNoteWorkspaceFileLinks(noteNode.id);
+  await verifyNoteMarkdownFileAssociation();
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
@@ -738,6 +746,7 @@ async function runTrustedSmoke() {
   await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyLegacyAttentionNotificationBridgeMigration();
   await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);
+  await verifyAgentAbnormalInterruptionNotifications();
   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
@@ -3931,6 +3940,650 @@ async function verifyNoteWorkspaceFileLinks(noteNodeId) {
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
 }
 
+async function verifyNoteMarkdownFileAssociation() {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+  assert.ok(
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY.length > 8000 &&
+      REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY.length > 8000,
+    'Expected associated Markdown smoke bodies to exceed the ordinary Note storage limit.'
+  );
+
+  const associationDir = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke');
+  await fs.mkdir(associationDir, { recursive: true });
+
+  const associatedFilePath = path.join(associationDir, 'associated-note.md');
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  const associatedFileUri = vscode.Uri.file(associatedFilePath);
+
+  const associatedFileDropMessage = {
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: associatedFileUri.toString()
+        },
+        {
+          source: 'codeFiles',
+          valueKind: 'path',
+          value: associatedFilePath
+        }
+      ],
+      position: { x: 820, y: 320 }
+    }
+  };
+  await Promise.all([
+    dispatchWebviewMessage(associatedFileDropMessage),
+    dispatchWebviewMessage(associatedFileDropMessage)
+  ]);
+
+  let snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.some(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.kind === 'markdown-file' &&
+        node.metadata.note.contentSource.resourceUri === associatedFileUri.toString() &&
+        node.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    )
+  );
+  const associatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(associatedNote, 'Expected dropping a Markdown file onto the canvas to create an associated Note.');
+  assert.strictEqual(associatedNote.title, 'associated-note.md');
+  assert.strictEqual(associatedNote.metadata.note.contentSource.displayPath, '.debug/vscode-smoke/associated-note.md');
+  assert.strictEqual(
+    associatedNote.metadata.note.contentSource.fullDisplayPath,
+    '.debug/vscode-smoke/associated-note.md'
+  );
+  assert.ok(
+    associatedNote.metadata.note.contentSource.contentRevision,
+    'Expected associated Markdown Note to carry a content revision.'
+  );
+  assert.match(
+    associatedNote.metadata.note.contentSource.contentRevision,
+    /^stat:/,
+    'Expected associated Markdown Note revision to be based on file stat metadata.'
+  );
+  const initialAssociatedContentRevision = associatedNote.metadata.note.contentSource.contentRevision;
+  assert.strictEqual(associatedNote.metadata.note.contentSource.status, 'ok');
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected duplicate drag resources/messages for the same Markdown file to create only one associated Note.'
+  );
+
+  const associatedDocument = await vscode.workspace.openTextDocument(associatedFileUri);
+  const associatedEditor = await vscode.window.showTextDocument(associatedDocument, {
+    preview: false,
+    preserveFocus: false
+  });
+  const openedAssociatedEditor = await waitForActiveEditor(
+    (editor) => editor.document.uri.fsPath === associatedFilePath,
+    10000
+  );
+  assert.strictEqual(openedAssociatedEditor.document.isDirty, false);
+
+  const dirtyEditorContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY}\neditor draft tail`;
+  const dirtyEditApplied = await associatedEditor.edit((editBuilder) => {
+    const fullRange = new vscode.Range(
+      associatedEditor.document.positionAt(0),
+      associatedEditor.document.positionAt(associatedEditor.document.getText().length)
+    );
+    editBuilder.replace(fullRange, dirtyEditorContent);
+  });
+  assert.ok(dirtyEditApplied, 'Expected the associated Markdown editor to accept a dirty draft edit.');
+  assert.strictEqual(associatedEditor.document.isDirty, true);
+
+  await sleep(900);
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected an unsaved VS Code editor draft not to change the associated Note content.'
+  );
+
+  await associatedEditor.document.save();
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === dirtyEditorContent);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    dirtyEditorContent,
+    'Expected the associated Note to refresh after the Markdown editor saves.'
+  );
+  const savedAssociatedContentRevision =
+    findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.notStrictEqual(
+    savedAssociatedContentRevision,
+    initialAssociatedContentRevision,
+    'Expected saving the Markdown file to update the stat-based associated Note revision.'
+  );
+
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY);
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected restoring the Markdown file on disk to bring the Note back to the disk content.'
+  );
+  const activeEditRevision = findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.ok(activeEditRevision, 'Expected restored associated Markdown Note to have a revision before editing.');
+  await dispatchWebviewMessage({
+    type: 'webview/beginAssociatedNoteMarkdownEdit',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+      baseContentRevision: activeEditRevision
+    }
+  });
+  const activeEditDraftContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nin-progress note draft`;
+  await dispatchWebviewMessage({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id,
+      content: activeEditDraftContent,
+      baseContentRevision: activeEditRevision
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.contentSource?.recoverableDraft?.draftId);
+  });
+  const activeEditRemoteContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit while note is open`;
+  await fs.writeFile(associatedFilePath, activeEditRemoteContent, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'dirty-conflict';
+  });
+  const activeEditConflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    activeEditConflictNote.metadata.note.content,
+    activeEditRemoteContent,
+    'Expected editing an associated Markdown Note to surface external disk changes before submit.'
+  );
+  const activeEditRecoverableDraft = activeEditConflictNote.metadata.note.contentSource.recoverableDraft;
+  assert.match(
+    String(activeEditRecoverableDraft?.draftId),
+    /^[0-9a-f-]{36}$/i,
+    'Expected active edit conflict to persist the in-progress note draft.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(activeEditRecoverableDraft.draftId),
+    activeEditDraftContent,
+    'Expected active edit conflict to keep the edit-session content as the recoverable draft.'
+  );
+  await vscode.commands.executeCommand(COMMAND_IDS.focusNode, associatedNote.id);
+  await waitForWebviewProbe(
+    (currentProbe) => currentProbe.nodes.some((node) => node.nodeId === associatedNote.id),
+    10000
+  );
+  await performWebviewDomAction(
+    {
+      kind: 'clickNodeActionButton',
+      nodeId: associatedNote.id,
+      label: '重新加载'
+    },
+    'editor',
+    10000
+  );
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === activeEditRemoteContent
+    );
+  });
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    );
+  });
+
+  const revertedDraftBaseRevision =
+    findNodeById(snapshot, associatedNote.id).metadata.note.contentSource.contentRevision;
+  assert.ok(
+    revertedDraftBaseRevision,
+    'Expected associated Markdown Note to have a revision before testing reverted edit drafts.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/beginAssociatedNoteMarkdownEdit',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+      baseContentRevision: revertedDraftBaseRevision
+    }
+  });
+  const abandonedDraftContent = `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nabandoned local draft`;
+  await dispatchWebviewMessage({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id,
+      content: abandonedDraftContent,
+      baseContentRevision: revertedDraftBaseRevision
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+        currentNote.metadata.note.contentSource.recoverableDraft?.draftId
+    );
+  });
+  assert.strictEqual(
+    findNodeById(snapshot, associatedNote.id).metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected syncing an edit draft not to replace the associated Markdown file content.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/clearAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: associatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+        !currentNote.metadata.note.contentSource.recoverableDraft
+    );
+  });
+  const externalContentAfterRevertedDraft =
+    `${REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY}\n\nexternal edit after reverted draft`;
+  await fs.writeFile(associatedFilePath, externalContentAfterRevertedDraft, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === externalContentAfterRevertedDraft
+    );
+  });
+  const revertedDraftRefreshNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    revertedDraftRefreshNote.metadata.note.contentSource.recoverableDraft,
+    undefined,
+    'Expected clearing a reverted edit draft to prevent stale active edit conflicts.'
+  );
+  await fs.writeFile(associatedFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return (
+      currentNote?.metadata?.note?.contentSource?.status === 'ok' &&
+      currentNote.metadata.note.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY
+    );
+  });
+
+  const existingAssociatedFileDropMessage = {
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: associatedFileUri.toString()
+        }
+      ],
+      position: { x: 840, y: 340 }
+    }
+  };
+
+  await clearHostMessages();
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage(existingAssociatedFileDropMessage);
+      await waitForHostMessages(
+        (messages) =>
+          messages.some(
+            (message) =>
+              message.type === 'host/focusNodes' &&
+              Array.isArray(message.payload?.nodeIds) &&
+              message.payload.nodeIds.includes(associatedNote.id)
+          ),
+        10000
+      );
+      assert.strictEqual(warningCalls.length, 1, 'Expected dropping an already associated Markdown file to confirm.');
+      assert.match(String(warningCalls[0].message), /已关联到一个 Note/);
+      assert.ok(
+        String(warningCalls[0].message).includes(associatedNote.metadata.note.contentSource.displayPath),
+        'Expected the existing-file drop confirmation to use the same display path as the Note subtitle.'
+      );
+      assert.ok(
+        !String(warningCalls[0].message).includes(associatedFilePath),
+        'Expected the existing-file drop confirmation not to show the absolute file path.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('定位已有 Note'),
+        'Expected the existing-file drop confirmation to offer locating the associated Note.'
+      );
+      assert.ok(
+        !warningCalls[0].items.includes('取消'),
+        'Expected the existing-file drop confirmation to rely on the modal default cancel button.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '定位已有 Note')
+  );
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected choosing locate for an already associated Markdown file not to create another Note.'
+  );
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage(existingAssociatedFileDropMessage);
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.filter(
+            (node) =>
+              node.kind === 'note' &&
+              node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+          ).length === 2,
+        10000
+      );
+      assert.strictEqual(warningCalls.length, 1, 'Expected adding another associated Note to confirm.');
+      assert.ok(
+        warningCalls[0].items.includes('添加新 Note'),
+        'Expected the existing-file drop confirmation to offer creating another associated Note.'
+      );
+      assert.ok(
+        !warningCalls[0].items.includes('取消'),
+        'Expected the existing-file drop confirmation not to duplicate the modal cancel button.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '添加新 Note')
+  );
+  const duplicateAssociatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.id !== associatedNote.id &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(duplicateAssociatedNote, 'Expected choosing continue to create a second associated Note.');
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: duplicateAssociatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'note' &&
+          node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+      ).length === 1,
+    10000
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: associatedNote.id,
+      content: '# Associated Note\n\n- stale local draft',
+      baseContentRevision: 'stale-revision'
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'dirty-conflict';
+  });
+  const conflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    conflictNote.metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected stale associated Markdown draft submission not to replace the node buffer.'
+  );
+  assert.match(
+    String(conflictNote.metadata.note.contentSource.lastError),
+    /编辑期间被外部修改/,
+    'Expected stale associated Markdown draft submission to explain the edit conflict.'
+  );
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected stale associated Markdown draft submission not to overwrite the file.'
+  );
+  const recoverableDraft = conflictNote.metadata.note.contentSource.recoverableDraft;
+  assert.match(
+    String(recoverableDraft?.draftId),
+    /^[0-9a-f-]{36}$/i,
+    'Expected dirty-conflict associated Markdown Note to persist a storage-backed draft id.'
+  );
+  assert.strictEqual(
+    recoverableDraft?.content,
+    undefined,
+    'Expected debug state not to inline the rejected local draft content.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(recoverableDraft.draftId),
+    '# Associated Note\n\n- stale local draft',
+    'Expected dirty-conflict associated Markdown Note to persist the rejected local draft in storage.'
+  );
+  assert.strictEqual(
+    recoverableDraft?.baseContentRevision,
+    'stale-revision',
+    'Expected persisted conflict draft to keep the stale base revision for explicit overwrite.'
+  );
+
+  snapshot = await reloadPersistedState();
+  const reloadedConflictNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.status,
+    'dirty-conflict',
+    'Expected reloading persisted state not to auto-resolve an associated Markdown conflict.'
+  );
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    recoverableDraft.draftId,
+    'Expected reloading persisted state to keep the unresolved conflict draft reference.'
+  );
+  assert.strictEqual(
+    reloadedConflictNote.metadata.note.contentSource.recoverableDraft?.content,
+    undefined,
+    'Expected reloading persisted state not to inline the unresolved conflict draft.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(recoverableDraft.draftId),
+    '# Associated Note\n\n- stale local draft',
+    'Expected reloading persisted state to keep the unresolved conflict draft file.'
+  );
+
+  const legacyDraftId = '55555555-5555-4555-8555-555555555555';
+  const legacyRecoverableDraftContent = '# Associated Note\n\n- stale local draft from legacy field';
+  const legacyConflictDraftState = {
+    ...snapshot.state,
+    nodes: snapshot.state.nodes.map((node) => {
+      if (node.id !== associatedNote.id) {
+        return node;
+      }
+
+      const { recoverableDraft: _recoverableDraft, ...legacyContentSource } =
+        node.metadata.note.contentSource;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...node.metadata.note,
+            contentSource: {
+              ...legacyContentSource,
+              conflictDraft: {
+                draftId: legacyDraftId,
+                content: legacyRecoverableDraftContent,
+                baseContentRevision: 'legacy-base-revision',
+                remoteContentRevision: node.metadata.note.contentSource.contentRevision,
+                updatedAt: '2026-05-24T00:00:00.000Z'
+              }
+            }
+          }
+        }
+      };
+    })
+  };
+  snapshot = await setPersistedState(legacyConflictDraftState);
+  const migratedLegacyDraftNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    migratedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    legacyDraftId,
+    'Expected legacy conflictDraft state to migrate into recoverableDraft.'
+  );
+  assert.strictEqual(
+    migratedLegacyDraftNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected debug state not to re-emit legacy conflictDraft after migration.'
+  );
+  assert.strictEqual(
+    migratedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.content,
+    undefined,
+    'Expected migrated recoverableDraft not to inline draft content in debug state.'
+  );
+  assert.strictEqual(
+    await readInternalNoteMarkdownDraftContent(legacyDraftId),
+    legacyRecoverableDraftContent,
+    'Expected migrating legacy conflictDraft content to keep the recoverable draft file.'
+  );
+  const persistedLegacyDraftSnapshot = await flushPersistedStateSnapshot();
+  const persistedLegacyDraftNote = persistedLegacyDraftSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+  assert.ok(persistedLegacyDraftNote, 'Expected persisted legacy migration snapshot to keep the associated Note.');
+  assert.strictEqual(
+    persistedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    legacyDraftId,
+    'Expected persisted state to write the migrated recoverableDraft field.'
+  );
+  assert.strictEqual(
+    persistedLegacyDraftNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected persisted state not to write the legacy conflictDraft field.'
+  );
+  assert.strictEqual(
+    persistedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.content,
+    undefined,
+    'Expected persisted migrated recoverableDraft not to inline draft content.'
+  );
+
+  snapshot = await reloadPersistedState();
+  const reloadedMigratedLegacyDraftNote = findNodeById(snapshot, associatedNote.id);
+  assert.strictEqual(
+    reloadedMigratedLegacyDraftNote.metadata.note.contentSource.recoverableDraft?.draftId,
+    legacyDraftId,
+    'Expected reloading a stripped legacy conflictDraft snapshot to recover recoverableDraft.'
+  );
+  assert.strictEqual(
+    reloadedMigratedLegacyDraftNote.metadata.note.contentSource.conflictDraft,
+    undefined,
+    'Expected reloading a stripped legacy conflictDraft snapshot not to expose the old field.'
+  );
+
+  const currentContentRevision = reloadedMigratedLegacyDraftNote.metadata.note.contentSource.contentRevision;
+  assert.ok(currentContentRevision, 'Expected dirty-conflict associated Markdown Note to keep a content revision.');
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: associatedNote.id,
+      content: REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY,
+      baseContentRevision: currentContentRevision
+    }
+  });
+  await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === associatedNote.id);
+    return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY);
+  });
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: associatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.every((node) => node.id !== associatedNote.id)
+  );
+  assert.ok(
+    snapshot.state.nodes.every((node) => node.id !== associatedNote.id),
+    'Expected deleting an associated Note to remove only the node.'
+  );
+  assert.strictEqual(
+    await fs.readFile(associatedFilePath, 'utf8'),
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY,
+    'Expected deleting an associated Note to leave the Markdown file untouched.'
+  );
+
+  const missingFilePath = path.join(associationDir, 'missing-associated-note.md');
+  await fs.writeFile(missingFilePath, REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY, 'utf8');
+  const missingFileUri = vscode.Uri.file(missingFilePath);
+  await dispatchWebviewMessage({
+    type: 'webview/dropNoteMarkdownFiles',
+    payload: {
+      resources: [
+        {
+          source: 'resourceUrls',
+          valueKind: 'uri',
+          value: missingFileUri.toString()
+        }
+      ],
+      position: { x: 860, y: 360 }
+    }
+  });
+  snapshot = await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.some(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === missingFileUri.toString()
+    )
+  );
+  const missingNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.metadata?.note?.contentSource?.resourceUri === missingFileUri.toString()
+  );
+  assert.ok(missingNote, 'Expected the second dropped Markdown file to create an associated Note.');
+
+  await fs.unlink(missingFilePath);
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    const currentNote = currentSnapshot.state.nodes.find((node) => node.id === missingNote.id);
+    return currentNote?.metadata?.note?.contentSource?.status === 'missing';
+  }, 10000);
+  assert.strictEqual(
+    findNodeById(snapshot, missingNote.id).metadata.note.contentSource.status,
+    'missing',
+    'Expected deleting an associated Markdown file to mark the Note as missing.'
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: missingNote.id
+    }
+  });
+  await waitForSnapshot((currentSnapshot) =>
+    currentSnapshot.state.nodes.every((node) => node.id !== missingNote.id)
+  );
+}
+
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {
   let snapshot = await waitForSnapshot((currentSnapshot) => {
     return (
@@ -4510,6 +5163,448 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
     await ensureAgentStopped(agentNodeId);
     await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await ensureStrongTerminalAttentionReminderMode(originalStrongReminderMode);
+    await clearHostMessages();
+    await clearDiagnosticEvents();
+  }
+}
+
+async function verifyAgentAbnormalInterruptionNotifications() {
+  const configuration = vscode.workspace.getConfiguration();
+  const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
+    configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
+  );
+  const originalTextNotificationMode = normalizeAgentAbnormalOutputTextNotificationMode(
+    configuration.get('devSessionCanvas.notifications.agentAbnormalOutputTextNotifications', 'off')
+  );
+  const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
+
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  try {
+    await setRuntimePersistenceEnabled(false);
+    await ensureAttentionNotificationBridgeMode('workbench');
+    await ensureAgentAbnormalOutputTextNotificationMode('off');
+
+    await withInterceptedInformationMessages(async (calls) => {
+      let snapshot = await getDebugSnapshot();
+      const baselineAgentIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
+
+      await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
+        agentProvider: 'codex',
+        titleOverride: 'Codex Crash Smoke'
+      });
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) => currentSnapshot.state.nodes.some((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id)),
+        20000
+      );
+      const codexAgent = snapshot.state.nodes.find((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id));
+      assert.ok(codexAgent, 'Expected a dedicated Codex abnormal-exit smoke agent.');
+
+      await waitForAgentLive(codexAgent.id);
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: codexAgent.id,
+          kind: 'agent',
+          data: 'exit 27\r'
+        }
+      });
+
+      const codexDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.nodeId === codexAgent.id &&
+              event.detail?.provider === 'codex' &&
+              event.detail?.lifecycleStatus === 'error'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return Boolean(
+          currentAgent?.status === 'error' &&
+            currentAgent?.metadata?.agent?.attentionPending === true &&
+            currentAgent?.metadata?.agent?.lastExitCode === 27
+        );
+      }, 20000);
+      const codexErrorNode = findNodeById(snapshot, codexAgent.id);
+      assert.strictEqual(codexErrorNode.metadata.agent.attentionPending, true);
+      assert.ok(
+        codexDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-interruption' &&
+            event.detail?.exitCode === 27
+        ),
+        'Expected a Codex abnormal exit to post an attention notification diagnostic.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Codex Agent「Codex Crash Smoke」异常中断/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected a Codex abnormal exit to surface a workbench attention notification.'
+      );
+
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: codexAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
+      await sleep(300);
+      let textDiagnostics = await getDiagnosticEvents();
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+            event.detail?.nodeId === codexAgent.id
+        ),
+        'Expected Codex stream text not to notify while abnormal text matching is off by default.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected default-off Codex stream text not to surface a workbench notification.'
+      );
+
+      await ensureAgentAbnormalOutputTextNotificationMode('codex');
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
+      const streamDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+              event.detail?.nodeId === codexAgent.id &&
+              event.detail?.provider === 'codex' &&
+              event.detail?.reason === 'output-pattern'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === true;
+      }, 20000);
+      assert.strictEqual(findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending, true);
+      assert.ok(
+        streamDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected a Codex stream-disconnected line to post a supplemental attention notification diagnostic when enabled.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
+          /stream disconnected before completion/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected an enabled Codex stream-disconnected line to surface a supplemental workbench attention notification.'
+      );
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: codexAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      const beforeClaudeTextSnapshot = await getDebugSnapshot();
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'claude',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
+      await waitForSnapshot((currentSnapshot) => currentSnapshot !== beforeClaudeTextSnapshot, 20000);
+      await sleep(300);
+      textDiagnostics = await getDiagnosticEvents();
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected Claude stream-disconnected-like text not to notify even when Codex text matching is enabled.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected Claude stream-disconnected-like text not to surface a workbench notification.'
+      );
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      const beforeStaleTextSnapshot = await getDebugSnapshot();
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentExistingOutput:
+          'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n',
+        injectAgentOutputChunk: '> next prompt\n'
+      });
+      await waitForSnapshot((currentSnapshot) => currentSnapshot !== beforeStaleTextSnapshot, 20000);
+      await sleep(300);
+      textDiagnostics = await getDiagnosticEvents();
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected a stale stream-disconnected line already present in the buffer not to notify on the next turn.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected stale buffered stream text not to surface a workbench notification.'
+      );
+
+      await ensureAgentAbnormalOutputTextNotificationMode('off');
+      snapshot = await getDebugSnapshot();
+      await setPersistedState({
+        ...snapshot.state,
+        nodes: snapshot.state.nodes.filter((node) => node.id !== codexAgent.id)
+      });
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      snapshot = await getDebugSnapshot();
+      const baselineBeforeClaudeIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
+
+      await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'claude', {
+        agentLaunchPreset: 'custom',
+        agentCustomLaunchCommand: 'claude',
+        titleOverride: 'Claude Crash Smoke'
+      });
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.some((node) => node.kind === 'agent' && !baselineBeforeClaudeIds.has(node.id)),
+        20000
+      );
+      const claudeAgent = snapshot.state.nodes.find(
+        (node) => node.kind === 'agent' && !baselineBeforeClaudeIds.has(node.id)
+      );
+      assert.ok(claudeAgent, 'Expected a dedicated Claude abnormal-exit smoke agent.');
+
+      await waitForAgentLive(claudeAgent.id);
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: claudeAgent.id,
+          kind: 'agent',
+          data: 'exit 33\r'
+        }
+      });
+
+      const claudeCrashDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.nodeId === claudeAgent.id &&
+              event.detail?.provider === 'claude' &&
+              event.detail?.lifecycleStatus === 'error'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return Boolean(
+          currentAgent?.status === 'error' &&
+            currentAgent?.metadata?.agent?.attentionPending === true &&
+            currentAgent?.metadata?.agent?.lastExitCode === 33
+        );
+      }, 20000);
+      const claudeErrorNode = findNodeById(snapshot, claudeAgent.id);
+      assert.strictEqual(claudeErrorNode.metadata.agent.attentionPending, true);
+      assert.ok(
+        claudeCrashDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-interruption' &&
+            event.detail?.exitCode === 33
+        ),
+        'Expected a Claude abnormal exit to post an attention notification diagnostic.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Claude Code Agent「Claude Crash Smoke」异常中断/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected a Claude abnormal exit to surface a workbench attention notification.'
+      );
+
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: claudeAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      const failingClaudeCommandDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-claude-resume-fail-'));
+      const failingClaudeCommandPath = path.join(
+        failingClaudeCommandDir,
+        process.platform === 'win32' ? 'claude.cmd' : 'claude'
+      );
+      const previousClaudeCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+
+      try {
+        if (process.platform === 'win32') {
+          await fs.writeFile(
+            failingClaudeCommandPath,
+            '@echo off\r\necho [fake-claude] resume crash\r\nexit /b 33\r\n',
+            'utf8'
+          );
+        } else {
+          await fs.writeFile(
+            failingClaudeCommandPath,
+            '#!/usr/bin/env bash\necho "[fake-claude] resume crash"\nexit 33\n',
+            'utf8'
+          );
+          await fs.chmod(failingClaudeCommandPath, 0o755);
+        }
+        process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = failingClaudeCommandPath;
+
+        const resumeSessionId = `claude-resume-failure-smoke-${Date.now()}`;
+        snapshot = await getDebugSnapshot();
+        await setPersistedState({
+          ...snapshot.state,
+          nodes: snapshot.state.nodes.map((node) =>
+            node.id === claudeAgent.id
+              ? {
+                  ...node,
+                  title: 'Claude Resume Failure Smoke',
+                  status: 'resume-ready',
+                  summary: '准备恢复 Claude Code 会话。',
+                  metadata: {
+                    ...node.metadata,
+                    agent: {
+                      ...node.metadata.agent,
+                      provider: 'claude',
+                      lifecycle: 'resume-ready',
+                      launchPreset: 'default',
+                      customLaunchCommand: undefined,
+                      resumeSupported: true,
+                      resumeStrategy: 'claude-session-id',
+                      resumeSessionId,
+                      resumeStoragePath: undefined,
+                      liveSession: false,
+                      pendingLaunch: undefined,
+                      attentionPending: false,
+                      lastExitCode: undefined,
+                      lastExitSignal: undefined,
+                      lastExitMessage: undefined,
+                      lastResumeError: undefined,
+                      recentOutput: undefined
+                    }
+                  }
+                }
+              : node
+          )
+        });
+
+        await startExecutionSessionForTest({
+          kind: 'agent',
+          nodeId: claudeAgent.id,
+          cols: 90,
+          rows: 28,
+          provider: 'claude',
+          resumeRequested: true
+        });
+
+        snapshot = await waitForSnapshot((currentSnapshot) => {
+          const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+          return Boolean(
+            currentAgent?.status === 'resume-failed' &&
+              currentAgent?.metadata?.agent?.attentionPending !== true &&
+              currentAgent?.metadata?.agent?.lastExitCode === 33
+          );
+        }, 20000);
+        await sleep(300);
+        const claudeResumeFailedNode = findNodeById(await getDebugSnapshot(), claudeAgent.id);
+        assert.strictEqual(claudeResumeFailedNode.metadata.agent.attentionPending, false);
+        const claudeResumeDiagnostics = await getDiagnosticEvents();
+        assert.ok(
+          !claudeResumeDiagnostics.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.nodeId === claudeAgent.id
+          ),
+          'Expected a Claude resume startup failure not to post a supplemental attention notification diagnostic.'
+        );
+        assert.ok(
+          !calls.some((call) => /Claude Code Agent「Claude Resume Failure Smoke」/.test(call.message)),
+          'Expected a Claude resume startup failure not to surface a supplemental workbench notification.'
+        );
+
+        await dispatchWebviewMessage({
+          type: 'webview/deleteNode',
+          payload: {
+            nodeId: claudeAgent.id
+          }
+        });
+        await waitForSnapshot(
+          (currentSnapshot) => !currentSnapshot.state.nodes.some((node) => node.id === claudeAgent.id),
+          20000
+        );
+      } finally {
+        if (previousClaudeCommandEnv === undefined) {
+          delete process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+        } else {
+          process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = previousClaudeCommandEnv;
+        }
+        await fs.rm(failingClaudeCommandDir, { recursive: true, force: true });
+      }
+    });
+  } finally {
+    await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
+    await ensureAgentAbnormalOutputTextNotificationMode(originalTextNotificationMode);
+    await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
   }
@@ -6066,6 +7161,9 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
 
+  let snapshot = await getDebugSnapshot();
+  const baselineAgentIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
+
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -6074,20 +7172,21 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     }
   });
 
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find(
+  snapshot = await waitForSnapshot((currentSnapshot) => {
+    return currentSnapshot.state.nodes.some(
       (node) =>
-        node.id !== agentNodeId &&
+        !baselineAgentIds.has(node.id) &&
         node.kind === 'agent' &&
-        node.metadata?.agent?.provider === 'claude'
+        node.metadata?.agent?.provider === 'claude' &&
+        node.status === 'error'
     );
-    return Boolean(currentNode?.status === 'error');
   });
   const claudeAgentNode = snapshot.state.nodes.find(
     (node) =>
-      node.id !== agentNodeId &&
+      !baselineAgentIds.has(node.id) &&
       node.kind === 'agent' &&
-      node.metadata?.agent?.provider === 'claude'
+      node.metadata?.agent?.provider === 'claude' &&
+      node.status === 'error'
   );
   assert.ok(claudeAgentNode, 'Expected failure-path setup to create a Claude agent node.');
   let agentNode = findNodeById(snapshot, claudeAgentNode.id);
@@ -8367,6 +9466,29 @@ async function getDiagnosticEvents() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
 }
 
+async function readInternalNoteMarkdownDraftContent(draftId) {
+  return fs.readFile(
+    path.join(await readInternalExtensionStorageWritePath(), 'note-markdown-drafts', `${draftId}.md`),
+    'utf8'
+  );
+}
+
+async function flushPersistedStateSnapshot() {
+  const flushResult = await vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+  assert.ok(flushResult?.exists, 'Expected flushPersistedState to write a persisted canvas snapshot.');
+  assert.ok(flushResult.snapshot?.state, 'Expected flushPersistedState to return a canvas snapshot.');
+  return flushResult.snapshot;
+}
+
+async function readInternalExtensionStorageWritePath() {
+  const diagnosticEvents = await getDiagnosticEvents();
+  const latestStorageEvent = [...diagnosticEvents]
+    .reverse()
+    .find((event) => typeof event.detail?.writePath === 'string');
+  assert.ok(latestStorageEvent, 'Expected diagnostics to expose the extension storage write path.');
+  return latestStorageEvent.detail.writePath;
+}
+
 async function locateCodexSessionIdForTest({ cwd, startedAtMs, homeDir, timeoutMs }) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testLocateCodexSessionId,
@@ -8572,7 +9694,16 @@ async function dispatchWebviewMessage(message, surface) {
   return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, message, surface);
 }
 
-async function startExecutionSessionForTest({ kind, nodeId, cols, rows, provider, resumeRequested = false }) {
+async function startExecutionSessionForTest({
+  kind,
+  nodeId,
+  cols,
+  rows,
+  provider,
+  resumeRequested = false,
+  injectAgentOutputChunk,
+  injectAgentExistingOutput
+}) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testStartExecutionSession,
     kind,
@@ -8580,7 +9711,10 @@ async function startExecutionSessionForTest({ kind, nodeId, cols, rows, provider
     cols,
     rows,
     provider,
-    resumeRequested
+    resumeRequested,
+    injectAgentOutputChunk || injectAgentExistingOutput
+      ? { injectAgentOutputChunk, injectAgentExistingOutput }
+      : undefined
   );
 }
 
@@ -8863,6 +9997,39 @@ function normalizeAttentionNotificationBridgeMode(value) {
   return 'system';
 }
 
+function normalizeAgentAbnormalOutputTextNotificationMode(value) {
+  return value === 'codex' ? 'codex' : 'off';
+}
+
+async function ensureAgentAbnormalOutputTextNotificationMode(mode) {
+  const configuration = vscode.workspace.getConfiguration();
+  const normalizedMode = normalizeAgentAbnormalOutputTextNotificationMode(mode);
+  const currentMode = normalizeAgentAbnormalOutputTextNotificationMode(
+    configuration.get('devSessionCanvas.notifications.agentAbnormalOutputTextNotifications', 'off')
+  );
+
+  if (currentMode === normalizedMode) {
+    return;
+  }
+
+  await clearDiagnosticEvents();
+  await configuration.update(
+    'devSessionCanvas.notifications.agentAbnormalOutputTextNotifications',
+    normalizedMode,
+    vscode.ConfigurationTarget.Global
+  );
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/agentAbnormalOutputTextNotificationsConfigChanged' &&
+          event.detail?.mode === normalizedMode &&
+          event.detail?.enabled === (normalizedMode !== 'off')
+      ),
+    20000
+  );
+}
+
 function normalizeStrongTerminalAttentionReminderMode(value) {
   if (value === 'none' || value === 'titleBar' || value === 'minimap' || value === 'both') {
     return value;
@@ -9137,15 +10304,33 @@ async function waitForHostMessages(predicate, timeoutMs = 8000) {
   assert.fail(`Timed out while waiting for host messages. Last messages: ${JSON.stringify(messages)}`);
 }
 
+async function waitForInterceptedInformationMessage(calls, predicate, assertionMessage, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const match = calls.find(predicate);
+    if (match) {
+      return match;
+    }
+
+    await sleep(100);
+  }
+
+  const messages = calls.map((call) => call.message);
+  assert.fail(`${assertionMessage} Intercepted messages: ${JSON.stringify(messages)}`);
+}
+
 async function withInterceptedInformationMessages(runIntercepted, resolveSelection) {
   const originalShowInformationMessage = vscode.window.showInformationMessage;
   const calls = [];
-
   vscode.window.showInformationMessage = async (message, ...items) => {
-    calls.push({ message, items });
-    return typeof resolveSelection === 'function'
+    const call = { message, items, result: undefined };
+    calls.push(call);
+    const result = typeof resolveSelection === 'function'
       ? await resolveSelection({ message, items, calls })
       : undefined;
+    call.result = result;
+    return result;
   };
 
   assert.notStrictEqual(

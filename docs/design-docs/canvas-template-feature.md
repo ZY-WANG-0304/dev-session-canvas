@@ -16,7 +16,8 @@ related_specs:
   - docs/product-specs/canvas-template-feature.md
 related_plans:
   - docs/exec-plans/active/canvas-template-feature.md
-updated_at: 2026-05-10
+  - docs/exec-plans/active/canvas-template-associated-note-modes.md
+updated_at: 2026-05-15
 ---
 
 # 画布模板功能设计
@@ -46,7 +47,7 @@ updated_at: 2026-05-10
 
 ## 3. 目标
 
-- 让画布第一次打开时就能带着默认模板进入可操作状态，而不是把学习成本外包给 README。
+- 让画布第一次打开时就能带着内置 `使用说明` 进入可操作状态，而不是把学习成本外包给 README。
 - 让用户可以把当前画布中的标准化布局保存成模板，并在后续 workspace 中快速复用。
 - 让模板的导入、导出、设为默认、删除都走稳定的宿主路径，可通过侧栏和命令面板访问。
 - 让模板始终只表示“布局与静态配置”，不把会话、输出、文件活动或自动启动副作用偷偷带进去。
@@ -56,6 +57,7 @@ updated_at: 2026-05-10
 - 不在本轮实现模板云同步、模板市场、标签系统或使用统计。
 - 不在本轮保存 `Agent` 的运行时输出、会话 id、自定义 command line、resume 信息或 `Terminal` scrollback。
 - 不在本轮把文件节点、文件列表节点、文件活动边纳入模板可保存范围。
+- 不把关联 Markdown `Note` 的 raw `resourceUri`、本机绝对路径或 `vscode-remote://...` 这类实现层 URI 直接写入模板；需要保留文件关联时，只使用 workspace 相对路径。
 - 不在本轮实现缩略图预览、拖拽排序、批量操作或模板版本历史。
 
 ## 5. 候选方案
@@ -97,16 +99,16 @@ updated_at: 2026-05-10
 - 产品规格把模板定义为用户级可分享资产，用户模板也落在 `globalStorageUri`。默认模板如果改成 workspace 级，会把“模板资源”和“模板偏好”拆成两套语义。
 - 当前没有产品规格要求“每个 workspace 一套默认模板”；先收敛为用户级更符合最小实现。
 
-### 5.4 默认模板按用户全局保存，首次应用判定按 workspace 记录
+### 5.4 默认模板按用户全局保存，首次引导判定按 workspace 记录
 
 优点：
 
 - “默认用哪一个模板”是用户全局偏好。
-- “这个 workspace 是否已经完成首次模板初始化”仍然能由 workspace 自己决定，不会因为另一个仓库的操作污染当前仓库。
+- “这个 workspace 是否已经完成首次引导模板初始化”仍然能由 workspace 自己决定，不会因为另一个仓库的操作污染当前仓库。
 
 当前取舍：
 
-- 采用这条路径：默认模板 id 进 `globalState`，而“是否已完成首次模板初始化”进 `workspaceState` / 当前工作区持久化路径。
+- 采用这条路径：默认模板 id 进 `globalState`，而“是否已完成首次引导模板初始化”进 `workspaceState` / 当前工作区持久化路径；首次引导固定使用内置 `使用说明`，不读取用户当前默认模板。
 
 ## 6. 风险与取舍
 
@@ -143,7 +145,7 @@ updated_at: 2026-05-10
 - `CanvasTemplate` 本体包含 `id`、`name`、`category`、`nodes`、`edges`、`createdAt`、`updatedAt`。
 - 模板节点只允许 `agent`、`terminal`、`note` 三类；`file` 与 `file-list` 不进入模板。
 - 模板边只保存用户可见的几何与样式字段：源/目标节点索引、anchor、arrowMode、color、label。
-- `Note` 只保存 `content`；`Terminal` 不保存运行时字段；`Agent` 只保存模板专属 `provider` 和可选 `argv`/后续兼容位，不保存 resume、command line、recentOutput、pendingLaunch 等宿主运行态。
+- 普通 `Note` 默认只保存内容快照；关联 Markdown `Note` 在保存模板时由用户选择内容模式：普通内容快照、仅 workspace 相对路径、workspace 相对路径加文件内容。`Terminal` 不保存运行时字段；`Agent` 只保存模板专属 `provider` 和可选 `argv`/后续兼容位，不保存 resume、command line、recentOutput、pendingLaunch 等宿主运行态。
 
 这意味着导出的模板文件是稳定的“可分享布局对象”，而不是某个 workspace 的宿主快照副本。
 
@@ -155,8 +157,8 @@ updated_at: 2026-05-10
   - `<workspace>/.dev-session-canvas/templates/`：当前 workspace 级模板库
 - 两类用户模板根都支持继续使用多级子目录（例如 `team/backend/`）组织模板；侧栏读取时会递归扫描 JSON 文件。
 - 当前默认模板 id 存在 `context.globalState`；如果值缺失、指向不存在模板，或所指模板被删除，则自动回退到内置 `使用说明` 模板。
-- 若当前默认模板存在、但因为 workspace 未受信任或执行 Provider 暂时不可用而无法在首次打开时应用，宿主只临时套用内置 `使用说明` 作为安全起点，不改写 `globalState` 中的默认模板偏好。
-- `workspaceState` 额外记录“当前 workspace 是否已经完成首次模板初始化”。首次打开画布时，如果当前宿主状态为空且该标记尚未置位，则宿主会在任一交互式 Webview 发送 `host/bootstrap` 前先应用当前默认模板，再把结果作为首次画布状态发送给 Webview；这同时覆盖命令显式打开、VS Code 直接展开 Panel view、以及恢复 Editor webview 的路径。
+- `workspaceState` 额外记录“当前 workspace 是否已经完成首次模板初始化”。首次打开画布时，如果当前宿主状态为空且该标记尚未置位，则宿主会在任一交互式 Webview 发送 `host/bootstrap` 前先应用内置 `使用说明` 模板，再把结果作为首次画布状态发送给 Webview；这同时覆盖命令显式打开、VS Code 直接展开 Panel view、以及恢复 Editor webview 的路径。
+- 首次打开不调用当前默认模板，也不把 `globalState` 中的默认模板偏好改写为 `使用说明`；用户默认模板只服务显式的“应用默认模板”和“重置为默认模板”。
 - 显式执行“清空画板”为纯空画布时，会把首次初始化标记保留为已完成，避免下次打开又自动回填默认模板。
 
 ### 7.3 模板保存语义
@@ -171,11 +173,21 @@ updated_at: 2026-05-10
   - 模板名称
   - 保存位置（workspace 级模板库 / 当前设备模板库这类模板库根位置）
   - 当前画布中每个 Agent 节点各自的 Provider 选择
+  - 当前画布中每个关联 Markdown `Note` 的保存策略
 - Provider 不再只支持“整份模板统一 default / preserve”二选一；保存面板会列出当前所有 Agent 节点，并允许每个节点分别保存为：
   - `default`：模板不固定该节点 Provider，应用时解析为用户当前默认 Provider。
   - `codex` / `claude`：模板固定该节点使用指定 Provider。
 - Agent 的 `argv` 会在保存前先由宿主按当前节点启动配置解析成结构化参数数组，再写入模板；这样模板保存的是“这组参数本身”，而不是某次运行使用的完整命令字符串。
 - 保存出的 Agent 节点一律不带 `pendingLaunch`、`recentOutput`、`resumeSessionId`、`lastLaunchCommandLine` 等运行态字段，因此模板只描述工作面，不描述运行时。
+- 关联 Markdown `Note` 的保存策略按节点逐项选择：
+  - `保存为普通 Note 内容快照`：宿主读取 Markdown 文件当前落盘内容并写入模板，应用模板后物化为普通内嵌 `Note`，不再保留文件关联；如果文件不可读或存在编辑冲突，保存流程必须提示用户先处理文件，不能静默保存旧 buffer。
+  - `仅保留 workspace 相对路径`：模板只保存规范化相对路径，例如 `docs/plan.md`；应用模板时尝试关联当前 workspace 中对应文件，不把文件正文写入模板。
+  - `保留 workspace 相对路径和文件内容`：模板保存相对路径和当前落盘正文；应用模板时如果文件不存在则创建文件并写入模板正文，如果文件已存在但内容不同则物化为关联 Markdown `Note` 的 `dirty-conflict` 状态，把模板正文作为冲突草稿留在节点内处理。
+- 三种策略的设计定位不是“保存多一点 / 少一点”，而是三种模板语义：
+  - `保存为普通 Note 内容快照` 服务内容型模板。模板拥有这段 Note 正文，路径只是内容来源；应用后不再保留文件关联，适合 checklist、说明文字、会议模板、需求澄清问题列表等可跨 workspace 复用且不应暴露源文件路径的内容。
+  - `仅保留 workspace 相对路径` 服务仓库文件入口型模板。真实 Markdown 文件仍是权威来源，模板只声明“这里应关联当前 workspace 的这个相对路径”；应用后读取目标 workspace 的最新文件内容，适合 `README.md`、`docs/architecture.md`、`docs/plan.md` 这类团队约定路径或项目已有文档入口。workspace 内关联 `Note` 的默认推荐策略是这一项。
+  - `保留 workspace 相对路径和文件内容` 服务文件资产 / 脚手架型模板。模板既声明文件入口，也携带可写入的 Markdown 初始内容；适合新项目初始化、ADR/需求/发布 checklist 等需要随模板创建或恢复配套文档的场景。因为模板会保存正文并可能写入 workspace，保存和应用都必须显式处理隐私、缺失文件和内容冲突。
+- 只有能解析到当前 workspace 内 `.md` / `.markdown` 文件的关联 `Note` 才能选择两种 workspace 相对路径策略；workspace 外文件只能保存为普通内容快照。相对路径必须拒绝绝对路径、空路径和 `..` 越界段。
 - “导入模板”复用同一套表单骨架，但隐藏 Agent Provider 区，仅保留名称与保存位置输入；这样用户在导入时也能决定模板落在哪个模板库中。
 
 ### 7.4 模板应用语义
@@ -195,6 +207,10 @@ updated_at: 2026-05-10
 - 若模板携带 `argv`，宿主会把它暂存到节点 metadata 中，并在真正启动时再与当前 Provider 命令组合，避免把用户机器上的 command path 固化进模板或运行态快照。
 - 若模板要求的固定 Provider 当前不可用（例如 CLI 命令无法解析），宿主提示用户并阻止整次应用；不静默降级。
 - 若当前 workspace 未受信任，含 `agent` / `terminal` 的模板不可应用；仅 `note` 模板允许通过。
+- 应用含 workspace 文件 `Note` 的模板时，宿主先解析模板相对路径，再物化节点：
+  - `仅保留 workspace 相对路径` 且目标文件存在时，节点恢复为关联 Markdown `Note`；目标文件缺失时，仍创建关联 Markdown `Note` 并显示“关联文件缺失”，只在节点内提供“创建空文件并关联”动作。宿主不弹 modal、不自动创建空文件；重新检查依赖 watcher / refresh 自动完成，复制路径复用 subtitle 复制入口。
+  - `保留 workspace 相对路径和文件内容` 且目标文件不存在时，宿主创建父目录和文件并写入模板正文；目标文件存在且内容不同，则仍创建关联 Markdown `Note`，节点正文显示现有文件内容，同时把模板正文作为 `dirty-conflict` 草稿，通过节点内冲突提示提供重新加载现有文件、复制草稿和覆盖文件动作。默认不静默覆盖，也不在应用前弹出 modal。
+  - 首次打开固定使用内置 `使用说明`，该模板不得携带 workspace 文件 `Note`；workspace 文件 `Note` 的创建或冲突处理只发生在用户显式应用 / 重置模板路径中。
 - 显式 `apply` / `reset` 成功后，宿主会把本次物化出的新节点 id 作为一组发送给 Webview；Webview 对这组节点执行组级 `fitView`，让用户视口自动追到新增模板节点，而不是只停留在发起操作前的画布位置。
 - Marketplace 预览媒体录制应运行在非测试模式的 VS Code Extension Development Host 中，并通过真实鼠标/键盘确认 `reset` 的宿主 modal；录制工具不为视频路径增加自动确认特例。
 - `src/panel/CanvasPanelManager.ts` 中的手工/模板节点 id 是对象身份，不再等同于可读编号：新建 `agent` / `terminal` / `note` 节点时，标题仍使用 `Agent 1`、`Terminal 2` 这类递增展示编号，但 `node.id` 会带随机 object identity 后缀。这样同一个模板被反复 reset 后，也会物化成新的 React Flow / 执行终端对象，不复用旧 Webview 节点实例或旧 xterm 缓冲区。
@@ -205,7 +221,7 @@ updated_at: 2026-05-10
 - 首次打开或 `reset`：模板 bounding box 的中心对齐到“当前可见区域中心”；若当前还没有 Webview 可见区域信息，则以画布原点附近为基准，让初始 `fitView` 接管居中表现。
 - `apply`：以当前可见区域中心作为首选锚点，把整组模板节点视作一个矩形簇执行“组级避碰搜索”。宿主复用现有节点摆放的网格步长思路，但碰撞检测改为模板组内所有节点与现有节点逐一比较；找到第一个无碰撞位置后整组平移落位。
 - 若首选区域始终碰撞，则 fallback 到当前画布 bounding box 右下方空区，仍保持模板内部相对位置不变。
-- 落位完成后的追焦同样以“本次新增节点组”为单位，而不是任选其中一个节点。这样当避碰把模板放到当前视野外侧时，用户仍会看到整组模板的相对布局；首次打开自动应用默认模板不走这条显式追焦路径，继续由 Webview 初始 `fitView` 保持启动体验稳定。
+- 落位完成后的追焦同样以“本次新增节点组”为单位，而不是任选其中一个节点。这样当避碰把模板放到当前视野外侧时，用户仍会看到整组模板的相对布局；首次打开自动应用 `使用说明` 不走这条显式追焦路径，继续由 Webview 初始 `fitView` 保持启动体验稳定。
 - 命令面板和 sidebar 入口会先完成模板应用 / 重置并拿到新增节点 id，再 reveal 到最终承载面后发起组级追焦；避免当前 active surface 与配置默认 surface 不一致时，把 `host/focusNodes` 发送给即将被切走或 dispose 的旧 Webview。
 
 这样模板应用不会把每个节点单独散落，也不会与现有窗口初始重叠。
@@ -234,7 +250,7 @@ updated_at: 2026-05-10
 
 ### 7.7 默认模板与删除保护
 
-- `使用说明` 是出厂默认模板，也是默认模板缺失、被删除或首次打开时暂时不可应用的安全锚点。
+- `使用说明` 是出厂默认模板，也是首次打开固定使用的安全锚点；默认模板缺失或被删除时，默认模板偏好也回退到它。
 - 内置模板不可删除，也不会被导入覆盖。
 - 删除当前默认的用户模板后，宿主立即把默认模板切回 `使用说明`，并刷新模板侧栏状态。
 
@@ -250,7 +266,7 @@ updated_at: 2026-05-10
 
 至少需要完成以下验证：
 
-1. 新 workspace 首次打开画布时，会自动出现默认 `使用说明` 模板，而不是纯空白画布。
+1. 新 workspace 首次打开画布时，会自动出现内置 `使用说明` 模板，而不是纯空白画布；即使用户已经把其他模板设为默认，首次打开仍不应用用户默认模板。
 2. 将另一个模板设为默认后，再执行“重置为默认模板”，会清空当前节点并应用新的默认模板。
 3. 从现有画布保存模板，再重新应用该模板时，节点标题、相对布局、Note 内容和边样式能被保留，但 `Agent` / `Terminal` 不会自动启动。
 4. 在当前画布已有节点时应用模板，新模板整体会避开现有节点，而不是直接重叠。
@@ -260,7 +276,7 @@ updated_at: 2026-05-10
 
 ## 9. 当前验证状态
 
-- 当前处于 `已验证`：`npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/run-vscode-smoke.mjs` 已于 2026-05-06 完成通过。
+- 当前处于 `已验证`：`npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 已于 2026-05-06 完成通过。
 - 模板 sidebar 改回 `WebviewView`、并按 `节点` / `会话历史` section 的扁平列表风格与首屏渲染模式重写后，再次执行 `npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、trusted smoke 与 restricted smoke，均通过。
 - 模板 sidebar 继续微调为“`内置 / 用户` 标签前置 + 行尾补充追加 / 重置快捷按钮”后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
 - 模板 sidebar 再次微调为“`内置 / 用户` 标签移到第二行摘要前、`默认` 标签保留在第一行标题后”后，再次执行 `npm run typecheck` 与 `npm run build`，均通过。
@@ -274,7 +290,7 @@ updated_at: 2026-05-10
 - 模板 sidebar 行尾动作已收口为与标题同一行，第二行摘要改为独立占用整行宽度，并在窄侧栏下用省略号退化而不是换行。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖按钮挂载在标题行、第二行 nowrap 与 ellipsis 的静态回归断言。
 - 模板 sidebar 已移除底部“当前画布还没有可保存的 Agent / Terminal / Note 节点”提示，内容区只保留模板列表及模板列表自身的加载 / 空 / 错误状态。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖不再输出 `hintNote` / `hint-note` / `canSaveCurrentCanvas`。
 - 画布空白区右键菜单根层已移除说明文案，只保留“画布操作”标题和具体操作项；Playwright harness 已补充断言覆盖根层不再出现“先创建节点”提示。本轮再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过。
-- Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`，均通过。
+- Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，均通过。
 - 模板 sidebar 第二行标签已按来源与位置精简为 `内置`、`市场 · 本地/工作区`、`自建 · 本地/工作区`；内置模板不显示位置。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖 workspace 模板映射为 `工作区` 标签和来源标签文案。
 - Marketplace 预览媒体录制入口已改为启动真实 Extension Development Host，不再依赖 VS Code extension test host；右键重置模板路径保留原生 modal，并在录制片段内通过鼠标/键盘完成确认。
 - 验证覆盖了“首次默认模板”“保存/应用不自动启动”“导入/导出/删除与默认模板回退”“组级避碰落位”“restricted note-only 限制”以及 Agent `argv` 在模板保存/加载链路中的保留。

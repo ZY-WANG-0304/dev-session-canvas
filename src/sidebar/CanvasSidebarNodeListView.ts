@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 
 import { stripTerminalControlSequences } from '../common/agentActivityHeuristics';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
+import {
+  canvasNodeStatusToneClass,
+  humanizeCanvasNodeStatus
+} from '../common/canvasNodeStatusPresentation';
 import type { CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
@@ -19,6 +23,9 @@ export interface CanvasSidebarNodeItemSnapshot {
   description: string;
   tooltip: string;
   status: string;
+  statusLabel: string;
+  statusTone: string;
+  subtitlePrefix?: string;
   summary: string;
   markerColor: string;
   attentionPending: boolean;
@@ -330,8 +337,9 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
     .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
-      const statusLabel = humanizeStatus(node.status);
-      const secondLine = buildSidebarNodeSecondaryText(node, statusLabel);
+      const statusLabel = humanizeCanvasNodeStatus(node);
+      const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
+      const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
       const attentionPending = canvasNodeAttentionPending(node.metadata);
       const description = secondLine;
@@ -353,6 +361,9 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         description,
         tooltip: tooltipLines.join('\n'),
         status: secondLine,
+        statusLabel,
+        statusTone: canvasNodeStatusToneClass(node),
+        subtitlePrefix,
         summary,
         markerColor: colorForCanvasNodeKind(node.kind),
         attentionPending
@@ -360,12 +371,16 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
     });
 }
 
-function buildSidebarNodeSecondaryText(node: CanvasNodeSummary, statusLabel: string): string {
+function buildSidebarNodeSecondaryText(subtitlePrefix: string | undefined, statusLabel: string): string {
+  return subtitlePrefix ? `${subtitlePrefix} · ${statusLabel}` : statusLabel;
+}
+
+function buildSidebarNodeSubtitlePrefix(node: CanvasNodeSummary): string | undefined {
   if (node.kind !== 'agent') {
-    return statusLabel;
+    return undefined;
   }
 
-  return `${humanizeAgentProvider(node.metadata?.agent?.provider)} · ${statusLabel}`;
+  return humanizeAgentProvider(node.metadata?.agent?.provider);
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {
@@ -389,52 +404,6 @@ function fallbackNodeLabel(kind: CanvasNodeKind, nodeId: string): string {
 
 function humanizeAgentProvider(provider: 'codex' | 'claude' | undefined): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
-}
-
-function humanizeStatus(status: string): string {
-  switch (status) {
-    case 'linked':
-      return '已关联';
-    case 'idle':
-      return '空闲';
-    case 'launching':
-    case 'starting':
-      return '启动中';
-    case 'waiting-input':
-      return '等待输入';
-    case 'resuming':
-      return '恢复中';
-    case 'resume-ready':
-      return '可恢复';
-    case 'reattaching':
-      return '重连中';
-    case 'resume-failed':
-      return '恢复失败';
-    case 'stopping':
-      return '停止中';
-    case 'stopped':
-      return '已停止';
-    case 'running':
-      return '运行中';
-    case 'draft':
-      return '草稿';
-    case 'ready':
-      return '就绪';
-    case 'live':
-      return '活动';
-    case 'closed':
-      return '已关闭';
-    case 'error':
-      return '失败';
-    case 'cancelled':
-      return '已停止';
-    case 'interrupted':
-      return '已中断';
-    case 'history-restored':
-      return '历史恢复';
-    default:
-      return status;
-  }
 }
 
 function sanitizeSidebarNodeSummary(value: string): string {
@@ -567,12 +536,15 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       :root {
         color-scheme: light dark;
         --bg: var(--vscode-sideBar-background);
-        --fg: var(--vscode-sideBar-foreground);
+        --fg: var(--vscode-foreground, var(--vscode-sideBar-foreground));
         --muted: var(--vscode-descriptionForeground);
         --focus: var(--vscode-focusBorder);
         --list-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--fg) 6%, transparent));
+        --list-hover-fg: var(--vscode-list-hoverForeground, var(--fg));
         --list-active: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
         --list-active-fg: var(--vscode-list-activeSelectionForeground, var(--fg));
+        --list-inactive: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 10%, transparent));
+        --list-inactive-fg: var(--vscode-list-inactiveSelectionForeground, var(--fg));
         --attention: var(--vscode-notificationsInfoIcon-foreground, var(--focus));
         --border: color-mix(in srgb, var(--vscode-panel-border, var(--focus)) 72%, transparent);
       }
@@ -595,6 +567,8 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       .node-row {
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: start;
@@ -603,19 +577,28 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         border: 0;
         border-left: 2px solid transparent;
         background: transparent;
-        color: var(--fg);
+        color: var(--row-fg);
         text-align: left;
         cursor: default;
       }
 
       .node-row:hover {
         background: var(--list-hover);
+        --row-fg: var(--list-hover-fg);
+        --row-muted: var(--list-hover-fg);
       }
 
-      .node-row.is-selected,
+      .node-row.is-selected {
+        background: var(--list-inactive);
+        --row-fg: var(--list-inactive-fg);
+        --row-muted: var(--list-inactive-fg);
+      }
+
+      .node-row.is-selected:focus,
       .node-row:focus-visible {
         background: var(--list-active);
-        color: var(--list-active-fg);
+        --row-fg: var(--list-active-fg);
+        --row-muted: var(--list-active-fg);
         border-left-color: var(--focus);
         outline: none;
       }
@@ -657,9 +640,83 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       .node-status {
-        color: var(--muted);
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 4px;
         font-size: 11px;
         padding-left: 22px;
+      }
+
+      .node-status-prefix {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--row-muted);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .status-pill {
+        --status-pill-accent: var(--vscode-debugView-stateLabelForeground, var(--focus));
+        --status-pill-bg: color-mix(in srgb, var(--status-pill-accent) 18%, transparent);
+        --status-pill-border: color-mix(in srgb, var(--status-pill-accent) 42%, var(--vscode-panel-border) 58%);
+        --status-pill-fg: var(--status-pill-accent);
+        display: inline-flex;
+        min-height: 16px;
+        flex: 0 0 auto;
+        align-items: center;
+        border: 1px solid var(--status-pill-border);
+        border-radius: 6px;
+        background: var(--status-pill-bg);
+        color: var(--status-pill-fg);
+        padding: 0 5px;
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .tone-starting {
+        --status-pill-accent: var(--vscode-debugIcon-startForeground, var(--focus));
+      }
+
+      .tone-running {
+        --status-pill-accent: var(--vscode-debugIcon-startForeground, var(--vscode-debugIcon-restartForeground, var(--focus)));
+      }
+
+      .tone-resuming {
+        --status-pill-accent: var(--vscode-debugIcon-restartForeground, var(--focus));
+      }
+
+      .tone-success {
+        --status-pill-accent: var(--vscode-debugIcon-continueForeground, var(--focus));
+      }
+
+      .tone-waiting {
+        --status-pill-accent: var(--vscode-debugIcon-pauseForeground, var(--focus));
+      }
+
+      .tone-stopped {
+        --status-pill-accent: var(--vscode-debugIcon-stopForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-disconnected {
+        --status-pill-accent: var(--vscode-debugIcon-disconnectForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-history {
+        --status-pill-accent: var(--vscode-debugIcon-stepBackForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-idle {
+        --status-pill-accent: var(--vscode-debugView-stateLabelForeground, var(--vscode-descriptionForeground));
+      }
+
+      .tone-error {
+        --status-pill-accent: var(
+          --vscode-debugView-exceptionLabelForeground,
+          var(--vscode-debugConsole-errorForeground, var(--vscode-errorForeground, var(--focus)))
+        );
       }
 
       .node-attention {
@@ -833,7 +890,16 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
 
           const status = document.createElement('div');
           status.className = 'node-status';
-          status.textContent = item.status;
+          if (item.subtitlePrefix) {
+            const subtitlePrefix = document.createElement('span');
+            subtitlePrefix.className = 'node-status-prefix';
+            subtitlePrefix.textContent = item.subtitlePrefix + ' ·';
+            status.append(subtitlePrefix);
+          }
+          const statusPill = document.createElement('span');
+          statusPill.className = 'status-pill ' + item.statusTone;
+          statusPill.textContent = item.statusLabel;
+          status.append(statusPill);
           main.append(status);
 
           row.append(main);

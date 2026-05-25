@@ -26,6 +26,7 @@
 - [x] (2026-05-15 02:29 +0800) 完善浏览器 OAuth 发布体验：发布页和个人模板页登录后回到发起页面；Worker 只接受 `/templates...` 同源 return path，避免开放重定向。
 - [x] (2026-05-15 02:40 +0800) 增加浏览器市场退出登录入口和 `POST /api/v1/auth/logout`，便于发布者切换账号或重复执行 OAuth smoke。
 - [x] (2026-05-15 07:09 +0800) 对齐自动缩略图节点色板：Agent / Terminal / Note accent 色分别镜像插件画布节点主题色 #22c55e、#38bdf8、#a78bfa，并增加源码漂移断言。
+- [x] (2026-05-25 23:58 +0800) 将 `origin/main` 合入 `feature/templates-marketplace` 后补齐市场模板 schema：继续排除主线新增 file / file-list 画布节点，接受关联 Markdown Note 的三种内容模式，并校验 workspace 相对路径。
 - [x] (2026-05-15 08:29 +0800) 修复浏览器发布页文本输入白屏：表单输入统一先提取字符串再更新 React state，并补充源码回归断言、本地 Playwright 输入烟测和 preview 部署。
 - [x] (2026-05-15 08:49 +0800) 补齐 publish 按钮交互反馈：发布页在缺少模板 JSON 时显示明确错误，提交中展示 loading 状态，提交成功后在按钮附近显示结果；新增 Playwright publish 页端到端烟测并纳入 `npm run test:marketplace`。
 - [x] (2026-05-15 19:50 +0800) 扩展完整 UI 操作 E2E：浏览器覆盖 Templates 列表 / 详情 / My Templates / Publish 页面；VSCode 覆盖市场面板列表筛选、详情切换、版本菜单关闭、详情返回、安装写入本地模板库，以及从插件市场面板发布自建模板后打开详情页。
@@ -69,7 +70,7 @@
   证据：Worker 新增 `GET /api/v1/templates/slug-availability?slug=...`；浏览器 E2E 在发布页把 slug 改成 `review-loop` 时看到“Slug is already used by another template.”，再改成 `codex-smoke-template` 时看到“Slug is available.”。
 
 - 观察：本地 fixture VSCode E2E 只能证明宿主、Webview 和模板库写入的可控回归路径，不能证明调试环境 Worker / D1 / R2 / CORS / CSP 的真实组合。
-  证据：新增 `scripts/run-template-marketplace-vscode-preview-e2e.mjs` 和 `tests/vscode-smoke/template-marketplace-preview-tests.cjs`，通过 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL` 指向 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates`，不启动本地 fixture server，先执行非阻塞 preview API preflight 诊断，再用真实 VSCode Webview 访问 preview API 执行匿名浏览、详情读取、版本菜单和安装。
+  证据：新增 `scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs` 和 `tests/vscode-smoke/template-marketplace-preview-tests.cjs`，通过 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL` 指向 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates`，不启动本地 fixture server，先执行非阻塞 preview API preflight 诊断，再用真实 VSCode Webview 访问 preview API 执行匿名浏览、详情读取、版本菜单和安装。
 
 - 观察：当前执行环境不能稳定访问 workers.dev 调试市场，因此不能把本机这次 preview E2E 失败解读为插件逻辑失败。
   证据：`npm run test:marketplace-vscode-preview-e2e` 在 VSCode Webview 中停留在“正在加载...”；同一主机上代理访问 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest` 返回 Squid `ERR_CONNECT_FAIL 110`，绕过代理直连则 443 连接超时。runner 已增加 10 秒非阻塞 preflight 诊断；即使 Node 侧 preflight 网络不可达，也继续启动 VSCode Webview E2E，因为 Electron 可能使用不同的网络路径。
@@ -104,7 +105,7 @@
 
 同日继续补齐发布者个人页基础能力：Worker 新增 `GET /api/v1/me/templates`，D1 repository 可按当前 GitHub user id 过滤已发布模板，浏览器端新增 `/templates/me` 页面和 `My Templates` 入口。该页面当前只展示当前账号已发布模板列表和详情跳转，不包含 Phase 3 的趋势图或完整 Dashboard。
 
-2026-05-15 晚补齐完整 UI 操作 E2E：`scripts/test-template-marketplace-publish-page.mjs` 从单页 publish smoke 扩展为浏览器市场多页面 E2E，使用 Playwright route fixture 覆盖列表搜索 / tag / sort、详情 README 主体与下载链接、登录前后 My Templates、发布表单文件读取和发布成功跳转；新增 `scripts/run-template-marketplace-vscode-e2e.mjs` 与 `tests/vscode-smoke/template-marketplace-tests.cjs`，用本地 HTTP fixture 驱动 VSCode 市场 Webview 的真实操作，并通过测试命令 probe 验证详情不是嵌在列表下方、版本菜单可关闭、安装会写入本地模板目录、插件内发布会完成 GitHub token exchange 和 `POST /api/v1/templates`。
+2026-05-15 晚补齐完整 UI 操作 E2E：`scripts/test/test-template-marketplace-publish-page.mjs` 从单页 publish smoke 扩展为浏览器市场多页面 E2E，使用 Playwright route fixture 覆盖列表搜索 / tag / sort、详情 README 主体与下载链接、登录前后 My Templates、发布表单文件读取和发布成功跳转；新增 `scripts/smoke/run-template-marketplace-vscode-e2e.mjs` 与 `tests/vscode-smoke/template-marketplace-tests.cjs`，用本地 HTTP fixture 驱动 VSCode 市场 Webview 的真实操作，并通过测试命令 probe 验证详情不是嵌在列表下方、版本菜单可关闭、安装会写入本地模板目录、插件内发布会完成 GitHub token exchange 和 `POST /api/v1/templates`。
 
 2026-05-16 补齐 VSCode 调试环境 E2E 入口：`npm run test:marketplace-vscode-e2e` 继续作为默认无网络 fixture 回归；新增 `npm run test:marketplace-vscode-preview-e2e` 直接打 workers.dev 调试验证环境，不拦截 marketplace API。该 preview E2E 当前只覆盖匿名读取、详情、版本菜单和安装写入隔离 VSCode runtime，不执行真实 GitHub 发布，避免污染共享调试环境。runner 还会在启动 VSCode 前请求 preview 列表 API 做非阻塞诊断；真正的验收仍以 VSCode Webview probe 是否读到真实模板为准。
 
@@ -121,6 +122,8 @@
 模板市场浏览与安装能力已经在 `apps/template-marketplace/` 和 `packages/marketplace-shared/` 中落地。`packages/marketplace-shared/src/index.ts` 定义浏览列表、详情、下载响应和 seed 数据；`packages/marketplace-shared/src/schema.ts` 定义 D1/Drizzle 表，包括 `users`、`templates`、`template_versions`、`template_tags`、`template_daily_stats`、`reports`、`admin_roles` 和 `admin_audit_logs`。`apps/template-marketplace/src/worker/app.ts` 暴露 Hono Worker API，目前只有公开读取接口：健康检查、列表、详情、下载和缩略图。`apps/template-marketplace/src/worker/repository.ts` 通过 `SeedTemplateRepository` 与 `D1TemplateRepository` 封装读取 D1 / seed 的逻辑，后续发布写入也应进入这个边界，不要把 SQL 散落在路由里。
 
 “模板 JSON”指 `src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。市场发布不能定义另一套不兼容格式；发布 API 必须校验这个结构，并把真正下载的 `template.json` 继续保存为同一格式。
+
+主线节点模型自 2026-05 下旬起包含 file / file-list 节点，并把运行时节点 id 调整为带对象身份后缀的格式。模板市场仍以本地模板语义为准：模板节点只允许 Agent / Terminal / Note，保存时忽略 file / file-list，边继续用 `sourceNodeIndex` / `targetNodeIndex` 而不是运行时 node id。关联 Markdown Note 的 `templateContentMode` 和 `relativePath` 属于 `CanvasTemplateDocument` 的正式字段，市场发布 schema、浏览器发布页、VSCode 发布入口和 Worker 内容安全检查都必须接受并校验这些字段。
 
 “R2”是 Cloudflare 对象存储，当前下载路径已经从 `TEMPLATE_BUCKET` 读取 `templates/{templateId}/versions/{versionId}/template.json` 和 `thumbnail.png`。“D1”是 Cloudflare SQLite 数据库，当前 public repository 只读取 `published` 模板和 `published` 版本，发布写入也必须维护这个可见性边界。
 
@@ -236,7 +239,7 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     git diff --check
     <no output>
 
-    node --check scripts/run-template-marketplace-vscode-preview-e2e.mjs
+    node --check scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs
     <passed>
 
     node --check tests/vscode-smoke/template-marketplace-preview-tests.cjs
@@ -525,7 +528,7 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 
 本轮 VSCode 发布入口表单化复核验证输出（2026-05-24 01:36 +0800）：
 
-    node --check scripts/run-template-marketplace-vscode-preview-e2e.mjs
+    node --check scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs
     node --check tests/vscode-smoke/template-marketplace-tests.cjs
     node --check scripts/test-canvas-templates.mjs
     <passed>

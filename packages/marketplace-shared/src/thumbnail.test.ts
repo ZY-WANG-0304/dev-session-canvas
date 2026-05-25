@@ -110,6 +110,32 @@ describe('marketplace thumbnail generation', () => {
     expect(base64.startsWith('iVBORw0KGgo')).toBe(true);
     expect(base64).not.toContain('data:image/png');
   });
+
+  it('ignores note content metadata and renders associated Markdown templates from layout only', () => {
+    const png = generateMarketplaceTemplateThumbnailPngBytes({
+      template: {
+        name: 'Associated Notes',
+        nodes: [
+          {
+            kind: 'note',
+            title: 'Path only note',
+            position: { x: 0, y: 0 },
+            size: { width: 320, height: 180 },
+            metadata: {
+              note: {
+                content: '',
+                templateContentMode: 'workspace-file-path-only',
+                relativePath: 'docs/review.md'
+              }
+            }
+          }
+        ],
+        edges: []
+      }
+    });
+
+    expect([...png.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  });
 });
 
 function decodeStoredPngRgba(png: Uint8Array): Uint8Array {

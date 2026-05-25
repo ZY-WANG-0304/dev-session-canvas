@@ -16,7 +16,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 ```
 
 1. 读剧本 `docs/marketplace-media-scenario.md`
-2. `node scripts/recording-session.mjs start` 启动环境（也可用兼容入口 `npm run generate:marketplace-media -- start`）
+2. `node scripts/media/recording-session.mjs start` 启动环境（也可用兼容入口 `npm run generate:marketplace-media -- start`）
 3. 等待 session 文件出现（约 15-30s）
 4. 逐场景执行：
    - `record-start` 开始录制视频片段
@@ -44,7 +44,7 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 | `gif-frame <label>` | 截取 GIF 帧 |
 | `stop` | 停止环境，拼接 MP4 + 合成 GIF + PNG |
 
-所有命令前缀: `node scripts/recording-session.mjs`；兼容 npm 入口为 `npm run generate:marketplace-media -- <command>`。不带子命令运行 `npm run generate:marketplace-media` 时只输出交互式录制流程，不会一次性无头生成完整素材。
+所有命令前缀: `node scripts/media/recording-session.mjs`；兼容 npm 入口为 `npm run generate:marketplace-media -- <command>`。不带子命令运行 `npm run generate:marketplace-media` 时只输出交互式录制流程，不会一次性无头生成完整素材。
 
 ## 关键技巧
 
@@ -99,6 +99,6 @@ start → [逐场景: record-start → 操作 → gif-frame → record-stop] →
 ## 相关文件
 
 - `docs/marketplace-media-scenario.md` — 录制剧本
-- `scripts/generate-marketplace-media.mjs` — 历史 npm 入口兼容 wrapper
-- `scripts/recording-session.mjs` — 录制工具
-- `scripts/x11-native-input.py` — X11 原生输入
+- `scripts/media/generate-marketplace-media.mjs` — 历史 npm 入口兼容 wrapper
+- `scripts/media/recording-session.mjs` — 录制工具
+- `scripts/media/x11-native-input.py` — X11 原生输入

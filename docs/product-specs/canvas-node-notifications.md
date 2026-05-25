@@ -23,8 +23,8 @@
 
 1. 用户在画布上启动一个或多个 `Agent` / `Terminal` 节点
 2. 用户切换到其他工作（编辑代码、查看文档等），画布可能不在当前可见区域
-3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）
-4. 系统捕获并解析这些信号，识别出需要用户注意的事件
+3. 某个节点的执行单元输出终端注意力信号（BEL、OSC 9、OSC 777）；在此基础上，`Codex` / `Claude Code` Agent 已运行会话也可能非用户主动异常退出，或在用户显式开启文本匹配后由 `Codex` 输出已知流断开错误
+4. 系统捕获并解析 provider 自身输出的注意力信号；若没有可靠输出但宿主观察到 Agent 已运行后异常终态，也补充识别出需要用户注意的事件；已知流断开文本匹配默认关闭，只在用户开启对应配置后参与识别
 5. 系统在画布节点上显示视觉提示（节点内提醒 icon、Minimap 同色明暗闪烁）
 6. 如果桥接模式不是 `none`，系统还会按配置额外弹出 VS Code 工作台消息或桌面系统通知
 7. 如果启用了强提醒模式，系统还会在节点标题栏或 Minimap 上显示额外增强提示
@@ -38,6 +38,7 @@
 2. 用户根据个人偏好调整通知行为：
    - 选择通知桥接模式（不桥接通知、工作台消息、系统通知）
    - 选择强提醒模式（无、节点标题栏、Minimap 尺寸脉冲、两者都有）
+   - 按需开启 Codex 异常输出文本匹配
 3. 配置立即生效，无需重启 VSCode
 
 ## 4. 在范围内
@@ -56,6 +57,29 @@
   - Minimap 对应节点的同色明暗闪烁
   - 节点 `attentionPending` 状态标记并持久化到存储
 
+### 4.1.1 Agent 异常中断提醒
+
+- `Codex` / `Claude Code` Agent 会话如果已经跑起来，并在用户未主动停止的情况下以非 `0` 退出码异常退出，会在 provider 自身终端通知之外，补充触发节点提醒与可选外部通知。运行输出中的已知流断开错误也可以触发补充提醒，但该文本匹配功能默认关闭，必须由用户显式开启。
+- 该能力不替代 Codex / Claude 自己输出的 `BEL`、`OSC 9`、`OSC 777`，也不修改其输出解析；这些信号仍按 4.1 的终端注意力信号链路处理。
+- 触发范围：
+  - 本地 PTY Agent 已进入 `running` 或 `waiting-input` 后，进程退出码非 `0` 且不是用户主动停止，状态进入 `error`
+  - live-runtime supervisor 上报同等的“已跑起来后非用户主动非 `0` 退出” `error` 非 live 终态
+  - 当 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 设置为 `codex` 时，本地 PTY 或 live-runtime 已跑起来的 Codex 输出中出现已知流断开失败文案；当前高置信样本是 Codex / OpenAI Responses 体系的 `stream disconnected before completion: stream closed before response.completed`
+- Provider 边界：
+  - `response.completed` 是 Codex 一次 turn 成功完成的权威事件；缺少它意味着 Codex 认为本次 stream 未完整完成。该文案不是 Claude Code 的标准事件或标准报错。
+  - Claude / Anthropic 的流式完成事件是 `message_stop`，Claude Code 的公开 hook 语义里 API error 对应 `StopFailure` 而不是 `Stop`。在没有 Claude Code 真实输出样本或结构化 `StopFailure` 证据前，不把 Codex 的 `response.completed` 文案泛化为 Claude-specific 规则。
+  - Dev Session Canvas 只补充提醒，不自动重放 prompt、不自动 resume、不替 provider 做 stream recovery；retry / reconnect / continuation 由 Codex / Claude 自己负责，避免重复执行工具或破坏会话状态。
+- 不触发范围：
+  - 启动前校验失败、启动命令解析失败、命令不存在或 spawn 失败
+  - resume 启动失败或状态进入 `resume-failed`
+  - 用户点击停止按钮后的 `stopped`
+  - 退出码 `0` 的正常结束
+  - 删除节点或清理 runtime 引发的受控停止
+  - `Terminal` 节点退出
+- 异常中断提醒复用 `attentionPending`：节点内提醒 icon、Minimap 闪烁、强提醒模式和“点击节点清除”语义与终端注意力信号一致；流断开输出提醒不会等待进程退出。
+- 异常中断外部通知复用 `devSessionCanvas.notifications.attentionSignalBridge`：`none` 不弹外部通知，`workbench` 弹 VS Code 工作台消息，`system` 优先交给 notifier companion 并在失败时回退工作台消息。
+- 文本匹配开启后只扫描本轮新增输出，不会因为旧 buffer 尾部仍保留上一轮的流断开错误而在用户下一轮输入、配置切换或 live-runtime attach 后重复触发 stale 通知。
+
 ### 4.2 通知桥接模式
 
 - 配置项 `devSessionCanvas.notifications.attentionSignalBridge`：
@@ -64,7 +88,7 @@
   - 默认值：`system`
   - 作用域：`window`
 - 各模式行为：
-  - `none`：不额外弹出 VS Code 工作台消息或系统通知；节点内提醒 icon、Minimap 同色明暗闪烁、诊断事件与 `attentionPending` 状态仍然保留
+  - `none`：不额外弹出 VS Code 工作台消息或系统通知；节点内提醒 icon、Minimap 同色明暗闪烁与 `attentionPending` 状态仍然保留
   - `workbench`：把终端注意力信号桥接为 VS Code 工作台消息（`vscode.window.showInformationMessage`）
   - `system`：优先把 attention event 发送给本机 UI 侧的 `Dev Session Canvas Notifier` companion extension；若 companion 可用且成功接单，则本次提醒走本机桌面系统通知，不再重复弹 VS Code 工作台消息
 - `system` 模式下，系统通知标题应包含固定前缀 `DSCanvas`、当前 workspace 名称，以及节点类型（`Agent` / `Terminal`）
@@ -82,10 +106,13 @@
   - 功能：控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音
 - 开启后：
   - notifier 会在当前平台支持的后端上 best-effort 请求提示音
-  - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会额外播放一次系统 alert sound
+  - Linux / Windows 是否真正响铃仍取决于系统通知服务；macOS `osascript` 回退路径会在 `display notification` 上请求内建声音名（当前实现为 `Submarine`），不再额外 `beep`
 - 关闭后：
   - notifier 会尽量走静音路径，但不影响通知弹出、点击回跳和 `attentionPending` 状态机
-- 用户可从 `Dev Session Canvas Notifier` sidebar 的 `通知环境` 标题行尾部齿轮按钮打开 companion 配置；该入口只负责跳转设置，不改变通知投递或回跳语义
+- `Dev Session Canvas Notifier` sidebar 当前拆成多个独立 view section：`概览`、`注意事项`、`macOS`、`Linux`、`Windows`、`Codex`、`Claude Code`
+- 各 section 的正文默认使用受控 Markdown 预览渲染，支持段落、列表、标题与 fenced code block；测试通知、打开诊断日志等交互按钮继续保留原生按钮语义
+- 用户可从 `概览` view title 行尾部的齿轮按钮打开 companion 配置；该按钮只挂在承载通知状态、测试按钮和诊断入口的概览 section 上，不会出现在其他平台或 Agent section
+- 该入口只负责跳转设置，不改变通知投递或回跳语义
 
 ### 4.3 强提醒模式
 
@@ -99,6 +126,18 @@
   - `titleBar`：只让执行节点标题栏进入闪烁态（`is-attention-flashing`），不给 Minimap 增加尺寸脉冲
   - `minimap`：只让 Minimap 对应节点在同色明暗闪烁之外额外加入尺寸脉冲（`has-strong-attention-reminder`），不闪烁节点标题栏
   - `both`：同时开启节点标题栏闪烁和 Minimap 尺寸脉冲
+
+### 4.3.1 Agent 异常输出文本匹配
+
+- 配置项 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`：
+  - 类型：`enum`
+  - 可选值：`off` | `codex`
+  - 默认值：`off`
+  - 作用域：`window`
+- 各模式行为：
+  - `off`：不根据终端输出文本做额外异常提醒；已运行 Agent 非用户主动非 `0` 退出的异常中断提醒仍然保留
+  - `codex`：仅对 Codex 的高置信 stream disconnected 完整文案触发补充提醒，例如同一行同时包含 `stream disconnected before completion` 与 `stream closed before response.completed`
+- 这项配置不影响 provider 原生 `BEL` / `OSC` attention signal 解析，也不影响已运行后非用户主动非 `0` 退出的异常终态提醒。
 
 ### 4.4 Agent 等待输入检测
 
@@ -138,7 +177,7 @@
 ### 5.2 明确排除
 
 - 不替代 VSCode 原生的通知系统 (`vscode.window.showInformationMessage` 等)
-- 不处理非终端输出的通知 (如文件系统变化、Git 事件等)
+- 除 Agent 异常中断与已知流断开输出外，不处理非终端输出的通知 (如文件系统变化、Git 事件等)
 - 不提供通知的远程同步或多设备协同
 
 ## 6. 关键对象与状态
@@ -169,6 +208,11 @@ interface AgentActivityHeuristicState {
   lastNotificationAtMs?: number;
   lastBellAtMs?: number;
   lastSpinnerAtMs?: number;
+  lastAbnormalStreamAtMs?: number;
+  lastAbnormalStreamMessage?: string;
+  lastAbnormalStreamSignature?: string;
+  lastAbnormalStreamScanLength?: number;
+  abnormalStreamCarryover?: string;
   oscCarryover: string;
 }
 ```
@@ -176,6 +220,7 @@ interface AgentActivityHeuristicState {
 - 记录各类事件的最后发生时间
 - 用于判断 Agent 是否在等待用户输入
 - `oscCarryover`：跨 chunk 的 OSC 序列缓存
+- `lastAbnormalStreamScanLength` 与 `abnormalStreamCarryover`：仅在文本匹配开启时辅助扫描新增输出与跨 chunk 残片，避免重新扫描旧 buffer；live-runtime attach 时已有的 `snapshot.output` 也视为已扫描历史
 
 ### 6.3 强提醒模式 (CanvasStrongTerminalAttentionReminderMode)
 
@@ -186,7 +231,16 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - 控制额外增强提醒表面的显示位置
 - 默认值为 `both`，同时启用节点标题栏闪烁和 Minimap 尺寸脉冲
 
-### 6.4 节点通知状态
+### 6.4 Agent 异常输出文本匹配模式
+
+```typescript
+type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
+```
+
+- 默认值为 `off`，不会因为终端输出文本中的异常文案额外发通知
+- `codex` 只启用 Codex 高置信 stream disconnected 完整文案匹配；Claude Code 在没有真实样本或结构化 `StopFailure` 证据前不启用文本匹配
+
+### 6.5 节点通知状态
 
 - 节点级别的状态标记：
   - `has-attention`：节点有待处理的通知（始终显示）
@@ -204,6 +258,8 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 - [ ] 系统能正确解析 BEL、OSC 9、OSC 777 三种终端注意力信号
 - [ ] OSC 9 中以 `4;` 开头的消息被正确标记为 `ignore`
 - [ ] 当检测到注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁始终显示
+- [ ] 当 `Codex` / `Claude Code` Agent 已运行后非用户主动非 `0` 异常退出时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知
+- [ ] 当 `agentAbnormalOutputTextNotifications=codex` 且 Codex 运行输出出现已知流断开错误时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知；默认 `off` 时不触发文本匹配通知
 - [ ] 配置 `attentionSignalBridge` 为 `none` 时，不额外弹出 VS Code 工作台消息或系统通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
 - [ ] 配置 `attentionSignalBridge` 为 `workbench` 时，会弹出 VS Code 工作台消息
 - [x] 配置 `attentionSignalBridge` 为 `system` 且 companion 可用时，主扩展会优先把 attention event 发送给 companion，并避免重复弹出 VS Code 工作台消息
@@ -250,7 +306,7 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 
 ### 8.2 已知限制
 
-- **Codex / Claude Code 集成**：Codex Agent 需要在 `[tui]` 中设置 `notifications = true`、`notification_method = "osc9"` 和 `notification_condition = "always"` 才能稳定触发终端注意力信号；Claude Code Agent 需要设置 `preferredNotifChannel: "iterm2"` 才能进入同一桥接链路。这一要求需要在文档中明确说明。
+- **Codex / Claude Code 集成**：Codex Agent 需要在 `[tui]` 中设置 `notifications = true`、`notification_method = "osc9"` 和 `notification_condition = "always"` 才能稳定触发 provider 自身的终端注意力信号；Claude Code Agent 需要设置 `preferredNotifChannel: "iterm2"` 才能进入同一桥接链路。Agent 异常中断与显式开启后的流断开输出通知只是补充兜底，不降低这部分原生通知配置的重要性；其中 `stream closed before response.completed` 是 Codex 高置信模式，不是 Claude Code 标准模式。
 - **平台差异**：桌面通知是否支持“点击后回到 VS Code”并不统一；当前由 companion 返回 `activationMode` 显式区分完整路径和退化路径，而不是伪装成统一能力。
 - **跨 chunk 解析**：OSC 序列可能被分割在多个输出 chunk 中，当前实现通过 `oscCarryover` 缓存处理，但缓存大小限制为 256 字节，超长序列可能被截断。
 - **启发式检测**：Agent 等待输入检测基于启发式规则，可能存在误判情况（如误将长时间运行的任务判断为等待输入）。
@@ -279,4 +335,4 @@ type CanvasStrongTerminalAttentionReminderMode = 'none' | 'titleBar' | 'minimap'
 
 ## 11. 最后更新
 
-2026-05-03
+2026-05-21
