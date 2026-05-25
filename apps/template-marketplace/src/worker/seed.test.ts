@@ -23,6 +23,16 @@ describe('marketplace preview seed sql', () => {
     expect(seedSql).toContain("'ver-review-loop-1'");
   });
 
+  it('maps official preview templates to the stable GitHub numeric publisher id', () => {
+    expect(seedSql).toContain("'github-8197085'");
+    expect(seedSql).toContain("'8197085'");
+    expect(seedSql).not.toContain('github-zy-wang-0304');
+    expect(seedSql).not.toContain('zy-wang-0304-seed');
+
+    const publisherReferences = seedSql.match(/'github-8197085'/g) ?? [];
+    expect(publisherReferences).toHaveLength(4);
+  });
+
   it('uses upserts so the preview seed can be re-run safely', () => {
     expect(seedSql).toContain('ON CONFLICT(id) DO UPDATE SET');
     expect(seedSql).toContain('ON CONFLICT(template_id, version_number) DO UPDATE SET');

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildMarketplaceSlugFromName,
   buildSeedDownloadResponse,
   calculateHotScore,
   getSeedTemplateDetail,
   listSeedTemplates,
+  marketplacePublishTemplateRequestSchema,
   marketplaceSeedTemplates
 } from './index';
 import { marketplaceSchema } from './schema';
@@ -76,5 +78,77 @@ describe('marketplace shared seed repository', () => {
       'templates',
       'users'
     ]);
+  });
+
+  it('validates marketplace publish requests against the canvas template document contract', () => {
+    const parsed = marketplacePublishTemplateRequestSchema.parse({
+      name: 'Review Loop',
+      description: 'A repeatable review workflow.',
+      tags: ['Review', 'review', 'Quality'],
+      readme: 'Use this template for reviews.',
+      templateDocument: {
+        version: 1,
+        template: {
+          id: 'review-loop',
+          name: 'Review Loop',
+          category: 'user',
+          createdAt: '2026-05-14T00:00:00.000Z',
+          updatedAt: '2026-05-14T00:00:00.000Z',
+          nodes: [
+            {
+              kind: 'note',
+              title: 'Review notes',
+              position: { x: 0, y: 0 },
+              size: { width: 320, height: 200 },
+              metadata: { note: { content: 'Track review comments.' } }
+            }
+          ],
+          edges: []
+        }
+      }
+    });
+
+    expect(parsed.tags).toEqual(['Review', 'Quality']);
+  });
+
+  it('rejects publish requests whose edges point outside the template node list', () => {
+    expect(() =>
+      marketplacePublishTemplateRequestSchema.parse({
+        name: 'Broken Template',
+        description: 'Invalid edge indices.',
+        tags: ['broken'],
+        templateDocument: {
+          version: 1,
+          template: {
+            id: 'broken',
+            name: 'Broken Template',
+            category: 'user',
+            createdAt: '2026-05-14T00:00:00.000Z',
+            updatedAt: '2026-05-14T00:00:00.000Z',
+            nodes: [
+              {
+                kind: 'terminal',
+                title: 'Run tests',
+                position: { x: 0, y: 0 },
+                size: { width: 320, height: 200 }
+              }
+            ],
+            edges: [
+              {
+                sourceNodeIndex: 0,
+                targetNodeIndex: 3,
+                sourceAnchor: 'right',
+                targetAnchor: 'left',
+                arrowMode: 'forward'
+              }
+            ]
+          }
+        }
+      })
+    ).toThrow(/targetNodeIndex/);
+  });
+
+  it('normalizes marketplace slugs from names', () => {
+    expect(buildMarketplaceSlugFromName(' Review Loop 2026! ')).toBe('review-loop-2026');
   });
 });

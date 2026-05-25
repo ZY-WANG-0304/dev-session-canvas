@@ -1,0 +1,10 @@
+# Copy this file to .dev.vars for local marketplace development.
+# Do not commit real GitHub OAuth client secrets or session secrets.
+
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+MARKETPLACE_SESSION_SECRET=
+MARKETPLACE_TOKEN_SECRET=
+MARKETPLACE_ADMIN_GITHUB_LOGINS=
+MARKETPLACE_MAX_TEMPLATE_BYTES=5242880
+MARKETPLACE_ALLOW_TEST_AUTH=false

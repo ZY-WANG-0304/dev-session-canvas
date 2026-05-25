@@ -1,33 +1,58 @@
-const templateRows = [
-  {
-    template_id: 'tmpl-d1-review',
-    slug: 'd1-review-loop',
-    name: 'D1 Review Loop',
-    description: 'Review template loaded from D1 metadata.',
-    readme: 'D1 detail readme.',
-    template_status: 'published',
-    download_count: 44,
-    like_count: 9,
-    provider_warnings_json: '["Requires GitHub provider"]',
-    template_created_at: '2026-05-10T01:00:00.000Z',
-    template_updated_at: '2026-05-10T02:00:00.000Z',
-    publisher_id: 'user-admin',
-    publisher_github_login: 'dscanvas-admin',
-    publisher_display_name: 'DS Canvas Admin',
-    publisher_avatar_url: 'https://example.test/avatar.png',
-    version_id: 'ver-d1-review-2',
-    version_number: 2,
-    changelog: 'Second D1 version.',
-    object_key: 'templates/tmpl-d1-review/versions/2/template.json',
-    thumbnail_key: 'templates/tmpl-d1-review/versions/2/thumbnail.png',
-    sha256: 'd1-review-sha',
-    size_bytes: 1234,
-    schema_version: 1,
-    version_status: 'published',
-    version_created_at: '2026-05-10T02:00:00.000Z',
-    tags: 'review,d1'
-  }
-] as const;
+const defaultPublisher = {
+  id: 'github-test-dscanvas-admin',
+  githubUserId: 'test-dscanvas-admin',
+  githubLogin: 'dscanvas-admin',
+  displayName: 'DS Canvas Admin',
+  avatarUrl: 'https://example.test/avatar.png'
+} as const;
+
+export interface FakeD1DatabaseOptions {
+  publisherId?: string;
+  publisherGithubUserId?: string;
+  publisherGithubLogin?: string;
+  publisherDisplayName?: string;
+  publisherAvatarUrl?: string;
+}
+
+function createTemplateRows(options: FakeD1DatabaseOptions = {}) {
+  const publisher = {
+    id: options.publisherId ?? defaultPublisher.id,
+    githubUserId: options.publisherGithubUserId ?? defaultPublisher.githubUserId,
+    githubLogin: options.publisherGithubLogin ?? defaultPublisher.githubLogin,
+    displayName: options.publisherDisplayName ?? defaultPublisher.displayName,
+    avatarUrl: options.publisherAvatarUrl ?? defaultPublisher.avatarUrl
+  };
+  return [
+    {
+      template_id: 'tmpl-d1-review',
+      slug: 'd1-review-loop',
+      name: 'D1 Review Loop',
+      description: 'Review template loaded from D1 metadata.',
+      readme: 'D1 detail readme.',
+      template_status: 'published',
+      download_count: 44,
+      like_count: 9,
+      provider_warnings_json: '["Requires GitHub provider"]',
+      template_created_at: '2026-05-10T01:00:00.000Z',
+      template_updated_at: '2026-05-10T02:00:00.000Z',
+      publisher_id: publisher.id,
+      publisher_github_login: publisher.githubLogin,
+      publisher_display_name: publisher.displayName,
+      publisher_avatar_url: publisher.avatarUrl,
+      version_id: 'ver-d1-review-2',
+      version_number: 2,
+      changelog: 'Second D1 version.',
+      object_key: 'templates/tmpl-d1-review/versions/2/template.json',
+      thumbnail_key: 'templates/tmpl-d1-review/versions/2/thumbnail.png',
+      sha256: 'd1-review-sha',
+      size_bytes: 1234,
+      schema_version: 1,
+      version_status: 'published',
+      version_created_at: '2026-05-10T02:00:00.000Z',
+      tags: 'review,d1'
+    }
+  ] as const;
+}
 
 const versionRows = [
   {
@@ -63,7 +88,9 @@ export interface FakeD1Run {
   boundValues: unknown[];
 }
 
-export function createFakeD1Database(runLog: FakeD1Run[] = []): D1Database {
+export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1DatabaseOptions = {}): D1Database {
+  const templateRows = createTemplateRows(options);
+  const publisherGithubUserId = options.publisherGithubUserId ?? defaultPublisher.githubUserId;
   return {
     prepare(sql: string) {
       let boundValues: unknown[] = [];
@@ -76,9 +103,20 @@ export function createFakeD1Database(runLog: FakeD1Run[] = []): D1Database {
           if (sql.includes("template_id = ?1 AND status = 'published'")) {
             return { results: versionRows.slice(), success: true, meta: {} };
           }
+          if (sql.includes('u.github_user_id = ?1')) {
+            return {
+              results: boundValues[0] === publisherGithubUserId ? templateRows.slice() : [],
+              success: true,
+              meta: {}
+            };
+          }
           return { results: templateRows.slice(), success: true, meta: {} };
         },
         async first() {
+          if (sql.includes('SELECT id FROM templates WHERE slug = ?1 LIMIT 1')) {
+            const row = templateRows.find((entry) => entry.slug === boundValues[0]);
+            return row ? { id: row.template_id } : null;
+          }
           if (sql.includes('WHERE (t.id = ?1 OR t.slug = ?1)')) {
             return templateRows.find((row) => row.template_id === boundValues[0] || row.slug === boundValues[0]) ?? null;
           }

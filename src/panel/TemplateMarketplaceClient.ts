@@ -4,13 +4,24 @@ import * as https from 'node:https';
 
 import * as vscode from 'vscode';
 
+import {
+  buildMarketplaceSlugFromName,
+  generateMarketplaceTemplateThumbnailPngBase64,
+  type MarketplaceTemplateDocument
+} from '@dev-session-canvas/marketplace-shared';
+
+import { encodeCanvasTemplateDocument } from '../common/canvasTemplates';
 import type { CanvasTemplateMarketMetadata, CanvasTemplateStorageLocation, CanvasStoredTemplate } from './CanvasTemplateStore';
 import type { CanvasPanelManager } from './CanvasPanelManager';
 
 const MARKETPLACE_INSTALL_URI_PATH = '/install-template';
 const DEFAULT_MARKETPLACE_SOURCE_ORIGIN = 'https://dscanvas.dev';
+const MARKETPLACE_OFFICIAL_SOURCE_URL = `${DEFAULT_MARKETPLACE_SOURCE_ORIGIN}/templates`;
+const MARKETPLACE_DEBUG_SOURCE_URL = 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates';
+const MARKETPLACE_SOURCE_URL_ENV_KEY = 'DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL';
 const MAX_TEMPLATE_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
+const MARKETPLACE_TOKEN_SECRET_KEY = 'devSessionCanvas.templateMarketplace.token';
 
 const TRUSTED_MARKETPLACE_HOSTS = new Set([
   'dscanvas.dev',
@@ -61,6 +72,41 @@ export interface TemplateMarketplaceInstallTargetSummary {
   scope: CanvasTemplateStorageLocation['scope'];
 }
 
+export interface TemplateMarketplacePublishResult {
+  templateId: string;
+  slug: string;
+  name: string;
+  versionId: string;
+  versionNumber: number;
+  sourceUrl: string;
+}
+
+export interface TemplateMarketplacePublishDraft {
+  templateId: string;
+  templateName: string;
+  storageLocationLabel?: string;
+  nodeCount: number;
+  defaultName: string;
+  defaultSlug: string;
+  defaultDescription: string;
+  defaultTags: string[];
+  defaultReadme: string;
+  defaultChangelog: string;
+  templateJson: string;
+  thumbnailPngBase64: string;
+}
+
+export interface TemplateMarketplacePublishDraftRequest {
+  templateId: string;
+  slug?: string;
+  name: string;
+  description: string;
+  tags: string[];
+  readme?: string;
+  changelog?: string;
+  templateJson: string;
+}
+
 interface TemplateMarketplaceInstallRequest {
   templateIdOrSlug: string;
   versionId?: string;
@@ -108,13 +154,34 @@ interface HttpTextResponse {
   text: string;
 }
 
+interface MarketplaceVSCodeTokenResponseShape {
+  token: string;
+  expiresAt: string;
+  user: MarketplaceAuthenticatedUserShape;
+}
+
+interface MarketplaceAuthenticatedUserShape {
+  githubUserId: string;
+  githubLogin: string;
+  displayName: string;
+  avatarUrl: string;
+}
+
 interface ResolvedMarketplaceInstallTarget {
   id: string;
   rootPath: string;
 }
 
 export class TemplateMarketplaceClient {
-  public constructor(private readonly panelManager: CanvasPanelManager) {}
+  private readonly marketplaceSourceUrl: URL;
+
+  public constructor(
+    private readonly panelManager: CanvasPanelManager,
+    private readonly context: vscode.ExtensionContext,
+    extensionMode: vscode.ExtensionMode
+  ) {
+    this.marketplaceSourceUrl = resolveDefaultMarketplaceSourceUrl(extensionMode);
+  }
 
   public listInstallTargets(): TemplateMarketplaceInstallTargetSummary[] {
     return this.panelManager.getCanvasTemplateStorageLocations().map((location) => ({
@@ -217,6 +284,66 @@ export class TemplateMarketplaceClient {
       detail,
       version,
       operation
+    };
+  }
+
+  public async listPublishableTemplateDrafts(preferredTemplateId?: string): Promise<TemplateMarketplacePublishDraft[]> {
+    const catalog = await this.panelManager.getCanvasTemplateCatalog();
+    const publishableTemplates = catalog.templates.filter(isPublishableStoredTemplate);
+    if (preferredTemplateId) {
+      const preferredTemplate = publishableTemplates.find((candidate) => candidate.template.id === preferredTemplateId);
+      if (!preferredTemplate) {
+        await this.findPublishableStoredTemplate(preferredTemplateId);
+      }
+      return publishableTemplates
+        .slice()
+        .sort((left, right) => Number(right.template.id === preferredTemplateId) - Number(left.template.id === preferredTemplateId))
+        .map((storedTemplate) => buildPublishDraft(storedTemplate));
+    }
+    return publishableTemplates.map((storedTemplate) => buildPublishDraft(storedTemplate));
+  }
+
+  public async publishTemplateDraft(request: TemplateMarketplacePublishDraftRequest): Promise<TemplateMarketplacePublishResult> {
+    await this.findPublishableStoredTemplate(request.templateId);
+    const name = request.name.trim();
+    const description = request.description.trim();
+    if (!name) {
+      throw new Error('模板名称不能为空。');
+    }
+    if (!description) {
+      throw new Error('模板描述不能为空。');
+    }
+
+    const token = await this.exchangeVSCodeMarketplaceToken();
+    const templateDocument = JSON.parse(request.templateJson) as MarketplaceTemplateDocument;
+    const requestBody = {
+      slug: request.slug?.trim() || undefined,
+      name,
+      description,
+      tags: request.tags,
+      readme: request.readme?.trim() || buildTemplatePublishReadme(name, description),
+      changelog: request.changelog?.trim() || 'Initial marketplace version.',
+      templateDocument,
+      thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
+    };
+    const response = await requestJson(
+      new URL('/api/v1/templates', this.marketplaceSourceUrl.origin),
+      'POST',
+      requestBody,
+      token
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`发布模板失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
+    }
+    const publishResponse = parseTemplatePublishResponse(JSON.parse(response.text));
+    const sourceUrl = new URL(`/templates/${encodeURIComponent(publishResponse.template.slug)}`, this.marketplaceSourceUrl.origin);
+    return {
+      templateId: publishResponse.template.id,
+      slug: publishResponse.template.slug,
+      name: publishResponse.template.name,
+      versionId: publishResponse.template.latestVersion.id,
+      versionNumber: publishResponse.template.latestVersion.versionNumber,
+      sourceUrl: sourceUrl.toString()
     };
   }
 
@@ -335,6 +462,34 @@ export class TemplateMarketplaceClient {
         }
       : undefined;
   }
+
+  private async findPublishableStoredTemplate(templateId: string): Promise<CanvasStoredTemplate> {
+    const catalog = await this.panelManager.getCanvasTemplateCatalog();
+    const storedTemplate = catalog.templates.find((candidate) => candidate.template.id === templateId);
+    if (!storedTemplate) {
+      throw new Error('找不到要发布的模板。');
+    }
+    if (storedTemplate.template.category !== 'user' || storedTemplate.marketplace) {
+      throw new Error('目前只能发布自建模板，不能直接发布内置模板或已安装的市场模板。');
+    }
+    return storedTemplate;
+  }
+
+  private async exchangeVSCodeMarketplaceToken(): Promise<string> {
+    const session = await vscode.authentication.getSession('github', ['read:user'], { createIfNone: true });
+    const response = await requestJson(
+      new URL('/api/v1/auth/vscode/exchange', this.marketplaceSourceUrl.origin),
+      'POST',
+      { accessToken: session.accessToken },
+      undefined
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`GitHub 身份换取市场 token 失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
+    }
+    const tokenResponse = parseMarketplaceTokenResponse(JSON.parse(response.text));
+    await this.context.secrets.store(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse.token);
+    return tokenResponse.token;
+  }
 }
 
 function resolveMarketplaceInstallOperation(
@@ -345,6 +500,81 @@ function resolveMarketplaceInstallOperation(
     return 'installed';
   }
   return existingTemplate.marketplace?.marketVersionId === metadata.marketVersionId ? 'reinstalled' : 'updated';
+}
+
+function resolveDefaultMarketplaceSourceUrl(extensionMode: vscode.ExtensionMode): URL {
+  const override = resolveNonProductionMarketplaceSourceUrlOverride(extensionMode);
+  if (override) {
+    return override;
+  }
+  return new URL(extensionMode === vscode.ExtensionMode.Production ? MARKETPLACE_OFFICIAL_SOURCE_URL : MARKETPLACE_DEBUG_SOURCE_URL);
+}
+
+function resolveNonProductionMarketplaceSourceUrlOverride(extensionMode: vscode.ExtensionMode): URL | undefined {
+  if (extensionMode === vscode.ExtensionMode.Production) {
+    return undefined;
+  }
+  const value = process.env[MARKETPLACE_SOURCE_URL_ENV_KEY]?.trim();
+  if (!value) {
+    return undefined;
+  }
+  return parseTrustedMarketplaceSourceUrl(value);
+}
+
+function isPublishableStoredTemplate(storedTemplate: CanvasStoredTemplate): boolean {
+  return storedTemplate.template.category === 'user' && !storedTemplate.marketplace;
+}
+
+function buildPublishDraft(storedTemplate: CanvasStoredTemplate): TemplateMarketplacePublishDraft {
+  const templateDocument = JSON.parse(encodeCanvasTemplateDocument(storedTemplate.template)) as MarketplaceTemplateDocument;
+  const defaultName = storedTemplate.template.name;
+  const defaultDescription = `${defaultName} template for Dev Session Canvas.`;
+  return {
+    templateId: storedTemplate.template.id,
+    templateName: storedTemplate.template.name,
+    storageLocationLabel: storedTemplate.storageLocation?.label,
+    nodeCount: storedTemplate.template.nodes.length,
+    defaultName,
+    defaultSlug: buildMarketplaceSlugFromName(defaultName),
+    defaultDescription,
+    defaultTags: ['workflow'],
+    defaultReadme: buildTemplatePublishReadme(defaultName, defaultDescription),
+    defaultChangelog: 'Initial marketplace version.',
+    templateJson: JSON.stringify(templateDocument, null, 2),
+    thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
+  };
+}
+
+function buildTemplatePublishReadme(name: string, description: string): string {
+  const trimmedDescription = description.trim() || `${name} template for Dev Session Canvas.`;
+  return `# ${name}\n\n${trimmedDescription}\n`;
+}
+
+function parseMarketplaceTokenResponse(value: unknown): MarketplaceVSCodeTokenResponseShape {
+  if (!isRecord(value)) {
+    throw new Error('市场 token 接口返回了无法识别的数据格式。');
+  }
+  return {
+    token: readRequiredString(value.token, 'token'),
+    expiresAt: readRequiredString(value.expiresAt, 'expiresAt'),
+    user: parseAuthenticatedUser(value.user)
+  };
+}
+
+function parseAuthenticatedUser(value: unknown): MarketplaceAuthenticatedUserShape {
+  if (!isRecord(value)) {
+    throw new Error('市场 token 接口缺少用户信息。');
+  }
+  return {
+    githubUserId: readRequiredString(value.githubUserId, 'user.githubUserId'),
+    githubLogin: readRequiredString(value.githubLogin, 'user.githubLogin'),
+    displayName: readRequiredString(value.displayName, 'user.displayName'),
+    avatarUrl: typeof value.avatarUrl === 'string' ? value.avatarUrl : ''
+  };
+}
+
+function parseTemplatePublishResponse(value: unknown): { template: MarketplaceTemplateDetailShape } {
+  return parseTemplateDetailResponse(value);
 }
 
 function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
@@ -596,6 +826,61 @@ async function requestText(url: URL, redirectCount = 0): Promise<HttpTextRespons
     });
     request.on('error', reject);
   });
+}
+
+async function requestJson(url: URL, method: 'POST', body: unknown, bearerToken: string | undefined): Promise<HttpTextResponse> {
+  const payload = JSON.stringify(body);
+  return new Promise<HttpTextResponse>((resolve, reject) => {
+    const request = (url.protocol === 'http:' ? http : https).request(
+      url,
+      {
+        method,
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          'user-agent': 'dev-session-canvas-template-marketplace',
+          ...(bearerToken ? { authorization: `Bearer ${bearerToken}` } : {})
+        }
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        let byteLength = 0;
+        response.on('data', (chunk: Buffer) => {
+          byteLength += chunk.length;
+          if (byteLength > MAX_TEMPLATE_DOWNLOAD_BYTES) {
+            request.destroy(new Error('市场响应超过大小限制。'));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on('end', () => {
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            text: Buffer.concat(chunks).toString('utf8')
+          });
+        });
+      }
+    );
+
+    request.setTimeout(30_000, () => {
+      request.destroy(new Error('市场请求超时。'));
+    });
+    request.on('error', reject);
+    request.end(payload);
+  });
+}
+
+function extractMarketplaceErrorMessage(text: string, statusCode: number): string {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (isRecord(parsed) && isRecord(parsed.error) && typeof parsed.error.message === 'string') {
+      return parsed.error.message;
+    }
+  } catch {
+    // Fall back to the status code when the server does not return JSON.
+  }
+  return `HTTP ${statusCode}`;
 }
 
 function isRedirectStatus(statusCode: number): boolean {

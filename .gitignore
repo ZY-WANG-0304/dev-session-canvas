@@ -15,3 +15,11 @@ test-results/
 .dev-session-canvas/
 core
 core.*
+
+# Local environment / secrets
+.env
+.env.local
+.env.*.local
+apps/template-marketplace/.dev.vars
+apps/template-marketplace/.dev.vars.*
+!apps/template-marketplace/.dev.vars.example
