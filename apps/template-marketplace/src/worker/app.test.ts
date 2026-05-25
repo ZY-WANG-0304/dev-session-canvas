@@ -508,6 +508,38 @@ describe('template marketplace worker api', () => {
     expect(body.error.message).toContain('64 byte limit');
   });
 
+  it('allows the real preview seed publisher to publish new versions', async () => {
+    const runLog: FakeD1Run[] = [];
+    const bucket = createFakeR2Bucket({});
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/versions',
+      {
+        method: 'POST',
+        body: JSON.stringify(buildPublishVersionRequest()),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'ZY-WANG-0304',
+          'x-marketplace-test-github-user-id': '8197085'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(runLog, {
+          publisherId: 'github-8197085',
+          publisherGithubUserId: '8197085',
+          publisherGithubLogin: 'ZY-WANG-0304'
+        }),
+        TEMPLATE_BUCKET: bucket
+      }
+    );
+    const body = await response.json<{ template: { latestVersion: { versionNumber: number; objectKey: string } } }>();
+
+    expect(response.status).toBe(201);
+    expect(body.template.latestVersion.versionNumber).toBe(3);
+    await expect(bucket.get(body.template.latestVersion.objectKey)).resolves.not.toBeNull();
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_versions'))).toBe(true);
+  });
+
   it('rejects version publishing when login matches but the stable GitHub user id differs', async () => {
     const response = await app.request(
       'http://localhost/api/v1/templates/d1-review-loop/versions',
