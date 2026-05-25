@@ -9,6 +9,7 @@ import {
 } from './common/codexSessionIdLocator';
 import { COMMAND_IDS, CONFIG_KEYS, EXTENSION_DISPLAY_NAME, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
 import {
+  isAgentLaunchPresetKind,
   isAgentProviderKind,
   isCanvasCreatableNodeKind,
   isWebviewDomAction,
@@ -344,6 +345,10 @@ export function activate(context: vscode.ExtensionContext): void {
       agentLaunchPreset: createRequest.agentLaunchPreset,
       agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
     });
+  });
+
+  registerCommand(context, COMMAND_IDS.saveNoteAsMarkdownFile, async (nodeId?: unknown) => {
+    await panelManager.saveNoteAsMarkdownFile(typeof nodeId === 'string' ? nodeId : undefined);
   });
 
   registerCommand(context, COMMAND_IDS.showNodeList, async () => {
@@ -1572,6 +1577,7 @@ async function saveCurrentCanvasAsTemplateFromCommand(
     title: options.title ?? '保存当前画布为模板',
     submitLabel: options.submitLabel ?? '保存模板',
     storageLocations: panelManager.getCanvasTemplateStorageLocations(),
+    associatedNoteNodes: panelManager.getCanvasTemplateAssociatedNoteSaveItems(),
     agentNodes: canvasNodes
       .filter(
         (node): node is typeof node & {
@@ -1597,7 +1603,8 @@ async function saveCurrentCanvasAsTemplateFromCommand(
   }
 
   const savedTemplate = await panelManager.saveCurrentCanvasAsTemplate(formResult.name, formResult.agentProviderSelection, {
-    targetRootPath: targetStorageLocation.rootPath
+    targetRootPath: targetStorageLocation.rootPath,
+    associatedNoteSaveModes: formResult.associatedNoteSaveModes
   });
   await vscode.window.showInformationMessage(
     options.successMessage ? options.successMessage(savedTemplate) : `已保存模板「${savedTemplate.template.name}」。`
@@ -2171,7 +2178,8 @@ function registerTestCommands(
         cols?: unknown,
         rows?: unknown,
         provider?: unknown,
-        resumeRequested?: unknown
+        resumeRequested?: unknown,
+        rawOptions?: unknown
       ) => {
         if (kind !== 'agent' && kind !== 'terminal') {
           throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的执行节点类型。');
@@ -2180,13 +2188,18 @@ function registerTestCommands(
           throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的节点 ID。');
         }
 
+        const options = typeof rawOptions === 'object' && rawOptions !== null ? rawOptions as Record<string, unknown> : {};
         return panelManager.startExecutionSessionForTest({
           kind,
           nodeId,
           cols: typeof cols === 'number' ? cols : undefined,
           rows: typeof rows === 'number' ? rows : undefined,
           provider: provider === 'codex' || provider === 'claude' ? provider : undefined,
-          resumeRequested: resumeRequested === true
+          resumeRequested: resumeRequested === true,
+          injectAgentOutputChunk:
+            typeof options.injectAgentOutputChunk === 'string' ? options.injectAgentOutputChunk : undefined,
+          injectAgentExistingOutput:
+            typeof options.injectAgentExistingOutput === 'string' ? options.injectAgentExistingOutput : undefined
         });
       }
     ),
@@ -2213,16 +2226,26 @@ function registerTestCommands(
       queuedQuickPickSelectionIds = selectionIds.slice() as CreateNodeQuickPickSelectionId[];
       return queuedQuickPickSelectionIds.slice();
     }),
-    vscode.commands.registerCommand(TEST_COMMAND_IDS.createNode, (kind?: unknown, agentProvider?: unknown) => {
-      if (!isCanvasCreatableNodeKind(kind)) {
-        throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');
-      }
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.createNode,
+      (kind?: unknown, agentProvider?: unknown, rawOptions?: unknown) => {
+        if (!isCanvasCreatableNodeKind(kind)) {
+          throw new Error('测试命令 devSessionCanvas.__test.createNode 需要有效的节点类型。');
+        }
 
-      panelManager.createNodeForTest(kind, undefined, {
-        agentProvider: isAgentProviderKind(agentProvider) ? agentProvider : undefined
-      });
-      return panelManager.getDebugSnapshot();
-    }),
+        const options = typeof rawOptions === 'object' && rawOptions !== null ? rawOptions as Record<string, unknown> : {};
+        panelManager.createNodeForTest(kind, undefined, {
+          agentProvider: isAgentProviderKind(agentProvider) ? agentProvider : undefined,
+          agentLaunchPreset: isAgentLaunchPresetKind(options.agentLaunchPreset)
+            ? options.agentLaunchPreset
+            : undefined,
+          agentCustomLaunchCommand:
+            typeof options.agentCustomLaunchCommand === 'string' ? options.agentCustomLaunchCommand : undefined,
+          titleOverride: typeof options.titleOverride === 'string' ? options.titleOverride : undefined
+        });
+        return panelManager.getDebugSnapshot();
+      }
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.resetState, async () => {
       await panelManager.resetState({
         clearAgentCliResolutionCache: true

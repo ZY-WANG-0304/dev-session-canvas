@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的 Marketplace 发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.9.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.10.5`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.9.0` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.10.5` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
 
 ## 当前发布素材
 
@@ -58,17 +58,21 @@
 
 6. 确认打包日志打印了 `VSCE README doc ref: <final-ref-or-sha>`；如果当前 `README.marketplace.md` 没有相对链接，日志也应显式打印“当前没有需要重写的相对链接”，避免误把“没有输出”当成脚本未校验。
 7. 确认本地 `vsce login devsessioncanvas` 仍有效，发布账号继续沿用 `devsessioncanvas`，不需要为 notifier 单独新建 publisher。
+8. 确认 `Open VSX` 的 `devsessioncanvas` namespace 已完成 owner/verified 认领，发布 token 已写入 `~/.ovsx` 的 `devsessioncanvas` entry，且 `python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas` 可通过。
 
 ## 发布命令
 
-在最终 git ref、版本号与 VSIX 产物都锁定后，从仓库根目录执行；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
+在最终 git ref、版本号与 VSIX 产物都锁定后，默认从仓库根目录使用统一发布入口同时发布主扩展与 notifier；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
 
-    node node_modules/@vscode/vsce/vsce publish \
-      --packagePath extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-<notifier-version>.vsix
+    npm run publish:marketplaces -- --yes
 
-将 `<notifier-version>` 替换为 `extensions/vscode/dev-session-canvas-notifier/package.json` 中已经锁定的最终版本号。
+若只需要补发 notifier，可限定扩展与市场：
 
-注意：`publish --packagePath` 只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 `package:vsix`，并确保它针对最终发布 ref 完成过 README 重写目标校验。
+    npm run publish:marketplaces -- --yes --skip-package --extension notifier --target visual-studio
+
+    npm run publish:marketplaces -- --yes --skip-package --extension notifier --target open-vsx
+
+注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 `package:vsix`，或在使用 `--skip-package` 时手工确认它针对最终发布 ref 完成过 README 重写目标校验。
 
 ## Tag 与版本对齐约束
 
@@ -77,7 +81,7 @@
 
 ## 发布后验证
 
-1. 打开 Marketplace 页面，确认名称、图标、README 文案、issue 链接与许可证信息没有失真。
+1. 打开 `Visual Studio Marketplace` 与 `Open VSX` 页面，确认名称、图标、README 文案、issue 链接与许可证信息没有失真。
 2. 在干净 profile 中分别验证两条安装路径：
    - 只安装 `Dev Session Canvas Notifier`，确认 VS Code 会自动补齐 `Dev Session Canvas`
    - 卸载后只安装 `Dev Session Canvas`，确认 VS Code 会自动补齐 `Dev Session Canvas Notifier`
@@ -89,5 +93,5 @@
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 截至 `2026-05-11`，当前 `0.9.0` 发布准备工作树已重新通过 `npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；其中 notifier VSIX 已生成到 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.9.0.vsix`，该次打包日志打印了 `VSCE README doc ref: c015f279164a56968bee90cbdd076c57776dabc8`，显式确认当前 README 无需重写相对链接，并生成 10 个文件、约 31.96 KB 的 VSIX。该 ref 是本次 repo-local 打包执行时的已提交 ref，发布准备 MR 合并后仍需在最终 `main` ref 上重新打包。
+- 截至 `2026-05-24`，当前 `0.10.5` 发布准备分支已同步 notifier manifest 与 changelog 版本事实，并重新通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；本轮 notifier 产物名为 `dev-session-canvas-notifier-0.10.5.vsix`，产物为 10 个文件、约 143.25 KB。发布准备 MR 合并后还需在最终 `main` ref 上复跑 notifier 打包，确认 VSIX 文件名、README doc ref、文件数与大小都来自最终发布 ref。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

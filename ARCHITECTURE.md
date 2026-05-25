@@ -295,9 +295,9 @@ scripts/                build、打包、smoke、调试入口
 
 - `tests/vscode-smoke/*.cjs`
 - `tests/playwright/webview-harness.spec.mjs`
-- `scripts/run-vscode-smoke.mjs`
-- `scripts/run-playwright-webview.mjs`
-- `scripts/build.mjs`
+- `scripts/smoke/run-vscode-smoke.mjs`
+- `scripts/test/run-playwright-webview.mjs`
+- `scripts/build/build.mjs`
 
 架构不变量：
 
@@ -458,5 +458,5 @@ scripts/                build、打包、smoke、调试入口
 - 补验证或定位回归：
   - `tests/vscode-smoke/*.cjs`
   - `tests/playwright/webview-harness.spec.mjs`
-  - `scripts/run-vscode-smoke.mjs`
-  - `scripts/run-playwright-webview.mjs`
+  - `scripts/smoke/run-vscode-smoke.mjs`
+  - `scripts/test/run-playwright-webview.mjs`

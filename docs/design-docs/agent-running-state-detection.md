@@ -219,7 +219,7 @@ updated_at: 2026-04-14
 - 2026-04-13 已通过以下验证：
   - `npm run typecheck`
   - `npm run build`
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`
-  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/run-vscode-smoke.mjs`
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`
+  - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/smoke/run-vscode-smoke.mjs`
   - `npm run test`
 - 当前文档保持 `验证中`，因为长期目标中的 provider 原生事件、结构化 sidecar 与 metadata 权威性字段尚未接入；已验证的是当前这版 CLI PTY fallback 改良方案。

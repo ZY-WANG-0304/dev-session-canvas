@@ -111,6 +111,96 @@ describe('marketplace shared seed repository', () => {
     expect(parsed.tags).toEqual(['Review', 'Quality']);
   });
 
+  it('accepts associated Markdown note modes from canvas template documents', () => {
+    const parsed = marketplacePublishTemplateRequestSchema.parse({
+      name: 'Review Loop',
+      description: 'A repeatable review workflow.',
+      tags: ['review'],
+      templateDocument: {
+        version: 1,
+        template: {
+          id: 'review-loop',
+          name: 'Review Loop',
+          category: 'user',
+          createdAt: '2026-05-14T00:00:00.000Z',
+          updatedAt: '2026-05-14T00:00:00.000Z',
+          nodes: [
+            {
+              kind: 'note',
+              title: 'Path only notes',
+              position: { x: 0, y: 0 },
+              size: { width: 320, height: 200 },
+              metadata: {
+                note: {
+                  content: 'This local snapshot should not publish in path-only mode.',
+                  templateContentMode: 'workspace-file-path-only',
+                  relativePath: './docs/review.md'
+                }
+              }
+            },
+            {
+              kind: 'note',
+              title: 'Scaffold notes',
+              position: { x: 360, y: 0 },
+              size: { width: 320, height: 200 },
+              metadata: {
+                note: {
+                  content: 'Initial review notes.',
+                  templateContentMode: 'workspace-file-with-content',
+                  relativePath: 'docs/scaffold.md'
+                }
+              }
+            }
+          ],
+          edges: []
+        }
+      }
+    });
+
+    expect(parsed.templateDocument.template.nodes[0]?.metadata?.note).toEqual({
+      content: '',
+      templateContentMode: 'workspace-file-path-only',
+      relativePath: 'docs/review.md'
+    });
+    expect(parsed.templateDocument.template.nodes[1]?.metadata?.note?.content).toBe('Initial review notes.');
+  });
+
+  it('rejects unsafe associated Markdown note paths in marketplace templates', () => {
+    expect(() =>
+      marketplacePublishTemplateRequestSchema.parse({
+        name: 'Unsafe Note Path',
+        description: 'Attempts to publish a path outside the workspace.',
+        tags: ['unsafe'],
+        templateDocument: {
+          version: 1,
+          template: {
+            id: 'unsafe-note-path',
+            name: 'Unsafe Note Path',
+            category: 'user',
+            createdAt: '2026-05-14T00:00:00.000Z',
+            updatedAt: '2026-05-14T00:00:00.000Z',
+            nodes: [
+              {
+                kind: 'note',
+                title: 'Bad path',
+                position: { x: 0, y: 0 },
+                size: { width: 320, height: 200 },
+                metadata: {
+                  note: {
+                    content: '',
+                    templateContentMode: 'workspace-file-path-only',
+                    relativePath: '../secrets.md'
+                  }
+                }
+              }
+            ],
+            edges: []
+          }
+        }
+      })
+    ).toThrow(/relativePath/);
+  });
+
   it('rejects publish requests whose edges point outside the template node list', () => {
     expect(() =>
       marketplacePublishTemplateRequestSchema.parse({

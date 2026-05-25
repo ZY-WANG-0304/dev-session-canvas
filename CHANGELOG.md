@@ -1,5 +1,295 @@
 # Changelog
 
+## 0.10.5 - Preview Note Markdown Recovery Patch
+
+相对 `0.10.4`，`0.10.5` 是同一 `0.10.x` 公开 `Preview` 线内的 Note Markdown 体验与草稿恢复修复版本。它保留 `0.10.4` 已验证的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点收口 Markdown 预览双击进入编辑时的源码定位，以及关联 Markdown Note 的可恢复草稿模型。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.4` bump 到 `0.10.5`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Note Markdown 预览双击源码定位改为 parser-position source map：普通文本、列表续行、blockquote 列表、强调文本、代码块、entity 和 task item 文本会定位到对应 Markdown 源码 offset
+- 图片、空白区域、display math、malformed math 等无法稳定映射到单个字符的预览块，双击后回退到对应 Markdown 块源码末尾，而不是整篇 Note 文末
+- 预览态与编辑态切换继续保持源码附近上下文，降低从 Markdown 预览定位回 textarea 时的跳转成本
+- 关联 Markdown Note 的草稿模型从 `conflictDraft` 收敛为 `recoverableDraft`；旧状态仍会迁移，新状态只把草稿引用持久化到画布状态，草稿正文继续放在 `note-markdown-drafts/` storage 文件中
+- 可恢复草稿不再被误判为一定处于冲突状态；非冲突活跃草稿、文件不可用场景下的草稿，以及同内容强制覆盖后的清理路径都保留明确恢复语义
+- 新增 `test:note-markdown-source-map`，并补齐关联 Markdown 草稿模型、模板、Playwright Webview、真实 VS Code smoke 与 packaged-payload smoke 回归
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.4` 升级到 `0.10.5` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.5`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.5` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.5` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.4 - Preview Terminal Link Refresh Performance Patch
+
+相对 `0.10.3`，`0.10.4` 是同一 `0.10.x` 公开 `Preview` 线内的执行终端链接性能修复版本。它保留 `0.10.3` 已验证的双市场发布元数据与 Open VSX 图标 asset metadata 修复，重点收口运行中终端输出持续刷新时，普通文本 fallback 负缓存被反复送到 Host 侧解析的问题；同时保留高置信文件链接在文件创建后自动恢复为可点击 file link 的能力。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.3` bump 到 `0.10.4`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 运行中输出的后台负缓存刷新只处理高置信候选，例如 `detected` 与 `hardwrap`；纯 `fallback` 普通文本负缓存不再随 live output 反复发起文件解析请求
+- 对 output throttle 窗口内的高置信负缓存失效补充 trailing refresh，避免第二次输出才创建文件时丢失恢复信号
+- Host 侧新增 execution file-link resolve 诊断，记录候选数、resolved 数、source 分布与耗时，并写入诊断 dump，便于真实环境对比请求量与慢请求
+- 新增 fallback-only live-output 性能回归与 throttle trailing refresh Playwright 用例，覆盖 `Agent` 与 `Terminal` 两类执行节点
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.3` 升级到 `0.10.4` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.4`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.4` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.4` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.3 - Preview Open VSX Icon Metadata Reissue
+
+相对 `0.10.2`，`0.10.3` 是同一 `0.10.x` 公开 `Preview` 线内的发布元数据修复版本。主扩展运行时代码、执行终端链接行为、安装拓扑和支持矩阵不引入新的产品行为变更；本轮重点是重新发布主扩展与 notifier 的同版本 VSIX，并验证 Open VSX 侧为主扩展正确生成 `icon`、`license`、`vsixmanifest` 与 `sha256` asset metadata，修复 `0.10.2` 在 Open VSX / Cursor 中主插件图标缺失的问题。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.2` bump 到 `0.10.3`，避免删除 Open VSX 既有版本后同版本重发造成 latest 短暂回退
+- 保留 `0.10.2` 的执行终端 hard-wrap URL、带样式文件路径重组、分组 hover、live-output 文件链接缓存刷新与协议 source 校验能力
+- 重新生成主扩展与 notifier VSIX，并在发布后直接复核 Open VSX API 的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 元数据
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.2` 升级到 `0.10.3` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.3`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.3` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.3` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.2 - Preview Terminal Hard-Wrapped Links Patch
+
+相对 `0.10.1`，`0.10.2` 是同一 `0.10.x` 公开 `Preview` 里程碑下的执行终端链接体验修复，重点补齐 Codex / Claude 等 TUI 把长 URL 或带样式文件路径按固定缩进硬换行后不可点击的问题，并修复运行中终端输出持续刷新时文件链接解析缓存可能滞后或误用旧结果的问题。它不改变当前产品主叙事、安装路径或支持矩阵；当前仍保持 `Preview` 口径。真实 Codex / Claude TUI 输出的手动验证尚未完成，Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 执行节点新增 TUI 硬换行 URL 识别：首片段必须包含明确 scheme，续行必须满足受控 continuation 规则，点击任一可见片段都会打开同一个完整 URL
+- 对同一非默认 ANSI 样式锚定的硬换行文件路径新增高置信重组，保留 `:line:column` 后缀，并继续由 Host 侧按执行节点 cwd 或 workspace exact fallback 验证真实文件
+- hover 反馈新增 hard-wrap 分组下划线：悬停任一片段时同组真实链接片段一起高亮，但不会把 TUI 缩进、边框或 gutter 纳入可点击区域
+- 收紧硬换行拼接边界：不合并相邻完整 URL、缩进说明文字、普通 Markdown 列表、代码块、中文说明、首片段后仍带 prose 的样式片段或无样式文件路径
+- Webview 与 Host 协议补齐 `hardwrap` 链接来源校验，避免真实 VS Code Host 因未知 source 拒绝候选解析或打开请求
+- 运行中的终端文件链接解析会在输出继续到达后复用有效结果、刷新负缓存并在打开前重新解析，降低 live output 下 stale cache 或 delayed refresh 造成的误点风险
+- 终端链接缓存覆盖参与重组的 buffer 行，减少 snapshot redraw、TUI 重绘或运行中输出续写后复用旧目标的风险
+- 新增 `test:protocol-webview-messages`、`test:execution-terminal-links` 与 Agent / Terminal 两类 Playwright hard-wrap / live cache link 回归用例
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 在 Codex / Claude 等 TUI 中遇到被固定缩进拆开的长 URL 时，可直接点击任一可见 URL 片段打开完整目标
+- 需要让跨行文件路径可点击时，优先让 TUI / CLI 输出同一非默认 ANSI 样式的连续路径片段；无样式跨行 path 仍不会被猜测为同一个文件链接
+- 若某个链接只在复制后可见但无法点击，优先检查它是否缺少明确 URL scheme、是否在续行混入自然语言说明，或文件路径是否缺少稳定样式锚点
+- 若文件链接指向的是刚刚由运行中命令创建的文件，等待输出落盘和链接刷新后再点击；Host 打开前仍会重新解析目标，避免沿用过期候选
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 真实 Codex / Claude TUI 输出的手动验证尚未完成；当前验证证据以自动化 fixture 与 Playwright harness 为主
+- TUI 硬换行重组只覆盖明确 scheme URL 和同一非默认 ANSI 样式锚定的文件路径；无样式文件路径、任意自然语言段落跨行 URL 和任意 Markdown 硬换行仍不会被猜测拼接
+- 运行中终端的文件链接仍以 Host 侧文件系统验证为准；文件创建、删除或重命名与输出刷新之间仍可能存在短暂的不可点击或降级为搜索链接窗口
+- 点击可打开重组后的完整目标，但终端文本复制 / 选择仍保留 TUI 输出中的原始换行、缩进或边框字符
+- 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
+- 模板仍只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.1` 升级到 `0.10.2` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.2`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.2` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.10.2` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.2` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.1 - Preview Note Markdown Polish Update
+
+相对 `0.10.0`，`0.10.1` 是同一公开 `Preview` 里程碑下的收口更新，重点补齐关联 Markdown Note 在模板、Remote SSH 拖拽、metadata 预览、图片预览和路径展示上的边界，并把停止后 Agent 的新建 / 重启动作、UI 状态颜色、双市场发布入口和 Marketplace 英文默认文案一起收口。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 关联 Markdown Note 保存为模板时新增逐节点策略：保存为普通 Note 内容快照、仅保留 workspace 相对路径、或保留 workspace 相对路径和文件内容
+- 应用含关联 Markdown Note 的模板时，缺失文件会在节点内显示缺失状态；路径加内容策略遇到已有不同内容时进入冲突恢复，不静默覆盖 workspace 文件
+- Markdown 阅读态支持 YAML front matter：合法 metadata 默认隐藏正文前置块并通过标题栏浮层展示摘要，解析失败时保留原文并给出 warning
+- Markdown 图片预览支持安全 `https:`、受限 `data:image/*;base64`、workspace 相对图片和关联 Markdown 文件相对图片；不支持的 scheme、绝对路径或越界路径 fail closed
+- Remote Markdown 拖拽先通过当前 host authority 准入，再进入读写和 watcher 流程；同 host 资源收敛为统一身份，不同设备或无法确认当前 host 时直接拒绝
+- 关联 Markdown 路径展示与拖拽标题继续收口：当前 host 下隐藏 raw Remote 前缀，复制路径使用用户可见的人类可读路径，拖拽标题可按配置保留扩展名
+- 停止后的 Agent 节点在存在可信恢复上下文时显示并列的 `新建` 与 `重启` 动作，分别对应 fresh start 与恢复当前节点原会话
+- UI 与发布链路补齐默认 panel 激活、执行节点状态胶囊、侧栏列表颜色、notifier sidebar 样式、脚本目录重组、打包失败阻断发布，以及 Marketplace README 默认语言改为英文
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 需要复用关联 Markdown Note 布局时，优先在保存模板时显式选择每个关联 Note 的保存策略；团队约定文件入口优先使用“仅保留 workspace 相对路径”，初始化文档脚手架才使用“路径 + 内容”
+- 使用 Markdown metadata 时，把 YAML front matter 放在文件开头；解析失败会保守保留原文，不会把未确认 metadata 写成已生效状态
+- 在 Remote SSH / WSL / Dev Container 中拖拽 Markdown 文件时，只拖入当前 host 可确认的文件；不同 Remote 或无法确认当前 host 的资源会被拒绝，以避免跨设备误关联
+- 停止 Agent 后，需要新一轮干净会话时点 `新建`；需要回到当前节点刚停止的会话时点 `重启`
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- Markdown metadata 只识别文件开头的 YAML front matter；解析失败时不隐藏原文，也不把 metadata 当作可靠状态
+- Markdown 图片预览只做安全只读展示，不引入图片上传、图片编辑、附件管理或任意本地绝对路径访问
+- Remote Markdown 拖拽在无法确认当前完整 host authority 时会 fail closed；这可能拒绝部分理论上可读但身份不清的资源
+- 模板仍只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.0` 升级到 `0.10.1` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.1`，包含 sidebar 样式 / 文案收口，但不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.10.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.0 - Preview Note Markdown Association Update
+
+相对 `0.9.1`，`0.10.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 `Note` 节点从画布内 Markdown 工作表面扩展到可关联 workspace Markdown 文件：普通 Note 可以保存为 `.md` 文件后继续作为 Note 编辑，`.md` / `.markdown` 文件可以拖入空白画布创建关联 Note，关联 Note 以磁盘文件为权威并支持打开文件、复制路径、外部保存刷新、缺失提示与并发冲突恢复。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 新增普通 Note 保存为关联 Markdown 文件的入口，节点标题栏操作区与命令面板都可触发，并在已有目标文件时要求用户显式选择覆盖、保留文件内容并关联或取消
+- 新增空白画布拖放 `.md` / `.markdown` 文件创建关联 Note；同一次拖拽中的重复资源会去重，已关联文件再次拖入时可选择继续添加新 Note 或定位已有 Note
+- 关联 Markdown Note 以磁盘文件内容为权威：未保存的 VS Code editor buffer 不会影响 Note 展示，外部保存或文件系统变化后才刷新到画布
+- 关联 Note 显示人类可读完整路径，可直接打开文件或复制 Markdown 路径；删除画布节点不会删除关联文件，也不提供隐式解除关联
+- 关联 Markdown 写回加入基于文件 revision 的乐观并发保护；编辑期间或提交时发现文件已变化会进入 `dirty-conflict`，避免静默覆盖外部修改
+- 未解决冲突的本地草稿改存到 workspace storage 下的 `note-markdown-drafts/`，持久化画布状态只保存草稿引用，并在重新加载后继续提供重新加载、覆盖文件或复制草稿的恢复路径
+- 普通 Note 继续保留 8,000 字符上限与轻量画布内上下文定位；关联 Markdown Note 不复用该上限，避免大文件读取或写回被截断
+- 修正 Note 编辑态行号按视觉行对齐，并补齐关联 Markdown 路径复制、缺失/不可读状态、冲突恢复和真实 VS Code smoke 覆盖
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 需要把长期上下文保留到仓库文件时，优先把普通 Note 保存为 `.md` 文件，或把已有 `.md` / `.markdown` 文件拖入画布创建关联 Note
+- 关联 Markdown Note 的正文以磁盘文件为准；如果你在 VS Code editor 中修改了同一个文件，保存后才会刷新到画布
+- 出现关联 Markdown 冲突时，先使用 `复制草稿` 保留本地修改，再根据需要选择重新加载磁盘内容或显式覆盖文件
+- 如果旧版 VS Code view layout 缓存导致 sidebar 图标或 view 位置异常，可手动移动 view，或执行 `View: Reset View Locations` 恢复默认布局
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- 关联 Markdown 文件当前只支持 `.md` 与 `.markdown` 文件；不把任意富文本、目录、未落盘 editor buffer 或 workspace 外不安全资源当成 Note 正文来源
+- 关联 Markdown Note 删除节点不会删除文件，当前也不提供解除关联后自动回写为普通 Note 的路径
+- 关联 Markdown 冲突必须由用户显式重新加载或覆盖解决；未确认前不会把草稿静默写回磁盘
+- 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.9.1` 升级到 `0.10.0` 都通过 `Visual Studio Marketplace` 获取；后续 `0.10.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.0`，不引入新的通知行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.0` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.10.0` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.9.1 - Preview Notifier Guidance Update
+
+相对 `0.9.0`，`0.9.1` 是同一公开 `Preview` 里程碑下的一轮收口更新，重点收口桌面通知 companion 的可理解性与侧栏入口一致性：`Dev Session Canvas Notifier` 侧栏拆成 `概览`、`注意事项`、平台说明和 Agent 配置多个 section，配置片段支持更清晰的代码高亮，Marketplace 文案补齐本机系统环境与远端 Agent 配置边界，同时统一主扩展 / 节点 / 模板 / notifier 的 Activity Bar badge 视觉。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。
+
+### 本版本聚焦
+
+- 收口 `Dev Session Canvas Notifier` sidebar 结构：从单个通知环境视图拆成 `概览`、`注意事项`、`macOS`、`Linux`、`Windows`、`Codex` 与 `Claude Code` 多个 section，并把设置齿轮固定在 `概览` 标题行
+- 新增 notifier sidebar 富文本渲染：支持行内代码与 fenced code block 混排，并为 `JSON` / `TOML` 配置片段提供深浅主题下可读的语法高亮
+- 补齐 notifier 接入指导：Marketplace 文案明确桌面通知后端应安装在本机 UI 侧，`Codex` / `Claude Code` 通知配置应写在 Agent 实际运行宿主上
+- 修正 notifier 状态判断：优先使用最近一次投递结果的 `activationMode` 展示点击回跳能力，并在 sidebar 未打开时跳过无意义的环境探测
+- 修正 macOS `osascript` 回退通知行为：不再额外触发 `beep`，改为直接请求 `display notification` 的系统声音，降低通知出现时的闪屏与噪音感
+- 统一 Activity Bar badge 图标体系：新增 `节点` sidebar section 专属图标，统一 nodes / templates / notifier badge 构图，并重新生成 notifier 图标与主扩展圆形头像安全区图
+- 新增 badge 几何与头像安全区自动化测试，并把 notifier rich text / status 测试纳入 `test:notifier-source`，提高发布前视觉与文案结构回归覆盖
+
+### 推荐体验路径
+
+- 在受信任工作区中使用
+- `Remote SSH` 主路径已验证可用，且当前验证证据最充分
+- 需要桌面通知时，优先打开 `Dev Session Canvas Notifier` 的 `概览` 与对应平台 section，确认本机 UI 侧通知后端、最近一次投递结果和点击回跳能力
+- 如果 Agent 运行在 `Remote SSH`、WSL 或 Dev Container，请把 `Codex` / `Claude Code` 的通知配置写到 Agent 实际运行宿主，而不是只写在本机 UI 侧
+- 如果旧版 VS Code view layout 缓存导致 sidebar 图标或 view 位置异常，可手动移动 view，或执行 `View: Reset View Locations` 恢复默认布局
+
+### 已知限制
+
+- 当前仍为 `Preview`，尚非稳定正式版
+- 不支持 `Virtual Workspace`
+- Windows 本地 workspace 下使用 `Codex` 时，执行节点内当前仍存在终端历史无法向上翻页的已知问题
+- notifier companion 只负责把已收到的 attention signal 投递到本机 UI 侧桌面通知；是否产生 attention signal 仍取决于 provider CLI 与运行宿主配置
+- notifier 的点击回跳能力取决于平台后端、系统通知服务与当前 VS Code URI 处理能力；不支持点击回跳时仍会尽量保证通知可见
+- Activity Bar 图标与 badge 更新不改变已有 workspace 的 view layout 缓存；极少数旧布局仍可能需要手动重置
+- 文件活动仍依赖 provider 提供结构化事件；`Codex` 当前没有已确认的 provider 原生文件事件接口，因此不会凭空生成自动文件对象
+- 模板当前只覆盖 `Agent`、`Terminal` 与 `Note` 的静态布局和配置，不保存运行中会话、终端输出、文件节点、文件活动边、模板标签、缩略图、云同步或模板历史
+- `runtimePersistence.enabled = true` 的 guarantee 仍取决于 backend 与平台组合；Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时具备最强验证证据
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.9.0` 升级到 `0.9.1` 都通过 `Visual Studio Marketplace` 获取；后续 `0.9.x` 更新同样通过 Marketplace 升级获取
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.9.1`，并包含 sidebar 结构、接入指导、代码高亮、状态判断和图标更新
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.9.1` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 若此前从 `0.1.2` 升级到 `0.2.0` 后沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能已经被拆成两个独立图标；这不表示重复安装了两个扩展，升级到 `0.9.1` 后仍可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.9.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续 `0.9.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.9.0 - Preview Canvas Overview Update
 
 相对 `0.8.0`，`0.9.0` 是一轮新的公开 `Preview` 里程碑更新，重点改善大画布导航、低倍率概览和 Agent CLI 缺失时的补救路径：fit view 可在节点分散时缩到 `0.4` 以下，默认概览态会在节点内容区显示标题，Agent 启动找不到 `Codex` / `Claude Code` 命令时会直接打开 CLI 选择与安装入口，并修正 Quick Input 启动命令预设误选等问题。当前仍保持 `Preview` 口径；Windows 下使用 `Codex` 时执行节点内历史暂时无法向上翻页，仍是本版本显式保留的已知限制。

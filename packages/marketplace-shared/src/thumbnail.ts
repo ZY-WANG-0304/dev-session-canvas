@@ -21,6 +21,7 @@ interface ThumbnailNode {
     width: number;
     height: number;
   };
+  metadata?: unknown;
 }
 
 interface ThumbnailEdge {

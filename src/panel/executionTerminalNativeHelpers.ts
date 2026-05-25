@@ -131,7 +131,7 @@ export async function resolveExecutionFileLink(
     }
   }
 
-  if (link.source === 'fallback') {
+  if (link.source === 'fallback' || link.source === 'hardwrap') {
     const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(
       sanitizedPath,
       link,
@@ -214,8 +214,7 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
 
 export async function openExecutionTerminalLink(
   link: ExecutionTerminalOpenLink,
-  context: ExecutionTerminalPathContext,
-  readResolvedFileLink?: (resolvedId: string) => ResolvedExecutionFileLink | undefined
+  context: ExecutionTerminalPathContext
 ): Promise<OpenExecutionTerminalLinkResult> {
   if (link.linkKind === 'url') {
     if (!(await ensureExecutionTerminalUrlSchemeAllowed(link.url))) {
@@ -234,9 +233,7 @@ export async function openExecutionTerminalLink(
     return openExecutionTerminalSearchLink(link, context);
   }
 
-  const cachedResolved =
-    typeof link.resolvedId === 'string' ? readResolvedFileLink?.(link.resolvedId) : undefined;
-  const resolved = cachedResolved ?? (await resolveExecutionFileLink(link, context));
+  const resolved = await resolveExecutionFileLink(link, context);
   if (!resolved) {
     return { opened: false };
   }

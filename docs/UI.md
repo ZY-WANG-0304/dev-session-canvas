@@ -1,5 +1,5 @@
 ---
-version: 2026-05-12
+version: 2026-05-17
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -17,16 +17,21 @@ colors:
   button-primary: "var(--vscode-button-background)"
   button-primary-text: "var(--vscode-button-foreground)"
   button-secondary: "var(--vscode-button-secondaryBackground, color-mix(in srgb, var(--vscode-editor-background) 86%, var(--vscode-sideBar-background) 14%))"
-  semantic-running: "#22c55e"
-  semantic-ready: "#3b82f6"
-  semantic-success: "#10b981"
-  semantic-warning: "#f59e0b"
-  semantic-error: "var(--vscode-errorForeground, #ef4444)"
-  accent-execution-primary: "color-mix(in srgb, #22c55e 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%)"
-  accent-execution-secondary: "color-mix(in srgb, #38bdf8 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%)"
-  accent-document: "color-mix(in srgb, #a78bfa 24%, var(--vscode-widget-border, var(--vscode-panel-border)) 76%)"
-  accent-resource: "color-mix(in srgb, #f59e0b 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%)"
-  accent-resource-group: "color-mix(in srgb, #f97316 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%)"
+  node-agent: "#22c55e"
+  node-terminal: "#38bdf8"
+  node-note: "#a78bfa"
+  node-file: "#f59e0b"
+  node-file-list: "#f97316"
+  status-starting: "var(--vscode-debugIcon-startForeground, var(--vscode-focusBorder))"
+  status-running: "var(--vscode-debugIcon-startForeground, var(--vscode-debugIcon-restartForeground, var(--vscode-focusBorder)))"
+  status-resuming: "var(--vscode-debugIcon-restartForeground, var(--vscode-focusBorder))"
+  status-success: "var(--vscode-debugIcon-continueForeground, var(--vscode-focusBorder))"
+  status-waiting: "var(--vscode-debugIcon-pauseForeground, var(--vscode-focusBorder))"
+  status-stopped: "var(--vscode-debugIcon-stopForeground, var(--vscode-descriptionForeground))"
+  status-disconnected: "var(--vscode-debugIcon-disconnectForeground, var(--vscode-descriptionForeground))"
+  status-history: "var(--vscode-debugIcon-stepBackForeground, var(--vscode-descriptionForeground))"
+  status-idle: "var(--vscode-debugView-stateLabelForeground, var(--vscode-descriptionForeground))"
+  status-error: "var(--vscode-debugView-exceptionLabelForeground, var(--vscode-debugConsole-errorForeground, var(--vscode-errorForeground, var(--vscode-focusBorder))))"
 typography:
   ui:
     fontFamily: "var(--vscode-font-family)"
@@ -101,8 +106,10 @@ components:
     rounded: "{rounded.widget-sm}"
     minHeight: 24px
   status-pill:
-    backgroundColor: "semantic color mixed at 10%-12% with transparent"
-    borderColor: "semantic color mixed at 28%-34% with panel border"
+    accent: "VSCode debug/status token by state"
+    backgroundColor: "status accent mixed at 18% with transparent"
+    borderColor: "status accent mixed at 42% with panel border"
+    textColor: "status accent; text is treated as a status indicator"
     typography: "{typography.caption}"
     rounded: "{rounded.widget-sm}"
   runtime-frame:
@@ -136,13 +143,13 @@ components:
 
 ### Theme Contract
 
-所有用户可见层默认从 VSCode theme token 取色。只有在 VSCode 没有对应语义 token、且需要表达对象类型、状态或关系色时，才允许使用少量固定色，并必须通过 `color-mix` 降低饱和度。
+所有用户可见层默认从 VSCode theme token 取色。只有在 VSCode 没有对应语义 token、且需要表达对象类型或关系色时，才允许使用少量固定色，并必须通过 `color-mix` 降低饱和度；状态色优先使用 VSCode 的 debug / status 相关 token。
 
 优先级：
 
 1. VSCode 语义 token，例如 `--vscode-editor-background`、`--vscode-button-background`、`--vscode-focusBorder`。
 2. 当前 surface 相关 token 的 fallback，例如 `editorWidget` -> `editor`。
-3. 低占比固定强调色，例如对象类型边框、状态胶囊或关系预设色。
+3. 低占比固定强调色，例如节点类型识别色和关系预设色。
 4. 禁止把固定背景色、固定渐变或固定深色混色作为默认产品底色。
 
 ### Token Roles
@@ -150,8 +157,8 @@ components:
 - `canvas` / `surface` / `surface-muted` / `surface-chrome`：只负责建立画布、widget、对象正文和标题栏层级。
 - `text` / `text-muted` / `icon`：只负责主文本、副文本和图标可读性。
 - `border` / `border-subtle` / `focus`：只负责边界、弱分割和当前焦点。
-- `semantic-*`：只负责状态解释，不替代结构化状态或事实来源。
-- `accent-*`：只负责对象类型弱区分，不用于大面积内部染色。
+- `node-*`：产品识别色，只负责节点类型弱区分，不用于表达状态，也不用于大面积内部染色。
+- `status-*`：状态指示色，优先来自 VSCode debug / status token，不替代结构化状态或事实来源。
 
 ## Typography
 
@@ -266,6 +273,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 状态摘要和宿主级导航优先使用宿主原生列表语义。
 - 需要更丰富行内控件时，应保持最小自绘 surface，不把局部能力扩展成完整面板。
 - 所有 sidebar section 都应贴近 VSCode 原生 sidebar：扁平列表、弱 hover、紧凑行距、少量 view title action。
+- Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色：默认标题文本优先使用全局 `foreground` 并以 `sideBar.foreground` 兜底；hover 使用 `list.hoverBackground` / `list.hoverForeground`；当前焦点选中项使用 `list.activeSelectionBackground` / `list.activeSelectionForeground`；失焦但保留选中项使用 `list.inactiveSelectionBackground` / `list.inactiveSelectionForeground`。不要把 `sideBar.foreground` 当作所有 row title 的唯一前景色，也不要只换背景不换对应前景色。
 - 禁止在 sidebar 中复制选中对象正文、连续运行输出或完整 inspector，也不要把 sidebar 做成 mini dashboard。
 
 具体 section 职责、功能范围与验收标准分别记录在 `docs/product-specs/canvas-sidebar-controls.md`、`docs/product-specs/canvas-sidebar-node-and-session-lists.md` 和 `docs/product-specs/canvas-template-feature.md`。
@@ -275,11 +283,23 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 节点的通用视觉语言是窗口化、工具化、低噪音：
 
 - 外框使用 1px border、轻阴影、低圆角和类型弱边框。
+- 节点类型颜色是产品识别色，可用于 marker、minimap 和弱边框；它们不是状态色，也不是主题 token 选择错误。
 - 标题栏承载对象身份、可选副标题和右侧动作区。
 - 正文区按对象类型承载内容，但不应引入多层 card-in-card。
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。
+
+### Node Title And Subtitle
+
+节点标题与副标题共享同一套标题栏信息层级：
+
+- 标题是对象身份，使用 `window-title` 字体层级，可编辑，保持单行，不承载来源路径、启动命令或长说明。
+- 副标题是可选元信息行，使用 `subtitle` 字体层级，可表达 Agent 启动命令、Terminal shell path、关联 Markdown 文件路径等来源信息。
+- 副标题文本必须保留完整的人类可读值，不在数据层按字符数预截断，也不为 Canvas 节点做中间省略；`resourceUri` 这类内部身份不能直接进入可见副标题。
+- 可视最大长度由标题栏布局决定：Agent 标题副本区当前最多 `340px`，Terminal 与 Note 使用扣除右侧动作区后的标题栏剩余宽度；超出时统一单行 ellipsis。
+- 溢出 tooltip 只在实际溢出时出现，内容应是同一条完整人类可读副标题；不要为了常驻 tooltip 单独维护另一份缩写/完整文案。
+- 副标题不使用链接视觉，不加下划线、不使用 pointer cursor；打开文件、查看帮助等动作放在标题栏按钮或明确菜单中。
 
 ### Edges & Anchors
 
@@ -302,6 +322,10 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 ### Status
 
 - 状态胶囊用于运行、等待、完成、错误、受限等短状态。
+- 状态胶囊的文本与圆点一样属于状态指示，不按普通正文文本处理；背景使用状态 accent 的 18%，边框使用状态 accent 的 42% 与 panel border 混合。
+- 状态胶囊的 `tone-*` 只负责替换 accent；`idle` 和 `error` 也复用同一套 18% 背景与 42% 边框强度，不再单独回退到特殊背景/边框 token。
+- `Agent` / `Terminal` 标题栏状态胶囊、概览态执行节点状态胶囊、sidebar 节点列表中的状态胶囊都应复用同一套状态 accent、背景和边框推导规则；尺寸可以按承载面缩放，但颜色体系不能分叉。
+- `Note` 状态文案必须使用共享映射：关联 Markdown 的 `contentSource.status = ok` 展示为 `已关联文件`，普通内嵌 `ready` 展示为 `普通笔记`；异常关联状态使用 `tone-error`。
 - 提醒态不等于错误态；视觉上应和错误态区分，具体提醒链路由 `docs/product-specs/canvas-node-notifications.md` 与 `docs/design-docs/index.md` 中的通知相关设计文档定义。
 - 动画型状态不能作为唯一反馈；motion 实现检查清单见 `docs/FRONTEND.md`。
 
@@ -310,7 +334,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 ### Do
 
 - 使用 VSCode token 和当前主题作为所有 surface 的默认来源。
-- 通过标题栏、边框、状态胶囊和少量图标表达对象类型与状态。
+- 通过标题栏、边框、状态胶囊和少量图标表达对象类型与状态；对象类型颜色与状态颜色必须分层使用。
 - 当交互取舍会改变用户心智时，同步更新对应 `docs/design-docs/` 文档。
 
 ### Don't
@@ -327,5 +351,5 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 
 ## Known Gaps
 
-- 状态与对象类型强调色仍包含少量固定 hex，通过 `color-mix` 降饱和；如果后续形成更稳定 token，应回写本文和实现。
+- 节点类型和关系预设色仍包含少量固定 hex；这是产品识别色而非状态色。若后续形成更稳定的 host token，应回写本文和实现。
 - 本文是 UI 基线，不替代 `docs/FRONTEND.md` 的实现维度清单，也不替代具体设计文档的决策记录。

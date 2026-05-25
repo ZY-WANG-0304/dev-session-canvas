@@ -25,6 +25,7 @@ export const COMMAND_IDS = {
   openCodexAuthFile: 'devSessionCanvas.openCodexAuthFile',
   openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
+  saveNoteAsMarkdownFile: 'devSessionCanvas.saveNoteAsMarkdownFile',
   showNodeList: 'devSessionCanvas.showNodeList',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
@@ -105,6 +106,7 @@ export const CONFIG_KEYS = {
   legacyNotificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   legacyNotificationPreferNotifierCompanion: 'devSessionCanvas.notifications.preferNotifierCompanion',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
+  agentAbnormalOutputTextNotifications: 'devSessionCanvas.notifications.agentAbnormalOutputTextNotifications',
   canvasOverviewMode: 'devSessionCanvas.canvas.overviewMode',
   canvasOverviewZoomThreshold: 'devSessionCanvas.canvas.overviewZoomThreshold',
   terminalShell: 'devSessionCanvas.terminal.shell',
@@ -115,10 +117,12 @@ export const CONFIG_KEYS = {
   filesPresentationMode: 'devSessionCanvas.files.presentationMode',
   fileNodeDisplayStyle: 'devSessionCanvas.fileNode.displayStyle',
   filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
-  filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode'
+  filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode',
+  noteMarkdownStripExtensionFromDroppedFileTitle: 'devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle'
 } as const;
 
 export const CONTEXT_KEYS = {
+  panelVisibilityManaged: 'devSessionCanvas.canvas.panelVisibilityManaged',
   panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible'
 } as const;
 

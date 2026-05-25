@@ -5,6 +5,8 @@ import type {
   AttentionNotificationRequest
 } from '../../../../packages/attention-protocol/src/index';
 
+const MACOS_OSASCRIPT_NOTIFICATION_SOUND_NAME = 'Submarine';
+
 export interface DesktopNotificationOptions {
   request: AttentionNotificationRequest;
   callbackUri?: string;
@@ -104,18 +106,14 @@ export function buildMacOSTerminalNotifierInvocation(
 }
 
 export function buildMacOSAppleScriptInvocation(options: DesktopNotificationOptions): ShellInvocation {
-  const scriptLines = [];
-  if (options.playSound !== false) {
-    scriptLines.push('beep');
-  }
-  scriptLines.push(
-    `display notification ${appleScriptString(options.request.message)} with title ${appleScriptString(options.request.title)}`
-  );
+  const displayNotificationLine =
+    `display notification ${appleScriptString(options.request.message)} with title ${appleScriptString(options.request.title)}` +
+    (options.playSound !== false ? ` sound name ${appleScriptString(MACOS_OSASCRIPT_NOTIFICATION_SOUND_NAME)}` : '');
   return {
     backend: 'macos-osascript',
     activationMode: 'none',
     command: 'osascript',
-    args: ['-e', scriptLines.join('\n')],
+    args: ['-e', displayNotificationLine],
     postedDetail: options.callbackUri ? 'posted-without-activation' : undefined
   };
 }
@@ -203,6 +201,7 @@ export function launchShellInvocation(
       stderr: string;
       stdout: string;
     }) => Promise<AttentionNotificationDeliveryResult | undefined>;
+    spawnCommand?: typeof spawn;
   }
 ): Promise<AttentionNotificationDeliveryResult> {
   return new Promise((resolve) => {
@@ -211,7 +210,8 @@ export function launchShellInvocation(
     let stderr = '';
     let spawnSuccessTimer: NodeJS.Timeout | undefined;
 
-    const child = spawn(invocation.command, invocation.args, {
+    const spawnCommand = options.spawnCommand ?? spawn;
+    const child = spawnCommand(invocation.command, invocation.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       detached: false

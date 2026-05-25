@@ -92,7 +92,7 @@ updated_at: 2026-05-24
 - 风险：浏览器端 OAuth 和 VSCode 端认证如果共用一套 token 处理，很容易把 GitHub access token 持久化到不该保存的位置。当前缓解是后端只在登录换取市场 session 时临时校验 GitHub token，不把 GitHub token 写入 D1；浏览器使用 HttpOnly session cookie，VSCode 使用短期 marketplace token 并存入 `context.secrets`。
 - 风险：远端市场元数据写入模板 JSON 会破坏本地模板的可分享性。当前缓解是市场 canonical metadata 放在 D1，安装到本地时写 sidecar 元数据；`template.json` 仍保持 `CanvasTemplateDocument` 语义。
 - 风险：VSCode Webview 直接加载远程站点会破坏 CSP、离线可用性和 Remote/Codespaces 行为。当前缓解是 Webview 市场页只加载扩展打包资源，通过 message passing 和 HTTPS API 与宿主 / 远端通信。
-- 风险：自动化内容安全检查仍是确定性最小策略。当前 Worker API 已执行 schema、大小、字段长度、PNG 类型、危险链接 scheme 和控制字符检查；是否接入外部审核、关键词库或模型化内容安全，需要在治理实现前另写设计补充。
+- 风险：自动化内容安全检查仍是确定性最小策略。当前 Worker API 已执行 schema、大小、字段长度、PNG 类型、危险链接 scheme 和控制字符检查；关联 Markdown Note 的 `relativePath` 与 `templateContentMode` 也纳入同一检查，避免路径型模板绕过文本扫描。是否接入外部审核、关键词库或模型化内容安全，需要在治理实现前另写设计补充。
 
 ## 7. 正式方案
 
@@ -166,7 +166,7 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 - `GET /api/v1/templates/:id/download?version=`：记录下载并返回模板包内容或短期下载地址。
 - `GET /api/v1/templates/:id/thumbnail?version=`：返回指定版本缩略图；preview / production 有 R2 binding 时读取 R2 PNG，本地无 R2 时返回显式 seed SVG 降级图。
 - `GET /api/v1/auth/github/start`、`GET /api/v1/auth/github/callback`、`GET /api/v1/auth/me`、`POST /api/v1/auth/logout`：浏览器 GitHub OAuth 登录、callback、当前用户读取和退出登录；callback 使用 `state` 与 PKCE，Worker 只把市场 session 写入 HttpOnly cookie，不持久化 GitHub access token。`start` / `logout` 可接收 `return_to`，但只允许回到 `/templates` 下的同源路径，避免开放重定向。
-- `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 使用 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都应转换到这一个 contract。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
+- `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 使用 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都应转换到这一个 contract。`CanvasTemplateDocument` 继续只允许 Agent / Terminal / Note 模板节点；主线新增的 file / file-list 画布节点不进入模板市场包。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
 - `POST /api/v1/templates/:id/versions`：发布新版本，需要作者权限。
 - `POST /api/v1/templates/:id/like`：点赞或取消点赞，需要认证。
 - `POST /api/v1/templates/:id/report`：举报，需要认证。
@@ -227,7 +227,7 @@ GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers
 
 ### 7.7 上传校验、治理与安全边界
 
-上传入口按顺序执行：请求大小限制、MIME / 扩展名检查、JSON parse、`CanvasTemplateDocument` / 市场 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、缩略图类型和尺寸检查、文本字段长度限制、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
+上传入口按顺序执行：请求大小限制、MIME / 扩展名检查、JSON parse、`CanvasTemplateDocument` / 市场 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、缩略图类型和尺寸检查、文本字段长度限制、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
 
 内容安全在 Phase 1-4 范围内只做确定性检查和举报治理，不把外部 AI 审核服务列为硬依赖。若后续需要接入第三方审核，应新增设计文档说明数据出境、误杀处理和人工复核流程。
 
@@ -258,7 +258,7 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；但真实 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、点赞/举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析。真实 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、点赞/举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。

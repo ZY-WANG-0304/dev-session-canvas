@@ -1,3 +1,4 @@
+import type { AgentProviderKind } from './protocol';
 import { parseExecutionAttentionSignals } from './executionAttentionSignals';
 
 export interface AgentActivityHeuristicState {
@@ -7,6 +8,11 @@ export interface AgentActivityHeuristicState {
   lastNotificationAtMs?: number;
   lastBellAtMs?: number;
   lastSpinnerAtMs?: number;
+  lastAbnormalStreamAtMs?: number;
+  lastAbnormalStreamMessage?: string;
+  lastAbnormalStreamSignature?: string;
+  lastAbnormalStreamScanLength?: number;
+  abnormalStreamCarryover?: string;
   oscCarryover: string;
 }
 
@@ -21,6 +27,8 @@ export interface AgentOutputHeuristicSnapshot {
   sawPrompt: boolean;
   sawSpinner: boolean;
   sawLineBoundary: boolean;
+  sawAbnormalStreamInterruption: boolean;
+  abnormalStreamInterruptionMessage?: string;
 }
 
 export interface AgentWaitingInputEvaluation {
@@ -36,10 +44,17 @@ const AGENT_WAITING_INPUT_NOTIFICATION_QUIET_MS = 260;
 const AGENT_WAITING_INPUT_HARD_FALLBACK_MS = 1600;
 const AGENT_WAITING_INPUT_SPINNER_GRACE_MS = 900;
 const PROMPT_TAIL_LIMIT = 256;
+const ABNORMAL_STREAM_TAIL_LIMIT = 1200;
+const ABNORMAL_STREAM_CARRYOVER_LIMIT = 320;
 
 const AGENT_SPINNER_REDRAW_PATTERN = /(?:\r(?!\n)|\u0008|\u001b\[[0-9;?]*[ABCDGHJKfhlmnrsu])/u;
 const AGENT_SPINNER_GLYPH_PATTERN = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/u;
 const AGENT_PROMPT_PATTERN = /(?:^|\n)\s{0,4}(?:>|›|❯|≫|»)\s*$/u;
+// `response.completed` is a Codex/OpenAI Responses turn-completion event, not a
+// Claude Code contract. Keep provider-specific stream failures explicit here.
+const CODEX_ABNORMAL_STREAM_PATTERNS = [
+  /stream\s+disconnected\s+before\s+completion.*stream\s+closed\s+before\s+response\.completed/iu
+];
 
 export function createAgentActivityHeuristicState(): AgentActivityHeuristicState {
   return {
@@ -48,7 +63,8 @@ export function createAgentActivityHeuristicState(): AgentActivityHeuristicState
 }
 
 export function resetAgentActivityHeuristics(
-  state: AgentActivityHeuristicState
+  state: AgentActivityHeuristicState,
+  currentBuffer?: string
 ): AgentActivityHeuristicState {
   state.lastOutputAtMs = undefined;
   state.lastLineBoundaryAtMs = undefined;
@@ -56,7 +72,23 @@ export function resetAgentActivityHeuristics(
   state.lastNotificationAtMs = undefined;
   state.lastBellAtMs = undefined;
   state.lastSpinnerAtMs = undefined;
+  resetAgentAbnormalStreamInterruptionHeuristics(state, currentBuffer);
   state.oscCarryover = '';
+  return state;
+}
+
+export function resetAgentAbnormalStreamInterruptionHeuristics(
+  state: AgentActivityHeuristicState,
+  currentBuffer?: string
+): AgentActivityHeuristicState {
+  state.lastAbnormalStreamAtMs = undefined;
+  state.lastAbnormalStreamMessage = undefined;
+  state.lastAbnormalStreamSignature = undefined;
+  state.lastAbnormalStreamScanLength =
+    typeof currentBuffer === 'string'
+      ? stripTerminalControlSequences(currentBuffer).replace(/\r/g, '').length
+      : undefined;
+  state.abnormalStreamCarryover = undefined;
   return state;
 }
 
@@ -64,9 +96,11 @@ export function recordAgentOutputHeuristics(
   state: AgentActivityHeuristicState,
   chunk: string,
   buffer: string,
+  provider?: AgentProviderKind,
   now: number = Date.now()
 ): AgentOutputHeuristicSnapshot {
   state.lastOutputAtMs = now;
+  const strippedBuffer = stripTerminalControlSequences(buffer).replace(/\r/g, '');
 
   const attentionSignals = parseExecutionAttentionSignals(chunk, state.oscCarryover);
   state.oscCarryover = attentionSignals.carryover;
@@ -93,7 +127,7 @@ export function recordAgentOutputHeuristics(
     state.lastLineBoundaryAtMs = undefined;
   }
 
-  const promptTail = stripTerminalControlSequences(buffer).replace(/\r/g, '').slice(-PROMPT_TAIL_LIMIT);
+  const promptTail = strippedBuffer.slice(-PROMPT_TAIL_LIMIT);
   const sawPrompt = AGENT_PROMPT_PATTERN.test(promptTail);
   if (sawPrompt) {
     state.lastPromptAtMs = now;
@@ -101,13 +135,71 @@ export function recordAgentOutputHeuristics(
     state.lastPromptAtMs = undefined;
   }
 
+  const abnormalStreamScanStart = state.lastAbnormalStreamScanLength ?? 0;
+  const abnormalStreamNewOutput =
+    strippedBuffer.length > abnormalStreamScanStart
+      ? strippedBuffer.slice(abnormalStreamScanStart)
+      : normalizedChunk;
+  const abnormalStreamScanText = `${state.abnormalStreamCarryover ?? ''}${abnormalStreamNewOutput}`;
+  const abnormalStreamInterruptionMessage = provider
+    ? extractAgentAbnormalStreamInterruptionMessage(abnormalStreamScanText, provider)
+    : undefined;
+  if (provider) {
+    state.lastAbnormalStreamScanLength = strippedBuffer.length;
+    state.abnormalStreamCarryover = abnormalStreamScanText.slice(-ABNORMAL_STREAM_CARRYOVER_LIMIT);
+  }
+  let sawAbnormalStreamInterruption = false;
+  if (abnormalStreamInterruptionMessage) {
+    const abnormalStreamSignature = normalizeAgentAbnormalStreamInterruptionSignature(
+      abnormalStreamInterruptionMessage
+    );
+    sawAbnormalStreamInterruption = abnormalStreamSignature !== state.lastAbnormalStreamSignature;
+    state.lastAbnormalStreamAtMs = now;
+    state.lastAbnormalStreamMessage = abnormalStreamInterruptionMessage;
+    state.lastAbnormalStreamSignature = abnormalStreamSignature;
+  }
+
   return {
     sawBell: attentionSignals.bellCount > 0,
     sawNotification: attentionSignals.notificationCount > 0,
     sawPrompt,
     sawSpinner,
-    sawLineBoundary
+    sawLineBoundary,
+    sawAbnormalStreamInterruption,
+    abnormalStreamInterruptionMessage
   };
+}
+
+export function extractAgentAbnormalStreamInterruptionMessage(
+  output: string,
+  provider: AgentProviderKind = 'codex',
+  scanStart = 0
+): string | undefined {
+  if (provider !== 'codex') {
+    return undefined;
+  }
+
+  const stripped = stripTerminalControlSequences(output).replace(/\r/g, '');
+  const safeScanStart = Math.min(Math.max(0, scanStart), stripped.length);
+  const tailStart = Math.max(safeScanStart, stripped.length - ABNORMAL_STREAM_TAIL_LIMIT);
+  const tail = stripped.slice(tailStart);
+  const lines = tail
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (CODEX_ABNORMAL_STREAM_PATTERNS.some((pattern) => pattern.test(line))) {
+      return line.length > 240 ? `${line.slice(0, 240)}...` : line;
+    }
+  }
+
+  return undefined;
+}
+
+export function normalizeAgentAbnormalStreamInterruptionSignature(message: string): string {
+  return message.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 export function evaluateAgentWaitingInputTransition(

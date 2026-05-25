@@ -10,16 +10,16 @@
 
 | 文档 | 主题 | 状态 | 依据 | 最后更新 |
 | --- | --- | --- | --- | --- |
-| `docs/product-specs/agent-launch-modes-and-restart.md` | Agent 创建前启动方式、默认启动参数与停止后重启/新会话分流 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/design-docs/execution-lifecycle-and-recovery.md` | 2026-04-24 |
+| `docs/product-specs/agent-launch-modes-and-restart.md` | Agent 创建前启动方式、默认启动参数与停止后重启/新会话分流 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/design-docs/execution-lifecycle-and-recovery.md` | 2026-05-18 |
 | `docs/product-specs/agent-terminal-clipboard-shortcuts.md` | Agent / Terminal 执行节点的复制、粘贴与 `Ctrl+C` 打断冲突处理 | 已确认 | `ARCHITECTURE.md`、`docs/design-docs/execution-terminal-clipboard-shortcuts.md`、VSCode 原生 Terminal upstream 调研 | 2026-05-09 |
 | `docs/product-specs/canvas-graph-links-and-file-activity.md` | 画布通用关系连线、Agent 文件活动投影、文件节点与文件列表节点 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-graph-links.md`、`docs/design-docs/canvas-file-activity-view.md` | 2026-04-21 |
-| `docs/product-specs/canvas-navigation-and-workbench-polish.md` | 画布导航、默认 `panel` 主路径、标题栏原生收口与空白区右键创建 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md` | 2026-04-13 |
-| `docs/product-specs/canvas-node-notifications.md` | 画布节点通知：终端注意力信号桥接、节点视觉提示、强提醒模式与 notifier companion 优先回退链路 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`src/common/executionAttentionSignals.ts`、`src/common/agentActivityHeuristics.ts` | 2026-05-09 |
+| `docs/product-specs/canvas-navigation-and-workbench-polish.md` | 画布导航、默认 `panel` 主路径、标题栏原生收口、空白区右键创建与低倍率概览 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md` | 2026-05-15 |
+| `docs/product-specs/canvas-node-notifications.md` | 画布节点通知：终端注意力信号桥接、Agent 异常中断提醒、异常输出文本匹配配置、节点视觉提示、强提醒模式与 notifier companion 优先回退链路 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/execution-node-notification-and-attention-signals.md`、`src/common/executionAttentionSignals.ts`、`src/common/agentActivityHeuristics.ts` | 2026-05-24 |
 | `docs/product-specs/canvas-core-collaboration-mvp.md` | 画布核心协作 MVP 主路径与验收口径 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/vscode-canvas-runtime-architecture.md`、`docs/design-docs/canvas-surface-placement.md` | 2026-04-08 |
 | `docs/product-specs/canvas-sidebar-controls.md` | 画布外层控件极简化与侧栏承载范围 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-controls.md` | 2026-05-10 |
 | `docs/product-specs/canvas-sidebar-node-and-session-lists.md` | 画布侧栏节点列表与历史会话列表 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-node-and-session-lists.md` | 2026-05-10 |
 | `docs/product-specs/runtime-persistence-modes.md` | `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的两档运行时持久化模式 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md` | 2026-04-08 |
-| `docs/product-specs/canvas-template-feature.md` | Canvas 模板功能：默认模板机制、内置模板、自定义模板保存与分享、模板管理 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-template-feature.md` | 2026-05-10 |
+| `docs/product-specs/canvas-template-feature.md` | Canvas 模板功能：默认模板机制、内置模板、自定义模板保存与分享、模板管理 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-template-feature.md` | 2026-05-15 |
 | `docs/product-specs/template-marketplace.md` | 模板市场：社区驱动的模板发现、发布、安装平台，含 Web 端、统计排名、版本管理与治理后台 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/product-specs/canvas-template-feature.md`、`docs/design-docs/template-marketplace.md`、`docs/marketplace/UI.md` | 2026-05-12 |
 
 ## 当前状态

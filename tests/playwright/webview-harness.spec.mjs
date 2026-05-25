@@ -14,6 +14,7 @@ const harnessUrl = pathToFileURL(
 const pageDiagnosticsByPage = new WeakMap();
 const TERMINAL_VIEWPORT_ZOOM = 1.6;
 const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
+const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 const WORKBENCH_THEME_VARS = {
   dark: {
     '--vscode-editor-background': '#1e1e1e',
@@ -2000,41 +2001,11 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
-test('agent restart split button resumes by default and can start a new session', async ({ page }) => {
+test('agent restart actions can start a new session and resume the original session', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
   await clearPostedMessages(page);
 
-  await performTestDomAction(page, {
-    kind: 'clickNodeActionButton',
-    nodeId: 'agent-1',
-    label: '重启'
-  });
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/startExecutionSession');
-
-        return message
-          ? JSON.stringify({
-              provider: message.payload.provider,
-              resume: message.payload.resume === true
-            })
-          : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        provider: 'codex',
-        resume: true
-      })
-    );
-
-  await clearPostedMessages(page);
-  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
   await nodeById(page, 'agent-1').locator('[data-agent-restart-action="new-session"]').click();
 
   await expect
@@ -2058,44 +2029,47 @@ test('agent restart split button resumes by default and can start a new session'
         resume: false
       })
     );
+
+  await clearPostedMessages(page);
+  await nodeById(page, 'agent-1').locator('[data-agent-restart-action="resume"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/startExecutionSession');
+
+        return message
+          ? JSON.stringify({
+              provider: message.payload.provider,
+              resume: message.payload.resume === true
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        provider: 'codex',
+        resume: true
+      })
+    );
 });
 
-test('agent restart split menu keeps option width close to the label copy', async ({ page }) => {
+test('agent restart actions render inline without a dropdown', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
 
-  await nodeById(page, 'agent-1').locator('[data-agent-restart-toggle="true"]').click();
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
+  await expect(agentNode.locator('.action-split-button-menu')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeVisible();
 
-  const metrics = await page.evaluate(() => {
-    const items = Array.from(
-      document.querySelectorAll('[data-node-id="agent-1"] .action-split-button-menu-item')
-    );
-    if (items.length === 0 || !items.every((item) => item instanceof HTMLElement)) {
-      return null;
-    }
-
-    return items.map((item) => {
-      const styles = getComputedStyle(item);
-      const range = document.createRange();
-      range.selectNodeContents(item);
-      const textWidth = range.getBoundingClientRect().width;
-      return {
-        label: item.textContent?.trim() ?? '',
-        slack:
-          item.clientWidth -
-          Number.parseFloat(styles.paddingLeft) -
-          Number.parseFloat(styles.paddingRight) -
-          textWidth,
-        whiteSpace: styles.whiteSpace
-      };
-    });
-  });
-
-  expect(metrics).not.toBeNull();
-  for (const metric of metrics) {
-    expect(metric.whiteSpace).toBe('nowrap');
-    expect(metric.slack).toBeLessThan(20);
-  }
+  const actionLabels = await agentNode.locator('.action-button-group .action-button').evaluateAll((buttons) =>
+    buttons.map((button) => button.textContent?.trim() ?? '')
+  );
+  expect(actionLabels).toEqual(['新建', '重启']);
 });
 
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
@@ -2106,7 +2080,8 @@ test('agent restart action falls back to start button when no resumable session 
   const agentNode = nodeById(page, 'agent-1');
   await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
   await expect(agentNode.locator('button:has-text("重启")')).toHaveCount(0);
-  await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toHaveCount(0);
 
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
@@ -2343,14 +2318,14 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
 
   await expect(agentNode.locator('.status-pill')).toHaveCount(1);
   await expect(agentNode.locator('.status-pill').first()).toHaveText('等待输入');
-  await expect(agentNode.locator('.status-pill').first()).toHaveClass(/tone-ready/);
+  await expect(agentNode.locator('.status-pill').first()).toHaveClass(/tone-waiting/);
   await expect(agentNode).not.toContainText('best-effort');
   await expect(agentNode).not.toContainText('systemd-user');
   await expect(agentNode).not.toContainText('detached');
 
   await expect(terminalNode.locator('.status-pill')).toHaveCount(1);
   await expect(terminalNode.locator('.status-pill').first()).toHaveText('活动');
-  await expect(terminalNode.locator('.status-pill').first()).toHaveClass(/tone-running/);
+  await expect(terminalNode.locator('.status-pill').first()).toHaveClass(/tone-waiting/);
   await expect(terminalNode).not.toContainText('best-effort');
   await expect(terminalNode).not.toContainText('systemd-user');
   await expect(terminalNode).not.toContainText('detached');
@@ -2892,6 +2867,481 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
+  test(`${executionKind} hard-wrapped URL fragments open as one link`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstUrlFragment = 'https://example.com/docs/very/';
+    const secondUrlFragment = 'long/path?q=1';
+    const hardWrappedUrl = `${firstUrlFragment}${secondUrlFragment}`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${firstUrlFragment}\r\n  ${secondUrlFragment}\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedUrl
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => entry.payload)
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'url',
+              text: hardWrappedUrl,
+              url: hardWrappedUrl,
+              source: 'implicit'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} hard-wrapped URL detector does not append indented prose`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const url = 'https://example.com/docs';
+    const wronglyJoinedUrl = `${url}details`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${url}\r\n  details\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: wronglyJoinedUrl
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} hard-wrapped URL detector does not merge adjacent URL lines`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstUrl = 'https://example.com/';
+    const secondUrl = 'https://other.example/path';
+    const wronglyJoinedUrl = `${firstUrl}${secondUrl}`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${firstUrl}\r\n  ${secondUrl}\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: wronglyJoinedUrl
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} styled hard-wrapped file fragments resolve as one link`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedPath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: hardWrappedPath,
+              path: hardWrappedPath,
+              targetKind: 'file',
+              source: 'hardwrap'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} styled hard-wrapped code paths keep line and column suffixes`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'src/webview/executionTerminalNativeInteractions.';
+    const secondPathFragment = 'ts:1600:12';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+    const resolvedPath = 'src/webview/executionTerminalNativeInteractions.ts';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `TypeError: Cannot read properties of undefined\r\n    at renderTerminalLink (\u001b[94m${firstPathFragment}\u001b[39m\r\n      \u001b[94m${secondPathFragment}\u001b[39m)\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedPath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  line: entry.payload.link.line,
+                  column: entry.payload.link.column,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: hardWrappedPath,
+              path: resolvedPath,
+              line: 1600,
+              column: 12,
+              targetKind: 'file',
+              source: 'hardwrap'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} styled hard-wrapped file fragments are not joined through prose`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'src/webview/executionTerminalNativeInteractions.';
+    const secondPathFragment = 'ts:1600:12';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Error at \u001b[94m${firstPathFragment}\u001b[39m crashed\r\nnote: \u001b[94m${secondPathFragment}\u001b[39m elsewhere\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: hardWrappedPath
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} styled hard-wrapped file continuations allow trailing prose`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'src/webview/executionTerminalNativeInteractions.';
+    const secondPathFragment = 'ts:1600:12';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+    const resolvedPath = 'src/webview/executionTerminalNativeInteractions.ts';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m elsewhere\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: hardWrappedPath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  line: entry.payload.link.line,
+                  column: entry.payload.link.column,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: hardWrappedPath,
+              path: resolvedPath,
+              line: 1600,
+              column: 12,
+              targetKind: 'file',
+              source: 'hardwrap'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} styled hard-wrapped file hover underlines all fragments`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: hardWrappedPath
+      });
+
+      await expect.poll(async () => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(2);
+    } finally {
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+
+    await expect.poll(async () => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(0);
+  });
+
+  test(`${executionKind} unstyled hard-wrapped file fragments are not guessed as one link`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [hardWrappedPath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${firstPathFragment}\r\n  ${secondPathFragment}\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: hardWrappedPath
+      },
+      'was not detected'
+    );
+  });
+
+  test(`${executionKind} styled hard-wrapped non-links are not guessed as one link`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstLogFragment = 'status-';
+    const secondLogFragment = 'ok';
+    const hardWrappedLogText = `${firstLogFragment}${secondLogFragment}`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstLogFragment}\u001b[39m\r\n  \u001b[94m${secondLogFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: hardWrappedLogText
+      },
+      'was not detected'
+    );
+  });
+
   test(`${executionKind} multiline line-number links resolve against the previous path line`, async ({
     page
   }) => {
@@ -3165,6 +3615,814 @@ for (const executionKind of ['agent', 'terminal']) {
     }
   });
 
+  test(`${executionKind} keeps hovered links active while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const url = 'https://example.com/live-link';
+    const underlinedUrlText = '//example.com/live-link';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${url}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: url
+      });
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(underlinedUrlText);
+
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'still working\r\n'
+      });
+      await settleWebview(page, 4);
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(underlinedUrlText);
+
+      const clickPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!clickPoint) {
+        throw new Error(`Expected ${url} to remain underlined after live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.keyboard.down('Control');
+      await page.mouse.click(clickPoint.x, clickPoint.y);
+      await page.keyboard.up('Control');
+
+      await expect
+        .poll(async () => {
+          return page.evaluate((nextNodeId) => {
+            const openedLink = window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .find(
+                (entry) =>
+                  entry.type === 'webview/openExecutionLink' &&
+                  entry.payload.nodeId === nextNodeId
+              );
+            return openedLink?.payload?.link?.text ?? null;
+          }, nodeId);
+        })
+        .toContain('live-link');
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} reuses file link resolution while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'src/live-link-target.ts';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `Open ${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(filePath);
+
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'still working\r\n'
+      });
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      });
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      expect(
+        resolveRequests.some((entry) =>
+          entry.payload.candidates.some((candidate) => candidate.text === filePath)
+        )
+      ).toBe(false);
+    } finally {
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} refreshes negative file link cache while live output continues`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'missing-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created missing-target.ts\r\n'
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} refreshes detected negative file link after second live output inside throttle window`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'throttled-created-target.ts:11:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'checking throttled-created-target.ts\r\n'
+    });
+    await page.waitForTimeout(260);
+    await clearPostedMessages(page);
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created throttled-created-target.ts\r\n'
+    });
+    await page.waitForTimeout(1050);
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} revalidates a hovered negative file link after live output resolves it`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'hover-created-target.ts:9:3';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionLink',
+        nodeId,
+        text: filePath
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(filePath);
+
+      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!hoveredPoint) {
+        throw new Error(`Expected ${filePath} to be underlined before live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'search',
+          text: filePath,
+          source: 'word'
+        });
+
+      await page.evaluate((nextResolvedTexts) => {
+        window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      }, [filePath]);
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'created hover-created-target.ts\r\n'
+      });
+      await page.waitForTimeout(260);
+      await settleWebview(page, 4);
+
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'file',
+          text: filePath,
+          source: 'detected'
+        });
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} revalidates a hovered hard-wrapped negative file link continuation`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const firstPathFragment = 'docs/design-docs/execution-terminal-tui-';
+    const secondPathFragment = 'hard-wrapped-links.md';
+    const hardWrappedPath = `${firstPathFragment}${secondPathFragment}`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `\u001b[94m${firstPathFragment}\u001b[39m\r\n  \u001b[94m${secondPathFragment}\u001b[39m\r\n`,
+      cols: 120,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    try {
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionText',
+        nodeId,
+        text: secondPathFragment
+      });
+      await page.keyboard.down('Control');
+      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(secondPathFragment);
+
+      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      if (!hoveredPoint) {
+        throw new Error(`Expected ${secondPathFragment} to be underlined before live output.`);
+      }
+
+      await clearPostedMessages(page);
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'search',
+          text: secondPathFragment,
+          source: 'word'
+        });
+
+      await page.evaluate((nextResolvedTexts) => {
+        window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      }, [hardWrappedPath]);
+      await clearPostedMessages(page);
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: 'created hard-wrapped-links.md\r\n'
+      });
+      await page.waitForTimeout(260);
+      await settleWebview(page, 4);
+
+      await page.mouse.click(hoveredPoint.x, hoveredPoint.y);
+
+      await expect
+        .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+        .toMatchObject({
+          linkKind: 'file',
+          text: hardWrappedPath,
+          source: 'hardwrap'
+        });
+    } finally {
+      await page.keyboard.up('Control').catch(() => {});
+      await performTestDomAction(page, {
+        kind: 'clearExecutionLinkHover',
+        nodeId
+      }).catch(() => {});
+    }
+  });
+
+  test(`${executionKind} delays coalesced negative file link refreshes after live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'coalesced-target.ts:5:1';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setHoldExecutionFileLinkResponses(true);
+    });
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'checking coalesced-target.ts\r\n'
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'still checking coalesced-target.ts\r\n'
+    });
+    await page.waitForTimeout(260);
+    const flushedResponses = await page.evaluate(() => {
+      return window.__devSessionCanvasHarness.flushExecutionFileLinkResponses(1);
+    });
+    expect(flushedResponses).toBe(1);
+    await settleWebview(page, 1);
+
+    let resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(
+      resolveRequests.filter((entry) =>
+        entry.payload.candidates.some((candidate) => candidate.text === filePath)
+      ).length
+    ).toBe(1);
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      window.__devSessionCanvasHarness.setHoldExecutionFileLinkResponses(false);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created coalesced-target.ts\r\n'
+    });
+
+    await expect
+      .poll(async () => {
+        resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+        return resolveRequests.filter((entry) =>
+          entry.payload.candidates.some((candidate) => candidate.text === filePath)
+        ).length;
+      })
+      .toBeGreaterThanOrEqual(2);
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} keeps unresolved file link fallback stable while live output continues`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'still-missing-target.ts:7:1';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: '...\r\n'
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(
+      resolveRequests.some((entry) =>
+        entry.payload.candidates.some((candidate) => candidate.text === filePath)
+      )
+    ).toBe(false);
+  });
+
+  test(`${executionKind} does not refresh fallback-only negative file links during live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const ordinaryLines = Array.from(
+      { length: 12 },
+      (_, index) => `plainstatus${String(index + 1).padStart(2, '0')} waiting for stream update`
+    );
+
+    const countFallbackResolveRequests = async () => {
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      return resolveRequests.filter((entry) =>
+        entry.payload.candidates.some(
+          (candidate) =>
+            candidate.source === 'fallback' && ordinaryLines.includes(candidate.text)
+        )
+      ).length;
+    };
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${ordinaryLines.join('\r\n')}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    for (const line of ordinaryLines) {
+      const hoverText = line.split(' ')[0];
+      await performTestDomAction(page, {
+        kind: 'hoverExecutionText',
+        nodeId,
+        text: hoverText
+      });
+    }
+
+    await expect.poll(async () => countFallbackResolveRequests()).toBe(ordinaryLines.length);
+    await performTestDomAction(page, {
+      kind: 'clearExecutionLinkHover',
+      nodeId
+    });
+
+    await clearPostedMessages(page);
+    for (let index = 0; index < 3; index += 1) {
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: `live output heartbeat ${index + 1}\r\n`
+      });
+      await page.waitForTimeout(260);
+    }
+    await settleWebview(page, 4);
+
+    expect(await countFallbackResolveRequests()).toBe(0);
+  });
+
+  test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'eventual-target.ts:4:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(700);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    const staleActivation = performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'created eventual-target.ts\r\n'
+    });
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(0);
+    });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(260);
+    await staleActivation;
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+
+    await clearPostedMessages(page);
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
+  test(`${executionKind} schedules delayed refresh after stale negative refresh is invalidated`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'stale-refresh-target.ts:6:2';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(500);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    const pendingActivation = performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    await waitForPostedMessageByType(page, 'webview/resolveExecutionFileLinks');
+    const countDetectedFileResolveRequests = async () => {
+      const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+      return resolveRequests.filter((entry) =>
+        entry.payload.candidates.some(
+          (candidate) => candidate.text === filePath && candidate.source === 'detected'
+        )
+      ).length;
+    };
+    const initialDetectedRequestCount = await countDetectedFileResolveRequests();
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'first invalidation for stale-refresh-target.ts\r\n'
+    });
+
+    await expect
+      .poll(async () => {
+        return countDetectedFileResolveRequests();
+      })
+      .toBeGreaterThan(initialDetectedRequestCount);
+    const staleRefreshRequestCount = await countDetectedFileResolveRequests();
+    expect(staleRefreshRequestCount).toBeGreaterThan(initialDetectedRequestCount);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'second invalidation for stale-refresh-target.ts\r\n'
+    });
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(0);
+    }, [filePath]);
+    await page.waitForTimeout(260);
+
+    await expect
+      .poll(async () => {
+        return countDetectedFileResolveRequests();
+      })
+      .toBeGreaterThan(staleRefreshRequestCount);
+    await pendingActivation;
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    await settleWebview(page, 4);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'detected'
+      });
+  });
+
   test(`${executionKind} does not synthesize trimmed links from attached CJK prose`, async ({
     page
   }) => {
@@ -3194,6 +4452,15 @@ for (const executionKind of ['agent', 'terminal']) {
         kind: 'activateExecutionLink',
         nodeId,
         text: cleanPathText
+      },
+      'was not detected'
+    );
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: proseAttachedLine
       },
       'was not detected'
     );
@@ -3276,7 +4543,7 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
-  test(`${executionKind} keeps native punctuation behavior for directory links in Chinese prose`, async ({
+  test(`${executionKind} treats CJK punctuation as a file-link boundary in Chinese prose`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -3303,15 +4570,11 @@ for (const executionKind of ['agent', 'terminal']) {
       nodeId,
       text: firstDirectoryLinkText
     });
-    await expectTestDomActionError(
-      page,
-      {
-        kind: 'activateExecutionLink',
-        nodeId,
-        text: secondDirectoryLinkText
-      },
-      'was not detected'
-    );
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: secondDirectoryLinkText
+    });
 
     await expect
       .poll(async () => {
@@ -3343,6 +4606,154 @@ for (const executionKind of ['agent', 'terminal']) {
               linkKind: 'file',
               text: firstDirectoryLinkText,
               path: firstDirectoryLinkText,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          },
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: secondDirectoryLinkText,
+              path: secondDirectoryLinkText,
+              targetKind: 'file',
+              source: 'detected'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} keeps file-like words clickable across CJK punctuation boundaries`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const designDocPath = 'docs/foo.md';
+    const proseLine = `设计文档：${designDocPath}。`;
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${proseLine}\r\n`,
+      cols: 44,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: designDocPath
+    });
+    await expectTestDomActionError(
+      page,
+      {
+        kind: 'activateExecutionLink',
+        nodeId,
+        text: proseLine
+      },
+      'was not detected'
+    );
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  searchText: entry.payload.link.searchText,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'search',
+              text: designDocPath,
+              searchText: designDocPath,
+              source: 'word'
+            }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} keeps Chinese file paths eligible for exact file links`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const chineseFilePath = '文档/设计.md';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${chineseFilePath}\r\n`,
+      cols: 44,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: chineseFilePath
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return JSON.stringify(
+            window.__devSessionCanvasHarness
+              .getPostedMessages()
+              .filter((entry) => entry.type === 'webview/openExecutionLink')
+              .map((entry) => ({
+                nodeId: entry.payload.nodeId,
+                kind: entry.payload.kind,
+                link: {
+                  linkKind: entry.payload.link.linkKind,
+                  text: entry.payload.link.text,
+                  path: entry.payload.link.path,
+                  targetKind: entry.payload.link.targetKind,
+                  source: entry.payload.link.source
+                }
+              }))
+          );
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            nodeId,
+            kind: executionKind,
+            link: {
+              linkKind: 'file',
+              text: chineseFilePath,
+              path: chineseFilePath,
               targetKind: 'file',
               source: 'detected'
             }
@@ -3682,6 +5093,15 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
     .toBe('0');
   await expect(nodeById(page, 'note-1').locator('.node-overview-title')).toContainText('回看 smoke test');
+  await expect(nodeById(page, 'note-1').locator('.node-overview-status')).toHaveCount(0);
+  await expect(nodeById(page, 'agent-1').locator('.node-overview-status')).toHaveAttribute(
+    'data-overview-status',
+    'draft'
+  );
+  await expect(nodeById(page, 'agent-1').locator('.node-overview-status')).toContainText('草稿');
+  await expect
+    .poll(async () => readComputedOpacity(page, '[data-node-id="agent-1"] .node-overview-status'))
+    .toBe('1');
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('1');
@@ -3891,6 +5311,29 @@ test('editing a note body posts updateNoteNode', async ({ page }) => {
     .toBe('matched');
 });
 
+test('ordinary note empty placeholder and editor show the 8000 character limit', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '';
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview-placeholder')).toContainText(
+    `最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符`
+  );
+
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveAttribute('maxlength', String(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
+
+  const overLimitContent = 'a'.repeat(NOTE_EMBEDDED_CONTENT_MAX_LENGTH + 5);
+  await bodyInput.fill(overLimitContent);
+  await expect(bodyInput).toHaveValue('a'.repeat(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
+  await expect(noteNode.locator('.note-limit-hint')).toContainText(
+    `已达 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限`
+  );
+});
+
 test('note body requires double click to switch from markdown preview to plain text editing', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -3921,6 +5364,355 @@ test('note body requires double click to switch from markdown preview to plain t
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
   await expect(noteNode.locator('.note-markdown-preview h2')).toHaveText('已完成');
   await expect(noteNode.locator('.note-markdown-preview li')).toHaveText(['主路径切换']);
+});
+
+
+test('double-clicking note preview starts editing at the clicked text position', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 迭代复盘',
+    '',
+    '第一段保持阅读态。',
+    '目标段落用于验证双击光标定位。',
+    '',
+    '- 补齐 Markdown 预览',
+    '- 保持纯文本编辑'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = '验证双击光标定位';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 2
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 2);
+});
+
+test('double-clicking note preview image falls back to the image markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 图片定位',
+    '',
+    '![架构图](https://cdn.example.com/arch.png)',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: 'img.note-markdown-image'
+  });
+
+  const imageMarkdown = '![架构图](https://cdn.example.com/arch.png)';
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(imageMarkdown) + imageMarkdown.length);
+});
+
+test('double-clicking note preview blank space falls back to the paragraph markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 空白定位', '', '短句。', '', '后续正文不应该成为光标落点。'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const paragraph = nodeById(page, 'note-1').locator('.note-markdown-preview p').first();
+  await expect(paragraph).toHaveText('短句。');
+  const paragraphBox = await paragraph.boundingBox();
+  expect(paragraphBox).not.toBeNull();
+  if (!paragraphBox) {
+    return;
+  }
+
+  await page.mouse.dblclick(paragraphBox.x + paragraphBox.width - 4, paragraphBox.y + paragraphBox.height / 2);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf('短句。') + '短句。'.length);
+});
+
+test('double-clicking note preview display math falls back to the math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 公式定位',
+    '',
+    '$$',
+    'x^2 + y^2 = z^2',
+    '$$',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display .katex'
+  });
+
+  const mathMarkdown = ['$$', 'x^2 + y^2 = z^2', '$$'].join('\n');
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(mathMarkdown) + mathMarkdown.length);
+});
+
+test('double-clicking multiple display math blocks falls back to each math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const firstMathMarkdown = ['$$', 'a=1', '$$'].join('\n');
+  const secondMathMarkdown = ['$$', 'b=2', '$$'].join('\n');
+  const markdownBody = ['# math', '', firstMathMarkdown, '', 'middle', '', secondMathMarkdown, '', 'tail'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display:nth-of-type(1) .katex'
+  });
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(firstMathMarkdown) + firstMathMarkdown.length);
+
+  await bodyInput.blur();
+  await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display:nth-of-type(2) .katex'
+  });
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(secondMathMarkdown) + secondMathMarkdown.length);
+});
+
+test('double-clicking multiline fenced code maps to the clicked source line', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = [
+    '# 代码定位',
+    '',
+    '```ts',
+    'const a = 1;',
+    'const b = 2;',
+    '```',
+    '',
+    '后续正文不应该成为光标落点。'
+  ].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'b =';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 1
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(markdownBody);
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 1);
+});
+
+test('double-clicking markdown-like fenced code maps raw code characters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 代码定位', '', '```txt', '- item', 'foo_bar', '```'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: '- item', offset: 0 },
+    { text: 'bar', offset: 0 }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.text) + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking indented code maps raw code after source indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 缩进代码定位', '', '    - item', '    foo_bar'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: '- item', offset: 0 },
+    { text: 'bar', offset: 0 }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.text) + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking markdown punctuation and entities maps visible text characters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# 段落定位', '', 'foo_bar baz', '2 * 3 result', 'A &amp; B after'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: 'bar', offset: 0, sourceText: 'bar' },
+    { text: '3 result', offset: 0, sourceText: '3 result' },
+    { text: 'B after', offset: 0, sourceText: 'B after' }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(entry.sourceText) + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking note task text ignores the rendered checkbox spacing', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = '- [x] second task';
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 0
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText));
+});
+
+test('double-clicking list continuation text maps after continuation indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# list', '', '- first line', '  second line'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second line';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 5
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 5);
+});
+
+test('double-clicking ordered list continuation text maps after continuation indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# list', '', '1. first line', '   second line'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second line';
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: targetText,
+    offset: 5
+  });
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + 5);
+});
+
+test('double-clicking blockquote list continuation text maps after nested quote indentation', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# list', '', '> > - first line', '> >   second line'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const targetText = 'second line';
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  for (const offset of [0, 5]) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: targetText,
+      offset
+    });
+    await expectCaretPosition(bodyInput, markdownBody.indexOf(targetText) + offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking triple emphasis maps after all delimiters', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# em', '', '***bold*** after', '___firm___ later'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  const cases = [
+    { text: 'bold', offset: 0, sourceStart: markdownBody.indexOf('bold') },
+    { text: 'bold', offset: 2, sourceStart: markdownBody.indexOf('bold') },
+    { text: 'firm', offset: 0, sourceStart: markdownBody.indexOf('firm') }
+  ];
+
+  for (const entry of cases) {
+    await doubleClickNotePreviewText(page, {
+      nodeId: 'note-1',
+      text: entry.text,
+      offset: entry.offset
+    });
+    await expectCaretPosition(bodyInput, entry.sourceStart + entry.offset);
+    await bodyInput.blur();
+    await expect(nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  }
+});
+
+test('double-clicking malformed display math falls back to the math markdown source end', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const markdownBody = ['# math', '', '$$', '\\bad{', '$$', '', 'tail'].join('\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  await doubleClickNotePreviewSelector(page, {
+    nodeId: 'note-1',
+    selector: '.note-markdown-math-display .katex-error'
+  });
+
+  const mathMarkdown = ['$$', '\\bad{', '$$'].join('\n');
+  const bodyInput = nodeById(page, 'note-1').locator('textarea[data-probe-field="body"]');
+  await expectCaretPosition(bodyInput, markdownBody.indexOf(mathMarkdown) + mathMarkdown.length);
 });
 
 test('note body editing target fills the note frame without an inset editor box', async ({ page }) => {
@@ -3967,6 +5759,96 @@ test('note body editing target fills the note frame without an inset editor box'
   expect(await bodyInput.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
 });
 
+test('double-clicking a scrolled note preview preserves the edit viewport around the target text', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 80 }, (_value, index) => `段落 ${index + 1} 用于撑开预览滚动。`);
+  const targetLineIndex = 65;
+  lines[targetLineIndex] = 'scroll-target-alpha keeps editor viewport away from top.';
+  const markdownBody = lines.join('\n\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  await preview.evaluate((element, targetText) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let targetElement = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node instanceof Text && node.data.includes(targetText)) {
+        targetElement = node.parentElement;
+        break;
+      }
+    }
+    if (!targetElement) {
+      throw new Error(`未找到预览文本 ${targetText}。`);
+    }
+    const previewRect = element.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    element.scrollTop += targetRect.top - previewRect.top - 48;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, 'scroll-target-alpha');
+
+  const previewScrollTop = await preview.evaluate((element) => element.scrollTop);
+  expect(previewScrollTop).toBeGreaterThan(0);
+  await settleWebview(page, 2);
+
+  await doubleClickNotePreviewText(page, {
+    nodeId: 'note-1',
+    text: 'away from top',
+    offset: 0
+  });
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const targetLineStart = markdownBody.indexOf('scroll-target-alpha');
+  const targetLineEnd = targetLineStart + lines[targetLineIndex].length;
+  await expect(bodyInput).toHaveCount(1);
+  const selection = await bodyInput.evaluate((element) => ({
+    selectionStart: element.selectionStart,
+    selectionEnd: element.selectionEnd
+  }));
+  expect(selection.selectionStart).toBeGreaterThanOrEqual(targetLineStart);
+  expect(selection.selectionEnd).toBeLessThanOrEqual(targetLineEnd);
+  await expect
+    .poll(async () => bodyInput.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+});
+
+test('returning from note body edit mode restores the preview scroll position', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 85 }, (_value, index) => `正文 ${index + 1} 用于验证编辑返回预览滚动。`);
+  lines[70] = 'return-target-alpha should stay inside the restored preview viewport.';
+  const markdownBody = lines.join('\n\n');
+  state.nodes[0].metadata.note.content = markdownBody;
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await bodyInput.evaluate((element, targetText) => {
+    const targetOffset = element.value.indexOf(targetText);
+    if (targetOffset < 0) {
+      throw new Error(`未找到编辑文本 ${targetText}。`);
+    }
+    const targetLineIndex = element.value.slice(0, targetOffset).split('\n').length - 1;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+    element.scrollTop = targetLineIndex * lineHeight;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, 'return-target-alpha');
+  const editScrollTop = await bodyInput.evaluate((element) => element.scrollTop);
+  expect(editScrollTop).toBeGreaterThan(0);
+  await settleWebview(page, 2);
+
+  await bodyInput.blur();
+  const preview = noteNode.locator('.note-markdown-preview');
+  await expect(preview).toHaveCount(1);
+  await expect
+    .poll(async () => preview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+});
+
 test('note body editor supports tab indentation and line numbers', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -4000,6 +5882,86 @@ test('note body editor supports tab indentation and line numbers', async ({ page
   await page.keyboard.press('Shift+Tab');
   await expect(bodyInput).toHaveValue(markdownBody);
   await expect(bodyInput).toBeFocused();
+});
+
+test('note body editor reserves blank gutter rows for soft-wrapped lines', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const lines = Array.from({ length: 25 }, (_value, index) => `line ${index + 1}`);
+  lines[17] = '18 的点点滴滴发的发发发发发发发发发发发发发发发发发发发发发发发发发发';
+  lines[23] = '24 的点点滴滴发的发发发发发发发发发发发发发发发发发发发发发发发发发发';
+  state.nodes[0].metadata.note.content = lines.join('\n');
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+
+  await expect
+    .poll(async () =>
+      noteNode.locator('.note-document-editor').evaluate((editor) => {
+        const rows = Array.from(editor.querySelectorAll('.note-document-line-number')).map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            text: element.textContent?.trim() ?? '',
+            top: rect.top
+          };
+        });
+        const firstRow = editor.querySelector('.note-document-line-number');
+        const lineHeight = firstRow ? Number.parseFloat(getComputedStyle(firstRow).lineHeight) : 0;
+        const visibleNumbers = rows.map((row) => row.text).filter(Boolean);
+        const index18 = rows.findIndex((row) => row.text === '18');
+        const index19 = rows.findIndex((row) => row.text === '19');
+        const index24 = rows.findIndex((row) => row.text === '24');
+        const index25 = rows.findIndex((row) => row.text === '25');
+
+        const hasExpectedNumbers =
+          visibleNumbers.join(',') === Array.from({ length: 25 }, (_value, index) => String(index + 1)).join(',');
+        const hasContinuationAfter18 =
+          index18 >= 0 && index19 > index18 + 1 && rows.slice(index18 + 1, index19).every((row) => row.text === '');
+        const hasContinuationAfter24 =
+          index24 >= 0 && index25 > index24 + 1 && rows.slice(index24 + 1, index25).every((row) => row.text === '');
+        const line18VisualRows =
+          index18 >= 0 && index19 >= 0 && Number.isFinite(lineHeight) && lineHeight > 0
+            ? Math.round((rows[index19].top - rows[index18].top) / lineHeight)
+            : 0;
+        const line24VisualRows =
+          index24 >= 0 && index25 >= 0 && Number.isFinite(lineHeight) && lineHeight > 0
+            ? Math.round((rows[index25].top - rows[index24].top) / lineHeight)
+            : 0;
+
+        return (
+          hasExpectedNumbers &&
+          hasContinuationAfter18 &&
+          hasContinuationAfter24 &&
+          line18VisualRows > 1 &&
+          line24VisualRows > 1
+        );
+      })
+    )
+    .toBe(true);
+
+  const wrappedLineRows = await noteNode.locator('.note-document-editor').evaluate((editor) => {
+    const rows = Array.from(editor.querySelectorAll('.note-document-line-number')).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        text: element.textContent?.trim() ?? '',
+        top: rect.top
+      };
+    });
+    const firstRow = editor.querySelector('.note-document-line-number');
+    const lineHeight = firstRow ? Number.parseFloat(getComputedStyle(firstRow).lineHeight) : 0;
+    const index18 = rows.findIndex((row) => row.text === '18');
+    const index19 = rows.findIndex((row) => row.text === '19');
+    const index24 = rows.findIndex((row) => row.text === '24');
+    const index25 = rows.findIndex((row) => row.text === '25');
+
+    return {
+      line18: Math.round((rows[index19].top - rows[index18].top) / lineHeight),
+      line24: Math.round((rows[index25].top - rows[index24].top) / lineHeight)
+    };
+  });
+  expect(wrappedLineRows.line18).toBeGreaterThan(1);
+  expect(wrappedLineRows.line24).toBeGreaterThan(1);
 });
 
 test('note markdown preview text remains selectable in read mode', async ({ page }) => {
@@ -4129,6 +6091,173 @@ test('note markdown preview renders task lists, syntax highlighting, and math fo
   await expect(noteNode.locator('.note-markdown-preview .katex-display')).toHaveCount(1);
 });
 
+test('note markdown preview renders safe images and rewrites local image paths', async ({ page }) => {
+  await openHarness(page);
+  const dataImage = 'data:image/png;base64,iVBORw0KGgo=';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = [
+    `![Inline pixel](${dataImage})`,
+    '',
+    '![Remote chart](https://cdn.example.com/charts/roadmap.png)',
+    '',
+    '![Diagram](assets/diagram.png)',
+    '',
+    '![Unsupported](mailto:team@example.com)'
+  ].join('\n');
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/design.md',
+    displayPath: 'docs/design.md',
+    fullDisplayPath: '/workspace/docs/design.md',
+    contentRevision: 'image-revision',
+    status: 'ok',
+    webviewResourceBaseUri: 'https://webview.example/workspace/docs/'
+  };
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  const preview = noteNode.locator('.note-markdown-preview');
+  const images = preview.locator('img.note-markdown-image');
+  await expect(images).toHaveCount(3);
+  await expect(images.nth(0)).toHaveAttribute('alt', 'Inline pixel');
+  await expect(images.nth(0)).toHaveAttribute('src', dataImage);
+  await expect(images.nth(1)).toHaveAttribute('alt', 'Remote chart');
+  await expect(images.nth(1)).toHaveAttribute(
+    'src',
+    'https://cdn.example.com/charts/roadmap.png'
+  );
+  await expect(images.nth(2)).toHaveAttribute('alt', 'Diagram');
+  await expect(images.nth(2)).toHaveAttribute(
+    'src',
+    'https://webview.example/workspace/docs/assets/diagram.png'
+  );
+  await expect(preview.locator('.note-markdown-image-fallback')).toContainText('Unsupported');
+  await expect(preview.locator('img[src^="mailto:"]')).toHaveCount(0);
+  const embeddedState = createNoteNodeState();
+  embeddedState.nodes[0].metadata.note.content = '![Workspace diagram](workspace-a/assets/root.png)';
+  await bootstrap(
+    page,
+    embeddedState,
+    createRuntimeContext({
+      noteMarkdownImageWorkspaceRoots: [
+        { name: 'workspace-a', webviewResourceBaseUri: 'https://webview.example/workspace-a/' },
+        { name: 'workspace-b', webviewResourceBaseUri: 'https://webview.example/workspace-b/' }
+      ]
+    })
+  );
+  const embeddedPreview = nodeById(page, 'note-1').locator('.note-markdown-preview');
+  await expect(embeddedPreview.locator('img.note-markdown-image')).toHaveAttribute(
+    'src',
+    'https://webview.example/workspace-a/assets/root.png'
+  );
+});
+
+test('note markdown preview hides YAML metadata and exposes a titlebar popover', async ({ page }) => {
+  await openHarness(page);
+  const frontMatterBlock = [
+    '---',
+    'title: Note 与 Markdown 文件关联',
+    'decision_status: 已选定',
+    'domains:',
+    '  - VSCode 集成域',
+    '  - 画布交互域',
+    'updated_at: 2026-05-15',
+    '---',
+    ''
+  ].join('\n');
+  const markdownBody = `${frontMatterBlock}# Note 与 Markdown 文件关联\n\n- [ ] 补齐 metadata popover`;
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = markdownBody;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/design.md',
+    displayPath: 'docs/design.md',
+    fullDisplayPath: '/workspace/docs/design.md',
+    contentRevision: 'metadata-revision',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('Note 与 Markdown 文件关联');
+  await expect(noteNode.locator('.note-markdown-preview')).not.toContainText('decision_status');
+  await expect(noteNode.locator('.note-markdown-preview hr')).toHaveCount(0);
+
+  const metadataButton = noteNode.getByRole('button', { name: '查看 Markdown metadata' });
+  await expect(metadataButton).toBeVisible();
+  await metadataButton.click();
+
+  const popover = page.getByRole('dialog', { name: 'Metadata' });
+  await expect(popover).toBeVisible();
+  await expect(metadataButton).not.toContainText('metadata');
+  await expect(popover.locator('.note-metadata-popover-header strong')).toHaveText('Metadata');
+  await expect(popover.locator('.note-metadata-popover-footer')).toHaveCount(0);
+  await expect(popover).toContainText('title');
+  await expect(popover).toContainText('Note 与 Markdown 文件关联');
+  await expect(popover).toContainText('domains');
+  await expect(popover).toContainText('VSCode 集成域 +1');
+  await expect
+    .poll(async () =>
+      popover.locator('.note-metadata-popover-value').first().evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          whiteSpace: style.whiteSpace,
+          overflowWrap: style.overflowWrap
+        };
+      })
+    )
+    .toEqual({
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere'
+    });
+
+  const copyMetadataButton = popover.getByRole('button', { name: '复制 Metadata' });
+  await expect(copyMetadataButton.locator('.codicon.codicon-copy')).toHaveCount(1);
+  await copyMetadataButton.click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyTextToClipboard');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyTextToClipboard',
+    payload: {
+      text: frontMatterBlock,
+      source: 'note-markdown-metadata',
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('note checklist updates keep original line numbers when YAML metadata is hidden', async ({ page }) => {
+  await openHarness(page);
+  const frontMatterBlock = [
+    '---',
+    'title: Checklist metadata',
+    'tags:',
+    '  - smoke',
+    '---',
+    ''
+  ].join('\n');
+  const initialBody = ['# Tasks', '- [ ] 补齐 metadata 行号', '- [x] 保留正文'].join('\n');
+  const expectedBody = ['# Tasks', '- [x] 补齐 metadata 行号', '- [x] 保留正文'].join('\n');
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = `${frontMatterBlock}${initialBody}`;
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const taskCheckboxes = noteNode.locator('.note-markdown-preview .task-list-item-checkbox');
+  await expect(taskCheckboxes).toHaveCount(2);
+  await taskCheckboxes.nth(0).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: `${frontMatterBlock}${expectedBody}`
+    }
+  });
+});
+
 test('note markdown math escapes malformed html and command links', async ({ page }) => {
   await openHarness(page);
   const state = createNoteNodeState();
@@ -4242,6 +6371,1136 @@ test('clicking a note workspace file link posts openNoteLink with the raw relati
     }
   });
   await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+});
+
+test('associated markdown notes render the file path subtitle and open-file action', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const longDisplayPath =
+    'ssh:dev_labs · ~/projects/MiniCPM-V-CookBook-main.worktrees/test-branch/docs/design.md';
+  state.nodes[0].metadata.note.content = '# 文件笔记';
+  state.nodes[0].size = { width: 280, height: state.nodes[0].size.height };
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/design.md',
+    displayPath: longDisplayPath,
+    fullDisplayPath: longDisplayPath,
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const subtitle = noteNode.locator('.window-title-subtitle');
+  await expect(subtitle).toHaveText(longDisplayPath);
+  await expect(subtitle).toHaveAttribute('title', longDisplayPath);
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveText('文件笔记');
+  await expect(noteNode.getByRole('button', { name: '保存为 Markdown' })).toHaveCount(0);
+
+  const copyPathButton = noteNode.getByRole('button', { name: '复制 Markdown 路径' });
+  await expect(copyPathButton.locator('.codicon.codicon-copy')).toHaveCount(1);
+  await copyPathButton.click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyTextToClipboard');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyTextToClipboard',
+    payload: {
+      text: longDisplayPath,
+      source: 'note-markdown-subtitle',
+      nodeId: 'note-1'
+    }
+  });
+  await expect(noteNode.getByRole('button', { name: '已复制 Markdown 路径' })).toBeVisible();
+  await clearPostedMessages(page);
+
+  await noteNode.getByRole('button', { name: '打开文件' }).click();
+  const message = await waitForPostedMessageByType(page, 'webview/openAssociatedNoteMarkdownFile');
+  expect(message).toEqual({
+    type: 'webview/openAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('associated markdown note editor does not apply the ordinary note 8000 character limit', async ({ page }) => {
+  await openHarness(page);
+  const longMarkdownContent = `# 文件笔记\n\n${'long markdown body\n'.repeat(510)}`;
+  expect(longMarkdownContent.length).toBeGreaterThan(NOTE_EMBEDDED_CONTENT_MAX_LENGTH);
+
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = longMarkdownContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/large.md',
+    displayPath: 'docs/large.md',
+    fullDisplayPath: '/workspace/docs/large.md',
+    contentRevision: 'large-revision',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', longMarkdownContent);
+
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).not.toHaveAttribute('maxlength', String(NOTE_EMBEDDED_CONTENT_MAX_LENGTH));
+  await expect(bodyInput).toHaveValue(longMarkdownContent);
+
+  const updatedLongMarkdownContent = `${longMarkdownContent}\n追加内容`;
+  await bodyInput.fill(updatedLongMarkdownContent);
+  await bodyInput.blur();
+
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: updatedLongMarkdownContent,
+      baseContentRevision: 'large-revision'
+    }
+  });
+});
+
+test('associated markdown note editing blocks stale drafts after an external file refresh', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue('# 文件笔记\n\n原始内容');
+
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+
+  const refreshedState = createNoteNodeState();
+  refreshedState.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  refreshedState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'ok'
+  };
+  await updateHostState(page, refreshedState);
+
+  await expect(bodyInput).toHaveValue(localDraft);
+  await expect(bodyInput).not.toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText(
+    '关联文件已在外部更新'
+  );
+  const continuedDraft = `${localDraft}\n\n继续编辑`;
+  await bodyInput.fill(continuedDraft);
+  await expect(bodyInput).toHaveValue(continuedDraft);
+
+  await bodyInput.blur();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((message) => message.type === 'webview/updateNoteNode').length
+      )
+    )
+    .toBe(0);
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: continuedDraft,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown note warns when an edited draft sees a file revision change', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/revision-only.md',
+    displayPath: 'docs/revision-only.md',
+    fullDisplayPath: '/workspace/docs/revision-only.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+  await waitForPostedMessageByType(page, 'webview/updateAssociatedNoteMarkdownDraft');
+  await clearPostedMessages(page);
+
+  const revisionOnlyState = createNoteNodeState();
+  revisionOnlyState.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  revisionOnlyState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/revision-only.md',
+    displayPath: 'docs/revision-only.md',
+    fullDisplayPath: '/workspace/docs/revision-only.md',
+    contentRevision: 'revision-b',
+    status: 'ok'
+  };
+  await updateHostState(page, revisionOnlyState);
+
+  await expect(bodyInput).toHaveValue(localDraft);
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText('关联文件已在外部更新');
+  await clearPostedMessages(page);
+
+  await bodyInput.blur();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((message) => message.type === 'webview/updateNoteNode').length
+      )
+    )
+    .toBe(0);
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown conflict actions respond while the editor keeps focus', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/focused-conflict.md',
+    displayPath: 'docs/focused-conflict.md',
+    fullDisplayPath: '/workspace/docs/focused-conflict.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+  await waitForPostedMessageByType(page, 'webview/updateAssociatedNoteMarkdownDraft');
+  await clearPostedMessages(page);
+  const preservedSelectionStart = 4;
+  await bodyInput.evaluate((textarea, selectionStart) => {
+    textarea.setSelectionRange(selectionStart, selectionStart);
+  }, preservedSelectionStart);
+
+  const conflictState = createNoteNodeState();
+  conflictState.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  conflictState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/focused-conflict.md',
+    displayPath: 'docs/focused-conflict.md',
+    fullDisplayPath: '/workspace/docs/focused-conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    recoverableDraft: {
+      draftId: '33333333-3333-4333-8333-333333333333',
+      content: localDraft,
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
+  };
+  await updateHostState(page, conflictState);
+
+  await expect(bodyInput).toBeFocused();
+  await expect
+    .poll(async () =>
+      bodyInput.evaluate((textarea) => ({
+        selectionStart: textarea.selectionStart,
+        selectionEnd: textarea.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: preservedSelectionStart,
+      selectionEnd: preservedSelectionStart
+  });
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText('关联文件已在外部更新');
+
+  await noteNode.getByRole('button', { name: '复制草稿' }).click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyAssociatedNoteMarkdownDraft');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft
+    }
+  });
+  await expect(bodyInput).toBeFocused();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((message) => message.type === 'webview/copyAssociatedNoteMarkdownDraft').length
+      )
+    )
+    .toBe(1);
+  await clearPostedMessages(page);
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((message) => message.type === 'webview/updateNoteNode').length
+      )
+    )
+    .toBe(1);
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toHaveCount(0);
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', localDraft);
+});
+
+test('associated markdown reload resolves the edit conflict on first click', async ({ page }) => {
+  await openHarness(page);
+  const remoteContent = '# 文件笔记\n\n外部更新';
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = remoteContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/reload-conflict.md',
+    displayPath: 'docs/reload-conflict.md',
+    fullDisplayPath: '/workspace/docs/reload-conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    recoverableDraft: {
+      draftId: '44444444-4444-4444-8444-444444444444',
+      content: localDraft,
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveValue(localDraft);
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText('关联文件已在外部更新');
+
+  await noteNode.getByRole('button', { name: '重新加载' }).click();
+  const reloadMessage = await waitForPostedMessageByType(page, 'webview/reloadAssociatedNoteMarkdownFile');
+  expect(reloadMessage).toEqual({
+    type: 'webview/reloadAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .filter((message) => message.type === 'webview/reloadAssociatedNoteMarkdownFile').length
+      )
+    )
+    .toBe(1);
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toHaveCount(0);
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveAttribute('data-probe-value', remoteContent);
+});
+
+test('associated markdown note accepts a file revision change before the draft is edited', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/revision-before-draft.md',
+    displayPath: 'docs/revision-before-draft.md',
+    fullDisplayPath: '/workspace/docs/revision-before-draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+
+  const revisionOnlyState = createNoteNodeState();
+  revisionOnlyState.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  revisionOnlyState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/revision-before-draft.md',
+    displayPath: 'docs/revision-before-draft.md',
+    fullDisplayPath: '/workspace/docs/revision-before-draft.md',
+    contentRevision: 'revision-b',
+    status: 'ok'
+  };
+  await updateHostState(page, revisionOnlyState);
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toHaveCount(0);
+
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+  await bodyInput.blur();
+  const message = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(message).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-b'
+    }
+  });
+});
+
+test('associated markdown note persists an edit draft with its base revision', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/draft.md',
+    displayPath: 'docs/draft.md',
+    fullDisplayPath: '/workspace/docs/draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+
+  const draftMessage = await waitForPostedMessageByType(page, 'webview/updateAssociatedNoteMarkdownDraft');
+  expect(draftMessage).toEqual({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-a'
+    }
+  });
+});
+
+test('associated markdown note clears a reverted edit draft before accepting file refresh', async ({ page }) => {
+  await openHarness(page);
+  const originalContent = '# 文件笔记\n\n原始内容';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = originalContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/reverted-draft.md',
+    displayPath: 'docs/reverted-draft.md',
+    fullDisplayPath: '/workspace/docs/reverted-draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+
+  const draftMessage = await waitForPostedMessageByType(page, 'webview/updateAssociatedNoteMarkdownDraft');
+  expect(draftMessage).toEqual({
+    type: 'webview/updateAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-a'
+    }
+  });
+  await clearPostedMessages(page);
+
+  await bodyInput.fill(originalContent);
+  const clearMessage = await waitForPostedMessageByType(page, 'webview/clearAssociatedNoteMarkdownDraft');
+  expect(clearMessage).toEqual({
+    type: 'webview/clearAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+  await clearPostedMessages(page);
+
+  const refreshedState = createNoteNodeState();
+  refreshedState.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  refreshedState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/reverted-draft.md',
+    displayPath: 'docs/reverted-draft.md',
+    fullDisplayPath: '/workspace/docs/reverted-draft.md',
+    contentRevision: 'revision-b',
+    status: 'ok'
+  };
+  await updateHostState(page, refreshedState);
+
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toHaveCount(0);
+  await expect(bodyInput).toHaveValue('# 文件笔记\n\n外部更新');
+});
+
+test('associated markdown note keeps a rejected stale draft after host dirty-conflict', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n原始内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.locator('.note-markdown-preview').dblclick();
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  const localDraft = '# 文件笔记\n\n本地草稿';
+  await bodyInput.fill(localDraft);
+  await bodyInput.blur();
+
+  const staleMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(staleMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: localDraft,
+      baseContentRevision: 'revision-a'
+    }
+  });
+  await clearPostedMessages(page);
+
+  const conflictState = createNoteNodeState();
+  conflictState.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  conflictState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    recoverableDraft: {
+      draftId: '11111111-1111-4111-8111-111111111111',
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
+  };
+  await updateHostState(page, conflictState);
+
+  await expect(bodyInput).toHaveValue(localDraft);
+  await expect(bodyInput).not.toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText(
+    '关联文件已在外部更新'
+  );
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '重新加载' }).click();
+  const reloadMessage = await waitForPostedMessageByType(page, 'webview/reloadAssociatedNoteMarkdownFile');
+  expect(reloadMessage).toEqual({
+    type: 'webview/reloadAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+
+  const recoveredState = createNoteNodeState();
+  recoveredState.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  recoveredState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'ok'
+  };
+  await updateHostState(page, recoveredState);
+  await expect(noteNode.locator('.note-markdown-preview')).toContainText('外部更新');
+});
+
+test('associated markdown note restores a persisted dirty-conflict draft after bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n外部更新';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    recoverableDraft: {
+      draftId: '22222222-2222-4222-8222-222222222222',
+      content: '# 文件笔记\n\n本地草稿',
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue('# 文件笔记\n\n本地草稿');
+  await expect(bodyInput).not.toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText(
+    '关联文件已在外部更新'
+  );
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '复制草稿' }).click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyAssociatedNoteMarkdownDraft');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: '# 文件笔记\n\n本地草稿'
+    }
+  });
+  await expect(noteNode.getByRole('button', { name: '已复制' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: '# 文件笔记\n\n本地草稿',
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown note overwrites dirty-conflict when draft matches remote content', async ({ page }) => {
+  await openHarness(page);
+  const remoteContent = '# 文件笔记\n\n外部更新';
+  const draftContent = '# 文件笔记\n\n本地草稿';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = remoteContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    recoverableDraft: {
+      draftId: '77777777-7777-4777-8777-777777777777',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(draftContent);
+
+  await bodyInput.fill(remoteContent);
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: remoteContent,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown note restores a persisted ok recoverable draft after bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const diskContent = '# 文件笔记\n\n磁盘内容';
+  const draftContent = '# 文件笔记\n\n本地草稿';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = diskContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/draft.md',
+    displayPath: 'docs/draft.md',
+    fullDisplayPath: '/workspace/docs/draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok',
+    recoverableDraft: {
+      draftId: '66666666-6666-4666-8666-666666666666',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(draftContent);
+  await expect(bodyInput).not.toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText(
+    '发现未提交的本地草稿'
+  );
+  await expect(noteNode.locator('.note-edit-conflict-hint')).not.toContainText(
+    '关联文件已在外部更新'
+  );
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toBeVisible();
+
+  await noteNode.getByRole('button', { name: '复制草稿' }).click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyAssociatedNoteMarkdownDraft');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: draftContent
+    }
+  });
+  await expect(noteNode.getByRole('button', { name: '已复制' })).toBeVisible();
+  await clearPostedMessages(page);
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown note bootstrapped with ok recoverable draft shows reload recovery only', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n- [ ] 磁盘任务';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/draft.md',
+    displayPath: 'docs/draft.md',
+    fullDisplayPath: '/workspace/docs/draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok',
+    recoverableDraft: {
+      draftId: '77777777-7777-4777-8777-777777777777',
+      baseContentRevision: 'revision-a',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('发现未提交的本地草稿');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('草稿正文暂不可读取');
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveCount(0);
+  await expect(noteNode.locator('input.task-list-item-checkbox')).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '重新加载' }).click();
+  const reloadMessage = await waitForPostedMessageByType(page, 'webview/reloadAssociatedNoteMarkdownFile');
+  expect(reloadMessage).toEqual({
+    type: 'webview/reloadAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+  await clearPostedMessages(page);
+
+  const recoveredState = createNoteNodeState();
+  recoveredState.nodes[0].metadata.note.content = '# 文件笔记\n\n- [ ] 磁盘任务';
+  recoveredState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/draft.md',
+    displayPath: 'docs/draft.md',
+    fullDisplayPath: '/workspace/docs/draft.md',
+    contentRevision: 'revision-a',
+    status: 'ok'
+  };
+  await updateHostState(page, recoveredState);
+
+  await expect(noteNode.locator('.note-markdown-preview')).toContainText('磁盘任务');
+  await noteNode.locator('input.task-list-item-checkbox').click();
+  const updateMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(updateMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: '# 文件笔记\n\n- [x] 磁盘任务',
+      baseContentRevision: 'revision-a'
+    }
+  });
+});
+
+test('associated markdown note restores a persisted missing recoverable draft after bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const cachedContent = '# 文件笔记\n\n旧磁盘内容';
+  const draftContent = '# 文件笔记\n\n文件缺失时仍可恢复的草稿';
+  const missingDisplayPath = '/workspace/docs/missing-draft.md';
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = cachedContent;
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/missing-draft.md',
+    displayPath: missingDisplayPath,
+    fullDisplayPath: missingDisplayPath,
+    contentRevision: 'revision-a',
+    status: 'missing',
+    lastError: '关联文件不可用：docs/missing-draft.md',
+    recoverableDraft: {
+      draftId: '99999999-9999-4999-8999-999999999999',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
+  await expect(bodyInput).toHaveValue(draftContent);
+  await expect(bodyInput).not.toHaveAttribute('readonly', '');
+  await expect(noteNode.locator('.note-edit-conflict-hint')).toContainText('关联文件缺失');
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '创建空文件并关联' })).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '复制草稿' }).click();
+  const copyMessage = await waitForPostedMessageByType(page, 'webview/copyAssociatedNoteMarkdownDraft');
+  expect(copyMessage).toEqual({
+    type: 'webview/copyAssociatedNoteMarkdownDraft',
+    payload: {
+      nodeId: 'note-1',
+      content: draftContent
+    }
+  });
+  await clearPostedMessages(page);
+
+  await noteNode.getByRole('button', { name: '覆盖文件' }).click();
+  const overwriteMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(overwriteMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: draftContent,
+      baseContentRevision: 'revision-a',
+      force: true
+    }
+  });
+});
+
+test('associated markdown note bootstrapped with unreadable recoverable draft shows reload recovery only', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n- [ ] 旧缓存任务';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/unreadable-draft.md',
+    displayPath: 'docs/unreadable-draft.md',
+    fullDisplayPath: '/workspace/docs/unreadable-draft.md',
+    contentRevision: 'revision-a',
+    status: 'unreadable',
+    lastError: '关联文件当前不可读：docs/unreadable-draft.md',
+    recoverableDraft: {
+      draftId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      baseContentRevision: 'revision-a',
+      updatedAt: '2026-05-24T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('发现未提交的本地草稿');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件当前不可读');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('草稿正文暂不可读取');
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '复制草稿' })).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveCount(0);
+  await expect(noteNode.locator('input.task-list-item-checkbox')).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '重新加载' }).click();
+  const reloadMessage = await waitForPostedMessageByType(page, 'webview/reloadAssociatedNoteMarkdownFile');
+  expect(reloadMessage).toEqual({
+    type: 'webview/reloadAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('associated markdown note bootstrapped with dirty-conflict shows reload recovery only', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  state.nodes[0].metadata.note.content = '# 文件笔记\n\n- [ ] 外部任务';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'dirty-conflict',
+    lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+    recoverableDraft: {
+      draftId: '11111111-1111-4111-8111-111111111111',
+      baseContentRevision: 'revision-a',
+      remoteContentRevision: 'revision-b',
+      updatedAt: '2026-05-13T00:00:00.000Z'
+    }
+  };
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件存在编辑冲突');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件在编辑期间被外部修改');
+  await expect(noteNode.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(noteNode.getByRole('button', { name: '覆盖文件' })).toHaveCount(0);
+  await expect(noteNode.locator('.note-markdown-preview')).toHaveCount(0);
+  await expect(noteNode.locator('input.task-list-item-checkbox')).toHaveCount(0);
+
+  await noteNode.getByRole('button', { name: '重新加载' }).click();
+  const reloadMessage = await waitForPostedMessageByType(page, 'webview/reloadAssociatedNoteMarkdownFile');
+  expect(reloadMessage).toEqual({
+    type: 'webview/reloadAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+  await clearPostedMessages(page);
+
+  const recoveredState = createNoteNodeState();
+  recoveredState.nodes[0].metadata.note.content = '# 文件笔记\n\n- [ ] 外部任务';
+  recoveredState.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/conflict.md',
+    displayPath: 'docs/conflict.md',
+    fullDisplayPath: '/workspace/docs/conflict.md',
+    contentRevision: 'revision-b',
+    status: 'ok'
+  };
+  await updateHostState(page, recoveredState);
+
+  await expect(noteNode.locator('.note-markdown-preview')).toContainText('外部任务');
+  await noteNode.locator('input.task-list-item-checkbox').click();
+  const updateMessage = await waitForPostedMessageByType(page, 'webview/updateNoteNode');
+  expect(updateMessage).toEqual({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: 'note-1',
+      content: '# 文件笔记\n\n- [x] 外部任务',
+      baseContentRevision: 'revision-b'
+    }
+  });
+});
+
+test('missing associated markdown notes show a warning instead of stale markdown content', async ({ page }) => {
+  await openHarness(page);
+  const state = createNoteNodeState();
+  const missingDisplayPath = '/workspace/docs/missing.md';
+  state.nodes[0].metadata.note.content = '# 旧内容';
+  state.nodes[0].metadata.note.contentSource = {
+    kind: 'markdown-file',
+    resourceUri: 'file:///workspace/docs/missing.md',
+    displayPath: missingDisplayPath,
+    fullDisplayPath: missingDisplayPath,
+    status: 'missing',
+    lastError: '关联文件不可用：docs/missing.md'
+  };
+  await bootstrap(page, state);
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件缺失');
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText('关联文件不可用');
+  await expect(noteNode.locator('.window-title-subtitle')).toHaveText(missingDisplayPath);
+  await expect(noteNode.locator('.note-file-conflict-card')).toContainText(missingDisplayPath);
+  await expect(noteNode.locator('.note-markdown-preview h1')).toHaveCount(0);
+  await expect(noteNode.locator('textarea[data-probe-field="body"]')).toHaveCount(0);
+  await expect(noteNode.getByRole('button', { name: '打开文件' })).toHaveCount(0);
+  await expect(noteNode.locator('.note-file-conflict-card .note-edit-conflict-action')).toHaveText(
+    '创建空文件并关联'
+  );
+
+  await noteNode.getByRole('button', { name: '创建空文件并关联' }).click();
+  const createMessage = await waitForPostedMessageByType(page, 'webview/createMissingAssociatedNoteMarkdownFile');
+  expect(createMessage).toEqual({
+    type: 'webview/createMissingAssociatedNoteMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('ordinary note save-as-markdown action posts saveNoteAsMarkdownFile', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+  await clearPostedMessages(page);
+
+  const noteNode = nodeById(page, 'note-1');
+  await noteNode.getByRole('button', { name: '保存为 Markdown' }).click();
+
+  const message = await waitForPostedMessageByType(page, 'webview/saveNoteAsMarkdownFile');
+  expect(message).toEqual({
+    type: 'webview/saveNoteAsMarkdownFile',
+    payload: {
+      nodeId: 'note-1'
+    }
+  });
+});
+
+test('dropping markdown files on the empty canvas posts markdown note resources', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+  await clearPostedMessages(page);
+
+  const dropResult = await page.evaluate(() => {
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) {
+      throw new Error('React Flow pane not found.');
+    }
+
+    const attachDataTransfer = (event, dataTransfer) => {
+      Object.defineProperty(event, 'dataTransfer', {
+        configurable: true,
+        value: dataTransfer
+      });
+      return event;
+    };
+    let exposeDropPayload = false;
+    const dataTransfer = {
+      dropEffect: 'copy',
+      effectAllowed: 'all',
+      files: [],
+      items: [],
+      types: ['ResourceURLs'],
+      getData: (type) =>
+        exposeDropPayload && type === 'ResourceURLs'
+          ? JSON.stringify(['file:///workspace/docs/one.md', 'file:///workspace/docs/two.markdown'])
+          : '',
+      setData: () => {},
+      clearData: () => {},
+      setDragImage: () => {}
+    };
+    const dragOverEvent = attachDataTransfer(
+      new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 320,
+        clientY: 260
+      }),
+      dataTransfer
+    );
+    const dropEvent = attachDataTransfer(
+      new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 320,
+        clientY: 260
+      }),
+      dataTransfer
+    );
+
+    pane.dispatchEvent(dragOverEvent);
+    exposeDropPayload = true;
+    pane.dispatchEvent(dropEvent);
+
+    return {
+      dragOverDefaultPrevented: dragOverEvent.defaultPrevented,
+      dropDefaultPrevented: dropEvent.defaultPrevented
+    };
+  });
+
+  expect(dropResult).toEqual({
+    dragOverDefaultPrevented: true,
+    dropDefaultPrevented: true
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/dropNoteMarkdownFiles');
+  expect(message.payload.resources).toEqual([
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///workspace/docs/one.md'
+    },
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///workspace/docs/two.markdown'
+    }
+  ]);
+  expect(Number.isFinite(message.payload.position.x)).toBe(true);
+  expect(Number.isFinite(message.payload.position.y)).toBe(true);
 });
 
 test('note markdown unsafe command links do not render clickable hrefs', async ({ page }) => {
@@ -6047,6 +9306,23 @@ async function waitForPostedMessageByType(page, type) {
   return matchedMessage;
 }
 
+async function readPostedMessagesByType(page, type) {
+  return page.evaluate((nextType) => {
+    return window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === nextType);
+  }, type);
+}
+
+async function readLastOpenedExecutionLink(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const messages = window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/openExecutionLink' && entry.payload.nodeId === nextNodeId);
+    return messages.at(-1)?.payload.link ?? null;
+  }, nodeId);
+}
+
 async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
   let matchedNode = null;
 
@@ -6117,6 +9393,36 @@ async function readTerminalUnderlinedText(page, nodeId) {
       .filter((span) => span instanceof HTMLElement && span.style.textDecoration.includes('underline'))
       .map((span) => span.textContent ?? '')
       .join('');
+  }, nodeId);
+}
+
+async function readFirstTerminalUnderlinedPoint(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const rows = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-rows`);
+    if (!(rows instanceof HTMLElement)) {
+      return null;
+    }
+
+    const span = Array.from(rows.querySelectorAll('span')).find(
+      (entry) => entry instanceof HTMLElement && entry.style.textDecoration.includes('underline')
+    );
+    if (!(span instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = span.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  }, nodeId);
+}
+
+async function readHardWrappedLinkHoverSegmentCount(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    return document.querySelectorAll(
+      `[data-node-id="${nextNodeId}"] .execution-hard-wrapped-link-hover-segment`
+    ).length;
   }, nodeId);
 }
 
@@ -6387,6 +9693,40 @@ function createTerminalShortcutEvent(
     metaKey: modifiers.metaKey === true,
     shiftKey: modifiers.shiftKey === true
   };
+}
+
+
+async function doubleClickNotePreviewText(page, { nodeId, text, offset = Math.floor(text.length / 2) }) {
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewText',
+    nodeId,
+    text,
+    offset
+  });
+  await settleWebview(page, 3);
+}
+
+async function doubleClickNotePreviewSelector(page, { nodeId, selector }) {
+  await performTestDomAction(page, {
+    kind: 'doubleClickNotePreviewSelector',
+    nodeId,
+    selector
+  });
+  await settleWebview(page, 3);
+}
+
+async function expectCaretPosition(locator, expectedCaret) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedCaret,
+      selectionEnd: expectedCaret
+    });
 }
 
 async function performTestDomAction(page, action) {

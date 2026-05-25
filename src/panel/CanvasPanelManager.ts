@@ -15,8 +15,10 @@ import {
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
   recordAgentOutputHeuristics,
+  resetAgentAbnormalStreamInterruptionHeuristics,
   resetAgentActivityHeuristics,
   stripTerminalControlSequences,
+  normalizeAgentAbnormalStreamInterruptionSignature,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
@@ -53,6 +55,7 @@ import {
   type CanvasEdgeSummary,
   type CanvasFileActivityAccessMode,
   type CanvasAttentionNotificationBridgeMode,
+  type CanvasAgentAbnormalOutputTextNotificationMode,
   type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
@@ -70,6 +73,7 @@ import {
   type CanvasNodeMetadata,
   type CanvasNodePosition,
   type CanvasRuntimeContext,
+  type WebviewClipboardTextSource,
   type CanvasTemplateMenuEntry,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
@@ -77,6 +81,7 @@ import {
   type ExecutionSessionMetadata,
   type HostToWebviewMessage,
   type NoteNodeMetadata,
+  type NoteMarkdownImageWorkspaceRoot,
   type PendingExecutionLaunch,
   type RuntimeAttachmentState,
   type RuntimeHostBackendKind,
@@ -88,12 +93,14 @@ import {
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   estimateMinimalFileNodeFootprint,
   estimatedCanvasNodeFootprint,
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   isExecutionNodeKind,
   normalizeCanvasAttentionNotificationBridgeMode,
+  normalizeCanvasAgentAbnormalOutputTextNotificationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -116,9 +123,12 @@ import {
   cloneCanvasTemplate,
   encodeCanvasTemplateDocument,
   formatCanvasTemplateStats,
+  normalizeCanvasTemplateWorkspaceRelativePath,
   parseCanvasTemplateDocument,
   resolveCanvasTemplateAgentProvider,
   type CanvasTemplate,
+  type CanvasTemplateAssociatedNoteSaveMode,
+  type CanvasTemplateAssociatedNoteSaveSelection,
   type CanvasTemplateCaptureResult,
   type CanvasTemplateSaveAgentProviderSelection
 } from '../common/canvasTemplates';
@@ -134,6 +144,21 @@ import {
   type NoteMarkdownFileSelection,
   type NoteMarkdownWorkspaceRoot
 } from '../common/noteMarkdownLinks';
+import {
+  canCompareNoteMarkdownResourceWithWorkspaceRoot,
+  createDefaultNoteMarkdownFileName,
+  createDroppedNoteMarkdownTitle,
+  extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri,
+  formatNoteMarkdownRemoteAuthorityPrefix,
+  isSupportedNoteMarkdownFilePath,
+  normalizeNoteMarkdownAuthority,
+  resolveNoteMarkdownRefreshDraftRetention,
+  shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay,
+  type MarkdownFileNoteContentSource,
+  type NoteContentSource,
+  type NoteMarkdownRecoverableDraft,
+  type NoteMarkdownFileStatus
+} from '../common/noteMarkdownFileAssociation';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
 import {
   createExecutionSessionProcess,
@@ -193,7 +218,8 @@ import {
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
-  ExecutionTerminalOpenLink
+  ExecutionTerminalOpenLink,
+  ExecutionTerminalFileLinkSource
 } from '../common/executionTerminalLinks';
 import { inferExecutionTerminalPathStyle } from '../common/executionTerminalLinks';
 import {
@@ -202,8 +228,7 @@ import {
   openExecutionTerminalLink,
   prepareExecutionTerminalDroppedPath,
   resolveExecutionTerminalFileLinkCandidates,
-  type OpenExecutionTerminalLinkResult,
-  type ResolvedExecutionFileLink
+  type OpenExecutionTerminalLinkResult
 } from './executionTerminalNativeHelpers';
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
 import {
@@ -326,6 +351,8 @@ interface ManagedExecutionSessionBase {
 interface ExecutionAttentionNotificationState extends ExecutionAttentionSignalState {
   lastNotificationKey?: string;
   lastNotificationAtMs?: number;
+  lastAbnormalStreamNotificationKey?: string;
+  lastAbnormalStreamNotificationAtMs?: number;
 }
 
 interface LocalExecutionSession extends ManagedExecutionSessionBase {
@@ -397,6 +424,31 @@ interface CanvasFileFilterState {
   excludeGlobs: string[];
 }
 
+interface ExecutionFileLinkResolveDiagnostics {
+  candidateCount: number;
+  resolvedCount: number;
+  durationMs: number;
+  sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+}
+
+interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkResolveDiagnostics {
+  timestamp: string;
+  kind: ExecutionNodeKind;
+  nodeId: string;
+  requestId: string;
+}
+
+interface ExecutionFileLinkResolveDiagnosticsSummary {
+  requestCount: number;
+  candidateCount: number;
+  resolvedCount: number;
+  totalDurationMs: number;
+  maxDurationMs: number;
+  slowRequestCount: number;
+  sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  latestRequests: ExecutionFileLinkResolveDiagnosticSample[];
+}
+
 export interface CanvasSidebarState {
   canvasSurface: 'closed' | 'hidden' | 'visible';
   surfaceLocation: CanvasSurfaceLocation;
@@ -404,6 +456,7 @@ export interface CanvasSidebarState {
   runtimePersistenceEnabled: boolean;
   notificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
+  agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
   filesFeatureEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
@@ -488,6 +541,8 @@ interface StartExecutionSessionForTestParams {
   rows?: number;
   provider?: AgentProviderKind;
   resumeRequested?: boolean;
+  injectAgentOutputChunk?: string;
+  injectAgentExistingOutput?: string;
 }
 
 interface RuntimeSupervisorRegistryForTest {
@@ -540,12 +595,64 @@ interface CanvasTemplateApplyStateResult {
   nodeIds: string[];
 }
 
+interface CanvasTemplateNoteMaterialization {
+  content: string;
+  contentSource?: NoteContentSource;
+}
+
+interface CanvasTemplateAssociatedNoteSaveFormItem {
+  nodeId: string;
+  title: string;
+  displayPath: string;
+  status: string;
+  isWorkspaceRelative: boolean;
+  defaultMode: CanvasTemplateAssociatedNoteSaveMode;
+}
+
+interface NoteMarkdownFileQuickPickItem extends vscode.QuickPickItem {
+  itemKind: 'use-input' | 'directory' | 'file';
+  filePath?: string;
+}
+
+interface NoteMarkdownFileWatcher {
+  close(): void;
+}
+
+interface ActiveAssociatedNoteMarkdownEdit {
+  content: string;
+  baseContent: string;
+  baseContentRevision?: string;
+  updatedAt: number;
+}
+
+interface ReadNoteMarkdownFileResult {
+  status: NoteMarkdownFileStatus;
+  content: string;
+  contentRevision?: string;
+  contentSkipped?: boolean;
+  lastError?: string;
+}
+
+interface NoteMarkdownFileStatResult {
+  status: NoteMarkdownFileStatus;
+  contentRevision?: string;
+  lastError?: string;
+}
+
+type NoteMarkdownExistingFileChoice = 'overwrite' | 'keep';
+type NoteMarkdownExistingDropChoice = 'create' | 'locate';
+
+// Keep the directory name stable so existing storage-backed drafts survive the field rename.
+const NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY = 'note-markdown-drafts';
+const NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
   public static readonly panelContainerId = VIEW_IDS.panelContainer;
   private static readonly RECOVERABLE_STORAGE_RELATIVE_PATHS = [
     'canvas-state.json',
+    NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY,
     'agent-runtime'
   ] as const;
 
@@ -557,6 +664,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private appliedStartupConfiguration: CanvasStartupConfiguration;
   private attentionNotificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
+  private agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
   private fileFilterState: CanvasFileFilterState;
   private canvasTemplateInitialized: boolean;
   private state: CanvasPrototypeState;
@@ -571,6 +679,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     editor: false,
     panel: false
   };
+  private currentWebviewRemoteAuthority: string | undefined;
+  private currentWebviewRemoteAuthorityProbeUri: string | undefined;
+  private currentWebviewRemoteAuthorityProbeError: string | undefined;
+  private didScheduleNoteMarkdownCurrentHostRecanonicalize = false;
   private readonly pendingVisibilityRestoreFocus: Partial<Record<CanvasSurfaceLocation, boolean>> = {};
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
@@ -583,14 +695,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly templateCatalogEmitter = new vscode.EventEmitter<void>();
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
+  private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
   private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
-  private readonly resolvedExecutionFileLinks = new Map<
-    string,
-    { nodeId: string; kind: ExecutionNodeKind; resolved: ResolvedExecutionFileLink }
-  >();
+  private readonly resolvedExecutionFileLinks = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
   private readonly executionSessionOperationTokens = new Map<string, number>();
   private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
@@ -602,6 +712,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
+  private readonly noteMarkdownFileWatchers = new Map<string, NoteMarkdownFileWatcher>();
+  private readonly noteMarkdownFileRefreshTimers = new Map<string, NodeJS.Timeout>();
+  private readonly activeAssociatedNoteMarkdownEdits = new Map<string, ActiveAssociatedNoteMarkdownEdit>();
+  private readonly noteMarkdownDropResourceKeysInProgress = new Set<string>();
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
   private readonly resolvedShellEnvironmentPatchPromises = new Map<
     ShellEnvironmentProbeMode,
@@ -622,6 +736,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.appliedStartupConfiguration = this.readStartupConfiguration();
     this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
+    this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
@@ -714,6 +829,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const strongTerminalAttentionReminderChanged = event.affectsConfiguration(
           CONFIG_KEYS.notificationStrongTerminalAttentionReminder
         );
+        const agentAbnormalOutputTextNotificationsChanged = event.affectsConfiguration(
+          CONFIG_KEYS.agentAbnormalOutputTextNotifications
+        );
         const terminalShellChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShell);
         const terminalShellPathChanged = event.affectsConfiguration(CONFIG_KEYS.terminalShellPath);
         const terminalInheritEnvChanged = event.affectsConfiguration(CONFIG_KEYS.terminalInheritEnv);
@@ -737,7 +855,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           terminalShellChanged ||
           terminalShellPathChanged ||
           attentionNotificationBridgeChanged ||
-          strongTerminalAttentionReminderChanged;
+          strongTerminalAttentionReminderChanged ||
+          agentAbnormalOutputTextNotificationsChanged;
 
         if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
@@ -761,6 +880,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !filesPathDisplayModeChanged &&
           !attentionNotificationBridgeChanged &&
           !strongTerminalAttentionReminderChanged &&
+          !agentAbnormalOutputTextNotificationsChanged &&
           !terminalShellChanged &&
           !terminalShellPathChanged &&
           !terminalInheritEnvChanged &&
@@ -791,6 +911,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             filesPathDisplayModeChanged,
             attentionNotificationBridgeChanged,
             strongTerminalAttentionReminderChanged,
+            agentAbnormalOutputTextNotificationsChanged,
             terminalShellChanged,
             terminalShellPathChanged,
             terminalInheritEnvChanged,
@@ -811,9 +932,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     context.subscriptions.push(
       new vscode.Disposable(() => {
         this.disposeRuntimeSupervisorClients();
+        this.disposeNoteMarkdownFileWatchers();
       })
     );
 
+    context.subscriptions.push(
+      vscode.workspace.onDidSaveTextDocument((document) => {
+        void this.refreshAssociatedMarkdownNotesForDocument(document);
+      }),
+      vscode.window.onDidChangeWindowState((windowState) => {
+        if (windowState.focused) {
+          void this.refreshAllAssociatedMarkdownNotes();
+        }
+      })
+    );
+
+    this.syncNoteMarkdownFileWatchers();
+    void this.refreshAllAssociatedMarkdownNotes();
     this.scheduleRestoreLiveRuntimeSessions();
     void this.notifyIfConfiguredTerminalShellUnavailable();
   }
@@ -845,6 +980,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       notificationBridgeMode: this.attentionNotificationBridgeMode,
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
+      agentAbnormalOutputTextNotificationMode: this.agentAbnormalOutputTextNotificationMode,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
@@ -868,6 +1004,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public getCanvasNodes(): CanvasNodeSummary[] {
     return cloneJsonValue(this.state.nodes);
+  }
+
+  public getCanvasTemplateAssociatedNoteSaveItems(): CanvasTemplateAssociatedNoteSaveFormItem[] {
+    return this.state.nodes.flatMap((node) => {
+      if (node.kind !== 'note') {
+        return [];
+      }
+
+      const source = ensureNoteMetadata(node).contentSource;
+      if (source?.kind !== 'markdown-file') {
+        return [];
+      }
+
+      const relativePath = this.resolveCanvasTemplateRelativePathForAssociatedNoteSource(source);
+      return [
+        {
+          nodeId: node.id,
+          title: node.title,
+          displayPath: source.fullDisplayPath ?? source.displayPath,
+          status: source.status,
+          isWorkspaceRelative: relativePath !== undefined,
+          defaultMode: relativePath ? 'workspace-file-path-only' : 'embedded-snapshot'
+        }
+      ];
+    });
   }
 
   public getCanvasFileFilterState(): CanvasFileFilterState {
@@ -906,6 +1067,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       overwriteTemplateId?: string;
       targetRootPath?: string;
       relativeDirectory?: string;
+      associatedNoteSaveModes?: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>>;
     }
   ): Promise<CanvasStoredTemplate> {
     const catalog = await this.getCanvasTemplateCatalog();
@@ -917,12 +1079,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const now = new Date().toISOString();
+    const associatedNoteSaveSelection = await this.resolveAssociatedNoteTemplateSaveSelection(
+      options?.associatedNoteSaveModes ?? {}
+    );
     const capture = captureCanvasTemplateFromState({
       state: this.buildStateForCanvasTemplateCapture(),
       name,
       templateId: overwriteTemplate?.template.id ?? `user-template-${randomUUID()}`,
       category: 'user',
       agentProviderSelection,
+      associatedNoteSaveSelection,
       now
     });
     const template = capture.template;
@@ -967,6 +1133,89 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
       })
     };
+  }
+
+  private async resolveAssociatedNoteTemplateSaveSelection(
+    modes: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>>
+  ): Promise<Record<string, CanvasTemplateAssociatedNoteSaveSelection>> {
+    const selection: Record<string, CanvasTemplateAssociatedNoteSaveSelection> = {};
+
+    for (const [nodeId, mode] of Object.entries(modes)) {
+      const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+      const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+      const source = noteMetadata?.contentSource;
+      if (!node || !noteMetadata || source?.kind !== 'markdown-file') {
+        continue;
+      }
+
+      if (mode === 'workspace-file-path-only') {
+        selection[nodeId] = {
+          mode,
+          relativePath: this.requireCanvasTemplateRelativePathForAssociatedNote(node, source)
+        };
+        continue;
+      }
+
+      const content = await this.readAssociatedMarkdownContentForTemplateSave(node, source, mode);
+      if (mode === 'embedded-snapshot') {
+        if (content.length > NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
+          throw new Error(
+            `关联 Markdown Note「${node.title}」的内容超过普通 Note 8,000 字符上限，请改选“保留 workspace 相对路径和文件内容”（仅 workspace 内文件可用）或先调整关联文件。`
+          );
+        }
+        selection[nodeId] = { mode, content };
+        continue;
+      }
+
+      selection[nodeId] = {
+        mode,
+        content,
+        relativePath: this.requireCanvasTemplateRelativePathForAssociatedNote(node, source)
+      };
+    }
+
+    return selection;
+  }
+
+  private async readAssociatedMarkdownContentForTemplateSave(
+    node: CanvasNodeSummary,
+    source: MarkdownFileNoteContentSource,
+    mode: CanvasTemplateAssociatedNoteSaveMode
+  ): Promise<string> {
+    if (source.status !== 'ok' || source.recoverableDraft) {
+      throw new Error(
+        `关联 Markdown Note「${node.title}」当前不是可保存状态（${source.status}），请先恢复关联文件后再保存模板。`
+      );
+    }
+
+    const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+    if (!uri) {
+      throw new Error(`关联 Markdown Note「${node.title}」的文件 URI 无法解析。`);
+    }
+
+    if (mode === 'workspace-file-with-content') {
+      this.requireCanvasTemplateRelativePathForAssociatedNote(node, source);
+    }
+
+    const readResult = await this.readNoteMarkdownFile(uri);
+    if (readResult.status !== 'ok') {
+      throw new Error(
+        `无法读取关联 Markdown Note「${node.title}」的落盘内容：${readResult.lastError ?? readResult.status}`
+      );
+    }
+
+    return readResult.content;
+  }
+
+  private requireCanvasTemplateRelativePathForAssociatedNote(
+    node: CanvasNodeSummary,
+    source: MarkdownFileNoteContentSource
+  ): string {
+    const relativePath = this.resolveCanvasTemplateRelativePathForAssociatedNoteSource(source);
+    if (!relativePath) {
+      throw new Error(`关联 Markdown Note「${node.title}」不在当前 workspace 内，不能保存为 workspace 相对文件关联。`);
+    }
+    return relativePath;
   }
 
   public async importCanvasTemplateFromPath(
@@ -1174,7 +1423,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeSurface: this.activeSurface,
       configuration: cloneJsonValue(this.buildDebugConfigurationSnapshot()),
       sidebar: cloneJsonValue(this.getSidebarState()),
-      state: cloneJsonValue(this.state),
+      state: cloneJsonValue(stripNoteMarkdownRecoverableDraftContentFromCanvasState(this.state)),
       surfaceMode: cloneJsonValue(this.surfaceMode),
       surfaceReady: cloneJsonValue(this.surfaceReady)
     };
@@ -1218,6 +1467,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.testDiagnosticEvents.length = 0;
   }
 
+  public collectExecutionFileLinkResolveDiagnostics(): {
+    samples: ExecutionFileLinkResolveDiagnosticSample[];
+    summary: ExecutionFileLinkResolveDiagnosticsSummary;
+  } {
+    const samples = cloneJsonValue(this.executionFileLinkResolveDiagnostics);
+    return {
+      samples,
+      summary: summarizeExecutionFileLinkResolveDiagnostics(samples)
+    };
+  }
+
   public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -1236,11 +1496,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     const debugSnapshot = this.getDebugSnapshot();
     const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
-    const diagnosticEvents = cloneJsonValue(this.testDiagnosticEvents);
+    const executionFileLinkResolveDiagnostics = this.collectExecutionFileLinkResolveDiagnostics();
     const agentCliConfig = this.getAgentCliConfig();
     const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(this.buildBaseExecutionEnvironment());
     const persistedSnapshotPath = this.getPersistedCanvasSnapshotPath();
     const persistedSnapshot = this.loadPersistedCanvasSnapshot();
+    const noteMarkdownDiagnostics = this.collectNoteMarkdownHostDiagnostics();
+    const diagnosticEvents = cloneJsonValue(this.testDiagnosticEvents);
     const summaryPath = path.join(outputDir, 'summary.json');
 
     const summary = {
@@ -1267,6 +1529,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         folders: vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
         outputRoot: outputDir
       },
+      noteMarkdown: noteMarkdownDiagnostics,
       storage: {
         extensionStoragePath: this.getExtensionStoragePath(),
         recoverySourcePath: this.storageRecoverySelection.sourcePath,
@@ -1294,6 +1557,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       diagnostics: {
         hostMessageCount: diagnosticHostMessages.length,
         hostMessageSummary: summarizeDiagnosticHostMessages(diagnosticHostMessages),
+        executionFileLinkResolveSummary: executionFileLinkResolveDiagnostics.summary,
         diagnosticEventCount: diagnosticEvents.length,
         latestDiagnosticKinds: diagnosticEvents.slice(-20).map((event) => event.kind)
       },
@@ -1321,7 +1585,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       writeJsonFile(summaryPath, summary),
       writeJsonFile(path.join(outputDir, 'debug-snapshot.json'), debugSnapshot),
       writeJsonFile(path.join(outputDir, 'host-messages.json'), diagnosticHostMessages),
+      writeJsonFile(
+        path.join(outputDir, 'execution-file-link-resolve-diagnostics.json'),
+        executionFileLinkResolveDiagnostics
+      ),
       writeJsonFile(path.join(outputDir, 'diagnostic-events.json'), diagnosticEvents),
+      writeJsonFile(path.join(outputDir, 'note-markdown-diagnostics.json'), noteMarkdownDiagnostics),
       writeJsonFile(
         path.join(outputDir, 'persisted-canvas-snapshot.json'),
         persistedSnapshot ?? {
@@ -1337,6 +1606,88 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       outputDir,
       summaryPath
     };
+  }
+
+  private collectNoteMarkdownHostDiagnostics(): Record<string, unknown> {
+    const activeWebview = this.getActiveWebview();
+    const currentRemoteAuthority = this.getCurrentWebviewRemoteAuthority(activeWebview);
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    return {
+      remoteName: vscode.env.remoteName,
+      currentRemoteAuthority,
+      normalizedCurrentRemoteAuthority: normalizeNoteMarkdownAuthority(currentRemoteAuthority),
+      currentRemoteAuthorityProbeUri: this.currentWebviewRemoteAuthorityProbeUri,
+      currentRemoteAuthorityProbeError: this.currentWebviewRemoteAuthorityProbeError,
+      didScheduleCurrentHostRecanonicalize: this.didScheduleNoteMarkdownCurrentHostRecanonicalize,
+      webviewAuthorityProbes: (['panel', 'editor'] as const).map((surface) =>
+        this.collectNoteMarkdownWebviewAuthorityProbe(surface)
+      ),
+      workspaceFolders: workspaceFolders.map((workspaceFolder) => ({
+        name: workspaceFolder.name,
+        uri: workspaceFolder.uri.toString(),
+        scheme: workspaceFolder.uri.scheme,
+        authority: workspaceFolder.uri.authority,
+        normalizedAuthority: normalizeNoteMarkdownAuthority(workspaceFolder.uri.authority),
+        path: workspaceFolder.uri.path,
+        fsPath: workspaceFolder.uri.fsPath
+      })),
+      associatedResources: this.state.nodes.flatMap((node) => {
+        if (node.kind !== 'note') {
+          return [];
+        }
+
+        const source = ensureNoteMetadata(node).contentSource;
+        if (source?.kind !== 'markdown-file') {
+          return [];
+        }
+
+        const parsedUri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+        const canonicalUri = parsedUri
+          ? canonicalizeNoteMarkdownUriForCurrentHost(parsedUri, currentRemoteAuthority)
+          : undefined;
+        return [{
+          nodeId: node.id,
+          title: node.title,
+          status: source.status,
+          displayPath: source.displayPath,
+          fullDisplayPath: source.fullDisplayPath,
+          contentRevision: source.contentRevision,
+          resourceUri: source.resourceUri,
+          parsedUri: parsedUri ? describeNoteMarkdownUriForDiagnostics(parsedUri) : null,
+          canonicalUri: canonicalUri ? describeNoteMarkdownUriForDiagnostics(canonicalUri) : null,
+          didCanonicalize: Boolean(parsedUri && canonicalUri && parsedUri.toString() !== canonicalUri.toString()),
+          resourceKey: canonicalUri ? normalizeNoteMarkdownResourceKey(canonicalUri) : source.resourceUri
+        }];
+      })
+    };
+  }
+
+  private collectNoteMarkdownWebviewAuthorityProbe(surface: CanvasSurfaceLocation): Record<string, unknown> {
+    const webview = this.getSurfaceWebview(surface);
+    if (!webview) {
+      return {
+        surface,
+        attached: false
+      };
+    }
+
+    try {
+      const probeUri = webview.asWebviewUri(vscode.Uri.file(process.cwd())).toString();
+      const remoteAuthority = extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(probeUri);
+      return {
+        surface,
+        attached: true,
+        probeUri,
+        remoteAuthority,
+        normalizedRemoteAuthority: normalizeNoteMarkdownAuthority(remoteAuthority)
+      };
+    } catch (error) {
+      return {
+        surface,
+        attached: true,
+        error: formatUnknownError(error)
+      };
+    }
   }
 
   public createNode(kind: CanvasCreatableNodeKind, options?: CreateAgentNodeOptions): void {
@@ -1446,6 +1797,150 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+
+  private createAgentNotificationSessionForTest(params: StartExecutionSessionForTestParams): ManagedExecutionSession {
+    const node = this.state.nodes.find((candidate) => candidate.id === params.nodeId && candidate.kind === 'agent');
+    if (!node) {
+      throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的 Agent 节点。');
+    }
+
+    const metadata = ensureAgentMetadata(node);
+    const provider = params.provider ?? metadata.provider;
+    const cols = normalizeTerminalCols(params.cols ?? DEFAULT_TERMINAL_COLS);
+    const rows = normalizeTerminalRows(params.rows ?? DEFAULT_TERMINAL_ROWS);
+    const noopSubscription: DisposableLike = { dispose: () => {} };
+    return {
+      sessionId: createExecutionSessionId(params.nodeId, 'agent'),
+      owner: 'local',
+      startedAtMs: Date.now(),
+      process: {
+        backend: 'node-pty',
+        pid: 0,
+        processName: 'test-agent-output-injection',
+        write: () => {},
+        resize: () => {},
+        kill: () => {},
+        onData: () => noopSubscription,
+        onExit: () => noopSubscription
+      },
+      shellPath: provider,
+      cwd: this.getTerminalWorkingDirectory(),
+      cols,
+      rows,
+      buffer: '',
+      terminalStateTracker: new SerializedTerminalStateTracker(cols, rows, {
+        scrollback: this.getTerminalScrollback()
+      }),
+      lineContextTracker: this.createExecutionTerminalLineContextTracker(
+        cols,
+        rows,
+        provider,
+        this.getTerminalWorkingDirectory(),
+        this.getTerminalScrollback()
+      ),
+      stopRequested: false,
+      syncTimer: undefined,
+      syncDueAtMs: undefined,
+      lifecycleTimer: undefined,
+      pendingOutput: '',
+      outputFlushTimer: undefined,
+      displayLabel: agentProviderDisplayLabel(provider),
+      lifecycleStatus: 'running',
+      launchMode: params.resumeRequested === true ? 'resume' : 'start',
+      resumePhaseActive: false,
+      agentProvider: provider,
+      agentResume: {
+        supported: false,
+        strategy: 'none'
+      },
+      agentActivity: createAgentActivityHeuristicState(),
+      attentionSignalState: this.createExecutionAttentionNotificationState(),
+      outputSubscription: undefined,
+      exitSubscription: undefined
+    };
+  }
+
+  public async saveNoteAsMarkdownFile(nodeId?: string): Promise<void> {
+    const node = nodeId
+      ? this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note')
+      : await this.pickEmbeddedNoteForMarkdownAssociation();
+    if (!node || node.kind !== 'note') {
+      return;
+    }
+
+    const noteMetadata = ensureNoteMetadata(node);
+    if (noteMetadata.contentSource?.kind === 'markdown-file') {
+      await this.openAssociatedNoteMarkdownFile(node.id, this.activeSurface ?? this.getConfiguredSurface());
+      return;
+    }
+
+    const targetUri = await this.promptNoteMarkdownFileTarget(node);
+    if (!targetUri) {
+      return;
+    }
+
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(targetUri))) {
+      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
+      return;
+    }
+
+    const targetStatus = await this.statNoteMarkdownTarget(targetUri);
+    if (targetStatus === 'directory') {
+      await vscode.window.showWarningMessage('选择的路径是目录，请指定一个 Markdown 文件。');
+      return;
+    }
+
+    if (targetStatus === 'missing-parent') {
+      await vscode.window.showWarningMessage('所选目录不存在，无法保存文件。');
+      return;
+    }
+
+    if (targetStatus === 'other') {
+      await vscode.window.showWarningMessage('所选路径不是有效文件，无法保存。');
+      return;
+    }
+
+    let nextContent = noteMetadata.content;
+    let nextContentRevision: string | undefined;
+    let shouldWriteCurrentNoteContent = targetStatus !== 'file';
+    if (targetStatus === 'file') {
+      const choice = await this.confirmExistingNoteMarkdownFile(targetUri);
+      if (!choice) {
+        return;
+      }
+
+      if (choice === 'keep') {
+        const readResult = await this.readNoteMarkdownFile(targetUri);
+        if (readResult.status !== 'ok') {
+          await vscode.window.showWarningMessage(readResult.lastError ?? '无法读取 Markdown 文件。');
+          return;
+        }
+        nextContent = readResult.content;
+        nextContentRevision = readResult.contentRevision;
+      } else {
+        shouldWriteCurrentNoteContent = true;
+      }
+    }
+
+    if (shouldWriteCurrentNoteContent) {
+      const writeResult = await this.writeNoteMarkdownFile(targetUri, noteMetadata.content);
+      if (!writeResult.ok) {
+        await vscode.window.showWarningMessage(writeResult.errorMessage);
+        return;
+      }
+      nextContent = noteMetadata.content;
+      nextContentRevision = writeResult.contentRevision;
+    }
+
+    this.state = this.updateNoteMarkdownFileAssociationState(this.state, node.id, targetUri, {
+      status: 'ok',
+      content: nextContent,
+      contentRevision: nextContentRevision
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
   public async focusNodeById(nodeId: string): Promise<boolean> {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) {
@@ -1536,6 +2031,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
     if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
+    }
+
+    if (params.kind === 'agent' && params.injectAgentOutputChunk) {
+      const syntheticSession = this.createAgentNotificationSessionForTest(params);
+      try {
+        if (params.injectAgentExistingOutput) {
+          syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentExistingOutput);
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(syntheticSession),
+            syntheticSession.buffer
+          );
+        }
+        syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentOutputChunk);
+        this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
+          params.nodeId,
+          syntheticSession,
+          params.injectAgentOutputChunk
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        this.disposeManagedExecutionSession(syntheticSession);
+      }
+
+      return this.getDebugSnapshot();
     }
 
     if (params.kind === 'agent') {
@@ -2202,8 +2721,116 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         COMMAND_IDS.openCanvasInEditor,
         COMMAND_IDS.openCanvasInPanel
       ],
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')]
+      localResourceRoots: this.getWebviewLocalResourceRoots()
     };
+  }
+
+  private getWebviewLocalResourceRoots(): vscode.Uri[] {
+    const roots = [
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+      ...(vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => workspaceFolder.uri),
+      ...this.listAssociatedNoteMarkdownResourceDirectories()
+    ];
+    const seen = new Set<string>();
+    return roots.filter((root) => {
+      const key = root.toString();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private listAssociatedNoteMarkdownResourceDirectories(): vscode.Uri[] {
+    return this.state.nodes.flatMap((node) => {
+      if (node.kind !== 'note') {
+        return [];
+      }
+
+      const source = ensureNoteMetadata(node).contentSource;
+      if (source?.kind !== 'markdown-file') {
+        return [];
+      }
+
+      const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+      return uri ? [dirnameUri(uri)] : [];
+    });
+  }
+
+  private formatWebviewResourceBaseUri(webview: vscode.Webview, directoryUri: vscode.Uri): string {
+    const resourceUri = webview.asWebviewUri(directoryUri.with({ query: '', fragment: '' })).toString();
+    return resourceUri.endsWith('/') ? resourceUri : `${resourceUri}/`;
+  }
+
+  private getCurrentWebviewRemoteAuthority(
+    webview: vscode.Webview | undefined = this.getActiveWebview()
+  ): string | undefined {
+    if (this.currentWebviewRemoteAuthority) {
+      return this.currentWebviewRemoteAuthority;
+    }
+    if (!webview) {
+      return undefined;
+    }
+
+    try {
+      // VS Code encodes the full Remote authority into webview resource URIs.
+      const probeUri = webview.asWebviewUri(vscode.Uri.file(process.cwd())).toString();
+      this.currentWebviewRemoteAuthorityProbeUri = probeUri;
+      this.currentWebviewRemoteAuthorityProbeError = undefined;
+      const remoteAuthority = extractNoteMarkdownCurrentRemoteAuthorityFromWebviewResourceUri(probeUri);
+      if (remoteAuthority) {
+        this.currentWebviewRemoteAuthority = remoteAuthority;
+        this.recordDiagnosticEvent('noteMarkdown/currentRemoteAuthorityInferred', {
+          probeUri,
+          remoteAuthority,
+          normalizedRemoteAuthority: normalizeNoteMarkdownAuthority(remoteAuthority),
+          remoteName: vscode.env.remoteName
+        });
+        this.scheduleNoteMarkdownCurrentHostRecanonicalize();
+      } else {
+        this.recordDiagnosticEvent('noteMarkdown/currentRemoteAuthorityProbeMissed', {
+          probeUri,
+          remoteName: vscode.env.remoteName
+        });
+      }
+      return remoteAuthority;
+    } catch (error) {
+      this.currentWebviewRemoteAuthorityProbeError = formatUnknownError(error);
+      this.recordDiagnosticEvent('noteMarkdown/currentRemoteAuthorityProbeFailed', {
+        error: this.currentWebviewRemoteAuthorityProbeError,
+        remoteName: vscode.env.remoteName
+      });
+      return undefined;
+    }
+  }
+
+  private canonicalizeCurrentHostNoteMarkdownUri(
+    uri: vscode.Uri,
+    webview: vscode.Webview | undefined = this.getActiveWebview()
+  ): vscode.Uri {
+    return canonicalizeNoteMarkdownUriForCurrentHost(
+      uri,
+      this.getCurrentWebviewRemoteAuthority(webview)
+    );
+  }
+
+  private parseCurrentHostNoteMarkdownUri(value: string): vscode.Uri | undefined {
+    const uri = parseStoredNoteMarkdownResourceUri(value);
+    return uri ? this.canonicalizeCurrentHostNoteMarkdownUri(uri) : undefined;
+  }
+
+  private scheduleNoteMarkdownCurrentHostRecanonicalize(): void {
+    if (this.didScheduleNoteMarkdownCurrentHostRecanonicalize) {
+      return;
+    }
+
+    this.didScheduleNoteMarkdownCurrentHostRecanonicalize = true;
+    setTimeout(() => {
+      void this.refreshAllAssociatedMarkdownNotes().finally(() => {
+        this.syncNoteMarkdownFileWatchers();
+      });
+    }, 0);
   }
 
   private getEditorWebviewPanelOptions(): vscode.WebviewOptions & vscode.WebviewPanelOptions {
@@ -2266,41 +2893,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const preferredCenter = this.resolvePreferredTemplatePlacementCenter();
-    const selectedDefaultTemplateId = this.getDefaultCanvasTemplateId();
+    const preservedDefaultTemplateId = this.getDefaultCanvasTemplateId();
     try {
-      await this.applyDefaultCanvasTemplate({
-        visibleCenter: preferredCenter
-      });
-      this.recordDiagnosticEvent('template/defaultAppliedOnFirstOpen', {
-        templateId: this.getDefaultCanvasTemplateId()
-      });
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.recordDiagnosticEvent('template/defaultApplyFailedOnFirstOpen', {
-        templateId: selectedDefaultTemplateId,
-        message
-      });
-    }
-
-    if (selectedDefaultTemplateId !== DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) {
-      try {
-        const fallbackTemplate = await this.resolveFirstOpenFallbackCanvasTemplateRecord();
-        if (fallbackTemplate) {
-          await this.applyCanvasTemplateRecord(fallbackTemplate, {
-            visibleCenter: preferredCenter
-          });
-          this.recordDiagnosticEvent('template/defaultFallbackAppliedOnFirstOpen', {
-            templateId: fallbackTemplate.template.id,
-            preservedDefaultTemplateId: selectedDefaultTemplateId
-          });
-          return;
-        }
-      } catch (error) {
-        this.recordDiagnosticEvent('template/defaultFallbackFailedOnFirstOpen', {
-          message: error instanceof Error ? error.message : String(error)
+      const firstOpenTemplate = await this.resolveFirstOpenCanvasTemplateRecord();
+      if (firstOpenTemplate) {
+        await this.applyCanvasTemplateRecord(firstOpenTemplate, {
+          visibleCenter: preferredCenter
         });
+        this.recordDiagnosticEvent('template/gettingStartedAppliedOnFirstOpen', {
+          templateId: firstOpenTemplate.template.id,
+          preservedDefaultTemplateId
+        });
+        return;
       }
+      this.recordDiagnosticEvent('template/gettingStartedMissingOnFirstOpen', {
+        preservedDefaultTemplateId
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('template/gettingStartedApplyFailedOnFirstOpen', {
+        preservedDefaultTemplateId,
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
 
     this.canvasTemplateInitialized = true;
@@ -2322,15 +2935,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return storedTemplate;
   }
 
-  private async resolveFirstOpenFallbackCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
+  private async resolveFirstOpenCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
     const catalog = await this.getCanvasTemplateCatalog();
-    return (
-      findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) ??
-      catalog.templates.find((storedTemplate) =>
-        storedTemplate.template.nodes.every((node) => node.kind === 'note')
-      ) ??
-      catalog.templates[0]
-    );
+    return findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID);
   }
 
   private async applyCanvasTemplateRecord(
@@ -2343,6 +2950,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   ): Promise<string[]> {
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
+    const noteMaterializations = await this.resolveCanvasTemplateNoteMaterializations(storedTemplate.template, {
+      quiet: options?.quietOnFailure === true
+    });
     const preferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
     const nextBaseState = options?.reset
       ? createDefaultState(this.getAgentCliConfig().defaultProvider)
@@ -2358,7 +2968,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const applyResult = applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
       preferredCenter,
-      resolvedAgentProviders
+      resolvedAgentProviders,
+      noteMaterializations
     });
     this.state = this.reconcileCanvasFileArtifacts(applyResult.state);
     this.canvasTemplateInitialized = true;
@@ -2419,6 +3030,182 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return resolvedAgentProviders;
+  }
+
+  private async resolveCanvasTemplateNoteMaterializations(
+    template: CanvasTemplate,
+    options: { quiet: boolean }
+  ): Promise<Map<number, CanvasTemplateNoteMaterialization>> {
+    const materializations = new Map<number, CanvasTemplateNoteMaterialization>();
+
+    for (const [index, node] of template.nodes.entries()) {
+      if (node.kind !== 'note') {
+        continue;
+      }
+
+      const note = node.metadata?.note;
+      const mode = note?.templateContentMode ?? 'embedded-snapshot';
+      if (mode === 'embedded-snapshot') {
+        continue;
+      }
+
+      const relativePath = normalizeCanvasTemplateWorkspaceRelativePath(note?.relativePath ?? '');
+      if (!relativePath) {
+        throw new Error(`模板「${template.name}」中的 Note「${node.title}」缺少合法 workspace 相对路径。`);
+      }
+
+      const uri = this.resolveCanvasTemplateWorkspaceRelativeMarkdownUri(relativePath);
+      if (!uri) {
+        throw new Error(`当前 workspace 无法解析模板 Note「${node.title}」的相对路径：${relativePath}`);
+      }
+
+      const materialization =
+        mode === 'workspace-file-path-only'
+          ? await this.resolvePathOnlyCanvasTemplateNoteMaterialization(template.name, node.title, relativePath, uri)
+          : await this.resolveContentBackedCanvasTemplateNoteMaterialization(
+              template.name,
+              node.title,
+              relativePath,
+              uri,
+              note?.content ?? ''
+            );
+      materializations.set(index, materialization);
+    }
+
+    return materializations;
+  }
+
+  private resolveCanvasTemplateWorkspaceRelativeMarkdownUri(relativePath: string): vscode.Uri | undefined {
+    const normalizedPath = normalizeCanvasTemplateWorkspaceRelativePath(relativePath);
+    if (!normalizedPath || !isSupportedNoteMarkdownFilePath(normalizedPath)) {
+      return undefined;
+    }
+
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    if (workspaceFolders.length === 0) {
+      return undefined;
+    }
+
+    const parts = normalizedPath.split('/');
+    if (workspaceFolders.length === 1) {
+      return vscode.Uri.joinPath(workspaceFolders[0].uri, ...parts);
+    }
+
+    const [folderName, ...fileParts] = parts;
+    if (fileParts.length === 0) {
+      return undefined;
+    }
+
+    const workspaceFolder = workspaceFolders.find((folder) => folder.name === folderName);
+    return workspaceFolder ? vscode.Uri.joinPath(workspaceFolder.uri, ...fileParts) : undefined;
+  }
+
+  private async resolvePathOnlyCanvasTemplateNoteMaterialization(
+    templateName: string,
+    noteTitle: string,
+    relativePath: string,
+    uri: vscode.Uri
+  ): Promise<CanvasTemplateNoteMaterialization> {
+    const readResult = await this.readNoteMarkdownFile(uri);
+    if (readResult.status === 'ok') {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+        status: 'ok',
+        contentRevision: readResult.contentRevision
+      });
+    }
+
+    if (readResult.status !== 'missing') {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, '', {
+        status: readResult.status,
+        lastError: readResult.lastError
+      });
+    }
+
+    return this.createCanvasTemplateAssociatedNoteMaterialization(uri, '', {
+      status: 'missing',
+      lastError:
+        readResult.lastError ??
+        `模板「${templateName}」中的 Note「${noteTitle}」只保留了路径，但当前 workspace 中没有 ${relativePath}。`
+    });
+  }
+
+  private async resolveContentBackedCanvasTemplateNoteMaterialization(
+    templateName: string,
+    noteTitle: string,
+    relativePath: string,
+    uri: vscode.Uri,
+    templateContent: string
+  ): Promise<CanvasTemplateNoteMaterialization> {
+    const readResult = await this.readNoteMarkdownFile(uri);
+    if (readResult.status === 'missing') {
+      return this.createCanvasTemplateMarkdownFileAndMaterialization(uri, templateContent);
+    }
+
+    if (readResult.status !== 'ok') {
+      throw new Error(`无法为模板「${templateName}」应用 Note「${noteTitle}」：${readResult.lastError ?? readResult.status}`);
+    }
+
+    if (readResult.content === templateContent) {
+      return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+        status: 'ok',
+        contentRevision: readResult.contentRevision
+      });
+    }
+
+    const recoverableDraft = this.createStoredNoteMarkdownRecoverableDraft(
+      templateContent,
+      readResult.contentRevision,
+      readResult.contentRevision
+    );
+    return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
+      status: 'dirty-conflict',
+      contentRevision: readResult.contentRevision,
+      lastError: `模板「${templateName}」中的 Note「${noteTitle}」与现有文件 ${relativePath} 内容不同。请在节点内重新加载现有文件或覆盖为模板内容。`,
+      recoverableDraft: {
+        ...recoverableDraft,
+        content: templateContent
+      }
+    });
+  }
+
+  private async createCanvasTemplateMarkdownFileAndMaterialization(
+    uri: vscode.Uri,
+    content: string
+  ): Promise<CanvasTemplateNoteMaterialization> {
+    await vscode.workspace.fs.createDirectory(getUriDirectory(uri));
+    const writeResult = await this.writeNoteMarkdownFile(uri, content);
+    if (!writeResult.ok) {
+      throw new Error(writeResult.errorMessage);
+    }
+
+    return this.createCanvasTemplateAssociatedNoteMaterialization(uri, content, {
+      status: 'ok',
+      contentRevision: writeResult.contentRevision
+    });
+  }
+
+  private createCanvasTemplateAssociatedNoteMaterialization(
+    uri: vscode.Uri,
+    content: string,
+    params: {
+      status: NoteMarkdownFileStatus;
+      contentRevision?: string;
+      lastError?: string;
+      recoverableDraft?: NoteMarkdownRecoverableDraft;
+    }
+  ): CanvasTemplateNoteMaterialization {
+    return {
+      content,
+      contentSource: {
+        kind: 'markdown-file',
+        resourceUri: uri.toString(),
+        ...this.formatNoteMarkdownDisplayPathInfo(uri),
+        contentRevision: params.contentRevision,
+        status: params.status,
+        lastError: params.lastError,
+        recoverableDraft: params.recoverableDraft
+      }
+    };
   }
 
   private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
@@ -2534,6 +3321,260 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getExtensionStoragePath(): string {
     return this.rawExtensionStoragePath;
+  }
+
+  private getNoteMarkdownRecoverableDraftsStoragePath(): string {
+    return path.join(this.getExtensionStoragePath(), NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY);
+  }
+
+  private getNoteMarkdownRecoverableDraftPath(draftId: string | undefined): string | undefined {
+    if (!draftId || !NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN.test(draftId)) {
+      return undefined;
+    }
+
+    return path.join(this.getNoteMarkdownRecoverableDraftsStoragePath(), `${draftId}.md`);
+  }
+
+  private readNoteMarkdownRecoverableDraftContent(draftId: string | undefined): string | undefined {
+    const draftPath = this.getNoteMarkdownRecoverableDraftPath(draftId);
+    if (!draftPath) {
+      return undefined;
+    }
+
+    try {
+      return fs.readFileSync(draftPath, 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+
+  private writeNoteMarkdownRecoverableDraftContent(content: string, draftId?: string): string {
+    const nextDraftId =
+      draftId && NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN.test(draftId) ? draftId : randomUUID();
+    const draftPath = this.getNoteMarkdownRecoverableDraftPath(nextDraftId);
+    if (!draftPath) {
+      throw new Error('无法生成关联 Markdown 草稿文件路径。');
+    }
+
+    fs.mkdirSync(path.dirname(draftPath), {
+      recursive: true
+    });
+    const tempDraftPath = `${draftPath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempDraftPath, content, 'utf8');
+    fs.renameSync(tempDraftPath, draftPath);
+    return nextDraftId;
+  }
+
+  private cleanupUnreferencedNoteMarkdownRecoverableDraftFiles(): void {
+    const draftsPath = this.getNoteMarkdownRecoverableDraftsStoragePath();
+    if (!fs.existsSync(draftsPath)) {
+      return;
+    }
+
+    const referencedDraftIds = new Set<string>();
+    for (const node of this.state.nodes) {
+      if (node.kind !== 'note') {
+        continue;
+      }
+
+      const source = ensureNoteMetadata(node).contentSource;
+      const draftId = source?.kind === 'markdown-file' ? source.recoverableDraft?.draftId : undefined;
+      if (draftId && NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN.test(draftId)) {
+        referencedDraftIds.add(draftId);
+      }
+    }
+
+    try {
+      for (const entry of fs.readdirSync(draftsPath, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) {
+          continue;
+        }
+        const draftId = entry.name.slice(0, -'.md'.length);
+        if (!NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN.test(draftId) || referencedDraftIds.has(draftId)) {
+          continue;
+        }
+        fs.rmSync(path.join(draftsPath, entry.name), { force: true });
+      }
+    } catch {
+      // Do not let internal draft garbage collection block canvas persistence.
+    }
+  }
+
+  private createStoredNoteMarkdownRecoverableDraft(
+    content: string,
+    baseContentRevision?: string,
+    remoteContentRevision?: string,
+    previousDraft?: NoteMarkdownRecoverableDraft
+  ): NoteMarkdownRecoverableDraft {
+    try {
+      const draftId = this.writeNoteMarkdownRecoverableDraftContent(content, previousDraft?.draftId);
+      return createNoteMarkdownRecoverableDraft({
+        draftId,
+        baseContentRevision,
+        remoteContentRevision
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('noteMarkdownDraft/writeFailed', {
+        message: formatUnknownError(error)
+      });
+      return createNoteMarkdownRecoverableDraft({
+        content,
+        baseContentRevision,
+        remoteContentRevision
+      });
+    }
+  }
+
+  private materializeNoteMarkdownRecoverableDraftFiles(state: CanvasPrototypeState): CanvasPrototypeState {
+    let didChange = false;
+    const nodes = state.nodes.map((node) => {
+      if (node.kind !== 'note') {
+        return node;
+      }
+
+      const noteMetadata = ensureNoteMetadata(node);
+      const source = noteMetadata.contentSource;
+      if (source?.kind !== 'markdown-file' || !source.recoverableDraft) {
+        return node;
+      }
+
+      const draft = source.recoverableDraft;
+      if (typeof draft.content !== 'string') {
+        return node;
+      }
+
+      const nextDraft = this.createStoredNoteMarkdownRecoverableDraft(
+        draft.content,
+        draft.baseContentRevision,
+        draft.remoteContentRevision,
+        draft
+      );
+      didChange = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...noteMetadata,
+            contentSource: {
+              ...source,
+              recoverableDraft: {
+                ...nextDraft,
+                updatedAt: draft.updatedAt
+              }
+            }
+          }
+        }
+      };
+    });
+
+    return didChange
+      ? {
+          ...state,
+          nodes
+        }
+      : state;
+  }
+
+  private hydrateNoteMarkdownRecoverableDraftsForWebview(state: CanvasPrototypeState): CanvasPrototypeState {
+    let didChange = false;
+    const nodes = state.nodes.map((node) => {
+      if (node.kind !== 'note') {
+        return node;
+      }
+
+      const noteMetadata = ensureNoteMetadata(node);
+      const source = noteMetadata.contentSource;
+      if (source?.kind !== 'markdown-file' || !source.recoverableDraft) {
+        return node;
+      }
+
+      const draft = source.recoverableDraft;
+      if (typeof draft.content === 'string') {
+        return node;
+      }
+
+      const content = this.readNoteMarkdownRecoverableDraftContent(draft.draftId);
+      if (typeof content !== 'string') {
+        return node;
+      }
+
+      didChange = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...noteMetadata,
+            contentSource: {
+              ...source,
+              recoverableDraft: {
+                ...draft,
+                content
+              }
+            }
+          }
+        }
+      };
+    });
+
+    return didChange
+      ? {
+          ...state,
+          nodes
+        }
+      : state;
+  }
+
+  private hydrateNoteMarkdownImageResourceBasesForWebview(
+    state: CanvasPrototypeState,
+    webview: vscode.Webview | undefined
+  ): CanvasPrototypeState {
+    if (!webview) {
+      return state;
+    }
+
+    let didChange = false;
+    const nodes = state.nodes.map((node) => {
+      if (node.kind !== 'note') {
+        return node;
+      }
+
+      const noteMetadata = ensureNoteMetadata(node);
+      const source = noteMetadata.contentSource;
+      if (source?.kind !== 'markdown-file') {
+        return node;
+      }
+
+      const parsedUri = parseStoredNoteMarkdownResourceUri(source.resourceUri);
+      const uri = parsedUri ? this.canonicalizeCurrentHostNoteMarkdownUri(parsedUri, webview) : undefined;
+      if (!uri) {
+        return node;
+      }
+
+      didChange = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          note: {
+            ...noteMetadata,
+            contentSource: {
+              ...source,
+              resourceUri: uri.toString(),
+              webviewResourceBaseUri: this.formatWebviewResourceBaseUri(webview, dirnameUri(uri))
+            }
+          }
+        }
+      };
+    });
+
+    return didChange
+      ? {
+          ...state,
+          nodes
+        }
+      : state;
   }
 
   private resolveRuntimeStoragePath(runtimeStoragePath: string | undefined): string {
@@ -2665,14 +3706,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const persistedFileFilterState = this.appliedStartupConfiguration.filesFeatureEnabled
       ? normalizeCanvasFileFilterState(this.fileFilterState)
       : createEmptyCanvasFileFilterState();
+    const state = stripNoteMarkdownRecoverableDraftContentFromCanvasState(snapshot.state);
     return {
       ...snapshot,
+      state,
       fileFilterState: persistedFileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
       filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       writtenAt: new Date().toISOString(),
-      stateHash: buildDiagnosticStateHash(snapshot.state)
+      stateHash: buildDiagnosticStateHash(state)
     };
   }
 
@@ -2771,7 +3814,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
         ? normalizedState
         : clearFileDomainState(normalizedState);
-    return hydrateRuntimeStoragePaths(sanitizedState, this.storageRecoverySelection.sourcePath);
+    return hydrateRuntimeStoragePaths(
+      this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedState),
+      this.storageRecoverySelection.sourcePath
+    );
   }
 
   private loadReconciledState(): CanvasPrototypeState {
@@ -2791,7 +3837,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? normalizedState
       : clearFileDomainState(normalizedState);
     const hydratedState = hydrateRuntimeStoragePaths(
-      sanitizedState,
+      this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedState),
       this.storageRecoverySelection.sourcePath
     );
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
@@ -2805,6 +3851,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private persistState(): void {
+    this.syncNoteMarkdownFileWatchers();
+    this.cleanupUnreferencedNoteMarkdownRecoverableDraftFiles();
     void this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
@@ -2820,14 +3868,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
+    const activeWebview = this.getActiveWebview();
+    if (activeWebview) {
+      activeWebview.options = this.getWebviewOptions();
+    }
     this.postMessage({
       type,
       payload: {
-        state: stripSerializedTerminalStateFromCanvasState(this.state),
-        runtime: this.getRuntimeContext()
+        state: this.prepareCanvasStateForWebview(activeWebview),
+        runtime: this.getRuntimeContext(activeWebview)
       }
     });
     this.notifySidebarStateChanged();
+  }
+
+  private prepareCanvasStateForWebview(webview: vscode.Webview | undefined): CanvasPrototypeState {
+    const state = this.hydrateNoteMarkdownRecoverableDraftsForWebview(this.state);
+    const stateWithImageResources = this.hydrateNoteMarkdownImageResourceBasesForWebview(state, webview);
+    return stripSerializedTerminalStateFromCanvasState(stateWithImageResources);
   }
 
   private postMessage(message: HostToWebviewMessage): void {
@@ -2844,7 +3902,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.sidebarStateEmitter.fire(this.getSidebarState());
   }
 
-  private getRuntimeContext(): CanvasRuntimeContext {
+  private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
     const fileConfiguration = this.getCanvasFileViewConfiguration();
     return {
       workspaceTrusted: vscode.workspace.isTrusted,
@@ -2867,8 +3925,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
-      fileIconFontFaces: []
+      fileIconFontFaces: [],
+      noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview)
     };
+  }
+
+  private getNoteMarkdownImageWorkspaceRoots(
+    webview: vscode.Webview | undefined
+  ): NoteMarkdownImageWorkspaceRoot[] | undefined {
+    if (!webview) {
+      return undefined;
+    }
+
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    if (workspaceFolders.length === 0) {
+      return undefined;
+    }
+
+    return workspaceFolders.map((workspaceFolder) => ({
+      name: workspaceFolder.name,
+      webviewResourceBaseUri: this.formatWebviewResourceBaseUri(webview, workspaceFolder.uri)
+    }));
   }
 
   private getTerminalScrollback(): number {
@@ -3005,12 +4082,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private readAgentAbnormalOutputTextNotificationMode(): CanvasAgentAbnormalOutputTextNotificationMode {
+    return normalizeCanvasAgentAbnormalOutputTextNotificationMode(
+      getConfigurationValue<CanvasAgentAbnormalOutputTextNotificationMode>(
+        'agentAbnormalOutputTextNotifications',
+        'off'
+      )
+    );
+  }
+
   private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
     this.appliedStartupConfiguration = configuration;
     this.applyWorkbenchContextKeys();
   }
 
   private applyWorkbenchContextKeys(): void {
+    void vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.panelVisibilityManaged,
+      true
+    );
     void vscode.commands.executeCommand(
       'setContext',
       CONTEXT_KEYS.panelViewVisible,
@@ -3121,6 +4212,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     filesPathDisplayModeChanged: boolean;
     attentionNotificationBridgeChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
+    agentAbnormalOutputTextNotificationsChanged: boolean;
     terminalShellChanged: boolean;
     terminalShellPathChanged: boolean;
     terminalInheritEnvChanged: boolean;
@@ -3147,6 +4239,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         mode: this.strongTerminalAttentionReminderMode,
         titleBarEnabled: strongTerminalAttentionReminderShowsTitleBar(this.strongTerminalAttentionReminderMode),
         minimapEnabled: strongTerminalAttentionReminderPulsesMinimap(this.strongTerminalAttentionReminderMode)
+      });
+    }
+
+    if (options.agentAbnormalOutputTextNotificationsChanged) {
+      this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
+      for (const session of this.getExecutionSessions('agent').values()) {
+        resetAgentAbnormalStreamInterruptionHeuristics(this.ensureAgentActivityState(session), session.buffer);
+      }
+      this.recordDiagnosticEvent('execution/agentAbnormalOutputTextNotificationsConfigChanged', {
+        enabled: this.agentAbnormalOutputTextNotificationMode !== 'off',
+        mode: this.agentAbnormalOutputTextNotificationMode
       });
     }
 
@@ -3212,6 +4315,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.terminalInheritEnvChanged ||
       options.terminalShellArgsChanged ||
       options.strongTerminalAttentionReminderChanged ||
+      options.agentAbnormalOutputTextNotificationsChanged ||
       terminalShellMetadataChanged ||
       options.terminalScrollbackChanged ||
       options.multiCursorModifierChanged ||
@@ -3299,6 +4403,209 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.writeExecutionInput(kind, nodeId, preparedPath);
   }
 
+  private async handleDroppedNoteMarkdownFiles(
+    resources: ExecutionTerminalDroppedResource[],
+    position: CanvasNodePosition,
+    sourceSurface?: CanvasSurfaceLocation
+  ): Promise<void> {
+    const droppedResourceKeys = new Set<string>();
+    const createdNodeIds: string[] = [];
+    const locatedNodeIds: string[] = [];
+    const rejectedReasons: string[] = [];
+    const sourceWebview = sourceSurface ? this.getSurfaceWebview(sourceSurface) : undefined;
+    const currentRemoteAuthority = this.getCurrentWebviewRemoteAuthority(sourceWebview);
+    const currentRemoteName = vscode.env.remoteName;
+    let offsetIndex = 0;
+
+    for (const resource of resources) {
+      const parsedUri = resolveDroppedNoteMarkdownResourceUri(resource);
+      const admission = parsedUri
+        ? resolveDroppedNoteMarkdownAdmission(
+            parsedUri,
+            vscode.workspace.workspaceFolders ?? [],
+            currentRemoteAuthority
+          )
+        : undefined;
+      const uri = admission?.uri;
+      this.recordDiagnosticEvent('noteMarkdown/dropResourceResolved', {
+        source: resource.source,
+        valueKind: resource.valueKind,
+        rawValue: resource.value,
+        sourceSurface: sourceSurface ?? null,
+        currentRemoteName,
+        currentRemoteAuthority,
+        normalizedCurrentRemoteAuthority: normalizeNoteMarkdownAuthority(currentRemoteAuthority),
+        parsedUri: parsedUri ? describeNoteMarkdownUriForDiagnostics(parsedUri) : null,
+        canonicalUri: uri ? describeNoteMarkdownUriForDiagnostics(uri) : null,
+        didCanonicalize: Boolean(parsedUri && uri && parsedUri.toString() !== uri.toString()),
+        admissionKind: admission?.kind ?? null,
+        admissionWorkspaceFolder: admission?.workspaceFolder
+          ? {
+              name: admission.workspaceFolder.name,
+              uri: admission.workspaceFolder.uri.toString()
+            }
+          : null,
+        admissionRejectionReason: admission?.rejectionReason ?? null
+      });
+      if (!uri) {
+        rejectedReasons.push(admission?.rejectionReason ?? '无法识别拖拽资源。');
+        continue;
+      }
+
+      if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+        rejectedReasons.push(`${this.formatNoteMarkdownUriForMessage(uri)} 不是 Markdown 文件。`);
+        continue;
+      }
+
+      const resourceKey = normalizeNoteMarkdownResourceKey(uri);
+      if (droppedResourceKeys.has(resourceKey)) {
+        continue;
+      }
+      droppedResourceKeys.add(resourceKey);
+
+      if (this.noteMarkdownDropResourceKeysInProgress.has(resourceKey)) {
+        continue;
+      }
+
+      this.noteMarkdownDropResourceKeysInProgress.add(resourceKey);
+      try {
+        const existingNodeIds = this.getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey);
+        if (existingNodeIds.length > 0) {
+          const choice = await this.confirmExistingDroppedNoteMarkdownFile(uri, existingNodeIds.length);
+          if (choice === 'locate') {
+            locatedNodeIds.push(...existingNodeIds);
+            continue;
+          }
+          if (choice !== 'create') {
+            continue;
+          }
+        }
+
+        const readResult = await this.readNoteMarkdownFile(uri);
+        if (readResult.status !== 'ok') {
+          rejectedReasons.push(readResult.lastError ?? `无法读取 ${this.formatNoteMarkdownUriForMessage(uri)}。`);
+          continue;
+        }
+
+        if (existingNodeIds.length === 0) {
+          const latestExistingNodeIds = this.getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey);
+          if (latestExistingNodeIds.length > 0) {
+            const choice = await this.confirmExistingDroppedNoteMarkdownFile(uri, latestExistingNodeIds.length);
+            if (choice === 'locate') {
+              locatedNodeIds.push(...latestExistingNodeIds);
+              continue;
+            }
+            if (choice !== 'create') {
+              continue;
+            }
+          }
+        }
+
+        const createdNode = this.createAssociatedNoteMarkdownNode(
+          uri,
+          readResult.content,
+          {
+            x: position.x + offsetIndex * 28,
+            y: position.y + offsetIndex * 28
+          },
+          readResult.contentRevision
+        );
+        if (createdNode) {
+          createdNodeIds.push(createdNode.id);
+          offsetIndex += 1;
+        }
+      } finally {
+        this.noteMarkdownDropResourceKeysInProgress.delete(resourceKey);
+      }
+    }
+
+    const focusNodeIds = Array.from(new Set([...createdNodeIds, ...locatedNodeIds]));
+    if (focusNodeIds.length === 0) {
+      if (rejectedReasons.length === 0) {
+        return;
+      }
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: rejectedReasons[0] ?? '没有可创建关联 Note 的 Markdown 文件。'
+        }
+      });
+      return;
+    }
+
+    if (createdNodeIds.length > 0) {
+      this.persistState();
+      this.postState('host/stateUpdated');
+    }
+    this.focusCanvasTemplateNodeGroup(focusNodeIds);
+  }
+
+  private getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey: string): string[] {
+    return this.state.nodes
+      .filter((node) => this.getAssociatedNoteMarkdownResourceKey(node) === resourceKey)
+      .map((node) => node.id);
+  }
+
+  private getAssociatedNoteMarkdownResourceKey(node: CanvasNodeSummary): string | undefined {
+    const source = node.kind === 'note' ? ensureNoteMetadata(node).contentSource : undefined;
+    if (source?.kind !== 'markdown-file') {
+      return undefined;
+    }
+
+    const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+    return uri ? normalizeNoteMarkdownResourceKey(uri) : source.resourceUri;
+  }
+
+  private createAssociatedNoteMarkdownNode(
+    uri: vscode.Uri,
+    content: string,
+    preferredPosition: CanvasNodePosition,
+    contentRevision?: string
+  ): CanvasNodeSummary | undefined {
+    const nextState = createNextState(this.state, 'note', 'codex', 'default', undefined, preferredPosition);
+    const createdNode = nextState.nodes[nextState.nodes.length - 1];
+    if (!createdNode) {
+      return undefined;
+    }
+
+    const title = noteMarkdownTitleFromUri(uri, {
+      stripExtension: this.shouldStripExtensionFromDroppedNoteMarkdownTitle()
+    });
+    const displayPathInfo = this.formatNoteMarkdownDisplayPathInfo(uri);
+    const noteMetadata: NoteNodeMetadata = {
+      content,
+      contentSource: {
+        kind: 'markdown-file',
+        resourceUri: uri.toString(),
+        ...displayPathInfo,
+        contentRevision,
+        status: 'ok'
+      }
+    };
+    const associatedNode: CanvasNodeSummary = {
+      ...createdNode,
+      title,
+      status: 'ready',
+      summary: summarizeNoteNode(noteMetadata.content),
+      metadata: {
+        ...createdNode.metadata,
+        note: noteMetadata
+      }
+    };
+
+    this.state = {
+      ...nextState,
+      nodes: [...nextState.nodes.slice(0, -1), associatedNode]
+    };
+    return associatedNode;
+  }
+
+  private shouldStripExtensionFromDroppedNoteMarkdownTitle(): boolean {
+    return vscode.workspace
+      .getConfiguration()
+      .get<boolean>(CONFIG_KEYS.noteMarkdownStripExtensionFromDroppedFileTitle, false) === true;
+  }
+
   private async handleResolveExecutionFileLinks(
     surface: CanvasSurfaceLocation,
     kind: ExecutionNodeKind,
@@ -3307,17 +4614,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     candidates: ExecutionTerminalFileLinkCandidate[]
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
+    const startedAt = Date.now();
     const resolvedCandidates = await resolveExecutionTerminalFileLinkCandidates(
       candidates,
       context,
       () => randomUUID()
     ).catch(() => []);
+    const diagnostics = buildExecutionFileLinkResolveDiagnostics(
+      candidates,
+      resolvedCandidates.length,
+      Date.now() - startedAt
+    );
+    this.recordExecutionFileLinkResolveDiagnostics({
+      timestamp: new Date().toISOString(),
+      kind,
+      nodeId,
+      requestId,
+      ...diagnostics
+    });
 
     for (const resolvedCandidate of resolvedCandidates) {
       this.resolvedExecutionFileLinks.set(resolvedCandidate.openLink.resolvedId, {
         nodeId,
-        kind,
-        resolved: resolvedCandidate.resolved
+        kind
       });
     }
 
@@ -3341,18 +4660,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     link: ExecutionTerminalOpenLink
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
-    const openResult = await openExecutionTerminalLink(
-      link,
-      context,
-      (resolvedId) => {
-        const cached = this.resolvedExecutionFileLinks.get(resolvedId);
-        if (!cached || cached.nodeId !== nodeId || cached.kind !== kind) {
-          return undefined;
-        }
-
-        return cached.resolved;
-      }
-    ).catch((): OpenExecutionTerminalLinkResult => ({ opened: false }));
+    const cached =
+      link.linkKind === 'file' && typeof link.resolvedId === 'string'
+        ? this.resolvedExecutionFileLinks.get(link.resolvedId)
+        : undefined;
+    const openResult =
+      cached && (cached.nodeId !== nodeId || cached.kind !== kind)
+        ? { opened: false }
+        : await openExecutionTerminalLink(link, context).catch(
+            (): OpenExecutionTerminalLinkResult => ({ opened: false })
+          );
 
     this.recordDiagnosticEvent(openResult.opened ? 'execution/linkOpened' : 'execution/linkOpenRejected', {
       kind,
@@ -3395,6 +4712,371 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await vscode.window.showTextDocument(document, showOptions);
     if (sourceSurface === 'editor') {
       await this.refocusInteractiveSurface('editor');
+    }
+  }
+
+  private async handleUpdateNoteNode(payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+    force?: boolean;
+  }): Promise<void> {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    if (!node || noteMetadata?.contentSource?.kind !== 'markdown-file') {
+      this.state = updateNoteContent(this.state, payload);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const uri = this.parseCurrentHostNoteMarkdownUri(noteMetadata.contentSource.resourceUri);
+    if (!uri) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+        ...noteMetadata.contentSource,
+        status: 'unreadable',
+        lastError: '关联 Markdown 文件 URI 无法解析。'
+      }, noteMetadata.content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const nextContent = payload.content;
+    if (!payload.force && payload.baseContentRevision) {
+      const currentStatResult = await this.statNoteMarkdownFile(uri);
+      if (currentStatResult.status !== 'ok') {
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+          ...noteMetadata.contentSource,
+          resourceUri: uri.toString(),
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: currentStatResult.contentRevision ?? noteMetadata.contentSource.contentRevision,
+          status: currentStatResult.status,
+          lastError: currentStatResult.lastError
+        }, noteMetadata.content);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+
+      const currentRevision = currentStatResult.contentRevision;
+      if (currentRevision && currentRevision !== payload.baseContentRevision) {
+        const currentReadResult = await this.readNoteMarkdownFile(uri);
+        const currentContent =
+          currentReadResult.status === 'ok' ? currentReadResult.content : noteMetadata.content;
+        const recoverableDraft = this.createStoredNoteMarkdownRecoverableDraft(
+          nextContent,
+          payload.baseContentRevision,
+          currentReadResult.contentRevision ?? currentRevision,
+          noteMetadata.contentSource.recoverableDraft
+        );
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+          ...noteMetadata.contentSource,
+          resourceUri: uri.toString(),
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: currentReadResult.contentRevision ?? currentRevision,
+          status: 'dirty-conflict',
+          lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+          recoverableDraft
+        }, currentContent);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+    }
+
+    const writeResult = await this.writeNoteMarkdownFile(uri, nextContent);
+    if (!writeResult.ok) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+        ...noteMetadata.contentSource,
+        resourceUri: uri.toString(),
+        ...this.formatNoteMarkdownDisplayPathInfo(uri),
+        status: 'unreadable',
+        lastError: writeResult.errorMessage
+      }, noteMetadata.content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    this.activeAssociatedNoteMarkdownEdits.delete(payload.nodeId);
+    this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
+      ...noteMetadata.contentSource,
+      resourceUri: uri.toString(),
+      ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      contentRevision: writeResult.contentRevision ?? noteMetadata.contentSource.contentRevision,
+      status: 'ok',
+      lastError: undefined,
+      recoverableDraft: undefined
+    }, nextContent);
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async handleBeginAssociatedNoteMarkdownEdit(payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }): Promise<void> {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!node || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    this.activeAssociatedNoteMarkdownEdits.set(payload.nodeId, {
+      content: payload.content,
+      baseContent: payload.content,
+      baseContentRevision: payload.baseContentRevision ?? source.contentRevision,
+      updatedAt: Date.now()
+    });
+    await this.refreshAssociatedMarkdownNote(payload.nodeId);
+  }
+
+  private handleEndAssociatedNoteMarkdownEdit(nodeId: string): void {
+    this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+  }
+
+  private async handleUpdateAssociatedNoteMarkdownDraft(payload: {
+    nodeId: string;
+    content: string;
+    baseContentRevision?: string;
+  }): Promise<void> {
+    const initialNode = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const initialNoteMetadata = initialNode ? ensureNoteMetadata(initialNode) : undefined;
+    const initialSource = initialNoteMetadata?.contentSource;
+    if (!initialNode || !initialNoteMetadata || initialSource?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const previousActiveEdit = this.activeAssociatedNoteMarkdownEdits.get(payload.nodeId);
+    if (!previousActiveEdit && !initialSource.recoverableDraft && initialSource.status !== 'dirty-conflict') {
+      return;
+    }
+
+    const baseContentRevision =
+      previousActiveEdit?.baseContent === initialNoteMetadata.content
+        ? previousActiveEdit.baseContentRevision ?? payload.baseContentRevision ?? initialSource.contentRevision
+        : payload.baseContentRevision ?? previousActiveEdit?.baseContentRevision ?? initialSource.contentRevision;
+    this.activeAssociatedNoteMarkdownEdits.set(payload.nodeId, {
+      content: payload.content,
+      baseContent: previousActiveEdit?.baseContent ?? initialNoteMetadata.content,
+      baseContentRevision,
+      updatedAt: Date.now()
+    });
+    await this.refreshAssociatedMarkdownNote(payload.nodeId);
+
+    const node = this.state.nodes.find((currentNode) => currentNode.id === payload.nodeId && currentNode.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    const source = noteMetadata?.contentSource;
+    if (!node || !noteMetadata || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const refreshedActiveEdit = this.activeAssociatedNoteMarkdownEdits.get(payload.nodeId);
+    if (!refreshedActiveEdit && !source.recoverableDraft && source.status !== 'dirty-conflict') {
+      return;
+    }
+
+    const effectiveBaseContentRevision = refreshedActiveEdit?.baseContentRevision ?? baseContentRevision;
+    const isDraftConflict =
+      source.status === 'dirty-conflict' ||
+      (Boolean(effectiveBaseContentRevision) &&
+        Boolean(source.contentRevision) &&
+        effectiveBaseContentRevision !== source.contentRevision);
+    if (payload.content === noteMetadata.content && source.status !== 'dirty-conflict') {
+      this.handleClearAssociatedNoteMarkdownDraft(payload.nodeId);
+      return;
+    }
+
+    const nextSource: MarkdownFileNoteContentSource = {
+      ...source,
+      status: isDraftConflict ? 'dirty-conflict' : source.status,
+      lastError: isDraftConflict
+        ? '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
+        : source.lastError,
+      recoverableDraft: this.createStoredNoteMarkdownRecoverableDraft(
+        payload.content,
+        effectiveBaseContentRevision,
+        isDraftConflict ? source.contentRevision : undefined,
+        source.recoverableDraft
+      )
+    };
+    const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, nextSource, noteMetadata.content);
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private handleClearAssociatedNoteMarkdownDraft(nodeId: string): void {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    const source = noteMetadata?.contentSource;
+    if (
+      !node ||
+      !noteMetadata ||
+      source?.kind !== 'markdown-file' ||
+      source.status === 'dirty-conflict'
+    ) {
+      return;
+    }
+
+    this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+    if (!source.recoverableDraft) {
+      return;
+    }
+
+    const nextState = updateAssociatedNoteMarkdownFileStatus(
+      this.state,
+      nodeId,
+      {
+        ...source,
+        recoverableDraft: undefined
+      },
+      noteMetadata.content
+    );
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async copyAssociatedNoteMarkdownDraft(
+    sourceSurface: CanvasSurfaceLocation,
+    nodeId: string,
+    content: string
+  ): Promise<void> {
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!node || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    try {
+      await vscode.env.clipboard.writeText(content);
+      this.recordDiagnosticEvent('noteMarkdownDraft/copied', {
+        nodeId,
+        bytes: Buffer.byteLength(content, 'utf8')
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '复制关联 Markdown 草稿失败。';
+      this.recordDiagnosticEvent('noteMarkdownDraft/copyFailed', {
+        nodeId,
+        message
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+    }
+  }
+
+  private async openAssociatedNoteMarkdownFile(
+    nodeId: string,
+    sourceSurface: CanvasSurfaceLocation
+  ): Promise<void> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!source || source.kind !== 'markdown-file') {
+      return;
+    }
+
+    const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+    if (!uri) {
+      return;
+    }
+
+    if (uri.scheme === 'file') {
+      await this.openCanvasFile(uri.fsPath, sourceSurface);
+      return;
+    }
+
+    await vscode.commands.executeCommand('vscode.open', uri);
+  }
+
+  private async createMissingAssociatedNoteMarkdownFile(
+    nodeId: string,
+    sourceSurface: CanvasSurfaceLocation
+  ): Promise<void> {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const noteMetadata = node ? ensureNoteMetadata(node) : undefined;
+    const source = noteMetadata?.contentSource;
+    if (!node || !noteMetadata || source?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+    if (!uri) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+        ...source,
+        status: 'unreadable',
+        lastError: '关联 Markdown 文件 URI 无法解析。'
+      }, noteMetadata.content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    try {
+      const readResult = await this.readNoteMarkdownFile(uri);
+      if (readResult.status === 'ok') {
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+          ...source,
+          resourceUri: uri.toString(),
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: readResult.contentRevision,
+          status: 'ok',
+          lastError: undefined,
+          recoverableDraft: undefined
+        }, readResult.content);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+
+      if (readResult.status !== 'missing') {
+        this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+          ...source,
+          resourceUri: uri.toString(),
+          ...this.formatNoteMarkdownDisplayPathInfo(uri),
+          contentRevision: readResult.contentRevision ?? source.contentRevision,
+          status: readResult.status,
+          lastError: readResult.lastError
+        }, noteMetadata.content);
+        this.persistState();
+        this.postState('host/stateUpdated');
+        return;
+      }
+
+      const materialization = await this.createCanvasTemplateMarkdownFileAndMaterialization(uri, '');
+      if (materialization.contentSource?.kind !== 'markdown-file') {
+        return;
+      }
+
+      this.state = updateAssociatedNoteMarkdownFileStatus(
+        this.state,
+        nodeId,
+        materialization.contentSource,
+        materialization.content
+      );
+      this.persistState();
+      this.postState('host/stateUpdated');
+    } catch (error) {
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: formatUnknownError(error)
+        }
+      });
     }
   }
 
@@ -3459,6 +5141,702 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       name: workspaceFolder.name,
       path: workspaceFolder.uri.fsPath
     }));
+  }
+
+  private async pickEmbeddedNoteForMarkdownAssociation(): Promise<CanvasNodeSummary | undefined> {
+    const noteNodes = this.state.nodes.filter(
+      (node) => node.kind === 'note' && ensureNoteMetadata(node).contentSource?.kind !== 'markdown-file'
+    );
+    if (noteNodes.length === 0) {
+      await vscode.window.showInformationMessage('当前画布没有可保存为 Markdown 的 Note。');
+      return undefined;
+    }
+
+    const selected = await vscode.window.showQuickPick(
+      noteNodes.map((node) => ({
+        label: node.title,
+        description: summarizeNoteNode(ensureNoteMetadata(node).content),
+        node
+      })),
+      {
+        title: '保存为 Markdown',
+        placeHolder: '选择 Note'
+      }
+    );
+    return selected?.node;
+  }
+
+  private async promptNoteMarkdownFileTarget(node: CanvasNodeSummary): Promise<vscode.Uri | undefined> {
+    const defaultDirectory = this.resolveDefaultNoteMarkdownDirectory();
+    const defaultPath = path.join(defaultDirectory, createDefaultNoteMarkdownFileName(node.title));
+    return this.showNoteMarkdownFileQuickInput(defaultPath, defaultDirectory);
+  }
+
+  private async showNoteMarkdownFileQuickInput(
+    initialPath: string,
+    baseDirectory: string
+  ): Promise<vscode.Uri | undefined> {
+    return new Promise((resolve) => {
+      const quickPick = vscode.window.createQuickPick<NoteMarkdownFileQuickPickItem>();
+      let disposed = false;
+
+      const resolveOnce = (uri: vscode.Uri | undefined): void => {
+        if (disposed) {
+          return;
+        }
+        disposed = true;
+        quickPick.dispose();
+        resolve(uri);
+      };
+
+      const updateItems = (): void => {
+        const inputPath = this.resolveNoteMarkdownInputPath(quickPick.value, baseDirectory);
+        const directoryPath = resolveExistingDirectoryForNoteMarkdownInput(inputPath);
+        const items: NoteMarkdownFileQuickPickItem[] = [
+          {
+            itemKind: 'use-input',
+            label: '$(check) 使用此路径',
+            description: inputPath,
+            alwaysShow: true
+          }
+        ];
+
+        if (directoryPath) {
+          try {
+            const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+            for (const entry of entries) {
+              const entryPath = path.join(directoryPath, entry.name);
+              if (entry.isDirectory()) {
+                items.push({
+                  itemKind: 'directory',
+                  label: `$(folder) ${entry.name}`,
+                  description: entryPath,
+                  filePath: entryPath
+                });
+              } else if (entry.isFile() && isSupportedNoteMarkdownFilePath(entry.name)) {
+                items.push({
+                  itemKind: 'file',
+                  label: `$(markdown) ${entry.name}`,
+                  description: entryPath,
+                  filePath: entryPath
+                });
+              }
+            }
+          } catch {
+            // Keep the current input item available even if the directory cannot be listed.
+          }
+        }
+
+        quickPick.items = items;
+      };
+
+      quickPick.title = '保存为关联 Markdown 文件';
+      quickPick.placeholder = '输入或选择 Markdown 文件路径';
+      quickPick.value = initialPath;
+      quickPick.matchOnDescription = true;
+      quickPick.ignoreFocusOut = true;
+      quickPick.onDidChangeValue(updateItems);
+      quickPick.onDidHide(() => resolveOnce(undefined));
+      quickPick.onDidAccept(() => {
+        const selected = quickPick.selectedItems[0];
+        if (selected?.itemKind === 'directory' && selected.filePath) {
+          quickPick.value = `${selected.filePath}${path.sep}`;
+          updateItems();
+          return;
+        }
+
+        const targetPath = selected?.itemKind === 'file' && selected.filePath
+          ? selected.filePath
+          : this.resolveNoteMarkdownInputPath(quickPick.value, baseDirectory);
+        resolveOnce(vscode.Uri.file(targetPath));
+      });
+      updateItems();
+      quickPick.show();
+    });
+  }
+
+  private resolveDefaultNoteMarkdownDirectory(): string {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
+      process.env.HOME ??
+      process.env.USERPROFILE ??
+      process.cwd();
+  }
+
+  private resolveNoteMarkdownInputPath(value: string, baseDirectory: string): string {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return path.join(
+        baseDirectory,
+        createDefaultNoteMarkdownFileName('note')
+      );
+    }
+
+    if (path.isAbsolute(trimmedValue)) {
+      return path.normalize(trimmedValue);
+    }
+
+    return path.resolve(baseDirectory, trimmedValue);
+  }
+
+  private async statNoteMarkdownTarget(
+    uri: vscode.Uri
+  ): Promise<'file' | 'directory' | 'missing' | 'missing-parent' | 'other'> {
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type === vscode.FileType.File) {
+        return 'file';
+      }
+      if (stat.type === vscode.FileType.Directory) {
+        return 'directory';
+      }
+      return 'other';
+    } catch {
+      const parentUri = vscode.Uri.joinPath(uri, '..');
+      try {
+        const parentStat = await vscode.workspace.fs.stat(parentUri);
+        return parentStat.type === vscode.FileType.Directory ? 'missing' : 'missing-parent';
+      } catch {
+        return 'missing-parent';
+      }
+    }
+  }
+
+  private async confirmExistingNoteMarkdownFile(
+    uri: vscode.Uri
+  ): Promise<NoteMarkdownExistingFileChoice | undefined> {
+    const overwrite = '覆盖并关联';
+    const keep = '保留并关联';
+    const selected = await vscode.window.showWarningMessage(
+      `${this.formatNoteMarkdownUriForMessage(uri)} 已存在。覆盖文件内容，还是保留现有内容直接关联？`,
+      { modal: true },
+      overwrite,
+      keep
+    );
+    if (selected === overwrite) {
+      return 'overwrite';
+    }
+    if (selected === keep) {
+      return 'keep';
+    }
+    return undefined;
+  }
+
+  private async confirmExistingDroppedNoteMarkdownFile(
+    uri: vscode.Uri,
+    existingNodeCount: number
+  ): Promise<NoteMarkdownExistingDropChoice | undefined> {
+    const create = '添加新 Note';
+    const locate = '定位已有 Note';
+    const countText = existingNodeCount > 1
+      ? `已关联到 ${existingNodeCount} 个 Note`
+      : '已关联到一个 Note';
+    const selected = await vscode.window.showWarningMessage(
+      `${this.formatNoteMarkdownUriForMessage(uri)} ${countText}。添加新的关联 Note，还是定位到已有的？`,
+      { modal: true },
+      create,
+      locate
+    );
+    if (selected === create) {
+      return 'create';
+    }
+    if (selected === locate) {
+      return 'locate';
+    }
+    return undefined;
+  }
+
+  private async statNoteMarkdownFile(uri: vscode.Uri): Promise<NoteMarkdownFileStatResult> {
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+      return {
+        status: 'unsupported-extension',
+        lastError: '只能关联 Markdown 文件（.md / .markdown）。'
+      };
+    }
+
+    let stat: vscode.FileStat;
+    try {
+      stat = await vscode.workspace.fs.stat(uri);
+    } catch {
+      return {
+        status: 'missing',
+        lastError: `关联文件不可用：${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+
+    if (stat.type === vscode.FileType.Directory) {
+      return {
+        status: 'not-file',
+        lastError: `所选路径是目录：${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+    if (stat.type !== vscode.FileType.File) {
+      return {
+        status: 'unreadable',
+        lastError: `所选路径不是有效文件：${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+
+    return {
+      status: 'ok',
+      contentRevision: await this.createNoteMarkdownFileStatRevision(uri, stat)
+    };
+  }
+
+  private async readNoteMarkdownFile(
+    uri: vscode.Uri,
+    options: { skipContentIfRevision?: string } = {}
+  ): Promise<ReadNoteMarkdownFileResult> {
+    const statResult = await this.statNoteMarkdownFile(uri);
+    if (statResult.status !== 'ok') {
+      return {
+        ...statResult,
+        content: ''
+      };
+    }
+
+    if (
+      options.skipContentIfRevision &&
+      statResult.contentRevision &&
+      options.skipContentIfRevision === statResult.contentRevision
+    ) {
+      return {
+        status: 'ok',
+        content: '',
+        contentRevision: statResult.contentRevision,
+        contentSkipped: true
+      };
+    }
+
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      return {
+        status: 'ok',
+        content: Buffer.from(bytes).toString('utf8'),
+        contentRevision: statResult.contentRevision
+      };
+    } catch (error) {
+      return {
+        status: 'unreadable',
+        content: '',
+        contentRevision: statResult.contentRevision,
+        lastError: error instanceof Error ? error.message : `无法读取 ${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+  }
+
+  private async writeNoteMarkdownFile(
+    uri: vscode.Uri,
+    content: string
+  ): Promise<{ ok: true; contentRevision?: string } | { ok: false; errorMessage: string }> {
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+      return {
+        ok: false,
+        errorMessage: '只能关联 Markdown 文件（.md / .markdown）。'
+      };
+    }
+
+    try {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
+      const statResult = await this.statNoteMarkdownFile(uri);
+      return {
+        ok: true,
+        contentRevision: statResult.status === 'ok' ? statResult.contentRevision : undefined
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        errorMessage: error instanceof Error ? error.message : `无法写入 ${this.formatNoteMarkdownUriForMessage(uri)}`
+      };
+    }
+  }
+
+  private updateNoteMarkdownFileAssociationState(
+    state: CanvasPrototypeState,
+    nodeId: string,
+    uri: vscode.Uri,
+    params: {
+      status: NoteMarkdownFileStatus;
+      content: string;
+      contentRevision?: string;
+      lastError?: string;
+    }
+  ): CanvasPrototypeState {
+    return updateAssociatedNoteMarkdownFileStatus(state, nodeId, {
+      kind: 'markdown-file',
+      resourceUri: uri.toString(),
+      ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      contentRevision: params.contentRevision,
+      status: params.status,
+      lastError: params.lastError
+    }, params.content);
+  }
+
+  private async createNoteMarkdownFileStatRevision(uri: vscode.Uri, stat: vscode.FileStat): Promise<string> {
+    if (uri.scheme === 'file') {
+      try {
+        const localStat = await fs.promises.stat(uri.fsPath);
+        if (localStat.isFile()) {
+          return [
+            'stat:file',
+            formatNoteMarkdownRevisionNumber(localStat.dev),
+            formatNoteMarkdownRevisionNumber(localStat.ino),
+            formatNoteMarkdownRevisionNumber(localStat.size),
+            formatNoteMarkdownRevisionTime(localStat.mtimeMs),
+            formatNoteMarkdownRevisionTime(localStat.ctimeMs)
+          ].join(':');
+        }
+      } catch {
+        // Fall back to VSCode's FileStat for any local stat edge case.
+      }
+    }
+
+    return [
+      'stat:vscode',
+      formatNoteMarkdownRevisionNumber(stat.type),
+      formatNoteMarkdownRevisionNumber(stat.size),
+      formatNoteMarkdownRevisionNumber(stat.mtime),
+      formatNoteMarkdownRevisionNumber(stat.ctime)
+    ].join(':');
+  }
+
+  private formatNoteMarkdownDisplayPathInfo(
+    uri: vscode.Uri
+  ): Pick<MarkdownFileNoteContentSource, 'displayPath' | 'fullDisplayPath'> {
+    const fullDisplayPath = this.formatNoteMarkdownFullDisplayPath(uri);
+    return {
+      displayPath: fullDisplayPath,
+      fullDisplayPath
+    };
+  }
+
+  private formatNoteMarkdownUriForMessage(uri: vscode.Uri): string {
+    return this.formatNoteMarkdownDisplayPathInfo(uri).displayPath;
+  }
+
+  private formatNoteMarkdownFullDisplayPath(uri: vscode.Uri): string {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const currentRemoteAuthority = this.getCurrentWebviewRemoteAuthority();
+    const displayUri = canonicalizeNoteMarkdownUriForCurrentHost(
+      uri,
+      currentRemoteAuthority
+    );
+    const workspaceRelativePath = this.resolveNoteMarkdownWorkspaceRelativeDisplayPath(
+      displayUri,
+      currentRemoteAuthority,
+      workspaceFolders
+    );
+    if (workspaceRelativePath) {
+      return workspaceRelativePath;
+    }
+
+    const readablePath = this.formatNoteMarkdownReadableAbsolutePath(displayUri);
+    const shouldShowRemotePrefix = shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay(
+      {
+        scheme: displayUri.scheme,
+        authority: displayUri.authority
+      },
+      workspaceFolders.map((workspaceFolder) => ({
+        scheme: workspaceFolder.uri.scheme,
+        authority: workspaceFolder.uri.authority
+      })),
+      currentRemoteAuthority
+    );
+    const remotePrefix = shouldShowRemotePrefix
+      ? formatNoteMarkdownRemoteAuthorityPrefix(displayUri.scheme, displayUri.authority)
+      : undefined;
+    return remotePrefix ? `${remotePrefix} · ${readablePath}` : readablePath;
+  }
+
+  private resolveNoteMarkdownWorkspaceRelativeDisplayPath(
+    uri: vscode.Uri,
+    currentRemoteAuthority: string | undefined = this.getCurrentWebviewRemoteAuthority(),
+    workspaceFolders: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? []
+  ): string | undefined {
+    for (const workspaceFolder of workspaceFolders) {
+      const relativePath = resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
+        uri,
+        workspaceFolder,
+        workspaceFolders.length > 1,
+        currentRemoteAuthority
+      );
+      if (relativePath) {
+        return relativePath;
+      }
+    }
+
+    return undefined;
+  }
+
+  private resolveCanvasTemplateRelativePathForAssociatedNoteSource(
+    source: MarkdownFileNoteContentSource
+  ): string | undefined {
+    const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+    if (!uri || !isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
+      return undefined;
+    }
+
+    const relativePath = this.resolveNoteMarkdownWorkspaceRelativeDisplayPath(uri);
+    return relativePath ? normalizeCanvasTemplateWorkspaceRelativePath(relativePath) : undefined;
+  }
+
+  private formatNoteMarkdownReadableAbsolutePath(uri: vscode.Uri): string {
+    const rawPath = uri.scheme === 'file' ? uri.fsPath : uri.path || uri.toString(true);
+    const userHome = process.env.HOME ?? process.env.USERPROFILE;
+    if (userHome) {
+      const relativeToHome = resolveNoteMarkdownPathRelativeToHome(rawPath, userHome, uri.scheme === 'file');
+      if (relativeToHome) {
+        return relativeToHome;
+      }
+    }
+
+    return uri.scheme === 'file' ? rawPath : rawPath.replace(/\\/g, '/');
+  }
+
+  private async refreshAssociatedMarkdownNotesForDocument(document: vscode.TextDocument): Promise<void> {
+    const documentResourceKey = normalizeNoteMarkdownResourceKey(
+      this.canonicalizeCurrentHostNoteMarkdownUri(document.uri)
+    );
+    const matchingNodeIds = this.state.nodes
+      .filter((node) => {
+        return this.getAssociatedNoteMarkdownResourceKey(node) === documentResourceKey;
+      })
+      .map((node) => node.id);
+    for (const nodeId of matchingNodeIds) {
+      await this.refreshAssociatedMarkdownNote(nodeId);
+    }
+  }
+
+  private async refreshAllAssociatedMarkdownNotes(): Promise<void> {
+    for (const node of this.state.nodes) {
+      if (node.kind === 'note' && ensureNoteMetadata(node).contentSource?.kind === 'markdown-file') {
+        await this.refreshAssociatedMarkdownNote(node.id);
+      }
+    }
+  }
+
+  private async refreshAssociatedMarkdownNote(
+    nodeId: string,
+    options: { clearRecoverableDraft?: boolean } = {}
+  ): Promise<void> {
+    if (options.clearRecoverableDraft) {
+      this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+    }
+
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const source = node ? ensureNoteMetadata(node).contentSource : undefined;
+    if (!node || !source || source.kind !== 'markdown-file') {
+      return;
+    }
+
+    const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+    if (!uri) {
+      this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+        ...source,
+        status: 'unreadable',
+        lastError: '关联 Markdown 文件 URI 无法解析。'
+      }, ensureNoteMetadata(node).content);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
+    const readResult = await this.readNoteMarkdownFile(uri, {
+      skipContentIfRevision:
+        source.status === 'ok' && !source.recoverableDraft ? source.contentRevision : undefined
+    });
+    const latestNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+    const latestSource = latestNode ? ensureNoteMetadata(latestNode).contentSource : undefined;
+    if (!latestNode || latestSource?.kind !== 'markdown-file') {
+      return;
+    }
+
+    const latestResourceKey = this.getAssociatedNoteMarkdownResourceKey(latestNode);
+    const refreshedResourceKey = normalizeNoteMarkdownResourceKey(
+      this.canonicalizeCurrentHostNoteMarkdownUri(uri)
+    );
+    if (latestResourceKey !== refreshedResourceKey) {
+      return;
+    }
+
+    const latestMetadata = ensureNoteMetadata(latestNode);
+    const nextContent =
+      readResult.status === 'ok' && !readResult.contentSkipped ? readResult.content : latestMetadata.content;
+    const didRevisionChange =
+      readResult.status === 'ok' &&
+      Boolean(latestSource.contentRevision) &&
+      Boolean(readResult.contentRevision) &&
+      latestSource.contentRevision !== readResult.contentRevision;
+    const activeEdit = this.activeAssociatedNoteMarkdownEdits.get(nodeId);
+    const activeEditBaseRevision = activeEdit?.baseContentRevision ?? latestSource.contentRevision;
+    const didActiveEditDraftChange = Boolean(activeEdit) && activeEdit?.content !== activeEdit?.baseContent;
+    const didActiveEditRemoteRevisionChange =
+      readResult.status === 'ok' &&
+      Boolean(activeEdit) &&
+      Boolean(activeEditBaseRevision) &&
+      Boolean(readResult.contentRevision) &&
+      activeEditBaseRevision !== readResult.contentRevision;
+    const didActiveEditRemoteContentChange =
+      readResult.status === 'ok' &&
+      !readResult.contentSkipped &&
+      Boolean(activeEdit) &&
+      activeEdit?.baseContent !== readResult.content;
+    const didActiveEditConflict =
+      didActiveEditDraftChange &&
+      (didActiveEditRemoteContentChange || didActiveEditRemoteRevisionChange);
+    if (
+      activeEdit &&
+      readResult.status === 'ok' &&
+      !readResult.contentSkipped &&
+      readResult.contentRevision &&
+      activeEditBaseRevision !== readResult.contentRevision &&
+      !didActiveEditDraftChange
+    ) {
+      this.activeAssociatedNoteMarkdownEdits.set(nodeId, {
+        ...activeEdit,
+        baseContent: readResult.content,
+        baseContentRevision: readResult.contentRevision,
+        updatedAt: Date.now()
+      });
+    }
+    const draftRetention = resolveNoteMarkdownRefreshDraftRetention({
+      clearRecoverableDraft: options.clearRecoverableDraft,
+      currentStatus: latestSource.status,
+      hasRecoverableDraft: Boolean(latestSource.recoverableDraft),
+      didRevisionChange,
+      didActiveEditConflict
+    });
+    const nextRecoverableDraft = draftRetention.keepRecoverableDraft
+      ? didActiveEditConflict && activeEdit
+        ? this.createStoredNoteMarkdownRecoverableDraft(
+            activeEdit.content,
+            activeEditBaseRevision,
+            readResult.contentRevision,
+            latestSource.recoverableDraft
+          )
+        : latestSource.recoverableDraft
+          ? {
+              ...latestSource.recoverableDraft,
+              remoteContentRevision: draftRetention.markDirtyConflict && readResult.status === 'ok'
+                ? readResult.contentRevision
+                : latestSource.recoverableDraft.remoteContentRevision
+            }
+          : undefined
+      : undefined;
+    const nextStatus = draftRetention.markDirtyConflict ? 'dirty-conflict' : readResult.status;
+    const nextLastError = draftRetention.markDirtyConflict
+      ? (latestSource.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
+      : readResult.lastError;
+    const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
+      ...latestSource,
+      resourceUri: uri.toString(),
+      ...this.formatNoteMarkdownDisplayPathInfo(uri),
+      contentRevision: readResult.status === 'ok' ? readResult.contentRevision : latestSource.contentRevision,
+      status: nextStatus,
+      lastError: nextLastError,
+      recoverableDraft: nextRecoverableDraft
+    }, nextContent);
+    if (nextState === this.state) {
+      return;
+    }
+
+    this.state = nextState;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private syncNoteMarkdownFileWatchers(): void {
+    const expected = new Map<string, vscode.Uri>();
+    for (const node of this.state.nodes) {
+      if (node.kind !== 'note') {
+        continue;
+      }
+      const source = ensureNoteMetadata(node).contentSource;
+      if (source?.kind !== 'markdown-file') {
+        continue;
+      }
+      const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
+      if (uri?.scheme === 'file') {
+        expected.set(node.id, uri);
+      }
+    }
+
+    for (const [nodeId, watcher] of this.noteMarkdownFileWatchers.entries()) {
+      if (!expected.has(nodeId)) {
+        watcher.close();
+        this.noteMarkdownFileWatchers.delete(nodeId);
+      }
+    }
+
+    for (const [nodeId, uri] of expected.entries()) {
+      if (this.noteMarkdownFileWatchers.has(nodeId)) {
+        continue;
+      }
+
+      const watcher = this.createNoteMarkdownFileWatcher(nodeId, uri);
+      if (watcher) {
+        this.noteMarkdownFileWatchers.set(nodeId, watcher);
+      }
+    }
+  }
+
+  private createNoteMarkdownFileWatcher(nodeId: string, uri: vscode.Uri): NoteMarkdownFileWatcher | undefined {
+    const parentDirectory = path.dirname(uri.fsPath);
+    const closeCallbacks: Array<() => void> = [];
+
+    const fileListener = (): void => {
+      this.scheduleNoteMarkdownFileRefresh(nodeId);
+    };
+    try {
+      fs.watchFile(uri.fsPath, { interval: 750, persistent: false }, fileListener);
+      closeCallbacks.push(() => fs.unwatchFile(uri.fsPath, fileListener));
+    } catch {
+      // Parent directory watching below may still catch create/delete events.
+    }
+
+    try {
+      const parentWatcher = fs.watch(parentDirectory, { persistent: false }, () => {
+        this.scheduleNoteMarkdownFileRefresh(nodeId);
+      });
+      closeCallbacks.push(() => parentWatcher.close());
+    } catch {
+      // Missing or inaccessible parents are represented in node state by refreshAssociatedMarkdownNote.
+    }
+
+    if (closeCallbacks.length === 0) {
+      return undefined;
+    }
+
+    return {
+      close: () => {
+        for (const close of closeCallbacks) {
+          close();
+        }
+      }
+    };
+  }
+
+  private scheduleNoteMarkdownFileRefresh(nodeId: string): void {
+    const existingTimer = this.noteMarkdownFileRefreshTimers.get(nodeId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      this.noteMarkdownFileRefreshTimers.delete(nodeId);
+      void this.refreshAssociatedMarkdownNote(nodeId);
+    }, 120);
+    this.noteMarkdownFileRefreshTimers.set(nodeId, timer);
+  }
+
+  private disposeNoteMarkdownFileWatchers(): void {
+    for (const timer of this.noteMarkdownFileRefreshTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.noteMarkdownFileRefreshTimers.clear();
+    for (const watcher of this.noteMarkdownFileWatchers.values()) {
+      watcher.close();
+    }
+    this.noteMarkdownFileWatchers.clear();
   }
 
   private async refocusInteractiveSurface(
@@ -3851,7 +6229,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         onSessionOutput: (event) =>
           this.handleRuntimeSupervisorOutput(runtimeStoragePath, event.sessionId, event.chunk),
         onSessionState: (snapshot) => {
-          void this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot);
+          void this.handleRuntimeSupervisorState(runtimeStoragePath, snapshot).catch((error) => {
+            this.recordDiagnosticEvent('runtime/sessionStateHandlerFailed', {
+              sessionId: snapshot.sessionId,
+              lifecycle: snapshot.lifecycle,
+              live: snapshot.live,
+              message: formatUnknownError(error)
+            });
+          });
         },
         onDisconnected: (error) =>
           this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
@@ -4407,6 +6792,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     runtimeStoragePath: string | undefined
   ): SupervisorExecutionSession {
+    const agentActivity =
+      snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined;
+    if (agentActivity) {
+      resetAgentAbnormalStreamInterruptionHeuristics(agentActivity, snapshot.output);
+    }
+
     return {
       sessionId: snapshot.sessionId,
       owner: 'supervisor',
@@ -4459,6 +6850,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               storagePath: snapshot.resumeStoragePath
             }
           : undefined,
+      agentActivity,
+      attentionSignalState: this.createExecutionAttentionNotificationState(),
       outputSubscription: undefined,
       exitSubscription: undefined
     };
@@ -4516,6 +6909,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         allowOverwriteExisting: session.stopRequested,
         flushImmediately: session.stopRequested
       });
+      this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(binding.nodeId, session, chunk);
     }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
     this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
@@ -4532,7 +6926,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const wasLive = this.getExecutionSessions(binding.kind).has(binding.nodeId);
+    const previousSession = this.getExecutionSessions(binding.kind).get(binding.nodeId);
+    const wasLive = Boolean(previousSession);
     this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
       postSnapshot: false,
       historyOnUnavailable: false
@@ -4544,6 +6939,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         binding.nodeId,
         snapshot.lastExitMessage ?? '会话已结束。'
       );
+      if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
+        await this.markAndNotifyAgentAbnormalInterruption(
+          binding.nodeId,
+          previousSession,
+          snapshot.lifecycle,
+          snapshot.lastExitMessage ?? 'Agent 会话异常退出。',
+          {
+            exitCode: snapshot.lastExitCode ?? null,
+            signal: snapshot.lastExitSignal ?? null,
+            launchMode: snapshot.launchMode,
+            runtimeBackend: snapshot.runtimeBackend,
+            reason: 'process-exit'
+          }
+        );
+      }
       if (
         snapshot.lifecycle === 'error' ||
         snapshot.lifecycle === 'resume-failed'
@@ -5250,6 +7660,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           parsedMessage.payload.text
         );
         return;
+      case 'webview/copyTextToClipboard':
+        void this.copyTextToClipboard(sourceSurface, parsedMessage.payload.text, {
+          source: parsedMessage.payload.source,
+          nodeId: parsedMessage.payload.nodeId
+        });
+        return;
       case 'webview/requestExecutionPaste':
         void this.handleExecutionPasteRequest(
           sourceSurface,
@@ -5299,9 +7715,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/updateNoteNode':
-        this.state = updateNoteContent(this.state, parsedMessage.payload);
-        this.persistState();
-        this.postState('host/stateUpdated');
+        void this.handleUpdateNoteNode(parsedMessage.payload);
+        return;
+      case 'webview/beginAssociatedNoteMarkdownEdit':
+        void this.handleBeginAssociatedNoteMarkdownEdit(parsedMessage.payload);
+        return;
+      case 'webview/endAssociatedNoteMarkdownEdit':
+        this.handleEndAssociatedNoteMarkdownEdit(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/updateAssociatedNoteMarkdownDraft':
+        void this.handleUpdateAssociatedNoteMarkdownDraft(parsedMessage.payload);
+        return;
+      case 'webview/clearAssociatedNoteMarkdownDraft':
+        this.handleClearAssociatedNoteMarkdownDraft(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/copyAssociatedNoteMarkdownDraft':
+        void this.copyAssociatedNoteMarkdownDraft(
+          sourceSurface,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.content
+        );
+        return;
+      case 'webview/saveNoteAsMarkdownFile':
+        void this.saveNoteAsMarkdownFile(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/openAssociatedNoteMarkdownFile':
+        void this.openAssociatedNoteMarkdownFile(parsedMessage.payload.nodeId, sourceSurface);
+        return;
+      case 'webview/reloadAssociatedNoteMarkdownFile':
+        void this.refreshAssociatedMarkdownNote(parsedMessage.payload.nodeId, { clearRecoverableDraft: true });
+        return;
+      case 'webview/createMissingAssociatedNoteMarkdownFile':
+        void this.createMissingAssociatedNoteMarkdownFile(parsedMessage.payload.nodeId, sourceSurface);
+        return;
+      case 'webview/dropNoteMarkdownFiles':
+        void this.handleDroppedNoteMarkdownFiles(
+          parsedMessage.payload.resources,
+          parsedMessage.payload.position,
+          sourceSurface
+        );
         return;
       case 'webview/createEdge':
         this.state = createUserCanvasEdge(this.state, {
@@ -5786,13 +8238,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return session.agentActivity;
   }
 
+  private createExecutionAttentionNotificationState(): ExecutionAttentionNotificationState {
+    return {
+      ...createExecutionAttentionSignalState()
+    };
+  }
+
   private ensureExecutionAttentionNotificationState(
     session: ManagedExecutionSession
   ): ExecutionAttentionNotificationState {
     if (!session.attentionSignalState) {
-      session.attentionSignalState = {
-        ...createExecutionAttentionSignalState()
-      };
+      session.attentionSignalState = this.createExecutionAttentionNotificationState();
     }
 
     return session.attentionSignalState;
@@ -5895,34 +8351,180 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     state.lastNotificationKey = notificationKey;
     state.lastNotificationAtMs = now;
 
+    await this.publishExecutionAttentionNotification(kind, nodeId, message, notificationKey, {
+      trigger: 'terminal-signal',
+      signal: signal.kind
+    });
+  }
+
+  private async markAndNotifyAgentAbnormalInterruption(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    status: AgentNodeStatus,
+    message: string,
+    detail: Record<string, unknown> = {}
+  ): Promise<void> {
+    if (!this.shouldNotifyAgentAbnormalInterruption(session, status, detail)) {
+      return;
+    }
+
+    const state = session.attentionSignalState;
+    const now = Date.now();
+    if (
+      typeof state?.lastAbnormalStreamNotificationAtMs === 'number' &&
+      now - state.lastAbnormalStreamNotificationAtMs < EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS
+    ) {
+      this.setExecutionAttentionPending('agent', nodeId, true);
+      this.recordDiagnosticEvent('execution/attentionNotificationSuppressed', {
+        kind: 'agent',
+        nodeId,
+        reason: 'covered-by-abnormal-stream',
+        trigger: 'agent-abnormal-interruption',
+        provider: session.agentProvider,
+        lifecycleStatus: status,
+        ...detail
+      });
+      return;
+    }
+
+    this.setExecutionAttentionPending('agent', nodeId, true);
+    const notificationMessage = this.buildAgentAbnormalInterruptionNotificationMessage(
+      nodeId,
+      session,
+      status,
+      message
+    );
+    await this.publishExecutionAttentionNotification(
+      'agent',
+      nodeId,
+      notificationMessage,
+      `agent-abnormal-interruption:${session.sessionId}:${status}`,
+      {
+        trigger: 'agent-abnormal-interruption',
+        provider: session.agentProvider,
+        lifecycleStatus: status,
+        ...detail
+      }
+    );
+  }
+
+  private shouldNotifyAgentAbnormalInterruption(
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'stopRequested' | 'lifecycleStatus'>,
+    status: AgentNodeStatus | TerminalNodeStatus,
+    detail: Record<string, unknown>
+  ): status is 'error' {
+    return (
+      !session.stopRequested &&
+      status === 'error' &&
+      (session.agentProvider === 'codex' || session.agentProvider === 'claude') &&
+      (session.lifecycleStatus === 'running' || session.lifecycleStatus === 'waiting-input') &&
+      detail.reason === 'process-exit' &&
+      typeof detail.exitCode === 'number' &&
+      detail.exitCode !== 0
+    );
+  }
+
+  private async markAndNotifyAgentAbnormalStreamInterruption(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    message: string
+  ): Promise<void> {
+    if (!this.shouldNotifyAgentAbnormalStreamInterruption(session)) {
+      return;
+    }
+
+    const normalizedMessage = trimStoredTerminalText(message)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalizedMessage) {
+      return;
+    }
+
+    const signature = normalizeAgentAbnormalStreamInterruptionSignature(normalizedMessage);
+    const state = this.ensureExecutionAttentionNotificationState(session);
+    const notificationKey = `agent-abnormal-stream:${session.sessionId}:${signature}`;
+    const now = Date.now();
+    if (
+      state.lastAbnormalStreamNotificationKey === notificationKey &&
+      typeof state.lastAbnormalStreamNotificationAtMs === 'number' &&
+      now - state.lastAbnormalStreamNotificationAtMs < EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS
+    ) {
+      this.recordDiagnosticEvent('execution/attentionNotificationSuppressed', {
+        kind: 'agent',
+        nodeId,
+        reason: 'cooldown',
+        trigger: 'agent-abnormal-stream-interruption',
+        provider: session.agentProvider,
+        message: normalizedMessage
+      });
+      return;
+    }
+
+    state.lastAbnormalStreamNotificationKey = notificationKey;
+    state.lastAbnormalStreamNotificationAtMs = now;
+    this.setExecutionAttentionPending('agent', nodeId, true);
+    await this.publishExecutionAttentionNotification(
+      'agent',
+      nodeId,
+      this.buildAgentAbnormalStreamInterruptionNotificationMessage(nodeId, session, normalizedMessage),
+      notificationKey,
+      {
+        trigger: 'agent-abnormal-stream-interruption',
+        provider: session.agentProvider,
+        lifecycleStatus: session.lifecycleStatus,
+        launchMode: session.launchMode,
+        reason: 'output-pattern'
+      }
+    );
+  }
+
+  private shouldNotifyAgentAbnormalStreamInterruption(
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'stopRequested' | 'lifecycleStatus'>
+  ): boolean {
+    return (
+      !session.stopRequested &&
+      this.agentAbnormalOutputTextNotificationMode === 'codex' &&
+      session.agentProvider === 'codex' &&
+      (session.lifecycleStatus === 'running' || session.lifecycleStatus === 'waiting-input')
+    );
+  }
+
+  private async publishExecutionAttentionNotification(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    message: string,
+    notificationKey: string,
+    detail: Record<string, unknown> = {}
+  ): Promise<void> {
     if (this.attentionNotificationBridgeMode === 'system') {
       const companionResult = await this.postExecutionAttentionNotificationToCompanion(
         this.buildExecutionAttentionNotificationRequest(kind, nodeId, message, notificationKey)
       );
       if (companionResult.status === 'posted') {
         this.recordDiagnosticEvent('execution/attentionNotificationCompanionPosted', {
+          ...detail,
           kind,
           nodeId,
-          signal: signal.kind,
           message,
           bridgeMode: this.attentionNotificationBridgeMode,
           backend: companionResult.backend,
           activationMode: companionResult.activationMode,
-          detail: companionResult.detail
+          companionDetail: companionResult.detail
         });
         return;
       }
 
       this.recordDiagnosticEvent('execution/attentionNotificationCompanionFallback', {
+        ...detail,
         kind,
         nodeId,
-        signal: signal.kind,
         message,
         bridgeMode: this.attentionNotificationBridgeMode,
         status: companionResult.status,
         backend: companionResult.backend,
         activationMode: companionResult.activationMode,
-        detail: companionResult.detail
+        companionDetail: companionResult.detail
       });
     }
 
@@ -5931,9 +8533,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.recordDiagnosticEvent('execution/attentionNotificationPosted', {
+      ...detail,
       kind,
       nodeId,
-      signal: signal.kind,
       message,
       bridgeMode: this.attentionNotificationBridgeMode
     });
@@ -6116,14 +8718,79 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : `${executionLabel}「${displayLabel}」发出终端通知。`;
   }
 
+  private buildAgentAbnormalInterruptionNotificationMessage(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    _status: 'error',
+    message: string
+  ): string {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
+    const providerLabel = agentProviderDisplayLabel(session.agentProvider ?? 'codex');
+    const nodeLabel = trimStoredTerminalText(node?.title || session.displayLabel || '').trim() || 'Agent';
+    const normalizedMessage = trimStoredTerminalText(message)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!normalizedMessage) {
+      return `${providerLabel} Agent「${nodeLabel}」异常中断。`;
+    }
+
+    const clippedMessage =
+      normalizedMessage.length > EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT
+        ? `${normalizedMessage.slice(0, EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT)}...`
+        : normalizedMessage;
+    return `${providerLabel} Agent「${nodeLabel}」异常中断：${clippedMessage}`;
+  }
+
+  private buildAgentAbnormalStreamInterruptionNotificationMessage(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    message: string
+  ): string {
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
+    const providerLabel = agentProviderDisplayLabel(session.agentProvider ?? 'codex');
+    const nodeLabel = trimStoredTerminalText(node?.title || session.displayLabel || '').trim() || 'Agent';
+    const normalizedMessage = trimStoredTerminalText(message)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const clippedMessage =
+      normalizedMessage.length > EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT
+        ? `${normalizedMessage.slice(0, EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT)}...`
+        : normalizedMessage;
+    return `${providerLabel} Agent「${nodeLabel}」输出流异常：${clippedMessage}`;
+  }
+
+  private recordAgentOutputHeuristicsAndNotifyAbnormalStream(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    chunk: string
+  ): void {
+    const providerForTextNotifications =
+      this.agentAbnormalOutputTextNotificationMode === 'codex' && session.agentProvider === 'codex'
+        ? session.agentProvider
+        : undefined;
+    const state = this.ensureAgentActivityState(session);
+    const snapshot = recordAgentOutputHeuristics(state, chunk, session.buffer, providerForTextNotifications);
+    if (snapshot.sawAbnormalStreamInterruption && snapshot.abnormalStreamInterruptionMessage) {
+      void this.markAndNotifyAgentAbnormalStreamInterruption(
+        nodeId,
+        session,
+        snapshot.abnormalStreamInterruptionMessage
+      );
+    }
+  }
+
   private recordAgentOutputActivity(
     nodeId: string,
     session: ManagedExecutionSession,
     chunk: string
   ): void {
-    const state = this.ensureAgentActivityState(session);
-    recordAgentOutputHeuristics(state, chunk, session.buffer);
-    this.scheduleAgentInteractiveStateEvaluation(nodeId);
+    this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(nodeId, session, chunk);
+    if (isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus)) {
+      this.scheduleAgentInteractiveStateEvaluation(nodeId);
+    }
   }
 
   private scheduleAgentInteractiveStateEvaluation(nodeId: string): void {
@@ -6669,6 +9336,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         agentProvider: provider,
         agentResume: resumeContext,
         agentActivity: createAgentActivityHeuristicState(),
+        attentionSignalState: this.createExecutionAttentionNotificationState(),
         outputSubscription: undefined,
         exitSubscription: undefined
       };
@@ -6694,11 +9362,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           allowOverwriteExisting: activeSession.stopRequested,
           flushImmediately: activeSession.stopRequested
         });
-        if (
-          activeSession.lifecycleStatus === 'starting' ||
-          activeSession.lifecycleStatus === 'resuming' ||
-          activeSession.lifecycleStatus === 'running'
-        ) {
+        if (shouldRecordAgentOutputHeuristics(activeSession.lifecycleStatus)) {
           this.recordAgentOutputActivity(nodeId, activeSession, text);
         }
         this.queueExecutionStateSync('agent', nodeId);
@@ -6784,6 +9448,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.persistState();
         this.postState('host/stateUpdated');
         await this.postExecutionExitWithFinalSnapshot('agent', nodeId, message);
+        if (status === 'error') {
+          await this.markAndNotifyAgentAbnormalInterruption(nodeId, activeSession, status, message, {
+            exitCode: exitCode ?? null,
+            signal: signal ?? null,
+            launchMode: activeSession.launchMode,
+            reason: 'process-exit'
+          });
+        }
         if (status === 'error' || status === 'resume-failed') {
           this.postMessage({
             type: 'host/error',
@@ -8016,7 +10688,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.lifecycleTimer = undefined;
       }
       if (submittedInstruction) {
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session));
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
         this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
@@ -8094,6 +10766,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         type: 'host/error',
         payload: {
           message: error instanceof Error ? error.message : '复制终端选区失败。'
+        }
+      });
+    }
+  }
+
+  private async copyTextToClipboard(
+    sourceSurface: CanvasSurfaceLocation,
+    text: string,
+    detail: {
+      source: WebviewClipboardTextSource;
+      nodeId?: string;
+    }
+  ): Promise<void> {
+    try {
+      await vscode.env.clipboard.writeText(text);
+      this.recordDiagnosticEvent('clipboard/textCopied', {
+        source: detail.source,
+        nodeId: detail.nodeId,
+        bytes: Buffer.byteLength(text, 'utf8'),
+        preview: summarizeDiagnosticInput(text)
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('clipboard/textCopyFailed', {
+        source: detail.source,
+        nodeId: detail.nodeId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '复制到剪贴板失败。'
         }
       });
     }
@@ -8382,6 +11085,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.dropPendingTerminalInitialInput(nodeId, '节点已删除，安装命令未写入。');
+    this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
@@ -8923,6 +11627,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private recordExecutionFileLinkResolveDiagnostics(
+    sample: ExecutionFileLinkResolveDiagnosticSample
+  ): void {
+    this.executionFileLinkResolveDiagnostics.push(cloneJsonValue(sample));
+    if (this.executionFileLinkResolveDiagnostics.length > 400) {
+      this.executionFileLinkResolveDiagnostics.splice(
+        0,
+        this.executionFileLinkResolveDiagnostics.length - 400
+      );
+    }
+  }
+
   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
     this.testDiagnosticEvents.push({
       timestamp: new Date().toISOString(),
@@ -9043,6 +11759,57 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function buildExecutionFileLinkResolveDiagnostics(
+  candidates: readonly ExecutionTerminalFileLinkCandidate[],
+  resolvedCount: number,
+  durationMs: number
+): ExecutionFileLinkResolveDiagnostics {
+  const sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>> = {};
+  for (const candidate of candidates) {
+    sourceCounts[candidate.source] = (sourceCounts[candidate.source] ?? 0) + 1;
+  }
+
+  return {
+    candidateCount: candidates.length,
+    resolvedCount,
+    durationMs,
+    sourceCounts
+  };
+}
+
+function summarizeExecutionFileLinkResolveDiagnostics(
+  samples: readonly ExecutionFileLinkResolveDiagnosticSample[]
+): ExecutionFileLinkResolveDiagnosticsSummary {
+  const summary: ExecutionFileLinkResolveDiagnosticsSummary = {
+    requestCount: samples.length,
+    candidateCount: 0,
+    resolvedCount: 0,
+    totalDurationMs: 0,
+    maxDurationMs: 0,
+    slowRequestCount: 0,
+    sourceCounts: {},
+    latestRequests: samples.slice(-20).map((sample) => cloneJsonValue(sample))
+  };
+
+  for (const sample of samples) {
+    summary.candidateCount += sample.candidateCount;
+    summary.resolvedCount += sample.resolvedCount;
+    summary.totalDurationMs += sample.durationMs;
+    summary.maxDurationMs = Math.max(summary.maxDurationMs, sample.durationMs);
+    if (sample.durationMs >= 100) {
+      summary.slowRequestCount += 1;
+    }
+
+    for (const [source, count] of Object.entries(sample.sourceCounts) as Array<
+      [ExecutionTerminalFileLinkSource, number]
+    >) {
+      summary.sourceCounts[source] = (summary.sourceCounts[source] ?? 0) + count;
+    }
+  }
+
+  return summary;
 }
 
 function getUriDirectory(uri: vscode.Uri): vscode.Uri {
@@ -9392,6 +12159,7 @@ function applyCanvasTemplateToState(
   options: {
     preferredCenter?: CanvasNodePosition;
     resolvedAgentProviders: Map<number, AgentProviderKind>;
+    noteMaterializations?: ReadonlyMap<number, CanvasTemplateNoteMaterialization>;
   }
 ): CanvasTemplateApplyStateResult {
   const bounds = measureCanvasTemplateBounds(template.nodes);
@@ -9419,7 +12187,14 @@ function applyCanvasTemplateToState(
     nextSequence += 1;
     nodeIdByTemplateIndex.set(index, baseNode.id);
 
-    return materializeTemplateNode(baseNode, templateNode, bounds.origin, resolvedTopLeft, resolvedAgentProvider);
+    return materializeTemplateNode(
+      baseNode,
+      templateNode,
+      bounds.origin,
+      resolvedTopLeft,
+      resolvedAgentProvider,
+      templateNode.kind === 'note' ? options.noteMaterializations?.get(index) : undefined
+    );
   });
 
   const materializedEdges = template.edges.flatMap((edge) => {
@@ -9460,7 +12235,8 @@ function materializeTemplateNode(
   templateNode: CanvasTemplate['nodes'][number],
   templateOrigin: CanvasNodePosition,
   placedTopLeft: CanvasNodePosition,
-  resolvedAgentProvider?: AgentProviderKind
+  resolvedAgentProvider?: AgentProviderKind,
+  noteMaterialization?: CanvasTemplateNoteMaterialization
 ): CanvasNodeSummary {
   const position = snapCanvasPosition({
     x: placedTopLeft.x + (templateNode.position.x - templateOrigin.x),
@@ -9468,17 +12244,36 @@ function materializeTemplateNode(
   });
 
   if (templateNode.kind === 'note') {
-    const content = trimStoredNodeText(templateNode.metadata?.note?.content ?? '');
+    const isAssociatedMarkdownNote = noteMaterialization?.contentSource?.kind === 'markdown-file';
+    const content = isAssociatedMarkdownNote
+      ? noteMaterialization.content
+      : trimStoredNodeText(noteMaterialization?.content ?? templateNode.metadata?.note?.content ?? '');
+    const associatedSource = isAssociatedMarkdownNote
+      ? noteMaterialization.contentSource as MarkdownFileNoteContentSource
+      : undefined;
+    const status = associatedSource
+      ? associatedSource.status === 'ok'
+        ? 'ready'
+        : associatedSource.status
+      : 'ready';
+    const summary = associatedSource
+      ? associatedSource.status === 'ok'
+        ? summarizeNoteNode(content)
+        : associatedSource.status === 'dirty-conflict'
+          ? '关联文件存在编辑冲突。'
+          : '关联文件不可用。'
+      : summarizeNoteNode(content);
     return {
       ...baseNode,
       title: templateNode.title,
       position,
       size: normalizeCanvasNodeFootprint('note', templateNode.size),
-      status: 'ready',
-      summary: summarizeNoteNode(content),
+      status,
+      summary,
       metadata: {
         note: {
-          content
+          content,
+          contentSource: associatedSource
         }
       }
     };
@@ -11715,13 +14510,13 @@ function normalizeMetadata(
   if (kind === 'note') {
     const note = isRecord(record.note) ? record.note : {};
     const fallback = createNoteMetadata();
+    const content = typeof note.content === 'string' ? note.content : fallback.content;
+    const contentSource = normalizeStoredNoteContentSource(note.contentSource);
 
     return {
       note: {
-        content:
-          typeof note.content === 'string'
-            ? trimStoredNodeText(note.content)
-            : fallback.content
+        content: contentSource?.kind === 'markdown-file' ? content : trimStoredNodeText(content),
+        contentSource
       }
     };
   }
@@ -12412,6 +15207,503 @@ function ensureNoteMetadata(node: CanvasNodeSummary): NoteNodeMetadata {
   return node.metadata?.note ?? createNoteMetadata();
 }
 
+function normalizeStoredNoteContentSource(value: unknown): NoteContentSource | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  if (value.kind === 'embedded') {
+    return { kind: 'embedded' };
+  }
+
+  if (
+    value.kind !== 'markdown-file' ||
+    typeof value.resourceUri !== 'string' ||
+    typeof value.displayPath !== 'string'
+  ) {
+    return undefined;
+  }
+
+  return {
+    kind: 'markdown-file',
+    resourceUri: value.resourceUri,
+    displayPath: value.displayPath,
+    fullDisplayPath:
+      typeof value.fullDisplayPath === 'string' ? trimStoredNodeText(value.fullDisplayPath) : undefined,
+    contentRevision:
+      typeof value.contentRevision === 'string' ? trimStoredNodeText(value.contentRevision) : undefined,
+    status: normalizeNoteMarkdownFileStatus(value.status),
+    lastError: typeof value.lastError === 'string' ? trimStoredNodeText(value.lastError) : undefined,
+    recoverableDraft: normalizeStoredNoteMarkdownRecoverableDraft(
+      value.recoverableDraft ?? readLegacyNoteMarkdownConflictDraft(value)
+    )
+  };
+}
+
+function readLegacyNoteMarkdownConflictDraft(value: Record<string, unknown>): unknown {
+  return value.conflictDraft;
+}
+
+function normalizeStoredNoteMarkdownRecoverableDraft(value: unknown): NoteMarkdownRecoverableDraft | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const draftId =
+    typeof value.draftId === 'string' && NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN.test(value.draftId)
+      ? value.draftId
+      : undefined;
+  const content = typeof value.content === 'string' ? value.content : undefined;
+  if (!draftId && content === undefined) {
+    return undefined;
+  }
+
+  return createNoteMarkdownRecoverableDraft({
+    draftId,
+    content,
+    baseContentRevision:
+      typeof value.baseContentRevision === 'string' ? trimStoredNodeText(value.baseContentRevision) : undefined,
+    remoteContentRevision:
+      typeof value.remoteContentRevision === 'string' ? trimStoredNodeText(value.remoteContentRevision) : undefined,
+    updatedAt: typeof value.updatedAt === 'string' ? trimStoredNodeText(value.updatedAt) : undefined
+  });
+}
+
+function normalizeNoteMarkdownFileStatus(value: unknown): NoteMarkdownFileStatus {
+  return value === 'ok' ||
+    value === 'missing' ||
+    value === 'not-file' ||
+    value === 'unsupported-extension' ||
+    value === 'unreadable' ||
+    value === 'dirty-conflict'
+    ? value
+    : 'unreadable';
+}
+
+function updateAssociatedNoteMarkdownFileStatus(
+  state: CanvasPrototypeState,
+  nodeId: string,
+  source: MarkdownFileNoteContentSource,
+  content: string
+): CanvasPrototypeState {
+  const node = state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'note');
+  if (!node) {
+    return state;
+  }
+
+  const nextContent = content;
+  const nextMetadata: CanvasNodeMetadata = {
+    ...node.metadata,
+    note: {
+      ...ensureNoteMetadata(node),
+      content: nextContent,
+      contentSource: source
+    }
+  };
+  const nextStatus = source.status === 'ok' ? 'ready' : source.status;
+  const nextSummary =
+    source.status === 'ok'
+      ? summarizeNoteNode(nextContent)
+      : source.status === 'dirty-conflict'
+        ? '关联文件存在编辑冲突。'
+      : '关联文件不可用。';
+
+  const nextNodes = state.nodes.map((candidate) =>
+    candidate.id === nodeId
+      ? {
+          ...candidate,
+          status: nextStatus,
+          summary: nextSummary,
+          metadata: nextMetadata
+        }
+      : candidate
+  );
+
+  if (
+    node.status === nextStatus &&
+    node.summary === nextSummary &&
+    ensureNoteMetadata(node).content === nextContent &&
+    areNoteContentSourcesEqual(ensureNoteMetadata(node).contentSource, source)
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    updatedAt: new Date().toISOString(),
+    nodes: nextNodes
+  };
+}
+
+function createNoteMarkdownRecoverableDraft(
+  options: {
+    draftId?: string;
+    content?: string;
+    baseContentRevision?: string;
+    remoteContentRevision?: string;
+    updatedAt?: string;
+  }
+): NoteMarkdownRecoverableDraft {
+  return {
+    draftId: options.draftId,
+    content: options.content,
+    baseContentRevision: options.baseContentRevision,
+    remoteContentRevision: options.remoteContentRevision,
+    updatedAt: options.updatedAt ?? new Date().toISOString()
+  };
+}
+
+function areNoteContentSourcesEqual(
+  left: NoteContentSource | undefined,
+  right: NoteContentSource | undefined
+): boolean {
+  if (!left || !right || left.kind !== right.kind) {
+    return left === right;
+  }
+  if (left.kind === 'embedded' && right.kind === 'embedded') {
+    return true;
+  }
+  if (left.kind === 'markdown-file' && right.kind === 'markdown-file') {
+    return (
+      left.resourceUri === right.resourceUri &&
+      left.displayPath === right.displayPath &&
+      left.fullDisplayPath === right.fullDisplayPath &&
+      left.contentRevision === right.contentRevision &&
+      left.status === right.status &&
+      left.lastError === right.lastError &&
+      areNoteMarkdownRecoverableDraftsEqual(left.recoverableDraft, right.recoverableDraft)
+    );
+  }
+  return false;
+}
+
+function areNoteMarkdownRecoverableDraftsEqual(
+  left: NoteMarkdownRecoverableDraft | undefined,
+  right: NoteMarkdownRecoverableDraft | undefined
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return (
+    left.draftId === right.draftId &&
+    left.content === right.content &&
+    left.baseContentRevision === right.baseContentRevision &&
+    left.remoteContentRevision === right.remoteContentRevision &&
+    left.updatedAt === right.updatedAt
+  );
+}
+
+function parseStoredNoteMarkdownResourceUri(value: string): vscode.Uri | undefined {
+  try {
+    return vscode.Uri.parse(value, true);
+  } catch {
+    return undefined;
+  }
+}
+
+function dirnameUri(uri: vscode.Uri): vscode.Uri {
+  if (uri.scheme === 'file') {
+    return vscode.Uri.file(path.dirname(uri.fsPath));
+  }
+
+  const nextPath = path.posix.dirname(uri.path || '/');
+  return uri.with({
+    path: nextPath === '.' ? '/' : nextPath,
+    query: '',
+    fragment: ''
+  });
+}
+
+function resolveDroppedNoteMarkdownResourceUri(
+  resource: ExecutionTerminalDroppedResource
+): vscode.Uri | undefined {
+  const rawValue = resource.value.trim();
+  if (!rawValue) {
+    return undefined;
+  }
+
+  if (resource.valueKind === 'uri') {
+    return parseNoteMarkdownUriOrPath(rawValue);
+  }
+
+  return parseNoteMarkdownUriOrPath(rawValue);
+}
+
+function parseNoteMarkdownUriOrPath(value: string): vscode.Uri | undefined {
+  if (/^[A-Za-z]:[\\/]/u.test(value) || value.startsWith('/') || value.startsWith('\\\\')) {
+    return vscode.Uri.file(value);
+  }
+
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(value);
+  if (schemeMatch) {
+    try {
+      return vscode.Uri.parse(value, true);
+    } catch {
+      return undefined;
+    }
+  }
+
+  return vscode.Uri.file(value);
+}
+
+function canonicalizeNoteMarkdownUriForCurrentHost(
+  uri: vscode.Uri,
+  currentRemoteAuthority?: string
+): vscode.Uri {
+  if (uri.scheme !== 'vscode-remote') {
+    return uri;
+  }
+
+  const normalizedUriAuthority = normalizeNoteMarkdownAuthority(uri.authority);
+  const normalizedCurrentRemoteAuthority = normalizeNoteMarkdownAuthority(currentRemoteAuthority);
+  if (!normalizedCurrentRemoteAuthority) {
+    return uri;
+  }
+
+  return normalizedUriAuthority === normalizedCurrentRemoteAuthority
+    ? createCurrentHostFileUriFromVscodeRemoteUri(uri)
+    : uri;
+}
+
+type NoteMarkdownDropAdmissionKind =
+  | 'same-workspace'
+  | 'same-host-outside-workspace'
+  | 'foreign-host'
+  | 'unknown-current-host'
+  | 'unsupported-scheme';
+
+interface NoteMarkdownDropAdmission {
+  kind: NoteMarkdownDropAdmissionKind;
+  uri?: vscode.Uri;
+  workspaceFolder?: vscode.WorkspaceFolder;
+  rejectionReason?: string;
+}
+
+function resolveDroppedNoteMarkdownAdmission(
+  uri: vscode.Uri,
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+  currentRemoteAuthority?: string
+): NoteMarkdownDropAdmission {
+  const currentHostUri = resolveDroppedNoteMarkdownCurrentHostUri(uri, currentRemoteAuthority);
+  if (!currentHostUri.uri) {
+    return currentHostUri;
+  }
+
+  const workspaceFolder = findContainingNoteMarkdownWorkspaceFolder(currentHostUri.uri, workspaceFolders);
+  return workspaceFolder
+    ? {
+        kind: 'same-workspace',
+        uri: currentHostUri.uri,
+        workspaceFolder
+      }
+    : {
+        kind: 'same-host-outside-workspace',
+        uri: currentHostUri.uri
+      };
+}
+
+function resolveDroppedNoteMarkdownCurrentHostUri(
+  uri: vscode.Uri,
+  currentRemoteAuthority?: string
+): NoteMarkdownDropAdmission {
+  if (uri.scheme === 'file') {
+    return {
+      kind: 'same-host-outside-workspace',
+      uri
+    };
+  }
+
+  if (uri.scheme !== 'vscode-remote') {
+    return {
+      kind: 'unsupported-scheme',
+      rejectionReason: `不支持关联 ${uri.scheme}: Markdown 资源。`
+    };
+  }
+
+  const normalizedCurrentRemoteAuthority = normalizeNoteMarkdownAuthority(currentRemoteAuthority);
+  if (!normalizedCurrentRemoteAuthority) {
+    return {
+      kind: 'unknown-current-host',
+      rejectionReason: '无法确认拖拽的 Remote Markdown 文件是否属于当前设备，请等待画板就绪后重试。'
+    };
+  }
+
+  if (normalizeNoteMarkdownAuthority(uri.authority) !== normalizedCurrentRemoteAuthority) {
+    return {
+      kind: 'foreign-host',
+      rejectionReason: '拖拽的 Markdown 文件来自其他 Remote 设备，未创建关联 Note。'
+    };
+  }
+
+  return {
+    kind: 'same-host-outside-workspace',
+    uri: createCurrentHostFileUriFromVscodeRemoteUri(uri)
+  };
+}
+
+function findContainingNoteMarkdownWorkspaceFolder(
+  uri: vscode.Uri,
+  workspaceFolders: readonly vscode.WorkspaceFolder[]
+): vscode.WorkspaceFolder | undefined {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+  if (workspaceFolder) {
+    return workspaceFolder;
+  }
+
+  return workspaceFolders.find((workspaceFolder) =>
+    Boolean(resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
+      uri,
+      workspaceFolder,
+      false
+    ))
+  );
+}
+
+function createCurrentHostFileUriFromVscodeRemoteUri(uri: vscode.Uri): vscode.Uri {
+  const filePath =
+    process.platform === 'win32' && /^\/[A-Za-z]:\//u.test(uri.path) ? uri.path.slice(1) : uri.path;
+  return vscode.Uri.file(filePath).with({
+    query: uri.query,
+    fragment: uri.fragment
+  });
+}
+
+function describeNoteMarkdownUriForDiagnostics(uri: vscode.Uri): Record<string, unknown> {
+  return {
+    scheme: uri.scheme,
+    authority: uri.authority,
+    normalizedAuthority: normalizeNoteMarkdownAuthority(uri.authority),
+    path: uri.path,
+    fsPath: uri.scheme === 'file' ? uri.fsPath : undefined,
+    uri: uri.toString()
+  };
+}
+
+function normalizeNoteMarkdownResourceKey(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? vscode.Uri.file(uri.fsPath).toString() : uri.toString();
+}
+
+function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
+  uri: vscode.Uri,
+  workspaceFolder: vscode.WorkspaceFolder,
+  includeWorkspaceFolderPrefix: boolean,
+  currentRemoteAuthority?: string
+): string | undefined {
+  if (uri.scheme === 'file' && workspaceFolder.uri.scheme === 'file') {
+    return resolveContainedWorkspaceRelativePath({
+      filePath: uri.fsPath,
+      workspaceFolderPath: workspaceFolder.uri.fsPath,
+      workspaceFolderName: workspaceFolder.name,
+      includeWorkspaceFolderPrefix
+    });
+  }
+
+  if (!canCompareNoteMarkdownUriWithWorkspaceFolder(uri, workspaceFolder.uri, currentRemoteAuthority)) {
+    return undefined;
+  }
+
+  const filePath = normalizeNoteMarkdownPosixDisplayPath(noteMarkdownUriPathLike(uri));
+  const workspaceFolderPath = normalizeNoteMarkdownPosixDisplayPath(
+    workspaceFolder.uri.scheme === 'file' ? workspaceFolder.uri.fsPath : workspaceFolder.uri.path
+  );
+  const relativePath = path.posix.relative(workspaceFolderPath, filePath);
+  if (!relativePath || relativePath.startsWith('..') || path.posix.isAbsolute(relativePath)) {
+    return undefined;
+  }
+
+  if (!includeWorkspaceFolderPrefix) {
+    return relativePath;
+  }
+
+  const normalizedWorkspaceFolderName = workspaceFolder.name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return normalizedWorkspaceFolderName ? `${normalizedWorkspaceFolderName}/${relativePath}` : relativePath;
+}
+
+function canCompareNoteMarkdownUriWithWorkspaceFolder(
+  uri: vscode.Uri,
+  workspaceFolderUri: vscode.Uri,
+  currentRemoteAuthority?: string
+): boolean {
+  return canCompareNoteMarkdownResourceWithWorkspaceRoot(
+    {
+      scheme: uri.scheme,
+      authority: uri.authority
+    },
+    {
+      scheme: workspaceFolderUri.scheme,
+      authority: workspaceFolderUri.authority
+    },
+    currentRemoteAuthority
+  );
+}
+
+function resolveNoteMarkdownPathRelativeToHome(
+  rawPath: string,
+  userHome: string,
+  usePlatformPath: boolean
+): string | undefined {
+  const relativePath = usePlatformPath
+    ? path.relative(userHome, rawPath)
+    : path.posix.relative(
+        normalizeNoteMarkdownPosixDisplayPath(userHome),
+        normalizeNoteMarkdownPosixDisplayPath(rawPath)
+      );
+  const isAbsolutePath = usePlatformPath ? path.isAbsolute(relativePath) : path.posix.isAbsolute(relativePath);
+  if (!relativePath || relativePath.startsWith('..') || isAbsolutePath) {
+    return undefined;
+  }
+
+  return `~/${relativePath.replace(/\\/g, '/')}`;
+}
+
+function normalizeNoteMarkdownPosixDisplayPath(value: string): string {
+  const normalized = value.replace(/\\/g, '/');
+  return normalized.length > 1 ? normalized.replace(/\/+$/u, '') : normalized;
+}
+
+function noteMarkdownUriPathLike(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? uri.fsPath : uri.path || uri.toString(true);
+}
+
+function formatNoteMarkdownRevisionNumber(value: number): string {
+  return Number.isFinite(value) ? String(Math.trunc(value)) : '0';
+}
+
+function formatNoteMarkdownRevisionTime(value: number): string {
+  return Number.isFinite(value) ? String(Math.round(value * 1000)) : '0';
+}
+
+function noteMarkdownTitleFromUri(
+  uri: vscode.Uri,
+  options: { stripExtension?: boolean } = {}
+): string {
+  return createDroppedNoteMarkdownTitle(noteMarkdownUriPathLike(uri), options);
+}
+
+function resolveExistingDirectoryForNoteMarkdownInput(inputPath: string): string | undefined {
+  const candidate = inputPath.endsWith(path.sep) ? inputPath : path.dirname(inputPath);
+  if (!candidate) {
+    return undefined;
+  }
+
+  try {
+    const stat = fs.statSync(candidate);
+    return stat.isDirectory() ? candidate : undefined;
+  } catch {
+    const parent = path.dirname(candidate);
+    if (!parent || parent === candidate) {
+      return undefined;
+    }
+    try {
+      const parentStat = fs.statSync(parent);
+      return parentStat.isDirectory() ? parent : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 function buildAgentMetadataPatch(
   state: CanvasPrototypeState,
   nodeId: string,
@@ -12484,6 +15776,72 @@ function stripSerializedTerminalStateFromCanvasState(state: CanvasPrototypeState
             : node.metadata
     }))
   };
+}
+
+function stripNoteMarkdownRecoverableDraftContentFromCanvasState<T>(state: T): T {
+  if (!isRecord(state) || !Array.isArray(state.nodes)) {
+    return state;
+  }
+
+  let didChange = false;
+  const nodes = state.nodes.map((node) => {
+    if (!isRecord(node) || !isRecord(node.metadata) || !isRecord(node.metadata.note)) {
+      return node;
+    }
+
+    const note = node.metadata.note;
+    if (!isRecord(note.contentSource) || note.contentSource.kind !== 'markdown-file') {
+      return node;
+    }
+
+    const contentSource = note.contentSource;
+    const recoverableDraft = contentSource.recoverableDraft;
+    const legacyConflictDraft = contentSource.conflictDraft;
+    const shouldStripRecoverableDraftContent = isRecord(recoverableDraft) && 'content' in recoverableDraft;
+    const shouldStripLegacyConflictDraftContent = isRecord(legacyConflictDraft) && 'content' in legacyConflictDraft;
+    const shouldMigrateLegacyConflictDraft = 'conflictDraft' in contentSource;
+    if (!shouldStripRecoverableDraftContent && !shouldMigrateLegacyConflictDraft) {
+      return node;
+    }
+
+    // Legacy conflictDraft is migrated here so runtime snapshots no longer re-emit the old field.
+    const { conflictDraft: _legacyConflictDraft, ...contentSourceWithoutLegacy } = contentSource;
+    const nextContentSource = {
+      ...contentSourceWithoutLegacy
+    };
+    if (shouldStripRecoverableDraftContent) {
+      const { content: _content, ...draftWithoutContent } = recoverableDraft;
+      nextContentSource.recoverableDraft = draftWithoutContent;
+    } else if (!isRecord(recoverableDraft) && isRecord(legacyConflictDraft)) {
+      const legacyDraftWithoutContent = shouldStripLegacyConflictDraftContent
+        ? stripNoteMarkdownRuntimeDraftContent(legacyConflictDraft)
+        : legacyConflictDraft;
+      nextContentSource.recoverableDraft = legacyDraftWithoutContent;
+    }
+    didChange = true;
+    return {
+      ...node,
+      metadata: {
+        ...node.metadata,
+        note: {
+          ...note,
+          contentSource: nextContentSource
+        }
+      }
+    };
+  });
+
+  return didChange
+    ? ({
+        ...state,
+        nodes
+      } as T)
+    : state;
+}
+
+function stripNoteMarkdownRuntimeDraftContent(draft: Record<string, unknown>): Record<string, unknown> {
+  const { content: _content, ...draftWithoutContent } = draft;
+  return draftWithoutContent;
 }
 
 function shouldPreserveStoredExecutionViewportDuringReattach(
@@ -12628,7 +15986,9 @@ function trimStoredTerminalText(value: string): string {
 }
 
 function trimStoredNodeText(value: string): string {
-  return value.length > 8000 ? value.slice(0, 8000) : value;
+  return value.length > NOTE_EMBEDDED_CONTENT_MAX_LENGTH
+    ? value.slice(0, NOTE_EMBEDDED_CONTENT_MAX_LENGTH)
+    : value;
 }
 
 function appendTerminalBuffer(existing: string, nextChunk: string): string {
@@ -12827,6 +16187,10 @@ function isAgentLifecycleAwaitingInteractiveState(
   status: AgentNodeStatus | TerminalNodeStatus
 ): boolean {
   return status === 'starting' || status === 'resuming' || status === 'running';
+}
+
+function shouldRecordAgentOutputHeuristics(status: AgentNodeStatus | TerminalNodeStatus): boolean {
+  return isAgentLifecycleAwaitingInteractiveState(status) || status === 'waiting-input';
 }
 
 function isAgentInstructionSubmission(data: string): boolean {

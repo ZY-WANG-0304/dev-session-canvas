@@ -13,11 +13,23 @@ export const CANVAS_TEMPLATE_DOCUMENT_VERSION = 1 as const;
 export const CANVAS_TEMPLATE_CATEGORIES = ['builtin', 'user'] as const;
 export const CANVAS_TEMPLATE_AGENT_PROVIDERS = ['default', 'codex', 'claude'] as const;
 export const CANVAS_TEMPLATE_NODE_KINDS = ['agent', 'terminal', 'note'] as const;
+export const CANVAS_TEMPLATE_NOTE_CONTENT_MODES = [
+  'embedded-snapshot',
+  'workspace-file-path-only',
+  'workspace-file-with-content'
+] as const;
+export const CANVAS_TEMPLATE_ASSOCIATED_NOTE_SAVE_MODES = [
+  'embedded-snapshot',
+  'workspace-file-path-only',
+  'workspace-file-with-content'
+] as const;
 export const DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID = 'builtin-getting-started';
 
 export type CanvasTemplateCategory = (typeof CANVAS_TEMPLATE_CATEGORIES)[number];
 export type CanvasTemplateAgentProviderKind = (typeof CANVAS_TEMPLATE_AGENT_PROVIDERS)[number];
 export type CanvasTemplateNodeKind = (typeof CANVAS_TEMPLATE_NODE_KINDS)[number];
+export type CanvasTemplateNoteContentMode = (typeof CANVAS_TEMPLATE_NOTE_CONTENT_MODES)[number];
+export type CanvasTemplateAssociatedNoteSaveMode = (typeof CANVAS_TEMPLATE_ASSOCIATED_NOTE_SAVE_MODES)[number];
 export type CanvasTemplateSaveAgentProviderMode = 'default' | 'preserve';
 export type CanvasTemplateSaveAgentProviderSelection =
   | CanvasTemplateSaveAgentProviderMode
@@ -28,15 +40,25 @@ export interface CanvasTemplateAgentMetadata {
   argv?: string[];
 }
 
+export interface CanvasTemplateNoteMetadata {
+  content: string;
+  templateContentMode?: CanvasTemplateNoteContentMode;
+  relativePath?: string;
+}
+
+export interface CanvasTemplateAssociatedNoteSaveSelection {
+  mode: CanvasTemplateAssociatedNoteSaveMode;
+  content?: string;
+  relativePath?: string;
+}
+
 export interface CanvasTemplateNodeSnapshot {
   kind: CanvasTemplateNodeKind;
   title: string;
   position: CanvasNodePosition;
   size: CanvasNodeFootprint;
   metadata?: {
-    note?: {
-      content: string;
-    };
+    note?: CanvasTemplateNoteMetadata;
     agent?: CanvasTemplateAgentMetadata;
   };
 }
@@ -97,6 +119,22 @@ export function isCanvasTemplateAgentProviderKind(value: unknown): value is Canv
 
 export function isCanvasTemplateNodeKind(value: unknown): value is CanvasTemplateNodeKind {
   return value === 'agent' || value === 'terminal' || value === 'note';
+}
+
+export function isCanvasTemplateNoteContentMode(value: unknown): value is CanvasTemplateNoteContentMode {
+  return (
+    value === 'embedded-snapshot' ||
+    value === 'workspace-file-path-only' ||
+    value === 'workspace-file-with-content'
+  );
+}
+
+export function isCanvasTemplateAssociatedNoteSaveMode(value: unknown): value is CanvasTemplateAssociatedNoteSaveMode {
+  return (
+    value === 'embedded-snapshot' ||
+    value === 'workspace-file-path-only' ||
+    value === 'workspace-file-with-content'
+  );
 }
 
 export function buildCanvasTemplateDocument(template: CanvasTemplate): CanvasTemplateDocument {
@@ -243,15 +281,40 @@ export function cloneCanvasTemplate(template: CanvasTemplate): CanvasTemplate {
   return JSON.parse(JSON.stringify(template)) as CanvasTemplate;
 }
 
+export function normalizeCanvasTemplateWorkspaceRelativePath(value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/g, '/').replace(/^\.\/+/u, '');
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:/u.test(normalized) ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(normalized) ||
+    normalized.includes('\0')
+  ) {
+    return undefined;
+  }
+
+  const parts = normalized.split('/');
+  if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) {
+    return undefined;
+  }
+
+  return parts.join('/');
+}
+
 export function captureCanvasTemplateFromState(params: {
   state: CanvasPrototypeState;
   name: string;
   templateId: string;
   category: CanvasTemplateCategory;
   agentProviderSelection: CanvasTemplateSaveAgentProviderSelection;
+  associatedNoteSaveSelection?: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveSelection>>;
   now?: string;
 }): CanvasTemplateCaptureResult {
-  const compatibleNodes = params.state.nodes.filter(isCanvasTemplateCompatibleNode);
+  const associatedNoteSaveSelection = params.associatedNoteSaveSelection ?? {};
+  const compatibleNodes = params.state.nodes.filter(
+    (node): node is CanvasPrototypeState['nodes'][number] & { kind: CanvasTemplateNodeKind } =>
+      isCanvasTemplateCompatibleNode(node)
+  );
   if (compatibleNodes.length === 0) {
     throw new Error('当前画布没有可保存到模板的 Agent / Terminal / Note 节点。');
   }
@@ -286,9 +349,7 @@ export function captureCanvasTemplateFromState(params: {
       metadata:
         node.kind === 'note'
           ? {
-              note: {
-                content: node.metadata?.note?.content ?? ''
-              }
+              note: buildCanvasTemplateNoteMetadata(node, associatedNoteSaveSelection[node.id])
             }
           : node.kind === 'agent'
             ? {
@@ -340,6 +401,37 @@ export function captureCanvasTemplateFromState(params: {
     },
     ignoredNodeIds,
     ignoredEdgeIds
+  };
+}
+
+function buildCanvasTemplateNoteMetadata(
+  node: CanvasPrototypeState['nodes'][number],
+  selection: CanvasTemplateAssociatedNoteSaveSelection | undefined
+): CanvasTemplateNoteMetadata {
+  const fallbackContent = node.metadata?.note?.content ?? '';
+  if (!selection || selection.mode === 'embedded-snapshot') {
+    return {
+      content: selection?.content ?? fallbackContent
+    };
+  }
+
+  const relativePath = normalizeCanvasTemplateWorkspaceRelativePath(selection.relativePath ?? '');
+  if (!relativePath) {
+    throw new Error(`关联 Markdown Note「${node.title}」缺少合法 workspace 相对路径。`);
+  }
+
+  if (selection.mode === 'workspace-file-path-only') {
+    return {
+      content: '',
+      templateContentMode: selection.mode,
+      relativePath
+    };
+  }
+
+  return {
+    content: selection.content ?? fallbackContent,
+    templateContentMode: selection.mode,
+    relativePath
   };
 }
 
@@ -396,18 +488,40 @@ function parseTemplateNode(value: unknown, index: number, warnings: string[]): C
   const metadataRecord = isRecord(value.metadata) ? value.metadata : undefined;
 
   if (value.kind === 'note') {
+    const noteRecord = metadataRecord && isRecord(metadataRecord.note) ? metadataRecord.note : undefined;
+    const contentModeValue = noteRecord?.templateContentMode;
+    const templateContentMode = contentModeValue === undefined
+      ? 'embedded-snapshot'
+      : isCanvasTemplateNoteContentMode(contentModeValue)
+        ? contentModeValue
+        : undefined;
+    if (!templateContentMode) {
+      throw new Error(`模板节点 ${title} 的 Note 内容模式不受支持。`);
+    }
+
+    const relativePath =
+      templateContentMode === 'embedded-snapshot'
+        ? undefined
+        : normalizeCanvasTemplateWorkspaceRelativePath(typeof noteRecord?.relativePath === 'string' ? noteRecord.relativePath : '');
+    if (templateContentMode !== 'embedded-snapshot' && !relativePath) {
+      throw new Error(`模板节点 ${title} 缺少合法 workspace 相对 Markdown 路径。`);
+    }
+
+    const content = typeof noteRecord?.content === 'string' ? noteRecord.content : '';
+    const noteMetadata: CanvasTemplateNoteMetadata = {
+      content: templateContentMode === 'workspace-file-path-only' ? '' : content
+    };
+    if (templateContentMode !== 'embedded-snapshot') {
+      noteMetadata.templateContentMode = templateContentMode;
+      noteMetadata.relativePath = relativePath;
+    }
     return {
       kind: value.kind,
       title,
       position,
       size,
       metadata: {
-        note: {
-          content:
-            metadataRecord && isRecord(metadataRecord.note) && typeof metadataRecord.note.content === 'string'
-              ? metadataRecord.note.content
-              : ''
-        }
+        note: noteMetadata
       }
     };
   }

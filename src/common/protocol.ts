@@ -2,13 +2,16 @@ import type { SerializedTerminalState } from './serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
+  ExecutionTerminalFileLinkSource,
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
+import type { NoteContentSource } from './noteMarkdownFileAssociation';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type ExecutionNodeKind = 'agent' | 'terminal';
+export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
 export type CanvasEdgeOwner = 'user' | 'file-activity';
@@ -29,6 +32,7 @@ export type CanvasAttentionNotificationBridgeMode =
 export const canvasStrongTerminalAttentionReminderModes = ['none', 'titleBar', 'minimap', 'both'] as const;
 export type CanvasStrongTerminalAttentionReminderMode =
   (typeof canvasStrongTerminalAttentionReminderModes)[number];
+export type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 
 export function isCanvasAttentionNotificationBridgeMode(
   value: unknown
@@ -94,6 +98,12 @@ export function normalizeCanvasStrongTerminalAttentionReminderMode(
   return 'both';
 }
 
+export function normalizeCanvasAgentAbnormalOutputTextNotificationMode(
+  value: unknown
+): CanvasAgentAbnormalOutputTextNotificationMode {
+  return value === 'codex' ? 'codex' : 'off';
+}
+
 export function strongTerminalAttentionReminderShowsTitleBar(
   mode: CanvasStrongTerminalAttentionReminderMode
 ): boolean {
@@ -119,6 +129,7 @@ export interface CanvasNodeFootprint {
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type AgentLaunchPresetKind = 'default' | 'resume' | 'yolo' | 'sandbox' | 'custom';
+export type WebviewClipboardTextSource = 'note-markdown-subtitle' | 'note-markdown-metadata';
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
@@ -192,6 +203,7 @@ export interface TerminalNodeMetadata extends ExecutionSessionMetadata {
 
 export interface NoteNodeMetadata {
   content: string;
+  contentSource?: NoteContentSource;
 }
 
 export interface CanvasFileIconFontFace {
@@ -306,6 +318,11 @@ export interface AgentLaunchDefaultsByProvider {
   claude: AgentProviderLaunchDefaults;
 }
 
+export interface NoteMarkdownImageWorkspaceRoot {
+  name: string;
+  webviewResourceBaseUri: string;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
@@ -322,6 +339,7 @@ export interface CanvasRuntimeContext {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileIconFontFaces: CanvasFileIconFontFace[];
+  noteMarkdownImageWorkspaceRoots?: NoteMarkdownImageWorkspaceRoot[];
 }
 
 export interface CanvasTemplateMenuEntry {
@@ -409,7 +427,17 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label: '删除' | '启动' | '停止' | '重启' | '恢复';
+      label:
+        | '删除'
+        | '启动'
+        | '停止'
+        | '新建'
+        | '重启'
+        | '恢复'
+        | '重新加载'
+        | '复制草稿'
+        | '覆盖文件'
+        | '创建空文件并关联';
       delayMs?: number;
     }
   | {
@@ -444,6 +472,12 @@ export type WebviewDomAction =
       delayMs?: number;
     }
   | {
+      kind: 'hoverExecutionText';
+      nodeId: string;
+      text: string;
+      delayMs?: number;
+    }
+  | {
       kind: 'clearExecutionLinkHover';
       nodeId: string;
       delayMs?: number;
@@ -464,6 +498,19 @@ export type WebviewDomAction =
       kind: 'toggleNoteChecklistItem';
       nodeId: string;
       lineNumber: number;
+      delayMs?: number;
+    }
+  | {
+      kind: 'doubleClickNotePreviewText';
+      nodeId: string;
+      text: string;
+      offset?: number;
+      delayMs?: number;
+    }
+  | {
+      kind: 'doubleClickNotePreviewSelector';
+      nodeId: string;
+      selector: string;
       delayMs?: number;
     };
 
@@ -583,6 +630,14 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/copyTextToClipboard';
+      payload: {
+        text: string;
+        source: WebviewClipboardTextSource;
+        nodeId?: string;
+      };
+    }
+  | {
       type: 'webview/requestExecutionPaste';
       payload: {
         requestId: string;
@@ -644,6 +699,74 @@ export type WebviewToHostMessage =
       payload: {
         nodeId: string;
         content: string;
+        baseContentRevision?: string;
+        force?: boolean;
+      };
+    }
+  | {
+      type: 'webview/beginAssociatedNoteMarkdownEdit';
+      payload: {
+        nodeId: string;
+        content: string;
+        baseContentRevision?: string;
+      };
+    }
+  | {
+      type: 'webview/endAssociatedNoteMarkdownEdit';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/updateAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+        content: string;
+        baseContentRevision?: string;
+      };
+    }
+  | {
+      type: 'webview/clearAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/copyAssociatedNoteMarkdownDraft';
+      payload: {
+        nodeId: string;
+        content: string;
+      };
+    }
+  | {
+      type: 'webview/saveNoteAsMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/openAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/reloadAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/createMissingAssociatedNoteMarkdownFile';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
+      type: 'webview/dropNoteMarkdownFiles';
+      payload: {
+        resources: ExecutionTerminalDroppedResource[];
+        position: CanvasNodePosition;
       };
     }
   | {
@@ -853,6 +976,10 @@ const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
+const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
+  'note-markdown-subtitle',
+  'note-markdown-metadata'
+];
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
@@ -875,6 +1002,13 @@ export function isAgentLaunchPresetKind(value: unknown): value is AgentLaunchPre
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
   return value === 'agent' || value === 'terminal';
+}
+
+export function isWebviewClipboardTextSource(value: unknown): value is WebviewClipboardTextSource {
+  return (
+    typeof value === 'string' &&
+    webviewClipboardTextSources.includes(value as WebviewClipboardTextSource)
+  );
 }
 
 export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null {
@@ -1099,6 +1233,27 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/copyTextToClipboard') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.text !== 'string' ||
+      !isWebviewClipboardTextSource(payload.source) ||
+      (payload.nodeId !== undefined && typeof payload.nodeId !== 'string')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: payload.text,
+        source: payload.source,
+        nodeId: typeof payload.nodeId === 'string' ? payload.nodeId : undefined
+      }
+    };
+  }
+
   if (value.type === 'webview/requestExecutionPaste') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
@@ -1221,7 +1376,179 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/updateNoteNode',
       payload: {
         nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined,
+        force: payload.force === true
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/beginAssociatedNoteMarkdownEdit') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      typeof payload.content !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/beginAssociatedNoteMarkdownEdit',
+      payload: {
+        nodeId: payload.nodeId,
+        content: payload.content,
+        baseContentRevision:
+          typeof payload.baseContentRevision === 'string' ? payload.baseContentRevision : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/endAssociatedNoteMarkdownEdit') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/endAssociatedNoteMarkdownEdit',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/clearAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/clearAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/copyAssociatedNoteMarkdownDraft') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.content !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/copyAssociatedNoteMarkdownDraft',
+      payload: {
+        nodeId: payload.nodeId,
         content: payload.content
+      }
+    };
+  }
+
+  if (value.type === 'webview/saveNoteAsMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/saveNoteAsMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/openAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/openAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/reloadAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/reloadAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/createMissingAssociatedNoteMarkdownFile') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/createMissingAssociatedNoteMarkdownFile',
+      payload: {
+        nodeId: payload.nodeId
+      }
+    };
+  }
+
+  if (value.type === 'webview/dropNoteMarkdownFiles') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const position = payload && isRecord(payload.position) ? payload.position : null;
+    if (
+      !payload ||
+      !Array.isArray(payload.resources) ||
+      !payload.resources.every((resource) => isExecutionTerminalDroppedResource(resource)) ||
+      !position ||
+      typeof position.x !== 'number' ||
+      typeof position.y !== 'number' ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/dropNoteMarkdownFiles',
+      payload: {
+        resources: payload.resources,
+        position: {
+          x: Math.round(position.x),
+          y: Math.round(position.y)
+        }
       }
     };
   }
@@ -1556,8 +1883,13 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
         value.label === '删除' ||
         value.label === '启动' ||
         value.label === '停止' ||
+        value.label === '新建' ||
         value.label === '重启' ||
-        value.label === '恢复'
+        value.label === '恢复' ||
+        value.label === '重新加载' ||
+        value.label === '复制草稿' ||
+        value.label === '覆盖文件' ||
+        value.label === '创建空文件并关联'
       );
   }
 
@@ -1585,6 +1917,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
     return typeof value.text === 'string';
   }
 
+  if (value.kind === 'hoverExecutionText') {
+    return typeof value.text === 'string';
+  }
+
   if (value.kind === 'clearExecutionLinkHover') {
     return true;
   }
@@ -1599,6 +1935,17 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'toggleNoteChecklistItem') {
     return typeof value.lineNumber === 'number' && Number.isSafeInteger(value.lineNumber);
+  }
+
+  if (value.kind === 'doubleClickNotePreviewText') {
+    return (
+      typeof value.text === 'string' &&
+      (value.offset === undefined || (typeof value.offset === 'number' && Number.isSafeInteger(value.offset)))
+    );
+  }
+
+  if (value.kind === 'doubleClickNotePreviewSelector') {
+    return typeof value.selector === 'string';
   }
 
   return false;
@@ -1631,10 +1978,7 @@ function isExecutionTerminalFileLinkCandidate(value: unknown): value is Executio
     typeof value.bufferStartLine === 'number' &&
     Number.isInteger(value.bufferStartLine) &&
     value.bufferStartLine >= 0 &&
-    (value.source === 'detected' ||
-      value.source === 'refined' ||
-      value.source === 'fallback' ||
-      value.source === 'explicit-uri') &&
+    isExecutionTerminalFileLinkSource(value.source) &&
     (value.line === undefined || isPositiveInteger(value.line)) &&
     (value.column === undefined || isPositiveInteger(value.column)) &&
     (value.lineEnd === undefined || isPositiveInteger(value.lineEnd)) &&
@@ -1679,10 +2023,7 @@ function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminal
           value.bufferStartLine >= 0)) &&
       (value.resolvedId === undefined || typeof value.resolvedId === 'string') &&
       (value.source === undefined ||
-        value.source === 'detected' ||
-        value.source === 'refined' ||
-        value.source === 'fallback' ||
-        value.source === 'explicit-uri') &&
+        isExecutionTerminalFileLinkSource(value.source)) &&
       (value.targetKind === undefined ||
         value.targetKind === 'file' ||
         value.targetKind === 'directory-in-workspace' ||
@@ -1691,6 +2032,16 @@ function isExecutionTerminalOpenLink(value: unknown): value is ExecutionTerminal
   }
 
   return false;
+}
+
+function isExecutionTerminalFileLinkSource(value: unknown): value is ExecutionTerminalFileLinkSource {
+  return (
+    value === 'detected' ||
+    value === 'refined' ||
+    value === 'fallback' ||
+    value === 'hardwrap' ||
+    value === 'explicit-uri'
+  );
 }
 
 function isPositiveInteger(value: unknown): value is number {

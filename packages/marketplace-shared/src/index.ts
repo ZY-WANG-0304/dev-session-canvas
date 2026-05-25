@@ -8,6 +8,13 @@ export const MARKETPLACE_SORT_VALUES = ['hot', 'downloads', 'likes', 'newest', '
 export const MARKETPLACE_TEMPLATE_STATUS_VALUES = ['published', 'delisted'] as const;
 export const MARKETPLACE_VERSION_STATUS_VALUES = ['published', 'rejected'] as const;
 export const MARKETPLACE_STORAGE_MODES = ['seed', 'd1', 'r2'] as const;
+export const MARKETPLACE_TEMPLATE_NODE_KINDS = ['agent', 'terminal', 'note'] as const;
+export const MARKETPLACE_TEMPLATE_AGENT_PROVIDERS = ['default', 'codex', 'claude'] as const;
+export const MARKETPLACE_TEMPLATE_NOTE_CONTENT_MODES = [
+  'embedded-snapshot',
+  'workspace-file-path-only',
+  'workspace-file-with-content'
+] as const;
 export const MARKETPLACE_DEFAULT_MAX_TEMPLATE_BYTES = 5 * 1024 * 1024;
 export const MARKETPLACE_MAX_THUMBNAIL_BYTES = 1024 * 1024;
 export const MARKETPLACE_MAX_TEMPLATE_NAME_LENGTH = 80;
@@ -22,8 +29,9 @@ export type MarketplaceSort = (typeof MARKETPLACE_SORT_VALUES)[number];
 export type MarketplaceTemplateStatus = (typeof MARKETPLACE_TEMPLATE_STATUS_VALUES)[number];
 export type MarketplaceVersionStatus = (typeof MARKETPLACE_VERSION_STATUS_VALUES)[number];
 export type MarketplaceStorageMode = (typeof MARKETPLACE_STORAGE_MODES)[number];
-export type MarketplaceTemplateNodeKind = 'agent' | 'terminal' | 'note';
-export type MarketplaceTemplateAgentProviderKind = 'default' | 'codex' | 'claude';
+export type MarketplaceTemplateNodeKind = (typeof MARKETPLACE_TEMPLATE_NODE_KINDS)[number];
+export type MarketplaceTemplateAgentProviderKind = (typeof MARKETPLACE_TEMPLATE_AGENT_PROVIDERS)[number];
+export type MarketplaceTemplateNoteContentMode = (typeof MARKETPLACE_TEMPLATE_NOTE_CONTENT_MODES)[number];
 
 export interface MarketplacePublisherSummary {
   id: string;
@@ -132,6 +140,8 @@ export interface MarketplaceTemplateNodeSnapshot {
   metadata?: {
     note?: {
       content: string;
+      templateContentMode?: MarketplaceTemplateNoteContentMode;
+      relativePath?: string;
     };
     agent?: {
       provider: MarketplaceTemplateAgentProviderKind;
@@ -203,21 +213,53 @@ const marketplaceTemplateSizeSchema = z.object({
   height: z.number().finite().positive()
 });
 
+const marketplaceTemplateNoteSchema = z
+  .object({
+    content: z.string().max(100_000).optional(),
+    templateContentMode: z.enum(MARKETPLACE_TEMPLATE_NOTE_CONTENT_MODES).optional(),
+    relativePath: z.string().max(500).optional()
+  })
+  .superRefine((note, context) => {
+    const contentMode = note.templateContentMode ?? 'embedded-snapshot';
+    if (contentMode === 'embedded-snapshot') {
+      return;
+    }
+
+    if (!normalizeMarketplaceTemplateWorkspaceRelativePath(note.relativePath ?? '')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['relativePath'],
+        message: 'relativePath must be a safe workspace-relative path.'
+      });
+    }
+  })
+  .transform((note) => {
+    const contentMode = note.templateContentMode ?? 'embedded-snapshot';
+    if (contentMode === 'embedded-snapshot') {
+      return {
+        content: note.content ?? ''
+      };
+    }
+
+    const relativePath = normalizeMarketplaceTemplateWorkspaceRelativePath(note.relativePath ?? '');
+    return {
+      content: contentMode === 'workspace-file-path-only' ? '' : note.content ?? '',
+      templateContentMode: contentMode,
+      relativePath: relativePath ?? ''
+    };
+  });
+
 const marketplaceTemplateNodeSchema = z.object({
-  kind: z.enum(['agent', 'terminal', 'note']),
+  kind: z.enum(MARKETPLACE_TEMPLATE_NODE_KINDS),
   title: z.string().trim().min(1).max(120),
   position: marketplaceTemplatePositionSchema,
   size: marketplaceTemplateSizeSchema,
   metadata: z
     .object({
-      note: z
-        .object({
-          content: z.string().max(100_000)
-        })
-        .optional(),
+      note: marketplaceTemplateNoteSchema.optional(),
       agent: z
         .object({
-          provider: z.enum(['default', 'codex', 'claude']),
+          provider: z.enum(MARKETPLACE_TEMPLATE_AGENT_PROVIDERS),
           argv: z.array(z.string().max(500)).max(64).optional()
         })
         .optional()
@@ -518,6 +560,26 @@ export function buildMarketplaceSlugFromName(name: string): string {
 
 export function normalizeMarketplaceTag(value: string): string {
   return value.trim().toLowerCase();
+}
+
+export function normalizeMarketplaceTemplateWorkspaceRelativePath(value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/g, '/').replace(/^\.\/+/u, '');
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:/u.test(normalized) ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(normalized) ||
+    normalized.includes('\0')
+  ) {
+    return undefined;
+  }
+
+  const parts = normalized.split('/');
+  if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) {
+    return undefined;
+  }
+
+  return parts.join('/');
 }
 
 export {

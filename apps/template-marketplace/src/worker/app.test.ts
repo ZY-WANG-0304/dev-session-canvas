@@ -483,6 +483,68 @@ describe('template marketplace worker api', () => {
     expect(body.error.message).toContain('readme');
   });
 
+  it('rejects unsafe associated Markdown paths with structured errors', async () => {
+    const request = buildPublishRequest();
+    request.templateDocument.template.nodes[0].metadata.note = {
+      content: '',
+      templateContentMode: 'workspace-file-path-only',
+      relativePath: '../private.md'
+    };
+
+    const response = await app.request(
+      'http://localhost/api/v1/templates',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'publisher'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string; message: string } }>();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('publish_request_invalid');
+    expect(body.error.message).toContain('relativePath');
+  });
+
+  it('checks associated Markdown relative paths during content safety validation', async () => {
+    const request = buildPublishRequest();
+    request.templateDocument.template.nodes[0].metadata.note = {
+      content: '',
+      templateContentMode: 'workspace-file-path-only',
+      relativePath: 'docs/javascript:alert.md'
+    };
+
+    const response = await app.request(
+      'http://localhost/api/v1/templates',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'publisher'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string; message: string } }>();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('content_safety_failed');
+    expect(body.error.message).toContain('metadata.note.relativePath');
+  });
+
   it('rejects template JSON that exceeds the configured size limit', async () => {
     const response = await app.request(
       'http://localhost/api/v1/templates',
@@ -699,7 +761,13 @@ function buildPublishRequest(): {
         title: string;
         position: { x: number; y: number };
         size: { width: number; height: number };
-        metadata: { note: { content: string } };
+        metadata: {
+          note: {
+            content: string;
+            templateContentMode?: 'embedded-snapshot' | 'workspace-file-path-only' | 'workspace-file-with-content';
+            relativePath?: string;
+          };
+        };
       }>;
       edges: Array<{
         sourceNodeIndex: number;

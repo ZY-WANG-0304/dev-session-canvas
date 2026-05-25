@@ -122,7 +122,7 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 宿主级验证可以先用测试命令或 smoke harness 注入剪贴板内容，打开真实 VSCode Webview，聚焦一个 `Terminal` 节点后执行粘贴并观察 PTY 收到文本。若宿主级剪贴板在 CI 环境不可用，必须在验证说明中明确记录限制，并保留 Playwright 的协议级替代证据。
 
-截至 2026-05-09，本设计已通过纯规则测试、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke 验证。已执行命令包括 `npm run test:execution-terminal-clipboard`、`npm run typecheck`、`npm run test:webview` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/run-vscode-smoke.mjs`。
+截至 2026-05-09，本设计已通过纯规则测试、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke 验证。已执行命令包括 `npm run test:execution-terminal-clipboard`、`npm run typecheck`、`npm run test:webview` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`。
 
 ## 9. 参考资料
 
