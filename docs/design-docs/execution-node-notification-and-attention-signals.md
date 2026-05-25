@@ -16,8 +16,8 @@ related_specs:
   - docs/product-specs/canvas-node-notifications.md
 related_plans:
   - docs/exec-plans/completed/execution-node-notification-research.md
-  - docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md
-updated_at: 2026-05-24
+  - docs/exec-plans/completed/execution-attention-indicator-and-acknowledgement.md
+updated_at: 2026-05-26
 ---
 
 # 执行节点通知与注意力信号设计

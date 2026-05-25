@@ -48,21 +48,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.10.5 版本亮点
+## 0.10.6 版本亮点
 
-当前公开的 `0.10.5` 版本是 `0.10.x` Preview 线内一次聚焦 Note Markdown 预览编辑与关联 Markdown 草稿恢复的补丁。它保留 `0.10.4` 已验证的执行终端链接刷新性能修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
+当前公开的 `0.10.6` 版本是 `0.10.x` Preview 线内一次聚焦 Agent 异常提醒的补丁。它保留 `0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
 
-- 双击 Note Markdown 预览中的普通文本时，现在使用 parser-position source map，让 textarea 光标落在段落、列表续行、blockquote、强调、代码、entity 和 task 文本对应的 Markdown 源码附近
-- 双击图片、预览空白、display math 或 malformed math 时，会回退到对应 Markdown 块源码末尾，而不是跳到整篇 Note 末尾
-- 关联 Markdown Note 草稿模型收敛为 `recoverableDraft`，可保留非冲突活跃草稿和文件不可用时的恢复入口，不再把每个草稿都误写成冲突
-- 历史 `conflictDraft` 状态仍会迁移；新持久化画布状态只保存草稿引用，草稿正文继续保存在既有 `note-markdown-drafts/` storage 文件中
+- Codex / Claude Code `Agent` 节点已进入运行态后，如果在非用户主动停止的情况下以非 `0` 退出，现在会复用既有节点 attention 状态提醒用户
+- 启动失败、`resume-failed`、用户主动停止、清理停止、正常 `0` 退出和 `Terminal` 节点退出仍被排除，不进入这条额外提醒路径
+- 新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；显式设为 `codex` 后，Codex 高置信 stream-disconnect 文案可在进程退出前触发补充提醒
+- Codex stream-disconnect 匹配只扫描新增输出，避免下一轮输入、配置切换或 live-runtime attach 后重复提醒历史 buffer 中的同一行
+- Claude Code 当前不启用文本匹配；在缺少真实 Claude 输出样本或结构化 `StopFailure` 证据前，只保留更安全的异常终态兜底
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.10.4` 升级到 `0.10.5` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`，升级到 `0.10.5` 后会继续沿用该明确选择；默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息
+- 首次安装与从 `0.10.5` 升级到 `0.10.6` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge` 或 `devSessionCanvas.notifications.strongTerminalAttentionReminder`，升级到 `0.10.6` 后会继续沿用该明确选择；新增异常输出文本匹配配置保持默认 `off`，只有显式设为 `codex` 才会启用
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
