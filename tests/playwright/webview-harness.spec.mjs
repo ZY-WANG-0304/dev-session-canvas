@@ -8180,14 +8180,19 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
     const titlebarRect = titlebar.getBoundingClientRect();
     const toolbarRect = toolbar.getBoundingClientRect();
     return {
+      frameWidth: Math.round(frameRect.width),
       toolbarLeft: Math.round(toolbarRect.left - frameRect.left),
       toolbarTop: Math.round(toolbarRect.top - frameRect.top),
+      toolbarWidth: Math.round(toolbarRect.width),
+      toolbarRight: Math.round(toolbarRect.right - frameRect.left),
       titlebarRight: Math.round(titlebarRect.right - frameRect.left),
       titlebarTop: Math.round(titlebarRect.top - frameRect.top)
     };
   });
   expect(groupToolbarLayout.toolbarLeft).toBe(groupToolbarLayout.titlebarRight);
   expect(groupToolbarLayout.toolbarTop).toBe(groupToolbarLayout.titlebarTop);
+  expect(groupToolbarLayout.toolbarRight).toBeLessThanOrEqual(groupToolbarLayout.frameWidth);
+  expect(groupToolbarLayout.toolbarWidth).toBeLessThan(280);
   await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveText('取消分组');
   await expect(groupFrame.locator('.canvas-group-split-danger')).toHaveText('删除分组');
   await groupFrame.locator('.canvas-group-split-danger').click();
@@ -8372,6 +8377,125 @@ test('canvas group border stroke stays screen-stable across zoom levels', async 
   expect(Number.parseFloat(zoomedChrome.backgroundAfterBorderBottomWidth)).toBeCloseTo(2, 1);
   expect(Number.parseFloat(zoomedChrome.frameBorderTopWidth)).toBeCloseTo(2, 1);
   expect(Number.parseFloat(zoomedChrome.selectedLineBorderTopWidth)).toBeCloseTo(4, 1);
+});
+
+test('canvas group title and action buttons only counter-scale while zooming out', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-26T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Long Planning Group Title',
+        position: { x: 240, y: 220 },
+        size: { width: 360, height: 160 }
+      },
+      {
+        id: 'group-2',
+        title: 'Group 2',
+        position: { x: 520, y: 220 },
+        size: { width: 1000, height: 180 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const readGroupChromeLayout = async (groupId) => {
+    const groupFrame = page.locator('[data-group-id="' + groupId + '"]');
+    await groupFrame.locator('.canvas-group-titlebar').click();
+    await expect(groupFrame.locator('.canvas-group-toolbar')).toBeVisible();
+    return groupFrame.evaluate((frame, targetGroupId) => {
+      const background = document.querySelector('[data-group-background-id="' + targetGroupId + '"]');
+      const titlebar = frame.querySelector('.canvas-group-titlebar');
+      const toolbar = frame.querySelector('.canvas-group-toolbar');
+      const primaryButton = frame.querySelector('.canvas-group-split-primary');
+      const dangerButton = frame.querySelector('.canvas-group-split-danger');
+      if (
+        !(background instanceof HTMLElement) ||
+        !(titlebar instanceof HTMLElement) ||
+        !(toolbar instanceof HTMLElement) ||
+        !(primaryButton instanceof HTMLElement) ||
+        !(dangerButton instanceof HTMLElement)
+      ) {
+        throw new Error('Group readable chrome not found.');
+      }
+      const frameRect = frame.getBoundingClientRect();
+      const titlebarRect = titlebar.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const primaryRect = primaryButton.getBoundingClientRect();
+      const dangerRect = dangerButton.getBoundingClientRect();
+      const titleStyles = getComputedStyle(titlebar);
+      const inputStyles = getComputedStyle(titlebar.querySelector('.window-title-input'));
+      const buttonStyles = getComputedStyle(primaryButton);
+      return {
+        frameWidth: frameRect.width,
+        backgroundTabWidth: Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-title-tab-width')),
+        titlebarWidth: titlebarRect.width,
+        toolbarWidth: toolbarRect.width,
+        titlebarHeight: titlebarRect.height,
+        toolbarHeight: toolbarRect.height,
+        titlebarRight: titlebarRect.right - frameRect.left,
+        toolbarLeft: toolbarRect.left - frameRect.left,
+        toolbarRight: toolbarRect.right - frameRect.left,
+        titleFontSize: Number.parseFloat(inputStyles.fontSize),
+        buttonFontSize: Number.parseFloat(buttonStyles.fontSize),
+        titlePaddingLeft: Number.parseFloat(titleStyles.paddingLeft),
+        buttonPaddingLeft: Number.parseFloat(buttonStyles.paddingLeft),
+        primaryButtonWidth: primaryRect.width,
+        dangerButtonWidth: dangerRect.width
+      };
+    }, groupId);
+  };
+
+  const narrowLayout = await readGroupChromeLayout('group-1');
+  expect(narrowLayout.titlebarHeight).toBeGreaterThan(14);
+  expect(narrowLayout.titlebarHeight).toBeLessThan(28);
+  expect(narrowLayout.toolbarHeight).toBeLessThanOrEqual(narrowLayout.titlebarHeight + 2);
+  expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
+  expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
+  expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1);
+  expect(narrowLayout.backgroundTabWidth).toBeCloseTo(narrowLayout.titlebarWidth / 0.5, 1);
+  expect(narrowLayout.primaryButtonWidth).toBeGreaterThan(0);
+  expect(narrowLayout.dangerButtonWidth).toBeGreaterThan(0);
+
+  const wideLayout = await readGroupChromeLayout('group-2');
+  expect(wideLayout.titlebarHeight).toBeCloseTo(28, 1);
+  expect(wideLayout.titleFontSize * 0.5).toBeCloseTo(12, 1);
+  expect(wideLayout.buttonFontSize * 0.5).toBeCloseTo(11, 1);
+  expect(wideLayout.titlePaddingLeft * 0.5).toBeCloseTo(12, 1);
+  expect(wideLayout.buttonPaddingLeft * 0.5).toBeCloseTo(8, 1);
+  expect(wideLayout.titlebarRight).toBeCloseTo(wideLayout.toolbarLeft, 1);
+  expect(wideLayout.toolbarRight).toBeLessThan(wideLayout.frameWidth - 200);
+  expect(wideLayout.toolbarWidth).toBeGreaterThan(130);
+  expect(wideLayout.toolbarWidth).toBeLessThan(300);
+  expect(wideLayout.titlebarWidth + wideLayout.toolbarWidth).toBeLessThan(wideLayout.frameWidth);
+
+  const zoomedInScale = await page.evaluate(() => {
+    const frame = document.createElement('div');
+    frame.style.position = 'absolute';
+    frame.style.left = '-10000px';
+    frame.style.top = '-10000px';
+    frame.style.width = '1000px';
+    frame.style.height = '180px';
+    frame.style.setProperty('--canvas-group-title-height', '28px');
+    document.body.append(frame);
+    const titlebar = document.createElement('div');
+    titlebar.className = 'canvas-group-titlebar';
+    titlebar.style.transform = 'scale(1.5)';
+    frame.append(titlebar);
+    const result = titlebar.getBoundingClientRect().height / 28;
+    frame.remove();
+    return result;
+  });
+  expect(zoomedInScale).toBeCloseTo(1.5, 1);
 });
 
 test('node resize auto-pans at the canvas edge and keeps resizing', async ({ page }) => {
