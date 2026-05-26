@@ -7333,7 +7333,7 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-icon codicon codicon-symbol-array" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
                 <strong>创建分组</strong>
-                <span>在当前位置创建空分组框</span>
+                <span>在当前位置创建空白分组</span>
               </span>
             </button>
             {props.canCreateGroupFromSelection ? (
@@ -7345,8 +7345,8 @@ const CanvasContextMenu = React.forwardRef<
               >
                 <span className="canvas-context-menu-icon codicon codicon-group-by-ref-type" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
-                  <strong>从选择创建分组</strong>
-                  <span>把当前多选对象收束到新分组</span>
+                  <strong>从选中项创建分组</strong>
+                  <span>将当前选中的节点归入新分组</span>
                 </span>
               </button>
             ) : null}
@@ -9586,7 +9586,7 @@ function CanvasGroupFrame(props: {
       <div className="canvas-group-titlebar" onPointerDown={beginDrag}>
         <ChromeTitleEditor
           value={props.group.title}
-          placeholder="Group 标题"
+          placeholder="分组标题"
           className="canvas-group-title"
           onSubmit={(title) => props.onUpdateGroupTitle(props.group.id, title)}
           onSelectNode={selectGroup}

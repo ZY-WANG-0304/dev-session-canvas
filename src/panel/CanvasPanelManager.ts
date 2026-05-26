@@ -11165,13 +11165,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const deleteMembersAction = { title: '删除内部所有节点与子分组' };
-    const keepMembersAction = { title: '仅删除分组' };
+    const deleteMembersAction = { title: '连同内部节点一起删除' };
+    const keepMembersAction = { title: '仅删除分组框' };
     const selection = await vscode.window.showWarningMessage(
       `删除分组「${group.title}」？`,
       {
         modal: true,
-        detail: '可以一并删除内部所有节点与子分组，或保留内部对象并仅删除分组。'
+        detail: '选择连同内部节点一起删除，或仅移除分组框并保留内部节点。'
       },
       deleteMembersAction,
       keepMembersAction
