@@ -8056,6 +8056,18 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
     const node = document.querySelector('[data-node-id="note-1"]');
     const nodeWrapper = node?.closest('.react-flow__node');
     const backgroundLayer = background?.closest('.canvas-group-background-layer');
+    const probeFrame = document.createElement('div');
+    probeFrame.className = 'canvas-group-frame';
+    probeFrame.style.position = 'absolute';
+    probeFrame.style.left = '-10000px';
+    probeFrame.style.top = '-10000px';
+    probeFrame.style.width = '70.5px';
+    probeFrame.style.height = '80px';
+    probeFrame.style.setProperty('--canvas-group-title-tab-width', 'min(112px, 100%)');
+    const probeTitlebar = document.createElement('div');
+    probeTitlebar.className = 'canvas-group-titlebar';
+    probeFrame.append(probeTitlebar);
+    document.body.append(probeFrame);
     if (!(titlebar instanceof HTMLElement)) {
       throw new Error('Group titlebar not found.');
     }
@@ -8079,6 +8091,9 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
     const backgroundRect = background.getBoundingClientRect();
     const titlebarRect = titlebar.getBoundingClientRect();
     const nodeRect = nodeWrapper.getBoundingClientRect();
+    const probeFrameRect = probeFrame.getBoundingClientRect();
+    const probeTitlebarRect = probeTitlebar.getBoundingClientRect();
+    probeFrame.remove();
     return {
       frameBackgroundColor: frameStyles.backgroundColor,
       frameBorderTopColor: frameStyles.borderTopColor,
@@ -8116,6 +8131,8 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       titlebarBorderTopRightRadius: titlebarStyles.borderTopRightRadius,
       titlebarBorderBottomRightRadius: titlebarStyles.borderBottomRightRadius,
       titlebarBoxShadow: titlebarStyles.boxShadow,
+      subpixelTitlebarWidth: probeTitlebarRect.width,
+      subpixelFrameWidth: probeFrameRect.width,
       nodeBodyTopInset: Math.round(nodeRect.top - frameRect.top - Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-title-height')))
     };
   });
@@ -8152,6 +8169,7 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopRightRadius)).toBe(0);
   expect(Number.parseFloat(groupPanelStyles.titlebarBorderBottomRightRadius)).toBe(0);
   expect(groupPanelStyles.titlebarBoxShadow).toBe('none');
+  expect(groupPanelStyles.subpixelTitlebarWidth).toBeLessThanOrEqual(groupPanelStyles.subpixelFrameWidth);
   expect(groupPanelStyles.nodeBodyTopInset).toBeGreaterThanOrEqual(28);
 
   await groupFrame.locator('.canvas-group-titlebar').click();
@@ -8585,12 +8603,14 @@ test('canvas group title and action buttons only counter-scale while zooming out
     return groupFrame.evaluate((frame, targetGroupId) => {
       const background = document.querySelector('[data-group-background-id="' + targetGroupId + '"]');
       const titlebar = frame.querySelector('.canvas-group-titlebar');
+      const titleInput = frame.querySelector('.canvas-group-title .window-title-input');
       const toolbar = frame.querySelector('.canvas-group-toolbar');
       const primaryButton = frame.querySelector('.canvas-group-split-primary');
       const dangerButton = frame.querySelector('.canvas-group-split-danger');
       if (
         !(background instanceof HTMLElement) ||
         !(titlebar instanceof HTMLElement) ||
+        !(titleInput instanceof HTMLElement) ||
         !(toolbar instanceof HTMLElement) ||
         !(primaryButton instanceof HTMLElement) ||
         !(dangerButton instanceof HTMLElement)
@@ -8599,6 +8619,7 @@ test('canvas group title and action buttons only counter-scale while zooming out
       }
       const frameRect = frame.getBoundingClientRect();
       const titlebarRect = titlebar.getBoundingClientRect();
+      const titleInputRect = titleInput.getBoundingClientRect();
       const toolbarRect = toolbar.getBoundingClientRect();
       const primaryRect = primaryButton.getBoundingClientRect();
       const dangerRect = dangerButton.getBoundingClientRect();
@@ -8607,8 +8628,8 @@ test('canvas group title and action buttons only counter-scale while zooming out
       const buttonStyles = getComputedStyle(primaryButton);
       return {
         frameWidth: frameRect.width,
-        backgroundTabWidth: Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-title-tab-width')),
         titlebarWidth: titlebarRect.width,
+        titleInputWidth: titleInputRect.width,
         toolbarWidth: toolbarRect.width,
         titlebarHeight: titlebarRect.height,
         toolbarHeight: toolbarRect.height,
@@ -8632,7 +8653,6 @@ test('canvas group title and action buttons only counter-scale while zooming out
   expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
   expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
   expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1);
-  expect(narrowLayout.backgroundTabWidth).toBeCloseTo(narrowLayout.titlebarWidth / 0.5, 1);
   expect(narrowLayout.primaryButtonWidth).toBeGreaterThan(0);
   expect(narrowLayout.dangerButtonWidth).toBeGreaterThan(0);
 
@@ -8647,6 +8667,7 @@ test('canvas group title and action buttons only counter-scale while zooming out
   expect(wideLayout.toolbarWidth).toBeGreaterThan(130);
   expect(wideLayout.toolbarWidth).toBeLessThan(300);
   expect(wideLayout.titlebarWidth + wideLayout.toolbarWidth).toBeLessThan(wideLayout.frameWidth);
+  expect(wideLayout.titleInputWidth).toBeGreaterThan(70);
 
   const zoomedInScale = await page.evaluate(() => {
     const frame = document.createElement('div');
