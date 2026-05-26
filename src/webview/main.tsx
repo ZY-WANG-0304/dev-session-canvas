@@ -9369,13 +9369,14 @@ function createCanvasGroupFrameStyle(
   const desiredTitleTabWidth = titleBaseWidth * readableScale;
   const desiredToolbarWidth = toolbarBaseWidth * readableScale;
   const titleTabWidth = Math.min(desiredTitleTabWidth, group.size.width);
+  const bodyAlignedTitleTabWidth = `min(${titleTabWidth}px, 100%)`;
   const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP);
   const toolbarWidth = selected && availableToolbarWidth >= 1
     ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
     : 0;
   return {
     ...createCanvasGroupChromeStyle(zoom, readableScale),
-    '--canvas-group-title-tab-width': `${titleTabWidth}px`,
+    '--canvas-group-title-tab-width': bodyAlignedTitleTabWidth,
     '--canvas-group-toolbar-width': `${toolbarWidth}px`,
     left: group.position.x,
     top: group.position.y,
