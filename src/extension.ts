@@ -307,6 +307,26 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
+  registerCommand(context, COMMAND_IDS.createEmptyGroup, async () => {
+    await panelManager.revealOrCreate();
+    panelManager.createEmptyGroupFromCommand();
+  });
+
+  registerCommand(context, COMMAND_IDS.createGroupFromSelection, async () => {
+    await panelManager.revealOrCreate();
+    try {
+      await panelManager.waitForCanvasReady(undefined, 15000);
+    } catch {
+      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+      return;
+    }
+
+    const requested = panelManager.createGroupFromSelectionFromCommand();
+    if (!requested) {
+      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+    }
+  });
+
   registerCommand(context, COMMAND_IDS.saveNoteAsMarkdownFile, async (nodeId?: unknown) => {
     await panelManager.saveNoteAsMarkdownFile(typeof nodeId === 'string' ? nodeId : undefined);
   });

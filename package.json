@@ -188,6 +188,16 @@
         "icon": "$(add)"
       },
       {
+        "command": "devSessionCanvas.createEmptyGroup",
+        "title": "%command.createEmptyGroup.title%",
+        "icon": "$(symbol-array)"
+      },
+      {
+        "command": "devSessionCanvas.createGroupFromSelection",
+        "title": "%command.createGroupFromSelection.title%",
+        "icon": "$(group-by-ref-type)"
+      },
+      {
         "command": "devSessionCanvas.saveNoteAsMarkdownFile",
         "title": "%command.saveNoteAsMarkdownFile.title%",
         "icon": "$(markdown)"

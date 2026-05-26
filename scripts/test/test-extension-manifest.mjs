@@ -78,6 +78,36 @@ assert.ok(
 
 const commandPaletteMenus = manifest.contributes.menus.commandPalette;
 assert.ok(Array.isArray(commandPaletteMenus), 'Expected commandPalette menu contributions.');
+const groupCommandIds = ['devSessionCanvas.createEmptyGroup', 'devSessionCanvas.createGroupFromSelection'];
+const contributedCommandIds = manifest.contributes.commands.map((entry) => entry.command);
+for (const commandId of groupCommandIds) {
+  assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
+  assert.ok(
+    !commandPaletteMenus.some((item) => item.command === commandId && item.when === 'false'),
+    `Expected ${commandId} to remain visible in the global Command Palette.`
+  );
+}
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) => groupCommandIds.includes(entry.command))
+    .map((entry) => ({ command: entry.command, icon: entry.icon })),
+  [
+    {
+      command: 'devSessionCanvas.createEmptyGroup',
+      icon: '$(symbol-array)'
+    },
+    {
+      command: 'devSessionCanvas.createGroupFromSelection',
+      icon: '$(group-by-ref-type)'
+    }
+  ],
+  'Expected group commands to use the confirmed Codicon entry points.'
+);
+assert.ok(
+  !Array.isArray(manifest.contributes.keybindings) ||
+    !manifest.contributes.keybindings.some((item) => groupCommandIds.includes(item.command)),
+  'Expected group commands to avoid default keybindings in the first version.'
+);
 assert.deepEqual(
   commandPaletteMenus.filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList')),
   [

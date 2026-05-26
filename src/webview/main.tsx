@@ -1043,6 +1043,7 @@ function App(): JSX.Element {
     nodeId: string;
     baseSelectedNodeIds: string[];
   } | null>(null);
+  const hostStateRef = useRef<CanvasPrototypeState | null>(hostState);
   const localUiStateRef = useRef<LocalUiState>(localUiState);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
   const [documentHasFocus, setDocumentHasFocus] = useState<boolean>(() => document.hasFocus());
@@ -1093,6 +1094,7 @@ function App(): JSX.Element {
           {
             const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
             const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+            hostStateRef.current = normalizedState;
             latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
             latestRuntimeContext = normalizedRuntime;
             setHostState(normalizedState);
@@ -1191,11 +1193,7 @@ function App(): JSX.Element {
           if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
             pendingManualCreateRequestRef.current = undefined;
           }
-          setErrorMessage(message.payload.message);
-          if (clearErrorTimer.current) {
-            window.clearTimeout(clearErrorTimer.current);
-          }
-          clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
+          showTransientCanvasError(message.payload.message);
           break;
         case 'host/requestCreateNode':
           createNode(
@@ -1206,6 +1204,9 @@ function App(): JSX.Element {
             message.payload.agentLaunchPreset,
             message.payload.agentCustomLaunchCommand
           );
+          break;
+        case 'host/requestCreateGroupFromSelection':
+          createGroupFromCurrentSelectionRequest();
           break;
         case 'host/testProbeRequest':
           void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
@@ -2395,6 +2396,29 @@ function App(): JSX.Element {
         parentGroupId
       }
     });
+  };
+
+  const showTransientCanvasError = (message: string): void => {
+    setErrorMessage(message);
+    if (clearErrorTimer.current) {
+      window.clearTimeout(clearErrorTimer.current);
+    }
+    clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
+  };
+
+  const createGroupFromCurrentSelectionRequest = (): void => {
+    const currentHostState = hostStateRef.current;
+    const currentUiState = localUiStateRef.current;
+    const nodeIds = currentUiState.selectedNodeIds ?? (currentUiState.selectedNodeId ? [currentUiState.selectedNodeId] : []);
+    const groupIds = currentUiState.selectedGroupIds ?? (currentUiState.selectedGroupId ? [currentUiState.selectedGroupId] : []);
+    const parentGroupId = resolveSelectedObjectParentGroupId(currentHostState, nodeIds, groupIds);
+
+    if (!canCreateCanvasGroupFromSelection(currentHostState, nodeIds, groupIds, parentGroupId)) {
+      showTransientCanvasError('请先选中至少两个同一父级的节点或分组。');
+      return;
+    }
+
+    handleCreateGroupFromSelection(nodeIds, groupIds, parentGroupId);
   };
 
   const handleMoveGroup = (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition): void => {
@@ -7707,6 +7731,29 @@ function canCreateCanvasGroupFromSelection(
   }
 
   return true;
+}
+
+function resolveSelectedObjectParentGroupId(
+  state: CanvasPrototypeState | null,
+  nodeIds: readonly string[],
+  groupIds: readonly string[]
+): string | undefined {
+  if (!state) {
+    return undefined;
+  }
+
+  const selectedNodeIds = new Set(nodeIds);
+  const selectedGroupIds = new Set(groupIds);
+  const selectedNodes = state.nodes.filter(
+    (node) => selectedNodeIds.has(node.id) && isTemplateCompatibleNodeKind(node.kind)
+  );
+  const selectedGroups = (state.groups ?? []).filter((group) => selectedGroupIds.has(group.id));
+  const selectedParents = new Set<string | undefined>([
+    ...selectedNodes.map((node) => node.groupId),
+    ...selectedGroups.map((group) => group.parentGroupId)
+  ]);
+
+  return selectedParents.size === 1 ? selectedParents.values().next().value : undefined;
 }
 
 function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {

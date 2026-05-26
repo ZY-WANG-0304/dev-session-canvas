@@ -1711,6 +1711,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  public createEmptyGroupFromCommand(): void {
+    const preferredCenter = this.resolvePreferredCanvasCenter() ?? { x: 0, y: 0 };
+    const groupSize = DEFAULT_CANVAS_GROUP_SIZE;
+    this.state = createEmptyCanvasGroup(
+      this.state,
+      snapCanvasPosition({
+        x: preferredCenter.x - Math.round(groupSize.width / 2),
+        y: preferredCenter.y - Math.round(groupSize.height / 2)
+      }),
+      groupSize
+    );
+    this.canvasTemplateInitialized = true;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  public createGroupFromSelectionFromCommand(): boolean {
+    if (!this.isInteractiveSurfaceReady()) {
+      return false;
+    }
+
+    this.postMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+    return true;
+  }
+
   public async createTerminalAndRunCommand(
     commandLine: string,
     options: { titleOverride?: string } = {}
@@ -2873,7 +2900,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private resolvePreferredTemplatePlacementCenter(explicitCenter?: CanvasNodePosition): CanvasNodePosition | undefined {
+  private resolvePreferredCanvasCenter(explicitCenter?: CanvasNodePosition): CanvasNodePosition | undefined {
     if (explicitCenter) {
       return explicitCenter;
     }
@@ -2884,6 +2911,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return this.lastVisibleCanvasCenterBySurface[this.getConfiguredSurface()];
+  }
+
+  private resolvePreferredTemplatePlacementCenter(explicitCenter?: CanvasNodePosition): CanvasNodePosition | undefined {
+    return this.resolvePreferredCanvasCenter(explicitCenter);
   }
 
   private async ensureDefaultTemplateAppliedIfNeeded(): Promise<void> {
@@ -12373,10 +12404,17 @@ function applyCanvasTemplateToState(
   let nextSequence = readNextNodeSequence(previousState.nodes);
   let nextGroupSequence = readNextGroupSequence(previousState);
   const groupIdByTemplateIndex = new Map<number, string>();
-  const materializedGroups = (template.groups ?? []).map((templateGroup, index) => {
+  const templateGroups = template.groups ?? [];
+  for (const [index] of templateGroups.entries()) {
     const groupId = createCanvasGroupObjectId(nextGroupSequence);
     nextGroupSequence += 1;
     groupIdByTemplateIndex.set(index, groupId);
+  }
+  const materializedGroups = templateGroups.map((templateGroup, index) => {
+    const groupId = groupIdByTemplateIndex.get(index);
+    if (!groupId) {
+      return undefined;
+    }
     return materializeTemplateGroup(
       groupId,
       templateGroup,
@@ -12385,7 +12423,7 @@ function applyCanvasTemplateToState(
       groupIdByTemplateIndex,
       options.targetGroupId
     );
-  });
+  }).filter((group): group is CanvasGroupSummary => Boolean(group));
   const nodeIdByTemplateIndex = new Map<number, string>();
   const materializedNodes = template.nodes.map((templateNode, index) => {
     const resolvedAgentProvider =
@@ -15574,6 +15612,8 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
         kind: message.payload.kind,
         agentProvider: message.payload.agentProvider
       };
+    case 'host/requestCreateGroupFromSelection':
+      return undefined;
     case 'host/testProbeRequest':
       return {
         requestId: message.payload.requestId,

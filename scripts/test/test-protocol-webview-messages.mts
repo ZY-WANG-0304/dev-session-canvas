@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { isWebviewDomAction, parseWebviewMessage } from '../../src/common/protocol.ts';
 
@@ -83,6 +84,13 @@ const createGroupFromSelectionMessage = {
   }
 };
 assert.deepEqual(parseWebviewMessage(createGroupFromSelectionMessage), createGroupFromSelectionMessage);
+
+const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
+assert.match(
+  protocolSource,
+  /type: 'host\/requestCreateGroupFromSelection'/u,
+  'Expected the host-to-webview protocol to expose command-palette group creation from the current selection.'
+);
 
 const applyTemplateInGroupMessage = {
   type: 'webview/applyTemplate',

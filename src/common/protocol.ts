@@ -1032,6 +1032,9 @@ export type HostToWebviewMessage =
       };
     }
   | {
+      type: 'host/requestCreateGroupFromSelection';
+    }
+  | {
       type: 'host/testProbeRequest';
       payload: {
         requestId: string;
