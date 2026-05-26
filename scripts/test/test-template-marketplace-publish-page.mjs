@@ -161,6 +161,10 @@ async function verifyPublishPage(page, localUrl) {
   await page.goto(`${localUrl}publish`, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Publish a template' }).waitFor();
   await assertVisibleText(page, 'Signed in as codex-tester');
+  await page.getByRole('heading', { name: 'Template package structure' }).waitFor();
+  await page.getByRole('heading', { name: 'Package checks' }).waitFor();
+  await assertVisibleText(page, 'template-package.json');
+  await assertVisibleText(page, '50MB package / 5MB template JSON');
 
   const templateFileSection = page.locator('section').filter({ hasText: 'Template file' }).first();
   await page.getByRole('button', { name: 'Publish template' }).click();
@@ -176,6 +180,8 @@ async function verifyPublishPage(page, localUrl) {
   await page.locator('input[type="file"]').first().setInputFiles(templateFile);
   await page.waitForFunction(() => document.body.textContent?.includes('01-getting-started.json'));
   await page.getByText('Optional README, changelog, and JSON preview').click();
+  await assertVisibleText(page, 'README images can use package-relative paths such as');
+  await assertVisibleText(page, 'external media links stay as plain links');
   const templateJsonPreview = page.getByRole('textbox', { name: /Template JSON preview/u });
   await templateJsonPreview.waitFor();
   const templateJson = await templateJsonPreview.inputValue();
@@ -189,7 +195,8 @@ async function verifyPublishPage(page, localUrl) {
   await page.getByRole('status').filter({ hasText: 'Slug is available.' }).waitFor();
   await page.getByRole('textbox', { name: 'Description', exact: true }).fill('A regression smoke test for publish button behavior.');
   await page.getByRole('textbox', { name: 'Tags', exact: true }).fill('smoke, publish');
-  await page.getByRole('textbox', { name: 'README', exact: true }).fill('# Smoke README');
+  await page.getByRole('textbox', { name: 'README', exact: true }).fill('# Smoke README\n\n![Shot](./media/screenshot.png)');
+  await assertVisibleText(page, '1 package-relative media reference(s) will resolve from media/ or assets/.');
   const changelog = page.getByRole('textbox', { name: 'Changelog', exact: true });
   assert.equal(await changelog.evaluate((element) => element.tagName), 'TEXTAREA');
   await changelog.fill('Initial smoke pass.\nManual publish checklist covered.');
@@ -276,7 +283,7 @@ async function installApiRoutes(page) {
       assert.equal(payload.slug, 'codex-smoke-template');
       assert.equal(payload.description, 'A regression smoke test for publish button behavior.');
       assert.deepEqual(payload.tags, ['smoke', 'publish']);
-      assert.equal(payload.readme, '# Smoke README');
+      assert.equal(payload.readme, '# Smoke README\n\n![Shot](./media/screenshot.png)');
       assert.equal(payload.changelog, 'Initial smoke pass.\nManual publish checklist covered.');
       assert.ok(typeof payload.templateDocument === 'object');
       assert.ok(typeof payload.thumbnailPngBase64 === 'string');
