@@ -22,6 +22,7 @@ try {
     'isEmptyCanvasGroup',
     'preserveRepairTargetClusterWhileAvoidingSiblings',
     'finalizeCanvasGroupState',
+    'createNextState',
     'normalizeState'
   ];
 
@@ -113,6 +114,7 @@ try {
     isEmptyCanvasGroup,
     preserveRepairTargetClusterWhileAvoidingSiblings,
     finalizeCanvasGroupState,
+    createNextState,
     normalizeState
   } = require(outfile);
 
@@ -224,6 +226,66 @@ try {
   );
   assert.strictEqual(crossParentSelection.groups.length, 1);
   assert.strictEqual(crossParentSelection.nodes.find((candidate) => candidate.id === 'note-b').groupId, undefined);
+
+  const nestedEmptyGroup = createEmptyCanvasGroup(
+    state({
+      groups: [group('group-parent', { x: 0, y: 0 }, { width: 500, height: 420 })]
+    }),
+    { x: 120, y: 120 },
+    { width: 200, height: 140 },
+    'group-parent'
+  );
+  const nestedCreatedGroup = nestedEmptyGroup.groups.find((candidate) => candidate.title === 'Group 1');
+  assert.strictEqual(nestedCreatedGroup.parentGroupId, 'group-parent');
+
+  const nestedSelectionGroup = createGroupFromSelection(
+    state({
+      nodes: [
+        note('note-a', { x: 80, y: 96 }, { groupId: 'group-parent' }),
+        note('note-b', { x: 240, y: 96 }, { groupId: 'group-parent' })
+      ],
+      groups: [group('group-parent', { x: 0, y: 0 }, { width: 620, height: 420 })]
+    }),
+    ['note-a', 'note-b'],
+    [],
+    'group-parent'
+  );
+  const nestedSelectionCreatedGroup = nestedSelectionGroup.groups.find((candidate) => candidate.title === 'Group 1');
+  assert.strictEqual(nestedSelectionCreatedGroup.parentGroupId, 'group-parent');
+  assert.strictEqual(nestedSelectionGroup.nodes.find((candidate) => candidate.id === 'note-a').groupId, nestedSelectionCreatedGroup.id);
+  assert.strictEqual(nestedSelectionGroup.nodes.find((candidate) => candidate.id === 'note-b').groupId, nestedSelectionCreatedGroup.id);
+
+  const mismatchedContextSelection = createGroupFromSelection(
+    state({
+      nodes: [
+        note('note-a', { x: 80, y: 96 }),
+        note('note-b', { x: 240, y: 96 })
+      ],
+      groups: [group('group-parent', { x: 0, y: 0 }, { width: 620, height: 420 })]
+    }),
+    ['note-a', 'note-b'],
+    [],
+    'group-parent'
+  );
+  assert.strictEqual(mismatchedContextSelection.groups.length, 1);
+  assert.strictEqual(mismatchedContextSelection.nodes.find((candidate) => candidate.id === 'note-a').groupId, undefined);
+
+  const createdNodeInGroup = createNextState(
+    state({
+      groups: [group('group-parent', { x: 120, y: 120 }, { width: 360, height: 240 })]
+    }),
+    'note',
+    'codex',
+    'default',
+    undefined,
+    { x: 130, y: 156 },
+    'group-parent'
+  );
+  const manuallyCreatedMember = createdNodeInGroup.nodes.at(-1);
+  const expandedCreationTarget = createdNodeInGroup.groups.find((candidate) => candidate.id === 'group-parent');
+  assert.strictEqual(manuallyCreatedMember.groupId, 'group-parent');
+  assert.ok(rectContainsRectForTest(rectForTestGroup(expandedCreationTarget), rectForTestNode(manuallyCreatedMember)));
+  assertMemberInsetsForTest(expandedCreationTarget, [manuallyCreatedMember]);
 
   const groupedByPointer = moveNode(
     state({
@@ -564,6 +626,10 @@ function rectForTestGroup(group) {
 
 function rectsOverlapForTest(left, right) {
   return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+}
+
+function rectContainsRectForTest(outer, inner) {
+  return outer.left <= inner.left && outer.right >= inner.right && outer.top <= inner.top && outer.bottom >= inner.bottom;
 }
 
 function assertMemberInsetsForTest(group, members) {

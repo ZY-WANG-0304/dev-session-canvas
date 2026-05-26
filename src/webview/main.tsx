@@ -437,6 +437,7 @@ interface CanvasContextMenuState {
   screenY: number;
   flowAnchor: CanvasNodePosition;
   view: CanvasContextMenuView;
+  targetGroupId?: string;
   selectedAgentProvider?: AgentProviderKind;
   selectedNodeIds?: string[];
   selectedGroupIds?: string[];
@@ -479,6 +480,7 @@ interface PendingManualNodeCreateRequest {
   knownNodeIdsSnapshot: ReadonlySet<string>;
   kind: CanvasCreatableNodeKind;
   preferredPosition?: CanvasNodePosition;
+  targetGroupId?: string;
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
@@ -1199,6 +1201,7 @@ function App(): JSX.Element {
           createNode(
             message.payload.kind,
             undefined,
+            undefined,
             message.payload.agentProvider,
             message.payload.agentLaunchPreset,
             message.payload.agentCustomLaunchCommand
@@ -1446,7 +1449,8 @@ function App(): JSX.Element {
     const nextCanCreateGroupFromSelection = canCreateCanvasGroupFromSelection(
       hostState,
       selectedNodeIds,
-      selectedGroupIds
+      selectedGroupIds,
+      contextMenu.targetGroupId
     );
     if (contextMenu.canCreateGroupFromSelection === nextCanCreateGroupFromSelection) {
       return;
@@ -2281,6 +2285,7 @@ function App(): JSX.Element {
   }, [hostState]);
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
+    localUiStateRef.current = nextState;
     setLocalUiState(nextState);
   };
 
@@ -2297,8 +2302,30 @@ function App(): JSX.Element {
     selectNode(node.id);
   };
 
-  const handlePaneClick = (): void => {
+  const resolveGroupBodyHitAtPointer = (event: Pick<React.MouseEvent, 'clientX' | 'clientY'>): CanvasGroupSummary | undefined => {
+    const reactFlowInstance = reactFlowRef.current;
+    if (reactFlowInstance?.viewportInitialized) {
+      return findInnermostCanvasGroupBodyAtFlowPoint(
+        groups,
+        canvasShellRef.current,
+        reactFlowInstance.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY
+        })
+      );
+    }
+
+    return findInnermostCanvasGroupBodyAtScreenPoint(groups, canvasShellRef.current, event.clientX, event.clientY);
+  };
+
+  const handlePaneClick = (event: React.MouseEvent): void => {
     closeFloatingMenus();
+    const bodyHitGroup = resolveGroupBodyHitAtPointer(event);
+    if (bodyHitGroup) {
+      selectGroup(bodyHitGroup.id);
+      return;
+    }
+
     if (!localUiState.selectedNodeId && !localUiState.selectedGroupId && !selectedEdgeId) {
       return;
     }
@@ -2316,17 +2343,20 @@ function App(): JSX.Element {
   const selectGroup = (groupId: string): void => {
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
-    setLocalUiState((current) =>
-      current.selectedGroupId === groupId && !current.selectedNodeId
-        ? current
-        : {
-            ...current,
-            selectedNodeId: undefined,
-            selectedNodeIds: undefined,
-            selectedGroupIds: [groupId],
-            selectedGroupId: groupId
-          }
-    );
+    setLocalUiState((current) => {
+      const nextState =
+        current.selectedGroupId === groupId && !current.selectedNodeId
+          ? current
+          : {
+              ...current,
+              selectedNodeId: undefined,
+              selectedNodeIds: undefined,
+              selectedGroupIds: [groupId],
+              selectedGroupId: groupId
+            };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
   };
 
   const updateGroupDraft = (groupId: string, draft: CanvasGroupDraft | null): void => {
@@ -2341,22 +2371,28 @@ function App(): JSX.Element {
     });
   };
 
-  const handleCreateEmptyGroup = (position: CanvasNodePosition): void => {
+  const handleCreateEmptyGroup = (position: CanvasNodePosition, parentGroupId?: string): void => {
     postMessage({
       type: 'webview/createEmptyGroup',
       payload: {
         position,
-        size: DEFAULT_CANVAS_GROUP_SIZE
+        size: DEFAULT_CANVAS_GROUP_SIZE,
+        parentGroupId
       }
     });
   };
 
-  const handleCreateGroupFromSelection = (nodeIds: readonly string[], groupIds: readonly string[]): void => {
+  const handleCreateGroupFromSelection = (
+    nodeIds: readonly string[],
+    groupIds: readonly string[],
+    parentGroupId?: string
+  ): void => {
     postMessage({
       type: 'webview/createGroupFromSelection',
       payload: {
         nodeIds: [...nodeIds],
-        groupIds: [...groupIds]
+        groupIds: [...groupIds],
+        parentGroupId
       }
     });
   };
@@ -2654,7 +2690,7 @@ function App(): JSX.Element {
     }, NODE_FOCUS_ANIMATION_DURATION_MS + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
   };
 
-  const handlePaneContextMenu = (event: React.MouseEvent): void => {
+  const handlePaneContextMenu = (event: React.MouseEvent, explicitTargetGroupId?: string): void => {
     event.preventDefault();
     stopCanvasEvent(event);
 
@@ -2668,18 +2704,42 @@ function App(): JSX.Element {
       y: event.clientY
     });
 
+    const explicitBodyHitGroup = explicitTargetGroupId
+      ? groups.find((group) => group.id === explicitTargetGroupId)
+      : undefined;
+    const bodyHitGroup = explicitBodyHitGroup ?? resolveGroupBodyHitAtPointer(event);
     setSelectedEdgeId(undefined);
     closeEdgeMenus();
+    const currentSelectedNodeIds =
+      localUiState.selectedNodeIds ?? (localUiState.selectedNodeId ? [localUiState.selectedNodeId] : []);
+    const currentSelectedGroupIds =
+      localUiState.selectedGroupIds ?? (localUiState.selectedGroupId ? [localUiState.selectedGroupId] : []);
+    const preserveSelectionForBodyAction =
+      bodyHitGroup &&
+      canCreateCanvasGroupFromSelection(hostState, currentSelectedNodeIds, currentSelectedGroupIds, bodyHitGroup.id);
+    const selectedNodeIds = preserveSelectionForBodyAction
+      ? currentSelectedNodeIds
+      : bodyHitGroup
+        ? []
+        : currentSelectedNodeIds;
+    const selectedGroupIds = preserveSelectionForBodyAction
+      ? currentSelectedGroupIds
+      : bodyHitGroup
+        ? [bodyHitGroup.id]
+        : currentSelectedGroupIds;
+    const canCreateGroupFromSelection = canCreateCanvasGroupFromSelection(
+      hostState,
+      selectedNodeIds,
+      selectedGroupIds,
+      bodyHitGroup?.id
+    );
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: undefined,
       selectedNodeIds: undefined,
-      selectedGroupId: undefined,
-      selectedGroupIds: undefined
+      selectedGroupId: bodyHitGroup?.id,
+      selectedGroupIds: bodyHitGroup ? [bodyHitGroup.id] : undefined
     }));
-    const selectedNodeIds = localUiState.selectedNodeIds ?? (localUiState.selectedNodeId ? [localUiState.selectedNodeId] : []);
-    const selectedGroupIds = localUiState.selectedGroupIds ?? (localUiState.selectedGroupId ? [localUiState.selectedGroupId] : []);
-    const canCreateGroupFromSelection = canCreateCanvasGroupFromSelection(hostState, selectedNodeIds, selectedGroupIds);
     setContextMenu({
       screenX: event.clientX,
       screenY: event.clientY,
@@ -2688,6 +2748,7 @@ function App(): JSX.Element {
         y: Math.round(flowAnchor.y)
       },
       view: 'root',
+      targetGroupId: bodyHitGroup?.id,
       selectedNodeIds,
       selectedGroupIds,
       canCreateGroupFromSelection
@@ -3001,6 +3062,8 @@ function App(): JSX.Element {
             groups={groups}
             portalElement={canvasShellRef.current}
             selectedGroupId={localUiState.selectedGroupId}
+            onSelectGroupBody={selectGroup}
+            onGroupBodyContextMenu={handlePaneContextMenu}
             onSelectGroup={selectGroup}
             onDraftGroup={updateGroupDraft}
             onMoveGroup={handleMoveGroup}
@@ -3053,17 +3116,22 @@ function App(): JSX.Element {
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
           canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
           onCreateEmptyGroup={() => {
-            handleCreateEmptyGroup(contextMenu.flowAnchor);
+            handleCreateEmptyGroup(contextMenu.flowAnchor, contextMenu.targetGroupId);
             closePaneContextMenu();
           }}
           onCreateGroupFromSelection={() => {
-            handleCreateGroupFromSelection(contextMenu.selectedNodeIds ?? [], contextMenu.selectedGroupIds ?? []);
+            handleCreateGroupFromSelection(
+              contextMenu.selectedNodeIds ?? [],
+              contextMenu.selectedGroupIds ?? [],
+              contextMenu.targetGroupId
+            );
             closePaneContextMenu();
           }}
           onCreate={(kind, agentProvider, agentLaunchPreset, agentCustomLaunchCommand) => {
             createNode(
               kind,
               resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
+              contextMenu.targetGroupId,
               agentProvider,
               agentLaunchPreset,
               agentCustomLaunchCommand
@@ -3096,7 +3164,8 @@ function App(): JSX.Element {
             postMessage({
               type: 'webview/applyDefaultTemplate',
               payload: {
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current),
+                targetGroupId: contextMenu.targetGroupId
               }
             });
             closePaneContextMenu();
@@ -3105,7 +3174,8 @@ function App(): JSX.Element {
             postMessage({
               type: 'webview/resetToDefaultTemplate',
               payload: {
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current),
+                targetGroupId: contextMenu.targetGroupId
               }
             });
             closePaneContextMenu();
@@ -3115,7 +3185,8 @@ function App(): JSX.Element {
               type: reset ? 'webview/resetToTemplate' : 'webview/applyTemplate',
               payload: {
                 templateId,
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current),
+                targetGroupId: contextMenu.targetGroupId
               }
             });
             closePaneContextMenu();
@@ -3153,6 +3224,7 @@ function App(): JSX.Element {
   function createNode(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
+    targetGroupId?: string,
     agentProvider?: AgentProviderKind,
     agentLaunchPreset?: AgentLaunchPresetKind,
     agentCustomLaunchCommand?: string
@@ -3167,6 +3239,7 @@ function App(): JSX.Element {
       knownNodeIdsSnapshot: new Set(latestHostNodeIdsRef.current),
       kind,
       preferredPosition: resolvedPreferredPosition,
+      targetGroupId,
       agentProvider: resolvedAgentProvider,
       agentLaunchPreset: resolvedAgentLaunchPreset,
       agentCustomLaunchCommand:
@@ -3178,6 +3251,7 @@ function App(): JSX.Element {
         requestId,
         kind,
         preferredPosition: resolvedPreferredPosition,
+        targetGroupId,
         agentProvider,
         agentLaunchPreset,
         agentCustomLaunchCommand
@@ -3271,6 +3345,10 @@ function doesNodeMatchPendingManualCreateRequest(
   request: PendingManualNodeCreateRequest
 ): boolean {
   if (node.kind !== request.kind) {
+    return false;
+  }
+
+  if (request.targetGroupId && node.groupId !== request.targetGroupId) {
     return false;
   }
 
@@ -7587,7 +7665,8 @@ function isTemplateCompatibleNodeKind(value: CanvasNodeKind): value is 'agent' |
 function canCreateCanvasGroupFromSelection(
   state: CanvasPrototypeState | null,
   nodeIds: readonly string[],
-  groupIds: readonly string[]
+  groupIds: readonly string[],
+  targetParentGroupId?: string
 ): boolean {
   if (!state) {
     return false;
@@ -7608,6 +7687,10 @@ function canCreateCanvasGroupFromSelection(
     ...selectedGroups.map((group) => group.parentGroupId)
   ]);
   if (selectedParents.size !== 1) {
+    return false;
+  }
+  const selectedParentGroupId = selectedParents.values().next().value as string | undefined;
+  if (targetParentGroupId !== selectedParentGroupId) {
     return false;
   }
 
@@ -8897,6 +8980,8 @@ function CanvasGroupsViewportLayer(props: {
   groups: CanvasGroupSummary[];
   portalElement: HTMLElement | null;
   selectedGroupId?: string;
+  onSelectGroupBody: (groupId: string) => void;
+  onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onSelectGroup: (groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
@@ -8926,6 +9011,8 @@ function CanvasGroupsViewportLayer(props: {
               groups={props.groups}
               selectedGroupId={props.selectedGroupId}
               zoom={viewport.zoom}
+              onSelectGroupBody={props.onSelectGroupBody}
+              onGroupBodyContextMenu={props.onGroupBodyContextMenu}
             />,
             viewportElement
           )
@@ -8946,6 +9033,8 @@ function CanvasGroupBackgroundLayer(props: {
   groups: CanvasGroupSummary[];
   selectedGroupId?: string;
   zoom: number;
+  onSelectGroupBody: (groupId: string) => void;
+  onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
   return (
@@ -8956,6 +9045,8 @@ function CanvasGroupBackgroundLayer(props: {
           group={group}
           selected={group.id === props.selectedGroupId}
           zoom={props.zoom}
+          onSelectGroupBody={props.onSelectGroupBody}
+          onGroupBodyContextMenu={props.onGroupBodyContextMenu}
         />
       ))}
     </div>
@@ -8966,13 +9057,27 @@ function CanvasGroupBackgroundFrame(props: {
   group: CanvasGroupSummary;
   selected: boolean;
   zoom: number;
+  onSelectGroupBody: (groupId: string) => void;
+  onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   return (
     <div
       className="canvas-group-background-frame"
       data-group-background-id={props.group.id}
       style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
-    />
+    >
+      <div
+        className="canvas-group-background-body-hit-area nopan"
+        data-group-background-body-hit-area="true"
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          props.onSelectGroupBody(props.group.id);
+        }}
+        onContextMenu={(event) => {
+          props.onGroupBodyContextMenu(event, props.group.id);
+        }}
+      />
+    </div>
   );
 }
 
@@ -9030,9 +9135,113 @@ function CanvasGroupLayer(props: {
 }
 
 function sortCanvasGroupsByDepthForWebview(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
-  return [...groups].sort(
-    (left, right) => groupDepthForWebview(groups, left.id) - groupDepthForWebview(groups, right.id)
+  return [...groups].sort((left, right) => {
+    const depthDelta = groupDepthForWebview(groups, left.id) - groupDepthForWebview(groups, right.id);
+    return depthDelta !== 0 ? depthDelta : groupAreaForWebview(left) - groupAreaForWebview(right);
+  });
+}
+
+function findInnermostCanvasGroupBodyAtScreenPoint(
+  groups: readonly CanvasGroupSummary[],
+  canvasShellElement: HTMLElement | null,
+  clientX: number,
+  clientY: number
+): CanvasGroupSummary | undefined {
+  if (!canvasShellElement) {
+    return undefined;
+  }
+
+  const backgroundLayer = canvasShellElement.querySelector<HTMLElement>('.canvas-group-background-layer');
+  const viewportElement = backgroundLayer?.closest<HTMLElement>('.react-flow__viewport');
+  if (!backgroundLayer || !viewportElement) {
+    return undefined;
+  }
+
+  const viewportRect = viewportElement.getBoundingClientRect();
+  const viewportTransform = readCanvasViewportTransform(viewportElement);
+  const safeZoom = Number.isFinite(viewportTransform.zoom) && viewportTransform.zoom > 0 ? viewportTransform.zoom : 1;
+  const flowPoint = {
+    x: (clientX - viewportRect.left) / safeZoom,
+    y: (clientY - viewportRect.top) / safeZoom
+  };
+
+  return findInnermostCanvasGroupBodyAtFlowPoint(groups, canvasShellElement, flowPoint);
+}
+
+function findInnermostCanvasGroupBodyAtFlowPoint(
+  groups: readonly CanvasGroupSummary[],
+  canvasShellElement: HTMLElement | null,
+  flowPoint: CanvasPoint
+): CanvasGroupSummary | undefined {
+  if (!canvasShellElement) {
+    return undefined;
+  }
+
+  const backgroundLayer = canvasShellElement.querySelector<HTMLElement>('.canvas-group-background-layer');
+  if (!backgroundLayer) {
+    return undefined;
+  }
+
+  return [...groups]
+    .filter((group) =>
+      isCanvasPointInsideGroupBody(flowPoint, group, readCanvasGroupTitleHeight(backgroundLayer, group.id))
+    )
+    .sort((left, right) => {
+      const depthDelta = groupDepthForWebview(groups, right.id) - groupDepthForWebview(groups, left.id);
+      return depthDelta !== 0 ? depthDelta : groupAreaForWebview(left) - groupAreaForWebview(right);
+    })
+    .at(0);
+}
+
+function readCanvasViewportTransform(viewportElement: HTMLElement): Viewport {
+  const match = viewportElement.style.transform.match(
+    /translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)\s+scale\((-?\d+(?:\.\d+)?)\)/u
   );
+  if (match) {
+    return {
+      x: Number.parseFloat(match[1]),
+      y: Number.parseFloat(match[2]),
+      zoom: Number.parseFloat(match[3])
+    };
+  }
+
+  const transform = getComputedStyle(viewportElement).transform;
+  if (transform && transform !== 'none') {
+    const matrix = new DOMMatrixReadOnly(transform);
+    return {
+      x: matrix.m41,
+      y: matrix.m42,
+      zoom: matrix.a
+    };
+  }
+
+  return { x: 0, y: 0, zoom: 1 };
+}
+
+function readCanvasGroupTitleHeight(backgroundLayer: HTMLElement, groupId: string): number {
+  const background = backgroundLayer.querySelector<HTMLElement>(`[data-group-background-id="${CSS.escape(groupId)}"]`);
+  if (!background) {
+    return CANVAS_GROUP_TITLE_BASE_HEIGHT;
+  }
+
+  const titleHeight = Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-title-height'));
+  return Number.isFinite(titleHeight) && titleHeight >= 0 ? titleHeight : CANVAS_GROUP_TITLE_BASE_HEIGHT;
+}
+
+function isCanvasPointInsideGroupBody(
+  point: CanvasPoint,
+  group: CanvasGroupSummary,
+  titleHeight: number
+): boolean {
+  const left = group.position.x;
+  const top = group.position.y + titleHeight;
+  const right = group.position.x + group.size.width;
+  const bottom = group.position.y + group.size.height;
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+}
+
+function groupAreaForWebview(group: CanvasGroupSummary): number {
+  return group.size.width * group.size.height;
 }
 
 function resolveGroupDragPosition(

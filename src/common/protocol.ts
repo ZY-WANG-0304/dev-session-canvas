@@ -548,6 +548,7 @@ export type WebviewToHostMessage =
         requestId?: string;
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
+        targetGroupId?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
@@ -558,6 +559,7 @@ export type WebviewToHostMessage =
       payload: {
         position: CanvasNodePosition;
         size?: CanvasNodeFootprint;
+        parentGroupId?: string;
       };
     }
   | {
@@ -565,6 +567,7 @@ export type WebviewToHostMessage =
       payload: {
         nodeIds: string[];
         groupIds: string[];
+        parentGroupId?: string;
       };
     }
   | {
@@ -636,6 +639,7 @@ export type WebviewToHostMessage =
       type: 'webview/applyDefaultTemplate';
       payload?: {
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -643,12 +647,14 @@ export type WebviewToHostMessage =
       payload: {
         templateId: string;
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
       type: 'webview/resetToDefaultTemplate';
       payload?: {
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -656,6 +662,7 @@ export type WebviewToHostMessage =
       payload: {
         templateId: string;
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -1129,7 +1136,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/createEmptyGroup',
       payload: {
         position: payload.position,
-        size: isCanvasNodeFootprint(payload.size) ? payload.size : undefined
+        size: isCanvasNodeFootprint(payload.size) ? payload.size : undefined,
+        parentGroupId: typeof payload.parentGroupId === 'string' ? payload.parentGroupId : undefined
       }
     };
   }
@@ -1144,7 +1152,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/createGroupFromSelection',
       payload: {
         nodeIds: payload.nodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string'),
-        groupIds: payload.groupIds.filter((groupId): groupId is string => typeof groupId === 'string')
+        groupIds: payload.groupIds.filter((groupId): groupId is string => typeof groupId === 'string'),
+        parentGroupId: typeof payload.parentGroupId === 'string' ? payload.parentGroupId : undefined
       }
     };
   }
@@ -1217,17 +1226,23 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (value.type === 'webview/applyDefaultTemplate' || value.type === 'webview/resetToDefaultTemplate') {
     const payload = isRecord(value.payload) ? value.payload : null;
-    if (payload && payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) {
+    if (
+      payload &&
+      ((payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) ||
+        (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string'))
+    ) {
       return null;
     }
     const visibleCenterValue = payload?.visibleCenter;
     const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    const targetGroupId = typeof payload?.targetGroupId === 'string' ? payload.targetGroupId : undefined;
 
     if (value.type === 'webview/applyDefaultTemplate') {
       return {
         type: 'webview/applyDefaultTemplate',
         payload: {
-          visibleCenter
+          visibleCenter,
+          targetGroupId
         }
       };
     }
@@ -1235,7 +1250,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     return {
       type: 'webview/resetToDefaultTemplate',
       payload: {
-        visibleCenter
+        visibleCenter,
+        targetGroupId
       }
     };
   }
@@ -1246,7 +1262,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !payload ||
       typeof payload.templateId !== 'string' ||
       payload.templateId.trim().length === 0 ||
-      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter))
+      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string')
     ) {
       return null;
     }
@@ -1254,12 +1271,14 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const normalizedTemplateId = payload.templateId.trim();
     const visibleCenterValue = payload.visibleCenter;
     const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    const targetGroupId = typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined;
     if (value.type === 'webview/applyTemplate') {
       return {
         type: 'webview/applyTemplate',
         payload: {
           templateId: normalizedTemplateId,
-          visibleCenter
+          visibleCenter,
+          targetGroupId
         }
       };
     }
@@ -1268,7 +1287,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/resetToTemplate',
       payload: {
         templateId: normalizedTemplateId,
-        visibleCenter
+        visibleCenter,
+        targetGroupId
       }
     };
   }
@@ -1973,6 +1993,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.requestId !== undefined && typeof payload.requestId !== 'string') ||
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
       (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
       (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
@@ -1988,6 +2009,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
           : undefined,
+        targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:
