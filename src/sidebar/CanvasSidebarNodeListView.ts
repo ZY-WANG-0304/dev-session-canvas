@@ -1316,7 +1316,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
           const attention = document.createElement('span');
           attention.className = 'node-attention codicon codicon-bell';
           attention.setAttribute('aria-hidden', 'true');
-          attention.title = '未确认终端提醒';
+          attention.title = '终端有待处理的通知';
           row.append(attention);
         }
 
