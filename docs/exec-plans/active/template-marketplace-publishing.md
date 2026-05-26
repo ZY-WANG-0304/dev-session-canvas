@@ -39,6 +39,7 @@
 - [x] (2026-05-24 02:10 +0800) 重新部署 workers.dev 调试环境，当前版本 ID 更新为 `907ea967-9862-43fb-803d-4095727e8fed`；本次仅更新 Worker / Static Assets，不执行 D1 migration 或 R2 seed。
 - [x] (2026-05-24 11:43 +0800) 按手动截图反馈修复 VSCode 发布表单 Name / Slug 行错位：字段 grid 预留校验提示行高，input 基线保持对齐；同时移除画板右键“发布到模板市场”入口，发布只从保存后的模板侧栏、市场 header 或命令面板进入。
 - [x] (2026-05-24 22:20 +0800) 处理 PR94 review：发布新模板和新版本的 R2 object key 改为包含唯一 `versionId`，避免并发版本发布覆盖同一 `versionNumber` key；Worker CORS 改为仅对公开 GET/OPTIONS 读取路由返回匿名 `*`，写接口不继承公开读取 CORS，并补 API 回归测试。
+- [x] (2026-05-27 01:06 +0800) 按模板包落地顺序完成第一步用户教育：浏览器发布页侧栏展示 canonical 模板包结构、package checks、50MB 包 / 5MB 模板主体限制；README 区域提示包内媒体规则，并用 E2E 与 web 单测覆盖 README 媒体 lint。
 
 ## 意外与发现
 
@@ -75,6 +76,9 @@
 - 观察：当前执行环境不能稳定访问 workers.dev 调试市场，因此不能把本机这次 preview E2E 失败解读为插件逻辑失败。
   证据：`npm run test:marketplace-vscode-preview-e2e` 在 VSCode Webview 中停留在“正在加载...”；同一主机上代理访问 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest` 返回 Squid `ERR_CONNECT_FAIL 110`，绕过代理直连则 443 连接超时。runner 已增加 10 秒非阻塞 preflight 诊断；即使 Node 侧 preflight 网络不可达，也继续启动 VSCode Webview E2E，因为 Electron 可能使用不同的网络路径。
 
+- 观察：模板包用户教育可以先作为发布表单的非阻塞预览和 lint 落地，不需要等待 zip 上传、schema 或 Worker 组包重构。
+  证据：`apps/template-marketplace/src/web/components/TemplatePublishView.tsx` 只新增 package structure / package checks / README media lint UI，不改变 `publishMarketplaceTemplate()` 的 JSON 请求体；`npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run test:canvas-templates` 和 `npm run test:marketplace-browser-e2e` 均通过。
+
 ## 决策记录
 
 - 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；仓库跟踪 `.dev.vars.example` 作为空值模板。
@@ -97,6 +101,10 @@
   理由：缩略图是模板布局的功能性预览，用户应能把市场预览中的 Agent / Terminal / Note 颜色直接映射到插件画布中的节点类型；市场品牌色只负责页面和整体背景，不替代节点类型语义。
   日期/作者：2026-05-15 / Codex。
 
+- 决策：模板包第一步实现只做发布页渐进解释与校验提示，继续保持当前 JSON 发布接口兼容；结构预览固定展示 canonical `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和 `media/thumbnail.png`，不把用户上传文件名作为包内事实。
+  理由：产品已拍板普通发布者不应先理解完整包格式；先让现有发布页解释“背后将生成什么包”可以降低学习成本，同时为后续 starter package、schema、zip 上传和 CLI 校验预留一致语言。
+  日期/作者：2026-05-27 / Codex。
+
 ## 结果与复盘
 
 当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
@@ -116,6 +124,8 @@
 同日晚继续按手动验收反馈收口浏览器市场细节：列表卡片和详情页标题区现在显示发布者；发布页上传非法 JSON 会在文件选择后立即报错；单行字段阻止 Enter 隐式提交；Changelog 改为 textarea；成功发布后进入 `/templates/publish/success` 成功页，再由用户点击跳转到模板详情。自动缩略图保留节点布局和类型色，不再绘制左上角标题 / 子标题装饰条。
 
 23:51 继续优化发布页错误反馈位置和 slug 唯一性提示：模板 JSON 相关错误现在绑定在 Step 1 上传控件附近；slug 字段在编辑时通过公开 availability API 检查 D1 / seed 中是否已有同名模板，并把检查中、可用、冲突、格式错误都显示在字段下方。提交时仍保留 Worker 侧唯一索引和 `POST /api/v1/templates` 409 作为最终保护。
+
+2026-05-27 按模板包设计落地第一阶段用户教育：浏览器发布页在侧栏新增 `Template package structure` 和 `Package checks`，明确当前表单会被组织成 canonical 模板包，并把包体限制更新为 `50MB package / 5MB template JSON`。README 区域新增包内媒体提示，lint 会区分 `./media/...` / `./assets/...` 包内媒体、外部 HTTPS 媒体链接、不允许的相对路径和 raw HTML 媒体 embed。当前只影响发布前解释和提示，不改变 Worker 写入对象仍为兼容 `template.json` / `thumbnail.png` 的事实；后续 schema、package upload、CLI 校验仍按模板包设计文档继续推进。
 
 ## 上下文与定向
 
@@ -161,6 +171,14 @@
     npm run test:canvas-templates
     npm run build:marketplace
     npm run build
+
+模板包发布页教育变更的最小验证命令是：
+
+    npm run test:marketplace-web
+    npm run typecheck:marketplace
+    npm run test:canvas-templates
+    npm run test:marketplace-browser-e2e
+    git diff --check
 
 ## 验证与验收
 
@@ -220,6 +238,24 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     <passed>
 
     npm run test:canvas-templates
+    <passed>
+
+2026-05-27 模板包发布页教育验证输出：
+
+    npm run test:marketplace-web
+    Test Files  6 passed (6)
+    Tests  26 passed (26)
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    git diff --check
     <passed>
 
     npm run typecheck

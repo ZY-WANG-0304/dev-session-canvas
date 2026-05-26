@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 
 import {
@@ -55,6 +55,12 @@ interface SlugCheckState {
 }
 
 type PublishTextField = 'name' | 'slug' | 'description' | 'tags' | 'readme' | 'changelog' | 'templateJson';
+
+export interface PackageLintItem {
+  kind: 'ok' | 'info' | 'warning' | 'error';
+  label: string;
+  message: string;
+}
 
 export function TemplatePublishView(): JSX.Element {
   const [user, setUser] = useState<MarketplaceCurrentUser | undefined>();
@@ -270,6 +276,10 @@ export function TemplatePublishView(): JSX.Element {
   }
 
   const thumbnailPreviewSrc = form.thumbnailPngBase64 ? toPngPreviewSrc(form.thumbnailPngBase64) : undefined;
+  const packagePreview = useMemo(
+    () => buildTemplatePackagePreview(form, fieldErrors, slugCheck),
+    [form, fieldErrors, slugCheck]
+  );
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -383,6 +393,10 @@ export function TemplatePublishView(): JSX.Element {
                 <summary className="cursor-pointer text-sm font-semibold text-canvas-muted hover:text-canvas-ink focus:outline-none focus:ring-4 focus:ring-canvas-accent/25">
                   Optional README, changelog, and JSON preview
                 </summary>
+                <p className="mt-3 border border-canvas-line bg-canvas-mist px-4 py-3 text-sm leading-6 text-canvas-muted">
+                  README images can use package-relative paths such as <code className="font-mono text-xs text-canvas-ink">./media/screenshot.png</code>.
+                  Video demos should live in package media and are embedded only when package metadata declares them; external media links stay as plain links.
+                </p>
                 <div className="mt-5 grid gap-5">
                   <label className="grid gap-2 text-sm font-semibold text-canvas-ink">
                     README
@@ -444,10 +458,14 @@ export function TemplatePublishView(): JSX.Element {
                 </label>
               </div>
 
+              <PackageStructurePreview items={packagePreview.structure} />
+
+              <PackageLintList items={packagePreview.lintItems} />
+
               <dl className="mt-5 divide-y divide-canvas-line border-y border-canvas-line text-sm">
                 <StatusRow label="Template" value={form.templateFileName || 'Not selected'} />
                 <StatusRow label="Thumbnail" value={form.thumbnailSource === 'custom' ? 'Custom PNG' : form.thumbnailSource === 'generated' ? 'Generated' : 'Pending'} />
-                <StatusRow label="Limit" value="Template JSON defaults to 5MB" />
+                <StatusRow label="Package limit" value="50MB package / 5MB template JSON" />
               </dl>
 
               <button
@@ -535,6 +553,171 @@ function StatusRow({ label, value }: { label: string; value: string }): JSX.Elem
       <dd className="break-words text-canvas-ink">{value}</dd>
     </div>
   );
+}
+
+function PackageStructurePreview({ items }: { items: string[] }): JSX.Element {
+  return (
+    <section className="mt-5 border border-canvas-line bg-canvas-paper p-4" aria-label="Template package structure">
+      <h3 className="text-sm font-semibold text-canvas-ink">Template package structure</h3>
+      <p className="mt-2 text-xs leading-5 text-canvas-muted">This form generates a package behind the scenes; advanced authors can later upload the same structure as a zip.</p>
+      <pre className="mt-3 overflow-x-auto border border-canvas-line bg-canvas-sand p-3 font-mono text-xs leading-5 text-canvas-ink">{items.join('\n')}</pre>
+    </section>
+  );
+}
+
+function PackageLintList({ items }: { items: PackageLintItem[] }): JSX.Element {
+  return (
+    <section className="mt-4 border border-canvas-line bg-canvas-paper p-4" aria-label="Template package checks">
+      <h3 className="text-sm font-semibold text-canvas-ink">Package checks</h3>
+      <ul className="mt-3 grid gap-2 text-xs leading-5">
+        {items.map((item) => (
+          <li key={`${item.label}:${item.message}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+            <span className={packageLintBadgeClassName(item.kind)}>{packageLintBadgeLabel(item.kind)}</span>
+            <span>
+              <span className="font-semibold text-canvas-ink">{item.label}: </span>
+              <span className={item.kind === 'error' ? 'text-canvas-error' : item.kind === 'warning' ? 'text-canvas-muted' : 'text-canvas-muted'}>{item.message}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function packageLintBadgeLabel(kind: PackageLintItem['kind']): string {
+  switch (kind) {
+    case 'ok':
+      return 'OK';
+    case 'warning':
+      return 'WARN';
+    case 'error':
+      return 'ERR';
+    default:
+      return 'INFO';
+  }
+}
+
+function packageLintBadgeClassName(kind: PackageLintItem['kind']): string {
+  const base = 'mt-0.5 inline-flex h-5 min-w-10 items-center justify-center border px-1.5 text-[10px] font-semibold';
+  if (kind === 'ok') {
+    return `${base} border-canvas-moss bg-canvas-mist text-canvas-moss`;
+  }
+  if (kind === 'error') {
+    return `${base} border-canvas-errorLine bg-canvas-errorBg text-canvas-error`;
+  }
+  if (kind === 'warning') {
+    return `${base} border-canvas-line bg-canvas-sand text-canvas-ink`;
+  }
+  return `${base} border-canvas-line bg-canvas-paper text-canvas-muted`;
+}
+
+export function buildTemplatePackagePreview(
+  form: PublishFormState,
+  fieldErrors: PublishFieldErrors,
+  slugCheck: SlugCheckState
+): { structure: string[]; lintItems: PackageLintItem[] } {
+  const structure = [
+    'template-package/',
+    '  template-package.json',
+    '  template.json',
+    '  README.md',
+    '  CHANGELOG.md',
+    '  media/',
+    '    thumbnail.png'
+  ];
+  const lintItems: PackageLintItem[] = [];
+
+  lintItems.push(
+    form.templateJson.trim() && !fieldErrors.templateJson
+      ? { kind: 'ok', label: 'Template JSON', message: 'Ready for the package and kept under the 5MB template-body limit.' }
+      : { kind: 'error', label: 'Template JSON', message: 'Choose a valid Dev Session Canvas template before publishing.' }
+  );
+
+  if (slugCheck.kind === 'available') {
+    lintItems.push({ kind: 'ok', label: 'Slug', message: 'Available for a new marketplace package.' });
+  } else if (slugCheck.kind === 'invalid' || slugCheck.kind === 'unavailable' || slugCheck.kind === 'error') {
+    lintItems.push({ kind: 'error', label: 'Slug', message: slugCheck.message ?? 'Resolve the slug issue before publishing.' });
+  } else if (form.slug.trim()) {
+    lintItems.push({ kind: 'info', label: 'Slug', message: 'Availability check is pending.' });
+  } else {
+    lintItems.push({ kind: 'info', label: 'Slug', message: 'A slug is generated from the template name if left blank.' });
+  }
+
+  lintItems.push(
+    form.readme.trim()
+      ? { kind: 'ok', label: 'README', message: 'Included as README.md for the marketplace detail page.' }
+      : { kind: 'warning', label: 'README', message: 'Optional, but a README helps users understand when to install this template.' }
+  );
+
+  const readmeMedia = collectReadmeMediaReferences(form.readme);
+  if (readmeMedia.packageRelative.length > 0) {
+    lintItems.push({ kind: 'info', label: 'README media', message: `${readmeMedia.packageRelative.length} package-relative media reference(s) will resolve from media/ or assets/.` });
+  }
+  if (readmeMedia.external.length > 0) {
+    lintItems.push({ kind: 'warning', label: 'External media', message: 'External image or video URLs stay as plain links and are not embedded.' });
+  }
+  if (readmeMedia.blocked.length > 0) {
+    lintItems.push({ kind: 'error', label: 'Blocked media path', message: 'README media must use ./media/... or ./assets/... paths.' });
+  }
+  if (readmeMedia.htmlEmbeds > 0) {
+    lintItems.push({ kind: 'error', label: 'HTML media embed', message: 'Use Markdown images or declared package media instead of raw HTML embeds.' });
+  }
+
+  lintItems.push(
+    form.thumbnailSource === 'none'
+      ? { kind: 'info', label: 'Thumbnail', message: 'A thumbnail is generated after choosing a valid template JSON.' }
+      : { kind: 'ok', label: 'Thumbnail', message: form.thumbnailSource === 'custom' ? 'Custom PNG will be saved as media/thumbnail.png.' : 'Generated PNG will be saved as media/thumbnail.png.' }
+  );
+
+  lintItems.push({ kind: 'info', label: 'Install impact', message: 'Publishing template.json creates a template version; future README or media-only edits should become listing revisions.' });
+
+  return { structure, lintItems };
+}
+
+export function collectReadmeMediaReferences(readme: string): { packageRelative: string[]; external: string[]; blocked: string[]; htmlEmbeds: number } {
+  const packageRelative: string[] = [];
+  const external: string[] = [];
+  const blocked: string[] = [];
+  const markdownLinkPattern = /(!?)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/gu;
+  const mediaFilePattern = /\.(?:gif|jpe?g|mov|mp4|png|svg|webm|webp)(?:[?#].*)?$/iu;
+  const htmlEmbeds = readme.match(/<(?:iframe|img|source|video)\b/giu)?.length ?? 0;
+  for (const match of readme.matchAll(markdownLinkPattern)) {
+    const marker = match[1] ?? '';
+    const target = match[2]?.trim() ?? '';
+    if (!target || (!marker && !mediaFilePattern.test(target))) {
+      continue;
+    }
+    const normalizedTarget = normalizeReadmeMediaTarget(target);
+    if (/^https:\/\//iu.test(normalizedTarget)) {
+      external.push(target);
+    } else if (isPackageRelativeReadmeMediaTarget(normalizedTarget)) {
+      packageRelative.push(target);
+    } else {
+      blocked.push(target);
+    }
+  }
+  return { packageRelative, external, blocked, htmlEmbeds };
+}
+
+function normalizeReadmeMediaTarget(target: string): string {
+  const withoutFragment = target.split('#', 1)[0] ?? '';
+  return withoutFragment.split('?', 1)[0] ?? '';
+}
+
+function isPackageRelativeReadmeMediaTarget(normalizedTarget: string): boolean {
+  if (!/^\.\/(?:media|assets)\//u.test(normalizedTarget) || normalizedTarget.includes('\\')) {
+    return false;
+  }
+  const decodedTarget = decodeReadmeMediaTarget(normalizedTarget);
+  return !decodedTarget.includes('\\') && !decodedTarget.split('/').includes('..');
+}
+
+function decodeReadmeMediaTarget(target: string): string {
+  try {
+    return decodeURIComponent(target);
+  } catch {
+    return target;
+  }
 }
 
 function SlugCheckMessage({ state }: { state: SlugCheckState }): JSX.Element | null {

@@ -929,6 +929,13 @@ try {
   assert.match(marketplacePublishViewSource, /type PublishTextField = 'name' \| 'slug' \| 'description' \| 'tags' \| 'readme' \| 'changelog' \| 'templateJson';/u);
   assert.match(marketplacePublishViewSource, /function updateFormField\(field: PublishTextField, value: string\): void/u);
   assert.doesNotMatch(marketplacePublishViewSource, /setForm\(\(current\)\s*=>[\s\S]{0,200}event\.(?:currentTarget|target)\.value/u);
+  assert.match(marketplacePublishViewSource, /Template package structure/u);
+  assert.match(marketplacePublishViewSource, /Package checks/u);
+  assert.match(marketplacePublishViewSource, /template-package\.json/u);
+  assert.match(marketplacePublishViewSource, /50MB package \/ 5MB template JSON/u);
+  assert.match(marketplacePublishViewSource, /collectReadmeMediaReferences/u);
+  assert.match(marketplacePublishViewSource, /README media must use \.\/media\/\.\.\. or \.\/assets\/\.\.\. paths\./u);
+  assert.match(marketplacePublishViewSource, /Publishing template\.json creates a template version; future README or media-only edits should become listing revisions\./u);
   assert.match(marketplaceDetailViewSource, /type DetailTab = 'readme' \| 'changelog';/u);
   assert.match(marketplaceDetailViewSource, /role="tablist"[\s\S]*README[\s\S]*CHANGELOG/u);
   assert.match(marketplaceDetailViewSource, /template-detail-changelog-panel/u);
