@@ -3050,10 +3050,10 @@ body {
 }
 
 .canvas-group-frame {
-  --canvas-group-panel-border: color-mix(in srgb, var(--vscode-panel-border) 72%, var(--vscode-focusBorder) 28%);
-  --canvas-group-panel-surface: color-mix(in srgb, var(--vscode-panel-background, var(--vscode-editorWidget-background, var(--vscode-editor-background))) 14%, transparent);
-  --canvas-group-header-surface: var(--vscode-panel-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
-  --canvas-group-tab-surface: var(--vscode-tab-activeBackground, var(--vscode-editorWidget-background, var(--vscode-panel-background, var(--vscode-editor-background))));
+  --canvas-group-panel-border: var(--vscode-panel-border);
+  --canvas-group-panel-surface: var(--vscode-panel-background);
+  --canvas-group-header-surface: var(--vscode-panel-background);
+  --canvas-group-tab-surface: var(--vscode-panel-background);
   --canvas-group-active-tab-border: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder));
   --canvas-group-header-height: 29px;
   --canvas-group-title-height: 28px;
@@ -3107,15 +3107,15 @@ body {
   display: flex;
   align-items: center;
   padding: 0 10px 0 12px;
-  border-right: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-bottom: 1px solid var(--canvas-group-active-tab-border);
+  border-right: 1px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--vscode-panel-border);
   border-top-left-radius: calc(var(--canvas-widget-radius-sm) - 1px);
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
   background: var(--canvas-group-tab-surface);
   box-shadow: none;
-  color: var(--vscode-panelTitle-activeForeground, var(--vscode-editor-foreground));
+  color: var(--vscode-panelTitle-inactiveForeground, var(--vscode-descriptionForeground));
   cursor: grab;
   pointer-events: auto;
 }
@@ -3123,6 +3123,8 @@ body {
 .canvas-group-frame.is-selected .canvas-group-titlebar {
   min-width: 0;
   max-width: max(48px, calc(100% - 150px));
+  border-bottom-color: var(--canvas-group-active-tab-border);
+  color: var(--vscode-panelTitle-activeForeground, var(--vscode-editor-foreground));
 }
 
 .canvas-group-titlebar:active {
@@ -3182,7 +3184,7 @@ body {
 .canvas-group-resize-handle {
   position: absolute;
   box-sizing: border-box;
-  border: 1px solid var(--vscode-focusBorder);
+  border: 1px solid var(--vscode-panel-border);
   border-radius: 2px;
   padding: 0;
   background: var(--canvas-group-tab-surface);
@@ -3195,10 +3197,14 @@ body {
 .canvas-group-resize-handle-right,
 .canvas-group-resize-handle-bottom,
 .canvas-group-resize-handle-left {
-  border-color: color-mix(in srgb, var(--vscode-focusBorder) 68%, var(--vscode-panel-border) 32%);
+  border-color: var(--vscode-panel-border);
   background: var(--canvas-group-tab-surface);
   opacity: 0;
   pointer-events: none;
+}
+
+.canvas-group-frame.is-selected .canvas-group-resize-handle {
+  border-color: var(--vscode-focusBorder);
 }
 
 .canvas-group-frame.is-selected .canvas-group-resize-handle-top,
@@ -3286,9 +3292,9 @@ body {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border: 1px solid var(--vscode-panel-border);
   border-radius: var(--canvas-widget-radius-sm);
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  background: var(--vscode-panel-background);
   box-shadow: none;
   pointer-events: auto;
 }

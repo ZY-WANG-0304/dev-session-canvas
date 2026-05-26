@@ -212,7 +212,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 当前采用方案 B：`CanvasGroupSummary + CanvasNodeSummary.groupId`，并把分组表现为可见、可命名、可移动的 group frame。2026-05-22 的实现阶段已经通过 Webview harness 验证了 group frame 标题栏、工具栏与 React Flow pane 的基本命中层级，且用宿主状态测试覆盖了核心拖动 / resize 收口；因此方案本身从“比较中”收口为“已选定”。本轮验证已经通过 `npm run typecheck`、协议消息测试、模板测试、`npm run test:canvas-node-groups`、`npm run build` 和 4 条 Webview 分组 Playwright 用例。验证状态仍是“验证中”，因为侧栏分组树、从选择创建分组、删除对话框和更完整的几何合法状态仍只覆盖了首版基础路径，尚未完成真实 VSCode reload smoke 与完整场景矩阵。
 
-根据 2026-05-26 的 UI 收口，分组外观从外浮胶囊标题调整为 VSCode Panel 风格：分组框本身使用弱 panel surface、1px panel/widget 边界和低圆角；顶部保留 panel header 条，标题贴在左上角并表现为类似 Panel 顶部 active tab 的标题区域，使用 `panelTitle` / `tab` / `focusBorder` token 强化可识别边界；不提供用户自定义分组颜色，也不把标题做成胶囊或营销标签。
+根据 2026-05-26 的 UI 收口，分组外观从外浮胶囊标题调整为 VSCode Panel 风格：分组框 body、顶部 header、标题 tab 和分组 toolbar 背景统一使用 `--vscode-panel-background`，不做混色也不在这些背景上使用其他 surface fallback；边界使用 `--vscode-panel-border`，只有选中态使用 `focusBorder` / `panelTitle` active token 强化当前分组；标题贴在左上角并表现为类似 Panel 顶部 active tab 的标题区域；不提供用户自定义分组颜色，也不把标题做成胶囊或营销标签。
 
 根据 2026-05-20 至 2026-05-21 的产品调整，首版从分组状态和交互中移除颜色配置；取消分组固定保留成员节点和内部子分组；删除非空分组改为宿主确认对话框中的二选一动作，且“一并删除内部所有节点与子分组”是危险选项也是默认按钮；删除空分组无需确认；拖拽节点或分组进入分组区域成为首版入组主路径之一；分组支持嵌套但禁止交叉；`file` / `file-list` 暂不支持稳定分组成员关系；侧栏节点列表通过更多按钮提供按分组树折叠展示选项；不支持且不计划支持折叠分组。拖入、拖出、分组移动和 resize 不再按场景逐项罗列，而是按第 8.2.1 节基础法则推导：合法状态是硬约束，拖拽以鼠标释放位置表达归属，resize 以释放边界表达归属，用户直接结果优先，系统只做最小合法修复，最终由宿主在释放鼠标后以一次事务提交。
 
@@ -322,8 +322,8 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ### 8.5 视觉语言
 
-- 分组框使用 VSCode Panel 风格：弱 panel surface、1px panel/widget 边界、小圆角和顶部 header 分隔线，不使用大面积固定色、外部品牌色或营销式背景；普通态也应比纯透明边框更容易在画板上被识别。
-- 标题采用类似 VSCode Panel 顶部 active tab 的标题区域，贴在分组框左上角和顶部 header 内，不再使用外浮胶囊。标题 tab 使用 `panelTitle` / `tab` / `focusBorder` 相关 token 表达 active 下划线和文字前景，并保留标题区域拖动分组的能力。
+- 分组框使用 VSCode Panel 风格：body、顶部 header、标题 tab 和分组 toolbar 背景统一使用 `--vscode-panel-background`，不使用混色、透明背景或其他 surface fallback；普通态边框使用 `--vscode-panel-border`、小圆角和顶部 header 分隔线，让分组区域比纯透明边框更容易在画板上被识别。
+- 标题采用类似 VSCode Panel 顶部 active tab 的标题区域，贴在分组框左上角和顶部 header 内，不再使用外浮胶囊。标题 tab 普通态使用 panel 背景、panel 边框和 inactive 标题前景；选中态使用 `panelTitle` / `focusBorder` 相关 token 表达 active 下划线和文字前景，并保留标题区域拖动分组的能力。
 - 默认标题使用与现有手工节点一致的创建序号递增逻辑，如 `Group 1`、`Group 2`，但分组使用独立于节点的分组序号队列；编号由分组创建序列决定，不按标题文本查找最小可用编号，删除分组后不主动复用旧编号，用户重命名不影响后续默认编号；创建时不强制弹窗命名，鼓励用户后续单击标题区域改成任务名；标题编辑控件先复用现有手工节点标题栏编辑方式和提交 / 取消行为；分组标题编辑清洗逻辑与现有手工节点标题一致，不设置分组专用最大长度限制，仅保留现有通用文本保护；分组标题不允许为空字符串，清空标题并确认时恢复为原标题，新建分组保持默认 `Group N`；手动重命名允许重名，不强制唯一。
 - 首版不提供分组颜色配置；所有分组使用统一弱边界和弱底色，避免把分组功能扩展成视觉标注系统。选中态通过 `focusBorder` 外描边、active tab 下划线和轻量矩形 toolbar 强化，不改写分组背景为高饱和色。
 - 低倍率概览中，group title 可以保留为区域导航线索；不展示 group 内部统计面板。

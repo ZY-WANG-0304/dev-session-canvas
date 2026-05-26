@@ -8059,7 +8059,11 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
     const titlebarRect = titlebar.getBoundingClientRect();
     return {
       frameBackgroundColor: frameStyles.backgroundColor,
+      frameBorderTopColor: frameStyles.borderTopColor,
       frameBorderTopLeftRadius: frameStyles.borderTopLeftRadius,
+      titlebarBackgroundColor: titlebarStyles.backgroundColor,
+      titlebarBorderRightColor: titlebarStyles.borderRightColor,
+      titlebarColor: titlebarStyles.color,
       titlebarTop: Math.round(titlebarRect.top - frameRect.top),
       titlebarBottom: Math.round(titlebarRect.bottom - frameRect.top),
       titlebarBorderBottomWidth: titlebarStyles.borderBottomWidth,
@@ -8068,8 +8072,12 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       titlebarBoxShadow: titlebarStyles.boxShadow
     };
   });
+  expect(groupPanelStyles.frameBackgroundColor).toBe('rgb(24, 24, 24)');
+  expect(groupPanelStyles.titlebarBackgroundColor).toBe('rgb(24, 24, 24)');
+  expect(groupPanelStyles.frameBorderTopColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.titlebarBorderRightColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.titlebarColor).toBe('rgb(157, 157, 157)');
   expect(Number.parseFloat(groupPanelStyles.frameBorderTopLeftRadius)).toBeLessThanOrEqual(8);
-  expect(groupPanelStyles.frameBackgroundColor).not.toMatch(/rgba?\(0,\s*0,\s*0(?:,\s*0)?\)/u);
   expect(groupPanelStyles.titlebarTop).toBeGreaterThanOrEqual(0);
   expect(groupPanelStyles.titlebarTop).toBeLessThanOrEqual(2);
   expect(groupPanelStyles.titlebarBottom).toBeGreaterThan(24);
