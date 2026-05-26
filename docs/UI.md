@@ -122,8 +122,8 @@ components:
     stroke: "var(--canvas-edge-stroke-default)"
     selectedOutline: "color-mix(in srgb, var(--vscode-focusBorder) 46%, transparent)"
   canvas-group:
-    backgroundColor: "weak panel surface mixed with transparent"
-    borderColor: "var(--vscode-panel-border) / var(--vscode-widget-border)"
+    backgroundColor: "var(--vscode-panel-background)"
+    borderColor: "var(--vscode-panel-border)"
     title: "panel header active tab shape, not a pill"
   sidebar-section:
     hostSurface: "host-native sidebar surface by default"
@@ -293,8 +293,8 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 
 分组是画布空间组织对象，视觉上应更接近 VSCode Panel，而不是节点卡片或白板贴纸：
 
-- 外框使用 VSCode panel/widget token、弱 panel surface、1px 边界和低圆角；普通态也要让用户能识别区域边界。
-- 标题贴在顶部 header 内，采用类似 Panel 顶部 active tab 的标题区域；不使用外浮胶囊、强阴影或高饱和标签。
+- 外框、body、header、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。
+- 边框使用 `--vscode-panel-border`；标题贴在顶部 header 内，采用类似 Panel 顶部 active tab 的标题区域；不使用外浮胶囊、强阴影或高饱和标签。
 - 选中态通过 `focusBorder` 外描边、active tab 下划线和轻量矩形 toolbar 表达，不通过自定义分组颜色表达。
 - 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；主要命中热区是标题、header、边框和 resize handle。
 
