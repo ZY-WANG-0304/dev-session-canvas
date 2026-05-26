@@ -198,6 +198,24 @@
         "icon": "$(list-tree)"
       },
       {
+        "command": "devSessionCanvas.setSidebarNodeListFlatView",
+        "title": "%command.setSidebarNodeListFlatView.title%"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
+        "title": "%command.setSidebarNodeListFlatView.title%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListGroupedView",
+        "title": "%command.setSidebarNodeListGroupedView.title%"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
+        "title": "%command.setSidebarNodeListGroupedView.title%",
+        "icon": "$(check)"
+      },
+      {
         "command": "devSessionCanvas.showSessionHistory",
         "title": "%command.showSessionHistory.title%",
         "icon": "$(history)"
@@ -264,6 +282,24 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatView",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedView",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "devSessionCanvas.openCanvas",
@@ -284,6 +320,26 @@
           "command": "devSessionCanvas.createNode",
           "when": "view == devSessionCanvas.sidebarNodes",
           "group": "navigation@99"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatView",
+          "when": "view == devSessionCanvas.sidebarNodes && devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@1"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
+          "when": "view == devSessionCanvas.sidebarNodes && !devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@1"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
+          "when": "view == devSessionCanvas.sidebarNodes && devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@2"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedView",
+          "when": "view == devSessionCanvas.sidebarNodes && !devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@2"
         },
         {
           "command": "devSessionCanvas.resetCanvasState",

@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-05-11
+updated_at: 2026-05-26
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -115,6 +115,8 @@ updated_at: 2026-05-11
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
 - 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
 - 视觉上继续收口为 VS Code 原生 sidebar 列表质感：无卡片、无阴影、无多层装饰，只保留轻量 hover / selected 态和紧凑两行排版。
+- 节点列表的显示模式切换使用 VSCode 原生 view title secondary action，即 `节点` view 标题右上角宿主提供的 `...` 更多菜单；Webview 内容区不自绘 `...` 按钮或菜单。菜单项提供“平铺展示节点”和“按分组树展示节点”，默认选中按分组树展示，并用当前模式的 check icon 反馈选中项。
+- 默认按分组树展示时，Webview 只把权威节点快照和 `CanvasGroupSummary` 投影成侧栏树：父子分组按层级缩进，每个分组 section 可折叠/展开；没有分组的节点进入同样可折叠的“未分组”section。这个折叠状态只存在于侧栏呈现层，不持久化为画布状态，不影响画布分组可见性，也不推导新的成员关系。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
 ### 6.2 会话历史使用最小 `WebviewView`
@@ -201,14 +203,16 @@ updated_at: 2026-05-11
 
 1. 打开 `Extension Development Host` 后，sidebar 中能看到新增的 `节点` 与 `会话历史` section。
 2. 节点列表中不出现 `file` / `file-list` 节点；点击任一项后，画布能滚动并聚焦到对应节点。
-3. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
-4. 搜索框输入关键词后，列表会即时过滤。
-5. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
-6. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
+3. `节点` view 默认按分组树展示，标题右上角使用 VSCode 原生 `...` 菜单承载平铺 / 按分组树展示切换；按分组树展示时，分组和“未分组”section 可折叠/展开，折叠只影响侧栏列表可见行。
+4. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
+5. 搜索框输入关键词后，列表会即时过滤。
+6. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
+7. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
 
 ## 9. 当前验证状态
 
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。
+- 2026-05-26：`节点` view 默认按分组树展示；显示模式切换从 Webview 内容区自绘更多按钮收口到 VSCode 原生 view title `...` 菜单，并把按分组展示改为可折叠的侧栏分组树；该折叠状态只属于侧栏呈现，不改变画布分组事实。已通过 manifest、类型检查、侧栏颜色 token、build 和 diff 检查；`trusted` VSCode smoke 已执行到侧栏分组树路径，随后在既有 Note Markdown 文件关联用例中超时，需后续单独收口该非本轮 blocker。
 - 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test/test-sidebar-codicon-bundle.mjs`、`node scripts/test/test-sidebar-session-history.mjs` 与 `node scripts/test/test-agent-launch-presets.mjs`。
 - 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
 - 2026-04-28 产品规格新增两条节点列表要求：次级描述只显示状态，不再显示副标题；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。

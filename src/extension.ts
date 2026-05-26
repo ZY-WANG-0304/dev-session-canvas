@@ -130,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
   const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
-  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri);
+  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
   const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
@@ -313,6 +313,22 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.showNodeList, async () => {
     await showSidebarNodeListQuickPick(panelManager);
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListFlatView, async () => {
+    await sidebarNodeListView.setViewMode('flat');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListFlatViewChecked, async () => {
+    await sidebarNodeListView.setViewMode('flat');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListGroupedView, async () => {
+    await sidebarNodeListView.setViewMode('grouped');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListGroupedViewChecked, async () => {
+    await sidebarNodeListView.setViewMode('grouped');
   });
 
   registerCommand(context, COMMAND_IDS.showSessionHistory, async () => {

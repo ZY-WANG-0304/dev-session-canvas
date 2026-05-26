@@ -34,6 +34,8 @@ const COMMAND_IDS = {
   openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
   showNodeList: 'devSessionCanvas.showNodeList',
+  setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
+  setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   focusNode: 'devSessionCanvas.__internal.focusNode',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
@@ -1049,6 +1051,138 @@ async function verifySidebarNodeListWebviewUi(agentNodeId) {
     seededSnapshot.state.nodes.some((node) => node.id === agentNodeId),
     'Expected the seeded sidebar node UI state to keep the target agent node present.'
   );
+
+  await verifySidebarNodeGroupedTreeUi(agentNodeId);
+}
+
+async function verifySidebarNodeGroupedTreeUi(agentNodeId) {
+  const baselineSnapshot = await getDebugSnapshot();
+  const agentNode = findNodeById(baselineSnapshot, agentNodeId);
+  const terminalNode = findNodeByKind(baselineSnapshot, 'terminal');
+  const noteNode = findNodeByKind(baselineSnapshot, 'note');
+  const groupedState = {
+    ...baselineSnapshot.state,
+    nodes: baselineSnapshot.state.nodes.map((node) => {
+      if (node.id === agentNode.id) {
+        return {
+          ...node,
+          position: { x: 40, y: 80 },
+          groupId: 'group-frontend-smoke'
+        };
+      }
+      if (node.id === terminalNode.id) {
+        return {
+          ...node,
+          position: { x: 420, y: 80 },
+          groupId: 'group-frontend-smoke'
+        };
+      }
+      if (node.id === noteNode.id) {
+        return {
+          ...node,
+          position: { x: 1000, y: 80 },
+          groupId: undefined
+        };
+      }
+      return node;
+    }),
+    groups: [
+      ...(baselineSnapshot.state.groups ?? []),
+      {
+        id: 'group-feature-smoke',
+        title: 'Feature Work',
+        position: { x: -40, y: -56 },
+        size: { width: 980, height: 520 }
+      },
+      {
+        id: 'group-frontend-smoke',
+        title: 'Frontend',
+        parentGroupId: 'group-feature-smoke',
+        position: { x: 0, y: 0 },
+        size: { width: 900, height: 400 }
+      }
+    ],
+    nextGroupSequence: Math.max(baselineSnapshot.state.nextGroupSequence ?? 1, 3)
+  };
+
+  try {
+    await setPersistedState(groupedState);
+    const sidebarItems = await getSidebarNodeListItems();
+    const agentItem = sidebarItems.find((item) => item.nodeId === agentNode.id);
+    assert.ok(agentItem, 'Expected grouped sidebar items to include the agent node.');
+    assert.deepStrictEqual(agentItem.groupPath, ['Feature Work', 'Frontend']);
+    assert.deepStrictEqual(agentItem.groupPathIds, ['group-feature-smoke', 'group-frontend-smoke']);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.setSidebarNodeListGroupedView);
+    await sleep(100);
+    const groupedSnapshot = await performSidebarNodeListAction({
+      kind: 'clickItem',
+      itemId: `node/${agentNode.id}`
+    }, 10000);
+    assert.strictEqual(groupedSnapshot.viewMode, 'grouped');
+    assert.ok(
+      groupedSnapshot.groupRows.some((row) => row.key === 'group-feature-smoke' && row.label === 'Feature Work' && row.expanded),
+      'Expected grouped sidebar mode to render the parent group as an expanded tree row.'
+    );
+    assert.ok(
+      groupedSnapshot.groupRows.some((row) => row.key === 'group-frontend-smoke' && row.label === 'Frontend' && row.expanded),
+      'Expected grouped sidebar mode to render the nested group as an expanded tree row.'
+    );
+    assert.ok(
+      groupedSnapshot.groupRows.some((row) => row.key === '__ungrouped__' && row.label === '未分组'),
+      'Expected grouped sidebar mode to keep ungrouped nodes in a collapsible section.'
+    );
+    assert.ok(
+      groupedSnapshot.visibleItemIds.includes(`node/${agentNode.id}`),
+      'Expected grouped sidebar mode to show nodes inside expanded groups.'
+    );
+    assert.ok(
+      groupedSnapshot.visibleItemIds.includes(`node/${noteNode.id}`),
+      'Expected grouped sidebar mode to show ungrouped nodes while the ungrouped section is expanded.'
+    );
+
+    const collapsedFrontend = await performSidebarNodeListAction({
+      kind: 'toggleGroup',
+      groupKey: 'group-frontend-smoke'
+    }, 10000);
+    assert.ok(
+      collapsedFrontend.groupRows.some((row) => row.key === 'group-frontend-smoke' && !row.expanded),
+      'Expected clicking a group row to collapse that sidebar group section.'
+    );
+    assert.ok(
+      !collapsedFrontend.visibleItemIds.includes(`node/${agentNode.id}`),
+      'Expected collapsing a group row to hide its direct member nodes in the sidebar.'
+    );
+    assert.ok(
+      collapsedFrontend.visibleItemIds.includes(`node/${noteNode.id}`),
+      'Expected collapsing a nested group to leave unrelated ungrouped rows visible.'
+    );
+
+    const collapsedUngrouped = await performSidebarNodeListAction({
+      kind: 'toggleGroup',
+      groupKey: '__ungrouped__'
+    }, 10000);
+    assert.ok(
+      collapsedUngrouped.groupRows.some((row) => row.key === '__ungrouped__' && !row.expanded),
+      'Expected the ungrouped sidebar section to be collapsible as well.'
+    );
+    assert.ok(
+      !collapsedUngrouped.visibleItemIds.includes(`node/${noteNode.id}`),
+      'Expected collapsing the ungrouped section to hide ungrouped node rows.'
+    );
+
+    await vscode.commands.executeCommand(COMMAND_IDS.setSidebarNodeListFlatView);
+    await sleep(100);
+    const flatSnapshot = await performSidebarNodeListAction({
+      kind: 'clickItem',
+      itemId: `node/${agentNode.id}`
+    }, 10000);
+    assert.strictEqual(flatSnapshot.viewMode, 'flat');
+    assert.strictEqual(flatSnapshot.groupRows.length, 0, 'Expected flat mode to remove sidebar group rows.');
+  } finally {
+    await vscode.commands.executeCommand(COMMAND_IDS.setSidebarNodeListFlatView);
+    await setPersistedState(baselineSnapshot.state);
+  }
 }
 
 async function verifySidebarSessionHistoryRestore() {

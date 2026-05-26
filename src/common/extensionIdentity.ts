@@ -25,6 +25,10 @@ export const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   saveNoteAsMarkdownFile: 'devSessionCanvas.saveNoteAsMarkdownFile',
   showNodeList: 'devSessionCanvas.showNodeList',
+  setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
+  setSidebarNodeListFlatViewChecked: 'devSessionCanvas.setSidebarNodeListFlatViewChecked',
+  setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
+  setSidebarNodeListGroupedViewChecked: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
@@ -119,8 +123,11 @@ export const CONFIG_KEYS = {
 
 export const CONTEXT_KEYS = {
   panelVisibilityManaged: 'devSessionCanvas.canvas.panelVisibilityManaged',
-  panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible'
+  panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible',
+  sidebarNodeListGroupedView: 'devSessionCanvas.sidebarNodeList.groupedView'
 } as const;
+
+export type SidebarNodeListViewMode = 'flat' | 'grouped';
 
 export const STORAGE_KEYS = {
   canvasState: 'devSessionCanvas.canvas.state',
@@ -129,5 +136,6 @@ export const STORAGE_KEYS = {
   canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled',
   canvasFilesFeatureEnabled: 'devSessionCanvas.canvas.filesFeatureEnabled',
   canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState',
-  canvasTemplateInitialized: 'devSessionCanvas.canvas.templateInitialized'
+  canvasTemplateInitialized: 'devSessionCanvas.canvas.templateInitialized',
+  sidebarNodeListViewMode: 'devSessionCanvas.sidebarNodeList.viewMode'
 } as const;
