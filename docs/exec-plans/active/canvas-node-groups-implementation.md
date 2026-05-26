@@ -50,6 +50,7 @@
 - [x] (2026-05-26 02:35Z) 将选中分组操作从右上角双按钮改为贴在标题 tab 右侧的双段按钮：左段取消分组，右段执行删除分组。
 - [x] (2026-05-26 03:20Z) 修正侧栏节点列表显示模式入口：移除 Webview 内自绘更多按钮，改由 `节点` view 标题右上角 VSCode 原生 `...` 菜单切换平铺 / 按分组树展示，默认使用按分组树展示；按分组树展示改成可折叠的分组 section 和“未分组”section。
 - [x] (2026-05-26 10:55Z) 完成本轮 sidebar 验证：`npm run typecheck`、`node scripts/test/test-extension-manifest.mjs`、`npm run test:sidebar-list-colors`、`npm run build` 和 `git diff --check` 均通过；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 已覆盖侧栏分组树路径，但随后在既有 Note Markdown 文件关联用例中超时，暂不作为本轮 sidebar blocker。
+- [x] (2026-05-27 16:40 +0800) 处理 PR review：模板应用改为两阶段预分配 template group id，支持 `parentGroupIndex` 指向后方父分组；命令面板补齐“创建空分组”和“从选中项创建分组”，不增加快捷键。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -109,6 +110,9 @@
 - 观察：分组标题 tab 不是成员可用 body 区域的一部分；若宿主仍按完整分组矩形顶部只留 28px padding，节点视觉上会贴住 body 上边界。
   证据：成员容纳 inset 的顶部改为 `CANVAS_GROUP_PADDING + CANVAS_GROUP_TITLE_HEIGHT`，创建分组和父级扩容都使用非对称 inset；宿主测试新增成员四边 inset 断言，Webview 测试断言成员节点距离 body 上边界至少 28px。
 
+- 观察：模板保存会保留当前 `state.groups` 顺序，而从已有分组和同级对象创建外层分组时，新父分组可能排在子分组之后。
+  证据：PR review 指出 `applyCanvasTemplateToState` 边遍历边解析 `parentGroupIndex` 会让 child-before-parent 模板丢失嵌套关系；本轮改为先为所有 template group 分配 id，再物化 `parentGroupId`，并用宿主测试覆盖 forward `parentGroupIndex`。
+
 ## 决策记录
 
 - 决策：实现阶段以宿主为分组权威状态中心，Webview 只展示 draft 并回传用户意图。
@@ -143,6 +147,10 @@
   理由：用户明确指出更多按钮应采用 VSCode 原生更多菜单；同时截图要求每个分组在侧栏中像 worktree / repository section 一样可折叠。该折叠只影响侧栏呈现，不改变“画布分组本身不支持折叠”的产品边界。
   日期/作者：2026-05-26 / Codex
 
+- 决策：命令面板补充两个分组入口，其中创建空分组在当前可视中心创建默认 `360 x 240` 分组，从选中项创建分组则由宿主发 `host/requestCreateGroupFromSelection`，Webview 按当前本地选择回传既有 `webview/createGroupFromSelection`；若当前选择不满足创建条件，则 Webview 显示临时错误提示且不提交空创建请求。
+  理由：空分组命令没有鼠标锚点，使用可视中心符合命令面板语义；选择状态属于 Webview 本地 UI 状态，宿主不应额外复制一份易漂移的选择缓存；无效选择不应制造一次被宿主拒绝的空状态更新。
+  日期/作者：2026-05-27 / Codex
+
 - 决策：本轮节点多选只响应 Ctrl / Cmd 点击，不再把普通点击或 Shift 点击当作追加多选入口。
   理由：用户明确要求“按住 cmd/ctrl 点击节点才是选择多个节点，普通点击节点回退到之前功能”；Shift 在当前画布还承载其他语义，不作为分组首版多选确认路径。
   日期/作者：2026-05-23 / Codex
@@ -157,11 +165,11 @@
 
 ## 结果与复盘
 
-当前工作已经从文档设计推进到首版基础实现。代码层新增了共享 group 协议、宿主持久化与几何收口、Webview group frame 与上下文入口、模板 group capture / materialize、侧栏原生更多菜单和可折叠分组树，以及对应的协议、宿主、模板和 Playwright 测试。设计文档已经把方案 B 从“比较中”收口为“已选定”，验证状态保持“验证中”。
+当前工作已经从文档设计推进到首版基础实现。代码层新增了共享 group 协议、宿主持久化与几何收口、Webview group frame 与上下文入口、命令面板补充入口、模板 group capture / materialize、侧栏原生更多菜单和可折叠分组树，以及对应的协议、宿主、模板和 Playwright 测试。设计文档已经把方案 B 从“比较中”收口为“已选定”，验证状态保持“验证中”。
 
 2026-05-22 本轮验证已经覆盖类型检查、协议解析、模板捕获、宿主 group helper 和 Webview harness 的分组主路径。验证命令均在仓库根目录执行并通过。设计文档仍保持“验证中”，因为这些命令证明首版基础路径可用，但还不能替代真实 VSCode reload smoke、删除 modal 两种分支验证、侧栏 grouped view smoke 或完整几何场景矩阵。
 
-剩余缺口包括：删除分组 modal 的两种选择还缺自动化断言；真实 VSCode reload 后 group 恢复还没有本轮 smoke 证据；几何收口覆盖的是基础路径而非完整证明；命令面板入口仍未补齐。后续协作者应优先补这些缺口，再把验证状态推进到“已验证”。
+剩余缺口包括：删除分组 modal 的两种选择还缺自动化断言；真实 VSCode reload 后 group 恢复还没有本轮 smoke 证据；几何收口覆盖的是基础路径而非完整证明。后续协作者应优先补这些缺口，再把验证状态推进到“已验证”。
 
 ## 上下文与定向
 
@@ -224,7 +232,7 @@ Webview 验收：Playwright harness 中，空白区可创建空 group；group fr
 
     From https://github.com/ZY-WANG-0304/dev-session-canvas
      * branch            main       -> FETCH_HEAD
-    Created autostash: 81c6fd6
+    Created autostash: ae677e3
     Current branch docs-canvas-node-grouping-design is up to date.
     Applied autostash.
 
@@ -233,6 +241,34 @@ Webview 验收：Playwright harness 中，空白区可创建空 group；group fr
     "test:canvas-node-groups": "node scripts/test/test-canvas-node-groups.mjs"
 
 Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面加载 `dist/webview.js`。
+
+2026-05-27 PR review 修复验证记录：
+
+    > dev-session-canvas@0.10.6 typecheck
+    > tsc --noEmit
+
+    > dev-session-canvas@0.10.6 test:protocol-webview-messages
+    > node --no-warnings --experimental-transform-types scripts/test/test-protocol-webview-messages.mts
+    protocol webview message tests passed
+
+    > dev-session-canvas@0.10.6 test:canvas-node-groups
+    > node scripts/test/test-canvas-node-groups.mjs
+
+    > dev-session-canvas@0.10.6 test:canvas-templates
+    > node scripts/test/test-canvas-templates.mjs
+
+    > dev-session-canvas@0.10.6 test:extension-manifest
+    > node scripts/test/test-extension-manifest.mjs
+    extension manifest tests passed
+
+    > dev-session-canvas@0.10.6 build
+    > node scripts/build/build.mjs
+
+    $ node scripts/test/run-playwright-webview.mjs -g "host-triggered group creation uses current webview selection|host-triggered group creation reports invalid current webview selection without posting create|canvas context menu can create a group from selected nodes|canvas context menu can create an empty group"
+    4 passed
+    Playwright webview tests passed.
+
+    $ git diff --check
 
 2026-05-23 八向 resize 定向验证记录：
 

@@ -9002,6 +9002,87 @@ test('canvas context menu can create a group from selected nodes', async ({ page
   });
 });
 
+test('host-triggered group creation uses current webview selection', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    },
+    {
+      id: 'note-2',
+      kind: 'note',
+      title: 'Note 2',
+      status: 'ready',
+      summary: 'second',
+      position: { x: 520, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'second' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await clearPostedMessages(page);
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: []
+  });
+});
+
+test('host-triggered group creation reports invalid current webview selection without posting create', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await nodeById(page, 'note-1').click();
+  await clearPostedMessages(page);
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+  });
+
+  await expect(page.locator('[data-toast-kind="error"]')).toContainText('请先选中至少两个同一父级的节点或分组。');
+  const createMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((message) => message.type === 'webview/createGroupFromSelection')
+  );
+  expect(createMessages).toEqual([]);
+});
+
 test('host-triggered manual node creation snapshots existing nodes before resolving autofocus', async ({ page }) => {
   await openHarness(page, {
     persistedState: {

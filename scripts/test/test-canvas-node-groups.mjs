@@ -22,6 +22,7 @@ try {
     'isEmptyCanvasGroup',
     'preserveRepairTargetClusterWhileAvoidingSiblings',
     'finalizeCanvasGroupState',
+    'applyCanvasTemplateToState',
     'createNextState',
     'normalizeState'
   ];
@@ -114,6 +115,7 @@ try {
     isEmptyCanvasGroup,
     preserveRepairTargetClusterWhileAvoidingSiblings,
     finalizeCanvasGroupState,
+    applyCanvasTemplateToState,
     createNextState,
     normalizeState
   } = require(outfile);
@@ -286,6 +288,50 @@ try {
   assert.strictEqual(manuallyCreatedMember.groupId, 'group-parent');
   assert.ok(rectContainsRectForTest(rectForTestGroup(expandedCreationTarget), rectForTestNode(manuallyCreatedMember)));
   assertMemberInsetsForTest(expandedCreationTarget, [manuallyCreatedMember]);
+
+  const forwardParentTemplateApply = applyCanvasTemplateToState(
+    state(),
+    {
+      id: 'forward-parent-groups',
+      name: 'Forward Parent Groups',
+      category: 'user',
+      createdAt: '2026-05-27T00:00:00.000Z',
+      updatedAt: '2026-05-27T00:00:00.000Z',
+      groups: [
+        {
+          title: 'Child',
+          position: { x: 40, y: 60 },
+          size: { width: 280, height: 180 },
+          parentGroupIndex: 1
+        },
+        {
+          title: 'Parent',
+          position: { x: 0, y: 0 },
+          size: { width: 380, height: 300 }
+        }
+      ],
+      nodes: [
+        {
+          kind: 'note',
+          title: 'Nested Note',
+          position: { x: 80, y: 120 },
+          size: { width: 120, height: 80 },
+          groupIndex: 0,
+          metadata: { note: { content: '' } }
+        }
+      ],
+      edges: []
+    },
+    {
+      resolvedAgentProviders: new Map()
+    }
+  ).state;
+  const materializedParent = forwardParentTemplateApply.groups.find((candidate) => candidate.title === 'Parent');
+  const materializedChild = forwardParentTemplateApply.groups.find((candidate) => candidate.title === 'Child');
+  assert.ok(materializedParent, 'Expected forward-parent template to materialize parent group.');
+  assert.ok(materializedChild, 'Expected forward-parent template to materialize child group.');
+  assert.strictEqual(materializedChild.parentGroupId, materializedParent.id);
+  assert.strictEqual(forwardParentTemplateApply.nodes[0].groupId, materializedChild.id);
 
   const groupedByPointer = moveNode(
     state({
