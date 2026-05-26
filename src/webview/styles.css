@@ -3059,6 +3059,15 @@ body {
   pointer-events: none;
 }
 
+.canvas-group-background-body-hit-area {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--canvas-group-title-height);
+  bottom: 0;
+  pointer-events: auto;
+}
+
 .canvas-group-frame,
 .canvas-group-background-frame {
   --canvas-group-panel-border: var(--vscode-panel-border);

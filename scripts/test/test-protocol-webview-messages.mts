@@ -50,11 +50,26 @@ const hardwrapOpenMessage = {
 assert.deepEqual(parseWebviewMessage(hardwrapOpenMessage), hardwrapOpenMessage);
 
 
+const createDemoNodeInGroupMessage = {
+  type: 'webview/createDemoNode',
+  payload: {
+    requestId: 'create-in-group',
+    kind: 'note',
+    preferredPosition: { x: 180, y: 220 },
+    targetGroupId: 'group-parent',
+    agentProvider: undefined,
+    agentLaunchPreset: undefined,
+    agentCustomLaunchCommand: undefined
+  }
+};
+assert.deepEqual(parseWebviewMessage(createDemoNodeInGroupMessage), createDemoNodeInGroupMessage);
+
 const createEmptyGroupMessage = {
   type: 'webview/createEmptyGroup',
   payload: {
     position: { x: 120, y: 160 },
-    size: { width: 360, height: 240 }
+    size: { width: 360, height: 240 },
+    parentGroupId: 'group-parent'
   }
 };
 assert.deepEqual(parseWebviewMessage(createEmptyGroupMessage), createEmptyGroupMessage);
@@ -63,10 +78,21 @@ const createGroupFromSelectionMessage = {
   type: 'webview/createGroupFromSelection',
   payload: {
     nodeIds: ['note-1', 'agent-1'],
-    groupIds: ['group-2']
+    groupIds: ['group-2'],
+    parentGroupId: 'group-parent'
   }
 };
 assert.deepEqual(parseWebviewMessage(createGroupFromSelectionMessage), createGroupFromSelectionMessage);
+
+const applyTemplateInGroupMessage = {
+  type: 'webview/applyTemplate',
+  payload: {
+    templateId: 'template-1',
+    visibleCenter: { x: 240, y: 260 },
+    targetGroupId: 'group-parent'
+  }
+};
+assert.deepEqual(parseWebviewMessage(applyTemplateInGroupMessage), applyTemplateInGroupMessage);
 
 const moveGroupMessage = {
   type: 'webview/moveGroup',

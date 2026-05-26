@@ -324,6 +324,7 @@ interface CreateAgentNodeOptions {
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  targetGroupId?: string;
   titleOverride?: string;
 }
 
@@ -1335,6 +1336,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async applyDefaultCanvasTemplate(options?: {
     reset?: boolean;
     visibleCenter?: CanvasNodePosition;
+    targetGroupId?: string;
     focusAppliedNodes?: boolean;
     quietOnFailure?: boolean;
   }): Promise<string[]> {
@@ -1351,6 +1353,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: {
       reset?: boolean;
       visibleCenter?: CanvasNodePosition;
+      targetGroupId?: string;
       focusAppliedNodes?: boolean;
       quietOnFailure?: boolean;
     }
@@ -1366,6 +1369,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async resetDefaultCanvasTemplateWithConfirmation(options?: {
     visibleCenter?: CanvasNodePosition;
+    targetGroupId?: string;
     focusAppliedNodes?: boolean;
     quietOnFailure?: boolean;
   }): Promise<string[] | undefined> {
@@ -1388,6 +1392,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     templateId: string,
     options?: {
       visibleCenter?: CanvasNodePosition;
+      targetGroupId?: string;
       focusAppliedNodes?: boolean;
       quietOnFailure?: boolean;
     }
@@ -2939,6 +2944,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: {
       reset?: boolean;
       visibleCenter?: CanvasNodePosition;
+      targetGroupId?: string;
       focusAppliedNodes?: boolean;
       quietOnFailure?: boolean;
     }
@@ -2951,6 +2957,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const nextBaseState = options?.reset
       ? createDefaultState(this.getAgentCliConfig().defaultProvider)
       : this.state;
+    const targetGroupId = options?.reset
+      ? undefined
+      : resolveValidTargetGroupId(nextBaseState.groups ?? [], options?.targetGroupId);
 
     if (options?.reset) {
       await this.prepareForHostBoundary({
@@ -2962,6 +2971,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const applyResult = applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
       preferredCenter,
+      targetGroupId,
       resolvedAgentProviders,
       noteMaterializations
     });
@@ -7586,14 +7596,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           requestId: parsedMessage.payload.requestId,
           agentProvider: parsedMessage.payload.agentProvider,
           agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
-          agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand
+          agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand,
+          targetGroupId: parsedMessage.payload.targetGroupId
         });
         return;
       case 'webview/createEmptyGroup':
         this.state = createEmptyCanvasGroup(
           this.state,
           parsedMessage.payload.position,
-          parsedMessage.payload.size
+          parsedMessage.payload.size,
+          parsedMessage.payload.parentGroupId
         );
         this.canvasTemplateInitialized = true;
         this.persistState();
@@ -7603,7 +7615,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.state = createGroupFromSelection(
           this.state,
           parsedMessage.payload.nodeIds,
-          parsedMessage.payload.groupIds
+          parsedMessage.payload.groupIds,
+          parsedMessage.payload.parentGroupId
         );
         this.canvasTemplateInitialized = true;
         this.persistState();
@@ -7862,6 +7875,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/applyDefaultTemplate':
         void this.applyDefaultCanvasTemplate({
           visibleCenter: parsedMessage.payload?.visibleCenter,
+          targetGroupId: parsedMessage.payload?.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
@@ -7875,6 +7889,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/applyTemplate':
         void this.applyCanvasTemplateById(parsedMessage.payload.templateId, {
           visibleCenter: parsedMessage.payload.visibleCenter,
+          targetGroupId: parsedMessage.payload.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
@@ -7888,6 +7903,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/resetToDefaultTemplate':
         void this.resetDefaultCanvasTemplateWithConfirmation({
           visibleCenter: parsedMessage.payload?.visibleCenter,
+          targetGroupId: parsedMessage.payload?.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
@@ -7901,6 +7917,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/resetToTemplate':
         void this.resetCanvasTemplateByIdWithConfirmation(parsedMessage.payload.templateId, {
           visibleCenter: parsedMessage.payload.visibleCenter,
+          targetGroupId: parsedMessage.payload.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
           this.postMessage({
@@ -11691,7 +11708,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider,
       agentLaunchPreset,
       agentCustomLaunchCommand,
-      preferredPosition
+      preferredPosition,
+      options?.targetGroupId
     );
     const createdNodeCandidate = nextState.nodes[nextState.nodes.length - 1];
     const createdNode =
@@ -12071,27 +12089,30 @@ function createNextState(
   agentProvider: AgentProviderKind = 'codex',
   agentLaunchPreset: AgentLaunchPresetKind = 'default',
   agentCustomLaunchCommand?: string,
-  preferredPosition?: CanvasNodePosition
+  preferredPosition?: CanvasNodePosition,
+  targetGroupId?: string
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
   const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
   const resolvedPosition = resolveNewNodePosition(
-    previousState.nodes,
+    filterPlacementCollisionNodesForGroup(previousState.nodes, targetGroupId),
     kind,
     preferredPosition ?? nextNode.position
   );
+  const validTargetGroupId = resolveValidTargetGroupId(previousState.groups ?? [], targetGroupId);
+  const createdNode = {
+    ...nextNode,
+    position: resolvedPosition,
+    groupId: validTargetGroupId && isStableCanvasGroupMemberKind(kind) ? validTargetGroupId : undefined
+  };
 
-  return {
+  const nextState = {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    nodes: [
-      ...previousState.nodes,
-      {
-        ...nextNode,
-        position: resolvedPosition
-      }
-    ]
+    nodes: [...previousState.nodes, createdNode]
   };
+
+  return finalizeCanvasGroupState(nextState);
 }
 
 function defaultSummaryForKind(kind: CanvasNodeKind): string {
@@ -12182,6 +12203,17 @@ function resolveNewNodePosition(
   }
 
   return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor, preference);
+}
+
+function filterPlacementCollisionNodesForGroup(
+  nodes: readonly CanvasNodeSummary[],
+  targetGroupId?: string
+): CanvasNodeSummary[] {
+  if (!targetGroupId) {
+    return [...nodes];
+  }
+
+  return nodes.filter((node) => node.groupId === targetGroupId);
 }
 
 function buildPlacementCandidates(
@@ -12323,6 +12355,7 @@ function applyCanvasTemplateToState(
   template: CanvasTemplate,
   options: {
     preferredCenter?: CanvasNodePosition;
+    targetGroupId?: string;
     resolvedAgentProviders: Map<number, AgentProviderKind>;
     noteMaterializations?: ReadonlyMap<number, CanvasTemplateNoteMaterialization>;
   }
@@ -12344,7 +12377,14 @@ function applyCanvasTemplateToState(
     const groupId = createCanvasGroupObjectId(nextGroupSequence);
     nextGroupSequence += 1;
     groupIdByTemplateIndex.set(index, groupId);
-    return materializeTemplateGroup(groupId, templateGroup, bounds.origin, resolvedTopLeft, groupIdByTemplateIndex);
+    return materializeTemplateGroup(
+      groupId,
+      templateGroup,
+      bounds.origin,
+      resolvedTopLeft,
+      groupIdByTemplateIndex,
+      options.targetGroupId
+    );
   });
   const nodeIdByTemplateIndex = new Map<number, string>();
   const materializedNodes = template.nodes.map((templateNode, index) => {
@@ -12371,7 +12411,7 @@ function applyCanvasTemplateToState(
   });
   const materializedNodesWithGroups = materializedNodes.map((node, index) => {
     const groupIndex = template.nodes[index]?.groupIndex;
-    const groupId = groupIndex === undefined ? undefined : groupIdByTemplateIndex.get(groupIndex);
+    const groupId = groupIndex === undefined ? options.targetGroupId : groupIdByTemplateIndex.get(groupIndex);
     return groupId
       ? {
           ...node,
@@ -12402,15 +12442,17 @@ function applyCanvasTemplateToState(
     ];
   });
 
+  const nextState = finalizeCanvasGroupState({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes: [...previousState.nodes, ...materializedNodesWithGroups],
+    edges: [...previousState.edges, ...materializedEdges],
+    groups: [...(previousState.groups ?? []), ...materializedGroups],
+    nextGroupSequence
+  });
+
   return {
-    state: {
-      ...previousState,
-      updatedAt: new Date().toISOString(),
-      nodes: [...previousState.nodes, ...materializedNodesWithGroups],
-      edges: [...previousState.edges, ...materializedEdges],
-      groups: [...(previousState.groups ?? []), ...materializedGroups],
-      nextGroupSequence
-    },
+    state: nextState,
     nodeIds: materializedNodes.map((node) => node.id)
   };
 }
@@ -12420,7 +12462,8 @@ function materializeTemplateGroup(
   templateGroup: NonNullable<CanvasTemplate['groups']>[number],
   templateOrigin: CanvasNodePosition,
   placedTopLeft: CanvasNodePosition,
-  groupIdByTemplateIndex: ReadonlyMap<number, string>
+  groupIdByTemplateIndex: ReadonlyMap<number, string>,
+  rootParentGroupId?: string
 ): CanvasGroupSummary {
   return {
     id: groupId,
@@ -12432,7 +12475,7 @@ function materializeTemplateGroup(
     size: normalizeCanvasGroupFootprint(templateGroup.size),
     parentGroupId:
       templateGroup.parentGroupIndex === undefined
-        ? undefined
+        ? rootParentGroupId
         : groupIdByTemplateIndex.get(templateGroup.parentGroupIndex)
   };
 }
@@ -12962,10 +13005,16 @@ function createCanvasGroupWithSequence(
 function createEmptyCanvasGroup(
   previousState: CanvasPrototypeState,
   position: CanvasNodePosition,
-  size?: CanvasNodeFootprint
+  size?: CanvasNodeFootprint,
+  parentGroupId?: string
 ): CanvasPrototypeState {
   const sequence = readNextGroupSequence(previousState);
-  const group = createCanvasGroupWithSequence(sequence, position, size ?? DEFAULT_CANVAS_GROUP_SIZE);
+  const group = createCanvasGroupWithSequence(
+    sequence,
+    position,
+    size ?? DEFAULT_CANVAS_GROUP_SIZE,
+    resolveValidTargetGroupId(previousState.groups ?? [], parentGroupId)
+  );
 
   return finalizeCanvasGroupState({
     ...previousState,
@@ -12978,7 +13027,8 @@ function createEmptyCanvasGroup(
 function createGroupFromSelection(
   previousState: CanvasPrototypeState,
   nodeIds: readonly string[],
-  groupIds: readonly string[]
+  groupIds: readonly string[],
+  parentGroupId?: string
 ): CanvasPrototypeState {
   const selectedNodeIds = new Set(nodeIds);
   const selectedGroupIds = new Set(groupIds);
@@ -13018,7 +13068,12 @@ function createGroupFromSelection(
     return previousState;
   }
 
-  const parentGroupId = parentIds.values().next().value as string | undefined;
+  const selectedParentGroupId = parentIds.values().next().value as string | undefined;
+  const requestedParentGroupId = resolveValidTargetGroupId(previousState.groups ?? [], parentGroupId);
+  if (requestedParentGroupId !== selectedParentGroupId) {
+    return previousState;
+  }
+
   const selectedRects = [
     ...selectedNodes.map((node) => rectForNode(node)),
     ...selectedGroups.map((group) => rectForGroup(group))
@@ -13034,7 +13089,7 @@ function createGroupFromSelection(
     sequence,
     { x: groupRect.left, y: groupRect.top },
     { width: groupRect.right - groupRect.left, height: groupRect.bottom - groupRect.top },
-    parentGroupId
+    selectedParentGroupId
   );
 
   return finalizeCanvasGroupState({
@@ -13310,6 +13365,13 @@ function resolveDroppedObjectGroupId(
     .sort((left, right) => groupDepth(state.groups ?? [], right.id) - groupDepth(state.groups ?? [], left.id));
 
   return candidates[0]?.id;
+}
+
+function resolveValidTargetGroupId(
+  groups: readonly CanvasGroupSummary[],
+  targetGroupId?: string
+): string | undefined {
+  return targetGroupId && groups.some((group) => group.id === targetGroupId) ? targetGroupId : undefined;
 }
 
 function finalizeCanvasGroupState(

@@ -8220,6 +8220,176 @@ test('canvas context menu can create an empty group', async ({ page }) => {
   expect(typeof message.payload.position.y).toBe('number');
 });
 
+test('canvas group body blank area selects the group and preserves right-click menu', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 160, y: 180 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 620, height: 500 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
+
+  await page.mouse.click(690, 580);
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('group-1');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeId ?? null)
+    .toBeNull();
+
+  await page.locator('.react-flow__pane').click({ position: { x: 30, y: 30 } });
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBeNull();
+
+  await page.mouse.click(690, 580, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('.canvas-context-menu-header-copy')).toContainText('画布操作');
+  await expect(menu.locator('[data-context-menu-action="create-empty-group"]')).toBeVisible();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('group-1');
+});
+
+test('canvas group body context menu creates objects inside the group', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 720, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.mouse.click(520, 500, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 330,
+      y: 300
+    },
+    targetGroupId: 'group-1'
+  });
+
+  await clearPostedMessages(page);
+  await page.mouse.click(520, 500, { button: 'right' });
+  await page.locator('[data-context-menu-action="create-empty-group"]').click();
+  const createGroupMessage = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
+  expect(createGroupMessage.payload).toEqual({
+    position: { x: 520, y: 500 },
+    size: { width: 360, height: 240 },
+    parentGroupId: 'group-1'
+  });
+});
+
+test('canvas group body context menu keeps target group after pan and zoom', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 100, y: 80, zoom: 0.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 240 },
+      size: { width: 720, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  await page.mouse.click(660, 420, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 510,
+      y: 225
+    },
+    targetGroupId: 'group-1'
+  });
+});
+
+test('canvas group body context menu can group selected members inside that group', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 180, y: 220 }),
+      groupId: 'group-1'
+    },
+    {
+      ...createManualNoteNode('note-2', { x: 460, y: 220 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 820, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeIds)
+    .toEqual(['note-1', 'note-2']);
+
+  await page.mouse.click(880, 680, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: [],
+    parentGroupId: 'group-1'
+  });
+});
+
 test('canvas groups resize from all eight directions', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
