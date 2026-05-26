@@ -8921,7 +8921,14 @@ function CanvasGroupsViewportLayer(props: {
   return (
     <>
       {viewportElement
-        ? createPortal(<CanvasGroupBackgroundLayer groups={props.groups} zoom={viewport.zoom} />, viewportElement)
+        ? createPortal(
+            <CanvasGroupBackgroundLayer
+              groups={props.groups}
+              selectedGroupId={props.selectedGroupId}
+              zoom={viewport.zoom}
+            />,
+            viewportElement
+          )
         : null}
       {props.portalElement
         ? createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, props.portalElement)
@@ -8937,13 +8944,19 @@ function selectCanvasGroupBackgroundViewportElement(state: ReactFlowState): HTML
 
 function CanvasGroupBackgroundLayer(props: {
   groups: CanvasGroupSummary[];
+  selectedGroupId?: string;
   zoom: number;
 }): JSX.Element {
   const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
   return (
     <div className="canvas-group-background-layer" aria-hidden="true">
       {orderedGroups.map((group) => (
-        <CanvasGroupBackgroundFrame key={group.id} group={group} zoom={props.zoom} />
+        <CanvasGroupBackgroundFrame
+          key={group.id}
+          group={group}
+          selected={group.id === props.selectedGroupId}
+          zoom={props.zoom}
+        />
       ))}
     </div>
   );
@@ -8951,13 +8964,14 @@ function CanvasGroupBackgroundLayer(props: {
 
 function CanvasGroupBackgroundFrame(props: {
   group: CanvasGroupSummary;
+  selected: boolean;
   zoom: number;
 }): JSX.Element {
   return (
     <div
       className="canvas-group-background-frame"
       data-group-background-id={props.group.id}
-      style={createCanvasGroupFrameStyle(props.group, props.zoom)}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
     />
   );
 }
@@ -9089,15 +9103,35 @@ const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
 ];
 
 const CANVAS_GROUP_RESIZE_LINE_DIRECTIONS: CanvasGroupResizeDirection[] = ['top', 'right', 'bottom', 'left'];
+const CANVAS_GROUP_TITLE_BASE_HEIGHT = 28;
+const CANVAS_GROUP_TITLE_BASE_MIN_WIDTH = 112;
+const CANVAS_GROUP_TITLE_HORIZONTAL_PADDING = 32;
+const CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR = 7;
+const CANVAS_GROUP_ACTION_PRIMARY_WIDTH = 76;
+const CANVAS_GROUP_ACTION_DANGER_WIDTH = 62;
+const CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP = 0;
 
 function cssPixelForCanvasZoom(value: number, zoom: number): string {
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   return `${value / safeZoom}px`;
 }
 
-function createCanvasGroupChromeStyle(zoom: number): CSSProperties {
+function groupReadableChromeScaleForZoom(zoom: number, maxScale: number): number {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const targetScale = safeZoom < 1 ? 1 / safeZoom : 1;
+  return Math.min(targetScale, Math.max(0, maxScale));
+}
+
+function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSProperties {
   return {
     '--canvas-group-border-width': cssPixelForCanvasZoom(1, zoom),
+    '--canvas-group-readable-scale': String(readableScale),
+    '--canvas-group-title-height': `${CANVAS_GROUP_TITLE_BASE_HEIGHT * readableScale}px`,
+    '--canvas-group-title-font-size': `${12 * readableScale}px`,
+    '--canvas-group-title-padding-left': `${12 * readableScale}px`,
+    '--canvas-group-title-padding-right': `${10 * readableScale}px`,
+    '--canvas-group-toolbar-button-padding-x': `${8 * readableScale}px`,
+    '--canvas-group-toolbar-font-size': `${11 * readableScale}px`,
     '--canvas-group-resize-line-width': cssPixelForCanvasZoom(2, zoom),
     '--canvas-group-resize-control-size': cssPixelForCanvasZoom(16, zoom),
     '--canvas-group-resize-edge-inset': cssPixelForCanvasZoom(12, zoom),
@@ -9111,12 +9145,29 @@ function createCanvasGroupChromeStyle(zoom: number): CSSProperties {
 
 function createCanvasGroupFrameStyle(
   group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title'>,
-  zoom: number
+  zoom: number,
+  selected = false
 ): CSSProperties {
-  const titleTabWidth = Math.min(Math.max(112, group.title.length * 7 + 32), Math.max(48, group.size.width - 8));
+  const titleBaseWidth = Math.max(
+    CANVAS_GROUP_TITLE_BASE_MIN_WIDTH,
+    group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR + CANVAS_GROUP_TITLE_HORIZONTAL_PADDING
+  );
+  const toolbarBaseWidth = selected
+    ? CANVAS_GROUP_ACTION_PRIMARY_WIDTH + CANVAS_GROUP_ACTION_DANGER_WIDTH
+    : 0;
+  const widthBase = Math.max(1, titleBaseWidth + toolbarBaseWidth + (selected ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0));
+  const readableScale = groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase);
+  const desiredTitleTabWidth = titleBaseWidth * readableScale;
+  const desiredToolbarWidth = toolbarBaseWidth * readableScale;
+  const titleTabWidth = Math.min(desiredTitleTabWidth, group.size.width);
+  const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP);
+  const toolbarWidth = selected && availableToolbarWidth >= 1
+    ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
+    : 0;
   return {
-    ...createCanvasGroupChromeStyle(zoom),
+    ...createCanvasGroupChromeStyle(zoom, readableScale),
     '--canvas-group-title-tab-width': `${titleTabWidth}px`,
+    '--canvas-group-toolbar-width': `${toolbarWidth}px`,
     left: group.position.x,
     top: group.position.y,
     width: group.size.width,
@@ -9299,7 +9350,7 @@ function CanvasGroupFrame(props: {
     <div
       className={`canvas-group-frame${props.selected ? ' is-selected' : ''}`}
       data-group-id={props.group.id}
-      style={createCanvasGroupFrameStyle(props.group, props.zoom)}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
       onClick={(event) => {
         stopCanvasEvent(event);
         selectGroup();

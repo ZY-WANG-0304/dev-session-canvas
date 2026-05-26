@@ -3069,6 +3069,12 @@ body {
   --canvas-group-header-height: 29px;
   --canvas-group-title-height: 28px;
   --canvas-group-title-tab-width: 112px;
+  --canvas-group-title-font-size: 12px;
+  --canvas-group-title-padding-left: 12px;
+  --canvas-group-title-padding-right: 10px;
+  --canvas-group-toolbar-width: 0px;
+  --canvas-group-toolbar-button-padding-x: 8px;
+  --canvas-group-toolbar-font-size: 11px;
   --canvas-group-border-width: 1px;
   --canvas-group-resize-line-width: 2px;
   --canvas-group-resize-control-size: 16px;
@@ -3156,13 +3162,12 @@ body {
   left: 0;
   top: 0;
   width: var(--canvas-group-title-tab-width);
-  max-width: calc(100% - 8px);
   min-width: 0;
   height: var(--canvas-group-title-height);
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding: 0 10px 0 12px;
+  padding: 0 var(--canvas-group-title-padding-right) 0 var(--canvas-group-title-padding-left);
   border-right: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
   border-bottom: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
   border-radius: 0;
@@ -3175,7 +3180,6 @@ body {
 
 .canvas-group-frame.is-selected .canvas-group-titlebar {
   min-width: 0;
-  max-width: max(48px, calc(100% - 150px));
   color: var(--vscode-panelTitle-activeForeground, var(--vscode-editor-foreground));
 }
 
@@ -3189,7 +3193,7 @@ body {
 
 .canvas-group-title .window-title-input {
   color: inherit;
-  font-size: 12px;
+  font-size: var(--canvas-group-title-font-size);
   font-weight: 600;
 }
 
@@ -3374,6 +3378,8 @@ body {
   display: inline-flex;
   align-items: stretch;
   gap: 0;
+  width: var(--canvas-group-toolbar-width);
+  max-width: calc(100% - var(--canvas-group-title-tab-width));
   height: var(--canvas-group-title-height);
   padding: 0;
   border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
@@ -3385,13 +3391,18 @@ body {
 }
 
 .canvas-group-toolbar button {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border: 0;
   border-radius: 0;
-  padding: 0 8px;
+  padding: 0 var(--canvas-group-toolbar-button-padding-x);
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--canvas-group-toolbar-font-size);
   line-height: 1;
   cursor: pointer;
 }
