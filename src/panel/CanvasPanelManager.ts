@@ -252,6 +252,13 @@ const NODE_PLACEMENT_SEARCH_RADIUS = 8;
 const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const CANVAS_GROUP_PADDING = 28;
+const CANVAS_GROUP_TITLE_HEIGHT = 28;
+const CANVAS_GROUP_MEMBER_INSETS = {
+  left: CANVAS_GROUP_PADDING,
+  top: CANVAS_GROUP_PADDING + CANVAS_GROUP_TITLE_HEIGHT,
+  right: CANVAS_GROUP_PADDING,
+  bottom: CANVAS_GROUP_PADDING
+} as const;
 const CANVAS_GROUP_COLLISION_PADDING = 24;
 const CANVAS_NODE_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
@@ -12828,10 +12835,10 @@ function buildClusterAvoidanceDeltas(
   }
 
   deltas.push(
-    { x: Math.round(containerRect.left + CANVAS_GROUP_PADDING - clusterRect.left), y: 0 },
-    { x: Math.round(containerRect.right - CANVAS_GROUP_PADDING - clusterRect.right), y: 0 },
-    { x: 0, y: Math.round(containerRect.top + CANVAS_GROUP_PADDING - clusterRect.top) },
-    { x: 0, y: Math.round(containerRect.bottom - CANVAS_GROUP_PADDING - clusterRect.bottom) }
+    { x: Math.round(containerRect.left + CANVAS_GROUP_MEMBER_INSETS.left - clusterRect.left), y: 0 },
+    { x: Math.round(containerRect.right - CANVAS_GROUP_MEMBER_INSETS.right - clusterRect.right), y: 0 },
+    { x: 0, y: Math.round(containerRect.top + CANVAS_GROUP_MEMBER_INSETS.top - clusterRect.top) },
+    { x: 0, y: Math.round(containerRect.bottom - CANVAS_GROUP_MEMBER_INSETS.bottom - clusterRect.bottom) }
   );
 
   return dedupeCanvasPositionDeltas(deltas).sort(
@@ -13022,7 +13029,7 @@ function createGroupFromSelection(
   }
 
   const sequence = readNextGroupSequence(previousState);
-  const groupRect = expandRectByPadding(selectionRect, CANVAS_GROUP_PADDING);
+  const groupRect = expandRectByInsets(selectionRect, CANVAS_GROUP_MEMBER_INSETS);
   const group = createCanvasGroupWithSequence(
     sequence,
     { x: groupRect.left, y: groupRect.top },
@@ -13343,7 +13350,7 @@ function expandGroupsToContainDirectMembers(
         return group;
       }
 
-      const containedRect = expandRectToContainRects(rectForGroup(group), memberRects, CANVAS_GROUP_PADDING);
+      const containedRect = expandRectToContainRects(rectForGroup(group), memberRects, CANVAS_GROUP_MEMBER_INSETS);
       const nextGroup = groupFromRect(group, containedRect);
       if (!groupsEqualGeometry(group, nextGroup)) {
         didChange = true;
@@ -14018,13 +14025,20 @@ function translateNode(node: CanvasNodeSummary, delta: CanvasNodePosition): Canv
   };
 }
 
-function expandRectToContainRects(rect: CanvasRect, innerRects: readonly CanvasRect[], padding: number): CanvasRect {
+interface CanvasRectInsets {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function expandRectToContainRects(rect: CanvasRect, innerRects: readonly CanvasRect[], insets: CanvasRectInsets): CanvasRect {
   return innerRects.reduce(
     (current, innerRect) => ({
-      left: Math.min(current.left, innerRect.left - padding),
-      top: Math.min(current.top, innerRect.top - padding),
-      right: Math.max(current.right, innerRect.right + padding),
-      bottom: Math.max(current.bottom, innerRect.bottom + padding)
+      left: Math.min(current.left, innerRect.left - insets.left),
+      top: Math.min(current.top, innerRect.top - insets.top),
+      right: Math.max(current.right, innerRect.right + insets.right),
+      bottom: Math.max(current.bottom, innerRect.bottom + insets.bottom)
     }),
     rect
   );
@@ -14052,11 +14066,15 @@ function boundingRectForRects(rects: readonly CanvasRect[]): CanvasRect | undefi
 }
 
 function expandRectByPadding(rect: CanvasRect, padding: number): CanvasRect {
+  return expandRectByInsets(rect, { left: padding, top: padding, right: padding, bottom: padding });
+}
+
+function expandRectByInsets(rect: CanvasRect, insets: CanvasRectInsets): CanvasRect {
   return {
-    left: rect.left - padding,
-    top: rect.top - padding,
-    right: rect.right + padding,
-    bottom: rect.bottom + padding
+    left: rect.left - insets.left,
+    top: rect.top - insets.top,
+    right: rect.right + insets.right,
+    bottom: rect.bottom + insets.bottom
   };
 }
 

@@ -43,6 +43,11 @@
 - [x] (2026-05-23 15:13Z) 修正节点入组避让可见性：节点拖拽或 resize 提交给宿主后，Webview 在下一次宿主状态更新时清理已提交的本地节点布局 draft，避免旧 draft 覆盖宿主返回的避让后坐标。
 - [x] (2026-05-23 15:13Z) 完成本次节点入组避让可见性验证：`npm run test:canvas-node-groups`、`npm run typecheck`、`npm run build`、`npx playwright test --config=playwright.config.mjs tests/playwright/webview-harness.spec.mjs --grep "node group drop applies"` 均通过。
 - [x] (2026-05-23 18:43Z) 按 resize 边缘调研结论补齐节点 resize 与分组 resize 的画布边缘自动平移：节点 resize 改为 Webview 自定义 8 向控制点，节点 / 分组 resize 过程都会把视口平移折算进本次 resize 草稿，释放后仍只提交一次宿主权威消息。
+- [x] (2026-05-26 01:02Z) 修正 Panel 风格分组背景层级：分组 body 的 `--vscode-panel-background` 实心背景改为渲染在 React Flow viewport 内且位于普通节点下方；标题、边框、toolbar 和 resize 控制点仍保留在 canvas shell 上层负责命中。
+- [x] (2026-05-26 01:31Z) 收敛分组选中 chrome：标题 tab 之外的顶部横向区域改为挖空透明，分组 resize UI 改为与节点一致的四边选中线和四角圆形控制点，分组边框与选中线按 viewport zoom 做反向缩放以保持屏幕可见线宽不变。
+- [x] (2026-05-26 02:10Z) 修正 Panel 分组直角与 body 边界：标题 tab / body 改为直角，body 顶部恢复 panel 边框；宿主成员容纳 inset 的顶部额外计入标题高度，使节点相对 body 上、左、右、下边界的视觉预留一致。
+- [x] (2026-05-26 02:18Z) 去除分组选中时 tab 区域 active 下划线，选中态保留四边 resize 线、四角控制点、标题文字前景和 toolbar。
+- [x] (2026-05-26 02:35Z) 将选中分组操作从右上角双按钮改为贴在标题 tab 右侧的双段按钮：左段取消分组，右段执行删除分组。
 - [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -84,14 +89,23 @@
 - 观察：四向挤开修复不能改变 resize 释放边界本身表达的归属意图。
   证据：`scripts/test/test-canvas-node-groups.mjs` 覆盖 resize 释放边界内完整包含的同父稳定节点和同父分组被纳入，释放边界仅交叉的同父节点 / 分组仍留在原父级或被挤开但不被纳入；也覆盖 resize 边界移动到直接成员节点 / 子分组内部时，它们从父分组移出。
 
-- 观察：分组自定义 overlay 的可命中 body 仍应保持不阻挡节点，因此八向 resize 只能把边 / 角手柄设为 pointer target，不能让整个分组框接管 pointer events。
-  证据：`CanvasGroupFrame` 继续保持 `.canvas-group-frame` 和 `.canvas-group-body` 不接管 pointer events；新增的 8 个 `.canvas-group-resize-handle-*` 手柄分别承担 resize 命中。
+- 观察：分组自定义 overlay 的可命中 body 仍应保持不阻挡节点，因此八向 resize 只能把边 / 角控制点设为 pointer target，不能让整个分组框接管 pointer events。
+  证据：`CanvasGroupFrame` 继续保持 `.canvas-group-frame` 和 `.canvas-group-body` 不接管 pointer events；选中时新增 8 个 `.canvas-group-resize-control` 透明命中区分别承担 resize 命中，并用 4 条 `.canvas-group-resize-line` 和四角圆点表达选中态。
 
 - 观察：Webview 分组草稿里的 `position` 既可能来自移动，也可能来自左 / 上方向 resize；不能仅凭 `draft.position` 推断“整棵子树正在移动”。
   证据：`applyCanvasGroupDrafts` 现在只把不含 `size` 且 position 真的变化的草稿视为移动草稿；含 `size` 的 resize 草稿只改变分组框边界，成员节点和子分组在释放前保持原位。
 
 - 观察：节点入组避让在宿主中已经计算，但 Webview 可能继续用 React Flow 拖拽产生的本地 `nodeLayoutDrafts` 覆盖宿主返回的避让后位置。
   证据：新增 Playwright 回归用例先把节点拖到已有组内节点上，再模拟宿主返回避让后的 `host/stateUpdated`；修复后 Webview 会清理已提交节点的 draft，显示宿主坐标，而不是继续显示鼠标释放处的重叠位置。
+
+- 观察：把分组 Panel body 背景直接画在 portal 到 canvas shell 的交互层上，会让该实心背景位于 React Flow 普通节点之上并视觉遮盖成员节点。
+  证据：本轮把背景 frame 单独 portal 到 `.react-flow__viewport`，设置在节点层下方；交互层 frame 改为透明，仅标题、边框、toolbar 和 resize 控制点继续在 shell 上层命中。Webview 用例断言背景与节点共享 viewport、背景层 `z-index = -1`、交互 frame 背景透明。
+
+- 观察：分组交互层被 canvas shell 统一 scale，React Flow viewport 内的背景层也会随 viewport scale；如果仍使用固定 CSS `1px` border，缩放后屏幕可见线宽会跟着变细或变粗。
+  证据：分组背景层和交互层都写入 `--canvas-group-border-width = 1px / zoom`、`--canvas-group-resize-line-width = 2px / zoom`；新增 Webview 用例在 `zoom = 0.5` 时断言 CSS border 变为 `2px`、选中线变为 `4px`，从而经过 viewport scale 后仍显示为 1px / 2px。
+
+- 观察：分组标题 tab 不是成员可用 body 区域的一部分；若宿主仍按完整分组矩形顶部只留 28px padding，节点视觉上会贴住 body 上边界。
+  证据：成员容纳 inset 的顶部改为 `CANVAS_GROUP_PADDING + CANVAS_GROUP_TITLE_HEIGHT`，创建分组和父级扩容都使用非对称 inset；宿主测试新增成员四边 inset 断言，Webview 测试断言成员节点距离 body 上边界至少 28px。
 
 ## 决策记录
 
@@ -114,6 +128,14 @@
 - 决策：group layer 使用 portal 到 canvas shell，而不是完全作为 React Flow 自定义节点。
   理由：方案 B 保持 group 不是 `CanvasNodeKind`；portal 既能复用 React Flow viewport，又能避免 pane 遮挡 group 标题栏和工具栏命中。
   日期/作者：2026-05-22 / Codex
+
+- 决策：分组拆成“背景层”和“交互层”两层渲染。
+  理由：产品要求 body 背景使用 `--vscode-panel-background`，但分组 body 不能盖住成员节点。背景层跟随 React Flow viewport 并位于普通节点下方；交互层 portal 到 canvas shell 维持标题、边框、toolbar 和 resize 控制点的命中优先级。
+  日期/作者：2026-05-26 / Codex
+
+- 决策：分组 resize 视觉复用节点 resize affordance 的结构语言。
+  理由：用户要求分组选中后的 resize UI 与节点对齐；因此不再显示 VSCode Panel 小方块手柄，改为选中后显示四边线、透明命中区和四角圆形控制点，同时保留分组 8 向 resize 能力。
+  日期/作者：2026-05-26 / Codex
 
 - 决策：侧栏本里程碑只做“更多”按钮和按分组路径排序 / 分段展示，不做可折叠持久树状态。
   理由：产品要求提供按分组树折叠展示选项，但同时确认画布分组本身不支持折叠；本里程碑先让侧栏显示入口和分组路径可用，不把侧栏折叠状态升级成画布分组事实。
@@ -186,7 +208,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 宿主状态验收：`npm run test:canvas-node-groups` 证明旧状态 normalize 后 `groups` 为空数组；创建空 group 得到默认标题和尺寸；删除后创建不复用分组编号；从两个同父级稳定对象创建 group 会设置成员关系；跨父级选择被拒绝；移动 group 会移动内部子树；拖动 / resize 释放后输出基础合法状态；节点拖入分组时移动节点簇避让已有同组节点；修复目标集合保持相对位置和原有重叠 / 非重叠关系；同父级分组冲突支持左右与上下四向挤开；取消 group 保留内部对象位置；删除节点不删除空 group。
 
-Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后工具栏可取消分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的最终位置，并让所有被选目标共用主鼠标释放点；拖动 group draft 移动子树并在边缘自动平移 viewport；group 支持上、下、左、右和四个角共 8 个方向 resize，resize 过程中只改变被 resize group 的边界，不移动成员节点或子分组；释放后由宿主状态同步。
+Webview 验收：Playwright harness 中，空白区可创建空 group；group frame 使用弱边框和标题；单击标题可编辑；选中 group 后标题 tab 右侧双段按钮可取消分组，右段可删除分组；Ctrl / Cmd 点击节点才增删多选，再次点击已选节点会取消，普通点击回退单选；多选节点后右键可以发送 `webview/createGroupFromSelection`；多选拖动会在 `webview/moveNode` 中携带全部选中目标的最终位置，并让所有被选目标共用主鼠标释放点；拖动 group draft 移动子树并在边缘自动平移 viewport；group 支持上、下、左、右和四个角共 8 个方向 resize，resize 过程中只改变被 resize group 的边界，不移动成员节点或子分组；释放后由宿主状态同步。
 
 持久化验收：reload 或窗口重开后，group、标题、位置、尺寸、父子关系和成员 `groupId` 恢复。模板保存 / 应用包含 group 的模板后，新节点和 group 重新生成 id，但保留相对层级关系。当前里程碑只覆盖模板 capture 和基础 apply 物化代码，仍需补真实 reload smoke。
 
@@ -296,6 +318,27 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 
     git diff --check
 
+2026-05-26 分组 Panel chrome 修复验证记录：
+
+    > dev-session-canvas@0.10.4 typecheck
+    > tsc --noEmit
+
+    > dev-session-canvas@0.10.4 test:canvas-node-groups
+    > node scripts/test/test-canvas-node-groups.mjs
+
+    > dev-session-canvas@0.10.4 build
+    > node scripts/build/build.mjs
+
+    Running 5 tests using 1 worker
+      ✓ canvas groups render, rename, and post group actions
+      ✓ canvas groups resize from all eight directions
+      ✓ canvas group border stroke stays screen-stable across zoom levels
+      ✓ canvas group resize draft keeps member nodes stationary until release
+      ✓ canvas group resize auto-pans at the canvas edge and keeps member drafts stationary
+    5 passed
+
+    git diff --check
+
 2026-05-22 本轮验证记录：
 
     > dev-session-canvas@0.10.4 typecheck
@@ -361,3 +404,13 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-23 15:13Z 修正节点入组避让结果在 Webview 中不可见的问题：拖拽 / resize 已提交节点的本地布局 draft 会在宿主权威状态更新时清理，避免覆盖宿主返回的避让后坐标。
 
 本次修订说明：2026-05-24 根据 resize 边缘交互调研结论，补充节点 resize 与分组 resize 的画布边缘自动平移实现。Webview 层复用既有画布自动平移控制器，resize 过程中持续更新草稿；自动平移仅改变视口，不改变拖拽 / resize 的归属意图或宿主最终合法状态收口语义。已补充节点 resize 到右下边缘、分组 resize 到右下边缘，以及分组 resize 自动平移过程中成员节点保持静止的 Playwright 覆盖。
+
+本次修订说明：2026-05-26 修正 VSCode Panel 风格分组 body 背景遮盖成员节点的问题。分组背景层改为挂载在 React Flow viewport 的节点下方，交互 chrome 保持 canvas shell portal；正式 UI、产品规格和设计文档同步记录“body 使用 panel 背景但不得压住成员节点”。
+
+本次修订说明：2026-05-26 继续收敛分组 Panel chrome：标题 tab 之外的顶部横向区域改为挖空透明；选中分组后显示与节点 resize 对齐的四边选中线、透明命中区和四角圆形控制点；分组普通边框和选中线按 viewport zoom 做反向缩放，使画布缩放时屏幕可见线宽保持不变。新增 Webview 回归覆盖 resize affordance、顶部挖空与 zoom 线宽。
+
+本次修订说明：2026-05-26 修正分组 Panel 形状与 body 可见边界：标题 tab 与 body 都改成直角，body 顶部显示 `--vscode-panel-border`；宿主成员容纳 inset 顶部额外计入标题高度，确保成员相对 body 顶部的视觉预留与左、右、下边界一致。已补充宿主成员 inset 和 Webview 样式断言。
+
+本次修订说明：2026-05-26 去除分组选中时标题 tab 的 active 下划线；选中态仅保留与节点 resize 对齐的四边选中线、四角控制点、标题文字前景和双段按钮。
+
+本次修订说明：2026-05-26 将分组选中操作改为标题 tab 右侧双段按钮。左段执行取消分组，右段执行删除分组；Webview 回归覆盖双段按钮位置、双段按钮布局和两种消息。

@@ -8916,11 +8916,50 @@ function CanvasGroupsViewportLayer(props: {
   onResizeEnd: () => void;
 }): JSX.Element {
   const viewport = useViewport();
-  if (!props.portalElement) {
-    return <></>;
-  }
+  const viewportElement = useStore(selectCanvasGroupBackgroundViewportElement);
 
-  return createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, props.portalElement);
+  return (
+    <>
+      {viewportElement
+        ? createPortal(<CanvasGroupBackgroundLayer groups={props.groups} zoom={viewport.zoom} />, viewportElement)
+        : null}
+      {props.portalElement
+        ? createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, props.portalElement)
+        : null}
+    </>
+  );
+}
+
+function selectCanvasGroupBackgroundViewportElement(state: ReactFlowState): HTMLDivElement | null {
+  const viewportElement = state.domNode?.querySelector('.react-flow__viewport');
+  return viewportElement instanceof HTMLDivElement ? viewportElement : null;
+}
+
+function CanvasGroupBackgroundLayer(props: {
+  groups: CanvasGroupSummary[];
+  zoom: number;
+}): JSX.Element {
+  const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
+  return (
+    <div className="canvas-group-background-layer" aria-hidden="true">
+      {orderedGroups.map((group) => (
+        <CanvasGroupBackgroundFrame key={group.id} group={group} zoom={props.zoom} />
+      ))}
+    </div>
+  );
+}
+
+function CanvasGroupBackgroundFrame(props: {
+  group: CanvasGroupSummary;
+  zoom: number;
+}): JSX.Element {
+  return (
+    <div
+      className="canvas-group-background-frame"
+      data-group-background-id={props.group.id}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom)}
+    />
+  );
 }
 
 function CanvasGroupLayer(props: {
@@ -8945,7 +8984,7 @@ function CanvasGroupLayer(props: {
   ) => void;
   onResizeEnd: () => void;
 }): JSX.Element {
-  const orderedGroups = [...props.groups].sort((left, right) => groupDepthForWebview(props.groups, left.id) - groupDepthForWebview(props.groups, right.id));
+  const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
   return (
     <div
       className="canvas-group-layer"
@@ -8973,6 +9012,12 @@ function CanvasGroupLayer(props: {
         />
       ))}
     </div>
+  );
+}
+
+function sortCanvasGroupsByDepthForWebview(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
+  return [...groups].sort(
+    (left, right) => groupDepthForWebview(groups, left.id) - groupDepthForWebview(groups, right.id)
   );
 }
 
@@ -9043,6 +9088,42 @@ const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
   'bottom-right'
 ];
 
+const CANVAS_GROUP_RESIZE_LINE_DIRECTIONS: CanvasGroupResizeDirection[] = ['top', 'right', 'bottom', 'left'];
+
+function cssPixelForCanvasZoom(value: number, zoom: number): string {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return `${value / safeZoom}px`;
+}
+
+function createCanvasGroupChromeStyle(zoom: number): CSSProperties {
+  return {
+    '--canvas-group-border-width': cssPixelForCanvasZoom(1, zoom),
+    '--canvas-group-resize-line-width': cssPixelForCanvasZoom(2, zoom),
+    '--canvas-group-resize-control-size': cssPixelForCanvasZoom(16, zoom),
+    '--canvas-group-resize-edge-inset': cssPixelForCanvasZoom(12, zoom),
+    '--canvas-group-resize-edge-thickness': cssPixelForCanvasZoom(12, zoom),
+    '--canvas-group-resize-dot-size': cssPixelForCanvasZoom(12, zoom),
+    '--canvas-group-resize-dot-border-width': cssPixelForCanvasZoom(2, zoom),
+    '--canvas-group-resize-dot-shadow-y': cssPixelForCanvasZoom(2, zoom),
+    '--canvas-group-resize-dot-shadow-blur': cssPixelForCanvasZoom(12, zoom)
+  } as CSSProperties;
+}
+
+function createCanvasGroupFrameStyle(
+  group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title'>,
+  zoom: number
+): CSSProperties {
+  const titleTabWidth = Math.min(Math.max(112, group.title.length * 7 + 32), Math.max(48, group.size.width - 8));
+  return {
+    ...createCanvasGroupChromeStyle(zoom),
+    '--canvas-group-title-tab-width': `${titleTabWidth}px`,
+    left: group.position.x,
+    top: group.position.y,
+    width: group.size.width,
+    height: group.size.height
+  } as CSSProperties;
+}
+
 function CanvasGroupFrame(props: {
   group: CanvasGroupSummary;
   selected: boolean;
@@ -9082,6 +9163,7 @@ function CanvasGroupFrame(props: {
     direction: CanvasGroupResizeDirection;
     autoPanOffset: CanvasNodePosition;
   } | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
 
   const selectGroup = (): void => props.onSelectGroup(props.group.id);
 
@@ -9217,12 +9299,7 @@ function CanvasGroupFrame(props: {
     <div
       className={`canvas-group-frame${props.selected ? ' is-selected' : ''}`}
       data-group-id={props.group.id}
-      style={{
-        left: props.group.position.x,
-        top: props.group.position.y,
-        width: props.group.size.width,
-        height: props.group.size.height
-      }}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom)}
       onClick={(event) => {
         stopCanvasEvent(event);
         selectGroup();
@@ -9259,20 +9336,59 @@ function CanvasGroupFrame(props: {
       <div className="canvas-group-border canvas-group-border-right" onPointerDown={beginDrag} />
       <div className="canvas-group-border canvas-group-border-bottom" onPointerDown={beginDrag} />
       <div className="canvas-group-border canvas-group-border-left" onPointerDown={beginDrag} />
-      {CANVAS_GROUP_RESIZE_DIRECTIONS.map((direction) => (
-        <button
-          key={direction}
-          type="button"
-          className={`canvas-group-resize-handle canvas-group-resize-handle-${direction} nodrag nopan`}
-          data-resize-direction={direction}
-          aria-label={`向 ${direction} 调整分组 ${props.group.title} 尺寸`}
-          onPointerDown={(event) => beginResize(event, direction)}
-        />
-      ))}
       {props.selected ? (
-        <div className="canvas-group-toolbar" data-group-toolbar="true">
-          <button type="button" onClick={() => props.onUngroup(props.group.id)}>取消分组</button>
-          <button type="button" onClick={() => props.onDeleteGroup(props.group.id)}>删除分组</button>
+        <>
+          {CANVAS_GROUP_RESIZE_LINE_DIRECTIONS.map((direction) => (
+            <span
+              key={`line-${direction}`}
+              className={`canvas-group-resize-line canvas-group-resize-line-${direction}`}
+              aria-hidden="true"
+            />
+          ))}
+          {CANVAS_GROUP_RESIZE_DIRECTIONS.map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              className={`canvas-group-resize-control canvas-group-resize-${direction} nodrag nopan`}
+              data-group-resize-direction={direction}
+              data-resize-direction={direction}
+              aria-label={`向 ${direction} 调整分组 ${props.group.title} 尺寸`}
+              style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}
+              onPointerDown={(event) => beginResize(event, direction)}
+            />
+          ))}
+        </>
+      ) : null}
+      {props.selected ? (
+        <div
+          ref={toolbarRef}
+          className="canvas-group-toolbar"
+          data-group-toolbar="true"
+          data-node-interactive="true"
+          onPointerDown={stopCanvasEvent}
+          onMouseDown={stopCanvasEvent}
+          onClick={stopCanvasEvent}
+        >
+          <button
+            type="button"
+            className="canvas-group-split-primary"
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              props.onUngroup(props.group.id);
+            }}
+          >
+            取消分组
+          </button>
+          <button
+            type="button"
+            className="canvas-group-split-danger"
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              props.onDeleteGroup(props.group.id);
+            }}
+          >
+            删除分组
+          </button>
         </div>
       ) : null}
     </div>
