@@ -124,7 +124,7 @@ components:
   canvas-group:
     backgroundColor: "var(--vscode-panel-background)"
     borderColor: "var(--vscode-panel-border)"
-    title: "panel header active tab shape, not a pill"
+    title: "straight-edged panel tab shape, not a pill"
   sidebar-section:
     hostSurface: "host-native sidebar surface by default"
     density: "compact workbench section"
@@ -293,10 +293,10 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 
 分组是画布空间组织对象，视觉上应更接近 VSCode Panel，而不是节点卡片或白板贴纸：
 
-- 外框、body、header、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。
-- 边框使用 `--vscode-panel-border`；标题贴在顶部 header 内，采用类似 Panel 顶部 active tab 的标题区域；不使用外浮胶囊、强阴影或高饱和标签。
-- 选中态通过 `focusBorder` 外描边、active tab 下划线和轻量矩形 toolbar 表达，不通过自定义分组颜色表达。
-- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；主要命中热区是标题、header、边框和 resize handle。
+- 外框、body、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。body 背景应绘制在普通节点下方，避免 Panel 面层压住成员节点内容。
+- 边框使用 `--vscode-panel-border`，tab 和 body 都采用直角边界，body 上边界也必须有边框，且画布缩放时保持屏幕可见线宽不变；标题贴在分组左上角，采用类似 Panel 顶部 active tab 的标题区域；标题 tab 之外的顶部横向区域应保持挖空透明，不绘制 header 背景条，不使用外浮胶囊、强阴影或高饱和标签。
+- 选中态通过与节点 resize 一致的四边选中线、四角圆形控制点、标题文字前景和贴在 tab 右侧的轻量双段按钮表达；tab 区域不额外显示 active 下划线，也不通过自定义分组颜色表达。
+- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致；主要命中热区是标题、不可见 header 拖动区、边框和 resize 控制点。
 
 ### Node Title And Subtitle
 

@@ -209,6 +209,7 @@ try {
   assert.strictEqual(groupedSelection.groups[0].title, 'Group 1');
   assert.strictEqual(groupedSelection.nodes.find((candidate) => candidate.id === 'note-a').groupId, groupedSelection.groups[0].id);
   assert.strictEqual(groupedSelection.nodes.find((candidate) => candidate.id === 'agent-a').groupId, groupedSelection.groups[0].id);
+  assertMemberInsetsForTest(groupedSelection.groups[0], groupedSelection.nodes.filter((candidate) => candidate.groupId === groupedSelection.groups[0].id));
 
   const crossParentSelection = createGroupFromSelection(
     state({
@@ -349,10 +350,10 @@ try {
 
   const movedTree = moveGroup(
     state({
-      nodes: [note('note-child', { x: 90, y: 90 }, { groupId: 'group-child' })],
+      nodes: [note('note-child', { x: 90, y: 112 }, { groupId: 'group-child' })],
       groups: [
-        group('group-parent', { x: 0, y: 0 }, { width: 260, height: 220 }),
-        group('group-child', { x: 50, y: 50 }, { width: 180, height: 140 }, { parentGroupId: 'group-parent' })
+        group('group-parent', { x: 0, y: 0 }, { width: 300, height: 280 }),
+        group('group-child', { x: 50, y: 56 }, { width: 180, height: 180 }, { parentGroupId: 'group-parent' })
       ]
     }),
     'group-parent',
@@ -360,8 +361,8 @@ try {
     { x: 900, y: 900 }
   );
   assert.deepStrictEqual(movedTree.groups.find((candidate) => candidate.id === 'group-parent').position, { x: 100, y: 90 });
-  assert.deepStrictEqual(movedTree.groups.find((candidate) => candidate.id === 'group-child').position, { x: 150, y: 140 });
-  assert.deepStrictEqual(movedTree.nodes.find((candidate) => candidate.id === 'note-child').position, { x: 190, y: 180 });
+  assert.deepStrictEqual(movedTree.groups.find((candidate) => candidate.id === 'group-child').position, { x: 150, y: 146 });
+  assert.deepStrictEqual(movedTree.nodes.find((candidate) => candidate.id === 'note-child').position, { x: 190, y: 202 });
 
   const resizedToAdopt = resizeGroup(
     state({
@@ -402,8 +403,8 @@ try {
   const containedNoteAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'note-contained');
   const crossingNoteAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'note-crossing');
   const containedFileAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'file-contained');
-  assert.deepStrictEqual(resizedPinnedGroup.position, { x: 0, y: 0 });
-  assert.deepStrictEqual(resizedPinnedGroup.size, { width: 430, height: 180 });
+  assert.deepStrictEqual(resizedPinnedGroup.position, { x: 0, y: -6 });
+  assert.deepStrictEqual(resizedPinnedGroup.size, { width: 430, height: 186 });
   assert.strictEqual(containedAfterResize.parentGroupId, 'group-parent');
   assert.strictEqual(crossingAfterResize.parentGroupId, undefined);
   assert.strictEqual(containedNoteAfterResize.groupId, 'group-parent');
@@ -563,4 +564,21 @@ function rectForTestGroup(group) {
 
 function rectsOverlapForTest(left, right) {
   return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+}
+
+function assertMemberInsetsForTest(group, members) {
+  const memberRect = members.map((member) => rectForTestNode(member)).reduce(
+    (current, rect) => ({
+      left: Math.min(current.left, rect.left),
+      top: Math.min(current.top, rect.top),
+      right: Math.max(current.right, rect.right),
+      bottom: Math.max(current.bottom, rect.bottom)
+    }),
+    rectForTestNode(members[0])
+  );
+  const groupRect = rectForTestGroup(group);
+  assert.ok(memberRect.left - groupRect.left >= 28);
+  assert.ok(memberRect.top - groupRect.top >= 56);
+  assert.ok(groupRect.right - memberRect.right >= 28);
+  assert.ok(groupRect.bottom - memberRect.bottom >= 28);
 }

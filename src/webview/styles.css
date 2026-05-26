@@ -3049,31 +3049,86 @@ body {
   pointer-events: none;
 }
 
-.canvas-group-frame {
+.canvas-group-background-layer {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  height: 0;
+  z-index: -1;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.canvas-group-frame,
+.canvas-group-background-frame {
   --canvas-group-panel-border: var(--vscode-panel-border);
   --canvas-group-panel-surface: var(--vscode-panel-background);
   --canvas-group-header-surface: var(--vscode-panel-background);
   --canvas-group-tab-surface: var(--vscode-panel-background);
-  --canvas-group-active-tab-border: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder));
+  --canvas-group-selection-color: var(--vscode-focusBorder);
   --canvas-group-header-height: 29px;
   --canvas-group-title-height: 28px;
+  --canvas-group-title-tab-width: 112px;
+  --canvas-group-border-width: 1px;
+  --canvas-group-resize-line-width: 2px;
+  --canvas-group-resize-control-size: 16px;
+  --canvas-group-resize-edge-inset: 12px;
+  --canvas-group-resize-edge-thickness: 12px;
+  --canvas-group-resize-dot-size: 12px;
+  --canvas-group-resize-dot-border-width: 2px;
+  --canvas-group-resize-dot-shadow-y: 2px;
+  --canvas-group-resize-dot-shadow-blur: 12px;
   position: absolute;
   box-sizing: border-box;
-  border: 1px solid var(--canvas-group-panel-border);
-  border-radius: var(--canvas-widget-radius-sm);
-  background: var(--canvas-group-panel-surface);
-  box-shadow:
-    inset 0 calc(var(--canvas-group-header-height) - 1px) 0 var(--canvas-group-header-surface),
-    inset 0 var(--canvas-group-header-height) 0 var(--vscode-panel-border);
+  border-radius: 0;
   pointer-events: none;
 }
 
+.canvas-group-background-frame {
+  border: 0;
+  background:
+    linear-gradient(var(--canvas-group-panel-surface), var(--canvas-group-panel-surface))
+      0 0 / var(--canvas-group-title-tab-width) var(--canvas-group-title-height) no-repeat,
+    linear-gradient(var(--canvas-group-panel-surface), var(--canvas-group-panel-surface))
+      0 var(--canvas-group-title-height) / 100% calc(100% - var(--canvas-group-title-height)) no-repeat;
+  box-shadow: none;
+}
+
+.canvas-group-background-frame::before {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  left: 0;
+  top: 0;
+  width: var(--canvas-group-title-tab-width);
+  height: var(--canvas-group-title-height);
+  border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-bottom: 0;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.canvas-group-background-frame::after {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  left: 0;
+  right: 0;
+  top: var(--canvas-group-title-height);
+  bottom: 0;
+  border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.canvas-group-frame {
+  border: var(--canvas-group-border-width) solid transparent;
+  background: transparent;
+}
+
 .canvas-group-frame.is-selected {
-  border-color: var(--vscode-focusBorder);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 45%, transparent),
-    inset 0 calc(var(--canvas-group-header-height) - 1px) 0 var(--canvas-group-header-surface),
-    inset 0 var(--canvas-group-header-height) 0 var(--canvas-group-active-tab-border);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .canvas-group-header {
@@ -3100,19 +3155,17 @@ body {
   position: absolute;
   left: 0;
   top: 0;
+  width: var(--canvas-group-title-tab-width);
   max-width: calc(100% - 8px);
-  min-width: min(112px, calc(100% - 8px));
+  min-width: 0;
   height: var(--canvas-group-title-height);
   box-sizing: border-box;
   display: flex;
   align-items: center;
   padding: 0 10px 0 12px;
-  border-right: 1px solid var(--vscode-panel-border);
-  border-bottom: 1px solid var(--vscode-panel-border);
-  border-top-left-radius: calc(var(--canvas-widget-radius-sm) - 1px);
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom-left-radius: 0;
+  border-right: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-bottom: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-radius: 0;
   background: var(--canvas-group-tab-surface);
   box-shadow: none;
   color: var(--vscode-panelTitle-inactiveForeground, var(--vscode-descriptionForeground));
@@ -3123,7 +3176,6 @@ body {
 .canvas-group-frame.is-selected .canvas-group-titlebar {
   min-width: 0;
   max-width: max(48px, calc(100% - 150px));
-  border-bottom-color: var(--canvas-group-active-tab-border);
   color: var(--vscode-panelTitle-activeForeground, var(--vscode-editor-foreground));
 }
 
@@ -3155,159 +3207,202 @@ body {
 }
 
 .canvas-group-border-top {
-  top: var(--canvas-group-header-height);
-  height: calc(100% - var(--canvas-group-header-height));
+  top: var(--canvas-group-title-height);
+  height: calc(100% - var(--canvas-group-title-height));
   cursor: default;
   pointer-events: none;
 }
 
 .canvas-group-border-bottom {
-  bottom: -4px;
+  bottom: calc((8px - var(--canvas-group-border-width)) / -2);
 }
 
 .canvas-group-border-left,
 .canvas-group-border-right {
-  top: var(--canvas-group-header-height);
+  top: var(--canvas-group-title-height);
   width: 8px;
-  height: calc(100% - var(--canvas-group-header-height));
+  height: calc(100% - var(--canvas-group-title-height));
   cursor: grab;
 }
 
 .canvas-group-border-left {
-  left: -4px;
+  left: calc((8px - var(--canvas-group-border-width)) / -2);
 }
 
 .canvas-group-border-right {
-  right: -4px;
+  right: calc((8px - var(--canvas-group-border-width)) / -2);
 }
 
-.canvas-group-resize-handle {
+.canvas-group-resize-line {
   position: absolute;
+  z-index: 29;
   box-sizing: border-box;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 2px;
+  border: 0 solid var(--canvas-group-selection-color);
+  pointer-events: none;
+}
+
+.canvas-group-resize-line-top,
+.canvas-group-resize-line-bottom {
+  left: 0;
+  width: 100%;
+  height: var(--canvas-group-border-width);
+  transform: translate(0, -50%);
+}
+
+.canvas-group-resize-line-top {
+  top: 0;
+  border-top-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-line-bottom {
+  top: 100%;
+  border-bottom-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-line-left,
+.canvas-group-resize-line-right {
+  top: 0;
+  width: var(--canvas-group-border-width);
+  height: 100%;
+  transform: translate(-50%, 0);
+}
+
+.canvas-group-resize-line-left {
+  left: 0;
+  border-left-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-line-right {
+  left: 100%;
+  border-right-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-control {
+  position: absolute;
+  z-index: 30;
+  margin: 0;
   padding: 0;
-  background: var(--canvas-group-tab-surface);
+  border: 0;
+  background: transparent;
   color: inherit;
   font: inherit;
   pointer-events: auto;
 }
 
-.canvas-group-resize-handle-top,
-.canvas-group-resize-handle-right,
-.canvas-group-resize-handle-bottom,
-.canvas-group-resize-handle-left {
-  border-color: var(--vscode-panel-border);
-  background: var(--canvas-group-tab-surface);
-  opacity: 0;
-  pointer-events: none;
+.canvas-group-resize-control::after {
+  content: '';
+  position: absolute;
+  inset: 50%;
+  width: var(--canvas-group-resize-dot-size);
+  height: var(--canvas-group-resize-dot-size);
+  border-radius: 999px;
+  border: var(--canvas-group-resize-dot-border-width) solid var(--vscode-editor-background);
+  background: var(--canvas-group-selection-color);
+  box-shadow: 0 var(--canvas-group-resize-dot-shadow-y) var(--canvas-group-resize-dot-shadow-blur) rgba(15, 23, 42, 0.35);
+  transform: translate(-50%, -50%);
 }
 
-.canvas-group-frame.is-selected .canvas-group-resize-handle {
-  border-color: var(--vscode-focusBorder);
+.canvas-group-resize-top,
+.canvas-group-resize-bottom {
+  left: var(--canvas-group-resize-edge-inset);
+  right: var(--canvas-group-resize-edge-inset);
+  height: var(--canvas-group-resize-edge-thickness);
 }
 
-.canvas-group-frame.is-selected .canvas-group-resize-handle-top,
-.canvas-group-frame.is-selected .canvas-group-resize-handle-right,
-.canvas-group-frame.is-selected .canvas-group-resize-handle-bottom,
-.canvas-group-frame.is-selected .canvas-group-resize-handle-left,
-.canvas-group-frame:hover .canvas-group-resize-handle-top,
-.canvas-group-frame:hover .canvas-group-resize-handle-right,
-.canvas-group-frame:hover .canvas-group-resize-handle-bottom,
-.canvas-group-frame:hover .canvas-group-resize-handle-left {
-  opacity: 1;
-  pointer-events: auto;
+.canvas-group-resize-top {
+  top: calc(var(--canvas-group-resize-edge-thickness) / -2);
 }
 
-.canvas-group-resize-handle-top,
-.canvas-group-resize-handle-bottom {
-  left: 50%;
-  width: 26px;
-  height: 8px;
-  margin-left: -13px;
-  cursor: ns-resize;
+.canvas-group-resize-bottom {
+  bottom: calc(var(--canvas-group-resize-edge-thickness) / -2);
 }
 
-.canvas-group-resize-handle-top {
-  top: -5px;
+.canvas-group-resize-left,
+.canvas-group-resize-right {
+  top: var(--canvas-group-resize-edge-inset);
+  bottom: var(--canvas-group-resize-edge-inset);
+  width: var(--canvas-group-resize-edge-thickness);
 }
 
-.canvas-group-resize-handle-bottom {
-  bottom: -5px;
+.canvas-group-resize-left {
+  left: calc(var(--canvas-group-resize-edge-thickness) / -2);
 }
 
-.canvas-group-resize-handle-left,
-.canvas-group-resize-handle-right {
-  top: 50%;
-  width: 8px;
-  height: 26px;
-  margin-top: -13px;
-  cursor: ew-resize;
+.canvas-group-resize-right {
+  right: calc(var(--canvas-group-resize-edge-thickness) / -2);
 }
 
-.canvas-group-resize-handle-left {
-  left: -5px;
+.canvas-group-resize-top-left,
+.canvas-group-resize-top-right,
+.canvas-group-resize-bottom-left,
+.canvas-group-resize-bottom-right {
+  width: var(--canvas-group-resize-control-size);
+  height: var(--canvas-group-resize-control-size);
 }
 
-.canvas-group-resize-handle-right {
-  right: -5px;
+.canvas-group-resize-top-left {
+  top: calc(var(--canvas-group-resize-control-size) / -2);
+  left: calc(var(--canvas-group-resize-control-size) / -2);
 }
 
-.canvas-group-resize-handle-top-left,
-.canvas-group-resize-handle-top-right,
-.canvas-group-resize-handle-bottom-left,
-.canvas-group-resize-handle-bottom-right {
-  width: 14px;
-  height: 14px;
+.canvas-group-resize-top-right {
+  top: calc(var(--canvas-group-resize-control-size) / -2);
+  right: calc(var(--canvas-group-resize-control-size) / -2);
 }
 
-.canvas-group-resize-handle-top-left {
-  left: -6px;
-  top: -6px;
-  cursor: nwse-resize;
+.canvas-group-resize-bottom-left {
+  bottom: calc(var(--canvas-group-resize-control-size) / -2);
+  left: calc(var(--canvas-group-resize-control-size) / -2);
 }
 
-.canvas-group-resize-handle-top-right {
-  right: -6px;
-  top: -6px;
-  cursor: nesw-resize;
+.canvas-group-resize-bottom-right {
+  right: calc(var(--canvas-group-resize-control-size) / -2);
+  bottom: calc(var(--canvas-group-resize-control-size) / -2);
 }
 
-.canvas-group-resize-handle-bottom-left {
-  left: -6px;
-  bottom: -6px;
-  cursor: nesw-resize;
-}
-
-.canvas-group-resize-handle-bottom-right {
-  right: -6px;
-  bottom: -6px;
-  cursor: nwse-resize;
+.canvas-group-resize-top::after,
+.canvas-group-resize-right::after,
+.canvas-group-resize-bottom::after,
+.canvas-group-resize-left::after {
+  display: none;
 }
 
 .canvas-group-toolbar {
   position: absolute;
-  right: 6px;
-  top: 3px;
+  left: var(--canvas-group-title-tab-width);
+  top: 0;
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: var(--canvas-widget-radius-sm);
-  background: var(--vscode-panel-background);
+  align-items: stretch;
+  gap: 0;
+  height: var(--canvas-group-title-height);
+  padding: 0;
+  border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-left: 0;
+  border-radius: 0;
+  background: var(--canvas-group-panel-surface);
   box-shadow: none;
   pointer-events: auto;
 }
 
 .canvas-group-toolbar button {
   border: 0;
-  border-radius: calc(var(--canvas-widget-radius-sm) - 2px);
-  padding: 2px 7px;
+  border-radius: 0;
+  padding: 0 8px;
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
   font-size: 11px;
+  line-height: 1;
   cursor: pointer;
+}
+
+.canvas-group-split-primary {
+  min-width: 0;
+}
+
+.canvas-group-split-danger {
+  border-left: var(--canvas-group-border-width) solid var(--canvas-group-panel-border) !important;
+  color: var(--vscode-errorForeground, #fca5a5) !important;
 }
 
 .canvas-group-toolbar button:hover,
