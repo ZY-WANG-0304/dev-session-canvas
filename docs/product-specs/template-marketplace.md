@@ -236,7 +236,7 @@
 - ✅ 分类体系：自由标签（发布者自定义）
 - ✅ 安装语义：下载到本地模板库，与本地模板并列管理
 - ✅ 国际化：不做多语言
-- ✅ 大小限制：只限文件大小（不限节点数）；发布 API 当前默认 5MB，并通过 `MARKETPLACE_MAX_TEMPLATE_BYTES` 保持可配置，最终产品阈值仍待确认
+- ✅ 大小限制：模板主体 `template.json` 保持 5MB hard limit；完整模板包提升为 50MB 压缩包 hard limit / 100MB 解压后 hard limit，并对 README、CHANGELOG、缩略图、单媒体、媒体总量和文件数量分别设限
 - ✅ Provider 依赖：浏览时标注，安装时警告但允许，不可用时节点启动报错
 - ✅ 举报流程：完整管理后台（举报队列、用户管理、统计面板、内容管理）
 - ✅ 自动化内容安全策略：确定性字段检查 + 危险链接 / 控制字符过滤 + 事后举报，不把外部 AI 审核作为 Phase 1-4 硬依赖
@@ -246,11 +246,14 @@
 - ✅ 技术选型目标口径：以 Phase 4 完整目标为边界，版本管理、治理后台、审计日志和统计面板不另起自建后端
 - ✅ 主域名与浏览器入口计划：`https://dscanvas.dev/templates`，预览仍先使用 `*.workers.dev`
 - ✅ GitHub OAuth App 归属：先用个人 GitHub 账号创建，不要求先建 GitHub Organization；后续如需团队交接再转移到组织
+- ✅ 模板发布单元：后续按“模板包”管理，包内包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和 `media/thumbnail.png`；README 可引用包内图片 / 视频媒体，当前表单字段作为兼容输入，由 Worker 组装成同一包模型
+- ✅ README 媒体策略：只内嵌渲染包内相对资源；外部图片 / 视频默认作为普通链接；视频不 autoplay 并延迟加载；浏览器和 VSCode Webview 使用同一 sanitizer
+- ✅ 版本语义：区分 `template version` 与 `listing revision`；模板主体或行为变化才触发安装更新，README / 描述 / 标签 / 截图 / 视频等展示变更不触发已安装模板更新
+- ✅ 模板包用户教育：普通发布者不需要先理解包格式，发布页通过包结构预览、lint 结果和媒体规则提示渐进解释；高级作者再使用 starter package、schema、包上传、校验和作者文档
 
 ### 8.2 待确认
 - ⏳ 市场品牌展示名 / 页面标题
 - ⏳ 是否需要 `templates.dscanvas.dev` 作为跳转别名
-- ⏳ 文件大小最终阈值（当前发布 API 默认 5MB，可配置）
 - ⏳ 综合热度排序的具体加权算法
 
 ## 9. 后端架构概要
@@ -265,9 +268,10 @@
 | 验证 | 上传时 Zod schema 校验 + 危险链接 / 控制字符过滤 |
 | Web 前端 | React + TypeScript + Vite + Tailwind + shadcn/ui，浏览器端部署到 Cloudflare Workers Static Assets，VSCode Webview 端本地打包 |
 | 浏览器正式入口 | `https://dscanvas.dev/templates`，浏览器构建需支持 `/templates/` base path；预览环境仍使用 `*.workers.dev` |
+| 模板包 | R2 canonical 对象为 `package.zip`，同时保留兼容 `template.json`、`thumbnail.png` 和 D1 派生索引；安装默认轻量化，不下载 README 视频等展示媒体 |
 | OAuth App 环境 | GitHub OAuth App 只有单一 callback URL，预览 `*.workers.dev` 与生产 `dscanvas.dev` 建议分别创建 OAuth App，共用同一套登录实现 |
 | 测试 | Vitest + miniflare + Playwright |
-| Phase 4 承载 | D1 管理 `template_versions`、`reports`、`admin_roles`、`admin_audit_logs`、`template_daily_stats`，R2 保存不可变版本对象，Worker 强制执行作者/管理员权限 |
+| Phase 4 承载 | D1 管理 `template_versions`、`listing_revisions`、`reports`、`admin_roles`、`admin_audit_logs`、`template_daily_stats`，R2 保存不可变版本对象，Worker 强制执行作者/管理员权限 |
 
 技术选型已确认，并以 Phase 4 的版本管理、治理后台、审计日志和统计面板为目标边界；详见 `docs/design-docs/template-marketplace.md`。
 
