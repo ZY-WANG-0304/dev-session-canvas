@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.10.7 - Preview Terminal TUI Input Hotfix
+
+相对 `0.10.6`，`0.10.7` 是同一 `0.10.x` 公开 `Preview` 线内的 Terminal TUI 输入热修复。它保留 `0.10.6` 已验证的 Agent 异常提醒、`0.10.5` 的 Note Markdown 预览源码定位与可恢复草稿模型、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点修复正常安装后的生产 Webview bundle 中，画布 `Terminal` 节点进入 Vim / `glab auth login` 等 TUI 后输入卡死的问题。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.6` bump 到 `0.10.7`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Webview 生产构建将裸导入 `@xterm/xterm` 显式重定向到浏览器 CommonJS 入口 `@xterm/xterm/lib/xterm.js`，避开 xterm ESM 入口在 esbuild production minify 下的 DECRQM / `requestMode` 运行时错误
+- 修复正常安装的主扩展中，`Terminal` 节点进入 vi 风格 alternate screen 或交互式鉴权 TUI 后，Host 侧仍写入 PTY 但 Webview 侧控制序列解析中断、导致用户输入看似卡死的问题
+- 新增 `test:webview-build-xterm-entry`，直接在 minified Webview bundle 上发送 `CSI ? 12 $ p` 探针，确保 xterm 能返回合法模式响应，避免调试构建可用但发布构建损坏的回归
+- 补充 Playwright 回归，覆盖 `Agent` / `Terminal` 节点进入 vi 风格 alternate screen 后仍能接收输入，并确认节点控制按钮不被 TUI 状态阻塞
+- 同步终端运行时设计文档，记录 `0.10.6` 生产诊断结论、xterm 入口选择约束与验证口径
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.6` 升级到 `0.10.7` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.7`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.10.7` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.7` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.6 - Preview Agent Abnormal Interruption Notification Patch
 
 相对 `0.10.5`，`0.10.6` 是同一 `0.10.x` 公开 `Preview` 线内的 Agent 异常提醒补丁。它保留 `0.10.5` 已验证的 Note Markdown 预览源码定位与可恢复草稿模型、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点补齐 Codex / Claude Code Agent 已运行会话异常中断时的节点内提醒与可选外部通知。

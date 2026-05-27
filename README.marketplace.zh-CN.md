@@ -48,22 +48,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.10.6 版本亮点
+## 0.10.7 版本亮点
 
-当前公开的 `0.10.6` 版本是 `0.10.x` Preview 线内一次聚焦 Agent 异常提醒的补丁。它保留 `0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
+当前公开的 `0.10.7` 版本是 `0.10.x` Preview 线内一次聚焦生产构建 Terminal TUI 输入的热修复。它保留 `0.10.6` 的 Agent 异常中断提醒、`0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
 
-- Codex / Claude Code `Agent` 节点已进入运行态后，如果在非用户主动停止的情况下以非 `0` 退出，现在会复用既有节点 attention 状态提醒用户
-- 启动失败、`resume-failed`、用户主动停止、清理停止、正常 `0` 退出和 `Terminal` 节点退出仍被排除，不进入这条额外提醒路径
-- 新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；显式设为 `codex` 后，Codex 高置信 stream-disconnect 文案可在进程退出前触发补充提醒
-- Codex stream-disconnect 匹配只扫描新增输出，避免下一轮输入、配置切换或 live-runtime attach 后重复提醒历史 buffer 中的同一行
-- Claude Code 当前不启用文本匹配；在缺少真实 Claude 输出样本或结构化 `StopFailure` 证据前，只保留更安全的异常终态兜底
+- 生产 Webview 构建现在会把裸导入 `@xterm/xterm` 指向浏览器 CommonJS 入口 `@xterm/xterm/lib/xterm.js`
+- 该入口选择避开 xterm ESM 入口在 esbuild production minify 下的 DECRQM / `requestMode` 解析运行时错误，避免 TUI 控制序列处理中断
+- 正常安装后的 `Terminal` 节点进入 vi 风格 alternate screen、Vim 或 `glab auth login` 等交互式 TUI 后，仍可继续接收用户输入
+- 新增 `test:webview-build-xterm-entry`，在 minified bundle 上直接探测 xterm 模式响应，避免调试构建可用但生产构建损坏的回归再次漏过
+- Playwright 回归现在覆盖 `Agent` / `Terminal` 节点进入 vi 风格 alternate screen 后仍能输入，并确认节点控制按钮不被 TUI 状态阻塞
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.10.5` 升级到 `0.10.6` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge` 或 `devSessionCanvas.notifications.strongTerminalAttentionReminder`，升级到 `0.10.6` 后会继续沿用该明确选择；新增异常输出文本匹配配置保持默认 `off`，只有显式设为 `codex` 才会启用
+- 首次安装与从 `0.10.6` 升级到 `0.10.7` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.10.7` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 

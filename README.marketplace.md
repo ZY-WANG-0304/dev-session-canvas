@@ -48,22 +48,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.6 Highlights
+## 0.10.7 Highlights
 
-The public `0.10.6` release is a focused `0.10.x` Preview patch for Agent abnormal interruption notifications. It keeps the `0.10.5` Note Markdown source-position and recoverable-draft fixes, the `0.10.4` execution-terminal link refresh performance fix, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
+The public `0.10.7` release is a focused `0.10.x` Preview hotfix for Terminal TUI input in production builds. It keeps the `0.10.6` Agent abnormal interruption notification patch, the `0.10.5` Note Markdown source-position and recoverable-draft fixes, the `0.10.4` execution-terminal link refresh performance fix, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
 
-- Codex / Claude Code `Agent` nodes now raise the existing node attention state when a running session exits abnormally with a non-zero code outside a user stop
-- Startup failures, `resume-failed`, user stops, cleanup stops, normal zero exits, and `Terminal` node exits remain excluded from this additional reminder path
-- A new `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` setting defaults to `off`; setting it to `codex` enables high-confidence Codex stream-disconnect text reminders before the process exits
-- Codex stream-disconnect matching only scans new output, so the same historical buffer line is not re-notified after the next prompt, a setting change, or live-runtime attach
-- Claude Code does not use text matching yet; without a real Claude output sample or structured `StopFailure` evidence, it keeps the safer abnormal-exit fallback only
+- Production Webview builds now resolve the bare `@xterm/xterm` import to the browser CommonJS entry `@xterm/xterm/lib/xterm.js`
+- This avoids the xterm ESM entry regression under esbuild production minification where DECRQM / `requestMode` parsing could throw and interrupt TUI control-sequence handling
+- Installed `Terminal` nodes can continue accepting input inside vi-style alternate screens and interactive TUI flows such as Vim or `glab auth login`
+- The release adds a minified-bundle xterm probe through `test:webview-build-xterm-entry` so a debug-only pass cannot hide this production failure mode again
+- Playwright regression coverage now verifies that `Agent` / `Terminal` nodes still accept input after entering a vi-style alternate screen, and that node controls remain usable
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.5` to `0.10.6` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge` or `devSessionCanvas.notifications.strongTerminalAttentionReminder`, upgrading to `0.10.6` preserves that explicit choice. The new abnormal-output text matching setting stays `off` unless you explicitly enable the `codex` mode
+- First-time installs and upgrades from `0.10.6` to `0.10.7` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.10.7` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
