@@ -11196,13 +11196,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const deleteMembersAction = { title: '连同内部节点一起删除' };
-    const keepMembersAction = { title: '仅删除分组框' };
+    const deleteImpact = collectCanvasGroupDeleteImpact(this.state, groupId);
+    const deleteMembersAction = {
+      title: `一并删除内部所有节点与子分组（${deleteImpact.nodeIds.length} 个节点，${Math.max(0, deleteImpact.groupIds.size - 1)} 个子分组）`
+    };
+    const keepMembersAction = { title: '仅删除分组框并保留内部对象' };
     const selection = await vscode.window.showWarningMessage(
       `删除分组「${group.title}」？`,
       {
         modal: true,
-        detail: '选择连同内部节点一起删除，或仅移除分组框并保留内部节点。'
+        detail: formatCanvasGroupDeleteImpactDetail(deleteImpact)
       },
       deleteMembersAction,
       keepMembersAction
@@ -11220,10 +11223,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const groupIdsToDelete = collectGroupSubtreeIds(this.state.groups ?? [], groupId);
-    const nodeIdsToDelete = this.state.nodes
-      .filter((node) => node.groupId && groupIdsToDelete.has(node.groupId))
-      .map((node) => node.id);
+    const groupIdsToDelete = deleteImpact.groupIds;
+    const nodeIdsToDelete = deleteImpact.nodeIds;
 
     for (const nodeId of nodeIdsToDelete) {
       const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
@@ -12410,6 +12411,7 @@ function applyCanvasTemplateToState(
     nextGroupSequence += 1;
     groupIdByTemplateIndex.set(index, groupId);
   }
+  const parentGroupIndexByTemplateIndex = resolveTemplateGroupParentIndexesForApply(templateGroups);
   const materializedGroups = templateGroups.map((templateGroup, index) => {
     const groupId = groupIdByTemplateIndex.get(index);
     if (!groupId) {
@@ -12421,6 +12423,7 @@ function applyCanvasTemplateToState(
       bounds.origin,
       resolvedTopLeft,
       groupIdByTemplateIndex,
+      parentGroupIndexByTemplateIndex.get(index),
       options.targetGroupId
     );
   }).filter((group): group is CanvasGroupSummary => Boolean(group));
@@ -12501,6 +12504,7 @@ function materializeTemplateGroup(
   templateOrigin: CanvasNodePosition,
   placedTopLeft: CanvasNodePosition,
   groupIdByTemplateIndex: ReadonlyMap<number, string>,
+  parentGroupIndex: number | undefined,
   rootParentGroupId?: string
 ): CanvasGroupSummary {
   return {
@@ -12512,10 +12516,55 @@ function materializeTemplateGroup(
     }),
     size: normalizeCanvasGroupFootprint(templateGroup.size),
     parentGroupId:
-      templateGroup.parentGroupIndex === undefined
+      parentGroupIndex === undefined
         ? rootParentGroupId
-        : groupIdByTemplateIndex.get(templateGroup.parentGroupIndex)
+        : groupIdByTemplateIndex.get(parentGroupIndex)
   };
+}
+
+function resolveTemplateGroupParentIndexesForApply(
+  templateGroups: readonly NonNullable<CanvasTemplate['groups']>[number][]
+): Map<number, number> {
+  const parentIndexByGroupIndex = new Map<number, number>();
+
+  for (const [index, templateGroup] of templateGroups.entries()) {
+    const parentGroupIndex = templateGroup.parentGroupIndex;
+    if (
+      parentGroupIndex === undefined ||
+      !Number.isInteger(parentGroupIndex) ||
+      parentGroupIndex < 0 ||
+      parentGroupIndex >= templateGroups.length ||
+      parentGroupIndex === index
+    ) {
+      continue;
+    }
+
+    if (!wouldCreateTemplateGroupParentCycle(parentIndexByGroupIndex, index, parentGroupIndex)) {
+      parentIndexByGroupIndex.set(index, parentGroupIndex);
+    }
+  }
+
+  return parentIndexByGroupIndex;
+}
+
+function wouldCreateTemplateGroupParentCycle(
+  parentIndexByGroupIndex: ReadonlyMap<number, number>,
+  groupIndex: number,
+  parentGroupIndex: number
+): boolean {
+  let nextParentIndex: number | undefined = parentGroupIndex;
+  const visited = new Set<number>();
+
+  while (nextParentIndex !== undefined) {
+    if (nextParentIndex === groupIndex || visited.has(nextParentIndex)) {
+      return true;
+    }
+
+    visited.add(nextParentIndex);
+    nextParentIndex = parentIndexByGroupIndex.get(nextParentIndex);
+  }
+
+  return false;
 }
 
 function materializeTemplateNode(
@@ -13355,6 +13404,40 @@ function isEmptyCanvasGroup(state: CanvasPrototypeState, groupId: string): boole
     !state.nodes.some((node) => node.groupId === groupId) &&
     !(state.groups ?? []).some((group) => group.parentGroupId === groupId)
   );
+}
+
+interface CanvasGroupDeleteImpact {
+  groupIds: Set<string>;
+  nodeIds: string[];
+  executionNodeCount: number;
+}
+
+function collectCanvasGroupDeleteImpact(state: CanvasPrototypeState, groupId: string): CanvasGroupDeleteImpact {
+  const groupIds = collectGroupSubtreeIds(state.groups ?? [], groupId);
+  const nodeIds = state.nodes
+    .filter((node) => node.groupId && groupIds.has(node.groupId))
+    .map((node) => node.id);
+  const executionNodeCount = state.nodes.filter((node) => nodeIds.includes(node.id) && isExecutionNodeKind(node.kind)).length;
+
+  return {
+    groupIds,
+    nodeIds,
+    executionNodeCount
+  };
+}
+
+function formatCanvasGroupDeleteImpactDetail(impact: CanvasGroupDeleteImpact): string {
+  const childGroupCount = Math.max(0, impact.groupIds.size - 1);
+  const parts = [
+    `一并删除会递归删除内部 ${impact.nodeIds.length} 个节点和 ${childGroupCount} 个子分组。`,
+    '仅删除分组框会保留内部对象并提升到当前父级。'
+  ];
+
+  if (impact.executionNodeCount > 0) {
+    parts.push(`其中 ${impact.executionNodeCount} 个执行节点会先终止并清理运行会话。`);
+  }
+
+  return parts.join(' ');
 }
 
 function collectGroupSubtreeIds(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {

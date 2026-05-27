@@ -646,21 +646,43 @@ function parseTemplateGroups(value: unknown): CanvasTemplateGroupSnapshot[] {
     throw new Error('模板 groups 字段不是数组。');
   }
 
-  return value.map((group, index) => parseTemplateGroup(group, index));
+  const groups = value.map((group, index) => parseTemplateGroup(group, index, value.length));
+  assertTemplateGroupParentGraphIsAcyclic(groups);
+  return groups;
 }
 
-function parseTemplateGroup(value: unknown, index: number): CanvasTemplateGroupSnapshot {
+function parseTemplateGroup(value: unknown, index: number, groupCount: number): CanvasTemplateGroupSnapshot {
   if (!isRecord(value)) {
     throw new Error(`模板第 ${index + 1} 个分组不是有效对象。`);
   }
 
   const parentGroupIndex = normalizeTemplateGroupIndex(value.parentGroupIndex);
+  if (parentGroupIndex !== undefined && parentGroupIndex >= groupCount) {
+    throw new Error(`模板第 ${index + 1} 个分组引用了不存在的父分组索引。`);
+  }
+
   return {
     title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : `Group ${index + 1}`,
     position: parseTemplatePosition(value.position, `模板分组 ${index + 1}`),
     size: parseTemplateSize(value.size, `模板分组 ${index + 1}`),
     parentGroupIndex: parentGroupIndex !== undefined && parentGroupIndex !== index ? parentGroupIndex : undefined
   };
+}
+
+function assertTemplateGroupParentGraphIsAcyclic(groups: readonly CanvasTemplateGroupSnapshot[]): void {
+  for (const [index] of groups.entries()) {
+    const visited = new Set<number>();
+    let nextParentIndex = groups[index]?.parentGroupIndex;
+
+    while (nextParentIndex !== undefined) {
+      if (visited.has(nextParentIndex)) {
+        throw new Error(`模板第 ${index + 1} 个分组形成了循环父子关系。`);
+      }
+
+      visited.add(nextParentIndex);
+      nextParentIndex = groups[nextParentIndex]?.parentGroupIndex;
+    }
+  }
 }
 
 function parseTemplateEdges(value: unknown, nodeCount: number): CanvasTemplateEdgeSnapshot[] {

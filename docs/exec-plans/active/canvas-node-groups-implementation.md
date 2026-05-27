@@ -51,7 +51,8 @@
 - [x] (2026-05-26 03:20Z) 修正侧栏节点列表显示模式入口：移除 Webview 内自绘更多按钮，改由 `节点` view 标题右上角 VSCode 原生 `...` 菜单切换平铺 / 按分组树展示，默认使用按分组树展示；按分组树展示改成可折叠的分组 section 和“未分组”section。
 - [x] (2026-05-26 10:55Z) 完成本轮 sidebar 验证：`npm run typecheck`、`node scripts/test/test-extension-manifest.mjs`、`npm run test:sidebar-list-colors`、`npm run build` 和 `git diff --check` 均通过；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 已覆盖侧栏分组树路径，但随后在既有 Note Markdown 文件关联用例中超时，暂不作为本轮 sidebar blocker。
 - [x] (2026-05-27 16:40 +0800) 处理 PR review：模板应用改为两阶段预分配 template group id，支持 `parentGroupIndex` 指向后方父分组；命令面板补齐“创建空分组”和“从选中项创建分组”，不增加快捷键。
-- [ ] 继续完善删除分组对话框的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
+- [x] (2026-05-27 17:40 +0800) 处理第二轮 PR review：模板解析拒绝越界和循环 `parentGroupIndex`，模板应用兜底切断循环父链；删除非空分组确认文案改为明确递归删除内部所有节点与子分组，并补充嵌套删除确认 smoke 覆盖。
+- [ ] 继续完善删除分组对话框保留成员分支的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
 ## 意外与发现
@@ -113,6 +114,12 @@
 - 观察：模板保存会保留当前 `state.groups` 顺序，而从已有分组和同级对象创建外层分组时，新父分组可能排在子分组之后。
   证据：PR review 指出 `applyCanvasTemplateToState` 边遍历边解析 `parentGroupIndex` 会让 child-before-parent 模板丢失嵌套关系；本轮改为先为所有 template group 分配 id，再物化 `parentGroupId`，并用宿主测试覆盖 forward `parentGroupIndex`。
 
+- 观察：外部导入模板不能信任 `parentGroupIndex` 只会形成森林；解析和应用两层都需要防止循环父链。
+  证据：第二轮 PR review 用 `groups[0].parentGroupIndex = 1`、`groups[1].parentGroupIndex = 0` 复现循环 group graph；本轮在 `parseCanvasTemplateDocument` 中拒绝越界和循环父索引，并在 `applyCanvasTemplateToState` 中对内存模板做兜底 sanitization，测试覆盖 parse 拒绝和 apply 切断循环。
+
+- 观察：删除父分组的危险选项实际递归删除整棵分组子树，确认文案必须披露子分组、节点数量和执行节点清理风险。
+  证据：第二轮 PR review 指出旧文案只说“内部节点”；本轮确认对话框标题和 detail 改为“内部所有节点与子分组”并展示递归计数，VS Code smoke 覆盖嵌套分组删除确认。
+
 ## 决策记录
 
 - 决策：实现阶段以宿主为分组权威状态中心，Webview 只展示 draft 并回传用户意图。
@@ -169,7 +176,7 @@
 
 2026-05-22 本轮验证已经覆盖类型检查、协议解析、模板捕获、宿主 group helper 和 Webview harness 的分组主路径。验证命令均在仓库根目录执行并通过。设计文档仍保持“验证中”，因为这些命令证明首版基础路径可用，但还不能替代真实 VSCode reload smoke、删除 modal 两种分支验证、侧栏 grouped view smoke 或完整几何场景矩阵。
 
-剩余缺口包括：删除分组 modal 的两种选择还缺自动化断言；真实 VSCode reload 后 group 恢复还没有本轮 smoke 证据；几何收口覆盖的是基础路径而非完整证明。后续协作者应优先补这些缺口，再把验证状态推进到“已验证”。
+剩余缺口包括：删除分组 modal 的保留成员分支还缺自动化断言；真实 VSCode reload 后 group 恢复还没有本轮 smoke 证据；几何收口覆盖的是基础路径而非完整证明。后续协作者应优先补这些缺口，再把验证状态推进到“已验证”。
 
 ## 上下文与定向
 
@@ -241,6 +248,40 @@ Webview 验收：Playwright harness 中，空白区可创建空 group；group fr
     "test:canvas-node-groups": "node scripts/test/test-canvas-node-groups.mjs"
 
 Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面加载 `dist/webview.js`。
+
+2026-05-27 第二轮 PR review 修复验证记录：
+
+    $ npm run typecheck
+    通过。
+
+    $ npm run test:canvas-node-groups
+    通过。
+
+    $ npm run test:canvas-templates
+    通过。
+
+    $ npm run test:protocol-webview-messages
+    protocol webview message tests passed
+
+    $ npm run test:extension-manifest
+    extension manifest tests passed
+
+    $ npm run build
+    通过。
+
+    $ node scripts/test/run-playwright-webview.mjs -g "host-triggered group creation uses current webview selection|host-triggered group creation reports invalid current webview selection without posting create|canvas context menu can create a group from selected nodes|canvas context menu can create an empty group"
+    4 passed
+    Playwright webview tests passed.
+
+    $ DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
+    Trusted workspace smoke passed.
+    VS Code smoke test passed.
+
+    $ git diff --check origin/main...HEAD
+    通过。
+
+    $ git diff --check
+    通过。
 
 2026-05-27 PR review 修复验证记录：
 
