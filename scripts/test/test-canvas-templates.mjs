@@ -465,6 +465,32 @@ try {
   const roundTripText = encodeCanvasTemplateDocument(userTemplate);
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
 
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 1 },
+          { title: 'Group B', position: { x: 40, y: 60 }, size: { width: 280, height: 180 }, parentGroupIndex: 0 }
+        ]
+      }
+    }),
+    /循环父子关系/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 9 }
+        ]
+      }
+    }),
+    /不存在的父分组索引/u
+  );
+
   const extensionSource = await readFile('src/extension.ts', 'utf8');
   const exportCommandSource = sliceBetween(
     extensionSource,

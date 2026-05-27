@@ -273,6 +273,89 @@ async function verifyEmptyGroupDeletionSkipsConfirmation() {
   });
 }
 
+async function verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope() {
+  await setPersistedState({
+    version: 1,
+    updatedAt: '2026-05-27T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'delete-parent-agent',
+        kind: 'agent',
+        title: 'Delete Parent Agent',
+        status: 'idle',
+        summary: '',
+        position: { x: 140, y: 160 },
+        size: { width: 320, height: 240 },
+        groupId: 'group-delete-parent',
+        metadata: { agent: { provider: 'codex' } }
+      },
+      {
+        id: 'delete-child-note',
+        kind: 'note',
+        title: 'Delete Child Note',
+        status: 'ready',
+        summary: '',
+        position: { x: 180, y: 460 },
+        size: { width: 320, height: 200 },
+        groupId: 'group-delete-child',
+        metadata: { note: { content: 'nested delete smoke' } }
+      }
+    ],
+    edges: [],
+    groups: [
+      {
+        id: 'group-delete-parent',
+        title: 'Delete Parent',
+        position: { x: 100, y: 100 },
+        size: { width: 760, height: 680 }
+      },
+      {
+        id: 'group-delete-child',
+        title: 'Delete Child',
+        position: { x: 140, y: 420 },
+        size: { width: 400, height: 260 },
+        parentGroupId: 'group-delete-parent'
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 3
+  });
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage({
+        type: 'webview/deleteGroup',
+        payload: { groupId: 'group-delete-parent' }
+      });
+
+      const snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.length === 0 &&
+          currentSnapshot.state.groups.length === 0,
+        10000
+      );
+      assert.strictEqual(snapshot.state.edges.length, 0);
+
+      assert.strictEqual(warningCalls.length, 1, 'Expected deleting a non-empty group to show one confirmation.');
+      const [warningCall] = warningCalls;
+      assert.match(warningCall.message, /Delete Parent/u);
+      assert.ok(
+        warningCall.items.some((item) => /内部所有节点与子分组/.test(item.title) && /2 个节点/.test(item.title) && /1 个子分组/.test(item.title)),
+        `Expected destructive action title to disclose recursive counts. Items: ${JSON.stringify(warningCall.items)}`
+      );
+      assert.ok(
+        warningCall.items.some((item) => item.title === '仅删除分组框并保留内部对象'),
+        `Expected keep-members action title to disclose preservation. Items: ${JSON.stringify(warningCall.items)}`
+      );
+      assert.match(warningCall.options?.detail ?? '', /递归删除内部 2 个节点和 1 个子分组/u);
+      assert.match(warningCall.options?.detail ?? '', /1 个执行节点会先终止并清理运行会话/u);
+    },
+    ({ items }) => items.find((item) => /内部所有节点与子分组/.test(item.title))
+  );
+}
+
 async function applyCanvasTemplateForTest(templateId, reset = false) {
   return vscode.commands.executeCommand(COMMAND_IDS.testApplyCanvasTemplate, templateId, reset);
 }
@@ -720,6 +803,7 @@ async function runTrustedSmoke() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await verifyEmptyGroupDeletionSkipsConfirmation();
+  await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();
   await clearHostMessages();
   await createBaseNodes();
   snapshot = await getDebugSnapshot();
@@ -10519,10 +10603,12 @@ async function withInterceptedWarningMessages(runIntercepted, resolveSelection) 
   const originalShowWarningMessage = vscode.window.showWarningMessage;
   const calls = [];
 
-  vscode.window.showWarningMessage = async (message, ...items) => {
-    calls.push({ message, items });
+  vscode.window.showWarningMessage = async (message, ...args) => {
+    const options = args.length > 0 && isMessageOptions(args[0]) ? args[0] : undefined;
+    const items = options ? args.slice(1) : args;
+    calls.push({ message, options, items });
     return typeof resolveSelection === 'function'
-      ? await resolveSelection({ message, items, calls })
+      ? await resolveSelection({ message, options, items, calls })
       : undefined;
   };
 
@@ -10537,6 +10623,16 @@ async function withInterceptedWarningMessages(runIntercepted, resolveSelection) 
   } finally {
     vscode.window.showWarningMessage = originalShowWarningMessage;
   }
+}
+
+function isMessageOptions(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      ('modal' in value || 'detail' in value) &&
+      !('title' in value)
+  );
 }
 
 async function withInterceptedQuickPicks(runIntercepted, resolveSelection) {

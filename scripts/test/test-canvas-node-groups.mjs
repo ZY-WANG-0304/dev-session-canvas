@@ -333,6 +333,52 @@ try {
   assert.strictEqual(materializedChild.parentGroupId, materializedParent.id);
   assert.strictEqual(forwardParentTemplateApply.nodes[0].groupId, materializedChild.id);
 
+  const cyclicParentTemplateApply = applyCanvasTemplateToState(
+    state(),
+    {
+      id: 'cyclic-parent-groups',
+      name: 'Cyclic Parent Groups',
+      category: 'user',
+      createdAt: '2026-05-27T00:00:00.000Z',
+      updatedAt: '2026-05-27T00:00:00.000Z',
+      groups: [
+        {
+          title: 'Cycle A',
+          position: { x: 0, y: 0 },
+          size: { width: 380, height: 300 },
+          parentGroupIndex: 1
+        },
+        {
+          title: 'Cycle B',
+          position: { x: 40, y: 60 },
+          size: { width: 280, height: 180 },
+          parentGroupIndex: 0
+        }
+      ],
+      nodes: [
+        {
+          kind: 'note',
+          title: 'Cycle Note',
+          position: { x: 80, y: 120 },
+          size: { width: 120, height: 80 },
+          groupIndex: 0,
+          metadata: { note: { content: '' } }
+        }
+      ],
+      edges: []
+    },
+    {
+      resolvedAgentProviders: new Map()
+    }
+  ).state;
+  const materializedCycleA = cyclicParentTemplateApply.groups.find((candidate) => candidate.title === 'Cycle A');
+  const materializedCycleB = cyclicParentTemplateApply.groups.find((candidate) => candidate.title === 'Cycle B');
+  assert.ok(materializedCycleA, 'Expected cyclic-parent template to materialize group A.');
+  assert.ok(materializedCycleB, 'Expected cyclic-parent template to materialize group B.');
+  assert.strictEqual(materializedCycleA.parentGroupId, materializedCycleB.id);
+  assert.strictEqual(materializedCycleB.parentGroupId, undefined);
+  assert.strictEqual(cyclicParentTemplateApply.nodes[0].groupId, materializedCycleA.id);
+
   const groupedByPointer = moveNode(
     state({
       nodes: [note('note-1', { x: 320, y: 20 })],
