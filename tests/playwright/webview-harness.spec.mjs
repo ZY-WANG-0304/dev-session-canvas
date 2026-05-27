@@ -2727,6 +2727,71 @@ for (const executionKind of ['agent', 'terminal']) {
       .toBe(pasteText);
   });
 
+  test(`${executionKind} terminal handles vi-style alternate screen without blocking input or node controls`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output:
+        '\x1b[?1049h\x1b[?1h\x1b=\x1b[H\x1b[6n\x1bPzz\x1b\\\x1b[0%m\x1b[6n\x1b[>c\x1b]10;?\x07\x1b]11;?\x07' +
+        '~/.bashrc                        1,1            All',
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/executionInput')
+            .map((entry) => entry.payload.data)
+            .join('');
+        });
+      })
+      .toMatch(/\x1b\[\d+;\d+R/);
+
+    await nodeById(page, nodeId).locator('.xterm-screen').click({ position: { x: 16, y: 16 } });
+    await settleWebview(page, 2);
+    await clearPostedMessages(page);
+
+    await page.keyboard.press('KeyI');
+    await page.keyboard.type('abc');
+    await page.keyboard.press('Escape');
+    await page.keyboard.type(':q!');
+    await page.keyboard.press('Enter');
+
+    await expect
+      .poll(async () => {
+        const payloads = await page.evaluate(() => {
+          return window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/executionInput')
+            .map((entry) => entry.payload);
+        });
+        return payloads.map((payload) => payload.data).join('');
+      })
+      .toBe('iabc\x1b:q!\r');
+
+    await clearPostedMessages(page);
+    await nodeById(page, nodeId).getByRole('button', { name: '停止' }).click();
+
+    const stopMessage = await waitForPostedMessageByType(page, 'webview/stopExecutionSession');
+    expect(stopMessage.payload).toMatchObject({
+      nodeId,
+      kind: executionKind
+    });
+  });
+
   test(`${executionKind} Ctrl+C without terminal selection still reaches the PTY as interrupt`, async ({
     page
   }) => {

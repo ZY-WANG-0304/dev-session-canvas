@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
   - docs/exec-plans/completed/terminal-output-flood-input-responsiveness.md
-updated_at: 2026-04-28
+updated_at: 2026-05-27
 ---
 
 # Terminal 节点嵌入式会话窗口设计
@@ -126,6 +126,7 @@ updated_at: 2026-04-28
 - 当前恢复语义面向“尽量保住与 live xterm 对齐的 scrollback 历史”；仍不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
 - 运行中 resize 现在通过 PTY 后端原生能力处理，不再通过 stdin 注入 `stty`。
 - 高频输出现在也属于正式运行时边界的一部分：宿主侧增量输出允许继续按小时间窗批量合并，但 Webview 不得再在 `window.message` 回调里同步广播到所有执行节点并立刻 `terminal.write()`。标准做法是按节点维护独立输出控制器，把连续 `host/executionOutput` 先入队，再以异步批量 drain 写入 `xterm.js`，让输入与画布交互始终有机会先进入主线程。
+- 生产 Webview bundle 必须使用 `@xterm/xterm/lib/xterm.js` 作为浏览器端打包输入；`scripts/build/build.mjs` 通过 `xterm-browser-main-entry` esbuild plugin 只重定向裸导入 `@xterm/xterm`，不影响 `@xterm/xterm/css/xterm.css`。当前不使用 xterm 的 ESM `module` 入口作为生产打包输入，因为在本仓库的 esbuild production minify 组合下，`@xterm/xterm@6.0.0` ESM 入口里的局部 `const enum` 降级代码会被压成未声明变量，遇到 Vim / glab 等 TUI 发送 `DECRQM`（例如 `CSI ? 12 $ p` 查询光标闪烁模式）时会在 Webview 侧抛 `ReferenceError`，从而中断 xterm parser。宿主 `extension.js` 与 `runtime-supervisor.js` 仍可继续使用各自 Node bundle 的解析规则；这个约束只针对浏览器 Webview bundle。
 
 ## 7. 风险与取舍
 
@@ -144,6 +145,9 @@ updated_at: 2026-04-28
 - 风险：`node-pty` 路线会引入原生模块与扩展打包约束。
   当前缓解：构建脚本已把 `node-pty` 设为 external，并依赖其预编译产物；当前先以 `build` / `typecheck` / Linux smoke test 证明基本可行。
 
+- 风险：xterm 浏览器 bundle 的第三方入口选择会影响 TUI 控制序列解析。
+  当前缓解：Webview production build 显式选择 `@xterm/xterm` CommonJS `main` 入口，并新增 `test:webview-build-xterm-entry`，在 minified bundle 上执行 `CSI ? 12 $ p` 探针，确保不会再次把 TUI 模式查询路径打包成运行时 `ReferenceError`。
+
 - 风险：Windows 本地下使用 `Codex` 时，执行节点内历史仍无法向上翻页；此外，虽然 `Remote SSH` 主路径已验证可用，但其之外的更深远程场景仍缺少同等级人工验证证据。
   当前缓解：桌面三平台与 `Remote SSH` 主路径的功能可用性都已写成已验证结论，但 Windows `Codex` 历史翻页问题继续作为已知限制保留；文档状态仍保持“验证中”，不把剩余差异误写成已收口。
 
@@ -160,6 +164,7 @@ updated_at: 2026-04-28
 7. 未信任 workspace 时，终端创建与输入路径被正确禁用。
 8. 用户向上滚动查看历史后，增量输出、spinner/redraw 与 `host/visibilityRestored` 这类纯视图刷新都不会把 viewport 强制拉回底部；用户滚回底部后，最新输出会再次自动跟随。
 9. 一个或多个 `Terminal` 节点执行高频持续输出命令时，当前终端的 `Ctrl-C`、其他执行节点输入、至少一种画布内 DOM 交互，以及在压力期间新建并启动额外执行节点，都仍能在命令进行期间完成，而不是等输出结束后再排队执行。
+10. production minified Webview bundle 必须通过 `DECRQM` 探针：向 xterm 写入 `CSI ? 12 $ p` 后，Webview 侧应正常产生 `CSI ? 12 ; 1 $ y` 或同类合法模式响应，而不是抛出 `ReferenceError`；同时至少覆盖一次 Vim 风格 alternate screen 进入后的真实输入路径。
 
 ## 9. 当前验证状态
 
@@ -170,4 +175,5 @@ updated_at: 2026-04-28
 - 2026-04-16 已补 Playwright 回归，覆盖 Agent / Terminal 在用户上滚后遇到增量输出、spinner/redraw 与 `host/visibilityRestored` 时仍保持历史 viewport，不再被强制拉回底部；滚回底部后跟随输出恢复。
 - 截至 `2026-04-28`，Linux、macOS、Windows 本地 workspace 的 `Terminal` / `Agent` / `Note` 主路径已补齐当前轮功能可用性验证。
 - 截至 `2026-04-28`，`Remote SSH` 主路径以及 Linux、macOS、Windows 本地 workspace 的 `Terminal` / `Agent` / `Note` 主路径都已补齐当前轮功能可用性验证。
+- 截至 `2026-05-27`，已用 v0.10.6 正常安装宿主诊断确认：`vim tmp.txt` 后宿主仍收到 `execution/inputWritten` 且 PTY 有 Vim 输出，但 Webview 记录 `ReferenceError: n is not defined`，栈位于 `@xterm/xterm` 的 `requestMode`；调试宿主没有该错误。该问题已收敛为生产 Webview bundle 选择 ESM 入口并压缩后触发的 xterm `DECRQM` parser 运行时错误。已新增构建入口约束和 Playwright TUI 回归作为验证口径。
 - Windows 下使用 `Codex` 时，执行节点内历史当前仍有无法向上翻页的已知限制；Remote SSH 之外的更深远程场景也还缺少同等级人工验证证据，因此文档状态继续保持为“验证中”。
