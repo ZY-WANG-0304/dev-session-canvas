@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.7
+
+- 与主扩展 `0.10.7` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Terminal TUI 输入热修复，聚焦生产 Webview bundle 中 xterm 入口选择导致的 Vim / glab auth login 等 TUI 输入卡死；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.10.6
 
 - 与主扩展 `0.10.6` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Agent 异常提醒补丁，聚焦 Codex / Claude Code Agent 已运行后异常中断提醒，以及 Codex 高置信输出流断开文本匹配的显式 opt-in 配置；notifier companion 不引入新的通知投递行为变更。
