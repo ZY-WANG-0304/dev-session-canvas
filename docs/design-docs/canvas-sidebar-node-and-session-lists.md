@@ -110,7 +110,7 @@ updated_at: 2026-05-26
 - 每个节点项显示：
   - 节点对应颜色的图标形圆点标记
   - 节点标题
-  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `provider · 状态`，其余节点继续只显示状态
+  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `cwdLabel · provider · 状态`，其余节点继续只显示状态
   - 当节点正处于 notification 提醒中时，在该项最右侧显示通知图标
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
 - 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
@@ -211,12 +211,13 @@ updated_at: 2026-05-26
 
 ## 9. 当前验证状态
 
+- 2026-05-28：配合 Explorer 资源右键创建执行节点方案，节点列表的 Agent 第二行从 `provider · 状态` 扩展为 `cwdLabel · provider · 状态`，以便在侧栏里直接区分不同目录上下文中的 Agent；Terminal / Note 继续只显示状态，避免把终端 prompt 已表达的路径重复放进列表。当前仅更新规格与设计口径，验证随实现补齐。
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。
 - 2026-05-26：`节点` view 默认按分组树展示；显示模式切换从 Webview 内容区自绘更多按钮收口到 VSCode 原生 view title `...` 菜单，并把按分组展示改为可折叠的侧栏分组树；该折叠状态只属于侧栏呈现，不改变画布分组事实。已通过 manifest、类型检查、侧栏颜色 token、build 和 diff 检查；`trusted` VSCode smoke 已执行到侧栏分组树路径，随后在既有 Note Markdown 文件关联用例中超时，需后续单独收口该非本轮 blocker。
 - 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test/test-sidebar-codicon-bundle.mjs`、`node scripts/test/test-sidebar-session-history.mjs` 与 `node scripts/test/test-agent-launch-presets.mjs`。
 - 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
 - 2026-04-28 产品规格新增两条节点列表要求：次级描述只显示状态，不再显示副标题；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。
-- 2026-04-30：节点列表的次级描述继续保持紧凑，但对 `Agent` 节点改成显示 `provider · 状态`，以便在侧栏里更快区分 `Codex` / `Claude Code` 会话；对应 smoke 断言同步收口。
+- 2026-04-30：节点列表的次级描述继续保持紧凑，但对 `Agent` 节点改成显示 `provider · 状态`，以便在侧栏里更快区分 `Codex` / `Claude Code` 会话；该口径已在 2026-05-28 被 `cwdLabel · provider · 状态` 取代，对应 smoke 断言需随新口径更新。
 - 2026-04-28 已按新规格更新实现：节点列表次级描述收口为“仅状态”，并先用 `resourceUri + FileDecorationProvider` 输出提醒徽标闭合主路径；这一版已经通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `node scripts/test/test-sidebar-session-history.mjs`。
 - 2026-04-28 会话历史列表已按最新视觉要求改成“两行原生列表”样式：首行显示 provider 图标和标题，次行显示相对更新时间；详情信息继续留在 tooltip 和搜索文本中；并已通过 `npm run typecheck`、`npm run build`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `node scripts/test/test-sidebar-session-history.mjs`。
 - 2026-04-28 会话历史列表已进一步按最新规格收口：标题改为 provider 历史中的第一条真实用户指令，第二行改为“相对时间 + sessionId”，tooltip 移除画布节点标题/副标题；后续再补搜索体验时，搜索范围调整为“匹配会话标题 + provider / sessionId / 工作目录”，不再沿用“不匹配标题”的旧口径。
