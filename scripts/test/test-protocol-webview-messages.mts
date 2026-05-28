@@ -60,10 +60,22 @@ const createDemoNodeInGroupMessage = {
     targetGroupId: 'group-parent',
     agentProvider: undefined,
     agentLaunchPreset: undefined,
-    agentCustomLaunchCommand: undefined
+    agentCustomLaunchCommand: undefined,
+    titleOverride: undefined,
+    cwd: '/workspace/packages/api',
+    cwdSelectionSource: undefined
   }
 };
 assert.deepEqual(parseWebviewMessage(createDemoNodeInGroupMessage), createDemoNodeInGroupMessage);
+
+const createDemoNodeWithInvalidCwdMessage = {
+  type: 'webview/createDemoNode',
+  payload: {
+    kind: 'terminal',
+    cwd: 42
+  }
+};
+assert.equal(parseWebviewMessage(createDemoNodeWithInvalidCwdMessage), null);
 
 const createEmptyGroupMessage = {
   type: 'webview/createEmptyGroup',

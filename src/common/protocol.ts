@@ -335,6 +335,11 @@ export interface NoteMarkdownImageWorkspaceRoot {
   webviewResourceBaseUri: string;
 }
 
+export interface CanvasRuntimeWorkspaceFolder {
+  name: string;
+  path: string;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
@@ -351,6 +356,7 @@ export interface CanvasRuntimeContext {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileIconFontFaces: CanvasFileIconFontFace[];
+  workspaceFolders?: CanvasRuntimeWorkspaceFolder[];
   noteMarkdownImageWorkspaceRoots?: NoteMarkdownImageWorkspaceRoot[];
 }
 
@@ -552,6 +558,9 @@ export type WebviewToHostMessage =
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
+        titleOverride?: string;
+        cwd?: string;
+        cwdSelectionSource?: 'explorer-resource' | 'workspace-root-picker' | 'default-workspace-root';
       };
     }
   | {
@@ -1035,6 +1044,9 @@ export type HostToWebviewMessage =
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
+        titleOverride?: string;
+        cwd?: string;
+        cwdSelectionSource?: 'explorer-resource' | 'workspace-root-picker' | 'default-workspace-root';
       };
     }
   | {
@@ -1059,6 +1071,7 @@ const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
+const cwdSelectionSources = ['explorer-resource', 'workspace-root-picker', 'default-workspace-root'] as const;
 const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
   'note-markdown-subtitle',
   'note-markdown-metadata'
@@ -1085,6 +1098,10 @@ export function isAgentLaunchPresetKind(value: unknown): value is AgentLaunchPre
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
   return value === 'agent' || value === 'terminal';
+}
+
+function isCwdSelectionSource(value: unknown): value is typeof cwdSelectionSources[number] {
+  return typeof value === 'string' && cwdSelectionSources.includes(value as typeof cwdSelectionSources[number]);
 }
 
 export function isWebviewClipboardTextSource(value: unknown): value is WebviewClipboardTextSource {
@@ -2005,7 +2022,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
       (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
-      (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
+      (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string') ||
+      (payload.titleOverride !== undefined && typeof payload.titleOverride !== 'string') ||
+      (payload.cwd !== undefined && typeof payload.cwd !== 'string') ||
+      (payload.cwdSelectionSource !== undefined && !isCwdSelectionSource(payload.cwdSelectionSource))
     ) {
       return null;
     }
@@ -2022,7 +2042,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:
-          typeof payload.agentCustomLaunchCommand === 'string' ? payload.agentCustomLaunchCommand : undefined
+          typeof payload.agentCustomLaunchCommand === 'string' ? payload.agentCustomLaunchCommand : undefined,
+        titleOverride: typeof payload.titleOverride === 'string' ? payload.titleOverride : undefined,
+        cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
+        cwdSelectionSource: isCwdSelectionSource(payload.cwdSelectionSource) ? payload.cwdSelectionSource : undefined
       }
     };
   }

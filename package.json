@@ -188,6 +188,16 @@
         "icon": "$(add)"
       },
       {
+        "command": "devSessionCanvas.createTerminalFromExplorerResource",
+        "title": "%command.createTerminalFromExplorerResource.title%",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "devSessionCanvas.createAgentFromExplorerResource",
+        "title": "%command.createAgentFromExplorerResource.title%",
+        "icon": "$(hubot)"
+      },
+      {
         "command": "devSessionCanvas.createEmptyGroup",
         "title": "%command.createEmptyGroup.title%",
         "icon": "$(symbol-array)"
@@ -387,6 +397,18 @@
           "command": "devSessionCanvas.openClaudeSettingsFile",
           "when": "view == devSessionCanvas.sidebar && viewItem == claudeCliConfig",
           "group": "inline@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "devSessionCanvas.createTerminalFromExplorerResource",
+          "when": "resourceScheme == file",
+          "group": "devSessionCanvas@1"
+        },
+        {
+          "command": "devSessionCanvas.createAgentFromExplorerResource",
+          "when": "resourceScheme == file",
+          "group": "devSessionCanvas@2"
         }
       ]
     },

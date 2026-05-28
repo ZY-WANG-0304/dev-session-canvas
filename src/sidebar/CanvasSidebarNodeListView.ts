@@ -11,6 +11,7 @@ import {
   STORAGE_KEYS,
   type SidebarNodeListViewMode
 } from '../common/extensionIdentity';
+import { formatExecutionCwdLabel, type ExecutionWorkspaceFolderLabelSource } from '../common/executionCwdLabel';
 import type { CanvasGroupSummary, CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager, type CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
@@ -391,7 +392,8 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 }
 
 export function getCanvasSidebarNodeListItems(
-  source: CanvasNodeSummary[] | CanvasSidebarNodeListSnapshot
+  source: CanvasNodeSummary[] | CanvasSidebarNodeListSnapshot,
+  workspaceFolders: readonly ExecutionWorkspaceFolderLabelSource[] = listSidebarWorkspaceFolders()
 ): CanvasSidebarNodeItemSnapshot[] {
   const nodes = Array.isArray(source) ? source : source.nodes;
   const groups = Array.isArray(source) ? [] : source.groups;
@@ -402,7 +404,7 @@ export function getCanvasSidebarNodeListItems(
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
       const statusLabel = humanizeCanvasNodeStatus(node);
       const groupPath = resolveSidebarNodeGroupPath(node.groupId, groupsById);
-      const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
+      const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node, workspaceFolders);
       const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
       const attentionPending = canvasNodeAttentionPending(node.metadata);
@@ -459,12 +461,24 @@ function buildSidebarNodeSecondaryText(subtitlePrefix: string | undefined, statu
   return subtitlePrefix ? `${subtitlePrefix} · ${statusLabel}` : statusLabel;
 }
 
-function buildSidebarNodeSubtitlePrefix(node: CanvasNodeSummary): string | undefined {
+function buildSidebarNodeSubtitlePrefix(
+  node: CanvasNodeSummary,
+  workspaceFolders: readonly ExecutionWorkspaceFolderLabelSource[]
+): string | undefined {
   if (node.kind !== 'agent') {
     return undefined;
   }
 
-  return humanizeAgentProvider(node.metadata?.agent?.provider);
+  const agentMetadata = node.metadata?.agent;
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata?.cwd, workspaceFolders);
+  return `${cwdLabel} · ${humanizeAgentProvider(agentMetadata?.provider)}`;
+}
+
+function listSidebarWorkspaceFolders(): ExecutionWorkspaceFolderLabelSource[] {
+  return (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
+    name: workspaceFolder.name,
+    path: workspaceFolder.uri.fsPath
+  }));
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {

@@ -75,6 +75,8 @@ type CreateNodeRequest = {
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  cwd?: string;
+  cwdSelectionSource?: 'explorer-resource' | 'workspace-root-picker' | 'default-workspace-root';
 };
 
 type CreateNodeQuickPickSelectionId =
@@ -83,15 +85,28 @@ type CreateNodeQuickPickSelectionId =
   | 'create-note'
   | 'create-agent-codex'
   | 'create-agent-claude'
+  | `workspace-root-${number}`
   | 'agent-launch-accept-current'
   | 'agent-launch-apply-default'
   | 'agent-launch-apply-resume'
   | 'agent-launch-apply-yolo'
   | 'agent-launch-apply-sandbox';
 
+type WorkspaceRootQuickPickSelectionId = Extract<CreateNodeQuickPickSelectionId, `workspace-root-${number}`>;
+
 interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
   request?: CreateNodeRequest;
+}
+
+interface WorkspaceRootQuickPickItem extends vscode.QuickPickItem {
+  selectionId: WorkspaceRootQuickPickSelectionId;
+  folder: vscode.WorkspaceFolder;
+}
+
+interface AgentCreateQuickPickItem extends vscode.QuickPickItem {
+  selectionId?: CreateNodeQuickPickSelectionId;
+  request?: CreateNodeRequest & { kind: 'agent' };
 }
 
 interface TerminalShellQuickPickItem extends vscode.QuickPickItem {
@@ -112,6 +127,13 @@ interface AgentCliInstallQuickPickItem extends vscode.QuickPickItem {
 
 interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
   templateId: string;
+}
+
+interface ExplorerExecutionResource {
+  cwd: string;
+  cwdUri: vscode.Uri;
+  resourceKind: 'directory' | 'file-parent';
+  workspaceFolder: vscode.WorkspaceFolder;
 }
 
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
@@ -309,7 +331,45 @@ export function activate(context: vscode.ExtensionContext): void {
     panelManager.createNode(createRequest.kind, {
       agentProvider: createRequest.agentProvider,
       agentLaunchPreset: createRequest.agentLaunchPreset,
-      agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
+      agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand,
+      cwdOverride: createRequest.cwd,
+      cwdSelectionSource: createRequest.cwdSelectionSource
+    });
+  });
+
+  registerCommand(context, COMMAND_IDS.createTerminalFromExplorerResource, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerExecutionResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    await panelManager.revealOrCreate();
+    panelManager.createNode('terminal', {
+      cwdOverride: resolvedResource.cwd,
+      cwdSelectionSource: 'explorer-resource',
+      titleOverride: buildExplorerExecutionNodeTitle('terminal', resolvedResource)
+    });
+  });
+
+  registerCommand(context, COMMAND_IDS.createAgentFromExplorerResource, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerExecutionResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    const agentRequest = await promptAgentCreateNodeRequest();
+    if (!agentRequest) {
+      return;
+    }
+
+    await panelManager.revealOrCreate();
+    panelManager.createNode('agent', {
+      agentProvider: agentRequest.agentProvider,
+      agentLaunchPreset: agentRequest.agentLaunchPreset,
+      agentCustomLaunchCommand: agentRequest.agentCustomLaunchCommand,
+      cwdOverride: resolvedResource.cwd,
+      cwdSelectionSource: 'explorer-resource',
+      titleOverride: buildExplorerExecutionNodeTitle('agent', resolvedResource, agentRequest.agentProvider)
     });
   });
 
@@ -876,6 +936,156 @@ function shellPathsEqual(left: string, right: string): boolean {
     : left.trim() === right.trim();
 }
 
+async function resolveExplorerExecutionResource(resource: unknown): Promise<ExplorerExecutionResource | undefined> {
+  const inputUri = resource instanceof vscode.Uri
+    ? resource
+    : vscode.window.activeTextEditor?.document.uri;
+  if (!inputUri || inputUri.scheme !== 'file') {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let stat: vscode.FileStat;
+  try {
+    stat = await vscode.workspace.fs.stat(inputUri);
+  } catch {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let cwdUri: vscode.Uri;
+  let resourceKind: ExplorerExecutionResource['resourceKind'];
+  if (stat.type === vscode.FileType.Directory) {
+    cwdUri = inputUri;
+    resourceKind = 'directory';
+  } else if (stat.type === vscode.FileType.File) {
+    cwdUri = getUriDirectory(inputUri);
+    resourceKind = 'file-parent';
+  } else {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let cwdStat: vscode.FileStat;
+  try {
+    cwdStat = await vscode.workspace.fs.stat(cwdUri);
+  } catch {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+  if (cwdStat.type !== vscode.FileType.Directory) {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(cwdUri);
+  if (!workspaceFolder) {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  return {
+    cwd: cwdUri.fsPath,
+    cwdUri,
+    resourceKind,
+    workspaceFolder
+  };
+}
+
+async function showExplorerExecutionResourceWarning(): Promise<void> {
+  await vscode.window.showWarningMessage('请选择当前 workspace 内的文件夹或普通文件来创建画布 Terminal / Agent。');
+}
+
+function getUriDirectory(uri: vscode.Uri): vscode.Uri {
+  const directoryPath = path.posix.dirname(uri.path);
+  return uri.with({ path: directoryPath || '/' });
+}
+
+function buildExplorerExecutionNodeTitle(
+  kind: Extract<CanvasCreatableNodeKind, 'agent' | 'terminal'>,
+  resource: ExplorerExecutionResource,
+  provider?: AgentProviderKind
+): string | undefined {
+  const directoryName = path.basename(resource.cwd) || resource.workspaceFolder.name;
+  if (!directoryName) {
+    return undefined;
+  }
+
+  if (kind === 'terminal') {
+    return `Terminal · ${directoryName}`;
+  }
+
+  return `${providerLabel(provider ?? getDefaultAgentProvider())} Agent · ${directoryName}`;
+}
+
+async function promptAgentCreateNodeRequest(): Promise<CreateNodeRequest | undefined> {
+  while (true) {
+    const picked = await showQuickPickWithTestOverride(
+      buildAgentCreateQuickPickItems(getDefaultAgentProvider()),
+      {
+        placeHolder: '选择要创建的 Agent 类型'
+      }
+    );
+    const agentRequest = picked?.request;
+    if (!agentRequest) {
+      return undefined;
+    }
+
+    const launchRequest = await promptAgentLaunchRequest(agentRequest.agentProvider ?? getDefaultAgentProvider());
+    if (!launchRequest) {
+      return undefined;
+    }
+    if (launchRequest === 'back') {
+      continue;
+    }
+    return launchRequest;
+  }
+}
+
+async function promptExecutionCwdForInteractiveCreate(
+  kind: CanvasCreatableNodeKind
+): Promise<{ cwd: string; source: 'workspace-root-picker' | 'default-workspace-root' } | 'cancelled' | undefined> {
+  if (kind !== 'agent' && kind !== 'terminal') {
+    return undefined;
+  }
+
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  if (workspaceFolders.length === 0) {
+    return undefined;
+  }
+
+  if (workspaceFolders.length === 1) {
+    return {
+      cwd: workspaceFolders[0].uri.fsPath,
+      source: 'default-workspace-root'
+    };
+  }
+
+  const picked = await showQuickPickWithTestOverride(
+    workspaceFolders.map((folder, index) => ({
+      label: folder.name,
+      description: 'workspace root',
+      detail: folder.uri.fsPath,
+      selectionId: `workspace-root-${index}` as WorkspaceRootQuickPickSelectionId,
+      folder
+    })),
+    {
+      placeHolder: `${kind === 'agent' ? 'Agent' : 'Terminal'} 要使用哪个 workspace root？`,
+      matchOnDescription: true,
+      matchOnDetail: true
+    }
+  );
+
+  if (!picked) {
+    return 'cancelled';
+  }
+
+  return {
+    cwd: picked.folder.uri.fsPath,
+    source: 'workspace-root-picker'
+  };
+}
+
 async function promptCreateNodeRequest(
   creatableKinds: CanvasCreatableNodeKind[]
 ): Promise<CreateNodeRequest | undefined> {
@@ -891,8 +1101,20 @@ async function promptCreateNodeRequest(
       return undefined;
     }
 
+    const executionCwd = await promptExecutionCwdForInteractiveCreate(picked.request.kind);
+    if (executionCwd === 'cancelled') {
+      return undefined;
+    }
+    const requestWithCwd: CreateNodeRequest = executionCwd
+      ? {
+          ...picked.request,
+          cwd: executionCwd.cwd,
+          cwdSelectionSource: executionCwd.source
+        }
+      : picked.request;
+
     if (picked.request.kind !== 'agent') {
-      return picked.request;
+      return requestWithCwd;
     }
 
     const launchRequest = await promptAgentLaunchRequest(picked.request.agentProvider ?? getDefaultAgentProvider());
@@ -902,7 +1124,11 @@ async function promptCreateNodeRequest(
     if (launchRequest === 'back') {
       continue;
     }
-    return launchRequest;
+    return {
+      ...launchRequest,
+      cwd: requestWithCwd.cwd,
+      cwdSelectionSource: requestWithCwd.cwdSelectionSource
+    };
   }
 }
 
@@ -1083,6 +1309,13 @@ function buildCreateNodeQuickPickItems(
   }
 
   return items;
+}
+
+function buildAgentCreateQuickPickItems(defaultAgentProvider: AgentProviderKind): AgentCreateQuickPickItem[] {
+  return buildCreateNodeQuickPickItems(['agent'], defaultAgentProvider).filter(
+    (item): item is AgentCreateQuickPickItem =>
+      item.kind === vscode.QuickPickItemKind.Separator || item.request?.kind === 'agent'
+  );
 }
 
 interface AgentLaunchQuickPickItem extends vscode.QuickPickItem {
@@ -2170,6 +2403,7 @@ function registerTestCommands(
             value !== 'create-note' &&
             value !== 'create-agent-codex' &&
             value !== 'create-agent-claude' &&
+            !(typeof value === 'string' && /^workspace-root-\d+$/u.test(value)) &&
             value !== 'agent-launch-accept-current' &&
             value !== 'agent-launch-apply-default' &&
             value !== 'agent-launch-apply-resume' &&
@@ -2198,7 +2432,14 @@ function registerTestCommands(
             : undefined,
           agentCustomLaunchCommand:
             typeof options.agentCustomLaunchCommand === 'string' ? options.agentCustomLaunchCommand : undefined,
-          titleOverride: typeof options.titleOverride === 'string' ? options.titleOverride : undefined
+          titleOverride: typeof options.titleOverride === 'string' ? options.titleOverride : undefined,
+          cwdOverride: typeof options.cwd === 'string' ? options.cwd : undefined,
+          cwdSelectionSource:
+            options.cwdSelectionSource === 'explorer-resource' ||
+            options.cwdSelectionSource === 'workspace-root-picker' ||
+            options.cwdSelectionSource === 'default-workspace-root'
+              ? options.cwdSelectionSource
+              : undefined
         });
         return panelManager.getDebugSnapshot();
       }

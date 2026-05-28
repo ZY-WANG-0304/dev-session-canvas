@@ -28,6 +28,7 @@ interface AgentFileActivitySessionParams {
   command: string;
   extensionRootPath: string;
   storageRootPath: string;
+  cwd?: string;
 }
 
 interface ParsedAgentFileActivityEvent {
@@ -50,7 +51,8 @@ export function createAgentFileActivitySession(
     return createNdjsonFileActivitySession({
       mode: 'claude',
       storageRootPath: params.storageRootPath,
-      extensionRootPath: params.extensionRootPath
+      extensionRootPath: params.extensionRootPath,
+      cwd: params.cwd
     });
   }
 
@@ -71,6 +73,7 @@ function createNdjsonFileActivitySession(params: {
   mode: 'claude' | 'fake-provider';
   storageRootPath: string;
   extensionRootPath?: string;
+  cwd?: string;
 }): AgentFileActivitySession {
   const sessionRootPath = path.join(params.storageRootPath, randomUUID());
   fs.mkdirSync(sessionRootPath, { recursive: true });
@@ -95,6 +98,7 @@ function createNdjsonFileActivitySession(params: {
     const settingsPath = path.join(sessionRootPath, 'claude-file-activity-settings.json');
     const hookCommand = `${shellQuote(process.execPath)} ${shellQuote(hookScriptPath)}`;
     const settings = {
+      ...(params.cwd ? { cwd: params.cwd } : {}),
       hooks: {
         PostToolUse: [
           {

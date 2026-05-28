@@ -131,4 +131,31 @@ assert.deepEqual(
   'Expected internal sidebar node list view-mode variants to stay out of the global Command Palette.'
 );
 
+const explorerResourceCommandIds = [
+  'devSessionCanvas.createTerminalFromExplorerResource',
+  'devSessionCanvas.createAgentFromExplorerResource'
+];
+for (const commandId of explorerResourceCommandIds) {
+  assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
+}
+
+const explorerContextMenus = manifest.contributes.menus['explorer/context'];
+assert.ok(Array.isArray(explorerContextMenus), 'Expected explorer/context menu contributions.');
+assert.deepEqual(
+  explorerContextMenus.filter((item) => explorerResourceCommandIds.includes(item.command)),
+  [
+    {
+      command: 'devSessionCanvas.createTerminalFromExplorerResource',
+      when: 'resourceScheme == file',
+      group: 'devSessionCanvas@1'
+    },
+    {
+      command: 'devSessionCanvas.createAgentFromExplorerResource',
+      when: 'resourceScheme == file',
+      group: 'devSessionCanvas@2'
+    }
+  ],
+  'Expected Explorer resource commands to support file-scheme directories and files without explorerResourceIsFolder.'
+);
+
 console.log('extension manifest tests passed');

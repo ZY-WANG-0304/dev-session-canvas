@@ -2410,15 +2410,52 @@ for (const executionKind of ['agent', 'terminal']) {
         'codex --model gpt-5.2 --sandbox workspace-write --yolo --config very-long-command-for-subtitle-overflow';
 
       agentNode.size = { width: 280, height: agentNode.size.height };
+      agentNode.metadata.agent.cwd = '/workspace/packages/api';
       agentNode.metadata.agent.lastLaunchCommandLine = longLaunchCommand;
 
       await openHarness(page);
-      await bootstrap(page, state);
+      await bootstrap(
+        page,
+        state,
+        createRuntimeContext({
+          workspaceFolders: [
+            {
+              name: 'workspace',
+              path: '/workspace'
+            }
+          ]
+        })
+      );
       await waitForExecutionTerminalReady(page, 'agent-zoom');
 
       const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
-      await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
+      await expect(subtitle).toHaveAttribute('title', `/workspace/packages/api · ${longLaunchCommand}`);
+      await expect(subtitle).toContainText('packages/api · codex');
       await expect(subtitle).toContainText('codex --model gpt-5.2');
+    });
+
+    test('terminal subtitle keeps shell path instead of cwd label', async ({ page }) => {
+      const state = createLiveExecutionNodeState('terminal');
+      state.nodes[0].metadata.terminal.cwd = '/workspace/packages/api';
+
+      await openHarness(page);
+      await bootstrap(
+        page,
+        state,
+        createRuntimeContext({
+          workspaceFolders: [
+            {
+              name: 'workspace',
+              path: '/workspace'
+            }
+          ]
+        })
+      );
+      await waitForExecutionTerminalReady(page, 'terminal-zoom');
+
+      const subtitle = nodeById(page, 'terminal-zoom').locator('.window-title-subtitle');
+      await expect(subtitle).toHaveText('/bin/bash');
+      await expect(subtitle).not.toContainText('packages/api');
     });
 
     test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {
@@ -11334,7 +11371,7 @@ function normalizeCreateDemoNodePayloadForAssertion(payload) {
   }
 
   const { requestId: _requestId, ...rest } = payload;
-  return rest;
+  return Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined));
 }
 
 function createManualNoteNode(nodeId, position) {
