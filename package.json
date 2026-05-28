@@ -188,6 +188,16 @@
         "icon": "$(add)"
       },
       {
+        "command": "devSessionCanvas.createEmptyGroup",
+        "title": "%command.createEmptyGroup.title%",
+        "icon": "$(symbol-array)"
+      },
+      {
+        "command": "devSessionCanvas.createGroupFromSelection",
+        "title": "%command.createGroupFromSelection.title%",
+        "icon": "$(group-by-ref-type)"
+      },
+      {
         "command": "devSessionCanvas.saveNoteAsMarkdownFile",
         "title": "%command.saveNoteAsMarkdownFile.title%",
         "icon": "$(markdown)"
@@ -196,6 +206,24 @@
         "command": "devSessionCanvas.showNodeList",
         "title": "%command.showNodeList.title%",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListFlatView",
+        "title": "%command.setSidebarNodeListFlatView.title%"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
+        "title": "%command.setSidebarNodeListFlatView.title%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListGroupedView",
+        "title": "%command.setSidebarNodeListGroupedView.title%"
+      },
+      {
+        "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
+        "title": "%command.setSidebarNodeListGroupedView.title%",
+        "icon": "$(check)"
       },
       {
         "command": "devSessionCanvas.showSessionHistory",
@@ -264,6 +292,24 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatView",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedView",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "devSessionCanvas.openCanvas",
@@ -284,6 +330,26 @@
           "command": "devSessionCanvas.createNode",
           "when": "view == devSessionCanvas.sidebarNodes",
           "group": "navigation@99"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatView",
+          "when": "view == devSessionCanvas.sidebarNodes && devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@1"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
+          "when": "view == devSessionCanvas.sidebarNodes && !devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@1"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
+          "when": "view == devSessionCanvas.sidebarNodes && devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@2"
+        },
+        {
+          "command": "devSessionCanvas.setSidebarNodeListGroupedView",
+          "when": "view == devSessionCanvas.sidebarNodes && !devSessionCanvas.sidebarNodeList.groupedView",
+          "group": "1_view@2"
         },
         {
           "command": "devSessionCanvas.resetCanvasState",
@@ -569,7 +635,7 @@
     "package": "npm run typecheck && node scripts/build/build.mjs --production",
     "package:vsix": "npm run package && node scripts/release/package-vsix.mjs",
     "postinstall": "node scripts/shared/ensure-node-pty-helper-permissions.mjs",
-    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:runtime-supervisor-protocol && npm run test:protocol-webview-messages && npm run test:agent-cli-resolver && npm run test:agent-cli-selection && npm run test:agent-settings-files && npm run test:shell-environment-resolver && npm run test:execution-session-bridge && npm run test:extension-manifest && npm run test:package-vsix-command && npm run test:publish-marketplaces && npm run test:sidebar-codicon-bundle && npm run test:webview-build-xterm-entry && npm run test:sidebar-list-colors && npm run test:theme-color-tokens && npm run test:activitybar-badges && npm run test:avatar && npm run test:note-markdown-links && npm run test:note-markdown-source-map && npm run test:note-markdown-file-association && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:note-markdown-front-matter && npm run test:execution-terminal-links && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:execution-terminal-clipboard && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
+    "test": "npm run typecheck && npm run test:workspace-relative-paths && npm run test:extension-storage-paths && npm run test:runtime-supervisor-paths && npm run test:runtime-supervisor-protocol && npm run test:protocol-webview-messages && npm run test:agent-cli-resolver && npm run test:agent-cli-selection && npm run test:agent-settings-files && npm run test:shell-environment-resolver && npm run test:execution-session-bridge && npm run test:extension-manifest && npm run test:package-vsix-command && npm run test:publish-marketplaces && npm run test:sidebar-codicon-bundle && npm run test:webview-build-xterm-entry && npm run test:sidebar-list-colors && npm run test:theme-color-tokens && npm run test:activitybar-badges && npm run test:avatar && npm run test:note-markdown-links && npm run test:note-markdown-source-map && npm run test:note-markdown-file-association && npm run test:note-body-indent && npm run test:note-markdown-checklists && npm run test:note-markdown-front-matter && npm run test:execution-terminal-links && npm run test:execution-terminal-native-helpers && npm run test:terminal-shell-configuration && npm run test:execution-terminal-line-context-tracker && npm run test:execution-attention-signals && npm run test:execution-terminal-clipboard && npm run test:agent-launch-presets && npm run test:canvas-templates && npm run test:canvas-node-groups && npm run test:sidebar-session-history && npm run test:attention-protocol && npm run test:notifier-source && npm run test:debug-launch-config && npm run test:smoke && npm run test:webview",
     "test:agent-cli-resolver": "node scripts/test/test-agent-cli-resolver.mjs",
     "test:agent-cli-selection": "node scripts/test/test-agent-cli-selection.mjs",
     "test:agent-settings-files": "node scripts/test/test-agent-settings-files.mjs",
@@ -581,6 +647,7 @@
     "test:attention-protocol": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/attention-protocol.test.mts",
     "prepare:debug-main-only-extension": "node scripts/shared/prepare-debug-main-only-extension.mjs",
     "test:debug-launch-config": "node scripts/test/test-debug-launch-config.mjs",
+    "test:canvas-node-groups": "node scripts/test/test-canvas-node-groups.mjs",
     "test:notifier-source": "node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/platformNotification.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarRichText.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarStatus.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarViewSource.test.mts",
     "test:notifier-smoke": "npm run build && npm run build:notifier && node scripts/smoke/run-vscode-notifier-smoke.mjs",
     "test:note-body-indent": "node --no-warnings --experimental-transform-types scripts/test/test-note-body-indent.mts",

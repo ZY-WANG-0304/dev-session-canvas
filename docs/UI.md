@@ -1,5 +1,5 @@
 ---
-version: 2026-05-17
+version: 2026-05-26
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -121,6 +121,10 @@ components:
   canvas-edge:
     stroke: "var(--canvas-edge-stroke-default)"
     selectedOutline: "color-mix(in srgb, var(--vscode-focusBorder) 46%, transparent)"
+  canvas-group:
+    backgroundColor: "var(--vscode-panel-background)"
+    borderColor: "var(--vscode-panel-border)"
+    title: "straight-edged panel tab shape, not a pill"
   sidebar-section:
     hostSurface: "host-native sidebar surface by default"
     density: "compact workbench section"
@@ -268,6 +272,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 状态摘要和宿主级导航优先使用宿主原生列表语义。
 - 需要更丰富行内控件时，应保持最小自绘 surface，不把局部能力扩展成完整面板。
 - 所有 sidebar section 都应贴近 VSCode 原生 sidebar：扁平列表、弱 hover、紧凑行距、少量 view title action。
+- sidebar section 的标题级动作优先使用 VSCode 原生 view title action / secondary `...` 菜单；不要在 Webview 内容区自绘一个替代宿主更多菜单的 `...` 按钮。
 - Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色：默认标题文本优先使用全局 `foreground` 并以 `sideBar.foreground` 兜底；hover 使用 `list.hoverBackground` / `list.hoverForeground`；当前焦点选中项使用 `list.activeSelectionBackground` / `list.activeSelectionForeground`；失焦但保留选中项使用 `list.inactiveSelectionBackground` / `list.inactiveSelectionForeground`。不要把 `sideBar.foreground` 当作所有 row title 的唯一前景色，也不要只换背景不换对应前景色。
 - 禁止在 sidebar 中复制选中对象正文、连续运行输出或完整 inspector，也不要把 sidebar 做成 mini dashboard。
 
@@ -284,6 +289,15 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。
+
+### Canvas Group Surfaces
+
+分组是画布空间组织对象，视觉上应更接近 VSCode Panel，而不是节点卡片或白板贴纸：
+
+- 外框、body、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。body 背景应绘制在普通节点下方，避免 Panel 面层压住成员节点内容。
+- 边框使用 `--vscode-panel-border`，tab 和 body 都采用直角边界，body 上边界也必须有边框，且画布缩放时保持屏幕可见线宽不变；标题贴在分组左上角，采用类似 Panel 顶部 active tab 的标题区域；标题 tab 之外的顶部横向区域应保持挖空透明，不绘制 header 背景条，不使用外浮胶囊、强阴影或高饱和标签。
+- 选中态通过与节点 resize 一致的四边选中线、四角圆形控制点、标题文字前景和贴在 tab 右侧的轻量双段按钮表达；标题 tab 与双段按钮只在画板缩小时做反向缩放以保持可读；画板放大时不反向缩小，视觉上跟随画板一起放大；默认按内容自然宽度显示，只有自然宽度达到分组宽度上限时才停止继续变宽，整体不得超出分组框；tab 区域不额外显示 active 下划线，也不通过自定义分组颜色表达。
+- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致；标题、不可见 header 拖动区、边框、resize 控制点和未被节点覆盖的 body 空白区都可用于选中分组，其中 body 空白区右键仍打开画布上下文菜单，菜单内新增 / 创建类操作归属于该 body 所在分组。
 
 ### Node Title And Subtitle
 

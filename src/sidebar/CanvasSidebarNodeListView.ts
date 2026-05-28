@@ -6,9 +6,14 @@ import {
   canvasNodeStatusToneClass,
   humanizeCanvasNodeStatus
 } from '../common/canvasNodeStatusPresentation';
-import type { CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
+import {
+  CONTEXT_KEYS,
+  STORAGE_KEYS,
+  type SidebarNodeListViewMode
+} from '../common/extensionIdentity';
+import type { CanvasGroupSummary, CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
-import { CanvasPanelManager } from '../panel/CanvasPanelManager';
+import { CanvasPanelManager, type CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
 
 const SIDEBAR_NODE_DANGLING_CSI_FRAGMENT_PATTERN = /(?:^|\s)\[\?[0-9;:<>=$]*[ -/]*[@-~](?=\s|$)/g;
 const SIDEBAR_NODE_ATTENTION_TOOLTIP = '该节点当前有待处理的通知提醒。';
@@ -19,6 +24,8 @@ export interface CanvasSidebarNodeItemSnapshot {
   id: string;
   nodeId: string;
   nodeKind: CanvasNodeKind;
+  groupPath: string[];
+  groupPathIds: string[];
   label: string;
   description: string;
   tooltip: string;
@@ -36,13 +43,28 @@ export interface SidebarNodeListTestSnapshot {
   visibleItemIds: string[];
   selectedId?: string;
   attentionItemIds: string[];
+  viewMode: SidebarNodeListViewMode;
+  groupRows: SidebarNodeListTestGroupRowSnapshot[];
 }
 
-export type SidebarNodeListTestAction = {
-  kind: 'clickItem';
-  itemId: string;
-  delayMs?: number;
-};
+export interface SidebarNodeListTestGroupRowSnapshot {
+  key: string;
+  label: string;
+  expanded: boolean;
+  depth: number;
+}
+
+export type SidebarNodeListTestAction =
+  | {
+      kind: 'clickItem';
+      itemId: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'toggleGroup';
+      groupKey: string;
+      delayMs?: number;
+    };
 
 type SidebarNodeListInboundMessage =
   | {
@@ -68,6 +90,8 @@ type SidebarNodeListOutboundMessage =
       type: 'sidebarNodeList/state';
       payload: {
         items: CanvasSidebarNodeItemSnapshot[];
+        groups: CanvasGroupSummary[];
+        viewMode: SidebarNodeListViewMode;
       };
     }
   | {
@@ -94,6 +118,8 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   private readonly stateSubscription: vscode.Disposable;
   private view: vscode.WebviewView | undefined;
   private items: CanvasSidebarNodeItemSnapshot[] = [];
+  private groups: CanvasGroupSummary[] = [];
+  private viewMode: SidebarNodeListViewMode = 'grouped';
   private isWebviewReady = false;
   private refreshTimer: NodeJS.Timeout | undefined;
   private readonly pendingReadyRequests = new Map<string, PendingSidebarNodeListReadyRequest>();
@@ -101,8 +127,11 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 
   public constructor(
     private readonly panelManager: CanvasPanelManager,
-    private readonly extensionUri: vscode.Uri
+    private readonly extensionUri: vscode.Uri,
+    private readonly workspaceState?: vscode.Memento
   ) {
+    this.viewMode = normalizeSidebarNodeListViewMode(this.workspaceState?.get(STORAGE_KEYS.sidebarNodeListViewMode));
+    this.applyViewModeContext();
     this.stateSubscription = this.panelManager.onDidChangeSidebarState(() => {
       this.scheduleRefresh();
     });
@@ -223,9 +252,28 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   }
 
   public async refresh(): Promise<CanvasSidebarNodeItemSnapshot[]> {
-    this.items = getCanvasSidebarNodeListItems(this.panelManager.getCanvasNodes());
+    const snapshot = this.panelManager.getCanvasSidebarNodeListSnapshot();
+    this.groups = snapshot.groups;
+    this.items = getCanvasSidebarNodeListItems(snapshot);
     await this.postState();
     return this.items;
+  }
+
+  public getViewMode(): SidebarNodeListViewMode {
+    return this.viewMode;
+  }
+
+  public async setViewMode(viewMode: SidebarNodeListViewMode): Promise<void> {
+    if (this.viewMode === viewMode) {
+      this.applyViewModeContext();
+      await this.postState();
+      return;
+    }
+
+    this.viewMode = viewMode;
+    this.applyViewModeContext();
+    await this.workspaceState?.update(STORAGE_KEYS.sidebarNodeListViewMode, viewMode);
+    await this.postState();
   }
 
   private scheduleRefresh(): void {
@@ -251,9 +299,19 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
     await this.view.webview.postMessage({
       type: 'sidebarNodeList/state',
       payload: {
-        items: this.items
+        items: this.items,
+        groups: this.groups,
+        viewMode: this.viewMode
       }
     } satisfies SidebarNodeListOutboundMessage);
+  }
+
+  private applyViewModeContext(): void {
+    void vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.sidebarNodeListGroupedView,
+      this.viewMode === 'grouped'
+    );
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -332,12 +390,18 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   }
 }
 
-export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): CanvasSidebarNodeItemSnapshot[] {
+export function getCanvasSidebarNodeListItems(
+  source: CanvasNodeSummary[] | CanvasSidebarNodeListSnapshot
+): CanvasSidebarNodeItemSnapshot[] {
+  const nodes = Array.isArray(source) ? source : source.nodes;
+  const groups = Array.isArray(source) ? [] : source.groups;
+  const groupsById = new Map(groups.map((group) => [group.id, group] as const));
   return nodes
     .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
       const statusLabel = humanizeCanvasNodeStatus(node);
+      const groupPath = resolveSidebarNodeGroupPath(node.groupId, groupsById);
       const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
       const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
@@ -357,6 +421,8 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         id: `node/${node.id}`,
         nodeId: node.id,
         nodeKind: node.kind,
+        groupPath: groupPath.map((group) => group.title),
+        groupPathIds: groupPath.map((group) => group.id),
         label,
         description,
         tooltip: tooltipLines.join('\n'),
@@ -369,6 +435,24 @@ export function getCanvasSidebarNodeListItems(nodes: CanvasNodeSummary[]): Canva
         attentionPending
       } satisfies CanvasSidebarNodeItemSnapshot;
     });
+}
+
+function resolveSidebarNodeGroupPath(
+  groupId: string | undefined,
+  groupsById: ReadonlyMap<string, CanvasGroupSummary>
+): Array<{ id: string; title: string }> {
+  const path: Array<{ id: string; title: string }> = [];
+  const visited = new Set<string>();
+  let currentGroup = groupId ? groupsById.get(groupId) : undefined;
+  while (currentGroup && !visited.has(currentGroup.id)) {
+    visited.add(currentGroup.id);
+    path.unshift({
+      id: currentGroup.id,
+      title: currentGroup.title.trim() || '未命名分组'
+    });
+    currentGroup = currentGroup.parentGroupId ? groupsById.get(currentGroup.parentGroupId) : undefined;
+  }
+  return path;
 }
 
 function buildSidebarNodeSecondaryText(subtitlePrefix: string | undefined, statusLabel: string): string {
@@ -489,8 +573,15 @@ function parseSidebarNodeListTestSnapshot(value: unknown): SidebarNodeListTestSn
     'attentionItemIds' in value && Array.isArray(value.attentionItemIds)
       ? value.attentionItemIds.filter((itemId): itemId is string => typeof itemId === 'string')
       : null;
+  const viewMode = normalizeSidebarNodeListViewMode('viewMode' in value ? value.viewMode : undefined);
+  const groupRows =
+    'groupRows' in value && Array.isArray(value.groupRows)
+      ? value.groupRows
+          .map(parseSidebarNodeListTestGroupRowSnapshot)
+          .filter((row): row is SidebarNodeListTestGroupRowSnapshot => row !== null)
+      : null;
 
-  if (rowCount === null || visibleItemIds === null || attentionItemIds === null) {
+  if (rowCount === null || visibleItemIds === null || attentionItemIds === null || groupRows === null) {
     return null;
   }
 
@@ -498,20 +589,59 @@ function parseSidebarNodeListTestSnapshot(value: unknown): SidebarNodeListTestSn
     rowCount,
     visibleItemIds,
     selectedId,
-    attentionItemIds
+    attentionItemIds,
+    viewMode,
+    groupRows
+  };
+}
+
+function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeListTestGroupRowSnapshot | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const key = 'key' in value && typeof value.key === 'string' ? value.key : null;
+  const label = 'label' in value && typeof value.label === 'string' ? value.label : null;
+  const expanded = 'expanded' in value && typeof value.expanded === 'boolean' ? value.expanded : null;
+  const depth = 'depth' in value && typeof value.depth === 'number' ? value.depth : null;
+  if (key === null || label === null || expanded === null || depth === null) {
+    return null;
+  }
+
+  return {
+    key,
+    label,
+    expanded,
+    depth
   };
 }
 
 export function isSidebarNodeListTestAction(value: unknown): value is SidebarNodeListTestAction {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'kind' in value &&
-    value.kind === 'clickItem' &&
-    'itemId' in value &&
-    typeof value.itemId === 'string' &&
-    (!('delayMs' in value) || typeof value.delayMs === 'number')
-  );
+  if (value === null || typeof value !== 'object' || !('kind' in value)) {
+    return false;
+  }
+
+  if (value.kind === 'clickItem') {
+    return (
+      'itemId' in value &&
+      typeof value.itemId === 'string' &&
+      (!('delayMs' in value) || typeof value.delayMs === 'number')
+    );
+  }
+
+  if (value.kind === 'toggleGroup') {
+    return (
+      'groupKey' in value &&
+      typeof value.groupKey === 'string' &&
+      (!('delayMs' in value) || typeof value.delayMs === 'number')
+    );
+  }
+
+  return false;
+}
+
+function normalizeSidebarNodeListViewMode(value: unknown): SidebarNodeListViewMode {
+  return value === 'flat' ? 'flat' : 'grouped';
 }
 
 function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
@@ -566,6 +696,64 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         display: grid;
       }
 
+      .node-group-row {
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
+        width: 100%;
+        min-width: 0;
+        min-height: 22px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border: 0;
+        background: transparent;
+        color: var(--row-fg);
+        font: inherit;
+        text-align: left;
+        cursor: default;
+      }
+
+      .node-group-row:hover {
+        background: var(--list-hover);
+        --row-fg: var(--list-hover-fg);
+        --row-muted: var(--list-hover-fg);
+      }
+
+      .node-group-row:focus-visible {
+        background: var(--list-active);
+        color: var(--list-active-fg);
+        outline: 1px solid var(--focus);
+        outline-offset: -1px;
+      }
+
+      .node-group-twistie {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--row-muted);
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .node-group-title {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .node-group-count {
+        flex: 0 0 auto;
+        margin-left: auto;
+        color: var(--row-muted);
+        font-size: 11px;
+      }
+
       .node-row {
         --row-fg: var(--fg);
         --row-muted: var(--muted);
@@ -580,6 +768,11 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         color: var(--row-fg);
         text-align: left;
         cursor: default;
+      }
+
+      .node-row.is-grouped {
+        padding-top: 7px;
+        padding-bottom: 7px;
       }
 
       .node-row:hover {
@@ -654,6 +847,16 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         color: var(--row-muted);
         white-space: nowrap;
         text-overflow: ellipsis;
+      }
+
+      .node-group-path {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--row-muted);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        padding-left: 22px;
+        font-size: 11px;
       }
 
       .status-pill {
@@ -749,13 +952,32 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
     <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const UNGROUPED_GROUP_KEY = '__ungrouped__';
       const state = {
         items: [],
-        selectedId: undefined
+        groups: [],
+        selectedId: undefined,
+        viewMode: 'grouped',
+        collapsedGroupKeys: new Set()
       };
 
       const list = document.getElementById('list');
       const emptyState = document.getElementById('emptyState');
+
+      function normalizeViewMode(value) {
+        return value === 'flat' ? 'flat' : 'grouped';
+      }
+
+      function normalizeGroupTitle(group) {
+        return typeof group.title === 'string' && group.title.trim() ? group.title.trim() : '未命名分组';
+      }
+
+      function normalizeGroupIds(item) {
+        if (Array.isArray(item.groupPathIds) && item.groupPathIds.length > 0) {
+          return item.groupPathIds.filter((groupId) => typeof groupId === 'string' && groupId.length > 0);
+        }
+        return [];
+      }
 
       function syncRenderedSelection() {
         const rows = list.querySelectorAll('[data-sidebar-node-item-id]');
@@ -785,11 +1007,23 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       function captureTestSnapshot() {
+        const rows = Array.from(list.querySelectorAll('[data-sidebar-node-item-id]'));
+        const groupRows = Array.from(list.querySelectorAll('[data-sidebar-node-group-key]'));
         return {
-          rowCount: list.querySelectorAll('[data-sidebar-node-item-id]').length,
-          visibleItemIds: state.items.map((item) => item.id),
+          rowCount: rows.length,
+          visibleItemIds: rows.map((row) => row.getAttribute('data-sidebar-node-item-id')).filter(Boolean),
           selectedId: state.selectedId,
-          attentionItemIds: state.items.filter((item) => item.attentionPending).map((item) => item.id)
+          viewMode: state.viewMode,
+          attentionItemIds: rows
+            .filter((row) => row.getAttribute('data-attention-pending') === 'true')
+            .map((row) => row.getAttribute('data-sidebar-node-item-id'))
+            .filter(Boolean),
+          groupRows: groupRows.map((row) => ({
+            key: row.getAttribute('data-sidebar-node-group-key') || '',
+            label: row.getAttribute('data-sidebar-node-group-label') || '',
+            expanded: row.getAttribute('aria-expanded') === 'true',
+            depth: Number(row.getAttribute('data-sidebar-node-group-depth') || '0')
+          }))
         };
       }
 
@@ -809,8 +1043,21 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         return list.querySelector('[data-sidebar-node-item-id="' + CSS.escape(itemId) + '"]');
       }
 
+      function queryGroupByKey(groupKey) {
+        return list.querySelector('[data-sidebar-node-group-key="' + CSS.escape(groupKey) + '"]');
+      }
+
+      function toggleGroup(groupKey) {
+        if (state.collapsedGroupKeys.has(groupKey)) {
+          state.collapsedGroupKeys.delete(groupKey);
+        } else {
+          state.collapsedGroupKeys.add(groupKey);
+        }
+        render();
+      }
+
       async function performTestAction(action) {
-        if (!action || action.kind !== 'clickItem' || typeof action.itemId !== 'string') {
+        if (!action || (action.kind !== 'clickItem' && action.kind !== 'toggleGroup')) {
           throw new Error('Unsupported sidebar node list test action.');
         }
 
@@ -818,6 +1065,24 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
           await new Promise((resolve) => setTimeout(resolve, action.delayMs));
         }
 
+        if (action.kind === 'toggleGroup') {
+          if (typeof action.groupKey !== 'string') {
+            throw new Error('Sidebar node group key is required.');
+          }
+          const groupRow = queryGroupByKey(action.groupKey);
+          if (!groupRow) {
+            throw new Error('Target sidebar node group row is not visible.');
+          }
+          groupRow.focus();
+          groupRow.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+          dispatchSyntheticMouseClick(groupRow);
+          await waitForDomActionFlush();
+          return captureTestSnapshot();
+        }
+
+        if (typeof action.itemId !== 'string') {
+          throw new Error('Sidebar node item id is required.');
+        }
         const row = queryRowByItemId(action.itemId);
         if (!row) {
           throw new Error('Target sidebar node row is not visible.');
@@ -831,91 +1096,290 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         return captureTestSnapshot();
       }
 
+      function getFlatRenderedItems() {
+        return state.items;
+      }
+
+      function createGroupTreeNode(group) {
+        return {
+          id: group.id,
+          key: group.id,
+          label: normalizeGroupTitle(group),
+          parentGroupId: typeof group.parentGroupId === 'string' ? group.parentGroupId : undefined,
+          childGroups: [],
+          items: [],
+          depth: 0,
+          totalItemCount: 0
+        };
+      }
+
+      function buildGroupedTree() {
+        const root = {
+          childGroups: [],
+          items: [],
+          totalItemCount: 0
+        };
+        const groupNodesById = new Map();
+        for (const group of state.groups) {
+          if (!group || typeof group.id !== 'string') {
+            continue;
+          }
+          groupNodesById.set(group.id, createGroupTreeNode(group));
+        }
+
+        for (const groupNode of groupNodesById.values()) {
+          const parentNode = groupNode.parentGroupId ? groupNodesById.get(groupNode.parentGroupId) : undefined;
+          if (parentNode) {
+            parentNode.childGroups.push(groupNode);
+          } else {
+            root.childGroups.push(groupNode);
+          }
+        }
+
+        for (const item of state.items) {
+          const groupIds = normalizeGroupIds(item);
+          const directGroupId = groupIds.length > 0 ? groupIds[groupIds.length - 1] : undefined;
+          const groupNode = directGroupId ? groupNodesById.get(directGroupId) : undefined;
+          if (groupNode) {
+            groupNode.items.push(item);
+          } else {
+            root.items.push(item);
+          }
+        }
+
+        const sortItems = (items) => {
+          items.sort((left, right) => left.label.localeCompare(right.label, 'zh-CN'));
+        };
+        const sortGroups = (groups) => {
+          groups.sort((left, right) => left.label.localeCompare(right.label, 'zh-CN') || left.id.localeCompare(right.id, 'zh-CN'));
+        };
+        const visit = (groupNode, depth) => {
+          groupNode.depth = depth;
+          sortGroups(groupNode.childGroups);
+          sortItems(groupNode.items);
+          let total = groupNode.items.length;
+          for (const childGroup of groupNode.childGroups) {
+            total += visit(childGroup, depth + 1);
+          }
+          groupNode.totalItemCount = total;
+          return total;
+        };
+
+        sortGroups(root.childGroups);
+        sortItems(root.items);
+        root.totalItemCount = root.items.length;
+        for (const groupNode of root.childGroups) {
+          root.totalItemCount += visit(groupNode, 0);
+        }
+        return root;
+      }
+
+      function pruneCollapsedGroupKeys(root) {
+        const validKeys = new Set();
+        if (root.items.length > 0) {
+          validKeys.add(UNGROUPED_GROUP_KEY);
+        }
+        const visit = (groupNode) => {
+          validKeys.add(groupNode.key);
+          for (const childGroup of groupNode.childGroups) {
+            visit(childGroup);
+          }
+        };
+        for (const groupNode of root.childGroups) {
+          visit(groupNode);
+        }
+        for (const groupKey of [...state.collapsedGroupKeys]) {
+          if (!validKeys.has(groupKey)) {
+            state.collapsedGroupKeys.delete(groupKey);
+          }
+        }
+      }
+
+      function renderGroupRow(options) {
+        const row = document.createElement('button');
+        const isExpanded = !state.collapsedGroupKeys.has(options.key);
+        row.className = 'node-group-row';
+        row.type = 'button';
+        row.title = options.label;
+        row.style.paddingLeft = String(4 + options.depth * 14) + 'px';
+        row.setAttribute('data-sidebar-node-group-key', options.key);
+        row.setAttribute('data-sidebar-node-group-label', options.label);
+        row.setAttribute('data-sidebar-node-group-depth', String(options.depth));
+        row.setAttribute('role', 'treeitem');
+        row.setAttribute('aria-level', String(options.depth + 1));
+        row.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        row.setAttribute('aria-label', options.label + (isExpanded ? '，已展开' : '，已折叠'));
+
+        const twistie = document.createElement('span');
+        twistie.className = 'node-group-twistie codicon ' + (isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right');
+        twistie.setAttribute('aria-hidden', 'true');
+
+        const title = document.createElement('span');
+        title.className = 'node-group-title';
+        title.textContent = options.label;
+
+        const count = document.createElement('span');
+        count.className = 'node-group-count';
+        count.textContent = options.totalItemCount > 0 ? String(options.totalItemCount) : '';
+
+        row.append(twistie, title, count);
+        row.addEventListener('click', () => toggleGroup(options.key));
+        row.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleGroup(options.key);
+          }
+        });
+        list.append(row);
+      }
+
+      function renderNodeRow(item, depth) {
+        const row = document.createElement('div');
+        row.className = 'node-row';
+        row.tabIndex = 0;
+        row.title = item.tooltip;
+        row.setAttribute('data-sidebar-node-item-id', item.id);
+        row.setAttribute('data-sidebar-node-id', item.nodeId);
+        row.setAttribute('data-attention-pending', item.attentionPending ? 'true' : 'false');
+        row.setAttribute('role', state.viewMode === 'grouped' ? 'treeitem' : 'option');
+        row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
+        row.setAttribute(
+          'aria-label',
+          item.label + '，' + item.status + (item.attentionPending ? '，当前有通知提醒' : '')
+        );
+        if (state.viewMode === 'grouped') {
+          row.classList.add('is-grouped');
+          row.style.paddingLeft = String(12 + depth * 14) + 'px';
+          row.setAttribute('aria-level', String(depth + 1));
+        }
+        if (item.id === state.selectedId) {
+          row.classList.add('is-selected');
+        }
+
+        row.addEventListener('click', () => {
+          setSelectedId(item.id);
+          focusNode(item);
+        });
+        row.addEventListener('focus', () => {
+          setSelectedId(item.id);
+        });
+        row.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setSelectedId(item.id);
+            focusNode(item);
+          }
+        });
+
+        const main = document.createElement('div');
+        main.className = 'node-main';
+
+        const titleLine = document.createElement('div');
+        titleLine.className = 'node-title-line';
+
+        const marker = document.createElement('span');
+        marker.className = 'node-marker codicon codicon-circle-filled';
+        marker.setAttribute('aria-hidden', 'true');
+        marker.style.color = item.markerColor;
+
+        const title = document.createElement('div');
+        title.className = 'node-title';
+        title.textContent = item.label;
+
+        titleLine.append(marker, title);
+        main.append(titleLine);
+
+        const status = document.createElement('div');
+        status.className = 'node-status';
+        if (item.subtitlePrefix) {
+          const subtitlePrefix = document.createElement('span');
+          subtitlePrefix.className = 'node-status-prefix';
+          subtitlePrefix.textContent = item.subtitlePrefix + ' ·';
+          status.append(subtitlePrefix);
+        }
+        const statusPill = document.createElement('span');
+        statusPill.className = 'status-pill ' + item.statusTone;
+        statusPill.textContent = item.statusLabel;
+        status.append(statusPill);
+        main.append(status);
+
+        if (state.viewMode !== 'grouped' && Array.isArray(item.groupPath) && item.groupPath.length > 0) {
+          const groupPath = document.createElement('div');
+          groupPath.className = 'node-group-path';
+          groupPath.textContent = item.groupPath.join(' / ');
+          main.append(groupPath);
+        }
+
+        row.append(main);
+
+        if (item.attentionPending) {
+          const attention = document.createElement('span');
+          attention.className = 'node-attention codicon codicon-bell';
+          attention.setAttribute('aria-hidden', 'true');
+          attention.title = '终端有待处理的通知';
+          row.append(attention);
+        }
+
+        list.append(row);
+      }
+
+      function renderGroupNode(groupNode) {
+        renderGroupRow({
+          key: groupNode.key,
+          label: groupNode.label,
+          depth: groupNode.depth,
+          totalItemCount: groupNode.totalItemCount
+        });
+        if (state.collapsedGroupKeys.has(groupNode.key)) {
+          return;
+        }
+        for (const childGroup of groupNode.childGroups) {
+          renderGroupNode(childGroup);
+        }
+        for (const item of groupNode.items) {
+          renderNodeRow(item, groupNode.depth + 1);
+        }
+      }
+
+      function renderGroupedTree() {
+        const root = buildGroupedTree();
+        pruneCollapsedGroupKeys(root);
+        if (root.items.length > 0) {
+          renderGroupRow({
+            key: UNGROUPED_GROUP_KEY,
+            label: '未分组',
+            depth: 0,
+            totalItemCount: root.items.length
+          });
+          if (!state.collapsedGroupKeys.has(UNGROUPED_GROUP_KEY)) {
+            for (const item of root.items) {
+              renderNodeRow(item, 1);
+            }
+          }
+        }
+        for (const groupNode of root.childGroups) {
+          renderGroupNode(groupNode);
+        }
+      }
+
       function render() {
         if (!state.selectedId || !state.items.some((item) => item.id === state.selectedId)) {
           state.selectedId = state.items[0] ? state.items[0].id : undefined;
         }
 
         list.replaceChildren();
-        for (const item of state.items) {
-          const row = document.createElement('div');
-          row.className = 'node-row';
-          row.tabIndex = 0;
-          row.title = item.tooltip;
-          row.setAttribute('data-sidebar-node-item-id', item.id);
-          row.setAttribute('data-sidebar-node-id', item.nodeId);
-          row.setAttribute('data-attention-pending', item.attentionPending ? 'true' : 'false');
-          row.setAttribute('role', 'option');
-          row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
-          row.setAttribute(
-            'aria-label',
-            item.label + '，' + item.status + (item.attentionPending ? '，当前有通知提醒' : '')
-          );
-          if (item.id === state.selectedId) {
-            row.classList.add('is-selected');
+        list.setAttribute('role', state.viewMode === 'grouped' ? 'tree' : 'listbox');
+        list.setAttribute('aria-label', state.viewMode === 'grouped' ? '当前画布节点分组树' : '当前画布节点列表');
+
+        if (state.viewMode === 'grouped') {
+          renderGroupedTree();
+        } else {
+          for (const item of getFlatRenderedItems()) {
+            renderNodeRow(item, 0);
           }
-
-          row.addEventListener('click', () => {
-            setSelectedId(item.id);
-            focusNode(item);
-          });
-          row.addEventListener('focus', () => {
-            setSelectedId(item.id);
-          });
-          row.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setSelectedId(item.id);
-              focusNode(item);
-            }
-          });
-
-          const main = document.createElement('div');
-          main.className = 'node-main';
-
-          const titleLine = document.createElement('div');
-          titleLine.className = 'node-title-line';
-
-          const marker = document.createElement('span');
-          marker.className = 'node-marker codicon codicon-circle-filled';
-          marker.setAttribute('aria-hidden', 'true');
-          marker.style.color = item.markerColor;
-
-          const title = document.createElement('div');
-          title.className = 'node-title';
-          title.textContent = item.label;
-
-          titleLine.append(marker, title);
-          main.append(titleLine);
-
-          const status = document.createElement('div');
-          status.className = 'node-status';
-          if (item.subtitlePrefix) {
-            const subtitlePrefix = document.createElement('span');
-            subtitlePrefix.className = 'node-status-prefix';
-            subtitlePrefix.textContent = item.subtitlePrefix + ' ·';
-            status.append(subtitlePrefix);
-          }
-          const statusPill = document.createElement('span');
-          statusPill.className = 'status-pill ' + item.statusTone;
-          statusPill.textContent = item.statusLabel;
-          status.append(statusPill);
-          main.append(status);
-
-          row.append(main);
-
-          if (item.attentionPending) {
-            const attention = document.createElement('span');
-            attention.className = 'node-attention codicon codicon-bell';
-            attention.setAttribute('aria-hidden', 'true');
-            attention.title = '未确认终端提醒';
-            row.append(attention);
-          }
-
-          list.append(row);
         }
 
-        if (state.items.length === 0) {
+        if (state.items.length === 0 && state.groups.length === 0) {
           emptyState.textContent = '当前画布还没有可定位的非文件节点。';
           emptyState.classList.add('is-visible');
           return;
@@ -923,6 +1387,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
 
         emptyState.textContent = '';
         emptyState.classList.remove('is-visible');
+        syncRenderedSelection();
       }
 
       window.addEventListener('message', (event) => {
@@ -959,6 +1424,8 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         }
 
         state.items = Array.isArray(message.payload.items) ? message.payload.items : [];
+        state.groups = Array.isArray(message.payload.groups) ? message.payload.groups : [];
+        state.viewMode = normalizeViewMode(message.payload.viewMode);
         render();
       });
 
