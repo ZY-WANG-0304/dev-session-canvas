@@ -9715,13 +9715,20 @@ function CanvasGroupFrame(props: {
       data-group-id={props.group.id}
       style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
       onPointerDownCapture={handleModifierSelectionPointerDownCapture}
-      onClick={(event) => {
-        stopCanvasEvent(event);
-        if (ignoreNextClickSelectionRef.current) {
-          ignoreNextClickSelectionRef.current = false;
+      onClickCapture={(event) => {
+        if (!ignoreNextClickSelectionRef.current) {
           return;
         }
-        selectGroup(event);
+        ignoreNextClickSelectionRef.current = false;
+        event.preventDefault();
+        stopCanvasEvent(event);
+      }}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        if (event.ctrlKey || event.metaKey) {
+          return;
+        }
+        selectGroup();
       }}
       onPointerMove={(event) => {
         handleDragMove(event);
@@ -9734,6 +9741,7 @@ function CanvasGroupFrame(props: {
       onPointerCancel={(event) => {
         dragStartRef.current = null;
         resizeStartRef.current = null;
+        ignoreNextClickSelectionRef.current = false;
         props.onDraftGroup(props.group.id, null);
         props.onDragEnd();
         props.onResizeEnd();

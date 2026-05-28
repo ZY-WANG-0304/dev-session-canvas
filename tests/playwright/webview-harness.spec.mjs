@@ -8439,6 +8439,20 @@ test('canvas context menu can create a group from selected peer groups', async (
     .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
     .toEqual(['group-a', 'group-b']);
 
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-b']);
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-b', 'group-a']);
+
   await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 80, y: 520 } });
   const menu = page.locator('[data-context-menu="true"]');
   await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
@@ -8446,7 +8460,7 @@ test('canvas context menu can create a group from selected peer groups', async (
   const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
   expect(message.payload).toEqual({
     nodeIds: [],
-    groupIds: ['group-a', 'group-b']
+    groupIds: ['group-b', 'group-a']
   });
 });
 
