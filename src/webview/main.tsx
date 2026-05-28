@@ -187,7 +187,6 @@ interface CanvasMiniMapViewportOutlineState {
 }
 
 const CanvasOverviewInteractionContext = React.createContext(false);
-const CanvasNodeModifierSelectionContext = React.createContext<(nodeId: string) => void>(() => undefined);
 const overviewInertAttributes = { inert: '' } as unknown as React.HTMLAttributes<HTMLElement>;
 
 function useCanvasOverviewInteractionsDisabled(): boolean {
@@ -198,13 +197,20 @@ function canvasOverviewInertProps(disabled: boolean): React.HTMLAttributes<HTMLE
   return disabled ? overviewInertAttributes : {};
 }
 
+function resolveSelectedGroupIds(state: Pick<LocalUiState, 'selectedGroupId' | 'selectedGroupIds'>): string[] {
+  return state.selectedGroupIds ?? (state.selectedGroupId ? [state.selectedGroupId] : []);
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function CanvasNodeInteractionBoundary(props: {
   nodeId: string;
   disabled: boolean;
+  onModifierSelectNode: (nodeId: string) => void;
   children: JSX.Element;
 }): JSX.Element {
-  const selectNodeWithModifier = React.useContext(CanvasNodeModifierSelectionContext);
-
   const handlePointerDownCapture = (event: React.PointerEvent): void => {
     if (event.button !== 0 || isModifierSelectionInteractiveTarget(event.target)) {
       return;
@@ -215,7 +221,7 @@ function CanvasNodeInteractionBoundary(props: {
 
     event.preventDefault();
     stopCanvasEvent(event);
-    selectNodeWithModifier(props.nodeId);
+    props.onModifierSelectNode(props.nodeId);
   };
 
   return (
@@ -339,6 +345,7 @@ interface CanvasNodeData {
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
+  onModifierSelectNode?: (nodeId: string) => void;
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
@@ -2225,7 +2232,8 @@ function App(): JSX.Element {
     onResizeNodeEnd: handleResizeNodeEnd,
     onResizeNode: handleResizeNode,
     onFocusNodeInViewport: focusNodeInViewport,
-    onDeleteNode: deleteNode
+    onDeleteNode: deleteNode,
+    onModifierSelectNode: toggleNodeSelection
   });
   const groupDraftLayout = applyCanvasGroupDrafts({
     groups: hostState?.groups ?? [],
@@ -2323,11 +2331,16 @@ function App(): JSX.Element {
     closeFloatingMenus();
     const bodyHitGroup = resolveGroupBodyHitAtPointer(event);
     if (bodyHitGroup) {
-      selectGroup(bodyHitGroup.id);
+      selectGroup(bodyHitGroup.id, event);
       return;
     }
 
-    if (!localUiState.selectedNodeId && !localUiState.selectedGroupId && !selectedEdgeId) {
+    if (
+      !localUiState.selectedNodeId &&
+      !localUiState.selectedGroupId &&
+      !localUiState.selectedGroupIds?.length &&
+      !selectedEdgeId
+    ) {
       return;
     }
 
@@ -2341,12 +2354,38 @@ function App(): JSX.Element {
     });
   };
 
-  const selectGroup = (groupId: string): void => {
+  const selectGroup = (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ): void => {
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
     setLocalUiState((current) => {
+      const useModifierSelection = event?.ctrlKey === true || event?.metaKey === true;
+      if (useModifierSelection) {
+        const selectedGroupIds = new Set(resolveSelectedGroupIds(current));
+        if (selectedGroupIds.has(groupId)) {
+          selectedGroupIds.delete(groupId);
+        } else {
+          selectedGroupIds.add(groupId);
+        }
+        const nextSelectedGroupIds = Array.from(selectedGroupIds);
+        const nextState = {
+          ...current,
+          selectedNodeId: undefined,
+          selectedNodeIds: undefined,
+          selectedGroupId: nextSelectedGroupIds.at(-1),
+          selectedGroupIds: nextSelectedGroupIds.length > 0 ? nextSelectedGroupIds : undefined
+        };
+        localUiStateRef.current = nextState;
+        return nextState;
+      }
+
       const nextState =
-        current.selectedGroupId === groupId && !current.selectedNodeId
+        current.selectedGroupId === groupId &&
+        !current.selectedNodeId &&
+        !current.selectedNodeIds?.length &&
+        arraysEqual(resolveSelectedGroupIds(current), [groupId])
           ? current
           : {
               ...current,
@@ -2410,7 +2449,7 @@ function App(): JSX.Element {
     const currentHostState = hostStateRef.current;
     const currentUiState = localUiStateRef.current;
     const nodeIds = currentUiState.selectedNodeIds ?? (currentUiState.selectedNodeId ? [currentUiState.selectedNodeId] : []);
-    const groupIds = currentUiState.selectedGroupIds ?? (currentUiState.selectedGroupId ? [currentUiState.selectedGroupId] : []);
+    const groupIds = resolveSelectedGroupIds(currentUiState);
     const parentGroupId = resolveSelectedObjectParentGroupId(currentHostState, nodeIds, groupIds);
 
     if (!canCreateCanvasGroupFromSelection(currentHostState, nodeIds, groupIds, parentGroupId)) {
@@ -2737,7 +2776,7 @@ function App(): JSX.Element {
     const currentSelectedNodeIds =
       localUiState.selectedNodeIds ?? (localUiState.selectedNodeId ? [localUiState.selectedNodeId] : []);
     const currentSelectedGroupIds =
-      localUiState.selectedGroupIds ?? (localUiState.selectedGroupId ? [localUiState.selectedGroupId] : []);
+      resolveSelectedGroupIds(localUiState);
     const preserveSelectionForBodyAction =
       bodyHitGroup &&
       canCreateCanvasGroupFromSelection(hostState, currentSelectedNodeIds, currentSelectedGroupIds, bodyHitGroup.id);
@@ -2761,8 +2800,8 @@ function App(): JSX.Element {
       ...current,
       selectedNodeId: undefined,
       selectedNodeIds: undefined,
-      selectedGroupId: bodyHitGroup?.id,
-      selectedGroupIds: bodyHitGroup ? [bodyHitGroup.id] : undefined
+      selectedGroupId: selectedGroupIds.at(-1),
+      selectedGroupIds: selectedGroupIds.length > 0 ? selectedGroupIds : undefined
     }));
     setContextMenu({
       screenX: event.clientX,
@@ -3038,7 +3077,6 @@ function App(): JSX.Element {
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
     >
-      <CanvasNodeModifierSelectionContext.Provider value={toggleNodeSelection}>
       <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
         <ReactFlow
@@ -3085,7 +3123,7 @@ function App(): JSX.Element {
           <CanvasGroupsViewportLayer
             groups={groups}
             portalElement={canvasShellRef.current}
-            selectedGroupId={localUiState.selectedGroupId}
+            selectedGroupIds={resolveSelectedGroupIds(localUiState)}
             onSelectGroupBody={selectGroup}
             onGroupBodyContextMenu={handlePaneContextMenu}
             onSelectGroup={selectGroup}
@@ -3124,7 +3162,6 @@ function App(): JSX.Element {
           />
         </ReactFlow>
       </CanvasOverviewInteractionContext.Provider>
-      </CanvasNodeModifierSelectionContext.Provider>
 
       {contextMenu ? (
         <CanvasContextMenu
@@ -3914,7 +3951,11 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   const actionDisabled = executionBlocked || reattaching;
 
   return (
-    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -4395,7 +4436,11 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
   }, [executionBlocked, id, terminalMetadata.liveSession, terminalMetadata.pendingLaunch]);
 
   return (
-    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -5014,7 +5059,11 @@ function FileNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Elem
   const showText = data.fileNodeDisplayMode !== 'icon-only';
 
   return (
-    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node file-node kind-file display-style-${data.fileNodeDisplayStyle} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -5133,7 +5182,11 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
     data.selected && data.documentHasFocus ? 'active' : 'inactive';
 
   return (
-    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node file-list-node kind-file-list display-style-${data.fileNodeDisplayStyle} ${
         data.selected ? 'is-selected' : ''
@@ -6572,7 +6625,11 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   };
 
   return (
-    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -6869,7 +6926,11 @@ function CompactCanvasCardNodeContent({ id, data, position, zoom }: Pick<NodePro
   const terminalMetadata = data.metadata?.terminal;
 
   return (
-    <CanvasNodeInteractionBoundary nodeId={id} disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -9026,10 +9087,16 @@ function NoteMarkdownMetadataTrigger(props: {
 function CanvasGroupsViewportLayer(props: {
   groups: CanvasGroupSummary[];
   portalElement: HTMLElement | null;
-  selectedGroupId?: string;
-  onSelectGroupBody: (groupId: string) => void;
+  selectedGroupIds?: readonly string[];
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
-  onSelectGroup: (groupId: string) => void;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -9056,7 +9123,7 @@ function CanvasGroupsViewportLayer(props: {
         ? createPortal(
             <CanvasGroupBackgroundLayer
               groups={props.groups}
-              selectedGroupId={props.selectedGroupId}
+              selectedGroupIds={props.selectedGroupIds}
               zoom={viewport.zoom}
               onSelectGroupBody={props.onSelectGroupBody}
               onGroupBodyContextMenu={props.onGroupBodyContextMenu}
@@ -9078,19 +9145,23 @@ function selectCanvasGroupBackgroundViewportElement(state: ReactFlowState): HTML
 
 function CanvasGroupBackgroundLayer(props: {
   groups: CanvasGroupSummary[];
-  selectedGroupId?: string;
+  selectedGroupIds?: readonly string[];
   zoom: number;
-  onSelectGroupBody: (groupId: string) => void;
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
+  const selectedGroupIds = new Set(props.selectedGroupIds ?? []);
   return (
     <div className="canvas-group-background-layer" aria-hidden="true">
       {orderedGroups.map((group) => (
         <CanvasGroupBackgroundFrame
           key={group.id}
           group={group}
-          selected={group.id === props.selectedGroupId}
+          selected={selectedGroupIds.has(group.id)}
           zoom={props.zoom}
           onSelectGroupBody={props.onSelectGroupBody}
           onGroupBodyContextMenu={props.onGroupBodyContextMenu}
@@ -9104,7 +9175,10 @@ function CanvasGroupBackgroundFrame(props: {
   group: CanvasGroupSummary;
   selected: boolean;
   zoom: number;
-  onSelectGroupBody: (groupId: string) => void;
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   return (
@@ -9118,7 +9192,7 @@ function CanvasGroupBackgroundFrame(props: {
         data-group-background-body-hit-area="true"
         onClick={(event) => {
           stopCanvasEvent(event);
-          props.onSelectGroupBody(props.group.id);
+          props.onSelectGroupBody(props.group.id, event);
         }}
         onContextMenu={(event) => {
           props.onGroupBodyContextMenu(event, props.group.id);
@@ -9130,9 +9204,12 @@ function CanvasGroupBackgroundFrame(props: {
 
 function CanvasGroupLayer(props: {
   groups: CanvasGroupSummary[];
-  selectedGroupId?: string;
+  selectedGroupIds?: readonly string[];
   viewport: Viewport;
-  onSelectGroup: (groupId: string) => void;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -9151,6 +9228,7 @@ function CanvasGroupLayer(props: {
   onResizeEnd: () => void;
 }): JSX.Element {
   const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
+  const selectedGroupIds = new Set(props.selectedGroupIds ?? []);
   return (
     <div
       className="canvas-group-layer"
@@ -9162,7 +9240,7 @@ function CanvasGroupLayer(props: {
         <CanvasGroupFrame
           key={group.id}
           group={group}
-          selected={group.id === props.selectedGroupId}
+          selected={selectedGroupIds.has(group.id)}
           zoom={props.viewport.zoom}
           onSelectGroup={props.onSelectGroup}
           onDraftGroup={props.onDraftGroup}
@@ -9436,7 +9514,10 @@ function CanvasGroupFrame(props: {
   group: CanvasGroupSummary;
   selected: boolean;
   zoom: number;
-  onSelectGroup: (groupId: string) => void;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -9472,8 +9553,26 @@ function CanvasGroupFrame(props: {
     autoPanOffset: CanvasNodePosition;
   } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const ignoreNextClickSelectionRef = useRef(false);
 
-  const selectGroup = (): void => props.onSelectGroup(props.group.id);
+  const selectGroup = (
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ): void => props.onSelectGroup(props.group.id, event);
+
+  const handleModifierSelectionPointerDownCapture = (event: React.PointerEvent): void => {
+    if (
+      event.button !== 0 ||
+      (!event.ctrlKey && !event.metaKey) ||
+      isGroupModifierSelectionBlockedTarget(event.target)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    ignoreNextClickSelectionRef.current = true;
+    props.onSelectGroup(props.group.id, event);
+  };
 
   const resolvePointerOffsetInGroup = (event: React.PointerEvent): CanvasNodePosition => {
     const frameElement = event.currentTarget instanceof HTMLElement
@@ -9495,6 +9594,13 @@ function CanvasGroupFrame(props: {
 
   const beginDrag = (event: React.PointerEvent): void => {
     if (event.button !== 0 || isInteractiveTarget(event.target)) {
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      ignoreNextClickSelectionRef.current = true;
+      props.onSelectGroup(props.group.id, event);
       return;
     }
 
@@ -9608,9 +9714,14 @@ function CanvasGroupFrame(props: {
       className={`canvas-group-frame${props.selected ? ' is-selected' : ''}`}
       data-group-id={props.group.id}
       style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
+      onPointerDownCapture={handleModifierSelectionPointerDownCapture}
       onClick={(event) => {
         stopCanvasEvent(event);
-        selectGroup();
+        if (ignoreNextClickSelectionRef.current) {
+          ignoreNextClickSelectionRef.current = false;
+          return;
+        }
+        selectGroup(event);
       }}
       onPointerMove={(event) => {
         handleDragMove(event);
@@ -9637,7 +9748,7 @@ function CanvasGroupFrame(props: {
           placeholder="分组标题"
           className="canvas-group-title"
           onSubmit={(title) => props.onUpdateGroupTitle(props.group.id, title)}
-          onSelectNode={selectGroup}
+          onSelectNode={() => selectGroup()}
         />
       </div>
       <div className="canvas-group-border canvas-group-border-top" onPointerDown={beginDrag} />
@@ -9959,6 +10070,7 @@ function toFlowNodes(params: {
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
+  onModifierSelectNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
   const selectedNodeIds = new Set(params.selectedNodeIds ?? (params.selectedNodeId ? [params.selectedNodeId] : []));
   return params.nodes.map((node) => {
@@ -10037,7 +10149,8 @@ function toFlowNodes(params: {
         onResizeNodeEnd: params.onResizeNodeEnd,
         onResizeNode: params.onResizeNode,
         onFocusNodeInViewport: params.onFocusNodeInViewport,
-        onDeleteNode: params.onDeleteNode
+        onDeleteNode: params.onDeleteNode,
+        onModifierSelectNode: params.onModifierSelectNode
       }
     };
   });
@@ -11369,6 +11482,12 @@ function isModifierSelectionInteractiveTarget(target: EventTarget | null): boole
     )
   ) || Boolean(
     target.closest('[data-node-interactive="true"]') && !target.closest('.note-markdown-preview')
+  );
+}
+
+function isGroupModifierSelectionBlockedTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(
+    target.closest('button, a, [contenteditable="true"], .canvas-group-resize-control, .canvas-group-toolbar')
   );
 }
 

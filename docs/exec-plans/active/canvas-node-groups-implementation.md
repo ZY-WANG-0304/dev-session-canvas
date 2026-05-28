@@ -52,6 +52,7 @@
 - [x] (2026-05-26 10:55Z) 完成本轮 sidebar 验证：`npm run typecheck`、`node scripts/test/test-extension-manifest.mjs`、`npm run test:sidebar-list-colors`、`npm run build` 和 `git diff --check` 均通过；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 已覆盖侧栏分组树路径，但随后在既有 Note Markdown 文件关联用例中超时，暂不作为本轮 sidebar blocker。
 - [x] (2026-05-27 16:40 +0800) 处理 PR review：模板应用改为两阶段预分配 template group id，支持 `parentGroupIndex` 指向后方父分组；命令面板补齐“创建空分组”和“从选中项创建分组”，不增加快捷键。
 - [x] (2026-05-27 17:40 +0800) 处理第二轮 PR review：模板解析拒绝越界和循环 `parentGroupIndex`，模板应用兜底切断循环父链；删除非空分组确认文案改为明确递归删除内部所有节点与子分组，并补充嵌套删除确认 smoke 覆盖。
+- [x] (2026-05-28 11:20 +0800) 处理第三轮 review：Webview 支持 Ctrl / Cmd 多选同级分组并从选中分组创建外层分组；模板解析补齐节点 `groupIndex` 越界拒绝和分组 self-parent 拒绝。
 - [ ] 继续完善删除分组对话框保留成员分支的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -119,6 +120,12 @@
 
 - 观察：删除父分组的危险选项实际递归删除整棵分组子树，确认文案必须披露子分组、节点数量和执行节点清理风险。
   证据：第二轮 PR review 指出旧文案只说“内部节点”；本轮确认对话框标题和 detail 改为“内部所有节点与子分组”并展示递归计数，VS Code smoke 覆盖嵌套分组删除确认。
+
+- 观察：从选中项创建分组已经支持 `groupIds`，但 Webview 必须提供分组多选入口，否则同级分组创建外层分组的规格路径不可达。
+  证据：第三轮 PR review 指出分组选中入口只会覆盖为单个 `selectedGroupIds`；本轮让 Ctrl / Cmd 点击分组标题 / 边框 / body 空白区切换分组选中，并用 Playwright 覆盖两个同级分组右键创建外层分组消息。
+
+- 观察：外部模板节点 `groupIndex` 和分组 `parentGroupIndex` 都属于结构引用，不能静默降级。
+  证据：第三轮 PR review 指出越界节点 `groupIndex` 会在应用时静默变成未分组，self-parent 会在解析时静默变根分组；本轮解析阶段直接拒绝这两类坏模板，并补充模板测试。
 
 ## 决策记录
 
@@ -248,6 +255,30 @@ Webview 验收：Playwright harness 中，空白区可创建空 group；group fr
     "test:canvas-node-groups": "node scripts/test/test-canvas-node-groups.mjs"
 
 Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面加载 `dist/webview.js`。
+
+2026-05-28 第三轮 PR review 修复验证记录：
+
+    $ npm run typecheck
+    通过。
+
+    $ npm run test:canvas-templates
+    通过。
+
+    $ npm run test:canvas-node-groups
+    通过。
+
+    $ npm run test:protocol-webview-messages
+    protocol webview message tests passed
+
+    $ npm run build
+    通过。
+
+    $ node scripts/test/run-playwright-webview.mjs -g "canvas context menu can create a group from selected peer groups|canvas context menu can create a group from selected nodes|host-triggered group creation uses current webview selection"
+    3 passed
+    Playwright webview tests passed.
+
+    $ git diff --check
+    通过。
 
 2026-05-27 第二轮 PR review 修复验证记录：
 

@@ -490,6 +490,40 @@ try {
     }),
     /不存在的父分组索引/u
   );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 0 }
+        ]
+      }
+    }),
+    /不能引用自身作为父分组/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 } }
+        ],
+        nodes: [
+          {
+            kind: 'note',
+            title: 'Broken Group Note',
+            position: { x: 0, y: 0 },
+            size: { width: 320, height: 240 },
+            groupIndex: 3,
+            metadata: { note: { content: '' } }
+          }
+        ]
+      }
+    }),
+    /不存在的分组索引/u
+  );
 
   const extensionSource = await readFile('src/extension.ts', 'utf8');
   const exportCommandSource = sliceBetween(

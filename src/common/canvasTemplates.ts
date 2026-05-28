@@ -185,8 +185,8 @@ export function parseCanvasTemplateDocument(
   const warnings: string[] = [];
   const category = options.forceCategory ?? resolveTemplateCategory(templateValue.category, options.defaultCategory);
   const now = new Date().toISOString();
-  const nodes = parseTemplateNodes(templateValue.nodes, warnings);
   const groups = parseTemplateGroups(templateValue.groups);
+  const nodes = parseTemplateNodes(templateValue.nodes, warnings, groups.length);
   const edges = parseTemplateEdges(templateValue.edges, nodes.length);
 
   if (nodes.length === 0) {
@@ -533,15 +533,24 @@ function isCanvasTemplateCompatibleNode(
   return isCanvasTemplateNodeKind(node.kind);
 }
 
-function parseTemplateNodes(value: unknown, warnings: string[]): CanvasTemplateNodeSnapshot[] {
+function parseTemplateNodes(
+  value: unknown,
+  warnings: string[],
+  groupCount: number
+): CanvasTemplateNodeSnapshot[] {
   if (!Array.isArray(value)) {
     throw new Error('模板 nodes 字段不是数组。');
   }
 
-  return value.map((node, index) => parseTemplateNode(node, index, warnings));
+  return value.map((node, index) => parseTemplateNode(node, index, warnings, groupCount));
 }
 
-function parseTemplateNode(value: unknown, index: number, warnings: string[]): CanvasTemplateNodeSnapshot {
+function parseTemplateNode(
+  value: unknown,
+  index: number,
+  warnings: string[],
+  groupCount: number
+): CanvasTemplateNodeSnapshot {
   if (!isRecord(value) || !isCanvasTemplateNodeKind(value.kind)) {
     throw new Error(`模板第 ${index + 1} 个节点缺少合法 kind。`);
   }
@@ -551,6 +560,9 @@ function parseTemplateNode(value: unknown, index: number, warnings: string[]): C
   const size = parseTemplateSize(value.size, `模板节点 ${title}`);
   const metadataRecord = isRecord(value.metadata) ? value.metadata : undefined;
   const groupIndex = normalizeTemplateGroupIndex(value.groupIndex);
+  if (groupIndex !== undefined && groupIndex >= groupCount) {
+    throw new Error(`模板第 ${index + 1} 个节点引用了不存在的分组索引。`);
+  }
 
   if (value.kind === 'note') {
     const noteRecord = metadataRecord && isRecord(metadataRecord.note) ? metadataRecord.note : undefined;
@@ -660,12 +672,15 @@ function parseTemplateGroup(value: unknown, index: number, groupCount: number): 
   if (parentGroupIndex !== undefined && parentGroupIndex >= groupCount) {
     throw new Error(`模板第 ${index + 1} 个分组引用了不存在的父分组索引。`);
   }
+  if (parentGroupIndex === index) {
+    throw new Error(`模板第 ${index + 1} 个分组不能引用自身作为父分组。`);
+  }
 
   return {
     title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : `Group ${index + 1}`,
     position: parseTemplatePosition(value.position, `模板分组 ${index + 1}`),
     size: parseTemplateSize(value.size, `模板分组 ${index + 1}`),
-    parentGroupIndex: parentGroupIndex !== undefined && parentGroupIndex !== index ? parentGroupIndex : undefined
+    parentGroupIndex
   };
 }
 
