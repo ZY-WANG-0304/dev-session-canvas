@@ -257,6 +257,21 @@ try {
   assert.strictEqual(nestedSelectionGroup.nodes.find((candidate) => candidate.id === 'note-a').groupId, nestedSelectionCreatedGroup.id);
   assert.strictEqual(nestedSelectionGroup.nodes.find((candidate) => candidate.id === 'note-b').groupId, nestedSelectionCreatedGroup.id);
 
+  const groupedPeerGroups = createGroupFromSelection(
+    state({
+      groups: [
+        group('group-a', { x: 80, y: 96 }, { width: 160, height: 120 }),
+        group('group-b', { x: 320, y: 96 }, { width: 180, height: 140 })
+      ]
+    }),
+    [],
+    ['group-a', 'group-b']
+  );
+  const createdPeerParentGroup = groupedPeerGroups.groups.find((candidate) => candidate.title === 'Group 1');
+  assert.ok(createdPeerParentGroup, 'Expected peer group selection to create a parent group.');
+  assert.strictEqual(groupedPeerGroups.groups.find((candidate) => candidate.id === 'group-a').parentGroupId, createdPeerParentGroup.id);
+  assert.strictEqual(groupedPeerGroups.groups.find((candidate) => candidate.id === 'group-b').parentGroupId, createdPeerParentGroup.id);
+
   const mismatchedContextSelection = createGroupFromSelection(
     state({
       nodes: [

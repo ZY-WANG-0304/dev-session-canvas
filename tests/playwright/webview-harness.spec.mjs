@@ -8408,6 +8408,48 @@ test('canvas group body context menu can group selected members inside that grou
   });
 });
 
+test('canvas context menu can create a group from selected peer groups', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-a',
+      title: 'Group A',
+      position: { x: 120, y: 120 },
+      size: { width: 220, height: 180 }
+    },
+    {
+      id: 'group-b',
+      title: 'Group B',
+      position: { x: 420, y: 120 },
+      size: { width: 220, height: 180 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.locator('[data-group-id="group-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-a', 'group-b']);
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 80, y: 520 } });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: [],
+    groupIds: ['group-a', 'group-b']
+  });
+});
+
 test('canvas groups resize from all eight directions', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
