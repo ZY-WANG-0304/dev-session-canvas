@@ -172,6 +172,7 @@ try {
         summary: 'summary',
         position: { x: 100, y: 140 },
         size: { width: 520, height: 380 },
+        groupId: 'group-inner',
         metadata: { agent: { provider: 'claude', templateArgv: ['--model', 'sonnet'] } }
       },
       {
@@ -182,6 +183,7 @@ try {
         summary: 'summary',
         position: { x: 700, y: 140 },
         size: { width: 500, height: 360 },
+        groupId: 'group-inner',
         metadata: { terminal: {} }
       },
       {
@@ -192,6 +194,7 @@ try {
         summary: 'summary',
         position: { x: 220, y: 560 },
         size: { width: 420, height: 240 },
+        groupId: 'group-outer',
         metadata: { note: { content: 'remember this' } }
       },
       {
@@ -202,9 +205,32 @@ try {
         summary: 'summary',
         position: { x: 1500, y: 300 },
         size: { width: 280, height: 120 },
+        groupId: 'group-ignored-file',
         metadata: { file: { filePath: 'src/ignore.ts', ownerNodeIds: ['agent-1'], accessMode: 'read' } }
       }
     ],
+    groups: [
+      {
+        id: 'group-outer',
+        title: 'Template Group',
+        position: { x: 60, y: 100 },
+        size: { width: 1220, height: 760 }
+      },
+      {
+        id: 'group-inner',
+        title: 'Execution Pair',
+        position: { x: 80, y: 120 },
+        size: { width: 1160, height: 420 },
+        parentGroupId: 'group-outer'
+      },
+      {
+        id: 'group-ignored-file',
+        title: 'Ignored File Group',
+        position: { x: 1460, y: 260 },
+        size: { width: 360, height: 200 }
+      }
+    ],
+    nextGroupSequence: 4,
     edges: [
       {
         id: 'edge-user',
@@ -246,6 +272,23 @@ try {
   assert.deepStrictEqual(capturedDefault.template.nodes[0].position, { x: 0, y: 0 });
   assert.strictEqual(capturedDefault.template.nodes[0].metadata.agent.provider, 'default');
   assert.deepStrictEqual(capturedDefault.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
+  assert.strictEqual(capturedDefault.template.nodes[0].groupIndex, 1);
+  assert.strictEqual(capturedDefault.template.nodes[1].groupIndex, 1);
+  assert.strictEqual(capturedDefault.template.nodes[2].groupIndex, 0);
+  assert.deepStrictEqual(capturedDefault.template.groups, [
+    {
+      title: 'Template Group',
+      position: { x: -40, y: -40 },
+      size: { width: 1220, height: 760 },
+      parentGroupIndex: undefined
+    },
+    {
+      title: 'Execution Pair',
+      position: { x: -20, y: -20 },
+      size: { width: 1160, height: 420 },
+      parentGroupIndex: 0
+    }
+  ]);
   assert.strictEqual(capturedDefault.template.edges.length, 1);
   assert.strictEqual(capturedDefault.template.edges[0].label, 'run');
 
@@ -421,6 +464,66 @@ try {
 
   const roundTripText = encodeCanvasTemplateDocument(userTemplate);
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
+
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 1 },
+          { title: 'Group B', position: { x: 40, y: 60 }, size: { width: 280, height: 180 }, parentGroupIndex: 0 }
+        ]
+      }
+    }),
+    /循环父子关系/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 9 }
+        ]
+      }
+    }),
+    /不存在的父分组索引/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 0 }
+        ]
+      }
+    }),
+    /不能引用自身作为父分组/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 } }
+        ],
+        nodes: [
+          {
+            kind: 'note',
+            title: 'Broken Group Note',
+            position: { x: 0, y: 0 },
+            size: { width: 320, height: 240 },
+            groupIndex: 3,
+            metadata: { note: { content: '' } }
+          }
+        ]
+      }
+    }),
+    /不存在的分组索引/u
+  );
 
   const extensionSource = await readFile('src/extension.ts', 'utf8');
   const exportCommandSource = sliceBetween(

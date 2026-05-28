@@ -40,4 +40,95 @@ assert.deepEqual(
   'Expected the create-node title action to live at the end of the Nodes sidebar section.'
 );
 
+const sidebarNodeListViewTitleMenus = viewTitleMenus.filter(
+  (item) => typeof item.command === 'string' && item.when?.includes('view == devSessionCanvas.sidebarNodes')
+);
+assert.deepEqual(
+  sidebarNodeListViewTitleMenus.filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList')),
+  [
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatView',
+      when: 'view == devSessionCanvas.sidebarNodes && devSessionCanvas.sidebarNodeList.groupedView',
+      group: '1_view@1'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatViewChecked',
+      when: 'view == devSessionCanvas.sidebarNodes && !devSessionCanvas.sidebarNodeList.groupedView',
+      group: '1_view@1'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
+      when: 'view == devSessionCanvas.sidebarNodes && devSessionCanvas.sidebarNodeList.groupedView',
+      group: '1_view@2'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedView',
+      when: 'view == devSessionCanvas.sidebarNodes && !devSessionCanvas.sidebarNodeList.groupedView',
+      group: '1_view@2'
+    }
+  ],
+  'Expected sidebar node list view-mode commands to live in the native view title secondary menu.'
+);
+assert.ok(
+  sidebarNodeListViewTitleMenus
+    .filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList'))
+    .every((item) => !String(item.group).startsWith('navigation')),
+  'Expected sidebar node list view-mode commands to stay behind the native ... menu instead of inline title actions.'
+);
+
+const commandPaletteMenus = manifest.contributes.menus.commandPalette;
+assert.ok(Array.isArray(commandPaletteMenus), 'Expected commandPalette menu contributions.');
+const groupCommandIds = ['devSessionCanvas.createEmptyGroup', 'devSessionCanvas.createGroupFromSelection'];
+const contributedCommandIds = manifest.contributes.commands.map((entry) => entry.command);
+for (const commandId of groupCommandIds) {
+  assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
+  assert.ok(
+    !commandPaletteMenus.some((item) => item.command === commandId && item.when === 'false'),
+    `Expected ${commandId} to remain visible in the global Command Palette.`
+  );
+}
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) => groupCommandIds.includes(entry.command))
+    .map((entry) => ({ command: entry.command, icon: entry.icon })),
+  [
+    {
+      command: 'devSessionCanvas.createEmptyGroup',
+      icon: '$(symbol-array)'
+    },
+    {
+      command: 'devSessionCanvas.createGroupFromSelection',
+      icon: '$(group-by-ref-type)'
+    }
+  ],
+  'Expected group commands to use the confirmed Codicon entry points.'
+);
+assert.ok(
+  !Array.isArray(manifest.contributes.keybindings) ||
+    !manifest.contributes.keybindings.some((item) => groupCommandIds.includes(item.command)),
+  'Expected group commands to avoid default keybindings in the first version.'
+);
+assert.deepEqual(
+  commandPaletteMenus.filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList')),
+  [
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatView',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatViewChecked',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedView',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
+      when: 'false'
+    }
+  ],
+  'Expected internal sidebar node list view-mode variants to stay out of the global Command Palette.'
+);
+
 console.log('extension manifest tests passed');

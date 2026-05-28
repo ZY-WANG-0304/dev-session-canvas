@@ -4,6 +4,7 @@ import type {
   CanvasEdgeAnchor,
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
+  CanvasGroupSummary,
   CanvasNodeFootprint,
   CanvasNodePosition,
   CanvasPrototypeState
@@ -57,10 +58,18 @@ export interface CanvasTemplateNodeSnapshot {
   title: string;
   position: CanvasNodePosition;
   size: CanvasNodeFootprint;
+  groupIndex?: number;
   metadata?: {
     note?: CanvasTemplateNoteMetadata;
     agent?: CanvasTemplateAgentMetadata;
   };
+}
+
+export interface CanvasTemplateGroupSnapshot {
+  title: string;
+  position: CanvasNodePosition;
+  size: CanvasNodeFootprint;
+  parentGroupIndex?: number;
 }
 
 export interface CanvasTemplateEdgeSnapshot {
@@ -79,6 +88,7 @@ export interface CanvasTemplate {
   category: CanvasTemplateCategory;
   nodes: CanvasTemplateNodeSnapshot[];
   edges: CanvasTemplateEdgeSnapshot[];
+  groups?: CanvasTemplateGroupSnapshot[];
   createdAt: string;
   updatedAt: string;
 }
@@ -175,7 +185,8 @@ export function parseCanvasTemplateDocument(
   const warnings: string[] = [];
   const category = options.forceCategory ?? resolveTemplateCategory(templateValue.category, options.defaultCategory);
   const now = new Date().toISOString();
-  const nodes = parseTemplateNodes(templateValue.nodes, warnings);
+  const groups = parseTemplateGroups(templateValue.groups);
+  const nodes = parseTemplateNodes(templateValue.nodes, warnings, groups.length);
   const edges = parseTemplateEdges(templateValue.edges, nodes.length);
 
   if (nodes.length === 0) {
@@ -188,6 +199,7 @@ export function parseCanvasTemplateDocument(
     category,
     nodes,
     edges,
+    ...(groups.length > 0 ? { groups } : {}),
     createdAt: typeof templateValue.createdAt === 'string' ? templateValue.createdAt : now,
     updatedAt: typeof templateValue.updatedAt === 'string' ? templateValue.updatedAt : now
   };
@@ -327,6 +339,10 @@ export function captureCanvasTemplateFromState(params: {
   const minY = Math.min(...compatibleNodes.map((node) => node.position.y));
   const nodeIndexById = new Map(compatibleNodes.map((node, index) => [node.id, index] as const));
 
+  const compatibleNodeIds = new Set(compatibleNodes.map((node) => node.id));
+  const capturedGroups = captureCanvasTemplateGroups(params.state, compatibleNodeIds, minX, minY);
+  const groupIndexById = new Map(capturedGroups.map((group, index) => [group.id, index] as const));
+
   const templateNodes = compatibleNodes.map<CanvasTemplateNodeSnapshot>((node) => {
     const templateArgvValue = node.metadata?.agent?.templateArgv;
     const templateArgv = Array.isArray(templateArgvValue)
@@ -346,6 +362,9 @@ export function captureCanvasTemplateFromState(params: {
         width: Math.max(120, Math.round(node.size.width)),
         height: Math.max(80, Math.round(node.size.height))
       },
+      ...(node.groupId && groupIndexById.get(node.groupId) !== undefined
+        ? { groupIndex: groupIndexById.get(node.groupId) }
+        : {}),
       metadata:
         node.kind === 'note'
           ? {
@@ -396,12 +415,57 @@ export function captureCanvasTemplateFromState(params: {
       category: params.category,
       nodes: templateNodes,
       edges: templateEdges,
+      ...(capturedGroups.length > 0 ? { groups: capturedGroups.map((group) => group.snapshot) } : {}),
       createdAt: now,
       updatedAt: now
     },
     ignoredNodeIds,
     ignoredEdgeIds
   };
+}
+
+function captureCanvasTemplateGroups(
+  state: CanvasPrototypeState,
+  compatibleNodeIds: ReadonlySet<string>,
+  minX: number,
+  minY: number
+): Array<{ id: string; snapshot: CanvasTemplateGroupSnapshot }> {
+  const groups = state.groups ?? [];
+  const groupIdsWithCompatibleNodes = new Set(
+    state.nodes
+      .filter((node) => node.groupId && compatibleNodeIds.has(node.id))
+      .map((node) => node.groupId as string)
+  );
+  const retainedGroupIds = new Set<string>();
+  for (const groupId of groupIdsWithCompatibleNodes) {
+    let currentGroup = groups.find((group) => group.id === groupId);
+    const visited = new Set<string>();
+    while (currentGroup && !visited.has(currentGroup.id)) {
+      retainedGroupIds.add(currentGroup.id);
+      visited.add(currentGroup.id);
+      currentGroup = currentGroup.parentGroupId
+        ? groups.find((candidate) => candidate.id === currentGroup?.parentGroupId)
+        : undefined;
+    }
+  }
+
+  const retainedGroups = groups.filter((group) => retainedGroupIds.has(group.id));
+  const groupIndexById = new Map(retainedGroups.map((group, index) => [group.id, index] as const));
+  return retainedGroups.map((group) => ({
+    id: group.id,
+    snapshot: {
+      title: group.title,
+      position: {
+        x: Math.round(group.position.x - minX),
+        y: Math.round(group.position.y - minY)
+      },
+      size: {
+        width: Math.max(120, Math.round(group.size.width)),
+        height: Math.max(80, Math.round(group.size.height))
+      },
+      parentGroupIndex: group.parentGroupId ? groupIndexById.get(group.parentGroupId) : undefined
+    }
+  }));
 }
 
 function buildCanvasTemplateNoteMetadata(
@@ -469,15 +533,24 @@ function isCanvasTemplateCompatibleNode(
   return isCanvasTemplateNodeKind(node.kind);
 }
 
-function parseTemplateNodes(value: unknown, warnings: string[]): CanvasTemplateNodeSnapshot[] {
+function parseTemplateNodes(
+  value: unknown,
+  warnings: string[],
+  groupCount: number
+): CanvasTemplateNodeSnapshot[] {
   if (!Array.isArray(value)) {
     throw new Error('模板 nodes 字段不是数组。');
   }
 
-  return value.map((node, index) => parseTemplateNode(node, index, warnings));
+  return value.map((node, index) => parseTemplateNode(node, index, warnings, groupCount));
 }
 
-function parseTemplateNode(value: unknown, index: number, warnings: string[]): CanvasTemplateNodeSnapshot {
+function parseTemplateNode(
+  value: unknown,
+  index: number,
+  warnings: string[],
+  groupCount: number
+): CanvasTemplateNodeSnapshot {
   if (!isRecord(value) || !isCanvasTemplateNodeKind(value.kind)) {
     throw new Error(`模板第 ${index + 1} 个节点缺少合法 kind。`);
   }
@@ -486,6 +559,10 @@ function parseTemplateNode(value: unknown, index: number, warnings: string[]): C
   const position = parseTemplatePosition(value.position, `模板节点 ${title}`);
   const size = parseTemplateSize(value.size, `模板节点 ${title}`);
   const metadataRecord = isRecord(value.metadata) ? value.metadata : undefined;
+  const groupIndex = normalizeTemplateGroupIndex(value.groupIndex);
+  if (groupIndex !== undefined && groupIndex >= groupCount) {
+    throw new Error(`模板第 ${index + 1} 个节点引用了不存在的分组索引。`);
+  }
 
   if (value.kind === 'note') {
     const noteRecord = metadataRecord && isRecord(metadataRecord.note) ? metadataRecord.note : undefined;
@@ -520,6 +597,7 @@ function parseTemplateNode(value: unknown, index: number, warnings: string[]): C
       title,
       position,
       size,
+      ...(groupIndex !== undefined ? { groupIndex } : {}),
       metadata: {
         note: noteMetadata
       }
@@ -534,6 +612,7 @@ function parseTemplateNode(value: unknown, index: number, warnings: string[]): C
       title,
       position,
       size,
+      ...(groupIndex !== undefined ? { groupIndex } : {}),
       metadata: {
         agent: {
           provider: isCanvasTemplateAgentProviderKind(providerValue) ? providerValue : 'default',
@@ -557,8 +636,68 @@ function parseTemplateNode(value: unknown, index: number, warnings: string[]): C
     kind: value.kind,
     title,
     position,
-    size
+    size,
+    ...(groupIndex !== undefined ? { groupIndex } : {})
   };
+}
+
+function normalizeTemplateGroupIndex(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function parseTemplateGroups(value: unknown): CanvasTemplateGroupSnapshot[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error('模板 groups 字段不是数组。');
+  }
+
+  const groups = value.map((group, index) => parseTemplateGroup(group, index, value.length));
+  assertTemplateGroupParentGraphIsAcyclic(groups);
+  return groups;
+}
+
+function parseTemplateGroup(value: unknown, index: number, groupCount: number): CanvasTemplateGroupSnapshot {
+  if (!isRecord(value)) {
+    throw new Error(`模板第 ${index + 1} 个分组不是有效对象。`);
+  }
+
+  const parentGroupIndex = normalizeTemplateGroupIndex(value.parentGroupIndex);
+  if (parentGroupIndex !== undefined && parentGroupIndex >= groupCount) {
+    throw new Error(`模板第 ${index + 1} 个分组引用了不存在的父分组索引。`);
+  }
+  if (parentGroupIndex === index) {
+    throw new Error(`模板第 ${index + 1} 个分组不能引用自身作为父分组。`);
+  }
+
+  return {
+    title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : `Group ${index + 1}`,
+    position: parseTemplatePosition(value.position, `模板分组 ${index + 1}`),
+    size: parseTemplateSize(value.size, `模板分组 ${index + 1}`),
+    parentGroupIndex
+  };
+}
+
+function assertTemplateGroupParentGraphIsAcyclic(groups: readonly CanvasTemplateGroupSnapshot[]): void {
+  for (const [index] of groups.entries()) {
+    const visited = new Set<number>();
+    let nextParentIndex = groups[index]?.parentGroupIndex;
+
+    while (nextParentIndex !== undefined) {
+      if (visited.has(nextParentIndex)) {
+        throw new Error(`模板第 ${index + 1} 个分组形成了循环父子关系。`);
+      }
+
+      visited.add(nextParentIndex);
+      nextParentIndex = groups[nextParentIndex]?.parentGroupIndex;
+    }
+  }
 }
 
 function parseTemplateEdges(value: unknown, nodeCount: number): CanvasTemplateEdgeSnapshot[] {

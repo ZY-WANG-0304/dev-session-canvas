@@ -10,6 +10,7 @@ import type { NoteContentSource } from './noteMarkdownFileAssociation';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
+export type CanvasGroupDeleteMode = 'delete-members' | 'keep-members';
 export type ExecutionNodeKind = 'agent' | 'terminal';
 export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
@@ -124,6 +125,14 @@ export interface CanvasNodePosition {
 export interface CanvasNodeFootprint {
   width: number;
   height: number;
+}
+
+export interface CanvasGroupSummary {
+  id: string;
+  title: string;
+  position: CanvasNodePosition;
+  size: CanvasNodeFootprint;
+  parentGroupId?: string;
 }
 
 export type TerminalBackendKind = 'node-pty';
@@ -269,6 +278,7 @@ export interface CanvasNodeSummary {
   summary: string;
   position: CanvasNodePosition;
   size: CanvasNodeFootprint;
+  groupId?: string;
   metadata?: CanvasNodeMetadata;
 }
 
@@ -303,6 +313,8 @@ export interface CanvasPrototypeState {
   updatedAt: string;
   nodes: CanvasNodeSummary[];
   edges: CanvasEdgeSummary[];
+  groups: CanvasGroupSummary[];
+  nextGroupSequence: number;
   fileReferences: CanvasFileReferenceSummary[];
   suppressedFileActivityEdgeIds: string[];
   suppressedAutomaticFileArtifactNodeIds: string[];
@@ -536,9 +548,61 @@ export type WebviewToHostMessage =
         requestId?: string;
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
+        targetGroupId?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
+      };
+    }
+  | {
+      type: 'webview/createEmptyGroup';
+      payload: {
+        position: CanvasNodePosition;
+        size?: CanvasNodeFootprint;
+        parentGroupId?: string;
+      };
+    }
+  | {
+      type: 'webview/createGroupFromSelection';
+      payload: {
+        nodeIds: string[];
+        groupIds: string[];
+        parentGroupId?: string;
+      };
+    }
+  | {
+      type: 'webview/updateGroupTitle';
+      payload: {
+        groupId: string;
+        title: string;
+      };
+    }
+  | {
+      type: 'webview/moveGroup';
+      payload: {
+        groupId: string;
+        position: CanvasNodePosition;
+        pointerPosition?: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/resizeGroup';
+      payload: {
+        groupId: string;
+        position: CanvasNodePosition;
+        size: CanvasNodeFootprint;
+      };
+    }
+  | {
+      type: 'webview/deleteGroup';
+      payload: {
+        groupId: string;
+      };
+    }
+  | {
+      type: 'webview/ungroup';
+      payload: {
+        groupId: string;
       };
     }
   | {
@@ -546,6 +610,12 @@ export type WebviewToHostMessage =
       payload: {
         id: string;
         position: CanvasNodePosition;
+        pointerPosition?: CanvasNodePosition;
+        selectedMoves?: Array<{
+          id: string;
+          position: CanvasNodePosition;
+          pointerPosition?: CanvasNodePosition;
+        }>;
       };
     }
   | {
@@ -569,6 +639,7 @@ export type WebviewToHostMessage =
       type: 'webview/applyDefaultTemplate';
       payload?: {
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -576,12 +647,14 @@ export type WebviewToHostMessage =
       payload: {
         templateId: string;
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
       type: 'webview/resetToDefaultTemplate';
       payload?: {
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -589,6 +662,7 @@ export type WebviewToHostMessage =
       payload: {
         templateId: string;
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -958,6 +1032,9 @@ export type HostToWebviewMessage =
       };
     }
   | {
+      type: 'host/requestCreateGroupFromSelection';
+    }
+  | {
       type: 'host/testProbeRequest';
       payload: {
         requestId: string;
@@ -1052,19 +1129,123 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/createEmptyGroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isCanvasNodePosition(payload.position)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/createEmptyGroup',
+      payload: {
+        position: payload.position,
+        size: isCanvasNodeFootprint(payload.size) ? payload.size : undefined,
+        parentGroupId: typeof payload.parentGroupId === 'string' ? payload.parentGroupId : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/createGroupFromSelection') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !Array.isArray(payload.nodeIds) || !Array.isArray(payload.groupIds)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/createGroupFromSelection',
+      payload: {
+        nodeIds: payload.nodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string'),
+        groupIds: payload.groupIds.filter((groupId): groupId is string => typeof groupId === 'string'),
+        parentGroupId: typeof payload.parentGroupId === 'string' ? payload.parentGroupId : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateGroupTitle') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.groupId !== 'string' || typeof payload.title !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateGroupTitle',
+      payload: {
+        groupId: payload.groupId,
+        title: payload.title
+      }
+    };
+  }
+
+  if (value.type === 'webview/moveGroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.groupId !== 'string' || !isCanvasNodePosition(payload.position)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/moveGroup',
+      payload: {
+        groupId: payload.groupId,
+        position: payload.position,
+        pointerPosition: isCanvasNodePosition(payload.pointerPosition) ? payload.pointerPosition : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/resizeGroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.groupId !== 'string' ||
+      !isCanvasNodePosition(payload.position) ||
+      !isCanvasNodeFootprint(payload.size)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/resizeGroup',
+      payload: {
+        groupId: payload.groupId,
+        position: payload.position,
+        size: payload.size
+      }
+    };
+  }
+
+  if (value.type === 'webview/deleteGroup' || value.type === 'webview/ungroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.groupId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: value.type,
+      payload: {
+        groupId: payload.groupId
+      }
+    };
+  }
+
   if (value.type === 'webview/applyDefaultTemplate' || value.type === 'webview/resetToDefaultTemplate') {
     const payload = isRecord(value.payload) ? value.payload : null;
-    if (payload && payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) {
+    if (
+      payload &&
+      ((payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) ||
+        (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string'))
+    ) {
       return null;
     }
     const visibleCenterValue = payload?.visibleCenter;
     const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    const targetGroupId = typeof payload?.targetGroupId === 'string' ? payload.targetGroupId : undefined;
 
     if (value.type === 'webview/applyDefaultTemplate') {
       return {
         type: 'webview/applyDefaultTemplate',
         payload: {
-          visibleCenter
+          visibleCenter,
+          targetGroupId
         }
       };
     }
@@ -1072,7 +1253,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     return {
       type: 'webview/resetToDefaultTemplate',
       payload: {
-        visibleCenter
+        visibleCenter,
+        targetGroupId
       }
     };
   }
@@ -1083,7 +1265,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !payload ||
       typeof payload.templateId !== 'string' ||
       payload.templateId.trim().length === 0 ||
-      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter))
+      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string')
     ) {
       return null;
     }
@@ -1091,12 +1274,14 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const normalizedTemplateId = payload.templateId.trim();
     const visibleCenterValue = payload.visibleCenter;
     const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    const targetGroupId = typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined;
     if (value.type === 'webview/applyTemplate') {
       return {
         type: 'webview/applyTemplate',
         payload: {
           templateId: normalizedTemplateId,
-          visibleCenter
+          visibleCenter,
+          targetGroupId
         }
       };
     }
@@ -1105,7 +1290,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/resetToTemplate',
       payload: {
         templateId: normalizedTemplateId,
-        visibleCenter
+        visibleCenter,
+        targetGroupId
       }
     };
   }
@@ -1751,11 +1937,33 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return null;
     }
 
+    const selectedMoves = Array.isArray(payload.selectedMoves)
+      ? payload.selectedMoves.flatMap((entry) => {
+          if (
+            !isRecord(entry) ||
+            typeof entry.id !== 'string' ||
+            !isCanvasNodePosition(entry.position)
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              id: entry.id,
+              position: entry.position,
+              pointerPosition: isCanvasNodePosition(entry.pointerPosition) ? entry.pointerPosition : undefined
+            }
+          ];
+        })
+      : undefined;
+
     return {
       type: 'webview/moveNode',
       payload: {
         id: payload.id,
-        position: payload.position
+        position: payload.position,
+        pointerPosition: isCanvasNodePosition(payload.pointerPosition) ? payload.pointerPosition : undefined,
+        selectedMoves: selectedMoves && selectedMoves.length > 0 ? selectedMoves : undefined
       }
     };
   }
@@ -1788,6 +1996,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.requestId !== undefined && typeof payload.requestId !== 'string') ||
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
       (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
       (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
@@ -1803,6 +2012,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
           : undefined,
+        targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:
@@ -1823,7 +2033,13 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
-  return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number';
+  return (
+    isRecord(value) &&
+    typeof value.x === 'number' &&
+    Number.isFinite(value.x) &&
+    typeof value.y === 'number' &&
+    Number.isFinite(value.y)
+  );
 }
 
 function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {

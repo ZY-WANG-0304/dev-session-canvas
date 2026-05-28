@@ -1101,7 +1101,7 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
   await clearPostedMessages(page);
 
   const fileNode = nodeById(page, 'file-src-main');
-  const handle = fileNode.locator('.canvas-node-resize-handle.bottom.right');
+  const handle = fileNode.locator('[data-node-resize-direction="bottom-right"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -7581,22 +7581,69 @@ test('note markdown unsafe command links do not render clickable hrefs', async (
   await expect(noteNode.locator('.note-markdown-preview a[data-note-markdown-link="true"]')).toHaveCount(0);
 });
 
-test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
+test('selected node resize affordance keeps type-colored edge highlight', async ({ page }) => {
   await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.canvas-node-resize-line')).toHaveCount(0);
+
+  await noteNode.locator('.window-chrome').click();
+
+  await expect(noteNode.locator('.canvas-node-resize-line')).toHaveCount(4);
+  await expect(noteNode.locator('[data-node-resize-direction]')).toHaveCount(8);
+
+  const resizeChrome = await noteNode.evaluate((node) => {
+    const topLine = node.querySelector('.canvas-node-resize-line-top');
+    const rightLine = node.querySelector('.canvas-node-resize-line-right');
+    const cornerHandle = node.querySelector('[data-node-resize-direction="bottom-right"]');
+    if (
+      !(topLine instanceof HTMLElement) ||
+      !(rightLine instanceof HTMLElement) ||
+      !(cornerHandle instanceof HTMLElement)
+    ) {
+      return null;
+    }
+
+    const topLineStyle = window.getComputedStyle(topLine);
+    const rightLineStyle = window.getComputedStyle(rightLine);
+    const cornerHandleStyle = window.getComputedStyle(cornerHandle, '::after');
+
+    return {
+      topBorderColor: topLineStyle.borderTopColor,
+      topBorderWidth: topLineStyle.borderTopWidth,
+      rightBorderColor: rightLineStyle.borderRightColor,
+      rightBorderWidth: rightLineStyle.borderRightWidth,
+      handleBackground: cornerHandleStyle.backgroundColor
+    };
+  });
+
+  expect(resizeChrome).toEqual({
+    topBorderColor: 'rgb(167, 139, 250)',
+    topBorderWidth: '2px',
+    rightBorderColor: 'rgb(167, 139, 250)',
+    rightBorderWidth: '2px',
+    handleBackground: 'rgb(167, 139, 250)'
+  });
+});
+
+test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
   await bootstrap(page, createNoteNodeState());
   await clearPostedMessages(page);
 
   const noteNode = nodeById(page, 'note-1');
-  await performTestDomAction(page, {
-    kind: 'selectNode',
-    nodeId: 'note-1'
-  });
+  await noteNode.locator('.window-chrome').click();
   await clearPostedMessages(page);
 
   const beforeBox = await noteNode.boundingBox();
   expect(beforeBox).not.toBeNull();
 
-  const handle = noteNode.locator('.canvas-node-resize-handle.bottom.right');
+  const handle = noteNode.locator('[data-node-resize-direction="bottom-right"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -7687,7 +7734,7 @@ test('dragging the top-left resize handle moves the note origin and grows the fr
   const beforeBox = await noteNode.boundingBox();
   expect(beforeBox).not.toBeNull();
 
-  const handle = noteNode.locator('.canvas-node-resize-handle.top.left');
+  const handle = noteNode.locator('[data-node-resize-direction="top-left"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -7964,6 +8011,1132 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(viewportSize.height + 2);
   expect(Math.abs(noteBox.x + noteBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(18);
   expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
+});
+
+
+test('canvas groups render, rename, and post group actions', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-22T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'note-1',
+        kind: 'note',
+        title: 'Grouped Note',
+        status: 'ready',
+        summary: 'inside group',
+        position: { x: 160, y: 176 },
+        size: sizeFor('note'),
+        groupId: 'group-1',
+        metadata: { note: { content: 'inside' } }
+      }
+    ],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 120, y: 120 },
+        size: { width: 520, height: 420 }
+      }
+    ],
+    edges: []
+  });
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const groupBackground = page.locator('[data-group-background-id="group-1"]');
+  await expect(groupFrame).toBeVisible();
+  await expect(groupBackground).toBeVisible();
+  await expect(groupFrame.locator('[data-probe-field="title"]')).toHaveValue('Group 1');
+
+  const groupPanelStyles = await groupFrame.evaluate((frame) => {
+    const background = document.querySelector('[data-group-background-id="group-1"]');
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    const node = document.querySelector('[data-node-id="note-1"]');
+    const nodeWrapper = node?.closest('.react-flow__node');
+    const backgroundLayer = background?.closest('.canvas-group-background-layer');
+    const probeFrame = document.createElement('div');
+    probeFrame.className = 'canvas-group-frame';
+    probeFrame.style.position = 'absolute';
+    probeFrame.style.left = '-10000px';
+    probeFrame.style.top = '-10000px';
+    probeFrame.style.width = '70.5px';
+    probeFrame.style.height = '80px';
+    probeFrame.style.setProperty('--canvas-group-title-tab-width', 'min(112px, 100%)');
+    const probeTitlebar = document.createElement('div');
+    probeTitlebar.className = 'canvas-group-titlebar';
+    probeFrame.append(probeTitlebar);
+    document.body.append(probeFrame);
+    if (!(titlebar instanceof HTMLElement)) {
+      throw new Error('Group titlebar not found.');
+    }
+    if (!(background instanceof HTMLElement)) {
+      throw new Error('Group background not found.');
+    }
+    if (!(nodeWrapper instanceof HTMLElement)) {
+      throw new Error('Grouped node wrapper not found.');
+    }
+    if (!(backgroundLayer instanceof HTMLElement)) {
+      throw new Error('Group background layer not found.');
+    }
+    const frameStyles = getComputedStyle(frame);
+    const backgroundStyles = getComputedStyle(background);
+    const backgroundBeforeStyles = getComputedStyle(background, '::before');
+    const backgroundAfterStyles = getComputedStyle(background, '::after');
+    const backgroundLayerStyles = getComputedStyle(backgroundLayer);
+    const nodeWrapperStyles = getComputedStyle(nodeWrapper);
+    const titlebarStyles = getComputedStyle(titlebar);
+    const frameRect = frame.getBoundingClientRect();
+    const backgroundRect = background.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const nodeRect = nodeWrapper.getBoundingClientRect();
+    const probeFrameRect = probeFrame.getBoundingClientRect();
+    const probeTitlebarRect = probeTitlebar.getBoundingClientRect();
+    probeFrame.remove();
+    return {
+      frameBackgroundColor: frameStyles.backgroundColor,
+      frameBorderTopColor: frameStyles.borderTopColor,
+      frameBoxShadow: frameStyles.boxShadow,
+      backgroundColor: backgroundStyles.backgroundColor,
+      backgroundBeforeBorderTopColor: backgroundBeforeStyles.borderTopColor,
+      backgroundBeforeBorderTopLeftRadius: backgroundBeforeStyles.borderTopLeftRadius,
+      backgroundAfterBorderTopColor: backgroundAfterStyles.borderTopColor,
+      backgroundAfterBorderBottomColor: backgroundAfterStyles.borderBottomColor,
+      backgroundBeforeBorderTopWidth: backgroundBeforeStyles.borderTopWidth,
+      backgroundAfterBorderTopWidth: backgroundAfterStyles.borderTopWidth,
+      backgroundAfterBorderBottomWidth: backgroundAfterStyles.borderBottomWidth,
+      backgroundAfterBorderBottomLeftRadius: backgroundAfterStyles.borderBottomLeftRadius,
+      backgroundTopRightCornerColor: document.elementFromPoint(Math.floor(backgroundRect.right - 2), Math.floor(backgroundRect.top + 2)) === background
+        ? backgroundStyles.backgroundColor
+        : 'transparent',
+      backgroundBoxShadow: backgroundStyles.boxShadow,
+      backgroundLayerZIndex: backgroundLayerStyles.zIndex,
+      backgroundSharesViewportWithNodes: background.closest('.react-flow__viewport') === nodeWrapper.closest('.react-flow__viewport'),
+      nodeWrapperZIndex: nodeWrapperStyles.zIndex,
+      backgroundLeft: Math.round(backgroundRect.left - frameRect.left),
+      backgroundTop: Math.round(backgroundRect.top - frameRect.top),
+      backgroundWidth: Math.round(backgroundRect.width),
+      backgroundHeight: Math.round(backgroundRect.height),
+      frameWidth: Math.round(frameRect.width),
+      frameHeight: Math.round(frameRect.height),
+      frameBorderTopLeftRadius: frameStyles.borderTopLeftRadius,
+      titlebarBackgroundColor: titlebarStyles.backgroundColor,
+      titlebarBorderRightColor: titlebarStyles.borderRightColor,
+      titlebarColor: titlebarStyles.color,
+      titlebarTop: Math.round(titlebarRect.top - frameRect.top),
+      titlebarBottom: Math.round(titlebarRect.bottom - frameRect.top),
+      titlebarBorderBottomWidth: titlebarStyles.borderBottomWidth,
+      titlebarBorderTopLeftRadius: titlebarStyles.borderTopLeftRadius,
+      titlebarBorderTopRightRadius: titlebarStyles.borderTopRightRadius,
+      titlebarBorderBottomRightRadius: titlebarStyles.borderBottomRightRadius,
+      titlebarBoxShadow: titlebarStyles.boxShadow,
+      subpixelTitlebarWidth: probeTitlebarRect.width,
+      subpixelFrameWidth: probeFrameRect.width,
+      nodeBodyTopInset: Math.round(nodeRect.top - frameRect.top - Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-title-height')))
+    };
+  });
+  expect(groupPanelStyles.frameBackgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(groupPanelStyles.frameBorderTopColor).toBe('rgba(0, 0, 0, 0)');
+  expect(groupPanelStyles.frameBoxShadow).toBe('none');
+  expect(groupPanelStyles.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(groupPanelStyles.titlebarBackgroundColor).toBe('rgb(24, 24, 24)');
+  expect(groupPanelStyles.backgroundBeforeBorderTopColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.backgroundAfterBorderTopColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.backgroundAfterBorderBottomColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.backgroundBeforeBorderTopWidth).toBe('1px');
+  expect(groupPanelStyles.backgroundAfterBorderTopWidth).toBe('1px');
+  expect(groupPanelStyles.backgroundAfterBorderBottomWidth).toBe('1px');
+  expect(Number.parseFloat(groupPanelStyles.backgroundBeforeBorderTopLeftRadius)).toBe(0);
+  expect(Number.parseFloat(groupPanelStyles.backgroundAfterBorderBottomLeftRadius)).toBe(0);
+  expect(groupPanelStyles.backgroundTopRightCornerColor).toBe('transparent');
+  expect(groupPanelStyles.backgroundBoxShadow).toBe('none');
+  expect(groupPanelStyles.backgroundLayerZIndex).toBe('-1');
+  expect(groupPanelStyles.backgroundSharesViewportWithNodes).toBe(true);
+  expect(Number.parseInt(groupPanelStyles.nodeWrapperZIndex, 10)).toBeGreaterThanOrEqual(0);
+  expect(groupPanelStyles.backgroundLeft).toBe(0);
+  expect(groupPanelStyles.backgroundTop).toBe(0);
+  expect(groupPanelStyles.backgroundWidth).toBe(groupPanelStyles.frameWidth);
+  expect(groupPanelStyles.backgroundHeight).toBe(groupPanelStyles.frameHeight);
+  expect(groupPanelStyles.titlebarBorderRightColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.titlebarColor).toBe('rgb(157, 157, 157)');
+  expect(Number.parseFloat(groupPanelStyles.frameBorderTopLeftRadius)).toBe(0);
+  expect(groupPanelStyles.titlebarTop).toBeGreaterThanOrEqual(0);
+  expect(groupPanelStyles.titlebarTop).toBeLessThanOrEqual(2);
+  expect(groupPanelStyles.titlebarBottom).toBeGreaterThan(24);
+  expect(groupPanelStyles.titlebarBorderBottomWidth).toBe('1px');
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopLeftRadius)).toBe(0);
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopRightRadius)).toBe(0);
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderBottomRightRadius)).toBe(0);
+  expect(groupPanelStyles.titlebarBoxShadow).toBe('none');
+  expect(groupPanelStyles.subpixelTitlebarWidth).toBeLessThanOrEqual(groupPanelStyles.subpixelFrameWidth);
+  expect(groupPanelStyles.nodeBodyTopInset).toBeGreaterThanOrEqual(28);
+
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  const selectedTitlebarStyles = await groupFrame.locator('.canvas-group-titlebar').evaluate((titlebar) => {
+    const styles = getComputedStyle(titlebar);
+    return {
+      borderBottomColor: styles.borderBottomColor,
+      color: styles.color
+    };
+  });
+  expect(selectedTitlebarStyles.borderBottomColor).toBe('rgb(69, 69, 69)');
+  expect(selectedTitlebarStyles.color).toBe('rgb(204, 204, 204)');
+
+  await groupFrame.locator('[data-probe-field="title"]').fill('Planning Group');
+  await groupFrame.locator('[data-probe-field="title"]').press('Enter');
+  const titleMessage = await waitForPostedMessageByType(page, 'webview/updateGroupTitle');
+  expect(titleMessage.payload).toEqual({ groupId: 'group-1', title: 'Planning Group' });
+
+  const groupToolbarLayout = await groupFrame.evaluate((frame) => {
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    const toolbar = frame.querySelector('.canvas-group-toolbar');
+    if (!(titlebar instanceof HTMLElement) || !(toolbar instanceof HTMLElement)) {
+      throw new Error('Group toolbar not found.');
+    }
+    const frameRect = frame.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const toolbarRect = toolbar.getBoundingClientRect();
+    return {
+      frameWidth: Math.round(frameRect.width),
+      toolbarLeft: Math.round(toolbarRect.left - frameRect.left),
+      toolbarTop: Math.round(toolbarRect.top - frameRect.top),
+      toolbarWidth: Math.round(toolbarRect.width),
+      toolbarRight: Math.round(toolbarRect.right - frameRect.left),
+      titlebarRight: Math.round(titlebarRect.right - frameRect.left),
+      titlebarTop: Math.round(titlebarRect.top - frameRect.top)
+    };
+  });
+  expect(groupToolbarLayout.toolbarLeft).toBe(groupToolbarLayout.titlebarRight);
+  expect(groupToolbarLayout.toolbarTop).toBe(groupToolbarLayout.titlebarTop);
+  expect(groupToolbarLayout.toolbarRight).toBeLessThanOrEqual(groupToolbarLayout.frameWidth);
+  expect(groupToolbarLayout.toolbarWidth).toBeLessThan(280);
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveText('取消分组');
+  await expect(groupFrame.locator('.canvas-group-split-danger')).toHaveText('删除分组');
+  await groupFrame.locator('.canvas-group-split-danger').click();
+  const deleteGroupMessage = await waitForPostedMessageByType(page, 'webview/deleteGroup');
+  expect(deleteGroupMessage.payload).toEqual({ groupId: 'group-1' });
+  await clearPostedMessages(page);
+
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
+  await groupFrame.locator('.canvas-group-split-primary').click();
+  const ungroupMessage = await waitForPostedMessageByType(page, 'webview/ungroup');
+  expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
+});
+
+test('canvas context menu can create an empty group', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createEmptyCanvasState());
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 260, y: 220 } });
+  await expect(page.locator('[data-context-menu-action="create-empty-group"] .codicon-symbol-array')).toBeVisible();
+  await page.locator('[data-context-menu-action="create-empty-group"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
+  expect(message.payload.size).toEqual({ width: 360, height: 240 });
+  expect(typeof message.payload.position.x).toBe('number');
+  expect(typeof message.payload.position.y).toBe('number');
+});
+
+test('canvas group body blank area selects the group and preserves right-click menu', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 160, y: 180 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 620, height: 500 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
+
+  await page.mouse.click(690, 580);
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('group-1');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeId ?? null)
+    .toBeNull();
+
+  await page.locator('.react-flow__pane').click({ position: { x: 30, y: 30 } });
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBeNull();
+
+  await page.mouse.click(690, 580, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('.canvas-context-menu-header-copy')).toContainText('画布操作');
+  await expect(menu.locator('[data-context-menu-action="create-empty-group"]')).toBeVisible();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('group-1');
+});
+
+test('canvas group body context menu creates objects inside the group', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 720, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.mouse.click(520, 500, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 330,
+      y: 300
+    },
+    targetGroupId: 'group-1'
+  });
+
+  await clearPostedMessages(page);
+  await page.mouse.click(520, 500, { button: 'right' });
+  await page.locator('[data-context-menu-action="create-empty-group"]').click();
+  const createGroupMessage = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
+  expect(createGroupMessage.payload).toEqual({
+    position: { x: 520, y: 500 },
+    size: { width: 360, height: 240 },
+    parentGroupId: 'group-1'
+  });
+});
+
+test('canvas group body context menu keeps target group after pan and zoom', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 100, y: 80, zoom: 0.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 240 },
+      size: { width: 720, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  await page.mouse.click(660, 420, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 510,
+      y: 225
+    },
+    targetGroupId: 'group-1'
+  });
+});
+
+test('canvas group body context menu can group selected members inside that group', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 180, y: 220 }),
+      groupId: 'group-1'
+    },
+    {
+      ...createManualNoteNode('note-2', { x: 460, y: 220 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 820, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeIds)
+    .toEqual(['note-1', 'note-2']);
+
+  await page.mouse.click(880, 680, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: [],
+    parentGroupId: 'group-1'
+  });
+});
+
+test('canvas context menu can create a group from selected peer groups', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-a',
+      title: 'Group A',
+      position: { x: 120, y: 120 },
+      size: { width: 220, height: 180 }
+    },
+    {
+      id: 'group-b',
+      title: 'Group B',
+      position: { x: 420, y: 120 },
+      size: { width: 220, height: 180 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.locator('[data-group-id="group-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-a', 'group-b']);
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-b']);
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-b', 'group-a']);
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 80, y: 520 } });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: [],
+    groupIds: ['group-b', 'group-a']
+  });
+});
+
+test('canvas groups resize from all eight directions', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-23T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 240, y: 220 },
+        size: { width: 320, height: 220 }
+      }
+    ],
+    edges: []
+  });
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame.locator('.canvas-group-resize-control')).toHaveCount(0);
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await expect(groupFrame.locator('.canvas-group-resize-line')).toHaveCount(4);
+  await expect(groupFrame.locator('.canvas-group-resize-control')).toHaveCount(8);
+
+  const resizeAffordanceStyles = await groupFrame.evaluate((frame) => {
+    const topLine = frame.querySelector('.canvas-group-resize-line-top');
+    const topControl = frame.querySelector('[data-group-resize-direction="top"]');
+    const cornerControl = frame.querySelector('[data-group-resize-direction="bottom-right"]');
+    if (!(topLine instanceof HTMLElement) || !(topControl instanceof HTMLElement) || !(cornerControl instanceof HTMLElement)) {
+      throw new Error('Group resize affordance not found.');
+    }
+    const topLineStyles = getComputedStyle(topLine);
+    const topControlAfterStyles = getComputedStyle(topControl, '::after');
+    const cornerControlStyles = getComputedStyle(cornerControl);
+    const cornerControlAfterStyles = getComputedStyle(cornerControl, '::after');
+    return {
+      topLineBorderTopWidth: topLineStyles.borderTopWidth,
+      topLineBorderTopColor: topLineStyles.borderTopColor,
+      topControlBackground: getComputedStyle(topControl).backgroundColor,
+      topControlAfterDisplay: topControlAfterStyles.display,
+      cornerControlBorderTopWidth: cornerControlStyles.borderTopWidth,
+      cornerControlBackground: cornerControlStyles.backgroundColor,
+      cornerControlAfterDisplay: cornerControlAfterStyles.display,
+      cornerControlAfterBorderRadius: cornerControlAfterStyles.borderRadius,
+      cornerControlAfterBackground: cornerControlAfterStyles.backgroundColor
+    };
+  });
+  expect(resizeAffordanceStyles.topLineBorderTopWidth).toBe('2px');
+  expect(resizeAffordanceStyles.topLineBorderTopColor).toBe('rgb(0, 120, 212)');
+  expect(resizeAffordanceStyles.topControlBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(resizeAffordanceStyles.topControlAfterDisplay).toBe('none');
+  expect(resizeAffordanceStyles.cornerControlBorderTopWidth).toBe('0px');
+  expect(resizeAffordanceStyles.cornerControlBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(resizeAffordanceStyles.cornerControlAfterDisplay).not.toBe('none');
+  expect(Number.parseFloat(resizeAffordanceStyles.cornerControlAfterBorderRadius)).toBeGreaterThanOrEqual(999);
+  expect(resizeAffordanceStyles.cornerControlAfterBackground).toBe('rgb(0, 120, 212)');
+
+  const dragResizeHandle = async (direction, deltaX, deltaY) => {
+    await clearPostedMessages(page);
+    const handle = groupFrame.locator(`[data-group-resize-direction="${direction}"]`);
+    const handleBox = await handle.boundingBox();
+    expect(handleBox).not.toBeNull();
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handleBox.x + handleBox.width / 2 + deltaX, handleBox.y + handleBox.height / 2 + deltaY, { steps: 4 });
+    await page.mouse.up();
+    const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+    expect(message.payload.groupId).toBe('group-1');
+    return message.payload;
+  };
+
+  expect(await dragResizeHandle('right', 40, 0)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 360, height: 220 }
+  });
+  expect(await dragResizeHandle('bottom', 0, 40)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 320, height: 260 }
+  });
+  expect(await dragResizeHandle('left', -40, 0)).toMatchObject({
+    position: { x: 200, y: 220 },
+    size: { width: 360, height: 220 }
+  });
+  expect(await dragResizeHandle('top', 0, -40)).toMatchObject({
+    position: { x: 240, y: 180 },
+    size: { width: 320, height: 260 }
+  });
+  expect(await dragResizeHandle('top-left', -40, -30)).toMatchObject({
+    position: { x: 200, y: 190 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('top-right', 40, -30)).toMatchObject({
+    position: { x: 240, y: 190 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('bottom-left', -40, 30)).toMatchObject({
+    position: { x: 200, y: 220 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('bottom-right', 40, 30)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 360, height: 250 }
+  });
+});
+
+test('canvas group border stroke stays screen-stable across zoom levels', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-26T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 240, y: 220 },
+        size: { width: 320, height: 220 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const groupBackground = page.locator('[data-group-background-id="group-1"]');
+  await expect(groupBackground).toBeVisible();
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await expect(groupFrame.locator('.canvas-group-resize-line')).toHaveCount(4);
+
+  const zoomedChrome = await groupFrame.evaluate((frame) => {
+    const background = document.querySelector('[data-group-background-id="group-1"]');
+    const line = frame.querySelector('.canvas-group-resize-line-top');
+    if (!(background instanceof HTMLElement) || !(line instanceof HTMLElement)) {
+      throw new Error('Group chrome not found.');
+    }
+    const backgroundStyles = getComputedStyle(background);
+    const frameStyles = getComputedStyle(frame);
+    const lineStyles = getComputedStyle(line);
+    const viewport = document.querySelector('.react-flow__viewport');
+    return {
+      viewportTransform: viewport instanceof HTMLElement ? viewport.style.transform : '',
+      backgroundBeforeBorderTopWidth: getComputedStyle(background, '::before').borderTopWidth,
+      backgroundAfterBorderBottomWidth: getComputedStyle(background, '::after').borderBottomWidth,
+      frameBorderTopWidth: frameStyles.borderTopWidth,
+      selectedLineBorderTopWidth: lineStyles.borderTopWidth
+    };
+  });
+  expect(zoomedChrome.viewportTransform).toContain('scale(0.5)');
+  expect(Number.parseFloat(zoomedChrome.backgroundBeforeBorderTopWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.backgroundAfterBorderBottomWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.frameBorderTopWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.selectedLineBorderTopWidth)).toBeCloseTo(4, 1);
+});
+
+test('canvas group title and action buttons only counter-scale while zooming out', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-26T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Long Planning Group Title',
+        position: { x: 240, y: 220 },
+        size: { width: 360, height: 160 }
+      },
+      {
+        id: 'group-2',
+        title: 'Group 2',
+        position: { x: 520, y: 220 },
+        size: { width: 1000, height: 180 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const readGroupChromeLayout = async (groupId) => {
+    const groupFrame = page.locator('[data-group-id="' + groupId + '"]');
+    await groupFrame.locator('.canvas-group-titlebar').click();
+    await expect(groupFrame.locator('.canvas-group-toolbar')).toBeVisible();
+    return groupFrame.evaluate((frame, targetGroupId) => {
+      const background = document.querySelector('[data-group-background-id="' + targetGroupId + '"]');
+      const titlebar = frame.querySelector('.canvas-group-titlebar');
+      const titleInput = frame.querySelector('.canvas-group-title .window-title-input');
+      const toolbar = frame.querySelector('.canvas-group-toolbar');
+      const primaryButton = frame.querySelector('.canvas-group-split-primary');
+      const dangerButton = frame.querySelector('.canvas-group-split-danger');
+      if (
+        !(background instanceof HTMLElement) ||
+        !(titlebar instanceof HTMLElement) ||
+        !(titleInput instanceof HTMLElement) ||
+        !(toolbar instanceof HTMLElement) ||
+        !(primaryButton instanceof HTMLElement) ||
+        !(dangerButton instanceof HTMLElement)
+      ) {
+        throw new Error('Group readable chrome not found.');
+      }
+      const frameRect = frame.getBoundingClientRect();
+      const titlebarRect = titlebar.getBoundingClientRect();
+      const titleInputRect = titleInput.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const primaryRect = primaryButton.getBoundingClientRect();
+      const dangerRect = dangerButton.getBoundingClientRect();
+      const titleStyles = getComputedStyle(titlebar);
+      const inputStyles = getComputedStyle(titlebar.querySelector('.window-title-input'));
+      const buttonStyles = getComputedStyle(primaryButton);
+      return {
+        frameWidth: frameRect.width,
+        titlebarWidth: titlebarRect.width,
+        titleInputWidth: titleInputRect.width,
+        toolbarWidth: toolbarRect.width,
+        titlebarHeight: titlebarRect.height,
+        toolbarHeight: toolbarRect.height,
+        titlebarRight: titlebarRect.right - frameRect.left,
+        toolbarLeft: toolbarRect.left - frameRect.left,
+        toolbarRight: toolbarRect.right - frameRect.left,
+        titleFontSize: Number.parseFloat(inputStyles.fontSize),
+        buttonFontSize: Number.parseFloat(buttonStyles.fontSize),
+        titlePaddingLeft: Number.parseFloat(titleStyles.paddingLeft),
+        buttonPaddingLeft: Number.parseFloat(buttonStyles.paddingLeft),
+        primaryButtonWidth: primaryRect.width,
+        dangerButtonWidth: dangerRect.width
+      };
+    }, groupId);
+  };
+
+  const narrowLayout = await readGroupChromeLayout('group-1');
+  expect(narrowLayout.titlebarHeight).toBeGreaterThan(14);
+  expect(narrowLayout.titlebarHeight).toBeLessThan(28);
+  expect(narrowLayout.toolbarHeight).toBeLessThanOrEqual(narrowLayout.titlebarHeight + 2);
+  expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
+  expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
+  expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1);
+  expect(narrowLayout.primaryButtonWidth).toBeGreaterThan(0);
+  expect(narrowLayout.dangerButtonWidth).toBeGreaterThan(0);
+
+  const wideLayout = await readGroupChromeLayout('group-2');
+  expect(wideLayout.titlebarHeight).toBeCloseTo(28, 1);
+  expect(wideLayout.titleFontSize * 0.5).toBeCloseTo(12, 1);
+  expect(wideLayout.buttonFontSize * 0.5).toBeCloseTo(11, 1);
+  expect(wideLayout.titlePaddingLeft * 0.5).toBeCloseTo(12, 1);
+  expect(wideLayout.buttonPaddingLeft * 0.5).toBeCloseTo(8, 1);
+  expect(wideLayout.titlebarRight).toBeCloseTo(wideLayout.toolbarLeft, 1);
+  expect(wideLayout.toolbarRight).toBeLessThan(wideLayout.frameWidth - 200);
+  expect(wideLayout.toolbarWidth).toBeGreaterThan(130);
+  expect(wideLayout.toolbarWidth).toBeLessThan(300);
+  expect(wideLayout.titlebarWidth + wideLayout.toolbarWidth).toBeLessThan(wideLayout.frameWidth);
+  expect(wideLayout.titleInputWidth).toBeGreaterThan(70);
+
+  const zoomedInScale = await page.evaluate(() => {
+    const frame = document.createElement('div');
+    frame.style.position = 'absolute';
+    frame.style.left = '-10000px';
+    frame.style.top = '-10000px';
+    frame.style.width = '1000px';
+    frame.style.height = '180px';
+    frame.style.setProperty('--canvas-group-title-height', '28px');
+    document.body.append(frame);
+    const titlebar = document.createElement('div');
+    titlebar.className = 'canvas-group-titlebar';
+    titlebar.style.transform = 'scale(1.5)';
+    frame.append(titlebar);
+    const result = titlebar.getBoundingClientRect().height / 28;
+    frame.remove();
+    return result;
+  });
+  expect(zoomedInScale).toBeCloseTo(1.5, 1);
+});
+
+test('node resize auto-pans at the canvas edge and keeps resizing', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'note-1',
+      selectedNodeIds: ['note-1'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [createManualNoteNode('note-1', { x: 10, y: 20 })];
+  await bootstrap(page, state, createRuntimeContext());
+  await expect(nodeById(page, 'note-1').locator('[data-node-resize-direction="bottom-right"]')).toBeVisible();
+  await clearPostedMessages(page);
+
+  const beforePersistedState = await readPersistedUiState(page);
+  expect(beforePersistedState.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+
+  const handle = nodeById(page, 'note-1').locator('[data-node-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(636, 516, { steps: 8 });
+  await settleWebview(page, 12);
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeNode');
+  expect(message.payload.nodeId).toBe('note-1');
+  expect(message.payload.position).toEqual({ x: 10, y: 20 });
+  expect(message.payload.size.width).toBeGreaterThan(450);
+  expect(message.payload.size.height).toBeGreaterThan(460);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).viewport?.x ?? 0)
+    .toBeLessThan(0);
+  const afterPersistedState = await readPersistedUiState(page);
+  expect(afterPersistedState.viewport.y).toBeLessThan(0);
+});
+
+test('canvas group resize draft keeps member nodes stationary until release', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 260, y: 260 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 220 },
+      size: { width: 520, height: 480 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const initialNoteBox = await noteNode.boundingBox();
+  expect(initialNoteBox).not.toBeNull();
+
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await clearPostedMessages(page);
+  const handle = groupFrame.locator('[data-group-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 60, handleBox.y + handleBox.height / 2 - 40, { steps: 4 });
+  await settleWebview(page, 2);
+  const draftNoteBox = await noteNode.boundingBox();
+  expect(draftNoteBox).not.toBeNull();
+  expectBoxEdgesClose(draftNoteBox, initialNoteBox);
+
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position.x).toBeLessThan(240);
+  expect(message.payload.position.y).toBeLessThan(220);
+  expect(message.payload.size.width).toBeGreaterThan(520);
+  expect(message.payload.size.height).toBeGreaterThan(480);
+});
+
+test('canvas group resize auto-pans at the canvas edge and keeps member drafts stationary', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 280, y: 120 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 80 },
+      size: { width: 340, height: 360 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const initialNoteStyle = await noteNode.evaluate((element) => {
+    const wrapper = element.closest('.react-flow__node');
+    return wrapper instanceof HTMLElement ? wrapper.getAttribute('style') : null;
+  });
+  expect(initialNoteStyle).not.toBeNull();
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await clearPostedMessages(page);
+
+  const handle = groupFrame.locator('[data-group-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(636, 516, { steps: 8 });
+  await settleWebview(page, 12);
+  const draftNoteStyle = await noteNode.evaluate((element) => {
+    const wrapper = element.closest('.react-flow__node');
+    return wrapper instanceof HTMLElement ? wrapper.getAttribute('style') : null;
+  });
+  expect(draftNoteStyle).toBe(initialNoteStyle);
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position).toEqual({ x: 240, y: 80 });
+  expect(message.payload.size.width).toBeGreaterThan(400);
+  expect(message.payload.size.height).toBeGreaterThan(420);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).viewport?.x ?? 0)
+    .toBeLessThan(0);
+  const afterPersistedState = await readPersistedUiState(page);
+  expect(afterPersistedState.viewport.y).toBeLessThan(0);
+});
+
+test('selected nodes move together and share the primary release intent', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'note-2',
+      selectedNodeIds: ['note-1', 'note-2'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    createManualNoteNode('note-1', { x: 80, y: 120 }),
+    createManualNoteNode('note-2', { x: 360, y: 120 })
+  ];
+  state.nodes[0].title = 'Note 1';
+  state.nodes[1].title = 'Note 2';
+  await bootstrap(page, state, createRuntimeContext());
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeIds)
+    .toEqual(['note-1', 'note-2']);
+
+  await clearPostedMessages(page);
+  const firstBox = await nodeById(page, 'note-1').boundingBox();
+  expect(firstBox).not.toBeNull();
+  await page.mouse.move(firstBox.x + 6, firstBox.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(firstBox.x + 106, firstBox.y + 56, { steps: 8 });
+  await page.mouse.up();
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('note-1');
+  expect(moveMessage.payload.selectedMoves).toHaveLength(1);
+  expect(moveMessage.payload.selectedMoves[0].id).toBe('note-2');
+  expect(moveMessage.payload.selectedMoves[0].position.x - moveMessage.payload.position.x).toBe(280);
+  expect(moveMessage.payload.selectedMoves[0].position.y - moveMessage.payload.position.y).toBe(0);
+  expect(moveMessage.payload.selectedMoves[0].pointerPosition).toEqual(moveMessage.payload.pointerPosition);
+});
+
+test('node group drop applies the host avoidance position after state update', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('existing-1', { x: 180, y: 160 }),
+      title: 'Existing',
+      groupId: 'group-1'
+    },
+    {
+      ...createManualNoteNode('moved-1', { x: 700, y: 160 }),
+      title: 'Moved'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 480 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const existingBox = await nodeById(page, 'existing-1').boundingBox();
+  const movedStartBox = await nodeById(page, 'moved-1').boundingBox();
+  expect(existingBox).not.toBeNull();
+  expect(movedStartBox).not.toBeNull();
+
+  await clearPostedMessages(page);
+  const dragOffset = { x: 6, y: 6 };
+  await page.mouse.move(movedStartBox.x + dragOffset.x, movedStartBox.y + dragOffset.y);
+  await page.mouse.down();
+  await page.mouse.move(existingBox.x + dragOffset.x, existingBox.y + dragOffset.y, { steps: 8 });
+  await page.mouse.up();
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('moved-1');
+  expect(moveMessage.payload.pointerPosition).toEqual({ x: 186, y: 166 });
+
+  await updateHostState(page, {
+    ...state,
+    updatedAt: '2026-05-23T12:00:00.000Z',
+    nodes: [
+      state.nodes[0],
+      {
+        ...state.nodes[1],
+        position: { x: 584, y: 160 },
+        groupId: 'group-1'
+      }
+    ],
+    groups: [
+      {
+        ...state.groups[0],
+        size: { width: 872, height: 480 }
+      }
+    ]
+  }, createRuntimeContext());
+
+  await expect
+    .poll(async () => (await nodeById(page, 'moved-1').boundingBox())?.x)
+    .toBeGreaterThan(existingBox.x + existingBox.width + 16);
+});
+
+test('canvas context menu can create a group from selected nodes', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    },
+    {
+      id: 'note-2',
+      kind: 'note',
+      title: 'Note 2',
+      status: 'ready',
+      summary: 'second',
+      position: { x: 360, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'second' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await nodeById(page, 'note-2').click();
+  let selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1']);
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
+
+  await nodeById(page, 'note-1').click();
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1']);
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 40, y: 620 } });
+  await expect(page.locator('[data-context-menu-action="create-group-from-selection"] .codicon-group-by-ref-type')).toBeVisible();
+  await page.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: []
+  });
+});
+
+test('host-triggered group creation uses current webview selection', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    },
+    {
+      id: 'note-2',
+      kind: 'note',
+      title: 'Note 2',
+      status: 'ready',
+      summary: 'second',
+      position: { x: 520, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'second' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await clearPostedMessages(page);
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: []
+  });
+});
+
+test('host-triggered group creation reports invalid current webview selection without posting create', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await nodeById(page, 'note-1').click();
+  await clearPostedMessages(page);
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+  });
+
+  await expect(page.locator('[data-toast-kind="error"]')).toContainText('请先选中至少两个同一父级的节点或分组。');
+  const createMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((message) => message.type === 'webview/createGroupFromSelection')
+  );
+  expect(createMessages).toEqual([]);
 });
 
 test('host-triggered manual node creation snapshots existing nodes before resolving autofocus', async ({ page }) => {
@@ -9149,6 +10322,11 @@ function normalizeCanvasState(state) {
   return {
     ...state,
     edges: Array.isArray(state?.edges) ? state.edges : [],
+    groups: Array.isArray(state?.groups) ? state.groups : [],
+    nextGroupSequence:
+      typeof state?.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
+        ? state.nextGroupSequence
+        : 1,
     fileReferences: Array.isArray(state?.fileReferences) ? state.fileReferences : []
   };
 }

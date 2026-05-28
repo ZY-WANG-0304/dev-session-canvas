@@ -15,7 +15,7 @@ related_specs:
   - docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-surface-and-resize-polish.md
-updated_at: 2026-04-07
+updated_at: 2026-05-24
 ---
 
 # 节点窗口表面与通用尺寸设计
@@ -110,15 +110,17 @@ updated_at: 2026-04-07
 
 当前收敛结论如下：
 
-- 四类节点统一支持 resize，使用 React Flow 内置的 `NodeResizer`。
+- 四类节点统一支持 resize。2026-05-24 起，Webview 不再直接使用 React Flow 内置的 `NodeResizer`，改为在 `src/webview/main.tsx` 中用自定义 `NodeResizeAffordance` 渲染 8 向 resize 控制点；这样可以在鼠标接近画布可视区域边缘时复用画布自动平移控制器，并把视口平移折算进本次 resize 草稿。
 - 节点尺寸定义为宿主权威状态的一部分，字段为 `size.width` 与 `size.height`。
-- Webview 在 resize 结束后通过 `webview/resizeNode` 把新尺寸发回宿主。
+- Webview 在 resize 过程中只维护本地草稿，结束后通过 `webview/resizeNode` 把最终位置与尺寸发回宿主；resize 左侧或上侧控制点时会同步改变节点 `position`。
 - 宿主在加载旧状态时补默认尺寸，在创建新节点和避碰时优先使用节点实际尺寸。
 - `Task` / `Note` 继续保留节点内编辑，但改成窗口化内容面：
   - 头部继续使用窗口标题栏。
   - 标题输入作为主要标题区，而不是普通小表单字段。
   - 状态、负责人或内容概况以更轻的胶囊/概览区呈现。
   - 正文输入区改成更接近工作文档的内容面。
+
+补充边缘交互口径：节点 resize 到画布边缘时，画布应像节点拖动一样自动平移，保持用户可以继续扩大或调整对象。自动平移只改变视口和本地 resize 草稿，不改变宿主对节点尺寸持久化、成员归属或分组合法状态收口的语义。
 
 ## 8. 验证结果
 
@@ -128,3 +130,4 @@ updated_at: 2026-04-07
 2. 运行 `npm run test:smoke`，真实 VS Code smoke 已覆盖四类节点的尺寸写回宿主、持久化和 reload 恢复。
 3. 运行 `npm run test:smoke`，确认 `Task` / `Note` 在新窗口化表面下仍可编辑标题、状态、负责人和正文，不回退成只读卡片。
 4. 运行 `npm run build` 与 `npm run typecheck`，并通过 `npm run test:smoke` 中已有的 `Agent` / `Terminal` 主路径验证，确认执行型节点在 resize 后不破坏现有会话链路。
+5. 2026-05-24 运行 `npm run typecheck`、`npm run build` 和 Webview resize 定向回归，确认自定义 8 向 resize 控制点仍发送 `webview/resizeNode`，且右下边缘 resize 会触发画布自动平移并持续增长尺寸。

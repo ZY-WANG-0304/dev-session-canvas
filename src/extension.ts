@@ -130,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
   const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
-  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri);
+  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
   const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
@@ -307,12 +307,48 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
+  registerCommand(context, COMMAND_IDS.createEmptyGroup, async () => {
+    await panelManager.revealOrCreate();
+    panelManager.createEmptyGroupFromCommand();
+  });
+
+  registerCommand(context, COMMAND_IDS.createGroupFromSelection, async () => {
+    await panelManager.revealOrCreate();
+    try {
+      await panelManager.waitForCanvasReady(undefined, 15000);
+    } catch {
+      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+      return;
+    }
+
+    const requested = panelManager.createGroupFromSelectionFromCommand();
+    if (!requested) {
+      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+    }
+  });
+
   registerCommand(context, COMMAND_IDS.saveNoteAsMarkdownFile, async (nodeId?: unknown) => {
     await panelManager.saveNoteAsMarkdownFile(typeof nodeId === 'string' ? nodeId : undefined);
   });
 
   registerCommand(context, COMMAND_IDS.showNodeList, async () => {
     await showSidebarNodeListQuickPick(panelManager);
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListFlatView, async () => {
+    await sidebarNodeListView.setViewMode('flat');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListFlatViewChecked, async () => {
+    await sidebarNodeListView.setViewMode('flat');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListGroupedView, async () => {
+    await sidebarNodeListView.setViewMode('grouped');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListGroupedViewChecked, async () => {
+    await sidebarNodeListView.setViewMode('grouped');
   });
 
   registerCommand(context, COMMAND_IDS.showSessionHistory, async () => {
@@ -877,7 +913,7 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
   const nodes = panelManager.getCanvasNodes();
   const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
-  const items = getCanvasSidebarNodeListItems(nodes);
+  const items = getCanvasSidebarNodeListItems(panelManager.getCanvasSidebarNodeListSnapshot());
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
     return;
@@ -1824,7 +1860,7 @@ function registerTestCommands(
       getCanvasSidebarSummaryItems(panelManager.getSidebarState())
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarNodeListItems, () =>
-      getCanvasSidebarNodeListItems(panelManager.getCanvasNodes())
+      getCanvasSidebarNodeListItems(panelManager.getCanvasSidebarNodeListSnapshot())
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getSidebarSessionHistoryItems,
